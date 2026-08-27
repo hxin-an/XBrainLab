@@ -150,10 +150,10 @@ def test_workflow_handoff_route_descriptors_preserve_existing_ui_taxonomy() -> N
             CommandName.APPLY_MONTAGE,
             WorkflowUiHandoffSurfaceKind.DIALOG,
             AssistantDecisionOwner.GUI_DIALOG,
-            WorkflowUiHandoffPanel.VISUALIZATION,
+            WorkflowUiHandoffPanel.DATASET,
             WorkflowUiHandoffRouteIdentity.MONTAGE_SETTINGS_DIALOG,
-            "Continue in Montage Settings",
-            "Finish or cancel in the open Montage Settings dialog.",
+            "Continue in Electrode Layout",
+            "Finish or cancel in the open Electrode Layout dialog.",
         ),
     )
 

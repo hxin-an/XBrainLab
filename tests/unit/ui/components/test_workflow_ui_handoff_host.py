@@ -50,7 +50,14 @@ def _main_window() -> Any:
                 review_current_import=MagicMock(
                     return_value=InteractionOutcome.completed("Data imported.")
                 ),
-            )
+            ),
+            sidebar=SimpleNamespace(
+                open_electrode_layout=MagicMock(
+                    return_value=InteractionOutcome.completed(
+                        "Electrode layout applied."
+                    )
+                )
+            ),
         ),
         preprocess_panel=SimpleNamespace(
             sidebar=SimpleNamespace(
@@ -86,9 +93,6 @@ def _main_window() -> Any:
                 return_value=InteractionOutcome.completed("Saliency ready.")
             ),
             sidebar=SimpleNamespace(
-                set_montage=MagicMock(
-                    return_value=InteractionOutcome.completed("Montage set.")
-                ),
                 set_saliency=MagicMock(
                     return_value=InteractionOutcome.cancelled(
                         "Saliency settings were cancelled."
@@ -843,17 +847,17 @@ def test_montage_handoff_uses_existing_dialog_and_preserves_agent_suggestion() -
 
     assert outcome.status is WorkflowUiHandoffResolutionStatus.COMPLETED
     assert outcome.suggested_values == request.suggested_values
-    window.switch_page.assert_called_once_with(4)
-    window.visualization_panel.sidebar.set_montage.assert_called_once_with(
+    window.switch_page.assert_called_once_with(0)
+    window.dataset_panel.sidebar.open_electrode_layout.assert_called_once_with(
         default_montage="standard_1020",
         warning="Review channel identities.",
     )
     window.statusBar.return_value.showMessage.assert_called_with(
-        "Opened Visualization panel."
+        "Opened Dataset panel."
     )
     route = host._router.route_for("apply_montage")
     assert route is not None
-    assert route.panel is WorkflowPanel.VISUALIZATION
+    assert route.panel is WorkflowPanel.DATASET
 
 
 def test_montage_navigation_failure_returns_correlated_failed_resolution() -> None:
@@ -867,12 +871,28 @@ def test_montage_navigation_failure_returns_correlated_failed_resolution() -> No
     assert outcome.request_id == request.request_id
     assert outcome.status is WorkflowUiHandoffResolutionStatus.FAILED
     assert "private navigation detail" not in outcome.message
-    window.visualization_panel.sidebar.set_montage.assert_not_called()
+    window.dataset_panel.sidebar.open_electrode_layout.assert_not_called()
+
+
+def test_montage_handoff_preserves_cancelled_dataset_outcome() -> None:
+    window = _main_window()
+    window.dataset_panel.sidebar.open_electrode_layout.return_value = (
+        InteractionOutcome.cancelled("Electrode layout was cancelled.")
+    )
+    host = WorkflowUiHandoffHost(window)
+
+    outcome = host.open(WorkflowUiHandoffRequest.for_decision("apply_montage"))
+
+    assert outcome.status is WorkflowUiHandoffResolutionStatus.CANCELLED
+    window.dataset_panel.sidebar.open_electrode_layout.assert_called_once_with(
+        default_montage=None,
+        warning="",
+    )
 
 
 def test_montage_dialog_failure_returns_correlated_failed_resolution() -> None:
     window = _main_window()
-    window.visualization_panel.sidebar.set_montage.side_effect = RuntimeError(
+    window.dataset_panel.sidebar.open_electrode_layout.side_effect = RuntimeError(
         "private montage detail"
     )
     host = WorkflowUiHandoffHost(window)

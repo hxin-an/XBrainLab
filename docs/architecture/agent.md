@@ -403,9 +403,9 @@ confirmation。
   `ok`、`tool_name`、`command_name`、
   `message`、`error_type`、`recoverable`、`state`、`capability`、`diagnostics`、
   `raw_result` JSON payload。
-- `set_montage`走既有Montage Settings UI；Cancel不產生montage mutation。Evaluation與Visualization
-  由`switch_panel`導向既有panel；Compute Saliency只觸發既有panel action，不重建readiness或render
-  owner。
+- `set_montage`保留既有 public tool identifier，但 handoff 走 Dataset panel 的 `Electrode Layout`
+  entry；Cancel不產生 montage mutation。Evaluation與Visualization 由`switch_panel`導向既有panel；
+  Compute Saliency只觸發既有panel action，不重建readiness或render owner。
 
 ## Workflow State Gate
 

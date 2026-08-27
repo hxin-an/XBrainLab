@@ -62,6 +62,21 @@ class EpochStateSnapshot:
     channel_names: list[str] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class ElectrodeLayoutStateSnapshot:
+    """Shared, identity-preserving electrode-layout publication."""
+
+    source: str | None = None
+    status: str = "not_configured"
+    positioned_channel_count: int = 0
+    channel_count: int = 0
+    coordinate_summary: str | None = None
+    name: str | None = None
+    bids_restore_available: bool = False
+    channel_names: list[str] = field(default_factory=list)
+    electrode_names: list[str] = field(default_factory=list)
+
+
 class DatasetSplitLifecycle(str, Enum):
     """Authoritative lifecycle for one saved dataset split specification."""
 
@@ -271,6 +286,9 @@ class ApplicationStateSnapshot:
     interpretation: InterpretationStateSnapshot
     active_dataset: ActiveDatasetSnapshot
     active_training: ActiveTrainingSnapshot
+    electrode_layout: ElectrodeLayoutStateSnapshot = field(
+        default_factory=ElectrodeLayoutStateSnapshot
+    )
     last_error: ErrorSnapshot | None = None
     state_reliable: bool = True
     training_liveness_reliable: bool = True

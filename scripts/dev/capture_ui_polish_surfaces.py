@@ -668,7 +668,7 @@ def _saliency_setting_empty_state() -> QWidget:
     return dialog
 
 
-def _set_montage_dialog() -> QWidget:
+def _montage_dialog(*, bids_summary: bool = False, expanded: bool = False) -> QWidget:
     positions = {
         "Fz": (0.0, 0.8, 0.0),
         "C3": (-0.4, 0.0, 0.0),
@@ -690,9 +690,42 @@ def _set_montage_dialog() -> QWidget:
             return_value=positions,
         ),
     ):
-        dialog = PickMontageDialog(None, ["Fz", "C3", "Cz", "C4", "Pz"])
+        dialog = PickMontageDialog(
+            None,
+            ["Fz", "C3", "Cz", "C4", "Pz"],
+            current_layout=(
+                {
+                    "source": "manual",
+                    "name": "standard_1020",
+                    "status": "ready",
+                    "positioned_channel_count": 5,
+                    "channel_count": 5,
+                    "coordinate_summary": "head",
+                    "bids_restore_available": True,
+                    "channel_names": ["Fz", "C3", "Cz", "C4", "Pz"],
+                    "electrode_names": ["Fz", "C3", "Cz", "C4", "Pz"],
+                }
+                if bids_summary
+                else None
+            ),
+            is_bids_source=bids_summary,
+        )
+    if expanded:
+        dialog.show_mapping_page()
     dialog.resize(QSize(760, dialog.height()))
     return dialog
+
+
+def _set_montage_dialog() -> QWidget:
+    return _montage_dialog()
+
+
+def _electrode_layout_bids_summary() -> QWidget:
+    return _montage_dialog(bids_summary=True)
+
+
+def _electrode_layout_bids_picker() -> QWidget:
+    return _montage_dialog(bids_summary=True, expanded=True)
 
 
 def _evaluation_controls_panel() -> QWidget:
@@ -894,6 +927,8 @@ def _capture_factories() -> tuple[tuple[str, Callable[[], QWidget]], ...]:
         ("saliency-setting-single-method.png", _saliency_setting_single_method),
         ("saliency-setting-empty-state.png", _saliency_setting_empty_state),
         ("set-montage-dialog.png", _set_montage_dialog),
+        ("electrode-layout-bids-summary.png", _electrode_layout_bids_summary),
+        ("electrode-layout-bids-picker.png", _electrode_layout_bids_picker),
         ("evaluation-controls-panel.png", _evaluation_controls_panel),
         ("evaluation-metrics-table.png", _metrics_table),
         ("training-history-few-rows.png", _training_history_few_rows),
@@ -2065,6 +2100,8 @@ def _write_readme(output_dir: Path = DEFAULT_OUTPUT_DIR) -> None:
         "- `saliency-setting-single-method.png`\n"
         "- `saliency-setting-empty-state.png`\n"
         "- `set-montage-dialog.png`\n"
+        "- `electrode-layout-bids-summary.png`\n"
+        "- `electrode-layout-bids-picker.png`\n"
         "- `evaluation-controls-panel.png`\n"
         "- `evaluation-metrics-table.png`\n"
         "- `training-history-few-rows.png` (completed runs; Start enabled)\n"

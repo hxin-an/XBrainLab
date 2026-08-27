@@ -4578,7 +4578,7 @@ class _StudyTrainingAliasVisitor(ast.NodeVisitor):
 
 
 def check_montage_command_ownership(root_dir: Path) -> list[str]:
-    """Keep montage mutation on the preprocessing application boundary."""
+    """Keep montage mutation on the ApplicationService/coordinator boundary."""
     violations: list[str] = []
     application_dir = root_dir / "XBrainLab" / "backend" / "application"
     analysis_path = application_dir / "analysis_service.py"
@@ -4606,7 +4606,7 @@ def check_montage_command_ownership(root_dir: Path) -> list[str]:
                 violations.append(
                     "XBrainLab/backend/application/analysis_service.py owns "
                     "handle_apply_montage; montage mutation belongs to "
-                    "PreprocessCommandService."
+                    "ApplicationService and the BIDS montage coordinator."
                 )
             constructor = next(
                 (
@@ -4652,20 +4652,10 @@ def check_montage_command_ownership(root_dir: Path) -> list[str]:
                 ),
                 None,
             )
-    if preprocess_handler is None:
+    if preprocess_handler is not None:
         violations.append(
-            "XBrainLab/backend/application/preprocess_service.py must own "
+            "XBrainLab/backend/application/preprocess_service.py must not own "
             "handle_apply_montage."
-        )
-    elif not any(
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "apply_montage"
-        for node in ast.walk(preprocess_handler)
-    ):
-        violations.append(
-            "PreprocessCommandService.handle_apply_montage must execute the "
-            "preprocess controller mutation."
         )
 
     service_tree = _parse_python_file(service_path)
@@ -4689,7 +4679,7 @@ def check_montage_command_ownership(root_dir: Path) -> list[str]:
             if "handle_apply_montage" in lazy_method_names:
                 violations.append(
                     "_LazyAnalysisCommandService owns handle_apply_montage; "
-                    "montage commands must route directly to preprocessing."
+                    "montage commands must route directly to ApplicationService."
                 )
             lazy_constructor = next(
                 (
@@ -4709,7 +4699,7 @@ def check_montage_command_ownership(root_dir: Path) -> list[str]:
             ):
                 violations.append(
                     "The lazy analysis wrapper depends on preprocess; montage "
-                    "mutation wiring belongs to PreprocessCommandService."
+                    "mutation wiring belongs to ApplicationService."
                 )
 
         for node in ast.walk(service_tree):
@@ -4720,16 +4710,23 @@ def check_montage_command_ownership(root_dir: Path) -> list[str]:
                     isinstance(key, ast.Attribute)
                     and key.attr == "APPLY_MONTAGE"
                     and isinstance(value, ast.Attribute)
-                    and value.attr == "handle_apply_montage"
-                    and isinstance(value.value, ast.Attribute)
                 ):
                     continue
-                montage_routes.append(value.value.attr)
-    if montage_routes != ["preprocess_commands"]:
+                if value.attr == "handle_apply_montage" and isinstance(
+                    value.value, ast.Attribute
+                ):
+                    montage_routes.append(value.value.attr)
+                elif (
+                    value.attr == "_handle_apply_montage"
+                    and isinstance(value.value, ast.Name)
+                    and value.value.id == "self"
+                ):
+                    montage_routes.append("application_service")
+    if montage_routes != ["application_service"]:
         rendered = ", ".join(montage_routes) if montage_routes else "missing"
         violations.append(
             "ApplicationService must route APPLY_MONTAGE exactly once to "
-            "preprocess_commands.handle_apply_montage; current owner(s): "
+            "one authorized montage handler; current owner(s): "
             f"{rendered}."
         )
 
@@ -6891,7 +6888,7 @@ def check_typed_montage_ui_handoff_boundary(root_dir: Path) -> list[str]:
             for token in (
                 "WorkflowUiHandoffRouteIdentity.MONTAGE_SETTINGS_DIALOG",
                 "self._open_montage",
-                "set_montage",
+                "open_electrode_layout",
                 "self._surface_result",
             )
         )

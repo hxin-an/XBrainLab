@@ -71,9 +71,10 @@ Interpretation lifecycle state 和 scan / preview / validate / apply / recipe ha
 carrier side effects 再拆到 `DataInterpretationApplyService`；`ApplicationService` 現在只保留
 command dispatch、capability / confirmation gate、state/result envelope，以及對 focused service
 的窄委派。這是 god-object 收斂的連續切片；legacy data / label compatibility path 仍存在，
-但不再直接塞在 `ApplicationService`。下一個 cleanup slice 又把 `evaluate`、`visualize`、`saliency` 和
-confirmed `apply_montage` 拆到 `AnalysisCommandService`；analysis / visualization readiness
-現在也有 focused handler boundary。最新 cleanup slice 又把 `configure_training`、`train`、
+但不再直接塞在 `ApplicationService`。下一個 cleanup slice 又把 `evaluate`、`visualize`、`saliency`
+拆到 `AnalysisCommandService`；analysis / visualization readiness 現在也有 focused handler boundary。
+`apply_montage` 則由 `ApplicationService` 在 command lock 下協調
+`BidsMontagePreparationCoordinator` 的 geometry publication 與 Epoch projection。最新 cleanup slice 又把 `configure_training`、`train`、
 `stop_training`、`clear_training_history` 和 reset-time training config clear 拆到
 `TrainingCommandService`；model / optimizer / device / training-option snapshot 不再直接留在
 `ApplicationService`。最新 dataset cleanup slice 又把 `configure_dataset_split`、`clear_datasets`、
@@ -256,7 +257,10 @@ ApplicationService / Command API
   |               +--> reviewed metadata apply / reviewed label carrier apply
   |
   +--> AnalysisCommandService
-  |       +--> evaluation summary / visualization readiness / saliency setup / montage apply
+  |       +--> evaluation summary / visualization readiness / saliency setup
+  |
+  +--> BidsMontagePreparationCoordinator
+  |       +--> BIDS/manual geometry lifecycle; ApplicationService-owned command projection
   |
   +--> TrainingCommandService
   |       +--> model config / training option config / train-stop lifecycle / history cleanup
@@ -467,6 +471,13 @@ taxonomy 都以這套 Data Interpretation command sequence 作為產品資料入
 - Import discovery/apply、preprocess 與 epoch 的 heavy IO / copy / MNE construction 在 detached
   preparation 執行；短 commit boundary 重新驗證 session generation、source identity、revision /
   fingerprint 與 cancel intent，失敗或 stale 時保留原 committed state。
+- Electrode layout 的唯一 geometry owner 是 `BidsMontagePreparationCoordinator`；
+  `ApplicationService` 在 command lock 下驗證並發布 manual/BIDS layout，再將結果投影到
+  `Epochs`。layout 是 `channel → electrode → position` mapping，不能 slice 或 reorder Epoch
+  channel axis。同一 import 已發布的 ready BIDS snapshot 可跨 manual override 保留並由 explicit
+  restore command 回復，不重新讀 source；new import／reset 與 generation fence 會使舊 snapshot
+  失效。partial mapping 維持原 channel identity，state 標示為 `limited`；只有需要位置的 consumer
+  要求完整 coverage。
 - Training terminal path 只發布 metrics。只有 explicit `SaliencyCommand`（由 visible
   `Compute Saliency` action 觸發）才建立 exact completed-run target 並排程 attribution；
   generation 或 producer identity 不符的結果不得發布。
@@ -598,8 +609,11 @@ readiness 判斷；需要狀態或 blocked reason 時使用 `ApplicationService.
 - service-backed query / setup commands：
   `evaluate`、`visualize`、`saliency`、`query_state`。它們回傳 typed summary diagnostics；
   `saliency` 也能設定 saliency params。
-- `evaluate`、`visualize`、`saliency` 和 confirmed `apply_montage` 的 handler 實作位置現在是
+- `evaluate`、`visualize`、`saliency` 的 handler 實作位置現在是
   `AnalysisCommandService`。
+- confirmed `apply_montage` 由 `ApplicationService` 在 command lock 下協調
+  `BidsMontagePreparationCoordinator`；它驗證 channel/electrode/position mapping，發布有效
+  geometry，並只投影 position metadata 到既有 Epoch axes。
 - State snapshot assembly 和 `query_state` diagnostics 的實作位置現在是
   `StateSnapshotService` / `QueryStateCommandService`。`ApplicationService` 仍提供
   strict/fresh `get_state()` / `get_capabilities()` 給 command 內部驗證；一般 state query 與
@@ -632,8 +646,8 @@ readiness 判斷；需要狀態或 blocked reason 時使用 `ApplicationService.
   `DataTableCommandService`。它 owns loaded-data table mutation diagnostics；`ApplicationService`
   只做 dispatch、policy gate 和 result envelope。
 - Preprocessing operations 和 `create_epoch` 的實作位置現在是 `PreprocessCommandService`。
-  它 owns preprocess controller calls、standard batch preprocessing、channel selection delegate
-  和 `set_montage` UI confirmation boundary。
+  它 owns preprocess controller calls、standard batch preprocessing、channel selection delegate；
+  epoch commit 後由 `ApplicationService` 重投影已發布的 electrode-layout metadata。
 - UI Preprocess reset action 會透過 `ResetPreprocessCommand` 進入 lifecycle service；只有
   `execute_application_command()` 回傳 `None` 的 mock / compatibility adapter 情境才回到 controller
   fallback。
@@ -764,9 +778,10 @@ compatibility path 顯示的是固定的 public unavailable message，不是 bac
 - `application_surface.py` 是 agent tool-name 與 ApplicationService command-name 的 adapter；
   read-only / compatibility tools 必須回到 command query / typed formatter，不可讓 legacy string
   result 直接進 transcript。
-- `set_montage` 仍是 UI confirmation request path；agent tool 的 availability 讀
-  `apply_montage` capability，confirmation 後由 `ApplyMontageCommand` 實際寫入 channel
-  positions。
+- `set_montage` 保留既有 public tool identifier，仍是 UI confirmation request path；handoff
+  指向 Dataset 的 `Electrode Layout` entry。tool availability 讀 `apply_montage` capability，
+  confirmation 後由 `ApplyMontageCommand` 讓 `ApplicationService` / BIDS coordinator 實際發布
+  channel-to-electrode position mapping。
 - `reset_session` 仍是 internal backend lifecycle command；它目前代表清掉 active backend
   session：raw / preprocess / epoch / dataset / trainer / model option / saliency config 都會失效。
   Desktop UI 與 Assistant 不發布這個操作，automation / internal integration 仍可直接使用 typed
@@ -935,7 +950,8 @@ execution 仍可委派既有 controller / manager，但不以 controller state �
   覆蓋 scan / preview / validate / clear，以及 apply 後 reviewed metadata / label-import recipe
   state 同步。
 - `AnalysisCommandService` 已由 focused unit tests 覆蓋 evaluation summary、visualization
-  readiness、saliency normalization / configuration 和 confirmed montage apply。
+  readiness 與 saliency normalization / configuration；electrode-layout command/projection
+  則由 `ApplicationService` / `BidsMontagePreparationCoordinator` ownership tests 覆蓋。
 - `Study` 已拆出 `DataManager` 和 `TrainingManager`，但還保留 backward-compatible delegation properties。
 - pipeline stage 是從 live `Study` state 計算，不是文件或 UI label 推導。
 - tiny Study training E2E smoke 已通過，證明 `Study -> TrainingManager` delegation 的代表性 train/evaluate path 目前可跑。

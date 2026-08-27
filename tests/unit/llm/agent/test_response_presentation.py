@@ -131,8 +131,8 @@ def test_generation_error_copy_is_actionable_without_raw_details(
 
 
 @pytest.mark.parametrize("command_name", ["set_montage", "apply_montage"])
-def test_montage_commands_share_visualization_surface_truth(command_name: str) -> None:
-    assert panel_target_for_command(command_name) is AssistantPanelTarget.VISUALIZATION
+def test_montage_commands_share_dataset_surface_truth(command_name: str) -> None:
+    assert panel_target_for_command(command_name) is AssistantPanelTarget.DATASET
 
 
 def test_panel_routing_accepts_typed_canonical_command_identity() -> None:
@@ -142,7 +142,7 @@ def test_panel_routing_accepts_typed_canonical_command_identity() -> None:
     )
     assert (
         panel_target_for_command(CommandName.APPLY_MONTAGE)
-        is AssistantPanelTarget.VISUALIZATION
+        is AssistantPanelTarget.DATASET
     )
 
 
