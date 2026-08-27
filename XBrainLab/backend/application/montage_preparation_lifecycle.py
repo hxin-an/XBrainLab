@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from threading import Lock
 from typing import Literal
@@ -36,18 +36,29 @@ class ManualMontageOverride:
     channel_names: tuple[str, ...]
     positions_m: tuple[tuple[float, float, float], ...]
     coordinate_frame: MontageCoordinateFrame
+    electrode_names: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         name = str(self.name).strip()
         channel_names = tuple(str(item).strip() for item in self.channel_names)
+        electrode_names = tuple(str(item).strip() for item in self.electrode_names)
+        if not electrode_names:
+            electrode_names = channel_names
         positions = tuple(
             tuple(float(value) for value in row) for row in self.positions_m
         )
         _validate_geometry(channel_names, positions)
+        if len(electrode_names) != len(channel_names) or any(
+            not name for name in electrode_names
+        ):
+            raise ValueError("manual montage electrode names must align")
+        if len(set(electrode_names)) != len(electrode_names):
+            raise ValueError("manual montage electrode names must be unique")
         if not name:
             raise ValueError("manual montage name is required")
         object.__setattr__(self, "name", name)
         object.__setattr__(self, "channel_names", channel_names)
+        object.__setattr__(self, "electrode_names", electrode_names)
         object.__setattr__(self, "positions_m", positions)
 
 
@@ -60,6 +71,7 @@ class EffectiveMontage:
     channel_names: tuple[str, ...]
     positions_m: tuple[tuple[float, float, float], ...]
     coordinate_frame: MontageCoordinateFrame
+    electrode_names: tuple[str, ...] = ()
     coordinate_units: Literal["m"] = "m"
     coordinate_dimension: MontageCoordinateDimension = 3
     supports_topographic: bool = False
@@ -92,6 +104,7 @@ class MontagePreparationLifecycle:
             reason="No BIDS montage preparation has been requested.",
         )
         self._manual_override: ManualMontageOverride | None = None
+        self._bids_restore_snapshot: MontagePreparationSnapshot | None = None
         self._active_work: MontagePreparationWork | None = None
 
     def begin(
@@ -114,6 +127,7 @@ class MontagePreparationLifecycle:
         with self._lock:
             self._generation += 1
             self._manual_override = None
+            self._bids_restore_snapshot = None
             self._snapshot = MontagePreparationSnapshot.pending(
                 generation=self._generation,
                 recording_paths=(item.recording_path for item in requested),
@@ -129,10 +143,35 @@ class MontagePreparationLifecycle:
         with self._lock:
             self._generation += 1
             self._manual_override = None
+            self._bids_restore_snapshot = None
             self._active_work = None
             self._snapshot = MontagePreparationSnapshot.not_applicable(
                 generation=self._generation,
                 reason="Montage preparation was reset.",
+            )
+            return self._snapshot
+
+    def can_restore_bids(self) -> bool:
+        """Return whether this import retains a ready BIDS layout to restore."""
+        with self._lock:
+            return (
+                self._manual_override is not None
+                and self._bids_restore_snapshot is not None
+            )
+
+    def restore_bids(self) -> MontagePreparationSnapshot:
+        """Restore the already-reviewed BIDS geometry without reading sidecars again."""
+        with self._lock:
+            if self._manual_override is None or self._bids_restore_snapshot is None:
+                raise ValueError(
+                    "No retained BIDS electrode layout is available to restore."
+                )
+            self._generation += 1
+            self._manual_override = None
+            self._active_work = None
+            self._snapshot = replace(
+                self._bids_restore_snapshot,
+                generation=self._generation,
             )
             return self._snapshot
 
@@ -167,6 +206,8 @@ class MontagePreparationLifecycle:
                 )
             self._snapshot = result
             self._active_work = None
+            if result.state == "ready" and result.aggregate.compatible:
+                self._bids_restore_snapshot = result
             return MontagePublicationResult(
                 accepted=True,
                 reason="accepted",
@@ -215,6 +256,7 @@ class MontagePreparationLifecycle:
                     source="manual",
                     name=manual.name,
                     channel_names=manual.channel_names,
+                    electrode_names=manual.electrode_names,
                     positions_m=manual.positions_m,
                     coordinate_frame=manual.coordinate_frame,
                     coordinate_dimension=3,
@@ -272,6 +314,7 @@ def effective_montage_from_snapshot(
         source="bids",
         name=None,
         channel_names=aggregate.channel_names,
+        electrode_names=aggregate.channel_names,
         positions_m=aggregate.positions_m,
         coordinate_frame=aggregate.coordinate_frame,
         coordinate_dimension=aggregate.coordinate_dimension or 3,

@@ -1,11 +1,13 @@
 from dataclasses import replace
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import mne
 import numpy as np
 import pytest
-from PyQt6.QtWidgets import QPushButton, QWidget
+from PyQt6.QtWidgets import QLabel, QPushButton, QWidget
 
+from XBrainLab.backend.application import ApplyMontageCommand, QueryStateCommand
 from XBrainLab.ui.panels.dataset.sidebar import (
     _ACTION_TEXT_HORIZONTAL_PADDING,
     _DATASET_SIDEBAR_BUTTON_STYLE,
@@ -58,11 +60,446 @@ def test_init_ui(sidebar):
     assert isinstance(sidebar.import_label_btn, QPushButton)
     assert isinstance(sidebar.smart_parse_btn, QPushButton)
     assert isinstance(sidebar.chan_select_btn, QPushButton)
+    assert isinstance(sidebar.electrode_layout_btn, QPushButton)
+    assert not hasattr(sidebar, "electrode_layout_status")
+    assert sidebar.electrode_layout_btn.toolTip() == (
+        "No electrode layout configured. Load EEG data to review positions."
+    )
+    assert sidebar.electrode_layout_btn.accessibleDescription() == (
+        "No electrode layout configured. Load EEG data to review positions."
+    )
     assert not hasattr(sidebar, "clear_btn")
     assert not sidebar.findChildren(QPushButton, "ResetSessionButton")
     assert all(
         button.text() != "Reset Session" for button in sidebar.findChildren(QPushButton)
     )
+
+
+@pytest.mark.parametrize("status", ["ready", "limited"])
+def test_bids_layout_opens_the_same_dialog_summary_without_dispatching_apply(
+    sidebar, monkeypatch, status
+):
+    dispatched = []
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar.get_command_capability",
+        lambda *_: SimpleNamespace(enabled=True),
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar.execute_application_command",
+        lambda _widget, command, **_kwargs: (
+            dispatched.append(command)
+            or SimpleNamespace(
+                failed=False,
+                diagnostics={
+                    "state": {
+                        "electrode_layout": {
+                            "source": "bids",
+                            "status": status,
+                            "positioned_channel_count": 3,
+                            "channel_count": 4,
+                            "coordinate_summary": "head",
+                            "channel_names": ["C3"],
+                            "electrode_names": ["C3"],
+                        },
+                        "interpretation": {"source_kind": "bids"},
+                        "raw": {"channels": ["C3", "C4", "P3", "P4"]},
+                        "active_training": {"has_trainer": False},
+                    }
+                },
+            )
+        ),
+    )
+    opened = []
+
+    class SummaryDialog:
+        def __init__(self, *_args, **kwargs):
+            opened.append(kwargs)
+
+        @staticmethod
+        def exec():
+            return False
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar._electrode_layout_dialog_class",
+        lambda: SummaryDialog,
+    )
+
+    outcome = sidebar.open_electrode_layout()
+
+    assert outcome.status.value == "cancelled"
+    assert opened == [
+        {
+            "current_layout": {
+                "source": "bids",
+                "status": status,
+                "positioned_channel_count": 3,
+                "channel_count": 4,
+                "coordinate_summary": "head",
+                "name": None,
+                "bids_restore_available": False,
+                "channel_names": ["C3"],
+                "electrode_names": ["C3"],
+                "preparation_state": None,
+                "preparation_reason": None,
+            },
+            "is_bids_source": True,
+            "layout_changes_allowed": True,
+        }
+    ]
+    assert len(dispatched) == 1
+    assert isinstance(dispatched[0], QueryStateCommand)
+    assert sidebar._active_electrode_layout_dialog is None
+
+
+def test_bids_layout_restore_dispatches_only_the_restore_command(sidebar, monkeypatch):
+    dispatched = []
+    state = {
+        "electrode_layout": {
+            "source": "manual",
+            "status": "ready",
+            "bids_restore_available": True,
+        },
+        "interpretation": {"source_kind": "bids"},
+        "raw": {"channels": ["C3"]},
+        "active_training": {"has_trainer": False},
+    }
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar.get_command_capability",
+        lambda *_: SimpleNamespace(enabled=True),
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar.execute_application_command",
+        lambda _widget, command, **_kwargs: (
+            dispatched.append(command)
+            or SimpleNamespace(failed=False, diagnostics={"state": state})
+        ),
+    )
+
+    class RestoreDialog:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        @staticmethod
+        def exec():
+            return True
+
+        @staticmethod
+        def restore_bids_requested():
+            return True
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar._electrode_layout_dialog_class",
+        lambda: RestoreDialog,
+    )
+
+    outcome = sidebar.open_electrode_layout()
+
+    assert outcome.is_completed is True
+    assert isinstance(dispatched[0], QueryStateCommand)
+    assert dispatched[1].restore_bids is True
+    assert dispatched[1].channels == []
+    assert dispatched[1].positions == []
+
+
+@pytest.mark.parametrize("restore_bids", [False, True])
+def test_electrode_layout_review_is_generation_fenced_before_replace_or_restore(
+    sidebar, monkeypatch, restore_bids
+):
+    """A changed dataset rejects either reviewed layout submission for re-review."""
+    reviewed_generation = 41
+    state = {
+        "electrode_layout": {},
+        "interpretation": {"source_kind": "bids"},
+        "raw": {"channels": ["C3"]},
+        "active_training": {"has_trainer": False},
+    }
+    calls = []
+    warnings = []
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar.get_application_view_publication",
+        lambda *_: SimpleNamespace(generation=reviewed_generation),
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar.get_command_capability",
+        lambda *_: SimpleNamespace(enabled=True),
+    )
+
+    def execute(_widget, command, **kwargs):
+        calls.append((command, kwargs))
+        if isinstance(command, QueryStateCommand):
+            return SimpleNamespace(failed=False, diagnostics={"state": state})
+        return SimpleNamespace(
+            failed=True,
+            message="Nothing was applied. Review the latest dataset and try again.",
+            diagnostics={"stale_publication": True},
+        )
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar.execute_application_command", execute
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar.show_warning",
+        lambda *_args: warnings.append(_args[1:]),
+    )
+
+    class ReviewedDialog:
+        def __init__(self, *_args, **_kwargs):
+            self.montage_combo = None
+
+        @staticmethod
+        def exec():
+            return True
+
+        @staticmethod
+        def restore_bids_requested():
+            return restore_bids
+
+        @staticmethod
+        def get_result():
+            return ["C3"], [(0.0, 0.0, 0.08)]
+
+        @staticmethod
+        def get_electrode_names():
+            return ["C3"]
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar._electrode_layout_dialog_class",
+        lambda: ReviewedDialog,
+    )
+
+    outcome = sidebar.open_electrode_layout()
+
+    assert outcome.status.value == "blocked"
+    assert [
+        kwargs["expected_publication_generation"] for _command, kwargs in calls
+    ] == [reviewed_generation, reviewed_generation]
+    assert isinstance(calls[0][0], QueryStateCommand)
+    assert isinstance(calls[1][0], ApplyMontageCommand)
+    assert calls[1][0].restore_bids is restore_bids
+    assert warnings == [
+        (
+            "Review Electrode Layout Again",
+            "Nothing was applied. Review the latest dataset and try again.",
+        )
+    ]
+
+
+def test_replace_layout_accepts_numpy_positions_from_the_real_picker(
+    sidebar, qtbot, monkeypatch
+):
+    """A reviewed picker result reaches the command spine instead of truth-testing ndarray."""
+    from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+        PickMontageDialog,
+    )
+
+    montage_positions = {
+        "C3": (0.0, 0.0, 0.08),
+        "C4": (0.04, 0.0, 0.08),
+    }
+    with (
+        patch(
+            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_builtin_montages",
+            return_value=["standard_1020"],
+        ),
+        patch(
+            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_positions",
+            return_value={"ch_pos": montage_positions},
+        ),
+        patch(
+            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_channel_positions",
+            return_value=np.asarray(list(montage_positions.values())),
+        ),
+    ):
+        dialog = PickMontageDialog(
+            sidebar,
+            ["C3", "C4"],
+            is_bids_source=True,
+            current_layout={"source": "bids", "status": "ready"},
+        )
+    qtbot.addWidget(dialog)
+    dialog.show_mapping_page()
+    for row in range(dialog.table.rowCount()):
+        combo = dialog.table.cellWidget(row, 1)
+        assert combo is not None
+        combo.setCurrentIndex(row + 1)
+    with patch(
+        "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_channel_positions",
+        return_value=np.asarray(list(montage_positions.values())),
+    ):
+        dialog.accept()
+    assert isinstance(dialog.get_result()[1], np.ndarray)
+    monkeypatch.setattr(dialog, "exec", lambda: True)
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar._electrode_layout_dialog_class",
+        lambda: lambda *_args, **_kwargs: dialog,
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar.get_command_capability",
+        lambda *_: SimpleNamespace(enabled=True),
+    )
+    dispatched = []
+    state = {
+        "electrode_layout": {},
+        "interpretation": {"source_kind": "bids"},
+        "raw": {"channels": ["C3", "C4"]},
+        "active_training": {"has_trainer": False},
+    }
+
+    def execute(_widget, command, **_kwargs):
+        dispatched.append(command)
+        if isinstance(command, QueryStateCommand):
+            return SimpleNamespace(failed=False, diagnostics={"state": state})
+        return SimpleNamespace(failed=False)
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar.execute_application_command", execute
+    )
+
+    outcome = sidebar.open_electrode_layout()
+
+    assert outcome.is_completed is True
+    assert isinstance(dispatched[0], QueryStateCommand)
+    applied = dispatched[1]
+    assert isinstance(applied, ApplyMontageCommand)
+    assert applied.channels == ["C3", "C4"]
+    assert applied.positions == [(0.0, 0.0, 0.08), (0.04, 0.0, 0.08)]
+
+
+def test_bids_layout_publication_keeps_tooltip_and_notifies_once(sidebar, monkeypatch):
+    layout = SimpleNamespace(
+        status="ready",
+        source="bids",
+        positioned_channel_count=4,
+        channel_count=4,
+    )
+    publication = SimpleNamespace(
+        effective_capabilities={},
+        state=SimpleNamespace(electrode_layout=layout),
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar.get_application_view_publication",
+        lambda *_: publication,
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar.has_real_application_context",
+        lambda *_: False,
+    )
+    status = MagicMock()
+    monkeypatch.setattr(sidebar, "_show_status", status)
+
+    sidebar.update_sidebar()
+    sidebar.update_sidebar()
+
+    assert sidebar.electrode_layout_btn.toolTip() == (
+        "BIDS layout ready · 4 of 4 EEG channels positioned"
+    )
+    assert sidebar.electrode_layout_btn.accessibleDescription() == (
+        "BIDS layout ready · 4 of 4 EEG channels positioned"
+    )
+    status.assert_called_once()
+
+
+def test_layout_status_projects_loading_and_manual_partial_states(sidebar, monkeypatch):
+    layout = SimpleNamespace(
+        status="pending",
+        source=None,
+        positioned_channel_count=0,
+        channel_count=22,
+    )
+    publication = SimpleNamespace(
+        effective_capabilities={},
+        state=SimpleNamespace(electrode_layout=layout),
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar.get_application_view_publication",
+        lambda *_: publication,
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar.has_real_application_context",
+        lambda *_: False,
+    )
+
+    sidebar.update_sidebar()
+    assert sidebar.electrode_layout_btn.toolTip() == "Preparing BIDS electrode layout"
+
+    layout.status = "limited"
+    layout.source = "manual"
+    layout.positioned_channel_count = 18
+    sidebar.update_sidebar()
+    assert sidebar.electrode_layout_btn.toolTip() == (
+        "Manual layout limited · 18 of 22 EEG channels positioned"
+    )
+
+    layout.status = "failed"
+    layout.source = "bids"
+    sidebar.update_sidebar()
+    assert sidebar.electrode_layout_btn.toolTip() == "BIDS electrode layout unavailable"
+
+
+def test_publication_refreshes_only_an_active_pending_electrode_summary(
+    sidebar, qtbot, monkeypatch
+):
+    from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+        PickMontageDialog,
+    )
+
+    positions = {"C3": (0.0, 0.0, 0.08), "C4": (0.04, 0.0, 0.08)}
+    with (
+        patch(
+            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_builtin_montages",
+            return_value=["standard_1020"],
+        ),
+        patch(
+            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_positions",
+            return_value={"ch_pos": positions},
+        ),
+        patch(
+            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_channel_positions",
+            return_value=positions,
+        ),
+    ):
+        dialog = PickMontageDialog(
+            None,
+            ["C3", "C4"],
+            is_bids_source=True,
+            current_layout={"source": None, "status": "pending"},
+        )
+    qtbot.addWidget(dialog)
+    sidebar._active_electrode_layout_dialog = dialog
+    layout = SimpleNamespace(
+        status="ready",
+        source="bids",
+        positioned_channel_count=4,
+        channel_count=4,
+        name=None,
+    )
+    publication = SimpleNamespace(
+        effective_capabilities={},
+        state=SimpleNamespace(
+            electrode_layout=layout,
+            visualization=SimpleNamespace(
+                montage_preparation_state="ready",
+                montage_preparation_reason=None,
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar.get_application_view_publication",
+        lambda *_: publication,
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar.has_real_application_context",
+        lambda *_: False,
+    )
+
+    sidebar.update_sidebar()
+
+    title = dialog.findChild(QLabel, "ElectrodeLayoutSummaryTitle")
+    assert title is not None
+    assert title.text() == "Dataset electrode coordinates"
+    dialog.show_mapping_page()
+    sidebar.update_sidebar()
+    assert dialog.mapping_page.isHidden() is False
 
 
 def test_add_labels_compatibility_button_stays_hidden(sidebar):

@@ -3795,7 +3795,8 @@ class VisualizationPanel(BasePanel):
         if not isinstance(views, list) or "montage setup" not in views:
             return None
         return (
-            "Complete training to view saliency plots. Set Montage remains available."
+            "Complete training to view saliency plots. "
+            "Electrode Layout remains available."
         )
 
     def _clear_plan_controls(self) -> None:

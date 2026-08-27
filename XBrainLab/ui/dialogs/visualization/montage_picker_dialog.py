@@ -1,12 +1,15 @@
 """Montage picker dialog for mapping dataset channels to standard montage positions.
 
-Features smart matching, saved settings persistence, and live cascading
-fill to streamline the channel-to-montage mapping workflow.
+Features reviewed name matching and saved settings persistence.  Mapping never
+infers an electrode from adjacent table rows.
 """
+
+import re
 
 from PyQt6.QtCore import QSettings, Qt
 from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import (
+    QWIDGETSIZE_MAX,
     QAbstractItemView,
     QComboBox,
     QCompleter,
@@ -15,9 +18,12 @@ from PyQt6.QtWidgets import (
     QHeaderView,
     QLabel,
     QPushButton,
+    QSizePolicy,
+    QSpacerItem,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
+    QWidget,
 )
 
 from XBrainLab.backend.utils.mne_helper import (
@@ -27,7 +33,6 @@ from XBrainLab.backend.utils.mne_helper import (
 )
 from XBrainLab.ui.components.modal_presentation import (
     show_error,
-    show_information,
     show_warning,
 )
 from XBrainLab.ui.components.user_error_presentation import (
@@ -41,7 +46,10 @@ from XBrainLab.ui.dialogs.common import (
     fit_table_height_to_contents,
     normalize_dialog_button_box,
 )
+from XBrainLab.ui.styles.stylesheets import Stylesheets
 from XBrainLab.ui.styles.theme import Theme
+
+_MONTAGE_PLACEHOLDER = "Select layout"
 
 
 def _mapping_table_stylesheet() -> str:
@@ -99,9 +107,8 @@ def _mapping_combo_stylesheet(row_color: str) -> str:
 class PickMontageDialog(BaseDialog):
     """Dialog for mapping dataset channels to standard montage channels.
 
-    Features Smart Match for automatic channel name matching, Live
-    Cascading Fill for sequential channel propagation, and persistent
-    settings for remembering previous mappings.
+    Features name-based suggestions and persistent settings for remembering
+    prior reviewed mappings.
 
     Attributes:
         channel_names: List of dataset channel names to map.
@@ -116,18 +123,29 @@ class PickMontageDialog(BaseDialog):
 
     """
 
-    def __init__(self, parent, channel_names, default_montage=None):
+    def __init__(
+        self,
+        parent,
+        channel_names,
+        default_montage=None,
+        *,
+        current_layout=None,
+        is_bids_source=False,
+        layout_changes_allowed=True,
+    ):
         self.channel_names = channel_names
         self.default_montage = default_montage  # Pre-selected montage from Agent
+        self.current_layout = current_layout or {}
+        self.is_bids_source = is_bids_source
+        self.layout_changes_allowed = layout_changes_allowed
+        self._restore_bids_requested = False
 
         self.chs = None
         self.positions = None
+        self.electrode_names = None
         self.montage_channels = []
         self.montage_list: list = []
-
-        # Track which rows are explicitly set (Anchors)
-        # Set of row indices
-        self.anchors = set()
+        self._safe_mapping_by_montage: dict[str, dict[str, str]] = {}
 
         # Settings for persistence
         self.settings = QSettings("XBrainLab", "MontagePicker")
@@ -135,12 +153,15 @@ class PickMontageDialog(BaseDialog):
         # UI Elements
         self.montage_combo = None
         self.table = None
+        self.summary_page = None
+        self.mapping_page = None
+        self.button_box = None
 
-        super().__init__(parent, title="Set Montage")
-        self.setMinimumWidth(700)
+        super().__init__(parent, title="Electrode Layout")
+        self.setMinimumWidth(540)
         self.setStyleSheet(dark_dialog_stylesheet())
 
-        # Trigger initial montage load
+        # Trigger initial montage load even when the compact BIDS summary is shown.
         if self.montage_combo and self.montage_combo.currentText():
             self.on_montage_select(self.montage_combo.currentText())
         elif self.montage_list and self.montage_combo:
@@ -159,52 +180,105 @@ class PickMontageDialog(BaseDialog):
         layout.setContentsMargins(16, 14, 16, 14)
         layout.setSpacing(12)
 
-        # Top: Montage Selection
-        top_layout = QHBoxLayout()
-        top_layout.addWidget(QLabel("Montage:"))
+        self.summary_page = QWidget(self)
+        summary_layout = QVBoxLayout(self.summary_page)
+        summary_layout.setContentsMargins(0, 0, 0, 0)
+        summary_layout.setSpacing(0)
+        summary_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        summary_content = QVBoxLayout()
+        summary_content.setContentsMargins(0, 0, 0, 0)
+        summary_content.setSpacing(10)
+        self.summary_context = QLabel()
+        self.summary_context.setObjectName("ElectrodeLayoutSummaryContext")
+        self.summary_context.setProperty("role", "secondary-status")
+        self.summary_context.setStyleSheet(
+            f"color: {Theme.TEXT_SECONDARY}; font-size: 11px; font-weight: 600;"
+        )
+        summary_content.addWidget(self.summary_context)
+        self.summary_heading = QLabel()
+        self.summary_heading.setObjectName("ElectrodeLayoutSummaryTitle")
+        self.summary_heading.setProperty("role", "section-title")
+        self.summary_heading.setStyleSheet(
+            f"color: {Theme.TEXT_PRIMARY}; font-size: 18px; font-weight: 600;"
+        )
+        summary_content.addWidget(self.summary_heading)
+        self.summary_facts = QLabel()
+        self.summary_facts.setObjectName("ElectrodeLayoutSummaryFacts")
+        self.summary_facts.setProperty("role", "secondary-status")
+        self.summary_facts.setWordWrap(True)
+        self.summary_facts.setStyleSheet(
+            f"color: {Theme.TEXT_SECONDARY}; font-size: 12px;"
+        )
+        summary_content.addWidget(self.summary_facts)
+        if not self.layout_changes_allowed:
+            blocked = QLabel("Clear training before replacing this layout.")
+            blocked.setWordWrap(True)
+            summary_content.addWidget(blocked)
+        summary_layout.addLayout(summary_content)
+        # A dialog footer is a separate action group, not another detail row.
+        self.summary_footer_gap = QSpacerItem(
+            0,
+            16,
+            QSizePolicy.Policy.Minimum,
+            QSizePolicy.Policy.Fixed,
+        )
+        summary_layout.addItem(self.summary_footer_gap)
+        summary_actions = QHBoxLayout()
+        summary_actions.setSpacing(8)
+        self.summary_actions = summary_actions
+        self.btn_change_layout = QPushButton("Change layout…")
+        self.btn_change_layout.setEnabled(self.layout_changes_allowed)
+        self.btn_change_layout.clicked.connect(self.show_mapping_page)
+        self.btn_use_bids = QPushButton("Restore BIDS layout", self)
+        self.btn_use_bids.clicked.connect(self.restore_bids)
+        self.btn_change_layout.setProperty("primaryAction", True)
+        self.btn_change_layout.setStyleSheet(Stylesheets.BTN_PRIMARY)
+        summary_actions.addStretch()
+        self.btn_close = QPushButton("Close")
+        self.btn_close.clicked.connect(self.reject)
+        summary_actions.addWidget(self.btn_close)
+        summary_actions.addWidget(self.btn_change_layout)
+        summary_layout.addLayout(summary_actions)
+        self._update_summary_presentation()
+        layout.addWidget(self.summary_page)
+
+        self.mapping_page = QWidget(self)
+        mapping_layout = QVBoxLayout(self.mapping_page)
+        mapping_layout.setContentsMargins(0, 0, 0, 0)
+        mapping_layout.setSpacing(12)
+
+        # Selector and its reset action form one compact table-control row.
+        selector_layout = QHBoxLayout()
+        selector_layout.addWidget(QLabel("Standard layout:"))
 
         self.montage_combo = QComboBox()
         self.montage_list = get_builtin_montages()
+        self.montage_combo.addItem(_MONTAGE_PLACEHOLDER)
         self.montage_combo.addItems(self.montage_list)
 
-        # Use Agent-provided montage first, then last used, then first in list
-        target_montage = None
+        # A non-BIDS source may preselect only an unambiguous best layout.
+        # A caller-provided explicit default stays a reviewed external choice.
+        target_montage = self._recommended_non_bids_montage()
         if self.default_montage and self.default_montage in self.montage_list:
             target_montage = self.default_montage
-        else:
-            last_montage = self.settings.value("last_montage", "")
-            if last_montage and last_montage in self.montage_list:
-                target_montage = last_montage
-
         if target_montage:
             self.montage_combo.setCurrentText(target_montage)
+        elif self.is_bids_source and self.montage_list:
+            self.montage_combo.setCurrentText(self.montage_list[0])
 
         self.montage_combo.currentTextChanged.connect(self.on_montage_select)
-        top_layout.addWidget(self.montage_combo)
-
-        top_layout.addStretch()
-
-        # Clear Button
-        self.btn_clear = QPushButton("Clear All")
-        self.btn_clear.setFixedWidth(96)
+        selector_layout.addWidget(self.montage_combo)
+        selector_layout.addStretch()
+        self.btn_clear = QPushButton("Clear mapping")
         self.btn_clear.clicked.connect(self.clear_selections)
-        top_layout.addWidget(self.btn_clear)
-
-        # Reset Saved Button (for demoing Smart Match)
-        self.btn_reset_saved = QPushButton("Reset Saved")
-        self.btn_reset_saved.setFixedWidth(110)
-        self.btn_reset_saved.setToolTip(
-            "Clear saved settings for this montage and re-run Smart Match",
-        )
-        self.btn_reset_saved.clicked.connect(self.reset_saved_settings)
-        top_layout.addWidget(self.btn_reset_saved)
-
-        layout.addLayout(top_layout)
+        selector_layout.addWidget(self.btn_clear)
+        self.mapping_toolbar = selector_layout
+        mapping_layout.addLayout(selector_layout)
 
         # Center: Mapping Table
         self.table = QTableWidget()
         self.table.setColumnCount(2)
-        self.table.setHorizontalHeaderLabels(["Dataset Channel", "Montage Channel"])
+        self.table.setHorizontalHeaderLabels(["Dataset Channel", "Electrode"])
         configure_dark_table(self.table, object_name="MontageMappingTable")
         header = self.table.horizontalHeader()
         if header is not None:
@@ -233,19 +307,143 @@ class PickMontageDialog(BaseDialog):
         palette.setColor(QPalette.ColorRole.Text, QColor(Theme.TEXT_PRIMARY))
         self.table.setPalette(palette)
 
-        layout.addWidget(self.table)
+        mapping_layout.addWidget(self.table)
 
         # Bottom: Dialog Buttons
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
-        normalize_dialog_button_box(buttons)
+        normalize_dialog_button_box(
+            buttons,
+            ok_text="Replace Layout" if self.is_bids_source else "Apply",
+        )
+        self.button_box = buttons
+        apply_button = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        if apply_button is None:
+            raise RuntimeError("Electrode layout dialog is missing its primary action.")
+        if self.is_bids_source:
+            back_button = buttons.addButton(
+                "Back", QDialogButtonBox.ButtonRole.ActionRole
+            )
+            if back_button is None:
+                raise RuntimeError(
+                    "Electrode layout dialog is missing its back action."
+                )
+            back_button.clicked.connect(self.show_summary_page)
+            buttons.addButton(self.btn_use_bids, QDialogButtonBox.ButtonRole.ActionRole)
+        else:
+            self.btn_use_bids.hide()
+        self.apply_button = apply_button
+        self._sync_apply_enabled()
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+        mapping_layout.addWidget(buttons)
+        layout.addWidget(self.mapping_page)
+
+        show_summary = self.is_bids_source and bool(self.current_layout)
+        self.summary_page.setVisible(show_summary)
+        self.mapping_page.setVisible(not show_summary)
 
         # Initialize table with dataset channels
         self.init_table()
+
+    def show_mapping_page(self):
+        """Expand the existing picker in-place after the BIDS summary."""
+        if self.summary_page is not None:
+            self.summary_page.setVisible(False)
+        if self.mapping_page is not None:
+            self.mapping_page.setVisible(True)
+        self._resize_dialog_to_content()
+
+    def refresh_bids_layout(self, current_layout: dict) -> None:
+        """Render a newer BIDS publication while its compact summary is active."""
+        if not self.is_bids_source or self.summary_page is None:
+            return
+        self.current_layout = dict(current_layout)
+        self._update_summary_presentation()
+        if not self.summary_page.isHidden():
+            self._resize_dialog_to_content()
+
+    def _update_summary_presentation(self) -> None:
+        """Translate the existing published BIDS state without owning readiness."""
+        source = self.current_layout.get("source")
+        layout_status = str(self.current_layout.get("status") or "not_configured")
+        preparation_state = self.current_layout.get("preparation_state")
+        # An effective reviewed layout is authoritative presentation truth. BIDS
+        # preparation progress only describes the no-effective-layout state.
+        status = (
+            layout_status
+            if source in {"manual", "bids"}
+            else str(preparation_state or layout_status)
+        )
+        reason = str(self.current_layout.get("preparation_reason") or "").strip()
+        positioned = int(self.current_layout.get("positioned_channel_count") or 0)
+        count = int(self.current_layout.get("channel_count") or len(self.channel_names))
+        frame = str(self.current_layout.get("coordinate_summary") or "not specified")
+
+        if self.is_bids_source and status == "pending":
+            context = "FROM BIDS"
+            title = "Preparing electrode layout"
+            facts = reason or "Reading BIDS electrode and coordinate files."
+        elif self.is_bids_source and (
+            status in {"failed", "unavailable"} or source is None
+        ):
+            context = "FROM BIDS"
+            title = "BIDS coordinates unavailable"
+            facts = reason or "BIDS coordinate files could not be prepared."
+        else:
+            context = (
+                "FROM BIDS"
+                if source == "bids"
+                else "Manual override"
+                if self.is_bids_source
+                else "Manual mapping"
+            )
+            name = self.current_layout.get("name")
+            title = (
+                str(name)
+                if name not in (None, "", "None")
+                else "Dataset electrode coordinates"
+                if source == "bids"
+                else "Manual layout"
+            )
+            coordinate_facts = (
+                "Head coordinates"
+                if frame.lower() == "head"
+                else (
+                    "Coordinate frame not specified"
+                    if frame == "not specified"
+                    else f"{frame.capitalize()} coordinates"
+                )
+            )
+            facts = (
+                f"{positioned} of {count} EEG channels positioned  ·  "
+                f"{coordinate_facts}"
+            )
+
+        self.summary_context.setText(context)
+        self.summary_heading.setText(title)
+        self.summary_facts.setText(facts)
+        can_restore = bool(self.current_layout.get("bids_restore_available"))
+        self.btn_use_bids.setVisible(can_restore)
+        self.btn_use_bids.setEnabled(can_restore and self.layout_changes_allowed)
+
+    def show_summary_page(self):
+        """Return to the compact current-layout view without changing data."""
+        if self.mapping_page is not None:
+            self.mapping_page.setVisible(False)
+        if self.summary_page is not None:
+            self.summary_page.setVisible(True)
+        self._resize_dialog_to_content()
+
+    def restore_bids(self):
+        """Return an explicit request for the retained BIDS snapshot."""
+        self._restore_bids_requested = True
+        super().accept()
+
+    def restore_bids_requested(self) -> bool:
+        """Whether acceptance selected the retained BIDS layout."""
+        return self._restore_bids_requested
 
     def init_table(self):
         """Populate the table with dataset channel names as read-only rows."""
@@ -270,15 +468,19 @@ class PickMontageDialog(BaseDialog):
         if not self.table or not self.settings:
             return
 
+        if montage_name not in self.montage_list:
+            self.montage_channels = []
+            self._populate_unselected_mapping_rows()
+            self._sync_apply_enabled()
+            self._resize_mapping_table_to_content()
+            return
+
         try:
             positions = get_montage_positions(montage_name)
             self.montage_channels = list(positions["ch_pos"].keys())
 
-            # Reset anchors for new montage
-            self.anchors.clear()
-
-            # Load saved mapping for this montage
-            saved_mapping = self.settings.value(f"mapping/{montage_name}", {})
+            saved_mapping = self._saved_mapping_for_current_schema(montage_name)
+            safe_mapping = self._safe_mapping_for_montage(montage_name)
 
             # 1. Create all widgets and run Smart Match / Load Settings
             for row in range(self.table.rowCount()):
@@ -306,37 +508,43 @@ class PickMontageDialog(BaseDialog):
 
                 self.table.setCellWidget(row, 1, combo)
 
-                # Logic:
-                # Try to load from saved settings
                 if dataset_ch in saved_mapping:
                     idx = combo.findText(saved_mapping[dataset_ch])
                     if idx != -1:
                         combo.setCurrentIndex(idx)
-                        self.anchors.add(row)  # Mark as anchor
                         continue
-
-                # If no saved setting, use Smart Match
-                if self.smart_match(combo, dataset_ch):
-                    self.anchors.add(row)  # Mark as anchor
-
-            # 2. Run initial batch Sequential Fill to fill gaps
-            self.initial_sequential_fill()
-
-            # 3. Connect signals for Live Cascading Fill
-            for row in range(self.table.rowCount()):
-                widget = self.table.cellWidget(row, 1)
-                if isinstance(widget, QComboBox):
-                    # Use lambda with captured row to identify source
-                    widget.currentIndexChanged.connect(
-                        lambda idx, r=row: self.on_channel_changed(r, idx),
-                    )
+                suggested = safe_mapping.get(dataset_ch)
+                if suggested:
+                    combo.setCurrentIndex(combo.findText(suggested))
 
             self._resize_mapping_table_to_content()
+            self._sync_apply_enabled()
 
         except Exception:
             present_unexpected_error(
                 self,
                 UnexpectedErrorContext.MONTAGE_MAPPING_PREPARE,
+            )
+
+    def _populate_unselected_mapping_rows(self) -> None:
+        """Render inert blank rows while no non-BIDS layout is selected."""
+        if self.table is None:
+            return
+        for row in range(self.table.rowCount()):
+            combo = QComboBox()
+            combo.setObjectName("MontageChannelCombo")
+            combo.setEnabled(False)
+            combo.setStyleSheet(_mapping_combo_stylesheet(self._row_color(row)))
+            combo.addItem("")
+            self.table.setCellWidget(row, 1, combo)
+
+    def _sync_apply_enabled(self) -> None:
+        apply_button = getattr(self, "apply_button", None)
+        if isinstance(apply_button, QPushButton):
+            apply_button.setEnabled(
+                self.layout_changes_allowed
+                and self.montage_combo is not None
+                and self.montage_combo.currentText() in self.montage_list
             )
 
     def _resize_mapping_table_to_content(self) -> None:
@@ -352,54 +560,126 @@ class PickMontageDialog(BaseDialog):
 
     def _resize_dialog_to_content(self) -> None:
         """Fit the dialog around the mapping rows without exceeding a useful size."""
+        showing_summary = (
+            self.summary_page is not None and not self.summary_page.isHidden()
+        )
+        minimum_height = 150 if showing_summary else 320
+        minimum_width = 540 if showing_summary else 700
+        # Hidden mapping controls retain a wide size hint. Clamp only the compact
+        # summary state so shown geometry, not that hidden hint, owns its width.
+        self.setMinimumWidth(minimum_width)
+        self.setMaximumWidth(560 if showing_summary else QWIDGETSIZE_MAX)
+        self.setMinimumHeight(minimum_height)
+        if self.summary_page is not None:
+            if showing_summary:
+                dialog_layout = self.layout()
+                margins = dialog_layout.contentsMargins() if dialog_layout else None
+                content_width = minimum_width - (
+                    margins.left() + margins.right() if margins is not None else 0
+                )
+                self.summary_page.setMaximumHeight(QWIDGETSIZE_MAX)
+                self.summary_page.updateGeometry()
+                summary_layout = self.summary_page.layout()
+                if summary_layout is not None:
+                    summary_layout.invalidate()
+                    summary_layout.activate()
+                self.summary_page.setMaximumHeight(
+                    max(
+                        self.summary_page.minimumSizeHint().height(),
+                        self.summary_page.heightForWidth(max(content_width, 1)),
+                    )
+                )
+            else:
+                self.summary_page.setMaximumHeight(QWIDGETSIZE_MAX)
         self.fit_to_content(
-            minimum_width=700,
-            minimum_height=320,
+            minimum_width=minimum_width,
+            maximum_width=560 if showing_summary else None,
+            minimum_height=minimum_height,
             maximum_height=640,
         )
 
-    def initial_sequential_fill(self):
-        """Run a one-pass sequential fill for initialization."""
-        if not self.table:
-            return
+    @staticmethod
+    def _normalized_electrode_name(name: str) -> str | None:
+        """Return a conservative channel identity suitable for a prefill only."""
+        text = str(name).strip().casefold()
+        if not text or re.fullmatch(r"\d+", text):
+            return None
+        text = re.sub(r"^eeg[\s:_-]*", "", text)
+        text = re.sub(r"[\s:_-]*(?:ref|reference)$", "", text)
+        compact = re.sub(r"[^a-z0-9]", "", text)
+        if not compact or compact.isdigit():
+            return None
+        if compact.startswith(("eog", "emg", "ecg", "ekg", "stim", "trig", "misc")):
+            return None
+        return compact
 
-        # Sort anchors by row index
-        sorted_anchors = sorted(self.anchors)
+    @classmethod
+    def _unique_normalized_names(cls, names: list[str]) -> dict[str, str]:
+        grouped: dict[str, list[str]] = {}
+        for name in names:
+            normalized = cls._normalized_electrode_name(name)
+            if normalized is not None:
+                grouped.setdefault(normalized, []).append(name)
+        return {
+            normalized: values[0]
+            for normalized, values in grouped.items()
+            if len(values) == 1
+        }
 
-        if not sorted_anchors:
-            return
+    def _safe_mapping_for_montage(self, montage_name: str) -> dict[str, str]:
+        """Map only unique normalized channel identities; never fuzzy-match."""
+        cached = self._safe_mapping_by_montage.get(montage_name)
+        if cached is not None:
+            return cached
+        try:
+            positions = get_montage_positions(montage_name)
+            montage_names = list(positions.get("ch_pos", {}).keys())
+        except Exception:
+            return {}
+        dataset_by_name = self._unique_normalized_names(list(self.channel_names))
+        montage_by_name = self._unique_normalized_names(montage_names)
+        mapping = {
+            dataset_name: montage_by_name[normalized]
+            for normalized, dataset_name in dataset_by_name.items()
+            if normalized in montage_by_name
+        }
+        self._safe_mapping_by_montage[montage_name] = mapping
+        return mapping
 
-        for i in range(len(sorted_anchors)):
-            curr_row = sorted_anchors[i]
-            curr_combo = self.table.cellWidget(curr_row, 1)
-            if not isinstance(curr_combo, QComboBox):
-                continue
-            curr_ch = curr_combo.currentText()
+    def _recommended_non_bids_montage(self) -> str | None:
+        if self.is_bids_source:
+            return None
+        scored = [
+            (len(self._safe_mapping_for_montage(name)), name)
+            for name in self.montage_list
+        ]
+        if not scored:
+            return None
+        best_score = max(score for score, _name in scored)
+        winners = [name for score, name in scored if score == best_score]
+        return winners[0] if best_score > 0 and len(winners) == 1 else None
 
-            if i < len(sorted_anchors) - 1:
-                next_row = sorted_anchors[i + 1]
-                fill_range = range(curr_row + 1, next_row)
-            else:
-                fill_range = range(curr_row + 1, self.table.rowCount())
-
-            try:
-                curr_montage_idx = self.montage_channels.index(curr_ch)
-            except ValueError:
-                continue
-
-            offset = 1
-            for target_row in fill_range:
-                target_montage_idx = curr_montage_idx + offset
-                if target_montage_idx < len(self.montage_channels):
-                    target_ch = self.montage_channels[target_montage_idx]
-                    combo = self.table.cellWidget(target_row, 1)
-
-                    if isinstance(combo, QComboBox) and target_row not in self.anchors:
-                        idx = combo.findText(target_ch)
-                        if idx != -1:
-                            combo.setCurrentIndex(idx)
-                            # Do NOT add to anchors
-                offset += 1
+    def _saved_mapping_for_current_schema(self, montage_name: str) -> dict[str, str]:
+        """Reuse a reviewed mapping only when the ordered schema is identical."""
+        saved = self.settings.value(f"mapping_v2/{montage_name}", {})
+        if not isinstance(saved, dict):
+            return {}
+        if saved.get("channel_schema") != list(self.channel_names):
+            return {}
+        mapping = saved.get("mapping")
+        if not isinstance(mapping, dict):
+            return {}
+        valid_electrodes = set(self.montage_channels)
+        values = list(mapping.values())
+        if not all(
+            isinstance(channel, str)
+            and isinstance(electrode, str)
+            and channel in self.channel_names
+            and electrode in valid_electrodes
+            for channel, electrode in mapping.items()
+        ) or len(values) != len(set(values)):
+            return {}
+        return {str(channel): str(electrode) for channel, electrode in mapping.items()}
 
     def smart_match(self, combo, target_name):
         """Try to find the best montage channel match for a dataset channel.
@@ -449,76 +729,10 @@ class PickMontageDialog(BaseDialog):
             return True
         return False
 
-    def on_channel_changed(self, row, index):
-        """Handle channel selection changes with live cascading fill.
-
-        When a channel is selected, automatically fills subsequent rows
-        with sequential montage channels until the next anchor or end.
-
-        Args:
-            row: Row index where the change occurred.
-            index: New combo box index.
-
-        """
-        if not self.table:
-            return
-
-        if index <= 0:
-            # If cleared, remove from anchors?
-            if row in self.anchors:
-                self.anchors.remove(row)
-            return
-
-        # Mark as anchor
-        self.anchors.add(row)
-
-        combo = self.table.cellWidget(row, 1)
-        if not isinstance(combo, QComboBox):
-            return
-        current_ch = combo.currentText()
-
-        try:
-            current_montage_idx = self.montage_channels.index(current_ch)
-        except ValueError:
-            return
-
-        # Find next anchor to determine limit
-        next_anchor_row = self.table.rowCount()
-        for r in range(row + 1, self.table.rowCount()):
-            if r in self.anchors:
-                next_anchor_row = r
-                break
-
-        # Cascade fill subsequent rows
-        offset = 1
-        for target_row in range(row + 1, next_anchor_row):
-            target_combo = self.table.cellWidget(target_row, 1)
-            if not isinstance(target_combo, QComboBox):
-                continue
-
-            # Calculate next channel
-            target_montage_idx = current_montage_idx + offset
-
-            if target_montage_idx < len(self.montage_channels):
-                target_ch = self.montage_channels[target_montage_idx]
-
-                # Set the combo WITHOUT triggering signal
-                idx = target_combo.findText(target_ch)
-                if idx != -1:
-                    target_combo.blockSignals(True)
-                    target_combo.setCurrentIndex(idx)
-                    target_combo.blockSignals(False)
-                    # Do NOT add to anchors
-            else:
-                break
-
-            offset += 1
-
     def clear_selections(self):
         """Clear all channel mappings and anchors."""
         if not self.table:
             return
-        self.anchors.clear()
         for row in range(self.table.rowCount()):
             combo = self.table.cellWidget(row, 1)
             if isinstance(combo, QComboBox):
@@ -526,27 +740,6 @@ class PickMontageDialog(BaseDialog):
                 combo.setCurrentIndex(0)
                 combo.setCurrentIndex(0)
                 combo.blockSignals(False)
-
-    def reset_saved_settings(self):
-        """Clear saved settings for current montage and re-run Smart Match."""
-        if not self.montage_combo:
-            return
-        montage_name = self.montage_combo.currentText()
-        if not montage_name:
-            return
-
-        # Remove from settings
-        self.settings.remove(f"mapping/{montage_name}")
-
-        # Reload montage (triggers Smart Match since settings are gone)
-        self.on_montage_select(montage_name)
-
-        show_information(
-            self,
-            "Reset",
-            f"Saved settings for '{montage_name}' have been cleared.\n"
-            f"Smart Match has been re-applied.",
-        )
 
     @staticmethod
     def _row_color(row: int) -> str:
@@ -565,6 +758,14 @@ class PickMontageDialog(BaseDialog):
         selected_map = {}
         montage_name = self.montage_combo.currentText()
 
+        if montage_name not in self.montage_list:
+            show_warning(
+                self,
+                "Select layout",
+                "Select a standard layout before applying a channel mapping.",
+            )
+            return
+
         for row in range(self.table.rowCount()):
             dataset_item = self.table.item(row, 0)
             if dataset_item is None:
@@ -579,11 +780,20 @@ class PickMontageDialog(BaseDialog):
         if not selected_map:
             show_warning(self, "Warning", "No channels mapped.")
             return
+        if len(selected_map) != len(set(selected_map.values())):
+            show_warning(
+                self,
+                "Review mapping",
+                "Each electrode can be assigned to only one dataset channel.",
+            )
+            return
 
         # Save settings
         self.settings.setValue("last_montage", montage_name)
-        self.settings.setValue(f"mapping/{montage_name}", selected_map)
-
+        self.settings.setValue(
+            f"mapping_v2/{montage_name}",
+            {"channel_schema": list(self.channel_names), "mapping": selected_map},
+        )
         # Prepare result
         mapped_dataset_chs = list(selected_map.keys())
         mapped_montage_chs = list(selected_map.values())
@@ -593,6 +803,7 @@ class PickMontageDialog(BaseDialog):
 
             self.chs = mapped_dataset_chs
             self.positions = positions
+            self.electrode_names = mapped_montage_chs
             super().accept()
 
         except Exception:
@@ -609,3 +820,7 @@ class PickMontageDialog(BaseDialog):
 
         """
         return self.chs, self.positions
+
+    def get_electrode_names(self):
+        """Return the reviewed electrode identity aligned with ``get_result``."""
+        return self.electrode_names

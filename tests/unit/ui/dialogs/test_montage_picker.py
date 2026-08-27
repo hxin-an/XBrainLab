@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 from PyQt6.QtCore import QSettings
 from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import QComboBox, QDialogButtonBox, QTableWidget
+from PyQt6.QtWidgets import QComboBox, QDialogButtonBox, QLabel, QTableWidget
 
 from XBrainLab.ui.styles.theme import Theme
 
@@ -63,6 +63,7 @@ def dialog(qtbot, channel_names, montage_positions, monkeypatch, tmp_path):
         dlg = PickMontageDialog(
             parent=None,
             channel_names=channel_names,
+            default_montage="standard_1020",
         )
         qtbot.addWidget(dlg)
         yield dlg
@@ -70,7 +71,7 @@ def dialog(qtbot, channel_names, montage_positions, monkeypatch, tmp_path):
 
 class TestPickMontageInit:
     def test_creates_dialog(self, dialog):
-        assert dialog.windowTitle() == "Set Montage"
+        assert dialog.windowTitle() == "Electrode Layout"
 
     def test_has_montage_combo(self, dialog):
         assert isinstance(dialog.montage_combo, QComboBox)
@@ -79,6 +80,8 @@ class TestPickMontageInit:
     def test_has_table(self, dialog):
         assert isinstance(dialog.table, QTableWidget)
         assert dialog.table.rowCount() == 10
+        assert dialog.table.horizontalHeaderItem(0).text() == "Dataset Channel"
+        assert dialog.table.horizontalHeaderItem(1).text() == "Electrode"
 
     def test_mapping_table_uses_integrated_dark_table_style(self, dialog):
         assert dialog.table.objectName() == "MontageMappingTable"
@@ -117,6 +120,588 @@ class TestPickMontageInit:
             button = buttons.button(standard)
             assert button is not None
             assert button.icon().isNull()
+
+    def test_bids_summary_expands_and_returns_without_persisting_changes(
+        self, dialog, qtbot, channel_names
+    ):
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        bids_dialog = PickMontageDialog(
+            parent=None,
+            channel_names=channel_names,
+            is_bids_source=True,
+            current_layout={
+                "source": "bids",
+                "name": "BIDS coordinates",
+                "status": "ready",
+                "positioned_channel_count": 10,
+                "channel_count": 10,
+                "coordinate_summary": "head",
+            },
+        )
+        qtbot.addWidget(bids_dialog)
+        before = bids_dialog.settings.allKeys()
+
+        assert bids_dialog.summary_page.isHidden() is False
+        assert bids_dialog.mapping_page.isHidden() is True
+        assert bids_dialog.minimumHeight() == 150
+        bids_dialog.show()
+        qtbot.waitExposed(bids_dialog)
+        assert 540 <= bids_dialog.width() <= 560
+        bids_dialog.show_mapping_page()
+        assert bids_dialog.summary_page.isHidden() is True
+        assert bids_dialog.mapping_page.isHidden() is False
+        assert bids_dialog.minimumHeight() == 320
+        assert bids_dialog.width() >= 700
+        bids_dialog.show_summary_page()
+        qtbot.waitUntil(bids_dialog.summary_page.isVisible)
+        assert 540 <= bids_dialog.width() <= 560
+        change_bottom = (
+            bids_dialog.btn_change_layout.mapTo(
+                bids_dialog, bids_dialog.btn_change_layout.rect().bottomLeft()
+            ).y()
+            + 1
+        )
+        assert 14 <= bids_dialog.height() - change_bottom <= 16
+        bids_dialog.reject()
+
+        assert bids_dialog.settings.allKeys() == before
+
+    def test_bids_summary_has_one_primary_change_action(
+        self, dialog, qtbot, channel_names
+    ):
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        bids_dialog = PickMontageDialog(
+            parent=None,
+            channel_names=channel_names,
+            is_bids_source=True,
+            current_layout={"source": "bids", "status": "ready"},
+        )
+        qtbot.addWidget(bids_dialog)
+
+        assert bids_dialog.btn_change_layout.text() == "Change layout…"
+        assert bids_dialog.btn_change_layout.property("primaryAction") is True
+        assert bids_dialog.btn_close.property("primaryAction") is not True
+        assert bids_dialog.summary_actions.indexOf(bids_dialog.btn_use_bids) == -1
+        assert bids_dialog.mapping_page.isHidden() is True
+        assert bids_dialog.summary_actions.itemAt(0).spacerItem() is not None
+        assert bids_dialog.summary_actions.indexOf(bids_dialog.btn_close) < (
+            bids_dialog.summary_actions.indexOf(bids_dialog.btn_change_layout)
+        )
+        assert bids_dialog.summary_actions.indexOf(bids_dialog.btn_change_layout) == (
+            bids_dialog.summary_actions.count() - 1
+        )
+
+        heading = bids_dialog.findChild(QLabel, "ElectrodeLayoutSummaryTitle")
+        context = bids_dialog.findChild(QLabel, "ElectrodeLayoutSummaryContext")
+        facts = bids_dialog.findChild(QLabel, "ElectrodeLayoutSummaryFacts")
+        assert heading is not None
+        assert heading.property("role") == "section-title"
+        assert context is not None
+        assert context.property("role") == "secondary-status"
+        assert facts is not None
+        assert context.text() == "FROM BIDS"
+        assert "font-size: 11px" in context.styleSheet()
+        assert "color:" in context.styleSheet()
+        assert "font-size: 18px" in heading.styleSheet()
+        assert "font-weight: 600" in heading.styleSheet()
+        assert "font-size: 12px" in facts.styleSheet()
+        assert "color:" in facts.styleSheet()
+        bids_dialog.show()
+        qtbot.waitExposed(bids_dialog)
+        facts_bottom = facts.mapTo(bids_dialog, facts.rect().bottomLeft()).y() + 1
+        action_top = bids_dialog.btn_change_layout.mapTo(
+            bids_dialog, bids_dialog.btn_change_layout.rect().topLeft()
+        ).y()
+        close_right = (
+            bids_dialog.btn_close.mapTo(
+                bids_dialog, bids_dialog.btn_close.rect().bottomRight()
+            ).x()
+            + 1
+        )
+        change_left = bids_dialog.btn_change_layout.mapTo(
+            bids_dialog, bids_dialog.btn_change_layout.rect().topLeft()
+        ).x()
+        assert bids_dialog.summary_footer_gap.sizeHint().height() == 16
+        assert action_top - facts_bottom >= 16
+        assert change_left - close_right >= 8
+        change_bottom = (
+            bids_dialog.btn_change_layout.mapTo(
+                bids_dialog, bids_dialog.btn_change_layout.rect().bottomLeft()
+            ).y()
+            + 1
+        )
+        assert 14 <= bids_dialog.height() - change_bottom <= 16
+
+    def test_ready_automatic_bids_without_name_uses_natural_fallback(
+        self, dialog, qtbot, channel_names
+    ):
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        bids_dialog = PickMontageDialog(
+            parent=None,
+            channel_names=channel_names,
+            is_bids_source=True,
+            current_layout={"source": "bids", "status": "ready", "name": None},
+        )
+        qtbot.addWidget(bids_dialog)
+
+        title = bids_dialog.findChild(QLabel, "ElectrodeLayoutSummaryTitle")
+        assert title is not None
+        assert title.text() == "Dataset electrode coordinates"
+        assert "None" not in title.text()
+
+    def test_pending_bids_summary_never_uses_manual_or_unconfigured_copy(
+        self, dialog, qtbot, channel_names
+    ):
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        bids_dialog = PickMontageDialog(
+            parent=None,
+            channel_names=channel_names,
+            is_bids_source=True,
+            current_layout={
+                "source": None,
+                "status": "pending",
+                "preparation_reason": "Reading electrodes.tsv",
+            },
+        )
+        qtbot.addWidget(bids_dialog)
+
+        context = bids_dialog.findChild(QLabel, "ElectrodeLayoutSummaryContext")
+        title = bids_dialog.findChild(QLabel, "ElectrodeLayoutSummaryTitle")
+        assert context is not None
+        assert title is not None
+        assert context.text() == "FROM BIDS"
+        assert title.text() == "Preparing electrode layout"
+        summary_copy = " ".join(
+            label.text() for label in bids_dialog.summary_page.findChildren(QLabel)
+        ).lower()
+        assert "manual override" not in summary_copy
+        assert "not configured" not in summary_copy
+        assert "none" not in summary_copy
+        bids_dialog.show()
+        qtbot.waitExposed(bids_dialog)
+        change_bottom = (
+            bids_dialog.btn_change_layout.mapTo(
+                bids_dialog, bids_dialog.btn_change_layout.rect().bottomLeft()
+            ).y()
+            + 1
+        )
+        assert bids_dialog.height() >= 150
+        assert 14 <= bids_dialog.height() - change_bottom <= 16
+        assert bids_dialog.btn_close.isVisible() is True
+        assert bids_dialog.btn_change_layout.isVisible() is True
+
+    def test_unavailable_bids_summary_keeps_eyebrow_and_actions_visible(
+        self, dialog, qtbot, channel_names
+    ):
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        bids_dialog = PickMontageDialog(
+            parent=None,
+            channel_names=channel_names,
+            is_bids_source=True,
+            current_layout={
+                "source": None,
+                "status": "limited",
+                "preparation_state": "ready",
+                "preparation_reason": (
+                    "No BIDS electrode positions were found, so this dataset needs a "
+                    "reviewed manual layout before it can be used for visualization."
+                ),
+            },
+        )
+        qtbot.addWidget(bids_dialog)
+        bids_dialog.show()
+        qtbot.waitExposed(bids_dialog)
+
+        context = bids_dialog.findChild(QLabel, "ElectrodeLayoutSummaryContext")
+        assert context is not None
+        assert context.isVisible() is True
+        assert bids_dialog.btn_close.isVisible() is True
+        assert bids_dialog.btn_change_layout.isVisible() is True
+        assert context.mapTo(bids_dialog, context.rect().topLeft()).y() >= 0
+        assert (
+            bids_dialog.btn_close.mapTo(
+                bids_dialog, bids_dialog.btn_close.rect().bottomRight()
+            ).y()
+            < bids_dialog.height()
+        )
+        assert (
+            bids_dialog.btn_change_layout.mapTo(
+                bids_dialog, bids_dialog.btn_change_layout.rect().bottomRight()
+            ).y()
+            < bids_dialog.height()
+        )
+        change_bottom = (
+            bids_dialog.btn_change_layout.mapTo(
+                bids_dialog, bids_dialog.btn_change_layout.rect().bottomLeft()
+            ).y()
+            + 1
+        )
+        assert bids_dialog.height() > 150
+        assert 14 <= bids_dialog.height() - change_bottom <= 16
+
+    def test_pending_summary_refreshes_but_mapping_page_is_not_replaced(
+        self, dialog, qtbot, channel_names
+    ):
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        bids_dialog = PickMontageDialog(
+            parent=None,
+            channel_names=channel_names,
+            is_bids_source=True,
+            current_layout={"source": None, "status": "pending"},
+        )
+        qtbot.addWidget(bids_dialog)
+        bids_dialog.refresh_bids_layout(
+            {"source": "bids", "status": "ready", "name": None}
+        )
+        title = bids_dialog.findChild(QLabel, "ElectrodeLayoutSummaryTitle")
+        assert title is not None
+        assert title.text() == "Dataset electrode coordinates"
+
+        bids_dialog.refresh_bids_layout(
+            {
+                "source": None,
+                "status": "limited",
+                "preparation_state": "ready",
+                "preparation_reason": "No BIDS electrode positions were found.",
+            }
+        )
+        assert title.text() == "BIDS coordinates unavailable"
+
+        bids_dialog.show_mapping_page()
+        bids_dialog.refresh_bids_layout(
+            {"source": "bids", "status": "unavailable", "name": None}
+        )
+        assert bids_dialog.mapping_page.isHidden() is False
+        bids_dialog.show_summary_page()
+        assert title.text() == "BIDS coordinates unavailable"
+
+    def test_shown_summary_refresh_reflows_long_then_short_content(
+        self, dialog, qtbot, channel_names
+    ):
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        bids_dialog = PickMontageDialog(
+            parent=None,
+            channel_names=channel_names,
+            is_bids_source=True,
+            current_layout={
+                "source": None,
+                "status": "pending",
+                "preparation_reason": "Reading electrodes.tsv",
+            },
+        )
+        qtbot.addWidget(bids_dialog)
+        bids_dialog.show()
+        qtbot.waitExposed(bids_dialog)
+
+        context = bids_dialog.findChild(QLabel, "ElectrodeLayoutSummaryContext")
+        title = bids_dialog.findChild(QLabel, "ElectrodeLayoutSummaryTitle")
+        facts = bids_dialog.findChild(QLabel, "ElectrodeLayoutSummaryFacts")
+        assert context is not None
+        assert title is not None
+        assert facts is not None
+
+        def assert_shown_summary_geometry(minimum_height: int | None = None) -> None:
+            if minimum_height is not None:
+                assert bids_dialog.height() >= minimum_height
+            context_top = context.mapTo(bids_dialog, context.rect().topLeft()).y()
+            title_top = title.mapTo(bids_dialog, title.rect().topLeft()).y()
+            facts_bottom = facts.mapTo(bids_dialog, facts.rect().bottomLeft()).y() + 1
+            action_top = bids_dialog.btn_change_layout.mapTo(
+                bids_dialog, bids_dialog.btn_change_layout.rect().topLeft()
+            ).y()
+            action_bottom = (
+                bids_dialog.btn_change_layout.mapTo(
+                    bids_dialog, bids_dialog.btn_change_layout.rect().bottomLeft()
+                ).y()
+                + 1
+            )
+            assert context_top >= 0
+            assert title_top > context_top
+            assert facts_bottom <= action_top - 16
+            assert bids_dialog.btn_close.isVisible() is True
+            assert bids_dialog.btn_change_layout.isVisible() is True
+            assert 14 <= bids_dialog.height() - action_bottom <= 16
+
+        assert_shown_summary_geometry(minimum_height=150)
+        bids_dialog.refresh_bids_layout(
+            {
+                "source": None,
+                "status": "limited",
+                "preparation_state": "ready",
+                "preparation_reason": (
+                    "No BIDS electrode positions were found, so this dataset needs a "
+                    "reviewed manual layout before it can be used for visualization."
+                ),
+            }
+        )
+        assert title.text() == "BIDS coordinates unavailable"
+        assert bids_dialog.height() > 150
+        assert_shown_summary_geometry()
+
+        bids_dialog.refresh_bids_layout(
+            {
+                "source": "manual",
+                "status": "ready",
+                "name": "standard_1020",
+                "positioned_channel_count": 10,
+                "channel_count": 10,
+                "coordinate_summary": "head",
+            }
+        )
+        assert title.text() == "standard_1020"
+        assert_shown_summary_geometry(minimum_height=150)
+
+    def test_manual_override_wins_over_stale_bids_preparation_failure(
+        self, dialog, qtbot, channel_names
+    ):
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        bids_dialog = PickMontageDialog(
+            parent=None,
+            channel_names=channel_names,
+            is_bids_source=True,
+            current_layout={
+                "source": "manual",
+                "status": "ready",
+                "name": "standard_1020",
+                "preparation_state": "failed",
+                "preparation_reason": "No BIDS electrode positions were found.",
+                "bids_restore_available": True,
+            },
+        )
+        qtbot.addWidget(bids_dialog)
+
+        context = bids_dialog.findChild(QLabel, "ElectrodeLayoutSummaryContext")
+        title = bids_dialog.findChild(QLabel, "ElectrodeLayoutSummaryTitle")
+        assert context is not None
+        assert title is not None
+        assert context.text() == "Manual override"
+        assert title.text() == "standard_1020"
+        assert bids_dialog.btn_use_bids.isHidden() is False
+
+    def test_manual_override_keeps_change_layout_as_the_single_primary_action(
+        self, dialog, qtbot, channel_names
+    ):
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        restore_dialog = PickMontageDialog(
+            parent=None,
+            channel_names=channel_names,
+            is_bids_source=True,
+            current_layout={
+                "source": "manual",
+                "status": "ready",
+                "name": "standard_1020",
+                "positioned_channel_count": 18,
+                "channel_count": 22,
+                "coordinate_summary": "head",
+                "bids_restore_available": True,
+            },
+        )
+        qtbot.addWidget(restore_dialog)
+
+        assert restore_dialog.btn_change_layout.text() == "Change layout…"
+        assert restore_dialog.btn_change_layout.property("primaryAction") is True
+        assert restore_dialog.btn_use_bids.property("primaryAction") is not True
+        assert restore_dialog.btn_close.text() == "Close"
+        assert restore_dialog.summary_actions.itemAt(0).spacerItem() is not None
+        assert restore_dialog.summary_actions.indexOf(restore_dialog.btn_close) == 1
+        assert (
+            restore_dialog.summary_actions.indexOf(restore_dialog.btn_change_layout)
+            == 2
+        )
+        assert restore_dialog.btn_use_bids.parent() is restore_dialog.button_box
+        assert restore_dialog.btn_use_bids in restore_dialog.button_box.buttons()
+        assert (
+            restore_dialog.button_box.buttonRole(restore_dialog.btn_use_bids)
+            == QDialogButtonBox.ButtonRole.ActionRole
+        )
+        assert restore_dialog.summary_actions.indexOf(restore_dialog.btn_use_bids) == -1
+        restore_dialog.show()
+        qtbot.waitExposed(restore_dialog)
+        change_bottom = (
+            restore_dialog.btn_change_layout.mapTo(
+                restore_dialog, restore_dialog.btn_change_layout.rect().bottomLeft()
+            ).y()
+            + 1
+        )
+        assert restore_dialog.height() >= 150
+        assert 14 <= restore_dialog.height() - change_bottom <= 16
+        restore_dialog.show_mapping_page()
+        back_button = next(
+            button
+            for button in restore_dialog.button_box.buttons()
+            if button.text() == "Back"
+        )
+        assert (
+            restore_dialog.button_box.buttonRole(back_button)
+            == QDialogButtonBox.ButtonRole.ActionRole
+        )
+        assert restore_dialog.mapping_page.isVisible() is True
+        assert restore_dialog.btn_use_bids.isVisible() is True
+        assert restore_dialog.btn_use_bids.isEnabled() is True
+        assert (
+            restore_dialog.findChild(QLabel, "ElectrodeLayoutSummaryTitle").text()
+            == "standard_1020"
+        )
+        assert (
+            restore_dialog.findChild(QLabel, "ElectrodeLayoutSummaryContext").text()
+            == "Manual override"
+        )
+        assert (
+            restore_dialog.findChild(QLabel, "ElectrodeLayoutSummaryFacts").text()
+            == "18 of 22 EEG channels positioned  ·  Head coordinates"
+        )
+        restore_dialog.btn_use_bids.click()
+        assert restore_dialog.restore_bids_requested() is True
+
+    def test_bids_summary_replace_and_restore_intents_are_distinct(
+        self, dialog, qtbot, channel_names
+    ):
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        replace_dialog = PickMontageDialog(
+            parent=None,
+            channel_names=channel_names,
+            is_bids_source=True,
+            current_layout={"source": "bids", "status": "ready"},
+        )
+        qtbot.addWidget(replace_dialog)
+        replace_dialog.show_mapping_page()
+        combo = replace_dialog.table.cellWidget(0, 1)
+        assert isinstance(combo, QComboBox)
+        combo.setCurrentIndex(1)
+        replace_dialog.accept()
+        selected, positions = replace_dialog.get_result()
+        assert selected is not None
+        assert channel_names[0] in selected
+        assert positions is not None
+        assert replace_dialog.restore_bids_requested() is False
+
+        restore_dialog = PickMontageDialog(
+            parent=None,
+            channel_names=channel_names,
+            is_bids_source=True,
+            current_layout={
+                "source": "manual",
+                "status": "ready",
+                "bids_restore_available": True,
+            },
+        )
+        qtbot.addWidget(restore_dialog)
+        restore_dialog.restore_bids()
+
+        assert restore_dialog.restore_bids_requested() is True
+        assert restore_dialog.get_result() == (None, None)
+
+    def test_bids_summary_disables_replace_and_restore_while_training(
+        self, dialog, qtbot, channel_names
+    ):
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        bids_dialog = PickMontageDialog(
+            parent=None,
+            channel_names=channel_names,
+            is_bids_source=True,
+            layout_changes_allowed=False,
+            current_layout={
+                "source": "manual",
+                "status": "ready",
+                "bids_restore_available": True,
+            },
+        )
+        qtbot.addWidget(bids_dialog)
+
+        assert bids_dialog.btn_change_layout.isEnabled() is False
+        assert bids_dialog.btn_use_bids.isEnabled() is False
+
+    def test_mapping_has_only_the_clear_mapping_action(self, dialog):
+        assert dialog.btn_clear.text() == "Clear mapping"
+        assert dialog.btn_clear.minimumWidth() <= dialog.btn_clear.sizeHint().width()
+        assert dialog.btn_clear.maximumWidth() >= dialog.btn_clear.sizeHint().width()
+        assert not hasattr(dialog, "btn_reset_saved")
+        assert dialog.mapping_toolbar.count() == 4
+        assert dialog.mapping_toolbar.itemAt(2).spacerItem() is not None
+        assert dialog.mapping_toolbar.indexOf(dialog.btn_clear) == 3
+        assert dialog.mapping_toolbar.indexOf(dialog.montage_combo) < (
+            dialog.mapping_toolbar.indexOf(dialog.btn_clear)
+        )
+        apply_button = dialog.button_box.button(QDialogButtonBox.StandardButton.Ok)
+        assert apply_button is not None
+        assert apply_button.text() == "Apply"
+
+    def test_cancel_after_editing_keeps_saved_mapping_unchanged(
+        self, dialog, qtbot, channel_names
+    ):
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        montage_name = dialog.montage_combo.currentText()
+        saved_mapping = {
+            "channel_schema": list(channel_names),
+            "mapping": {"Fp1": "Fp1", "Fp2": "Fp2"},
+        }
+        dialog.settings.setValue(f"mapping_v2/{montage_name}", saved_mapping)
+        dialog.settings.setValue("last_montage", montage_name)
+        bids_dialog = PickMontageDialog(
+            parent=None,
+            channel_names=channel_names,
+            is_bids_source=True,
+            current_layout={"source": "bids", "status": "ready"},
+        )
+        qtbot.addWidget(bids_dialog)
+        bids_dialog.show_mapping_page()
+        combo = bids_dialog.table.cellWidget(0, 1)
+        assert isinstance(combo, QComboBox)
+        assert combo.currentText() == "Fp1"
+        combo.setCurrentText("F3")
+        assert combo.currentText() == "F3"
+        bids_dialog.reject()
+
+        reopened = PickMontageDialog(
+            parent=None,
+            channel_names=channel_names,
+            is_bids_source=True,
+            current_layout={"source": "bids", "status": "ready"},
+        )
+        qtbot.addWidget(reopened)
+        reopened_combo = reopened.table.cellWidget(0, 1)
+        assert isinstance(reopened_combo, QComboBox)
+        assert reopened_combo.currentText() == "Fp1"
+        assert (
+            reopened.settings.value(f"mapping_v2/{montage_name}", {}) == saved_mapping
+        )
+        assert reopened.settings.value("last_montage", "") == montage_name
 
     def test_small_channel_list_fits_table_and_dialog_to_content(
         self,
@@ -163,8 +748,16 @@ class TestMontageSelection:
         # Should populate montage channels
         assert isinstance(dialog.montage_channels, list)
 
-    def test_initial_sequential_fill(self, dialog):
-        dialog.initial_sequential_fill()
+    def test_unmatched_channel_is_not_inferred_from_row_order(self, dialog):
+        # A change to one reviewed row must not fill its neighbour with the
+        # next standard-layout electrode.
+        first = dialog.table.cellWidget(0, 1)
+        second = dialog.table.cellWidget(1, 1)
+        assert isinstance(first, QComboBox)
+        assert isinstance(second, QComboBox)
+        second.setCurrentIndex(0)
+        first.setCurrentIndex(first.findText("F3"))
+        assert second.currentText() == ""
 
     def test_smart_match(self, dialog):
         combo = dialog.table.cellWidget(0, 1)
@@ -172,22 +765,211 @@ class TestMontageSelection:
             result = dialog.smart_match(combo, "Fp1")
             assert isinstance(result, bool)
 
+    def test_non_bids_unique_best_prefills_only_safe_one_to_one_matches(
+        self, qtbot, monkeypatch, tmp_path
+    ):
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config-safe"))
+        positions = {
+            "candidate-a": {"ch_pos": {"C3": (0, 0, 0), "C4": (1, 0, 0)}},
+            "candidate-b": {"ch_pos": {"F3": (0, 0, 0)}},
+        }
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_builtin_montages",
+                return_value=list(positions),
+            ),
+            patch(
+                "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_positions",
+                side_effect=lambda name: positions[name],
+            ),
+        ):
+            picker = PickMontageDialog(
+                parent=None,
+                channel_names=["EEG C3-REF", "C4", "EOG1", "12"],
+            )
+        qtbot.addWidget(picker)
+
+        assert picker.montage_combo.currentText() == "candidate-a"
+        assert picker.table.cellWidget(0, 1).currentText() == "C3"
+        assert picker.table.cellWidget(1, 1).currentText() == "C4"
+        assert picker.table.cellWidget(2, 1).currentText() == ""
+        assert picker.table.cellWidget(3, 1).currentText() == ""
+
+    def test_non_bids_tied_or_ambiguous_matches_stay_unselected(
+        self, qtbot, monkeypatch, tmp_path
+    ):
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config-tie"))
+        QSettings.setPath(
+            QSettings.Format.NativeFormat,
+            QSettings.Scope.UserScope,
+            str(tmp_path / "qt-settings-tie"),
+        )
+        QSettings("XBrainLab", "MontagePicker").setValue("last_montage", "candidate-a")
+        positions = {
+            "candidate-a": {"ch_pos": {"C3": (0, 0, 0)}},
+            "candidate-b": {"ch_pos": {"C3": (0, 0, 0)}},
+        }
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_builtin_montages",
+                return_value=list(positions),
+            ),
+            patch(
+                "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_positions",
+                side_effect=lambda name: positions[name],
+            ),
+        ):
+            picker = PickMontageDialog(parent=None, channel_names=["C3"])
+        qtbot.addWidget(picker)
+
+        apply_button = picker.button_box.button(QDialogButtonBox.StandardButton.Ok)
+        assert apply_button is not None
+        assert picker.montage_combo.currentText() == "Select layout"
+        assert apply_button.isEnabled() is False
+        before_mapping = picker.settings.value("mapping_v2/candidate-a", {})
+        with patch(
+            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.show_warning"
+        ) as warning:
+            picker.accept()
+        warning.assert_called_once()
+        assert picker.settings.value("last_montage", "") == "candidate-a"
+        assert picker.settings.value("mapping_v2/candidate-a", {}) == before_mapping
+
+        with patch(
+            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_positions",
+            side_effect=lambda name: positions[name],
+        ):
+            picker.montage_combo.setCurrentText("candidate-a")
+        assert apply_button.isEnabled() is True
+        combo = picker.table.cellWidget(0, 1)
+        assert isinstance(combo, QComboBox)
+        assert combo.currentText() == "C3"
+        with patch(
+            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_channel_positions",
+            return_value=[(0.0, 0.0, 0.0)],
+        ):
+            picker.accept()
+        assert picker.get_result() == (["C3"], [(0.0, 0.0, 0.0)])
+        assert picker.settings.value("last_montage", "") == "candidate-a"
+
+    def test_non_bids_no_match_stays_unselected_and_cannot_save(
+        self, qtbot, monkeypatch, tmp_path
+    ):
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config-no-match"))
+        QSettings.setPath(
+            QSettings.Format.NativeFormat,
+            QSettings.Scope.UserScope,
+            str(tmp_path / "qt-settings-no-match"),
+        )
+        QSettings("XBrainLab", "MontagePicker").setValue("last_montage", "candidate")
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_builtin_montages",
+                return_value=["candidate"],
+            ),
+            patch(
+                "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_positions",
+                return_value={"ch_pos": {"C3": (0, 0, 0)}},
+            ),
+        ):
+            picker = PickMontageDialog(parent=None, channel_names=["unknown"])
+        qtbot.addWidget(picker)
+
+        apply_button = picker.button_box.button(QDialogButtonBox.StandardButton.Ok)
+        assert apply_button is not None
+        assert picker.montage_combo.currentText() == "Select layout"
+        assert apply_button.isEnabled() is False
+        before_mapping = picker.settings.value("mapping_v2/candidate", {})
+        with patch(
+            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.show_warning"
+        ) as warning:
+            picker.accept()
+        warning.assert_called_once()
+        assert picker.settings.value("last_montage", "") == "candidate"
+        assert picker.settings.value("mapping_v2/candidate", {}) == before_mapping
+
+    def test_saved_mapping_requires_exact_ordered_channel_schema(
+        self, qtbot, monkeypatch, tmp_path
+    ):
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config-schema"))
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_builtin_montages",
+                return_value=["candidate"],
+            ),
+            patch(
+                "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_positions",
+                return_value={"ch_pos": {"C3": (0, 0, 0), "C4": (1, 0, 0)}},
+            ),
+            patch(
+                "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_channel_positions",
+                return_value=[(0, 0, 0), (1, 0, 0)],
+            ),
+        ):
+            first = PickMontageDialog(parent=None, channel_names=["C3", "C4"])
+            qtbot.addWidget(first)
+            first.table.cellWidget(0, 1).setCurrentText("C4")
+            first.table.cellWidget(1, 1).setCurrentText("C3")
+            first.accept()
+            reordered = PickMontageDialog(parent=None, channel_names=["C4", "C3"])
+        qtbot.addWidget(reordered)
+
+        assert reordered.table.cellWidget(0, 1).currentText() == "C4"
+        assert reordered.table.cellWidget(1, 1).currentText() == "C3"
+
 
 class TestTableActions:
     def test_clear_selections(self, dialog):
         dialog.clear_selections()
 
-    def test_on_channel_changed(self, dialog):
-        dialog.on_channel_changed(0, 0)
-
 
 class TestAcceptReject:
+    def test_accept_rejects_duplicate_electrodes_without_persisting(self, dialog):
+        montage_name = dialog.montage_combo.currentText()
+        existing = {
+            "channel_schema": list(dialog.channel_names),
+            "mapping": {"Fp1": "Fp1", "Fp2": "Fp2"},
+        }
+        dialog.settings.setValue(f"mapping_v2/{montage_name}", existing)
+        first = dialog.table.cellWidget(0, 1)
+        second = dialog.table.cellWidget(1, 1)
+        assert isinstance(first, QComboBox)
+        assert isinstance(second, QComboBox)
+        first.setCurrentText("F3")
+        second.setCurrentText("F3")
+
+        with patch(
+            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.show_warning"
+        ) as warning:
+            dialog.accept()
+
+        warning.assert_called_once()
+        assert dialog.result() == 0
+        assert dialog.get_result() == (None, None)
+        assert dialog.settings.value(f"mapping_v2/{montage_name}", {}) == existing
+
     def test_accept_valid(self, dialog):
         # Fill all combos with valid montage channels
         for row in range(dialog.table.rowCount()):
             combo = dialog.table.cellWidget(row, 1)
             if combo and combo.count() > 1:
-                combo.setCurrentIndex(1)
+                combo.setCurrentIndex(min(row + 1, combo.count() - 1))
         with patch("PyQt6.QtWidgets.QDialog.accept"):
             dialog.accept()
 
@@ -197,33 +979,9 @@ class TestAcceptReject:
         assert isinstance(result, tuple)
         assert len(result) == 2
 
-    def test_reset_saved_settings(self, dialog):
-        with patch(
-            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.show_information"
-        ) as information:
-            dialog.reset_saved_settings()
-
-        information.assert_called_once()
-        assert information.call_args.args[0] is dialog
-        assert information.call_args.args[1] == "Reset"
-
 
 class TestMontagePickerEdgeCases:
     """Additional edge-case tests for PickMontageDialog methods."""
-
-    def test_on_channel_changed_clears_anchor(self, dialog):
-        # Row 0 is an anchor — selecting index 0 (empty) removes it
-        dialog.anchors.add(0)
-        dialog.on_channel_changed(0, 0)
-        assert 0 not in dialog.anchors
-
-    def test_on_channel_changed_cascades(self, dialog):
-        # Set row 0 to a valid channel and check cascade fill
-        combo0 = dialog.table.cellWidget(0, 1)
-        if isinstance(combo0, QComboBox) and combo0.count() > 2:
-            combo0.setCurrentIndex(1)
-            dialog.on_channel_changed(0, 1)
-            assert 0 in dialog.anchors
 
     def test_accept_no_mapped_channels(self, dialog):
         dialog.clear_selections()
@@ -238,7 +996,7 @@ class TestMontagePickerEdgeCases:
         for row in range(dialog.table.rowCount()):
             combo = dialog.table.cellWidget(row, 1)
             if isinstance(combo, QComboBox) and combo.count() > 1:
-                combo.setCurrentIndex(1)
+                combo.setCurrentIndex(min(row + 1, combo.count() - 1))
         with (
             patch(
                 "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_channel_positions",

@@ -123,7 +123,7 @@ _COMMAND_PANEL_TARGETS: dict[CommandName, AssistantPanelTarget] = {
     **dict.fromkeys(_PREPROCESS_PANEL_COMMANDS, AssistantPanelTarget.PREPROCESS),
     **dict.fromkeys(_TRAINING_PANEL_COMMANDS, AssistantPanelTarget.TRAINING),
     CommandName.EVALUATE: AssistantPanelTarget.EVALUATION,
-    CommandName.APPLY_MONTAGE: AssistantPanelTarget.VISUALIZATION,
+    CommandName.APPLY_MONTAGE: AssistantPanelTarget.DATASET,
     CommandName.VISUALIZE: AssistantPanelTarget.VISUALIZATION,
     CommandName.SALIENCY: AssistantPanelTarget.VISUALIZATION,
 }

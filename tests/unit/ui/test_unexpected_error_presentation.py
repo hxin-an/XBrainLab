@@ -669,37 +669,30 @@ def test_saliency_settings_unexpected_exception_uses_stable_warning(
     _assert_logged_exception(caplog)
 
 
-def test_visualization_sidebar_montage_exception_returns_stable_outcome(
+def test_dataset_sidebar_electrode_layout_exception_returns_stable_outcome(
     qtbot,
     monkeypatch,
     caplog,
 ) -> None:
-    from XBrainLab.backend.application import CommandName
-    from XBrainLab.ui.panels.visualization import control_sidebar
+    from XBrainLab.ui.panels.dataset import sidebar as dataset_sidebar
 
     panel = MagicMock()
     panel.controller = MagicMock()
     panel.main_window = QMainWindow()
     qtbot.addWidget(panel.main_window)
-    sidebar = control_sidebar.ControlSidebar(panel)
+    sidebar = dataset_sidebar.DatasetSidebar(panel)
     qtbot.addWidget(sidebar)
-    review_context = SimpleNamespace(
-        capability=SimpleNamespace(enabled=True),
-        publication_generation=17,
-    )
     query_result = SimpleNamespace(
         failed=False,
-        diagnostics={"state": {"epoch": {"channel_names": ["C3"]}}},
+        diagnostics={"state": {"raw": {"channels": ["C3"]}}},
     )
     monkeypatch.setattr(
-        control_sidebar,
-        "get_command_review_context",
-        lambda _context, command_name: (
-            review_context if command_name is CommandName.APPLY_MONTAGE else None
-        ),
+        dataset_sidebar,
+        "get_command_capability",
+        lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        control_sidebar,
+        dataset_sidebar,
         "execute_application_command",
         lambda *_args, **_kwargs: query_result,
     )
@@ -707,12 +700,12 @@ def test_visualization_sidebar_montage_exception_returns_stable_outcome(
     montage_dialog.exec.return_value = True
     montage_dialog.get_result.return_value = (["C3"], [[0.0, 0.0, 0.0]])
     monkeypatch.setattr(
-        control_sidebar,
-        "PickMontageDialog",
-        lambda *_args, **_kwargs: montage_dialog,
+        dataset_sidebar,
+        "_electrode_layout_dialog_class",
+        lambda: lambda *_args, **_kwargs: montage_dialog,
     )
     monkeypatch.setattr(
-        control_sidebar,
+        dataset_sidebar,
         "normalize_montage_positions",
         MagicMock(side_effect=RuntimeError(_SENTINEL)),
     )
@@ -722,10 +715,10 @@ def test_visualization_sidebar_montage_exception_returns_stable_outcome(
     )
 
     with _capture_public_xbrainlab_logs(caplog):
-        outcome = sidebar.set_montage()
+        outcome = sidebar.open_electrode_layout()
 
     assert outcome.status is InteractionStatus.FAILED
-    assert outcome.message == _MONTAGE_SETUP_MESSAGE
+    assert outcome.message == "Electrode layout could not be applied."
     critical.assert_called_once_with(
         sidebar,
         "Montage setup could not be applied",

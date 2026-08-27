@@ -44,6 +44,7 @@ from .state import (
     ActiveTrainingSnapshot,
     ApplicationStateSnapshot,
     DatasetStateSnapshot,
+    ElectrodeLayoutStateSnapshot,
     EpochStateSnapshot,
     ErrorSnapshot,
     EvaluationStateSnapshot,
@@ -96,6 +97,7 @@ class StateSnapshotService:
         training_recommendation: TrainingRecommendationService | None = None,
         montage_snapshot_provider: Callable[[], Any] | None = None,
         effective_montage_provider: Callable[[], Any] | None = None,
+        bids_restore_available_provider: Callable[[], bool] | None = None,
     ) -> None:
         self.study = study
         self.dataset = dataset
@@ -113,6 +115,7 @@ class StateSnapshotService:
         self.training_recommendation = training_recommendation
         self.montage_snapshot_provider = montage_snapshot_provider
         self.effective_montage_provider = effective_montage_provider
+        self.bids_restore_available_provider = bids_restore_available_provider
 
     def build(
         self,
@@ -387,8 +390,14 @@ class StateSnapshotService:
             montage_positions,
             coordinate_dimension=coordinate_dimension,
         )
-        supports_topographic = geometry.supports_topographic
-        supports_three_dimensional = geometry.supports_three_dimensional
+        complete_layout = bool(epoch.channel_names) and (
+            len(montage_channels) == len(epoch.channel_names)
+            and len(montage_positions) == len(epoch.channel_names)
+        )
+        supports_topographic = complete_layout and geometry.supports_topographic
+        supports_three_dimensional = (
+            complete_layout and geometry.supports_three_dimensional
+        )
         if effective is not None and montage_source == "bids":
             supports_topographic = supports_topographic and bool(
                 getattr(effective, "supports_topographic", supports_topographic)
@@ -401,6 +410,52 @@ class StateSnapshotService:
                 )
             )
         preparation_state, preparation_reason = self._montage_preparation_status()
+        layout_names = epoch.channel_names or raw.channels
+        layout_effective = self._effective_montage()
+        layout_positions = self._positioned_channels(layout_effective, layout_names)
+        layout_positioned_names, _ = layout_positions
+        layout_source = (
+            str(getattr(layout_effective, "source", "")) or None
+            if layout_effective is not None
+            else None
+        )
+        layout_status = (
+            "ready"
+            if layout_source and len(layout_positioned_names) == len(layout_names)
+            else "limited"
+            if layout_source or preparation_state == "ready"
+            else preparation_state
+        )
+        if layout_status == "not_applicable":
+            layout_status = "not_configured"
+        coordinate_frame = (
+            getattr(layout_effective, "coordinate_frame", None)
+            if layout_effective is not None
+            else None
+        )
+        electrode_layout = ElectrodeLayoutStateSnapshot(
+            source=layout_source,
+            status=layout_status,
+            positioned_channel_count=len(layout_positioned_names),
+            channel_count=len(layout_names),
+            coordinate_summary=(str(coordinate_frame) if coordinate_frame else None),
+            name=(
+                str(layout_name)
+                if (layout_name := getattr(layout_effective, "name", None))
+                else None
+            )
+            if layout_effective is not None
+            else None,
+            bids_restore_available=bool(
+                self.bids_restore_available_provider()
+                if self.bids_restore_available_provider is not None
+                else False
+            ),
+            channel_names=list(getattr(layout_effective, "channel_names", ()) or ()),
+            electrode_names=list(
+                getattr(layout_effective, "electrode_names", ()) or ()
+            ),
+        )
         visualization = VisualizationStateSnapshot(
             saliency_configured=bool(saliency_params),
             saliency_available=evaluation.finished_runs > 0
@@ -452,6 +507,7 @@ class StateSnapshotService:
             interpretation=interpretation,
             active_dataset=active_dataset,
             active_training=active_training,
+            electrode_layout=electrode_layout,
             last_error=last_error,
             state_reliable=not read_errors,
             training_liveness_reliable=training_liveness_reliable,
