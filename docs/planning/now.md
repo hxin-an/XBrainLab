@@ -38,9 +38,9 @@ reviewer。`settings.json` 是使用者本機設定，永不碰觸。
   frame；每個 state 一個 primary action。BIDS current 為 `Close` + `Change layout…`；manual override
   retained BIDS snapshot 為 `Choose another layout…`、`Close` + `Restore BIDS layout`；training lock 仍可
   查看、但不可變更並顯示原因。
-- Picker 固定 hierarchy：layout selector → table toolbar (`Re-run matching`、`Clear mapping`) →
-  mapping table → footer。BIDS footer 為 Back／Cancel／Replace，non-BIDS 為 Cancel／Apply；每一頁僅一個
-  blue primary action。
+- Picker 固定 hierarchy：layout selector row → table action row (`Re-run matching`、`Clear mapping`) →
+  mapping table → footer。這兩列在 150% DPI 保持完整文字而不改 controls/order。BIDS footer 為
+  Back／Cancel／Replace，non-BIDS 為 Cancel／Apply；每一頁僅一個 blue primary action。
 - Non-BIDS prefill 以 deterministic normalized channel names 排名 builtin montage；唯一最佳 layout 才
   preselect，且只填一對一可信 mapping。collision、alias ambiguity、EOG／EMG、純數字與 unknown 保持
   blank。tie／no-match 時 layout selector 明確保持 `Select layout`，不從 QSettings 的
@@ -129,17 +129,19 @@ failure paths. Root independently audits the exact SHA and accepts only in-scope
   disabled Apply, zero persistence, and recovery after an explicit selection.
 - Current repair keeps both entrances on the existing dialog and command path. It adds truthful Dataset status,
   the card/action hierarchy, conservative non-BIDS prefill and schema-bound reviewed mapping reuse; it does
-  not add an owner or a second mutation path. At final commit preparation, the production diff against
-  `origin/main` is **16 files, +964/-419, net +545 LOC**, so the complexity review remains active.
+  not add an owner or a second mutation path. The required 150% precommit capture exposed clipped picker
+  toolbar text; the direct repair separates the existing selector row from the existing action row without
+  changing controls, order, owner or command path. At final commit preparation, the production diff against
+  `origin/main` is **16 files, +972/-424, net +548 LOC**, so the complexity review remains active.
 - Green evidence at commit preparation: the focused UI slice is **163 passed**; application/state montage
   coverage is **19 passed / 319 deselected**; BIDS preparation plus public fixture coverage is
   **34 passed / 1 skipped** (one optional public fixture is not installed) with **9 MNE loader/type warnings**;
   montage architecture ownership is **6 passed / 246 deselected**. Changed-file ruff and `git diff --check`
   must be repeated after the final documentation update.
-- The preliminary offscreen preview under `/tmp/xbrainlab-electrode-preview/` is tied to dirty source and is
-  intentionally non-authoritative. After a clean local exact commit, regenerate a source-bound manifest with
-  BIDS current/manual/picker, non-BIDS, Dataset loading/error, both entrances, narrow geometry and explicit
-  150% offscreen captures. Inspect those images before asking root for review.
+- Every precommit offscreen preview is tied to dirty source and intentionally non-authoritative. After a clean
+  local exact commit, regenerate a source-bound manifest with BIDS current/manual/picker, non-BIDS, Dataset
+  loading/error, both entrances, narrow geometry and explicit 150% offscreen captures. Inspect those images
+  before asking root for review.
 - Remaining handoff work: the exact-commit artifact capture, root/UI/data review, canonical source-diverse
   dataset gate, pushed exact-head CI, and WSLg manual acceptance. Therefore this branch remains a
   **checkpoint**, not handoff-ready.

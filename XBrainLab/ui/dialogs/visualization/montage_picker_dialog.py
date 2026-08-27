@@ -270,9 +270,9 @@ class PickMontageDialog(BaseDialog):
         mapping_layout.setContentsMargins(0, 0, 0, 0)
         mapping_layout.setSpacing(12)
 
-        # Top: Montage Selection
-        top_layout = QHBoxLayout()
-        top_layout.addWidget(QLabel("Standard layout:"))
+        # Layout selection stays separate from mapping actions at high DPI.
+        selector_layout = QHBoxLayout()
+        selector_layout.addWidget(QLabel("Standard layout:"))
 
         self.montage_combo = QComboBox()
         self.montage_list = get_builtin_montages()
@@ -290,22 +290,25 @@ class PickMontageDialog(BaseDialog):
             self.montage_combo.setCurrentText(self.montage_list[0])
 
         self.montage_combo.currentTextChanged.connect(self.on_montage_select)
-        top_layout.addWidget(self.montage_combo)
+        selector_layout.addWidget(self.montage_combo)
+        selector_layout.addStretch()
+        mapping_layout.addLayout(selector_layout)
 
-        top_layout.addStretch()
+        action_layout = QHBoxLayout()
+        action_layout.addStretch()
         self.btn_reset_saved = QPushButton("Re-run matching")
         self.btn_reset_saved.setToolTip(
             "Re-run conservative matching for this layout",
         )
         self.btn_reset_saved.clicked.connect(self.reset_saved_settings)
-        top_layout.addWidget(self.btn_reset_saved)
+        action_layout.addWidget(self.btn_reset_saved)
 
         self.btn_clear = QPushButton("Clear mapping")
         self.btn_clear.clicked.connect(self.clear_selections)
-        top_layout.addWidget(self.btn_clear)
-        self.mapping_toolbar = top_layout
+        action_layout.addWidget(self.btn_clear)
+        self.mapping_toolbar = action_layout
 
-        mapping_layout.addLayout(top_layout)
+        mapping_layout.addLayout(action_layout)
 
         # Center: Mapping Table
         self.table = QTableWidget()
