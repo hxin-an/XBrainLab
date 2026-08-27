@@ -102,6 +102,51 @@ ordering, compact canonical examples, the placement/shape of bounded active-rece
 strict output/decoder recovery. Treatments may not add a semantic Host router, infer values, change
 tool membership, or encode individual expected answers into the prompt.
 
+**L1/H1 pre-registration (2026-08-27).** The first treatment is limited to the catalog-adjacent
+output checkpoint: a respond-first / typed-receipt shape appears before the generic action envelope,
+followed by a constant continuation checkpoint only for one valid, active receipt. It may modify at
+most `XBrainLab/llm/agent/assembler.py` (+60 production LOC maximum), creates no owner, public
+tool contract, router, receipt, or state machine, and must compute receipt validity once for both
+the trusted footer and untrusted context projection. The footer must require zero exact action for
+ambiguous, broad family (`filter` / `clean` / `process`), multi-action (including ordered), and
+direct actions missing required input; it must prohibit likely/default/first-action selection.
+Message-only response and initial typed-clarification shapes precede the generic envelope. Only a
+same-publication-generation, still-published receipt may add the fixed continuation instruction:
+same action only, latest reply values only, no overwrite of verified values, no action change or
+pending-action reconstruction; if no requested value is present it must remain message-only. Dynamic
+tool and value information remains exclusively in the existing untrusted context.
+
+The frozen development baseline is
+`artifacts/assistant_accuracy_development/granite4micro-907b9672-baseline.json`, SHA-256
+`68d016a44e07a059198baf126f0f8339f8e684d6830b8d8e79aff1cfaed1f887`, at exact source
+`907b96727a194fc8b86342c972182ff1c556c554`, Granite 4.0 Micro
+`ibm-granite/granite-4.0-micro` revision `56111ae135df9c53a78c99028e7bc24035a9e979`.
+It records 48 cases / 69 turns: raw valid 63/69, recovery nonexhausted 69/69, composed 42/69,
+32/48 full trajectories, and eight unexpected verified-boundary sentinels but zero real executor
+or mutation. It is development evidence, not product or holdout accuracy.
+
+The pre-registered sentinel contains exactly these 12 development IDs:
+`dev_ambiguous_en_01`, `dev_ambiguous_zh_01`, `dev_multi_en_01`, `dev_multi_zh_01`,
+`dev_missing_bandpass_en`, `dev_partial_bandpass_en`, `dev_partial_bandpass_zh`,
+`dev_cancel_zh`, `dev_generic_filter_en`, `dev_generic_filter_en_02`,
+`dev_generic_filter_zh`, and `dev_format_en`. Its fixed baseline is 24 turns with two composed
+passes, one complete case, five unexpected sentinels, 21 raw-valid, and 24 recovery-nonexhausted.
+Promote H1 to the full 48-case development run only when this exact selected-ID/order report has
+zero unexpected sentinel, confirmation, handoff, executor, or publication mutation; keeps the
+`format_en` complete-action control passing; and improves composed turns by at least three
+(at least 5/24). Host rejection does not count as raw-model accuracy. Any failed condition stops
+and rolls back H1 rather than broadening the prompt or denominator.
+
+The development-only evaluator may accept repeated `--case-id` selection solely to execute this
+pre-registered sentinel. Its default remains the exact 48-case order; empty, unknown, or duplicate
+IDs fail closed. Each report identity binds the exact selected ordered IDs and their stable digest,
+and its progress and atomic checkpoint use the selected denominator. This runner seam is not a
+product surface or additional owner. Focused evidence is red/green assembler shape/ordering and
+receipt-validity tests; runner default/subset/fail-closed identity/progress tests; existing
+real-controller all-48 deterministic smoke; controller/coordinator/stable adjacent tests; ruff,
+architecture compliance and diff check. No model/GPU or holdout access is permitted. Stop at root
+review after the plan-only, runner-selection, and H1 context commits.
+
 **L2 — existing typed receipt completion.** Reuse `ToolAttemptCoordinator`,
 `PendingInteractionCoordinator`, `AssistantToolInputReceipt`, controller generation binding, and
 the existing parameter-origin verifier; do not add an owner, state machine, receipt type, or
