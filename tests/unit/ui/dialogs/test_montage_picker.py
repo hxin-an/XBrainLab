@@ -155,6 +155,49 @@ class TestPickMontageInit:
 
         assert bids_dialog.settings.allKeys() == before
 
+    def test_bids_summary_has_one_primary_change_action(
+        self, dialog, qtbot, channel_names
+    ):
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        bids_dialog = PickMontageDialog(
+            parent=None,
+            channel_names=channel_names,
+            is_bids_source=True,
+            current_layout={"source": "bids", "status": "ready"},
+        )
+        qtbot.addWidget(bids_dialog)
+
+        assert bids_dialog.btn_change_layout.text() == "Change layout…"
+        assert bids_dialog.btn_change_layout.property("primaryAction") is True
+        assert bids_dialog.btn_close.property("primaryAction") is not True
+        assert bids_dialog.btn_use_bids.isHidden() is True
+
+    def test_manual_override_makes_restore_the_single_primary_action(
+        self, dialog, qtbot, channel_names
+    ):
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        restore_dialog = PickMontageDialog(
+            parent=None,
+            channel_names=channel_names,
+            is_bids_source=True,
+            current_layout={
+                "source": "manual",
+                "status": "ready",
+                "bids_restore_available": True,
+            },
+        )
+        qtbot.addWidget(restore_dialog)
+
+        assert restore_dialog.btn_change_layout.text() == "Choose another layout…"
+        assert restore_dialog.btn_change_layout.property("primaryAction") is not True
+        assert restore_dialog.btn_use_bids.property("primaryAction") is True
+
     def test_bids_summary_replace_and_restore_intents_are_distinct(
         self, dialog, qtbot, channel_names
     ):
@@ -309,6 +352,101 @@ class TestMontageSelection:
         if combo:
             result = dialog.smart_match(combo, "Fp1")
             assert isinstance(result, bool)
+
+    def test_non_bids_unique_best_prefills_only_safe_one_to_one_matches(
+        self, qtbot, monkeypatch, tmp_path
+    ):
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config-safe"))
+        positions = {
+            "candidate-a": {"ch_pos": {"C3": (0, 0, 0), "C4": (1, 0, 0)}},
+            "candidate-b": {"ch_pos": {"F3": (0, 0, 0)}},
+        }
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_builtin_montages",
+                return_value=list(positions),
+            ),
+            patch(
+                "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_positions",
+                side_effect=lambda name: positions[name],
+            ),
+        ):
+            picker = PickMontageDialog(
+                parent=None,
+                channel_names=["EEG C3-REF", "C4", "EOG1", "12"],
+            )
+        qtbot.addWidget(picker)
+
+        assert picker.montage_combo.currentText() == "candidate-a"
+        assert picker.table.cellWidget(0, 1).currentText() == "C3"
+        assert picker.table.cellWidget(1, 1).currentText() == "C4"
+        assert picker.table.cellWidget(2, 1).currentText() == ""
+        assert picker.table.cellWidget(3, 1).currentText() == ""
+
+    def test_non_bids_tied_or_ambiguous_matches_stay_unselected(
+        self, qtbot, monkeypatch, tmp_path
+    ):
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config-tie"))
+        positions = {
+            "candidate-a": {"ch_pos": {"C3": (0, 0, 0)}},
+            "candidate-b": {"ch_pos": {"C3": (0, 0, 0)}},
+        }
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_builtin_montages",
+                return_value=list(positions),
+            ),
+            patch(
+                "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_positions",
+                side_effect=lambda name: positions[name],
+            ),
+        ):
+            picker = PickMontageDialog(parent=None, channel_names=["C3", "C3"])
+        qtbot.addWidget(picker)
+
+        assert picker.montage_combo.currentText() == "candidate-a"
+        assert picker.table.cellWidget(0, 1).currentText() == ""
+        assert picker.table.cellWidget(1, 1).currentText() == ""
+
+    def test_saved_mapping_requires_exact_ordered_channel_schema(
+        self, qtbot, monkeypatch, tmp_path
+    ):
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config-schema"))
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_builtin_montages",
+                return_value=["candidate"],
+            ),
+            patch(
+                "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_positions",
+                return_value={"ch_pos": {"C3": (0, 0, 0), "C4": (1, 0, 0)}},
+            ),
+            patch(
+                "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_channel_positions",
+                return_value=[(0, 0, 0), (1, 0, 0)],
+            ),
+        ):
+            first = PickMontageDialog(parent=None, channel_names=["C3", "C4"])
+            qtbot.addWidget(first)
+            first.table.cellWidget(0, 1).setCurrentText("C4")
+            first.accept()
+            reordered = PickMontageDialog(parent=None, channel_names=["C4", "C3"])
+        qtbot.addWidget(reordered)
+
+        assert reordered.table.cellWidget(0, 1).currentText() == "C4"
+        assert reordered.table.cellWidget(1, 1).currentText() == "C3"
 
 
 class TestTableActions:

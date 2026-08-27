@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import mne
 import numpy as np
 import pytest
-from PyQt6.QtWidgets import QPushButton, QWidget
+from PyQt6.QtWidgets import QLabel, QPushButton, QWidget
 
 from XBrainLab.backend.application import QueryStateCommand
 from XBrainLab.ui.panels.dataset.sidebar import (
@@ -61,6 +61,8 @@ def test_init_ui(sidebar):
     assert isinstance(sidebar.smart_parse_btn, QPushButton)
     assert isinstance(sidebar.chan_select_btn, QPushButton)
     assert isinstance(sidebar.electrode_layout_btn, QPushButton)
+    assert isinstance(sidebar.electrode_layout_status, QLabel)
+    assert sidebar.electrode_layout_status.text() == "No electrode layout"
     assert not hasattr(sidebar, "clear_btn")
     assert not sidebar.findChildren(QPushButton, "ResetSessionButton")
     assert all(
@@ -216,7 +218,43 @@ def test_bids_layout_publication_keeps_tooltip_and_notifies_once(sidebar, monkey
 
     assert "bids" in sidebar.electrode_layout_btn.toolTip()
     assert "4/4" in sidebar.electrode_layout_btn.toolTip()
+    assert sidebar.electrode_layout_status.text() == "BIDS layout · 4/4 positioned"
     status.assert_called_once()
+
+
+def test_layout_status_projects_loading_and_manual_partial_states(sidebar, monkeypatch):
+    layout = SimpleNamespace(
+        status="pending",
+        source=None,
+        positioned_channel_count=0,
+        channel_count=22,
+    )
+    publication = SimpleNamespace(
+        effective_capabilities={},
+        state=SimpleNamespace(electrode_layout=layout),
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar.get_application_view_publication",
+        lambda *_: publication,
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar.has_real_application_context",
+        lambda *_: False,
+    )
+
+    sidebar.update_sidebar()
+    assert sidebar.electrode_layout_status.text() == "Preparing BIDS layout…"
+
+    layout.status = "limited"
+    layout.source = "manual"
+    layout.positioned_channel_count = 18
+    sidebar.update_sidebar()
+    assert sidebar.electrode_layout_status.text() == "Manual layout · 18/22 positioned"
+
+    layout.status = "failed"
+    layout.source = "bids"
+    sidebar.update_sidebar()
+    assert sidebar.electrode_layout_status.text() == "BIDS layout unavailable"
 
 
 def test_add_labels_compatibility_button_stays_hidden(sidebar):

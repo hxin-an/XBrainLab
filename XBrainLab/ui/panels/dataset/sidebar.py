@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QFrame,
     QGridLayout,
     QGroupBox,
+    QLabel,
     QPushButton,
     QSizePolicy,
     QSpacerItem,
@@ -271,6 +272,11 @@ class DatasetSidebar(QWidget):
         self.electrode_layout_btn.setStyleSheet(_DATASET_SIDEBAR_BUTTON_STYLE)
         self.electrode_layout_btn.clicked.connect(self.open_electrode_layout)
         self.exec_layout.addWidget(self.electrode_layout_btn)
+        self.electrode_layout_status = QLabel("No electrode layout")
+        self.electrode_layout_status.setObjectName("ElectrodeLayoutStatus")
+        self.electrode_layout_status.setWordWrap(True)
+        self.electrode_layout_status.setProperty("role", "secondary-status")
+        self.exec_layout.addWidget(self.electrode_layout_status)
 
         layout.addWidget(exec_group)
 
@@ -300,13 +306,6 @@ class DatasetSidebar(QWidget):
     ) -> InteractionOutcome:
         """Open the one Dataset-owned layout review surface."""
         capability = get_command_capability(self, CommandName.APPLY_MONTAGE)
-        if capability is not None and not capability.enabled:
-            message = blocked_reason(
-                capability,
-                "Load EEG data before configuring electrode layout.",
-            )
-            show_warning(self, "Electrode Layout blocked", message)
-            return InteractionOutcome.blocked(message)
         query = execute_application_command(
             self, QueryStateCommand(query="state"), refresh=False
         )
@@ -342,7 +341,11 @@ class DatasetSidebar(QWidget):
             channels,
             current_layout=layout,
             is_bids_source=interpretation.get("source_kind") == "bids",
-            layout_changes_allowed=not bool(active_training.get("has_trainer")),
+            layout_changes_allowed=(
+                capability.enabled
+                if capability is not None
+                else not bool(active_training.get("has_trainer"))
+            ),
             **kwargs,
         )
         if not dialog.exec():
@@ -659,7 +662,30 @@ class DatasetSidebar(QWidget):
                 self.chan_select_btn.setToolTip("Select specific channels to keep")
 
             if layout_capability is not None:
-                self.electrode_layout_btn.setEnabled(layout_capability.enabled)
+                state_snapshot = getattr(publication, "state", None)
+                layout_channels = (
+                    list(
+                        getattr(
+                            getattr(state_snapshot, "epoch", None),
+                            "channel_names",
+                            (),
+                        )
+                        or ()
+                    )
+                    + list(
+                        getattr(
+                            getattr(state_snapshot, "raw", None),
+                            "channels",
+                            (),
+                        )
+                        or ()
+                    )
+                    if publication is not None
+                    else []
+                )
+                self.electrode_layout_btn.setEnabled(
+                    layout_capability.enabled or bool(layout_channels)
+                )
                 self.electrode_layout_btn.setToolTip(
                     "Map existing EEG channels to reviewed electrode positions"
                     if layout_capability.enabled
@@ -686,6 +712,9 @@ class DatasetSidebar(QWidget):
                     + (f" ({layout.source})" if layout.source else "")
                     + f" — {layout.positioned_channel_count}/"
                     f"{layout.channel_count} EEG channels positioned"
+                )
+                self.electrode_layout_status.setText(
+                    self._electrode_layout_status_text(layout),
                 )
                 if current_layout != self._last_layout_status:
                     self._last_layout_status = current_layout
@@ -761,6 +790,22 @@ class DatasetSidebar(QWidget):
                 )
 
             self._fit_action_labels()
+
+    @staticmethod
+    def _electrode_layout_status_text(layout: Any) -> str:
+        """Project the published layout state into a compact sidebar status."""
+        status = str(getattr(layout, "status", "not_configured"))
+        source = str(getattr(layout, "source", "") or "").lower()
+        positioned = int(getattr(layout, "positioned_channel_count", 0) or 0)
+        channel_count = int(getattr(layout, "channel_count", 0) or 0)
+        if status in {"pending", "preparing"}:
+            return "Preparing BIDS layout…"
+        if status == "failed":
+            return "BIDS layout unavailable"
+        if not source:
+            return "No electrode layout"
+        source_label = "BIDS" if source == "bids" else "Manual"
+        return f"{source_label} layout · {positioned}/{channel_count} positioned"
 
     # --- Actions moved from Panel ---
 

@@ -1,54 +1,131 @@
 # XBrainLab Now
 
-最後更新：`2026-08-26`
+最後更新：`2026-08-27`
 
-## 目前焦點
+## Active slice：Electrode Layout BIDS polish
 
-Electrode Layout 可逆 BIDS flow 已 scope-complete；目前沒有 active product implementation。sandbox 外
-Basedpyright 揭露的三個 montage dialog optional dereference 已明確 narrowing，未改 layout、文案、互動
-或 owner。candidate 尚待新 exact-head CI；canonical handoff 仍被 `origin/main` 已存在的 composer／
-main-window type diagnostics 阻擋，因此維持 checkpoint，不宣稱 handoff-ready 或正式 manual acceptance。
+**Identity.** Worktree `/tmp/xbrainlab-electrode-layout-v1`，branch
+`feature/electrode-layout-dataset-v1`，base `origin/main` =
+`2c51d7b1e6ff83475f285f0db331becd3f87f5c1`，current head =
+`c8e6d475bef713ba64cc780f05bfc43b012b98fb`，Draft PR #58 to `main`。
+Root 保持 sole plan / scope / integration / CI / merge coordinator；Electrode builder 只修改這條
+branch 的 Electrode/BIDS 路徑；UI product reviewer、data-interpretation reviewer 與 root 都是唯讀
+reviewer。`settings.json` 是使用者本機設定，永不碰觸。
 
-### Electrode Layout checkpoint
+### 問題與 evidence
 
-- Dataset sidebar 已移除 BIDS generic information modal special case；同一 dialog 先顯示 compact
-  summary，再由 `Change Layout` 展開既有 picker。只有 `Replace Layout` 或 `Use BIDS Layout`
-  會送出 command；Back／Cancel 與 Auto Match 不先寫入 persisted mapping。
-- 同一 import 的 ready compatible BIDS snapshot 可跨多次 manual override 保留，explicit restore
-  不重讀 sidecar；new import／reset、trainer guard 與 generation fence 均 fail closed。
-- owners 維持不變，沒有新增 command name／tool／module／state machine／compatibility path；production
-  change 是 8 files、`+266/-54/net +212` LOC，未觸發 complexity review 門檻。
-- TDD red 先因缺少 restore lifecycle 得到 1 failed／25 passed；dirty-source root checkpoint 的直接
-  unit/integration/UI suite 是 518 passed。CI 後續揭露 dynamic dialog fake 的未知 accessor 會被
-  generic truthiness 誤判為 restore intent；現只接受 exact boolean `True`，原失敗案例與 518-case
-  focused suite 均通過。Ruff、architecture compliance、MkDocs strict 與兩個 offscreen UI artifacts
-  通過。這些不取代 WSLg 人工驗收。
-- sandbox 外 Basedpyright 的可信掃描先揭露 12 個新 diagnostics；本 slice 三個 montage dialog finding
-  已全數消失，剩餘 9 個都位於 branch 未修改且與 `origin/main` 相同的 composer／main-window source。
-  dialog regression 是 25 passed，完整 focused suite 維持 518 passed。
+- BIDS summary artifact 顯示為平鋪 debug text（Layout／Source／Coverage／Coordinate frame）與三個
+  同優先按鈕，沒有產品階層；picker 同時競爭 Auto Match、Clear Mapping、Back／Cancel／Replace。
+- Dataset 的 Electrode Layout 只有按鈕／tooltip，缺少可掃讀的 current layout、coverage 與 loading
+  state。BIDS 和 manual layout 的差異及可 restore 的 retained snapshot 不夠清楚。
+- 非 BIDS channel mapping 已可工作，但未將「保守預填、人工確認、不跨 dataset 誤用」明確收斂成
+  deterministic product behavior。
+- 既有可逆 BIDS lifecycle、command boundary、generation fence 及兩入口已存在；本 slice 是視覺與
+  reviewed mapping polish，不能重建第二套 montage owner 或 mutation path。
 
-### Data Import performance checkpoint
+### Outcome 與 scope
 
-- 在 WSL `/mnt/d` 的 OpenNeuro ds003061 `sub-001`（一次 warm-up、三次 fresh
-  `ApplicationService` catalog → review → apply → background idle）中，final net `-5` candidate
-  blocking median 是 `12.046162s`，background median 是 `1.530436s`，stable-idle median 是
-  `13.558181s`。10 秒 performance gate 未通過。
-- exact `31b79daf` read-only audit：Review 約 `4.6s`，有 241 次 `resolve`、627 次 `stat`；
-  `_scan_after_resource_preflight` cumulative `3.523s`，兩次 `bids_summary` cumulative
-  `1.534s`。`/mnt/d` repeated `lstat` 是 dominant cost；約 190 MB 的 Review identity hash、
-  EEGLAB load 與 session copy 不是主因。
-- 新 characterization 證明 preflight BIDS summary（`materialize=False`、無 metadata guard）與
-  admitted materialization（`materialize=True`、有 admitted guard）是不同安全階段；後者才可
-  產生 participants／sidecar metadata。symlink/containment 行為維持既有 focused test。
-- 因此不能安全 deduplicate：preflight 的 layout/events/channels selected scope 是 resource
-  admission 輸入；以 materialized output 取代它會倒置 admission，重用 preflight output 會讓
-  未 admitted metadata 進入 candidate。沒有 production change。
-- Apply final full rehash 與 `SourceFileBoundary` 維持必要安全邊界；不為速度弱化它們。
+- Dataset `Channels` 正下方顯示非互動狀態：`BIDS layout · N/N positioned`、
+  `Manual layout · N/N positioned`、`Preparing BIDS layout…` 或 `No electrode layout`。
+- Dataset／Visualization 兩入口都開同一 dialog，維持同一 `ApplyMontageCommand` /
+  `ApplicationService` mutation path。
+- Summary 成為正式 status card：`Electrode Layout`、BIDS context、layout status、coverage、coordinate
+  frame；每個 state 一個 primary action。BIDS current 為 `Close` + `Change layout…`；manual override
+  retained BIDS snapshot 為 `Choose another layout…`、`Close` + `Restore BIDS layout`；training lock 仍可
+  查看、但不可變更並顯示原因。
+- Picker 固定 hierarchy：layout selector → table toolbar (`Re-run matching`、`Clear mapping`) →
+  mapping table → footer。BIDS footer 為 Back／Cancel／Replace，non-BIDS 為 Cancel／Apply；每一頁僅一個
+  blue primary action。
+- Non-BIDS prefill 以 deterministic normalized channel names 排名 builtin montage；唯一最佳 layout 才
+  preselect，且只填一對一可信 mapping。collision、alias ambiguity、EOG／EMG、純數字與 unknown 保持
+  blank。永不 auto-apply；Cancel 零 mutation。
+- Reviewed mapping 只在 exact ordered channel schema 相同時重用；不得跨 dataset silently reuse legacy
+  mapping，亦不得破壞性清除舊設定。
 
-### Next handoff
+### 明確 non-goals
 
-- 將 Electrode Layout type repair 建立 focused commit 並更新 draft PR，對 pushed exact head 重跑 CI。
-  若 CI 通過，回報 scope-complete checkpoint；canonical main type debt 必須另行決定／修復後，才可
-  宣稱 handoff-ready、進行正式 WSLg acceptance，並在明確 merge approval 後合併。
-- 已知限制是 blocking 約 `12.046s`；不宣稱 performance gate 達成或 handoff-ready。root
-  `settings.json` 是使用者本機設定，不納入此 slice。
+- 不改 shared Information／Warning／Error modal style、其他 dialog framework 或全站樣式。
+- 不改 Assistant prompt/controller/eval、`set_montage` publication policy、tool schema 或 GUI handoff
+  contract；它們屬 Accuracy 支線。
+- 不在 app 內加入 `Suggested` 標籤、教學卡、help text 或新 tooltip；review-before-apply 的說明留給
+  後續外部使用者文件。
+- 不改 Epoch channel axis、BIDS import/label semantics、trainer policy、資料掃描效能或 generic
+  persistence architecture。
+
+## Complexity review
+
+Current worktree relative to `origin/main` touches **15 production files**, `+880/-411/net +469` LOC，
+同時超過 12 production files 與 net +300，必須在此後的所有 polish 修改前保持 complexity review。
+
+- **Owners before/after:** `ApplicationService` remains the only authoritative montage mutation/
+  publication owner; `BidsMontagePreparationCoordinator` remains bounded async preparation owner;
+  `DatasetSidebar` / `MontagePickerDialog` remain presentation and human confirmation only. No new owner,
+  command, public class, state machine, compatibility path or persistence authority is permitted.
+- **Reuse/deletion first:** retain both visible Dataset and Visualization Electrode Layout entrances while
+  reusing their same dialog/open route, current state query, projection, retained BIDS snapshot and
+  `ApplyMontageCommand`; remove/reduce only generic BIDS information-modal branching and duplicated
+  internal presentation/action policy.
+- **Why one PR remains coherent:** all touched files serve one workflow—read current layout, human-review a
+  mapping, then confirmed apply/restore through the existing command spine. A separate shared-modal or
+  Assistant change is explicitly excluded. If new work requires a new owner, crosses 1,500 production LOC,
+  or cannot be tied to this workflow, split it to a new branch rather than extend PR #58.
+
+## Data and interaction invariants
+
+- BIDS geometry is observed selected-run evidence, not a claim of full BIDS validation. BIDS metadata may
+  be limited/partial; partial coverage remains visible and must not reorder/slice the data channel axis.
+- A manual override is a reviewed user choice. The ready compatible BIDS snapshot may be restored during
+  the same import; new import/reset, trainer guard, and stale generation fail closed.
+- BIDS and non-BIDS mapping both require human confirmation before command submission. UI readiness/error
+  text projects backend truth and never creates a second capability policy.
+- Loading, failed preparation, no-layout, partial coverage, locked training, Cancel, Back, and stale
+  results must be recoverable and must not partially mutate authoritative state.
+
+## Implementation and test-first sequence
+
+1. Establish/extend smallest red UI/behavior tests for Dataset status projection, summary action hierarchy,
+   non-BIDS unique/tied/ambiguous prefill, exact-schema reuse, and Cancel zero mutation. Characterize any
+   existing behavior-preserving move before structural edits; do not manufacture mock choreography.
+2. Update presentation using existing dialog/sidebar owner boundaries only; retain command path and apply
+   the minimal backend projection needed for truthful status/pre-fill.
+3. Run focused backend/application tests for BIDS snapshot lifecycle, capability/trainer guard, generation
+   fence and command confirmation; run focused UI dialog/sidebar tests for default, loading, error, partial,
+   locked, cancel, repeat and narrow-width states.
+4. Capture and inspect offscreen artifacts for BIDS current, manual override/restore, non-BIDS partial
+   mapping, loading/error and narrow/DPI layout. Offscreen is evidence only; WSLg manual acceptance remains
+   required before merge.
+5. Run required source-diverse dataset gate because this is BIDS/import/visualization-adjacent. Record exact
+   commands, artifact paths and their claim boundary; do not claim handoff-ready when any canonical gate is
+   unavailable or fails.
+
+## Review, stop condition and UI approval
+
+The user has explicitly approved this visible UI scope: BIDS Electrode Layout, Dataset status, mapping
+hierarchy and non-BIDS safe prefill; both current entrances remain. Builder supplies exact HEAD, diff/LOC,
+focused tests and artifacts. Independent UI reviewer checks hierarchy, contrast, wrapping, clipping,
+keyboard/focus, dialog geometry, one-primary-action, default/narrow/DPI/loading/error/blocked/cancel states.
+Data reviewer verifies selected-run provenance, partial/limited semantics, schema reuse and zero-mutation
+failure paths. Root independently audits the exact SHA and accepts only in-scope blocking findings.
+
+### Current implementation checkpoint
+
+- Red baseline: the two focused UI files reported **6 failed / 46 passed** before repair: no sidebar status
+  projection, old BIDS primary-action hierarchy, and unsafe tie/duplicate/schema-reuse mapping behavior.
+- Current repair keeps both entrances on the existing dialog and command path; it adds truthful Dataset status,
+  summary card/action hierarchy, conservative non-BIDS prefill and schema-bound reviewed mapping reuse. Current
+  total production diff is the complexity-review value above; this repair itself changes only the existing
+  `DatasetSidebar` and `PickMontageDialog` presentation owners.
+- Green evidence: focused UI/application/data run is **78 passed / 345 deselected**; architecture montage
+  ownership sweep is **6 passed / 246 deselected**; ruff check/format and `git diff --check` pass. The public
+  BIDS fixture plus montage-preparation suite is included in the 78 tests; its 9 MNE warnings are pre-existing
+  loader/type warnings, not test failures.
+- Offscreen artifacts inspected under `/tmp/xbrainlab-electrode-artifacts/`: BIDS current, manual restore,
+  BIDS picker, non-BIDS conservative prefill, sidebar loading and sidebar error. They demonstrate hierarchy
+  and no clipping in the captured widths; they are not WSLg/native manual acceptance.
+- Remaining handoff work: canonical source-diverse dataset gate, pushed exact-head CI, independent UI/data
+  review and WSLg manual acceptance. Therefore this branch remains a **checkpoint**, not handoff-ready.
+
+Stop at a pushed exact commit plus focused evidence, source-diverse dataset evidence, reviewer/root
+checkpoint and Draft PR update. Do not merge, call it handoff-ready, or claim manual acceptance until the
+user has WSLg-tested the same exact SHA and explicitly approves merge. A later source change invalidates
+that acceptance.
