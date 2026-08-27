@@ -79,7 +79,6 @@ class ModalAlertDialog(BaseDialog):
         self._destructive = destructive
         self.message_label: QLabel
         self.message_scroll_area: QScrollArea | None = None
-        self.content_card: QFrame | None = None
         self.severity_icon_label: QLabel | None = None
         self.title_label: QLabel | None = None
         self.severity_label: QLabel
@@ -122,7 +121,7 @@ class ModalAlertDialog(BaseDialog):
             layout.addLayout(heading_row)
             self._add_message(layout)
         else:
-            self._add_acknowledgement_content_card(layout)
+            self._add_acknowledgement_content(layout)
 
         button_box = QDialogButtonBox()
         button_box.setObjectName("ModalAlertButtons")
@@ -173,17 +172,7 @@ class ModalAlertDialog(BaseDialog):
             self.acknowledge_button = self.confirm_button
         layout.addWidget(button_box, alignment=Qt.AlignmentFlag.AlignRight)
 
-    def _add_acknowledgement_content_card(self, layout: QVBoxLayout) -> None:
-        content_card = QFrame()
-        self.content_card = content_card
-        content_card.setObjectName("ModalAlertContentCard")
-        content_card.setProperty("severity", self._severity.value)
-        content_card.setFrameShape(QFrame.Shape.StyledPanel)
-
-        card_layout = QVBoxLayout(content_card)
-        card_layout.setContentsMargins(16, 14, 16, 14)
-        card_layout.setSpacing(8)
-
+    def _add_acknowledgement_content(self, layout: QVBoxLayout) -> None:
         heading_row = QHBoxLayout()
         heading_row.setSpacing(10)
         severity_icon_label = QLabel()
@@ -197,23 +186,26 @@ class ModalAlertDialog(BaseDialog):
         severity_icon_label.setPixmap(
             self.style().standardIcon(_SEVERITY_PIXMAPS[self._severity]).pixmap(20, 20)
         )
-        heading_row.addWidget(severity_icon_label)
+        heading_row.addWidget(
+            severity_icon_label,
+            alignment=Qt.AlignmentFlag.AlignTop,
+        )
 
-        heading_copy = QVBoxLayout()
-        heading_copy.setSpacing(2)
+        copy_column = QVBoxLayout()
+        copy_column.setSpacing(2)
+        copy_column.setAlignment(Qt.AlignmentFlag.AlignTop)
         title_label = QLabel(self.windowTitle())
         self.title_label = title_label
         title_label.setObjectName("ModalAlertTitle")
         title_label.setWordWrap(True)
         title_label.setAccessibleName("Alert title")
-        heading_copy.addWidget(title_label)
+        copy_column.addWidget(title_label)
         self.severity_label = self._create_severity_label()
-        heading_copy.addWidget(self.severity_label)
-        heading_row.addLayout(heading_copy, 1)
-        card_layout.addLayout(heading_row)
+        copy_column.addWidget(self.severity_label)
+        self._add_message(copy_column)
+        heading_row.addLayout(copy_column, 1)
 
-        self._add_message(card_layout)
-        layout.addWidget(content_card)
+        layout.addLayout(heading_row)
 
     def _create_severity_label(self) -> QLabel:
         severity_label = QLabel(_SEVERITY_LABELS[self._severity])
@@ -240,12 +232,9 @@ class ModalAlertDialog(BaseDialog):
             )
             message_scroll_area.setMaximumHeight(_LONG_MESSAGE_MAXIMUM_HEIGHT)
             message_scroll_area.setStyleSheet(
-                f"""
-                QScrollArea#ModalAlertMessageScrollArea,
-                QScrollArea#ModalAlertMessageScrollArea > QWidget > QWidget {{
-                    background-color: {Theme.BACKGROUND_MID};
-                }}
-                """
+                "QScrollArea#ModalAlertMessageScrollArea, "
+                "QScrollArea#ModalAlertMessageScrollArea > QWidget > QWidget "
+                "{ background-color: transparent; }"
             )
             message_scroll_area.setWidget(self.message_label)
             layout.addWidget(message_scroll_area)
@@ -263,12 +252,6 @@ class ModalAlertDialog(BaseDialog):
         return f"""
             QDialog#XBrainLabModalAlert {{
                 border: 1px solid {Theme.BACKGROUND_LIGHT};
-                border-radius: 8px;
-            }}
-            QFrame#ModalAlertContentCard {{
-                background-color: {Theme.BACKGROUND_MID};
-                border: 1px solid {accent};
-                border-left: 4px solid {accent};
                 border-radius: 8px;
             }}
             QLabel#ModalAlertTitle {{

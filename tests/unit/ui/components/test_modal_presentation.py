@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtTest import QTest
-from PyQt6.QtWidgets import QApplication, QPushButton
+from PyQt6.QtWidgets import QApplication, QFrame, QPushButton
 
 from XBrainLab.ui.components.modal_presentation import (
     AlertSeverity,
@@ -41,7 +41,7 @@ def test_alert_uses_xbrainlab_dialog_shell_and_wraps_message(qtbot):
         (AlertSeverity.CRITICAL, "Import failed", "Error"),
     ],
 )
-def test_acknowledgement_alert_has_severity_card_icon_and_visible_title_hierarchy(
+def test_acknowledgement_alert_has_single_surface_hierarchy_without_inner_card(
     qtbot,
     severity,
     title,
@@ -54,14 +54,28 @@ def test_acknowledgement_alert_has_severity_card_icon_and_visible_title_hierarch
     )
     qtbot.addWidget(dialog)
 
-    assert dialog.content_card.objectName() == "ModalAlertContentCard"
-    assert dialog.content_card.property("severity") == severity.value
+    assert dialog.findChild(QFrame, "ModalAlertContentCard") is None
+    assert all(
+        frame.frameShape() is not QFrame.Shape.StyledPanel
+        for frame in dialog.findChildren(QFrame)
+    )
     assert dialog.severity_icon_label.objectName() == "ModalAlertSeverityIcon"
     assert dialog.severity_icon_label.pixmap() is not None
     assert not dialog.severity_icon_label.pixmap().isNull()
     assert dialog.title_label.objectName() == "ModalAlertTitle"
     assert dialog.title_label.text() == title
     assert dialog.severity_label.text() == severity_text
+    dialog.show()
+    qtbot.waitUntil(dialog.isVisible)
+    assert dialog.message_label.x() == dialog.title_label.x()
+    assert all(
+        label.height() == label.minimumSizeHint().height()
+        for label in (
+            dialog.title_label,
+            dialog.severity_label,
+            dialog.message_label,
+        )
+    )
 
 
 def test_acknowledgement_alert_has_exactly_one_ok_action(qtbot):
@@ -132,7 +146,10 @@ def test_long_alert_uses_bounded_scrollable_message_view(qtbot):
 
     assert dialog.message_scroll_area is not None
     assert dialog.message_scroll_area.maximumHeight() == 320
+    assert "background-color: transparent" in dialog.message_scroll_area.styleSheet()
     assert dialog.width() <= 640
+    assert dialog.severity_icon_label.y() == dialog.title_label.y()
+    assert dialog.message_scroll_area.x() == dialog.title_label.x()
     scroll_bar = dialog.message_scroll_area.verticalScrollBar()
     assert scroll_bar.maximum() > 0
     scroll_bar.setValue(scroll_bar.maximum())

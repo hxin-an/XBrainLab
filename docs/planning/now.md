@@ -4,18 +4,25 @@
 
 ## 目前焦點
 
-### Active slice：`2026-08-27-ui-montage-accuracy / shared-alert-card`
+### Active slice：`2026-08-27-ui-montage-accuracy / shared-alert-single-surface`
 
 - **Branch / base**：`ui/shared-alert-card-v1`，base `main` @
   `2c51d7b1e6ff83475f285f0db331becd3f87f5c1`。
-- **問題與證據**：目前共用的 pure-text Information／Warning／Error acknowledgement dialogs
-  是平鋪文字與等權按鈕的 presentation，缺少 severity、標題與內容層級；使用者已多次指出
-  warning panel 視覺品質不符合產品風格。此 slice 的可見證據為既有警告 dialog 截圖與本次
-  completion 後的 default／narrow／long-text screenshots；offscreen 僅供 layout evidence，不能
-  取代 WSLg 手測。
+- **問題與證據**：使用者手測否決現行 acknowledgement alert 的「dialog 裡再包一張卡」外觀：
+  `ModalAlertContentCard` 的 background／border／accent left edge 使單一警告被看成卡片中又有卡片。
+  雖然 severity、標題、正文與單一 OK 已存在，這個內層 surface 破壞原本產品 dialog 的清楚層級。
+  本 slice 以 default／narrow／long-text offscreen screenshots 作 layout evidence；它們不能取代
+  WSLg 手測。
+- **Review refinement**：single-surface 初版的 icon/title/severity 與 message 有兩個不同的左邊界：
+  icon 後的 title/severity 在右側 column，但 message 回到 dialog 左邊界，long-text 時尤其破壞閱讀軸線。
+  將全部文字 copy（含透明 scroll viewport）放入 icon 右側同一 content column；footer OK 仍維持右對齊。
+- **Review refinement 2**：初次 column 修正仍讓 copy column 的 available height 均分給 title／severity／message，
+  造成視覺上的大段空白。column 使用 `AlignTop` 收斂其內容，讓行間只保留 layout 的小 spacing，將剩餘空白
+  留在 compact copy block 與 footer 之間；不加固定 screenshot pixel size。
 - **Observable outcome**：所有既有 acknowledgement alert（Information、Warning、Error）維持
-  現有 `show_*` call contract 與單一確認行為，但以一致的 severity icon、明確標題、accent card、
-  正文層級與單一 `OK` 呈現；長文可閱讀／選取／捲動，且 keyboard close 行為不退步。
+  `show_*` call contract、severity icon、標題、severity、正文、單一 `OK`、Enter／Escape 與長文
+  捲動，但只使用 dialog 的一個表面：不得有 bordered／background 的內層 content card 或 styled
+  panel。
 - **Scope**：只改共用 acknowledgement-alert presentation 與其直接 focused tests/screenshots；
   覆蓋三種 severity、長文、窄視窗、DPI、Enter／Escape／close。
 - **Non-goals**：不改 confirmation、destructive modal、安全預設、side effect、modal ownership、
@@ -32,46 +39,51 @@
 - **Reuse/delete first**：沿用既有 dialog、`show_*` API、theme primitives 與 keyboard handling；
   優先刪除/整併散落的 plain-text severity presentation，而非新增 alert framework。若 source
   inspection 發現只有單一 caller 的 legacy severity helper，應在同一 diff 移除或收斂。
-- **Actual**：1 production file，`+108/-31` production LOC（net `+77`），無 public API、owner delta 或
-  complexity trigger；另有 1 focused test file 與 1 ignored-dev-artifact capture script。未新增
-  public class、state machine 或 compatibility path。
+- **Actual / deletion intent**：既有 `ModalAlertDialog` 是唯一 owner。刪除 acknowledgement-only
+  `ModalAlertContentCard`／`content_card` presentation path，將現有 icon/title/severity/message 直接
+  放在 dialog layout；不新增 class、API、owner、state machine 或 compatibility path。confirmation
+  的既有 heading/message path 完全不動。目前 production delta 是 `+17/-34`（net `-17`），不觸發
+  complexity review。
 
 ### 實作與驗證
 
-1. Builder 先定位共用 alert route、theme tokens 與所有 acknowledgement callers，確認
-   confirmation branch 未共用欲改的 presentation path。
-2. 用最小可觀察的 red test 描述 severity/title/one-acknowledgement/keyboard/long-text behavior；
-   不以 mock choreography 取代 UI-observable state。
-3. 只在既有 `ModalAlertDialog` 內做最小 coherent presentation repair，重跑相同 focused tests
-   與直接 adjacent evidence。
-4. 產出 Information／Warning／Error、long-text、narrow/DPI screenshot 及 user-like walkthrough。
-   Offscreen screenshot 只能證明 geometry；WSLg manual acceptance 仍由使用者完成。
-5. 交付 exact HEAD、base、clean/explained status、production LOC、focused command/output、
-   screenshots 與已知限制；再進入 independent UI review 和 root exact-SHA verification。
+1. 加入一個最小 red UI-observable test：acknowledgement 不含 `ModalAlertContentCard`／styled panel，
+   同時保留 icon/title/severity/message、單一 OK、Enter／Escape 與 long-text scroll。不得以 mock
+   choreography 取代 UI-observable state。
+2. 只在既有 `ModalAlertDialog` 做 deletion-first repair，讓 acknowledgement content 直接位於
+   dialog layout；再將 title/severity/message（含 scroll viewport）放入 icon 右側的一個 copy column，
+   以 layout parentage 而非 brittle absolute pixels 保護共同左軸。confirmation path 不動。
+3. 重跑 focused tests、Ruff、diff check，並重新產出／檢視 default offscreen artifacts。
+4. 交付 root review；此 branch 不 push、merge 或記錄新的 manual acceptance。source 改動使先前
+   WSLg acceptance 無效，必須重新手測。
 
 ### Builder evidence（待 reviewer / root exact-SHA）
 
-- **Red**：`test_acknowledgement_alert_has_severity_card_icon_and_visible_title_hierarchy`
-  在 pre-repair source 對三種 severity 都因缺少 `content_card` 失敗；其餘既有 coverage 通過。
+- **Red**：新的
+  `test_acknowledgement_alert_has_single_surface_hierarchy_without_inner_card` 在 pre-repair source
+  對 Information／Warning／Error 三個 parametrized cases 都因 `dialog.content_card` 不是 `None`
+  失敗；這直接重現被否決的 nested-card surface。
 - **Green**：
-  `timeout 90s prlimit --core=0 -- /home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-xaLO7TCQ-py3.12/bin/python -m pytest --capture=sys tests/unit/ui/components/test_modal_presentation.py -q`
-  → `16 passed`。新增 acknowledgement Escape-close 與 long-message vertical scrollbar movement
-  assertion；既有 destructive confirmation Escape/default/click/public mapping tests 維持通過。
-- **Static**：Ruff 對 `modal_presentation.py`、focused test 與 capture script 通過；`git diff --check`
-  通過。
-- **Artifacts**：default offscreen run 以 `PYTHONPATH=$PWD QT_QPA_PLATFORM=offscreen` 執行
-  `scripts/dev/capture_modal_alert_presentation.py`，產生
-  `build/dev-artifacts/modal-alert-presentation/{information,warning,error,long-text,narrow}.png`
-  與 source-bound manifest。另以 `QT_SCALE_FACTOR=1.5 --scale-label 150-percent
-  --expected-device-pixel-ratio 1.5` 產生相同檔名於
-  `build/dev-artifacts/modal-alert-presentation-150pct/`；manifest 記錄 observed DPR `1.5`、
-  logical DPI `96.0`。Builder 已檢視 long-text/narrow 150%：無 clipping，scroll viewport 保持
-  dark card background。
-- **Claim boundary**：兩組都是 Linux Qt offscreen layout evidence；150% run 只證明 Qt reported
-  DPR 與此 capture path 的 geometry，不能取代 WSLg／Windows native DPI 或人類手測。
-- **Status**：產品碼、focused test 與 default/150% offscreen layout evidence 已完成；仍是
-  `checkpoint`，缺 independent UI review、root exact-SHA verification、WSLg manual acceptance
-  和使用者 merge approval。
+  `timeout 90s prlimit --core=0 -- env PYTHONPATH="$PWD:<locked site-packages>" MNE_DONTWRITE_HOME=true MPLCONFIGDIR=/tmp/xbrainlab-alert-green-final2 QT_QPA_PLATFORM=offscreen <locked python> -S -m pytest --capture=sys tests/unit/ui/components/test_modal_presentation.py tests/unit/ui/test_dialog_button_policy.py -q`
+  → `19 passed`。single-surface test 保留 icon/title/severity/message，驗證沒有
+  `ModalAlertContentCard` 或 `StyledPanel`；shown dialog 的 `message_label`／long-text scroll
+  viewport 都與 title 共享相對左軸，long-text icon 與 title 共用 top edge；short alert 三個 text
+  labels 都不超過其 natural `minimumSizeHint` height，防止 column 再把空白分散到 text rows。long-text
+  test 也驗證透明 scroll viewport、vertical movement。confirmation 的 Escape/default/click/button policy
+  維持通過。
+- **Static**：Ruff 對 `modal_presentation.py`、focused test 與 capture script 的 check／format
+  皆通過；`git diff --check` 通過。
+- **Artifacts**：以 `PYTHONPATH=$PWD QT_QPA_PLATFORM=offscreen` 執行
+  `scripts/dev/capture_modal_alert_presentation.py --output-dir
+  build/dev-artifacts/modal-alert-presentation-single-surface-compact`，產生
+  `information.png`、`warning.png`、`error.png`、`long-text.png`、`narrow.png` 與 source-bound
+  `modal-alert-presentation-evidence.json`。builder 檢視 warning／narrow／long-text：icon、title、
+  severity、message 與單一 OK 直接位在 outer dialog；long-text viewport 為透明、無 inner card，
+  scrollbar 可見且文字沒有 clipping。所有 copy 在 icon 右側的單一 top-aligned compact column 左對齊、
+  icon top-aligned；severity 字樣維持為次要黃色 metadata，沒有與白色 title 競爭。
+- **Claim boundary**：Linux Qt offscreen layout evidence不能取代 WSLg／Windows native DPI 或人類手測。
+- **Status**：builder checkpoint。worktree 尚未 commit，不能稱 exact-SHA evidence；等待 root
+  review、commit 後的 exact-SHA verification、新的 WSLg manual acceptance 與使用者 merge approval。
 
 ### Roles、review 與停止條件
 
