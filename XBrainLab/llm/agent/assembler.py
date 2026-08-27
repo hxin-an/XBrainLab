@@ -295,8 +295,7 @@ Action Contract Catalog (input definitions, never an output array):
             sections.append(
                 "Direct preprocessing semantic checkpoint: Band-pass / 帶通 means "
                 "apply_bandpass_filter only; Notch / 陷波 means "
-                "apply_notch_filter only. They are mutually non-substitutable. "
-                "Filter / 濾波 alone does not name either action; message-only."
+                "apply_notch_filter only. They are mutually non-substitutable."
             )
         if has_unavailable_actions:
             sections.append(
@@ -304,24 +303,17 @@ Action Contract Catalog (input definitions, never an output array):
                 "listed reason instead of asking for the unavailable action's "
                 "settings; do not execute a prerequisite named by that reason."
             )
-        if has_callable_actions:
-            sections.extend(
-                (
-                    "Generic action envelope:",
-                    '{"workflow_stage":"'
-                    + workflow_stage
-                    + '","tool_name":"<exact enabled action name>",'
-                    '"parameters":{...}}',
-                    "The parameters object must match the chosen contract. Use {} "
-                    "only when that contract has no parameter properties; never "
-                    "invent choices that belong to the opened product UI.",
-                )
-            )
         sections.extend(
             (
-                "Initial typed-clarification envelope: one exact direct action "
-                "missing required input uses this shape; missing_inputs lists "
-                "every and only missing required field:",
+                "Message-only response envelope:",
+                '{"workflow_stage":"'
+                + workflow_stage
+                + '","tool_name":"respond_to_user","parameters":{"message":'
+                '"<concise response or one clarifying question>"}}',
+                "Initial typed-clarification envelope: broad family requests stay "
+                "message-only; one exact direct action missing required input uses "
+                "this shape, with missing_inputs listing every and only missing "
+                "required field:",
                 '{"workflow_stage":"'
                 + workflow_stage
                 + '","tool_name":"respond_to_user","parameters":{"message":'
@@ -336,15 +328,19 @@ Action Contract Catalog (input definitions, never an output array):
                 "only; use only the latest reply's requested values; preserve "
                 "verified values; do not switch action or reconstruct pending_action."
             )
-        sections.extend(
-            (
-                "Final no-action envelope (replace the message placeholder):",
-                '{"workflow_stage":"'
-                + workflow_stage
-                + '","tool_name":"respond_to_user","parameters":{"message":'
-                '"<concise response or one clarifying question>"}}',
+        if has_callable_actions:
+            sections.extend(
+                (
+                    "Generic action envelope:",
+                    '{"workflow_stage":"'
+                    + workflow_stage
+                    + '","tool_name":"<exact enabled action name>",'
+                    '"parameters":{...}}',
+                    "The parameters object must match the chosen contract. Use {} "
+                    "only when that contract has no parameter properties; never "
+                    "invent choices that belong to the opened product UI.",
+                )
             )
-        )
         return tuple(sections)
 
     def _application_allowed_tools(
@@ -467,13 +463,15 @@ Action Contract Catalog (input definitions, never an output array):
             callable_tools=set(allowed_tools),
             workflow_stage=workflow_stage,
         )
-        generation = policy_read.backend_generation
         receipt = self._tool_input_receipt
         active_receipt = (
             receipt
             if (
                 receipt is not None
-                and receipt.matches(receipt.command_name, generation)
+                and receipt.matches(
+                    receipt.command_name,
+                    policy_read.backend_generation,
+                )
                 and receipt.command_name in allowed_tools
                 and not workflow_status_unavailable
             )
