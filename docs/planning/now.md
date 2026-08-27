@@ -11,6 +11,11 @@ final Dataset-owned Electrode flow; they must not be handed off or merged indepe
 integration branch owns no additional Qt layout, theme, Dataset dialog, or root `settings.json`
 changes.
 
+**Integration checkpoint.** This stack does not reopen the completed Electrode slice: the final
+Dataset-owned Electrode route is a fixed dependency beneath the Assistant target/evidence and L2
+admission work. Any cross-branch semantic failure is a blocker for this combined candidate, not
+authority to edit that UI path from the Assistant slice.
+
 ### Problem and outcome
 
 The current Granite 4.0 Micro candidate can select an unsafe substitute action for negated,
