@@ -62,7 +62,7 @@ At the current base source, the scorer runner SHA-256 is
 `c04bf392a2603c7022009b9196927bce7931ba605766dd7b74408e2d65df73f9`; fixed prompt-policy
 SHA-256 is `3215cd2106baa022e64a07ad1c10a15e6a730bb10f76d9b9b2394ebd58e4133a`; context
 assembler SHA-256 is `eba7a9b58925bea46bdd1cf37cd1ce72a5c070061ecb9b756137a3e07ffea1da`.
-The v3 tracked development corpus is 48 cases with SHA-256
+The v4 tracked development corpus is 48 cases with SHA-256
 `13b5a4434781d7be89f6e5618395232e854376ac1020500b55d228cabb46be94`; the separately named
 32-case holdout corpus SHA-256 is
 `4919e5db805e34851ec32eeea199915a453316d0d68ca46b214d7dda1f0eca55`. Every user turn now
@@ -76,11 +76,15 @@ zero mutation, receipt lifecycle, format recovery, or any model score. `format_r
 the static final composed expectation; a future runner must separately record raw primary/repair
 taxonomy and observed final outcome.
 
-The loader derives its five direct schemas from registered real product tools and validates values
-through the same `ToolSchemaValidator`: resampling remains an integer, normalization keeps its
-registered enum, and reference retains its registered string type without an invented enum. Tests
-mutate fractional rates, invalid normalization values, invalid reference types, schema/step drift,
-and corpus content drift. Development/holdout exact digests and the frozen-v8 source identity
+The lightweight loader holds an explicit pinned experiment snapshot of the five direct-tool schemas:
+resampling remains an integer, normalization keeps its registered enum, and reference retains its
+registered string type without an invented enum. It is a frozen L0 corpus baseline, not a second
+authoritative runtime policy. Full-product CI lazily imports the real registry and
+`ToolSchemaValidator` for exact schema and representative validation parity; the module's `-S`
+subprocess proof hashes and loads without site-packages, Torch, MNE, or `XBrainLab` imports. Tests
+mutate missing/unknown/type/enum values (including fractional rates, invalid normalization values,
+and invalid reference types), schema/step drift, and corpus content drift. Development/holdout exact
+digests and the frozen-v8 source identity
 `f9b8595f2a0644d1caa57ed3f4aa3530825644a7` plus all four frozen corpus digests are pinned in the
 loader; any update requires an approved corpus-baseline decision, updating the explicit pin and
 this checkpoint together. Tests also lock the 81 frozen v8 denominator, two corpora's
