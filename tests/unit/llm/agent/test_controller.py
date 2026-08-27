@@ -1217,6 +1217,18 @@ class TestOnChunkReceived:
 
 # --- _on_generation_finished ---
 class TestOnGenerationFinished:
+    def test_callback_delegates_to_private_post_arbitration_completion(self, ctrl):
+        ctrl.current_response = "  plain product response  "
+        ctrl.is_processing = True
+        ctrl._turn_orchestrator.active_generation_id = 9
+        ctrl._complete_generation_response = MagicMock()
+
+        ctrl._on_generation_finished(9, [])
+
+        ctrl._complete_generation_response.assert_called_once_with(
+            "plain product response"
+        )
+
     def test_no_command_finalizes(self, ctrl):
         ctrl.current_response = "Just a regular reply, nothing special"
         ctrl._active_response_contract = AssistantResponseContract.NATURAL_LANGUAGE

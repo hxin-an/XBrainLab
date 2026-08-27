@@ -166,10 +166,15 @@ normal error-only publication/state delta advances generation (1→2 in the char
 no-trainer first attach remains a separate success path. No UI or production policy expansion is
 authorized by this test alignment.
 
-**Development-evaluator blocker:** the development evaluator still uses policy-bearing unbound
-harness methods rather than the controller's actual terminal lifecycle. It cannot certify receipt
-clearance, zero execution, or verified execution until that duplication is removed; no development
-score or product claim may use it in its current form.
+**Development-evaluator implementation checkpoint (2026-08-27):** the candidate removes the
+policy-bearing unbound harness route. Its development-only consumer constructs the real controller,
+parser, prompt/application publications, pending-interaction coordinator, verification layer, and
+attempt coordinator; it drives the controller's one private post-arbitration continuation and only
+observes an already verified execute boundary. Raw primary output, every strict-envelope repair,
+and the composed boundary are retained separately in an ignored checkpoint artifact. Bounded Qt
+shutdown requires the controller terminal signal, cleared worker, and stopped worker thread for
+each case. The deterministic 48-case oracle exercises this construction but is not a model run,
+development score, or product claim.
 
 ### Owners, deletion candidates, and complexity guard
 
@@ -184,19 +189,21 @@ Deletion candidates to verify by caller inventory before removal are the legacy
 the formal `WORKFLOW_HANDOFF` remains. Record production `+/-/net LOC`, changed production file
 count, owner delta, and an explicit split proposal before crossing any AGENTS complexity trigger.
 
-### Authorized next slice: private LLMController terminal-lifecycle evaluator seam
+### Implemented candidate slice: private LLMController terminal-lifecycle evaluator seam
 
-After this stack is clean, the only root-authorized follow-up is a private extraction inside the
-existing `LLMController` (roughly one production file). Both the worker callback and development
-evaluator must drive the same real terminal lifecycle; delete the policy-bearing unbound harness methods
-rather than adding a public class, owner, state machine, receipt, compatibility path, prompt, or
-tool. Test first: cancellation, different-tool, and stale publication must clear a receipt with zero
-execution; the evaluator execution sentinel may observe only the already verified execute boundary
-without mutation. Focused validation is the red/green controller and evaluator trajectory tests,
-the direct receipt/capability tests, ruff, architecture compliance, and `git diff --check`; no
-model/GPU or holdout access is allowed. Stop and return to root if this requires a public contract,
-additional owner, L3 verifier, prompt/UI change, or any semantic policy beyond the existing terminal
-lifecycle.
+The candidate is limited to a private extraction inside the existing `LLMController` plus the
+development-only consumer; both the worker callback and evaluator drive the same real terminal
+lifecycle. It deletes the policy-bearing unbound harness methods rather than adding a public class,
+owner, state machine, receipt, compatibility path, prompt, or tool. Cancellation, different-tool,
+and stale publication clear a receipt with zero execution; the evaluator execution sentinel observes
+only the already verified execute boundary without mutation. The measured `resample_data`
+direct-origin residual is bounded to its same-clause cue connectors: a value immediately before the
+resample cue and the Chinese cue-before-value connector `成`; it does not loosen numeric provenance
+for another tool or across sentences. Focused validation is the red/green controller and evaluator
+trajectory tests, direct receipt/capability tests, ruff, architecture compliance, and `git diff
+--check`; no model/GPU or holdout access is allowed. Stop and return to root if this requires a
+public contract, additional owner, L3 verifier, prompt/UI change, or any semantic policy beyond the
+existing terminal lifecycle.
 
 ### Experiment budget and promotion gates
 

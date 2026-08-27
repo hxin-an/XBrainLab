@@ -1049,6 +1049,18 @@ class LLMController(QObject):
 
         response_text = self.current_response.strip()
 
+        self._complete_generation_response(response_text)
+
+    def _complete_generation_response(self, response_text: str) -> None:
+        """Apply the terminal product lifecycle after generation arbitration.
+
+        The worker callback owns generation identity/arbitration.  This private
+        continuation owns every subsequent parser, recovery, receipt,
+        verification, presentation, and terminal transition so internal
+        evaluator sessions can exercise the same lifecycle without recreating
+        controller policy.
+        """
+
         if not response_text:
             self._handle_empty_response()
             return

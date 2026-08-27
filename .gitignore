@@ -81,6 +81,9 @@ artifacts/goal/*.jsonl
 artifacts/goal/*.pid
 artifacts/audit/
 
+# Development-only assistant accuracy reports retain full raw model text.
+artifacts/assistant_accuracy_development/
+
 # Jupyter Notebook
 .ipynb_checkpoints
 

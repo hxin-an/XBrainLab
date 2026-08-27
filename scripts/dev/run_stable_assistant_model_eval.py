@@ -13,7 +13,10 @@ from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
+from time import monotonic
 from typing import Any
+
+from PyQt6.QtCore import QCoreApplication, QEventLoop
 
 from XBrainLab.backend.application.capabilities import build_capability_policy
 from XBrainLab.backend.application.pipeline_stage import PipelineStage
@@ -33,12 +36,12 @@ from XBrainLab.llm.agent.parser import (
     ToolEnvelopeParseResult,
     ToolEnvelopeStatus,
 )
-from XBrainLab.llm.agent.pending_interaction import PendingInteractionCoordinator
 from XBrainLab.llm.agent.prompt_policy import STRICT_TOOL_RESPONSE_PROMPT_POLICY
 from XBrainLab.llm.agent.strict_envelope_recovery import (
     DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY,
     STRICT_ENVELOPE_EXHAUSTED_MESSAGE,
     StrictEnvelopeRecoveryAction,
+    StrictEnvelopeRecoveryDecision,
     StrictEnvelopeRecoveryRequest,
 )
 from XBrainLab.llm.agent.tool_attempt_coordinator import (
@@ -48,10 +51,10 @@ from XBrainLab.llm.agent.tool_attempt_coordinator import (
     ToolAttemptRequest,
 )
 from XBrainLab.llm.agent.tool_feedback import summarize_tool_result
-from XBrainLab.llm.agent.turn import AssistantToolInputReceipt
-from XBrainLab.llm.agent.turn_orchestrator import (
-    AssistantToolAttemptSession,
-    AssistantTurnOrchestrator,
+from XBrainLab.llm.agent.turn import (
+    AssistantResponseContract,
+    AssistantToolInputReceipt,
+    AssistantTurnCorrelation,
 )
 from XBrainLab.llm.agent.verifier import (
     ToolSchemaValidator,
@@ -198,7 +201,7 @@ class ClarificationAdmission:
     """One controller-admitted typed receipt retained for evaluator follow-up."""
 
     receipt: AssistantToolInputReceipt
-    harness: _EvaluatorControllerHarness
+    session: _EvaluatorControllerSession
     prompt_publication: PromptToolPublication
     backend_publication: ApplicationViewPublication
 
@@ -592,7 +595,7 @@ def _stage_catalog(
     )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class _EvaluatorApplicationRuntime:
     """Read one immutable evaluator publication without a second state source."""
 
@@ -609,12 +612,72 @@ class _PublicationBackedEvaluatorStudy(Study):
         pass
 
 
-class _EvaluatorControllerHarness:
-    """Minimal evaluator adapter that invokes the controller's existing policy.
+class _EvaluatorRagLifecycle:
+    """Keep evaluator controller construction free of RAG work and processes."""
 
-    It owns no policy: every admission, proposal selection, and continuation
-    transition below is an unbound ``LLMController`` method.  The harness only
-    supplies deterministic evaluator fixtures in place of Qt/RAG execution.
+    retriever = None
+
+    def retrieve(
+        self,
+        _turn_id: int,
+        _query: str,
+        _callback: Callable[[int, str, str, str], None],
+        *,
+        allowed_tool_names: frozenset[str] | None = None,
+    ) -> bool:
+        del allowed_tool_names
+        return False
+
+    def close(self) -> bool:
+        return True
+
+
+_EVALUATOR_QT_APPLICATION: list[QCoreApplication] = []
+_EVALUATOR_CONTROLLER_CLOSE_TIMEOUT_SECONDS = 2.0
+
+
+@dataclass(frozen=True, slots=True)
+class _ObservedStrictRecoveryDecision:
+    """One exact policy decision made by the real controller."""
+
+    decision: StrictEnvelopeRecoveryDecision
+
+
+class _StrictRecoveryDecisionObserver:
+    """Delegate controller recovery unchanged while retaining its decisions."""
+
+    def __init__(
+        self,
+        delegate: Any,
+        observed: list[_ObservedStrictRecoveryDecision],
+    ) -> None:
+        self._delegate = delegate
+        self._observed = observed
+
+    def decide(
+        self,
+        request: StrictEnvelopeRecoveryRequest,
+    ) -> StrictEnvelopeRecoveryDecision:
+        decision = self._delegate.decide(request)
+        self._observed.append(_ObservedStrictRecoveryDecision(decision))
+        return decision
+
+
+def _evaluator_qt_application() -> QCoreApplication:
+    """Keep evaluator-owned controller shutdown inside a Qt event host."""
+    application = QCoreApplication.instance()
+    if application is not None:
+        return application
+    _EVALUATOR_QT_APPLICATION.append(QCoreApplication([]))
+    return _EVALUATOR_QT_APPLICATION[-1]
+
+
+class _EvaluatorControllerSession:
+    """Drive one real controller terminal lifecycle without executable effects.
+
+    The adapter only supplies an immutable publication, host correlation, and
+    non-mutating execute observer. Parsing, strict recovery, receipt lifecycle,
+    verification, confirmation, and presentation remain on the real controller.
     """
 
     def __init__(
@@ -623,60 +686,258 @@ class _EvaluatorControllerHarness:
         registry: ToolRegistry,
         publication: ApplicationViewPublication,
     ) -> None:
-        self.registry = registry
-        self._turn_orchestrator = AssistantTurnOrchestrator()
-        self._turn_orchestrator.active_publication = PromptToolPublication.empty()
-        self._tool_attempt_session = AssistantToolAttemptSession()
-        self._max_tool_executions = 5
-        self._pending_interactions = PendingInteractionCoordinator()
-        self._history: list[dict[str, str]] = []
-        self._publication = publication
-        runtime = _EvaluatorApplicationRuntime(publication)
-        self.assembler = ContextAssembler(
-            registry,
-            _PublicationBackedEvaluatorStudy(),
-            application_runtime=runtime,
+        _evaluator_qt_application()
+        self._runtime = _EvaluatorApplicationRuntime(publication)
+        self._study = _PublicationBackedEvaluatorStudy()
+        self.controller = LLMController(
+            self._study,
+            rag_lifecycle=_EvaluatorRagLifecycle(),
         )
-        self._tool_attempt_coordinator = _precision_attempt_coordinator(
+        self.controller.registry = registry
+        self.controller.assembler = ContextAssembler(
             registry,
-            publication=publication,
+            self._study,
+            application_runtime=self._runtime,
         )
+        self.controller.verifier = VerificationLayer(
+            tool_schemas={
+                tool.name: tool.parameters for tool in registry.get_all_tools()
+            }
+        )
+        self.set_publication(publication)
+        self._turn_sequence = 0
+        self.last_decision: ToolAttemptDecision | None = None
+        self.execute_decisions: list[ToolAttemptDecision] = []
+        self.verified_execute_boundary_intercepted = 0
+        self.executable_path_guard_calls = 0
+        self.tool_executor_guard_calls = 0
+        self.application_command_started_signals = 0
+        self.confirmation_requested_signals = 0
+        self.workflow_handoff_requested_signals = 0
+        self.turn_terminal_signals = 0
+        self.shutdown_terminals: list[tuple[bool, str]] = []
+        self.shutdown_completed = False
+        self.strict_recovery_decisions: list[_ObservedStrictRecoveryDecision] = []
+        self.controller._strict_envelope_recovery_policy = (
+            _StrictRecoveryDecisionObserver(
+                self.controller._strict_envelope_recovery_policy,
+                self.strict_recovery_decisions,
+            )
+        )
+        present_boundary = self.controller._present_tool_attempt_boundary
+
+        def observe_boundary(decision: ToolAttemptDecision) -> bool:
+            self.last_decision = decision
+            return present_boundary(decision)
+
+        self.controller._present_tool_attempt_boundary = observe_boundary  # type: ignore[method-assign]
+        self.controller._execute_tool_attempt = self._observe_verified_execute  # type: ignore[method-assign]
+        self.controller._execute_tool_no_loop = self._forbid_executable_path  # type: ignore[method-assign]
+        self.controller._tool_execution_coordinator.execute = (  # type: ignore[method-assign]
+            self._forbid_tool_executor
+        )
+        self.controller._generate_response = self._suppress_generation_dispatch  # type: ignore[method-assign]
+        self.controller.application_command_started.connect(
+            self._record_application_command_started
+        )
+        self.controller.confirmation_requested.connect(
+            self._record_confirmation_requested
+        )
+        self.controller.workflow_ui_handoff_requested.connect(
+            self._record_workflow_handoff_requested
+        )
+        self.controller.turn_finished.connect(self._record_turn_terminal)
+        self.controller.shutdown_finished.connect(self._record_shutdown_terminal)
 
     @property
-    def pending_interactions(self) -> PendingInteractionCoordinator:
-        return self._pending_interactions
+    def pending_interactions(self) -> Any:
+        return self.controller.pending_interactions
 
     @property
     def history(self) -> list[dict[str, str]]:
-        return self._history
+        return self.controller.history
 
-    def _append_history(self, role: str, content: str) -> None:
-        self._history.append({"role": role, "content": content})
+    def _suppress_generation_dispatch(self) -> bool:
+        """Keep strict recovery in-controller while the evaluator supplies text."""
+        return True
 
-    def _latest_user_request_text(self) -> str:
-        return LLMController._latest_user_request_text(self)  # type: ignore[arg-type]
+    def _record_application_command_started(self) -> None:
+        self.application_command_started_signals += 1
 
-    def _active_policy_mode(self) -> str:
-        return LLMController._active_policy_mode(self)  # type: ignore[arg-type]
+    def _record_confirmation_requested(self, _request: object) -> None:
+        self.confirmation_requested_signals += 1
 
-    def _remaining_tool_input_question(self, receipt: AssistantToolInputReceipt) -> str:
-        return LLMController._remaining_tool_input_question(receipt)
+    def _record_workflow_handoff_requested(self, _request: object) -> None:
+        self.workflow_handoff_requested_signals += 1
+
+    def _record_turn_terminal(self, _terminal: object) -> None:
+        self.turn_terminal_signals += 1
+
+    def _record_shutdown_terminal(self, ok: bool, detail: str) -> None:
+        self.shutdown_terminals.append((bool(ok), str(detail or "")))
+
+    def _forbid_executable_path(self, *_args: Any, **_kwargs: Any) -> None:
+        """Fail before the controller can resolve an ApplicationService runtime."""
+        self.executable_path_guard_calls += 1
+        raise RuntimeError(
+            "Evaluator reached the executable controller path after its boundary sentinel."
+        )
+
+    def _forbid_tool_executor(self, *_args: Any, **_kwargs: Any) -> None:
+        """Fail if any code bypasses the controller execution-path guard."""
+        self.tool_executor_guard_calls += 1
+        raise RuntimeError("Evaluator reached ToolExecutionCoordinator.execute().")
+
+    def _observe_verified_execute(
+        self,
+        decision: ToolAttemptDecision,
+        **_kwargs: Any,
+    ) -> None:
+        """Observe only an already verified execution boundary, never run it."""
+        if decision.action is not ToolAttemptAction.EXECUTE:
+            raise RuntimeError(
+                "Evaluator execution sentinel received a non-execute action."
+            )
+        self.verified_execute_boundary_intercepted += 1
+        self.execute_decisions.append(decision)
+        self.controller._finalize_turn_after_tool("evaluator_verified_execute")
+
+    def close(self) -> None:
+        """Await controller-owned shutdown and fail if its worker remains live."""
+        if self.shutdown_completed:
+            return
+        application = _evaluator_qt_application()
+        worker_thread = self.controller.worker_thread
+        self.controller.close()
+        deadline = monotonic() + _EVALUATOR_CONTROLLER_CLOSE_TIMEOUT_SECONDS
+        while monotonic() < deadline:
+            application.processEvents(
+                QEventLoop.ProcessEventsFlag.AllEvents,
+                25,
+            )
+            if (
+                self.controller._closed
+                and self.controller.worker is None
+                and not worker_thread.isRunning()
+            ):
+                break
+            worker_thread.wait(10)
+        application.processEvents(
+            QEventLoop.ProcessEventsFlag.AllEvents,
+            25,
+        )
+        closed = self.controller.close()
+        self.shutdown_completed = bool(
+            closed
+            and self.controller.worker is None
+            and not worker_thread.isRunning()
+            and self.shutdown_terminals == [(True, "")]
+        )
+        if self.shutdown_completed:
+            return
+        # This is evaluator-owned cleanup only. It prevents a failed evaluator
+        # from leaking its own QThread while preserving the hard failure below.
+        if worker_thread.isRunning():
+            worker_thread.quit()
+            worker_thread.wait(100)
+            application.processEvents(
+                QEventLoop.ProcessEventsFlag.AllEvents,
+                25,
+            )
+        raise RuntimeError(
+            "Evaluator controller shutdown did not reach its exact terminal "
+            f"state within {_EVALUATOR_CONTROLLER_CLOSE_TIMEOUT_SECONDS:.1f}s: "
+            f"closed={closed!r}, worker_cleared={self.controller.worker is None}, "
+            f"thread_running={worker_thread.isRunning()}, "
+            f"shutdown_terminals={self.shutdown_terminals!r}."
+        )
+
+    @property
+    def worker_thread_stopped(self) -> bool:
+        return not self.controller.worker_thread.isRunning()
+
+    @property
+    def worker_cleared(self) -> bool:
+        return self.controller.worker is None
+
+    def safety_snapshot(self) -> tuple[int, int, int, int, int, int, int, str]:
+        """Capture observable evaluator guards before one controller turn."""
+        state_payload = self._runtime.publication.state.to_dict()
+        state_fingerprint = hashlib.sha256(
+            json.dumps(state_payload, ensure_ascii=False, sort_keys=True).encode()
+        ).hexdigest()
+        return (
+            self.verified_execute_boundary_intercepted,
+            self.executable_path_guard_calls,
+            self.tool_executor_guard_calls,
+            self.application_command_started_signals,
+            self.confirmation_requested_signals,
+            self.workflow_handoff_requested_signals,
+            self.turn_terminal_signals,
+            state_fingerprint,
+        )
+
+    def publication_state_changed(self, before_fingerprint: str) -> bool:
+        """Report whether the immutable evaluator publication changed in a turn."""
+        state_payload = self._runtime.publication.state.to_dict()
+        current_fingerprint = hashlib.sha256(
+            json.dumps(state_payload, ensure_ascii=False, sort_keys=True).encode()
+        ).hexdigest()
+        return current_fingerprint != before_fingerprint
+
+    def set_publication(self, publication: ApplicationViewPublication) -> None:
+        """Bind each evaluator turn to one immutable backend publication."""
+        self._runtime.publication = publication
+        self.controller._tool_attempt_coordinator = _precision_attempt_coordinator(
+            self.controller.registry,
+            publication=publication,
+        )
 
     def begin_turn(
         self,
         user_text: str,
         publication: PromptToolPublication,
     ) -> AssistantToolInputReceipt | None:
-        self._append_history("user", user_text)
-        LLMController._reset_user_turn_state(self)  # type: ignore[arg-type]
-        self._turn_orchestrator.active_publication = publication
+        if self.controller._turn_orchestrator.has_active_host_turn:
+            raise RuntimeError(
+                "Evaluator cannot begin a second active controller turn."
+            )
+        self._turn_sequence += 1
+        self.controller._turn_orchestrator.bind_correlation(
+            AssistantTurnCorrelation(
+                generation=self._turn_sequence,
+                turn_id=self._turn_sequence,
+            )
+        )
+        self.controller._append_history("user", user_text)
+        self.controller.metrics.start_turn()
+        self.controller.is_processing = True
+        self.controller._active_response_contract = (
+            AssistantResponseContract.STRUCTURED_ACTION
+        )
+        self.controller._reset_user_turn_state()
+        self.controller._turn_orchestrator.set_active_publication(publication)
+        self.controller._tool_attempt_session.begin_generation()
+        self.last_decision = None
         return self.pending_interactions.active_tool_input
 
+    def complete_response(self, response: str) -> None:
+        """Run the shared post-arbitration controller terminal lifecycle."""
+        self.controller._complete_generation_response(response)
+
+    def model_messages(self) -> list[dict[str, Any]]:
+        """Build the real next model request without dispatching a worker."""
+        request = self.controller.assembler.get_generation_request(
+            self.controller.history
+        )
+        self.controller._active_response_contract = request.response_contract
+        self.controller._turn_orchestrator.set_active_publication(
+            self.controller.assembler.latest_tool_publication
+        )
+        return request.to_model_messages()
+
     def admit_typed_response(self, response: str) -> AssistantToolInputReceipt | None:
-        envelope = CommandParser.parse_product(response)
-        if envelope.status is not ToolEnvelopeStatus.NO_TOOL:
-            return None
-        LLMController._begin_typed_tool_input(self, envelope)  # type: ignore[arg-type]
+        self.complete_response(response)
         return self.pending_interactions.tool_input
 
     def evaluate_proposal(
@@ -684,20 +945,13 @@ class _EvaluatorControllerHarness:
         response: str,
     ) -> tuple[ToolAttemptDecision | None, dict[str, Any] | None]:
         envelope = CommandParser.parse_product(response)
-        if envelope.status is not ToolEnvelopeStatus.VALID:
-            return None, None
-        command = LLMController._select_tool_proposal(  # type: ignore[arg-type]
-            self,
-            list(envelope.commands),
+        self.complete_response(response)
+        parameters = (
+            envelope.commands[0][1]
+            if envelope.status is ToolEnvelopeStatus.VALID
+            else None
         )
-        if command is None:
-            return None, None
-        decision = LLMController._evaluate_tool_proposal(  # type: ignore[arg-type]
-            self,
-            command,
-            response,
-        )
-        return decision, command[1]
+        return self.last_decision, parameters
 
 
 def _precision_application_publication(
@@ -1333,17 +1587,18 @@ def admit_clarification_receipt(
         source,
         registry,
     )
-    harness = _EvaluatorControllerHarness(
+    session = _EvaluatorControllerSession(
         registry=registry,
         publication=backend_publication,
     )
-    harness.begin_turn(source.user_input, prompt_publication)
-    receipt = harness.admit_typed_response(response)
+    session.begin_turn(source.user_input, prompt_publication)
+    receipt = session.admit_typed_response(response)
     if receipt is None or receipt.command_name != expected_tool:
+        session.close()
         return None
     return ClarificationAdmission(
         receipt=receipt,
-        harness=harness,
+        session=session,
         prompt_publication=prompt_publication,
         backend_publication=backend_publication,
     )
@@ -1358,9 +1613,10 @@ def evaluate_clarification_trajectory(
     generate_response: Callable[[list[dict[str, str]]], str],
 ) -> CaseTrajectoryResult:
     """Generate an admitted receipt-backed second turn through recovery policy."""
-    harness = admission.harness
-    receipt = harness.begin_turn(case.reply, admission.prompt_publication)
+    session = admission.session
+    receipt = session.begin_turn(case.reply, admission.prompt_publication)
     if receipt is None:
+        session.close()
         raise RuntimeError("Controller did not activate the admitted clarification.")
     observed: dict[str, TargetEvalScore] = {}
 
@@ -1369,7 +1625,7 @@ def evaluate_clarification_trajectory(
         if cached is not None:
             return cached
         envelope = CommandParser.parse_product(response)
-        decision, _supplied = harness.evaluate_proposal(response)
+        decision, _supplied = session.evaluate_proposal(response)
         parameters = decision.params if decision is not None else None
         passed = bool(
             envelope.status is ToolEnvelopeStatus.VALID
@@ -1420,18 +1676,21 @@ def evaluate_clarification_trajectory(
         )
         return observed[response]
 
-    return _evaluate_trajectory(
-        workflow_stage=source.workflow_stage,
-        build_messages=lambda recovery: build_clarification_messages(
-            case,
-            source,
-            receipt=receipt,
-            registry=registry,
-            recovery_messages=recovery,
-        )[0],
-        score_response=score,
-        generate_response=generate_response,
-    )
+    try:
+        return _evaluate_trajectory(
+            workflow_stage=source.workflow_stage,
+            build_messages=lambda recovery: build_clarification_messages(
+                case,
+                source,
+                receipt=receipt,
+                registry=registry,
+                recovery_messages=recovery,
+            )[0],
+            score_response=score,
+            generate_response=generate_response,
+        )
+    finally:
+        session.close()
 
 
 def evaluate_discriminated_clarification_trajectory(
@@ -1501,6 +1760,8 @@ def evaluate_discriminated_clarification_trajectory(
             registry=registry,
         )
     if not first_ok or admission is None:
+        if admission is not None:
+            admission.session.close()
         failed = replace(
             action_trajectory.final_score,
             passed=False,
@@ -1518,19 +1779,20 @@ def evaluate_discriminated_clarification_trajectory(
             ),
         )
     if case.trajectory_kind == "partial_bandpass_accumulation":
-        harness = admission.harness
+        session = admission.session
         partial_case = replace(case, reply=case.turns[1])
-        receipt = harness.begin_turn(case.turns[1], admission.prompt_publication)
+        receipt = session.begin_turn(case.turns[1], admission.prompt_publication)
         if receipt is None:
+            session.close()
             raise RuntimeError("Controller did not activate partial clarification.")
         messages, _prompt, _backend = build_clarification_messages(
             partial_case, source, receipt=receipt, registry=registry
         )
         partial_response = generate_response(messages)
-        partial_decision, partial_parameters = harness.evaluate_proposal(
+        partial_decision, partial_parameters = session.evaluate_proposal(
             partial_response
         )
-        requeued = harness.pending_interactions.tool_input
+        requeued = session.pending_interactions.tool_input
         if (
             partial_decision is None
             or partial_decision.action is not ToolAttemptAction.RESPOND
@@ -1539,6 +1801,7 @@ def evaluate_discriminated_clarification_trajectory(
             or dict(requeued.verified_parameters) != {"low_freq": 12}
             or requeued.remaining_reply_budget != 1
         ):
+            session.close()
             failed = replace(
                 action_trajectory.final_score,
                 passed=False,

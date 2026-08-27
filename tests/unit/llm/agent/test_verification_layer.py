@@ -127,6 +127,27 @@ def test_direct_parameter_origins_accept_explicit_latest_user_values(
 
 
 @pytest.mark.parametrize(
+    ("rate", "latest_user_text"),
+    (
+        (128, "現在請以 128 Hz 重採樣。"),
+        (250, "請將資料重採樣成 250 Hz。"),
+        (128, "Use 128 Hz to resample the EEG data."),
+    ),
+)
+def test_resample_direct_origin_accepts_rate_immediately_before_resample_cue(
+    rate: int,
+    latest_user_text: str,
+) -> None:
+    result = verify_direct_parameter_origins(
+        "resample_data",
+        {"rate": rate},
+        latest_user_text,
+    )
+
+    assert result == VerificationResult(True)
+
+
+@pytest.mark.parametrize(
     ("tool_name", "params", "latest_user_text", "expected_question"),
     [
         (

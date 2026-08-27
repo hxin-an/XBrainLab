@@ -9,10 +9,13 @@ from scripts.dev.run_stable_assistant_model_eval import (
     DEFAULT_PRECISION_CASES,
     CaseTrajectoryResult,
     ModelGenerationAttempt,
+    PrecisionCase,
     TargetEvalScore,
     _build_report,
     _evaluation_generation_policy,
+    _EvaluatorControllerSession,
     _experiment_identity,
+    _precision_application_publication,
     _stable_eval_config,
     admit_clarification_receipt,
     build_case_messages,
@@ -36,6 +39,47 @@ from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 from XBrainLab.llm.core.config import LLMConfig
 
 GOLD_SET = Path("XBrainLab/llm/rag/data/gold_set.json")
+
+
+def test_clarification_evaluator_uses_the_private_controller_lifecycle() -> None:
+    runner_source = Path("scripts/dev/run_stable_assistant_model_eval.py").read_text(
+        encoding="utf-8"
+    )
+    development_source = Path(
+        "scripts/dev/run_assistant_accuracy_development_eval.py"
+    ).read_text(encoding="utf-8")
+
+    assert "_EvaluatorControllerHarness" not in runner_source
+    assert "LLMController._begin_typed_tool_input" not in runner_source
+    assert "LLMController._evaluate_tool_proposal" not in runner_source
+    assert "_complete_generation_response" in runner_source
+    assert "_EvaluatorControllerHarness" not in development_source
+    assert ".admit_typed_response(" not in development_source
+    assert ".evaluate_proposal(" not in development_source
+    assert "_EvaluatorControllerSession" in development_source
+    assert "session.complete_response" in development_source
+
+
+def test_evaluator_session_shutdown_waits_for_the_real_worker_terminal() -> None:
+    case = PrecisionCase(
+        case_id="evaluator_shutdown",
+        user_input="Do not execute a command.",
+        workflow_stage="empty",
+        category="general",
+        requested_tool=None,
+    )
+    session = _EvaluatorControllerSession(
+        registry=target_tool_registry(),
+        publication=_precision_application_publication(case),
+    )
+    worker_thread = session.controller.worker_thread
+
+    session.close()
+
+    assert session.shutdown_completed is True
+    assert session.controller.close() is True
+    assert session.controller.worker is None
+    assert worker_thread.isRunning() is False
 
 
 def test_eval_config_uses_fixed_product_model_without_mutating_user_settings() -> None:
@@ -406,19 +450,15 @@ def test_partial_trajectory_fails_when_controller_rejects_the_partial_proposal()
             '"pending_action":"apply_bandpass_filter",'
             '"missing_inputs":["low_freq","high_freq"]}}',
             '{"workflow_stage":"data_loaded","tool_name":"apply_bandpass_filter",'
-            '"parameters":{"low_freq":12}}',
+            '"parameters":{"low_freq":13}}',
         )
     )
 
-    with patch(
-        "scripts.dev.run_stable_assistant_model_eval.LLMController._evaluate_tool_proposal",
-        return_value=None,
-    ):
-        result = evaluate_discriminated_clarification_trajectory(
-            partial,
-            registry,
-            lambda _messages: next(responses),
-        )
+    result = evaluate_discriminated_clarification_trajectory(
+        partial,
+        registry,
+        lambda _messages: next(responses),
+    )
 
     assert result.final_score.passed is False
     assert result.final_score.failure_type == "partial_accumulation"

@@ -116,9 +116,12 @@ def _direct_parameter_origin_evidence(
             clauses,
             before_pattern=(
                 r"(?:re[\s-]*sampl(?:e|ing)|重採樣|重取樣)"
-                r"[^\d\n]{0,32}?(?:to|at|into|到|至|為)\s*"
+                r"[^\d\n]{0,32}?(?:to|at|into|到|至|為|成)\s*"
             ),
-            after_pattern=None,
+            after_pattern=(
+                r"\s*(?:hz\b|赫茲)\s*(?:to\s+)?"
+                r"(?:re[\s-]*sampl(?:e|ing)|重採樣|重取樣)"
+            ),
             question="What resampling rate should I use?",
         )
         return result, {"rate": params["rate"]} if result.is_valid else {}
