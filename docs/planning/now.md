@@ -32,7 +32,7 @@
 - **Reuse/delete first**：沿用既有 dialog、`show_*` API、theme primitives 與 keyboard handling；
   優先刪除/整併散落的 plain-text severity presentation，而非新增 alert framework。若 source
   inspection 發現只有單一 caller 的 legacy severity helper，應在同一 diff 移除或收斂。
-- **Actual**：1 production file，`+112/-31` production LOC，無 public API、owner delta 或
+- **Actual**：1 production file，`+108/-31` production LOC（net `+77`），無 public API、owner delta 或
   complexity trigger；另有 1 focused test file 與 1 ignored-dev-artifact capture script。未新增
   public class、state machine 或 compatibility path。
 
@@ -55,15 +55,23 @@
   在 pre-repair source 對三種 severity 都因缺少 `content_card` 失敗；其餘既有 coverage 通過。
 - **Green**：
   `timeout 90s prlimit --core=0 -- /home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-xaLO7TCQ-py3.12/bin/python -m pytest --capture=sys tests/unit/ui/components/test_modal_presentation.py -q`
-  → `15 passed`。其中既有 destructive confirmation Escape/default/click/public mapping tests 維持通過。
+  → `16 passed`。新增 acknowledgement Escape-close 與 long-message vertical scrollbar movement
+  assertion；既有 destructive confirmation Escape/default/click/public mapping tests 維持通過。
 - **Static**：Ruff 對 `modal_presentation.py`、focused test 與 capture script 通過；`git diff --check`
   通過。
-- **Artifacts**：以 `PYTHONPATH=$PWD QT_QPA_PLATFORM=offscreen` 執行
+- **Artifacts**：default offscreen run 以 `PYTHONPATH=$PWD QT_QPA_PLATFORM=offscreen` 執行
   `scripts/dev/capture_modal_alert_presentation.py`，產生
   `build/dev-artifacts/modal-alert-presentation/{information,warning,error,long-text,narrow}.png`
-  與 source-bound manifest。Builder 已檢視：長文 scroll viewport 已保持 dark card background。
-- **Status**：產品碼、focused test 與 offscreen layout evidence 已完成；仍是 `checkpoint`，缺
-  independent UI review、root exact-SHA verification、WSLg manual acceptance 和使用者 merge approval。
+  與 source-bound manifest。另以 `QT_SCALE_FACTOR=1.5 --scale-label 150-percent
+  --expected-device-pixel-ratio 1.5` 產生相同檔名於
+  `build/dev-artifacts/modal-alert-presentation-150pct/`；manifest 記錄 observed DPR `1.5`、
+  logical DPI `96.0`。Builder 已檢視 long-text/narrow 150%：無 clipping，scroll viewport 保持
+  dark card background。
+- **Claim boundary**：兩組都是 Linux Qt offscreen layout evidence；150% run 只證明 Qt reported
+  DPR 與此 capture path 的 geometry，不能取代 WSLg／Windows native DPI 或人類手測。
+- **Status**：產品碼、focused test 與 default/150% offscreen layout evidence 已完成；仍是
+  `checkpoint`，缺 independent UI review、root exact-SHA verification、WSLg manual acceptance
+  和使用者 merge approval。
 
 ### Roles、review 與停止條件
 

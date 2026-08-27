@@ -95,6 +95,20 @@ def test_acknowledgement_enter_accepts(qtbot):
     assert dialog.result() == dialog.DialogCode.Accepted
 
 
+def test_acknowledgement_escape_rejects(qtbot):
+    dialog = ModalAlertDialog(
+        severity=AlertSeverity.WARNING,
+        title="Review import",
+        message="Read the detail before continuing.",
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+
+    QTest.keyClick(dialog, Qt.Key.Key_Escape)
+
+    assert dialog.result() == dialog.DialogCode.Rejected
+
+
 def test_short_alert_fits_content_without_fixed_vertical_gaps(qtbot):
     dialog = ModalAlertDialog(
         severity=AlertSeverity.WARNING,
@@ -114,10 +128,15 @@ def test_long_alert_uses_bounded_scrollable_message_view(qtbot):
         message="A detailed resource diagnostic line.\n" * 40,
     )
     qtbot.addWidget(dialog)
+    dialog.show()
 
     assert dialog.message_scroll_area is not None
     assert dialog.message_scroll_area.maximumHeight() == 320
     assert dialog.width() <= 640
+    scroll_bar = dialog.message_scroll_area.verticalScrollBar()
+    assert scroll_bar.maximum() > 0
+    scroll_bar.setValue(scroll_bar.maximum())
+    assert scroll_bar.value() == scroll_bar.maximum()
 
 
 def test_confirmation_keeps_cancel_as_default_and_escape_returns_rejected(qtbot):

@@ -2,14 +2,17 @@
 """Capture the shared acknowledgement-alert presentation surfaces.
 
 The generated files are development evidence only. They show the three
-acknowledgement severities plus the long-text and narrow-width layouts; native
-WSLg acceptance remains a separate human gate.
+acknowledgement severities plus the long-text and narrow-width layouts. An
+explicit 150% offscreen run records its measured device pixel ratio; native
+WSLg/Windows acceptance remains a separate human gate.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import math
+import os
 import sys
 from collections.abc import Iterable
 from pathlib import Path
@@ -94,6 +97,17 @@ def _capture_case(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
+    parser.add_argument(
+        "--scale-label",
+        default="default",
+        help="Evidence label for the Qt scale supplied before QApplication starts.",
+    )
+    parser.add_argument(
+        "--expected-device-pixel-ratio",
+        type=float,
+        default=None,
+        help="Fail closed unless Qt reports this device pixel ratio.",
+    )
     args = parser.parse_args(argv)
     output_dir = args.output_dir.expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -102,6 +116,20 @@ def main(argv: list[str] | None = None) -> int:
     source_at_start = collect_source_identity(ROOT, refresh=True)
     app = QApplication.instance() or QApplication([sys.argv[0]])
     app.setStyle("Fusion")
+    screen = app.primaryScreen()
+    device_pixel_ratio = screen.devicePixelRatio() if screen is not None else 0.0
+    logical_dpi_x = screen.logicalDotsPerInchX() if screen is not None else 0.0
+    logical_dpi_y = screen.logicalDotsPerInchY() if screen is not None else 0.0
+    expected_dpr = args.expected_device_pixel_ratio
+    if expected_dpr is not None and not math.isclose(
+        device_pixel_ratio,
+        expected_dpr,
+        abs_tol=0.01,
+    ):
+        raise RuntimeError(
+            "Modal alert capture device pixel ratio mismatch: "
+            f"expected {expected_dpr}, observed {device_pixel_ratio}."
+        )
     captured_names: list[str] = []
     for filename, severity, title, message, width in _cases():
         _capture_case(
@@ -130,6 +158,11 @@ def main(argv: list[str] | None = None) -> int:
         "capture_environment": {
             "qt_platform": QApplication.platformName(),
             "qt_style": app.style().objectName(),
+            "scale_label": args.scale_label,
+            "qt_scale_factor": os.environ.get("QT_SCALE_FACTOR", ""),
+            "device_pixel_ratio": device_pixel_ratio,
+            "logical_dpi_x": logical_dpi_x,
+            "logical_dpi_y": logical_dpi_y,
         },
         "screenshots": screenshots,
         "claim_boundary": (
