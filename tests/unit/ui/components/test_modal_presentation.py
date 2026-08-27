@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QPushButton
@@ -30,6 +31,68 @@ def test_alert_uses_xbrainlab_dialog_shell_and_wraps_message(qtbot):
     assert dialog.windowTitle() == "Storage warning"
     assert dialog.severity_label.text() == "Warning"
     assert dialog.acknowledge_button.text() == "OK"
+
+
+@pytest.mark.parametrize(
+    ("severity", "title", "severity_text"),
+    [
+        (AlertSeverity.INFORMATION, "Saved", "Information"),
+        (AlertSeverity.WARNING, "Review import", "Warning"),
+        (AlertSeverity.CRITICAL, "Import failed", "Error"),
+    ],
+)
+def test_acknowledgement_alert_has_severity_card_icon_and_visible_title_hierarchy(
+    qtbot,
+    severity,
+    title,
+    severity_text,
+):
+    dialog = ModalAlertDialog(
+        severity=severity,
+        title=title,
+        message="Read the detail before continuing.",
+    )
+    qtbot.addWidget(dialog)
+
+    assert dialog.content_card.objectName() == "ModalAlertContentCard"
+    assert dialog.content_card.property("severity") == severity.value
+    assert dialog.severity_icon_label.objectName() == "ModalAlertSeverityIcon"
+    assert dialog.severity_icon_label.pixmap() is not None
+    assert not dialog.severity_icon_label.pixmap().isNull()
+    assert dialog.title_label.objectName() == "ModalAlertTitle"
+    assert dialog.title_label.text() == title
+    assert dialog.severity_label.text() == severity_text
+
+
+def test_acknowledgement_alert_has_exactly_one_ok_action(qtbot):
+    dialog = ModalAlertDialog(
+        severity=AlertSeverity.WARNING,
+        title="Review import",
+        message="Read the detail before continuing.",
+    )
+    qtbot.addWidget(dialog)
+
+    assert dialog.confirm_button is None
+    assert dialog.cancel_button is None
+    assert dialog.acknowledge_button.text() == "OK"
+    assert (
+        dialog.findChild(QPushButton, "PrimaryConfirmButton")
+        is dialog.acknowledge_button
+    )
+
+
+def test_acknowledgement_enter_accepts(qtbot):
+    dialog = ModalAlertDialog(
+        severity=AlertSeverity.INFORMATION,
+        title="Project saved",
+        message="Your project was saved successfully.",
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+
+    QTest.keyClick(dialog, Qt.Key.Key_Return)
+
+    assert dialog.result() == dialog.DialogCode.Accepted
 
 
 def test_short_alert_fits_content_without_fixed_vertical_gaps(qtbot):

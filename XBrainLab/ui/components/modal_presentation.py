@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QPushButton,
     QScrollArea,
+    QStyle,
     QVBoxLayout,
 )
 
@@ -43,6 +44,11 @@ _SEVERITY_COLORS = {
     AlertSeverity.INFORMATION: Theme.BLUE_PRIMARY,
     AlertSeverity.WARNING: Theme.ACCENT_WARNING,
     AlertSeverity.CRITICAL: Theme.ACCENT_ERROR,
+}
+_SEVERITY_PIXMAPS = {
+    AlertSeverity.INFORMATION: QStyle.StandardPixmap.SP_MessageBoxInformation,
+    AlertSeverity.WARNING: QStyle.StandardPixmap.SP_MessageBoxWarning,
+    AlertSeverity.CRITICAL: QStyle.StandardPixmap.SP_MessageBoxCritical,
 }
 
 _MODAL_MINIMUM_WIDTH = 420
@@ -73,6 +79,9 @@ class ModalAlertDialog(BaseDialog):
         self._destructive = destructive
         self.message_label: QLabel
         self.message_scroll_area: QScrollArea | None = None
+        self.content_card: QFrame | None = None
+        self.severity_icon_label: QLabel | None = None
+        self.title_label: QLabel | None = None
         self.severity_label: QLabel
         self.acknowledge_button: QPushButton
         self.confirm_button: QPushButton | None = None
@@ -105,37 +114,15 @@ class ModalAlertDialog(BaseDialog):
         layout.setContentsMargins(18, 14, 18, 14)
         layout.setSpacing(8)
 
-        heading_row = QHBoxLayout()
-        self.severity_label = QLabel(_SEVERITY_LABELS[self._severity])
-        self.severity_label.setObjectName("ModalAlertSeverity")
-        self.severity_label.setAccessibleName(
-            f"{_SEVERITY_LABELS[self._severity]} message"
-        )
-        heading_row.addWidget(self.severity_label)
-        heading_row.addStretch(1)
-        layout.addLayout(heading_row)
-
-        self.message_label = QLabel(self._message)
-        self.message_label.setObjectName("ModalAlertMessage")
-        self.message_label.setWordWrap(True)
-        self.message_label.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-        )
-        self.message_label.setAccessibleName("Message")
-        if self._message_needs_scroll_area():
-            message_scroll_area = QScrollArea()
-            self.message_scroll_area = message_scroll_area
-            message_scroll_area.setObjectName("ModalAlertMessageScrollArea")
-            message_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
-            message_scroll_area.setWidgetResizable(True)
-            message_scroll_area.setHorizontalScrollBarPolicy(
-                Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-            )
-            message_scroll_area.setMaximumHeight(_LONG_MESSAGE_MAXIMUM_HEIGHT)
-            message_scroll_area.setWidget(self.message_label)
-            layout.addWidget(message_scroll_area)
+        if self.is_confirmation:
+            heading_row = QHBoxLayout()
+            self.severity_label = self._create_severity_label()
+            heading_row.addWidget(self.severity_label)
+            heading_row.addStretch(1)
+            layout.addLayout(heading_row)
+            self._add_message(layout)
         else:
-            layout.addWidget(self.message_label)
+            self._add_acknowledgement_content_card(layout)
 
         button_box = QDialogButtonBox()
         button_box.setObjectName("ModalAlertButtons")
@@ -186,6 +173,85 @@ class ModalAlertDialog(BaseDialog):
             self.acknowledge_button = self.confirm_button
         layout.addWidget(button_box, alignment=Qt.AlignmentFlag.AlignRight)
 
+    def _add_acknowledgement_content_card(self, layout: QVBoxLayout) -> None:
+        content_card = QFrame()
+        self.content_card = content_card
+        content_card.setObjectName("ModalAlertContentCard")
+        content_card.setProperty("severity", self._severity.value)
+        content_card.setFrameShape(QFrame.Shape.StyledPanel)
+
+        card_layout = QVBoxLayout(content_card)
+        card_layout.setContentsMargins(16, 14, 16, 14)
+        card_layout.setSpacing(8)
+
+        heading_row = QHBoxLayout()
+        heading_row.setSpacing(10)
+        severity_icon_label = QLabel()
+        self.severity_icon_label = severity_icon_label
+        severity_icon_label.setObjectName("ModalAlertSeverityIcon")
+        severity_icon_label.setAccessibleName(
+            f"{_SEVERITY_LABELS[self._severity]} icon"
+        )
+        severity_icon_label.setFixedSize(24, 24)
+        severity_icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        severity_icon_label.setPixmap(
+            self.style().standardIcon(_SEVERITY_PIXMAPS[self._severity]).pixmap(20, 20)
+        )
+        heading_row.addWidget(severity_icon_label)
+
+        heading_copy = QVBoxLayout()
+        heading_copy.setSpacing(2)
+        title_label = QLabel(self.windowTitle())
+        self.title_label = title_label
+        title_label.setObjectName("ModalAlertTitle")
+        title_label.setWordWrap(True)
+        title_label.setAccessibleName("Alert title")
+        heading_copy.addWidget(title_label)
+        self.severity_label = self._create_severity_label()
+        heading_copy.addWidget(self.severity_label)
+        heading_row.addLayout(heading_copy, 1)
+        card_layout.addLayout(heading_row)
+
+        self._add_message(card_layout)
+        layout.addWidget(content_card)
+
+    def _create_severity_label(self) -> QLabel:
+        severity_label = QLabel(_SEVERITY_LABELS[self._severity])
+        severity_label.setObjectName("ModalAlertSeverity")
+        severity_label.setAccessibleName(f"{_SEVERITY_LABELS[self._severity]} message")
+        return severity_label
+
+    def _add_message(self, layout: QVBoxLayout) -> None:
+        self.message_label = QLabel(self._message)
+        self.message_label.setObjectName("ModalAlertMessage")
+        self.message_label.setWordWrap(True)
+        self.message_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        self.message_label.setAccessibleName("Message")
+        if self._message_needs_scroll_area():
+            message_scroll_area = QScrollArea()
+            self.message_scroll_area = message_scroll_area
+            message_scroll_area.setObjectName("ModalAlertMessageScrollArea")
+            message_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+            message_scroll_area.setWidgetResizable(True)
+            message_scroll_area.setHorizontalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            )
+            message_scroll_area.setMaximumHeight(_LONG_MESSAGE_MAXIMUM_HEIGHT)
+            message_scroll_area.setStyleSheet(
+                f"""
+                QScrollArea#ModalAlertMessageScrollArea,
+                QScrollArea#ModalAlertMessageScrollArea > QWidget > QWidget {{
+                    background-color: {Theme.BACKGROUND_MID};
+                }}
+                """
+            )
+            message_scroll_area.setWidget(self.message_label)
+            layout.addWidget(message_scroll_area)
+        else:
+            layout.addWidget(self.message_label)
+
     def _message_needs_scroll_area(self) -> bool:
         return (
             len(self._message) > _LONG_MESSAGE_CHARACTER_THRESHOLD
@@ -199,9 +265,20 @@ class ModalAlertDialog(BaseDialog):
                 border: 1px solid {Theme.BACKGROUND_LIGHT};
                 border-radius: 8px;
             }}
+            QFrame#ModalAlertContentCard {{
+                background-color: {Theme.BACKGROUND_MID};
+                border: 1px solid {accent};
+                border-left: 4px solid {accent};
+                border-radius: 8px;
+            }}
+            QLabel#ModalAlertTitle {{
+                color: {Theme.TEXT_PRIMARY};
+                font-size: 16px;
+                font-weight: 700;
+            }}
             QLabel#ModalAlertSeverity {{
                 color: {accent};
-                font-size: 14px;
+                font-size: 12px;
                 font-weight: 700;
             }}
             QLabel#ModalAlertMessage {{
