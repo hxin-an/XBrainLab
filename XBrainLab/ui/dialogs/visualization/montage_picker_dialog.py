@@ -300,7 +300,7 @@ class PickMontageDialog(BaseDialog):
         self.btn_reset_saved.clicked.connect(self.reset_saved_settings)
         top_layout.addWidget(self.btn_reset_saved)
 
-        self.btn_clear = QPushButton("Clear Mapping")
+        self.btn_clear = QPushButton("Clear mapping")
         self.btn_clear.clicked.connect(self.clear_selections)
         top_layout.addWidget(self.btn_clear)
         self.mapping_toolbar = top_layout

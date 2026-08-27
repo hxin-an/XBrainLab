@@ -283,6 +283,7 @@ class TestPickMontageInit:
         assert bids_dialog.btn_use_bids.isEnabled() is False
 
     def test_mapping_action_labels_have_unconstrained_text_width(self, dialog):
+        assert dialog.btn_clear.text() == "Clear mapping"
         assert dialog.btn_clear.minimumWidth() <= dialog.btn_clear.sizeHint().width()
         assert dialog.btn_clear.maximumWidth() >= dialog.btn_clear.sizeHint().width()
         assert dialog.mapping_toolbar.indexOf(
