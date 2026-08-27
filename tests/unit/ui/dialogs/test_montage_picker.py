@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 from PyQt6.QtCore import QSettings
 from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import QComboBox, QDialogButtonBox, QTableWidget
+from PyQt6.QtWidgets import QComboBox, QDialogButtonBox, QLabel, QTableWidget
 
 from XBrainLab.ui.styles.theme import Theme
 
@@ -63,6 +63,7 @@ def dialog(qtbot, channel_names, montage_positions, monkeypatch, tmp_path):
         dlg = PickMontageDialog(
             parent=None,
             channel_names=channel_names,
+            default_montage="standard_1020",
         )
         qtbot.addWidget(dlg)
         yield dlg
@@ -189,6 +190,10 @@ class TestPickMontageInit:
             current_layout={
                 "source": "manual",
                 "status": "ready",
+                "name": "standard_1020",
+                "positioned_channel_count": 18,
+                "channel_count": 22,
+                "coordinate_summary": "head",
                 "bids_restore_available": True,
             },
         )
@@ -197,6 +202,21 @@ class TestPickMontageInit:
         assert restore_dialog.btn_change_layout.text() == "Choose another layout…"
         assert restore_dialog.btn_change_layout.property("primaryAction") is not True
         assert restore_dialog.btn_use_bids.property("primaryAction") is True
+        assert restore_dialog.btn_close.text() == "Close"
+        labels = [
+            label.text()
+            for label in restore_dialog.findChildren(
+                QLabel, "ElectrodeLayoutMetricLabel"
+            )
+        ]
+        values = [
+            label.text()
+            for label in restore_dialog.findChildren(
+                QLabel, "ElectrodeLayoutMetricValue"
+            )
+        ]
+        assert labels == ["Layout", "Status", "Coverage", "Coordinate frame"]
+        assert values == ["standard_1020", "ready", "18/22 positioned", "head"]
 
     def test_bids_summary_replace_and_restore_intents_are_distinct(
         self, dialog, qtbot, channel_names
@@ -265,6 +285,12 @@ class TestPickMontageInit:
     def test_mapping_action_labels_have_unconstrained_text_width(self, dialog):
         assert dialog.btn_clear.minimumWidth() <= dialog.btn_clear.sizeHint().width()
         assert dialog.btn_clear.maximumWidth() >= dialog.btn_clear.sizeHint().width()
+        assert dialog.mapping_toolbar.indexOf(
+            dialog.btn_reset_saved
+        ) < dialog.mapping_toolbar.indexOf(dialog.btn_clear)
+        apply_button = dialog.button_box.button(QDialogButtonBox.StandardButton.Ok)
+        assert apply_button is not None
+        assert apply_button.text() == "Apply"
 
     def test_bids_auto_match_then_back_preserves_saved_mapping(
         self, dialog, qtbot, channel_names
@@ -395,6 +421,12 @@ class TestMontageSelection:
         )
 
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config-tie"))
+        QSettings.setPath(
+            QSettings.Format.NativeFormat,
+            QSettings.Scope.UserScope,
+            str(tmp_path / "qt-settings-tie"),
+        )
+        QSettings("XBrainLab", "MontagePicker").setValue("last_montage", "candidate-a")
         positions = {
             "candidate-a": {"ch_pos": {"C3": (0, 0, 0)}},
             "candidate-b": {"ch_pos": {"C3": (0, 0, 0)}},
@@ -409,12 +441,78 @@ class TestMontageSelection:
                 side_effect=lambda name: positions[name],
             ),
         ):
-            picker = PickMontageDialog(parent=None, channel_names=["C3", "C3"])
+            picker = PickMontageDialog(parent=None, channel_names=["C3"])
         qtbot.addWidget(picker)
 
-        assert picker.montage_combo.currentText() == "candidate-a"
-        assert picker.table.cellWidget(0, 1).currentText() == ""
-        assert picker.table.cellWidget(1, 1).currentText() == ""
+        apply_button = picker.button_box.button(QDialogButtonBox.StandardButton.Ok)
+        assert apply_button is not None
+        assert picker.montage_combo.currentText() == "Select layout"
+        assert apply_button.isEnabled() is False
+        before_mapping = picker.settings.value("mapping_v2/candidate-a", {})
+        with patch(
+            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.show_warning"
+        ) as warning:
+            picker.accept()
+        warning.assert_called_once()
+        assert picker.settings.value("last_montage", "") == "candidate-a"
+        assert picker.settings.value("mapping_v2/candidate-a", {}) == before_mapping
+
+        with patch(
+            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_positions",
+            side_effect=lambda name: positions[name],
+        ):
+            picker.montage_combo.setCurrentText("candidate-a")
+        assert apply_button.isEnabled() is True
+        combo = picker.table.cellWidget(0, 1)
+        assert isinstance(combo, QComboBox)
+        assert combo.currentText() == "C3"
+        with patch(
+            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_channel_positions",
+            return_value=[(0.0, 0.0, 0.0)],
+        ):
+            picker.accept()
+        assert picker.get_result() == (["C3"], [(0.0, 0.0, 0.0)])
+        assert picker.settings.value("last_montage", "") == "candidate-a"
+
+    def test_non_bids_no_match_stays_unselected_and_cannot_save(
+        self, qtbot, monkeypatch, tmp_path
+    ):
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config-no-match"))
+        QSettings.setPath(
+            QSettings.Format.NativeFormat,
+            QSettings.Scope.UserScope,
+            str(tmp_path / "qt-settings-no-match"),
+        )
+        QSettings("XBrainLab", "MontagePicker").setValue("last_montage", "candidate")
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_builtin_montages",
+                return_value=["candidate"],
+            ),
+            patch(
+                "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_positions",
+                return_value={"ch_pos": {"C3": (0, 0, 0)}},
+            ),
+        ):
+            picker = PickMontageDialog(parent=None, channel_names=["unknown"])
+        qtbot.addWidget(picker)
+
+        apply_button = picker.button_box.button(QDialogButtonBox.StandardButton.Ok)
+        assert apply_button is not None
+        assert picker.montage_combo.currentText() == "Select layout"
+        assert apply_button.isEnabled() is False
+        before_mapping = picker.settings.value("mapping_v2/candidate", {})
+        with patch(
+            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.show_warning"
+        ) as warning:
+            picker.accept()
+        warning.assert_called_once()
+        assert picker.settings.value("last_montage", "") == "candidate"
+        assert picker.settings.value("mapping_v2/candidate", {}) == before_mapping
 
     def test_saved_mapping_requires_exact_ordered_channel_schema(
         self, qtbot, monkeypatch, tmp_path
@@ -441,6 +539,7 @@ class TestMontageSelection:
             first = PickMontageDialog(parent=None, channel_names=["C3", "C4"])
             qtbot.addWidget(first)
             first.table.cellWidget(0, 1).setCurrentText("C4")
+            first.table.cellWidget(1, 1).setCurrentText("C3")
             first.accept()
             reordered = PickMontageDialog(parent=None, channel_names=["C4", "C3"])
         qtbot.addWidget(reordered)
@@ -455,12 +554,36 @@ class TestTableActions:
 
 
 class TestAcceptReject:
+    def test_accept_rejects_duplicate_electrodes_without_persisting(self, dialog):
+        montage_name = dialog.montage_combo.currentText()
+        existing = {
+            "channel_schema": list(dialog.channel_names),
+            "mapping": {"Fp1": "Fp1", "Fp2": "Fp2"},
+        }
+        dialog.settings.setValue(f"mapping_v2/{montage_name}", existing)
+        first = dialog.table.cellWidget(0, 1)
+        second = dialog.table.cellWidget(1, 1)
+        assert isinstance(first, QComboBox)
+        assert isinstance(second, QComboBox)
+        first.setCurrentText("F3")
+        second.setCurrentText("F3")
+
+        with patch(
+            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.show_warning"
+        ) as warning:
+            dialog.accept()
+
+        warning.assert_called_once()
+        assert dialog.result() == 0
+        assert dialog.get_result() == (None, None)
+        assert dialog.settings.value(f"mapping_v2/{montage_name}", {}) == existing
+
     def test_accept_valid(self, dialog):
         # Fill all combos with valid montage channels
         for row in range(dialog.table.rowCount()):
             combo = dialog.table.cellWidget(row, 1)
             if combo and combo.count() > 1:
-                combo.setCurrentIndex(1)
+                combo.setCurrentIndex(min(row + 1, combo.count() - 1))
         with patch("PyQt6.QtWidgets.QDialog.accept"):
             dialog.accept()
 
@@ -495,7 +618,7 @@ class TestMontagePickerEdgeCases:
         for row in range(dialog.table.rowCount()):
             combo = dialog.table.cellWidget(row, 1)
             if isinstance(combo, QComboBox) and combo.count() > 1:
-                combo.setCurrentIndex(1)
+                combo.setCurrentIndex(min(row + 1, combo.count() - 1))
         with (
             patch(
                 "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_channel_positions",

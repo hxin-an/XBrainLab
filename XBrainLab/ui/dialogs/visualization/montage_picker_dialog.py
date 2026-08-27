@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QCompleter,
     QDialogButtonBox,
+    QFormLayout,
     QFrame,
     QHBoxLayout,
     QHeaderView,
@@ -47,6 +48,8 @@ from XBrainLab.ui.dialogs.common import (
 )
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 from XBrainLab.ui.styles.theme import Theme
+
+_MONTAGE_PLACEHOLDER = "Select layout"
 
 
 def _mapping_table_stylesheet() -> str:
@@ -190,6 +193,8 @@ class PickMontageDialog(BaseDialog):
             f"background: {Theme.BACKGROUND_MID};"
             f"border: 1px solid {Theme.METRICS_TABLE_BORDER};"
             "border-radius: 6px; padding: 10px; }"
+            f"QLabel#ElectrodeLayoutMetricLabel {{ color: {Theme.TEXT_SECONDARY}; }}"
+            f"QLabel#ElectrodeLayoutMetricValue {{ color: {Theme.TEXT_PRIMARY}; }}"
         )
         summary_card_layout = QVBoxLayout(summary_card)
         summary_card_layout.setContentsMargins(12, 10, 12, 10)
@@ -209,16 +214,27 @@ class PickMontageDialog(BaseDialog):
         summary_context = QLabel(source_context)
         summary_context.setProperty("role", "secondary-status")
         summary_card_layout.addWidget(summary_context)
-        summary_details = QLabel(
-            f"{name} · {status}\nCoverage  {positioned}/{count} positioned\n"
-            f"Coordinate frame  {frame}"
-        )
-        summary_details.setWordWrap(True)
-        summary_details.setSizePolicy(
-            QSizePolicy.Policy.Preferred,
-            QSizePolicy.Policy.Maximum,
-        )
-        summary_card_layout.addWidget(summary_details)
+        summary_details = QFormLayout()
+        summary_details.setContentsMargins(0, 2, 0, 0)
+        summary_details.setHorizontalSpacing(14)
+        summary_details.setVerticalSpacing(4)
+        for label, value in (
+            ("Layout", name),
+            ("Status", status),
+            ("Coverage", f"{positioned}/{count} positioned"),
+            ("Coordinate frame", frame),
+        ):
+            label_widget = QLabel(label)
+            label_widget.setObjectName("ElectrodeLayoutMetricLabel")
+            value_widget = QLabel(value)
+            value_widget.setObjectName("ElectrodeLayoutMetricValue")
+            value_widget.setWordWrap(True)
+            value_widget.setSizePolicy(
+                QSizePolicy.Policy.Preferred,
+                QSizePolicy.Policy.Maximum,
+            )
+            summary_details.addRow(label_widget, value_widget)
+        summary_card_layout.addLayout(summary_details)
         if not self.layout_changes_allowed:
             blocked = QLabel("Clear training before replacing this layout.")
             blocked.setWordWrap(True)
@@ -260,6 +276,7 @@ class PickMontageDialog(BaseDialog):
 
         self.montage_combo = QComboBox()
         self.montage_list = get_builtin_montages()
+        self.montage_combo.addItem(_MONTAGE_PLACEHOLDER)
         self.montage_combo.addItems(self.montage_list)
 
         # A non-BIDS source may preselect only an unambiguous best layout.
@@ -267,30 +284,26 @@ class PickMontageDialog(BaseDialog):
         target_montage = self._recommended_non_bids_montage()
         if self.default_montage and self.default_montage in self.montage_list:
             target_montage = self.default_montage
-        elif target_montage is None:
-            last_montage = self.settings.value("last_montage", "")
-            if last_montage and last_montage in self.montage_list:
-                target_montage = last_montage
-
         if target_montage:
             self.montage_combo.setCurrentText(target_montage)
+        elif self.is_bids_source and self.montage_list:
+            self.montage_combo.setCurrentText(self.montage_list[0])
 
         self.montage_combo.currentTextChanged.connect(self.on_montage_select)
         top_layout.addWidget(self.montage_combo)
 
         top_layout.addStretch()
-
-        # Clear Button
-        self.btn_clear = QPushButton("Clear Mapping")
-        self.btn_clear.clicked.connect(self.clear_selections)
-        top_layout.addWidget(self.btn_clear)
-
         self.btn_reset_saved = QPushButton("Re-run matching")
         self.btn_reset_saved.setToolTip(
             "Re-run conservative matching for this layout",
         )
         self.btn_reset_saved.clicked.connect(self.reset_saved_settings)
         top_layout.addWidget(self.btn_reset_saved)
+
+        self.btn_clear = QPushButton("Clear Mapping")
+        self.btn_clear.clicked.connect(self.clear_selections)
+        top_layout.addWidget(self.btn_clear)
+        self.mapping_toolbar = top_layout
 
         mapping_layout.addLayout(top_layout)
 
@@ -332,13 +345,15 @@ class PickMontageDialog(BaseDialog):
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
-        normalize_dialog_button_box(buttons)
+        normalize_dialog_button_box(
+            buttons,
+            ok_text="Replace Layout" if self.is_bids_source else "Apply",
+        )
         self.button_box = buttons
         apply_button = buttons.button(QDialogButtonBox.StandardButton.Ok)
         if apply_button is None:
             raise RuntimeError("Electrode layout dialog is missing its primary action.")
         if self.is_bids_source:
-            apply_button.setText("Replace Layout")
             back_button = buttons.addButton(
                 "Back", QDialogButtonBox.ButtonRole.ActionRole
             )
@@ -347,8 +362,8 @@ class PickMontageDialog(BaseDialog):
                     "Electrode layout dialog is missing its back action."
                 )
             back_button.clicked.connect(self.show_summary_page)
-        if not self.layout_changes_allowed:
-            apply_button.setEnabled(False)
+        self.apply_button = apply_button
+        self._sync_apply_enabled()
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         mapping_layout.addWidget(buttons)
@@ -409,6 +424,13 @@ class PickMontageDialog(BaseDialog):
         if not self.table or not self.settings:
             return
 
+        if montage_name not in self.montage_list:
+            self.montage_channels = []
+            self._populate_unselected_mapping_rows()
+            self._sync_apply_enabled()
+            self._resize_mapping_table_to_content()
+            return
+
         try:
             positions = get_montage_positions(montage_name)
             self.montage_channels = list(positions["ch_pos"].keys())
@@ -452,11 +474,33 @@ class PickMontageDialog(BaseDialog):
                     combo.setCurrentIndex(combo.findText(suggested))
 
             self._resize_mapping_table_to_content()
+            self._sync_apply_enabled()
 
         except Exception:
             present_unexpected_error(
                 self,
                 UnexpectedErrorContext.MONTAGE_MAPPING_PREPARE,
+            )
+
+    def _populate_unselected_mapping_rows(self) -> None:
+        """Render inert blank rows while no non-BIDS layout is selected."""
+        if self.table is None:
+            return
+        for row in range(self.table.rowCount()):
+            combo = QComboBox()
+            combo.setObjectName("MontageChannelCombo")
+            combo.setEnabled(False)
+            combo.setStyleSheet(_mapping_combo_stylesheet(self._row_color(row)))
+            combo.addItem("")
+            self.table.setCellWidget(row, 1, combo)
+
+    def _sync_apply_enabled(self) -> None:
+        apply_button = getattr(self, "apply_button", None)
+        if isinstance(apply_button, QPushButton):
+            apply_button.setEnabled(
+                self.layout_changes_allowed
+                and self.montage_combo is not None
+                and self.montage_combo.currentText() in self.montage_list
             )
 
     def _resize_mapping_table_to_content(self) -> None:
@@ -633,7 +677,7 @@ class PickMontageDialog(BaseDialog):
         if not self.montage_combo:
             return
         montage_name = self.montage_combo.currentText()
-        if not montage_name:
+        if montage_name not in self.montage_list:
             return
 
         # Recompute this dialog's rows without changing persisted preferences
@@ -658,6 +702,14 @@ class PickMontageDialog(BaseDialog):
         selected_map = {}
         montage_name = self.montage_combo.currentText()
 
+        if montage_name not in self.montage_list:
+            show_warning(
+                self,
+                "Select layout",
+                "Select a standard layout before applying a channel mapping.",
+            )
+            return
+
         for row in range(self.table.rowCount()):
             dataset_item = self.table.item(row, 0)
             if dataset_item is None:
@@ -671,6 +723,13 @@ class PickMontageDialog(BaseDialog):
 
         if not selected_map:
             show_warning(self, "Warning", "No channels mapped.")
+            return
+        if len(selected_map) != len(set(selected_map.values())):
+            show_warning(
+                self,
+                "Review mapping",
+                "Each electrode can be assigned to only one dataset channel.",
+            )
             return
 
         # Save settings

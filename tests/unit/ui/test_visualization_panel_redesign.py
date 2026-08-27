@@ -3818,7 +3818,7 @@ def test_visualization_panel_shows_setup_message_without_training_results(
     panel.update_panel()
 
     current_widget.show_message.assert_called_with(
-        "Complete training to view saliency plots. Set Montage remains available."
+        "Complete training to view saliency plots. Electrode Layout remains available."
     )
     current_widget.show_error.assert_not_called()
 

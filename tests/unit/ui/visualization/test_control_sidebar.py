@@ -21,7 +21,7 @@ from XBrainLab.backend.application import (
 from XBrainLab.backend.application.capabilities import CommandCapability
 from XBrainLab.backend.study import Study
 from XBrainLab.ui.application_capabilities import CommandReviewContext
-from XBrainLab.ui.interaction_outcome import InteractionStatus
+from XBrainLab.ui.interaction_outcome import InteractionOutcome, InteractionStatus
 from XBrainLab.ui.panels.visualization.control_sidebar import ControlSidebar
 
 # Ensure QApplication exists
@@ -55,8 +55,28 @@ def test_sidebar_init(mock_panel, qtbot):
 
     assert isinstance(sidebar.btn_saliency, QPushButton)
     assert sidebar.btn_saliency.text() == "Saliency Settings"
-    assert not hasattr(sidebar, "btn_montage")
-    assert not hasattr(sidebar, "set_montage")
+    assert isinstance(sidebar.btn_montage, QPushButton)
+    assert sidebar.btn_montage.text() == "Electrode Layout"
+
+
+def test_electrode_layout_button_delegates_to_dataset_route_without_command(
+    mock_panel,
+    qtbot,
+):
+    shared_route = MagicMock(return_value=InteractionOutcome.cancelled("Cancelled."))
+    mock_panel.main_window.dataset_panel = SimpleNamespace(
+        sidebar=SimpleNamespace(open_electrode_layout=shared_route),
+    )
+    sidebar = ControlSidebar(mock_panel)
+    qtbot.addWidget(sidebar)
+
+    with patch(
+        "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command"
+    ) as execute:
+        sidebar.btn_montage.click()
+
+    shared_route.assert_called_once_with()
+    execute.assert_not_called()
 
 
 def test_3d_controls_are_grouped_and_hidden_until_the_ready_3d_tab(mock_panel, qtbot):
