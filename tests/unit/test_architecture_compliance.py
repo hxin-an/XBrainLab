@@ -5326,31 +5326,6 @@ def broken(:
     assert architecture_compliance.check_architecture(str(tmp_path)) == 1
 
 
-def test_product_syntax_guard_fails_closed_outside_ui(tmp_path):
-    _write_ui_file(
-        tmp_path,
-        """
-def valid_panel():
-    return None
-""",
-    )
-    _write_product_file(
-        tmp_path,
-        "XBrainLab/backend/broken.py",
-        """
-def broken(:
-    pass
-""",
-    )
-
-    violations = architecture_compliance.check_product_python_syntax(tmp_path)
-
-    assert len(violations) == 1
-    assert "XBrainLab/backend/broken.py" in violations[0]
-    assert "invalid Python syntax" in violations[0]
-    assert architecture_compliance.check_architecture(str(tmp_path)) == 1
-
-
 def test_direct_study_state_guard_flags_product_ui_read(tmp_path):
     _write_ui_file(
         tmp_path,

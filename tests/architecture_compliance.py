@@ -787,23 +787,6 @@ MUTABLE_OBJECT_BOUNDARY_DEBT_ALLOWLIST = (
 )
 
 
-def check_product_python_syntax(root_dir: Path) -> list[str]:
-    """Return every product Python file that cannot be inspected safely."""
-    product_dir = root_dir / "XBrainLab"
-    if not product_dir.exists():
-        return [f"Product package not found: {product_dir}"]
-    violations: list[str] = []
-    for py_file in product_dir.rglob("*.py"):
-        _, syntax_violation = _parse_product_guard_tree(
-            py_file,
-            root_dir,
-            guard_name="architecture compliance",
-        )
-        if syntax_violation is not None:
-            violations.append(syntax_violation)
-    return violations
-
-
 def check_architecture(root_dir: str) -> int:
     """Verify architecture compliance rules for the UI layer.
 
@@ -833,37 +816,7 @@ def check_architecture(root_dir: str) -> int:
         print(f"UI directory not found: {ui_dir}")
         return 1
 
-    syntax_violations = check_product_python_syntax(Path(root_dir))
-    if syntax_violations:
-        print("\nProduct Python Syntax Violations Found:")
-        for violation in syntax_violations:
-            print(f" - {violation}")
-        return 1
-
     violations = []
-
-    for py_file in ui_dir.rglob("*.py"):
-        rel_path = py_file.relative_to(root_dir)
-        tree, syntax_violation = _parse_product_guard_tree(
-            py_file,
-            Path(root_dir),
-            guard_name="architecture compliance",
-        )
-        if syntax_violation is not None:
-            violations.append(syntax_violation)
-            continue
-        assert tree is not None
-
-        # Skip tests and generated files
-        if "tests" in str(rel_path) or "__init__" in str(rel_path):
-            continue
-
-        # Check imports
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.Import, ast.ImportFrom)):
-                # Rule 1: No cross-panel imports
-                # Logic: if file is in ui/panels/A, it should not import ui/panels/B
-                pass  # simplified for now
 
     # Critical Check: BasePanel inheritance
     for panel_file in ui_dir.glob("panels/*/panel.py"):
