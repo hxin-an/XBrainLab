@@ -12,6 +12,7 @@ from scripts.dev.assistant_accuracy_case_packs import load_development_cases
 from scripts.dev.run_assistant_accuracy_development_eval import (
     DevelopmentCaseOutcome,
     EvaluatorLifecycleOutcome,
+    _write_development_report,
     development_experiment_identity,
     evaluate_development_case,
     run_development_eval,
@@ -311,3 +312,46 @@ def test_development_runner_checkpoints_every_completed_case_and_reports_progres
     assert report["complete"] is True
     engine_type.return_value.load_model.assert_called_once_with()
     engine_type.return_value.close.assert_called_once_with()
+
+
+def test_development_report_persists_valid_json_via_its_checkpoint_path(
+    tmp_path,
+) -> None:
+    checkpoint_path = tmp_path / "checkpoint.json"
+    report = {
+        "complete": False,
+        "summary": {"case_count": 1, "passed": False},
+        "results": [{"raw_primary": "full generated output"}],
+    }
+
+    _write_development_report(checkpoint_path, report)
+
+    assert json.loads(checkpoint_path.read_text(encoding="utf-8")) == report
+    assert list(tmp_path.glob(f".{checkpoint_path.name}.*.tmp")) == []
+
+
+def test_development_report_replace_failure_preserves_prior_json_and_cleans_temp(
+    tmp_path,
+) -> None:
+    checkpoint_path = tmp_path / "checkpoint.json"
+    prior_report = {
+        "complete": False,
+        "summary": {"case_count": 7, "passed": False},
+    }
+    checkpoint_path.write_text(
+        json.dumps(prior_report, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    with (
+        patch("os.replace", side_effect=OSError("replace failed")) as replace,
+        pytest.raises(OSError, match="replace failed"),
+    ):
+        _write_development_report(
+            checkpoint_path,
+            {"complete": False, "summary": {"case_count": 8}},
+        )
+
+    replace.assert_called_once()
+    assert json.loads(checkpoint_path.read_text(encoding="utf-8")) == prior_report
+    assert list(tmp_path.glob(f".{checkpoint_path.name}.*.tmp")) == []

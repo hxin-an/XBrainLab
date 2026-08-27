@@ -176,6 +176,19 @@ shutdown requires the controller terminal signal, cleared worker, and stopped wo
 each case. The deterministic 48-case oracle exercises this construction but is not a model run,
 development score, or product claim.
 
+**Blocker-only follow-up (2026-08-27):** review of
+`2621c5a58c079ac72f240c9268fc906d243d774d` found two evidence blockers. The ignored development
+artifact must replace a same-directory temporary file only after flush/fsync so an interrupted
+checkpoint cannot corrupt the prior valid JSON; tests must prove both valid persistence and cleanup
+after a replace failure. Separately, the canonical architecture-compliance fixture still describes
+the retired direct `WorkflowUiHandoffRequest.for_decision` route even though the accepted guard
+requires `UiRequestKind.WORKFLOW_HANDOFF` through `_workflow_ui_handoff_request`; update only the
+fixture and its same-class positive/reject-host samples, never relax the guard or production route.
+The candidate repairs both blockers only: same-directory temp/flush/fsync/replace persistence and
+canonical generic-route fixtures. It changes no corpus, scorer, model, public contract, owner, UI,
+or accuracy claim; the resulting artifact remains development-only evidence rather than a model
+quality result.
+
 ### Owners, deletion candidates, and complexity guard
 
 Owners before and after are unchanged: `ApplicationService` owns authoritative mutation and

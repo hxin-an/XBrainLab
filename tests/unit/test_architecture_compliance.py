@@ -1548,11 +1548,13 @@ def open_montage_picker_dialog(self):
         tmp_path,
         "XBrainLab/llm/agent/controller.py",
         """
-def request_montage(self):
-    return WorkflowUiHandoffRequest.for_decision(
-        CommandName.APPLY_MONTAGE,
-        suggested_values=(),
-    )
+def request_montage(self, result):
+    if result.kind is UiRequestKind.WORKFLOW_HANDOFF:
+        return self._workflow_ui_handoff_request(
+            CommandName.APPLY_MONTAGE,
+            tool_name="set_montage",
+            decision_fields=(),
+        )
 """,
     )
     _write_product_file(
@@ -1579,11 +1581,13 @@ def test_montage_handoff_guard_accepts_canonical_registry_adapter(
         tmp_path,
         "XBrainLab/llm/agent/controller.py",
         """
-def request_montage(self):
-    return WorkflowUiHandoffRequest.for_decision(
-        CommandName.APPLY_MONTAGE,
-        suggested_values=(),
-    )
+def request_montage(self, result):
+    if result.kind is UiRequestKind.WORKFLOW_HANDOFF:
+        return self._workflow_ui_handoff_request(
+            CommandName.APPLY_MONTAGE,
+            tool_name="set_montage",
+            decision_fields=(),
+        )
 """,
     )
     _write_product_file(

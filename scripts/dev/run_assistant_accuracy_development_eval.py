@@ -6,9 +6,12 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
+import tempfile
+from contextlib import suppress
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -692,10 +695,26 @@ def build_development_report(
 def _write_development_report(path: Path, report: dict[str, Any]) -> None:
     """Persist full raw model text only in the ignored development artifact."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(report, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as temporary:
+            temp_path = Path(temporary.name)
+            temporary.write(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+            temporary.flush()
+            os.fsync(temporary.fileno())
+        os.replace(temp_path, path)
+    except BaseException:
+        if temp_path is not None:
+            with suppress(OSError):
+                temp_path.unlink(missing_ok=True)
+        raise
 
 
 def run_development_eval(
