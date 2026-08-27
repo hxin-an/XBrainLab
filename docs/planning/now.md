@@ -103,6 +103,22 @@ publish it only when unlocked; training/retained-trainer lock leaves the UI view
 mutation tool. The tool requests the existing GUI workflow; confirm/cancel and command-boundary
 TOCTOU revalidation remain unchanged.
 
+**Target-first checkpoint (2026-08-27):** this prerequisite is now recorded in
+`docs/target/agent.md`: `set_montage` remains zero-parameter, GUI-handoff and confirmation-based,
+but its model-facing membership is the enabled `apply_montage` mutation capability from the same
+immutable ApplicationService publication. The target stage table no longer implies an epoch-only
+Assistant rule. The same target document now records the L3 verifier as a residual-only,
+same-model, one-extra-generation rejection path with fail-closed `reject_to_response`; it cannot
+repair, infer, select, hand off, confirm or execute, and adds no owner. This docs-only commit is
+the target-contract checkpoint, not product approval; product source remains explicitly pending root
+review.
+
+**Root contract calibration (2026-08-27):** verification now explicitly orders direct
+parameter-origin before ApplicationService capability and confirmation. A missing or unverified
+required direct parameter creates its typed receipt in zero execution and ends that turn; it is
+never deferred until after capability or confirmation. This records only the target boundary and
+does not approve product implementation, tests, evaluator, prompt or evidence claims.
+
 ### Owners, deletion candidates, and complexity guard
 
 Owners before and after are unchanged: `ApplicationService` owns authoritative mutation and
@@ -163,4 +179,5 @@ verification. CI pending/flakes do not stop unrelated work; a failed required ga
 branch at `checkpoint`. Stop the affected treatment for a required new public target decision,
 new owner/state machine, model/download change, destructive operation, exhausted pre-registered
 budget, or unavailable mandatory resource; report the residual rather than weakening a denominator
-or safety rule. Do not commit until root approves this active plan.
+or safety rule. Root has approved this target-first docs checkpoint only; no product source,
+tests, evaluator or prompt change may proceed until root reviews its exact commit.

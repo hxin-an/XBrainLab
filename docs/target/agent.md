@@ -60,7 +60,7 @@ cancel 都由該 GUI owner 完成。`opened`／`accepted` 不是成功，只有 
 | --- | --- | --- | --- |
 | `import_eeg_data` | `empty` | Data Import chooser、Data Interpretation lifecycle、reviewed ApplicationService apply | import applied、cancelled、blocked 或 failed |
 | `select_channels` | `data_loaded` | Dataset Channel Selection dialog；`PreprocessCommand(SELECT_CHANNELS)` | selected channels applied、cancelled、blocked 或 failed |
-| `set_montage` | `epoch_ready`、`dataset_ready`、`trained` | Montage Settings；`ApplyMontageCommand` | montage applied、cancelled、blocked 或 failed |
+| `set_montage` | 有 EEG 且同一 immutable ApplicationService publication 的 `apply_montage` mutation capability 為 enabled；`empty` 與 training／retained-trainer lock 時不發布 | Montage Settings；`ApplyMontageCommand` | montage applied、cancelled、blocked 或 failed |
 | `create_epochs` | `data_loaded`、`preprocessed` | Epoch Settings；`CreateEpochCommand` | epochs created、cancelled、blocked 或 failed |
 | `configure_dataset_split` | `epoch_ready`、`dataset_ready`、`trained` | Dataset Split dialog；`SaveDatasetSplitCommand` | split saved／datasets generated、cancelled、blocked 或 failed |
 | `select_model` | `epoch_ready`、`dataset_ready`、`trained` | Model Selection dialog；existing ConfigureTraining command owner | model selection saved、cancelled、blocked 或 failed |
@@ -144,8 +144,8 @@ Confirmation、resource receipt、generation token與 filesystem path 都由 tru
 | Stage | Backend meaning | Target candidates before capability filtering |
 | --- | --- | --- |
 | `empty` | 無 raw data | Import、Switch |
-| `data_loaded` | 有 raw、尚無 derived preprocessing | Channel、五項 direct preprocess、Epoch、Switch |
-| `preprocessed` | Channel 或任一 preprocess 已成功 | 五項 direct preprocess、Epoch、Reset、Switch |
+| `data_loaded` | 有 raw、尚無 derived preprocessing | Channel、五項 direct preprocess、Epoch、Montage（僅 enabled capability）、Switch |
+| `preprocessed` | Channel 或任一 preprocess 已成功 | 五項 direct preprocess、Epoch、Montage（僅 enabled capability）、Reset、Switch |
 | `epoch_ready` | 已有 supervised epochs，但 split／model／training settings 尚未全部完成 | Montage、三項 setup tools、Start、Reset、Switch |
 | `dataset_ready` | saved split、model、training settings 三項全部完成 | setup 可修改；Start confirmation；Montage、Reset、Switch |
 | `training` | active training job | Stop、Switch；不發布其他 mutation |
@@ -153,8 +153,11 @@ Confirmation、resource receipt、generation token與 filesystem path 都由 tru
 
 `select_channels` 或任一 direct preprocess 成功會自然投影為 `preprocessed`。Raw data可直接建立
 Epoch；`CreateEpochCommand`要求raw與合法epoch context，不以preprocessing operation作前置條件，成功後
-直接投影為`epoch_ready`。Montage只在epoch後提供、不改變stage。`start_training` 是 `epoch_ready`
-stage candidate，但split、model或training settings未齊時由同一publication capability排除schema並在
+直接投影為`epoch_ready`。`set_montage` 保持零參數 GUI completion tool：只要有 EEG 且同一 immutable
+ApplicationService publication 的 `apply_montage` mutation capability 為 enabled，即可在 raw、preprocessed、
+epoch_ready、dataset_ready 或 trained stage 發布；empty、training 與 retained-trainer lock 不發布。Dataset UI
+在有 EEG 時仍可作為 read-only view/configure entry，這不會使 Assistant mutation tool 恢復可呼叫。Montage
+不改變stage。`start_training` 是 `epoch_ready` stage candidate，但split、model或training settings未齊時由同一publication capability排除schema並在
 unavailable reference精確說明缺項，不能部分執行；全部ready後才成為callable。
 
 Stage、setup flags、running state與completed runs都從同一份 immutable ApplicationService
@@ -207,6 +210,24 @@ Repair budget 是 initial generation 加最多兩次 repair：
 - backend generation 改變時 discard proposal，重新讀取最新 publication。
 - backend blocked、confirmation cancel、GUI cancel／fail或任何 side effect 後不得 repair。
 - 同一訊息要求多個 mutation時不部分執行；用 `respond_to_user` 請使用者選第一個。
+
+### Bounded rejection-only proposal verifier
+
+只有 L1 prompt/context 與 L2 typed receipt completion 留下可量測的 no-action residual 時，才可在同一
+固定 model/revision 上對一個已通過 strict envelope、schema、parameter-origin、publication 與 capability
+precheck、但尚未進入 confirmation、GUI handoff 或 execution 的 mutation proposal 做一次額外 generation。
+它的輸入僅限 latest user text、exact primary proposal/schema 與 current immutable publication，輸出只能是
+`allow_primary` 或 `reject_to_response`。
+
+- verifier 只能保留原 proposal 或使其降級為 `respond_to_user`；不得 format repair、處理 active receipt、
+  把文字升級成 tool、選擇或替換 tool、填入參數、建立 receipt、要求 confirmation、發 GUI handoff 或執行。
+- timeout、parse/shape failure、不確定 verdict、generation／publication stale 一律 fail closed 為
+  `reject_to_response`。`allow_primary` 不授予任何新權限，primary proposal 仍完整通過既有 admission、
+  confirmation 和 execution boundary。
+- 此 verifier 不增加 ApplicationService、ToolAttemptCoordinator、PendingInteractionCoordinator 或 GUI
+  handoff registry 以外的 owner、state machine、receipt 或 public tool/output schema；其 primary proposal、
+  verdict、final admission 與 latency 必須可稽核。若 strict safety、positive、valid continuation 或 holdout
+  gates 任一退步，移除 treatment，不以安全 rejection 冒充 raw-model accuracy。
 
 ## Prompt、state card與RAG
 
@@ -263,7 +284,11 @@ runtime本身失敗時不做生成，ChatPanel顯示local runtime error。
 ## Verification、execution與presentation
 
 Verification順序固定為：strict schema → backend generation／stage → target publication → parameter
-schema → ApplicationService capability → confirmation。Prompt與UI不可成為alternate readiness engine。
+schema → direct parameter-origin。若 direct tool 只因 required parameter 缺少或無法由 latest user text
+驗證而失敗，Host 在零 execution 建立 typed receipt 並以具體追問結束本 turn；receipt 不得延後到
+capability 或 confirmation 之後建立。parameter-origin 通過後才進 ApplicationService capability → optional
+rejection-only verifier → confirmation。Verifier 僅可使已通過前述 checks 的 primary proposal 降級，不能成為
+alternate readiness engine；Prompt與UI亦不可成為 alternate readiness engine。
 
 Direct-preprocess clarification follow-up仍由模型選擇action，Host不自動continuation。只有模型在 receipt
 reply budget 內再次提出同一 exact tool 時，parameter-origin verifier 才可把 receipt 的 verified user
@@ -326,7 +351,9 @@ tool-selection failure重分類為通過。
 - Precision gate要求24/24 product outcomes沒有confirmation、GUI handoff、ApplicationService／ToolExecutor
   execution或state mutation。五個缺參數direct tools可由既有parameter-origin guard轉成具體追問；
   out-of-stage的精確requested tool可由既有publication／capability boundary安全阻擋。General、negated、
-  ambiguous與multi-action不得以任何substitute tool進入執行路徑。Raw model選擇另行記錄，不冒充產品結果。
+  ambiguous與multi-action不得以任何substitute tool進入執行路徑。若啟用 rejection-only verifier，
+  `reject_to_response` 只算 composed product safety outcome，primary raw proposal 與 verifier verdict另行
+  記錄，不冒充 raw model選擇。
 - 同一訊息要求多個mutation時一律用`respond_to_user`請使用者選擇第一個要執行的action；本回合不部分
   執行，也不在下一回合自動continuation。
 - 真model safe E2E：Switch Dataset、Import GUI、direct Resample。
