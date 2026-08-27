@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import mne
 import numpy as np
 import pytest
-from PyQt6.QtWidgets import QLabel, QPushButton, QWidget
+from PyQt6.QtWidgets import QPushButton, QWidget
 
 from XBrainLab.backend.application import QueryStateCommand
 from XBrainLab.ui.panels.dataset.sidebar import (
@@ -61,8 +61,13 @@ def test_init_ui(sidebar):
     assert isinstance(sidebar.smart_parse_btn, QPushButton)
     assert isinstance(sidebar.chan_select_btn, QPushButton)
     assert isinstance(sidebar.electrode_layout_btn, QPushButton)
-    assert isinstance(sidebar.electrode_layout_status, QLabel)
-    assert sidebar.electrode_layout_status.text() == "No electrode layout"
+    assert not hasattr(sidebar, "electrode_layout_status")
+    assert sidebar.electrode_layout_btn.toolTip() == (
+        "No electrode layout configured. Load EEG data to review positions."
+    )
+    assert sidebar.electrode_layout_btn.accessibleDescription() == (
+        "No electrode layout configured. Load EEG data to review positions."
+    )
     assert not hasattr(sidebar, "clear_btn")
     assert not sidebar.findChildren(QPushButton, "ResetSessionButton")
     assert all(
@@ -216,9 +221,12 @@ def test_bids_layout_publication_keeps_tooltip_and_notifies_once(sidebar, monkey
     sidebar.update_sidebar()
     sidebar.update_sidebar()
 
-    assert "bids" in sidebar.electrode_layout_btn.toolTip()
-    assert "4/4" in sidebar.electrode_layout_btn.toolTip()
-    assert sidebar.electrode_layout_status.text() == "BIDS layout · 4/4 positioned"
+    assert sidebar.electrode_layout_btn.toolTip() == (
+        "BIDS layout ready · 4 of 4 EEG channels positioned"
+    )
+    assert sidebar.electrode_layout_btn.accessibleDescription() == (
+        "BIDS layout ready · 4 of 4 EEG channels positioned"
+    )
     status.assert_called_once()
 
 
@@ -243,18 +251,20 @@ def test_layout_status_projects_loading_and_manual_partial_states(sidebar, monke
     )
 
     sidebar.update_sidebar()
-    assert sidebar.electrode_layout_status.text() == "Preparing BIDS layout…"
+    assert sidebar.electrode_layout_btn.toolTip() == "Preparing BIDS electrode layout"
 
     layout.status = "limited"
     layout.source = "manual"
     layout.positioned_channel_count = 18
     sidebar.update_sidebar()
-    assert sidebar.electrode_layout_status.text() == "Manual layout · 18/22 positioned"
+    assert sidebar.electrode_layout_btn.toolTip() == (
+        "Manual layout limited · 18 of 22 EEG channels positioned"
+    )
 
     layout.status = "failed"
     layout.source = "bids"
     sidebar.update_sidebar()
-    assert sidebar.electrode_layout_status.text() == "BIDS layout unavailable"
+    assert sidebar.electrode_layout_btn.toolTip() == "BIDS electrode layout unavailable"
 
 
 def test_add_labels_compatibility_button_stays_hidden(sidebar):

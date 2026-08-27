@@ -18,8 +18,9 @@ reviewer。`settings.json` 是使用者本機設定，永不碰觸。
 
 - BIDS summary artifact 顯示為平鋪 debug text（Layout／Source／Coverage／Coordinate frame）與三個
   同優先按鈕，沒有產品階層；picker 同時競爭 Auto Match、Clear Mapping、Back／Cancel／Replace。
-- Dataset 的 Electrode Layout 只有按鈕／tooltip，缺少可掃讀的 current layout、coverage 與 loading
-  state。BIDS 和 manual layout 的差異及可 restore 的 retained snapshot 不夠清楚。
+- Earlier Dataset polish put a second visible status line below `Electrode Layout`; the user rejected that
+  duplicate surface. BIDS/manual provenance, coverage and retained-BIDS restore still need to be clear in
+  the dialog without turning the Dataset action area into a status card.
 - 非 BIDS channel mapping 已可工作，但未將「保守預填、人工確認、不跨 dataset 誤用」明確收斂成
   deterministic product behavior。
 - Review found that the existing Visualization convenience entrance was deleted instead of delegating to
@@ -30,17 +31,20 @@ reviewer。`settings.json` 是使用者本機設定，永不碰觸。
 
 ### Outcome 與 scope
 
-- Dataset `Channels` 正下方顯示非互動狀態：`BIDS layout · N/N positioned`、
-  `Manual layout · N/N positioned`、`Preparing BIDS layout…` 或 `No electrode layout`。
+- Dataset `Electrode Layout` remains one button directly below `Channels`, with no visible secondary status
+  label. Published layout truth is translated into natural product language only in that button's tooltip and
+  `accessibleDescription` (for example, `BIDS layout ready · 4 of 4 EEG channels positioned`).
 - Dataset／Visualization 兩入口都開同一 dialog，維持同一 `ApplyMontageCommand` /
   `ApplicationService` mutation path。
-- Summary 成為正式 status card：`Electrode Layout`、BIDS context、layout status、coverage、coordinate
-  frame；每個 state 一個 primary action。BIDS current 為 `Close` + `Change layout…`；manual override
-  retained BIDS snapshot 為 `Choose another layout…`、`Close` + `Restore BIDS layout`；training lock 仍可
-  查看、但不可變更並顯示原因。
-- Picker 固定 hierarchy：layout selector row → table action row (`Re-run matching`、`Clear mapping`) →
-  mapping table → footer。這兩列在 150% DPI 保持完整文字而不改 controls/order。BIDS footer 為
-  Back／Cancel／Replace，non-BIDS 為 Cancel／Apply；每一頁僅一個 blue primary action。
+- BIDS summary renders directly on the dialog surface, not as a nested card or repeated dialog title:
+  `BIDS coordinates`／`Manual override` eyebrow → visibly larger semibold current layout name → muted
+  coverage plus coordinate facts. Its right-aligned actions are `Close`, optional secondary `Restore BIDS
+  layout`, and the consistent rightmost primary `Change layout…`. Training lock remains viewable but prevents
+  mutation with its existing reason.
+- Picker hierarchy is layout selector row → secondary `Clear mapping` action → mapping table → footer. There
+  is no `Re-run matching`: abandoning edits with Cancel already restores the saved mapping. BIDS footer is
+  Back at left and Cancel／Replace at right; non-BIDS is Cancel／Apply at right; every page has one blue primary
+  action and retains full labels at 150% DPI.
 - Non-BIDS prefill 以 deterministic normalized channel names 排名 builtin montage；唯一最佳 layout 才
   preselect，且只填一對一可信 mapping。collision、alias ambiguity、EOG／EMG、純數字與 unknown 保持
   blank。tie／no-match 時 layout selector 明確保持 `Select layout`，不從 QSettings 的
@@ -105,20 +109,25 @@ Current worktree relative to `origin/main` touches **16 production files**, `+97
 
 ## Implementation and test-first sequence
 
-1. Establish/extend smallest red UI/behavior tests for Dataset status projection, summary action hierarchy,
-   non-BIDS unique/tied/ambiguous prefill, exact-schema reuse, and Cancel zero mutation. Characterize any
-   existing behavior-preserving move before structural edits; do not manufacture mock choreography.
-2. Update presentation using existing dialog/sidebar owner boundaries only; retain command path and apply
-   the minimal backend projection needed for truthful status/pre-fill.
-3. Run focused backend/application tests for BIDS snapshot lifecycle, capability/trainer guard, generation
-   fence and command confirmation; run focused UI dialog/sidebar tests for default, loading, error, partial,
-   locked, cancel, repeat and narrow-width states.
-4. Capture and inspect offscreen artifacts for BIDS current, manual override/restore, non-BIDS partial
-   mapping, loading/error and narrow/DPI layout. Offscreen is evidence only; WSLg manual acceptance remains
-   required before merge.
-5. Run required source-diverse dataset gate because this is BIDS/import/visualization-adjacent. Record exact
-   commands, artifact paths and their claim boundary; do not claim handoff-ready when any canonical gate is
-   unavailable or fails.
+1. 2026-08-27 UI feedback supersedes the earlier status-card direction: remove the visible `QLabel` below
+   Dataset > `Electrode Layout`; publish the same truthful layout state only through the existing button
+   tooltip and accessibility metadata.  The button itself remains the only Dataset-surface control.
+2. Establish the smallest red observable UI tests: no visible status `QLabel` below the button; truthful
+   tooltip/accessibility; summary label/value text hierarchy; right-aligned summary action cluster with one
+   primary action; no `Re-run matching` control or production callback; and Cancel leaves persisted mapping
+   and data untouched.  Keep the existing non-BIDS conservative prefill, saved mapping, Restore BIDS and
+   ApplicationService command-path contracts.
+3. Implement deletion-first in `DatasetSidebar` and `PickMontageDialog` only.  In the summary, align the
+   actions at the right so `Change layout…` is not isolated at the left; remove `Re-run matching` because
+   Cancel already discards unsaved edits.  Do not add tutorial copy, backend policy, or Assistant work.
+   The direct summary surface must also use scoped presentation (not global theme changes): a muted small
+   eyebrow (`BIDS coordinates` or `Manual override`), visibly larger semibold current layout name, and muted
+   compact coverage/coordinate facts.  A structural role alone is insufficient when the rendered font/color
+   hierarchy remains visually flat.
+4. Capture and inspect the current BIDS summary, picker and Dataset surface at default scale plus focused
+   DPI/narrow state if available.  Run focused UI tests, ruff and `git diff --check`.  Offscreen evidence is
+   not Windows/WSLg acceptance; stop at an initial UI revision for the user to approve before any further
+   Assistant multi-turn work.
 
 ## Review, stop condition and UI approval
 
@@ -131,30 +140,26 @@ failure paths. Root independently audits the exact SHA and accepts only in-scope
 
 ### Current implementation checkpoint
 
-- Red baseline: the two focused UI files reported **6 failed / 46 passed** before repair: no sidebar status
-  projection, old BIDS primary-action hierarchy, and unsafe tie/duplicate/schema-reuse mapping behavior.
-- Reviewer-focused red characterization then found the deleted Visualization entrance, duplicate persistence,
-  and non-BIDS first-row/`last_montage` fallback. The extended focused red run was **4 failed / 42 passed**;
-  its tests now require the shared Dataset route, duplicate rejection, `Select layout` for ties/no-match,
-  disabled Apply, zero persistence, and recovery after an explicit selection.
-- Current repair keeps both entrances on the existing dialog and command path. It adds truthful Dataset status,
-  the card/action hierarchy, conservative non-BIDS prefill and schema-bound reviewed mapping reuse; it does
-  not add an owner or a second mutation path. The required 150% precommit capture exposed clipped picker
-  toolbar text; the direct repair separates the existing selector row from the existing action row without
-  changing controls, order, owner or command path. At final commit preparation, the production diff against
-  `origin/main` is **16 files, +972/-424, net +548 LOC**, so the complexity review remains active.
-- Green evidence at commit preparation: the focused UI slice is **163 passed**; application/state montage
-  coverage is **19 passed / 319 deselected**; BIDS preparation plus public fixture coverage is
-  **34 passed / 1 skipped** (one optional public fixture is not installed) with **9 MNE loader/type warnings**;
-  montage architecture ownership is **6 passed / 246 deselected**. Changed-file ruff and `git diff --check`
-  must be repeated after the final documentation update.
-- Every precommit offscreen preview is tied to dirty source and intentionally non-authoritative. After a clean
-  local exact commit, regenerate a source-bound manifest with BIDS current/manual/picker, non-BIDS, Dataset
-  loading/error, both entrances, narrow geometry and explicit 150% offscreen captures. Inspect those images
-  before asking root for review.
-- Remaining handoff work: the exact-commit artifact capture, root/UI/data review, canonical source-diverse
-  dataset gate, pushed exact-head CI, and WSLg manual acceptance. Therefore this branch remains a
-  **checkpoint**, not handoff-ready.
+- The v3 scoped repair is deletion-first and keeps both entrances on the same reviewed dialog and
+  `ApplyMontageCommand` / `ApplicationService` path. It removes the Dataset status `QLabel`, nested
+  summary-card/form, `Re-run matching` control/callback and its ignored-saved-mapping path; it adds no owner,
+  backend policy, Assistant behavior or second mutation path. For this revision the two production files are
+  **+57/-102, net -45 LOC** (`PickMontageDialog` +40/-79; `DatasetSidebar` +17/-23).
+- Red evidence for this revision: **5 failed / 50 passed** caught the visible status label, missing natural
+  accessible metadata, old summary-action order and Re-run control; a follow-up style contract was red at
+  **2 failed / 29 passed** because the screenshot's source/name/facts were visually flat. Green focused UI
+  evidence is **54 passed**, including a valid persisted `mapping_v2` schema reopened after a real row edit
+  followed by Cancel. Changed-file ruff check, ruff format check and `git diff --check` pass.
+- Dirty-source offscreen artifacts were inspected at default scale:
+  `build/dev-artifacts/electrode-hierarchy-v3/electrode-layout-bids-summary.png`; and at 150%:
+  `build/dev-artifacts/electrode-hierarchy-v3-150/electrode-layout-bids-summary.png`. They show the eyebrow,
+  primary layout name, muted facts and one rightmost primary action without clipping. Earlier v2 captures
+  also cover the picker and Dataset button surface; the Dataset narrow walkthrough matrix in
+  `build/dev-artifacts/electrode-hierarchy-v2-dataset/` passed **36 scenarios**. These are offscreen/dirty
+  development evidence only, not native Windows acceptance.
+- Remaining handoff work is exact-clean-commit artifact capture, root/UI/data review, canonical
+  source-diverse dataset gate, pushed exact-head CI and same-SHA WSLg manual acceptance plus explicit merge
+  consent. This branch is a **checkpoint**, never handoff-ready; a source change invalidates acceptance.
 
 Stop at a clean local exact commit plus focused evidence, source-bound artifacts and reviewer/root checkpoint.
 Do not push, merge, call it handoff-ready, or claim manual acceptance until root coordinates the remaining

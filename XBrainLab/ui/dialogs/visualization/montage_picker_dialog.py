@@ -13,13 +13,10 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QCompleter,
     QDialogButtonBox,
-    QFormLayout,
-    QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QPushButton,
-    QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -145,7 +142,6 @@ class PickMontageDialog(BaseDialog):
         self.electrode_names = None
         self.montage_channels = []
         self.montage_list: list = []
-        self._ignored_saved_montages: set[str] = set()
         self._safe_mapping_by_montage: dict[str, dict[str, str]] = {}
 
         # Settings for persistence
@@ -186,82 +182,71 @@ class PickMontageDialog(BaseDialog):
         summary_layout.setContentsMargins(0, 0, 0, 0)
         summary_layout.setSpacing(10)
         summary_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        summary_card = QFrame(self.summary_page)
-        summary_card.setObjectName("ElectrodeLayoutSummaryCard")
-        summary_card.setStyleSheet(
-            f"QFrame#ElectrodeLayoutSummaryCard {{"
-            f"background: {Theme.BACKGROUND_MID};"
-            f"border: 1px solid {Theme.METRICS_TABLE_BORDER};"
-            "border-radius: 6px; padding: 10px; }"
-            f"QLabel#ElectrodeLayoutMetricLabel {{ color: {Theme.TEXT_SECONDARY}; }}"
-            f"QLabel#ElectrodeLayoutMetricValue {{ color: {Theme.TEXT_PRIMARY}; }}"
-        )
-        summary_card_layout = QVBoxLayout(summary_card)
-        summary_card_layout.setContentsMargins(12, 10, 12, 10)
-        summary_card_layout.setSpacing(6)
-        summary_heading = QLabel("Electrode Layout")
-        summary_heading.setProperty("role", "section-title")
-        summary_card_layout.addWidget(summary_heading)
         source = str(self.current_layout.get("source") or "not configured")
         name = str(self.current_layout.get("name") or source.upper())
         positioned = int(self.current_layout.get("positioned_channel_count") or 0)
         count = int(self.current_layout.get("channel_count") or len(self.channel_names))
         frame = str(self.current_layout.get("coordinate_summary") or "not specified")
-        status = str(self.current_layout.get("status") or "not configured")
         source_context = (
-            "BIDS coordinates detected" if source == "bids" else "Manual mapping"
+            "BIDS coordinates"
+            if source == "bids"
+            else "Manual override"
+            if self.is_bids_source
+            else "Manual mapping"
         )
         summary_context = QLabel(source_context)
+        summary_context.setObjectName("ElectrodeLayoutSummaryContext")
         summary_context.setProperty("role", "secondary-status")
-        summary_card_layout.addWidget(summary_context)
-        summary_details = QFormLayout()
-        summary_details.setContentsMargins(0, 2, 0, 0)
-        summary_details.setHorizontalSpacing(14)
-        summary_details.setVerticalSpacing(4)
-        for label, value in (
-            ("Layout", name),
-            ("Status", status),
-            ("Coverage", f"{positioned}/{count} positioned"),
-            ("Coordinate frame", frame),
-        ):
-            label_widget = QLabel(label)
-            label_widget.setObjectName("ElectrodeLayoutMetricLabel")
-            value_widget = QLabel(value)
-            value_widget.setObjectName("ElectrodeLayoutMetricValue")
-            value_widget.setWordWrap(True)
-            value_widget.setSizePolicy(
-                QSizePolicy.Policy.Preferred,
-                QSizePolicy.Policy.Maximum,
+        summary_context.setStyleSheet(
+            f"color: {Theme.TEXT_SECONDARY}; font-size: 11px; font-weight: 600;"
+        )
+        summary_layout.addWidget(summary_context)
+        summary_heading = QLabel(name)
+        summary_heading.setObjectName("ElectrodeLayoutSummaryTitle")
+        summary_heading.setProperty("role", "section-title")
+        summary_heading.setStyleSheet(
+            f"color: {Theme.TEXT_PRIMARY}; font-size: 18px; font-weight: 600;"
+        )
+        summary_layout.addWidget(summary_heading)
+        coordinate_facts = (
+            "Head coordinates"
+            if frame.lower() == "head"
+            else (
+                "Coordinate frame not specified"
+                if frame == "not specified"
+                else f"{frame.capitalize()} coordinates"
             )
-            summary_details.addRow(label_widget, value_widget)
-        summary_card_layout.addLayout(summary_details)
+        )
+        summary_facts = QLabel(
+            f"{positioned} of {count} EEG channels positioned  ·  {coordinate_facts}"
+        )
+        summary_facts.setObjectName("ElectrodeLayoutSummaryFacts")
+        summary_facts.setProperty("role", "secondary-status")
+        summary_facts.setWordWrap(True)
+        summary_facts.setStyleSheet(f"color: {Theme.TEXT_SECONDARY}; font-size: 12px;")
+        summary_layout.addWidget(summary_facts)
         if not self.layout_changes_allowed:
             blocked = QLabel("Clear training before replacing this layout.")
             blocked.setWordWrap(True)
-            summary_card_layout.addWidget(blocked)
-        summary_layout.addWidget(summary_card)
+            summary_layout.addWidget(blocked)
         summary_actions = QHBoxLayout()
+        self.summary_actions = summary_actions
         self.btn_change_layout = QPushButton("Change layout…")
         self.btn_change_layout.setEnabled(self.layout_changes_allowed)
         self.btn_change_layout.clicked.connect(self.show_mapping_page)
         self.btn_use_bids = QPushButton("Restore BIDS layout")
         can_restore = bool(self.current_layout.get("bids_restore_available"))
-        if can_restore:
-            self.btn_change_layout.setText("Choose another layout…")
-            self.btn_use_bids.setProperty("primaryAction", True)
-            self.btn_use_bids.setStyleSheet(Stylesheets.BTN_PRIMARY)
-        else:
-            self.btn_change_layout.setProperty("primaryAction", True)
-            self.btn_change_layout.setStyleSheet(Stylesheets.BTN_PRIMARY)
-        summary_actions.addWidget(self.btn_change_layout)
+        self.btn_change_layout.setProperty("primaryAction", True)
+        self.btn_change_layout.setStyleSheet(Stylesheets.BTN_PRIMARY)
         self.btn_use_bids.setVisible(can_restore)
         self.btn_use_bids.setEnabled(can_restore and self.layout_changes_allowed)
         self.btn_use_bids.clicked.connect(self.restore_bids)
-        summary_actions.addWidget(self.btn_use_bids)
         summary_actions.addStretch()
         self.btn_close = QPushButton("Close")
         self.btn_close.clicked.connect(self.reject)
         summary_actions.addWidget(self.btn_close)
+        summary_actions.addWidget(self.btn_use_bids)
+        summary_actions.addWidget(self.btn_change_layout)
         summary_layout.addLayout(summary_actions)
         layout.addWidget(self.summary_page)
 
@@ -296,13 +281,6 @@ class PickMontageDialog(BaseDialog):
 
         action_layout = QHBoxLayout()
         action_layout.addStretch()
-        self.btn_reset_saved = QPushButton("Re-run matching")
-        self.btn_reset_saved.setToolTip(
-            "Re-run conservative matching for this layout",
-        )
-        self.btn_reset_saved.clicked.connect(self.reset_saved_settings)
-        action_layout.addWidget(self.btn_reset_saved)
-
         self.btn_clear = QPushButton("Clear mapping")
         self.btn_clear.clicked.connect(self.clear_selections)
         action_layout.addWidget(self.btn_clear)
@@ -522,7 +500,7 @@ class PickMontageDialog(BaseDialog):
         showing_summary = (
             self.summary_page is not None and not self.summary_page.isHidden()
         )
-        minimum_height = 200 if showing_summary else 320
+        minimum_height = 170 if showing_summary else 320
         self.setMinimumHeight(minimum_height)
         self.fit_to_content(
             minimum_width=700,
@@ -593,8 +571,6 @@ class PickMontageDialog(BaseDialog):
 
     def _saved_mapping_for_current_schema(self, montage_name: str) -> dict[str, str]:
         """Reuse a reviewed mapping only when the ordered schema is identical."""
-        if montage_name in self._ignored_saved_montages:
-            return {}
         saved = self.settings.value(f"mapping_v2/{montage_name}", {})
         if not isinstance(saved, dict):
             return {}
@@ -675,19 +651,6 @@ class PickMontageDialog(BaseDialog):
                 combo.setCurrentIndex(0)
                 combo.blockSignals(False)
 
-    def reset_saved_settings(self):
-        """Clear saved settings for current montage and re-run Smart Match."""
-        if not self.montage_combo:
-            return
-        montage_name = self.montage_combo.currentText()
-        if montage_name not in self.montage_list:
-            return
-
-        # Recompute this dialog's rows without changing persisted preferences
-        # until the user explicitly replaces the layout.
-        self._ignored_saved_montages.add(montage_name)
-        self.on_montage_select(montage_name)
-
     @staticmethod
     def _row_color(row: int) -> str:
         return Theme.METRICS_TABLE_ALT_BG if row % 2 else Theme.METRICS_TABLE_BG
@@ -741,8 +704,6 @@ class PickMontageDialog(BaseDialog):
             f"mapping_v2/{montage_name}",
             {"channel_schema": list(self.channel_names), "mapping": selected_map},
         )
-        self._ignored_saved_montages.discard(montage_name)
-
         # Prepare result
         mapped_dataset_chs = list(selected_map.keys())
         mapped_montage_chs = list(selected_map.values())

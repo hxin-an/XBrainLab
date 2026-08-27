@@ -9,7 +9,6 @@ from PyQt6.QtWidgets import (
     QFrame,
     QGridLayout,
     QGroupBox,
-    QLabel,
     QPushButton,
     QSizePolicy,
     QSpacerItem,
@@ -265,18 +264,15 @@ class DatasetSidebar(QWidget):
         self.exec_layout.addWidget(self.chan_select_btn)
 
         self.electrode_layout_btn = QPushButton("Electrode Layout")
-        self.electrode_layout_btn.setToolTip(
-            "Map existing EEG channels to reviewed electrode positions",
+        initial_layout_text = (
+            "No electrode layout configured. Load EEG data to review positions."
         )
+        self.electrode_layout_btn.setToolTip(initial_layout_text)
+        self.electrode_layout_btn.setAccessibleDescription(initial_layout_text)
         self._last_layout_status: tuple[str, str | None, int, int] | None = None
         self.electrode_layout_btn.setStyleSheet(_DATASET_SIDEBAR_BUTTON_STYLE)
         self.electrode_layout_btn.clicked.connect(self.open_electrode_layout)
         self.exec_layout.addWidget(self.electrode_layout_btn)
-        self.electrode_layout_status = QLabel("No electrode layout")
-        self.electrode_layout_status.setObjectName("ElectrodeLayoutStatus")
-        self.electrode_layout_status.setWordWrap(True)
-        self.electrode_layout_status.setProperty("role", "secondary-status")
-        self.exec_layout.addWidget(self.electrode_layout_status)
 
         layout.addWidget(exec_group)
 
@@ -707,15 +703,9 @@ class DatasetSidebar(QWidget):
                     layout.positioned_channel_count,
                     layout.channel_count,
                 )
-                self.electrode_layout_btn.setToolTip(
-                    f"Electrode layout: {layout.status}"
-                    + (f" ({layout.source})" if layout.source else "")
-                    + f" — {layout.positioned_channel_count}/"
-                    f"{layout.channel_count} EEG channels positioned"
-                )
-                self.electrode_layout_status.setText(
-                    self._electrode_layout_status_text(layout),
-                )
+                layout_text = self._electrode_layout_description(layout)
+                self.electrode_layout_btn.setToolTip(layout_text)
+                self.electrode_layout_btn.setAccessibleDescription(layout_text)
                 if current_layout != self._last_layout_status:
                     self._last_layout_status = current_layout
                     if layout.source == "bids" and layout.status in {
@@ -792,20 +782,24 @@ class DatasetSidebar(QWidget):
             self._fit_action_labels()
 
     @staticmethod
-    def _electrode_layout_status_text(layout: Any) -> str:
-        """Project the published layout state into a compact sidebar status."""
+    def _electrode_layout_description(layout: Any) -> str:
+        """Translate published layout truth for the button's assistive metadata."""
         status = str(getattr(layout, "status", "not_configured"))
         source = str(getattr(layout, "source", "") or "").lower()
         positioned = int(getattr(layout, "positioned_channel_count", 0) or 0)
         channel_count = int(getattr(layout, "channel_count", 0) or 0)
         if status in {"pending", "preparing"}:
-            return "Preparing BIDS layout…"
+            return "Preparing BIDS electrode layout"
         if status == "failed":
-            return "BIDS layout unavailable"
+            return "BIDS electrode layout unavailable"
         if not source:
-            return "No electrode layout"
+            return "No electrode layout configured"
         source_label = "BIDS" if source == "bids" else "Manual"
-        return f"{source_label} layout · {positioned}/{channel_count} positioned"
+        status_label = "ready" if status == "ready" else status.replace("_", " ")
+        return (
+            f"{source_label} layout {status_label} · {positioned} of "
+            f"{channel_count} EEG channels positioned"
+        )
 
     # --- Actions moved from Panel ---
 

@@ -146,7 +146,7 @@ class TestPickMontageInit:
 
         assert bids_dialog.summary_page.isHidden() is False
         assert bids_dialog.mapping_page.isHidden() is True
-        assert bids_dialog.minimumHeight() == 200
+        assert bids_dialog.minimumHeight() == 170
         bids_dialog.show_mapping_page()
         assert bids_dialog.summary_page.isHidden() is True
         assert bids_dialog.mapping_page.isHidden() is False
@@ -175,8 +175,31 @@ class TestPickMontageInit:
         assert bids_dialog.btn_change_layout.property("primaryAction") is True
         assert bids_dialog.btn_close.property("primaryAction") is not True
         assert bids_dialog.btn_use_bids.isHidden() is True
+        assert bids_dialog.summary_actions.itemAt(0).spacerItem() is not None
+        assert bids_dialog.summary_actions.indexOf(bids_dialog.btn_close) < (
+            bids_dialog.summary_actions.indexOf(bids_dialog.btn_change_layout)
+        )
+        assert bids_dialog.summary_actions.indexOf(bids_dialog.btn_change_layout) == (
+            bids_dialog.summary_actions.count() - 1
+        )
 
-    def test_manual_override_makes_restore_the_single_primary_action(
+        heading = bids_dialog.findChild(QLabel, "ElectrodeLayoutSummaryTitle")
+        context = bids_dialog.findChild(QLabel, "ElectrodeLayoutSummaryContext")
+        facts = bids_dialog.findChild(QLabel, "ElectrodeLayoutSummaryFacts")
+        assert heading is not None
+        assert heading.property("role") == "section-title"
+        assert context is not None
+        assert context.property("role") == "secondary-status"
+        assert facts is not None
+        assert context.text() == "BIDS coordinates"
+        assert "font-size: 11px" in context.styleSheet()
+        assert "color:" in context.styleSheet()
+        assert "font-size: 18px" in heading.styleSheet()
+        assert "font-weight: 600" in heading.styleSheet()
+        assert "font-size: 12px" in facts.styleSheet()
+        assert "color:" in facts.styleSheet()
+
+    def test_manual_override_keeps_change_layout_as_the_single_primary_action(
         self, dialog, qtbot, channel_names
     ):
         from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
@@ -199,24 +222,29 @@ class TestPickMontageInit:
         )
         qtbot.addWidget(restore_dialog)
 
-        assert restore_dialog.btn_change_layout.text() == "Choose another layout…"
-        assert restore_dialog.btn_change_layout.property("primaryAction") is not True
-        assert restore_dialog.btn_use_bids.property("primaryAction") is True
+        assert restore_dialog.btn_change_layout.text() == "Change layout…"
+        assert restore_dialog.btn_change_layout.property("primaryAction") is True
+        assert restore_dialog.btn_use_bids.property("primaryAction") is not True
         assert restore_dialog.btn_close.text() == "Close"
-        labels = [
-            label.text()
-            for label in restore_dialog.findChildren(
-                QLabel, "ElectrodeLayoutMetricLabel"
-            )
-        ]
-        values = [
-            label.text()
-            for label in restore_dialog.findChildren(
-                QLabel, "ElectrodeLayoutMetricValue"
-            )
-        ]
-        assert labels == ["Layout", "Status", "Coverage", "Coordinate frame"]
-        assert values == ["standard_1020", "ready", "18/22 positioned", "head"]
+        assert restore_dialog.summary_actions.itemAt(0).spacerItem() is not None
+        assert restore_dialog.summary_actions.indexOf(restore_dialog.btn_close) == 1
+        assert restore_dialog.summary_actions.indexOf(restore_dialog.btn_use_bids) == 2
+        assert (
+            restore_dialog.summary_actions.indexOf(restore_dialog.btn_change_layout)
+            == 3
+        )
+        assert (
+            restore_dialog.findChild(QLabel, "ElectrodeLayoutSummaryTitle").text()
+            == "standard_1020"
+        )
+        assert (
+            restore_dialog.findChild(QLabel, "ElectrodeLayoutSummaryContext").text()
+            == "Manual override"
+        )
+        assert (
+            restore_dialog.findChild(QLabel, "ElectrodeLayoutSummaryFacts").text()
+            == "18 of 22 EEG channels positioned  ·  Head coordinates"
+        )
 
     def test_bids_summary_replace_and_restore_intents_are_distinct(
         self, dialog, qtbot, channel_names
@@ -282,18 +310,19 @@ class TestPickMontageInit:
         assert bids_dialog.btn_change_layout.isEnabled() is False
         assert bids_dialog.btn_use_bids.isEnabled() is False
 
-    def test_mapping_action_labels_have_unconstrained_text_width(self, dialog):
+    def test_mapping_has_only_the_clear_mapping_action(self, dialog):
         assert dialog.btn_clear.text() == "Clear mapping"
         assert dialog.btn_clear.minimumWidth() <= dialog.btn_clear.sizeHint().width()
         assert dialog.btn_clear.maximumWidth() >= dialog.btn_clear.sizeHint().width()
-        assert dialog.mapping_toolbar.indexOf(
-            dialog.btn_reset_saved
-        ) < dialog.mapping_toolbar.indexOf(dialog.btn_clear)
+        assert not hasattr(dialog, "btn_reset_saved")
+        assert dialog.mapping_toolbar.count() == 2
+        assert dialog.mapping_toolbar.itemAt(0).spacerItem() is not None
+        assert dialog.mapping_toolbar.indexOf(dialog.btn_clear) == 1
         apply_button = dialog.button_box.button(QDialogButtonBox.StandardButton.Ok)
         assert apply_button is not None
         assert apply_button.text() == "Apply"
 
-    def test_bids_auto_match_then_back_preserves_saved_mapping(
+    def test_cancel_after_editing_keeps_saved_mapping_unchanged(
         self, dialog, qtbot, channel_names
     ):
         from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
@@ -301,7 +330,12 @@ class TestPickMontageInit:
         )
 
         montage_name = dialog.montage_combo.currentText()
-        dialog.settings.setValue(f"mapping/{montage_name}", {"Fp1": "Fp1"})
+        saved_mapping = {
+            "channel_schema": list(channel_names),
+            "mapping": {"Fp1": "Fp1", "Fp2": "Fp2"},
+        }
+        dialog.settings.setValue(f"mapping_v2/{montage_name}", saved_mapping)
+        dialog.settings.setValue("last_montage", montage_name)
         bids_dialog = PickMontageDialog(
             parent=None,
             channel_names=channel_names,
@@ -310,13 +344,27 @@ class TestPickMontageInit:
         )
         qtbot.addWidget(bids_dialog)
         bids_dialog.show_mapping_page()
-        bids_dialog.reset_saved_settings()
-        bids_dialog.show_summary_page()
+        combo = bids_dialog.table.cellWidget(0, 1)
+        assert isinstance(combo, QComboBox)
+        assert combo.currentText() == "Fp1"
+        combo.setCurrentText("F3")
+        assert combo.currentText() == "F3"
         bids_dialog.reject()
 
-        assert bids_dialog.settings.value(f"mapping/{montage_name}", {}) == {
-            "Fp1": "Fp1"
-        }
+        reopened = PickMontageDialog(
+            parent=None,
+            channel_names=channel_names,
+            is_bids_source=True,
+            current_layout={"source": "bids", "status": "ready"},
+        )
+        qtbot.addWidget(reopened)
+        reopened_combo = reopened.table.cellWidget(0, 1)
+        assert isinstance(reopened_combo, QComboBox)
+        assert reopened_combo.currentText() == "Fp1"
+        assert (
+            reopened.settings.value(f"mapping_v2/{montage_name}", {}) == saved_mapping
+        )
+        assert reopened.settings.value("last_montage", "") == montage_name
 
     def test_small_channel_list_fits_table_and_dialog_to_content(
         self,
@@ -593,14 +641,6 @@ class TestAcceptReject:
         # May return ([], {}) or (chs, positions)
         assert isinstance(result, tuple)
         assert len(result) == 2
-
-    def test_reset_saved_settings(self, dialog):
-        montage_name = dialog.montage_combo.currentText()
-        dialog.settings.setValue(f"mapping/{montage_name}", {"C3": "C3"})
-
-        dialog.reset_saved_settings()
-
-        assert dialog.settings.value(f"mapping/{montage_name}", {}) == {"C3": "C3"}
 
 
 class TestMontagePickerEdgeCases:
