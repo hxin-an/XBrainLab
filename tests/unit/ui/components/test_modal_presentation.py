@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt, QTimer
+import pytest
+from PyQt6.QtCore import QPoint, Qt, QTimer
 from PyQt6.QtTest import QTest
-from PyQt6.QtWidgets import QApplication, QPushButton
+from PyQt6.QtWidgets import QApplication, QFrame, QLabel, QPushButton
 
 from XBrainLab.ui.components.modal_presentation import (
     AlertSeverity,
@@ -32,6 +33,147 @@ def test_alert_uses_xbrainlab_dialog_shell_and_wraps_message(qtbot):
     assert dialog.acknowledge_button.text() == "OK"
 
 
+@pytest.mark.parametrize(
+    ("severity", "title", "severity_text"),
+    [
+        (AlertSeverity.INFORMATION, "Saved", "Information"),
+        (AlertSeverity.WARNING, "Review import", "Warning"),
+        (AlertSeverity.CRITICAL, "Import failed", "Error"),
+    ],
+)
+def test_acknowledgement_alert_has_single_surface_hierarchy_without_inner_card(
+    qtbot,
+    severity,
+    title,
+    severity_text,
+):
+    dialog = ModalAlertDialog(
+        severity=severity,
+        title=title,
+        message="Read the detail before continuing.",
+    )
+    qtbot.addWidget(dialog)
+
+    assert dialog.findChild(QFrame, "ModalAlertContentCard") is None
+    assert all(
+        frame.frameShape() is not QFrame.Shape.StyledPanel
+        for frame in dialog.findChildren(QFrame)
+    )
+    assert dialog.severity_icon_label.objectName() == "ModalAlertSeverityIcon"
+    assert dialog.severity_icon_label.pixmap() is not None
+    assert not dialog.severity_icon_label.pixmap().isNull()
+    assert dialog.title_label.objectName() == "ModalAlertTitle"
+    assert dialog.title_label.text() == title
+    assert dialog.severity_label.text() == severity_text
+    dialog.show()
+    qtbot.waitUntil(dialog.isVisible)
+    assert dialog.message_label.x() == dialog.title_label.x()
+    assert all(
+        label.height() == label.minimumSizeHint().height()
+        for label in (
+            dialog.title_label,
+            dialog.severity_label,
+            dialog.message_label,
+        )
+    )
+
+
+def test_acknowledgement_alert_has_exactly_one_ok_action(qtbot):
+    dialog = ModalAlertDialog(
+        severity=AlertSeverity.WARNING,
+        title="Review import",
+        message="Read the detail before continuing.",
+    )
+    qtbot.addWidget(dialog)
+
+    assert dialog.confirm_button is None
+    assert dialog.cancel_button is None
+    assert dialog.acknowledge_button.text() == "OK"
+    assert (
+        dialog.findChild(QPushButton, "PrimaryConfirmButton")
+        is dialog.acknowledge_button
+    )
+
+
+def test_generic_warning_title_does_not_repeat_visible_warning_copy(qtbot):
+    dialog = ModalAlertDialog(
+        severity=AlertSeverity.WARNING,
+        title="Warning",
+        message="No data loaded.",
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    qtbot.waitUntil(dialog.isVisible)
+
+    visible_warning_labels = [
+        label
+        for label in dialog.findChildren(QLabel)
+        if label.isVisible() and label.text() == "Warning"
+    ]
+
+    assert visible_warning_labels == [dialog.title_label]
+    assert dialog.message_label.x() == dialog.title_label.x()
+    assert dialog.message_label.y() > dialog.title_label.geometry().bottom()
+    assert (
+        dialog.message_label.y() - dialog.title_label.geometry().bottom()
+        < dialog.title_label.height()
+    )
+
+
+@pytest.mark.parametrize("destructive", [False, True])
+def test_severity_typography_keeps_acknowledgement_and_confirmation_contracts(
+    qtbot, destructive
+):
+    acknowledgement = ModalAlertDialog(
+        severity=AlertSeverity.WARNING,
+        title="Review import",
+        message="Read the detail before continuing.",
+    )
+    confirmation = ModalAlertDialog(
+        severity=AlertSeverity.WARNING,
+        title="Delete model",
+        message="Delete this model from this device?",
+        confirm_text="Delete Model",
+        destructive=destructive,
+    )
+    qtbot.addWidget(acknowledgement)
+    qtbot.addWidget(confirmation)
+    acknowledgement.show()
+    confirmation.show()
+    qtbot.waitUntil(confirmation.isVisible)
+
+    assert acknowledgement.severity_label.font().pixelSize() == 12
+    assert confirmation.severity_label.font().pixelSize() == 14
+
+
+def test_acknowledgement_enter_accepts(qtbot):
+    dialog = ModalAlertDialog(
+        severity=AlertSeverity.INFORMATION,
+        title="Project saved",
+        message="Your project was saved successfully.",
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+
+    QTest.keyClick(dialog, Qt.Key.Key_Return)
+
+    assert dialog.result() == dialog.DialogCode.Accepted
+
+
+def test_acknowledgement_escape_rejects(qtbot):
+    dialog = ModalAlertDialog(
+        severity=AlertSeverity.WARNING,
+        title="Review import",
+        message="Read the detail before continuing.",
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+
+    QTest.keyClick(dialog, Qt.Key.Key_Escape)
+
+    assert dialog.result() == dialog.DialogCode.Rejected
+
+
 def test_short_alert_fits_content_without_fixed_vertical_gaps(qtbot):
     dialog = ModalAlertDialog(
         severity=AlertSeverity.WARNING,
@@ -44,6 +186,26 @@ def test_short_alert_fits_content_without_fixed_vertical_gaps(qtbot):
     assert dialog.height() < 210
 
 
+def test_short_descriptive_alert_keeps_footer_close_to_message(qtbot):
+    dialog = ModalAlertDialog(
+        severity=AlertSeverity.WARNING,
+        title="Review import settings",
+        message="One or more imported values need your review.",
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    qtbot.waitUntil(dialog.isVisible)
+
+    footer_gap = (
+        dialog.acknowledge_button.mapTo(dialog, QPoint(0, 0)).y()
+        - dialog.message_label.geometry().bottom()
+        - 1
+    )
+
+    assert footer_gap >= 0
+    assert footer_gap <= dialog.acknowledge_button.height()
+
+
 def test_long_alert_uses_bounded_scrollable_message_view(qtbot):
     dialog = ModalAlertDialog(
         severity=AlertSeverity.CRITICAL,
@@ -51,10 +213,18 @@ def test_long_alert_uses_bounded_scrollable_message_view(qtbot):
         message="A detailed resource diagnostic line.\n" * 40,
     )
     qtbot.addWidget(dialog)
+    dialog.show()
 
     assert dialog.message_scroll_area is not None
     assert dialog.message_scroll_area.maximumHeight() == 320
+    assert "background-color: transparent" in dialog.message_scroll_area.styleSheet()
     assert dialog.width() <= 640
+    assert dialog.severity_icon_label.y() == dialog.title_label.y()
+    assert dialog.message_scroll_area.x() == dialog.title_label.x()
+    scroll_bar = dialog.message_scroll_area.verticalScrollBar()
+    assert scroll_bar.maximum() > 0
+    scroll_bar.setValue(scroll_bar.maximum())
+    assert scroll_bar.value() == scroll_bar.maximum()
 
 
 def test_confirmation_keeps_cancel_as_default_and_escape_returns_rejected(qtbot):
