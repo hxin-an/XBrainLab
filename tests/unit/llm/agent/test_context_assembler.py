@@ -437,16 +437,17 @@ def test_zero_parameter_action_contract_uses_only_generic_action_shape():
     assert not contracts.lstrip().startswith("[")
 
 
-def test_single_action_contract_ends_with_no_action_envelope() -> None:
+def test_single_action_contract_includes_message_only_response_envelope() -> None:
     registry = ToolRegistry()
     registry.register(BaseStartTrainingTool())
     assembler = ContextAssembler(registry, Study())
 
     contracts = assembler._format_tools(["start_training"])
 
-    assert contracts.rstrip().endswith(
+    assert (
         '{"workflow_stage":"unavailable","tool_name":"respond_to_user",'
         '"parameters":{"message":"<concise response or one clarifying question>"}}'
+        in contracts
     )
 
 
@@ -467,11 +468,126 @@ def test_multi_action_reminder_forbids_prose_and_gui_parameter_invention() -> No
         "Decision checkpoint (apply after reading the catalog):\n",
         maxsplit=1,
     )[1]
-    assert "exactly one listed action" in reminder
-    assert "For multiple actions, ask which one to do first and call none" in reminder
+    assert "STOP — no exact action" in reminder
+    assert "Ask which one to do first for multiple actions" in reminder
     assert "never invent choices that belong to the opened product UI" in reminder
     assert "state that entry's listed reason" not in reminder
     assert "DECISION ENVELOPE" not in reminder
+
+
+def test_action_catalog_places_stop_and_response_shapes_before_generic_action() -> None:
+    registry = ToolRegistry()
+    registry.register(BaseStartTrainingTool())
+    assembler = ContextAssembler(registry, Study())
+
+    contracts = assembler._format_tools(
+        ["start_training"], workflow_stage="epoch_ready"
+    )
+
+    assert "STOP — no exact action" in contracts
+    assert "broad family request (filter, clean, or process)" in contracts
+    assert "Do not choose a likely, default, or first action" in contracts
+    assert contracts.index("Message-only response envelope:") < contracts.index(
+        "Generic action envelope:"
+    )
+    assert contracts.index("Initial typed-clarification envelope:") < contracts.index(
+        "Generic action envelope:"
+    )
+    assert "MUST use this shape, not message-only" in contracts
+    assert (
+        "every and only missing required schema field (one or two items)" in contracts
+    )
+    assert '"pending_action":"<exact enabled direct action>"' in contracts
+    assert '"missing_inputs":["<required input>"]' in contracts
+
+
+def test_valid_receipt_adds_constant_continuation_checkpoint_without_dynamic_values() -> (
+    None
+):
+    state = _state(
+        pipeline_stage="data_loaded",
+        raw=RawStateSnapshot(loaded=True, count=1),
+        active_dataset=ActiveDatasetSnapshot(has_raw_data=True),
+    )
+    publication = ApplicationViewPublication(
+        generation=81,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
+    registry = ToolRegistry()
+    registry.register(_NamedTool("resample_data"))
+    assembler = ContextAssembler(
+        registry,
+        Study(),
+        application_runtime=_ApplicationRuntimeFake(publication),
+    )
+    assembler.set_tool_input_receipt(
+        AssistantToolInputReceipt(
+            command_name="resample_data",
+            original_user_text="Resample the EEG data.",
+            question="What resampling rate should I use?",
+            publication_generation=81,
+            missing_inputs=("rate",),
+            verified_parameters=(("method", "polyphase"),),
+        )
+    )
+
+    system_prompt = assembler.get_messages([{"role": "user", "content": "128 Hz"}])[0][
+        "content"
+    ]
+
+    assert "Trusted active-receipt continuation checkpoint:" in system_prompt
+    assert "same action only" in system_prompt
+    assert "only the latest reply's requested values" in system_prompt
+    assert "never overwrite verified values" in system_prompt
+    assert assembler.latest_tool_publication.tool_names == frozenset({"resample_data"})
+    checkpoint = system_prompt.split(
+        "Trusted active-receipt continuation checkpoint:", maxsplit=1
+    )[1].split("Generic action envelope:", maxsplit=1)[0]
+    assert "resample_data" not in checkpoint
+    assert "polyphase" not in checkpoint
+
+
+@pytest.mark.parametrize(
+    ("receipt_generation", "receipt_tool"),
+    ((80, "resample_data"), (81, "not_registered_for_this_stage")),
+)
+def test_stale_or_unpublished_receipt_does_not_add_continuation_checkpoint(
+    receipt_generation: int, receipt_tool: str
+) -> None:
+    state = _state(
+        pipeline_stage="data_loaded",
+        raw=RawStateSnapshot(loaded=True, count=1),
+        active_dataset=ActiveDatasetSnapshot(has_raw_data=True),
+    )
+    publication = ApplicationViewPublication(
+        generation=81,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
+    registry = ToolRegistry()
+    registry.register(_NamedTool("resample_data"))
+    assembler = ContextAssembler(
+        registry,
+        Study(),
+        application_runtime=_ApplicationRuntimeFake(publication),
+    )
+    assembler.set_tool_input_receipt(
+        AssistantToolInputReceipt(
+            command_name=receipt_tool,
+            original_user_text="Run a preprocessing action.",
+            question="Which required value should I use?",
+            publication_generation=receipt_generation,
+            missing_inputs=("rate",),
+        )
+    )
+
+    messages = assembler.get_messages([{"role": "user", "content": "128 Hz"}])
+    system_prompt = messages[0]["content"]
+
+    assert "Trusted active-receipt continuation checkpoint:" not in system_prompt
+    context = _untrusted_context(messages)
+    assert all(item["type"] != "tool_input_clarification" for item in context["items"])
 
 
 def test_action_catalog_uses_one_generic_action_shape() -> None:
@@ -488,7 +604,7 @@ def test_action_catalog_uses_one_generic_action_shape() -> None:
     assert "Exact zero-parameter output shape:" not in contracts
 
 
-def test_action_catalog_ends_with_exact_stage_no_action_envelope() -> None:
+def test_action_catalog_includes_exact_stage_no_action_envelope() -> None:
     registry = ToolRegistry()
     registry.register(BaseStartTrainingTool())
     assembler = ContextAssembler(registry, Study())
@@ -498,9 +614,10 @@ def test_action_catalog_ends_with_exact_stage_no_action_envelope() -> None:
         workflow_stage="epoch_ready",
     )
 
-    assert contracts.rstrip().endswith(
+    assert (
         '{"workflow_stage":"epoch_ready","tool_name":"respond_to_user",'
         '"parameters":{"message":"<concise response or one clarifying question>"}}'
+        in contracts
     )
 
 
