@@ -295,38 +295,14 @@ Action Contract Catalog (input definitions, never an output array):
             sections.append(
                 "Direct preprocessing semantic checkpoint: Band-pass / 帶通 means "
                 "apply_bandpass_filter only; Notch / 陷波 means "
-                "apply_notch_filter only. They are mutually non-substitutable."
+                "apply_notch_filter only. They are mutually non-substitutable. "
+                "Filter / 濾波 alone does not name either action; message-only."
             )
         if has_unavailable_actions:
             sections.append(
                 "When the request matches an unavailable entry, state that entry's "
                 "listed reason instead of asking for the unavailable action's "
                 "settings; do not execute a prerequisite named by that reason."
-            )
-        sections.extend(
-            (
-                "Message-only response envelope:",
-                '{"workflow_stage":"'
-                + workflow_stage
-                + '","tool_name":"respond_to_user","parameters":{"message":'
-                '"<concise response or one clarifying question>"}}',
-                "Initial typed-clarification envelope: broad family requests stay "
-                "message-only; one exact direct action missing required input uses "
-                "this shape, with missing_inputs listing every and only missing "
-                "required field:",
-                '{"workflow_stage":"'
-                + workflow_stage
-                + '","tool_name":"respond_to_user","parameters":{"message":'
-                '"<one clarifying question>","pending_action":'
-                '"<exact enabled direct action>","missing_inputs":'
-                '["<required input>"]}}',
-            )
-        )
-        if has_active_tool_input_receipt:
-            sections.append(
-                "Trusted active-receipt continuation checkpoint: same exact action "
-                "only; use only the latest reply's requested values; preserve "
-                "verified values; do not switch action or reconstruct pending_action."
             )
         if has_callable_actions:
             sections.extend(
@@ -341,6 +317,34 @@ Action Contract Catalog (input definitions, never an output array):
                     "invent choices that belong to the opened product UI.",
                 )
             )
+        sections.extend(
+            (
+                "Initial typed-clarification envelope: one exact direct action "
+                "missing required input uses this shape; missing_inputs lists "
+                "every and only missing required field:",
+                '{"workflow_stage":"'
+                + workflow_stage
+                + '","tool_name":"respond_to_user","parameters":{"message":'
+                '"<one clarifying question>","pending_action":'
+                '"<exact enabled direct action>","missing_inputs":'
+                '["<required input>"]}}',
+            )
+        )
+        if has_active_tool_input_receipt:
+            sections.append(
+                "Trusted active-receipt continuation checkpoint: same exact action "
+                "only; use only the latest reply's requested values; preserve "
+                "verified values; do not switch action or reconstruct pending_action."
+            )
+        sections.extend(
+            (
+                "Final no-action envelope (replace the message placeholder):",
+                '{"workflow_stage":"'
+                + workflow_stage
+                + '","tool_name":"respond_to_user","parameters":{"message":'
+                '"<concise response or one clarifying question>"}}',
+            )
+        )
         return tuple(sections)
 
     def _application_allowed_tools(
@@ -463,15 +467,13 @@ Action Contract Catalog (input definitions, never an output array):
             callable_tools=set(allowed_tools),
             workflow_stage=workflow_stage,
         )
+        generation = policy_read.backend_generation
         receipt = self._tool_input_receipt
         active_receipt = (
             receipt
             if (
                 receipt is not None
-                and receipt.matches(
-                    receipt.command_name,
-                    policy_read.backend_generation,
-                )
+                and receipt.matches(receipt.command_name, generation)
                 and receipt.command_name in allowed_tools
                 and not workflow_status_unavailable
             )

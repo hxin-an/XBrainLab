@@ -441,20 +441,16 @@ def test_zero_parameter_action_contract_uses_only_generic_action_shape():
     assert not contracts.lstrip().startswith("[")
 
 
-def test_single_action_contract_places_message_only_before_generic_envelope() -> None:
+def test_single_action_contract_ends_with_final_no_action_envelope() -> None:
     registry = ToolRegistry()
     registry.register(BaseStartTrainingTool())
     assembler = ContextAssembler(registry, Study())
 
     contracts = assembler._format_tools(["start_training"])
 
-    assert (
+    assert contracts.rstrip().endswith(
         '{"workflow_stage":"unavailable","tool_name":"respond_to_user",'
         '"parameters":{"message":"<concise response or one clarifying question>"}}'
-        in contracts
-    )
-    assert contracts.index("Message-only response envelope:") < contracts.index(
-        "Generic action envelope:"
     )
 
 
@@ -497,13 +493,14 @@ def test_direct_preprocess_projection_is_bilingual_ordered_and_conditional() -> 
     assert "Band-pass / 帶通" in contracts
     assert "Notch / 陷波" in contracts
     assert "mutually non-substitutable" in contracts
-    assert contracts.index("Message-only response envelope:") < contracts.index(
+    assert "Filter / 濾波 alone does not name either action; message-only." in contracts
+    assert "broad family requests" not in contracts
+    assert contracts.index("Generic action envelope:") < contracts.index(
         "Initial typed-clarification envelope:"
     )
     assert contracts.index("Initial typed-clarification envelope:") < contracts.index(
-        "Generic action envelope:"
+        "Final no-action envelope (replace the message placeholder):"
     )
-    assert "broad family requests stay message-only" in contracts
     assert '"pending_action":"<exact enabled direct action>"' in contracts
     assert '"missing_inputs":["<required input>"]' in contracts
 
@@ -529,7 +526,7 @@ def test_action_catalog_uses_one_generic_action_shape() -> None:
     assert "Exact zero-parameter output shape:" not in contracts
 
 
-def test_action_catalog_keeps_exact_stage_message_only_envelope() -> None:
+def test_action_catalog_ends_with_exact_stage_no_action_envelope() -> None:
     registry = ToolRegistry()
     registry.register(BaseStartTrainingTool())
     assembler = ContextAssembler(registry, Study())
@@ -539,10 +536,9 @@ def test_action_catalog_keeps_exact_stage_message_only_envelope() -> None:
         workflow_stage="epoch_ready",
     )
 
-    assert (
+    assert contracts.rstrip().endswith(
         '{"workflow_stage":"epoch_ready","tool_name":"respond_to_user",'
         '"parameters":{"message":"<concise response or one clarifying question>"}}'
-        in contracts
     )
 
 
@@ -1258,6 +1254,12 @@ def test_current_tool_input_receipt_is_projected_as_bounded_context() -> None:
     assert "Use a 19.75 Hz lower cutoff." not in prompt
     assert "What upper cutoff should I use?" not in prompt
     assert "19.75" not in prompt
+    assert prompt.index("Generic action envelope:") < prompt.index(
+        "Trusted active-receipt continuation checkpoint:"
+    )
+    assert prompt.index(
+        "Trusted active-receipt continuation checkpoint:"
+    ) < prompt.index("Final no-action envelope (replace the message placeholder):")
     assert "tool_input_clarification" in messages[0]["content"]
     assert messages[-1] == {"role": "user", "content": "45 Hz"}
 
