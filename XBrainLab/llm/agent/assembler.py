@@ -198,7 +198,6 @@ Action Contract Catalog (input definitions, never an output array):
         workflow_stage: str = "unavailable",
         backend_default_tools: frozenset[str] = frozenset(),
         unavailable_actions: dict[str, str] | None = None,
-        has_active_tool_input_receipt: bool = False,
     ) -> str:
         """Format request-scoped contracts without resembling model output.
 
@@ -263,8 +262,6 @@ Action Contract Catalog (input definitions, never an output array):
             self._final_output_reminder(
                 has_callable_actions=bool(active_tools),
                 has_unavailable_actions=bool(unavailable_actions),
-                callable_tool_names=frozenset(tool.name for tool in active_tools),
-                has_active_tool_input_receipt=has_active_tool_input_receipt,
                 workflow_stage=workflow_stage,
             )
         )
@@ -275,8 +272,6 @@ Action Contract Catalog (input definitions, never an output array):
         *,
         has_callable_actions: bool,
         has_unavailable_actions: bool,
-        callable_tool_names: frozenset[str],
-        has_active_tool_input_receipt: bool,
         workflow_stage: str,
     ) -> tuple[str, ...]:
         """Place precision-first decision shapes after the schema catalog."""
@@ -291,42 +286,11 @@ Action Contract Catalog (input definitions, never an output array):
             "actions, ask which one to do first and call none. Never claim an "
             "action completed without a trusted tool result.",
         ]
-        if {"apply_bandpass_filter", "apply_notch_filter"} <= callable_tool_names:
-            sections.append(
-                "Direct preprocessing semantic checkpoint: Band-pass / 帶通 means "
-                "apply_bandpass_filter only; Notch / 陷波 means "
-                "apply_notch_filter only. They are mutually non-substitutable."
-            )
         if has_unavailable_actions:
             sections.append(
                 "When the request matches an unavailable entry, state that entry's "
                 "listed reason instead of asking for the unavailable action's "
                 "settings; do not execute a prerequisite named by that reason."
-            )
-        sections.extend(
-            (
-                "Message-only response envelope:",
-                '{"workflow_stage":"'
-                + workflow_stage
-                + '","tool_name":"respond_to_user","parameters":{"message":'
-                '"<concise response or one clarifying question>"}}',
-                "Initial typed-clarification envelope: broad family requests stay "
-                "message-only; one exact direct action missing required input uses "
-                "this shape, with missing_inputs listing every and only missing "
-                "required field:",
-                '{"workflow_stage":"'
-                + workflow_stage
-                + '","tool_name":"respond_to_user","parameters":{"message":'
-                '"<one clarifying question>","pending_action":'
-                '"<exact enabled direct action>","missing_inputs":'
-                '["<required input>"]}}',
-            )
-        )
-        if has_active_tool_input_receipt:
-            sections.append(
-                "Trusted active-receipt continuation checkpoint: same exact action "
-                "only; use only the latest reply's requested values; preserve "
-                "verified values; do not switch action or reconstruct pending_action."
             )
         if has_callable_actions:
             sections.extend(
@@ -341,6 +305,15 @@ Action Contract Catalog (input definitions, never an output array):
                     "invent choices that belong to the opened product UI.",
                 )
             )
+        sections.extend(
+            (
+                "Final no-action envelope (replace the message placeholder):",
+                '{"workflow_stage":"'
+                + workflow_stage
+                + '","tool_name":"respond_to_user","parameters":{"message":'
+                '"<concise response or one clarifying question>"}}',
+            )
+        )
         return tuple(sections)
 
     def _application_allowed_tools(
@@ -463,25 +436,10 @@ Action Contract Catalog (input definitions, never an output array):
             callable_tools=set(allowed_tools),
             workflow_stage=workflow_stage,
         )
-        receipt = self._tool_input_receipt
-        active_receipt = (
-            receipt
-            if (
-                receipt is not None
-                and receipt.matches(
-                    receipt.command_name,
-                    policy_read.backend_generation,
-                )
-                and receipt.command_name in allowed_tools
-                and not workflow_status_unavailable
-            )
-            else None
-        )
         tools_str = self._format_tools(
             allowed_tools,
             workflow_stage=workflow_stage,
             unavailable_actions=unavailable_actions,
-            has_active_tool_input_receipt=active_receipt is not None,
         )
         if workflow_status_unavailable:
             unavailable_reason = (
@@ -529,7 +487,13 @@ Action Contract Catalog (input definitions, never an output array):
                 ),
             )
         ]
-        if active_receipt is not None:
+        receipt = self._tool_input_receipt
+        if (
+            receipt is not None
+            and receipt.matches(receipt.command_name, policy_read.backend_generation)
+            and receipt.command_name in allowed_tools
+            and not workflow_status_unavailable
+        ):
             context_items.append(
                 UntrustedContextItem(
                     item_type="tool_input_clarification",
@@ -537,19 +501,19 @@ Action Contract Catalog (input definitions, never an output array):
                         kind="assistant_tool_input_receipt",
                     ),
                     data={
-                        "action": active_receipt.command_name,
+                        "action": receipt.command_name,
                         "original_user_request": sanitize_untrusted_text(
-                            active_receipt.original_user_text,
+                            receipt.original_user_text,
                             max_chars=MAX_UNTRUSTED_STRING_CHARS,
                         ),
                         "question": sanitize_untrusted_text(
-                            active_receipt.question,
+                            receipt.question,
                             max_chars=MAX_UNTRUSTED_STRING_CHARS,
                         ),
-                        "publication_generation": active_receipt.publication_generation,
-                        "missing_inputs": active_receipt.missing_inputs,
-                        "verified_parameters": dict(active_receipt.verified_parameters),
-                        "remaining_reply_budget": active_receipt.remaining_reply_budget,
+                        "publication_generation": receipt.publication_generation,
+                        "missing_inputs": receipt.missing_inputs,
+                        "verified_parameters": dict(receipt.verified_parameters),
+                        "remaining_reply_budget": receipt.remaining_reply_budget,
                     },
                 )
             )
