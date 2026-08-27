@@ -14,8 +14,6 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.application import (
-    ApplyMontageCommand,
-    QueryStateCommand,
     SaliencyCommand,
     SaliencyPlanIdentity,
     SaliencyRunIdentity,
@@ -23,7 +21,7 @@ from XBrainLab.backend.application import (
 from XBrainLab.backend.application.capabilities import CommandCapability
 from XBrainLab.backend.study import Study
 from XBrainLab.ui.application_capabilities import CommandReviewContext
-from XBrainLab.ui.interaction_outcome import InteractionStatus
+from XBrainLab.ui.interaction_outcome import InteractionOutcome, InteractionStatus
 from XBrainLab.ui.panels.visualization.control_sidebar import ControlSidebar
 
 # Ensure QApplication exists
@@ -55,10 +53,30 @@ def test_sidebar_init(mock_panel, qtbot):
     sidebar = ControlSidebar(mock_panel)
     qtbot.addWidget(sidebar)
 
-    assert isinstance(sidebar.btn_montage, QPushButton)
     assert isinstance(sidebar.btn_saliency, QPushButton)
-    assert sidebar.btn_montage.text() == "Set Montage"
     assert sidebar.btn_saliency.text() == "Saliency Settings"
+    assert isinstance(sidebar.btn_montage, QPushButton)
+    assert sidebar.btn_montage.text() == "Electrode Layout"
+
+
+def test_electrode_layout_button_delegates_to_dataset_route_without_command(
+    mock_panel,
+    qtbot,
+):
+    shared_route = MagicMock(return_value=InteractionOutcome.cancelled("Cancelled."))
+    mock_panel.main_window.dataset_panel = SimpleNamespace(
+        sidebar=SimpleNamespace(open_electrode_layout=shared_route),
+    )
+    sidebar = ControlSidebar(mock_panel)
+    qtbot.addWidget(sidebar)
+
+    with patch(
+        "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command"
+    ) as execute:
+        sidebar.btn_montage.click()
+
+    shared_route.assert_called_once_with()
+    execute.assert_not_called()
 
 
 def test_3d_controls_are_grouped_and_hidden_until_the_ready_3d_tab(mock_panel, qtbot):
@@ -90,350 +108,6 @@ def test_3d_controls_are_grouped_and_hidden_until_the_ready_3d_tab(mock_panel, q
     assert group.isVisible()
     assert sidebar.btn_3d_electrodes.isVisible()
     assert sidebar.btn_3d_head_surface.isVisible()
-
-
-def test_sidebar_set_montage(mock_panel, qtbot):
-    sidebar = ControlSidebar(mock_panel)
-    qtbot.addWidget(sidebar)
-
-    with (
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.PickMontageDialog"
-        ) as MockDialog,
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command"
-        ) as mock_execute,
-    ):
-        instance = MockDialog.return_value
-        instance.exec.return_value = True
-        instance.get_result.return_value = (["Ch1"], [[0, 0, 0]])
-        query_result = MagicMock(
-            failed=False,
-            diagnostics={"state": {"epoch": {"channel_names": ["Ch1"]}}},
-        )
-        apply_result = MagicMock(failed=False)
-        mock_execute.side_effect = [query_result, apply_result]
-
-        sidebar.set_montage()
-
-        query_command = mock_execute.call_args_list[0].args[1]
-        apply_command = mock_execute.call_args_list[1].args[1]
-        assert isinstance(query_command, QueryStateCommand)
-        assert isinstance(apply_command, ApplyMontageCommand)
-        assert apply_command.channels == ["Ch1"]
-        assert apply_command.positions == [(0.0, 0.0, 0.0)]
-        mock_panel.controller.set_montage.assert_not_called()
-        mock_panel.on_update.assert_not_called()
-        assert mock_panel.main_window.statusBar().currentMessage() == "Montage set"
-
-
-def test_sidebar_set_montage_binds_reviewed_publication_generation(
-    mock_panel,
-    qtbot,
-):
-    sidebar = ControlSidebar(mock_panel)
-    qtbot.addWidget(sidebar)
-    capability = CommandCapability(
-        command_name="apply_montage",
-        enabled=True,
-    )
-    query_result = MagicMock(
-        failed=False,
-        diagnostics={"state": {"epoch": {"channel_names": ["C3"]}}},
-    )
-    apply_result = MagicMock(failed=False)
-
-    with (
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar."
-            "get_command_review_context",
-            return_value=CommandReviewContext(
-                capability=capability,
-                publication_generation=31,
-            ),
-        ),
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.get_command_capability",
-            return_value=capability,
-        ),
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.PickMontageDialog"
-        ) as dialog,
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar."
-            "execute_application_command",
-            side_effect=[query_result, apply_result],
-        ) as execute,
-    ):
-        dialog.return_value.exec.return_value = True
-        dialog.return_value.get_result.return_value = (["C3"], [[0.0, 0.0, 0.0]])
-
-        sidebar.set_montage()
-
-    assert execute.call_args_list[0].kwargs["expected_publication_generation"] == 31
-    assert execute.call_args_list[1].kwargs["expected_publication_generation"] == 31
-
-
-def test_sidebar_set_montage_blocked_by_backend_capability(qtbot):
-    controller = MagicMock()
-    controller.has_epoch_data.return_value = True
-    controller.get_channel_names.return_value = ["Ch1", "Ch2"]
-    main_window = QMainWindow()
-    cast(Any, main_window).study = Study()
-    panel = MagicMock()
-    panel.controller = controller
-    panel.main_window = main_window
-    sidebar = ControlSidebar(panel)
-    qtbot.addWidget(sidebar)
-
-    with (
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.PickMontageDialog"
-        ) as mock_dialog,
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.show_warning"
-        ) as mock_warning,
-    ):
-        sidebar.set_montage()
-
-    mock_dialog.assert_not_called()
-    mock_warning.assert_called_once_with(
-        sidebar,
-        "Montage blocked",
-        "Create EEG epochs before applying a montage.",
-    )
-
-
-def test_sidebar_set_montage_real_study_uses_application_service(qtbot):
-    controller = MagicMock()
-    controller.has_epoch_data.return_value = False
-    controller.get_channel_names.return_value = ["Ch1", "Ch2"]
-    main_window = QMainWindow()
-    study = Study()
-    cast(Any, main_window).study = study
-    epoch_data = MagicMock()
-    epoch_data.get_channel_names.return_value = ["Ch1", "Ch2"]
-    epoch_data.get_mne.return_value.info = {"ch_names": ["Ch1", "Ch2"]}
-    study.epoch_data = epoch_data
-    panel = MagicMock()
-    panel.controller = controller
-    panel.main_window = main_window
-    sidebar = ControlSidebar(panel)
-    qtbot.addWidget(sidebar)
-
-    with (
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.PickMontageDialog"
-        ) as mock_dialog,
-    ):
-        mock_dialog.return_value.exec.return_value = True
-        mock_dialog.return_value.get_result.return_value = (
-            ["Ch1", "Ch2"],
-            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
-        )
-
-        sidebar.set_montage()
-
-    epoch_data.set_channels.assert_called_once_with(
-        ["Ch1", "Ch2"],
-        [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)],
-    )
-    status_bar = main_window.statusBar()
-    assert status_bar is not None
-    assert status_bar.currentMessage() == "Montage set"
-
-
-def test_sidebar_set_montage_surfaces_command_failure(mock_panel, qtbot):
-    sidebar = ControlSidebar(mock_panel)
-    qtbot.addWidget(sidebar)
-
-    with (
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.PickMontageDialog"
-        ) as MockDialog,
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.show_warning"
-        ) as mock_warning,
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command"
-        ) as mock_execute,
-    ):
-        instance = MockDialog.return_value
-        instance.exec.return_value = True
-        instance.get_result.return_value = (["Ch1"], [[0, 0, 0]])
-        mock_execute.return_value = MagicMock(
-            failed=True,
-            recoverable=True,
-            message="Create EEG epochs before applying a montage.",
-        )
-
-        sidebar.set_montage()
-
-        mock_panel.controller.set_montage.assert_not_called()
-        mock_warning.assert_called_once()
-
-
-def test_sidebar_set_montage_command_result_blocks_controller_fallback(
-    mock_panel,
-    qtbot,
-):
-    sidebar = ControlSidebar(mock_panel)
-    qtbot.addWidget(sidebar)
-    mock_panel.controller.set_montage.return_value = None
-
-    with (
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.PickMontageDialog"
-        ) as mock_dialog,
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.show_warning",
-        ) as mock_warning,
-    ):
-        mock_dialog.return_value.exec.return_value = True
-        mock_dialog.return_value.get_result.return_value = (["Ch1"], [[0, 0, 0]])
-
-        sidebar.set_montage()
-
-    mock_panel.controller.set_montage.assert_not_called()
-    mock_panel.on_update.assert_not_called()
-    mock_warning.assert_called_once()
-    assert mock_warning.call_args.args[1] == "Montage blocked"
-
-
-def test_sidebar_set_montage_refuses_real_study_controller_fallback(qtbot):
-    controller = MagicMock()
-    controller.has_epoch_data.side_effect = AssertionError(
-        "stale epoch state should not be read",
-    )
-    controller.get_channel_names.return_value = ["Ch1", "Ch2"]
-    main_window = QMainWindow()
-    cast(Any, main_window).study = Study()
-    panel = MagicMock()
-    panel.controller = controller
-    panel.main_window = main_window
-    sidebar = ControlSidebar(panel)
-    qtbot.addWidget(sidebar)
-
-    with (
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.get_command_capability",
-            return_value=None,
-        ),
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar."
-            "get_command_review_context",
-            return_value=None,
-        ),
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.PickMontageDialog"
-        ) as mock_dialog,
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command",
-            return_value=None,
-        ),
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.show_warning"
-        ) as mock_warning,
-    ):
-        mock_dialog.return_value.exec.return_value = True
-        mock_dialog.return_value.get_result.return_value = (["Ch1"], [[0, 0, 0]])
-        sidebar.set_montage()
-
-    mock_dialog.assert_not_called()
-    mock_warning.assert_called_once()
-    assert "could not safely complete" in mock_warning.call_args.args[2]
-    controller.has_epoch_data.assert_not_called()
-    controller.set_montage.assert_not_called()
-
-
-def test_sidebar_set_montage_apply_none_refuses_real_study_controller_fallback(qtbot):
-    controller = MagicMock()
-    controller.has_epoch_data.return_value = True
-    main_window = QMainWindow()
-    cast(Any, main_window).study = Study()
-    panel = MagicMock()
-    panel.controller = controller
-    panel.main_window = main_window
-    sidebar = ControlSidebar(panel)
-    qtbot.addWidget(sidebar)
-    query_result = MagicMock(
-        failed=False,
-        diagnostics={"state": {"epoch": {"channel_names": ["Ch1"]}}},
-    )
-
-    with (
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.get_command_capability",
-            return_value=None,
-        ),
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar."
-            "get_command_review_context",
-            return_value=None,
-        ),
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.PickMontageDialog"
-        ) as mock_dialog,
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command",
-            side_effect=[query_result, None],
-        ),
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.show_warning"
-        ) as mock_warning,
-    ):
-        mock_dialog.return_value.exec.return_value = True
-        mock_dialog.return_value.get_result.return_value = (["Ch1"], [[0, 0, 0]])
-        sidebar.set_montage()
-
-    controller.set_montage.assert_not_called()
-    mock_warning.assert_called_once()
-    assert "could not safely complete" in mock_warning.call_args.args[2]
-
-
-def test_sidebar_set_montage_uses_query_channels_before_stale_controller(
-    mock_panel,
-    qtbot,
-):
-    sidebar = ControlSidebar(mock_panel)
-    qtbot.addWidget(sidebar)
-    mock_panel.controller.get_channel_names.return_value = ["stale"]
-    query_result = MagicMock(
-        failed=False,
-        diagnostics={
-            "state": {
-                "epoch": {
-                    "channel_names": ["C3", "C4"],
-                },
-            },
-        },
-    )
-    apply_result = MagicMock(failed=False)
-
-    with (
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.PickMontageDialog"
-        ) as mock_dialog,
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command",
-            side_effect=[query_result, apply_result],
-        ) as mock_execute,
-    ):
-        mock_dialog.return_value.exec.return_value = True
-        mock_dialog.return_value.get_result.return_value = (
-            ["C3", "C4"],
-            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
-        )
-
-        sidebar.set_montage()
-
-    mock_panel.controller.get_channel_names.assert_not_called()
-    mock_dialog.assert_called_once_with(sidebar, ["C3", "C4"])
-    first_command = mock_execute.call_args_list[0].args[1]
-    second_command = mock_execute.call_args_list[1].args[1]
-    assert first_command.query == "state"
-    assert isinstance(second_command, ApplyMontageCommand)
-    assert second_command.channels == ["C3", "C4"]
 
 
 def test_sidebar_set_saliency_blocked_by_backend_capability(qtbot):
@@ -899,17 +573,10 @@ def test_sidebar_set_saliency_surfaces_selection_change_while_dialog_is_open(
 
 
 @pytest.mark.parametrize(
-    ("action_name", "review_context"),
+    "review_context",
     [
-        pytest.param("montage", None, id="montage-missing-review"),
+        pytest.param(None, id="saliency-missing-review"),
         pytest.param(
-            "montage",
-            SimpleNamespace(capability=None, publication_generation=51),
-            id="montage-missing-capability",
-        ),
-        pytest.param("saliency", None, id="saliency-missing-review"),
-        pytest.param(
-            "saliency",
             SimpleNamespace(capability=None, publication_generation=52),
             id="saliency-missing-capability",
         ),
@@ -917,7 +584,6 @@ def test_sidebar_set_saliency_surfaces_selection_change_while_dialog_is_open(
 )
 def test_visualization_actions_fail_before_command_or_dialog_without_product_review(
     qtbot,
-    action_name,
     review_context,
 ):
     main_window = QMainWindow()
@@ -928,7 +594,7 @@ def test_visualization_actions_fail_before_command_or_dialog_without_product_rev
     panel.main_window = main_window
     sidebar = ControlSidebar(panel)
     qtbot.addWidget(sidebar)
-    enabled = CommandCapability(command_name=action_name, enabled=True)
+    enabled = CommandCapability(command_name="saliency", enabled=True)
 
     with (
         patch(
@@ -945,23 +611,15 @@ def test_visualization_actions_fail_before_command_or_dialog_without_product_rev
             "execute_application_command",
         ) as execute,
         patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.PickMontageDialog",
-        ) as montage_dialog,
-        patch(
             "XBrainLab.ui.panels.visualization.control_sidebar.SaliencySettingDialog",
         ) as saliency_dialog,
         patch(
             "XBrainLab.ui.panels.visualization.control_sidebar.show_warning",
         ) as warning,
     ):
-        outcome = (
-            sidebar.set_montage()
-            if action_name == "montage"
-            else sidebar.set_saliency()
-        )
+        outcome = sidebar.set_saliency()
 
     assert outcome.status is InteractionStatus.BLOCKED
     execute.assert_not_called()
-    montage_dialog.assert_not_called()
     saliency_dialog.assert_not_called()
     warning.assert_called_once()

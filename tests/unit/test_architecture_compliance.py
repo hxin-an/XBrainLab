@@ -1605,7 +1605,7 @@ surface_openers = {
 }
 
 def _open_montage(self, request):
-    return self._surface_result(self.sidebar.set_montage())
+    return self._surface_result(self.sidebar.open_electrode_layout())
 """,
     )
 
@@ -2498,7 +2498,6 @@ def handlers(self):
     assert any(
         "depends on the preprocess mutation controller" in item for item in violations
     )
-    assert any("preprocess_service.py must own" in item for item in violations)
     assert any(
         "_LazyAnalysisCommandService owns handle_apply_montage" in item
         for item in violations
@@ -2509,7 +2508,7 @@ def handlers(self):
     assert any("current owner(s): analysis" in item for item in violations)
 
 
-def test_product_montage_command_has_one_preprocess_owner() -> None:
+def test_product_montage_command_has_one_application_owner() -> None:
     root = Path(__file__).resolve().parents[2]
 
     assert check_montage_command_ownership(root) == []

@@ -352,10 +352,10 @@ _WORKFLOW_UI_HANDOFF_ROUTES = (
         command=CommandName.APPLY_MONTAGE,
         surface_kind=WorkflowUiHandoffSurfaceKind.DIALOG,
         decision_owner=AssistantDecisionOwner.GUI_DIALOG,
-        target_panel=WorkflowUiHandoffPanel.VISUALIZATION,
+        target_panel=WorkflowUiHandoffPanel.DATASET,
         route_identity=WorkflowUiHandoffRouteIdentity.MONTAGE_SETTINGS_DIALOG,
-        presentation_step="Continue in Montage Settings",
-        decision_copy="Finish or cancel in the open Montage Settings dialog.",
+        presentation_step="Continue in Electrode Layout",
+        decision_copy="Finish or cancel in the open Electrode Layout dialog.",
     ),
 )
 
