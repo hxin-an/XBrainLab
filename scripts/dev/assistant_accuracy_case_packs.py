@@ -7,12 +7,8 @@ import json
 from collections import Counter
 from copy import deepcopy
 from dataclasses import dataclass
-from functools import cache
 from pathlib import Path
 from typing import Any
-
-from XBrainLab.llm.agent.verifier import DIRECT_PARAMETER_TOOLS, ToolSchemaValidator
-from XBrainLab.llm.tools import get_all_tools
 
 ROOT = Path(__file__).resolve().parents[2]
 DEVELOPMENT_CASES_PATH = (
@@ -21,7 +17,7 @@ DEVELOPMENT_CASES_PATH = (
 HOLDOUT_CASES_PATH = ROOT / "scripts" / "dev" / "assistant_accuracy_holdout_cases.json"
 DEVELOPMENT_CASE_COUNT = 48
 HOLDOUT_CASE_COUNT = 32
-SCHEMA_VERSION = "xbrainlab.assistant_accuracy_case_packs.v3"
+SCHEMA_VERSION = "xbrainlab.assistant_accuracy_case_packs.v4"
 
 # Deliberately update these only alongside an approved corpus-baseline decision.
 # They are not recomputed-and-written by a runner, so wording or expectation drift
@@ -48,6 +44,52 @@ PINNED_FROZEN_V8_CASES_SHA256 = {
     "challenge": "df300230c11b0ca014b1320e20ec80f2529766d2cbb2d50cd38adbe78ba2405b",  # pragma: allowlist secret
     "precision": "1b9d03bf0eb6802313f69cff955dab8bc39058fccb58667a2903fbab8a3e16f6",  # pragma: allowlist secret
     "clarification": "de3bb8e1f41cd820ead690a1f9767ab7d47cf0142568c5dda8f25405a5a97087",  # pragma: allowlist secret
+}
+
+# This is intentionally a frozen experiment snapshot, not product runtime policy.
+# Update it only through the approved L0 corpus-baseline decision. Full-product CI
+# asserts exact registry and ToolSchemaValidator parity without making the static
+# corpus loader import the product package or its heavy dependencies.
+PINNED_DIRECT_PARAMETER_TOOLS = frozenset(
+    {
+        "apply_bandpass_filter",
+        "apply_notch_filter",
+        "resample_data",
+        "set_reference",
+        "normalize_data",
+    }
+)
+PINNED_DIRECT_PARAMETER_SCHEMAS: dict[str, dict[str, Any]] = {
+    "apply_bandpass_filter": {
+        "type": "object",
+        "properties": {
+            "low_freq": {"type": "number"},
+            "high_freq": {"type": "number"},
+        },
+        "required": ["low_freq", "high_freq"],
+    },
+    "apply_notch_filter": {
+        "type": "object",
+        "properties": {"freq": {"type": "number"}},
+        "required": ["freq"],
+    },
+    "resample_data": {
+        "type": "object",
+        "properties": {"rate": {"type": "integer"}},
+        "required": ["rate"],
+    },
+    "set_reference": {
+        "type": "object",
+        "properties": {"method": {"type": "string"}},
+        "required": ["method"],
+    },
+    "normalize_data": {
+        "type": "object",
+        "properties": {
+            "method": {"type": "string", "enum": ["z-score", "min-max"]},
+        },
+        "required": ["method"],
+    },
 }
 
 _CATEGORIES = frozenset(
@@ -81,32 +123,17 @@ _WORKFLOW_STAGES = frozenset(
 )
 
 
-@cache
-def _canonical_direct_parameter_schemas() -> dict[str, dict[str, Any]]:
-    """Read the exact five direct schemas from the registered product tools."""
-    schemas = {
-        tool.name: deepcopy(tool.parameters)
-        for tool in get_all_tools(mode="real")
-        if tool.name in DIRECT_PARAMETER_TOOLS
-    }
-    if frozenset(schemas) != DIRECT_PARAMETER_TOOLS:
-        raise RuntimeError(
-            "Registered direct tool schemas drifted from verifier policy."
-        )
-    return schemas
+def pinned_direct_parameter_schemas() -> dict[str, dict[str, Any]]:
+    """Return a defensive copy of the frozen experiment schema snapshot.
 
-
-def canonical_direct_parameter_schemas() -> dict[str, dict[str, Any]]:
-    """Return a defensive copy of the production direct-tool schemas.
-
-    This is schema parity only. It does not invoke an ApplicationService,
-    controller, evaluator, confirmation path, or mutation boundary.
+    The snapshot only keeps the non-frozen corpus machine-loadable. It does
+    not decide current product admission or runtime parameter policy.
     """
-    return deepcopy(_canonical_direct_parameter_schemas())
+    return deepcopy(PINNED_DIRECT_PARAMETER_SCHEMAS)
 
 
 def _required_direct_fields(tool_name: str) -> tuple[str, ...]:
-    schema = _canonical_direct_parameter_schemas()[tool_name]
+    schema = PINNED_DIRECT_PARAMETER_SCHEMAS[tool_name]
     required = schema.get("required")
     if not isinstance(required, list) or not all(
         isinstance(field, str) for field in required
@@ -159,15 +186,61 @@ def _validate_direct_parameter_values(
     complete: bool,
     case_id: str,
 ) -> None:
-    schema = deepcopy(_canonical_direct_parameter_schemas()[tool_name])
-    if not complete:
-        schema["required"] = []
-    result = ToolSchemaValidator({tool_name: schema}).validate(tool_name, values)
-    if not result.is_valid:
+    """Validate only the bounded semantics represented by the pinned snapshot."""
+    schema = PINNED_DIRECT_PARAMETER_SCHEMAS[tool_name]
+    properties = schema["properties"]
+    if complete:
+        missing = [field for field in schema["required"] if field not in values]
+        if missing:
+            raise ValueError(
+                f"Accuracy case {case_id} violates pinned experiment schema: "
+                f"missing required parameter(s): {', '.join(missing)}"
+            )
+    unknown = sorted(set(values).difference(properties))
+    if unknown:
         raise ValueError(
-            f"Accuracy case {case_id} violates production direct schema: "
-            f"{result.error_message}"
+            f"Accuracy case {case_id} violates pinned experiment schema: "
+            f"unknown parameter(s): {', '.join(unknown)}"
         )
+    for name, value in values.items():
+        property_schema = properties[name]
+        enum_values = property_schema.get("enum")
+        if isinstance(enum_values, list) and not _json_enum_matches(value, enum_values):
+            raise ValueError(
+                f"Accuracy case {case_id} violates pinned experiment schema: "
+                f"{name} must be one of {enum_values}"
+            )
+        expected_type = property_schema.get("type")
+        if isinstance(expected_type, str) and not _json_type_matches(
+            value, expected_type
+        ):
+            raise ValueError(
+                f"Accuracy case {case_id} violates pinned experiment schema: "
+                f"{name} must be {expected_type}"
+            )
+
+
+def _json_type_matches(value: Any, expected_type: str) -> bool:
+    """Match the JSON primitive semantics used by the pinned direct schemas."""
+    if expected_type == "string":
+        return isinstance(value, str)
+    if expected_type == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if expected_type == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    return False
+
+
+def _json_enum_matches(value: Any, enum_values: list[Any]) -> bool:
+    """Preserve the product validator's case-insensitive string enum behavior."""
+    if value in enum_values:
+        return True
+    if isinstance(value, str):
+        lowered = value.lower()
+        return any(
+            isinstance(item, str) and item.lower() == lowered for item in enum_values
+        )
+    return False
 
 
 def _parse_receipt(
@@ -229,7 +302,10 @@ def _parse_turn(row: object, *, case_id: str, category: str) -> AccuracyExperime
         or not isinstance(advanced, bool)
         or boundary not in _BOUNDARIES
         or not isinstance(expected_parameters, dict)
-        or (expected_tool is not None and expected_tool not in DIRECT_PARAMETER_TOOLS)
+        or (
+            expected_tool is not None
+            and expected_tool not in PINNED_DIRECT_PARAMETER_TOOLS
+        )
         or (advanced and category != "stale_generation")
     ):
         raise ValueError(f"Accuracy case {case_id} has invalid turn values.")

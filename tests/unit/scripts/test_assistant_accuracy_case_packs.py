@@ -1,7 +1,12 @@
 """Contracts for the non-frozen Assistant accuracy experiment corpora."""
 
 import json
+import os
+import subprocess
+import sys
+from copy import deepcopy
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -11,14 +16,16 @@ from scripts.dev.assistant_accuracy_case_packs import (
     FROZEN_V8_BASELINE_SOURCE_SHA,
     HOLDOUT_CASE_COUNT,
     PINNED_DEVELOPMENT_CASES_SHA256,
+    PINNED_DIRECT_PARAMETER_SCHEMAS,
     PINNED_FROZEN_V8_CASES_SHA256,
     PINNED_HOLDOUT_CASES_SHA256,
     _load_cases,
-    canonical_direct_parameter_schemas,
+    _validate_direct_parameter_values,
     corpus_identity,
     frozen_v8_identity,
     load_development_cases,
     load_holdout_cases,
+    pinned_direct_parameter_schemas,
 )
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -90,7 +97,7 @@ def test_experiment_case_packs_are_fixed_bilingual_and_separate_from_frozen_v8()
 
 def test_every_turn_is_a_machine_loadable_boundary_oracle() -> None:
     cases = (*load_development_cases(), *load_holdout_cases())
-    direct_schemas = canonical_direct_parameter_schemas()
+    direct_schemas = pinned_direct_parameter_schemas()
 
     for case in cases:
         for turn in case.turns:
@@ -168,7 +175,7 @@ def test_trajectory_taxonomy_locks_static_receipt_and_no_action_expectations() -
 def test_experiment_case_pack_identity_is_pinned_and_coverage_is_locked() -> None:
     identity = corpus_identity()
 
-    assert identity["schema_version"] == "xbrainlab.assistant_accuracy_case_packs.v3"
+    assert identity["schema_version"] == "xbrainlab.assistant_accuracy_case_packs.v4"
     assert identity["development_cases_sha256"] == PINNED_DEVELOPMENT_CASES_SHA256
     assert identity["holdout_cases_sha256"] == PINNED_HOLDOUT_CASES_SHA256
     assert identity["development_case_count"] == DEVELOPMENT_CASE_COUNT
@@ -210,8 +217,8 @@ def test_experiment_case_pack_identity_is_pinned_and_coverage_is_locked() -> Non
     assert frozen_v8_identity() == identity["frozen_v8"]
 
 
-def test_oracle_uses_exact_registered_direct_tool_schemas() -> None:
-    schemas = canonical_direct_parameter_schemas()
+def test_oracle_uses_the_pinned_experiment_direct_tool_snapshot() -> None:
+    schemas = pinned_direct_parameter_schemas()
 
     assert schemas["resample_data"]["properties"]["rate"]["type"] == "integer"
     assert schemas["normalize_data"]["properties"]["method"] == {
@@ -219,6 +226,122 @@ def test_oracle_uses_exact_registered_direct_tool_schemas() -> None:
         "enum": ["z-score", "min-max"],
     }
     assert schemas["set_reference"]["properties"]["method"]["type"] == "string"
+
+
+@pytest.fixture(scope="module")
+def product_direct_parameter_schemas() -> dict[str, dict[str, Any]]:
+    """Load real schemas only for full-product parity tests."""
+    pytest.importorskip("torch", reason="full product schema parity requires torch")
+    pytest.importorskip("mne", reason="full product schema parity requires mne")
+
+    from XBrainLab.llm.agent.verifier import (
+        DIRECT_PARAMETER_TOOLS,
+    )
+    from XBrainLab.llm.tools import get_all_tools
+
+    registered = {
+        tool.name: tool.parameters
+        for tool in get_all_tools(mode="real")
+        if tool.name in DIRECT_PARAMETER_TOOLS
+    }
+    assert frozenset(PINNED_DIRECT_PARAMETER_SCHEMAS) == DIRECT_PARAMETER_TOOLS
+    return registered
+
+
+def test_pinned_snapshot_matches_the_product_direct_tool_registry(
+    product_direct_parameter_schemas: dict[str, dict[str, Any]],
+) -> None:
+    """The static snapshot must fail CI parity if the product schema changes."""
+    assert product_direct_parameter_schemas == PINNED_DIRECT_PARAMETER_SCHEMAS
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "parameters", "complete"),
+    (
+        ("resample_data", {"rate": 128}, True),
+        ("resample_data", {}, True),
+        ("resample_data", {"rate": 128, "unexpected": "value"}, True),
+        ("resample_data", {"rate": 128.5}, True),
+        ("normalize_data", {"method": "z-score"}, True),
+        ("normalize_data", {"method": "Z-SCORE"}, True),
+        ("normalize_data", {"method": "robust"}, True),
+        ("set_reference", {"method": "average"}, True),
+        ("set_reference", {"method": 7}, True),
+        ("apply_bandpass_filter", {"low_freq": 1}, False),
+    ),
+)
+def test_pinned_snapshot_validator_matches_product_schema_validation(
+    tool_name: str,
+    parameters: dict[str, object],
+    complete: bool,
+    product_direct_parameter_schemas: dict[str, dict[str, Any]],
+) -> None:
+    """Keep bounded snapshot semantics aligned without importing runtime on load."""
+    pytest.importorskip("torch", reason="full product schema parity requires torch")
+    pytest.importorskip("mne", reason="full product schema parity requires mne")
+
+    from XBrainLab.llm.agent.verifier import ToolSchemaValidator
+
+    product_schema = deepcopy(product_direct_parameter_schemas[tool_name])
+    if not complete:
+        product_schema["required"] = []
+    product_result = ToolSchemaValidator({tool_name: product_schema}).validate(
+        tool_name,
+        parameters,
+    )
+    try:
+        _validate_direct_parameter_values(
+            tool_name,
+            parameters,
+            complete=complete,
+            case_id="parity",
+        )
+    except ValueError:
+        snapshot_is_valid = False
+    else:
+        snapshot_is_valid = True
+
+    assert snapshot_is_valid is product_result.is_valid
+
+
+def test_case_pack_module_loads_and_hashes_without_site_packages() -> None:
+    """The static oracle must not need torch, MNE, or product-runtime imports."""
+    result = subprocess.run(  # noqa: S603 - fixed local interpreter and source.
+        [
+            sys.executable,
+            "-S",
+            "-c",
+            """
+import sys
+
+from scripts.dev.assistant_accuracy_case_packs import corpus_identity
+
+identity = corpus_identity()
+assert identity[\"development_case_count\"] == 48
+assert identity[\"holdout_case_count\"] == 32
+assert not any(
+    module == root or module.startswith(root + \".\")
+    for module in sys.modules
+    for root in (\"torch\", \"mne\", \"XBrainLab\")
+)
+assert not any(\"site-packages\" in path for path in sys.path)
+print(\"PASS\")
+""",
+        ],
+        check=True,
+        capture_output=True,
+        cwd=ROOT,
+        env={
+            **os.environ,
+            "MNE_DONTWRITE_HOME": "true",
+            "PYTHONNOUSERSITE": "1",
+            "PYTHONPATH": str(ROOT),
+        },
+        text=True,
+        timeout=30,
+    )
+
+    assert result.stdout == "PASS\n"
 
 
 def test_loader_rejects_schema_drift(tmp_path: Path) -> None:
@@ -276,7 +399,7 @@ def test_loader_rejects_schema_drift(tmp_path: Path) -> None:
                     "receipt": None,
                 }
             ],
-            "violates production direct schema",
+            "violates pinned experiment schema",
         ),
         (
             "general",
@@ -348,12 +471,14 @@ def test_loader_rejects_boundary_authority_and_step_drift(
 @pytest.mark.parametrize(
     ("tool_name", "parameters"),
     (
+        ("resample_data", {}),
+        ("resample_data", {"rate": 128, "unexpected": "value"}),
         ("resample_data", {"rate": 128.5}),
         ("normalize_data", {"method": "robust"}),
         ("set_reference", {"method": 7}),
     ),
 )
-def test_loader_rejects_values_outside_the_registered_production_schema(
+def test_loader_rejects_values_outside_the_pinned_experiment_schema(
     tmp_path: Path,
     tool_name: str,
     parameters: dict[str, object],
@@ -383,7 +508,7 @@ def test_loader_rejects_values_outside_the_registered_production_schema(
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="violates production direct schema"):
+    with pytest.raises(ValueError, match="violates pinned experiment schema"):
         _load_cases(malformed, expected_count=1)
 
 
