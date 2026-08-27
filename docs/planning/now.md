@@ -171,6 +171,60 @@ safe-fallback measures separately. After the rollback is reviewed at its clean e
 same ordered sentinel once as a scorer-equivalent rollback baseline before considering any later
 treatment; holdout wording/content remains inaccessible to builders.
 
+**L1 rollback-baseline / L1-H2 pre-registration (2026-08-27).** The required scorer-equivalent
+rollback baseline has now been frozen at clean exact source
+`21f4322c286d3fb7e8cbd931de8fdaec53377465`, using the same fixed Granite 4.0 Micro model
+`ibm-granite/granite-4.0-micro`, revision
+`56111ae135df9c53a78c99028e7bc24035a9e979`, deterministic structured-decision policy
+(`max_new_tokens=512`, `do_sample=false`, at most two strict-envelope recoveries), ordered 12 IDs,
+and selected-ID digest `089caa537de79d82eda1b462badd3ee6e032ed41b7de0e4c656f4fade39ab3fa`.
+Its scorer is `scripts/dev/run_assistant_accuracy_development_eval.py`, SHA-256
+`f7d00c95073ec0aee45046d055ab14ddffa074b6e7de6534423d512bf71c1d0c`. The ignored artifact is
+`artifacts/assistant_accuracy_development/granite4micro-21f4322c-rollback-baseline-sentinel.json`,
+SHA-256 `a48e4e9cfdaaf9a5811986a407d52e117dedd9fe5d770b5fe564e18415d9c56f`: raw-valid `21/24`,
+recovery-nonexhausted `24/24`, composed `2/24`, and `1/12` complete trajectories. It observed
+five unexpected verified-boundary interceptions among six total interceptions and zero real side
+effects. This is the H2 comparator only, not a product, holdout, or raw-model-accuracy result.
+
+The seven-case semantic H2 comparator is a read-only extraction from that locked run-2 artifact,
+not another GPU run: raw-valid `16/19`, recovery-nonexhausted `19/19`, composed `1/19`, `0/7`
+complete trajectories, one verified-boundary interception that was unexpected
+(`dev_partial_bandpass_zh` turn two), and zero real side effects.
+
+**L1/H2 — coherent direct-preprocess decision projection.** H2 may modify only
+`XBrainLab/llm/agent/assembler.py`, estimated `+28–38` production LOC, owner delta `0`. It may
+add compact bilingual canonical semantics that make band-pass / `帶通` and notch / `陷波` mutually
+non-substitutable, retain the existing typed `respond_to_user` clarification shape, and state the
+existing continuation rule only for an active, validated receipt. It must not encode individual
+case answers, supply defaults, or create a semantic Host router. It changes no parser or strict
+recovery behavior, Host/coordinator/evaluator/scorer/corpus/registry, public tool contract, UI,
+owner, receipt type, state machine, capability policy, or model/policy. Multi-action one-object
+format behavior is explicitly **not** part of H2.
+
+**Run 3 exact semantic sentinel.** Run only these seven development cases in exactly this order
+for 19 turns: `dev_missing_bandpass_en`, `dev_partial_bandpass_en`,
+`dev_partial_bandpass_zh`, `dev_cancel_zh`, `dev_generic_filter_en`,
+`dev_generic_filter_en_02`, `dev_generic_filter_zh`. Their expected composed boundaries are:
+
+| Case | Expected boundaries, in turn order |
+| --- | --- |
+| `dev_missing_bandpass_en` | typed receipt `apply_bandpass_filter` missing `low_freq, high_freq` → verified exact `apply_bandpass_filter(2, 36)` sentinel |
+| `dev_partial_bandpass_en` | typed receipt missing both → typed receipt retaining `low_freq=2`, missing `high_freq` → verified exact `apply_bandpass_filter(2, 35)` sentinel |
+| `dev_partial_bandpass_zh` | typed receipt missing both → typed receipt retaining `low_freq=1`, missing `high_freq` → verified exact `apply_bandpass_filter(1, 45)` sentinel |
+| `dev_cancel_zh` | typed receipt missing both → `respond` with no receipt or action |
+| `dev_generic_filter_en` | `respond` → typed `apply_bandpass_filter` receipt missing both → verified exact `apply_bandpass_filter(2, 36)` sentinel |
+| `dev_generic_filter_en_02` | `respond` → typed `apply_notch_filter` receipt missing `freq` → verified exact `apply_notch_filter(60)` sentinel |
+| `dev_generic_filter_zh` | `respond` → typed `apply_bandpass_filter` receipt missing both → verified exact `apply_bandpass_filter(1, 40)` sentinel |
+
+Run 3 promotes no broader claim and passes only at `19/19` composed boundaries, with every typed
+shape exact, recovery nonexhausted on all turns, verified execution crossing only its expected
+exact sentinel, and zero substitute action, unexpected/unsafe sentinel, real mutation, or residual
+receipt. Any failure history-preservingly rolls back H2 and consumes this treatment: no Run-4 retry
+or prompt broadening. Only a complete Run-3 pass permits Run 4: a separately pre-registered,
+independent format-only patch followed by the original ordered 12-case / 24-turn combined
+regression. Run 4 must not be mixed into H2 source or evidence before then; neither run supports a
+product, holdout, or raw-model-accuracy claim.
+
 **L2 — existing typed receipt completion.** Reuse `ToolAttemptCoordinator`,
 `PendingInteractionCoordinator`, `AssistantToolInputReceipt`, controller generation binding, and
 the existing parameter-origin verifier; do not add an owner, state machine, receipt type, or
