@@ -1,13 +1,18 @@
-"""Versioned executable corpora kept separate from the frozen Stable-v8 suite."""
+"""Machine-loadable boundary-oracle corpora separate from frozen Stable-v8."""
 
 from __future__ import annotations
 
 import hashlib
 import json
 from collections import Counter
+from copy import deepcopy
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 from typing import Any
+
+from XBrainLab.llm.agent.verifier import DIRECT_PARAMETER_TOOLS, ToolSchemaValidator
+from XBrainLab.llm.tools import get_all_tools
 
 ROOT = Path(__file__).resolve().parents[2]
 DEVELOPMENT_CASES_PATH = (
@@ -16,14 +21,33 @@ DEVELOPMENT_CASES_PATH = (
 HOLDOUT_CASES_PATH = ROOT / "scripts" / "dev" / "assistant_accuracy_holdout_cases.json"
 DEVELOPMENT_CASE_COUNT = 48
 HOLDOUT_CASE_COUNT = 32
-SCHEMA_VERSION = "xbrainlab.assistant_accuracy_case_packs.v2"
+SCHEMA_VERSION = "xbrainlab.assistant_accuracy_case_packs.v3"
 
-DIRECT_PARAMETER_FIELDS = {
-    "apply_bandpass_filter": ("low_freq", "high_freq"),
-    "apply_notch_filter": ("freq",),
-    "resample_data": ("rate",),
-    "set_reference": ("method",),
-    "normalize_data": ("method",),
+# Deliberately update these only alongside an approved corpus-baseline decision.
+# They are not recomputed-and-written by a runner, so wording or expectation drift
+# fails closed in development before it can change a finalist comparison.
+PINNED_DEVELOPMENT_CASES_SHA256 = "13b5a4434781d7be89f6e5618395232e854376ac1020500b55d228cabb46be94"  # pragma: allowlist secret
+PINNED_HOLDOUT_CASES_SHA256 = "4919e5db805e34851ec32eeea199915a453316d0d68ca46b214d7dda1f0eca55"  # pragma: allowlist secret
+FROZEN_V8_BASELINE_SOURCE_SHA = (
+    "f9b8595f2a0644d1caa57ed3f4aa3530825644a7"  # pragma: allowlist secret
+)
+FROZEN_V8_CASE_PATHS = {
+    "positive": ROOT / "XBrainLab" / "llm" / "rag" / "data" / "gold_set.json",
+    "challenge": ROOT / "scripts" / "dev" / "stable_assistant_challenge_cases.json",
+    "precision": ROOT
+    / "scripts"
+    / "dev"
+    / "stable_assistant_no_action_precision_cases.json",
+    "clarification": ROOT
+    / "scripts"
+    / "dev"
+    / "stable_assistant_clarification_cases.json",
+}
+PINNED_FROZEN_V8_CASES_SHA256 = {
+    "positive": "a4311b63165c2f4fb1c68d88c1ed8c81ecb9ae3beb1760bf1c2e52cda57f31bc",  # pragma: allowlist secret
+    "challenge": "df300230c11b0ca014b1320e20ec80f2529766d2cbb2d50cd38adbe78ba2405b",  # pragma: allowlist secret
+    "precision": "1b9d03bf0eb6802313f69cff955dab8bc39058fccb58667a2903fbab8a3e16f6",  # pragma: allowlist secret
+    "clarification": "de3bb8e1f41cd820ead690a1f9767ab7d47cf0142568c5dda8f25405a5a97087",  # pragma: allowlist secret
 }
 
 _CATEGORIES = frozenset(
@@ -57,9 +81,43 @@ _WORKFLOW_STAGES = frozenset(
 )
 
 
+@cache
+def _canonical_direct_parameter_schemas() -> dict[str, dict[str, Any]]:
+    """Read the exact five direct schemas from the registered product tools."""
+    schemas = {
+        tool.name: deepcopy(tool.parameters)
+        for tool in get_all_tools(mode="real")
+        if tool.name in DIRECT_PARAMETER_TOOLS
+    }
+    if frozenset(schemas) != DIRECT_PARAMETER_TOOLS:
+        raise RuntimeError(
+            "Registered direct tool schemas drifted from verifier policy."
+        )
+    return schemas
+
+
+def canonical_direct_parameter_schemas() -> dict[str, dict[str, Any]]:
+    """Return a defensive copy of the production direct-tool schemas.
+
+    This is schema parity only. It does not invoke an ApplicationService,
+    controller, evaluator, confirmation path, or mutation boundary.
+    """
+    return deepcopy(_canonical_direct_parameter_schemas())
+
+
+def _required_direct_fields(tool_name: str) -> tuple[str, ...]:
+    schema = _canonical_direct_parameter_schemas()[tool_name]
+    required = schema.get("required")
+    if not isinstance(required, list) or not all(
+        isinstance(field, str) for field in required
+    ):
+        raise RuntimeError(f"Direct tool {tool_name} lacks a valid required schema.")
+    return tuple(required)
+
+
 @dataclass(frozen=True, slots=True)
 class ReceiptExpectation:
-    """The only user-proven receipt state permitted after a turn."""
+    """Static oracle expectation for a pending receipt after a turn."""
 
     missing_inputs: tuple[str, ...]
     verified_values: dict[str, Any]
@@ -67,7 +125,7 @@ class ReceiptExpectation:
 
 @dataclass(frozen=True, slots=True)
 class AccuracyExperimentTurn:
-    """One user message and its exact product-boundary expectation."""
+    """One user message and its static composed-boundary expectation."""
 
     user_input: str
     publication_generation_advanced_before_turn: bool
@@ -79,7 +137,7 @@ class AccuracyExperimentTurn:
 
 @dataclass(frozen=True, slots=True)
 class AccuracyExperimentCase:
-    """One non-frozen, product-outcome experiment trajectory."""
+    """One non-frozen trajectory oracle, not an observed product outcome."""
 
     case_id: str
     category: str
@@ -101,22 +159,15 @@ def _validate_direct_parameter_values(
     complete: bool,
     case_id: str,
 ) -> None:
-    fields = DIRECT_PARAMETER_FIELDS[tool_name]
-    if set(values).difference(fields) or (complete and set(values) != set(fields)):
+    schema = deepcopy(_canonical_direct_parameter_schemas()[tool_name])
+    if not complete:
+        schema["required"] = []
+    result = ToolSchemaValidator({tool_name: schema}).validate(tool_name, values)
+    if not result.is_valid:
         raise ValueError(
-            f"Accuracy case {case_id} has invalid direct parameter fields."
+            f"Accuracy case {case_id} violates production direct schema: "
+            f"{result.error_message}"
         )
-    for _field, value in values.items():
-        if tool_name in {
-            "apply_bandpass_filter",
-            "apply_notch_filter",
-            "resample_data",
-        } and (not isinstance(value, (int, float)) or isinstance(value, bool)):
-            raise ValueError(f"Accuracy case {case_id} has invalid numeric parameter.")
-        if tool_name in {"set_reference", "normalize_data"} and (
-            not isinstance(value, str) or not value.strip()
-        ):
-            raise ValueError(f"Accuracy case {case_id} has invalid method parameter.")
 
 
 def _parse_receipt(
@@ -133,7 +184,7 @@ def _parse_receipt(
         raise ValueError(f"Accuracy case {case_id} has invalid receipt schema.")
     missing = value["missing_inputs"]
     verified = value["verified_values"]
-    fields = DIRECT_PARAMETER_FIELDS[expected_tool]
+    fields = _required_direct_fields(expected_tool)
     if (
         not isinstance(missing, list)
         or not missing
@@ -178,7 +229,7 @@ def _parse_turn(row: object, *, case_id: str, category: str) -> AccuracyExperime
         or not isinstance(advanced, bool)
         or boundary not in _BOUNDARIES
         or not isinstance(expected_parameters, dict)
-        or (expected_tool is not None and expected_tool not in DIRECT_PARAMETER_FIELDS)
+        or (expected_tool is not None and expected_tool not in DIRECT_PARAMETER_TOOLS)
         or (advanced and category != "stale_generation")
     ):
         raise ValueError(f"Accuracy case {case_id} has invalid turn values.")
@@ -189,7 +240,7 @@ def _parse_turn(row: object, *, case_id: str, category: str) -> AccuracyExperime
             or receipt_value is not None
         ):
             raise ValueError(
-                f"Respond turn {case_id} must have zero execution authority."
+                f"Respond turn {case_id} must encode a no-action expectation."
             )
         return AccuracyExperimentTurn(
             user_input.strip(), advanced, boundary, None, {}, None
@@ -305,8 +356,16 @@ def _validate_trajectory(case: AccuracyExperimentCase) -> None:
 
 
 def _load_cases(
-    path: Path, *, expected_count: int
+    path: Path,
+    *,
+    expected_count: int,
+    expected_digest: str | None = None,
 ) -> tuple[AccuracyExperimentCase, ...]:
+    if expected_digest is not None and _digest(path) != expected_digest:
+        raise ValueError(
+            f"Accuracy experiment corpus digest drifted for {path.name}; "
+            "update the pinned identity only through the approved baseline decision."
+        )
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -360,12 +419,20 @@ def _load_cases(
 
 def load_development_cases() -> tuple[AccuracyExperimentCase, ...]:
     """Load the visible pre-registered development corpus."""
-    return _load_cases(DEVELOPMENT_CASES_PATH, expected_count=DEVELOPMENT_CASE_COUNT)
+    return _load_cases(
+        DEVELOPMENT_CASES_PATH,
+        expected_count=DEVELOPMENT_CASE_COUNT,
+        expected_digest=PINNED_DEVELOPMENT_CASES_SHA256,
+    )
 
 
 def load_holdout_cases() -> tuple[AccuracyExperimentCase, ...]:
-    """Load the separately named holdout corpus for the evidence custodian only."""
-    return _load_cases(HOLDOUT_CASES_PATH, expected_count=HOLDOUT_CASE_COUNT)
+    """Load the process-blinded, finalist-only tracked holdout corpus."""
+    return _load_cases(
+        HOLDOUT_CASES_PATH,
+        expected_count=HOLDOUT_CASE_COUNT,
+        expected_digest=PINNED_HOLDOUT_CASES_SHA256,
+    )
 
 
 def _digest(path: Path) -> str:
@@ -376,8 +443,27 @@ def _category_counts(cases: tuple[AccuracyExperimentCase, ...]) -> dict[str, int
     return dict(sorted(Counter(case.category for case in cases).items()))
 
 
+def frozen_v8_identity() -> dict[str, object]:
+    """Verify the historical frozen corpus rather than silently accepting drift.
+
+    ``source_sha`` identifies the historical preflight source from which the
+    frozen corpus claim derives. It is provenance metadata, not the current
+    branch identity and not a claim that this module has run that evaluation.
+    """
+    digests = {name: _digest(path) for name, path in FROZEN_V8_CASE_PATHS.items()}
+    if digests != PINNED_FROZEN_V8_CASES_SHA256:
+        raise ValueError(
+            "Frozen Stable-v8 corpus digest drifted; update the pinned identity "
+            "only through an approved frozen-baseline decision."
+        )
+    return {
+        "source_sha": FROZEN_V8_BASELINE_SOURCE_SHA,
+        "case_sha256": dict(digests),
+    }
+
+
 def corpus_identity() -> dict[str, object]:
-    """Return non-secret identities needed to bind experiment reports to these packs."""
+    """Return static oracle identity; this does not score or execute a trajectory."""
     development = load_development_cases()
     holdout = load_holdout_cases()
     if {case.normalized_turns for case in development}.intersection(
@@ -392,4 +478,5 @@ def corpus_identity() -> dict[str, object]:
         "holdout_cases_sha256": _digest(HOLDOUT_CASES_PATH),
         "development_category_counts": _category_counts(development),
         "holdout_category_counts": _category_counts(holdout),
+        "frozen_v8": frozen_v8_identity(),
     }

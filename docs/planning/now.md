@@ -41,7 +41,8 @@ bilingual development pack and a separately held 32-case holdout with content/ca
 repair. The development pack covers negation, general questions, ambiguity, multi-mutation,
 blocked stages, all five missing direct-preprocess parameters, generic action selection, partial
 parameter accumulation, format recovery, cancellation, different-tool and stale-generation paths.
-The subsequent product repair builder does not inspect the holdout wording.
+The tracked holdout is process-blinded and finalist-only, not a technical secret: the product repair
+builder must not inspect its wording, and progress/reporting must not expose holdout wording.
 
 **L0 evidence checkpoint (2026-08-27).** The trusted historical preflight artifact is
 `/tmp/xbrainlab-ui-health-stable-preflight.json`, produced at source
@@ -58,18 +59,31 @@ At the current base source, the scorer runner SHA-256 is
 `c04bf392a2603c7022009b9196927bce7931ba605766dd7b74408e2d65df73f9`; fixed prompt-policy
 SHA-256 is `3215cd2106baa022e64a07ad1c10a15e6a730bb10f76d9b9b2394ebd58e4133a`; context
 assembler SHA-256 is `eba7a9b58925bea46bdd1cf37cd1ce72a5c070061ecb9b756137a3e07ffea1da`.
-The v2 tracked development corpus is 48 cases with SHA-256
+The v3 tracked development corpus is 48 cases with SHA-256
 `13b5a4434781d7be89f6e5618395232e854376ac1020500b55d228cabb46be94`; the separately named
 32-case holdout corpus SHA-256 is
 `4919e5db805e34851ec32eeea199915a453316d0d68ca46b214d7dda1f0eca55`. Every user turn now
 contains its before-turn publication-generation event, one exact boundary (`respond`,
 `typed_receipt`, or `verified_execute`), exact direct tool or `null`, exact parameters, and either
 the complete receipt missing/verified-value evidence or `null`. Only stale cases may advance
-generation; no-action, cancellation, unrelated/different-tool, and stale-clear turns are explicit
-zero-authority `respond` outcomes. Loader tests lock the 81 frozen v8 denominator, two corpora's
-counts/taxonomy/bilingual balance, strict case/turn schema, direct required fields, fixed trajectory
-step order, no shared IDs/trajectories, and no verbatim frozen turn or trajectory. A later candidate must
-recompute all identities on its own clean exact SHA before any score comparison or claim.
+generation; no-action, cancellation, unrelated/different-tool, and stale-clear turns declare a
+`respond` expectation. This is only a machine-loadable composed-boundary oracle/schema: no
+production controller or scorer consumes it yet, so it does not demonstrate product execution,
+zero mutation, receipt lifecycle, format recovery, or any model score. `format_recovery` only locks
+the static final composed expectation; a future runner must separately record raw primary/repair
+taxonomy and observed final outcome.
+
+The loader derives its five direct schemas from registered real product tools and validates values
+through the same `ToolSchemaValidator`: resampling remains an integer, normalization keeps its
+registered enum, and reference retains its registered string type without an invented enum. Tests
+mutate fractional rates, invalid normalization values, invalid reference types, schema/step drift,
+and corpus content drift. Development/holdout exact digests and the frozen-v8 source identity
+`f9b8595f2a0644d1caa57ed3f4aa3530825644a7` plus all four frozen corpus digests are pinned in the
+loader; any update requires an approved corpus-baseline decision, updating the explicit pin and
+this checkpoint together. Tests also lock the 81 frozen v8 denominator, two corpora's
+counts/taxonomy/bilingual balance, no shared IDs/trajectories, and no verbatim frozen turn or
+trajectory. A later candidate must recompute its own identities on a clean exact SHA before any
+score comparison or claim.
 
 **L1 — prompt/context/output treatments.** Test at most four pre-registered hypotheses: decision
 ordering, compact canonical examples, the placement/shape of bounded active-receipt context, and
