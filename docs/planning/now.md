@@ -225,6 +225,34 @@ independent format-only patch followed by the original ordered 12-case / 24-turn
 regression. Run 4 must not be mixed into H2 source or evidence before then; neither run supports a
 product, holdout, or raw-model-accuracy claim.
 
+**L1/H2 Run-3 result and required rollback (2026-08-27).** The semantic H2 sentinel ran at clean
+exact source `557f56ba504c80e28b39c1454fd6df008f5c305c`, using the fixed Granite 4.0 Micro model
+`ibm-granite/granite-4.0-micro`, revision
+`56111ae135df9c53a78c99028e7bc24035a9e979`, deterministic structured-decision policy
+(`max_new_tokens=512`, `do_sample=false`, at most two strict-envelope recoveries), scorer
+SHA-256 `f7d00c95073ec0aee45046d055ab14ddffa074b6e7de6534423d512bf71c1d0c`, and the ordered
+seven-ID digest `83307b958e277d6ba10f70a80bd2ba4e4f80ff9572dc40053c4ab391e974c6af`. Its ignored
+artifact is
+`artifacts/assistant_accuracy_development/granite4micro-557f56ba-h2-direct-sentinel.json`,
+SHA-256 `71736c897273542a0ada34aa7c7b99a08ae24dd6b8498b86dfe0133d11933d24`.
+
+Compared with the locked Run-2 seven-case comparator, raw-valid rose `16/19 → 18/19`, recovery
+remained `19/19 → 19/19`, composed boundaries rose `1/19 → 5/19`, and complete trajectories rose
+`0/7 → 1/7`. Only `dev_cancel_zh` was a complete trajectory. This is a narrow descriptive
+composed-boundary improvement, not a product, holdout, or raw-model-accuracy claim. It fails the
+hard `19/19` gate: the Chinese notch substitution remains in `dev_partial_bandpass_zh` turns two
+and three and `dev_generic_filter_zh`; typed clarification frequently remains a plain no-tool
+message rather than the exact shape; six failed turns retain residual pending receipts and only one
+is legitimate. Real side effects were zero and every evaluator lifecycle shutdown was clean.
+
+The safety telemetry's `unexpected` count is coarse: it reports zero on turn three when the
+expected boundary type itself is `verified_execute`, even though the exact action/arguments gate
+correctly rejects the notch substitute. H2 is therefore **REJECTED**. Do not run Run 4, retry or
+broaden this prompt, run the 48-case suite, or make product/accuracy/promotion claims. Revert only
+the two H2 source commits newest-first while retaining this plan, the selected-case runner, and the
+L2/evaluator work; future work requires a separately authorized treatment rather than a revision of
+this failed hypothesis.
+
 **L2 — existing typed receipt completion.** Reuse `ToolAttemptCoordinator`,
 `PendingInteractionCoordinator`, `AssistantToolInputReceipt`, controller generation binding, and
 the existing parameter-origin verifier; do not add an owner, state machine, receipt type, or
