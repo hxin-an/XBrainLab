@@ -589,6 +589,7 @@ def development_experiment_identity(
     *,
     model_id: str,
     generation_policy: dict[str, Any],
+    selected_case_ids: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
     """Bind an artifact without reading or hashing any separately held corpus."""
     git = shutil.which("git")
@@ -607,6 +608,10 @@ def development_experiment_identity(
     def digest(relative_path: str) -> str:
         return hashlib.sha256((ROOT / relative_path).read_bytes()).hexdigest()
 
+    selected_ids = tuple(selected_case_ids or ())
+    selected_ids_digest = hashlib.sha256(
+        json.dumps(selected_ids, ensure_ascii=False, separators=(",", ":")).encode()
+    ).hexdigest()
     spec = local_model_spec(model_id)
     return {
         "source_sha": source_sha,
@@ -618,6 +623,8 @@ def development_experiment_identity(
         },
         "generation_policy": generation_policy,
         "development_cases_sha256": PINNED_DEVELOPMENT_CASES_SHA256,
+        "selected_case_ids": list(selected_ids),
+        "selected_case_ids_sha256": selected_ids_digest,
         "prompt_policy_sha256": digest("XBrainLab/llm/agent/prompt_policy.py"),
         "context_assembler_sha256": digest("XBrainLab/llm/agent/assembler.py"),
         "parser_sha256": digest("XBrainLab/llm/agent/parser.py"),
@@ -656,6 +663,7 @@ def build_development_report(
     generation_policy: dict[str, Any],
     outcomes: tuple[DevelopmentCaseOutcome, ...],
     complete: bool,
+    selected_case_ids: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
     """Render raw, recovery, and composed evidence as distinct report fields."""
     turns = [turn for outcome in outcomes for turn in outcome.turns]
@@ -665,6 +673,7 @@ def build_development_report(
         "experiment_identity": development_experiment_identity(
             model_id=model_id,
             generation_policy=generation_policy,
+            selected_case_ids=selected_case_ids,
         ),
         "summary": {
             "case_count": len(outcomes),
@@ -717,10 +726,29 @@ def _write_development_report(path: Path, report: dict[str, Any]) -> None:
         raise
 
 
+def _select_development_cases(
+    cases: tuple[AccuracyExperimentCase, ...],
+    selected_case_ids: tuple[str, ...],
+) -> tuple[AccuracyExperimentCase, ...]:
+    """Select an ordered, unique development-only subset or fail closed."""
+    if not selected_case_ids:
+        return cases
+    if any(not case_id.strip() for case_id in selected_case_ids):
+        raise ValueError("Development case IDs must be non-empty.")
+    if len(set(selected_case_ids)) != len(selected_case_ids):
+        raise ValueError("Development case IDs must not repeat.")
+    by_id = {case.case_id: case for case in cases}
+    missing = [case_id for case_id in selected_case_ids if case_id not in by_id]
+    if missing:
+        raise ValueError(f"Unknown development case ID: {missing[0]}")
+    return tuple(by_id[case_id] for case_id in selected_case_ids)
+
+
 def run_development_eval(
     config: LLMConfig,
     *,
     checkpoint_path: Path = DEFAULT_ARTIFACT_PATH,
+    selected_case_ids: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     """Run one configured local engine across the development loader only."""
     selection = config.assistant_runtime_selection()
@@ -728,9 +756,11 @@ def run_development_eval(
         raise RuntimeError(f"Current assistant backend is {selection.backend_mode}.")
     if not config.local_backend_ready(selection.model_id):
         raise RuntimeError(config.local_backend_status_message(selection.model_id))
-    cases = load_development_cases()
-    if len(cases) != 48:
+    all_cases = load_development_cases()
+    if len(all_cases) != 48:
         raise RuntimeError("Development evaluator requires the frozen 48-case pack.")
+    cases = _select_development_cases(all_cases, selected_case_ids)
+    selected_ids = tuple(case.case_id for case in cases)
     registry = target_tool_registry()
     generation_policy = _evaluation_generation_policy(config)
     engine = LLMEngine(config)
@@ -762,6 +792,7 @@ def run_development_eval(
                     generation_policy=generation_policy,
                     outcomes=tuple(outcomes),
                     complete=False,
+                    selected_case_ids=selected_ids,
                 ),
             )
     except Exception as exc:
@@ -770,6 +801,7 @@ def run_development_eval(
             generation_policy=generation_policy,
             outcomes=tuple(outcomes),
             complete=False,
+            selected_case_ids=selected_ids,
         )
         partial_report["failure"] = f"{type(exc).__name__}: {exc}"
         _write_development_report(checkpoint_path, partial_report)
@@ -781,6 +813,7 @@ def run_development_eval(
         generation_policy=generation_policy,
         outcomes=tuple(outcomes),
         complete=True,
+        selected_case_ids=selected_ids,
     )
     _write_development_report(checkpoint_path, report)
     return report
@@ -791,10 +824,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json-out", type=Path, default=DEFAULT_ARTIFACT_PATH)
     parser.add_argument("--device", choices=("cpu", "cuda"))
     parser.add_argument("--strict", action="store_true")
+    parser.add_argument("--case-id", action="append", default=[])
     args = parser.parse_args(argv)
     config = _stable_eval_config(LLMConfig.load_from_file(), device=args.device)
     try:
-        report = run_development_eval(config, checkpoint_path=args.json_out)
+        report = run_development_eval(
+            config,
+            checkpoint_path=args.json_out,
+            selected_case_ids=tuple(args.case_id),
+        )
     except Exception as exc:
         report = {
             "schema_version": REPORT_SCHEMA,

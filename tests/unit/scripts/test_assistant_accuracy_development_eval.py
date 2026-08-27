@@ -12,6 +12,7 @@ from scripts.dev.assistant_accuracy_case_packs import load_development_cases
 from scripts.dev.run_assistant_accuracy_development_eval import (
     DevelopmentCaseOutcome,
     EvaluatorLifecycleOutcome,
+    _select_development_cases,
     _write_development_report,
     development_experiment_identity,
     evaluate_development_case,
@@ -235,6 +236,48 @@ def test_identity_binds_the_development_only_scorer_inputs() -> None:
     assert isinstance(identity["source_is_clean_excluding_protected_settings"], bool)
 
 
+def test_development_case_selection_defaults_to_the_frozen_order_and_binds_subset() -> (
+    None
+):
+    cases = load_development_cases()
+
+    assert _select_development_cases(cases, ()) == cases
+    selected = _select_development_cases(
+        cases,
+        ("dev_ambiguous_zh_01", "dev_format_en"),
+    )
+
+    assert [case.case_id for case in selected] == [
+        "dev_ambiguous_zh_01",
+        "dev_format_en",
+    ]
+    identity = development_experiment_identity(
+        model_id="ibm-granite/granite-4.0-micro",
+        generation_policy={"profile": "structured_decision"},
+        selected_case_ids=tuple(case.case_id for case in selected),
+    )
+    assert identity["selected_case_ids"] == [
+        "dev_ambiguous_zh_01",
+        "dev_format_en",
+    ]
+    assert len(identity["selected_case_ids_sha256"]) == 64
+
+
+@pytest.mark.parametrize(
+    "selected_case_ids",
+    (
+        ("unknown-case",),
+        ("dev_format_en", "dev_format_en"),
+        ("",),
+    ),
+)
+def test_development_case_selection_fails_closed_for_invalid_subset(
+    selected_case_ids: tuple[str, ...],
+) -> None:
+    with pytest.raises(ValueError):
+        _select_development_cases(load_development_cases(), selected_case_ids)
+
+
 def test_identity_excludes_only_the_protected_root_settings_file() -> None:
     with patch(
         "scripts.dev.run_assistant_accuracy_development_eval.subprocess.check_output",
@@ -312,6 +355,59 @@ def test_development_runner_checkpoints_every_completed_case_and_reports_progres
     assert report["complete"] is True
     engine_type.return_value.load_model.assert_called_once_with()
     engine_type.return_value.close.assert_called_once_with()
+
+
+def test_development_runner_uses_selected_denominator_and_identity(
+    tmp_path, capsys
+) -> None:
+    config = MagicMock()
+    config.assistant_runtime_selection.return_value = SimpleNamespace(
+        backend_mode="local", model_id="ibm-granite/granite-4.0-micro"
+    )
+    config.local_backend_ready.return_value = True
+    selected_ids = ("dev_ambiguous_en_01", "dev_format_en")
+    checkpoints: list[tuple[int, tuple[str, ...]]] = []
+
+    def fake_case_outcome(case, _registry, _generate_response):
+        return DevelopmentCaseOutcome(
+            case.case_id, (), EvaluatorLifecycleOutcome(1, True, True, True)
+        )
+
+    def record_checkpoint(_path, report) -> None:
+        checkpoints.append(
+            (
+                report["summary"]["case_count"],
+                tuple(report["experiment_identity"]["selected_case_ids"]),
+            )
+        )
+
+    with (
+        patch("scripts.dev.run_assistant_accuracy_development_eval.LLMEngine"),
+        patch(
+            "scripts.dev.run_assistant_accuracy_development_eval."
+            "_evaluation_generation_policy",
+            return_value={"profile": "structured_decision"},
+        ),
+        patch(
+            "scripts.dev.run_assistant_accuracy_development_eval."
+            "evaluate_development_case",
+            side_effect=fake_case_outcome,
+        ),
+        patch(
+            "scripts.dev.run_assistant_accuracy_development_eval."
+            "_write_development_report",
+            side_effect=record_checkpoint,
+        ),
+    ):
+        report = run_development_eval(
+            config,
+            checkpoint_path=tmp_path / "report.json",
+            selected_case_ids=selected_ids,
+        )
+
+    assert checkpoints == [(1, selected_ids), (2, selected_ids), (2, selected_ids)]
+    assert report["experiment_identity"]["selected_case_ids"] == list(selected_ids)
+    assert "1/2: dev_ambiguous_en_01" in capsys.readouterr().err
 
 
 def test_development_report_persists_valid_json_via_its_checkpoint_path(
