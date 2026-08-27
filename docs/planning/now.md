@@ -62,13 +62,22 @@ reviewer。`settings.json` 是使用者本機設定，永不碰觸。
 
 ## Complexity review
 
-Current worktree relative to `origin/main` touches **15 production files**, `+880/-411/net +469` LOC，
+Current worktree relative to `origin/main` touches **16 production files**, `+972/-424/net +548` LOC，
 同時超過 12 production files 與 net +300，必須在此後的所有 polish 修改前保持 complexity review。
 
 - **Owners before/after:** `ApplicationService` remains the only authoritative montage mutation/
   publication owner; `BidsMontagePreparationCoordinator` remains bounded async preparation owner;
-  `DatasetSidebar` / `MontagePickerDialog` remain presentation and human confirmation only. No new owner,
-  command, public class, state machine, compatibility path or persistence authority is permitted.
+  `DatasetSidebar` / `MontagePickerDialog` remain presentation and human confirmation only. This PR does
+  add `ElectrodeLayoutStateSnapshot`: a frozen, detached public state DTO / immutable projection within
+  `ApplicationStateSnapshot`, not an owner. It exists for the necessary UI/Assistant-safe state seam:
+  `StateSnapshotService.build()` projects coordinator truth into the application snapshot, which crosses
+  `ApplicationViewPublication` and serialized `QueryStateCommand(state)` without exposing mutable coordinator
+  state. Its actual production consumers are (1) `DatasetSidebar.update_sidebar()` through
+  `publication.state.electrode_layout`, (2) `DatasetSidebar.open_electrode_layout()` through the state-query
+  `electrode_layout` dictionary passed to the reviewed dialog, and (3)
+  `ApplicationService._only_montage_preparation_status_changed()` when preserving advisory progress in a
+  concurrent-state comparison. It adds no mutation, persistence or confirmation authority; owner count,
+  command spine, state machine and compatibility-path count are unchanged.
 - **Reuse/deletion first:** retain both visible Dataset and Visualization Electrode Layout entrances. The
   Visualization button is a thin delegate to `DatasetSidebar.open_electrode_layout`; both therefore reuse
   the same dialog/open route, current state query, projection, retained BIDS snapshot and
