@@ -2182,6 +2182,27 @@ class TestChatPanelSendMessage:
         QApplication.sendEvent(composer, commit)
         assert composer.text() == "中"
 
+    def test_composer_ime_enter_without_input_method_fails_closed_then_submits_on_retry(
+        self,
+        chat_panel,
+        qtbot,
+    ):
+        composer = chat_panel.input_field
+        composer.setFocus()
+        submit_requested = MagicMock()
+        composer.submit_requested.connect(submit_requested)
+        QApplication.sendEvent(composer, QInputMethodEvent("zhong", []))
+
+        with patch.object(QGuiApplication, "inputMethod", return_value=None):
+            qtbot.keyClick(composer, Qt.Key.Key_Return)
+
+        submit_requested.assert_not_called()
+
+        with qtbot.waitSignal(composer.submit_requested, timeout=1000):
+            qtbot.keyClick(composer, Qt.Key.Key_Return)
+
+        submit_requested.assert_called_once_with()
+
     def test_completed_turn_restores_focus_only_for_the_submitting_composer(
         self,
         chat_panel,
