@@ -156,6 +156,90 @@ failure paths. Root independently audits the exact SHA and accepts only in-scope
 
 ### Current implementation checkpoint
 
+- **2026-08-27 approved final compact-Summary spacing follow-up.** The user clarified that the
+  target is not Dataset sidebar spacing and not the expanded mapping footer. It is the compact
+  `Manual override` Summary: `Change layout…` currently ends about **35 logical px** above the
+  dialog bottom, while the expanded footer's 14–16px edge rhythm is the desired reference. The
+  extra blank area comes from the Summary-only 170px minimum height, not from button margins.
+  Outcome: let the compact Summary fit at **150px minimum height**, so its action row retains the
+  approved 16px content separation and 8px inter-button gap while its bottom edge settles at the
+  existing 14px dialog margin. Non-goals: no Dataset sidebar, expanded mapping, outer dialog
+  margins, copy, command/state, Restore/Clear placement or other-dialog change. First add a shown
+  geometry assertion for the Summary action-to-dialog-bottom gap and demonstrate the current
+  ~35px failure; then change only the Summary minimum-height and existing page-geometry policy.
+  Re-run picker/sidebar focused tests, Ruff and `git diff --check`; inspect compact Summary at
+  default and 150%, including manual, pending and unavailable copy. The user explicitly approved
+  this visible scope. Stop before push or merge and repeat WSLg acceptance for the changed exact
+  commit.
+  Red evidence was **2 failed** focused assertions: the old compact Summary retained its 170px
+  minimum-height contract and the shown `Change layout…` action ended **35 logical px** above the
+  dialog bottom rather than the target 14–16px. Red also established that merely changing the
+  minimum to 150px was insufficient: Qt retained the unconstrained Summary `sizeHint` at 164px,
+  leaving a 29px visible gap. The minimal coherent production repair keeps the same dialog/layout
+  owner and, only while the Summary is shown, bounds its page to its existing width-aware content
+  height before `fit_to_content`; mapping resets that bound. Thus ready, pending and manual Summary
+  content settles at 540×150 logical px with a 14–16px footer edge, while a wrapped unavailable
+  reason safely grows to 540×164. A second real shown-refresh red test caught the initially missed
+  stale bound: pending → long unavailable stayed at 540×150, then manual stayed at 540×164. The
+  same-owner repair clears that prior maximum and invalidates/activates the existing Summary layout
+  before calculating the current width-aware limit. Green evidence is **62 passed** across picker
+  and DatasetSidebar tests, including Summary → mapping → Back, manual, pending, long unavailable
+  and the shown pending → unavailable → manual refresh geometry; exact
+  changed-file Ruff check/format and `git diff --check` pass. Dirty-source offscreen artifacts
+  inspected at default and 150% are
+  `build/dev-artifacts/electrode-summary-bottom-v1-default/` and
+  `build/dev-artifacts/electrode-summary-bottom-v1-150/`; they include compact manual/ready/pending/
+  unavailable and unchanged mapping surfaces. The regenerated ready captures include both `Close`
+  and `Change layout…`: default SHA-256
+  `01e77ea187af5348cba394b5afe68d83d9ec0ec829b79ee9c979c79d9be3ed19`; 150% SHA-256
+  `819c3b9a9c7a35b8ce8b29ab8301765253e77d931b4dafd2be42519e49183779`. No DatasetSidebar
+  or expanded mapping source changed. Before WSLg handoff, regenerate the canonical manual Summary
+  and mapping surfaces from one clean exact commit at default and 150% in
+  `build/dev-artifacts/electrode-summary-bottom-handoff-v1/` and its `-150/` peer; both manifests
+  must record that same commit with `dirty: false` and passed surface contracts.
+
+- **2026-08-27 approved follow-up — Replace recovery and picker spacing.** WSLg manual testing of
+  `ea494b97` found that choosing a montage then pressing `Replace Layout` opened the generic error
+  presentation. `app.log` and the call site identify `DatasetSidebar.open_electrode_layout()` using
+  `not positions` on the dialog's NumPy position array; Python raises ambiguous-truth-value before
+  `ApplyMontageCommand` can run. The user has explicitly approved the visible repair: Summary keeps
+  only `Close` and rightmost `Change layout…`, with a true 16 logical-px content-to-footer gap;
+  `Restore BIDS layout` remains available only after `Change layout…` in the expanded mapping footer,
+  immediately after `Back`; `Clear mapping` moves into the selector row on the right, rather than
+  occupying its own line. Scope is only this ndarray guard and the existing dialog's layout. Do not
+  alter copy beyond moving existing controls, BIDS preparation/publication, restore semantics,
+  command ownership/spine, training guard, Cancel behavior, Assistant, or generic styles. Add the
+  smallest red observable DatasetSidebar test with a real `PickMontageDialog`-shaped ndarray result
+  and verify it fails at the prior truthiness guard before command submission; then use an explicit
+  `positions is None or len(positions) == 0` check. Add relative layout tests for the 16px group
+  separation, summary action set/order, mapping footer restore placement, and selector-row Clear
+  action. Green evidence is the same test plus directly related picker/sidebar suites, Ruff and
+  `git diff --check`; inspect default and 150% dialog captures. Prepare one local candidate commit,
+  then stop before push, merge, or handoff claim; WSLg acceptance must be repeated for the exact
+  changed SHA.
+  The red reproduction was **1 failed** real-picker → DatasetSidebar test, at the old
+  `not positions` guard, with the documented NumPy ambiguous-truth-value exception before an
+  `ApplyMontageCommand`; the three new layout contracts were also red (**3 failed**: 11px effective
+  summary grouping gap, Restore still in Summary, and Clear in a separate toolbar). Green focused
+  evidence is **129 passed / 1 optional public-fixture skip** for picker, Dataset sidebar, state
+  projection and BIDS preparation integration tests; changed-file Ruff check/format and
+  `git diff --check` pass. A root-run real tiny MNE-BIDS path also completed
+  Scan → Preview → Validate → Apply → real DatasetSidebar / Picker → `standard_1020` Replace, with
+  the authoritative result `manual / standard_1020 / 64 of 69 channels`; this is one bounded fixture,
+  not a broad BIDS-support claim. Follow-up production delta is **+30/-21, net +9 LOC** across the
+  existing dialog and sidebar, with no new owner, command, state machine or compatibility path.
+  Root's exact-source visual audit then found the Summary `Close` and `Change layout…` buttons
+  touching: the outer summary's zero spacing left the action layout without an explicit horizontal
+  policy. The refinement added a shown-geometry red assertion for a minimum **8 logical-px**
+  Close→Change gap; it failed at **0px**. The smallest green change sets the existing
+  `summary_actions` layout spacing to 8. Picker/sidebar focused evidence is **61 passed**; Ruff
+  check/format and `git diff --check` pass. Final clean-source capture targets are
+  `build/dev-artifacts/electrode-layout-recovery-handoff-v1/` and
+  `build/dev-artifacts/electrode-layout-recovery-handoff-v1-150/`; their manifests must record the
+  same exact commit, `dirty: false`, stable source identity and passed surface contracts. Root must
+  inspect both Summary and expanded picker at each scale. These remain offscreen development
+  evidence, not WSLg acceptance.
+
 - The readiness revision preserves automatic BIDS `name=None` through `StateSnapshotService`; it does not
   expose literal `"None"`. `DatasetSidebar` adapts only the already-published visualization preparation
   state/reason for its bounded active dialog reference, clears that reference after `exec`, and does not add

@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 from PyQt6.QtWidgets import QLabel, QPushButton, QWidget
 
-from XBrainLab.backend.application import QueryStateCommand
+from XBrainLab.backend.application import ApplyMontageCommand, QueryStateCommand
 from XBrainLab.ui.panels.dataset.sidebar import (
     _ACTION_TEXT_HORIZONTAL_PADDING,
     _DATASET_SIDEBAR_BUTTON_STYLE,
@@ -199,6 +199,87 @@ def test_bids_layout_restore_dispatches_only_the_restore_command(sidebar, monkey
     assert dispatched[1].restore_bids is True
     assert dispatched[1].channels == []
     assert dispatched[1].positions == []
+
+
+def test_replace_layout_accepts_numpy_positions_from_the_real_picker(
+    sidebar, qtbot, monkeypatch
+):
+    """A reviewed picker result reaches the command spine instead of truth-testing ndarray."""
+    from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+        PickMontageDialog,
+    )
+
+    montage_positions = {
+        "C3": (0.0, 0.0, 0.08),
+        "C4": (0.04, 0.0, 0.08),
+    }
+    with (
+        patch(
+            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_builtin_montages",
+            return_value=["standard_1020"],
+        ),
+        patch(
+            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_positions",
+            return_value={"ch_pos": montage_positions},
+        ),
+        patch(
+            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_channel_positions",
+            return_value=np.asarray(list(montage_positions.values())),
+        ),
+    ):
+        dialog = PickMontageDialog(
+            sidebar,
+            ["C3", "C4"],
+            is_bids_source=True,
+            current_layout={"source": "bids", "status": "ready"},
+        )
+    qtbot.addWidget(dialog)
+    dialog.show_mapping_page()
+    for row in range(dialog.table.rowCount()):
+        combo = dialog.table.cellWidget(row, 1)
+        assert combo is not None
+        combo.setCurrentIndex(row + 1)
+    with patch(
+        "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_channel_positions",
+        return_value=np.asarray(list(montage_positions.values())),
+    ):
+        dialog.accept()
+    assert isinstance(dialog.get_result()[1], np.ndarray)
+    monkeypatch.setattr(dialog, "exec", lambda: True)
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar._electrode_layout_dialog_class",
+        lambda: lambda *_args, **_kwargs: dialog,
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar.get_command_capability",
+        lambda *_: SimpleNamespace(enabled=True),
+    )
+    dispatched = []
+    state = {
+        "electrode_layout": {},
+        "interpretation": {"source_kind": "bids"},
+        "raw": {"channels": ["C3", "C4"]},
+        "active_training": {"has_trainer": False},
+    }
+
+    def execute(_widget, command, **_kwargs):
+        dispatched.append(command)
+        if isinstance(command, QueryStateCommand):
+            return SimpleNamespace(failed=False, diagnostics={"state": state})
+        return SimpleNamespace(failed=False)
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar.execute_application_command", execute
+    )
+
+    outcome = sidebar.open_electrode_layout()
+
+    assert outcome.is_completed is True
+    assert isinstance(dispatched[0], QueryStateCommand)
+    applied = dispatched[1]
+    assert isinstance(applied, ApplyMontageCommand)
+    assert applied.channels == ["C3", "C4"]
+    assert applied.positions == [(0.0, 0.0, 0.08), (0.04, 0.0, 0.08)]
 
 
 def test_bids_layout_publication_keeps_tooltip_and_notifies_once(sidebar, monkeypatch):

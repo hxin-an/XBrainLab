@@ -18,6 +18,8 @@ from PyQt6.QtWidgets import (
     QHeaderView,
     QLabel,
     QPushButton,
+    QSizePolicy,
+    QSpacerItem,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -181,22 +183,25 @@ class PickMontageDialog(BaseDialog):
         self.summary_page = QWidget(self)
         summary_layout = QVBoxLayout(self.summary_page)
         summary_layout.setContentsMargins(0, 0, 0, 0)
-        summary_layout.setSpacing(10)
+        summary_layout.setSpacing(0)
         summary_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        summary_content = QVBoxLayout()
+        summary_content.setContentsMargins(0, 0, 0, 0)
+        summary_content.setSpacing(10)
         self.summary_context = QLabel()
         self.summary_context.setObjectName("ElectrodeLayoutSummaryContext")
         self.summary_context.setProperty("role", "secondary-status")
         self.summary_context.setStyleSheet(
             f"color: {Theme.TEXT_SECONDARY}; font-size: 11px; font-weight: 600;"
         )
-        summary_layout.addWidget(self.summary_context)
+        summary_content.addWidget(self.summary_context)
         self.summary_heading = QLabel()
         self.summary_heading.setObjectName("ElectrodeLayoutSummaryTitle")
         self.summary_heading.setProperty("role", "section-title")
         self.summary_heading.setStyleSheet(
             f"color: {Theme.TEXT_PRIMARY}; font-size: 18px; font-weight: 600;"
         )
-        summary_layout.addWidget(self.summary_heading)
+        summary_content.addWidget(self.summary_heading)
         self.summary_facts = QLabel()
         self.summary_facts.setObjectName("ElectrodeLayoutSummaryFacts")
         self.summary_facts.setProperty("role", "secondary-status")
@@ -204,28 +209,34 @@ class PickMontageDialog(BaseDialog):
         self.summary_facts.setStyleSheet(
             f"color: {Theme.TEXT_SECONDARY}; font-size: 12px;"
         )
-        summary_layout.addWidget(self.summary_facts)
+        summary_content.addWidget(self.summary_facts)
         if not self.layout_changes_allowed:
             blocked = QLabel("Clear training before replacing this layout.")
             blocked.setWordWrap(True)
-            summary_layout.addWidget(blocked)
+            summary_content.addWidget(blocked)
+        summary_layout.addLayout(summary_content)
+        # A dialog footer is a separate action group, not another detail row.
+        self.summary_footer_gap = QSpacerItem(
+            0,
+            16,
+            QSizePolicy.Policy.Minimum,
+            QSizePolicy.Policy.Fixed,
+        )
+        summary_layout.addItem(self.summary_footer_gap)
         summary_actions = QHBoxLayout()
+        summary_actions.setSpacing(8)
         self.summary_actions = summary_actions
         self.btn_change_layout = QPushButton("Change layout…")
         self.btn_change_layout.setEnabled(self.layout_changes_allowed)
         self.btn_change_layout.clicked.connect(self.show_mapping_page)
-        self.btn_use_bids = QPushButton("Restore BIDS layout")
-        can_restore = bool(self.current_layout.get("bids_restore_available"))
+        self.btn_use_bids = QPushButton("Restore BIDS layout", self)
+        self.btn_use_bids.clicked.connect(self.restore_bids)
         self.btn_change_layout.setProperty("primaryAction", True)
         self.btn_change_layout.setStyleSheet(Stylesheets.BTN_PRIMARY)
-        self.btn_use_bids.setVisible(can_restore)
-        self.btn_use_bids.setEnabled(can_restore and self.layout_changes_allowed)
-        self.btn_use_bids.clicked.connect(self.restore_bids)
         summary_actions.addStretch()
         self.btn_close = QPushButton("Close")
         self.btn_close.clicked.connect(self.reject)
         summary_actions.addWidget(self.btn_close)
-        summary_actions.addWidget(self.btn_use_bids)
         summary_actions.addWidget(self.btn_change_layout)
         summary_layout.addLayout(summary_actions)
         self._update_summary_presentation()
@@ -236,7 +247,7 @@ class PickMontageDialog(BaseDialog):
         mapping_layout.setContentsMargins(0, 0, 0, 0)
         mapping_layout.setSpacing(12)
 
-        # Layout selection stays separate from mapping actions at high DPI.
+        # Selector and its reset action form one compact table-control row.
         selector_layout = QHBoxLayout()
         selector_layout.addWidget(QLabel("Standard layout:"))
 
@@ -258,16 +269,11 @@ class PickMontageDialog(BaseDialog):
         self.montage_combo.currentTextChanged.connect(self.on_montage_select)
         selector_layout.addWidget(self.montage_combo)
         selector_layout.addStretch()
-        mapping_layout.addLayout(selector_layout)
-
-        action_layout = QHBoxLayout()
-        action_layout.addStretch()
         self.btn_clear = QPushButton("Clear mapping")
         self.btn_clear.clicked.connect(self.clear_selections)
-        action_layout.addWidget(self.btn_clear)
-        self.mapping_toolbar = action_layout
-
-        mapping_layout.addLayout(action_layout)
+        selector_layout.addWidget(self.btn_clear)
+        self.mapping_toolbar = selector_layout
+        mapping_layout.addLayout(selector_layout)
 
         # Center: Mapping Table
         self.table = QTableWidget()
@@ -324,6 +330,9 @@ class PickMontageDialog(BaseDialog):
                     "Electrode layout dialog is missing its back action."
                 )
             back_button.clicked.connect(self.show_summary_page)
+            buttons.addButton(self.btn_use_bids, QDialogButtonBox.ButtonRole.ActionRole)
+        else:
+            self.btn_use_bids.hide()
         self.apply_button = apply_button
         self._sync_apply_enabled()
         buttons.accepted.connect(self.accept)
@@ -554,13 +563,34 @@ class PickMontageDialog(BaseDialog):
         showing_summary = (
             self.summary_page is not None and not self.summary_page.isHidden()
         )
-        minimum_height = 170 if showing_summary else 320
+        minimum_height = 150 if showing_summary else 320
         minimum_width = 540 if showing_summary else 700
         # Hidden mapping controls retain a wide size hint. Clamp only the compact
         # summary state so shown geometry, not that hidden hint, owns its width.
         self.setMinimumWidth(minimum_width)
         self.setMaximumWidth(560 if showing_summary else QWIDGETSIZE_MAX)
         self.setMinimumHeight(minimum_height)
+        if self.summary_page is not None:
+            if showing_summary:
+                dialog_layout = self.layout()
+                margins = dialog_layout.contentsMargins() if dialog_layout else None
+                content_width = minimum_width - (
+                    margins.left() + margins.right() if margins is not None else 0
+                )
+                self.summary_page.setMaximumHeight(QWIDGETSIZE_MAX)
+                self.summary_page.updateGeometry()
+                summary_layout = self.summary_page.layout()
+                if summary_layout is not None:
+                    summary_layout.invalidate()
+                    summary_layout.activate()
+                self.summary_page.setMaximumHeight(
+                    max(
+                        self.summary_page.minimumSizeHint().height(),
+                        self.summary_page.heightForWidth(max(content_width, 1)),
+                    )
+                )
+            else:
+                self.summary_page.setMaximumHeight(QWIDGETSIZE_MAX)
         self.fit_to_content(
             minimum_width=minimum_width,
             maximum_width=560 if showing_summary else None,

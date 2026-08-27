@@ -146,7 +146,7 @@ class TestPickMontageInit:
 
         assert bids_dialog.summary_page.isHidden() is False
         assert bids_dialog.mapping_page.isHidden() is True
-        assert bids_dialog.minimumHeight() == 170
+        assert bids_dialog.minimumHeight() == 150
         bids_dialog.show()
         qtbot.waitExposed(bids_dialog)
         assert 540 <= bids_dialog.width() <= 560
@@ -156,7 +156,15 @@ class TestPickMontageInit:
         assert bids_dialog.minimumHeight() == 320
         assert bids_dialog.width() >= 700
         bids_dialog.show_summary_page()
+        qtbot.waitUntil(bids_dialog.summary_page.isVisible)
         assert 540 <= bids_dialog.width() <= 560
+        change_bottom = (
+            bids_dialog.btn_change_layout.mapTo(
+                bids_dialog, bids_dialog.btn_change_layout.rect().bottomLeft()
+            ).y()
+            + 1
+        )
+        assert 14 <= bids_dialog.height() - change_bottom <= 16
         bids_dialog.reject()
 
         assert bids_dialog.settings.allKeys() == before
@@ -179,7 +187,8 @@ class TestPickMontageInit:
         assert bids_dialog.btn_change_layout.text() == "Change layout…"
         assert bids_dialog.btn_change_layout.property("primaryAction") is True
         assert bids_dialog.btn_close.property("primaryAction") is not True
-        assert bids_dialog.btn_use_bids.isHidden() is True
+        assert bids_dialog.summary_actions.indexOf(bids_dialog.btn_use_bids) == -1
+        assert bids_dialog.mapping_page.isHidden() is True
         assert bids_dialog.summary_actions.itemAt(0).spacerItem() is not None
         assert bids_dialog.summary_actions.indexOf(bids_dialog.btn_close) < (
             bids_dialog.summary_actions.indexOf(bids_dialog.btn_change_layout)
@@ -203,6 +212,31 @@ class TestPickMontageInit:
         assert "font-weight: 600" in heading.styleSheet()
         assert "font-size: 12px" in facts.styleSheet()
         assert "color:" in facts.styleSheet()
+        bids_dialog.show()
+        qtbot.waitExposed(bids_dialog)
+        facts_bottom = facts.mapTo(bids_dialog, facts.rect().bottomLeft()).y() + 1
+        action_top = bids_dialog.btn_change_layout.mapTo(
+            bids_dialog, bids_dialog.btn_change_layout.rect().topLeft()
+        ).y()
+        close_right = (
+            bids_dialog.btn_close.mapTo(
+                bids_dialog, bids_dialog.btn_close.rect().bottomRight()
+            ).x()
+            + 1
+        )
+        change_left = bids_dialog.btn_change_layout.mapTo(
+            bids_dialog, bids_dialog.btn_change_layout.rect().topLeft()
+        ).x()
+        assert bids_dialog.summary_footer_gap.sizeHint().height() == 16
+        assert action_top - facts_bottom >= 16
+        assert change_left - close_right >= 8
+        change_bottom = (
+            bids_dialog.btn_change_layout.mapTo(
+                bids_dialog, bids_dialog.btn_change_layout.rect().bottomLeft()
+            ).y()
+            + 1
+        )
+        assert 14 <= bids_dialog.height() - change_bottom <= 16
 
     def test_ready_automatic_bids_without_name_uses_natural_fallback(
         self, dialog, qtbot, channel_names
@@ -257,7 +291,14 @@ class TestPickMontageInit:
         assert "none" not in summary_copy
         bids_dialog.show()
         qtbot.waitExposed(bids_dialog)
-        assert bids_dialog.height() == 170
+        change_bottom = (
+            bids_dialog.btn_change_layout.mapTo(
+                bids_dialog, bids_dialog.btn_change_layout.rect().bottomLeft()
+            ).y()
+            + 1
+        )
+        assert bids_dialog.height() >= 150
+        assert 14 <= bids_dialog.height() - change_bottom <= 16
         assert bids_dialog.btn_close.isVisible() is True
         assert bids_dialog.btn_change_layout.isVisible() is True
 
@@ -276,7 +317,10 @@ class TestPickMontageInit:
                 "source": None,
                 "status": "limited",
                 "preparation_state": "ready",
-                "preparation_reason": "No BIDS electrode positions were found.",
+                "preparation_reason": (
+                    "No BIDS electrode positions were found, so this dataset needs a "
+                    "reviewed manual layout before it can be used for visualization."
+                ),
             },
         )
         qtbot.addWidget(bids_dialog)
@@ -301,6 +345,14 @@ class TestPickMontageInit:
             ).y()
             < bids_dialog.height()
         )
+        change_bottom = (
+            bids_dialog.btn_change_layout.mapTo(
+                bids_dialog, bids_dialog.btn_change_layout.rect().bottomLeft()
+            ).y()
+            + 1
+        )
+        assert bids_dialog.height() > 150
+        assert 14 <= bids_dialog.height() - change_bottom <= 16
 
     def test_pending_summary_refreshes_but_mapping_page_is_not_replaced(
         self, dialog, qtbot, channel_names
@@ -340,6 +392,85 @@ class TestPickMontageInit:
         assert bids_dialog.mapping_page.isHidden() is False
         bids_dialog.show_summary_page()
         assert title.text() == "BIDS coordinates unavailable"
+
+    def test_shown_summary_refresh_reflows_long_then_short_content(
+        self, dialog, qtbot, channel_names
+    ):
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        bids_dialog = PickMontageDialog(
+            parent=None,
+            channel_names=channel_names,
+            is_bids_source=True,
+            current_layout={
+                "source": None,
+                "status": "pending",
+                "preparation_reason": "Reading electrodes.tsv",
+            },
+        )
+        qtbot.addWidget(bids_dialog)
+        bids_dialog.show()
+        qtbot.waitExposed(bids_dialog)
+
+        context = bids_dialog.findChild(QLabel, "ElectrodeLayoutSummaryContext")
+        title = bids_dialog.findChild(QLabel, "ElectrodeLayoutSummaryTitle")
+        facts = bids_dialog.findChild(QLabel, "ElectrodeLayoutSummaryFacts")
+        assert context is not None
+        assert title is not None
+        assert facts is not None
+
+        def assert_shown_summary_geometry(minimum_height: int | None = None) -> None:
+            if minimum_height is not None:
+                assert bids_dialog.height() >= minimum_height
+            context_top = context.mapTo(bids_dialog, context.rect().topLeft()).y()
+            title_top = title.mapTo(bids_dialog, title.rect().topLeft()).y()
+            facts_bottom = facts.mapTo(bids_dialog, facts.rect().bottomLeft()).y() + 1
+            action_top = bids_dialog.btn_change_layout.mapTo(
+                bids_dialog, bids_dialog.btn_change_layout.rect().topLeft()
+            ).y()
+            action_bottom = (
+                bids_dialog.btn_change_layout.mapTo(
+                    bids_dialog, bids_dialog.btn_change_layout.rect().bottomLeft()
+                ).y()
+                + 1
+            )
+            assert context_top >= 0
+            assert title_top > context_top
+            assert facts_bottom <= action_top - 16
+            assert bids_dialog.btn_close.isVisible() is True
+            assert bids_dialog.btn_change_layout.isVisible() is True
+            assert 14 <= bids_dialog.height() - action_bottom <= 16
+
+        assert_shown_summary_geometry(minimum_height=150)
+        bids_dialog.refresh_bids_layout(
+            {
+                "source": None,
+                "status": "limited",
+                "preparation_state": "ready",
+                "preparation_reason": (
+                    "No BIDS electrode positions were found, so this dataset needs a "
+                    "reviewed manual layout before it can be used for visualization."
+                ),
+            }
+        )
+        assert title.text() == "BIDS coordinates unavailable"
+        assert bids_dialog.height() > 150
+        assert_shown_summary_geometry()
+
+        bids_dialog.refresh_bids_layout(
+            {
+                "source": "manual",
+                "status": "ready",
+                "name": "standard_1020",
+                "positioned_channel_count": 10,
+                "channel_count": 10,
+                "coordinate_summary": "head",
+            }
+        )
+        assert title.text() == "standard_1020"
+        assert_shown_summary_geometry(minimum_height=150)
 
     def test_manual_override_wins_over_stale_bids_preparation_failure(
         self, dialog, qtbot, channel_names
@@ -400,11 +531,40 @@ class TestPickMontageInit:
         assert restore_dialog.btn_close.text() == "Close"
         assert restore_dialog.summary_actions.itemAt(0).spacerItem() is not None
         assert restore_dialog.summary_actions.indexOf(restore_dialog.btn_close) == 1
-        assert restore_dialog.summary_actions.indexOf(restore_dialog.btn_use_bids) == 2
         assert (
             restore_dialog.summary_actions.indexOf(restore_dialog.btn_change_layout)
-            == 3
+            == 2
         )
+        assert restore_dialog.btn_use_bids.parent() is restore_dialog.button_box
+        assert restore_dialog.btn_use_bids in restore_dialog.button_box.buttons()
+        assert (
+            restore_dialog.button_box.buttonRole(restore_dialog.btn_use_bids)
+            == QDialogButtonBox.ButtonRole.ActionRole
+        )
+        assert restore_dialog.summary_actions.indexOf(restore_dialog.btn_use_bids) == -1
+        restore_dialog.show()
+        qtbot.waitExposed(restore_dialog)
+        change_bottom = (
+            restore_dialog.btn_change_layout.mapTo(
+                restore_dialog, restore_dialog.btn_change_layout.rect().bottomLeft()
+            ).y()
+            + 1
+        )
+        assert restore_dialog.height() >= 150
+        assert 14 <= restore_dialog.height() - change_bottom <= 16
+        restore_dialog.show_mapping_page()
+        back_button = next(
+            button
+            for button in restore_dialog.button_box.buttons()
+            if button.text() == "Back"
+        )
+        assert (
+            restore_dialog.button_box.buttonRole(back_button)
+            == QDialogButtonBox.ButtonRole.ActionRole
+        )
+        assert restore_dialog.mapping_page.isVisible() is True
+        assert restore_dialog.btn_use_bids.isVisible() is True
+        assert restore_dialog.btn_use_bids.isEnabled() is True
         assert (
             restore_dialog.findChild(QLabel, "ElectrodeLayoutSummaryTitle").text()
             == "standard_1020"
@@ -417,6 +577,8 @@ class TestPickMontageInit:
             restore_dialog.findChild(QLabel, "ElectrodeLayoutSummaryFacts").text()
             == "18 of 22 EEG channels positioned  ·  Head coordinates"
         )
+        restore_dialog.btn_use_bids.click()
+        assert restore_dialog.restore_bids_requested() is True
 
     def test_bids_summary_replace_and_restore_intents_are_distinct(
         self, dialog, qtbot, channel_names
@@ -487,9 +649,12 @@ class TestPickMontageInit:
         assert dialog.btn_clear.minimumWidth() <= dialog.btn_clear.sizeHint().width()
         assert dialog.btn_clear.maximumWidth() >= dialog.btn_clear.sizeHint().width()
         assert not hasattr(dialog, "btn_reset_saved")
-        assert dialog.mapping_toolbar.count() == 2
-        assert dialog.mapping_toolbar.itemAt(0).spacerItem() is not None
-        assert dialog.mapping_toolbar.indexOf(dialog.btn_clear) == 1
+        assert dialog.mapping_toolbar.count() == 4
+        assert dialog.mapping_toolbar.itemAt(2).spacerItem() is not None
+        assert dialog.mapping_toolbar.indexOf(dialog.btn_clear) == 3
+        assert dialog.mapping_toolbar.indexOf(dialog.montage_combo) < (
+            dialog.mapping_toolbar.indexOf(dialog.btn_clear)
+        )
         apply_button = dialog.button_box.button(QDialogButtonBox.StandardButton.Ok)
         assert apply_button is not None
         assert apply_button.text() == "Apply"

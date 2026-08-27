@@ -373,7 +373,7 @@ class DatasetSidebar(QWidget):
             self._show_status("BIDS electrode layout restored")
             return InteractionOutcome.completed("BIDS electrode layout restored.")
         selected_channels, positions = dialog.get_result()
-        if not selected_channels or not positions:
+        if not selected_channels or positions is None or len(positions) == 0:
             return InteractionOutcome.blocked("No electrode layout was selected.")
         try:
             normalized = normalize_montage_positions(selected_channels, positions)
