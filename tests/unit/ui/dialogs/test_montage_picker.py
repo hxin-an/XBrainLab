@@ -147,11 +147,16 @@ class TestPickMontageInit:
         assert bids_dialog.summary_page.isHidden() is False
         assert bids_dialog.mapping_page.isHidden() is True
         assert bids_dialog.minimumHeight() == 170
+        bids_dialog.show()
+        qtbot.waitExposed(bids_dialog)
+        assert 540 <= bids_dialog.width() <= 560
         bids_dialog.show_mapping_page()
         assert bids_dialog.summary_page.isHidden() is True
         assert bids_dialog.mapping_page.isHidden() is False
         assert bids_dialog.minimumHeight() == 320
+        assert bids_dialog.width() >= 700
         bids_dialog.show_summary_page()
+        assert 540 <= bids_dialog.width() <= 560
         bids_dialog.reject()
 
         assert bids_dialog.settings.allKeys() == before
@@ -191,13 +196,180 @@ class TestPickMontageInit:
         assert context is not None
         assert context.property("role") == "secondary-status"
         assert facts is not None
-        assert context.text() == "BIDS coordinates"
+        assert context.text() == "FROM BIDS"
         assert "font-size: 11px" in context.styleSheet()
         assert "color:" in context.styleSheet()
         assert "font-size: 18px" in heading.styleSheet()
         assert "font-weight: 600" in heading.styleSheet()
         assert "font-size: 12px" in facts.styleSheet()
         assert "color:" in facts.styleSheet()
+
+    def test_ready_automatic_bids_without_name_uses_natural_fallback(
+        self, dialog, qtbot, channel_names
+    ):
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        bids_dialog = PickMontageDialog(
+            parent=None,
+            channel_names=channel_names,
+            is_bids_source=True,
+            current_layout={"source": "bids", "status": "ready", "name": None},
+        )
+        qtbot.addWidget(bids_dialog)
+
+        title = bids_dialog.findChild(QLabel, "ElectrodeLayoutSummaryTitle")
+        assert title is not None
+        assert title.text() == "Dataset electrode coordinates"
+        assert "None" not in title.text()
+
+    def test_pending_bids_summary_never_uses_manual_or_unconfigured_copy(
+        self, dialog, qtbot, channel_names
+    ):
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        bids_dialog = PickMontageDialog(
+            parent=None,
+            channel_names=channel_names,
+            is_bids_source=True,
+            current_layout={
+                "source": None,
+                "status": "pending",
+                "preparation_reason": "Reading electrodes.tsv",
+            },
+        )
+        qtbot.addWidget(bids_dialog)
+
+        context = bids_dialog.findChild(QLabel, "ElectrodeLayoutSummaryContext")
+        title = bids_dialog.findChild(QLabel, "ElectrodeLayoutSummaryTitle")
+        assert context is not None
+        assert title is not None
+        assert context.text() == "FROM BIDS"
+        assert title.text() == "Preparing electrode layout"
+        summary_copy = " ".join(
+            label.text() for label in bids_dialog.summary_page.findChildren(QLabel)
+        ).lower()
+        assert "manual override" not in summary_copy
+        assert "not configured" not in summary_copy
+        assert "none" not in summary_copy
+        bids_dialog.show()
+        qtbot.waitExposed(bids_dialog)
+        assert bids_dialog.height() == 170
+        assert bids_dialog.btn_close.isVisible() is True
+        assert bids_dialog.btn_change_layout.isVisible() is True
+
+    def test_unavailable_bids_summary_keeps_eyebrow_and_actions_visible(
+        self, dialog, qtbot, channel_names
+    ):
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        bids_dialog = PickMontageDialog(
+            parent=None,
+            channel_names=channel_names,
+            is_bids_source=True,
+            current_layout={
+                "source": None,
+                "status": "limited",
+                "preparation_state": "ready",
+                "preparation_reason": "No BIDS electrode positions were found.",
+            },
+        )
+        qtbot.addWidget(bids_dialog)
+        bids_dialog.show()
+        qtbot.waitExposed(bids_dialog)
+
+        context = bids_dialog.findChild(QLabel, "ElectrodeLayoutSummaryContext")
+        assert context is not None
+        assert context.isVisible() is True
+        assert bids_dialog.btn_close.isVisible() is True
+        assert bids_dialog.btn_change_layout.isVisible() is True
+        assert context.mapTo(bids_dialog, context.rect().topLeft()).y() >= 0
+        assert (
+            bids_dialog.btn_close.mapTo(
+                bids_dialog, bids_dialog.btn_close.rect().bottomRight()
+            ).y()
+            < bids_dialog.height()
+        )
+        assert (
+            bids_dialog.btn_change_layout.mapTo(
+                bids_dialog, bids_dialog.btn_change_layout.rect().bottomRight()
+            ).y()
+            < bids_dialog.height()
+        )
+
+    def test_pending_summary_refreshes_but_mapping_page_is_not_replaced(
+        self, dialog, qtbot, channel_names
+    ):
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        bids_dialog = PickMontageDialog(
+            parent=None,
+            channel_names=channel_names,
+            is_bids_source=True,
+            current_layout={"source": None, "status": "pending"},
+        )
+        qtbot.addWidget(bids_dialog)
+        bids_dialog.refresh_bids_layout(
+            {"source": "bids", "status": "ready", "name": None}
+        )
+        title = bids_dialog.findChild(QLabel, "ElectrodeLayoutSummaryTitle")
+        assert title is not None
+        assert title.text() == "Dataset electrode coordinates"
+
+        bids_dialog.refresh_bids_layout(
+            {
+                "source": None,
+                "status": "limited",
+                "preparation_state": "ready",
+                "preparation_reason": "No BIDS electrode positions were found.",
+            }
+        )
+        assert title.text() == "BIDS coordinates unavailable"
+
+        bids_dialog.show_mapping_page()
+        bids_dialog.refresh_bids_layout(
+            {"source": "bids", "status": "unavailable", "name": None}
+        )
+        assert bids_dialog.mapping_page.isHidden() is False
+        bids_dialog.show_summary_page()
+        assert title.text() == "BIDS coordinates unavailable"
+
+    def test_manual_override_wins_over_stale_bids_preparation_failure(
+        self, dialog, qtbot, channel_names
+    ):
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        bids_dialog = PickMontageDialog(
+            parent=None,
+            channel_names=channel_names,
+            is_bids_source=True,
+            current_layout={
+                "source": "manual",
+                "status": "ready",
+                "name": "standard_1020",
+                "preparation_state": "failed",
+                "preparation_reason": "No BIDS electrode positions were found.",
+                "bids_restore_available": True,
+            },
+        )
+        qtbot.addWidget(bids_dialog)
+
+        context = bids_dialog.findChild(QLabel, "ElectrodeLayoutSummaryContext")
+        title = bids_dialog.findChild(QLabel, "ElectrodeLayoutSummaryTitle")
+        assert context is not None
+        assert title is not None
+        assert context.text() == "Manual override"
+        assert title.text() == "standard_1020"
+        assert bids_dialog.btn_use_bids.isHidden() is False
 
     def test_manual_override_keeps_change_layout_as_the_single_primary_action(
         self, dialog, qtbot, channel_names

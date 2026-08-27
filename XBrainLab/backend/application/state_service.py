@@ -439,7 +439,11 @@ class StateSnapshotService:
             positioned_channel_count=len(layout_positioned_names),
             channel_count=len(layout_names),
             coordinate_summary=(str(coordinate_frame) if coordinate_frame else None),
-            name=(str(getattr(layout_effective, "name", "")) or None)
+            name=(
+                str(layout_name)
+                if (layout_name := getattr(layout_effective, "name", None))
+                else None
+            )
             if layout_effective is not None
             else None,
             bids_restore_available=bool(

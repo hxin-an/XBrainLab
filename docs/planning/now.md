@@ -2,7 +2,7 @@
 
 最後更新：`2026-08-27`
 
-## Active slice：Electrode Layout BIDS polish
+## Active slice：Electrode Layout BIDS readiness presentation
 
 **Identity.** Worktree `/tmp/xbrainlab-electrode-layout-v1`，branch
 `feature/electrode-layout-dataset-v1`，base `origin/main` =
@@ -28,6 +28,10 @@ reviewer。`settings.json` 是使用者本機設定，永不碰觸。
   are direct workflow/data-integrity defects within this slice.
 - 既有可逆 BIDS lifecycle、command boundary、generation fence 及兩入口已存在；本 slice 是視覺與
   reviewed mapping polish，不能重建第二套 montage owner 或 mutation path。
+- 已確認兩個 BIDS presentation defect：ready automatic BIDS montage 的 canonical `name=None` 被
+  snapshot projection 的 `str(...)` 轉成字串 `"None"`；而使用者在 async preparation 仍為 `pending`
+  時開啟 dialog，dialog 只持有當下 immutable snapshot，完成 publication 雖更新 Dataset surface，已開
+  dialog 卻不會更新，並把 pending BIDS 誤畫成 `Manual override`／`not configured`。
 
 ### Outcome 與 scope
 
@@ -53,6 +57,10 @@ reviewer。`settings.json` 是使用者本機設定，永不碰觸。
   零 mutation。
 - Reviewed mapping 只在 exact ordered channel schema 相同時重用；不得跨 dataset silently reuse legacy
   mapping，亦不得破壞性清除舊設定。
+- BIDS readiness remains owned by the existing application publication. The snapshot preserves an automatic
+  BIDS `name=None` as null rather than the visible literal `"None"`; the dialog presents compact truthful
+  pending/ready/unavailable states and observes only its active pending summary through the existing Dataset
+  publication route. A publication must never pull a user who entered mapping back to the summary.
 
 ### 明確 non-goals
 
@@ -63,6 +71,8 @@ reviewer。`settings.json` 是使用者本機設定，永不碰觸。
   後續外部使用者文件。
 - 不改 Epoch channel axis、BIDS import/label semantics、trainer policy、資料掃描效能或 generic
   persistence architecture。
+- 不改 BIDS preparation lifecycle、輪詢／timer、direct `LOAD_DATA` provenance inference、second state
+  owner、Retry／Re-run action 或任何第二 mutation path；本次不是文案重寫，只修正狀態的真實呈現。
 
 ## Complexity review
 
@@ -128,6 +138,12 @@ Current worktree relative to `origin/main` touches **16 production files**, `+97
    DPI/narrow state if available.  Run focused UI tests, ruff and `git diff --check`.  Offscreen evidence is
    not Windows/WSLg acceptance; stop at an initial UI revision for the user to approve before any further
    Assistant multi-turn work.
+5. This explicitly user-approved visible repair first adds red tests for real-null automatic BIDS names;
+   ready fallback without literal `None`; pending BIDS without manual/not-configured semantics; publication
+   refresh from pending to ready/unavailable; and the guard that mapping is never yanked back by an async
+   publication. Then make the smallest fix in the snapshot projection, Dataset sidebar and existing dialog;
+   preserve Cancel, Restore BIDS and training guards. Capture pending, ready automatic BIDS, unavailable,
+   manual override, mapping and Dataset surfaces at default and 150% DPI.
 
 ## Review, stop condition and UI approval
 
@@ -140,6 +156,26 @@ failure paths. Root independently audits the exact SHA and accepts only in-scope
 
 ### Current implementation checkpoint
 
+- The readiness revision preserves automatic BIDS `name=None` through `StateSnapshotService`; it does not
+  expose literal `"None"`. `DatasetSidebar` adapts only the already-published visualization preparation
+  state/reason for its bounded active dialog reference, clears that reference after `exec`, and does not add
+  polling, a second owner or a mutation route. `PickMontageDialog` updates its retained summary data on
+  publication while mapping stays visible; Back then shows the new state. The summary is clamped to 540–560
+  logical px while visible and mapping expands to 700 px; the transition test asserts shown summary → mapping
+  → Back geometry. Production delta for this readiness revision is **+157/-42,
+  net +115 LOC** across `StateSnapshotService`, `DatasetSidebar` and `PickMontageDialog`.
+- Red evidence: **5 failed** focused tests reproduced literal `"None"`, ready fallback, pending semantic
+  misrender, absent publication refresh and sidebar publication delivery. Root pre-commit focused evidence is
+  **128 passed / 1 optional public-fixture skip** for state, picker, Dataset-sidebar and real tiny-BIDS
+  preparation integration coverage; scoped Ruff check/format and `git diff --check` pass. The tests also retain
+  Cancel persistence, Restore BIDS and training guard coverage. New dirty-source default/150% captures are in
+  `build/dev-artifacts/electrode-layout-readiness-v5/` and
+  `build/dev-artifacts/electrode-layout-readiness-v5-150/`; these temporary diagnostic captures cover ready
+  automatic BIDS, pending, unavailable, manual override and mapping at default and 150%. They show summary
+  540×170 / mapping 700×320 logical geometry (and the corresponding 150% pixels) without clipping or an
+  oversized blank pending footer. The old/new PNG pixel regions are identical and include their action buttons;
+  the apparent omission was a multi-image viewer presentation artifact, not a Qt paint or layout correction.
+  They remain dirty-source offscreen evidence, not WSLg acceptance.
 - The v3 scoped repair is deletion-first and keeps both entrances on the same reviewed dialog and
   `ApplyMontageCommand` / `ApplicationService` path. It removes the Dataset status `QLabel`, nested
   summary-card/form, `Re-run matching` control/callback and its ignored-saved-mapping path; it adds no owner,

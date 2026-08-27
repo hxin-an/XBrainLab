@@ -616,6 +616,25 @@ def test_state_snapshot_exposes_current_layout_name_and_bids_restore_capability(
     assert layout.bids_restore_available is True
 
 
+def test_state_snapshot_preserves_missing_automatic_bids_layout_name_as_none() -> None:
+    service = _snapshot_service(
+        montage_snapshot_provider=lambda: SimpleNamespace(state="ready", reason=None),
+        effective_montage_provider=lambda: SimpleNamespace(
+            source="bids",
+            name=None,
+            channel_names=("C3", "C4"),
+            electrode_names=("C3", "C4"),
+            positions_m=((0.0, 0.0, 0.08), (0.04, 0.0, 0.08)),
+            coordinate_frame="head",
+            coordinate_dimension=3,
+            supports_topographic=True,
+            supports_three_dimensional=True,
+        ),
+    )
+
+    assert service.build().electrode_layout.name is None
+
+
 def test_partial_four_channel_layout_is_limited_and_not_spatially_ready() -> None:
     service = _snapshot_service(
         montage_snapshot_provider=lambda: SimpleNamespace(state="ready", reason=None),

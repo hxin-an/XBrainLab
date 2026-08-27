@@ -9,6 +9,7 @@ import re
 from PyQt6.QtCore import QSettings, Qt
 from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import (
+    QWIDGETSIZE_MAX,
     QAbstractItemView,
     QComboBox,
     QCompleter,
@@ -155,7 +156,7 @@ class PickMontageDialog(BaseDialog):
         self.button_box = None
 
         super().__init__(parent, title="Electrode Layout")
-        self.setMinimumWidth(700)
+        self.setMinimumWidth(540)
         self.setStyleSheet(dark_dialog_stylesheet())
 
         # Trigger initial montage load even when the compact BIDS summary is shown.
@@ -182,49 +183,28 @@ class PickMontageDialog(BaseDialog):
         summary_layout.setContentsMargins(0, 0, 0, 0)
         summary_layout.setSpacing(10)
         summary_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        source = str(self.current_layout.get("source") or "not configured")
-        name = str(self.current_layout.get("name") or source.upper())
-        positioned = int(self.current_layout.get("positioned_channel_count") or 0)
-        count = int(self.current_layout.get("channel_count") or len(self.channel_names))
-        frame = str(self.current_layout.get("coordinate_summary") or "not specified")
-        source_context = (
-            "BIDS coordinates"
-            if source == "bids"
-            else "Manual override"
-            if self.is_bids_source
-            else "Manual mapping"
-        )
-        summary_context = QLabel(source_context)
-        summary_context.setObjectName("ElectrodeLayoutSummaryContext")
-        summary_context.setProperty("role", "secondary-status")
-        summary_context.setStyleSheet(
+        self.summary_context = QLabel()
+        self.summary_context.setObjectName("ElectrodeLayoutSummaryContext")
+        self.summary_context.setProperty("role", "secondary-status")
+        self.summary_context.setStyleSheet(
             f"color: {Theme.TEXT_SECONDARY}; font-size: 11px; font-weight: 600;"
         )
-        summary_layout.addWidget(summary_context)
-        summary_heading = QLabel(name)
-        summary_heading.setObjectName("ElectrodeLayoutSummaryTitle")
-        summary_heading.setProperty("role", "section-title")
-        summary_heading.setStyleSheet(
+        summary_layout.addWidget(self.summary_context)
+        self.summary_heading = QLabel()
+        self.summary_heading.setObjectName("ElectrodeLayoutSummaryTitle")
+        self.summary_heading.setProperty("role", "section-title")
+        self.summary_heading.setStyleSheet(
             f"color: {Theme.TEXT_PRIMARY}; font-size: 18px; font-weight: 600;"
         )
-        summary_layout.addWidget(summary_heading)
-        coordinate_facts = (
-            "Head coordinates"
-            if frame.lower() == "head"
-            else (
-                "Coordinate frame not specified"
-                if frame == "not specified"
-                else f"{frame.capitalize()} coordinates"
-            )
+        summary_layout.addWidget(self.summary_heading)
+        self.summary_facts = QLabel()
+        self.summary_facts.setObjectName("ElectrodeLayoutSummaryFacts")
+        self.summary_facts.setProperty("role", "secondary-status")
+        self.summary_facts.setWordWrap(True)
+        self.summary_facts.setStyleSheet(
+            f"color: {Theme.TEXT_SECONDARY}; font-size: 12px;"
         )
-        summary_facts = QLabel(
-            f"{positioned} of {count} EEG channels positioned  ·  {coordinate_facts}"
-        )
-        summary_facts.setObjectName("ElectrodeLayoutSummaryFacts")
-        summary_facts.setProperty("role", "secondary-status")
-        summary_facts.setWordWrap(True)
-        summary_facts.setStyleSheet(f"color: {Theme.TEXT_SECONDARY}; font-size: 12px;")
-        summary_layout.addWidget(summary_facts)
+        summary_layout.addWidget(self.summary_facts)
         if not self.layout_changes_allowed:
             blocked = QLabel("Clear training before replacing this layout.")
             blocked.setWordWrap(True)
@@ -248,6 +228,7 @@ class PickMontageDialog(BaseDialog):
         summary_actions.addWidget(self.btn_use_bids)
         summary_actions.addWidget(self.btn_change_layout)
         summary_layout.addLayout(summary_actions)
+        self._update_summary_presentation()
         layout.addWidget(self.summary_page)
 
         self.mapping_page = QWidget(self)
@@ -364,6 +345,79 @@ class PickMontageDialog(BaseDialog):
         if self.mapping_page is not None:
             self.mapping_page.setVisible(True)
         self._resize_dialog_to_content()
+
+    def refresh_bids_layout(self, current_layout: dict) -> None:
+        """Render a newer BIDS publication while its compact summary is active."""
+        if not self.is_bids_source or self.summary_page is None:
+            return
+        self.current_layout = dict(current_layout)
+        self._update_summary_presentation()
+        if not self.summary_page.isHidden():
+            self._resize_dialog_to_content()
+
+    def _update_summary_presentation(self) -> None:
+        """Translate the existing published BIDS state without owning readiness."""
+        source = self.current_layout.get("source")
+        layout_status = str(self.current_layout.get("status") or "not_configured")
+        preparation_state = self.current_layout.get("preparation_state")
+        # An effective reviewed layout is authoritative presentation truth. BIDS
+        # preparation progress only describes the no-effective-layout state.
+        status = (
+            layout_status
+            if source in {"manual", "bids"}
+            else str(preparation_state or layout_status)
+        )
+        reason = str(self.current_layout.get("preparation_reason") or "").strip()
+        positioned = int(self.current_layout.get("positioned_channel_count") or 0)
+        count = int(self.current_layout.get("channel_count") or len(self.channel_names))
+        frame = str(self.current_layout.get("coordinate_summary") or "not specified")
+
+        if self.is_bids_source and status == "pending":
+            context = "FROM BIDS"
+            title = "Preparing electrode layout"
+            facts = reason or "Reading BIDS electrode and coordinate files."
+        elif self.is_bids_source and (
+            status in {"failed", "unavailable"} or source is None
+        ):
+            context = "FROM BIDS"
+            title = "BIDS coordinates unavailable"
+            facts = reason or "BIDS coordinate files could not be prepared."
+        else:
+            context = (
+                "FROM BIDS"
+                if source == "bids"
+                else "Manual override"
+                if self.is_bids_source
+                else "Manual mapping"
+            )
+            name = self.current_layout.get("name")
+            title = (
+                str(name)
+                if name not in (None, "", "None")
+                else "Dataset electrode coordinates"
+                if source == "bids"
+                else "Manual layout"
+            )
+            coordinate_facts = (
+                "Head coordinates"
+                if frame.lower() == "head"
+                else (
+                    "Coordinate frame not specified"
+                    if frame == "not specified"
+                    else f"{frame.capitalize()} coordinates"
+                )
+            )
+            facts = (
+                f"{positioned} of {count} EEG channels positioned  ·  "
+                f"{coordinate_facts}"
+            )
+
+        self.summary_context.setText(context)
+        self.summary_heading.setText(title)
+        self.summary_facts.setText(facts)
+        can_restore = bool(self.current_layout.get("bids_restore_available"))
+        self.btn_use_bids.setVisible(can_restore)
+        self.btn_use_bids.setEnabled(can_restore and self.layout_changes_allowed)
 
     def show_summary_page(self):
         """Return to the compact current-layout view without changing data."""
@@ -501,9 +555,15 @@ class PickMontageDialog(BaseDialog):
             self.summary_page is not None and not self.summary_page.isHidden()
         )
         minimum_height = 170 if showing_summary else 320
+        minimum_width = 540 if showing_summary else 700
+        # Hidden mapping controls retain a wide size hint. Clamp only the compact
+        # summary state so shown geometry, not that hidden hint, owns its width.
+        self.setMinimumWidth(minimum_width)
+        self.setMaximumWidth(560 if showing_summary else QWIDGETSIZE_MAX)
         self.setMinimumHeight(minimum_height)
         self.fit_to_content(
-            minimum_width=700,
+            minimum_width=minimum_width,
+            maximum_width=560 if showing_summary else None,
             minimum_height=minimum_height,
             maximum_height=640,
         )

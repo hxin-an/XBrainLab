@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import mne
 import numpy as np
 import pytest
-from PyQt6.QtWidgets import QPushButton, QWidget
+from PyQt6.QtWidgets import QLabel, QPushButton, QWidget
 
 from XBrainLab.backend.application import QueryStateCommand
 from XBrainLab.ui.panels.dataset.sidebar import (
@@ -135,8 +135,12 @@ def test_bids_layout_opens_the_same_dialog_summary_without_dispatching_apply(
                 "positioned_channel_count": 3,
                 "channel_count": 4,
                 "coordinate_summary": "head",
+                "name": None,
+                "bids_restore_available": False,
                 "channel_names": ["C3"],
                 "electrode_names": ["C3"],
+                "preparation_state": None,
+                "preparation_reason": None,
             },
             "is_bids_source": True,
             "layout_changes_allowed": True,
@@ -144,6 +148,7 @@ def test_bids_layout_opens_the_same_dialog_summary_without_dispatching_apply(
     ]
     assert len(dispatched) == 1
     assert isinstance(dispatched[0], QueryStateCommand)
+    assert sidebar._active_electrode_layout_dialog is None
 
 
 def test_bids_layout_restore_dispatches_only_the_restore_command(sidebar, monkeypatch):
@@ -265,6 +270,72 @@ def test_layout_status_projects_loading_and_manual_partial_states(sidebar, monke
     layout.source = "bids"
     sidebar.update_sidebar()
     assert sidebar.electrode_layout_btn.toolTip() == "BIDS electrode layout unavailable"
+
+
+def test_publication_refreshes_only_an_active_pending_electrode_summary(
+    sidebar, qtbot, monkeypatch
+):
+    from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+        PickMontageDialog,
+    )
+
+    positions = {"C3": (0.0, 0.0, 0.08), "C4": (0.04, 0.0, 0.08)}
+    with (
+        patch(
+            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_builtin_montages",
+            return_value=["standard_1020"],
+        ),
+        patch(
+            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_positions",
+            return_value={"ch_pos": positions},
+        ),
+        patch(
+            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_channel_positions",
+            return_value=positions,
+        ),
+    ):
+        dialog = PickMontageDialog(
+            None,
+            ["C3", "C4"],
+            is_bids_source=True,
+            current_layout={"source": None, "status": "pending"},
+        )
+    qtbot.addWidget(dialog)
+    sidebar._active_electrode_layout_dialog = dialog
+    layout = SimpleNamespace(
+        status="ready",
+        source="bids",
+        positioned_channel_count=4,
+        channel_count=4,
+        name=None,
+    )
+    publication = SimpleNamespace(
+        effective_capabilities={},
+        state=SimpleNamespace(
+            electrode_layout=layout,
+            visualization=SimpleNamespace(
+                montage_preparation_state="ready",
+                montage_preparation_reason=None,
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar.get_application_view_publication",
+        lambda *_: publication,
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar.has_real_application_context",
+        lambda *_: False,
+    )
+
+    sidebar.update_sidebar()
+
+    title = dialog.findChild(QLabel, "ElectrodeLayoutSummaryTitle")
+    assert title is not None
+    assert title.text() == "Dataset electrode coordinates"
+    dialog.show_mapping_page()
+    sidebar.update_sidebar()
+    assert dialog.mapping_page.isHidden() is False
 
 
 def test_add_labels_compatibility_button_stays_hidden(sidebar):

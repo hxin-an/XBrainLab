@@ -270,6 +270,7 @@ class DatasetSidebar(QWidget):
         self.electrode_layout_btn.setToolTip(initial_layout_text)
         self.electrode_layout_btn.setAccessibleDescription(initial_layout_text)
         self._last_layout_status: tuple[str, str | None, int, int] | None = None
+        self._active_electrode_layout_dialog: Any | None = None
         self.electrode_layout_btn.setStyleSheet(_DATASET_SIDEBAR_BUTTON_STYLE)
         self.electrode_layout_btn.clicked.connect(self.open_electrode_layout)
         self.exec_layout.addWidget(self.electrode_layout_btn)
@@ -315,6 +316,10 @@ class DatasetSidebar(QWidget):
             return InteractionOutcome.blocked(message)
         state = (getattr(query, "diagnostics", {}) or {}).get("state", {})
         layout = state.get("electrode_layout", {}) if isinstance(state, dict) else {}
+        visualization = (
+            state.get("visualization", {}) if isinstance(state, dict) else {}
+        )
+        layout = self._electrode_layout_dialog_snapshot(layout, visualization)
         epoch = state.get("epoch", {}) if isinstance(state, dict) else {}
         raw = state.get("raw", {}) if isinstance(state, dict) else {}
         channels = epoch.get("channel_names") or raw.get("channels") or []
@@ -344,7 +349,12 @@ class DatasetSidebar(QWidget):
             ),
             **kwargs,
         )
-        if not dialog.exec():
+        self._active_electrode_layout_dialog = dialog
+        try:
+            accepted = dialog.exec()
+        finally:
+            self._active_electrode_layout_dialog = None
+        if not accepted:
             return InteractionOutcome.cancelled("Electrode layout was cancelled.")
         restore_bids_requested = getattr(dialog, "restore_bids_requested", None)
         if callable(restore_bids_requested) and restore_bids_requested() is True:
@@ -706,6 +716,12 @@ class DatasetSidebar(QWidget):
                 layout_text = self._electrode_layout_description(layout)
                 self.electrode_layout_btn.setToolTip(layout_text)
                 self.electrode_layout_btn.setAccessibleDescription(layout_text)
+                self._refresh_active_electrode_layout_dialog(
+                    self._electrode_layout_dialog_snapshot(
+                        layout,
+                        getattr(publication.state, "visualization", None),
+                    )
+                )
                 if current_layout != self._last_layout_status:
                     self._last_layout_status = current_layout
                     if layout.source == "bids" and layout.status in {
@@ -780,6 +796,41 @@ class DatasetSidebar(QWidget):
                 )
 
             self._fit_action_labels()
+
+    @staticmethod
+    def _electrode_layout_dialog_snapshot(
+        layout: Any,
+        visualization: Any,
+    ) -> dict[str, Any]:
+        """Adapt the already-published state for one active dialog presentation."""
+
+        def value(source: Any, name: str, default: Any = None) -> Any:
+            if isinstance(source, dict):
+                return source.get(name, default)
+            return getattr(source, name, default)
+
+        return {
+            "source": value(layout, "source"),
+            "status": value(layout, "status", "not_configured"),
+            "positioned_channel_count": value(layout, "positioned_channel_count", 0),
+            "channel_count": value(layout, "channel_count", 0),
+            "coordinate_summary": value(layout, "coordinate_summary"),
+            "name": value(layout, "name"),
+            "bids_restore_available": value(layout, "bids_restore_available", False),
+            "channel_names": value(layout, "channel_names", []),
+            "electrode_names": value(layout, "electrode_names", []),
+            "preparation_state": value(visualization, "montage_preparation_state"),
+            "preparation_reason": value(visualization, "montage_preparation_reason"),
+        }
+
+    def _refresh_active_electrode_layout_dialog(
+        self,
+        layout: dict[str, Any],
+    ) -> None:
+        dialog = self._active_electrode_layout_dialog
+        refresh = getattr(dialog, "refresh_bids_layout", None)
+        if callable(refresh):
+            refresh(layout)
 
     @staticmethod
     def _electrode_layout_description(layout: Any) -> str:
