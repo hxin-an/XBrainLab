@@ -38,6 +38,10 @@ from XBrainLab.llm.agent.turn import (
 )
 from XBrainLab.llm.pipeline_state import STAGE_CONFIG, PipelineStage
 from XBrainLab.llm.tools.base import BaseTool
+from XBrainLab.llm.tools.definitions.preprocess_def import (
+    BaseBandPassFilterTool,
+    BaseNotchFilterTool,
+)
 from XBrainLab.llm.tools.definitions.training_def import BaseStartTrainingTool
 from XBrainLab.llm.tools.tool_registry import ToolRegistry
 
@@ -437,16 +441,20 @@ def test_zero_parameter_action_contract_uses_only_generic_action_shape():
     assert not contracts.lstrip().startswith("[")
 
 
-def test_single_action_contract_ends_with_no_action_envelope() -> None:
+def test_single_action_contract_places_message_only_before_generic_envelope() -> None:
     registry = ToolRegistry()
     registry.register(BaseStartTrainingTool())
     assembler = ContextAssembler(registry, Study())
 
     contracts = assembler._format_tools(["start_training"])
 
-    assert contracts.rstrip().endswith(
+    assert (
         '{"workflow_stage":"unavailable","tool_name":"respond_to_user",'
         '"parameters":{"message":"<concise response or one clarifying question>"}}'
+        in contracts
+    )
+    assert contracts.index("Message-only response envelope:") < contracts.index(
+        "Generic action envelope:"
     )
 
 
@@ -474,6 +482,39 @@ def test_multi_action_reminder_forbids_prose_and_gui_parameter_invention() -> No
     assert "DECISION ENVELOPE" not in reminder
 
 
+def test_direct_preprocess_projection_is_bilingual_ordered_and_conditional() -> None:
+    registry = ToolRegistry()
+    registry.register(BaseBandPassFilterTool())
+    registry.register(BaseNotchFilterTool())
+    assembler = ContextAssembler(registry, Study())
+
+    contracts = assembler._format_tools(
+        ["apply_bandpass_filter", "apply_notch_filter"],
+        workflow_stage="data_loaded",
+    )
+
+    assert "Direct preprocessing semantic checkpoint:" in contracts
+    assert "Band-pass / 帶通" in contracts
+    assert "Notch / 陷波" in contracts
+    assert "mutually non-substitutable" in contracts
+    assert contracts.index("Message-only response envelope:") < contracts.index(
+        "Initial typed-clarification envelope:"
+    )
+    assert contracts.index("Initial typed-clarification envelope:") < contracts.index(
+        "Generic action envelope:"
+    )
+    assert "broad family requests stay message-only" in contracts
+    assert '"pending_action":"<exact enabled direct action>"' in contracts
+    assert '"missing_inputs":["<required input>"]' in contracts
+
+    bandpass_only = assembler._format_tools(
+        ["apply_bandpass_filter"],
+        workflow_stage="data_loaded",
+    )
+    assert "Direct preprocessing semantic checkpoint:" not in bandpass_only
+    assert "apply_notch_filter" not in bandpass_only
+
+
 def test_action_catalog_uses_one_generic_action_shape() -> None:
     registry = ToolRegistry()
     registry.register(BaseStartTrainingTool())
@@ -488,7 +529,7 @@ def test_action_catalog_uses_one_generic_action_shape() -> None:
     assert "Exact zero-parameter output shape:" not in contracts
 
 
-def test_action_catalog_ends_with_exact_stage_no_action_envelope() -> None:
+def test_action_catalog_keeps_exact_stage_message_only_envelope() -> None:
     registry = ToolRegistry()
     registry.register(BaseStartTrainingTool())
     assembler = ContextAssembler(registry, Study())
@@ -498,9 +539,10 @@ def test_action_catalog_ends_with_exact_stage_no_action_envelope() -> None:
         workflow_stage="epoch_ready",
     )
 
-    assert contracts.rstrip().endswith(
+    assert (
         '{"workflow_stage":"epoch_ready","tool_name":"respond_to_user",'
         '"parameters":{"message":"<concise response or one clarifying question>"}}'
+        in contracts
     )
 
 
@@ -1170,7 +1212,7 @@ def test_current_tool_input_receipt_is_projected_as_bounded_context() -> None:
         capabilities=build_capability_policy(state),
     )
     registry = ToolRegistry()
-    registry.register(_NamedTool("resample_data"))
+    registry.register(BaseBandPassFilterTool())
     assembler = ContextAssembler(
         registry,
         Study(),
@@ -1178,11 +1220,12 @@ def test_current_tool_input_receipt_is_projected_as_bounded_context() -> None:
     )
     assembler.set_tool_input_receipt(
         AssistantToolInputReceipt(
-            command_name="resample_data",
-            original_user_text="Resample the EEG data.",
-            question="What resampling rate should I use?",
+            command_name="apply_bandpass_filter",
+            original_user_text="Use a 19.75 Hz lower cutoff.",
+            question="What upper cutoff should I use?",
             publication_generation=81,
-            missing_inputs=("rate",),
+            missing_inputs=("high_freq",),
+            verified_parameters=(("low_freq", 19.75),),
         )
     )
 
@@ -1190,26 +1233,33 @@ def test_current_tool_input_receipt_is_projected_as_bounded_context() -> None:
         [
             {
                 "role": "assistant",
-                "content": "What resampling rate should I use?",
+                "content": "What upper cutoff should I use?",
             },
-            {"role": "user", "content": "128 Hz"},
+            {"role": "user", "content": "45 Hz"},
         ]
     )
 
     context = _untrusted_context(messages)
+    prompt = messages[0]["content"]
     clarification = _context_item(context, "tool_input_clarification")
     assert clarification["source"]["kind"] == "assistant_tool_input_receipt"
     assert clarification["data"] == {
-        "action": "resample_data",
-        "original_user_request": "Resample the EEG data.",
-        "question": "What resampling rate should I use?",
+        "action": "apply_bandpass_filter",
+        "original_user_request": "Use a 19.75 Hz lower cutoff.",
+        "question": "What upper cutoff should I use?",
         "publication_generation": 81,
-        "missing_inputs": ["rate"],
-        "verified_parameters": {},
+        "missing_inputs": ["high_freq"],
+        "verified_parameters": {"low_freq": 19.75},
         "remaining_reply_budget": 2,
     }
+    assert "Trusted active-receipt continuation checkpoint:" in prompt
+    assert "same exact action" in prompt
+    assert "latest reply's requested values" in prompt
+    assert "Use a 19.75 Hz lower cutoff." not in prompt
+    assert "What upper cutoff should I use?" not in prompt
+    assert "19.75" not in prompt
     assert "tool_input_clarification" in messages[0]["content"]
-    assert messages[-1] == {"role": "user", "content": "128 Hz"}
+    assert messages[-1] == {"role": "user", "content": "45 Hz"}
 
 
 @pytest.mark.parametrize(
@@ -1250,11 +1300,13 @@ def test_stale_or_unavailable_tool_input_receipt_is_not_projected(
         )
     )
 
-    context = _untrusted_context(
-        assembler.get_messages([{"role": "user", "content": "128 Hz"}])
-    )
+    messages = assembler.get_messages([{"role": "user", "content": "128 Hz"}])
+    context = _untrusted_context(messages)
 
     assert all(item["type"] != "tool_input_clarification" for item in context["items"])
+    assert (
+        "Trusted active-receipt continuation checkpoint:" not in messages[0]["content"]
+    )
 
 
 def test_referential_explanation_keeps_immediate_conversation_context() -> None:
