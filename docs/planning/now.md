@@ -84,11 +84,14 @@ tool membership, or encode individual expected answers into the prompt.
 the existing parameter-origin verifier; do not add an owner, state machine, receipt type, or
 compatibility path. When exactly one currently published direct-preprocess proposal has a valid
 shape but fails only because values cannot be proven from latest user text, create a zero-execution
-receipt containing only exact tool ID, actual missing fields, latest-user-verified values, fixed
-question evidence, publication generation, and two parameter reply attempts. A follow-up must
-again propose that same exact tool; then re-run schema, origin, publication, capability,
-confirmation, and one-action checks. Cancel/new chat/stale publication/different tool/topic/third
-reply clear the receipt with zero execution.
+receipt only if that exact tool occurs in the same proposal generation's immutable callable-schema
+publication actually used for the model prompt. This is prompt-time membership evidence only, not a
+live readiness lookup and never changes origin-before-live-capability ordering. The receipt contains
+only exact tool ID, actual missing fields, latest-user-verified values, fixed question evidence,
+publication generation, and two parameter reply attempts. A follow-up must again propose that same
+exact tool; then re-run schema, origin, publication, capability, confirmation, and one-action
+checks. Cancel/new chat/stale publication/different tool/topic/third reply clear the receipt with
+zero execution.
 
 **L3 — bounded rejection-only verifier.** Only if L1/L2 leave measured no-action residuals, update
 the already user-authorized target decision before source work, then experiment with one same-model
