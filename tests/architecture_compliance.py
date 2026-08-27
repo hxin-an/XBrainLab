@@ -6862,14 +6862,27 @@ def check_typed_montage_ui_handoff_boundary(root_dir: Path) -> list[str]:
         if not all(
             token in controller_source
             for token in (
-                "CommandName.APPLY_MONTAGE",
-                "WorkflowUiHandoffRequest.for_decision",
-                "suggested_values",
+                "UiRequestKind.WORKFLOW_HANDOFF",
+                "self._workflow_ui_handoff_request",
             )
         ):
             violations.append(
-                f"{MONTAGE_HANDOFF_CONTROLLER} must publish a correlated "
-                "APPLY_MONTAGE WorkflowUiHandoffRequest with suggested values."
+                f"{MONTAGE_HANDOFF_CONTROLLER} must route set_montage through "
+                "the generic correlated WORKFLOW_HANDOFF contract."
+            )
+        result_contract_path = root_dir / "XBrainLab/llm/tools/result_contract.py"
+        result_contract_source = (
+            result_contract_path.read_text(encoding="utf-8")
+            if result_contract_path.exists()
+            else ""
+        )
+        if (
+            "CONFIRM_MONTAGE" in controller_source
+            or "CONFIRM_MONTAGE" in result_contract_source
+        ):
+            violations.append(
+                "Montage must not restore the retired CONFIRM_MONTAGE request kind; "
+                "use the formal WORKFLOW_HANDOFF contract."
             )
 
         host_source = (

@@ -8801,6 +8801,7 @@ def test_reapplying_montage_with_new_positions_marks_visualization_changed() -> 
             return list(self.ch_names)
 
     service = ApplicationService(Study())
+    service.study.data_manager.loaded_data_list = [_raw_mock()]
     service.study.data_manager.epoch_data = EpochWithMontage()
     first = service.execute(
         ApplyMontageCommand(
@@ -10607,6 +10608,7 @@ def test_import_labels_updates_applied_interpretation_recipe_trace(tmp_path):
 
 def test_apply_montage_command_routes_confirmed_positions():
     service = ApplicationService(Study())
+    service.study.data_manager.loaded_data_list = [_raw_mock()]
     service.study.data_manager.epoch_data = MagicMock()
     service.preprocess.apply_montage = MagicMock()
 
@@ -10775,6 +10777,7 @@ def test_apply_montage_rejects_channel_subset_after_dataset_generation():
             self.channels = list(channels)
 
     study = Study()
+    study.data_manager.loaded_data_list = [_raw_mock()]
     epoch = EpochWithChannels()
     study.data_manager.epoch_data = cast(Any, epoch)
     study.data_manager.datasets = [MagicMock()]

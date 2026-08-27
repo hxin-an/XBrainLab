@@ -1404,9 +1404,10 @@ class TestOnGenerationFinished:
 
         decision = ctrl._evaluate_tool_proposal(("resample_data", {"rate": 128}), "{}")
 
-        assert decision.action is ToolAttemptAction.EXECUTE
-        assert decision.params == {"rate": 128}
+        assert decision.action is ToolAttemptAction.RESPOND
         assert ctrl.pending_interactions.active_tool_input is None
+        assert ctrl.pending_interactions.tool_input is None
+        ctrl.verifier.verify_tool_call.assert_not_called()
 
     def test_exhausted_partial_reply_budget_clears_without_execution(self, ctrl):
         receipt = AssistantToolInputReceipt(
@@ -1432,6 +1433,8 @@ class TestOnGenerationFinished:
 
         assert decision.action is ToolAttemptAction.RESPOND
         assert ctrl.pending_interactions.active_tool_input is None
+        assert ctrl.pending_interactions.tool_input is None
+        ctrl.verifier.verify_tool_call.assert_not_called()
 
     def test_stale_receipt_cannot_execute_same_action_from_reply_only_values(
         self, ctrl
@@ -1465,6 +1468,7 @@ class TestOnGenerationFinished:
 
         assert decision.action is ToolAttemptAction.RESPOND
         assert ctrl.pending_interactions.active_tool_input is None
+        assert ctrl.pending_interactions.tool_input is None
 
     def test_active_receipt_typed_false_missing_retries_without_terminal_clear(
         self,
@@ -1569,6 +1573,7 @@ class TestOnGenerationFinished:
         ctrl._on_generation_finished(123, [])
 
         assert ctrl.pending_interactions.active_tool_input is None
+        assert ctrl.pending_interactions.tool_input is None
         ctrl._execute_tool_attempt.assert_not_called()
 
     def test_recovery_exhaustion_clears_active_receipt_without_execution(self, ctrl):
@@ -1592,6 +1597,7 @@ class TestOnGenerationFinished:
         ctrl._on_generation_finished(124, [])
 
         assert ctrl.pending_interactions.active_tool_input is None
+        assert ctrl.pending_interactions.tool_input is None
         ctrl._execute_tool_attempt.assert_not_called()
 
     def test_wrong_workflow_stage_retries_without_executing_or_presenting(self, ctrl):
@@ -2062,23 +2068,23 @@ class TestHandleToolResultLogic:
         assert presentation.kind is AssistantResponseKind.BLOCKED
         assert "not available" in presentation.text
 
-    def test_confirm_montage(self, ctrl):
+    def test_set_montage_uses_the_formal_zero_parameter_workflow_handoff(self, ctrl):
         result = ctrl._handle_tool_result_logic(
             UiRequest(
-                UiRequestKind.CONFIRM_MONTAGE,
+                UiRequestKind.WORKFLOW_HANDOFF,
                 {
-                    "montage_name": "standard_1020",
-                    "warning": "Review channel identities.",
+                    "tool_name": "set_montage",
+                    "command": CommandName.APPLY_MONTAGE.value,
+                    "decision_fields": (),
                 },
             )
         )
         assert result
         request = ctrl.workflow_ui_handoff_requested.emit.call_args.args[0]
         assert request.command is CommandName.APPLY_MONTAGE
-        assert request.suggestions == {
-            "montage_name": "standard_1020",
-            "warning": "Review channel identities.",
-        }
+        assert request.tool_name == "set_montage"
+        assert request.decision_fields == ()
+        assert request.suggestions == {}
         assert ctrl.pending_interactions.workflow_handoff is request
         ctrl.panel_navigation_requested.emit.assert_not_called()
         activity = ctrl.activity_changed.emit.call_args.args[0]
@@ -2160,8 +2166,12 @@ class TestProcessToolCalls:
             return_value=ToolExecutionOutcome(
                 True,
                 UiRequest(
-                    UiRequestKind.CONFIRM_MONTAGE,
-                    {"montage_name": "standard_1020"},
+                    UiRequestKind.WORKFLOW_HANDOFF,
+                    {
+                        "tool_name": "set_montage",
+                        "command": CommandName.APPLY_MONTAGE.value,
+                        "decision_fields": (),
+                    },
                 ),
             )
         )
@@ -2171,7 +2181,7 @@ class TestProcessToolCalls:
         ctrl.registry.get_tool.return_value.requires_confirmation = False
 
         ctrl._process_tool_calls(
-            [("set_montage", {"montage_name": "standard_1020"})],
+            [("set_montage", {})],
             '{"tool_name": "set_montage"}',
         )
 
@@ -3259,6 +3269,33 @@ class TestExecuteDebugTool:
         assert ctrl.pending_interactions.active_tool_input is None
         ctrl.assembler.set_tool_input_receipt.assert_called_once_with(None)
 
+    def test_parameter_origin_receipt_is_stored_before_the_response_finalizes(
+        self,
+        ctrl,
+    ):
+        receipt = AssistantToolInputReceipt(
+            command_name="resample_data",
+            original_user_text="Resample the EEG data.",
+            question="What resampling rate should I use?",
+            publication_generation=17,
+            missing_inputs=("rate",),
+        )
+        ctrl._finalize_turn = MagicMock()
+        decision = ToolAttemptDecision(
+            ToolAttemptAction.RESPOND,
+            "resample_data",
+            {"rate": 128},
+            context=_enabled_tool_context("resample_data", generation=17),
+            message=receipt.question,
+            tool_input_receipt=receipt,
+        )
+
+        assert ctrl._present_tool_attempt_boundary(decision) is True
+
+        assert ctrl.pending_interactions.tool_input is receipt
+        ctrl.assembler.set_tool_input_receipt.assert_called_once_with(receipt)
+        ctrl._finalize_turn.assert_called_once_with(receipt.question)
+
     def test_parameter_followup_receipt_executes_same_direct_action(self, ctrl):
         receipt = AssistantToolInputReceipt(
             command_name="resample_data",
@@ -3299,6 +3336,38 @@ class TestExecuteDebugTool:
         assert executed.command_name == "resample_data"
         assert executed.params == {"rate": 128}
 
+    def test_partial_receipt_preserves_verified_values_for_the_same_action(self, ctrl):
+        receipt = AssistantToolInputReceipt(
+            command_name="apply_bandpass_filter",
+            original_user_text="Apply a 4 Hz to 40 Hz bandpass filter.",
+            question="What high cutoff should I use?",
+            publication_generation=17,
+            missing_inputs=("high_freq",),
+            verified_parameters=(("low_freq", 4.0),),
+        )
+        ctrl.pending_interactions.begin_tool_input(receipt)
+        ctrl._append_history("user", "40 Hz")
+        ctrl._reset_user_turn_state()
+        ctrl._turn_orchestrator.active_publication = PromptToolPublication(
+            tool_names=frozenset({"apply_bandpass_filter"}),
+            workflow_stage="data_loaded",
+            backend_generation=17,
+        )
+        _set_context_reader(
+            ctrl,
+            return_value=_enabled_tool_context("apply_bandpass_filter", generation=17),
+        )
+        ctrl.registry.get_tool.return_value.requires_confirmation = False
+        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+
+        decision = ctrl._evaluate_tool_proposal(
+            ("apply_bandpass_filter", {"high_freq": 40.0}),
+            "{}",
+        )
+
+        assert decision.action is ToolAttemptAction.EXECUTE
+        assert decision.params == {"low_freq": 4.0, "high_freq": 40.0}
+
     def test_parameter_followup_response_does_not_rearm_receipt(self, ctrl):
         receipt = AssistantToolInputReceipt(
             command_name="resample_data",
@@ -3324,7 +3393,7 @@ class TestExecuteDebugTool:
         assert ctrl.pending_interactions.tool_input is None
         assert ctrl.pending_interactions.active_tool_input is receipt
 
-    def test_model_invented_parameter_publishes_message_and_never_executes(
+    def test_model_unverified_direct_parameter_starts_a_typed_receipt(
         self,
         ctrl,
     ):
@@ -3341,6 +3410,10 @@ class TestExecuteDebugTool:
             return_value=_enabled_tool_context("resample_data", generation=17),
         )
         ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+        ctrl.registry.get_tool.return_value.parameters = {
+            "type": "object",
+            "required": ["rate"],
+        }
         ctrl._execute_tool_attempt = MagicMock()
 
         ctrl._process_tool_calls(
@@ -3352,7 +3425,11 @@ class TestExecuteDebugTool:
         presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
         assert presentation.kind is AssistantResponseKind.MESSAGE
         assert presentation.text == "What resampling rate should I use?"
-        assert ctrl.pending_interactions.tool_input is None
+        receipt = ctrl.pending_interactions.tool_input
+        assert isinstance(receipt, AssistantToolInputReceipt)
+        assert receipt.command_name == "resample_data"
+        assert receipt.missing_inputs == ("rate",)
+        assert receipt.verified_parameters == ()
 
     def test_ready_debug_training_requests_confirmation_before_execution(self, ctrl):
         ctrl._turn_orchestrator.host_turn_generation = None

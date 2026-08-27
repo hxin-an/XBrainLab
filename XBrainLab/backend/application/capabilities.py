@@ -442,8 +442,14 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
     )
 
     montage_reasons = []
-    if not active_dataset.has_epoch_data:
-        montage_reasons.append("Create EEG epochs before applying a montage.")
+    if not active_dataset.has_raw_data:
+        montage_reasons.append("Load raw EEG data before applying a montage.")
+    if active_training.is_running:
+        montage_reasons.append("Stop training before applying a montage.")
+    elif active_training.has_trainer:
+        montage_reasons.append(
+            "Reset the session before applying a montage after trainer creation."
+        )
     capabilities[CommandName.APPLY_MONTAGE.value] = _cap(
         CommandName.APPLY_MONTAGE,
         montage_reasons,

@@ -47,7 +47,7 @@ from .verifier import (
     DIRECT_PARAMETER_TOOLS,
     PathProvenanceVerifier,
     VerificationResult,
-    verify_direct_parameter_origins,
+    _direct_parameter_origin_evidence,
     verify_direct_parameter_reply_values,
 )
 
@@ -152,6 +152,7 @@ class ToolAttemptDecision:
     resource_preflight_receipt: ResourceConfirmationChallenge | None = None
     edited_recommendation_fields: tuple[TrainingRecommendationField, ...] | None = None
     feedback: ToolAttemptFeedback = ToolAttemptFeedback.SYSTEM_REJECTION
+    tool_input_receipt: AssistantToolInputReceipt | None = None
 
 
 @dataclass(frozen=True)
@@ -249,18 +250,9 @@ class ToolAttemptCoordinator:
         generation = publication.backend_generation
         if type(generation) is not int or generation < 0:
             return None
-        tool = self._registry.get_tool(command_name)
-        schema = getattr(tool, "parameters", None)
-        required = schema.get("required") if isinstance(schema, dict) else None
-        if not isinstance(required, list):
-            return None
-        required_names = tuple(
-            name.strip() for name in required if isinstance(name, str) and name.strip()
-        )
-        if (
-            not 1 <= len(required_names) <= 2
-            or len(set(required_names)) != len(required_names)
-            or not 1 <= len(missing_inputs) <= 2
+        required_names = self._direct_required_parameter_names(command_name)
+        if required_names is None or (
+            not 1 <= len(missing_inputs) <= 2
             or len(set(missing_inputs)) != len(missing_inputs)
             or bool(set(missing_inputs) - set(required_names))
         ):
@@ -271,6 +263,71 @@ class ToolAttemptCoordinator:
             question=question,
             publication_generation=generation,
             missing_inputs=required_names,
+        )
+
+    def _direct_required_parameter_names(
+        self,
+        command_name: str,
+    ) -> tuple[str, ...] | None:
+        """Read the bounded direct-input schema needed for a typed receipt."""
+        tool = self._registry.get_tool(command_name)
+        schema = getattr(tool, "parameters", None)
+        required = schema.get("required") if isinstance(schema, dict) else None
+        if not isinstance(required, list):
+            return None
+        required_names = tuple(
+            name.strip() for name in required if isinstance(name, str) and name.strip()
+        )
+        if not 1 <= len(required_names) <= 2 or len(set(required_names)) != len(
+            required_names
+        ):
+            return None
+        return required_names
+
+    def _admit_direct_parameter_origin_receipt(
+        self,
+        request: ToolAttemptRequest,
+        *,
+        origin_validation: VerificationResult,
+        verified_parameters: dict[str, Any],
+    ) -> AssistantToolInputReceipt | None:
+        """Create receipt evidence only for one prompt-published direct action."""
+        command_name = request.command_name
+        publication = request.publication
+        if (
+            request.tool_input_receipt is not None
+            or command_name not in DIRECT_PARAMETER_TOOLS
+            or not publication.permits(command_name)
+        ):
+            return None
+        generation = publication.backend_generation
+        original_user_text = request.latest_user_text.strip()
+        if type(generation) is not int or generation < 0 or not original_user_text:
+            return None
+        required_names = self._direct_required_parameter_names(command_name)
+        if required_names is None:
+            return None
+        preserved = tuple(
+            (name, verified_parameters[name])
+            for name in required_names
+            if name in verified_parameters and name in request.params
+        )
+        missing_inputs = tuple(
+            name for name in required_names if name not in dict(preserved)
+        )
+        if not missing_inputs:
+            return None
+        question = (
+            origin_validation.error_message
+            or "What parameters should I use for this action?"
+        )
+        return AssistantToolInputReceipt(
+            command_name=command_name,
+            original_user_text=original_user_text,
+            question=question,
+            publication_generation=generation,
+            missing_inputs=missing_inputs,
+            verified_parameters=preserved,
         )
 
     def select_proposal(
@@ -382,10 +439,22 @@ class ToolAttemptCoordinator:
 
         if request.enforce_direct_parameter_origins:
             receipt = request.tool_input_receipt
-            if receipt is not None and receipt.matches(
+            if receipt is not None and not receipt.matches(
                 command_name,
                 request.publication.backend_generation,
             ):
+                return ToolAttemptDecision(
+                    ToolAttemptAction.RESPOND,
+                    command_name,
+                    params,
+                    context=context,
+                    message=(
+                        "The previous clarification is no longer active. Please "
+                        "start the action again with all required parameters."
+                    ),
+                )
+            verified_parameters: dict[str, Any] = {}
+            if receipt is not None:
                 supplied = request.supplied_parameters or params
                 origin_validation = verify_direct_parameter_reply_values(
                     command_name,
@@ -393,10 +462,12 @@ class ToolAttemptCoordinator:
                     request.latest_user_text,
                 )
             else:
-                origin_validation = verify_direct_parameter_origins(
-                    command_name,
-                    params,
-                    request.latest_user_text,
+                origin_validation, verified_parameters = (
+                    _direct_parameter_origin_evidence(
+                        command_name,
+                        params,
+                        request.latest_user_text,
+                    )
                 )
             if not origin_validation.is_valid:
                 return ToolAttemptDecision(
@@ -407,6 +478,11 @@ class ToolAttemptCoordinator:
                     message=(
                         origin_validation.error_message
                         or "What parameters should I use for this action?"
+                    ),
+                    tool_input_receipt=self._admit_direct_parameter_origin_receipt(
+                        request,
+                        origin_validation=origin_validation,
+                        verified_parameters=verified_parameters,
                     ),
                 )
 

@@ -327,7 +327,6 @@ class UiRequestKind(str, Enum):
     """UI effects a worker-side tool may request from the GUI host."""
 
     SWITCH_PANEL = "switch_panel"
-    CONFIRM_MONTAGE = "confirm_montage"
     WORKFLOW_HANDOFF = "workflow_handoff"
 
 

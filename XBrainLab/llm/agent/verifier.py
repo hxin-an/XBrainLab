@@ -74,25 +74,44 @@ def verify_direct_parameter_origins(
     context.  This check deliberately verifies value provenance only; it does
     not infer intent or select a different action.
     """
+    return _direct_parameter_origin_evidence(
+        tool_name,
+        params,
+        latest_user_text,
+    )[0]
+
+
+def _direct_parameter_origin_evidence(
+    tool_name: str,
+    params: dict[str, Any],
+    latest_user_text: str,
+) -> tuple[VerificationResult, dict[str, Any]]:
+    """Return direct-value verification plus only values proven by this text.
+
+    The evidence is intentionally local to the deterministic verifier.  It
+    lets the admission boundary retain a user-proven partial direct request
+    without deriving fields from a diagnostic string or granting execution.
+    """
     if tool_name not in DIRECT_PARAMETER_TOOLS:
-        return VerificationResult(True)
+        return VerificationResult(True), {}
 
     text = unicodedata.normalize("NFKC", latest_user_text).strip()
     clauses = tuple(
         clause.strip() for clause in _CLAUSE_SEPARATOR.split(text) if clause.strip()
     )
     if tool_name == "apply_bandpass_filter":
-        return _verify_bandpass_origins(params, clauses)
+        return _bandpass_origin_evidence(params, clauses)
     if tool_name == "apply_notch_filter":
-        return _verify_single_numeric_origin(
+        result = _verify_single_numeric_origin(
             params.get("freq"),
             clauses,
             before_pattern=r"(?:notch|陷波)(?:\s+(?:filter|濾波))?[^\d\n]{0,24}?",
             after_pattern=r"\s*(?:hz)?\s*(?:notch|陷波)",
             question="What notch frequency should I use?",
         )
+        return result, {"freq": params["freq"]} if result.is_valid else {}
     if tool_name == "resample_data":
-        return _verify_single_numeric_origin(
+        result = _verify_single_numeric_origin(
             params.get("rate"),
             clauses,
             before_pattern=(
@@ -102,8 +121,9 @@ def verify_direct_parameter_origins(
             after_pattern=None,
             question="What resampling rate should I use?",
         )
+        return result, {"rate": params["rate"]} if result.is_valid else {}
     if tool_name == "normalize_data":
-        return _verify_method_origin(
+        result = _verify_method_origin(
             params.get("method"),
             clauses,
             cue_pattern=r"(?:normaliz(?:e|ation)|正規化|標準化)",
@@ -113,7 +133,9 @@ def verify_direct_parameter_origins(
             },
             question="Which normalization method should I use: z-score or min-max?",
         )
-    return _verify_reference_origin(params.get("method"), clauses)
+        return result, {"method": params["method"]} if result.is_valid else {}
+    result = _verify_reference_origin(params.get("method"), clauses)
+    return result, {"method": params["method"]} if result.is_valid else {}
 
 
 def verify_direct_parameter_clarification_reply(
@@ -190,7 +212,12 @@ def verify_direct_parameter_reply_values(
 ) -> VerificationResult:
     """Verify a bounded partial answer without selecting an action."""
     text = unicodedata.normalize("NFKC", latest_user_text).strip()
-    if not text or len(text) > 256 or _clarification_reply_is_cancelled(text):
+    if (
+        not params
+        or not text
+        or len(text) > 256
+        or _clarification_reply_is_cancelled(text)
+    ):
         return VerificationResult(False, "The requested value was not provided.")
     if tool_name == "apply_bandpass_filter":
         return VerificationResult(
@@ -242,10 +269,10 @@ def _clarification_reply_contains_number(value: Any, text: str) -> bool:
     )
 
 
-def _verify_bandpass_origins(
+def _bandpass_origin_evidence(
     params: dict[str, Any],
     clauses: tuple[str, ...],
-) -> VerificationResult:
+) -> tuple[VerificationResult, dict[str, Any]]:
     low = params.get("low_freq")
     high = params.get("high_freq")
     cue = re.compile(r"(?:band[\s-]*pass|帶通)", re.IGNORECASE)
@@ -257,6 +284,7 @@ def _verify_bandpass_origins(
     )
     low_verified = False
     high_verified = False
+    verified: dict[str, Any] = {}
     for clause in clauses:
         if cue.search(clause) is None:
             continue
@@ -265,22 +293,36 @@ def _verify_bandpass_origins(
             high_matches = _numbers_equal(high, match.group("high"))
             low_verified = low_verified or low_matches
             high_verified = high_verified or high_matches
+            if low_matches:
+                verified["low_freq"] = low
+            if high_matches:
+                verified["high_freq"] = high
             if low_matches and high_matches:
-                return VerificationResult(True)
+                return VerificationResult(True), verified
 
     if high_verified and not low_verified:
-        return VerificationResult(
-            False,
-            "What low cutoff frequency should I use for the bandpass filter?",
+        return (
+            VerificationResult(
+                False,
+                "What low cutoff frequency should I use for the bandpass filter?",
+            ),
+            verified,
         )
     if low_verified and not high_verified:
-        return VerificationResult(
-            False,
-            "What high cutoff frequency should I use for the bandpass filter?",
+        return (
+            VerificationResult(
+                False,
+                "What high cutoff frequency should I use for the bandpass filter?",
+            ),
+            verified,
         )
-    return VerificationResult(
-        False,
-        "What low and high cutoff frequencies should I use for the bandpass filter?",
+    return (
+        VerificationResult(
+            False,
+            "What low and high cutoff frequencies should I use for the "
+            "bandpass filter?",
+        ),
+        verified,
     )
 
 
