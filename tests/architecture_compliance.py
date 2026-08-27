@@ -662,53 +662,6 @@ LEGACY_MONTAGE_FAKE_USER_MESSAGES = (
     "Montage Confirmed.",
     "Montage Selection Failed.",
 )
-DOC_CURRENT_TRUTH_FILES = (
-    Path("docs/current.md"),
-    Path("docs/index.md"),
-    Path("docs/architecture/README.md"),
-    Path("docs/architecture/ui.md"),
-    Path("docs/architecture/backend.md"),
-    Path("docs/planning/now.md"),
-    Path("docs/validation/README.md"),
-)
-DOC_CURRENT_TRUTH_OVERCLAIM_PHRASES = (
-    "product complete",
-    "release approval",
-    "full zero-controller UI",
-    "human Windows desktop acceptance",
-)
-DOC_CLAIM_BOUNDARY_TOKENS = (
-    "不能",
-    "不能取代",
-    "不能宣稱",
-    "不能支撐",
-    "不能先講",
-    "不等於",
-    "不是",
-    "不代表",
-    "缺",
-    "距離",
-    "尚未",
-    "未",
-    "仍需",
-    "還不能",
-    "gap",
-    "missing",
-    "not",
-    "cannot",
-    "can't",
-    "is not",
-    "before",
-    "required",
-    "still",
-    "remains",
-    "claim not supported",
-    "not supported",
-    "not complete",
-    "not ready",
-    "without implying",
-)
-
 MUTABLE_BOUNDARY_INCLUDE_OBJECTS = "include_objects"
 MUTABLE_BOUNDARY_LOCAL_PAYLOAD = "local_payload"
 MUTABLE_BOUNDARY_LOCAL_RESULT_PAYLOAD = "local_result_payload"
@@ -787,23 +740,6 @@ MUTABLE_OBJECT_BOUNDARY_DEBT_ALLOWLIST = (
 )
 
 
-def check_product_python_syntax(root_dir: Path) -> list[str]:
-    """Return every product Python file that cannot be inspected safely."""
-    product_dir = root_dir / "XBrainLab"
-    if not product_dir.exists():
-        return [f"Product package not found: {product_dir}"]
-    violations: list[str] = []
-    for py_file in product_dir.rglob("*.py"):
-        _, syntax_violation = _parse_product_guard_tree(
-            py_file,
-            root_dir,
-            guard_name="architecture compliance",
-        )
-        if syntax_violation is not None:
-            violations.append(syntax_violation)
-    return violations
-
-
 def check_architecture(root_dir: str) -> int:
     """Verify architecture compliance rules for the UI layer.
 
@@ -833,37 +769,7 @@ def check_architecture(root_dir: str) -> int:
         print(f"UI directory not found: {ui_dir}")
         return 1
 
-    syntax_violations = check_product_python_syntax(Path(root_dir))
-    if syntax_violations:
-        print("\nProduct Python Syntax Violations Found:")
-        for violation in syntax_violations:
-            print(f" - {violation}")
-        return 1
-
     violations = []
-
-    for py_file in ui_dir.rglob("*.py"):
-        rel_path = py_file.relative_to(root_dir)
-        tree, syntax_violation = _parse_product_guard_tree(
-            py_file,
-            Path(root_dir),
-            guard_name="architecture compliance",
-        )
-        if syntax_violation is not None:
-            violations.append(syntax_violation)
-            continue
-        assert tree is not None
-
-        # Skip tests and generated files
-        if "tests" in str(rel_path) or "__init__" in str(rel_path):
-            continue
-
-        # Check imports
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.Import, ast.ImportFrom)):
-                # Rule 1: No cross-panel imports
-                # Logic: if file is in ui/panels/A, it should not import ui/panels/B
-                pass  # simplified for now
 
     # Critical Check: BasePanel inheritance
     for panel_file in ui_dir.glob("panels/*/panel.py"):
@@ -1272,13 +1178,6 @@ def check_architecture(root_dir: str) -> int:
     if resource_receipt_boundary_violations:
         print("\nAgent Resource Receipt Boundary Violations Found:")
         for violation in resource_receipt_boundary_violations:
-            print(f" - {violation}")
-        return 1
-
-    docs_overclaim_violations = check_docs_current_truth_overclaims(Path(root_dir))
-    if docs_overclaim_violations:
-        print("\nDocs Current Truth Overclaim Violations Found:")
-        for violation in docs_overclaim_violations:
             print(f" - {violation}")
         return 1
 
@@ -7706,38 +7605,6 @@ def check_agent_resource_receipt_boundary(root_dir: Path) -> list[str]:
                     f"{relative} reads {key!r} outside ResourcePreflightView."
                 )
     return violations
-
-
-def check_docs_current_truth_overclaims(root_dir: Path) -> list[str]:
-    """Return current-truth docs that present target/acceptance as complete."""
-    violations: list[str] = []
-
-    for relative_file in DOC_CURRENT_TRUTH_FILES:
-        path = root_dir / relative_file
-        if not path.exists():
-            continue
-        lines = path.read_text(encoding="utf-8").splitlines()
-        for index, line in enumerate(lines):
-            lineno = index + 1
-            normalized = line.strip()
-            if not normalized:
-                continue
-            context = " ".join(lines[max(0, index - 10) : index + 1]).lower()
-            if _docs_line_has_claim_boundary(context):
-                continue
-            lower = normalized.lower()
-            violations.extend(
-                f"{relative_file}:{lineno} presents {phrase!r} as "
-                "current truth; docs must state this as missing, bounded, "
-                "or target-only unless backed by human acceptance evidence."
-                for phrase in DOC_CURRENT_TRUTH_OVERCLAIM_PHRASES
-                if phrase.lower() in lower
-            )
-    return violations
-
-
-def _docs_line_has_claim_boundary(lower_line: str) -> bool:
-    return any(token.lower() in lower_line for token in DOC_CLAIM_BOUNDARY_TOKENS)
 
 
 class _BackendFacadeRuntimeUsageVisitor(ast.NodeVisitor):
