@@ -68,8 +68,9 @@ Current worktree relative to `origin/main` touches **16 production files**, `+97
 - **Owners before/after:** `ApplicationService` remains the only authoritative montage mutation/
   publication owner; `BidsMontagePreparationCoordinator` remains bounded async preparation owner;
   `DatasetSidebar` / `MontagePickerDialog` remain presentation and human confirmation only. This PR does
-  add `ElectrodeLayoutStateSnapshot`: a frozen, detached public state DTO / immutable projection within
-  `ApplicationStateSnapshot`, not an owner. It exists for the necessary UI/Assistant-safe state seam:
+  add `ElectrodeLayoutStateSnapshot`: a frozen, detached public state DTO / revisioned application-state
+  projection within `ApplicationStateSnapshot`, not an owner. It carries detached copied lists but is only
+  shallow-frozen; it makes no deep-immutability claim. It exists for the necessary UI/Assistant-safe state seam:
   `StateSnapshotService.build()` projects coordinator truth into the application snapshot, which crosses
   `ApplicationViewPublication` and serialized `QueryStateCommand(state)` without exposing mutable coordinator
   state. Its actual production consumers are (1) `DatasetSidebar.update_sidebar()` through
