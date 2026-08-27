@@ -198,10 +198,12 @@ generic filter／模糊 action，Host 不從 user text 或 bubble 推測它；�
 exact action。
 
 符合上述 typed clarification 的 response，或 direct tool 被 parameter-origin guard 擋下時，Host 可以在
-零 execution 的具體追問旁建立 typed tool-input receipt。Receipt 只保存 exact tool ID、實際缺少欄位、
-可由 user 原文驗證的 values、bounded question evidence、prompt-time publication generation 與最多兩次
-parameter reply budget；不得保存或授權模型臆測的參數。它不是新的 model output branch，也不改變三欄
-envelope。
+零 execution 的具體追問旁建立 typed tool-input receipt，但只限一個 exact direct-preprocess tool。該 tool
+必須存在於本 proposal 同一 generation、實際用來建構該模型 prompt 的 immutable callable-schema
+publication；這個 snapshot 只證明 prompt-time membership，不是 receipt 建立時的 live readiness lookup，
+也不得以它恢復 stale capability。Receipt 只保存 exact tool ID、實際缺少欄位、可由 user 原文驗證的 values、
+bounded question evidence、prompt-time publication generation 與最多兩次 parameter reply budget；不得保存
+或授權模型臆測的參數。它不是新的 model output branch，也不改變三欄 envelope。
 
 Repair budget 是 initial generation 加最多兩次 repair：
 
@@ -285,10 +287,12 @@ runtime本身失敗時不做生成，ChatPanel顯示local runtime error。
 
 Verification順序固定為：strict schema → backend generation／stage → target publication → parameter
 schema → direct parameter-origin。若 direct tool 只因 required parameter 缺少或無法由 latest user text
-驗證而失敗，Host 在零 execution 建立 typed receipt 並以具體追問結束本 turn；receipt 不得延後到
-capability 或 confirmation 之後建立。parameter-origin 通過後才進 ApplicationService capability → optional
-rejection-only verifier → confirmation。Verifier 僅可使已通過前述 checks 的 primary proposal 降級，不能成為
-alternate readiness engine；Prompt與UI亦不可成為 alternate readiness engine。
+驗證而失敗，Host 只在 exact direct tool 同時存在於該 proposal generation 實際 prompt 的 immutable
+callable-schema publication 時，於零 execution 建立 typed receipt 並以具體追問結束本 turn；此 membership
+evidence 不是 live readiness lookup，receipt 不得延後到 capability 或 confirmation 之後建立。parameter-origin
+通過後才進 ApplicationService capability → optional rejection-only verifier → confirmation。Verifier 僅可使
+已通過前述 checks 的 primary proposal 降級，不能成為 alternate readiness engine；Prompt與UI亦不可成為
+alternate readiness engine。
 
 Direct-preprocess clarification follow-up仍由模型選擇action，Host不自動continuation。只有模型在 receipt
 reply budget 內再次提出同一 exact tool 時，parameter-origin verifier 才可把 receipt 的 verified user
