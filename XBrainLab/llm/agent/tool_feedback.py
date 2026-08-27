@@ -172,8 +172,6 @@ def summarize_tool_result(
         field_name="Tool summary command name",
     )
     if isinstance(result, UiRequest):
-        if result.kind is UiRequestKind.CONFIRM_MONTAGE:
-            return "Montage setup needs confirmation in the app."
         if result.kind is UiRequestKind.SWITCH_PANEL:
             return "I opened the requested workspace panel."
         return "The app needs input before this action can continue."

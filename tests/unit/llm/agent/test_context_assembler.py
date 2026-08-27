@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from XBrainLab.backend.application import Command, CommandResult
+from XBrainLab.backend.application import Command, CommandName, CommandResult
 from XBrainLab.backend.application.capabilities import build_capability_policy
 from XBrainLab.backend.application.state import (
     ActiveDatasetSnapshot,
@@ -156,6 +156,103 @@ def test_question_does_not_narrow_backend_stage_published_actions() -> None:
     assert assembler.latest_tool_publication.blocked_reason("create_epochs") is None
     assert "unique description for select_channels" in prompt
     assert "unique description for switch_panel" in prompt
+
+
+@pytest.mark.parametrize(
+    ("stage", "active_dataset", "active_training", "expected_callable"),
+    (
+        (
+            PipelineStage.DATA_LOADED,
+            ActiveDatasetSnapshot(has_raw_data=True),
+            ActiveTrainingSnapshot(),
+            True,
+        ),
+        (
+            PipelineStage.PREPROCESSED,
+            ActiveDatasetSnapshot(has_raw_data=True, has_preprocessed_data=True),
+            ActiveTrainingSnapshot(),
+            True,
+        ),
+        (
+            PipelineStage.EPOCH_READY,
+            ActiveDatasetSnapshot(has_raw_data=True, has_epoch_data=True),
+            ActiveTrainingSnapshot(),
+            True,
+        ),
+        (
+            PipelineStage.DATASET_READY,
+            ActiveDatasetSnapshot(
+                has_raw_data=True,
+                has_epoch_data=True,
+                has_datasets=True,
+            ),
+            ActiveTrainingSnapshot(),
+            True,
+        ),
+        (
+            PipelineStage.TRAINED,
+            ActiveDatasetSnapshot(
+                has_raw_data=True,
+                has_epoch_data=True,
+                has_datasets=True,
+            ),
+            ActiveTrainingSnapshot(),
+            True,
+        ),
+        (
+            PipelineStage.TRAINING,
+            ActiveDatasetSnapshot(
+                has_raw_data=True,
+                has_epoch_data=True,
+                has_datasets=True,
+            ),
+            ActiveTrainingSnapshot(is_running=True),
+            False,
+        ),
+        (
+            PipelineStage.TRAINED,
+            ActiveDatasetSnapshot(
+                has_raw_data=True,
+                has_epoch_data=True,
+                has_datasets=True,
+            ),
+            ActiveTrainingSnapshot(has_trainer=True),
+            False,
+        ),
+    ),
+)
+def test_set_montage_prompt_membership_projects_the_same_capability(
+    stage: PipelineStage,
+    active_dataset: ActiveDatasetSnapshot,
+    active_training: ActiveTrainingSnapshot,
+    expected_callable: bool,
+) -> None:
+    state = _state(
+        pipeline_stage=stage.value,
+        active_dataset=active_dataset,
+        active_training=active_training,
+    )
+    publication = ApplicationViewPublication(
+        generation=91,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
+    registry = ToolRegistry()
+    registry.register(_NamedTool("set_montage"))
+    assembler = ContextAssembler(
+        registry,
+        Study(),
+        application_runtime=_ApplicationRuntimeFake(publication),
+    )
+
+    prompt = assembler.build_system_prompt("Open electrode layout.")
+
+    capability = publication.effective_capabilities.get(CommandName.APPLY_MONTAGE)
+    assert capability.enabled is expected_callable
+    assert ("set_montage" in assembler.latest_tool_publication.tool_names) is (
+        expected_callable
+    )
+    assert ('"name": "set_montage"' in prompt) is expected_callable
 
 
 def test_empty_stage_separates_callable_schemas_from_unavailable_reference() -> None:

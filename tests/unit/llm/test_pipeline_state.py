@@ -84,6 +84,7 @@ EXPECTED_TARGET_TOOLS = {
     PipelineStage.EMPTY: {"import_eeg_data", "switch_panel"},
     PipelineStage.DATA_LOADED: {
         "select_channels",
+        "set_montage",
         "apply_bandpass_filter",
         "apply_notch_filter",
         "resample_data",
@@ -93,6 +94,7 @@ EXPECTED_TARGET_TOOLS = {
         "switch_panel",
     },
     PipelineStage.PREPROCESSED: {
+        "set_montage",
         "apply_bandpass_filter",
         "apply_notch_filter",
         "resample_data",
@@ -358,6 +360,7 @@ class TestStageConfig:
     def test_data_loaded_has_preprocess_and_epoch_tools(self):
         tools = STAGE_CONFIG[PipelineStage.DATA_LOADED]["tools"]
         assert "select_channels" in tools
+        assert "set_montage" in tools
         assert "apply_bandpass_filter" in tools
         assert "create_epochs" in tools
         assert "apply_standard_preprocess" not in tools
@@ -374,6 +377,7 @@ class TestStageConfig:
 
     def test_preprocessed_has_epoching_but_not_dataset_generation(self):
         tools = STAGE_CONFIG[PipelineStage.PREPROCESSED]["tools"]
+        assert "set_montage" in tools
         assert "create_epochs" in tools
         assert "configure_dataset_split" not in tools
         assert "validate_interpretation" not in tools

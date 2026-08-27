@@ -8830,10 +8830,10 @@ def test_reapplying_montage_with_new_positions_marks_visualization_changed() -> 
             self.channel_position = [positions.get(name) for name in self.ch_names]
 
     service = ApplicationService(Study())
-    service.study.data_manager.epoch_data = EpochWithMontage()
     raw = _raw_mock()
     raw.get_mne.return_value.ch_names = ["Cz"]
     service.study.data_manager.loaded_data_list = [raw]
+    service.study.data_manager.epoch_data = EpochWithMontage()
     first = service.execute(
         ApplyMontageCommand(
             channels=["Cz"],

@@ -258,18 +258,28 @@ def _interpretation_preflight(
 
 def test_schema_rejection_prevents_registry_and_confirmation_checks() -> None:
     coordinator, source, verifier, registry = _coordinator(
-        _context(),
+        _context(tool_name="resample_data"),
         verifier=_Verifier(valid=False),
     )
 
-    decision = coordinator.evaluate(_request())
+    decision = coordinator.evaluate(
+        _request(
+            tool_name="resample_data",
+            params={"rate": 128},
+            text="Resample the EEG data to 128 Hz.",
+        )
+    )
 
     assert decision.action is ToolAttemptAction.VERIFICATION_BLOCKED
+    assert decision.tool_input_receipt is None
     assert decision.result is not None
     assert decision.result.message == "schema mismatch"
     assert decision.result.error_type == "input"
     assert decision.result.state == {"state_reliable": True}
-    assert decision.result.capability == _context().availability.to_dict()
+    assert (
+        decision.result.capability
+        == _context(tool_name="resample_data").availability.to_dict()
+    )
     assert decision.result.diagnostics == {"publication_generation": 17}
     assert source.reads == 1
     assert verifier.calls == 1
@@ -295,6 +305,106 @@ def test_published_action_with_explicit_values_is_not_host_reclassified() -> Non
     assert source.reads == 1
     assert verifier.calls == 1
     assert registry.reads == 1
+
+
+def test_direct_origin_miss_creates_partial_published_receipt() -> None:
+    tool_name = "apply_bandpass_filter"
+    registry = _Registry(
+        _Tool(
+            parameters={
+                "type": "object",
+                "required": ["low_freq", "high_freq"],
+            }
+        )
+    )
+    coordinator, source, verifier, _registry = _coordinator(
+        _context(tool_name=tool_name),
+        registry=registry,
+    )
+
+    decision = coordinator.evaluate(
+        _request(
+            tool_name=tool_name,
+            params={"low_freq": 4.0, "high_freq": 38.0},
+            text="Apply a 4 to 40 Hz bandpass filter.",
+        )
+    )
+
+    assert decision.action is ToolAttemptAction.RESPOND
+    assert decision.tool_input_receipt is not None
+    assert decision.tool_input_receipt.command_name == tool_name
+    assert decision.tool_input_receipt.publication_generation == 17
+    assert decision.tool_input_receipt.missing_inputs == ("high_freq",)
+    assert decision.tool_input_receipt.verified_parameters == (("low_freq", 4.0),)
+    assert source.reads == 1
+    assert verifier.calls == 1
+    assert registry.reads == 1
+
+
+def test_unpublished_direct_origin_miss_never_creates_a_receipt() -> None:
+    tool_name = "apply_bandpass_filter"
+    registry = _Registry(
+        _Tool(
+            parameters={
+                "type": "object",
+                "required": ["low_freq", "high_freq"],
+            }
+        )
+    )
+    coordinator, source, verifier, _registry = _coordinator(
+        _context(tool_name=tool_name),
+        registry=registry,
+    )
+    request = ToolAttemptRequest(
+        command_name=tool_name,
+        params={"low_freq": 4.0, "high_freq": 38.0},
+        confidence=0.8,
+        publication=PromptToolPublication.empty(),
+        latest_user_text="Apply a 4 to 40 Hz bandpass filter.",
+    )
+
+    decision = coordinator.evaluate(request)
+
+    assert decision.action is ToolAttemptAction.PUBLICATION_BLOCKED
+    assert decision.tool_input_receipt is None
+    assert source.reads == 0
+    assert verifier.calls == 0
+    assert registry.reads == 0
+
+
+def test_generation_mismatch_direct_origin_miss_never_creates_a_receipt() -> None:
+    tool_name = "apply_bandpass_filter"
+    registry = _Registry(
+        _Tool(
+            parameters={
+                "type": "object",
+                "required": ["low_freq", "high_freq"],
+            }
+        )
+    )
+    coordinator, source, verifier, _registry = _coordinator(
+        _context(tool_name=tool_name),
+        registry=registry,
+    )
+    source.context = ToolAvailabilityContext(
+        availability=_context(tool_name=tool_name).availability,
+        state={"state_reliable": True},
+        generation=18,
+    )
+
+    decision = coordinator.evaluate(
+        _request(
+            tool_name=tool_name,
+            params={"low_freq": 4.0, "high_freq": 38.0},
+            text="Apply a 4 to 40 Hz bandpass filter.",
+        )
+    )
+
+    assert decision.action is ToolAttemptAction.PUBLICATION_BLOCKED
+    assert decision.tool_input_receipt is None
+    assert source.reads == 1
+    assert verifier.calls == 0
+    assert registry.reads == 0
 
 
 def test_capability_block_prevents_registry_lookup() -> None:

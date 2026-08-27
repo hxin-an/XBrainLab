@@ -1293,53 +1293,102 @@ class LLMController(QObject):
             self._turn_orchestrator.active_publication.backend_generation,
         ):
             # A new action or a changed backend publication ends the bounded
-            # clarification lease before the normal origin guard considers it.
-            # Its verified values must never leak into another command.
+            # clarification lease. Its verified values must never leak into a
+            # new command, stale publication, confirmation, or execution.
             self.pending_interactions.clear_active_tool_input()
             self.assembler.set_tool_input_receipt(None)
-            receipt = None
+            return ToolAttemptDecision(
+                ToolAttemptAction.RESPOND,
+                cmd,
+                params,
+                message=(
+                    "The previous clarification is no longer active. Please start "
+                    "the action again with all required parameters."
+                ),
+            )
         if receipt is not None and receipt.matches(
             cmd,
             self._turn_orchestrator.active_publication.backend_generation,
         ):
-            allowed = set(receipt.missing_inputs)
-            if set(supplied_params).issubset(allowed) and supplied_params:
+            verified = dict(receipt.verified_parameters)
+            allowed_new_fields = set(receipt.missing_inputs)
+            accepted_fields = allowed_new_fields | set(verified)
+            if supplied_params:
+                if not set(supplied_params).issubset(accepted_fields) or any(
+                    name in verified and verified[name] != value
+                    for name, value in supplied_params.items()
+                ):
+                    self.pending_interactions.clear_active_tool_input()
+                    self.assembler.set_tool_input_receipt(None)
+                    return ToolAttemptDecision(
+                        ToolAttemptAction.RESPOND,
+                        cmd,
+                        params,
+                        message=(
+                            "I could not verify this clarification. Please start the "
+                            "action again with all required parameters."
+                        ),
+                    )
+                newly_supplied = {
+                    name: value
+                    for name, value in supplied_params.items()
+                    if name not in verified
+                }
+                if not newly_supplied:
+                    return ToolAttemptDecision(
+                        ToolAttemptAction.RESPOND,
+                        cmd,
+                        params,
+                        message=self._remaining_tool_input_question(receipt),
+                    )
                 provenance = verify_direct_parameter_reply_values(
                     cmd,
-                    supplied_params,
+                    newly_supplied,
                     self._latest_user_request_text(),
                 )
-                if provenance.is_valid:
-                    verified = dict(receipt.verified_parameters)
-                    verified.update(supplied_params)
-                    receipt = replace(
-                        receipt,
-                        verified_parameters=tuple(verified.items()),
+                if not provenance.is_valid:
+                    self.pending_interactions.clear_active_tool_input()
+                    self.assembler.set_tool_input_receipt(None)
+                    return ToolAttemptDecision(
+                        ToolAttemptAction.RESPOND,
+                        cmd,
+                        params,
+                        message=(
+                            provenance.error_message
+                            or "I could not verify the requested value. Please start "
+                            "the action again with all required parameters."
+                        ),
                     )
-                    pending = self.pending_interactions
-                    pending.replace_active_tool_input(receipt)
-                    params = verified
-                    if set(verified) != set(receipt.missing_inputs):
-                        requeued = pending.requeue_active_tool_input_for_reply()
-                        if requeued is None:
-                            pending.clear_active_tool_input()
-                            self.assembler.set_tool_input_receipt(None)
-                            return ToolAttemptDecision(
-                                ToolAttemptAction.RESPOND,
-                                cmd,
-                                params,
-                                message=(
-                                    "I could not confirm all required values within "
-                                    "this clarification. Please start the action again "
-                                    "with all required parameters."
-                                ),
-                            )
+                verified.update(newly_supplied)
+                receipt = replace(
+                    receipt,
+                    verified_parameters=tuple(verified.items()),
+                )
+                pending = self.pending_interactions
+                pending.replace_active_tool_input(receipt)
+                params = verified
+                supplied_params = newly_supplied
+                if not set(receipt.missing_inputs).issubset(verified):
+                    requeued = pending.requeue_active_tool_input_for_reply()
+                    if requeued is None:
+                        pending.clear_active_tool_input()
+                        self.assembler.set_tool_input_receipt(None)
                         return ToolAttemptDecision(
                             ToolAttemptAction.RESPOND,
                             cmd,
                             params,
-                            message=self._remaining_tool_input_question(receipt),
+                            message=(
+                                "I could not confirm all required values within this "
+                                "clarification. Please start the action again with all "
+                                "required parameters."
+                            ),
                         )
+                    return ToolAttemptDecision(
+                        ToolAttemptAction.RESPOND,
+                        cmd,
+                        params,
+                        message=self._remaining_tool_input_question(receipt),
+                    )
         repeated = self._tool_attempt_session.record_tool_proposal(cmd, params)
         latest_user_text = self._latest_user_request_text()
         publication = self._turn_orchestrator.active_publication
@@ -1378,6 +1427,10 @@ class LLMController(QObject):
             return True
         if decision.action is ToolAttemptAction.RESPOND:
             message = decision.message or "Please provide the required values."
+            receipt = decision.tool_input_receipt
+            if receipt is not None:
+                self.pending_interactions.begin_tool_input(receipt)
+                self.assembler.set_tool_input_receipt(receipt)
             self._finalize_turn(message)
             return True
         if decision.action in {
@@ -2240,27 +2293,6 @@ class LLMController(QObject):
                     )
                     return False
                 self.panel_navigation_requested.emit(navigation_request)
-                return True
-            if result.kind is UiRequestKind.CONFIRM_MONTAGE:
-                self.status_update.emit("Waiting for user to confirm montage...")
-                workflow_request = WorkflowUiHandoffRequest.for_decision(
-                    CommandName.APPLY_MONTAGE,
-                    decision_fields=("channel_mapping",),
-                    suggested_values={
-                        "montage_name": result.params.get("montage_name"),
-                        "warning": result.params.get("warning"),
-                    },
-                )
-                self.pending_interactions.begin_workflow_handoff(workflow_request)
-                self._publish_activity(
-                    AssistantTurnActivityPhase.WAITING_FOR_DECISION,
-                    command_name=workflow_request.command_name,
-                    request_id=workflow_request.request_id,
-                    decision_owner=self._workflow_handoff_decision_owner(
-                        workflow_request.command
-                    ),
-                )
-                self.workflow_ui_handoff_requested.emit(workflow_request)
                 return True
             return False
 

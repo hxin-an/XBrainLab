@@ -281,15 +281,21 @@ class AssistantToolInputReceipt:
             tuple(name.strip() for name in missing_inputs),
         )
         verified_parameters = tuple(self.verified_parameters)
-        if any(
-            not isinstance(item, tuple)
-            or len(item) != 2
-            or not isinstance(item[0], str)
-            or item[0] not in self.missing_inputs
-            for item in verified_parameters
-        ) or len({item[0] for item in verified_parameters}) != len(verified_parameters):
+        if (
+            len(verified_parameters) > 2
+            or any(
+                not isinstance(item, tuple)
+                or len(item) != 2
+                or not isinstance(item[0], str)
+                or not item[0].strip()
+                for item in verified_parameters
+            )
+            or len({item[0] for item in verified_parameters})
+            != len(verified_parameters)
+        ):
             raise ValueError(
-                "Tool-input receipt verified parameters must match missing fields."
+                "Tool-input receipt verified parameters require at most two unique "
+                "non-empty field names."
             )
         object.__setattr__(self, "verified_parameters", verified_parameters)
         if self.remaining_reply_budget not in {1, 2}:

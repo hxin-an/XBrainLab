@@ -400,6 +400,32 @@ def test_clarification_receipt_cannot_authorize_unrelated_or_stale_reply(
     assert decision.action is ToolAttemptAction.RESPOND
 
 
+def test_clarification_receipt_cannot_authorize_an_empty_direct_proposal() -> None:
+    coordinator, _source, verifier = _coordinator(
+        _context("resample_data", command_name="preprocess")
+    )
+    receipt = AssistantToolInputReceipt(
+        command_name="resample_data",
+        original_user_text="Resample the EEG data.",
+        question="What resampling rate should I use?",
+        publication_generation=21,
+        missing_inputs=("rate",),
+    )
+
+    decision = coordinator.evaluate(
+        _request(
+            "resample_data",
+            params={},
+            text="128 Hz",
+            tool_input_receipt=receipt,
+        )
+    )
+
+    assert decision.action is ToolAttemptAction.RESPOND
+    assert decision.tool_input_receipt is None
+    assert verifier.calls == [(("resample_data", {}), 0.9)]
+
+
 def test_clarification_reply_still_passes_schema_verification_first() -> None:
     coordinator, _source, verifier = _coordinator(
         _context("resample_data", command_name="preprocess"),
