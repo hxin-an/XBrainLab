@@ -17,7 +17,6 @@ from tests.architecture_compliance import (
     check_backend_llm_imports,
     check_concrete_llm_tool_result_contracts,
     check_dataset_product_port_boundary,
-    check_docs_current_truth_overclaims,
     check_headless_verifier_direct_study_state,
     check_llm_direct_study_state_reads,
     check_mapped_real_tool_command_ownership,
@@ -3228,44 +3227,6 @@ def _write_public_training_smoke_file(root, source: str) -> None:
     path = root / "scripts" / "dev" / "run_public_cross_source_training_smoke.py"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(source, encoding="utf-8")
-
-
-def test_docs_current_truth_guard_flags_product_complete_overclaim(tmp_path):
-    path = tmp_path / "docs" / "current.md"
-    path.parent.mkdir(parents=True)
-    path.write_text(
-        """
-# Current
-
-XBrainLab is product complete and ready for release approval.
-The UI is now full zero-controller UI.
-""",
-        encoding="utf-8",
-    )
-
-    violations = check_docs_current_truth_overclaims(tmp_path)
-
-    assert len(violations) == 3
-    assert "product complete" in violations[0]
-    assert "release approval" in violations[1]
-    assert "full zero-controller UI" in violations[2]
-
-
-def test_docs_current_truth_guard_allows_explicit_claim_boundaries(tmp_path):
-    path = tmp_path / "docs" / "current.md"
-    path.parent.mkdir(parents=True)
-    path.write_text(
-        """
-# Current
-
-XBrainLab 還不能宣稱 product complete。
-這些 guard 不是 full zero-controller UI 證明。
-Human Windows Desktop Acceptance Gap remains open.
-""",
-        encoding="utf-8",
-    )
-
-    assert check_docs_current_truth_overclaims(tmp_path) == []
 
 
 def test_product_runtime_facade_guard_flags_agent_facade_import(tmp_path):

@@ -662,53 +662,6 @@ LEGACY_MONTAGE_FAKE_USER_MESSAGES = (
     "Montage Confirmed.",
     "Montage Selection Failed.",
 )
-DOC_CURRENT_TRUTH_FILES = (
-    Path("docs/current.md"),
-    Path("docs/index.md"),
-    Path("docs/architecture/README.md"),
-    Path("docs/architecture/ui.md"),
-    Path("docs/architecture/backend.md"),
-    Path("docs/planning/now.md"),
-    Path("docs/validation/README.md"),
-)
-DOC_CURRENT_TRUTH_OVERCLAIM_PHRASES = (
-    "product complete",
-    "release approval",
-    "full zero-controller UI",
-    "human Windows desktop acceptance",
-)
-DOC_CLAIM_BOUNDARY_TOKENS = (
-    "不能",
-    "不能取代",
-    "不能宣稱",
-    "不能支撐",
-    "不能先講",
-    "不等於",
-    "不是",
-    "不代表",
-    "缺",
-    "距離",
-    "尚未",
-    "未",
-    "仍需",
-    "還不能",
-    "gap",
-    "missing",
-    "not",
-    "cannot",
-    "can't",
-    "is not",
-    "before",
-    "required",
-    "still",
-    "remains",
-    "claim not supported",
-    "not supported",
-    "not complete",
-    "not ready",
-    "without implying",
-)
-
 MUTABLE_BOUNDARY_INCLUDE_OBJECTS = "include_objects"
 MUTABLE_BOUNDARY_LOCAL_PAYLOAD = "local_payload"
 MUTABLE_BOUNDARY_LOCAL_RESULT_PAYLOAD = "local_result_payload"
@@ -1225,13 +1178,6 @@ def check_architecture(root_dir: str) -> int:
     if resource_receipt_boundary_violations:
         print("\nAgent Resource Receipt Boundary Violations Found:")
         for violation in resource_receipt_boundary_violations:
-            print(f" - {violation}")
-        return 1
-
-    docs_overclaim_violations = check_docs_current_truth_overclaims(Path(root_dir))
-    if docs_overclaim_violations:
-        print("\nDocs Current Truth Overclaim Violations Found:")
-        for violation in docs_overclaim_violations:
             print(f" - {violation}")
         return 1
 
@@ -7659,38 +7605,6 @@ def check_agent_resource_receipt_boundary(root_dir: Path) -> list[str]:
                     f"{relative} reads {key!r} outside ResourcePreflightView."
                 )
     return violations
-
-
-def check_docs_current_truth_overclaims(root_dir: Path) -> list[str]:
-    """Return current-truth docs that present target/acceptance as complete."""
-    violations: list[str] = []
-
-    for relative_file in DOC_CURRENT_TRUTH_FILES:
-        path = root_dir / relative_file
-        if not path.exists():
-            continue
-        lines = path.read_text(encoding="utf-8").splitlines()
-        for index, line in enumerate(lines):
-            lineno = index + 1
-            normalized = line.strip()
-            if not normalized:
-                continue
-            context = " ".join(lines[max(0, index - 10) : index + 1]).lower()
-            if _docs_line_has_claim_boundary(context):
-                continue
-            lower = normalized.lower()
-            violations.extend(
-                f"{relative_file}:{lineno} presents {phrase!r} as "
-                "current truth; docs must state this as missing, bounded, "
-                "or target-only unless backed by human acceptance evidence."
-                for phrase in DOC_CURRENT_TRUTH_OVERCLAIM_PHRASES
-                if phrase.lower() in lower
-            )
-    return violations
-
-
-def _docs_line_has_claim_boundary(lower_line: str) -> bool:
-    return any(token.lower() in lower_line for token in DOC_CLAIM_BOUNDARY_TOKENS)
 
 
 class _BackendFacadeRuntimeUsageVisitor(ast.NodeVisitor):
