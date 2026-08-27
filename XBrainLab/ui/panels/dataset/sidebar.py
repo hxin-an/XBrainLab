@@ -303,8 +303,15 @@ class DatasetSidebar(QWidget):
     ) -> InteractionOutcome:
         """Open the one Dataset-owned layout review surface."""
         capability = get_command_capability(self, CommandName.APPLY_MONTAGE)
+        publication = get_application_view_publication(self)
+        reviewed_generation = (
+            publication.generation if publication is not None else None
+        )
         query = execute_application_command(
-            self, QueryStateCommand(query="state"), refresh=False
+            self,
+            QueryStateCommand(query="state"),
+            refresh=False,
+            expected_publication_generation=reviewed_generation,
         )
         if query is None or query.failed:
             message = (
@@ -361,6 +368,7 @@ class DatasetSidebar(QWidget):
             result = execute_application_command(
                 self,
                 ApplyMontageCommand(restore_bids=True),
+                expected_publication_generation=reviewed_generation,
             )
             if result is None or result.failed:
                 message = (
@@ -368,7 +376,15 @@ class DatasetSidebar(QWidget):
                     if result is not None
                     else CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
                 )
-                show_warning(self, "Electrode Layout blocked", message)
+                show_warning(
+                    self,
+                    (
+                        "Review Electrode Layout Again"
+                        if result is not None and is_stale_publication_result(result)
+                        else "Electrode Layout blocked"
+                    ),
+                    message,
+                )
                 return InteractionOutcome.blocked(message)
             self._show_status("BIDS electrode layout restored")
             return InteractionOutcome.completed("BIDS electrode layout restored.")
@@ -394,6 +410,7 @@ class DatasetSidebar(QWidget):
                 montage_name=montage_name,
                 electrode_names=dialog.get_electrode_names(),
             ),
+            expected_publication_generation=reviewed_generation,
         )
         if result is None or result.failed:
             message = (
@@ -401,7 +418,15 @@ class DatasetSidebar(QWidget):
                 if result is not None
                 else CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
             )
-            show_warning(self, "Electrode Layout blocked", message)
+            show_warning(
+                self,
+                (
+                    "Review Electrode Layout Again"
+                    if result is not None and is_stale_publication_result(result)
+                    else "Electrode Layout blocked"
+                ),
+                message,
+            )
             return InteractionOutcome.blocked(message)
         self._show_status("Electrode layout applied")
         return InteractionOutcome.completed("Electrode layout applied.")

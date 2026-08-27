@@ -156,6 +156,32 @@ failure paths. Root independently audits the exact SHA and accepts only in-scope
 
 ### Current implementation checkpoint
 
+- **2026-08-27 approved merge blocker — reviewed mapping generation fence.** Evidence from
+  PR review: `DatasetSidebar.open_electrode_layout()` reads state and later submits either
+  manual or Restore-BIDS `ApplyMontageCommand` without binding the reviewed dialog to the
+  publication generation. If a different dataset publishes while the dialog is open, the old
+  reviewed mapping can be applied to the new dataset. Outcome: capture the one publication
+  generation whose state is queried to open the dialog; bind that same generation to the state
+  query and both existing ApplyMontageCommand submissions so the ApplicationService rejects a
+  changed publication through the existing blocked/review-again presentation. Scope: the
+  sidebar's reviewed-dialog route and one smallest observable regression test. Non-goals: BIDS
+  async summary refresh, dialog geometry/copy, command owner, cancellation, persistence policy,
+  and all other Electrode behavior. Assumption: ApplicationService already enforces
+  `expected_publication_generation`; the UI must only preserve and pass its captured token.
+  Test-first: add a red test that changes the publication generation between review and both
+  manual/Restore-BIDS confirmation paths, asserting the query and command receive the original
+  generation and that stale failure uses existing review-again semantics; then make the minimal
+  binding change and rerun the red test plus sidebar/picker adjacent tests. UI scope was
+  explicitly approved by the user on **2026-08-27**. Stop after focused green evidence, scoped
+  Ruff/format, and `git diff --check`; do not commit, push, merge, or touch other worktrees.
+  Red evidence: the new parameterized Replace/Restore test failed **2 times** because neither
+  the state query nor `ApplyMontageCommand` received `expected_publication_generation`. Green
+  evidence: the same two paths now pass the captured token and stale rejection presents `Review
+  Electrode Layout Again`; **64 passed** across the directly related DatasetSidebar and picker
+  suites. Scoped Ruff check/format and `git diff --check` pass. The production repair is
+  `+28/-3` (net `+25`) in the existing sidebar only; it adds no owner, command path or async
+  behavior. No commit, push or merge was performed.
+
 - **2026-08-27 approved final compact-Summary spacing follow-up.** The user clarified that the
   target is not Dataset sidebar spacing and not the expanded mapping footer. It is the compact
   `Manual override` Summary: `Change layout…` currently ends about **35 logical px** above the

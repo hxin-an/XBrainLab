@@ -201,6 +201,89 @@ def test_bids_layout_restore_dispatches_only_the_restore_command(sidebar, monkey
     assert dispatched[1].positions == []
 
 
+@pytest.mark.parametrize("restore_bids", [False, True])
+def test_electrode_layout_review_is_generation_fenced_before_replace_or_restore(
+    sidebar, monkeypatch, restore_bids
+):
+    """A changed dataset rejects either reviewed layout submission for re-review."""
+    reviewed_generation = 41
+    state = {
+        "electrode_layout": {},
+        "interpretation": {"source_kind": "bids"},
+        "raw": {"channels": ["C3"]},
+        "active_training": {"has_trainer": False},
+    }
+    calls = []
+    warnings = []
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar.get_application_view_publication",
+        lambda *_: SimpleNamespace(generation=reviewed_generation),
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar.get_command_capability",
+        lambda *_: SimpleNamespace(enabled=True),
+    )
+
+    def execute(_widget, command, **kwargs):
+        calls.append((command, kwargs))
+        if isinstance(command, QueryStateCommand):
+            return SimpleNamespace(failed=False, diagnostics={"state": state})
+        return SimpleNamespace(
+            failed=True,
+            message="Nothing was applied. Review the latest dataset and try again.",
+            diagnostics={"stale_publication": True},
+        )
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar.execute_application_command", execute
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar.show_warning",
+        lambda *_args: warnings.append(_args[1:]),
+    )
+
+    class ReviewedDialog:
+        def __init__(self, *_args, **_kwargs):
+            self.montage_combo = None
+
+        @staticmethod
+        def exec():
+            return True
+
+        @staticmethod
+        def restore_bids_requested():
+            return restore_bids
+
+        @staticmethod
+        def get_result():
+            return ["C3"], [(0.0, 0.0, 0.08)]
+
+        @staticmethod
+        def get_electrode_names():
+            return ["C3"]
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar._electrode_layout_dialog_class",
+        lambda: ReviewedDialog,
+    )
+
+    outcome = sidebar.open_electrode_layout()
+
+    assert outcome.status.value == "blocked"
+    assert [
+        kwargs["expected_publication_generation"] for _command, kwargs in calls
+    ] == [reviewed_generation, reviewed_generation]
+    assert isinstance(calls[0][0], QueryStateCommand)
+    assert isinstance(calls[1][0], ApplyMontageCommand)
+    assert calls[1][0].restore_bids is restore_bids
+    assert warnings == [
+        (
+            "Review Electrode Layout Again",
+            "Nothing was applied. Review the latest dataset and try again.",
+        )
+    ]
+
+
 def test_replace_layout_accepts_numpy_positions_from_the_real_picker(
     sidebar, qtbot, monkeypatch
 ):
