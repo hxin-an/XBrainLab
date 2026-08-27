@@ -43,6 +43,11 @@
 - **UI approval**：使用者已明確批准此 acknowledgement-only duplication／layout 修正；
   confirmation/destructive modal、caller copy sweep 明確不在 scope。任何擴至其他可見流程的變更必須
   重新取得批准。
+- **Merge blocker refinement（2026-08-27）**：review 發現目前 shared severity stylesheet 將
+  acknowledgement 的 12px metadata typography 無差別套用到 confirmation（包含 destructive
+  confirmation），覆寫 `main` 的 14px confirmation contract。使用者已於 2026-08-27 明確批准這個
+  窄範圍修正：acknowledgement 保持已核准的 12px 外觀；confirmation/destructive confirmation 恢復
+  14px；copy、layout、button policy、API 與 owner 不變。
 
 ### Ownership、complexity 與 deletion/reuse
 
@@ -73,6 +78,12 @@
    narrow、long default 與 relevant-scale artifacts。
 4. 交付 root review；此 branch 不 commit、push、merge 或記錄新的 manual acceptance。source 改動使先前
    WSLg acceptance 無效，必須重新手測。
+5. **Red→green merge-blocker repair**：先加入 shown dialog test，直接驗證 acknowledgement severity
+   的 effective font pixel size 是 12，而一般與 destructive confirmation 的 effective font pixel size
+   是 14；目前 source 應只在後兩者失敗。再以 modal instance/path-specific selector 限定既有 12px
+   acknowledgement rule，保留 confirmation 14px。重跑同一 focused modal set、dialog button policy、
+   scoped Ruff/format 與 `git diff --check`。不在新 source SHA 產生或宣稱 exact-source captures；root
+   commit 後才可重建 default/150% captures。
 
 ### Builder evidence（待 reviewer / root exact-SHA）
 
@@ -144,6 +155,24 @@
   `build/dev-artifacts/modal-alert-footer-compact-150pct/`。builder 檢視 generic、descriptive、narrow、
   long-text：short/narrow footer 緊接內容而未裁切；long scroll 仍有 bounded viewport／scrollbar。兩組
   Linux offscreen evidence 不取代 WSLg/Windows native acceptance。
+
+### Severity scope merge-blocker evidence（完成，待 root exact-SHA）
+
+- **Evidence / expected outcome**：shared modal local stylesheet currently gives every
+  `ModalAlertSeverity` label 12px. The approved acknowledgement presentation owns that 12px metadata
+  treatment, while `main` establishes 14px for confirmation headings. The repair is limited to selector
+  scope; it must not change acknowledgement appearance, confirmation copy/layout, destructive behavior,
+  keyboard/default policy, APIs or ownership.
+- **Red**：新 `test_severity_typography_keeps_acknowledgement_and_confirmation_contracts` real shown-dialog
+  test 在 pre-repair source 取得 `18 passed, 2 failed`；acknowledgement effective pixel size 是 12，兩個
+  failure 分別是 ordinary/destructive confirmation 仍為 12 而非 14。沒有 unrelated setup failure。
+- **Green**：每一個 dialog instance 設定只描述 presentation path 的 dynamic property，stylesheet 將
+  acknowledgement selector 限在 12px、confirmation selector 限在 14px。source 外觀/behaviour的其餘
+  contract 未變；同一 modal test + dialog button policy → `23 passed`。scoped Ruff check/format 與
+  `git diff --check` 均通過。
+- **Stop condition / claim boundary**：停在 checkpoint 並將 diff/evidence 交 root；不 commit、push、
+  merge、write manual acceptance，或產生 misleading clean-source captures。此次 source 改動使既有
+  manual acceptance 無效；root commit 後才能重建 default/150% exact-source captures 並要求手測。
 
 ### Roles、review 與停止條件
 

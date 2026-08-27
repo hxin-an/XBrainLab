@@ -120,6 +120,32 @@ def test_generic_warning_title_does_not_repeat_visible_warning_copy(qtbot):
     )
 
 
+@pytest.mark.parametrize("destructive", [False, True])
+def test_severity_typography_keeps_acknowledgement_and_confirmation_contracts(
+    qtbot, destructive
+):
+    acknowledgement = ModalAlertDialog(
+        severity=AlertSeverity.WARNING,
+        title="Review import",
+        message="Read the detail before continuing.",
+    )
+    confirmation = ModalAlertDialog(
+        severity=AlertSeverity.WARNING,
+        title="Delete model",
+        message="Delete this model from this device?",
+        confirm_text="Delete Model",
+        destructive=destructive,
+    )
+    qtbot.addWidget(acknowledgement)
+    qtbot.addWidget(confirmation)
+    acknowledgement.show()
+    confirmation.show()
+    qtbot.waitUntil(confirmation.isVisible)
+
+    assert acknowledgement.severity_label.font().pixelSize() == 12
+    assert confirmation.severity_label.font().pixelSize() == 14
+
+
 def test_acknowledgement_enter_accepts(qtbot):
     dialog = ModalAlertDialog(
         severity=AlertSeverity.INFORMATION,

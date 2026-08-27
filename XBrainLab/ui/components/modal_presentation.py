@@ -114,6 +114,10 @@ class ModalAlertDialog(BaseDialog):
 
     def init_ui(self) -> None:
         self.setObjectName("XBrainLabModalAlert")
+        self.setProperty(
+            "modalPresentation",
+            "confirmation" if self.is_confirmation else "acknowledgement",
+        )
         self.setModal(True)
         self.setAccessibleName(self.windowTitle())
         self.setStyleSheet(self.styleSheet() + self._presentation_stylesheet())
@@ -278,9 +282,16 @@ class ModalAlertDialog(BaseDialog):
                 font-size: 16px;
                 font-weight: 700;
             }}
+            QDialog#XBrainLabModalAlert[modalPresentation="acknowledgement"]
             QLabel#ModalAlertSeverity {{
                 color: {accent};
                 font-size: 12px;
+                font-weight: 700;
+            }}
+            QDialog#XBrainLabModalAlert[modalPresentation="confirmation"]
+            QLabel#ModalAlertSeverity {{
+                color: {accent};
+                font-size: 14px;
                 font-weight: 700;
             }}
             QLabel#ModalAlertMessage {{
