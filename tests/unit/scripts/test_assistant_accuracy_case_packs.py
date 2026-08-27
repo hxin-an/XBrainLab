@@ -5,12 +5,18 @@ from pathlib import Path
 
 import pytest
 
+from scripts.dev import assistant_accuracy_case_packs
 from scripts.dev.assistant_accuracy_case_packs import (
     DEVELOPMENT_CASE_COUNT,
-    DIRECT_PARAMETER_FIELDS,
+    FROZEN_V8_BASELINE_SOURCE_SHA,
     HOLDOUT_CASE_COUNT,
+    PINNED_DEVELOPMENT_CASES_SHA256,
+    PINNED_FROZEN_V8_CASES_SHA256,
+    PINNED_HOLDOUT_CASES_SHA256,
     _load_cases,
+    canonical_direct_parameter_schemas,
     corpus_identity,
+    frozen_v8_identity,
     load_development_cases,
     load_holdout_cases,
 )
@@ -82,8 +88,9 @@ def test_experiment_case_packs_are_fixed_bilingual_and_separate_from_frozen_v8()
     assert not holdout_single_turns.intersection(frozen_turns)
 
 
-def test_every_turn_is_an_executable_boundary_contract() -> None:
+def test_every_turn_is_a_machine_loadable_boundary_oracle() -> None:
     cases = (*load_development_cases(), *load_holdout_cases())
+    direct_schemas = canonical_direct_parameter_schemas()
 
     for case in cases:
         for turn in case.turns:
@@ -92,7 +99,7 @@ def test_every_turn_is_an_executable_boundary_contract() -> None:
                 assert turn.expected_parameters == {}
                 assert turn.receipt is None
             elif turn.expected_boundary == "typed_receipt":
-                assert turn.expected_tool in DIRECT_PARAMETER_FIELDS
+                assert turn.expected_tool in direct_schemas
                 assert turn.receipt is not None
                 assert turn.expected_parameters == turn.receipt.verified_values
                 assert set(turn.receipt.missing_inputs).isdisjoint(
@@ -100,9 +107,9 @@ def test_every_turn_is_an_executable_boundary_contract() -> None:
                 )
             else:
                 assert turn.expected_boundary == "verified_execute"
-                assert turn.expected_tool in DIRECT_PARAMETER_FIELDS
+                assert turn.expected_tool in direct_schemas
                 assert set(turn.expected_parameters) == set(
-                    DIRECT_PARAMETER_FIELDS[turn.expected_tool]
+                    direct_schemas[turn.expected_tool]["required"]
                 )
                 assert turn.receipt is None
             if turn.publication_generation_advanced_before_turn:
@@ -110,7 +117,7 @@ def test_every_turn_is_an_executable_boundary_contract() -> None:
                 assert turn.expected_boundary == "respond"
 
 
-def test_trajectory_taxonomy_locks_receipt_and_zero_execution_lifecycles() -> None:
+def test_trajectory_taxonomy_locks_static_receipt_and_no_action_expectations() -> None:
     cases = (*load_development_cases(), *load_holdout_cases())
     no_action_categories = {
         "ambiguous",
@@ -158,12 +165,12 @@ def test_trajectory_taxonomy_locks_receipt_and_zero_execution_lifecycles() -> No
             )
 
 
-def test_experiment_case_pack_identity_is_hashed_and_coverage_is_locked() -> None:
+def test_experiment_case_pack_identity_is_pinned_and_coverage_is_locked() -> None:
     identity = corpus_identity()
 
-    assert identity["schema_version"] == "xbrainlab.assistant_accuracy_case_packs.v2"
-    assert len(identity["development_cases_sha256"]) == 64
-    assert len(identity["holdout_cases_sha256"]) == 64
+    assert identity["schema_version"] == "xbrainlab.assistant_accuracy_case_packs.v3"
+    assert identity["development_cases_sha256"] == PINNED_DEVELOPMENT_CASES_SHA256
+    assert identity["holdout_cases_sha256"] == PINNED_HOLDOUT_CASES_SHA256
     assert identity["development_case_count"] == DEVELOPMENT_CASE_COUNT
     assert identity["holdout_case_count"] == HOLDOUT_CASE_COUNT
     assert identity["development_category_counts"] == {
@@ -196,6 +203,22 @@ def test_experiment_case_pack_identity_is_hashed_and_coverage_is_locked() -> Non
         "stale_generation": 1,
         "unrelated": 1,
     }
+    assert identity["frozen_v8"] == {
+        "source_sha": FROZEN_V8_BASELINE_SOURCE_SHA,
+        "case_sha256": PINNED_FROZEN_V8_CASES_SHA256,
+    }
+    assert frozen_v8_identity() == identity["frozen_v8"]
+
+
+def test_oracle_uses_exact_registered_direct_tool_schemas() -> None:
+    schemas = canonical_direct_parameter_schemas()
+
+    assert schemas["resample_data"]["properties"]["rate"]["type"] == "integer"
+    assert schemas["normalize_data"]["properties"]["method"] == {
+        "type": "string",
+        "enum": ["z-score", "min-max"],
+    }
+    assert schemas["set_reference"]["properties"]["method"]["type"] == "string"
 
 
 def test_loader_rejects_schema_drift(tmp_path: Path) -> None:
@@ -239,7 +262,7 @@ def test_loader_rejects_schema_drift(tmp_path: Path) -> None:
                     "receipt": None,
                 }
             ],
-            "zero execution authority",
+            "no-action expectation",
         ),
         (
             "format_recovery",
@@ -253,7 +276,7 @@ def test_loader_rejects_schema_drift(tmp_path: Path) -> None:
                     "receipt": None,
                 }
             ],
-            "direct parameter fields",
+            "violates production direct schema",
         ),
         (
             "general",
@@ -320,3 +343,93 @@ def test_loader_rejects_boundary_authority_and_step_drift(
 
     with pytest.raises(ValueError, match=message):
         _load_cases(malformed, expected_count=1)
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "parameters"),
+    (
+        ("resample_data", {"rate": 128.5}),
+        ("normalize_data", {"method": "robust"}),
+        ("set_reference", {"method": 7}),
+    ),
+)
+def test_loader_rejects_values_outside_the_registered_production_schema(
+    tmp_path: Path,
+    tool_name: str,
+    parameters: dict[str, object],
+) -> None:
+    malformed = tmp_path / "direct-schema.json"
+    malformed.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "bad",
+                    "category": "format_recovery",
+                    "language": "en",
+                    "workflow_stage": "data_loaded",
+                    "turns": [
+                        {
+                            "user_input": "Run the requested operation.",
+                            "publication_generation_advanced_before_turn": False,
+                            "expected_boundary": "verified_execute",
+                            "expected_tool": tool_name,
+                            "expected_parameters": parameters,
+                            "receipt": None,
+                        }
+                    ],
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="violates production direct schema"):
+        _load_cases(malformed, expected_count=1)
+
+
+def test_pinned_development_digest_fails_closed_on_content_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    drifted = tmp_path / "development.json"
+    source = assistant_accuracy_case_packs.DEVELOPMENT_CASES_PATH.read_text(
+        encoding="utf-8"
+    )
+    drifted.write_text(source + "\n", encoding="utf-8")
+    monkeypatch.setattr(
+        assistant_accuracy_case_packs, "DEVELOPMENT_CASES_PATH", drifted
+    )
+
+    with pytest.raises(ValueError, match="corpus digest drifted"):
+        load_development_cases()
+
+
+def test_pinned_holdout_digest_fails_closed_on_content_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    drifted = tmp_path / "holdout.json"
+    source = assistant_accuracy_case_packs.HOLDOUT_CASES_PATH.read_text(
+        encoding="utf-8"
+    )
+    drifted.write_text(source + "\n", encoding="utf-8")
+    monkeypatch.setattr(assistant_accuracy_case_packs, "HOLDOUT_CASES_PATH", drifted)
+
+    with pytest.raises(ValueError, match="corpus digest drifted"):
+        load_holdout_cases()
+
+
+def test_pinned_frozen_v8_digest_fails_closed_on_content_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    drifted = tmp_path / "frozen.json"
+    drifted.write_text("[]\n", encoding="utf-8")
+    monkeypatch.setitem(
+        assistant_accuracy_case_packs.FROZEN_V8_CASE_PATHS,
+        "positive",
+        drifted,
+    )
+
+    with pytest.raises(ValueError, match="Frozen Stable-v8 corpus digest drifted"):
+        frozen_v8_identity()
