@@ -58,13 +58,18 @@ At the current base source, the scorer runner SHA-256 is
 `c04bf392a2603c7022009b9196927bce7931ba605766dd7b74408e2d65df73f9`; fixed prompt-policy
 SHA-256 is `3215cd2106baa022e64a07ad1c10a15e6a730bb10f76d9b9b2394ebd58e4133a`; context
 assembler SHA-256 is `eba7a9b58925bea46bdd1cf37cd1ce72a5c070061ecb9b756137a3e07ffea1da`.
-The new tracked development corpus is 48 cases with SHA-256
-`7cebb1c5b6e32efa4279c0a53e20c3015aaddc6d98c1c22106004a25a20c49cf`; the separately named
+The v2 tracked development corpus is 48 cases with SHA-256
+`13b5a4434781d7be89f6e5618395232e854376ac1020500b55d228cabb46be94`; the separately named
 32-case holdout corpus SHA-256 is
-`b17a7461884708c4afd358af47fb253e8db6343f587dcd5ce56389ec3a9a1c95`. Loader tests lock the
-81 frozen v8 denominator, two corpora's counts/taxonomy/bilingual balance, strict schema, no shared
-IDs/trajectories, and no verbatim frozen trajectory. A later candidate must recompute all identities
-on its own clean exact SHA before any score comparison or claim.
+`4919e5db805e34851ec32eeea199915a453316d0d68ca46b214d7dda1f0eca55`. Every user turn now
+contains its before-turn publication-generation event, one exact boundary (`respond`,
+`typed_receipt`, or `verified_execute`), exact direct tool or `null`, exact parameters, and either
+the complete receipt missing/verified-value evidence or `null`. Only stale cases may advance
+generation; no-action, cancellation, unrelated/different-tool, and stale-clear turns are explicit
+zero-authority `respond` outcomes. Loader tests lock the 81 frozen v8 denominator, two corpora's
+counts/taxonomy/bilingual balance, strict case/turn schema, direct required fields, fixed trajectory
+step order, no shared IDs/trajectories, and no verbatim frozen turn or trajectory. A later candidate must
+recompute all identities on its own clean exact SHA before any score comparison or claim.
 
 **L1 — prompt/context/output treatments.** Test at most four pre-registered hypotheses: decision
 ordering, compact canonical examples, the placement/shape of bounded active-receipt context, and
