@@ -147,6 +147,30 @@ real-controller all-48 deterministic smoke; controller/coordinator/stable adjace
 architecture compliance and diff check. No model/GPU or holdout access is permitted. Stop at root
 review after the plan-only, runner-selection, and H1 context commits.
 
+**L1/H1 sentinel result and required rollback (2026-08-27).** The H1 treatment was run only on
+the pre-registered ordered 12-case development sentinel at exact clean source
+`450aae1764c0fdf6d368d79507062dcf15f0bccc`, with the fixed Granite 4.0 Micro model/revision and
+the selected-ID digest `089caa537de79d82eda1b462badd3ee6e032ed41b7de0e4c656f4fade39ab3fa`.
+The ignored development artifact is
+`artifacts/assistant_accuracy_development/granite4micro-450aae17-h1-sentinel.json`, SHA-256
+`9ce177879be8a9685e1efabe24f0ef129213c247ca6453dceebf7f6e126ed020`. It records raw primary
+validity `20/24`, recovery-nonexhausted `22/24`, composed boundary passes `13/24`,
+composed-and-nonexhausted `11/24`, two safe terminal fallbacks, and `7/12` complete trajectories;
+the `format_en` control passed. There was, however, one unexpected verified-boundary sentinel on
+`dev_partial_bandpass_zh`: turn two proposed `apply_notch_filter(freq=1)`. The evaluator observed
+zero real executor, ApplicationService command, confirmation, GUI handoff, publication, or state
+mutation. This fails the pre-registered zero-unexpected-sentinel condition, so the treatment is
+**REJECTED**: do not run the 48-case development suite, do not broaden the denominator or prompt,
+and history-preservingly revert only H1 (`450aae17`) while retaining the evaluator and selected-case
+runner.
+
+The H1 report is not scorer-equivalent to the historical 907b baseline because the runner file
+changed for selected-case support before H1; no raw-model accuracy, product quality, usability, or
+promotion claim is supported. Report the raw, recovery, composed, composed-and-nonexhausted, and
+safe-fallback measures separately. After the rollback is reviewed at its clean exact SHA, rerun the
+same ordered sentinel once as a scorer-equivalent rollback baseline before considering any later
+treatment; holdout wording/content remains inaccessible to builders.
+
 **L2 — existing typed receipt completion.** Reuse `ToolAttemptCoordinator`,
 `PendingInteractionCoordinator`, `AssistantToolInputReceipt`, controller generation binding, and
 the existing parameter-origin verifier; do not add an owner, state machine, receipt type, or
