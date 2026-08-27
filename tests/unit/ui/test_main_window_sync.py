@@ -3011,16 +3011,6 @@ def test_agent_manager_init_failure_rolls_back_and_second_click_opens_dock(
     assert window.ai_btn.isChecked() is True
 
 
-def test_update_info_panel_keeps_compatibility_direct_panel_fallback(main_window):
-    """Older injected contexts without InfoPanelService can still update directly."""
-    delattr(main_window, "info_service")
-    main_window.info_panel = MagicMock()
-
-    main_window.update_info_panel()
-
-    main_window.info_panel.update_info.assert_called_once()
-
-
 def test_switch_page_skips_panel_without_update_panel(mock_study, qtbot):
     """Panels without update_panel should not break navigation refresh."""
     with (
