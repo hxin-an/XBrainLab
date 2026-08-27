@@ -140,15 +140,36 @@ but its model-facing membership is the enabled `apply_montage` mutation capabili
 immutable ApplicationService publication. The target stage table no longer implies an epoch-only
 Assistant rule. The same target document now records the L3 verifier as a residual-only,
 same-model, one-extra-generation rejection path with fail-closed `reject_to_response`; it cannot
-repair, infer, select, hand off, confirm or execute, and adds no owner. This docs-only commit is
-the target-contract checkpoint, not product approval; product source remains explicitly pending root
-review.
+repair, infer, select, hand off, confirm or execute, and adds no owner.
 
 **Root contract calibration (2026-08-27):** verification now explicitly orders direct
 parameter-origin before ApplicationService capability and confirmation. A missing or unverified
 required direct parameter creates its typed receipt in zero execution and ends that turn; it is
-never deferred until after capability or confirmation. This records only the target boundary and
-does not approve product implementation, tests, evaluator, prompt or evidence claims.
+never deferred until after capability or confirmation.
+
+**L2 / `set_montage` implementation checkpoint (2026-08-27):** root and the independent source
+reviewer accepted the product-source commit
+`f66eb5516539c694ac7971aa79376a273490450c`, the Electrode-stacked integration of
+`3cab532e8b8cb7f65f1910395ce285548f3a957b`. It reuses the existing receipt/controller owners,
+binds direct receipt admission to prompt-time immutable publication, preserves partial
+user-verified values, fails closed for cancellation/different/stale/expired replies, and projects
+`set_montage` from the authoritative `apply_montage` capability. The integrated contract keeps the
+Electrode no-data reason `Load EEG data before configuring electrode layout.` and additionally
+blocks running or retained trainers. This is reviewed source and focused-test evidence only: it is
+not raw-model accuracy, product acceptance, or handoff approval.
+
+**Integration validation checkpoint:** the final Electrode branch contained an older expectation
+that a retained trainer could make one first montage mutation. That contradicts the approved
+retained-trainer lock above. The directly affected ApplicationService test must instead assert
+capability rejection, the reset-session reason, and zero raw/epoch/effective-layout mutation. The
+normal error-only publication/state delta advances generation (1→2 in the characterized test). A
+no-trainer first attach remains a separate success path. No UI or production policy expansion is
+authorized by this test alignment.
+
+**Development-evaluator blocker:** the development evaluator still uses policy-bearing unbound
+harness methods rather than the controller's actual terminal lifecycle. It cannot certify receipt
+clearance, zero execution, or verified execution until that duplication is removed; no development
+score or product claim may use it in its current form.
 
 ### Owners, deletion candidates, and complexity guard
 
@@ -162,6 +183,20 @@ Deletion candidates to verify by caller inventory before removal are the legacy
 `UiRequestKind.CONFIRM_MONTAGE` branch/feedback and any Agent-provided default montage suggestion;
 the formal `WORKFLOW_HANDOFF` remains. Record production `+/-/net LOC`, changed production file
 count, owner delta, and an explicit split proposal before crossing any AGENTS complexity trigger.
+
+### Authorized next slice: private LLMController terminal-lifecycle evaluator seam
+
+After this stack is clean, the only root-authorized follow-up is a private extraction inside the
+existing `LLMController` (roughly one production file). Both the worker callback and development
+evaluator must drive the same real terminal lifecycle; delete the policy-bearing unbound harness methods
+rather than adding a public class, owner, state machine, receipt, compatibility path, prompt, or
+tool. Test first: cancellation, different-tool, and stale publication must clear a receipt with zero
+execution; the evaluator execution sentinel may observe only the already verified execute boundary
+without mutation. Focused validation is the red/green controller and evaluator trajectory tests,
+the direct receipt/capability tests, ruff, architecture compliance, and `git diff --check`; no
+model/GPU or holdout access is allowed. Stop and return to root if this requires a public contract,
+additional owner, L3 verifier, prompt/UI change, or any semantic policy beyond the existing terminal
+lifecycle.
 
 ### Experiment budget and promotion gates
 
@@ -210,5 +245,6 @@ verification. CI pending/flakes do not stop unrelated work; a failed required ga
 branch at `checkpoint`. Stop the affected treatment for a required new public target decision,
 new owner/state machine, model/download change, destructive operation, exhausted pre-registered
 budget, or unavailable mandatory resource; report the residual rather than weakening a denominator
-or safety rule. Root has approved this target-first docs checkpoint only; no product source,
-tests, evaluator or prompt change may proceed until root reviews its exact commit.
+or safety rule. Root has reviewed the L2 / `set_montage` source above and authorized only the
+private `LLMController` terminal-lifecycle evaluator seam described here; all other product,
+evaluator behavior, prompt, UI and holdout work remains out of scope.

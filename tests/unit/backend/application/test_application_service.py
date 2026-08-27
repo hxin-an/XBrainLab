@@ -10899,30 +10899,45 @@ def test_invalid_montage_payload_preserves_existing_effective_layout(command) ->
     assert effective.positions_m == ((0.1, 0.2, 0.3),)
 
 
-def test_apply_montage_trainer_allows_first_attach_then_freezes_layout() -> None:
+def test_apply_montage_rejects_retained_trainer_before_layout_mutation() -> None:
+    class EpochWithPositions:
+        def __init__(self) -> None:
+            self.position_updates: list[dict[str, tuple[float, float, float]]] = []
+
+        def get_channel_names(self) -> list[str]:
+            return ["C3", "C4"]
+
+        def set_channel_positions(
+            self,
+            positions: dict[str, tuple[float, float, float]],
+        ) -> None:
+            self.position_updates.append(dict(positions))
+
     study = Study()
-    study.data_manager.loaded_data_list = [_raw_mock()]
+    raw = _raw_mock()
+    study.data_manager.loaded_data_list = [raw]
+    epoch = EpochWithPositions()
+    study.data_manager.epoch_data = cast(Any, epoch)
     study.training_manager.trainer = Trainer([])
     service = ApplicationService(study)
     command = ApplyMontageCommand(
         channels=["C3"], positions=[(0.0, 0.0, 0.1)], montage_name="first"
     )
+    before_publication = service.get_view_publication()
 
-    first = service.execute(command)
-    exact = service.execute(command)
-    replacement = service.execute(
-        ApplyMontageCommand(
-            channels=["C4"], positions=[(0.1, 0.0, 0.1)], montage_name="other"
-        )
+    result = service.execute(command)
+    after_publication = service.get_view_publication()
+
+    assert result.failed is True
+    assert result.error_type is ErrorType.PRECONDITION
+    assert "Reset the session before applying a montage after trainer creation." in (
+        result.message
     )
-
-    assert first.ok is True
-    assert exact.ok is True
-    assert exact.diagnostics["layout_noop"] is True
-    assert replacement.failed is True
-    effective = service.bids_montage_preparation.effective_montage()
-    assert effective is not None
-    assert effective.channel_names == ("C3",)
+    assert raw.get_mne.return_value.set_montage.call_count == 0
+    assert epoch.position_updates == []
+    assert service.bids_montage_preparation.effective_montage() is None
+    assert result.changed_state == ChangedState(error_changed=True)
+    assert after_publication.generation == before_publication.generation + 1
 
 
 def _service_with_retained_bids_layout() -> ApplicationService:
