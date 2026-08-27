@@ -1,10 +1,25 @@
 # XBrainLab Now
 
-最後更新：`2026-08-26`
+最後更新：`2026-08-27`
 
 ## 目前焦點
 
-Data Import performance slice 停在 checkpoint；目前沒有 active product implementation。
+### UI health boundaries
+
+- 問題與證據：`ChatComposer` 在 IME preedit Enter 路徑直接解參考 optional
+  `QGuiApplication.inputMethod()`；`MainWindow` 重複解參考 stub 視為 optional、但 Qt 保證存在的
+  status bar；`update_info_panel()` 仍保留 production 不再建立的 direct `info_panel` fallback。
+- Outcome：IME service 不可用時第一次 Enter fail closed 且可恢復；status bar 行為不變；資訊刷新只由
+  `InfoPanelService` 擁有。這個 slice 不改 layout、文案、tool contract 或資料流程。
+- Scope／non-goals：只修改 composer、MainWindow 與直接測試；不重建 Basedpyright baseline、不整理其他
+  compatibility hook、不調整 Electrode Layout PR。已取得使用者 UI 修改確認。
+- 修理步驟：先建立 IME unavailable red test 與既有 status/info characterization，再做最小修正、刪除
+  legacy fallback test，最後跑 focused tests、static gates、canonical handoff、PR/CI。
+- Stop condition：同一 clean/explained exact commit 的 applicable gates 與 artifacts 完成後交 WSLg
+  注音／Enter、status bar、資訊刷新手測；任何 source 再改即重跑。若 Basedpyright 只因行位移誤判，
+  不改 baseline，另開 validation repair。
+
+Data Import performance slice 維持 checkpoint，不在本次 UI health scope 內。
 
 ### Checkpoint evidence
 

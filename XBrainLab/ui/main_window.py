@@ -398,6 +398,8 @@ class MainWindow(QMainWindow):
         # identity and progress here so assistive technology and GUI drivers
         # can observe the same state a user sees.
         owned_operation_progress = self.statusBar()
+        if owned_operation_progress is None:
+            raise RuntimeError("MainWindow must expose its status bar.")
         owned_operation_progress.setObjectName("OwnedOperationProgress")
         owned_operation_progress.setProperty("operationId", "")
         owned_operation_progress.setProperty("operationKind", "")
@@ -1554,15 +1556,8 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(0, self._start_next_panel_prepare)
 
     def update_info_panel(self):
-        """Refresh the aggregate info panel if it exists."""
-        info_service = getattr(self, "info_service", None)
-        notify_all = getattr(info_service, "notify_all", None)
-        if callable(notify_all):
-            notify_all()
-            return
-
-        if hasattr(self, "info_panel"):
-            self.info_panel.update_info()
+        """Refresh registered aggregate info panels."""
+        self.info_service.notify_all()
 
     def showEvent(self, event):  # noqa: N802
         """Clamp restored geometry once the window has a native frame."""

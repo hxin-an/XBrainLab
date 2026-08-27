@@ -45,7 +45,10 @@ class AssistantComposer(QPlainTextEdit):
             return
         is_enter = event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
         if is_enter and self._ime_preedit_active:
-            QGuiApplication.inputMethod().commit()
+            input_method = QGuiApplication.inputMethod()
+            if input_method is not None:
+                input_method.commit()
+            self._ime_preedit_active = False
             event.accept()
             return
         if is_enter and not (event.modifiers() & Qt.KeyboardModifier.ShiftModifier):
