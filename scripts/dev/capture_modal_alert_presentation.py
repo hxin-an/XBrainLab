@@ -47,6 +47,13 @@ def _cases() -> Iterable[tuple[str, AlertSeverity, str, str, int | None]]:
         None,
     )
     yield (
+        "warning-generic-title.png",
+        AlertSeverity.WARNING,
+        "Warning",
+        "No data loaded.",
+        None,
+    )
+    yield (
         "error.png",
         AlertSeverity.CRITICAL,
         "Import could not finish",

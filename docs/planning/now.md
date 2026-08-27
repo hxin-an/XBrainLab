@@ -19,17 +19,30 @@
 - **Review refinement 2**：初次 column 修正仍讓 copy column 的 available height 均分給 title／severity／message，
   造成視覺上的大段空白。column 使用 `AlignTop` 收斂其內容，讓行間只保留 layout 的小 spacing，將剩餘空白
   留在 compact copy block 與 footer 之間；不加固定 screenshot pixel size。
+- **WSLg evidence / layout-first repair**：使用者在 WSLg 看見兩個重複的 `Warning`。exact
+  `c92c41c3` 中 `BaseDialog` 把 caller title 設為 window title，acknowledgement body 又把它顯示為
+  `ModalAlertTitle`，並無條件加入 fixed severity `Warning`；至少 31 個既有 caller 使用 generic
+  `title="Warning"`。現有 capture 只使用 descriptive title，故沒有覆蓋該 defect。保留 caller copy，
+  僅在 acknowledgement 的 normalized title 等於 severity copy 時不加入重複 body severity row；同時
+  讓 header（title + optional severity）與 message 維持單軸、緊湊且有刻意的 header→message 間距。
+- **Review refinement 3 / footer void**：descriptive short/narrow alert 的 message→OK 留下過大垂直空白。
+  Qt geometry 顯示 dialog 是 `420×182`、heading `108` high、message 實際只 `16` high，但 word-wrapped
+  `QLabel.sizeHint()` 仍回報 `48`，使 generic `fit_to_content()` 使用未套用目前 width 的 height hint。
+  acknowledgement-only 改用 existing layout 在 final width 的 `totalHeightForWidth()` 收斂高度；不以
+  fixed screenshot height。long scroll 的 bounded height、confirmation path 維持原狀。
 - **Observable outcome**：所有既有 acknowledgement alert（Information、Warning、Error）維持
-  `show_*` call contract、severity icon、標題、severity、正文、單一 `OK`、Enter／Escape 與長文
-  捲動，但只使用 dialog 的一個表面：不得有 bordered／background 的內層 content card 或 styled
-  panel。
+  `show_*` call contract、semantic/accessibility severity、severity icon、標題、正文、單一 `OK`、
+  Enter／Escape 與長文捲動。visible severity row 只在它不與 normalized title 重複時呈現；generic
+  title（如 `Warning`）由 title + icon 承載同一語意，不堆疊第二份 body copy。dialog 只使用一個
+  表面：不得有 bordered／background 的內層 content card 或 styled panel。
 - **Scope**：只改共用 acknowledgement-alert presentation 與其直接 focused tests/screenshots；
-  覆蓋三種 severity、長文、窄視窗、DPI、Enter／Escape／close。
+  覆蓋 generic／descriptive warning、三種 severity、長文、窄視窗、relevant scale、Enter／Escape／close。
 - **Non-goals**：不改 confirmation、destructive modal、安全預設、side effect、modal ownership、
-  public `show_*` API、其他 Dataset／Electrode／Assistant UI；不新增 bitmap asset 或第二套
-  modal framework。
-- **UI approval**：使用者已明確批准此 acknowledgement alert UI 修改；confirmation/destructive
-  modal 明確不在 scope。任何擴至其他可見流程的變更必須重新取得批准。
+  public `show_*` API、任何 caller title/message（包括 31 個 generic `Warning` call sites）、其他
+  Dataset／Electrode／Assistant UI；不新增 bitmap asset 或第二套 modal framework。
+- **UI approval**：使用者已明確批准此 acknowledgement-only duplication／layout 修正；
+  confirmation/destructive modal、caller copy sweep 明確不在 scope。任何擴至其他可見流程的變更必須
+  重新取得批准。
 
 ### Ownership、complexity 與 deletion/reuse
 
@@ -42,19 +55,23 @@
 - **Actual / deletion intent**：既有 `ModalAlertDialog` 是唯一 owner。刪除 acknowledgement-only
   `ModalAlertContentCard`／`content_card` presentation path，將現有 icon/title/severity/message 直接
   放在 dialog layout；不新增 class、API、owner、state machine 或 compatibility path。confirmation
-  的既有 heading/message path 完全不動。目前 production delta 是 `+17/-34`（net `-17`），不觸發
+  的既有 heading/message path 完全不動。目前 branch 相對 main 的 production delta 是 `+111/-32`
+  （net `+79`）；本 generic-warning／footer repair 相對 `c92c41c3` 為 `+23/-4`（net `+19`），皆不觸發
   complexity review。
 
 ### 實作與驗證
 
-1. 加入一個最小 red UI-observable test：acknowledgement 不含 `ModalAlertContentCard`／styled panel，
-   同時保留 icon/title/severity/message、單一 OK、Enter／Escape 與 long-text scroll。不得以 mock
-   choreography 取代 UI-observable state。
-2. 只在既有 `ModalAlertDialog` 做 deletion-first repair，讓 acknowledgement content 直接位於
-   dialog layout；再將 title/severity/message（含 scroll viewport）放入 icon 右側的一個 copy column，
-   以 layout parentage 而非 brittle absolute pixels 保護共同左軸。confirmation path 不動。
-3. 重跑 focused tests、Ruff、diff check，並重新產出／檢視 default offscreen artifacts。
-4. 交付 root review；此 branch 不 push、merge 或記錄新的 manual acceptance。source 改動使先前
+1. 先跑 current focused baseline；再加入最小 red UI-observable test，使用 `title="Warning"` 證明
+   acknowledgement body 不會顯示兩份 `Warning`，並以 relative layout／natural bounds 保護 compact
+   header 與 message。不得以 mock choreography 取代 UI-observable state。
+2. 只在既有 `ModalAlertDialog` 做 acknowledgement-only conditional presentation：不改 caller copy、
+   API 或 confirmation path。title/severity/message（含 scroll viewport）繼續位於 icon 右側同一 copy
+   column，header→message gap 是 intentional layout spacing 而非 screenshot pixel magic。
+3. 加入一個 short descriptive alert 的 relative message→OK gap red test；以 existing layout/button
+   geometry 而非 screenshot pixels 限制 footer void。只讓 acknowledgement 以 final-width layout height
+   fit content，重跑 focused tests、Ruff、diff check，並重新產出／檢視 generic-warning、descriptive-warning、
+   narrow、long default 與 relevant-scale artifacts。
+4. 交付 root review；此 branch 不 commit、push、merge 或記錄新的 manual acceptance。source 改動使先前
    WSLg acceptance 無效，必須重新手測。
 
 ### Builder evidence（待 reviewer / root exact-SHA）
@@ -84,6 +101,49 @@
 - **Claim boundary**：Linux Qt offscreen layout evidence不能取代 WSLg／Windows native DPI 或人類手測。
 - **Status**：builder checkpoint。worktree 尚未 commit，不能稱 exact-SHA evidence；等待 root
   review、commit 後的 exact-SHA verification、新的 WSLg manual acceptance 與使用者 merge approval。
+
+### Generic-warning repair evidence（待 reviewer / root exact-SHA）
+
+- **Baseline**：exact `c92c41c3` 的
+  `tests/unit/ui/components/test_modal_presentation.py tests/unit/ui/test_dialog_button_policy.py`
+  focused set 為 `19 passed`。
+- **Red**：新增
+  `test_generic_warning_title_does_not_repeat_visible_warning_copy` 以 real dialog 與
+  `title="Warning"` 執行；pre-repair 顯示兩個可見的 text `Warning` labels，預期只剩
+  `title_label`，因此失敗。首次 red 因測試少 import `QLabel` 出現 NameError，修正 import 後才取得
+  上述 target failure；不把 NameError 當作 defect evidence。
+- **Green**：acknowledgement-only conditional presentation 保留 caller copy，normalized title 等於
+  severity copy 時不將 severity label 放入 visible header；severity icon 的 accessible name 維持
+  semantic severity。header 以 `title + optional severity` 的 2 spacing 構成，copy column 以 6 spacing
+  與 message 分隔。相同 focused set → `20 passed`；generic test 驗證只一個 visible `Warning`、shared
+  x-axis 和相對 compact title→message bound。confirmation 仍由既有 button policy coverage 保護。
+- **Static**：Ruff check／format 對 production、focused test 與 capture script 通過；`git diff --check`
+  通過。
+- **Artifacts**：default 和 `QT_SCALE_FACTOR=1.5` offscreen captures 位於
+  `build/dev-artifacts/modal-alert-generic-layout-default/` 與
+  `build/dev-artifacts/modal-alert-generic-layout-150pct/`。兩者都有
+  `warning-generic-title.png`、descriptive `warning.png`、`narrow.png`、`long-text.png` 和
+  source-bound manifest。builder 已檢視：generic body 為 icon / 一個 `Warning` / message；descriptive
+  warning 保留 subordinate severity；narrow text 不裁切，long-text viewport transparent 且 scrollbar
+  可操作。150% 為 Linux offscreen evidence，不代表 WSLg/Windows native acceptance。
+- **Delta**：相對 exact `c92c41c3`，production `modal_presentation.py` 為 `+13/-3`（net `+10`），
+  無新 class／owner／API；capture script `+7`、focused test `+26/-1`。不觸發 complexity review。
+
+### Footer-fit repair evidence（待 reviewer / root exact-SHA）
+
+- **Red**：`test_short_descriptive_alert_keeps_footer_close_to_message` 以 shown descriptive warning
+  計算 dialog-coordinate message→OK gap；pre-repair 是 `59`，大於 same dialog 的 OK button height `38`，
+  因此 target assertion 失敗。首次版本錯把 button-local y 當作 dialog coordinate，得到負值；改用
+  `mapTo(dialog, QPoint(0, 0))` 後才記錄這個 target failure。
+- **Green**：acknowledgement-only 在既有 `fit_to_content()` 確定 width 後，用 layout 的
+  `totalHeightForWidth(width)` 與既有 `resize_preserving_center()` 收斂 height；confirmation 不走此路。
+  Focused suite → `21 passed`，新 assertion 將 footer gap 限於同一 button height 內；既有 long scroll、
+  Enter／Escape 和 confirmation tests 繼續通過。
+- **Artifacts**：default／150% source-bound captures 位於
+  `build/dev-artifacts/modal-alert-footer-compact-default/` 與
+  `build/dev-artifacts/modal-alert-footer-compact-150pct/`。builder 檢視 generic、descriptive、narrow、
+  long-text：short/narrow footer 緊接內容而未裁切；long scroll 仍有 bounded viewport／scrollbar。兩組
+  Linux offscreen evidence 不取代 WSLg/Windows native acceptance。
 
 ### Roles、review 與停止條件
 

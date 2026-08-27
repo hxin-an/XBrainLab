@@ -10,7 +10,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtWidgets import (
     QDialogButtonBox,
     QFrame,
@@ -90,6 +90,15 @@ class ModalAlertDialog(BaseDialog):
             minimum_width=_MODAL_MINIMUM_WIDTH,
             maximum_width=_MODAL_MAXIMUM_WIDTH,
         )
+        if not self.is_confirmation:
+            layout = self.layout()
+            if layout is not None:
+                self.resize_preserving_center(
+                    QSize(
+                        self.width(),
+                        layout.totalHeightForWidth(self.width()),
+                    )
+                )
         if self.cancel_button is not None:
             # BaseDialog intentionally strips default styling globally.  A
             # confirmation is the exception: its safe action must receive
@@ -192,16 +201,26 @@ class ModalAlertDialog(BaseDialog):
         )
 
         copy_column = QVBoxLayout()
-        copy_column.setSpacing(2)
+        copy_column.setSpacing(6)
         copy_column.setAlignment(Qt.AlignmentFlag.AlignTop)
+        header_column = QVBoxLayout()
+        header_column.setSpacing(2)
         title_label = QLabel(self.windowTitle())
         self.title_label = title_label
         title_label.setObjectName("ModalAlertTitle")
         title_label.setWordWrap(True)
         title_label.setAccessibleName("Alert title")
-        copy_column.addWidget(title_label)
+        header_column.addWidget(title_label)
         self.severity_label = self._create_severity_label()
-        copy_column.addWidget(self.severity_label)
+        title_matches_severity = (
+            self.windowTitle().strip().casefold()
+            == self.severity_label.text().casefold()
+        )
+        if not title_matches_severity:
+            header_column.addWidget(self.severity_label)
+        else:
+            self.severity_label.hide()
+        copy_column.addLayout(header_column)
         self._add_message(copy_column)
         heading_row.addLayout(copy_column, 1)
 

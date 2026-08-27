@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import pytest
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import QPoint, Qt, QTimer
 from PyQt6.QtTest import QTest
-from PyQt6.QtWidgets import QApplication, QFrame, QPushButton
+from PyQt6.QtWidgets import QApplication, QFrame, QLabel, QPushButton
 
 from XBrainLab.ui.components.modal_presentation import (
     AlertSeverity,
@@ -95,6 +95,31 @@ def test_acknowledgement_alert_has_exactly_one_ok_action(qtbot):
     )
 
 
+def test_generic_warning_title_does_not_repeat_visible_warning_copy(qtbot):
+    dialog = ModalAlertDialog(
+        severity=AlertSeverity.WARNING,
+        title="Warning",
+        message="No data loaded.",
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    qtbot.waitUntil(dialog.isVisible)
+
+    visible_warning_labels = [
+        label
+        for label in dialog.findChildren(QLabel)
+        if label.isVisible() and label.text() == "Warning"
+    ]
+
+    assert visible_warning_labels == [dialog.title_label]
+    assert dialog.message_label.x() == dialog.title_label.x()
+    assert dialog.message_label.y() > dialog.title_label.geometry().bottom()
+    assert (
+        dialog.message_label.y() - dialog.title_label.geometry().bottom()
+        < dialog.title_label.height()
+    )
+
+
 def test_acknowledgement_enter_accepts(qtbot):
     dialog = ModalAlertDialog(
         severity=AlertSeverity.INFORMATION,
@@ -133,6 +158,26 @@ def test_short_alert_fits_content_without_fixed_vertical_gaps(qtbot):
 
     assert 420 <= dialog.width() <= 640
     assert dialog.height() < 210
+
+
+def test_short_descriptive_alert_keeps_footer_close_to_message(qtbot):
+    dialog = ModalAlertDialog(
+        severity=AlertSeverity.WARNING,
+        title="Review import settings",
+        message="One or more imported values need your review.",
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    qtbot.waitUntil(dialog.isVisible)
+
+    footer_gap = (
+        dialog.acknowledge_button.mapTo(dialog, QPoint(0, 0)).y()
+        - dialog.message_label.geometry().bottom()
+        - 1
+    )
+
+    assert footer_gap >= 0
+    assert footer_gap <= dialog.acknowledge_button.height()
 
 
 def test_long_alert_uses_bounded_scrollable_message_view(qtbot):
