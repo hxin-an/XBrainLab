@@ -168,34 +168,15 @@ class BidsEventsJsonReadBudget:
 
 @dataclass(frozen=True, slots=True)
 class _AdmittedFileIdentity:
-    """Filesystem identity captured when a bounded sidecar is admitted."""
+    """Bounded sidecar content captured when a file is admitted."""
 
     file_bytes: int
-    device: int
-    inode: int
-    mtime_ns: int
-    ctime_ns: int
     content_sha256: str
-
-    def stat_diagnostics(self) -> dict[str, int]:
-        return {
-            "file_bytes": self.file_bytes,
-            "device": self.device,
-            "inode": self.inode,
-            "mtime_ns": self.mtime_ns,
-            "ctime_ns": self.ctime_ns,
-        }
-
-    def to_diagnostics(self) -> dict[str, int | str]:
-        return {
-            **self.stat_diagnostics(),
-            "content_sha256": self.content_sha256,
-        }
 
 
 @dataclass
 class BidsEventsJsonReader:
-    """Read admitted sidecars once, with identity checks and a shared budget."""
+    """Read admitted sidecars once, with content checks and a shared budget."""
 
     admitted_files: dict[str, _AdmittedFileIdentity]
     budget: BidsEventsJsonReadBudget = field(default_factory=BidsEventsJsonReadBudget)
@@ -458,12 +439,20 @@ class BidsEventsJsonReader:
                 details={"observed_bytes": max(int(current_stat.st_size), 0)},
             )
         admitted_bytes = admitted_identity.file_bytes
-        current_identity = self._identity_from_stat(path=path, file_stat=current_stat)
-        self._assert_stable_identity(
-            path=path,
-            admitted=admitted_identity,
-            observed=current_identity,
-        )
+        if max(int(current_stat.st_size), 0) != admitted_bytes:
+            raise self._error(
+                code="events_json_sidecar_changed_after_admission",
+                message=(
+                    f"BIDS events sidecar changed after resource admission: {path}."
+                ),
+                path=path,
+                parse_started=False,
+                details={
+                    "admitted_bytes": admitted_bytes,
+                    "observed_bytes": max(int(current_stat.st_size), 0),
+                    "bytes_read": 0,
+                },
+            )
         if key in self._parsed_paths and key in self._verified_cache_keys:
             materialized = self._materialized_objects.get(key)
             if materialized is not None:
@@ -471,21 +460,38 @@ class BidsEventsJsonReader:
         try:
             with path.open("rb") as handle:
                 opened_stat = os.fstat(handle.fileno())
-                opened_identity = self._identity_from_stat(
-                    path=path,
-                    file_stat=opened_stat,
-                )
-                self._assert_stable_identity(
-                    path=path,
-                    admitted=admitted_identity,
-                    observed=opened_identity,
-                )
-                encoded = handle.read(admitted_bytes)
-                final_stat = os.fstat(handle.fileno())
-                final_identity = self._identity_from_stat(
-                    path=path,
-                    file_stat=final_stat,
-                )
+                if not stat.S_ISREG(opened_stat.st_mode):
+                    raise self._error(
+                        code="events_json_sidecar_changed_after_admission",
+                        message=(
+                            "BIDS events sidecar is no longer a regular file after "
+                            f"resource admission: {path}."
+                        ),
+                        path=path,
+                        parse_started=False,
+                        details={
+                            "admitted_bytes": admitted_bytes,
+                            "observed_bytes": max(int(opened_stat.st_size), 0),
+                        },
+                    )
+                if max(int(opened_stat.st_size), 0) != admitted_bytes:
+                    raise self._error(
+                        code="events_json_sidecar_changed_after_admission",
+                        message=(
+                            "BIDS events sidecar changed after resource admission: "
+                            f"{path}."
+                        ),
+                        path=path,
+                        parse_started=False,
+                        details={
+                            "admitted_bytes": admitted_bytes,
+                            "observed_bytes": max(int(opened_stat.st_size), 0),
+                            "bytes_read": 0,
+                        },
+                    )
+                # Read one byte beyond the admitted length so a same-prefix
+                # append cannot pass the content check as the old sidecar.
+                encoded = handle.read(admitted_bytes + 1)
         except PreconditionError:
             raise
         except OSError as exc:
@@ -496,11 +502,6 @@ class BidsEventsJsonReader:
                 parse_started=False,
                 details={"os_error": str(exc)},
             ) from exc
-        self._assert_stable_identity(
-            path=path,
-            admitted=admitted_identity,
-            observed=final_identity,
-        )
         if len(encoded) != admitted_bytes:
             raise self._error(
                 code="events_json_sidecar_changed_after_admission",
@@ -512,7 +513,7 @@ class BidsEventsJsonReader:
                 details={
                     "admitted_bytes": admitted_bytes,
                     "bytes_read": len(encoded),
-                    "observed_bytes": final_identity.file_bytes,
+                    "observed_bytes": len(encoded),
                 },
             )
         observed_sha256 = hashlib.sha256(encoded).hexdigest()
@@ -575,53 +576,6 @@ class BidsEventsJsonReader:
             "admitted_path_count": len(self.admitted_files),
             "cached_path_count": len(self._parsed_paths),
         }
-
-    def _identity_from_stat(
-        self,
-        *,
-        path: Path,
-        file_stat: os.stat_result,
-    ) -> _AdmittedFileIdentity:
-        identity = _file_identity(file_stat)
-        if identity is not None:
-            return identity
-        raise self._error(
-            code="events_json_sidecar_identity_unavailable",
-            message=(
-                f"BIDS events sidecar identity could not be verified safely: {path}."
-            ),
-            path=path,
-            parse_started=False,
-        )
-
-    def _assert_stable_identity(
-        self,
-        *,
-        path: Path,
-        admitted: _AdmittedFileIdentity,
-        observed: _AdmittedFileIdentity,
-    ) -> None:
-        admitted_details = admitted.stat_diagnostics()
-        observed_details = observed.stat_diagnostics()
-        if observed_details == admitted_details:
-            return
-        raise self._error(
-            code="events_json_sidecar_changed_after_admission",
-            message=f"BIDS events sidecar changed after resource admission: {path}.",
-            path=path,
-            parse_started=False,
-            details={
-                "admitted_bytes": admitted.file_bytes,
-                "observed_bytes": observed.file_bytes,
-                "changed_identity_fields": [
-                    field_name
-                    for field_name in admitted_details
-                    if admitted_details[field_name] != observed_details[field_name]
-                ],
-                "admitted_identity": admitted_details,
-                "observed_identity": observed_details,
-            },
-        )
 
     def _error(
         self,
@@ -762,7 +716,6 @@ def _admit_file_identity(path: Path) -> _AdmittedFileIdentity:
                 if file_bytes <= BIDS_EVENTS_JSON_READ_BUDGET_BYTES
                 else b""
             )
-            final_stat = os.fstat(handle.fileno())
             if (
                 file_bytes <= BIDS_EVENTS_JSON_READ_BUDGET_BYTES
                 and len(encoded) != file_bytes
@@ -789,45 +742,14 @@ def _admit_file_identity(path: Path) -> _AdmittedFileIdentity:
             parse_started=False,
             details={"os_error": str(exc)},
         ) from exc
-    identity = _file_identity(
-        final_stat,
+    return _AdmittedFileIdentity(
+        file_bytes=file_bytes,
         content_sha256=(
             hashlib.sha256(encoded).hexdigest()
             if file_bytes <= BIDS_EVENTS_JSON_READ_BUDGET_BYTES
             else ""
         ),
     )
-    if identity is None:
-        raise _resource_error(
-            code="events_json_sidecar_identity_unavailable",
-            message=(
-                f"BIDS events sidecar identity could not be admitted safely: {path}."
-            ),
-            path=path,
-            parse_started=False,
-        )
-    return identity
-
-
-def _file_identity(
-    file_stat: os.stat_result,
-    *,
-    content_sha256: str = "",
-) -> _AdmittedFileIdentity | None:
-    try:
-        identity = _AdmittedFileIdentity(
-            file_bytes=max(int(file_stat.st_size), 0),
-            device=int(file_stat.st_dev),
-            inode=int(file_stat.st_ino),
-            mtime_ns=int(file_stat.st_mtime_ns),
-            ctime_ns=int(file_stat.st_ctime_ns),
-            content_sha256=content_sha256,
-        )
-    except (AttributeError, TypeError, ValueError, OverflowError):
-        return None
-    if identity.device < 0 or identity.inode <= 0:
-        return None
-    return identity
 
 
 def _path_key(path: Path) -> str:
