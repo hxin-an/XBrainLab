@@ -5,8 +5,9 @@
 ## 目前焦點
 
 `main` 基線為 `0abb8b56`；Import correctness v2 已以 PR #70 合併，exact accepted
-head 為 `4cdc73a2959a1cdc9db9a193cecd49a0249662f3`。目前唯一 active product slice 是
-**Assistant English prompt/context baseline v4**，branch 為 `fix/assistant-prompt-context-v4`。
+head 為 `4cdc73a2959a1cdc9db9a193cecd49a0249662f3`。**Assistant English prompt/context
+baseline v4** 已在 branch `fix/assistant-prompt-context-v4` 停於 capability-boundary checkpoint；
+它不是 handoff candidate，也尚未建立 PR。
 
 clean source `d6d76b54` 的 exact English pre-change baseline 已完成，artifact 位於
 `build/dev-artifacts/assistant-prompt-v4-baseline-d6d76b54/`。所有 first-turn family 現在均走
@@ -27,9 +28,13 @@ out-of-stage case 仍選 prerequisite/substitute；Host 保持 fail-closed。後
 choice grammar 與有效 JSON shape。它們或仍猜值／執行 multi/out-of-stage，或產生 message-only、
 錯誤 root/schema copying；沒有一版同時改善五個 typed clarification journey 與 no-action safety，
 tool-specific examples 反而過度偏向 bandpass。這些失敗變體不留在 final tree；保留已有完整 suite
-證據且表現最佳的 `07c0b6ad` prompt 內容。下一步只在包含本紀錄的 clean exact commit 重跑第三次且
-最後一次 full pinned-model suite；若重現 critical failures，即依 stop condition 停在
-capability-boundary checkpoint，不換模型、不新增 Host router，也不放寬 gate。
+證據且表現最佳的 `07c0b6ad` prompt 內容。第三次且最後一次 full pinned-model suite 已在 clean exact
+source `fead32ca` 完成，artifact 位於
+`build/dev-artifacts/assistant-prompt-v4-capability-fead32ca/`；除 source SHA 外，81-case report 與
+`07c0b6ad` 完全相同。raw positive 為 `36/36`，challenge 為 `5/14`、precision 為 `15/24`、
+clarification 為 `0/7`；Host parameter safety 為 `15/15`，但 product clarification boundary 仍為
+`0/7`。candidate gate 因此 fail closed，依 stop condition 停止 prompt-only refinement；不換模型、
+不新增 Host router，也不放寬 gate。
 
 ## Outcome
 
@@ -39,8 +44,8 @@ capability-boundary checkpoint，不換模型、不新增 Host router，也不�
   保留為未承諾相容基礎。
 - Raw model decision、Host safety 與 product outcome 分開報告；Host rescue 不回填
   model-quality claim。
-- 產出可人工閱讀的 Markdown prompt dossier，並在內部收斂後只交付一個
-  usable English baseline 給使用者手測。
+- 產出可人工閱讀的 Markdown prompt dossier；只有通過 stop condition 的 usable English baseline
+  才交付使用者手測，否則以可重現的 capability-boundary evidence 停止。
 
 ## Scope / non-goals / authority
 
