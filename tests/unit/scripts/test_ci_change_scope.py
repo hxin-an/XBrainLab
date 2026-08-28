@@ -23,6 +23,16 @@ def test_agent_guidance_change_set_uses_the_focused_lane() -> None:
     )
 
 
+def test_deleted_guidance_test_path_fails_closed_to_product_ci() -> None:
+    assert classify_changed_paths(
+        ("tests/unit/test_agent_guidance_contract.py",)
+    ) == ChangeScope(
+        product=True,
+        ui_visual=False,
+        agent_guidance=False,
+    )
+
+
 def test_planning_document_without_guidance_change_stays_docs_only() -> None:
     assert classify_changed_paths(("docs/planning/now.md",)) == ChangeScope(
         product=False,
