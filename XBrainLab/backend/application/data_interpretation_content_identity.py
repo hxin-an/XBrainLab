@@ -541,7 +541,9 @@ def _normalized_admitted_file_identities(
 
 
 def _stable_stream_sha256(path: Path) -> tuple[int, str]:
+    """Hash the opened regular file and report the bytes actually consumed."""
     digest = hashlib.sha256()
+    total = 0
     with path.open("rb") as handle:
         opened = os.fstat(handle.fileno())
         if not stat.S_ISREG(opened.st_mode):
@@ -556,24 +558,11 @@ def _stable_stream_sha256(path: Path) -> tuple[int, str]:
         if progress is not None:
             progress.begin_file(path, file_bytes=max(int(opened.st_size), 0))
         while chunk := handle.read(CONTENT_HASH_CHUNK_BYTES):
+            total += len(chunk)
             digest.update(chunk)
             if progress is not None:
                 progress.advance(len(chunk))
-        finished = os.fstat(handle.fileno())
-    current = path.stat()
-    opened_identity = _stat_identity(opened)
-    if opened_identity != _stat_identity(finished) or opened_identity != _stat_identity(
-        current
-    ):
-        raise PreconditionError(
-            "A reviewed Data Interpretation file changed while fingerprinting: "
-            f"{path}.",
-            diagnostics={
-                "code": "interpretation_content_changed_during_fingerprint",
-                "path": str(path),
-            },
-        )
-    return max(int(opened.st_size), 0), digest.hexdigest()
+    return total, digest.hexdigest()
 
 
 def _normalized_bindings(
@@ -999,16 +988,6 @@ def _contract_identity_payload(
         ),
         "bindings": sorted(bindings, key=lambda row: str(row["path"])),
     }
-
-
-def _stat_identity(value: os.stat_result) -> tuple[int, int, int, int, int]:
-    return (
-        int(value.st_dev),
-        int(value.st_ino),
-        max(int(value.st_size), 0),
-        int(value.st_mtime_ns),
-        int(value.st_ctime_ns),
-    )
 
 
 def _path_key(

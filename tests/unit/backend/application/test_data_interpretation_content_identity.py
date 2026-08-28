@@ -1,6 +1,8 @@
 import hashlib
+import os
 import threading
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -252,6 +254,60 @@ def test_selected_eeg_identity_streams_content_without_materializing_with_read_b
             "sha256": hashlib.sha256(payload).hexdigest(),
         }
     ]
+
+
+def test_stream_hash_uses_content_when_path_and_handle_metadata_differ(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Windows metadata differences do not reject the bytes actually hashed."""
+    path = tmp_path / "events.tsv"
+    payload = b"onset\tduration\n0\t1\n"
+    path.write_bytes(payload)
+    original_stat = path.stat()
+
+    def _metadata_stat(
+        *,
+        device: int,
+        inode: int,
+        timestamp: int,
+        file_bytes: int,
+    ) -> SimpleNamespace:
+        return SimpleNamespace(
+            st_mode=original_stat.st_mode,
+            st_size=file_bytes,
+            st_dev=device,
+            st_ino=inode,
+            st_mtime_ns=timestamp,
+            st_ctime_ns=timestamp + 1,
+        )
+
+    path_stat = _metadata_stat(
+        device=1,
+        inode=2,
+        timestamp=3,
+        file_bytes=len(payload) + 7,
+    )
+    handle_stat = _metadata_stat(
+        device=4,
+        inode=5,
+        timestamp=6,
+        file_bytes=len(payload) + 13,
+    )
+    real_stat = Path.stat
+
+    def _path_stat(candidate: Path, *args: object, **kwargs: object) -> object:
+        if candidate == path:
+            return path_stat
+        return real_stat(candidate, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", _path_stat)
+    monkeypatch.setattr(os, "fstat", lambda _descriptor: handle_stat)
+
+    assert data_interpretation_content_identity._stable_stream_sha256(path) == (
+        len(payload),
+        hashlib.sha256(payload).hexdigest(),
+    )
 
 
 def test_review_identity_hashes_independent_files_concurrently_in_stable_order(
