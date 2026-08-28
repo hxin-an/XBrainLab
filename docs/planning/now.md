@@ -4,7 +4,7 @@
 
 ## 目前焦點
 
-本 campaign 從同一個 post-plan `main` 建立隔離 worktree，同步推進四個工作包：Windows-native
+本 campaign 從同一個 post-plan `main` 建立隔離 worktree，同步推進四個工作包：Windows產品／WSL開發
 Data Import 多 worker、Assistant 多輪補參數與誤呼叫改善、Dataset controller compatibility
 cutover，以及全 repo non-UI test quality cleanup。三條產品 lane 與 test cleanup 都必須通過獨立
 completion reviewer，全部告一段落後才開始使用者手測。
@@ -27,16 +27,21 @@ Worker 不得自行宣稱完成，reviewer finding 也不會自動擴大使用�
   不得從generic文字另選工具。補參數追問保留clarification語意，但視覺使用一般Assistant泡泡，
   不顯示藍色`Needs input`樣式。
 
-### Windows-native Data Import
+### Windows產品／WSL開發 Data Import
 
-- 先前WSL `/mnt/d`量測只能解釋開發環境I/O，不能外推native Windows產品效能；相關數值降格為
-  historical dev-only evidence，不再作產品gate。
+- WSL `/mnt/d`量測只能解釋開發環境I/O，不能外推native Windows產品效能；使用者已批准在Windows
+  baseline暫時不可得時，將WSL作為candidate-selection development baseline，但改善目標不得是WSL
+  特化，相關數字仍不作產品gate。
+- 現有Windows Poetry與project venv都指向已移除的Miniconda interpreter；使用者已批准依lockfile建立
+  乾淨Windows Python 3.12 project environment並下載／安裝必要dependency。先嘗試恢復native baseline，
+  只有安裝或native runner仍不可用時才使用WSL fallback。
 - 現有headless runner可在fresh `ApplicationService`上分別量Catalog、Review、Apply、background與
   stable，並保存CPU、RSS、I/O與correctness；native Windows source runtime使用Windows Poetry／
   Python，不使用WSLg launcher作效能證據。
 - Review的獨立header/resource inspection與Apply的逐檔raw preparation目前為serial；多檔、私有、
-  不碰Study／Qt／publication的工作有bounded thread parallelism潛力，但必須由Windows 1/2/3-worker
-  實測與thread-safety evidence決定。
+  不碰Study／Qt／publication的工作有bounded thread parallelism潛力。先以Windows、必要時以WSL
+  1/2/3-worker與thread-safety evidence選擇平台中立candidate；format enablement與產品claim仍需Windows
+  驗證。
 
 ### Cleanup
 
@@ -53,8 +58,9 @@ Worker 不得自行宣稱完成，reviewer finding 也不會自動擴大使用�
 
 1. Assistant：模型選定exact direct tool後，Host能安全建立並延續typed receipt；中英文第二／三輪
    補值可執行既有tool，clarification至少`6/7`，unexpected unsafe最多`1`，其餘v10 gate不退步。
-2. Import：在native Windows上由1/2/3-worker evidence選出bounded parallel preparation；完整三段
-   blocking median同時至少改善`15%`與`0.5s`，且資料、安全、順序與rollback contract不退步。
+2. Import：先重建native Windows環境，仍不可得時以WSL 1/2/3-worker development evidence選出平台
+   中立的bounded parallel preparation；candidate需同時改善blocking median至少`15%`與`0.5s`，
+   且資料、安全、順序與rollback contract不退步。Windows重跑通過前不宣稱產品效能達標。
 3. Dataset cleanup：Dataset production package不再呼叫controller compatibility gateway；正常layout、
    文案與操作不變，缺少／stale publication時fail closed，production LOC淨減少且owner不增加。
 4. Non-UI tests：完成repo-wide inventory並處理所有in-scope高價值family；重要side effect保留至少一條
@@ -75,13 +81,18 @@ Worker 不得自行宣稱完成，reviewer finding 也不會自動擴大使用�
 ### Import lane — `perf/windows-import-parallel-v1`
 
 - 產品效能claim只接受Windows-native Poetry／Python、本機NTFS、同source／selection／protocol evidence。
+- Candidate selection優先使用重建後的Windows environment；若native measurement仍不可用，可使用既有
+  WSL environment作development baseline與1/2/3-worker比較，但不得加入mount／filesystem／WSL特判，
+  也不得用其結果批准產品merge。
 - 比較1/2/3 threads；Review worker只回傳immutable header/resource result，Apply worker只建立私有
   loader／Raw result，主thread保序組裝、套用metadata／labels與commit。
 - 最終採用通過安全gate且在最快valid candidate `5%`內的最小worker數，不新增使用者setting。
 - 只對有native fixture與thread-safety證據的format啟用；其餘維持serial。Concurrency resource
   preflight必須納入峰值記憶體。
-- 不新增WSL／mount特判、ext4 staging、durable cache或自動下載。Final full original-source rehash、
-  SourceFileBoundary、selected scope、reparse／symlink／containment與atomic rollback必須保留。
+- 已授權依lockfile下載／安裝native Windows project dependency；不得下載新dataset、任意升級dependency
+  或修改產品dependency contract。不新增WSL／mount特判、ext4 staging、durable cache。Final full
+  original-source rehash、SourceFileBoundary、selected scope、reparse／symlink／containment與atomic rollback
+  必須保留。
 
 ### Dataset cleanup lane — `refactor/dataset-compatibility-cutover-v1`
 
@@ -102,8 +113,9 @@ Worker 不得自行宣稱完成，reviewer finding 也不會自動擴大使用�
 
 ### Campaign non-goals
 
-- 不新增模型、下載dataset／dependency、修改public tool contract、處理其他UI redesign或恢復retired
-  compatibility／MCP surfaces。
+- 不新增模型、下載dataset、任意升級dependency、修改public tool contract、處理其他UI redesign或恢復
+  retired compatibility／MCP surfaces；唯一dependency下載授權是依lockfile建立native Windows project
+  environment。
 - 不stage、revert、覆寫或隱藏root `settings.json`；不清除model cache、dataset或非明確XBrainLab-owned
   artifacts。
 
@@ -133,12 +145,18 @@ Worker 不得自行宣稱完成，reviewer finding 也不會自動擴大使用�
 
 ### Import
 
-- Windows baseline與candidate各使用fresh native process、相同fixture／mount／selection，至少三組
-  交錯可比pass；保存raw phase timings、CPU、RSS、I/O與correctness。
-- Gate：end-to-end median同時改善`>=15%`與`>=0.5s`；未改phase不得有可重現退化，event digest、
-  labels、recipe、input order與no-partial-state全部一致。
+- 先依lockfile建立Windows Python 3.12 project environment；Windows baseline與candidate各使用fresh
+  native process、相同fixture／mount／selection，至少三組交錯可比pass。若native measurement仍不可得，
+  WSL baseline／candidate使用同一既有environment、fixture／mount／selection與相同pass規則；兩者都保存
+  raw phase timings、CPU、RSS、I/O與correctness。
+- Development candidate gate：end-to-end median同時改善`>=15%`與`>=0.5s`；未改phase不得有可重現
+  退化，event digest、labels、recipe、input order與no-partial-state全部一致。WSL通過只允許進入candidate
+  review，不構成Windows產品claim或merge acceptance。
+- Windows product gate在Import手測／merge前以同protocol重跑，並同樣滿足`>=15%`與`>=0.5s`；format
+  thread-safety與resource preflight也必須在Windows成立。
 - 若1/2/3 workers與Review／Apply兩個安全平行區域都未通過，performance reviewer確認in-scope候選
-  已耗盡後才可checkpoint；不得轉做WSL特化或cache。
+  已耗盡後才可checkpoint；不得轉做WSL特化或cache。若只有Windows環境仍不可得，保留平台中立candidate
+  與WSL development evidence，明確標記Windows acceptance pending。
 
 ### Dataset cleanup
 

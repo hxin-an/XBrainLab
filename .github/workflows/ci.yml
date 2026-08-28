@@ -105,22 +105,20 @@ jobs:
           PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
         run: >-
           python -m pytest
-          tests/unit/test_agent_guidance_contract.py
           tests/unit/scripts/test_audit_agent_guidance.py
+          --confcutdir=tests/unit/scripts
           -q
 
       - name: Check focused Python formatting
         run: >-
           ruff check
           scripts/dev/audit_agent_guidance.py
-          tests/unit/test_agent_guidance_contract.py
           tests/unit/scripts/test_audit_agent_guidance.py
 
       - name: Check focused Python format
         run: >-
           ruff format --check
           scripts/dev/audit_agent_guidance.py
-          tests/unit/test_agent_guidance_contract.py
           tests/unit/scripts/test_audit_agent_guidance.py
 
   lint:

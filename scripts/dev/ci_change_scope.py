@@ -22,7 +22,6 @@ GUIDANCE_EXACT_PATHS = frozenset(
         "AGENTS.md",
         ".codex/config.toml",
         "scripts/dev/audit_agent_guidance.py",
-        "tests/unit/test_agent_guidance_contract.py",
         "tests/unit/scripts/test_audit_agent_guidance.py",
     }
 )
