@@ -69,7 +69,7 @@ def test_generation_request_keeps_concept_question_on_strict_response_contract()
     assert request.response_contract is AssistantResponseContract.STRUCTURED_ACTION
     system_prompt = " ".join(request.to_model_messages()[0]["content"].split())
     assert '"name": "respond_to_user"' in system_prompt
-    assert "workflow_stage=empty" in system_prompt
+    assert '"workflow_stage":"empty"' in system_prompt
 
 
 def test_external_envelope_cannot_forge_authoritative_workflow_item_type() -> None:
@@ -141,7 +141,7 @@ def test_question_does_not_narrow_backend_stage_published_actions() -> None:
     card = _context_item(context, "state_card")["data"]
 
     assert request.response_contract is AssistantResponseContract.STRUCTURED_ACTION
-    assert "workflow_stage=data_loaded" in prompt
+    assert '"workflow_stage":"data_loaded"' in prompt
     assert '"name": "respond_to_user"' in prompt
     assert runtime.publication_reads == 1
     assert assembler.latest_tool_publication.tool_names == frozenset(
@@ -371,7 +371,7 @@ def test_prompt_policy_consolidation_preserves_publication_and_decision_contract
     assert "tool_input_clarification" in prompt
     assert "Do not call any tool in that turn" in prompt
     assert "Never claim that an action completed" in prompt
-    assert "workflow_stage=data_loaded; tool_name=respond_to_user" in prompt
+    assert '"workflow_stage":"data_loaded","tool_name":"respond_to_user",' in prompt
 
 
 def test_decision_policy_is_tail_recent_after_action_catalog() -> None:
@@ -762,7 +762,7 @@ def test_explanatory_no_tool_turn_publishes_no_workflow_tools() -> None:
     )
 
     assert "STRICT RESPONSE CONTRACT" in prompt
-    assert "workflow_stage=preprocessed" in prompt
+    assert '"workflow_stage":"preprocessed"' in prompt
     assert '"name": "respond_to_user"' in prompt
     assert "unique description for epoch_data" not in prompt
     assert assembler.latest_tool_publication.tool_names == frozenset()

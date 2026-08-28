@@ -132,12 +132,33 @@ def test_prompt_policy_ends_with_mutually_exclusive_response_grammar() -> None:
     prompt = StrictToolResponsePromptPolicy().decision_instructions("data_loaded")
 
     grammar = prompt.index("FINAL RESPONSE CHOICE")
-    assert prompt.rstrip().endswith("parameters=<matching action contract>.")
-    assert "workflow_stage=data_loaded" in prompt[grammar:]
-    assert "pending_action=<that exact action>" in prompt[grammar:]
-    assert "missing_inputs=<all absent required fields>" in prompt[grammar:]
-    assert "message-only is forbidden" in prompt[grammar:]
-    assert "zero action tools" in prompt[grammar:]
+    tail = prompt[grammar:]
+
+    assert (
+        tail.count(
+            '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+            '"parameters":{'
+        )
+        == 3
+    )
+    assert '"message":"<concise question>"' in tail
+    assert '"pending_action":"<that exact action>"' in tail
+    assert '"missing_inputs":["<one absent required field>"]' in tail
+    assert (
+        '"missing_inputs":["<first absent required field>",'
+        '"<next absent required field>"]' in tail
+    )
+    assert '"message":"<concise response>"' in tail
+    assert "message-only is forbidden" in tail
+    assert "zero action tools" in tail
+    assert "workflow_stage=data_loaded" not in tail
+    assert '"name":' not in tail
+    assert '"taxonomy":' not in tail
+    assert '"description":' not in tail
+    assert prompt.rstrip().endswith(
+        "All output must use exactly these root keys: "
+        '"workflow_stage", "tool_name", "parameters".'
+    )
     assert "apply_bandpass_filter" not in prompt
     assert "normalize_data" not in prompt
 

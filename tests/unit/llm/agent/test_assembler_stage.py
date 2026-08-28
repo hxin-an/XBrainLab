@@ -270,7 +270,7 @@ class TestPromptContent:
             prompts[stage] = prompt
         assert len(set(prompts.values())) == len(PipelineStage)
         for stage, prompt in prompts.items():
-            assert f"workflow_stage={stage.value}" in prompt
+            assert f'"workflow_stage":"{stage.value}"' in prompt
 
     def test_rule_6_only_listed_tools(self):
         """Prompt instructs LLM not to call unlisted tools."""

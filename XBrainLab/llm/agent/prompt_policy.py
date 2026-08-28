@@ -117,20 +117,38 @@ class StrictToolResponsePromptPolicy:
             "FINAL RESPONSE CHOICE (choose exactly one; replace every <...> "
             "placeholder):\n"
             "A) Exactly one direct preprocessing action is identified but required "
-            "fields are absent: workflow_stage="
+            "fields are absent: output one typed clarification envelope. For one "
+            "absent field use:\n"
+            '{"workflow_stage":"'
             + workflow_stage
-            + "; tool_name=respond_to_user; parameters={message=<concise question>, "
-            "pending_action=<that exact action>, missing_inputs=<all absent required "
-            "fields>}; message-only is forbidden.\n"
+            + '","tool_name":"respond_to_user","parameters":{"message":"'
+            '<concise question>","pending_action":"<that exact action>",'
+            '"missing_inputs":["<one absent required field>"]}}\n'
+            "For two or more absent fields use one string per field:\n"
+            '{"workflow_stage":"'
+            + workflow_stage
+            + '","tool_name":"respond_to_user","parameters":{"message":"'
+            '<concise question>","pending_action":"<that exact action>",'
+            '"missing_inputs":["<first absent required field>",'
+            '"<next absent required field>"]}}\n'
+            "Replace every placeholder and never output it literally; message-only "
+            "is forbidden.\n"
             "B) Every other no-action (informational, negated, ambiguous, "
-            "multi-action, unavailable, or nonmatching): workflow_stage="
+            "multi-action, unavailable, or nonmatching): output this message-only "
+            "envelope and call zero action tools:\n"
+            '{"workflow_stage":"'
             + workflow_stage
-            + "; tool_name=respond_to_user; parameters={message=<concise response>}; "
-            "zero action tools.\n"
-            "C) Only one exact enabled action with all required fields: workflow_stage="
+            + '","tool_name":"respond_to_user","parameters":{"message":"'
+            '<concise response>"}}\n'
+            "Replace every placeholder and never output it literally.\n"
+            "C) Only one exact enabled action with all required fields: output exactly "
+            'one object with root keys "workflow_stage", "tool_name", and '
+            '"parameters"; copy workflow_stage as "'
             + workflow_stage
-            + "; tool_name=<exact enabled action>; "
-            "parameters=<matching action contract>."
+            + '", use the exact enabled action as tool_name, and use only its '
+            "matching action contract for parameters. "
+            'All output must use exactly these root keys: "workflow_stage", '
+            '"tool_name", "parameters".'
         )
 
     def recovery_instructions(self) -> str:
