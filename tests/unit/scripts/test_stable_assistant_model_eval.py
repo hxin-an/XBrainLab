@@ -1,5 +1,6 @@
 """Stable-v2 local-model selection evaluation contracts."""
 
+import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -30,6 +31,7 @@ from scripts.dev.run_stable_assistant_model_eval import (
     score_model_response,
     score_positive_parameter_host_guard,
     score_precision_response,
+    score_raw_precision_response,
     target_tool_registry,
 )
 from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
@@ -69,6 +71,20 @@ def test_target_cases_cover_each_approved_tool_twice() -> None:
     assert set(counts.values()) == {2}
 
 
+def test_target_case_loader_rejects_duplicate_normalized_inputs(tmp_path: Path) -> None:
+    payload = json.loads(GOLD_SET.read_text(encoding="utf-8"))
+    payload[1]["input"] = payload[0]["input"].upper()
+    cases_path = tmp_path / "duplicate-input.json"
+    cases_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    try:
+        load_target_cases(cases_path)
+    except ValueError as exc:
+        assert "duplicates a normalized user input" in str(exc)
+    else:  # pragma: no cover - assertion branch documents the required rejection
+        raise AssertionError("Duplicate normalized inputs must be rejected.")
+
+
 def test_challenge_cases_extend_positive_matrix_to_exact_50_case_gate() -> None:
     cases = load_challenge_cases(DEFAULT_CHALLENGES)
 
@@ -84,7 +100,7 @@ def test_challenge_cases_extend_positive_matrix_to_exact_50_case_gate() -> None:
     assert len(load_target_cases(GOLD_SET)) + len(cases) == 50
 
 
-def test_precision_cases_cover_tools_and_bilingual_no_action_categories() -> None:
+def test_precision_cases_cover_tools_and_english_no_action_categories() -> None:
     cases = load_precision_cases(DEFAULT_PRECISION_CASES)
 
     assert len(cases) == 24
@@ -131,6 +147,23 @@ def test_clarification_cases_cover_each_direct_parameter_tool_once() -> None:
     }
 
 
+def test_active_assistant_evidence_cases_are_english_only() -> None:
+    precision_cases = load_precision_cases(DEFAULT_PRECISION_CASES)
+    clarification_cases = load_clarification_cases(
+        DEFAULT_CLARIFICATION_CASES,
+        precision_cases=precision_cases,
+    )
+    inputs = [
+        *(case.user_input for case in load_target_cases(GOLD_SET)),
+        *(case.user_input for case in load_challenge_cases(DEFAULT_CHALLENGES)),
+        *(case.user_input for case in precision_cases),
+        *(case.reply for case in clarification_cases),
+        *(turn for case in clarification_cases for turn in case.turns),
+    ]
+
+    assert all(text.isascii() for text in inputs)
+
+
 def test_run_eval_admits_direct_receipts_from_serialized_final_response(
     monkeypatch,
 ) -> None:
@@ -150,6 +183,7 @@ def test_run_eval_admits_direct_receipts_from_serialized_final_response(
     )
     trajectory = CaseTrajectoryResult(
         raw_score=score,
+        post_recovery_score=score,
         final_score=score,
         final_response=response,
         attempts=(
@@ -429,7 +463,7 @@ def test_precision_scoring_uses_parser_and_host_attempt_outcome_not_keywords() -
     cases = load_precision_cases(DEFAULT_PRECISION_CASES)
     missing = next(case for case in cases if case.case_id == "missing_bandpass_en")
     out_of_stage = next(
-        case for case in cases if case.case_id == "start_before_setup_zh"
+        case for case in cases if case.case_id == "start_before_setup_en"
     )
     general = next(case for case in cases if case.case_id == "general_en")
 
@@ -498,6 +532,148 @@ def test_precision_scoring_uses_parser_and_host_attempt_outcome_not_keywords() -
         assert outcome.state_mutation_permitted is False
 
 
+def test_raw_missing_parameter_score_requires_the_exact_missing_fields() -> None:
+    registry = target_tool_registry()
+    case = next(
+        item
+        for item in load_precision_cases(DEFAULT_PRECISION_CASES)
+        if item.case_id == "missing_bandpass_en"
+    )
+    incomplete_question = (
+        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '"parameters":{"message":"Which bandpass filter should I apply?"}}'
+    )
+    exact_question = (
+        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '"parameters":{"message":"What low and high bandpass cutoffs should I use?"}}'
+    )
+    invented_default = (
+        '{"workflow_stage":"data_loaded","tool_name":"apply_bandpass_filter",'
+        '"parameters":{"low_freq":1,"high_freq":40}}'
+    )
+
+    assert (
+        score_raw_precision_response(case, incomplete_question, registry).passed
+        is False
+    )
+    assert score_raw_precision_response(case, exact_question, registry).passed is True
+    assert score_precision_response(case, invented_default, registry).passed is True
+    assert (
+        score_raw_precision_response(case, invented_default, registry).passed is False
+    )
+
+
+def test_raw_model_gate_allows_only_three_noncritical_challenge_wording_failures() -> (
+    None
+):
+    results = [
+        {
+            "suite": "positive",
+            "score": {"passed": True},
+            "first_generation_score": {"passed": True, "failure_type": "none"},
+        }
+        for _ in range(36)
+    ]
+    results.extend(
+        {
+            "suite": "challenge",
+            "score": {"passed": False},
+            "first_generation_score": {
+                "passed": index >= 4,
+                "failure_type": "response_content" if index < 4 else "none",
+            },
+        }
+        for index in range(14)
+    )
+
+    report = _build_report(
+        model_id="ibm-granite/granite-4.0-micro",
+        results=results,
+        expected_case_count=50,
+        complete=True,
+    )
+
+    assert report["raw_model_gate"]["challenge_decision"] == {
+        "required": 14,
+        "critical_failures": 0,
+        "wording_failures": 4,
+        "max_wording_failures": 3,
+        "unclassified_failures": 0,
+    }
+    assert report["raw_model_gate"]["passed"] is False
+
+
+def test_format_recovery_never_repairs_the_first_generation_raw_model_gate() -> None:
+    results = [
+        {
+            "suite": "positive",
+            "score": {"passed": True},
+            "first_generation_score": {"passed": True, "failure_type": "none"},
+            "post_recovery_score": {"passed": True, "failure_type": "none"},
+            **(
+                {"parameter_origin_guard": {"applicable": True, "passed": True}}
+                if index < 10
+                else {}
+            ),
+        }
+        for index in range(36)
+    ]
+    results.extend(
+        {
+            "suite": "challenge",
+            "score": {"passed": False},
+            "first_generation_score": {"passed": True, "failure_type": "none"},
+            "post_recovery_score": {"passed": True, "failure_type": "none"},
+            **(
+                {"host_guard": {"applicable": True, "passed": True}}
+                if index < 5
+                else {}
+            ),
+        }
+        for index in range(14)
+    )
+    results.extend(
+        {
+            "suite": "precision",
+            "score": {"passed": True},
+            "first_generation_score": {"passed": True, "failure_type": "none"},
+            "post_recovery_score": {"passed": True, "failure_type": "none"},
+        }
+        for _ in range(24)
+    )
+    results.extend(
+        {
+            "suite": "clarification",
+            "score": {"passed": True},
+            "first_generation_score": {
+                "passed": index != 0,
+                "failure_type": "none" if index else "output_format",
+            },
+            "post_recovery_score": {"passed": True, "failure_type": "none"},
+        }
+        for index in range(7)
+    )
+
+    report = _build_report(
+        model_id="ibm-granite/granite-4.0-micro",
+        results=results,
+        expected_case_count=50,
+        complete=True,
+    )
+
+    assert report["first_generation_summary"]["clarification"] == {
+        "case_count": 7,
+        "passed_count": 6,
+        "failed_count": 1,
+    }
+    assert report["post_recovery_summary"]["clarification"]["passed_count"] == 7
+    assert report["raw_model_gate"]["clarification_continuation"] == {
+        "required": 7,
+        "passed": 6,
+    }
+    assert report["raw_model_gate"]["passed"] is False
+
+
 def test_trajectory_retries_format_error_with_product_policy_and_scores_final() -> None:
     registry = target_tool_registry()
     case = next(
@@ -524,6 +700,7 @@ def test_trajectory_retries_format_error_with_product_policy_and_scores_final() 
     trajectory = evaluate_case_trajectory(case, registry, generate)
 
     assert trajectory.raw_score.passed is False
+    assert trajectory.post_recovery_score.passed is True
     assert trajectory.final_score.passed is True
     assert trajectory.final_response.endswith("}}")
     assert [attempt.recovery_action for attempt in trajectory.attempts] == [
@@ -662,12 +839,13 @@ def test_evaluation_uses_product_structured_generation_budget_not_legacy_128_cap
     assert _evaluation_generation_policy(config)["max_new_tokens"] == 512
 
 
-def test_precision_report_is_separate_from_frozen_core_gate() -> None:
+def test_report_separates_raw_model_host_safety_and_product_outcomes() -> None:
     core_results = (
         [
             {
                 "suite": "positive",
                 "score": {"passed": True},
+                "first_generation_score": {"passed": True, "failure_type": "none"},
                 **(
                     {"parameter_origin_guard": {"applicable": True, "passed": True}}
                     if index < 10
@@ -680,11 +858,19 @@ def test_precision_report_is_separate_from_frozen_core_gate() -> None:
             {
                 "suite": "challenge",
                 "score": {"passed": False},
+                "first_generation_score": {"passed": True, "failure_type": "none"},
                 "host_guard": {"applicable": True, "passed": True},
             }
             for _ in range(5)
         ]
-        + [{"suite": "challenge", "score": {"passed": False}} for _ in range(9)]
+        + [
+            {
+                "suite": "challenge",
+                "score": {"passed": False},
+                "first_generation_score": {"passed": True, "failure_type": "none"},
+            }
+            for _ in range(9)
+        ]
     )
     report = _build_report(
         model_id="ibm-granite/granite-3.3-2b-instruct",
@@ -693,7 +879,7 @@ def test_precision_report_is_separate_from_frozen_core_gate() -> None:
             *[
                 {
                     "suite": "precision",
-                    "raw_score": {"passed": index > 0},
+                    "first_generation_score": {"passed": True, "failure_type": "none"},
                     "score": {"passed": True},
                 }
                 for index in range(24)
@@ -701,7 +887,7 @@ def test_precision_report_is_separate_from_frozen_core_gate() -> None:
             *[
                 {
                     "suite": "clarification",
-                    "raw_score": {"passed": True},
+                    "first_generation_score": {"passed": True, "failure_type": "none"},
                     "score": {"passed": True},
                 }
                 for _ in range(7)
@@ -711,7 +897,7 @@ def test_precision_report_is_separate_from_frozen_core_gate() -> None:
         complete=True,
     )
 
-    assert report["schema_version"] == "xbrainlab.stable_assistant_model_eval.v8"
+    assert report["schema_version"] == "xbrainlab.stable_assistant_model_eval.v9"
     assert report["suite_summary"]["positive"]["case_count"] == 36
     assert report["suite_summary"]["challenge"]["case_count"] == 14
     assert report["summary"] == {
@@ -730,20 +916,14 @@ def test_precision_report_is_separate_from_frozen_core_gate() -> None:
         "complete": True,
         "passed": True,
     }
-    assert report["candidate_gate"]["frozen_core_passed"] is True
-    assert report["candidate_gate"]["precision_no_action"] == {
-        "required": 24,
-        "passed": 24,
-    }
-    assert report["candidate_gate"]["clarification_continuation"] == {
-        "required": 7,
-        "passed": 7,
-    }
+    assert report["raw_model_gate"]["passed"] is True
+    assert report["host_safety_gate"]["passed"] is True
+    assert report["product_outcome_gate"]["passed"] is True
     assert report["candidate_gate"]["passed"] is True
-    assert report["raw_generation_summary"] == {
+    assert report["first_generation_summary"] == {
         "positive": {"case_count": 36, "passed_count": 36, "failed_count": 0},
-        "challenge": {"case_count": 14, "passed_count": 0, "failed_count": 14},
-        "precision": {"case_count": 24, "passed_count": 23, "failed_count": 1},
+        "challenge": {"case_count": 14, "passed_count": 14, "failed_count": 0},
+        "precision": {"case_count": 24, "passed_count": 24, "failed_count": 0},
         "clarification": {"case_count": 7, "passed_count": 7, "failed_count": 0},
     }
     assert report["clarification_summary"] == {
@@ -767,7 +947,7 @@ def test_challenge_score_requires_strict_response_envelope_and_message_contract(
     registry = target_tool_registry()
     valid = (
         '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
-        '"parameters":{"message":"請提供 bandpass 的 low 和 high 頻率。"}}'
+        '"parameters":{"message":"Please provide the bandpass low and high cutoffs."}}'
     )
 
     assert score_challenge_response(case, valid, registry).passed is True
@@ -828,8 +1008,8 @@ def test_precision_messages_project_backend_unavailable_actions_without_schemas(
 ):
     registry = target_tool_registry()
     cases = load_precision_cases(DEFAULT_PRECISION_CASES)
-    epochs = next(case for case in cases if case.case_id == "epochs_before_data_zh")
-    model = next(case for case in cases if case.case_id == "model_before_epochs_zh")
+    epochs = next(case for case in cases if case.case_id == "epochs_before_data_en")
+    model = next(case for case in cases if case.case_id == "model_before_epochs_en")
 
     epochs_system = build_case_messages(epochs, registry)[0]["content"]
     model_system = build_case_messages(model, registry)[0]["content"]
@@ -870,7 +1050,7 @@ def test_precision_exact_unavailable_call_uses_backend_reason_at_attempt_boundar
     case = next(
         case
         for case in load_precision_cases(DEFAULT_PRECISION_CASES)
-        if case.case_id == "epochs_before_data_zh"
+        if case.case_id == "epochs_before_data_en"
     )
     response = '{"workflow_stage":"empty","tool_name":"create_epochs","parameters":{}}'
 
@@ -1004,6 +1184,7 @@ def test_candidate_report_requires_positive_and_host_guard_gates() -> None:
             {
                 "suite": "positive",
                 "score": {"passed": True},
+                "first_generation_score": {"passed": True, "failure_type": "none"},
                 **(
                     {
                         "parameter_origin_guard": {
@@ -1021,11 +1202,19 @@ def test_candidate_report_requires_positive_and_host_guard_gates() -> None:
             {
                 "suite": "challenge",
                 "score": {"passed": False},
+                "first_generation_score": {"passed": True, "failure_type": "none"},
                 "host_guard": {"applicable": True, "passed": True},
             }
             for _ in range(5)
         ]
-        + [{"suite": "challenge", "score": {"passed": False}} for _ in range(9)]
+        + [
+            {
+                "suite": "challenge",
+                "score": {"passed": False},
+                "first_generation_score": {"passed": True, "failure_type": "none"},
+            }
+            for _ in range(9)
+        ]
     )
 
     report = _build_report(
@@ -1036,13 +1225,22 @@ def test_candidate_report_requires_positive_and_host_guard_gates() -> None:
     )
 
     assert report["candidate_gate"] == {
-        "positive_exact": {"required": 36, "passed": 36},
-        "explicit_parameter_host_guard": {"required": 10, "passed": 10},
-        "missing_parameter_host_guard": {"required": 5, "passed": 5},
-        "frozen_core_passed": True,
-        "precision_no_action": {"required": 24, "passed": 0},
-        "clarification_continuation": {"required": 7, "passed": 0},
+        "raw_model": False,
+        "host_safety": True,
+        "product_outcome": False,
         "passed": False,
+    }
+    assert report["host_safety_gate"]["continuation_boundaries"] == {
+        "not_counted_in_model_report": [
+            "cancel",
+            "topic_switch",
+            "stale_receipt",
+            "different_tool",
+            "partial_reply",
+            "multi_action",
+        ],
+        "report_status": "not_measured_by_this_model_report",
+        "external_evidence": "controller unit/integration coverage required",
     }
     assert report["summary"]["passed"] is False
     assert report["precision_summary"] == {

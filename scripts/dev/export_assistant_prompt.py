@@ -30,6 +30,7 @@ from scripts.dev.run_stable_assistant_model_eval import (
 )
 from XBrainLab.llm.core.backends.local import LocalBackend
 from XBrainLab.llm.core.config import LLMConfig
+from XBrainLab.llm.core.generation import GenerationProfile, resolve_generation_options
 from XBrainLab.llm.core.model_catalog import local_model_spec
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -51,13 +52,24 @@ def _load_pinned_tokenizer(config: LLMConfig) -> Any:
     )
 
 
-def _source_sha() -> str:
+def _source_identity() -> dict[str, Any]:
     git = shutil.which("git")
     if git is None:
         raise RuntimeError("Git is required to bind the prompt dossier source SHA.")
-    return subprocess.check_output(  # noqa: S603 - resolved Git executable and fixed argv
+    source_sha = subprocess.check_output(  # noqa: S603 - resolved Git executable and fixed argv
         [git, "rev-parse", "HEAD"], cwd=ROOT, text=True
     ).strip()
+    status = subprocess.check_output(  # noqa: S603 - resolved Git executable and fixed argv
+        [git, "status", "--porcelain", "--untracked-files=all"],
+        cwd=ROOT,
+        text=True,
+    ).splitlines()
+    changes = [row for row in status if row[3:].strip() != "settings.json"]
+    return {
+        "head_sha": source_sha,
+        "clean_except_protected_settings": not changes,
+        "changes_excluding_protected_settings": changes,
+    }
 
 
 def _direct_clarification_messages(
@@ -144,7 +156,8 @@ def _markdown(dossier: dict[str, Any]) -> str:
     final = dossier["final_prompt"]
     return (
         "# Assistant final prompt dossier\n\n"
-        f"- Source SHA: `{dossier['source_sha']}`\n"
+        f"- Source HEAD: `{dossier['source_identity']['head_sha']}`\n"
+        f"- Clean except protected settings: `{dossier['source_identity']['clean_except_protected_settings']}`\n"
         f"- Case: `{dossier['case_id']}`\n"
         f"- Model: `{dossier['model']['id']}@{dossier['model']['revision']}`\n"
         "- Tokenizer only: no model weights were loaded.\n\n"
@@ -162,6 +175,9 @@ def _markdown(dossier: dict[str, Any]) -> str:
         + f"- Characters: {final['characters']}\n"
         + f"- UTF-8 bytes: {final['utf8_bytes']}\n"
         + f"- Tokens: {final['token_count']}\n"
+        + f"- Pre-fit tokens: {final['prefit_token_count']}\n"
+        + f"- Runtime input budget: {final['max_input_tokens']}\n"
+        + f"- Optional context dropped: `{final['optional_context_dropped']}`\n"
         + f"- SHA-256: `{final['sha256']}`\n\n```text\n{final['content']}\n```\n"
     )
 
@@ -176,12 +192,26 @@ def export_prompt_dossier(case_id: str, out_path: Path) -> dict[str, Any]:
     backend = LocalBackend(config)
     processed_messages = backend._process_messages_for_template(raw_messages)
     tokenizer = _load_pinned_tokenizer(config)
-    final_prompt, token_count = backend._render_chat_template_with_token_count(
+    prefit_prompt, prefit_token_count = backend._render_chat_template_with_token_count(
         tokenizer,
         processed_messages,
     )
+    options = resolve_generation_options(
+        profile=GenerationProfile.STRUCTURED_DECISION,
+        max_new_tokens=config.max_new_tokens,
+        do_sample=config.do_sample,
+        temperature=config.temperature,
+        top_p=config.top_p,
+    )
+    max_input_tokens = spec.runtime_context_tokens - options.max_new_tokens
+    final_prompt = backend._fit_prompt_to_runtime_context(
+        tokenizer,
+        raw_messages,
+        max_input_tokens=max_input_tokens,
+    )
+    token_count = len(tokenizer.encode(final_prompt, add_special_tokens=False))
     dossier = {
-        "source_sha": _source_sha(),
+        "source_identity": _source_identity(),
         "case_id": case_id,
         "case": case,
         "model": {"id": spec.repo_id, "revision": spec.revision},
@@ -195,6 +225,9 @@ def export_prompt_dossier(case_id: str, out_path: Path) -> dict[str, Any]:
             "utf8_bytes": len(final_prompt.encode("utf-8")),
             "token_count": token_count,
             "sha256": hashlib.sha256(final_prompt.encode("utf-8")).hexdigest(),
+            "prefit_token_count": prefit_token_count,
+            "max_input_tokens": max_input_tokens,
+            "optional_context_dropped": final_prompt != prefit_prompt,
         },
     }
     out_path.parent.mkdir(parents=True, exist_ok=True)

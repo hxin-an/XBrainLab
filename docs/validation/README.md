@@ -90,11 +90,14 @@ Assistant candidate必須在同一clean/explained exact source依序閉合下列
 
 1. Unit/integration證明18-tool registry、strict envelope、backend-owned stage、confirmation、GUI
    correlation與no-model diagnostic terminal；mock或manifest-only測試不等於真人workflow。
-2. Frozen Granite core report固定50 cases：36 positive（18 tools各2）與14 challenge diagnostics。Core
-   gate要求36/36 positive exact tool＋parameters、其中10/10 direct preprocess通過production
-   parameter-origin guard，以及5/5 missing-parameter經同一guard得到零execution與具體追問。其餘9個
-   raw challenge必須完整保留為known limitations，不改寫舊分母，也不得宣稱raw model已解決。
-   同一evaluator另執行24個雙語no-action precision cases；24/24 product outcomes都必須沒有confirmation、
+2. Active Granite English report固定81 cases：36 positive（18 tools各2）、14 challenge、24 no-action precision
+   與7 clarification trajectories。Raw model、Host safety與product outcome必須分開報告：Host block或format
+   recovery只能支持產品安全，不能增加first-generation raw-model quality；post-recovery score只作diagnostic。Core
+   raw model gate要求36/36 positive exact tool＋parameters、零critical challenge tool／stage／safety failure、
+   24/24 precision no-action與7/7 clarification continuation；最多三個noncritical challenge wording
+   failure必須完整保留。Host safety gate另要求10/10 direct preprocess parameter-origin checks與5/5
+   missing-parameter origin blocks，且不得把這些Host outcome回填成raw-model correctness。
+   同一evaluator另執行24個英文no-action precision cases；24/24 product outcomes都必須沒有confirmation、
    GUI handoff、ApplicationService／ToolExecutor execution或state mutation。Raw model decision與Host
    composed outcome分開記錄；第一次raw generation與最多兩次production strict-envelope recovery的每次
    response／taxonomy都必須保存，final gate只看最後accepted或exhausted presentation outcome。Generation
@@ -103,9 +106,8 @@ Assistant candidate必須在同一clean/explained exact source依序閉合下列
    bounded selection與production admission outcome，不支撐產品ready。
    Precision prompt與attempt scorer的callable set／blocked reasons必須由同一個production
    `ApplicationViewPublication`及既有agent capability policy產生；直接使用hand-authored stage list或把
-   scorer context中的所有tool設為enabled，不構成unavailable-action projection證據。Frozen core仍保留
-   原catalog路徑以維持歷史可比，兩種suite不得互換claim。
-   同一v8 evaluator另固定7個production-controller clarification trajectories：五個direct cases的source
+   scorer context中的所有tool設為enabled，不構成unavailable-action projection證據。
+   同一v9 evaluator另固定7個production-controller clarification trajectories：五個direct cases的source
    必須來自precision suite的missing-parameter turn，且第一輪真的由production parameter-origin boundary
    產生exact tool／question receipt；模型直接`respond_to_user`而沒有Host receipt時不得合成或代填。另外
    generic filter selection與partial bandpass accumulation都必須經真controller pending lifecycle。所有

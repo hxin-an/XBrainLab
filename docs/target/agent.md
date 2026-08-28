@@ -298,31 +298,33 @@ command policy或fake backend。
 
 ## Candidate validation與claims
 
-Engineering candidate的core suite在新增`compute_saliency`後仍固定為50 cases：36個positive cases
-（18個target tool各2個）加14個challenge diagnostics。Challenge必須包含五個missing-parameter、跨stage
-lifecycle、out-of-stage、general、ambiguous與multi-mutation；raw score保留用來暴露選定模型限制，不把
-Host拒絕冒充raw-model accuracy。另以同一 evaluator、同一model／revision與同一source執行24個雙語
-no-action precision cases；core 50的cases、hash與raw結果保持可比較。Candidate gates：
+Engineering candidate的active suite固定為81個英文cases：36個positive cases（18個target tool各2個）、
+14個challenge、24個no-action precision與7個controller-backed clarification trajectories。Challenge必須包含
+五個missing-parameter、跨stage lifecycle、out-of-stage、general、ambiguous與multi-mutation；raw score保留
+用來暴露選定模型限制，不把Host拒絕冒充raw-model accuracy。中文intent／verifier可作未承諾相容基礎，
+不屬於active evidence。Candidate gates把raw model、Host safety與product outcome分開報告：
 
-Evaluator保留第一次generation的raw score，但candidate判定必須走與產品相同的structured-decision
-token resolver、strict parser及最多兩次format recovery；每次response／taxonomy都留在artifact，最後一個
-accepted或exhausted presentation outcome才是final score。Format recovery只修envelope，不得把semantic
-tool-selection failure重分類為通過。
+Evaluator保留第一次未受Host recovery影響的raw score，另將post-recovery score只作diagnostic；candidate
+raw-model gate只讀第一次generation。candidate判定仍必須走與產品相同的structured-decision token resolver、
+strict parser及最多兩次format recovery；每次response／taxonomy都留在artifact，最後一個accepted或exhausted
+presentation outcome才是product score。Format recovery只修envelope，不得把semantic tool-selection failure
+重分類為通過。
 
 - invalid／out-of-stage／stale execution、cancel後continuation與multi-mutation partial action皆為0。
 - 36個positive全部得到exact final tool＋parameters，且五個direct preprocess的值都能從latest user
   request驗證；完整值不新增confirmation。
-- 五個missing-parameter cases可以由模型直接`respond_to_user`，或由模型提出tool後被同一production
-  parameter-origin guard轉成一般Assistant追問；兩條路徑都必須零ApplicationService／ToolExecutor
-  execution，且追問指出缺少的欄位。
+- 五個missing-parameter cases必須先由raw model直接`respond_to_user`並指出缺少欄位；若模型提出tool，
+  parameter-origin guard仍必須確保零ApplicationService／ToolExecutor execution，但該Host rescue不得回填
+  raw-model accuracy。
 - Clarification gate固定為7條production trajectory：五種direct-preprocess追問證明只提供所缺值即可讓
   同一exact action在current publication下執行；generic filter先選bandpass後才建立typed receipt；bandpass
   先補low、再補high時只累積可驗證值並重跑完整admission。取消、無關回答、stale generation與不同tool
   不得使用receipt取得execution authority。這是clarification recovery evidence，不回填第一輪raw-model
   accuracy。
-- Core gate要求36/36 positive、其中10/10 direct preprocess origin checks，以及5/5
-  missing-parameter composed outcomes；其餘9個raw challenge結果完整保存為known limitations，
-  不改寫舊分母，也不得宣稱raw model已解決。
+- Raw model gate要求36/36 positive、零critical challenge decision failure、24/24 precision no-action與
+  7/7 clarification continuation；最多三個noncritical challenge wording failure可以保留並完整揭露。Host
+  safety gate另要求10/10 direct preprocess origin checks與5/5 missing-parameter origin blocks，並以controller
+  unit/integration evidence覆蓋cancel、topic switch、stale receipt、different tool、partial reply與multi-action。
 - Precision gate要求24/24 product outcomes沒有confirmation、GUI handoff、ApplicationService／ToolExecutor
   execution或state mutation。五個缺參數direct tools可由既有parameter-origin guard轉成具體追問；
   out-of-stage的精確requested tool可由既有publication／capability boundary安全阻擋。General、negated、

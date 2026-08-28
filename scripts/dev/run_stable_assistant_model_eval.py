@@ -83,7 +83,7 @@ DEFAULT_PRECISION_CASES = (
 DEFAULT_CLARIFICATION_CASES = (
     ROOT / "scripts" / "dev" / "stable_assistant_clarification_cases.json"
 )
-REPORT_SCHEMA = "xbrainlab.stable_assistant_model_eval.v8"
+REPORT_SCHEMA = "xbrainlab.stable_assistant_model_eval.v9"
 PRECISION_CASE_COUNT = 24
 CLARIFICATION_CASE_COUNT = 7
 MISSING_PARAMETER_HOST_TOOLS = {
@@ -94,6 +94,16 @@ MISSING_PARAMETER_HOST_TOOLS = {
     "missing_normalization_method_01": "normalize_data",
 }
 DIRECT_PARAMETER_TOOLS = frozenset(MISSING_PARAMETER_HOST_TOOLS.values())
+_MISSING_PARAMETER_CONCEPTS = {
+    "apply_bandpass_filter": (("bandpass",), ("low", "lower"), ("high", "upper")),
+    "apply_notch_filter": (("notch",), ("frequency", "freq", "hz")),
+    "resample_data": (("resample",), ("rate", "hz")),
+    "set_reference": (("reference",), ("method", "average")),
+    "normalize_data": (
+        ("normalize", "normalization"),
+        ("method", "z-score", "min-max"),
+    ),
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,7 +131,7 @@ class TargetChallengeCase:
 
 @dataclass(frozen=True, slots=True)
 class PrecisionCase:
-    """One bilingual no-action outcome case against the product boundary."""
+    """One English no-action outcome case against the product boundary."""
 
     case_id: str
     user_input: str
@@ -185,9 +195,12 @@ class ModelGenerationAttempt:
 
 @dataclass(frozen=True, slots=True)
 class CaseTrajectoryResult:
-    """Raw and final scores for one product-like strict-envelope trajectory."""
+    """First-generation, post-recovery, and product scores for one trajectory."""
 
+    # This is the first model output, before any Host-issued recovery message.
     raw_score: TargetEvalScore
+    # Diagnostic only: a later model output after format recovery, if any.
+    post_recovery_score: TargetEvalScore
     final_score: TargetEvalScore
     final_response: str
     attempts: tuple[ModelGenerationAttempt, ...]
@@ -221,7 +234,7 @@ def _first_stage_for_tool(tool_name: str) -> PipelineStage:
 
 
 def load_target_cases(path: Path = DEFAULT_CASES) -> tuple[TargetEvalCase, ...]:
-    """Load the bilingual target examples and reject catalog drift."""
+    """Load active English target examples and reject catalog drift."""
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -232,6 +245,7 @@ def load_target_cases(path: Path = DEFAULT_CASES) -> tuple[TargetEvalCase, ...]:
     approved = AGENT_ACTION_CONTRACTS.model_tool_names()
     cases: list[TargetEvalCase] = []
     seen_ids: set[str] = set()
+    seen_normalized_inputs: set[str] = set()
     for row in payload:
         if not isinstance(row, dict):
             raise ValueError("Each target model eval case must be one object.")
@@ -242,6 +256,11 @@ def load_target_cases(path: Path = DEFAULT_CASES) -> tuple[TargetEvalCase, ...]:
             raise ValueError(f"Invalid or duplicate target case id: {case_id!r}")
         if not isinstance(user_input, str) or not user_input.strip():
             raise ValueError(f"Target case {case_id} lacks a user input.")
+        normalized_input = user_input.strip().casefold()
+        if normalized_input in seen_normalized_inputs:
+            raise ValueError(
+                f"Target case {case_id} duplicates a normalized user input."
+            )
         if not isinstance(calls, list) or len(calls) != 1:
             raise ValueError(f"Target case {case_id} must expect exactly one tool.")
         call = calls[0]
@@ -262,6 +281,7 @@ def load_target_cases(path: Path = DEFAULT_CASES) -> tuple[TargetEvalCase, ...]:
             )
         )
         seen_ids.add(case_id)
+        seen_normalized_inputs.add(normalized_input)
 
     counts = {
         tool_name: sum(case.expected_tool == tool_name for case in cases)
@@ -361,7 +381,7 @@ def load_challenge_cases(
 def load_precision_cases(
     path: Path = DEFAULT_PRECISION_CASES,
 ) -> tuple[PrecisionCase, ...]:
-    """Load the separately versioned bilingual no-action precision corpus."""
+    """Load the separately versioned English no-action precision corpus."""
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -437,9 +457,11 @@ def load_precision_cases(
             raise ValueError(f"Precision suite must contain two {category} cases.")
         if {case.case_id.rsplit("_", 1)[-1] for case in category_cases} != {
             "en",
-            "zh",
+            "alt",
         }:
-            raise ValueError(f"Precision {category} cases must be bilingual.")
+            raise ValueError(
+                f"Precision {category} cases must provide two English variants."
+            )
     if any(
         (case.category in {"general", "ambiguous", "multi_action"})
         != (case.requested_tool is None)
@@ -1192,6 +1214,72 @@ def score_precision_response(
     )
 
 
+def score_raw_precision_response(
+    case: PrecisionCase,
+    response: str,
+    registry: ToolRegistry,
+) -> TargetEvalScore:
+    """Score the model's no-action choice before any Host intervention."""
+    del registry
+    envelope = CommandParser.parse_product(response)
+    if envelope.status is ToolEnvelopeStatus.FORMAT_ERROR:
+        return TargetEvalScore(
+            False,
+            "output_format",
+            response[:1000],
+            envelope.workflow_stage,
+            None,
+            None,
+            envelope.error,
+        )
+    if envelope.workflow_stage != case.workflow_stage:
+        return TargetEvalScore(
+            False,
+            "workflow_stage",
+            response[:1000],
+            envelope.workflow_stage,
+            None,
+            None,
+            "Model did not acknowledge the exact target stage.",
+        )
+    if envelope.status is ToolEnvelopeStatus.VALID:
+        tool_name, parameters = envelope.commands[0]
+        return TargetEvalScore(
+            False,
+            "unexpected_tool",
+            response[:1000],
+            envelope.workflow_stage,
+            tool_name,
+            parameters,
+            "Model proposed a tool where the case requires a no-action response.",
+        )
+    message = envelope.message
+    passed = _valid_precision_message(message)
+    if passed and case.category == "missing_parameter":
+        concepts = _MISSING_PARAMETER_CONCEPTS.get(case.requested_tool or "", ())
+        folded_message = message.casefold()
+        passed = bool(
+            concepts
+            and all(
+                any(term.casefold() in folded_message for term in group)
+                for group in concepts
+            )
+        )
+    return TargetEvalScore(
+        passed,
+        "none" if passed else "response_content",
+        response[:1000],
+        envelope.workflow_stage,
+        "respond_to_user",
+        {"message": message},
+        (
+            "Model selected a valid no-action response."
+            if passed
+            else "Model did not provide the case-required no-action response."
+        ),
+    )
+
+
 def _score_case_response(
     case: TargetEvalCase | TargetChallengeCase | PrecisionCase,
     response: str,
@@ -1202,6 +1290,16 @@ def _score_case_response(
     if isinstance(case, TargetChallengeCase):
         return score_challenge_response(case, response, registry)
     return score_model_response(case, response, registry)
+
+
+def _score_raw_model_response(
+    case: TargetEvalCase | TargetChallengeCase | PrecisionCase,
+    response: str,
+    registry: ToolRegistry,
+) -> TargetEvalScore:
+    if isinstance(case, PrecisionCase):
+        return score_raw_precision_response(case, response, registry)
+    return _score_case_response(case, response, registry)
 
 
 def _recovery_envelope(
@@ -1230,6 +1328,7 @@ def _evaluate_trajectory(
     workflow_stage: str,
     build_messages: Callable[[tuple[str, ...]], list[dict[str, str]]],
     score_response: Callable[[str], TargetEvalScore],
+    score_raw_model_response: Callable[[str], TargetEvalScore],
     generate_response: Callable[[list[dict[str, str]]], str],
 ) -> CaseTrajectoryResult:
     """Generate one strict-envelope trajectory through the production policy."""
@@ -1244,7 +1343,7 @@ def _evaluate_trajectory(
             raise TypeError("Model generation must return one exact string.")
         response = response.strip()
         if raw_score is None:
-            raw_score = score_response(response)
+            raw_score = score_raw_model_response(response)
 
         envelope, parsed_stage = _recovery_envelope(
             response,
@@ -1285,6 +1384,7 @@ def _evaluate_trajectory(
             )
         return CaseTrajectoryResult(
             raw_score=raw_score,
+            post_recovery_score=score_raw_model_response(response),
             final_score=final_score,
             final_response=response,
             attempts=tuple(attempts),
@@ -1309,6 +1409,11 @@ def evaluate_case_trajectory(
         workflow_stage=case.workflow_stage,
         build_messages=messages,
         score_response=lambda response: _score_case_response(
+            case,
+            response,
+            registry,
+        ),
+        score_raw_model_response=lambda response: _score_raw_model_response(
             case,
             response,
             registry,
@@ -1421,6 +1526,38 @@ def evaluate_clarification_trajectory(
         )
         return observed[response]
 
+    def raw_score(response: str) -> TargetEvalScore:
+        envelope = CommandParser.parse_product(response)
+        if envelope.status is not ToolEnvelopeStatus.VALID:
+            return TargetEvalScore(
+                False,
+                "output_format",
+                response[:1000],
+                envelope.workflow_stage,
+                None,
+                None,
+                envelope.error,
+            )
+        tool_name, parameters = envelope.commands[0]
+        passed = bool(
+            envelope.workflow_stage == source.workflow_stage
+            and tool_name == case.expected_tool
+            and parameters == case.expected_parameters
+        )
+        return TargetEvalScore(
+            passed,
+            "none" if passed else "clarification_continuation",
+            response[:1000],
+            envelope.workflow_stage,
+            tool_name,
+            parameters,
+            (
+                "Model selected the exact continuation action."
+                if passed
+                else "Model did not select the exact continuation action."
+            ),
+        )
+
     return _evaluate_trajectory(
         workflow_stage=source.workflow_stage,
         build_messages=lambda recovery: build_clarification_messages(
@@ -1431,6 +1568,7 @@ def evaluate_clarification_trajectory(
             recovery_messages=recovery,
         )[0],
         score_response=score,
+        score_raw_model_response=raw_score,
         generate_response=generate_response,
     )
 
@@ -1510,6 +1648,7 @@ def evaluate_discriminated_clarification_trajectory(
         )
         return CaseTrajectoryResult(
             raw_score=first_trajectory.raw_score,
+            post_recovery_score=action_trajectory.post_recovery_score,
             final_score=failed,
             final_response=action_trajectory.final_response,
             attempts=(
@@ -1547,10 +1686,11 @@ def evaluate_discriminated_clarification_trajectory(
                 detail="Controller did not verify and requeue the partial reply.",
             )
             return CaseTrajectoryResult(
-                first_trajectory.raw_score,
-                failed,
-                partial_response,
-                first_trajectory.attempts + action_trajectory.attempts,
+                raw_score=first_trajectory.raw_score,
+                post_recovery_score=action_trajectory.post_recovery_score,
+                final_score=failed,
+                final_response=partial_response,
+                attempts=first_trajectory.attempts + action_trajectory.attempts,
             )
     final_case = replace(case, reply=case.turns[2])
     final_trajectory = evaluate_clarification_trajectory(
@@ -1562,6 +1702,7 @@ def evaluate_discriminated_clarification_trajectory(
     )
     return CaseTrajectoryResult(
         raw_score=first_trajectory.raw_score,
+        post_recovery_score=final_trajectory.post_recovery_score,
         final_score=final_trajectory.final_score,
         final_response=final_trajectory.final_response,
         attempts=(
@@ -1709,18 +1850,28 @@ def _build_report(
     clarification_passed = sum(
         bool(row["score"]["passed"]) for row in clarification_rows
     )
-    raw_generation_summary: dict[str, dict[str, int]] = {}
+    first_generation_summary: dict[str, dict[str, int]] = {}
+    post_recovery_summary: dict[str, dict[str, int]] = {}
     for suite in ("positive", "challenge", "precision", "clarification"):
         suite_rows = [row for row in results if row.get("suite") == suite]
-        raw_passed = sum(
-            bool(row.get("raw_score", row["score"])["passed"]) for row in suite_rows
+        first_generation_passed = sum(
+            bool(row.get("first_generation_score", row["score"])["passed"])
+            for row in suite_rows
         )
-        raw_generation_summary[suite] = {
+        post_recovery_passed = sum(
+            bool(row.get("post_recovery_score", row["score"])["passed"])
+            for row in suite_rows
+        )
+        first_generation_summary[suite] = {
             "case_count": len(suite_rows),
-            "passed_count": raw_passed,
-            "failed_count": len(suite_rows) - raw_passed,
+            "passed_count": first_generation_passed,
+            "failed_count": len(suite_rows) - first_generation_passed,
         }
-    positive_passed = suite_summary["positive"]["passed_count"]
+        post_recovery_summary[suite] = {
+            "case_count": len(suite_rows),
+            "passed_count": post_recovery_passed,
+            "failed_count": len(suite_rows) - post_recovery_passed,
+        }
     positive_guard_rows = [
         row["parameter_origin_guard"]
         for row in results
@@ -1735,12 +1886,74 @@ def _build_report(
         and row["host_guard"].get("applicable") is True
     ]
     host_guard_passed = sum(bool(row.get("passed")) for row in host_guard_rows)
-    frozen_core_passed = bool(
+    challenge_rows = [row for row in results if row.get("suite") == "challenge"]
+    challenge_critical_failures = sum(
+        row.get("first_generation_score", row["score"]).get("failure_type")
+        in {"output_format", "workflow_stage", "unexpected_tool"}
+        for row in challenge_rows
+    )
+    challenge_wording_failures = sum(
+        row.get("first_generation_score", row["score"]).get("failure_type")
+        == "response_content"
+        for row in challenge_rows
+    )
+    challenge_unclassified_failures = (
+        len(challenge_rows)
+        - first_generation_summary["challenge"]["passed_count"]
+        - challenge_critical_failures
+        - challenge_wording_failures
+    )
+    raw_model_gate = {
+        "positive_exact": {
+            "required": 36,
+            "passed": first_generation_summary["positive"]["passed_count"],
+        },
+        "challenge_decision": {
+            "required": 14,
+            "critical_failures": challenge_critical_failures,
+            "wording_failures": challenge_wording_failures,
+            "max_wording_failures": 3,
+            "unclassified_failures": challenge_unclassified_failures,
+        },
+        "precision_no_action": {
+            "required": PRECISION_CASE_COUNT,
+            "passed": first_generation_summary["precision"]["passed_count"],
+        },
+        "clarification_continuation": {
+            "required": CLARIFICATION_CASE_COUNT,
+            "passed": first_generation_summary["clarification"]["passed_count"],
+        },
+    }
+    raw_model_gate["passed"] = bool(
+        complete
+        and raw_model_gate["positive_exact"]["passed"] == 36
+        and raw_model_gate["challenge_decision"]["critical_failures"] == 0
+        and raw_model_gate["challenge_decision"]["wording_failures"] <= 3
+        and raw_model_gate["challenge_decision"]["unclassified_failures"] == 0
+        and raw_model_gate["precision_no_action"]["passed"] == PRECISION_CASE_COUNT
+        and raw_model_gate["clarification_continuation"]["passed"]
+        == CLARIFICATION_CASE_COUNT
+    )
+    host_safety_gate = {
+        "explicit_parameter_origin": {"required": 10, "passed": positive_guard_passed},
+        "missing_parameter_origin": {"required": 5, "passed": host_guard_passed},
+        "continuation_boundaries": {
+            "not_counted_in_model_report": [
+                "cancel",
+                "topic_switch",
+                "stale_receipt",
+                "different_tool",
+                "partial_reply",
+                "multi_action",
+            ],
+            "report_status": "not_measured_by_this_model_report",
+            "external_evidence": "controller unit/integration coverage required",
+        },
+    }
+    host_safety_gate["passed"] = bool(
         complete
         and expected_case_count == 50
         and len(core_rows) == 50
-        and suite_summary["positive"]["case_count"] == 36
-        and positive_passed == 36
         and len(positive_guard_rows) == 10
         and positive_guard_passed == 10
         and len(host_guard_rows) == 5
@@ -1756,8 +1969,23 @@ def _build_report(
     clarification_passed_gate = bool(
         clarification_complete and clarification_passed == CLARIFICATION_CASE_COUNT
     )
-    candidate_passed = (
-        frozen_core_passed and precision_passed_gate and clarification_passed_gate
+    product_outcome_gate = {
+        "precision_no_action": {
+            "required": PRECISION_CASE_COUNT,
+            "passed": precision_passed,
+        },
+        "clarification_execution_boundary": {
+            "required": CLARIFICATION_CASE_COUNT,
+            "passed": clarification_passed,
+        },
+    }
+    product_outcome_gate["passed"] = bool(
+        precision_passed_gate and clarification_passed_gate
+    )
+    candidate_passed = bool(
+        raw_model_gate["passed"]
+        and host_safety_gate["passed"]
+        and product_outcome_gate["passed"]
     )
     spec = local_model_spec(model_id)
     return {
@@ -1771,26 +1999,15 @@ def _build_report(
         "generation_policy": generation_policy,
         "target_surface": sorted(AGENT_ACTION_CONTRACTS.model_tool_names()),
         "suite_summary": suite_summary,
-        "raw_generation_summary": raw_generation_summary,
+        "first_generation_summary": first_generation_summary,
+        "post_recovery_summary": post_recovery_summary,
+        "raw_model_gate": raw_model_gate,
+        "host_safety_gate": host_safety_gate,
+        "product_outcome_gate": product_outcome_gate,
         "candidate_gate": {
-            "positive_exact": {"required": 36, "passed": positive_passed},
-            "explicit_parameter_host_guard": {
-                "required": 10,
-                "passed": positive_guard_passed,
-            },
-            "missing_parameter_host_guard": {
-                "required": 5,
-                "passed": host_guard_passed,
-            },
-            "frozen_core_passed": frozen_core_passed,
-            "precision_no_action": {
-                "required": PRECISION_CASE_COUNT,
-                "passed": precision_passed,
-            },
-            "clarification_continuation": {
-                "required": CLARIFICATION_CASE_COUNT,
-                "passed": clarification_passed,
-            },
+            "raw_model": raw_model_gate["passed"],
+            "host_safety": host_safety_gate["passed"],
+            "product_outcome": product_outcome_gate["passed"],
             "passed": candidate_passed,
         },
         "summary": {
@@ -1819,14 +2036,12 @@ def _build_report(
         },
         "results": results,
         "claim_boundary": (
-            "Frozen bilingual core preserves exact selection for 36 complete requests plus the "
-            "deterministic host parameter-origin boundary for five missing-value "
-            "requests. Candidate gates use the final bounded strict-envelope recovery, "
-            "parser, attempt, and presentation outcome. Seven controller-backed "
-            "clarification trajectories (five direct actions, generic filter selection, "
-            "and partial bandpass accumulation) must reach the verified execution boundary; "
-            "raw first-generation scores remain separate diagnostics. These suites are not "
-            "workflow success or thesis-grade model accuracy."
+            "Active English cases report raw model decisions, Host safety boundaries, and "
+            "final product outcomes separately. A Host block or recovery can establish "
+            "product safety but never counts as raw model quality. Seven controller-backed "
+            "clarification trajectories (five direct actions, generic filter selection, and "
+            "partial bandpass accumulation) must reach the verified execution boundary. "
+            "These suites are not workflow success or thesis-grade model accuracy."
         ),
     }
 
@@ -1976,13 +2191,17 @@ def run_eval(
             score_payload = asdict(score)
             if score.product_outcome is None:
                 score_payload.pop("product_outcome")
-            raw_score_payload = asdict(trajectory.raw_score)
+            first_generation_score_payload = asdict(trajectory.raw_score)
             if trajectory.raw_score.product_outcome is None:
-                raw_score_payload.pop("product_outcome")
+                first_generation_score_payload.pop("product_outcome")
+            post_recovery_score_payload = asdict(trajectory.post_recovery_score)
+            if trajectory.post_recovery_score.product_outcome is None:
+                post_recovery_score_payload.pop("product_outcome")
             row = {
                 "suite": suite,
                 "case": asdict(case),
-                "raw_score": raw_score_payload,
+                "first_generation_score": first_generation_score_payload,
+                "post_recovery_score": post_recovery_score_payload,
                 "score": score_payload,
                 "trajectory": {
                     "attempts": [asdict(attempt) for attempt in trajectory.attempts],
@@ -2040,7 +2259,8 @@ def run_eval(
                     ),
                 )
                 score_payload = asdict(trajectory.final_score)
-                raw_score_payload = asdict(trajectory.raw_score)
+                first_generation_score_payload = asdict(trajectory.raw_score)
+                post_recovery_score_payload = asdict(trajectory.post_recovery_score)
                 attempts = [asdict(attempt) for attempt in trajectory.attempts]
                 source = None
                 source_has_receipt = True
@@ -2073,7 +2293,8 @@ def run_eval(
                         ),
                     )
                     score_payload = asdict(trajectory.final_score)
-                    raw_score_payload = asdict(trajectory.raw_score)
+                    first_generation_score_payload = asdict(trajectory.raw_score)
+                    post_recovery_score_payload = asdict(trajectory.post_recovery_score)
                     attempts = [asdict(attempt) for attempt in trajectory.attempts]
                 else:
                     unavailable = TargetEvalScore(
@@ -2086,19 +2307,23 @@ def run_eval(
                         "First turn did not produce the exact Host clarification receipt.",
                     )
                     score_payload = asdict(unavailable)
-                    raw_score_payload = dict(score_payload)
+                    first_generation_score_payload = dict(score_payload)
+                    post_recovery_score_payload = dict(score_payload)
                     attempts = []
             if score_payload.get("product_outcome") is None:
                 score_payload.pop("product_outcome", None)
-            if raw_score_payload.get("product_outcome") is None:
-                raw_score_payload.pop("product_outcome", None)
+            if first_generation_score_payload.get("product_outcome") is None:
+                first_generation_score_payload.pop("product_outcome", None)
+            if post_recovery_score_payload.get("product_outcome") is None:
+                post_recovery_score_payload.pop("product_outcome", None)
             results.append(
                 {
                     "suite": "clarification",
                     "case": asdict(case),
                     "source_case": asdict(source) if source is not None else None,
                     "source_has_host_receipt": source_has_receipt,
-                    "raw_score": raw_score_payload,
+                    "first_generation_score": first_generation_score_payload,
+                    "post_recovery_score": post_recovery_score_payload,
                     "score": score_payload,
                     "trajectory": {
                         "attempts": attempts,

@@ -8,7 +8,7 @@
   {
     "id": "import_eeg_data_02",
     "category": "data_entry",
-    "input": "我要匯入 EEG 資料。",
+    "input": "Import EEG data.",
     "expected_tool_calls": [{"tool_name": "import_eeg_data", "parameters": {}}]
   },
   {
@@ -20,7 +20,7 @@
   {
     "id": "select_channels_02",
     "category": "data_setup",
-    "input": "打開 channel selection 讓我選擇通道。",
+    "input": "Open channel selection so I can choose channels.",
     "expected_tool_calls": [{"tool_name": "select_channels", "parameters": {}}]
   },
   {
@@ -32,7 +32,7 @@
   {
     "id": "set_montage_02",
     "category": "data_setup",
-    "input": "我要設定電極 montage。",
+    "input": "Set the electrode montage.",
     "expected_tool_calls": [{"tool_name": "set_montage", "parameters": {}}]
   },
   {
@@ -44,7 +44,7 @@
   {
     "id": "create_epochs_02",
     "category": "epoch",
-    "input": "我要設定 epoch 時間範圍。",
+    "input": "Open the epoch time-range settings.",
     "expected_tool_calls": [{"tool_name": "create_epochs", "parameters": {}}]
   },
   {
@@ -56,7 +56,7 @@
   {
     "id": "configure_dataset_split_02",
     "category": "training_setup",
-    "input": "我要設定 training validation test 的資料切分。",
+    "input": "Configure the training, validation, and test data split.",
     "expected_tool_calls": [{"tool_name": "configure_dataset_split", "parameters": {}}]
   },
   {
@@ -68,7 +68,7 @@
   {
     "id": "select_model_02",
     "category": "training_setup",
-    "input": "讓我選擇訓練模型。",
+    "input": "Let me choose the training model.",
     "expected_tool_calls": [{"tool_name": "select_model", "parameters": {}}]
   },
   {
@@ -80,7 +80,7 @@
   {
     "id": "configure_training_02",
     "category": "training_setup",
-    "input": "我要設定 epochs、batch size 和 learning rate。",
+    "input": "Configure epochs, batch size, and learning rate.",
     "expected_tool_calls": [{"tool_name": "configure_training", "parameters": {}}]
   },
   {
@@ -92,7 +92,7 @@
   {
     "id": "apply_bandpass_filter_02",
     "category": "preprocess",
-    "input": "幫我做 1 到 40 Hz 的 bandpass。",
+    "input": "Apply a 1 to 40 Hz bandpass filter.",
     "expected_tool_calls": [{"tool_name": "apply_bandpass_filter", "parameters": {"low_freq": 1, "high_freq": 40}}]
   },
   {
@@ -104,7 +104,7 @@
   {
     "id": "apply_notch_filter_02",
     "category": "preprocess",
-    "input": "使用 50 Hz notch 移除電源雜訊。",
+    "input": "Use a 50 Hz notch filter to remove power-line noise.",
     "expected_tool_calls": [{"tool_name": "apply_notch_filter", "parameters": {"freq": 50}}]
   },
   {
@@ -116,7 +116,7 @@
   {
     "id": "resample_data_02",
     "category": "preprocess",
-    "input": "把資料重採樣到 256 Hz。",
+    "input": "Resample the data to 256 Hz.",
     "expected_tool_calls": [{"tool_name": "resample_data", "parameters": {"rate": 256}}]
   },
   {
@@ -128,7 +128,7 @@
   {
     "id": "set_reference_02",
     "category": "preprocess",
-    "input": "將 EEG 設成 average reference。",
+    "input": "Set the EEG reference to average.",
     "expected_tool_calls": [{"tool_name": "set_reference", "parameters": {"method": "average"}}]
   },
   {
@@ -140,7 +140,7 @@
   {
     "id": "normalize_data_02",
     "category": "preprocess",
-    "input": "使用 min-max normalization。",
+    "input": "Normalize the EEG data with min-max scaling.",
     "expected_tool_calls": [{"tool_name": "normalize_data", "parameters": {"method": "min-max"}}]
   },
   {
@@ -152,7 +152,7 @@
   {
     "id": "start_training_02",
     "category": "training_lifecycle",
-    "input": "開始訓練。",
+    "input": "Start training.",
     "expected_tool_calls": [{"tool_name": "start_training", "parameters": {}}]
   },
   {
@@ -164,7 +164,7 @@
   {
     "id": "stop_training_02",
     "category": "training_lifecycle",
-    "input": "停止目前的訓練。",
+    "input": "End the active training run.",
     "expected_tool_calls": [{"tool_name": "stop_training", "parameters": {}}]
   },
   {
@@ -176,7 +176,7 @@
   {
     "id": "reset_preprocessing_02",
     "category": "lifecycle",
-    "input": "清除目前的前處理結果。",
+    "input": "Clear the current preprocessing results.",
     "expected_tool_calls": [{"tool_name": "reset_preprocessing", "parameters": {}}]
   },
   {
@@ -188,7 +188,7 @@
   {
     "id": "clear_training_history_02",
     "category": "lifecycle",
-    "input": "清除訓練歷史紀錄。",
+    "input": "Clear the training history records.",
     "expected_tool_calls": [{"tool_name": "clear_training_history", "parameters": {}}]
   },
   {
@@ -200,7 +200,7 @@
   {
     "id": "compute_saliency_02",
     "category": "analysis_execution",
-    "input": "計算目前所選已完成訓練結果的 saliency。",
+    "input": "Compute saliency for the currently selected completed training run.",
     "expected_tool_calls": [{"tool_name": "compute_saliency", "parameters": {}}]
   },
   {
@@ -212,7 +212,7 @@
   {
     "id": "switch_panel_02",
     "category": "navigation",
-    "input": "顯示 saliency map。",
+    "input": "Show the saliency map.",
     "expected_tool_calls": [{"tool_name": "switch_panel", "parameters": {"panel_name": "visualization", "view_mode": "saliency_map"}}]
   }
 ]
