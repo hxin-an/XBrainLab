@@ -518,41 +518,6 @@ def test_channel_selection_uses_neutral_action_style(sidebar):
     assert sidebar.chan_select_btn.styleSheet() != Stylesheets.BTN_SUCCESS
 
 
-def test_update_sidebar_locked(sidebar):
-    # Case: Locked (processing downstream)
-    sidebar.controller.is_locked.return_value = True
-    sidebar.update_sidebar()
-
-    # Logic: Button remains enabled but action is blocked. Tooltip updates.
-    assert sidebar.chan_select_btn.isEnabled() is True
-    assert "Dataset is locked" in sidebar.chan_select_btn.toolTip()
-    assert sidebar.import_label_btn.isEnabled() is False
-    assert "locked" in sidebar.import_label_btn.toolTip().lower()
-
-
-def test_update_sidebar_unlocked(sidebar):
-    # Case: Unlocked
-    sidebar.controller.is_locked.return_value = False
-    sidebar.controller.has_data.return_value = True
-
-    sidebar.update_sidebar()
-
-    assert sidebar.chan_select_btn.isEnabled() is True
-    assert sidebar.chan_select_btn.toolTip() == "Select specific channels to keep"
-    assert sidebar.import_label_btn.isEnabled() is True
-    assert "recipe trace" in sidebar.import_label_btn.toolTip()
-
-
-def test_update_sidebar_without_data_guides_to_interpret_source(sidebar):
-    sidebar.controller.is_locked.return_value = False
-    sidebar.controller.has_data.return_value = False
-
-    sidebar.update_sidebar()
-
-    assert sidebar.import_label_btn.isEnabled() is False
-    assert "Interpret a data source" in sidebar.import_label_btn.toolTip()
-
-
 def test_update_sidebar_reads_one_atomic_capability_publication(qtbot):
     from XBrainLab.backend.application import get_application_service
     from XBrainLab.backend.study import Study
@@ -636,7 +601,7 @@ def test_update_sidebar_refuses_real_study_no_capability_lock_data_fallback(qtbo
     assert "unavailable" in widget.import_label_btn.toolTip()
 
 
-def test_update_sidebar_real_study_missing_publication_skips_compatibility_state(
+def test_update_sidebar_missing_publication_fails_closed(
     qtbot,
 ):
     from XBrainLab.backend.study import Study
@@ -649,30 +614,11 @@ def test_update_sidebar_real_study_missing_publication_skips_compatibility_state
     widget = DatasetSidebar(panel, parent=None)
     qtbot.addWidget(widget)
 
-    with (
-        patch(
-            "XBrainLab.ui.panels.dataset.sidebar.get_application_view_publication",
-            return_value=None,
-        ),
-        patch.object(
-            widget,
-            "_compatibility_sidebar_state",
-            side_effect=AssertionError(
-                "real product state must not consult controller compatibility"
-            ),
-        ) as compatibility_state,
-        patch.object(
-            widget,
-            "_compatibility_controller_value",
-            side_effect=AssertionError(
-                "real product reset state must not consult controller compatibility"
-            ),
-        ) as compatibility_value,
+    with patch(
+        "XBrainLab.ui.panels.dataset.sidebar.get_application_view_publication",
+        return_value=None,
     ):
         widget.update_sidebar()
-
-    compatibility_state.assert_not_called()
-    compatibility_value.assert_not_called()
     expected = {
         widget.import_btn: "Data interpretation availability is unavailable right now.",
         widget.reload_recipe_btn: (
@@ -755,17 +701,9 @@ def test_open_channel_selection_refuses_real_study_preflight_fallback(qtbot):
             "XBrainLab.ui.panels.dataset.sidebar.show_warning",
             side_effect=lambda *args: warning_calls.append(args),
         ),
-        patch.object(
-            widget,
-            "_compatibility_controller_value",
-            side_effect=AssertionError(
-                "real product actions must not consult controller compatibility"
-            ),
-        ) as compatibility_value,
     ):
         widget.open_channel_selection()
 
-    compatibility_value.assert_not_called()
     panel_mock.controller.has_data.assert_not_called()
     panel_mock.controller.is_locked.assert_not_called()
     assert len(warning_calls) == 1
@@ -1052,6 +990,9 @@ def test_channel_selection_raw_change_uses_channels_warning(qtbot, raw_change):
 
 def test_button_connections(sidebar):
     # Verify connections call action handler
+    sidebar.import_btn.setEnabled(True)
+    sidebar.reload_recipe_btn.setEnabled(True)
+    sidebar.smart_parse_btn.setEnabled(True)
     sidebar.import_btn.click()
     sidebar.panel.action_handler.import_data.assert_called_once()
 

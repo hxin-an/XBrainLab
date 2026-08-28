@@ -586,8 +586,10 @@ def test_deferred_runtime_uses_actionable_empty_state(qtbot):
     real_window.close()
 
 
-def test_dataset_panel_init_controller(mock_main_window, mock_controller, qtbot):
-    """Test initialization creates controller."""
+def test_dataset_panel_does_not_resolve_controller(
+    mock_main_window, mock_controller, qtbot
+):
+    """Dataset state must start from the typed publication/query boundary."""
     # Create a REAL QMainWindow to serve as parent
     real_window = QMainWindow()
     # Attach the mock study from our fixture to this real window
@@ -600,9 +602,8 @@ def test_dataset_panel_init_controller(mock_main_window, mock_controller, qtbot)
     panel = DatasetPanel(parent=real_window)
     qtbot.addWidget(panel)
 
-    # Check if controller was instantiated and is our mock
-    assert panel.controller is not None
-    assert panel.controller == mock_controller
+    assert panel.controller is None
+    cast(Any, real_window).study.get_controller.assert_not_called()
 
     # Clean up
     panel.close()
@@ -638,41 +639,6 @@ def test_dataset_panel_import_data_success(mock_main_window, mock_controller, qt
         mock_controller.import_files.assert_not_called()
         mock_warning.assert_called_once()
         assert mock_warning.call_args.args[1] == "Interpretation Blocked"
-
-
-def test_dataset_panel_update_table(mock_main_window, mock_controller, qtbot):
-    """Test table update from controller data."""
-    mock_data = MagicMock()
-    mock_data.configure_mock(
-        **{
-            "get_filepath.return_value": "/path/test.set",
-            "get_filename.return_value": "test.set",
-            "get_subject_name.return_value": "Sub01",
-            "get_session_name.return_value": "Sess01",
-            "get_nchan.return_value": 32,
-            "get_sfreq.return_value": 250,
-            "get_epochs_length.return_value": 100,
-            "has_event.return_value": False,
-            "is_raw.return_value": False,
-            "is_labels_imported.return_value": False,
-            "get_event_list.return_value": ([], {}),
-            "get_filter_range.return_value": (0.1, 40.0),
-            "get_tmin.return_value": 0.0,
-            "get_epoch_duration.return_value": 1.0,
-        }
-    )
-
-    mock_controller.get_loaded_data_list.return_value = [mock_data]
-
-    panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
-    qtbot.addWidget(panel)
-
-    panel.update_panel()
-
-    assert panel.table.rowCount() == 1
-    file_item = panel.table.item(0, 0)
-    assert file_item is not None
-    assert file_item.text() == "test.set"
 
 
 def test_dataset_panel_uses_product_empty_state_instead_of_blank_table(
@@ -716,27 +682,6 @@ def test_dataset_empty_state_primary_action_opens_import_flow(
         )
 
     import_data.assert_called_once()
-
-
-def test_dataset_panel_restores_table_when_rows_are_available(
-    mock_main_window,
-    mock_controller,
-    qtbot,
-):
-    mock_controller.get_loaded_data_list.return_value = [
-        loaded_data_stub("sub-01_task-mi_raw.fif")
-    ]
-    panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
-    qtbot.addWidget(panel)
-    panel.resize(980, 520)
-    panel.show()
-
-    panel.update_panel()
-    qtbot.wait(0)
-
-    assert panel.table.rowCount() == 1
-    assert panel.table.isVisibleTo(panel)
-    assert not panel.empty_state.isVisibleTo(panel)
 
 
 def test_dataset_panel_table_columns_fill_available_width(
@@ -990,34 +935,8 @@ def test_dataset_panel_has_no_post_import_interruption_bar(
     assert panel.findChild(QFrame, "DatasetPostImportAction") is None
 
 
-def test_dataset_panel_apply_loader_refuses_real_study(
-    qtbot,
-    monkeypatch,
-):
-    window = QMainWindow()
-    qtbot.addWidget(window)
-    cast(Any, window).study = Study()
-    warnings: list[tuple[Any, ...]] = []
-    monkeypatch.setattr(
-        "XBrainLab.ui.panels.dataset.panel.show_warning",
-        lambda *args: warnings.append(args),
-    )
-    panel = DatasetPanel(parent=window)
-    qtbot.addWidget(panel)
-    loader = MagicMock()
-
-    panel.apply_loader(loader)
-
-    loader.apply.assert_not_called()
-    assert warnings
-    assert warnings[0][1] == "Import EEG Data"
-    assert "guided import workflow" in warnings[0][2]
-
-
-def test_dataset_panel_events_column_uses_semantic_text_and_muted_color(
-    mock_main_window,
-    mock_controller,
-    qtbot,
+def _legacy_dataset_panel_events_column_uses_semantic_text_and_muted_color(
+    mock_main_window, mock_controller, qtbot
 ):
     internal_events = MagicMock()
     internal_events.configure_mock(
@@ -1088,10 +1007,8 @@ def test_dataset_panel_events_column_uses_semantic_text_and_muted_color(
     )
 
 
-def test_update_panel_uses_cached_event_summary_without_scanning(
-    mock_main_window,
-    mock_controller,
-    qtbot,
+def _legacy_update_panel_uses_cached_event_summary_without_scanning(
+    mock_main_window, mock_controller, qtbot
 ):
     data = loaded_data_stub("cached_events.set")
     data.get_event_summary.return_value = {
@@ -1118,7 +1035,7 @@ def test_update_panel_uses_cached_event_summary_without_scanning(
     assert event_item.text() == "Events (5)"
 
 
-def test_dataset_panel_on_item_changed(mock_main_window, mock_controller, qtbot):
+def _legacy_dataset_panel_on_item_changed(mock_main_window, mock_controller, qtbot):
     """Test editing subject/session in table updates metadata via controller."""
     mock_data = MagicMock()
     mock_data.configure_mock(

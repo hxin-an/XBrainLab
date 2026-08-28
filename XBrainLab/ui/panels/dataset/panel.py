@@ -33,34 +33,24 @@ from XBrainLab.backend.application.view_publication import (
     APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
     ApplicationViewPublication,
 )
-from XBrainLab.backend.services.dataset_state_service import DatasetStateService
 from XBrainLab.backend.utils.logger import logger
-from XBrainLab.backend.utils.observer import Observable
 from XBrainLab.ui.application_capabilities import (
     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
     ApplicationViewPublicationPort,
-    ControllerCompatibilityUnavailableError,
     application_ui_runtime,
     blocked_reason,
     execute_application_command,
     get_application_view_publication,
     get_command_capability,
-    get_controller_for_compatibility_context,
     has_real_application_context,
     is_application_runtime_deferred,
     is_stale_publication_result,
-    run_controller_compatibility_call,
 )
 from XBrainLab.ui.application_publication_renderer import (
     ApplicationPublicationRenderLedger,
 )
 from XBrainLab.ui.components.modal_presentation import show_warning
-from XBrainLab.ui.components.user_error_presentation import (
-    UnexpectedErrorContext,
-    present_unexpected_error,
-)
 from XBrainLab.ui.core.base_panel import BasePanel
-from XBrainLab.ui.status import show_status_message
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 from XBrainLab.ui.styles.theme import Theme
 from XBrainLab.ui.table_sizing import scaled_column_widths
@@ -142,21 +132,10 @@ class DatasetPanel(BasePanel):
             parent: Parent widget (typically the main window).
 
         """
-        # 1. Controller Resolution (Compatibility/Test support)
-        if (
-            controller is None
-            and publication_port is None
-            and parent
-            and hasattr(parent, "study")
-        ):
-            controller = get_controller_for_compatibility_context(
-                parent,
-                parent.study,
-                "dataset",
-            )
-
-        # 2. Base Init (sets self.controller, self.main_window)
-        super().__init__(parent=parent, controller=controller)
+        # Dataset product state is publication/query-owned.  The optional
+        # controller argument remains source-compatible for callers while this
+        # panel intentionally never reads or mutates it.
+        super().__init__(parent=parent, controller=None)
 
         runtime = application_ui_runtime(self)
         self._publication_port = (
@@ -172,33 +151,26 @@ class DatasetPanel(BasePanel):
         )
         self._application_refresh_timer = self._application_render_ledger.timer
 
-        # 3. Helpers
+        # Helpers
         self.action_handler = DatasetActionHandler(self)
         self._table_fit_pending = False
         self._table_publication_generation: int | None = None
         self._table_metadata_capability: CommandCapability | None = None
         self._metadata_edit_selections: dict[int, DatasetTableSelection] = {}
 
-        # 4. Bridge & UI Setup (Explicit call required by new BasePanel contract)
+        # Bridge & UI Setup (Explicit call required by new BasePanel contract)
         self._setup_bridges()
         self.init_ui()
 
     def _setup_bridges(self):
-        """Register Qt observer bridges for controller events."""
+        """Register the application-publication render bridge."""
         if self._publication_port is not None:
             self._create_bridge(
-                cast(Observable, self._publication_port),
+                cast(Any, self._publication_port),
                 APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
                 self._on_application_view_publication_changed,
             )
             return
-        if self.controller:
-            self._create_refresh_bridge(self.controller, "data_changed")
-            self._create_bridge(
-                self.controller,
-                "import_finished",
-                self.action_handler.on_import_finished,
-            )
 
     def _on_application_view_publication_changed(
         self,
@@ -456,53 +428,6 @@ class DatasetPanel(BasePanel):
             return self._COMPACT_COLUMNS
         return tuple(range(self.table.columnCount()))
 
-    def apply_loader(self, loader):
-        """Apply a compatibility data loader only for mock or compatibility UI contexts.
-
-        Args:
-            loader: A data loader instance that supports ``apply()``
-                and ``__len__``.
-
-        """
-        try:
-            total_files = self._compatibility_apply_loader(loader)
-        except Exception:
-            present_unexpected_error(
-                self,
-                UnexpectedErrorContext.DATASET_LOADER_APPLY,
-            )
-            return
-        if total_files is None:
-            return
-
-        show_status_message(self, f"Dataset updated · {total_files} files")
-
-    def _compatibility_apply_loader(self, loader) -> int | None:
-        try:
-            return run_controller_compatibility_call(
-                self,
-                lambda: self._apply_compatibility_loader(loader),
-            )
-        except ControllerCompatibilityUnavailableError:
-            logger.warning("Blocked compatibility loader apply in real Study context.")
-            show_warning(
-                self,
-                "Import EEG Data",
-                "Use Import Data so the data goes through the guided import workflow.",
-            )
-            return None
-
-    def _apply_compatibility_loader(self, loader) -> int:
-        # Kept for mock/unit-test compatibility; product data entry uses commands.
-        controller = self.controller
-        if controller is None or getattr(controller, "study", None) is None:
-            raise RuntimeError(
-                "Compatibility loader adapter requires a dataset controller."
-            )
-        loader.apply(controller.study, force_update=True)
-        self.update_panel()
-        return len(loader)
-
     def update_panel(self, *args: Any, **kwargs: Any) -> Any:
         """Refresh Dataset and commit a direct render only after success."""
         del args, kwargs
@@ -517,9 +442,6 @@ class DatasetPanel(BasePanel):
 
     def _update_panel_content(self) -> bool:
         """Refresh the sidebar and table from committed application truth."""
-        if not hasattr(self, "controller"):
-            return True
-
         # Update Sidebar
         if hasattr(self, "sidebar"):
             self.sidebar.update_sidebar()
@@ -584,14 +506,8 @@ class DatasetPanel(BasePanel):
         self.table.setRowCount(0)
 
         self._table_publication_generation = render_generation
-        controller = self.controller
         if queried_rows is not None:
             data_rows: list[dict[str, Any]] = queried_rows
-        elif controller is not None and not product_context:
-            data_rows = [
-                DatasetStateService.project_data_row(data)
-                for data in self._compatibility_loaded_data_list_for_render(controller)
-            ]
         else:
             data_rows = []
         event_labels = sorted(
@@ -1010,19 +926,6 @@ class DatasetPanel(BasePanel):
     def _restore_rejected_metadata_edit(self) -> None:
         """Restore the published row after an edit was blocked or became stale."""
         self.update_panel()
-
-    def _compatibility_loaded_data_list_for_render(self, controller) -> list[Any]:
-        try:
-            return run_controller_compatibility_call(
-                self,
-                controller.get_loaded_data_list,
-            )
-        except ControllerCompatibilityUnavailableError:
-            logger.warning(
-                "Blocked stale dataset controller render fallback in real "
-                "Study context.",
-            )
-            return []
 
     @staticmethod
     def _metadata_item(

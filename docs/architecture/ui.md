@@ -39,7 +39,7 @@ command truth。不要只用 `rg get_controller` 的數量判斷架構好壞。
 | Standalone Training compatibility | `TrainingPanel` / sidebar compatibility constructor parameters | Typed-port product mode 會丟棄 compatibility controllers；standalone/mock tests 仍可明確注入。 | 不能宣稱 repo 已物理移除所有 controller compatibility code。 |
 | Command fallback compatibility | sidebar / panel `_compatibility_*` helpers、`run_controller_compatibility_call()` | mock / compatibility non-`Study` only；real `Study` product path 若 command helper 不可用應 blocked/error，而不是 silent fallback。 | 不能把 fallback test 當 product success。 |
 | Human request orchestration | montage picker、label import target selection、dialog-local validation | UI request path；confirmed action 才送進 command，例如 montage apply、smart parse、label import。 | 不能把 dialog orchestration 誤寫成 backend source-of-truth。 |
-| Readonly display fallback | Preprocess / Dataset panel display helpers | real `Study` 已優先用 typed command/query gate；no-service mock context 才讀 controller lists。Evaluation catalog、metrics 與 chart render 已完全改讀 ApplicationService 的 generation-bound detached publication；Visualization saliency render 也讀 immutable publication，不再保留 live Trainer/Plan/EvalRecord/Dataset UI path。 | 不能宣稱其他 lower-level integration tests 都已改成 query truth。 |
+| Readonly display fallback | Preprocess panel display helpers | real `Study` 已優先用 typed command/query gate；Dataset rows、sidebar、channels、external-label targets 與 Data Interpretation admission 都只讀 publication/query 或 command capability，缺 runtime 時 fail closed。Preprocess 的 no-service mock context 仍可讀 controller lists。Evaluation catalog、metrics 與 chart render 已完全改讀 ApplicationService 的 generation-bound detached publication；Visualization saliency render 也讀 immutable publication，不再保留 live Trainer/Plan/EvalRecord/Dataset UI path。 | 不能宣稱其他 lower-level integration tests 都已改成 query truth。 |
 | Assistant UI wiring | `AgentManager` | status / montage channel defaults 走 state query；compatibility montage apply/channel fallback 只給 mock / compatibility context。 | 不能宣稱 local LLM 長時間桌面 session 已人工驗收。 |
 | Aggregate info | `InfoPanelService` | product runtime 不自行訂閱 controller events，資料列表透過 `QueryStateCommand(data_lists)`。 | 這不代表其他 panel observer adapters 已全部消失。 |
 
@@ -52,8 +52,8 @@ command truth。不要只用 `rg get_controller` 的數量判斷架構好壞。
 | --- | --- | --- | --- |
 | Training typed-port constructor | Product port boundary | `MainWindow` 注入 query、publication、action、transient-progress ports；typed-port mode 丟棄 compatibility controllers。 | 將 standalone/mock tests 改成 typed fixtures 後再縮窄 compatibility signature。 |
 | `application_capabilities.run_controller_compatibility_call(...)` | mock / compatibility gate | real `Study` 會丟 `ControllerCompatibilityUnavailableError`，所以 product runtime 不會 silent fallback 到 controller mutation。 | 保留到 mock-heavy UI tests 和 standalone legacy contexts 改成 service-backed fixture。 |
-| Dataset / Preprocess / Training `_compatibility_*` helpers | compatibility helper | helper 名稱讓 fallback 和 product command path 可讀性分開；architecture guard 阻擋 product method 直接呼叫 fallback gate 或直接 controller mutation。 | 將剩餘 mock-heavy tests 改成 command/state evidence，再逐步刪 helper。 |
-| Dataset / Preprocess / Visualization display getters | readonly render fallback | real `Study` 先走 `QueryStateCommand`、`VisualizeCommand` 或 `SaliencyCommand`；controller getter 只在 command helper 回傳 `None` 的 mock / no-service context 使用。Evaluation 不在這個 fallback 類別：catalog 走 `EvaluateCommand`，chart data 走 generation-bound `EvaluationRenderPublication`，沒有 controller display fallback。 | 把其餘 lower-level UI/component tests 的資料來源改成 typed command result 或 view model。 |
+| Preprocess / Training `_compatibility_*` helpers | compatibility helper | helper 名稱讓 fallback 和 product command path 可讀性分開；architecture guard 阻擋 product method 直接呼叫 fallback gate 或直接 controller mutation。Dataset package 已不保留 controller compatibility caller。 | 將剩餘 mock-heavy tests 改成 command/state evidence，再逐步刪 helper。 |
+| Preprocess / Visualization display getters | readonly render fallback | real `Study` 先走 `QueryStateCommand`、`VisualizeCommand` 或 `SaliencyCommand`；controller getter 只在 command helper 回傳 `None` 的 mock / no-service context 使用。Dataset table/sidebar/channel/label UI 不再有這個 fallback。Evaluation 不在這個 fallback 類別：catalog 走 `EvaluateCommand`，chart data 走 generation-bound `EvaluationRenderPublication`，沒有 controller display fallback。 | 把其餘 lower-level UI/component tests 的資料來源改成 typed command result 或 view model。 |
 | `ApplicationViewPublication` panel subscriptions；`refresh_coordinator.refresh_after_*()` | refresh surface | Product state-changing repaint 由 monotonic application revision 觸發；`refresh_coordinator` 只保留 navigation、transient progress 和 non-`Study` compatibility routing，不得從 product `CommandResult.changed_state` 建立第二套 state truth。 | 讓每個 product panel 只提交成功 render 的 revision，並逐步移除 controller render fallback。 |
 | `InfoPanelService` controller reads | aggregate mock fallback | real `Study` 資料列表透過 `QueryStateCommand(data_lists)`；controller reads 只在 mock / compatibility context。 | 測試改注入 query result 後，可移除 direct controller fallback。 |
 | `AgentManager` montage fallback / status reads | assistant UI adapter | product status 讀 `ApplicationService.get_state()` / capabilities；montage channels 讀 `QueryStateCommand(state)`，legacy montage apply 只給 mock / compatibility context。 | assistant montage flow 改成完整 command-backed dialog service 後，移除 fallback channel/apply helper。 |
@@ -102,9 +102,10 @@ Product materialization 的順序就是 navigation index：
 | 3 | `EvaluationPanel` | explicit `EvaluationQueryPort` + publication subscription port + `EvaluationActionPort` |
 | 4 | `VisualizationPanel` | explicit query/publication/action ports |
 
-Dataset / Preprocess 的 standalone、mock 或 no-runtime constructor 仍可在沒有
-`publication_port` 時使用 `get_controller_for_compatibility_context()`。這是 test/compatibility
-邊界，不是 product wiring。
+Preprocess 的 standalone、mock 或 no-runtime constructor 仍可在沒有
+`publication_port` 時使用 `get_controller_for_compatibility_context()`。Dataset panel 不再取得或讀取
+controller；沒有可用 publication/query runtime 時，它保留既有 unavailable/blocked 語意。這不是
+product wiring。
 
 `switch_page(index)` 切換 `QStackedWidget` 後，會委派
 `XBrainLab.ui.refresh_coordinator.refresh_after_navigation()` 依 navigation index 刷新目標

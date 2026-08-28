@@ -191,17 +191,9 @@ class DataInterpretationActionHost(Protocol):
     panel: Any
 
     @property
-    def controller(self) -> Any: ...
+    def main_window(self) -> Any: ...
 
     def _show_status(self, message: str, timeout_ms: int = 7000) -> None: ...
-
-    def _compatibility_controller_value(
-        self,
-        blocked_title: str,
-        fallback: Callable[[], Any],
-        *,
-        warn_when_unavailable: bool = True,
-    ) -> tuple[bool, Any]: ...
 
 
 class DataInterpretationActionCoordinator:
@@ -435,46 +427,11 @@ class DataInterpretationActionCoordinator:
             retry_available=retry_available,
         )
 
-    @property
-    def controller(self) -> Any:
-        return self._host.controller
-
     def _show_status(self, message: str, timeout_ms: int = 7000) -> None:
         if timeout_ms == 7000:
             self._host._show_status(message)
             return
         self._host._show_status(message, timeout_ms)
-
-    def _compatibility_controller_value(
-        self,
-        blocked_title: str,
-        fallback: Callable[[], Any],
-        *,
-        warn_when_unavailable: bool = True,
-    ) -> tuple[bool, Any]:
-        return self._host._compatibility_controller_value(
-            blocked_title,
-            fallback,
-            warn_when_unavailable=warn_when_unavailable,
-        )
-
-    def _compatibility_locked_preflight_blocked(
-        self,
-        controller: Any,
-        *,
-        blocked_title: str,
-        locked_message: str,
-    ) -> bool:
-        available, is_locked = self._compatibility_controller_value(
-            blocked_title,
-            lambda: bool(controller.is_locked()),
-        )
-        if not available:
-            return True
-        if is_locked:
-            self._bindings.show_warning(self.panel, blocked_title, locked_message)
-            return True
-        return False
 
     def import_data(self) -> InteractionOutcome:
         """Scan, preview, validate, and apply an EEG data interpretation."""
@@ -504,26 +461,15 @@ class DataInterpretationActionCoordinator:
                 _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE
             )
 
-        controller = self.controller
         if scan_capability is None:
-            if controller is None:
-                message = "Dataset controller unavailable."
-                self._bindings.show_error(
-                    self.panel,
-                    "Import failed",
-                    message,
-                )
-                return InteractionOutcome.failed(message)
-            if self._compatibility_locked_preflight_blocked(
-                controller,
-                blocked_title="Interpretation Blocked",
-                locked_message=(
-                    "Dataset is locked. Please clear or reset before importing."
-                ),
-            ):
-                return InteractionOutcome.blocked(
-                    "Dataset is locked or its import state could not be verified."
-                )
+            self._bindings.show_warning(
+                self.panel,
+                "Interpretation Blocked",
+                _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
+            )
+            return InteractionOutcome.blocked(
+                _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE
+            )
 
         chooser = self._source_chooser_dialog_class()(
             self.panel,
@@ -974,21 +920,12 @@ class DataInterpretationActionCoordinator:
             return False
 
         if capability is None:
-            controller = self.controller
-            if controller is None:
-                self._bindings.show_error(
-                    self.panel,
-                    "Import failed",
-                    "Dataset controller unavailable.",
-                )
-                return False
-            return not self._compatibility_locked_preflight_blocked(
-                controller,
-                blocked_title=blocked_title,
-                locked_message=(
-                    "Dataset is locked. Please clear or reset before importing."
-                ),
+            self._bindings.show_warning(
+                self.panel,
+                blocked_title,
+                _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
             )
+            return False
         return True
 
     def _run_data_interpretation_import(
