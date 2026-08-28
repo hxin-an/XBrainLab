@@ -86,7 +86,9 @@ THREE_D_TAB_SPECS: list[dict[str, str]] = [
         "tab": "3D Plot",
         "screenshot": "visualization-render-3d-blocked.png",
         "interactive_screenshot": "visualization-render-3d-interactive.png",
-        "expected_reason": "Set a 3D montage before opening the 3D plot.",
+        "expected_reason": (
+            "Configure a 3D Electrode Layout in Dataset before opening the 3D plot."
+        ),
     },
 ]
 UNCAUGHT_EXCEPTIONS: list[str] = []

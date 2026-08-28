@@ -324,6 +324,7 @@ def _state(
     finished_runs: int = 0,
     montage_available: bool = True,
     channel_positions_available: bool = True,
+    montage_preparation_state: str = "not_applicable",
     has_model: bool = True,
     has_training_option: bool = True,
     has_trainer: bool = False,
@@ -355,6 +356,7 @@ def _state(
             saliency_available=saliency_available,
             montage_available=montage_available,
             channel_positions_available=channel_positions_available,
+            montage_preparation_state=montage_preparation_state,
             channel_count=1,
             saliency_params=dict(saliency_params or {}),
             saliency_coverage=list(saliency_coverage or []),
@@ -1799,12 +1801,33 @@ def test_analysis_service_requires_channel_positions_for_3d_plot() -> None:
     assert "saliency map" in visualize["available_views"]
     assert "3D plot" not in visualize["available_views"]
     assert visualize["blocked_views"]["3D plot"] == [
-        "Set a 3D montage before opening the 3D plot."
+        "Configure a 3D Electrode Layout in Dataset before opening the 3D plot."
     ]
     assert "topographic map" not in visualize["available_views"]
     assert visualize["blocked_views"]["topographic map"] == [
-        "Set Montage before opening the topographic map."
+        "Configure Electrode Layout in Dataset before opening the topographic map."
     ]
+
+
+def test_analysis_service_keeps_pending_position_blocks_in_preparing_state() -> None:
+    state = _state(
+        saliency_available=True,
+        saliency_configured=True,
+        finished_runs=1,
+        montage_available=False,
+        channel_positions_available=False,
+        montage_preparation_state="pending",
+    )
+    service, _visualization = _service(state=state)
+
+    _message, visualize = _expect_payload(
+        service.handle_visualize(VisualizeCommand(view="summary")),
+    )
+
+    assert visualize["blocked_views"]["topographic map"] == [
+        "Preparing electrode positions..."
+    ]
+    assert visualize["blocked_views"]["3D plot"] == ["Preparing electrode positions..."]
 
 
 def test_analysis_service_returns_only_detached_visualization_summary() -> None:

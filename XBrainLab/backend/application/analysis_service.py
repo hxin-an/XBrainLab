@@ -271,7 +271,10 @@ class AnalysisCommandService:
                 reason = (
                     "Preparing electrode positions..."
                     if preparation_state == "pending"
-                    else "Set Montage before opening the topographic map."
+                    else (
+                        "Configure Electrode Layout in Dataset before opening the "
+                        "topographic map."
+                    )
                 )
                 blocked_views["topographic map"] = [reason]
             if not state.visualization.three_dimensional_positions_available:
@@ -280,7 +283,10 @@ class AnalysisCommandService:
                     (
                         "Preparing electrode positions..."
                         if preparation_state == "pending"
-                        else "Set a 3D montage before opening the 3D plot."
+                        else (
+                            "Configure a 3D Electrode Layout in Dataset before "
+                            "opening the 3D plot."
+                        )
                     )
                 ]
         plot_views_available = bool(

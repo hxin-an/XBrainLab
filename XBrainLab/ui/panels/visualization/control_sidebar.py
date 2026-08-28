@@ -102,11 +102,6 @@ class ControlSidebar(QWidget):
         config_layout.setContentsMargins(0, 10, 0, 0)
         config_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        self.btn_montage = QPushButton("Electrode Layout")
-        self.btn_montage.setStyleSheet(Stylesheets.SIDEBAR_BTN)
-        self.btn_montage.clicked.connect(self.open_electrode_layout)
-        config_layout.addWidget(self.btn_montage)
-
         self.btn_saliency = QPushButton("Saliency Settings")
         self.btn_saliency.setStyleSheet(Stylesheets.SIDEBAR_BTN)
         self.btn_saliency.clicked.connect(self.set_saliency)
@@ -211,17 +206,6 @@ class ControlSidebar(QWidget):
             toggle(checked)
 
     # --- Actions ---
-
-    def open_electrode_layout(self, _checked: bool = False) -> InteractionOutcome:
-        """Delegate the Visualization convenience entrance to the Dataset owner."""
-        dataset_panel = getattr(self.main_window, "dataset_panel", None)
-        dataset_sidebar = getattr(dataset_panel, "sidebar", None)
-        open_layout = getattr(dataset_sidebar, "open_electrode_layout", None)
-        if callable(open_layout):
-            return open_layout()
-        message = "Electrode Layout is unavailable until the Dataset panel is ready."
-        self._show_status(message)
-        return InteractionOutcome.blocked(message)
 
     def set_saliency(self) -> InteractionOutcome:
         """Stage saliency settings without starting computation."""

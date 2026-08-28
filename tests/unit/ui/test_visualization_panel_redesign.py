@@ -411,7 +411,10 @@ def test_switching_to_3d_from_all_classes_selects_the_first_renderable_class(
             "payload_type": "visualization_summary",
             "available": True,
             "blocked_views": {
-                "3D plot": ["Set a 3D montage before opening the 3D plot."]
+                "3D plot": [
+                    "Configure a 3D Electrode Layout in Dataset before opening "
+                    "the 3D plot."
+                ]
             },
         },
     )
@@ -3747,7 +3750,10 @@ def test_visualization_panel_normalizes_3d_blocked_key_without_duplicate_status(
             "payload_type": "visualization_summary",
             "available": True,
             "blocked_views": {
-                "3D plot": ["Set a 3D montage before opening the 3D plot."]
+                "3D plot": [
+                    "Configure a 3D Electrode Layout in Dataset before opening "
+                    "the 3D plot."
+                ]
             },
         },
     )
@@ -3762,7 +3768,7 @@ def test_visualization_panel_normalizes_3d_blocked_key_without_duplicate_status(
 
     panel.on_update()
 
-    expected = "Set a 3D montage before opening the 3D plot."
+    expected = "Configure a 3D Electrode Layout in Dataset before opening the 3D plot."
     current_widget.show_message.assert_called_once_with(expected)
     assert statuses == []
 
@@ -3818,7 +3824,8 @@ def test_visualization_panel_shows_setup_message_without_training_results(
     panel.update_panel()
 
     current_widget.show_message.assert_called_with(
-        "Complete training to view saliency plots. Electrode Layout remains available."
+        "Complete training to view saliency plots. "
+        "Configure Electrode Layout in Dataset."
     )
     current_widget.show_error.assert_not_called()
 
