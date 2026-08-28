@@ -421,6 +421,19 @@ def test_prompt_policy_consolidation_preserves_publication_and_decision_contract
     assert '"workflow_stage":"data_loaded","tool_name":"respond_to_user",' in prompt
 
 
+def test_decision_policy_is_tail_recent_after_action_catalog() -> None:
+    prompt = ContextAssembler(ToolRegistry(), Study()).build_system_prompt(
+        "Explain EEG preprocessing."
+    )
+
+    assert prompt.index("Action Contract Catalog") < prompt.index(
+        "STRICT RESPONSE CONTRACT - DECISION ORDER"
+    )
+    assert prompt.index("Final output reminder:") < prompt.index(
+        "STRICT RESPONSE CONTRACT - DECISION ORDER"
+    )
+
+
 @pytest.mark.parametrize(
     ("private_path", "private_fragments"),
     (

@@ -495,9 +495,6 @@ Action Contract Catalog (input definitions, never an output array):
         self._latest_context_items = tuple(context_items)
 
         prompt = self._ACTION_SYSTEM_PROMPT
-        prompt += "\n" + STRICT_TOOL_RESPONSE_PROMPT_POLICY.decision_instructions(
-            workflow_stage
-        )
         prompt += self._TOOL_BLOCK_TEMPLATE.format(
             tools_str=tools_str,
             availability_note=(
@@ -505,6 +502,9 @@ Action Contract Catalog (input definitions, never an output array):
                 if allowed_tools
                 else "No executable workflow actions are available at this stage."
             ),
+        )
+        prompt += "\n" + STRICT_TOOL_RESPONSE_PROMPT_POLICY.decision_instructions(
+            workflow_stage
         )
 
         return prompt

@@ -99,6 +99,24 @@ def test_prompt_policy_defers_multi_action_requests_without_execution() -> None:
     assert "do not call any tool in that turn" in prompt
 
 
+def test_prompt_policy_requires_explicit_schema_values_and_typed_missing_input() -> (
+    None
+):
+    prompt = StrictToolResponsePromptPolicy().decision_instructions().lower()
+
+    assert "numeric frequencies, sampling rates, and method choices" in prompt
+    assert "latest user reply or verified receipt/state" in prompt
+    assert "never use defaults or common eeg values" in prompt
+    assert "exact pending_action and missing_inputs" in prompt
+
+
+def test_prompt_policy_never_substitutes_unavailable_or_nonmatching_actions() -> None:
+    prompt = StrictToolResponsePromptPolicy().decision_instructions().lower()
+
+    assert "unavailable or nonmatching action" in prompt
+    assert "never call its prerequisite, substitute, or retired alias" in prompt
+
+
 def test_prompt_policy_forbids_unverified_completion_claims() -> None:
     prompt = StrictToolResponsePromptPolicy().decision_instructions().lower()
 

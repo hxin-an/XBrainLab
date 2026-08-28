@@ -17,11 +17,15 @@ Host parameter-origin safety 為 `10/10` 與 `5/5`，product final positive 為 
 為 `19/24`，但這些 Host/recovery outcome 不回填 raw-model accuracy。
 
 同一 baseline 的 production clarification prompt system message 為 `11,197` characters；
-`clarify_notch_en` 經 LocalBackend 與 pinned chat template 後為 `2,674` tokens。
-`tool_input_clarification` 要求模型使用 receipt，但 boundary 又要求只回答 separate latest request，
-且 receipt question 在 conversation history 重複。下一步是整合三個已獨立 review 的 prompt/context
-commits，再跑 first candidate；若仍有 critical failures，最後一輪優先調整 decision order/recency，
-不換模型也不放寬 Host gate。
+`clarify_notch_en` 經 LocalBackend 與 pinned chat template 後為 `2,674` tokens。clean source
+`07c0b6ad` 的 first candidate 已完成 boundary、receipt question dedup 與 policy consolidation，artifact
+位於 `build/dev-artifacts/assistant-prompt-v4-candidate-07c0b6ad/`；`clarify_notch_en` 降為 `2,465`
+tokens，raw positive 提升至 `36/36`、challenge `5/14`、precision `15/24`，但 clarification 仍為
+`0/7`。五個 missing-parameter first turn 仍全部發明常見預設值，多動作仍輸出兩個 object，兩個
+out-of-stage case 仍選 prerequisite/substitute；Host 保持 fail-closed。原始輸出與 independent review
+均指向 schema catalog 後的 decision recency，而非 evaluator 或 Host receipt bug。下一步只做最後一輪
+tail-positioned canonical decision refinement，再跑第三次且最後一次 full pinned-model suite；不換模型、
+不新增 Host router，也不放寬 gate。
 
 ## Outcome
 
