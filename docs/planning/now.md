@@ -4,142 +4,167 @@
 
 ## 目前焦點
 
-產品 source baseline 是 `52fa5a005045169cc38dc15f8990bff2b5440310`；本 plan 經 docs-only PR
-合併後，三條 lane 必須從 post-plan `main` 的同一 exact SHA 建立隔離 worktree，同步改善 Data
-Import 延遲、Assistant 多輪補參數能力，以及過度防禦／過度設計。主 agent 只負責協調、scope
-gate、review adjudication、exact evidence、PR／CI 與手測交付；lane 的診斷與施工由 subagent
-執行。
+本 campaign 從同一個 post-plan `main` 建立隔離 worktree，同步推進四個工作包：Windows-native
+Data Import 多 worker、Assistant 多輪補參數與誤呼叫改善、Dataset controller compatibility
+cutover，以及全 repo non-UI test quality cleanup。三條產品 lane 與 test cleanup 都必須通過獨立
+completion reviewer，全部告一段落後才開始使用者手測。
 
-這是唯一 active implementation plan。三條 lane 不共用 production file，不互相 cherry-pick，
-也不從彼此的未合併 branch 建立基線。
+主 agent 只負責 canonical plan、scope／complexity gate、exact SHA、branch／worktree ownership、
+reviewer dispatch、CI／PR、main 同步與手測交付；lane discovery 與施工由 subagent worker 執行。
+Worker 不得自行宣稱完成，reviewer finding 也不會自動擴大使用者授權。
 
-## 問題與既有證據
-
-### Import discovery
-
-- OpenNeuro ds003061 `sub-001` 在 WSL `/mnt/d` 的 candidate blocking median 為
-  `12.046162s`，background median 為 `1.530436s`，stable-idle median 為 `13.558181s`；
-  10 秒 gate 未通過。
-- exact `31b79daf` audit 顯示 Review 約 `4.6s`，包含 241 次 `resolve`、627 次 `stat`；
-  repeated `/mnt/d` `lstat` 是 dominant cost。
-- review/apply/open 是不同 trust boundary。Apply final full rehash、`SourceFileBoundary`、symlink／
-  containment 與 admitted materialization 必須保留；可刪的是同一 admission window 內高成本、
-  低風險、沒有新增安全語意的重複 micro-race 檢查。
-
-### Assistant effect
-
-- 現行版本已比原始 2B baseline 明顯改善，但在「先要求補參數、下一輪使用者補齊」的第二、
-  三輪仍常不執行；只做 prompt-only 兩輪迭代，成功機率不足。
-- 目前 typed clarification receipt 只在模型輸出精確 typed clarification 時建立；raw model action、
-  host interpretation 與 final outcome 必須分開量測，避免 evaluator 把 host rescue 誤算成模型能力。
-- 產品可以保留模型已選定的 tool 與使用者／verifier 明確提供的值，但 host 不得自行推導另一個
-  tool。Assistant tool 名稱、membership、side effect、confirmation 與 visible result 是 public
-  contract，本 campaign 不改它們。
-
-### Defensive complexity
-
-- 測試與 production 都可能存在已不可達、只複製 implementation、或為極低機率情境付出高維護／
-  runtime 成本的 guard；但低成本且防止真實檔案替換、資料遺失或 trust-boundary 破壞的 guard
-  不是刪除目標。
-- 具體 candidate 不在 plan 階段預判。Cleanup worktree 建立後才由 worker 蒐證，交由 contract
-  challenger 判斷保護的 contract，再由主 agent 裁決並由獨立 reviewer 複核。
-
-## 預期 outcome
-
-1. Import：在不弱化 review/apply/open、TOCTOU、symlink／containment 與 final rehash 的前提下，
-   刪除重複 discovery work；同一 benchmark median 至少改善 `0.5s`，production net LOC 必須為負。
-2. Assistant：完成一個整合 candidate，使多輪補參數可累積且在值完整時執行既有 tool；不增加
-   public tool contract、owner、router 或 state machine，並以固定 evaluator 分離 raw／host／final。
-3. Cleanup：以刪除優先移除一個或多個有證據的同 subsystem guard family；不為了縮短程式碼而
-   移除 reachable safety、資料完整性或使用者可觀察 contract。
-
-## Scope 與 non-goals
-
-### Import lane — `perf/import-discovery-deletion-v2`
-
-- 最多觸及 2 個 production files；以 deletion／reuse 為預設。
-- 保留 review/apply/open 邊界、admitted metadata 規則、final full rehash、symlink／containment。
-- 不改 import UI、文案、資料解讀語意、BIDS mapping 或 public command contract。
-- 若無法在上述限制下達到 `0.5s` median improvement，停止並回報 checkpoint，不擴張 scope。
-
-### Assistant lane — `fix/assistant-effect-iteration-v2`
-
-- 可改 prompt/context、few-shot examples、typed pending state、parser recovery、verifier、admission、
-  retry 與 evaluator；最多 8 個 production files，bug-fix production net LOC 不得超過 `+300`。
-- 最多驗證三個有清楚假設的 local commits：prompt/examples、receipt/admission、retry/context。
-  最終 PR 只保留有 evidence 的 coherent 組合。
-- 不新增 public tool、不改 tool side effect／confirmation、不 silent fallback、不新增 authoritative
-  owner、router 或 state machine。觸發任一項即停止，回到 architecture／user decision。
-- 不為追求分數由 host 猜 tool；只允許延續模型已選 tool，並累積使用者或 verifier 已證明的值。
-
-### Cleanup lane — `refactor/overdefense-cleanup-v1`
-
-- worktree 建立後才 discovery；每個 candidate 都記錄 reachable path、protected contract、成本、
-  owner 與刪除後可觀察差異。
-- 一個 local commit 只處理一個 guard family；同一 subsystem 的 coherent families 可合併成一個 PR。
-- pure refactor production net LOC 必須小於等於 0，owner 數不得增加；不建立新 control plane、
-  manifest、receipt 或 compatibility path。
-- 純 tests／static checker／unreachable code 不要求無意義的 UI 手測。若 candidate 其實保護 reachable
-  product behavior，移交 owning product lane，並要求相應使用者驗收。
-
-### 全 campaign non-goals
-
-- 不同時處理新的 UI layout／文案、中文輸入、electrode layout、模型下載或 model catalog。
-- 不清除 root `settings.json`、模型 cache、資料集、系統 temp 或無法證明屬於 XBrainLab 的檔案。
-- 不將既有未知 finding 塞進本 campaign；非直接 blocker 最多列三項 follow-up。
-
-## 執行與 reviewer 拓樸
-
-1. 主 agent 凍結 `main` exact SHA，建立三個獨立 worktree，宣告 production file ownership。
-2. 三名 worker 可平行診斷／施工；每名 worker 先建立可重現 baseline，再提出最小 patch。
-3. Import worker 以 performance measurement 自證；Assistant worker 以固定 evaluator 自證；Cleanup
-   worker 對 candidate 建立 evidence packet，不自行判定 safety contract 可刪。
-4. worker 完成後釋放 agent slot，依序啟用 reviewer：
-   - Import：performance/resource reviewer + main agent boundary review。
-   - Assistant：tool-call designer + test-quality reviewer；必要時 security/privacy review。
-   - Cleanup：contract challenger 後再由獨立 code reviewer 複核主 agent 裁決。
-5. 主 agent 只接受 exact clean/explained commit 的 evidence，負責 scope、diff、owner、production
-   `+/-/net LOC`、CI 與 regression adjudication。review finding 不自動擴大 scope。
-6. 每條 lane 各自走 PR；main 每次合併後，其餘 lane 必須同步最新 main 並重跑受影響 focused gate，
-   不因 PR 很短而拆成重複的小 PR。
-
-## Focused validation 與 stop condition
-
-### Import
-
-- 同一 source、mount、warm-up 與 fresh-service protocol 重跑 baseline/candidate；保存 raw timings。
-- gate：candidate blocking median 至少快 `0.5s`，focused import/BIDS/symlink/containment tests 全過，
-  production net LOC < 0，最多 2 個 production files。
-- 任一 trust boundary 弱化、benchmark 不可重現或改善不足即停止，不宣稱成功。
+## 問題與證據
 
 ### Assistant
 
-- evaluator 必須先以獨立 local commit 固定，之後 hypothesis commits 不可修改 scorer 來追分。
-- candidate gate：core `36/36`、explicit-origin `10/10`、missing guard `5/5`、clarification 至少
-  `4/7`、current-target unexpected unsafe 小於等於 `2`；另通過一個中文與一個英文 partial
-  accumulation trajectory。
-- raw model、host rescue 與 final executed outcome 分開報告。任一核心 guard regression、unsafe
-  action 上升、scope ceiling 觸發或無法在三個 hypothesis 內改善即停止。
+- 固定 v10 evaluator 的 81-case baseline 已完整執行：core、parameter-origin、missing guard與目前
+  precision gate通過，但 production-controller clarification final 為 `0/7`，unexpected unsafe為
+  `2`。
+- Typed receipt、parameter reply verification與bounded two-reply state已存在；主要斷點是receipt入口
+  依賴模型首輪精確輸出typed clarification。模型直接選direct tool但缺少可信參數時，verification
+  會拒絕執行，卻不建立可延續的receipt。
+- 使用者已批准Host只對模型已選的exact direct tool做deterministic yes/no action-origin proof；Host
+  不得從generic文字另選工具。補參數追問保留clarification語意，但視覺使用一般Assistant泡泡，
+  不顯示藍色`Needs input`樣式。
+
+### Windows-native Data Import
+
+- 先前WSL `/mnt/d`量測只能解釋開發環境I/O，不能外推native Windows產品效能；相關數值降格為
+  historical dev-only evidence，不再作產品gate。
+- 現有headless runner可在fresh `ApplicationService`上分別量Catalog、Review、Apply、background與
+  stable，並保存CPU、RSS、I/O與correctness；native Windows source runtime使用Windows Poetry／
+  Python，不使用WSLg launcher作效能證據。
+- Review的獨立header/resource inspection與Apply的逐檔raw preparation目前為serial；多檔、私有、
+  不碰Study／Qt／publication的工作有bounded thread parallelism潛力，但必須由Windows 1/2/3-worker
+  實測與thread-safety evidence決定。
 
 ### Cleanup
 
-- 每個刪除先有 passing characterization baseline，或證明程式碼不可達／測試不觀察真實 behavior。
-- 執行 owner subsystem 的 focused tests、Ruff、diff check，並由 reviewer 檢查 regression、lifecycle、
-  data integrity 與 maintenance value。
-- contract 無法說清、刪除後仍需新 abstraction 補洞、production LOC 淨增或 owner 增加即拒絕。
+- Dataset product truth已是ApplicationService command與revisioned publication，但Dataset panel、
+  sidebar、actions、external label與Data Interpretation coordinators仍保留controller compatibility
+  mesh。正常產品多半不走fallback，卻持續造成雙路徑、fixture負擔與接線失敗時的stale-state風險。
+- Non-UI tests／test-only helpers／architecture guards與dev test scripts需在施工時做repo-wide inventory；
+  目標是處理高價值obsolete、duplicated、mock-only、implementation-detail或高成本重複掃描family，
+  不是預先憑行數刪測試。
+- Publication renderer的post-budget retry只有在真實callback／close成本達到明定門檻時才改；沒有證據
+  不建立微小PR，也不把「量過但沒改」算成cleanup完成。
 
-## 手測與完成語意
+## 預期 outcome
 
-- Import 與 Assistant 會改 reachable product behavior，只有 exact source 完成 CI、WSLg walkthrough、
-  使用者明確表示手測通過並同意 merge，才可合併。
-- Cleanup 若只改 pure tests／static checker／不可達 code，可依 repo 豁免 human manual；若觸及
-  reachable product behavior，必須提供有意義的 product walkthrough，不以「看不出差異」代替。
-- lane 可分別達到 `scope-complete`；只有所有 applicable handoff gate 對同一 exact commit 成功時
-  才稱 `handoff-ready`。缺 evidence 是 checkpoint，需要新決策才是 blocked。
+1. Assistant：模型選定exact direct tool後，Host能安全建立並延續typed receipt；中英文第二／三輪
+   補值可執行既有tool，clarification至少`6/7`，unexpected unsafe最多`1`，其餘v10 gate不退步。
+2. Import：在native Windows上由1/2/3-worker evidence選出bounded parallel preparation；完整三段
+   blocking median同時至少改善`15%`與`0.5s`，且資料、安全、順序與rollback contract不退步。
+3. Dataset cleanup：Dataset production package不再呼叫controller compatibility gateway；正常layout、
+   文案與操作不變，缺少／stale publication時fail closed，production LOC淨減少且owner不增加。
+4. Non-UI tests：完成repo-wide inventory並處理所有in-scope高價值family；重要side effect保留至少一條
+   lower-mock path，可信度、維護量或執行成本有可量改善。
 
-## Campaign 收尾
+## Scope、non-goals與UI確認
 
-三條 lane 完成或明確停在 checkpoint 後，移除本 active slice；只把真正改變的 current truth、
-architecture decision 或 evidence contract 校準到其 canonical authority。合併後刪除 task worktree、
-local／remote branch 與明確 XBrainLab-owned temp artifacts，確認 `main` 是唯一產品基線並保留使用者的
-root `settings.json`。
+### Assistant lane — `fix/assistant-effect-iteration-v2`
+
+- 可改現有verifier、tool-attempt admission、controller receipt continuity、prompt/examples與chat
+  clarification presentation；不新增public tool、semantic router、owner或state machine。
+- Action-origin verifier只接收模型已選tool與latest user text，只能回傳proof／reject；generic、否定、
+  解釋、多action與歷史模糊指涉deny by default。
+- Receipt只保存同一tool、backend generation、schema required fields與使用者文字可證明的值；stale、
+  cancel、different tool或budget exhaustion全部清除。
+- UI確認已取得：clarification使用一般Assistant泡泡，不顯示特殊藍色標籤／卡片；其他Chat UI不改。
+
+### Import lane — `perf/windows-import-parallel-v1`
+
+- 產品效能claim只接受Windows-native Poetry／Python、本機NTFS、同source／selection／protocol evidence。
+- 比較1/2/3 threads；Review worker只回傳immutable header/resource result，Apply worker只建立私有
+  loader／Raw result，主thread保序組裝、套用metadata／labels與commit。
+- 最終採用通過安全gate且在最快valid candidate `5%`內的最小worker數，不新增使用者setting。
+- 只對有native fixture與thread-safety證據的format啟用；其餘維持serial。Concurrency resource
+  preflight必須納入峰值記憶體。
+- 不新增WSL／mount特判、ext4 staging、durable cache或自動下載。Final full original-source rehash、
+  SourceFileBoundary、selected scope、reparse／symlink／containment與atomic rollback必須保留。
+
+### Dataset cleanup lane — `refactor/dataset-compatibility-cutover-v1`
+
+- 移除external-label controller target fallback、UI direct loader mutation、Dataset render/sidebar/channel
+  controller reads與Data Interpretation synchronous compatibility admission。
+- Shared compatibility gateway保留給其他subsystem；這次只要求Dataset package caller清零。
+- UI確認已取得：可改Dataset內部接線；正常layout、copy、互動與流程不得改變。Missing runtime改走既有
+  unavailable／blocked語意，不建立新visible state。
+
+### Non-UI test lane — `test/non-ui-quality-cleanup-v1`
+
+- Inventory涵蓋全repo non-UI tests、test-only helpers、architecture guards與dev test scripts；UI tests
+  排除。Active product-lane tests由原worker擁有，test reviewer finding退回原worker，避免branch重疊。
+- 只處理有真實contract對照的obsolete／duplicate／mock-only／implementation-detail／high-cost family；
+  弱測試先以最小behavior／state-transition／real-side-effect coverage替換再刪除。
+- 不移除data safety、receipt、source replacement、Windows boundary、privacy或真實side-effect evidence；
+  不建立新test control plane、manifest或逐helper source guard。
+
+### Campaign non-goals
+
+- 不新增模型、下載dataset／dependency、修改public tool contract、處理其他UI redesign或恢復retired
+  compatibility／MCP surfaces。
+- 不stage、revert、覆寫或隱藏root `settings.json`；不清除model cache、dataset或非明確XBrainLab-owned
+  artifacts。
+
+## Agent拓樸與持續推進
+
+1. Plan PR合併後，三名worker從同一post-plan `main`平行啟動Assistant、Import、Dataset worktree。
+2. 任一worker完成candidate即釋放slot；reviewer優先於新工作。Reviewer完成或退回rework後，有空slot
+   立即啟動Non-UI Test worker。
+3. 固定流程為`baseline -> candidate -> worker evidence -> independent review`：
+   - `rework`：列出對應acceptance的缺口，退回原worker，新SHA由同一reviewer重審。
+   - `scope blocked`：主agent保留該lane，其他lane繼續；只有需要新授權才詢問使用者。
+   - `complete`：reviewer綁定exact SHA，主agent再做cross-lane gate。
+4. Assistant依序由tool-call reviewer與test-quality／UI reviewer審查；Import由performance/resource與
+   data-boundary reviewer審查；Dataset由architecture/code與UI product reviewer審查；Non-UI tests由
+   test-quality reviewer審查。不同reviewer不重複同一維度。
+5. Worker不能自行宣稱完成；非直接blocker最多三項follow-up，不擴大本campaign。
+
+## Focused validation與stop condition
+
+### Assistant
+
+- 先跑model-free verifier/coordinator/controller與中英文trajectory tests，再跑固定v10完整81-case。
+- Gate：既有core／origin／missing／precision gates不退、clarification `>=6/7`、unexpected unsafe
+  `<=1`；raw model、Host recovery與final outcome仍分開報告。
+- 若所有已授權admission、receipt與bounded prompt interventions均完成仍未達gate，reviewer必須證明
+  下一步需要semantic router、新模型或public contract，才能標記evidence-complete checkpoint。
+
+### Import
+
+- Windows baseline與candidate各使用fresh native process、相同fixture／mount／selection，至少三組
+  交錯可比pass；保存raw phase timings、CPU、RSS、I/O與correctness。
+- Gate：end-to-end median同時改善`>=15%`與`>=0.5s`；未改phase不得有可重現退化，event digest、
+  labels、recipe、input order與no-partial-state全部一致。
+- 若1/2/3 workers與Review／Apply兩個安全平行區域都未通過，performance reviewer確認in-scope候選
+  已耗盡後才可checkpoint；不得轉做WSL特化或cache。
+
+### Dataset cleanup
+
+- Publication retry只在正常旅程出現至少10次／5秒post-budget callback，或forced defer造成至少
+  `250ms` median close延遲時修改；候選需移除至少90% post-budget callbacks並保留newest revision與
+  teardown contract。
+- Focused Dataset command/publication/label/channel/import tests、architecture guard、UI screenshot／
+  walkthrough與Windows native流程必須通過；Dataset compatibility caller inventory為零。
+
+### Non-UI tests
+
+- Reviewer必須確認repo-wide inventory完成、所有已知in-scope高價值family已處理、重要side effect
+  仍有lower-mock evidence，且可信度／維護量／執行成本至少一項有可量改善。
+- Pure tests／test-only PR可依repo豁免human manual；必要時依coherent contract拆PR，不為每個小刪除
+  建短PR。
+
+## 手測、合併與收尾
+
+1. Non-UI test PR在independent review與所有applicable CI成功後先合併；三條產品branch同步最新main
+   並重跑受影響gate。
+2. 只有四個工作包都達到review-complete candidate或reviewer證明的evidence-complete checkpoint後，
+   才開始使用者handoff；施工中不要求半成品手測。
+3. Product手測／merge順序：Dataset Windows walkthrough → merge；Import同步main、重跑Windows benchmark
+   與data gates、手測 → merge；Assistant同步main、重跑v10與CI、Windows聊天／tool-call手測 → merge。
+4. 每個PR base／head、CI與non-skipped checks必須精確成功；product behavior只有使用者對同一SHA明確
+   表示手測通過並同意merge後才能合併，source變更即失效。
+5. Campaign完成後移除active slice，只校準真正改變的current truth／decision／evidence contract；清除
+   task worktrees、local／remote branches與明確owned temp artifacts，確認`main`是唯一產品基線並保留
+   使用者root `settings.json`。
