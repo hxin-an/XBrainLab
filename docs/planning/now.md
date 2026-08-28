@@ -8,12 +8,20 @@
 head 為 `4cdc73a2959a1cdc9db9a193cecd49a0249662f3`。目前唯一 active product slice 是
 **Assistant English prompt/context baseline v4**，branch 為 `fix/assistant-prompt-context-v4`。
 
-目前 exact 3B evidence 顯示：production clarification prompt 的 system message 為 `11,197`
-characters / `2,418` Granite tokens，LocalBackend 處理與 chat template 後為 `2,708`
-tokens。`tool_input_clarification` 要求模型使用 receipt，但後續 boundary message 又說只
-回答 separate latest request；receipt question 同時也在 conversation history 重複。五個
-missing-parameter raw generations 全部自行發明預設值，原本 `5/5` 是 Host guard 的
-safe product outcome，不是 raw-model accuracy。
+clean source `d6d76b54` 的 exact English pre-change baseline 已完成，artifact 位於
+`build/dev-artifacts/assistant-prompt-v4-baseline-d6d76b54/`。所有 first-turn family 現在均走
+production publication/context path；raw first generation 為 positive `34/36`、challenge `4/14`、
+precision `11/24`、clarification `0/7`。五個 missing-parameter cases 仍全部自行發明預設值，
+因此五個 direct continuation 都沒有取得 Host receipt；multi-action 也會輸出兩個 action object。
+Host parameter-origin safety 為 `10/10` 與 `5/5`，product final positive 為 `36/36`、precision
+為 `19/24`，但這些 Host/recovery outcome 不回填 raw-model accuracy。
+
+同一 baseline 的 production clarification prompt system message 為 `11,197` characters；
+`clarify_notch_en` 經 LocalBackend 與 pinned chat template 後為 `2,674` tokens。
+`tool_input_clarification` 要求模型使用 receipt，但 boundary 又要求只回答 separate latest request，
+且 receipt question 在 conversation history 重複。下一步是整合三個已獨立 review 的 prompt/context
+commits，再跑 first candidate；若仍有 critical failures，最後一輪優先調整 decision order/recency，
+不換模型也不放寬 Host gate。
 
 ## Outcome
 
