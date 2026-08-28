@@ -1853,17 +1853,18 @@ def test_product_dataset_interpretation_action_ownership_is_focused() -> None:
     )
 
 
-def test_dataset_controller_compatibility_guard_rejects_regrowth(
+def test_dataset_controller_compatibility_guard_rejects_controller_origin_regrowth(
     tmp_path: Path,
 ) -> None:
     _write_product_file(
         tmp_path,
         "XBrainLab/ui/panels/dataset/panel.py",
         """
-from XBrainLab.ui.application_capabilities import run_controller_compatibility_call
-
 def render(panel):
-    return run_controller_compatibility_call(panel, lambda: None)
+    direct = panel.controller.get_loaded_data_list()
+    inherited = getattr(panel, "controller").has_data()
+    controller = panel.window().study.get_controller("dataset")
+    return direct, inherited, controller.is_locked()
 """,
     )
 
@@ -1871,8 +1872,11 @@ def render(panel):
         tmp_path
     )
 
-    assert len(violations) == 1
+    assert len(violations) >= 5
     assert all("controller compatibility caller" in item for item in violations)
+    assert any("controller-origin attribute controller" in item for item in violations)
+    assert any("controller lookup getattr" in item for item in violations)
+    assert any("controller lookup get_controller" in item for item in violations)
 
 
 def test_agent_resource_receipt_guard_rejects_tokenless_adapter_contract(

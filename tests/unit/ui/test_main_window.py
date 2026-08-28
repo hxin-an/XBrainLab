@@ -133,6 +133,29 @@ def test_mainwindow_replays_initial_publication_after_deferred_startup(qapp, qtb
     assert window.dataset_panel.sidebar.import_btn.isEnabled() is True
 
 
+def test_mainwindow_rebinds_dataset_publication_after_service_reinitialization(
+    main_window,
+) -> None:
+    """A replacement Study service must not leave Dataset on a stale port."""
+    original_renderer = main_window._application_publication_renderer
+    assert original_renderer is not None
+    original_service = original_renderer.service
+
+    main_window.study._application_service = None
+    replacement_renderer = main_window._ensure_application_publication_renderer()
+
+    assert replacement_renderer is not None
+    assert replacement_renderer is not original_renderer
+    assert replacement_renderer.service is not original_service
+    assert original_renderer._disposed is True
+    dataset_port = main_window.dataset_panel._publication_port
+    assert dataset_port is not None
+    assert (
+        dataset_port.get_view_publication()
+        == replacement_renderer.service.get_view_publication()
+    )
+
+
 def test_mainwindow_typed_dataset_import_does_not_require_legacy_controller(
     qapp,
     qtbot,

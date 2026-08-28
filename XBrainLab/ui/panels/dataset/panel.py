@@ -143,13 +143,7 @@ class DatasetPanel(BasePanel):
         )
         self._application_view_publication: ApplicationViewPublication | None = None
         self._last_application_revision = 0
-        self._application_render_ledger = ApplicationPublicationRenderLedger(
-            panel_name="Dataset",
-            render_publication=self._render_application_publication,
-            commit_publication=self._commit_application_publication,
-            parent=self,
-        )
-        self._application_refresh_timer = self._application_render_ledger.timer
+        self._replace_application_render_ledger()
 
         # Helpers
         self.action_handler = DatasetActionHandler(self)
@@ -171,6 +165,32 @@ class DatasetPanel(BasePanel):
                 self._on_application_view_publication_changed,
             )
             return
+
+    def rebind_application_publication_port(
+        self,
+        publication_port: ApplicationViewPublicationPort,
+    ) -> None:
+        """Reconnect this Dataset view after its command runtime is replaced."""
+        for bridge in self._bridges:
+            bridge.cleanup()
+        self._bridges.clear()
+        self._publication_port = publication_port
+        self._application_view_publication = None
+        self._last_application_revision = 0
+        self._replace_application_render_ledger()
+        self._setup_bridges()
+
+    def _replace_application_render_ledger(self) -> None:
+        previous = getattr(self, "_application_render_ledger", None)
+        if previous is not None:
+            previous.cleanup()
+        self._application_render_ledger = ApplicationPublicationRenderLedger(
+            panel_name="Dataset",
+            render_publication=self._render_application_publication,
+            commit_publication=self._commit_application_publication,
+            parent=self,
+        )
+        self._application_refresh_timer = self._application_render_ledger.timer
 
     def _on_application_view_publication_changed(
         self,
@@ -708,11 +728,17 @@ class DatasetPanel(BasePanel):
         *,
         expected_publication_generation: int | None = None,
     ) -> _DatasetRowsQueryOutcome:
+        query_runtime = (
+            self._publication_port
+            if callable(getattr(self._publication_port, "execute", None))
+            else None
+        )
         result = execute_application_command(
             self,
             QueryStateCommand(query="data_lists"),
             refresh=False,
             expected_publication_generation=expected_publication_generation,
+            runtime=cast(Any, query_runtime),
         )
         if result is None:
             return _DatasetRowsQueryOutcome(

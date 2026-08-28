@@ -7,7 +7,7 @@ from scripts.dev.capture_dataset_narrow_walkthrough import (
     _apply_loaded_state,
     _build_shell,
     _dataset_table_evidence,
-    _DatasetControllerFixture,
+    _DatasetPublicationFixture,
     _settle,
     _state_truth_evidence,
 )
@@ -28,8 +28,8 @@ def test_dataset_capture_keeps_visible_state_publication_and_status_consistent(
 
     status_bar = window.statusBar()
     assert status_bar is not None
-    controller = panel.controller
-    assert isinstance(controller, _DatasetControllerFixture)
+    publication_port = panel._publication_port
+    assert isinstance(publication_port, _DatasetPublicationFixture)
     empty_status = status_bar.currentMessage()
     assert not (
         panel.empty_state_title.isVisibleTo(panel)
@@ -41,7 +41,7 @@ def test_dataset_capture_keeps_visible_state_publication_and_status_consistent(
     assert empty_publication is not None
     assert empty_publication.state.pipeline_stage == "empty"
     assert empty_publication.state.active_dataset.has_raw_data is False
-    assert controller.has_data() is False
+    assert publication_port._loaded_data == []
 
     _apply_loaded_state(panel)
     _settle(app)
@@ -50,7 +50,7 @@ def test_dataset_capture_keeps_visible_state_publication_and_status_consistent(
     assert loaded_publication is not None
     assert loaded_publication.state.pipeline_stage == "data_loaded"
     assert loaded_publication.state.active_dataset.has_preprocessed_data is False
-    assert controller.has_data() is True
+    assert len(publication_port._loaded_data) == 1
     assert panel.table.isVisibleTo(panel)
     assert status_bar.currentMessage() == (
         "EEG data loaded · Ready for preprocessing or epoching"
