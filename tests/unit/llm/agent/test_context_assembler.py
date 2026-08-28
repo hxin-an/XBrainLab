@@ -320,7 +320,7 @@ def test_prompt_action_contracts_do_not_resemble_an_output_array():
     assert '"name": "respond_to_user"' in contracts
 
 
-def test_action_catalog_keeps_fallback_schema_without_generic_output_envelope():
+def test_zero_parameter_action_contract_has_one_final_output_reminder():
     registry = ToolRegistry()
     registry.register(BaseStartTrainingTool())
     assembler = ContextAssembler(registry, Study())
@@ -329,11 +329,58 @@ def test_action_catalog_keeps_fallback_schema_without_generic_output_envelope():
 
     assert "Callable action contract:" in contracts
     assert "Exact zero-parameter output shape:" not in contracts
-    assert "Fallback response contract:" in contracts
-    assert "Final output reminder:" not in contracts
-    assert "Final no-action envelope" not in contracts
+    assert contracts.count("Final output reminder:") == 1
     assert "Generic action envelope:" not in contracts
+    assert "parameters matching the selected contract" in contracts
     assert not contracts.lstrip().startswith("[")
+
+
+def test_single_action_contract_ends_with_no_action_envelope() -> None:
+    registry = ToolRegistry()
+    registry.register(BaseStartTrainingTool())
+    assembler = ContextAssembler(registry, Study())
+
+    contracts = assembler._format_tools(["start_training"])
+
+    assert contracts.rstrip().endswith(
+        '{"workflow_stage":"unavailable","tool_name":"respond_to_user",'
+        '"parameters":{"message":"<concise response or one clarifying question>"}}'
+    )
+
+
+def test_action_catalog_ends_with_one_short_output_reminder() -> None:
+    from XBrainLab.llm.tools import get_all_tools
+
+    registry = ToolRegistry()
+    for tool in get_all_tools("mock"):
+        registry.register(tool)
+    assembler = ContextAssembler(registry, Study())
+
+    contracts = assembler._format_tools(
+        ["configure_training", "apply_bandpass_filter"],
+        workflow_stage="epoch_ready",
+    )
+
+    reminder = contracts.rsplit("Final output reminder:\n", maxsplit=1)[1]
+    assert "exact enabled action name or respond_to_user" in reminder
+    assert "Add no prose outside the object" in reminder
+    assert "Decision checkpoint" not in reminder
+
+
+def test_action_catalog_ends_with_exact_stage_no_action_envelope() -> None:
+    registry = ToolRegistry()
+    registry.register(BaseStartTrainingTool())
+    assembler = ContextAssembler(registry, Study())
+
+    contracts = assembler._format_tools(
+        ["start_training"],
+        workflow_stage="epoch_ready",
+    )
+
+    assert contracts.rstrip().endswith(
+        '{"workflow_stage":"epoch_ready","tool_name":"respond_to_user",'
+        '"parameters":{"message":"<concise response or one clarifying question>"}}'
+    )
 
 
 def test_prompt_policy_consolidation_preserves_publication_and_decision_contracts() -> (
@@ -372,20 +419,6 @@ def test_prompt_policy_consolidation_preserves_publication_and_decision_contract
     assert "Do not call any tool in that turn" in prompt
     assert "Never claim that an action completed" in prompt
     assert '"workflow_stage":"data_loaded","tool_name":"respond_to_user",' in prompt
-
-
-def test_decision_policy_is_tail_recent_after_action_catalog() -> None:
-    prompt = ContextAssembler(ToolRegistry(), Study()).build_system_prompt(
-        "Explain EEG preprocessing."
-    )
-
-    assert prompt.index("Action Contract Catalog") < prompt.index(
-        "STRICT RESPONSE CONTRACT - DECISION ORDER"
-    )
-    assert prompt.index("Fallback response contract:") < prompt.index(
-        "STRICT RESPONSE CONTRACT - DECISION ORDER"
-    )
-    assert "Final no-action envelope" not in prompt
 
 
 @pytest.mark.parametrize(

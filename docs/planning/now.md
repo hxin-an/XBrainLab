@@ -22,10 +22,14 @@ Host parameter-origin safety 為 `10/10` 與 `5/5`，product final positive 為 
 位於 `build/dev-artifacts/assistant-prompt-v4-candidate-07c0b6ad/`；`clarify_notch_en` 降為 `2,465`
 tokens，raw positive 提升至 `36/36`、challenge `5/14`、precision `15/24`，但 clarification 仍為
 `0/7`。五個 missing-parameter first turn 仍全部發明常見預設值，多動作仍輸出兩個 object，兩個
-out-of-stage case 仍選 prerequisite/substitute；Host 保持 fail-closed。原始輸出與 independent review
-均指向 schema catalog 後的 decision recency，而非 evaluator 或 Host receipt bug。下一步只做最後一輪
-tail-positioned canonical decision refinement，再跑第三次且最後一次 full pinned-model suite；不換模型、
-不新增 Host router，也不放寬 gate。
+out-of-stage case 仍選 prerequisite/substitute；Host 保持 fail-closed。後續 clean focused variants
+`df250670`、`00090694`、`dba904a9`、`17388c57` 依序驗證 tail recency、具體 typed examples、互斥
+choice grammar 與有效 JSON shape。它們或仍猜值／執行 multi/out-of-stage，或產生 message-only、
+錯誤 root/schema copying；沒有一版同時改善五個 typed clarification journey 與 no-action safety，
+tool-specific examples 反而過度偏向 bandpass。這些失敗變體不留在 final tree；保留已有完整 suite
+證據且表現最佳的 `07c0b6ad` prompt 內容。下一步只在包含本紀錄的 clean exact commit 重跑第三次且
+最後一次 full pinned-model suite；若重現 critical failures，即依 stop condition 停在
+capability-boundary checkpoint，不換模型、不新增 Host router，也不放寬 gate。
 
 ## Outcome
 

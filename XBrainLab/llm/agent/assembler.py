@@ -254,7 +254,31 @@ Action Contract Catalog (input definitions, never an output array):
                 json.dumps(model_response_tool_contract(), indent=2),
             )
         )
+        sections.extend(
+            self._final_output_reminder(
+                workflow_stage=workflow_stage,
+            )
+        )
         return "\n".join(sections)
+
+    @staticmethod
+    def _final_output_reminder(
+        *,
+        workflow_stage: str,
+    ) -> tuple[str, ...]:
+        """Keep one short output reminder after the action schemas."""
+        return (
+            "Final output reminder:",
+            "Return exactly one JSON object with workflow_stage '"
+            + workflow_stage
+            + "', an exact enabled action name or respond_to_user, and parameters "
+            "matching the selected contract. Add no prose outside the object.",
+            "Final no-action envelope (replace the message placeholder):",
+            '{"workflow_stage":"'
+            + workflow_stage
+            + '","tool_name":"respond_to_user","parameters":{"message":'
+            '"<concise response or one clarifying question>"}}',
+        )
 
     def _application_allowed_tools(
         self,
@@ -471,6 +495,9 @@ Action Contract Catalog (input definitions, never an output array):
         self._latest_context_items = tuple(context_items)
 
         prompt = self._ACTION_SYSTEM_PROMPT
+        prompt += "\n" + STRICT_TOOL_RESPONSE_PROMPT_POLICY.decision_instructions(
+            workflow_stage
+        )
         prompt += self._TOOL_BLOCK_TEMPLATE.format(
             tools_str=tools_str,
             availability_note=(
@@ -478,9 +505,6 @@ Action Contract Catalog (input definitions, never an output array):
                 if allowed_tools
                 else "No executable workflow actions are available at this stage."
             ),
-        )
-        prompt += "\n" + STRICT_TOOL_RESPONSE_PROMPT_POLICY.decision_instructions(
-            workflow_stage
         )
 
         return prompt
