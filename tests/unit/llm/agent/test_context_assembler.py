@@ -434,6 +434,43 @@ def test_decision_policy_is_tail_recent_after_action_catalog() -> None:
     )
 
 
+def test_preprocessing_clarification_examples_follow_published_catalog() -> None:
+    state = _state(
+        pipeline_stage="data_loaded",
+        raw=RawStateSnapshot(loaded=True, count=1),
+        active_dataset=ActiveDatasetSnapshot(has_raw_data=True),
+    )
+    publication = ApplicationViewPublication(
+        generation=83,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
+    registry = ToolRegistry()
+    registry.register(_NamedTool("apply_bandpass_filter"))
+    registry.register(_NamedTool("normalize_data"))
+    loaded_prompt = ContextAssembler(
+        registry,
+        Study(),
+        application_runtime=_ApplicationRuntimeFake(publication),
+    ).build_system_prompt("Apply a bandpass filter.")
+    empty_prompt = ContextAssembler(registry, Study()).build_system_prompt(
+        "Explain preprocessing."
+    )
+
+    assert (
+        "Typed clarification examples (shapes only; not new contracts):"
+        in loaded_prompt
+    )
+    assert '"pending_action":"apply_bandpass_filter"' in loaded_prompt
+    assert '"pending_action":"normalize_data"' in loaded_prompt
+    assert (
+        "Typed clarification examples (shapes only; not new contracts):"
+        not in empty_prompt
+    )
+    assert '"pending_action":"apply_bandpass_filter"' not in empty_prompt
+    assert '"pending_action":"normalize_data"' not in empty_prompt
+
+
 @pytest.mark.parametrize(
     ("private_path", "private_fragments"),
     (

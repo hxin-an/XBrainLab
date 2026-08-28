@@ -504,7 +504,11 @@ Action Contract Catalog (input definitions, never an output array):
             ),
         )
         prompt += "\n" + STRICT_TOOL_RESPONSE_PROMPT_POLICY.decision_instructions(
-            workflow_stage
+            workflow_stage,
+            include_preprocessing_examples={
+                "apply_bandpass_filter",
+                "normalize_data",
+            }.issubset(allowed_tools),
         )
 
         return prompt

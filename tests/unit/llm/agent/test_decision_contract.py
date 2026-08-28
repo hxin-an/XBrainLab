@@ -117,6 +117,31 @@ def test_prompt_policy_never_substitutes_unavailable_or_nonmatching_actions() ->
     assert "never call its prerequisite, substitute, or retired alias" in prompt
 
 
+def test_prompt_policy_puts_negative_decisions_in_a_pre_output_checklist() -> None:
+    prompt = StrictToolResponsePromptPolicy().decision_instructions("data_loaded")
+
+    checklist = prompt.index("PRE-OUTPUT CHECKLIST (highest priority")
+    assert prompt.index("1. Classify the latest user request") < checklist
+    assert "output exactly one respond_to_user object; call zero action tools" in prompt
+    assert "with its listed blocker reason" in prompt
+    assert "schema-required values absent from the latest user reply" in prompt
+    assert "never use defaults" in prompt
+
+
+def test_prompt_policy_shows_typed_clarification_examples_at_current_stage() -> None:
+    prompt = StrictToolResponsePromptPolicy().decision_instructions(
+        "data_loaded",
+        include_preprocessing_examples=True,
+    )
+
+    assert "Typed clarification examples (shapes only; not new contracts):" in prompt
+    assert '"workflow_stage":"data_loaded"' in prompt
+    assert '"pending_action":"apply_bandpass_filter"' in prompt
+    assert '"missing_inputs":["low_freq","high_freq"]' in prompt
+    assert '"pending_action":"normalize_data"' in prompt
+    assert '"missing_inputs":["method"]' in prompt
+
+
 def test_prompt_policy_forbids_unverified_completion_claims() -> None:
     prompt = StrictToolResponsePromptPolicy().decision_instructions().lower()
 
