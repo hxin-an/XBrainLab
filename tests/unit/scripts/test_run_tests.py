@@ -223,6 +223,16 @@ def test_platform_product_gate_includes_braindecode_catalog_runtime() -> None:
     )
 
 
+def test_platform_core_contracts_include_parsed_cache_contract() -> None:
+    groups = dict(run_tests.PLATFORM_CI_GROUPS)
+    core_shards = dict(groups["platform-core-contracts"])
+
+    assert (
+        "tests/unit/backend/application/test_data_interpretation_parsed_cache.py"
+        in (core_shards["portability-contracts"])
+    )
+
+
 def test_platform_ci_groups_partition_focused_platform_gate_exactly_once() -> None:
     grouped_shards = [
         shard for _command, shards in run_tests.PLATFORM_CI_GROUPS for shard in shards
