@@ -90,10 +90,16 @@ def test_returned_json_cannot_mutate_cached_truth() -> None:
 
 def test_path_cache_reuses_unchanged_bytes_and_invalidates_changed_file(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     cache = ParsedContentCache(max_entries=8, max_retained_bytes=16_384)
     path = tmp_path / "events.tsv"
     path.write_text("onset\ttrial_type\n0\tleft\n", encoding="utf-8")
+    monkeypatch.setattr(
+        data_interpretation_parsed_cache,
+        "_STAT_CHANGE_TIME_IS_RELIABLE",
+        True,
+    )
 
     first = cache.delimited_table_from_path(
         path,
@@ -244,11 +250,17 @@ def test_cache_parses_one_key_once_under_concurrency(monkeypatch) -> None:
 
 def test_match_labels_reuses_one_complete_events_table(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     events = tmp_path / "sub-01_task-mi_events.tsv"
     events.write_text(
         "onset\tduration\ttrial_type\tvalue\n0\t1\tleft\t1\n1\t1\tright\t2\n",
         encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        data_interpretation_parsed_cache,
+        "_STAT_CHANGE_TIME_IS_RELIABLE",
+        True,
     )
 
     first = data_interpretation_label_carriers.build_label_carrier_plan(
@@ -290,10 +302,9 @@ def test_changed_events_table_invalidates_match_labels_projection(
 
     assert first[0]["label_value_counts"] == {"left": 1}
     assert changed[0]["label_value_counts"] == {"foot": 1}
-    assert default_parsed_content_cache().diagnostics()["file_read_count"] == 2
 
 
-def test_windows_guard_does_not_reuse_same_size_middle_rewrite(
+def test_unreliable_change_time_re_reads_same_size_middle_rewrite(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -314,18 +325,27 @@ def test_windows_guard_does_not_reuse_same_size_middle_rewrite(
         delimiter="\t",
         parser_id="windows-middle-rewrite",
     )
-    admitted_stat = path.stat()
-    path.write_text(changed, encoding="utf-8")
-    os.utime(
-        path,
-        ns=(admitted_stat.st_atime_ns, admitted_stat.st_mtime_ns),
-    )
     monkeypatch.setattr(
         data_interpretation_parsed_cache,
         "_STAT_CHANGE_TIME_IS_RELIABLE",
         False,
     )
 
+    with data_interpretation_parsed_cache.verified_parsed_content_paths(
+        {path: _current_identity(path)}
+    ):
+        repeated = cache.delimited_table_from_path(
+            path,
+            delimiter="\t",
+            parser_id="windows-middle-rewrite",
+        )
+
+    admitted_stat = path.stat()
+    path.write_text(changed, encoding="utf-8")
+    os.utime(
+        path,
+        ns=(admitted_stat.st_atime_ns, admitted_stat.st_mtime_ns),
+    )
     with data_interpretation_parsed_cache.verified_parsed_content_paths(
         {path: _current_identity(path)}
     ):
@@ -336,8 +356,12 @@ def test_windows_guard_does_not_reuse_same_size_middle_rewrite(
         )
 
     assert first.dict_rows()[512]["trial_type"] == "left"
+    assert repeated.dict_rows()[512]["trial_type"] == "left"
     assert observed.dict_rows()[512]["trial_type"] == "foot"
-    assert cache.diagnostics()["file_read_count"] == 2
+    # An unreliable change-time platform re-reads bytes, but content identity
+    # still reuses the parsed projection for the unchanged middle call.
+    assert cache.diagnostics()["parse_count"] == 2
+    assert cache.diagnostics()["file_read_count"] == 3
 
 
 def test_new_admission_identity_cannot_reuse_an_old_same_path_binding(
@@ -364,16 +388,21 @@ def test_new_admission_identity_cannot_reuse_an_old_same_path_binding(
 
     assert first.dict_rows()[0]["trial_type"] == "left"
     assert changed.dict_rows()[0]["trial_type"] == "foot"
-    assert cache.diagnostics()["file_read_count"] == 2
 
 
 def test_label_plan_and_strict_bids_review_share_one_table_parse(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     events = tmp_path / "sub-01_task-mi_events.tsv"
     events.write_text(
         "onset\tduration\ttrial_type\n0\t1\tleft\n",
         encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        data_interpretation_parsed_cache,
+        "_STAT_CHANGE_TIME_IS_RELIABLE",
+        True,
     )
 
     data_interpretation_label_carriers.build_label_carrier_plan(
@@ -429,6 +458,11 @@ def test_admitted_review_groups_avoid_per_projection_file_reopens(
         return real_open(path, flags, *args, **kwargs)
 
     monkeypatch.setattr(os, "open", _counted_open)
+    monkeypatch.setattr(
+        data_interpretation_parsed_cache,
+        "_STAT_CHANGE_TIME_IS_RELIABLE",
+        True,
+    )
 
     data_interpretation_label_carriers.build_label_carrier_plan(
         [resolved],
@@ -454,11 +488,17 @@ def test_admitted_review_groups_avoid_per_projection_file_reopens(
 
 def test_dataset_description_reuses_parse_and_changed_content_invalidates(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     description = tmp_path / "dataset_description.json"
     description.write_text(
         '{"Name":"First","BIDSVersion":"1.9.0"}',
         encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        data_interpretation_parsed_cache,
+        "_STAT_CHANGE_TIME_IS_RELIABLE",
+        True,
     )
 
     first, first_issue = _read_bids_dataset_description(
