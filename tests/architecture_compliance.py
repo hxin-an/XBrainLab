@@ -77,7 +77,6 @@ UI_CONTROLLER_FALLBACK_METHODS = (
 UI_CONTROLLER_FALLBACK_WRAPPERS = (
     "run_controller_compatibility_call",
     "_compatibility_controller_value",
-    "_compatibility_locked_preflight_blocked",
     "_compatibility_preprocessed_data_list_for_render",
     "_run_preprocess_compatibility_call",
 )
@@ -289,13 +288,6 @@ UI_CONTROLLER_DIRECT_CALL_ALLOWLIST = {
             "_query_data_lists",
             "compatibility_controller:preprocess",
             frozenset({"get_preprocessed_data_list"}),
-        ),
-    ),
-    Path("XBrainLab/ui/panels/dataset/data_interpretation_action_coordinator.py"): (
-        ControllerDirectCallAllowance(
-            "_compatibility_locked_preflight_blocked",
-            "controller",
-            frozenset({"is_locked"}),
         ),
     ),
     Path("XBrainLab/ui/panels/dataset/sidebar.py"): (
@@ -1169,6 +1161,15 @@ def check_architecture(root_dir: str) -> int:
     if interpretation_action_ownership_violations:
         print("\nDataset Data Interpretation Action Ownership Violations Found:")
         for violation in interpretation_action_ownership_violations:
+            print(f" - {violation}")
+        return 1
+
+    dataset_compatibility_violations = check_dataset_controller_compatibility_callers(
+        Path(root_dir)
+    )
+    if dataset_compatibility_violations:
+        print("\nDataset Controller Compatibility Caller Violations Found:")
+        for violation in dataset_compatibility_violations:
             print(f" - {violation}")
         return 1
 
@@ -7190,7 +7191,6 @@ def check_dataset_data_interpretation_action_ownership(
     )
     implementation_methods = frozenset(
         {
-            "_compatibility_locked_preflight_blocked",
             "_read_interpretation_review",
             "_identity_from_publication",
             "_require_interpretation_identity",
@@ -7260,31 +7260,6 @@ def check_dataset_data_interpretation_action_ownership(
                 ),
                 None,
             )
-            lock_preflight = (
-                next(
-                    (
-                        node
-                        for node in coordinator.body
-                        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-                        and node.name == "_compatibility_locked_preflight_blocked"
-                    ),
-                    None,
-                )
-                if coordinator is not None
-                else None
-            )
-            uses_host_compatibility_gate = lock_preflight is not None and any(
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and node.func.attr == "_compatibility_controller_value"
-                for node in ast.walk(lock_preflight)
-            )
-            if not uses_host_compatibility_gate:
-                violations.append(
-                    f"{owner_relative} compatibility lock preflight must call the "
-                    "host _compatibility_controller_value() gate."
-                )
-
             coordinator_methods = (
                 {
                     node.name: node
@@ -7496,6 +7471,134 @@ def check_dataset_data_interpretation_action_ownership(
                 f"{actions_relative}:{method.lineno} facade {method_name} must be a "
                 "single-call thin delegate to self._data_interpretation."
             )
+    return violations
+
+
+class _DatasetControllerOriginVisitor(ast.NodeVisitor):
+    """Reject Dataset UI reads that reintroduce a controller dependency.
+
+    This deliberately follows the small set of ways a Dataset caller can obtain
+    a controller instead of matching historical helper spellings.  Test and
+    developer fixtures are outside the scanned production package; no product
+    allowlist is needed.
+    """
+
+    _COMPATIBILITY_HELPERS = frozenset(
+        {
+            "run_controller_compatibility_call",
+            "get_controller_for_compatibility_context",
+        }
+    )
+    _COMPATIBILITY_ATTRIBUTES = frozenset(
+        {
+            "_compatibility_controller_value",
+            "_compatibility_locked_preflight_blocked",
+        }
+    )
+
+    def __init__(self, relative: Path) -> None:
+        self._relative = relative
+        self._controller_names: set[str] = set()
+        self.violations: list[str] = []
+
+    def _report(self, node: ast.AST, detail: str) -> None:
+        self.violations.append(
+            f"{self._relative}:{node.lineno} retains Dataset controller "
+            f"compatibility caller {detail}."
+        )
+
+    @classmethod
+    def _is_controller_origin(cls, node: ast.AST) -> bool:
+        if isinstance(node, ast.Attribute):
+            return node.attr == "controller" or node.attr.endswith("_controller")
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Attribute):
+                return node.func.attr in {
+                    "get_controller",
+                    "get_dataset_controller",
+                }
+            return isinstance(node.func, ast.Name) and (
+                node.func.id in cls._COMPATIBILITY_HELPERS
+            )
+        if isinstance(node, ast.Name):
+            return node.id in cls._COMPATIBILITY_HELPERS
+        return False
+
+    @staticmethod
+    def _assigned_names(node: ast.AST) -> set[str]:
+        if isinstance(node, ast.Name):
+            return {node.id}
+        if isinstance(node, (ast.Tuple, ast.List)):
+            return {
+                name
+                for element in node.elts
+                for name in _DatasetControllerOriginVisitor._assigned_names(element)
+            }
+        return set()
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        if self._is_controller_origin(node.value):
+            for target in node.targets:
+                self._controller_names.update(self._assigned_names(target))
+        self.generic_visit(node)
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        if node.value is not None and self._is_controller_origin(node.value):
+            self._controller_names.update(self._assigned_names(node.target))
+        self.generic_visit(node)
+
+    def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
+        if self._is_controller_origin(node.value):
+            self._controller_names.update(self._assigned_names(node.target))
+        self.generic_visit(node)
+
+    def visit_Name(self, node: ast.Name) -> None:
+        if node.id in self._COMPATIBILITY_HELPERS:
+            self._report(node, node.id)
+        elif isinstance(node.ctx, ast.Load) and node.id in self._controller_names:
+            self._report(node, f"controller-origin value {node.id}")
+
+    def visit_Attribute(self, node: ast.Attribute) -> None:
+        if node.attr in self._COMPATIBILITY_ATTRIBUTES:
+            self._report(node, node.attr)
+        elif node.attr == "controller" or node.attr.endswith("_controller"):
+            self._report(node, f"controller-origin attribute {node.attr}")
+        self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        if isinstance(node.func, ast.Attribute) and node.func.attr in {
+            "get_controller",
+            "get_dataset_controller",
+        }:
+            self._report(node, f"controller lookup {node.func.attr}")
+        elif (
+            isinstance(node.func, ast.Name)
+            and node.func.id == "getattr"
+            and len(node.args) >= 2
+            and isinstance(node.args[1], ast.Constant)
+            and isinstance(node.args[1].value, str)
+            and (
+                node.args[1].value == "controller"
+                or node.args[1].value.endswith("_controller")
+            )
+        ):
+            self._report(node, "controller lookup getattr")
+        self.generic_visit(node)
+
+
+def check_dataset_controller_compatibility_callers(root_dir: Path) -> list[str]:
+    """Dataset product UI must only use application command/publication ports."""
+    dataset_root = root_dir / "XBrainLab" / "ui" / "panels" / "dataset"
+    violations: list[str] = []
+    if not dataset_root.exists():
+        return ["Dataset panel package is missing."]
+    for path in dataset_root.rglob("*.py"):
+        tree = _parse_python_file(path)
+        if tree is None:
+            continue
+        visitor = _DatasetControllerOriginVisitor(path.relative_to(root_dir))
+        visitor.visit(tree)
+        violations.extend(visitor.violations)
     return violations
 
 

@@ -888,16 +888,6 @@ def test_import_command_success_refreshes_dataset_table_without_stale_controller
     test_app.switch_page(0)
 
     with (
-        patch.object(
-            test_app.dataset_panel,
-            "_compatibility_loaded_data_list_for_render",
-            side_effect=AssertionError("stale loaded-data render fallback was read"),
-        ) as stale_render,
-        patch.object(
-            test_app.dataset_panel.sidebar,
-            "_compatibility_sidebar_state",
-            side_effect=AssertionError("stale sidebar controller state was read"),
-        ) as stale_sidebar,
         patch(
             "XBrainLab.ui.panels.dataset.actions.EegSourceChooserDialog",
         ) as SourceChooser,
@@ -925,8 +915,10 @@ def test_import_command_success_refreshes_dataset_table_without_stale_controller
     assert name_item.data(Qt.ItemDataRole.UserRole) is None
     row_identity = name_item.data(test_app.dataset_panel._ROW_IDENTITY_ROLE)
     assert row_identity.canonical_filepath.endswith(loaded_rows[0]["filename"])
-    stale_render.assert_not_called()
-    stale_sidebar.assert_not_called()
+    ledger = test_app.dataset_panel._application_render_ledger
+    assert ledger.pending_publication is None
+    assert ledger.timer.isActive() is False
+    assert ledger._attempts == 0
 
 
 def test_pipeline_product_walkthrough_uses_user_facing_actions(

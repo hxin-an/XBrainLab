@@ -103,14 +103,6 @@ class LabelImportTarget:
 
 
 @dataclass(frozen=True, slots=True)
-class CompatibilityLabelTargets:
-    """Detached compatibility result for mock/controller-only UI contexts."""
-
-    targets: tuple[Any, ...]
-    target_indices: tuple[int, ...]
-
-
-@dataclass(frozen=True, slots=True)
 class ExternalLabelSelectionSnapshot:
     """Read-only view of the targets used to build the next label plan."""
 
@@ -153,17 +145,6 @@ class ExternalLabelImportHost(Protocol):
     """Narrow adapter contract retained by ``DatasetActionHandler``."""
 
     panel: Any
-
-    def _compatibility_target_files_from_controller(
-        self,
-        selected_rows: list[int],
-    ) -> CompatibilityLabelTargets: ...
-
-    def _compatibility_smart_filter_suggestions(
-        self,
-        raw_file: Any,
-        target_count: int,
-    ) -> list[int]: ...
 
     def _execute_interpretation_command_async(
         self,
@@ -496,13 +477,12 @@ class ExternalLabelImportCoordinator:
         table_targets = self.target_files_from_table_rows(selected_rows)
         if table_targets is not None:
             return table_targets
-        compatibility_targets = self._host._compatibility_target_files_from_controller(
-            selected_rows
+        self._bindings.show_warning(
+            self.panel,
+            "Label Import Blocked",
+            _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
         )
-        self._remember_target_file_indices(
-            list(compatibility_targets.target_indices),
-        )
-        return list(compatibility_targets.targets)
+        return []
 
     def target_files_from_table_rows(
         self,
@@ -779,10 +759,7 @@ class ExternalLabelImportCoordinator:
                 if isinstance(suggestions, list):
                     return [int(item) for item in suggestions]
                 return []
-        return self._host._compatibility_smart_filter_suggestions(
-            raw_file,
-            target_count,
-        )
+        return []
 
     def target_index_for_filter_suggestion(
         self,

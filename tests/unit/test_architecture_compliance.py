@@ -1764,7 +1764,7 @@ class DatasetActionHandler:
     assert any("ApplyInterpretationCommand" in item for item in violations)
     assert any("_apply_interpretation_async" in item for item in violations)
     assert any("_InterpretationReviewState" in item for item in violations)
-    assert any("compatibility lock preflight" in item for item in violations)
+    assert any("must compose" in item for item in violations)
 
 
 def test_dataset_interpretation_action_guard_rejects_non_thin_facade(
@@ -1821,9 +1821,6 @@ class _PublishedInterpretationReview:
     pass
 
 class DataInterpretationActionCoordinator:
-    def _compatibility_locked_preflight_blocked(self):
-        return self._compatibility_controller_value()
-
     def _continue_reloaded_interpretation_recipe(self, result):
         return result
 """,
@@ -1854,6 +1851,32 @@ def test_product_dataset_interpretation_action_ownership_is_focused() -> None:
         architecture_compliance.check_dataset_data_interpretation_action_ownership(root)
         == []
     )
+
+
+def test_dataset_controller_compatibility_guard_rejects_controller_origin_regrowth(
+    tmp_path: Path,
+) -> None:
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/panels/dataset/panel.py",
+        """
+def render(panel):
+    direct = panel.controller.get_loaded_data_list()
+    inherited = getattr(panel, "controller").has_data()
+    controller = panel.window().study.get_controller("dataset")
+    return direct, inherited, controller.is_locked()
+""",
+    )
+
+    violations = architecture_compliance.check_dataset_controller_compatibility_callers(
+        tmp_path
+    )
+
+    assert len(violations) >= 5
+    assert all("controller compatibility caller" in item for item in violations)
+    assert any("controller-origin attribute controller" in item for item in violations)
+    assert any("controller lookup getattr" in item for item in violations)
+    assert any("controller lookup get_controller" in item for item in violations)
 
 
 def test_agent_resource_receipt_guard_rejects_tokenless_adapter_contract(

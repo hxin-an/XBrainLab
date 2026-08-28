@@ -25,11 +25,9 @@ from XBrainLab.backend.application.commands import (
     UpdateMetadataCommand,
 )
 from XBrainLab.backend.application.view_publication import InterpretationReviewIdentity
-from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
     CommandReviewContext,
-    ControllerCompatibilityUnavailableError,
     application_ui_runtime,
     blocked_reason,
     cancel_application_operation,
@@ -41,7 +39,6 @@ from XBrainLab.ui.application_capabilities import (
     get_command_review_context,
     has_real_application_context,
     is_stale_publication_result,
-    run_controller_compatibility_call,
 )
 from XBrainLab.ui.async_command_runner import qt_object_deleted
 from XBrainLab.ui.components.modal_presentation import (
@@ -63,7 +60,6 @@ from XBrainLab.ui.panels.dataset.data_interpretation_action_coordinator import (
     DataInterpretationActionCoordinator,
 )
 from XBrainLab.ui.panels.dataset.external_label_import_coordinator import (
-    CompatibilityLabelTargets,
     ExternalLabelImportBindings,
     ExternalLabelImportCoordinator,
 )
@@ -289,89 +285,13 @@ class DatasetActionHandler:
             ),
         )
 
-    @property
-    def controller(self):
-        """DatasetController: The dataset controller from the parent panel."""
-        return getattr(self.panel, "controller", None)
-
-    @property
-    def main_window(self):
-        """QMainWindow: The application main window reference."""
-        return getattr(self.panel, "main_window", None)
-
     def _show_status(self, message: str, timeout_ms: int = 7000) -> None:
         show_status_message(self.panel, message, timeout_ms)
 
-    def _compatibility_controller_value(
-        self,
-        blocked_title: str,
-        fallback: Callable[[], Any],
-        *,
-        warn_when_unavailable: bool = True,
-    ) -> tuple[bool, Any]:
-        """Read controller compatibility state only for mock UI contexts."""
-        try:
-            return True, run_controller_compatibility_call(self.panel, fallback)
-        except ControllerCompatibilityUnavailableError as exc:
-            if warn_when_unavailable:
-                show_warning(self.panel, blocked_title, str(exc))
-            return False, None
-
-    def _compatibility_filenames_for_smart_parse(self) -> list[str] | None:
-        controller = self.controller
-        if controller is None:
-            return []
-        available, filenames = self._compatibility_controller_value(
-            "Smart Parse Blocked",
-            controller.get_filenames,
-        )
-        if not available:
-            return None
-        return list(filenames or [])
-
-    def _compatibility_target_files_from_controller(
-        self,
-        selected_rows: list[int],
-    ) -> CompatibilityLabelTargets:
-        controller = self.controller
-        if controller is None:
-            show_warning(
-                self.panel,
-                "Add Labels Blocked",
-                "Dataset controller unavailable.",
-            )
-            return CompatibilityLabelTargets(targets=(), target_indices=())
-        available, data_list = self._compatibility_controller_value(
-            "Add Labels Blocked",
-            controller.get_loaded_data_list,
-        )
-        if not available:
-            return CompatibilityLabelTargets(targets=(), target_indices=())
-        target_indices = tuple(i for i in selected_rows if i < len(data_list))
-        return CompatibilityLabelTargets(
-            targets=tuple(data_list[i] for i in target_indices),
-            target_indices=target_indices,
-        )
-
-    def _compatibility_smart_filter_suggestions(
-        self,
-        raw_file,
-        target_count: int,
-    ) -> list[int]:
-        controller = self.controller
-        if controller is None:
-            return []
-        available, suggestions = self._compatibility_controller_value(
-            "Smart Filter Blocked",
-            lambda: controller.get_smart_filter_suggestions(raw_file, target_count),
-            warn_when_unavailable=False,
-        )
-        if not available:
-            logger.warning(
-                "Skipped compatibility smart-filter suggestions in real Study context.",
-            )
-            return []
-        return [int(item) for item in suggestions or []]
+    @property
+    def main_window(self):
+        """Top-level window for lifecycle-only UI continuation checks."""
+        return getattr(self.panel, "main_window", None)
 
     def import_data(self) -> InteractionOutcome:
         return self._data_interpretation.import_data()
@@ -504,33 +424,12 @@ class DatasetActionHandler:
             return
 
         if smart_parse_capability is None:
-            controller = self.controller
-            if controller is None:
-                show_error(
-                    self.panel,
-                    "Error",
-                    "Dataset controller unavailable.",
-                )
-                return
-            available, is_locked = self._compatibility_controller_value(
+            show_warning(
+                self.panel,
                 "Smart Parse Blocked",
-                lambda: bool(controller.is_locked()),
+                _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
             )
-            if not available:
-                return
-            if is_locked:
-                show_warning(self.panel, "Blocked", "Dataset is locked.")
-                return
-
-            available, has_data = self._compatibility_controller_value(
-                "Smart Parse Blocked",
-                lambda: bool(controller.has_data()),
-            )
-            if not available:
-                return
-            if not has_data:
-                show_warning(self.panel, "Warning", "No data loaded.")
-                return
+            return
 
         reviewed_generation = (
             review_context.publication_generation
@@ -600,7 +499,12 @@ class DatasetActionHandler:
                 expected_publication_generation=expected_publication_generation,
             )
         if result is None:
-            return self._compatibility_filenames_for_smart_parse()
+            show_warning(
+                self.panel,
+                "Smart Parse Blocked",
+                _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
+            )
+            return None
         if result.failed:
             title = (
                 "Review Smart Parse Again"
@@ -781,12 +685,6 @@ class DatasetActionHandler:
             )
             if isinstance(rows, list) and all(isinstance(row, int) for row in rows):
                 return rows
-        compatibility_selection = (
-            selection.publication_generation is None
-            and not has_real_application_context(self.panel)
-        )
-        if compatibility_selection:
-            return [identity.rendered_row for identity in selection.rows]
         self._reject_stale_table_action(stale_title, action_description)
         return None
 

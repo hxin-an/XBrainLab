@@ -1466,9 +1466,6 @@ class MainWindow(QMainWindow):
         self,
     ) -> DesktopApplicationPublicationRenderer | None:
         """Create the canonical desktop publication owner on first backend use."""
-        renderer = self._application_publication_renderer
-        if renderer is not None:
-            return renderer
         if (
             self._closing_in_progress
             or sip.isdeleted(self)
@@ -1479,19 +1476,39 @@ class MainWindow(QMainWindow):
             get_application_service,
         )
 
+        service = get_application_service(self.study)
+        renderer = self._application_publication_renderer
+        replacing_renderer = renderer is not None
+        if renderer is not None and renderer.service is service:
+            return renderer
+        if renderer is not None:
+            renderer.cleanup()
+            self._application_publication_renderer = None
+
         renderer = DesktopApplicationPublicationRenderer(
-            service=get_application_service(self.study),
+            service=service,
             render_publication=self._render_application_view_publication,
             parent=self,
         )
         self._application_publication_renderer = renderer
         self._defer_initial_application_runtime = False
+        if replacing_renderer:
+            self._rebind_dataset_publication_port()
         initial_publication = self._flush_deferred_application_subscriptions(
             renderer.service,
         )
         if initial_publication is not None:
             renderer.render_initial_publication(initial_publication)
         return renderer
+
+    def _rebind_dataset_publication_port(self) -> None:
+        """Reconnect the Dataset view to a replacement application runtime."""
+        panel = getattr(self, "dataset_panel", None)
+        rebind = getattr(panel, "rebind_application_publication_port", None)
+        if callable(rebind):
+            runtime = application_ui_runtime(panel)
+            if runtime is not None:
+                rebind(runtime)
 
     def _defer_application_runtime_subscription(
         self,

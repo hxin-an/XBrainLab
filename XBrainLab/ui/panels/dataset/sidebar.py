@@ -1,6 +1,5 @@
 """Sidebar widget for the dataset panel: info and primary dataset actions."""
 
-from collections.abc import Callable
 from typing import Any
 
 from PyQt6.QtCore import QEvent, Qt, QTimer
@@ -27,10 +26,8 @@ from XBrainLab.backend.application.preprocess_preparation import (
     ApplicationPreprocessBoundary,
 )
 from XBrainLab.backend.application.state import ApplicationStateSnapshot
-from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
-    ControllerCompatibilityUnavailableError,
     blocked_reason,
     execute_application_command,
     get_application_view_publication,
@@ -38,7 +35,6 @@ from XBrainLab.ui.application_capabilities import (
     has_real_application_context,
     is_application_runtime_deferred,
     is_stale_publication_result,
-    run_controller_compatibility_call,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel, SidebarScrollArea
 from XBrainLab.ui.components.modal_presentation import (
@@ -144,11 +140,6 @@ class DatasetSidebar(QWidget):
         self.panel = panel  # Reference to main panel (for actions access)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.init_ui()
-
-    @property
-    def controller(self):
-        """DatasetController: The dataset controller from the parent panel."""
-        return self.panel.controller
 
     @property
     def main_window(self):
@@ -509,49 +500,25 @@ class DatasetSidebar(QWidget):
                 button.setToolTip(tooltip)
             return
 
-        for button in (
-            self.import_btn,
-            self.reload_recipe_btn,
-        ):
-            button.setEnabled(True)
-        self.chan_select_btn.setEnabled(False)
-        self.chan_select_btn.setToolTip("Import EEG data before selecting channels.")
+        unavailable_actions = {
+            self.import_btn: _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
+            self.reload_recipe_btn: _RECIPE_RELOAD_AVAILABILITY_UNAVAILABLE,
+            self.smart_parse_btn: _SMART_PARSE_AVAILABILITY_UNAVAILABLE,
+            self.import_label_btn: _LABEL_IMPORT_AVAILABILITY_UNAVAILABLE,
+            self.chan_select_btn: _CHANNEL_SELECTION_AVAILABILITY_UNAVAILABLE,
+        }
+        for button, tooltip in unavailable_actions.items():
+            button.setEnabled(False)
+            button.setToolTip(tooltip)
 
     def _uses_startup_bootstrap_state(self) -> bool:
         """Avoid constructing the full command spine for first-paint decoration."""
         return is_application_runtime_deferred(self)
 
-    def _compatibility_controller_value(
-        self,
-        fallback: Callable[[], Any],
-        *,
-        blocked_title: str | None = None,
-    ) -> tuple[bool, Any]:
-        """Read controller compatibility state only for mock UI contexts."""
-        try:
-            return True, run_controller_compatibility_call(self, fallback)
-        except ControllerCompatibilityUnavailableError as exc:
-            if blocked_title is not None:
-                show_warning(self, blocked_title, str(exc))
-            return False, None
-
-    def _compatibility_sidebar_state(self) -> tuple[bool, bool, bool]:
-        """Return compatibility state when no command capability is available."""
-        available, is_locked = self._compatibility_controller_value(
-            lambda: bool(self.controller.is_locked()),
-        )
-        if not available:
-            return False, False, False
-        available, has_data = self._compatibility_controller_value(
-            lambda: bool(self.controller.has_data()),
-        )
-        if not available:
-            return False, bool(is_locked), False
-        return True, bool(is_locked), bool(has_data)
-
     def update_sidebar(self):
         """Update info panel and button states."""
-        if self.controller is not None or has_real_application_context(self):
+        publication = get_application_view_publication(self)
+        if has_real_application_context(self) or publication is not None:
             if self._uses_startup_bootstrap_state():
                 self._apply_startup_bootstrap_state()
                 self._fit_action_labels()
@@ -559,7 +526,6 @@ class DatasetSidebar(QWidget):
             # Update Info Panel handled by Service
 
             # Update Button States (Tooltips only as per design)
-            publication = get_application_view_publication(self)
             capabilities = (
                 publication.effective_capabilities if publication is not None else None
             )
@@ -593,26 +559,6 @@ class DatasetSidebar(QWidget):
                 if capabilities is not None
                 else None
             )
-            product_context = has_real_application_context(self)
-            compatibility_state_available = not product_context
-            compatibility_is_locked = False
-            compatibility_has_data = False
-            if not product_context and any(
-                capability is None
-                for capability in (
-                    scan_capability,
-                    reload_capability,
-                    preprocess_capability,
-                    smart_parse_capability,
-                    import_label_capability,
-                )
-            ):
-                (
-                    compatibility_state_available,
-                    compatibility_is_locked,
-                    compatibility_has_data,
-                ) = self._compatibility_sidebar_state()
-
             if scan_capability is not None:
                 self.import_btn.setEnabled(scan_capability.enabled)
                 source_tooltip = (
@@ -625,21 +571,10 @@ class DatasetSidebar(QWidget):
                     )
                 )
                 self.import_btn.setToolTip(source_tooltip)
-            elif not compatibility_state_available:
+            else:
                 self.import_btn.setEnabled(False)
                 self.import_btn.setToolTip(
-                    _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
-                )
-            elif compatibility_is_locked:
-                self.import_btn.setEnabled(True)
-                self.import_btn.setToolTip(
-                    "Dataset is locked. Reset before interpreting a new source.",
-                )
-            else:
-                self.import_btn.setEnabled(True)
-                self.import_btn.setToolTip(
-                    "Choose EEG files or a folder, review metadata and labels, "
-                    "then import",
+                    _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE
                 )
 
             if reload_capability is not None:
@@ -652,20 +587,10 @@ class DatasetSidebar(QWidget):
                         "Recipe reload is not available right now.",
                     ),
                 )
-            elif not compatibility_state_available:
+            else:
                 self.reload_recipe_btn.setEnabled(False)
                 self.reload_recipe_btn.setToolTip(
-                    _RECIPE_RELOAD_AVAILABILITY_UNAVAILABLE,
-                )
-            elif compatibility_is_locked:
-                self.reload_recipe_btn.setEnabled(True)
-                self.reload_recipe_btn.setToolTip(
-                    "Dataset is locked. Reset before reloading a recipe.",
-                )
-            else:
-                self.reload_recipe_btn.setEnabled(True)
-                self.reload_recipe_btn.setToolTip(
-                    "Review a saved import recipe before applying it",
+                    _RECIPE_RELOAD_AVAILABILITY_UNAVAILABLE
                 )
 
             if preprocess_capability is not None:
@@ -678,19 +603,11 @@ class DatasetSidebar(QWidget):
                         "Load raw data before selecting channels.",
                     ),
                 )
-            elif not compatibility_state_available:
+            else:
                 self.chan_select_btn.setEnabled(False)
                 self.chan_select_btn.setToolTip(
-                    _CHANNEL_SELECTION_AVAILABILITY_UNAVAILABLE,
+                    _CHANNEL_SELECTION_AVAILABILITY_UNAVAILABLE
                 )
-            elif compatibility_is_locked:
-                self.chan_select_btn.setEnabled(True)
-                self.chan_select_btn.setToolTip(
-                    "Dataset is locked. Click to see details.",
-                )
-            else:
-                self.chan_select_btn.setEnabled(True)
-                self.chan_select_btn.setToolTip("Select specific channels to keep")
 
             if layout_capability is not None:
                 state_snapshot = getattr(publication, "state", None)
@@ -725,10 +642,8 @@ class DatasetSidebar(QWidget):
                         "Load EEG data before configuring electrode layout.",
                     )
                 )
-            elif not compatibility_state_available:
-                self.electrode_layout_btn.setEnabled(False)
             else:
-                self.electrode_layout_btn.setEnabled(compatibility_has_data)
+                self.electrode_layout_btn.setEnabled(False)
 
             if publication is not None:
                 layout = publication.state.electrode_layout
@@ -773,21 +688,9 @@ class DatasetSidebar(QWidget):
                         "Load raw data before applying smart parse.",
                     ),
                 )
-            elif not compatibility_state_available:
-                self.smart_parse_btn.setEnabled(False)
-                self.smart_parse_btn.setToolTip(
-                    _SMART_PARSE_AVAILABILITY_UNAVAILABLE,
-                )
-            elif compatibility_is_locked:
-                self.smart_parse_btn.setEnabled(True)
-                self.smart_parse_btn.setToolTip(
-                    "Dataset is locked. Click to see details.",
-                )
             else:
-                self.smart_parse_btn.setEnabled(True)
-                self.smart_parse_btn.setToolTip(
-                    "Auto-extract Subject/Session from filenames",
-                )
+                self.smart_parse_btn.setEnabled(False)
+                self.smart_parse_btn.setToolTip(_SMART_PARSE_AVAILABILITY_UNAVAILABLE)
 
             if import_label_capability is not None:
                 self.import_label_btn.setEnabled(import_label_capability.enabled)
@@ -799,26 +702,9 @@ class DatasetSidebar(QWidget):
                         "Interpret a data source before adding labels.",
                     ),
                 )
-            elif not compatibility_state_available:
-                self.import_label_btn.setEnabled(False)
-                self.import_label_btn.setToolTip(
-                    _LABEL_IMPORT_AVAILABILITY_UNAVAILABLE,
-                )
-            elif compatibility_is_locked:
-                self.import_label_btn.setEnabled(False)
-                self.import_label_btn.setToolTip(
-                    "Dataset is locked. Reset before changing labels.",
-                )
-            elif not compatibility_has_data:
-                self.import_label_btn.setEnabled(False)
-                self.import_label_btn.setToolTip(
-                    "Interpret a data source before adding labels.",
-                )
             else:
-                self.import_label_btn.setEnabled(True)
-                self.import_label_btn.setToolTip(
-                    "Add labels to loaded data and update the current recipe trace.",
-                )
+                self.import_label_btn.setEnabled(False)
+                self.import_label_btn.setToolTip(_LABEL_IMPORT_AVAILABILITY_UNAVAILABLE)
 
             self._fit_action_labels()
 
@@ -879,38 +765,14 @@ class DatasetSidebar(QWidget):
 
     # --- Actions moved from Panel ---
 
-    def _compatibility_loaded_data_list_for_channel_selection(self) -> list[str] | None:
-        available, data_list = self._compatibility_controller_value(
-            self.controller.get_loaded_data_list,
-            blocked_title="Channel Selection Blocked",
-        )
-        if not available:
-            return None
-        values = list(data_list or [])
-        if not values:
-            return []
-        try:
-            return [str(channel) for channel in values[0].get_mne().ch_names]
-        except Exception:
-            logger.debug(
-                "Compatibility channel-name projection failed",
-                exc_info=True,
-            )
-            return []
-
     def open_channel_selection(self) -> InteractionOutcome:
         """Open the channel selection dialog.
 
         Blocked if the dataset is locked or no data is loaded.
         The dialog's OK action is the single confirmation before applying.
         """
-        if self.controller is None and not has_real_application_context(self):
-            return InteractionOutcome.failed(
-                "Channel Selection is unavailable in this session."
-            )
-
         publication = get_application_view_publication(self)
-        if publication is None and has_real_application_context(self):
+        if publication is None:
             show_warning(
                 self,
                 "Channel Selection Blocked",
@@ -941,58 +803,16 @@ class DatasetSidebar(QWidget):
             )
 
         if preprocess_capability is None:
-            if has_real_application_context(self):
-                show_warning(
-                    self,
-                    "Channel Selection Blocked",
-                    _CHANNEL_SELECTION_AVAILABILITY_UNAVAILABLE,
-                )
-                return InteractionOutcome.blocked(
-                    _CHANNEL_SELECTION_AVAILABILITY_UNAVAILABLE
-                )
-            available, has_data = self._compatibility_controller_value(
-                lambda: bool(self.controller.has_data()),
-                blocked_title="Channel Selection Blocked",
+            show_warning(
+                self,
+                "Channel Selection Blocked",
+                _CHANNEL_SELECTION_AVAILABILITY_UNAVAILABLE,
             )
-            if not available:
-                return InteractionOutcome.failed(
-                    "Channel Selection is unavailable in this session."
-                )
-            if not has_data:
-                show_warning(self, "Warning", "No data loaded.")
-                return InteractionOutcome.blocked(
-                    "Load raw data before selecting channels."
-                )
+            return InteractionOutcome.blocked(
+                _CHANNEL_SELECTION_AVAILABILITY_UNAVAILABLE
+            )
 
-            available, is_locked = self._compatibility_controller_value(
-                lambda: bool(self.controller.is_locked()),
-                blocked_title="Channel Selection Blocked",
-            )
-            if not available:
-                return InteractionOutcome.failed(
-                    "Channel Selection is unavailable in this session."
-                )
-            if is_locked:
-                show_warning(
-                    self,
-                    "Action Blocked",
-                    "Dataset is locked because a data operation has "
-                    "been applied.\n"
-                    "Use 'Reset All Preprocessing' before changing channels.",
-                )
-                return InteractionOutcome.blocked(
-                    "Reset preprocessing before changing channels."
-                )
-
-        channels = (
-            [str(channel) for channel in publication.state.raw.channels]
-            if publication is not None
-            else self._compatibility_loaded_data_list_for_channel_selection()
-        )
-        if channels is None:
-            return InteractionOutcome.failed(
-                "Channel Selection could not read the current channels."
-            )
+        channels = [str(channel) for channel in publication.state.raw.channels]
         dialog_class = _channel_selection_dialog_class()
         dialog = dialog_class(self, channels)
         reviewed_boundary = (

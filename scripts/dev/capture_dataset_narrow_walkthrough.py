@@ -6,7 +6,7 @@ import argparse
 import hashlib
 import json
 import subprocess
-from collections import defaultdict
+import sys
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -16,6 +16,7 @@ from typing import Any
 
 from PyQt6.QtCore import PYQT_VERSION_STR, QT_VERSION_STR, QPoint, QRect, Qt
 from PyQt6.QtGui import QFont
+from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -24,28 +25,34 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QMainWindow,
     QPushButton,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if not sys.path or sys.path[0] != str(REPO_ROOT):
+    sys.path.insert(0, str(REPO_ROOT))
 
 from XBrainLab.backend.application.capabilities import build_capability_policy
 from XBrainLab.backend.application.pipeline_stage import (
     PipelineStage,
     pipeline_stage_status_label,
 )
+from XBrainLab.backend.application.results import ChangedState, CommandResult
 from XBrainLab.backend.application.state import (
     ActiveDatasetSnapshot,
     ApplicationStateSnapshot,
     PreprocessedStateSnapshot,
     RawStateSnapshot,
 )
-from XBrainLab.backend.application.view_publication import ApplicationViewPublication
+from XBrainLab.backend.application.view_publication import (
+    APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+    ApplicationViewPublication,
+)
 from XBrainLab.ui.chat.panel import ChatPanel
 from XBrainLab.ui.panels.dataset.panel import DatasetPanel
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "build" / "dev-artifacts" / "dataset-narrow"
 SHELL_HEIGHTS = (520, 800)
 ASSISTANT_DOCK_WIDTH = 320
@@ -95,32 +102,21 @@ def _fixture_publication(
     )
 
 
-class _DatasetControllerFixture:
-    """Controller and publication fixture with one consistent capture state."""
+class _DatasetPublicationFixture:
+    """Synthetic publication/query port used only by the offscreen capture."""
 
     def __init__(self) -> None:
-        self.study = SimpleNamespace()
-        self._subscribers: dict[str, list[Callable[..., Any]]] = defaultdict(list)
+        self._subscribers: dict[str, list[Callable[..., Any]]] = {}
         self._loaded_data: list[Any] = []
         self._publication = _fixture_publication(has_data=False, revision=1)
 
     def subscribe(self, event_name: str, callback: Callable[..., Any]) -> None:
-        self._subscribers[event_name].append(callback)
+        self._subscribers.setdefault(event_name, []).append(callback)
 
     def unsubscribe(self, event_name: str, callback: Callable[..., Any]) -> None:
         subscribers = self._subscribers.get(event_name, [])
         if callback in subscribers:
             subscribers.remove(callback)
-
-    @staticmethod
-    def is_locked() -> bool:
-        return False
-
-    def has_data(self) -> bool:
-        return bool(self._loaded_data)
-
-    def get_loaded_data_list(self) -> list[Any]:
-        return list(self._loaded_data)
 
     def get_view_publication(self) -> ApplicationViewPublication:
         return self._publication
@@ -128,7 +124,32 @@ class _DatasetControllerFixture:
     def set_loaded_data(self, data: Any) -> ApplicationViewPublication:
         self._loaded_data = [data]
         self._publication = _fixture_publication(has_data=True, revision=2)
+        for callback in self._subscribers.get(
+            APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+            [],
+        ):
+            callback(self._publication)
         return self._publication
+
+    def execute(
+        self,
+        command: Any,
+        *,
+        expected_publication_generation: int | None = None,
+    ) -> CommandResult:
+        del expected_publication_generation
+        if getattr(command, "query", None) != "data_lists":
+            raise RuntimeError(
+                "Dataset capture fixture only supports data-list queries."
+            )
+        rows = [_detached_table_row(data) for data in self._loaded_data]
+        return CommandResult.success_result(
+            command_name="query_state",
+            message="Synthetic Dataset rows are available.",
+            state=self._publication.state,
+            changed_state=ChangedState(),
+            diagnostics={"raw_rows": rows, "preprocessed_rows": rows},
+        )
 
 
 class _LoadedEpochFixture:
@@ -206,9 +227,24 @@ def _detached_summary_row(data: _LoadedEpochFixture) -> dict[str, Any]:
     }
 
 
+def _detached_table_row(data: _LoadedEpochFixture) -> dict[str, Any]:
+    """Build the detached Dataset table row returned by the fixture query port."""
+    return {
+        "filepath": data.get_filepath(),
+        "filename": data.get_filename(),
+        "subject": data.get_subject_name(),
+        "session": data.get_session_name(),
+        "n_channels": data.get_nchan(),
+        "sampling_frequency": data.get_sfreq(),
+        "epochs_length": data.get_epochs_length(),
+        "event": data.get_event_summary(),
+    }
+
+
 def _settle(app: QApplication, turns: int = 12) -> None:
     for _ in range(turns):
         app.processEvents()
+        QTest.qWait(2)
 
 
 def _git_value(*args: str) -> str:
@@ -488,11 +524,10 @@ def _build_shell(
     top_layout.addWidget(assistant_button)
     central_layout.addWidget(top_bar)
 
-    controller = _DatasetControllerFixture()
+    publication_port = _DatasetPublicationFixture()
     panel = DatasetPanel(
-        controller=controller,
         parent=window,
-        publication_port=controller,
+        publication_port=publication_port,
     )
     central_layout.addWidget(panel)
     window.setCentralWidget(central_widget)
@@ -501,7 +536,7 @@ def _build_shell(
         raise RuntimeError("Dataset capture shell did not create a status bar.")
     status_bar.showMessage(
         pipeline_stage_status_label(
-            controller.get_view_publication().state.pipeline_stage,
+            publication_port.get_view_publication().state.pipeline_stage,
         )
     )
 
@@ -529,34 +564,10 @@ def _build_shell(
 
 def _apply_loaded_state(panel: DatasetPanel) -> None:
     data = _LoadedEpochFixture()
-    controller = panel.controller
-    if not isinstance(controller, _DatasetControllerFixture):
-        raise RuntimeError("Dataset capture lost its application fixture.")
-    publication = controller.set_loaded_data(data)
-    panel.sidebar.info_panel.update_info(
-        preprocessed_data_list=[_detached_summary_row(data)]
-    )
-    panel.table.blockSignals(True)
-    panel.table.setRowCount(1)
-    for column, text in enumerate(
-        (
-            data.get_filename(),
-            data.get_subject_name(),
-            data.get_session_name(),
-            str(data.get_nchan()),
-            str(data.get_sfreq()),
-            str(data.get_epochs_length()),
-            "120",
-        )
-    ):
-        panel.table.setItem(0, column, QTableWidgetItem(text))
-    panel.table.blockSignals(False)
-    panel.data_surface.setCurrentWidget(panel.table)
-    # Mirror DatasetPanel._update_panel_content(): inserting the first row can
-    # introduce a vertical scrollbar and shrink the viewport after the empty
-    # surface was initially fitted.
-    panel._fit_table_columns_to_viewport()
-    panel._schedule_table_column_fit()
+    publication_port = panel._publication_port
+    if not isinstance(publication_port, _DatasetPublicationFixture):
+        raise RuntimeError("Dataset capture lost its publication/query fixture.")
+    publication = publication_port.set_loaded_data(data)
     window = panel.window()
     if not isinstance(window, QMainWindow):
         raise RuntimeError("Dataset capture shell lost its status bar.")
@@ -574,12 +585,12 @@ def _state_truth_evidence(
     *,
     state: str,
 ) -> dict[str, Any]:
-    controller = panel.controller
     publication = panel._read_application_publication()
     status_bar = window.statusBar()
     status_text = status_bar.currentMessage() if status_bar is not None else ""
     fixture_has_data = bool(
-        isinstance(controller, _DatasetControllerFixture) and controller.has_data()
+        isinstance(panel._publication_port, _DatasetPublicationFixture)
+        and panel._publication_port._loaded_data
     )
     publication_has_data = bool(
         publication is not None
@@ -878,8 +889,9 @@ def _render_readme(payload: dict[str, Any]) -> str:
             "`320` logical px",
             "- logical scaling: application font multiplier; this is not native "
             "Windows DPI evidence",
-            "- workflow scope: synthetic controller and in-memory presentation "
-            "state; this capture does not execute the real import command path",
+            "- workflow scope: synthetic publication/query fixture and in-memory "
+            "presentation state; this capture does not execute the real import "
+            "command path",
             "",
             "## Matrix",
             "",
@@ -968,7 +980,8 @@ def capture(output_dir: Path) -> dict[str, Any]:
         },
         "claim_boundary": (
             "Linux Qt offscreen geometry and raster evidence using a synthetic "
-            "controller, in-memory loaded-state fixture, and logical font scaling. "
+            "publication/query fixture, in-memory loaded-state fixture, and logical "
+            "font scaling. "
             "It proves presentation behavior only: it does not execute real import, "
             "and it does not prove Windows native DPI, per-monitor DPI transitions, "
             "compositor behavior, or physical-pixel rendering."
