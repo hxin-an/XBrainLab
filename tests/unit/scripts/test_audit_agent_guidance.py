@@ -11,6 +11,38 @@ from scripts.dev.audit_agent_guidance import (
     build_parser,
 )
 
+REPO_ROOT = Path(__file__).resolve().parents[3]
+
+
+def test_current_repository_guidance_passes_the_public_audit() -> None:
+    """Keep one real-tree check alongside the isolated audit failure cases."""
+    assert audit_guidance(REPO_ROOT) == []
+
+
+def test_public_audit_rejects_invalid_costly_model_dispatch(tmp_path: Path) -> None:
+    config = tmp_path / ".codex" / "config.toml"
+    config.parent.mkdir()
+    config.write_text(
+        """\
+model = "gpt-5.6-sol"
+model_reasoning_effort = "medium"
+service_tier = "fast"
+
+[agents]
+default_subagent_model = "gpt-5.6-terra"
+default_subagent_reasoning_effort = "medium"
+""",
+        encoding="utf-8",
+    )
+
+    errors = audit_guidance(tmp_path)
+
+    assert ".codex/config.toml must set model='gpt-5.6-terra'" in errors
+    assert (
+        ".codex/config.toml must not persist service_tier; Fast is foreground-only"
+        in errors
+    )
+
 
 def test_agents_size_contract_has_no_minimum(tmp_path: Path) -> None:
     (tmp_path / "AGENTS.md").write_text("short\n", encoding="utf-8")
