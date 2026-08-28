@@ -17,16 +17,14 @@ from typing import Any
 
 from XBrainLab.backend.application.capabilities import build_capability_policy
 from XBrainLab.backend.application.pipeline_stage import PipelineStage
-from XBrainLab.backend.application.state import ApplicationStateSnapshot
+from XBrainLab.backend.application.state import (
+    ApplicationStateSnapshot,
+    DatasetSplitLifecycle,
+)
 from XBrainLab.backend.application.view_publication import ApplicationViewPublication
 from XBrainLab.backend.study import Study
 from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 from XBrainLab.llm.agent.assembler import ContextAssembler, PromptToolPublication
-from XBrainLab.llm.agent.context_encoding import (
-    UntrustedContextItem,
-    UntrustedContextSource,
-    encode_untrusted_context,
-)
 from XBrainLab.llm.agent.controller import LLMController
 from XBrainLab.llm.agent.parser import (
     CommandParser,
@@ -34,7 +32,6 @@ from XBrainLab.llm.agent.parser import (
     ToolEnvelopeStatus,
 )
 from XBrainLab.llm.agent.pending_interaction import PendingInteractionCoordinator
-from XBrainLab.llm.agent.prompt_policy import STRICT_TOOL_RESPONSE_PROMPT_POLICY
 from XBrainLab.llm.agent.strict_envelope_recovery import (
     DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY,
     STRICT_ENVELOPE_EXHAUSTED_MESSAGE,
@@ -227,6 +224,13 @@ def target_tool_registry() -> ToolRegistry:
 
 
 def _first_stage_for_tool(tool_name: str) -> PipelineStage:
+    # The historic 36-case catalog predates capability-filtered publication.
+    # Starting a run needs a saved split, model, and training settings, which
+    # truthfully places the product in dataset_ready rather than epoch_ready.
+    # Keep the two-per-tool corpus count but evaluate that action at the first
+    # production state where its command is actually published.
+    if tool_name == "start_training":
+        return PipelineStage.DATASET_READY
     for stage, config in STAGE_CONFIG.items():
         if tool_name in config["tools"]:
             return stage
@@ -597,23 +601,6 @@ def load_clarification_cases(
     return tuple(cases)
 
 
-def _stage_catalog(
-    case: TargetEvalCase | TargetChallengeCase | PrecisionCase,
-    registry: ToolRegistry,
-) -> tuple[PipelineStage, str]:
-    stage = PipelineStage(case.workflow_stage)
-    allowed_tools = list(STAGE_CONFIG[stage]["tools"])
-    assembler = ContextAssembler(
-        registry,
-        object(),
-        application_runtime=object(),  # type: ignore[arg-type]
-    )
-    return stage, assembler._format_tools(
-        allowed_tools,
-        workflow_stage=stage.value,
-    )
-
-
 @dataclass(frozen=True, slots=True)
 class _EvaluatorApplicationRuntime:
     """Read one immutable evaluator publication without a second state source."""
@@ -722,23 +709,128 @@ class _EvaluatorControllerHarness:
         return decision, command[1]
 
 
-def _precision_application_publication(
-    case: PrecisionCase,
+def _case_application_publication(
+    case: TargetEvalCase | TargetChallengeCase | PrecisionCase,
 ) -> ApplicationViewPublication:
-    """Build the smallest backend state that truthfully represents one case."""
+    """Build the smallest internally consistent product state for one stage."""
     stage = PipelineStage(case.workflow_stage)
     state = ApplicationStateSnapshot.empty()
-    if stage is PipelineStage.DATA_LOADED:
+
+    if stage is not PipelineStage.EMPTY:
         state = replace(
             state,
             pipeline_stage=stage.value,
             raw=replace(state.raw, loaded=True, count=1),
             active_dataset=replace(state.active_dataset, has_raw_data=True),
         )
-    elif stage is not PipelineStage.EMPTY:
-        raise ValueError(
-            "Precision capability fixtures currently support only empty and "
-            "data_loaded stages."
+    if stage in {
+        PipelineStage.PREPROCESSED,
+        PipelineStage.EPOCH_READY,
+        PipelineStage.DATASET_READY,
+        PipelineStage.TRAINING,
+        PipelineStage.TRAINED,
+    }:
+        state = replace(
+            state,
+            preprocessed=replace(
+                state.preprocessed,
+                available=True,
+                count=1,
+                operations=["bandpass_filter"],
+            ),
+            active_dataset=replace(state.active_dataset, has_preprocessed_data=True),
+        )
+    if stage in {
+        PipelineStage.EPOCH_READY,
+        PipelineStage.DATASET_READY,
+        PipelineStage.TRAINING,
+        PipelineStage.TRAINED,
+    }:
+        state = replace(
+            state,
+            epoch=replace(
+                state.epoch,
+                available=True,
+                exists=True,
+                epoch_count=120,
+                n_channels=22,
+                n_times=256,
+                sfreq=128.0,
+                event_names=["rest", "task"],
+                event_ids={"rest": 1, "task": 2},
+            ),
+            active_dataset=replace(state.active_dataset, has_epoch_data=True),
+        )
+    if stage in {
+        PipelineStage.DATASET_READY,
+        PipelineStage.TRAINING,
+        PipelineStage.TRAINED,
+    }:
+        state = replace(
+            state,
+            dataset=replace(
+                state.dataset,
+                available=True,
+                count=1,
+                split_spec_saved=True,
+                split_lifecycle=DatasetSplitLifecycle.VERIFIED,
+                split_materialized=True,
+            ),
+            training=replace(
+                state.training,
+                has_model=True,
+                model_name="EEGNet",
+                has_training_option=True,
+                training_option={"epoch": 1},
+            ),
+            active_dataset=replace(
+                state.active_dataset,
+                has_datasets=True,
+                has_saved_split=True,
+            ),
+            active_training=replace(
+                state.active_training,
+                has_model=True,
+                has_training_option=True,
+            ),
+        )
+    if stage is PipelineStage.TRAINING:
+        state = replace(
+            state,
+            training=replace(
+                state.training,
+                has_trainer=True,
+                is_running=True,
+                progress_message="Synthetic training run in progress.",
+            ),
+            active_training=replace(
+                state.active_training,
+                has_trainer=True,
+                is_running=True,
+            ),
+        )
+    if stage is PipelineStage.TRAINED:
+        state = replace(
+            state,
+            training=replace(
+                state.training,
+                has_trainer=True,
+                run_count=1,
+                finished_run_count=1,
+            ),
+            evaluation=replace(
+                state.evaluation,
+                available=True,
+                total_plans=1,
+                total_runs=1,
+                finished_runs=1,
+                metrics_available=True,
+            ),
+            active_training=replace(
+                state.active_training,
+                has_trainer=True,
+                finished_run_count=1,
+            ),
         )
     return ApplicationViewPublication(
         generation=1,
@@ -747,23 +839,34 @@ def _precision_application_publication(
     )
 
 
-def _precision_case_projection(
-    case: PrecisionCase,
+def _case_projection(
+    case: TargetEvalCase | TargetChallengeCase | PrecisionCase,
     registry: ToolRegistry,
+    *,
+    recovery_messages: tuple[str, ...] = (),
 ) -> tuple[
     list[dict[str, str]],
     PromptToolPublication,
     ApplicationViewPublication,
 ]:
-    """Build one precision request and admission publication from backend truth."""
-    publication = _precision_application_publication(case)
+    """Build one first-turn request from the product publication boundary."""
+    publication = _case_application_publication(case)
     runtime = _EvaluatorApplicationRuntime(publication)
     assembler = ContextAssembler(
         registry,
         _PublicationBackedEvaluatorStudy(),
         application_runtime=runtime,
     )
+    for message in recovery_messages:
+        assembler.add_context(message)
     messages = assembler.get_messages([{"role": "user", "content": case.user_input}])
+    if isinstance(
+        case, TargetEvalCase
+    ) and not assembler.latest_tool_publication.permits(case.expected_tool):
+        raise ValueError(
+            f"Target case {case.case_id} is not callable from its production "
+            f"fixture at {case.workflow_stage}."
+        )
     return messages, assembler.latest_tool_publication, publication
 
 
@@ -784,7 +887,7 @@ def build_clarification_messages(
         case.trajectory_kind == "direct" and source.case_id != case.source_case_id
     ) or source.category != "missing_parameter":
         raise ValueError("Clarification source does not match its missing case.")
-    publication = _precision_application_publication(source)
+    publication = _case_application_publication(source)
     assembler = ContextAssembler(
         registry,
         _PublicationBackedEvaluatorStudy(),
@@ -806,27 +909,12 @@ def build_case_messages(
     case: TargetEvalCase | TargetChallengeCase | PrecisionCase,
     registry: ToolRegistry,
 ) -> list[dict[str, str]]:
-    """Build the product strict contract with the case's stage tool projection."""
-    if isinstance(case, PrecisionCase):
-        messages, _prompt_publication, _backend_publication = (
-            _precision_case_projection(case, registry)
-        )
-        return messages
-
-    # The evaluator deliberately reuses the product formatter so schemas cannot drift.
-    stage, catalog = _stage_catalog(case, registry)
-    system = (
-        ContextAssembler._ACTION_SYSTEM_PROMPT
-        + "\n"
-        + STRICT_TOOL_RESPONSE_PROMPT_POLICY.decision_instructions(stage.value)
-        + "\nAction Contract Catalog (input definitions, never an output array):\n"
-        + catalog
-        + "\nOnly the listed workflow actions are available at this stage."
+    """Build every active first turn through the product context assembler."""
+    messages, _prompt_publication, _backend_publication = _case_projection(
+        case,
+        registry,
     )
-    return [
-        {"role": "system", "content": system},
-        {"role": "user", "content": case.user_input},
-    ]
+    return messages
 
 
 def _build_recovery_case_messages(
@@ -834,19 +922,13 @@ def _build_recovery_case_messages(
     registry: ToolRegistry,
     recovery_messages: tuple[str, ...],
 ) -> list[dict[str, str]]:
-    """Rebuild the eval request with the product's untrusted recovery-note encoding."""
-    messages = build_case_messages(case, registry)
-    context = encode_untrusted_context(
-        tuple(
-            UntrustedContextItem(
-                item_type="runtime_context",
-                source=UntrustedContextSource(kind="assistant_runtime_context"),
-                data={"text": content},
-            )
-            for content in recovery_messages
-        )
+    """Rebuild retry input through the same production context assembler."""
+    messages, _prompt_publication, _backend_publication = _case_projection(
+        case,
+        registry,
+        recovery_messages=recovery_messages,
     )
-    return [messages[0], {"role": "user", "content": context}, messages[-1]]
+    return messages
 
 
 def score_model_response(
@@ -1121,7 +1203,7 @@ def score_precision_response(
         )
 
     tool_name, parameters = envelope.commands[0]
-    _messages, prompt_publication, backend_publication = _precision_case_projection(
+    _messages, prompt_publication, backend_publication = _case_projection(
         case,
         registry,
     )
@@ -1435,7 +1517,7 @@ def admit_clarification_receipt(
     derives one only from the model's first response plus the same parser,
     attempt coordinator, and pending-interaction owner used by the product.
     """
-    _messages, prompt_publication, backend_publication = _precision_case_projection(
+    _messages, prompt_publication, backend_publication = _case_projection(
         source,
         registry,
     )

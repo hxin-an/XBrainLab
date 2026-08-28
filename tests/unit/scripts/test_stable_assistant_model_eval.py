@@ -11,6 +11,7 @@ from scripts.dev.run_stable_assistant_model_eval import (
     CaseTrajectoryResult,
     ModelGenerationAttempt,
     TargetEvalScore,
+    _build_recovery_case_messages,
     _build_report,
     _evaluation_generation_policy,
     _experiment_identity,
@@ -34,7 +35,9 @@ from scripts.dev.run_stable_assistant_model_eval import (
     score_raw_precision_response,
     target_tool_registry,
 )
+from XBrainLab.chat_contract import MODEL_UNTRUSTED_CONTEXT_BOUNDARY_MESSAGE
 from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
+from XBrainLab.llm.core.backends.local import LocalBackend
 from XBrainLab.llm.core.config import LLMConfig
 
 GOLD_SET = Path("XBrainLab/llm/rag/data/gold_set.json")
@@ -69,6 +72,16 @@ def test_target_cases_cover_each_approved_tool_twice() -> None:
     assert len(cases) == 36
     assert set(counts) == AGENT_ACTION_CONTRACTS.model_tool_names()
     assert set(counts.values()) == {2}
+
+
+def test_each_positive_case_is_callable_from_its_production_fixture() -> None:
+    """The positive gate may not score a tool omitted by backend publication."""
+    registry = target_tool_registry()
+
+    for case in load_target_cases(GOLD_SET):
+        messages = build_case_messages(case, registry)
+
+        assert f'"name": "{case.expected_tool}"' in messages[0]["content"]
 
 
 def test_target_case_loader_rejects_duplicate_normalized_inputs(tmp_path: Path) -> None:
@@ -1041,6 +1054,72 @@ def test_precision_first_turn_messages_use_the_product_context_projection() -> N
     assert messages[1]["role"] == "user"
     assert '"type":"state_card"' in messages[1]["content"]
     assert messages[-1] == {"role": "user", "content": case.user_input}
+
+
+def test_positive_and_challenge_first_turns_use_product_context_and_boundary() -> None:
+    """Every first-turn family must retain the runtime state and role boundary."""
+    registry = target_tool_registry()
+    positive = next(
+        case
+        for case in load_target_cases(GOLD_SET)
+        if case.case_id == "apply_bandpass_filter_01"
+    )
+    challenge = next(
+        case
+        for case in load_challenge_cases(DEFAULT_CHALLENGES)
+        if case.case_id == "missing_bandpass_bounds_01"
+    )
+    backend = LocalBackend(LLMConfig())
+
+    for case in (positive, challenge):
+        raw_messages = build_case_messages(case, registry)
+        processed_messages = backend._process_messages_for_template(raw_messages)
+
+        assert [message["role"] for message in raw_messages] == [
+            "system",
+            "user",
+            "user",
+        ]
+        assert '"type":"state_card"' in raw_messages[1]["content"]
+        assert [message["role"] for message in processed_messages] == [
+            "system",
+            "user",
+            "assistant",
+            "user",
+        ]
+        assert (
+            processed_messages[2]["content"] == MODEL_UNTRUSTED_CONTEXT_BOUNDARY_MESSAGE
+        )
+
+
+def test_format_recovery_keeps_production_state_and_runtime_context_boundary() -> None:
+    registry = target_tool_registry()
+    case = next(
+        item
+        for item in load_target_cases(GOLD_SET)
+        if item.case_id == "apply_bandpass_filter_01"
+    )
+
+    messages = _build_recovery_case_messages(
+        case,
+        registry,
+        ("Return one exact JSON decision envelope.",),
+    )
+
+    assert [message["role"] for message in messages] == ["system", "user", "user"]
+    assert '"type":"state_card"' in messages[1]["content"]
+    assert '"type":"runtime_context"' in messages[1]["content"]
+    assert messages[-1] == {"role": "user", "content": case.user_input}
+    processed_messages = LocalBackend(LLMConfig())._process_messages_for_template(
+        messages
+    )
+    assert [message["role"] for message in processed_messages] == [
+        "system",
+        "user",
+        "assistant",
+        "user",
+    ]
+    assert processed_messages[2]["content"] == MODEL_UNTRUSTED_CONTEXT_BOUNDARY_MESSAGE
 
 
 def test_precision_exact_unavailable_call_uses_backend_reason_at_attempt_boundary() -> (

@@ -46,7 +46,8 @@ safe product outcome，不是 raw-model accuracy。
    - 新增只使用 synthetic cases 的 Markdown exporter。
    - 量測 `ContextAssembler.get_messages` → `LocalBackend._process_messages_for_template` →
      pinned tokenizer chat template 的 exact final prompt。
-   - 讓 first-turn precision/effect evidence 不再略過 production state/context path。
+   - 讓所有 first-turn positive／challenge／precision evidence 都不再略過 production state/context path，
+     並以可實際publish target tool的最小stage-consistent fixture取代手組 catalog。
 2. `fix: remove continuation prompt contradiction`
    - 修正 boundary 不再要求忽略解讀 latest reply 所需的 host-issued receipt context。
 3. `fix: simplify assistant continuation context`

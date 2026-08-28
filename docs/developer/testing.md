@@ -191,6 +191,12 @@ poetry run python scripts/dev/export_assistant_prompt.py \
 
 每份dossier都標記HEAD SHA與clean/dirty source state；dirty prompt不可以被誤稱為該HEAD的exact artifact。
 
+所有 active first-turn cases（36 positive、14 challenge、24 no-action precision）都會經同一個
+`ApplicationViewPublication` fixture 與 `ContextAssembler.get_messages`。dossier中的 state card、不可用
+action projection與 LocalBackend role boundary 因此是產品路徑，而不是 evaluator 手組的 stage catalog。
+36-case count維持不變；`start_training`改由最小可呼叫的`dataset_ready` fixture產生，故v9結果不可與舊有
+把它手組在`epoch_ready`的結果直接比較。
+
 執行前先確認 active decision 指定的 Granite 4.0 Micro 3B exact revision已存在active model cache。將下列兩個範例
 路徑換成本機實際位置：
 

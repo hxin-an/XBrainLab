@@ -104,9 +104,11 @@ Assistant candidate必須在同一clean/explained exact source依序閉合下列
    token budget使用production structured-decision resolver，不得另設較小的evaluator cap。回覆文字的
    自然度與完整語意由同一SHA真人驗收，不以固定required keyword group作promotion gate。這只支撐
    bounded selection與production admission outcome，不支撐產品ready。
-   Precision prompt與attempt scorer的callable set／blocked reasons必須由同一個production
-   `ApplicationViewPublication`及既有agent capability policy產生；直接使用hand-authored stage list或把
-   scorer context中的所有tool設為enabled，不構成unavailable-action projection證據。
+   所有 first-turn family（positive、challenge、precision）的prompt與attempt scorer之callable set／blocked
+   reasons必須由同一個production `ApplicationViewPublication`及既有agent capability policy產生；直接使用
+   hand-authored stage list或把scorer context中的所有tool設為enabled，不構成state／unavailable-action
+   projection證據。36-case tool coverage維持，但`start_training`以最小可呼叫的`dataset_ready` publication
+   取代舊的手組`epoch_ready` catalog，故v9不可直接與該歷史路徑的數字比較。
    同一v9 evaluator另固定7個production-controller clarification trajectories：五個direct cases的source
    必須來自precision suite的missing-parameter turn，且第一輪真的由production parameter-origin boundary
    產生exact tool／question receipt；模型直接`respond_to_user`而沒有Host receipt時不得合成或代填。另外

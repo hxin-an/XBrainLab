@@ -310,6 +310,12 @@ strict parser及最多兩次format recovery；每次response／taxonomy都留在
 presentation outcome才是product score。Format recovery只修envelope，不得把semantic tool-selection failure
 重分類為通過。
 
+36 positive、14 challenge與24 no-action precision的每個first turn都必須以stage-consistent
+`ApplicationViewPublication`經`ContextAssembler.get_messages`產生；state card、callable set、blocked reasons
+與LocalBackend role boundary皆不可用手組catalog替代。positive fixture另必須真的publish其expected tool。
+36-case coverage count不變；`start_training`以可呼叫的`dataset_ready` state取代舊手組`epoch_ready` stage，
+所以v9與此前歷史prompt的分數不可直接比較。
+
 - invalid／out-of-stage／stale execution、cancel後continuation與multi-mutation partial action皆為0。
 - 36個positive全部得到exact final tool＋parameters，且五個direct preprocess的值都能從latest user
   request驗證；完整值不新增confirmation。
