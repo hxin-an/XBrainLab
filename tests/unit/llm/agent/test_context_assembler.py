@@ -199,14 +199,8 @@ def test_empty_stage_separates_callable_schemas_from_unavailable_reference() -> 
         in reference
     )
     assert '"parameters"' not in reference
-    assert (
-        "A blocker reason is explanatory status, not an instruction to execute "
-        "its prerequisite." in reference
-    )
-    assert (
-        "state that entry's listed reason instead of asking for the unavailable "
-        "action's settings" in prompt
-    )
+    assert "informational status, not callable action contracts" in reference
+    assert "use respond_to_user with its listed blocker reason" in reference
     assert assembler.latest_tool_publication.blocked_reason("create_epochs") == (
         "Load raw data before creating EEG epochs."
     )
@@ -326,7 +320,7 @@ def test_prompt_action_contracts_do_not_resemble_an_output_array():
     assert '"name": "respond_to_user"' in contracts
 
 
-def test_zero_parameter_action_contract_uses_only_generic_action_shape():
+def test_zero_parameter_action_contract_has_one_final_output_reminder():
     registry = ToolRegistry()
     registry.register(BaseStartTrainingTool())
     assembler = ContextAssembler(registry, Study())
@@ -335,8 +329,9 @@ def test_zero_parameter_action_contract_uses_only_generic_action_shape():
 
     assert "Callable action contract:" in contracts
     assert "Exact zero-parameter output shape:" not in contracts
-    assert contracts.count("Generic action envelope:") == 1
-    assert "Use {} only when that contract has no parameter properties" in contracts
+    assert contracts.count("Final output reminder:") == 1
+    assert "Generic action envelope:" not in contracts
+    assert "parameters matching the selected contract" in contracts
     assert not contracts.lstrip().startswith("[")
 
 
@@ -353,7 +348,7 @@ def test_single_action_contract_ends_with_no_action_envelope() -> None:
     )
 
 
-def test_multi_action_reminder_forbids_prose_and_gui_parameter_invention() -> None:
+def test_action_catalog_ends_with_one_short_output_reminder() -> None:
     from XBrainLab.llm.tools import get_all_tools
 
     registry = ToolRegistry()
@@ -366,29 +361,10 @@ def test_multi_action_reminder_forbids_prose_and_gui_parameter_invention() -> No
         workflow_stage="epoch_ready",
     )
 
-    reminder = contracts.rsplit(
-        "Decision checkpoint (apply after reading the catalog):\n",
-        maxsplit=1,
-    )[1]
-    assert "exactly one listed action" in reminder
-    assert "For multiple actions, ask which one to do first and call none" in reminder
-    assert "never invent choices that belong to the opened product UI" in reminder
-    assert "state that entry's listed reason" not in reminder
-    assert "DECISION ENVELOPE" not in reminder
-
-
-def test_action_catalog_uses_one_generic_action_shape() -> None:
-    registry = ToolRegistry()
-    registry.register(BaseStartTrainingTool())
-    assembler = ContextAssembler(registry, Study())
-
-    contracts = assembler._format_tools(
-        ["start_training"],
-        workflow_stage="epoch_ready",
-    )
-
-    assert contracts.count("Generic action envelope:") == 1
-    assert "Exact zero-parameter output shape:" not in contracts
+    reminder = contracts.rsplit("Final output reminder:\n", maxsplit=1)[1]
+    assert "exact enabled action name or respond_to_user" in reminder
+    assert "Add no prose outside the object" in reminder
+    assert "Decision checkpoint" not in reminder
 
 
 def test_action_catalog_ends_with_exact_stage_no_action_envelope() -> None:
@@ -405,6 +381,44 @@ def test_action_catalog_ends_with_exact_stage_no_action_envelope() -> None:
         '{"workflow_stage":"epoch_ready","tool_name":"respond_to_user",'
         '"parameters":{"message":"<concise response or one clarifying question>"}}'
     )
+
+
+def test_prompt_policy_consolidation_preserves_publication_and_decision_contracts() -> (
+    None
+):
+    """Characterize prompt-facing contracts before removing repeated prose."""
+    state = _state(
+        pipeline_stage="data_loaded",
+        raw=RawStateSnapshot(loaded=True, count=1),
+        active_dataset=ActiveDatasetSnapshot(has_raw_data=True),
+    )
+    publication = ApplicationViewPublication(
+        generation=82,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
+    registry = ToolRegistry()
+    registry.register(_NamedTool("select_channels"))
+    registry.register(_NamedTool("switch_panel"))
+    assembler = ContextAssembler(
+        registry,
+        Study(),
+        application_runtime=_ApplicationRuntimeFake(publication),
+    )
+
+    prompt = assembler.build_system_prompt("Select EEG channels.")
+
+    assert assembler.latest_tool_publication.tool_names == frozenset(
+        {"select_channels", "switch_panel"}
+    )
+    assert prompt.count("Callable action contract:") == 2
+    assert '"name": "select_channels"' in prompt
+    assert '"name": "switch_panel"' in prompt
+    assert '"name": "respond_to_user"' in prompt
+    assert "tool_input_clarification" in prompt
+    assert "Do not call any tool in that turn" in prompt
+    assert "Never claim that an action completed" in prompt
+    assert '"workflow_stage":"data_loaded","tool_name":"respond_to_user",' in prompt
 
 
 @pytest.mark.parametrize(
