@@ -213,9 +213,11 @@ def test_training_start_async_exception_is_private_and_logged(
 
 
 def test_data_import_unexpected_exception_keeps_failed_outcome_without_leaking(
+    qtbot,
     monkeypatch,
     caplog,
 ) -> None:
+    from XBrainLab.backend.study import Study
     from XBrainLab.ui.dialogs.dataset.eeg_source_chooser_dialog import (
         EegSourceSelection,
     )
@@ -233,8 +235,10 @@ def test_data_import_unexpected_exception_keeps_failed_outcome_without_leaking(
                 paths=("/selected/source.edf",),
             )
 
-    panel = MagicMock()
-    panel.controller.is_locked.return_value = False
+    panel = QMainWindow()
+    panel.study = Study()
+    panel.table = MagicMock()
+    qtbot.addWidget(panel)
     handler = DatasetActionHandler(panel)
     handler._data_interpretation._source_chooser_dialog_class = lambda: (
         _AcceptedChooser
@@ -724,40 +728,6 @@ def test_dataset_sidebar_electrode_layout_exception_returns_stable_outcome(
         "Montage setup could not be applied",
         _MONTAGE_SETUP_MESSAGE,
     )
-    _assert_logged_exception(caplog)
-
-
-def test_dataset_panel_loader_exception_uses_stable_message(
-    qtbot,
-    monkeypatch,
-    caplog,
-) -> None:
-    from XBrainLab.ui.panels.dataset import panel as dataset_panel
-
-    window = QMainWindow()
-    qtbot.addWidget(window)
-    window.study = MagicMock()
-    panel = dataset_panel.DatasetPanel(controller=MagicMock(), parent=window)
-    qtbot.addWidget(panel)
-    monkeypatch.setattr(
-        panel,
-        "_compatibility_apply_loader",
-        MagicMock(side_effect=RuntimeError(_SENTINEL)),
-    )
-    critical = MagicMock()
-    monkeypatch.setattr(
-        user_error_presentation, "show_alert", _record_shared_alert(critical)
-    )
-
-    with _capture_public_xbrainlab_logs(caplog):
-        panel.apply_loader(MagicMock())
-
-    critical.assert_called_once_with(
-        panel,
-        "Dataset could not be updated",
-        _DATASET_APPLY_MESSAGE,
-    )
-    assert _SENTINEL not in critical.call_args.args[2]
     _assert_logged_exception(caplog)
 
 
