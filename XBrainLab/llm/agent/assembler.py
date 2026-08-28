@@ -762,9 +762,19 @@ Action Contract Catalog (input definitions, never an output array):
         messages: list[dict[str, Any]] = [system_message]
 
         context_items = list(self._latest_context_items)
+        receipt = self._tool_input_receipt
+        receipt_question = (
+            receipt.question.strip()
+            if receipt is not None
+            and any(
+                item.item_type == "tool_input_clarification" for item in context_items
+            )
+            else None
+        )
         history_item = self._conversation_history_item(
             prior_history,
             input_truncated=history_input_truncated,
+            receipt_question=receipt_question,
         )
         if history_item is not None:
             context_items.append(history_item)
@@ -831,6 +841,7 @@ Action Contract Catalog (input definitions, never an output array):
         prior_history: list[dict[str, Any]],
         *,
         input_truncated: bool,
+        receipt_question: str | None = None,
     ) -> UntrustedContextItem | None:
         """Project recent speakers as bounded data, never chat-template roles."""
         if not prior_history:
@@ -845,6 +856,12 @@ Action Contract Catalog (input definitions, never an output array):
         assistant_history = [
             message for message in prior_history if message["role"] == "assistant"
         ]
+        if (
+            receipt_question is not None
+            and assistant_history
+            and assistant_history[-1]["content"].strip() == receipt_question
+        ):
+            return None
         selected = assistant_history[-max_messages:] if max_messages else []
         truncated = input_truncated or len(assistant_history) > len(selected)
         safe_messages: list[dict[str, str]] = []

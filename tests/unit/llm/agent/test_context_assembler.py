@@ -1115,6 +1115,48 @@ def test_current_tool_input_receipt_is_projected_as_bounded_context() -> None:
     assert messages[-1] == {"role": "user", "content": "128 Hz"}
 
 
+def test_tool_input_receipt_does_not_duplicate_its_question_in_history() -> None:
+    state = _state(
+        pipeline_stage="data_loaded",
+        raw=RawStateSnapshot(loaded=True, count=1),
+        active_dataset=ActiveDatasetSnapshot(has_raw_data=True),
+    )
+    publication = ApplicationViewPublication(
+        generation=81,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
+    registry = ToolRegistry()
+    registry.register(_NamedTool("resample_data"))
+    assembler = ContextAssembler(
+        registry,
+        Study(),
+        application_runtime=_ApplicationRuntimeFake(publication),
+    )
+    question = "What resampling rate should I use?"
+    assembler.set_tool_input_receipt(
+        AssistantToolInputReceipt(
+            command_name="resample_data",
+            original_user_text="Resample the EEG data.",
+            question=question,
+            publication_generation=81,
+            missing_inputs=("rate",),
+        )
+    )
+
+    messages = assembler.get_messages(
+        [
+            {"role": "assistant", "content": "Earlier unrelated assistant text."},
+            {"role": "assistant", "content": question},
+            {"role": "user", "content": "128 Hz"},
+        ]
+    )
+
+    context = _untrusted_context(messages)
+    assert "tool_input_clarification" in {item["type"] for item in context["items"]}
+    assert "conversation_history" not in {item["type"] for item in context["items"]}
+
+
 @pytest.mark.parametrize(
     ("receipt_generation", "receipt_tool"),
     (
