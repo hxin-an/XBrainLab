@@ -6,6 +6,7 @@ import os
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -123,6 +124,73 @@ def test_path_cache_reuses_unchanged_bytes_and_invalidates_changed_file(
     assert changed.dict_rows()[0]["trial_type"] == "foot"
     assert cache.diagnostics()["file_read_count"] == 2
     assert cache.diagnostics()["parse_count"] == 2
+
+
+def test_stable_descriptor_with_different_metadata_is_accepted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "sidecar.json"
+    path.write_text('{"Name":"Example"}', encoding="utf-8")
+    real_fstat = os.fstat
+    real_lstat = Path.lstat
+
+    def _different_path_metadata(value: Path) -> SimpleNamespace:
+        observed = real_lstat(value)
+        if value != path:
+            return observed
+        return SimpleNamespace(
+            st_mode=observed.st_mode,
+            st_size=observed.st_size,
+            st_dev=observed.st_dev + 10,
+            st_ino=observed.st_ino + 10,
+            st_mtime_ns=observed.st_mtime_ns + 10,
+            st_ctime_ns=observed.st_ctime_ns + 10,
+            st_file_attributes=0,
+        )
+
+    def _different_descriptor_metadata(fd: int) -> SimpleNamespace:
+        observed = real_fstat(fd)
+        return SimpleNamespace(
+            st_mode=observed.st_mode,
+            st_size=observed.st_size,
+            st_dev=observed.st_dev + 1,
+            st_ino=observed.st_ino + 1,
+            st_mtime_ns=observed.st_mtime_ns + 1,
+            st_ctime_ns=observed.st_ctime_ns + 1,
+        )
+
+    monkeypatch.setattr(os, "fstat", _different_descriptor_metadata)
+    monkeypatch.setattr(Path, "lstat", _different_path_metadata)
+
+    payload, identity = data_interpretation_parsed_cache._stable_file_bytes(
+        path,
+        max_file_bytes=1024,
+    )
+    probe_identity = data_interpretation_parsed_cache._path_identity(path)
+
+    assert payload == b'{"Name":"Example"}'
+    assert identity.file_bytes == len(payload)
+    assert probe_identity.content_probe_sha256
+
+
+def test_parsed_cache_rejects_actual_growth_beyond_bounded_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "sidecar.json"
+    path.write_bytes(b"1234")
+    real_open = os.open
+
+    def _grow_after_entry_stat(*args, **kwargs) -> int:
+        descriptor = real_open(*args, **kwargs)
+        path.write_bytes(b"12345")
+        return descriptor
+
+    monkeypatch.setattr(os, "open", _grow_after_entry_stat)
+
+    with pytest.raises(data_interpretation_parsed_cache.ParsedContentTooLargeError):
+        data_interpretation_parsed_cache._stable_file_bytes(path, max_file_bytes=4)
 
 
 def test_cache_retention_is_bounded_by_entries_and_bytes() -> None:
