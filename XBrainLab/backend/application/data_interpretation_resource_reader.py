@@ -510,7 +510,9 @@ def _current_identity(path: Path) -> AdmittedFileIdentity:
                     path=path,
                     parse_started=False,
                 )
-            if _filesystem_identity(entry_stat) != _filesystem_identity(file_stat):
+            if _filesystem_object_identity(entry_stat) != _filesystem_object_identity(
+                file_stat
+            ):
                 raise _identity_changed_while_verifying_error(path)
             content_probe_sha256 = _content_probe_sha256(
                 handle,
@@ -532,12 +534,11 @@ def _current_identity(path: Path) -> AdmittedFileIdentity:
         if descriptor is not None:
             with suppress(OSError):
                 os.close(descriptor)
-    if not (
-        _filesystem_identity(entry_stat)
-        == _filesystem_identity(file_stat)
-        == _filesystem_identity(finished_stat)
-        == _filesystem_identity(final_entry_stat)
-    ):
+    if _filesystem_observation_identity(entry_stat) != _filesystem_observation_identity(
+        final_entry_stat
+    ) or _filesystem_observation_identity(
+        file_stat
+    ) != _filesystem_observation_identity(finished_stat):
         raise _identity_changed_while_verifying_error(path)
     try:
         identity = AdmittedFileIdentity(
@@ -571,12 +572,22 @@ def _current_identity(path: Path) -> AdmittedFileIdentity:
     return identity
 
 
-def _filesystem_identity(value: os.stat_result) -> tuple[int, int, int, int, int]:
+def _filesystem_object_identity(value: os.stat_result) -> tuple[int, int, int, int]:
+    """Compare path and descriptor channels without conflating their ctime views."""
     return (
         int(value.st_dev),
         int(value.st_ino),
         int(value.st_size),
         int(value.st_mtime_ns),
+    )
+
+
+def _filesystem_observation_identity(
+    value: os.stat_result,
+) -> tuple[int, int, int, int, int]:
+    """Require one observation channel to retain its complete metadata token."""
+    return (
+        *_filesystem_object_identity(value),
         int(value.st_ctime_ns),
     )
 
