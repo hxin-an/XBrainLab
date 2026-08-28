@@ -691,7 +691,10 @@ def _base_payload():
                 "tab": "3D Plot",
                 "screenshot": "3d-blocked.png",
                 "ok": True,
-                "blocked_reason": "Set a 3D montage before opening the 3D plot.",
+                "blocked_reason": (
+                    "Configure a 3D Electrode Layout in Dataset before opening "
+                    "the 3D plot."
+                ),
                 "message_evidence": {"ok": True},
                 "screenshot_region": {"ok": True},
                 "terminal_settled": True,

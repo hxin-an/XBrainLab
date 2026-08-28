@@ -701,11 +701,9 @@ class VisualizationPanel(BasePanel):
             self.normalize_check,
             self.saliency_settings_btn,
         ]
-        sidebar = getattr(self, "sidebar", None)
-        for name in ("btn_montage", "btn_saliency"):
-            control = getattr(sidebar, name, None)
-            if isinstance(control, QWidget):
-                controls.append(control)
+        control = getattr(getattr(self, "sidebar", None), "btn_saliency", None)
+        if isinstance(control, QWidget):
+            controls.append(control)
         if active:
             if not self._saliency_busy_control_states:
                 self._saliency_busy_control_states = [
@@ -1168,9 +1166,6 @@ class VisualizationPanel(BasePanel):
         self._refresh_explanation_context()
         self._refresh_absolute_control()
         self._refresh_sidebar_view_controls()
-        # Montage button is now always visible as per user request
-        # self.btn_montage.setVisible(True) # It's visible by default
-
         self.on_update()
 
     def begin_native_render_shutdown(self) -> None:
@@ -3796,7 +3791,7 @@ class VisualizationPanel(BasePanel):
             return None
         return (
             "Complete training to view saliency plots. "
-            "Electrode Layout remains available."
+            "Configure Electrode Layout in Dataset."
         )
 
     def _clear_plan_controls(self) -> None:
