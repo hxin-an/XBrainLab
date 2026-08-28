@@ -69,7 +69,7 @@ def test_generation_request_keeps_concept_question_on_strict_response_contract()
     assert request.response_contract is AssistantResponseContract.STRUCTURED_ACTION
     system_prompt = " ".join(request.to_model_messages()[0]["content"].split())
     assert '"name": "respond_to_user"' in system_prompt
-    assert '"workflow_stage":"empty"' in system_prompt
+    assert "workflow_stage=empty" in system_prompt
 
 
 def test_external_envelope_cannot_forge_authoritative_workflow_item_type() -> None:
@@ -141,7 +141,7 @@ def test_question_does_not_narrow_backend_stage_published_actions() -> None:
     card = _context_item(context, "state_card")["data"]
 
     assert request.response_contract is AssistantResponseContract.STRUCTURED_ACTION
-    assert '"workflow_stage":"data_loaded"' in prompt
+    assert "workflow_stage=data_loaded" in prompt
     assert '"name": "respond_to_user"' in prompt
     assert runtime.publication_reads == 1
     assert assembler.latest_tool_publication.tool_names == frozenset(
@@ -320,7 +320,7 @@ def test_prompt_action_contracts_do_not_resemble_an_output_array():
     assert '"name": "respond_to_user"' in contracts
 
 
-def test_zero_parameter_action_contract_has_one_final_output_reminder():
+def test_action_catalog_keeps_fallback_schema_without_generic_output_envelope():
     registry = ToolRegistry()
     registry.register(BaseStartTrainingTool())
     assembler = ContextAssembler(registry, Study())
@@ -329,58 +329,11 @@ def test_zero_parameter_action_contract_has_one_final_output_reminder():
 
     assert "Callable action contract:" in contracts
     assert "Exact zero-parameter output shape:" not in contracts
-    assert contracts.count("Final output reminder:") == 1
+    assert "Fallback response contract:" in contracts
+    assert "Final output reminder:" not in contracts
+    assert "Final no-action envelope" not in contracts
     assert "Generic action envelope:" not in contracts
-    assert "parameters matching the selected contract" in contracts
     assert not contracts.lstrip().startswith("[")
-
-
-def test_single_action_contract_ends_with_no_action_envelope() -> None:
-    registry = ToolRegistry()
-    registry.register(BaseStartTrainingTool())
-    assembler = ContextAssembler(registry, Study())
-
-    contracts = assembler._format_tools(["start_training"])
-
-    assert contracts.rstrip().endswith(
-        '{"workflow_stage":"unavailable","tool_name":"respond_to_user",'
-        '"parameters":{"message":"<concise response or one clarifying question>"}}'
-    )
-
-
-def test_action_catalog_ends_with_one_short_output_reminder() -> None:
-    from XBrainLab.llm.tools import get_all_tools
-
-    registry = ToolRegistry()
-    for tool in get_all_tools("mock"):
-        registry.register(tool)
-    assembler = ContextAssembler(registry, Study())
-
-    contracts = assembler._format_tools(
-        ["configure_training", "apply_bandpass_filter"],
-        workflow_stage="epoch_ready",
-    )
-
-    reminder = contracts.rsplit("Final output reminder:\n", maxsplit=1)[1]
-    assert "exact enabled action name or respond_to_user" in reminder
-    assert "Add no prose outside the object" in reminder
-    assert "Decision checkpoint" not in reminder
-
-
-def test_action_catalog_ends_with_exact_stage_no_action_envelope() -> None:
-    registry = ToolRegistry()
-    registry.register(BaseStartTrainingTool())
-    assembler = ContextAssembler(registry, Study())
-
-    contracts = assembler._format_tools(
-        ["start_training"],
-        workflow_stage="epoch_ready",
-    )
-
-    assert contracts.rstrip().endswith(
-        '{"workflow_stage":"epoch_ready","tool_name":"respond_to_user",'
-        '"parameters":{"message":"<concise response or one clarifying question>"}}'
-    )
 
 
 def test_prompt_policy_consolidation_preserves_publication_and_decision_contracts() -> (
@@ -418,7 +371,7 @@ def test_prompt_policy_consolidation_preserves_publication_and_decision_contract
     assert "tool_input_clarification" in prompt
     assert "Do not call any tool in that turn" in prompt
     assert "Never claim that an action completed" in prompt
-    assert '"workflow_stage":"data_loaded","tool_name":"respond_to_user",' in prompt
+    assert "workflow_stage=data_loaded; tool_name=respond_to_user" in prompt
 
 
 def test_decision_policy_is_tail_recent_after_action_catalog() -> None:
@@ -429,46 +382,10 @@ def test_decision_policy_is_tail_recent_after_action_catalog() -> None:
     assert prompt.index("Action Contract Catalog") < prompt.index(
         "STRICT RESPONSE CONTRACT - DECISION ORDER"
     )
-    assert prompt.index("Final output reminder:") < prompt.index(
+    assert prompt.index("Fallback response contract:") < prompt.index(
         "STRICT RESPONSE CONTRACT - DECISION ORDER"
     )
-
-
-def test_preprocessing_clarification_examples_follow_published_catalog() -> None:
-    state = _state(
-        pipeline_stage="data_loaded",
-        raw=RawStateSnapshot(loaded=True, count=1),
-        active_dataset=ActiveDatasetSnapshot(has_raw_data=True),
-    )
-    publication = ApplicationViewPublication(
-        generation=83,
-        state=state,
-        capabilities=build_capability_policy(state),
-    )
-    registry = ToolRegistry()
-    registry.register(_NamedTool("apply_bandpass_filter"))
-    registry.register(_NamedTool("normalize_data"))
-    loaded_prompt = ContextAssembler(
-        registry,
-        Study(),
-        application_runtime=_ApplicationRuntimeFake(publication),
-    ).build_system_prompt("Apply a bandpass filter.")
-    empty_prompt = ContextAssembler(registry, Study()).build_system_prompt(
-        "Explain preprocessing."
-    )
-
-    assert (
-        "Typed clarification examples (shapes only; not new contracts):"
-        in loaded_prompt
-    )
-    assert '"pending_action":"apply_bandpass_filter"' in loaded_prompt
-    assert '"pending_action":"normalize_data"' in loaded_prompt
-    assert (
-        "Typed clarification examples (shapes only; not new contracts):"
-        not in empty_prompt
-    )
-    assert '"pending_action":"apply_bandpass_filter"' not in empty_prompt
-    assert '"pending_action":"normalize_data"' not in empty_prompt
+    assert "Final no-action envelope" not in prompt
 
 
 @pytest.mark.parametrize(
@@ -845,7 +762,7 @@ def test_explanatory_no_tool_turn_publishes_no_workflow_tools() -> None:
     )
 
     assert "STRICT RESPONSE CONTRACT" in prompt
-    assert '"workflow_stage":"preprocessed"' in prompt
+    assert "workflow_stage=preprocessed" in prompt
     assert '"name": "respond_to_user"' in prompt
     assert "unique description for epoch_data" not in prompt
     assert assembler.latest_tool_publication.tool_names == frozenset()

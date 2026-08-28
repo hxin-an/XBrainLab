@@ -128,18 +128,18 @@ def test_prompt_policy_puts_negative_decisions_in_a_pre_output_checklist() -> No
     assert "never use defaults" in prompt
 
 
-def test_prompt_policy_shows_typed_clarification_examples_at_current_stage() -> None:
-    prompt = StrictToolResponsePromptPolicy().decision_instructions(
-        "data_loaded",
-        include_preprocessing_examples=True,
-    )
+def test_prompt_policy_ends_with_mutually_exclusive_response_grammar() -> None:
+    prompt = StrictToolResponsePromptPolicy().decision_instructions("data_loaded")
 
-    assert "Typed clarification examples (shapes only; not new contracts):" in prompt
-    assert '"workflow_stage":"data_loaded"' in prompt
-    assert '"pending_action":"apply_bandpass_filter"' in prompt
-    assert '"missing_inputs":["low_freq","high_freq"]' in prompt
-    assert '"pending_action":"normalize_data"' in prompt
-    assert '"missing_inputs":["method"]' in prompt
+    grammar = prompt.index("FINAL RESPONSE CHOICE")
+    assert prompt.rstrip().endswith("parameters=<matching action contract>.")
+    assert "workflow_stage=data_loaded" in prompt[grammar:]
+    assert "pending_action=<that exact action>" in prompt[grammar:]
+    assert "missing_inputs=<all absent required fields>" in prompt[grammar:]
+    assert "message-only is forbidden" in prompt[grammar:]
+    assert "zero action tools" in prompt[grammar:]
+    assert "apply_bandpass_filter" not in prompt
+    assert "normalize_data" not in prompt
 
 
 def test_prompt_policy_forbids_unverified_completion_claims() -> None:

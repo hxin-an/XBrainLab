@@ -254,31 +254,7 @@ Action Contract Catalog (input definitions, never an output array):
                 json.dumps(model_response_tool_contract(), indent=2),
             )
         )
-        sections.extend(
-            self._final_output_reminder(
-                workflow_stage=workflow_stage,
-            )
-        )
         return "\n".join(sections)
-
-    @staticmethod
-    def _final_output_reminder(
-        *,
-        workflow_stage: str,
-    ) -> tuple[str, ...]:
-        """Keep one short output reminder after the action schemas."""
-        return (
-            "Final output reminder:",
-            "Return exactly one JSON object with workflow_stage '"
-            + workflow_stage
-            + "', an exact enabled action name or respond_to_user, and parameters "
-            "matching the selected contract. Add no prose outside the object.",
-            "Final no-action envelope (replace the message placeholder):",
-            '{"workflow_stage":"'
-            + workflow_stage
-            + '","tool_name":"respond_to_user","parameters":{"message":'
-            '"<concise response or one clarifying question>"}}',
-        )
 
     def _application_allowed_tools(
         self,
@@ -504,11 +480,7 @@ Action Contract Catalog (input definitions, never an output array):
             ),
         )
         prompt += "\n" + STRICT_TOOL_RESPONSE_PROMPT_POLICY.decision_instructions(
-            workflow_stage,
-            include_preprocessing_examples={
-                "apply_bandpass_filter",
-                "normalize_data",
-            }.issubset(allowed_tools),
+            workflow_stage
         )
 
         return prompt

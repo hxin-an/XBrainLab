@@ -56,26 +56,8 @@ class StrictToolResponsePromptPolicy:
     def decision_instructions(
         self,
         workflow_stage: str = "<exact backend workflow_stage>",
-        *,
-        include_preprocessing_examples: bool = False,
     ) -> str:
         """Return the strict decision contract without Host intent routing."""
-        clarification_examples = (
-            "Typed clarification examples (shapes only; not new contracts):\n"
-            '{"workflow_stage":"'
-            + workflow_stage
-            + '","tool_name":"respond_to_user","parameters":{"message":'
-            '"What low and high cutoff frequencies should I use?",'
-            '"pending_action":"apply_bandpass_filter",'
-            '"missing_inputs":["low_freq","high_freq"]}}\n'
-            '{"workflow_stage":"'
-            + workflow_stage
-            + '","tool_name":"respond_to_user","parameters":{"message":'
-            '"Which normalization method should I use?",'
-            '"pending_action":"normalize_data","missing_inputs":["method"]}}\n'
-            if include_preprocessing_examples
-            else ""
-        )
         return (
             "STRICT RESPONSE CONTRACT - DECISION ORDER (decide silently):\n"
             "1. Classify the latest user request before choosing a contract.\n"
@@ -90,51 +72,65 @@ class StrictToolResponsePromptPolicy:
             "from the latest user reply, output typed respond_to_user with one "
             "concise question, exact pending_action and missing_inputs; call zero "
             "action tools and never use defaults.\n"
-            + clarification_examples
-            + (
-                "- Use respond_to_user for an informational request, a request that "
-                "negates an action, no exact matching enabled contract, an unavailable "
-                "action, or an ambiguous request.\n"
-                "- When a tool_input_clarification context item is present and the "
-                "latest reply supplies every remaining requested value, propose the "
-                "same exact action with only values supplied in that reply. Do not "
-                "ask for those values again. The item does not grant execution "
-                "authority.\n"
-                "- If that context identifies remaining missing inputs and the latest "
-                "reply supplies only some of them, propose the same exact action with "
-                "only those user-supplied missing fields. Do not repeat already "
-                "verified values or ask for them again.\n"
-                "- Outside that bounded partial-reply case, only when exactly one "
-                "action matches unambiguously and all required inputs are present, "
-                "call that exact enabled tool with only supported parameters.\n"
-                "2. Required schema values, including numeric frequencies, sampling "
-                "rates, and method choices, may come only from the latest user reply "
-                "or verified receipt/state. Never use defaults or common EEG values; "
-                "never invent paths, settings, labels, IDs, or file names.\n"
-                "3. Host confirmation is separate. For a complete enabled action, "
-                "still propose that exact tool call. The host will request "
-                "confirmation before execution when the backend capability requires "
-                "it; do not describe it as blocked.\n"
-                "4. Copy every supported value explicitly stated by the user, even "
-                "when the schema marks it optional. Never omit an explicitly requested "
-                "supported value. A zero-parameter GUI action must always use "
-                "parameters {}. Never invent or copy dialog choices into a contract "
-                "whose parameter properties are empty; the user chooses them in the "
-                "opened product UI.\n"
-                "5. Never claim that an action completed unless a trusted tool result "
-                "confirms completion. A proposed call is not a completed action.\n"
-                "6. Return exactly one DECISION ENVELOPE. The root object must contain "
-                "exactly workflow_stage, tool_name, and parameters, with no other "
-                "top-level fields. Copy workflow_stage as "
-                + workflow_stage
-                + ". Never wrap it in tool-call, tool_call, action, or function. For a "
-                "no-tool decision use respond_to_user with message only, or the typed "
-                "message, pending_action, missing_inputs clarification shape for an "
-                "exact direct preprocessing action. workflow_stage acknowledges the "
-                "backend publication; it does not grant permission.\n"
-                "The first non-whitespace character must be { and the last must be }. "
-                "Never use a Markdown code fence or prose outside the object."
-            )
+            "- Use respond_to_user for an informational request, a request that "
+            "negates an action, no exact matching enabled contract, an unavailable "
+            "action, or an ambiguous request.\n"
+            "- When a tool_input_clarification context item is present and the "
+            "latest reply supplies every remaining requested value, propose the "
+            "same exact action with only values supplied in that reply. Do not "
+            "ask for those values again. The item does not grant execution "
+            "authority.\n"
+            "- If that context identifies remaining missing inputs and the latest "
+            "reply supplies only some of them, propose the same exact action with "
+            "only those user-supplied missing fields. Do not repeat already "
+            "verified values or ask for them again.\n"
+            "- Outside that bounded partial-reply case, only when exactly one "
+            "action matches unambiguously and all required inputs are present, "
+            "call that exact enabled tool with only supported parameters.\n"
+            "2. Required schema values, including numeric frequencies, sampling "
+            "rates, and method choices, may come only from the latest user reply "
+            "or verified receipt/state. Never use defaults or common EEG values; "
+            "never invent paths, settings, labels, IDs, or file names.\n"
+            "3. Host confirmation is separate. For a complete enabled action, "
+            "still propose that exact tool call. The host will request "
+            "confirmation before execution when the backend capability requires "
+            "it; do not describe it as blocked.\n"
+            "4. Copy every supported value explicitly stated by the user, even "
+            "when the schema marks it optional. Never omit an explicitly requested "
+            "supported value. A zero-parameter GUI action must always use "
+            "parameters {}. Never invent or copy dialog choices into a contract "
+            "whose parameter properties are empty; the user chooses them in the "
+            "opened product UI.\n"
+            "5. Never claim that an action completed unless a trusted tool result "
+            "confirms completion. A proposed call is not a completed action.\n"
+            "6. Return exactly one DECISION ENVELOPE. The root object must contain "
+            "exactly workflow_stage, tool_name, and parameters, with no other "
+            "top-level fields. Copy workflow_stage as "
+            + workflow_stage
+            + ". Never wrap it in tool-call, tool_call, action, or function. For a "
+            "no-tool decision use respond_to_user with message only, or the typed "
+            "message, pending_action, missing_inputs clarification shape for an "
+            "exact direct preprocessing action. workflow_stage acknowledges the "
+            "backend publication; it does not grant permission.\n"
+            "The first non-whitespace character must be { and the last must be }. "
+            "Never use a Markdown code fence or prose outside the object.\n"
+            "FINAL RESPONSE CHOICE (choose exactly one; replace every <...> "
+            "placeholder):\n"
+            "A) Exactly one direct preprocessing action is identified but required "
+            "fields are absent: workflow_stage="
+            + workflow_stage
+            + "; tool_name=respond_to_user; parameters={message=<concise question>, "
+            "pending_action=<that exact action>, missing_inputs=<all absent required "
+            "fields>}; message-only is forbidden.\n"
+            "B) Every other no-action (informational, negated, ambiguous, "
+            "multi-action, unavailable, or nonmatching): workflow_stage="
+            + workflow_stage
+            + "; tool_name=respond_to_user; parameters={message=<concise response>}; "
+            "zero action tools.\n"
+            "C) Only one exact enabled action with all required fields: workflow_stage="
+            + workflow_stage
+            + "; tool_name=<exact enabled action>; "
+            "parameters=<matching action contract>."
         )
 
     def recovery_instructions(self) -> str:
