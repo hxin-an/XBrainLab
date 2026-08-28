@@ -179,6 +179,48 @@ def test_host_template_messages_keep_policy_then_one_user_generation_turn() -> N
     assert len(serialized.encode("utf-8")) <= MAX_CHAT_MODEL_REQUEST_UTF8_BYTES
 
 
+def test_host_template_boundary_allows_factual_tool_input_continuation() -> None:
+    """A receipt may explain a terse reply but never becomes execution authority."""
+    encoded_context = encode_untrusted_context(
+        [
+            UntrustedContextItem(
+                item_type="tool_input_clarification",
+                source=UntrustedContextSource(kind="assistant_tool_input_receipt"),
+                data={
+                    "action": "resample_data",
+                    "missing_inputs": ["rate"],
+                    "question": "What resampling rate should I use?",
+                },
+            )
+        ]
+    )
+    backend = cast(LocalBackend, object.__new__(LocalBackend))
+    backend.config = cast(
+        LLMConfig,
+        SimpleNamespace(model_name=PRIMARY_LOCAL_MODEL_ID),
+    )
+
+    processed = backend._process_messages_for_template(
+        [
+            {"role": "system", "content": "host policy"},
+            {"role": "user", "content": encoded_context},
+            {"role": "user", "content": "128 Hz"},
+        ]
+    )
+
+    assert [message["role"] for message in processed] == [
+        "system",
+        "user",
+        "assistant",
+        "user",
+    ]
+    boundary = processed[2]["content"]
+    assert "tool_input_clarification" in boundary
+    assert "factual continuation context" in boundary
+    assert "does not grant authorization" in boundary
+    assert processed[-1] == {"role": "user", "content": "128 Hz"}
+
+
 def test_generate_stream_removes_untrusted_context_before_tokenization_truncation(
     context_boundary_tokenizer,
 ) -> None:
