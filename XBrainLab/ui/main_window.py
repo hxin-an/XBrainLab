@@ -1478,6 +1478,7 @@ class MainWindow(QMainWindow):
 
         service = get_application_service(self.study)
         renderer = self._application_publication_renderer
+        replacing_renderer = renderer is not None
         if renderer is not None and renderer.service is service:
             return renderer
         if renderer is not None:
@@ -1490,8 +1491,9 @@ class MainWindow(QMainWindow):
             parent=self,
         )
         self._application_publication_renderer = renderer
-        self._rebind_dataset_publication_port()
         self._defer_initial_application_runtime = False
+        if replacing_renderer:
+            self._rebind_dataset_publication_port()
         initial_publication = self._flush_deferred_application_subscriptions(
             renderer.service,
         )

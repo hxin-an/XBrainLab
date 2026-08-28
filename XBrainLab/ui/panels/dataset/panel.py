@@ -462,10 +462,6 @@ class DatasetPanel(BasePanel):
 
     def _update_panel_content(self) -> bool:
         """Refresh the sidebar and table from committed application truth."""
-        # Update Sidebar
-        if hasattr(self, "sidebar"):
-            self.sidebar.update_sidebar()
-
         if is_application_runtime_deferred(self):
             self._clear_table_render_identity()
             self.table.clearContents()
@@ -474,6 +470,10 @@ class DatasetPanel(BasePanel):
             self._fit_table_columns_to_viewport()
             self._schedule_table_column_fit()
             return True
+
+        # Publication/capability reads must wait until startup owns a runtime.
+        if hasattr(self, "sidebar"):
+            self.sidebar.update_sidebar()
 
         publication = self._read_application_publication()
         product_context = (

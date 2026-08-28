@@ -569,12 +569,16 @@ def test_deferred_runtime_uses_actionable_empty_state(qtbot):
     panel.empty_state_title.setText("Stale dataset state")
     panel.empty_state_detail.setText("Stale detail")
 
-    with patch(
-        "XBrainLab.ui.panels.dataset.panel.is_application_runtime_deferred",
-        return_value=True,
+    with (
+        patch(
+            "XBrainLab.ui.panels.dataset.panel.is_application_runtime_deferred",
+            return_value=True,
+        ),
+        patch.object(panel.sidebar, "update_sidebar") as update_sidebar,
     ):
         panel.update_panel()
 
+    update_sidebar.assert_not_called()
     assert panel.table.rowCount() == 0
     assert panel.data_surface.currentWidget() is panel.empty_state
     assert panel.empty_state_title.text() == "No EEG data loaded"

@@ -112,9 +112,14 @@ def test_mainwindow_replays_initial_publication_after_deferred_startup(qapp, qtb
     assert window._deferred_application_subscriptions
     assert window.dataset_panel.sidebar.import_btn.isEnabled() is False
 
-    renderer = window._ensure_application_publication_renderer()
+    with patch.object(
+        window.dataset_panel,
+        "rebind_application_publication_port",
+    ) as rebind_dataset:
+        renderer = window._ensure_application_publication_renderer()
 
     assert renderer is not None
+    rebind_dataset.assert_not_called()
     assert application_service_initialized(study) is True
     assert window._deferred_application_subscriptions == []
     publication = renderer.service.get_view_publication()
