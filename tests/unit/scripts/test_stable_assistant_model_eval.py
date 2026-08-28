@@ -846,6 +846,23 @@ def test_precision_messages_project_backend_unavailable_actions_without_schemas(
     assert '"name": "select_model"' not in model_system
 
 
+def test_precision_first_turn_messages_use_the_product_context_projection() -> None:
+    """Precision scoring must include the state card that production publishes."""
+    registry = target_tool_registry()
+    case = next(
+        item
+        for item in load_precision_cases(DEFAULT_PRECISION_CASES)
+        if item.case_id == "missing_bandpass_en"
+    )
+
+    messages = build_case_messages(case, registry)
+
+    assert messages[0]["role"] == "system"
+    assert messages[1]["role"] == "user"
+    assert '"type":"state_card"' in messages[1]["content"]
+    assert messages[-1] == {"role": "user", "content": case.user_input}
+
+
 def test_precision_exact_unavailable_call_uses_backend_reason_at_attempt_boundary() -> (
     None
 ):

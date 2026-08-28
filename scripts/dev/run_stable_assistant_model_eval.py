@@ -728,8 +728,12 @@ def _precision_application_publication(
 def _precision_case_projection(
     case: PrecisionCase,
     registry: ToolRegistry,
-) -> tuple[str, PromptToolPublication, ApplicationViewPublication]:
-    """Build one precision prompt and admission publication from backend truth."""
+) -> tuple[
+    list[dict[str, str]],
+    PromptToolPublication,
+    ApplicationViewPublication,
+]:
+    """Build one precision request and admission publication from backend truth."""
     publication = _precision_application_publication(case)
     runtime = _EvaluatorApplicationRuntime(publication)
     assembler = ContextAssembler(
@@ -737,8 +741,8 @@ def _precision_case_projection(
         _PublicationBackedEvaluatorStudy(),
         application_runtime=runtime,
     )
-    system_prompt = assembler.build_system_prompt(case.user_input)
-    return system_prompt, assembler.latest_tool_publication, publication
+    messages = assembler.get_messages([{"role": "user", "content": case.user_input}])
+    return messages, assembler.latest_tool_publication, publication
 
 
 def build_clarification_messages(
@@ -782,13 +786,10 @@ def build_case_messages(
 ) -> list[dict[str, str]]:
     """Build the product strict contract with the case's stage tool projection."""
     if isinstance(case, PrecisionCase):
-        system, _prompt_publication, _backend_publication = _precision_case_projection(
-            case, registry
+        messages, _prompt_publication, _backend_publication = (
+            _precision_case_projection(case, registry)
         )
-        return [
-            {"role": "system", "content": system},
-            {"role": "user", "content": case.user_input},
-        ]
+        return messages
 
     # The evaluator deliberately reuses the product formatter so schemas cannot drift.
     stage, catalog = _stage_catalog(case, registry)
@@ -1098,7 +1099,7 @@ def score_precision_response(
         )
 
     tool_name, parameters = envelope.commands[0]
-    _system, prompt_publication, backend_publication = _precision_case_projection(
+    _messages, prompt_publication, backend_publication = _precision_case_projection(
         case,
         registry,
     )
@@ -1329,7 +1330,7 @@ def admit_clarification_receipt(
     derives one only from the model's first response plus the same parser,
     attempt coordinator, and pending-interaction owner used by the product.
     """
-    _system, prompt_publication, backend_publication = _precision_case_projection(
+    _messages, prompt_publication, backend_publication = _precision_case_projection(
         source,
         registry,
     )
