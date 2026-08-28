@@ -109,6 +109,7 @@ PLATFORM_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "tests/unit/test_config.py",
             "tests/unit/backend/application/test_import_boundaries.py",
             "tests/unit/backend/application/test_label_resource_admission.py",
+            "tests/unit/backend/application/test_data_interpretation_parsed_cache.py",
             "tests/unit/backend/training/record/test_output_path_policy.py",
             "tests/unit/backend/training/record/test_safe_artifact_store.py",
             "tests/unit/backend/utils/test_filesystem_identity.py",

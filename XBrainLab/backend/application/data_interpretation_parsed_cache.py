@@ -491,22 +491,20 @@ def _stable_file_bytes(
         with os.fdopen(descriptor, "rb") as handle:
             descriptor = -1
             opened_stat = os.fstat(handle.fileno())
-            opened_stat_identity = _identity_from_stat(opened_stat)
-            if opened_stat_identity != _identity_from_stat(entry_stat):
-                raise OSError(f"parsed content source changed before read: {expanded}")
-            payload = handle.read(opened_stat_identity.file_bytes)
-            finished_stat_identity = _identity_from_stat(os.fstat(handle.fileno()))
+            if not stat.S_ISREG(opened_stat.st_mode):
+                raise OSError(
+                    f"parsed content source is not a regular file: {expanded}"
+                )
+            payload = handle.read(max_file_bytes + 1)
     finally:
         if descriptor >= 0:
             os.close(descriptor)
-    final_stat_identity = _identity_from_stat(expanded.lstat())
-    if not (
-        opened_stat_identity == finished_stat_identity == final_stat_identity
-        and len(payload) == opened_stat_identity.file_bytes
-    ):
-        raise OSError(f"parsed content source changed during read: {expanded}")
+    if len(payload) > max_file_bytes:
+        raise ParsedContentTooLargeError(
+            f"parsed content source exceeds {max_file_bytes} bytes: {expanded}"
+        )
     return payload, _identity_with_probe(
-        opened_stat_identity,
+        _identity_from_stat(entry_stat, file_bytes=len(payload)),
         _content_probe_for_payload(payload),
     )
 
@@ -516,6 +514,9 @@ def _path_identity(path: Path) -> _FileIdentity:
     entry_stat = expanded.lstat()
     if stat.S_ISLNK(entry_stat.st_mode) or not stat.S_ISREG(entry_stat.st_mode):
         raise OSError(f"parsed content source is not a regular file: {path}")
+    file_attributes = int(getattr(entry_stat, "st_file_attributes", 0) or 0)
+    if file_attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x0400):
+        raise OSError(f"parsed content source is a reparse point: {path}")
     entry_identity = _identity_from_stat(entry_stat)
     descriptor = os.open(
         expanded,
@@ -524,25 +525,29 @@ def _path_identity(path: Path) -> _FileIdentity:
     try:
         with os.fdopen(descriptor, "rb") as handle:
             descriptor = -1
-            opened_identity = _identity_from_stat(os.fstat(handle.fileno()))
-            if opened_identity != entry_identity:
-                raise OSError(f"parsed content source changed before probe: {path}")
+            opened_stat = os.fstat(handle.fileno())
+            if not stat.S_ISREG(opened_stat.st_mode):
+                raise OSError(f"parsed content source is not a regular file: {path}")
             probe = _content_probe_for_handle(handle, entry_identity.file_bytes)
-            finished_identity = _identity_from_stat(os.fstat(handle.fileno()))
     finally:
         if descriptor >= 0:
             os.close(descriptor)
-    final_identity = _identity_from_stat(expanded.lstat())
-    if not (entry_identity == opened_identity == finished_identity == final_identity):
-        raise OSError(f"parsed content source changed during probe: {path}")
     return _identity_with_probe(entry_identity, probe)
 
 
-def _identity_from_stat(value: os.stat_result) -> _FileIdentity:
+def _identity_from_stat(
+    value: os.stat_result,
+    *,
+    file_bytes: int | None = None,
+) -> _FileIdentity:
     return _FileIdentity(
         device=int(value.st_dev),
         inode=int(value.st_ino),
-        file_bytes=max(int(value.st_size), 0),
+        file_bytes=(
+            max(int(value.st_size), 0)
+            if file_bytes is None
+            else max(int(file_bytes), 0)
+        ),
         mtime_ns=int(value.st_mtime_ns),
         ctime_ns=int(value.st_ctime_ns),
         content_probe_sha256="",

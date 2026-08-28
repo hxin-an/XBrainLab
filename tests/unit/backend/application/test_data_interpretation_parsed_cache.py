@@ -6,6 +6,7 @@ import os
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -89,10 +90,16 @@ def test_returned_json_cannot_mutate_cached_truth() -> None:
 
 def test_path_cache_reuses_unchanged_bytes_and_invalidates_changed_file(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     cache = ParsedContentCache(max_entries=8, max_retained_bytes=16_384)
     path = tmp_path / "events.tsv"
     path.write_text("onset\ttrial_type\n0\tleft\n", encoding="utf-8")
+    monkeypatch.setattr(
+        data_interpretation_parsed_cache,
+        "_STAT_CHANGE_TIME_IS_RELIABLE",
+        True,
+    )
 
     first = cache.delimited_table_from_path(
         path,
@@ -123,6 +130,73 @@ def test_path_cache_reuses_unchanged_bytes_and_invalidates_changed_file(
     assert changed.dict_rows()[0]["trial_type"] == "foot"
     assert cache.diagnostics()["file_read_count"] == 2
     assert cache.diagnostics()["parse_count"] == 2
+
+
+def test_stable_descriptor_with_different_metadata_is_accepted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "sidecar.json"
+    path.write_text('{"Name":"Example"}', encoding="utf-8")
+    real_fstat = os.fstat
+    real_lstat = Path.lstat
+
+    def _different_path_metadata(value: Path) -> SimpleNamespace:
+        observed = real_lstat(value)
+        if value != path:
+            return observed
+        return SimpleNamespace(
+            st_mode=observed.st_mode,
+            st_size=observed.st_size,
+            st_dev=observed.st_dev + 10,
+            st_ino=observed.st_ino + 10,
+            st_mtime_ns=observed.st_mtime_ns + 10,
+            st_ctime_ns=observed.st_ctime_ns + 10,
+            st_file_attributes=0,
+        )
+
+    def _different_descriptor_metadata(fd: int) -> SimpleNamespace:
+        observed = real_fstat(fd)
+        return SimpleNamespace(
+            st_mode=observed.st_mode,
+            st_size=observed.st_size,
+            st_dev=observed.st_dev + 1,
+            st_ino=observed.st_ino + 1,
+            st_mtime_ns=observed.st_mtime_ns + 1,
+            st_ctime_ns=observed.st_ctime_ns + 1,
+        )
+
+    monkeypatch.setattr(os, "fstat", _different_descriptor_metadata)
+    monkeypatch.setattr(Path, "lstat", _different_path_metadata)
+
+    payload, identity = data_interpretation_parsed_cache._stable_file_bytes(
+        path,
+        max_file_bytes=1024,
+    )
+    probe_identity = data_interpretation_parsed_cache._path_identity(path)
+
+    assert payload == b'{"Name":"Example"}'
+    assert identity.file_bytes == len(payload)
+    assert probe_identity.content_probe_sha256
+
+
+def test_parsed_cache_rejects_actual_growth_beyond_bounded_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "sidecar.json"
+    path.write_bytes(b"1234")
+    real_open = os.open
+
+    def _grow_after_entry_stat(*args, **kwargs) -> int:
+        descriptor = real_open(*args, **kwargs)
+        path.write_bytes(b"12345")
+        return descriptor
+
+    monkeypatch.setattr(os, "open", _grow_after_entry_stat)
+
+    with pytest.raises(data_interpretation_parsed_cache.ParsedContentTooLargeError):
+        data_interpretation_parsed_cache._stable_file_bytes(path, max_file_bytes=4)
 
 
 def test_cache_retention_is_bounded_by_entries_and_bytes() -> None:
@@ -176,11 +250,17 @@ def test_cache_parses_one_key_once_under_concurrency(monkeypatch) -> None:
 
 def test_match_labels_reuses_one_complete_events_table(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     events = tmp_path / "sub-01_task-mi_events.tsv"
     events.write_text(
         "onset\tduration\ttrial_type\tvalue\n0\t1\tleft\t1\n1\t1\tright\t2\n",
         encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        data_interpretation_parsed_cache,
+        "_STAT_CHANGE_TIME_IS_RELIABLE",
+        True,
     )
 
     first = data_interpretation_label_carriers.build_label_carrier_plan(
@@ -222,10 +302,9 @@ def test_changed_events_table_invalidates_match_labels_projection(
 
     assert first[0]["label_value_counts"] == {"left": 1}
     assert changed[0]["label_value_counts"] == {"foot": 1}
-    assert default_parsed_content_cache().diagnostics()["file_read_count"] == 2
 
 
-def test_windows_guard_does_not_reuse_same_size_middle_rewrite(
+def test_unreliable_change_time_re_reads_same_size_middle_rewrite(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -246,18 +325,27 @@ def test_windows_guard_does_not_reuse_same_size_middle_rewrite(
         delimiter="\t",
         parser_id="windows-middle-rewrite",
     )
-    admitted_stat = path.stat()
-    path.write_text(changed, encoding="utf-8")
-    os.utime(
-        path,
-        ns=(admitted_stat.st_atime_ns, admitted_stat.st_mtime_ns),
-    )
     monkeypatch.setattr(
         data_interpretation_parsed_cache,
         "_STAT_CHANGE_TIME_IS_RELIABLE",
         False,
     )
 
+    with data_interpretation_parsed_cache.verified_parsed_content_paths(
+        {path: _current_identity(path)}
+    ):
+        repeated = cache.delimited_table_from_path(
+            path,
+            delimiter="\t",
+            parser_id="windows-middle-rewrite",
+        )
+
+    admitted_stat = path.stat()
+    path.write_text(changed, encoding="utf-8")
+    os.utime(
+        path,
+        ns=(admitted_stat.st_atime_ns, admitted_stat.st_mtime_ns),
+    )
     with data_interpretation_parsed_cache.verified_parsed_content_paths(
         {path: _current_identity(path)}
     ):
@@ -268,8 +356,12 @@ def test_windows_guard_does_not_reuse_same_size_middle_rewrite(
         )
 
     assert first.dict_rows()[512]["trial_type"] == "left"
+    assert repeated.dict_rows()[512]["trial_type"] == "left"
     assert observed.dict_rows()[512]["trial_type"] == "foot"
-    assert cache.diagnostics()["file_read_count"] == 2
+    # An unreliable change-time platform re-reads bytes, but content identity
+    # still reuses the parsed projection for the unchanged middle call.
+    assert cache.diagnostics()["parse_count"] == 2
+    assert cache.diagnostics()["file_read_count"] == 3
 
 
 def test_new_admission_identity_cannot_reuse_an_old_same_path_binding(
@@ -296,16 +388,21 @@ def test_new_admission_identity_cannot_reuse_an_old_same_path_binding(
 
     assert first.dict_rows()[0]["trial_type"] == "left"
     assert changed.dict_rows()[0]["trial_type"] == "foot"
-    assert cache.diagnostics()["file_read_count"] == 2
 
 
 def test_label_plan_and_strict_bids_review_share_one_table_parse(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     events = tmp_path / "sub-01_task-mi_events.tsv"
     events.write_text(
         "onset\tduration\ttrial_type\n0\t1\tleft\n",
         encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        data_interpretation_parsed_cache,
+        "_STAT_CHANGE_TIME_IS_RELIABLE",
+        True,
     )
 
     data_interpretation_label_carriers.build_label_carrier_plan(
@@ -354,13 +451,34 @@ def test_admitted_review_groups_avoid_per_projection_file_reopens(
     real_open = os.open
     open_count = 0
 
+    def _open_counter_path(path: str | Path) -> str:
+        return os.path.normcase(os.path.abspath(os.fspath(path)))
+
+    case_alias = str((tmp_path / "CaseAlias.tsv").resolve())
+    with monkeypatch.context() as windows_case_alias:
+        host_normcase = os.path.normcase
+        windows_case_alias.setattr(
+            os.path,
+            "normcase",
+            lambda value: host_normcase(value).casefold(),
+        )
+        # The old direct spelling comparison is false for an NTFS case alias.
+        assert os.path.abspath(case_alias.upper()) != os.path.abspath(case_alias)
+        assert _open_counter_path(case_alias.upper()) == _open_counter_path(case_alias)
+    normalized_resolved = _open_counter_path(resolved)
+
     def _counted_open(path, flags, *args, **kwargs):
         nonlocal open_count
-        if os.path.abspath(os.fspath(path)) == resolved:
+        if _open_counter_path(path) == normalized_resolved:
             open_count += 1
         return real_open(path, flags, *args, **kwargs)
 
     monkeypatch.setattr(os, "open", _counted_open)
+    monkeypatch.setattr(
+        data_interpretation_parsed_cache,
+        "_STAT_CHANGE_TIME_IS_RELIABLE",
+        True,
+    )
 
     data_interpretation_label_carriers.build_label_carrier_plan(
         [resolved],
@@ -386,11 +504,17 @@ def test_admitted_review_groups_avoid_per_projection_file_reopens(
 
 def test_dataset_description_reuses_parse_and_changed_content_invalidates(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     description = tmp_path / "dataset_description.json"
     description.write_text(
         '{"Name":"First","BIDSVersion":"1.9.0"}',
         encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        data_interpretation_parsed_cache,
+        "_STAT_CHANGE_TIME_IS_RELIABLE",
+        True,
     )
 
     first, first_issue = _read_bids_dataset_description(

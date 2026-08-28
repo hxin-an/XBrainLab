@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -35,6 +36,64 @@ def _preflight(paths: list[str], monkeypatch: pytest.MonkeyPatch):
         ),
     )
     return check_import_resource_preflight(paths)
+
+
+def _identity_stat(*, ctime_ns: int, inode: int = 101) -> SimpleNamespace:
+    return SimpleNamespace(
+        st_mode=0o100644,
+        st_dev=11,
+        st_ino=inode,
+        st_size=32,
+        st_mtime_ns=1_700_000_000_000_000_000,
+        st_ctime_ns=ctime_ns,
+    )
+
+
+def test_current_identity_allows_stable_path_and_descriptor_channels_with_distinct_ctime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """NTFS may report different ctime values for path and descriptor channels."""
+    path = tmp_path / "recording.set"
+    path.write_bytes(b"x" * 32)
+    path_stats = iter([_identity_stat(ctime_ns=100), _identity_stat(ctime_ns=100)])
+    descriptor_stats = iter(
+        [_identity_stat(ctime_ns=200), _identity_stat(ctime_ns=200)]
+    )
+    monkeypatch.setattr(Path, "lstat", lambda _path: next(path_stats))
+    monkeypatch.setattr(os, "fstat", lambda _descriptor: next(descriptor_stats))
+
+    identity = data_interpretation_resource_reader._current_identity(path)
+
+    assert identity.device == 11
+    assert identity.inode == 101
+    assert identity.ctime_ns == 200
+
+
+@pytest.mark.parametrize(
+    ("path_ctimes", "descriptor_ctimes"),
+    [((100, 101), (200, 200)), ((100, 100), (200, 201))],
+)
+def test_current_identity_rejects_metadata_change_within_either_observation_channel(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    path_ctimes: tuple[int, int],
+    descriptor_ctimes: tuple[int, int],
+) -> None:
+    """A real ctime transition still fails even though channel ctimes may differ."""
+    path = tmp_path / "recording.set"
+    path.write_bytes(b"x" * 32)
+    path_stats = iter([_identity_stat(ctime_ns=value) for value in path_ctimes])
+    descriptor_stats = iter(
+        [_identity_stat(ctime_ns=value) for value in descriptor_ctimes]
+    )
+    monkeypatch.setattr(Path, "lstat", lambda _path: next(path_stats))
+    monkeypatch.setattr(os, "fstat", lambda _descriptor: next(descriptor_stats))
+
+    with pytest.raises(PreconditionError) as raised:
+        data_interpretation_resource_reader._current_identity(path)
+
+    assert raised.value.diagnostics["code"] == "interpretation_resource_unavailable"
 
 
 def test_reader_rejects_same_size_replacement_after_admission(

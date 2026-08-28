@@ -309,7 +309,7 @@ def test_parallel_hash_progress_is_monotonic_and_preserves_exact_content_identit
     assert completed.phase is OwnedWorkPhase.COMPLETED
 
 
-def test_content_hash_leaves_complete_byte_progress_before_final_guards_and_seal(
+def test_content_hash_leaves_complete_byte_progress_before_finalization_and_seal(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -319,17 +319,13 @@ def test_content_hash_leaves_complete_byte_progress_before_final_guards_and_seal
     release_verification = Event()
     finalization_started = Event()
     release_finalization = Event()
-    real_fstat = data_interpretation_content_identity.os.fstat
-    fstat_calls = 0
+    real_checkpoint = data_interpretation_content_identity.owned_work_checkpoint
 
-    def blocking_fstat(file_descriptor: int):
-        nonlocal fstat_calls
-        observed = real_fstat(file_descriptor)
-        fstat_calls += 1
-        if fstat_calls == 2:
+    def blocking_checkpoint(stage: str, **kwargs: object) -> None:
+        real_checkpoint(stage, **kwargs)
+        if stage == _VERIFY_STAGE:
             verification_started.set()
             assert release_verification.wait(timeout=_THREAD_WATCHDOG_SECONDS)
-        return observed
 
     real_files_payload = data_interpretation_content_identity._files_identity_payload
 
@@ -339,9 +335,9 @@ def test_content_hash_leaves_complete_byte_progress_before_final_guards_and_seal
         return real_files_payload(*args, **kwargs)
 
     monkeypatch.setattr(
-        data_interpretation_content_identity.os,
-        "fstat",
-        blocking_fstat,
+        data_interpretation_content_identity,
+        "owned_work_checkpoint",
+        blocking_checkpoint,
     )
     monkeypatch.setattr(
         data_interpretation_content_identity,

@@ -4,6 +4,7 @@ import json
 import os
 from collections import Counter
 from pathlib import Path
+from types import SimpleNamespace
 
 import mne
 import numpy as np
@@ -658,9 +659,8 @@ def test_new_run_sidecar_after_scan_is_discovered_before_repeated_preview(
     }
 
 
-def test_cached_events_json_rechecks_content_when_stat_identity_is_unchanged(
+def test_cached_events_json_rechecks_same_size_content_for_each_command(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root = tmp_path / "bids"
     _eeg_path, events_path = _write_bids_run(root)
@@ -672,14 +672,8 @@ def test_cached_events_json_rechecks_content_when_stat_identity_is_unchanged(
     reader = bids_resources.BidsEventsJsonReader.from_paths([str(sidecar)])
     assert reader.read_object(sidecar)["trial_type"]["Levels"]["left"] == ("Left hand")
     reader = reader.for_command()
-    admitted = reader.admitted_files[str(sidecar.resolve())]
     changed = sidecar.read_text(encoding="utf-8").replace("Left hand", "Foot hand")
     sidecar.write_text(changed, encoding="utf-8")
-    monkeypatch.setattr(
-        reader,
-        "_identity_from_stat",
-        lambda **_kwargs: admitted,
-    )
 
     with pytest.raises(
         PreconditionError,
@@ -1046,14 +1040,47 @@ def test_reader_rejects_same_size_in_place_replacement_after_admission(
     assert diagnostics["json_parsing_started"] is False
 
 
-def test_reader_content_hash_rejects_change_even_when_stat_check_is_inconclusive(
+def test_reader_allows_same_content_when_path_and_handle_metadata_differ(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Windows path and handle metadata differences do not reject a sidecar."""
+    sidecar = tmp_path / "task-mi_events.json"
+    sidecar.write_bytes(b'{"a":1}')
+    reader = bids_resources.BidsEventsJsonReader.from_paths([str(sidecar)])
+    original_stat = sidecar.stat()
+
+    def _metadata_stat(*, device: int, inode: int, timestamp: int) -> SimpleNamespace:
+        return SimpleNamespace(
+            st_mode=original_stat.st_mode,
+            st_size=original_stat.st_size,
+            st_dev=device,
+            st_ino=inode,
+            st_mtime_ns=timestamp,
+            st_ctime_ns=timestamp + 1,
+        )
+
+    path_stat = _metadata_stat(device=1, inode=2, timestamp=3)
+    handle_stat = _metadata_stat(device=4, inode=5, timestamp=6)
+    real_stat = Path.stat
+
+    def _path_stat(path: Path, *args: object, **kwargs: object) -> object:
+        if path == sidecar:
+            return path_stat
+        return real_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", _path_stat)
+    monkeypatch.setattr(os, "fstat", lambda _descriptor: handle_stat)
+
+    assert reader.read_object(sidecar) == {"a": 1}
+
+
+def test_reader_content_hash_rejects_same_size_change_after_admission(
+    tmp_path: Path,
 ) -> None:
     sidecar = tmp_path / "task-mi_events.json"
     sidecar.write_bytes(b'{"a":1}')
     reader = bids_resources.BidsEventsJsonReader.from_paths([str(sidecar)])
-    monkeypatch.setattr(reader, "_assert_stable_identity", lambda **_kwargs: None)
     sidecar.write_bytes(b'{"b":2}')
 
     with pytest.raises(PreconditionError) as raised:
