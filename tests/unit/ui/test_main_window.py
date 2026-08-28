@@ -1,6 +1,6 @@
 from dataclasses import replace
 from threading import Thread
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from PyQt6.QtCore import QObject, Qt, pyqtSignal
@@ -154,6 +154,38 @@ def test_mainwindow_rebinds_dataset_publication_after_service_reinitialization(
         dataset_port.get_view_publication()
         == replacement_renderer.service.get_view_publication()
     )
+
+
+@pytest.mark.parametrize(
+    ("closing", "deleted"),
+    ((True, False), (False, True)),
+)
+def test_mainwindow_does_not_rebuild_or_rebind_publication_while_unavailable(
+    main_window,
+    closing: bool,
+    deleted: bool,
+) -> None:
+    """Close/deleted short-circuits must precede service construction."""
+    original_renderer = main_window._application_publication_renderer
+    assert original_renderer is not None
+    original_renderer.cleanup()
+    main_window._application_publication_renderer = None
+    main_window.study._application_service = None
+    main_window._closing_in_progress = closing
+    rebind = MagicMock()
+    main_window.dataset_panel.rebind_application_publication_port = rebind
+
+    with (
+        patch("XBrainLab.ui.main_window.sip.isdeleted", return_value=deleted),
+        patch(
+            "XBrainLab.backend.application.runtime.get_application_service"
+        ) as get_service,
+    ):
+        assert main_window._ensure_application_publication_renderer() is None
+
+    get_service.assert_not_called()
+    rebind.assert_not_called()
+    assert main_window.study._application_service is None
 
 
 def test_mainwindow_typed_dataset_import_does_not_require_legacy_controller(

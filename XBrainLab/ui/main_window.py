@@ -1466,6 +1466,12 @@ class MainWindow(QMainWindow):
         self,
     ) -> DesktopApplicationPublicationRenderer | None:
         """Create the canonical desktop publication owner on first backend use."""
+        if (
+            self._closing_in_progress
+            or sip.isdeleted(self)
+            or not has_real_application_context(self)
+        ):
+            return None
         from XBrainLab.backend.application.runtime import (  # noqa: PLC0415
             get_application_service,
         )
@@ -1477,12 +1483,6 @@ class MainWindow(QMainWindow):
         if renderer is not None:
             renderer.cleanup()
             self._application_publication_renderer = None
-        if (
-            self._closing_in_progress
-            or sip.isdeleted(self)
-            or not has_real_application_context(self)
-        ):
-            return None
 
         renderer = DesktopApplicationPublicationRenderer(
             service=service,
