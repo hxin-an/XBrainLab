@@ -28,10 +28,10 @@ def test_ci_routes_agent_guidance_to_a_focused_contract_job() -> None:
     assert jobs["agent-guidance"]["if"] == (
         "needs.changes.outputs.agent_guidance == 'true'"
     )
-    assert "tests/unit/test_agent_guidance_contract.py" in str(jobs["agent-guidance"])
-    assert "tests/unit/scripts/test_audit_agent_guidance.py" in str(
-        jobs["agent-guidance"]
-    )
+    guidance_job = str(jobs["agent-guidance"])
+    assert "tests/unit/test_agent_guidance_contract.py" not in guidance_job
+    assert "tests/unit/scripts/test_audit_agent_guidance.py" in guidance_job
+    assert "--confcutdir=tests/unit/scripts" in guidance_job
     assert jobs["docs-only"]["if"] == (
         "needs.changes.outputs.product != 'true' && "
         "needs.changes.outputs.agent_guidance != 'true'"
