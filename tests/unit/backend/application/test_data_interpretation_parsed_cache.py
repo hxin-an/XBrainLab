@@ -451,9 +451,25 @@ def test_admitted_review_groups_avoid_per_projection_file_reopens(
     real_open = os.open
     open_count = 0
 
+    def _open_counter_path(path: str | Path) -> str:
+        return os.path.normcase(os.path.abspath(os.fspath(path)))
+
+    case_alias = str((tmp_path / "CaseAlias.tsv").resolve())
+    with monkeypatch.context() as windows_case_alias:
+        host_normcase = os.path.normcase
+        windows_case_alias.setattr(
+            os.path,
+            "normcase",
+            lambda value: host_normcase(value).casefold(),
+        )
+        # The old direct spelling comparison is false for an NTFS case alias.
+        assert os.path.abspath(case_alias.upper()) != os.path.abspath(case_alias)
+        assert _open_counter_path(case_alias.upper()) == _open_counter_path(case_alias)
+    normalized_resolved = _open_counter_path(resolved)
+
     def _counted_open(path, flags, *args, **kwargs):
         nonlocal open_count
-        if os.path.abspath(os.fspath(path)) == resolved:
+        if _open_counter_path(path) == normalized_resolved:
             open_count += 1
         return real_open(path, flags, *args, **kwargs)
 
