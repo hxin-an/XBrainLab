@@ -37,9 +37,12 @@ missing-input state，讓 Assistant 能安全地向使用者追問並接受下�
   warning）；ruff 與 diff checks 再次通過，production scope 仍是四檔 net `+228`。
 - 原先兩位 reviewers 對 integration SHA `1d389275` 的結論，因 `8cd50da5`／`5bca6ecf` 已失效；兩位 fresh
   reviewers 必須改對本 checkpoint 之後的 exact HEAD 重做 independent review，才可進 model run／PR。
+- Privacy reviewer 另指出 capture docs/evidence 將 generation-boundary artifact 誤寫成 admission／product
+  outcome record。此 documentation blocker 由下一個 docs-only checkpoint 校準；其後所有舊 review 結論仍待
+  fresh re-review，未完成前不進 model run／PR。
 - 下一步是兩位 **fresh reviewers**：admission reviewer 檢查 receipt action/verified-value/negative lifecycle
   與 owner boundary；evidence/privacy reviewer 檢查 env-disabled zero filesystem、prepared/completed/
-  cancelled/failed artifacts、hash／attempt count、runtime privacy warning與 evaluator raw/Host/product score
+  cancelled/failed artifacts、SHA、runtime privacy warning與 evaluator raw/Host/product score
   separation。兩份 review 都無 blocking finding 前，不進 81-case model run 或 PR。
 - 已知 unsupported claims：尚無 integrated exact HEAD 的真實 GUI runtime capture artifact、81-case real-model
   score 或使用者手測；Host-origin receipt 只證明 fail-closed continuation admission，不證明 first-turn raw
@@ -56,8 +59,8 @@ missing-input state，讓 Assistant 能安全地向使用者追問並接受下�
   admission、confirmation、origin verification 與 execution path；cancel、topic switch、stale receipt、
   different tool、partial reply 與 multi-action 保持零 unsafe execution。
 - opt-in runtime capture 真正擷取 GUI 使用的 `LocalBackend.generate_stream` final fitted prompt 與每次 raw
-  output（含 retry），並記錄 admission outcome；它用於判斷本方案是否改善 81-case clarification journey，
-  但不改變 generation、admission 或 execution 行為。
+  output（含 retry）的 generation-boundary metadata；admission／product outcome 由 v10 evaluator report
+  另存。v1 沒有 artifact-level controller correlation；它不改變 generation、admission 或 execution 行為。
 
 ## Evidence、假設與 privacy
 
@@ -72,8 +75,10 @@ missing-input state，讓 Assistant 能安全地向使用者追問並接受下�
 - Runtime capture 只在 developer 明確設定
   `XBRAINLAB_ASSISTANT_PROMPT_CAPTURE_DIR=<absolute-directory>` 時啟用；未設定時零 IO。每一次 generation
   或 retry 以 `<dir>/<session>/<sequence>/{prompt.txt,raw-output.txt,metadata.json}` 寫入，metadata 含
-  `prepared`／`completed`／`cancelled`／`failed` 狀態、model/revision/options、attempt count、source／content
-  hash 與必要 redaction metadata。capture write failure 必須 nonblocking、redacted，且不可改變產品結果。
+  model/revision、所有 resolved options、child-local session id、per-invocation monotonic sequence、prompt/raw
+  byte counts 與 SHA-256，以及 `prepared`／`completed`／`cancelled`／`failed` lifecycle state。metadata 不含
+  aggregate attempt count、Git source hash 或 redaction metadata。capture write failure 的 public log 必須
+  nonblocking 且不披露 private path／writer error，並不可改變產品結果。
 - capture tests 可用 synthetic fixture，但實際功能可擷取 GUI runtime，artifact 因此**可能含 chat、path 與
   dataset metadata**，有真實 privacy risk；操作者必須使用受控本機 absolute directory 並在需要時人工清除。
   不寫入 UI、settings、upload、support log、git repository、model cache 或自動收集服務；不得假稱沒有
@@ -101,7 +106,7 @@ missing-input state，讓 Assistant 能安全地向使用者追問並接受下�
 1. **Capture/evidence worker**（TDD、限 existing `LocalBackend` owner、scripts 與直接 tests）：
    - trace `ContextAssembler.get_messages` → LocalBackend template → raw response → origin guard → admission
      的實際 runtime seam；提出最小 capture API／artifact schema，證明不載入第二個 prompt path。
-   - 以 synthetic fixture 驗 capture 的目錄／狀態／hash／nonblocking redaction，並建立 81-case focused
+   - 以 synthetic fixture 驗 capture 的目錄／狀態／hash／non-disclosing nonblocking failure，並建立 81-case focused
      evidence，分開 raw first response、guard block、receipt admission、follow-up response 與 product outcome；
      不修改 product admission。
 2. **Admission worker**（TDD、只改 existing owner 與直接測試）：
@@ -115,8 +120,9 @@ missing-input state，讓 Assistant 能安全地向使用者追問並接受下�
    - 核對 authority、receipt scope、stale/cancel/different-tool/partial/multi transitions、owners before/after、
      production LOC/file count，並以 reachable behavior 提出最多三個 blocking findings。
 4. **Evidence/privacy reviewer**（獨立於 capture worker）：
-   - 核對 capture 只走 product runtime prompt path、raw/product score 未混淆、artifact redaction／SHA／source
-     identity、English 81-case denominator 與 unsupported claims；不重複 review admission implementation。
+   - 核對 capture 只走 product runtime prompt path、raw/product score 未混淆、artifact metadata SHA／privacy
+     warning、evaluator report 的 source identity、English 81-case denominator 與 unsupported claims；不重複
+     review admission implementation。
 5. **Integration Lead**（非 author／reviewer、只整合）：在兩個 focused green commits 與兩份 review 都完成後，
    核對 exact head、建立 PR、觸發 CI 與安排 checkpoint；不代替任一 worker 實作或 reviewer 判定。
 6. **Root**：只協調／唯讀觀察，維持本 plan、核對 exact base/head 與 settings protection，分派兩位 authors 與
@@ -132,18 +138,25 @@ missing-input state，讓 Assistant 能安全地向使用者追問並接受下�
   - one-reply completion proposes the same exact action with only verified + latest-reply values; partial,
     cancel, stale, different action, topic switch, negated and multi-action cases do not execute;
   - capture uses exact `LocalBackend.generate_stream` final fitted prompt and every raw output/retry, has one
-    artifact per actual attempt with matching hashes, and is zero-IO/nonblocking when disabled or write fails.
+    artifact per successfully prepared LocalBackend generation invocation with matching hashes, and is zero-IO/
+    nonblocking when disabled or write fails.
 - Evaluator focused criteria（81 English cases）：raw positive `>=36/36`；Host safety `15/15`；direct Host
   clarification admission `5/5`；product clarification `7/7`；product no-action `>=21/24` 且零新增 unsafe
-  execution；capture artifact count 必須等於 actual attempts 且 hash 一致。14 challenge raw 是 known
+  execution；successful capture artifact count 必須等於 actual prepared LocalBackend generation invocations 且
+  hash 一致。14 challenge raw 是 known
   limitations，必須完整揭露但不得要求全部歸零、不得以 Host rescue 灌入 raw score。所有缺參數 guard block
   維持零 execution；raw score、Host safety 與 product outcome 分開報告。
 - 只在 focused unit/integration、capture tests、source guards（若穩定）全綠後，才由 worker 對同一 clean
   exact SHA 跑一次 pinned-model 81-case suite。這不是 full handoff，也不是 hand test gate。
+- `521 passed` 是 Lead 在 `5bca6ecf` integrated checkpoint 的 observed result，不是可外部驗證 artifact。
+  可重跑的 exact focused selection 是 controller、tool-attempt coordinator/policy、verification layer、full
+  evaluator unit、LocalBackend、runtime prompt capture 與 model-context boundary，argv 概要：
+  `env PYTHONPATH="$PWD:/home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-IiX9BmR2-py3.12/lib/python3.12/site-packages:/home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-IiX9BmR2-py3.12/local/lib/python3.12/dist-packages" MNE_DONTWRITE_HOME=true MPLCONFIGDIR=/tmp/xbrainlab-clarification-capture-mpl timeout 900 prlimit --core=0 -- /home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-IiX9BmR2-py3.12/bin/python -m pytest tests/unit/llm/agent/test_controller.py tests/unit/llm/agent/test_tool_attempt_coordinator.py tests/unit/llm/agent/test_tool_attempt_policy_boundary.py tests/unit/llm/agent/test_verification_layer.py tests/unit/scripts/test_stable_assistant_model_eval.py tests/unit/llm/core/test_local_backend.py tests/unit/llm/core/test_runtime_prompt_capture.py tests/integration/llm/test_model_context_boundary.py -q`。
+  Fresh reviewers 必須在新的 exact HEAD 重新執行此 selection；在重跑前不得把 521 視為外部 attestation。
 
 ## Stop condition 與 handoff
 
-- **Bounded baseline success**：bridge 可由 existing owner 表達、focused tests green、capture 的 actual attempt
+- **Bounded baseline success**：bridge 可由 existing owner 表達、focused tests green、capture 的 generation-boundary
   artifacts／hash／privacy warning 符合上列規則，且 81-case criteria 全部達成、raw/Host/product claims 分開。
   之後由 Lead 建立 exact-head PR、所有 CI non-skipped checks `completed/success`，再由 Root 交付同 SHA 使用者
   手測；使用者手測通過並明確同意 merge 前不得 merge。
