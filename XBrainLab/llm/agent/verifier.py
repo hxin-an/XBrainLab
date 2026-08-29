@@ -67,10 +67,6 @@ def direct_parameter_action_request_matches(tool_name: str, text: str) -> bool:
     normalized = unicodedata.normalize("NFKC", text).casefold()
     if _clarification_reply_is_cancelled(normalized):
         return False
-    if re.search(r"\b(?:tell\s+me\s+how|how\s+to|explain)\b", normalized):
-        return False
-    if re.match(r"^\s*(?:what|which|why|how|is|are|should|would)\b", normalized):
-        return False
     markers = {
         "apply_bandpass_filter": "bandpass",
         "apply_notch_filter": "notch",
@@ -81,7 +77,11 @@ def direct_parameter_action_request_matches(tool_name: str, text: str) -> bool:
     target = markers.get(tool_name)
     return bool(
         target
-        and re.search(r"\b(?:apply|run|use|set|resampl|normaliz)\w*\b", normalized)
+        and re.match(
+            r"^\s*(?:(?:can|could)\s+you(?:\s+please)?\s+|please\s+)?"
+            r"(?:apply|run|use|set|resampl\w*|normaliz\w*)\b",
+            normalized,
+        )
         and normalized.count(target) == 1
         and all(
             marker not in normalized for marker in markers.values() if marker != target
@@ -267,7 +267,7 @@ def verify_direct_parameter_reply_values(
 def _clarification_reply_is_cancelled(text: str) -> bool:
     return bool(
         re.search(
-            r"(?:\b(?:cancel|never(?:\s+mind)?|avoid|do\s+not|don't|not\s+now)\b|"
+            r"(?:\b(?:cancel|never(?:\s+mind)?|avoid|no|without|except|do\s+not|don't|not\s+now)\b|"
             r"算了|取消|不要|不用|先不要)",
             text,
             re.IGNORECASE,

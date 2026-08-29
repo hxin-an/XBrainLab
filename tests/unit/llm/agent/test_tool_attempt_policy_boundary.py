@@ -342,6 +342,28 @@ def test_invented_direct_parameter_creates_typed_followup_receipt(
     assert verifier.calls == [((tool_name, params), 0.9)]
 
 
+@pytest.mark.parametrize(
+    "text",
+    (
+        "Can you apply a notch filter?",
+        "Could you please apply a notch filter?",
+        "Please apply a notch filter.",
+    ),
+)
+def test_affirmative_direct_request_variants_create_receipt(text: str) -> None:
+    coordinator, _source, _verifier = _coordinator(
+        _context("apply_notch_filter", command_name="preprocess"),
+        tool=_Tool(parameters={"type": "object", "required": ["freq"]}),
+    )
+
+    decision = coordinator.evaluate(
+        _request("apply_notch_filter", params={"freq": 50}, text=text)
+    )
+
+    assert decision.action is ToolAttemptAction.RESPOND
+    assert decision.tool_input_receipt is not None
+
+
 def test_partial_bandpass_keeps_only_user_proven_cutoff_in_receipt() -> None:
     coordinator, _source, _verifier = _coordinator(
         _context("apply_bandpass_filter", command_name="preprocess"),
@@ -433,6 +455,24 @@ def test_word_number_frequency_never_verifies_or_reaches_execution_boundary() ->
             "apply_notch_filter",
             {"freq": 50},
             "Avoid applying a notch filter.",
+            True,
+        ),
+        (
+            "apply_notch_filter",
+            {"freq": 50},
+            "Do you recommend applying a notch filter?",
+            True,
+        ),
+        (
+            "apply_notch_filter",
+            {"freq": 50},
+            "Skip applying a notch filter.",
+            True,
+        ),
+        (
+            "apply_notch_filter",
+            {"freq": 50},
+            "Please apply a notch filter without changing the reference.",
             True,
         ),
     ),
