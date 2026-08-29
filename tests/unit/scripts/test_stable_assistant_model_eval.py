@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -364,15 +365,25 @@ def test_clarification_prompt_and_score_use_product_receipt_boundary() -> None:
         '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
         '"parameters":{"rate":128}}'
     )
+    generated_messages: list[list[dict[str, str]]] = []
+
+    def generate(messages: list[dict[str, str]]) -> str:
+        generated_messages.append(messages)
+        return response
+
     trajectory = evaluate_clarification_trajectory(
         case,
         source,
         admission=admission,
         registry=registry,
-        generate_response=lambda _messages: response,
+        generate_response=generate,
     )
 
     assert trajectory.final_score.passed is True
+    assert len(generated_messages) == 1
+    active_receipt = admission.harness.pending_interactions.active_tool_input
+    assert active_receipt is not None
+    assert dict(active_receipt.verified_parameters) == {"rate": 128}
     assert trajectory.receipt_origin == "model_typed"
     assert trajectory.final_score.product_outcome is not None
     assert trajectory.final_score.product_outcome.disposition == "execute_boundary"
@@ -499,18 +510,78 @@ def test_clarification_trajectory_uses_product_format_recovery() -> None:
         registry=registry,
     )
     assert admission is not None
+    recorder = GenerationTraceRecorder()
     trajectory = evaluate_clarification_trajectory(
         case,
         source,
         admission=admission,
         registry=registry,
         generate_response=lambda _messages: next(responses),
+        generation_recorder=recorder,
     )
 
     assert trajectory.raw_score.passed is False
     assert trajectory.final_score.passed is True
     assert len(trajectory.attempts) == 2
     assert trajectory.attempts[0].recovery_action == "retry_format"
+    assert [entry.turn_purpose for entry in recorder.entries] == [
+        "clarification_proposal",
+        "format_retry",
+    ]
+
+
+def test_clarification_collection_cancellation_or_correction_skips_generation() -> None:
+    registry = target_tool_registry()
+    precision_cases = load_precision_cases(DEFAULT_PRECISION_CASES)
+    case = next(
+        item
+        for item in load_clarification_cases(
+            DEFAULT_CLARIFICATION_CASES,
+            precision_cases=precision_cases,
+        )
+        if item.expected_tool == "resample_data"
+    )
+    source = next(
+        item for item in precision_cases if item.case_id == case.source_case_id
+    )
+    first_response = (
+        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '"parameters":{"message":"What resampling rate should I use?",'
+        '"pending_action":"resample_data","missing_inputs":["rate"]}}'
+    )
+
+    for reply in ("cancel", "Actually 256 Hz"):
+        admission = admit_clarification_receipt(
+            source,
+            first_response,
+            expected_tool=case.expected_tool,
+            registry=registry,
+        )
+        assert admission is not None
+        recorder = GenerationTraceRecorder()
+        generate = MagicMock(
+            side_effect=AssertionError("Host-terminal clarification must not generate.")
+        )
+        trajectory = evaluate_clarification_trajectory(
+            replace(case, reply=reply),
+            source,
+            admission=admission,
+            registry=registry,
+            generate_response=generate,
+            generation_recorder=recorder,
+        )
+
+        assert trajectory.final_score.passed is False
+        assert trajectory.final_score.failure_type == "clarification_collection"
+        assert trajectory.raw_score.response == ""
+        assert trajectory.attempts == ()
+        assert recorder.entries == []
+        generate.assert_not_called()
+        assert admission.harness.pending_interactions.active_tool_input is None
+        assert admission.harness.pending_interactions.tool_input is None
+        outcome = trajectory.final_score.product_outcome
+        assert outcome is not None
+        assert outcome.tool_executor_permitted is False
 
 
 def test_discriminated_clarification_trajectories_use_scripted_model_turns() -> None:
@@ -546,8 +617,6 @@ def test_discriminated_clarification_trajectories_use_scripted_model_turns() -> 
             '"parameters":{"message":"What low and high cutoffs should I use?",'
             '"pending_action":"apply_bandpass_filter",'
             '"missing_inputs":["low_freq","high_freq"]}}',
-            '{"workflow_stage":"data_loaded","tool_name":"apply_bandpass_filter",'
-            '"parameters":{"low_freq":12}}',
             '{"workflow_stage":"data_loaded","tool_name":"apply_bandpass_filter",'
             '"parameters":{"high_freq":128}}',
         )
@@ -607,6 +676,11 @@ def test_generic_clarification_uses_the_checked_in_second_turn() -> None:
         "role": "user",
         "content": generic.turns[1],
     }
+    assert generated_messages[2][-1] == {
+        "role": "user",
+        "content": generic.turns[2],
+    }
+    assert result.receipt_origin == "model_typed"
 
 
 def test_generation_trace_preserves_pre_strip_raw_identity_and_bounds_preview() -> None:
@@ -728,7 +802,7 @@ def test_trajectory_payload_separates_policy_from_actual_generation_calls() -> N
     assert payload["format_recovery_attempts"] == 0
 
 
-def test_partial_trajectory_fails_when_controller_rejects_the_partial_proposal() -> (
+def test_partial_bandpass_reply_requeues_without_model_generation_before_final_proposal() -> (
     None
 ):
     registry = target_tool_registry()
@@ -748,38 +822,35 @@ def test_partial_trajectory_fails_when_controller_rejects_the_partial_proposal()
             '"pending_action":"apply_bandpass_filter",'
             '"missing_inputs":["low_freq","high_freq"]}}',
             '{"workflow_stage":"data_loaded","tool_name":"apply_bandpass_filter",'
-            '"parameters":{"low_freq":12}}',
+            '"parameters":{"high_freq":128}}',
         )
     )
     recorder = GenerationTraceRecorder()
+    generated_messages: list[list[dict[str, str]]] = []
 
-    with patch(
-        "scripts.dev.run_stable_assistant_model_eval.LLMController._evaluate_tool_proposal",
-        return_value=None,
-    ):
-        result = evaluate_discriminated_clarification_trajectory(
-            partial,
-            registry,
-            lambda _messages: next(responses),
-            generation_recorder=recorder,
-            trace_case_id=partial.case_id,
-        )
+    def generate(messages: list[dict[str, str]]) -> str:
+        generated_messages.append(messages)
+        return next(responses)
 
-    assert result.final_score.passed is False
-    assert result.final_score.failure_type == "partial_accumulation"
-    assert [attempt.response_preview for attempt in result.attempts] == [
-        (
-            '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
-            '"parameters":{"message":"What low and high cutoffs should I use?",'
-            '"pending_action":"apply_bandpass_filter",'
-            '"missing_inputs":["low_freq","high_freq"]}}'
-        )
+    result = evaluate_discriminated_clarification_trajectory(
+        partial,
+        registry,
+        generate,
+        generation_recorder=recorder,
+        trace_case_id=partial.case_id,
+    )
+
+    assert result.final_score.passed is True
+    assert [messages[-1]["content"] for messages in generated_messages] == [
+        partial.turns[0],
+        partial.turns[2],
     ]
     assert [entry.global_call_index for entry in recorder.entries] == [1, 2]
     assert [entry.turn_purpose for entry in recorder.entries] == [
         "first_turn",
-        "partial_reply",
+        "clarification_proposal",
     ]
+    assert all(entry.turn_purpose != "partial_reply" for entry in recorder.entries)
     assert [entry.raw_output_sha256 for entry in recorder.entries] == [
         hashlib.sha256(response.encode("utf-8")).hexdigest()
         for response in (
@@ -791,7 +862,7 @@ def test_partial_trajectory_fails_when_controller_rejects_the_partial_proposal()
             ),
             (
                 '{"workflow_stage":"data_loaded","tool_name":"apply_bandpass_filter",'
-                '"parameters":{"low_freq":12}}'
+                '"parameters":{"high_freq":128}}'
             ),
         )
     ]

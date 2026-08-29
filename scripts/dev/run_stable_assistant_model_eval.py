@@ -714,6 +714,10 @@ class _EvaluatorControllerHarness:
     def _remaining_tool_input_question(self, receipt: AssistantToolInputReceipt) -> str:
         return LLMController._remaining_tool_input_question(receipt)
 
+    def collect_active_tool_input_reply(self, text: str) -> bool:
+        """Delegate one reply to the controller before evaluator generation."""
+        return LLMController._collect_active_tool_input_reply(self, text)  # type: ignore[arg-type]
+
     def begin_turn(
         self,
         user_text: str,
@@ -1471,6 +1475,7 @@ def _evaluate_trajectory(
     generate_response: Callable[[list[dict[str, str]]], str],
     generation_recorder: GenerationTraceRecorder | None,
     trace_case_id: str,
+    initial_turn_purpose: str = "first_turn",
 ) -> CaseTrajectoryResult:
     """Generate one strict-envelope trajectory through the production policy."""
     recovery_messages: list[str] = []
@@ -1487,7 +1492,7 @@ def _evaluate_trajectory(
                 response,
                 case_id=trace_case_id,
                 turn_purpose=(
-                    "first_turn" if not recovery_messages else "format_retry"
+                    initial_turn_purpose if not recovery_messages else "format_retry"
                 ),
             )
         response = response.strip()
@@ -1629,6 +1634,37 @@ def evaluate_clarification_trajectory(
     receipt = harness.begin_turn(case.reply, admission.prompt_publication)
     if receipt is None:
         raise RuntimeError("Controller did not activate the admitted clarification.")
+    # The product may requeue or terminate this user reply before model dispatch.
+    if harness.collect_active_tool_input_reply(case.reply):
+        terminal_response = (
+            harness.history[-1]["content"]
+            if harness.history
+            else "The Host ended the clarification before model generation."
+        )
+        terminal_score = TargetEvalScore(
+            False,
+            "clarification_collection",
+            "",
+            source.workflow_stage,
+            None,
+            None,
+            "Host ended the clarification before a model continuation.",
+            PrecisionProductOutcome(
+                "clarification_collection",
+                terminal_response,
+            ),
+        )
+        return CaseTrajectoryResult(
+            raw_score=terminal_score,
+            post_recovery_score=terminal_score,
+            final_score=terminal_score,
+            final_response=terminal_response,
+            attempts=(),
+            receipt_origin=admission.receipt_origin,
+        )
+    receipt = harness.pending_interactions.active_tool_input
+    if receipt is None:
+        raise RuntimeError("Controller lost the admitted clarification receipt.")
     observed: dict[str, TargetEvalScore] = {}
 
     def score(response: str) -> TargetEvalScore:
@@ -1734,6 +1770,7 @@ def evaluate_clarification_trajectory(
             generate_response=generate_response,
             generation_recorder=generation_recorder,
             trace_case_id=trace_case_id or case.case_id,
+            initial_turn_purpose="clarification_proposal",
         ),
         receipt_origin=admission.receipt_origin,
     )
@@ -1840,30 +1877,16 @@ def evaluate_discriminated_clarification_trajectory(
         )
     if case.trajectory_kind == "partial_bandpass_accumulation":
         harness = admission.harness
-        partial_case = replace(case, reply=case.turns[1])
         receipt = harness.begin_turn(case.turns[1], admission.prompt_publication)
         if receipt is None:
             raise RuntimeError("Controller did not activate partial clarification.")
-        messages, _prompt, _backend = build_clarification_messages(
-            partial_case, source, receipt=receipt, registry=registry
-        )
-        partial_response = generate_response(messages)
-        if generation_recorder is not None and type(partial_response) is str:
-            generation_recorder.record(
-                partial_response,
-                case_id=trace_case_id,
-                turn_purpose="partial_reply",
-            )
-        partial_decision, partial_parameters = harness.evaluate_proposal(
-            partial_response
-        )
+        requeued_for_reply = harness.collect_active_tool_input_reply(case.turns[1])
         requeued = harness.pending_interactions.tool_input
         if (
-            partial_decision is None
-            or partial_decision.action is not ToolAttemptAction.RESPOND
-            or partial_parameters != {"low_freq": 12}
+            not requeued_for_reply
             or requeued is None
-            or dict(requeued.verified_parameters) != {"low_freq": 12}
+            or dict(requeued.verified_parameters)
+            or requeued.unassigned_bandpass_cutoff is None
             or requeued.remaining_reply_budget != 1
         ):
             failed = replace(
@@ -1876,7 +1899,9 @@ def evaluate_discriminated_clarification_trajectory(
                 raw_score=first_trajectory.raw_score,
                 post_recovery_score=action_trajectory.post_recovery_score,
                 final_score=failed,
-                final_response=partial_response,
+                final_response=(
+                    harness.history[-1]["content"] if harness.history else case.turns[1]
+                ),
                 attempts=first_trajectory.attempts,
                 receipt_origin=admission.receipt_origin,
             )
