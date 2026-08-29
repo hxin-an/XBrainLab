@@ -59,7 +59,7 @@ cancel 都由該 GUI owner 完成。`opened`／`accepted` 不是成功，只有 
 | Tool | Published stage | Existing owner／authoritative side effect | Terminal evidence |
 | --- | --- | --- | --- |
 | `import_eeg_data` | `empty` | Data Import chooser、Data Interpretation lifecycle、reviewed ApplicationService apply | import applied、cancelled、blocked 或 failed |
-| `select_channels` | `data_loaded`、`preprocessed` | Dataset Channel Selection dialog；`PreprocessCommand(SELECT_CHANNELS)` | selected channels applied、cancelled、blocked 或 failed |
+| `select_channels` | `data_loaded` | Dataset Channel Selection dialog；`PreprocessCommand(SELECT_CHANNELS)` | selected channels applied、cancelled、blocked 或 failed |
 | `set_montage` | `data_loaded`、`preprocessed` | Montage Settings；`ApplyMontageCommand` | montage applied、cancelled、blocked 或 failed |
 | `create_epochs` | `data_loaded`、`preprocessed` | Epoch Settings；`CreateEpochCommand` | epochs created、cancelled、blocked 或 failed |
 | `configure_dataset_split` | `epoch_ready`、`dataset_ready`、`trained` | Dataset Split dialog；`SaveDatasetSplitCommand` | split saved／datasets generated、cancelled、blocked 或 failed |
@@ -88,6 +88,12 @@ Backend 仍負責 Nyquist、range、state、resource 與 scientific precondition
 | `resample_data` | `rate: number` | `data_loaded`、`preprocessed` | applied 或 typed blocked／failed result |
 | `set_reference` | `method: string`，必須符合 backend-supported contract | `data_loaded`、`preprocessed` | applied 或 typed blocked／failed result |
 | `normalize_data` | `method: "z-score" \| "min-max"` | `data_loaded`、`preprocessed` | applied 或 typed blocked／failed result |
+
+Notch 的 schema、published stages 與 DSP operation 不因 sampling-rate precondition 改變。既有
+preprocess command owner 必須在 MNE prepare 前，從本次 source data 的最低可靠 sampling rate 檢查
+`freq < sfreq / 2`；違反時回 typed precondition，包含 requested frequency、sampling rate、Nyquist 與
+可採取的下一步。若 sampling rate 無法可靠取得，維持既有 execution，不猜測阻擋。若資料已 resample，
+訊息可指示使用者 reset → notch → resample；Assistant 不自動重排或套用這些動作。
 
 ### Direct-preprocess bounded Host collection
 
