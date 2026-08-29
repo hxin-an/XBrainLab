@@ -311,6 +311,26 @@ only because the exact source SHA changed: production source remains unchanged b
 both lifecycle and evidence/privacy reviews must nevertheless be fresh on the next clean SHA. No fresh review,
 model, handoff, PR or manual-acceptance success is implied here.
 
+### Final invocation-evidence checkpoint — 2026-08-29
+
+On exact `30fa46bcdc4d5e4e119971a30cd297c2a44c5ede`, the two fresh reviews of the completed controller-trace repair
+are **PASS**: lifecycle verified the bounded receipt/controller path and no-side-effect harness (`551` focused
+tests, one existing MNE deprecation warning), and the complementary context/capture/parser/export focused suite
+passed `150` tests. The evidence review also confirms the controller-observed first-turn repair; its final artifact
+check nevertheless identifies one narrow remaining blocker: the v11 report does not record the *actual* process
+argv required by the canonical report contract.
+
+The approved minimum repair is evaluator `main` and its direct tests only, estimated under `30` net script/test LOC.
+It records the actual `argparse` process argv and a truthful working-directory identity/condition relative to the
+repository root before stdout/JSON report output. It must not emit environment variables, secrets, absolute capture
+paths or capture contents. The final model invocation will run from the repository root and use a relative JSON
+output path, so the recorded command is meaningful without leaking local layout. No product, model/revision, UI,
+LocalBackend, receipt, owner or public-contract change is allowed.
+
+Add the focused invocation report test, then repeat the existing union/static checks and obtain one targeted
+non-author evidence review on the new exact SHA. Only then freeze the final docs/source and run the model evidence
+command; until then there is no implementation, model, handoff, PR or manual-acceptance claim.
+
 ## Focused validation、v11 trace 與 model gates
 
 ### Direct behavior tests
@@ -351,6 +371,9 @@ outcome 不共用分數欄位；Host block/receipt/reconstruction 永遠不得�
 - prompt capture integrity is opt-in evaluator evidence: disabled runs add no capture filesystem access; enabled
   runs must prove a single fresh session, completed contiguous sequence and capture/trace byte-SHA/model/options
   agreement through a redacted report. Integrity failure fails only evidence gating, not inference control flow.
+- report invocation evidence records the actual parsed process argv and a truthful repository-root working-directory
+  condition, with no environment, secret, absolute capture-path or captured-content disclosure. The final model
+  command uses a relative JSON output path from the repository root.
 
 Focused Python tests、`ruff check`、`ruff format --check` 與 `git diff --check` 必須先通過。任何 Qt/PyTorch/MNE
 related validation 使用明確 timeout 與 `prlimit --core=0`。之後才以固定 Granite model/revision 和 clean exact
