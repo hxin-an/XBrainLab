@@ -1165,6 +1165,11 @@ def test_generic_clarification_uses_the_checked_in_second_turn() -> None:
         "role": "user",
         "content": generic.turns[1],
     }
+    assert result.final_score.parsed_tool == "apply_bandpass_filter"
+    assert result.final_score.parsed_parameters == {"low_freq": 12, "high_freq": 40}
+    assert len(result.attempts) == 2
+    # The final value-only receipt is completed by the controller: only the
+    # general question and the typed clarification require model generations.
     assert len(generated_messages) == 2
     assert result.receipt_origin == "model_typed"
 

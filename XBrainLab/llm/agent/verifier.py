@@ -171,7 +171,7 @@ def _is_direct_parameter_value_reply(tool_name: str, text: str) -> bool:
             re.fullmatch(
                 rf"{_DECIMAL_NUMBER_PATTERN}(?:\s*(?:hz|赫茲))?"
                 rf"(?:\s+{_DECIMAL_NUMBER_PATTERN}(?:\s*(?:hz|赫茲))?"
-                rf"|\s*(?:,|;|/|:|=|~|-|\u2013|\u2014|and)\s*"
+                rf"|\s*(?:,|;|/|:|=|~|-|\u2013|\u2014|and|to)\s*"
                 rf"{_DECIMAL_NUMBER_PATTERN}(?:\s*(?:hz|赫茲))?)?",
                 stripped,
                 re.IGNORECASE,
