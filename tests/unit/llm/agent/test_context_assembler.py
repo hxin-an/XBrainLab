@@ -1415,7 +1415,7 @@ def _usable_epoch_state() -> EpochStateSnapshot:
     ("stage", "expected_callable"),
     (
         (PipelineStage.DATA_LOADED, {"select_channels", "set_montage"}),
-        (PipelineStage.PREPROCESSED, {"select_channels", "set_montage"}),
+        (PipelineStage.PREPROCESSED, {"set_montage"}),
         (PipelineStage.EPOCH_READY, set()),
         (PipelineStage.DATASET_READY, set()),
         (PipelineStage.TRAINING, set()),

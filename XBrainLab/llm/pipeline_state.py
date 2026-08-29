@@ -103,7 +103,6 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
     },
     PipelineStage.PREPROCESSED: {
         "tools": [
-            "select_channels",
             "set_montage",
             *_PREPROCESS_TOOLS,
             "create_epochs",

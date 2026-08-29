@@ -94,7 +94,6 @@ EXPECTED_TARGET_TOOLS = {
         "switch_panel",
     },
     PipelineStage.PREPROCESSED: {
-        "select_channels",
         "set_montage",
         "apply_bandpass_filter",
         "apply_notch_filter",
@@ -375,7 +374,7 @@ class TestStageConfig:
 
     def test_preprocessed_has_epoching_but_not_dataset_generation(self):
         tools = STAGE_CONFIG[PipelineStage.PREPROCESSED]["tools"]
-        assert "select_channels" in tools
+        assert "select_channels" not in tools
         assert "set_montage" in tools
         assert "create_epochs" in tools
         assert "configure_dataset_split" not in tools
@@ -438,7 +437,6 @@ class TestStageConfig:
         assert published == {
             "select_channels": {
                 PipelineStage.DATA_LOADED,
-                PipelineStage.PREPROCESSED,
             },
             "set_montage": {
                 PipelineStage.DATA_LOADED,
