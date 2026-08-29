@@ -729,7 +729,6 @@ class _EvaluatorControllerHarness:
         self.is_processing = True
         self._observed_decision: ToolAttemptDecision | None = None
         self._observed_terminal: dict[str, Any] | None = None
-        self._terminal_override: str | None = None
         self.current_response = ""
         self._recovery_generation_requested = False
         self._recovery_context: str | None = None
@@ -759,11 +758,6 @@ class _EvaluatorControllerHarness:
     def _publish_response(self, text: str, **_kwargs: Any) -> None:
         """Record a trusted controller presentation without creating a Qt event."""
         self.presentations.append(text)
-        if (
-            self._terminal_override == "format_recovery_exhausted"
-            and self._observed_terminal is None
-        ):
-            self._record_terminal("format_recovery_exhausted")
 
     def _publish_activity(self, *_args: Any, **_kwargs: Any) -> None:
         """The evaluator intentionally has no activity presentation surface."""
@@ -773,7 +767,7 @@ class _EvaluatorControllerHarness:
 
     def _finalize_turn(self, response_text: str) -> None:
         LLMController._finalize_turn(self, response_text)  # type: ignore[arg-type]
-        self._record_terminal(self._terminal_override or "respond")
+        self._record_terminal("respond")
 
     def _arbitrate_generation_terminal(self, generation_id: int, _phase: Any) -> bool:
         """Keep controller generation correlation without a Qt event surface."""
@@ -809,11 +803,11 @@ class _EvaluatorControllerHarness:
     def _process_tool_calls(self, command_result: Any, response_text: str) -> None:
         LLMController._process_tool_calls(self, command_result, response_text)  # type: ignore[arg-type]
 
-    def replay_clarification_generation(
+    def replay_controller_generation(
         self,
         response: str,
     ) -> tuple[StrictEnvelopeRecoveryAction | None, str | None]:
-        """Drive one clarification output through the product controller path."""
+        """Drive one evaluator output through the product controller path."""
         self._observed_decision = None
         self._observed_terminal = None
         self._recovery_generation_requested = False
@@ -978,59 +972,18 @@ class _EvaluatorControllerHarness:
         LLMController._present_tool_attempt_boundary(self, decision)  # type: ignore[arg-type]
         return self.pending_interactions.tool_input
 
-    def observe_first_turn(
+    def observed_controller_outcome(
         self,
         response: str,
         *,
         workflow_stage: str,
         recovery_action: str,
-        recovery_attempts_used: int,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
-        """Replay a final evaluator response through controller-owned boundaries."""
-        self._terminal_override = None
-        self._observed_decision = None
-        self._observed_terminal = None
+        """Project the most recent controller replay without another policy path."""
         envelope, _parsed_stage = _recovery_envelope(
             response,
             workflow_stage=workflow_stage,
         )
-        if recovery_action in {"choose_one", "exhausted"}:
-            for attempt in range(recovery_attempts_used):
-                self._tool_attempt_session.record_format_retry(attempt + 1)
-            self._terminal_override = (
-                "choose_one"
-                if recovery_action == "choose_one"
-                else "format_recovery_exhausted"
-            )
-            LLMController._handle_tool_envelope_failure(  # type: ignore[arg-type]
-                self,
-                response,
-                envelope,
-            )
-        elif envelope.status is ToolEnvelopeStatus.VALID:
-            LLMController._process_tool_calls(  # type: ignore[arg-type]
-                self,
-                list(envelope.commands),
-                response,
-            )
-        elif envelope.status is ToolEnvelopeStatus.NO_TOOL:
-            typed_admitted = False
-            if envelope.pending_action:
-                typed_admitted = LLMController._begin_typed_tool_input(  # type: ignore[arg-type]
-                    self,
-                    envelope,
-                )
-            if typed_admitted or not envelope.pending_action:
-                self._finalize_turn(envelope.message or response)
-            else:
-                # The real controller re-enters strict format recovery here.
-                # This evaluator already exhausted its generation loop, so it
-                # records that required continuation rather than pretending
-                # the rejected typed payload is an accepted terminal.
-                self._record_terminal("format_retry_required")
-        else:
-            self._record_terminal("format_recovery_required")
-
         receipt = self.pending_interactions.tool_input
         action = (
             self._observed_decision.action.value
@@ -1052,7 +1005,7 @@ class _EvaluatorControllerHarness:
                 else "proposal"
                 if self._observed_decision is not None
                 else "recovery"
-                if recovery_action in {"choose_one", "exhausted"}
+                if recovery_action in {"choose_one", "exhausted", "retry_format"}
                 else "no_tool"
             ),
             "attempt_action": action,
@@ -1071,11 +1024,17 @@ class _EvaluatorControllerHarness:
                 else None
             ),
         }
-        return admission, self._observed_terminal or {
+        terminal = self._observed_terminal or {
             "kind": "unobserved",
             "message": None,
             **self._empty_effects(),
         }
+        if recovery_action == "choose_one" and terminal["kind"] == "respond":
+            # The controller publishes the trusted reply through its normal
+            # response terminal; the shared recovery decision owns this
+            # evaluator-facing choose-one classification.
+            terminal = {**terminal, "kind": "choose_one"}
+        return admission, terminal
 
 
 def _case_application_publication(
@@ -1839,9 +1798,16 @@ def _score_precision_controller_terminal(
             )
         )
     )
+    failure_type = baseline.failure_type
+    if not passed and failure_type == "none":
+        failure_type = (
+            "format_recovery_exhausted"
+            if kind == "format_recovery_exhausted"
+            else "controller_terminal"
+        )
     return TargetEvalScore(
         passed,
-        "none" if passed else baseline.failure_type,
+        "none" if passed else failure_type,
         baseline.response,
         baseline.parsed_stage,
         baseline.parsed_tool,
@@ -2001,6 +1967,15 @@ def evaluate_case_trajectory(
             else build_case_messages(case, registry)
         )
 
+    _messages, prompt_publication, backend_publication = _case_projection(
+        case,
+        registry,
+    )
+    harness = _EvaluatorControllerHarness(
+        registry=registry,
+        publication=backend_publication,
+    )
+    harness.begin_turn(case.user_input, prompt_publication)
     trajectory = _evaluate_trajectory(
         workflow_stage=case.workflow_stage,
         build_messages=messages,
@@ -2017,21 +1992,12 @@ def evaluate_case_trajectory(
         generate_response=generate_response,
         generation_recorder=generation_recorder,
         trace_case_id=trace_case_id or case.case_id,
+        replay_controller_response=harness.replay_controller_generation,
     )
-    _messages, prompt_publication, backend_publication = _case_projection(
-        case,
-        registry,
-    )
-    harness = _EvaluatorControllerHarness(
-        registry=registry,
-        publication=backend_publication,
-    )
-    harness.begin_turn(case.user_input, prompt_publication)
-    host_admission, product_terminal = harness.observe_first_turn(
+    host_admission, product_terminal = harness.observed_controller_outcome(
         trajectory.final_response,
         workflow_stage=case.workflow_stage,
         recovery_action=trajectory.attempts[-1].recovery_action,
-        recovery_attempts_used=len(trajectory.attempts) - 1,
     )
     final_score = (
         _score_precision_controller_terminal(
@@ -2242,7 +2208,7 @@ def evaluate_clarification_trajectory(
             generation_recorder=generation_recorder,
             trace_case_id=trace_case_id or case.case_id,
             initial_turn_purpose="clarification_proposal",
-            replay_controller_response=harness.replay_clarification_generation,
+            replay_controller_response=harness.replay_controller_generation,
         ),
         receipt_origin=admission.receipt_origin,
         product_terminal=harness._observed_terminal,

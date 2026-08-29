@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from collections.abc import Iterator
 from dataclasses import replace
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -887,44 +888,95 @@ def test_invalid_typed_clarification_replays_controller_format_recovery() -> Non
     assert trajectory.product_terminal["kind"] == "execution_boundary_suppressed"
 
 
-def test_repeated_invalid_typed_clarification_exhausts_controller_recovery() -> None:
+def test_first_turn_invalid_typed_precision_rows_replay_controller_recovery() -> None:
     registry = target_tool_registry()
-    precision_cases = load_precision_cases(DEFAULT_PRECISION_CASES)
+    cases = {
+        case.case_id: case for case in load_precision_cases(DEFAULT_PRECISION_CASES)
+    }
+    scenarios = (
+        (
+            "set_montage_before_epochs_en",
+            "set_montage",
+            "montage_name",
+            "I can't set a montage until EEG epochs are available.",
+        ),
+        (
+            "split_before_epochs_en",
+            "configure_dataset_split",
+            "test_size",
+            "I can't configure a dataset split until EEG epochs are available.",
+        ),
+    )
+
+    for case_id, pending_action, missing_input, safe_message in scenarios:
+        case = cases[case_id]
+        invalid_typed = (
+            '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+            f'"parameters":{{"message":"I need one value first.",'
+            f'"pending_action":"{pending_action}",'
+            f'"missing_inputs":["{missing_input}"]}}}}'
+        )
+        repaired = (
+            '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+            f'"parameters":{{"message":"{safe_message}"}}}}'
+        )
+        responses = iter((invalid_typed, repaired))
+        generated_messages: list[list[dict[str, str]]] = []
+        recorder = GenerationTraceRecorder()
+
+        def generate(
+            messages: list[dict[str, str]],
+            _responses: Iterator[str] = responses,
+            _generated_messages: list[list[dict[str, str]]] = generated_messages,
+        ) -> str:
+            _generated_messages.append(messages)
+            return next(_responses)
+
+        trajectory = evaluate_case_trajectory(
+            case,
+            registry,
+            generate,
+            generation_recorder=recorder,
+        )
+
+        assert trajectory.attempts[0].recovery_action == "retry_format"
+        assert [entry.turn_purpose for entry in recorder.entries] == [
+            "first_turn",
+            "format_retry",
+        ]
+        assert any(
+            "FORMAT CORRECTION REQUIRED" in message["content"]
+            for message in generated_messages[1]
+        )
+        assert trajectory.final_score.passed is True
+        assert trajectory.host_admission is not None
+        assert trajectory.product_terminal is not None
+        assert trajectory.product_terminal["kind"] == "respond"
+        assert trajectory.product_terminal["confirmation_observed"] is False
+        assert trajectory.product_terminal["execution_boundary_reached"] is False
+        assert trajectory.product_terminal["gui_handoff_reached"] is False
+        assert trajectory.product_terminal["application_service_called"] is False
+        assert trajectory.product_terminal["tool_executor_called"] is False
+        assert trajectory.product_terminal["state_mutation_observed"] is False
+
+
+def test_first_turn_invalid_typed_precision_exhaustion_has_failure_type() -> None:
+    registry = target_tool_registry()
     case = next(
         item
-        for item in load_clarification_cases(
-            DEFAULT_CLARIFICATION_CASES,
-            precision_cases=precision_cases,
-        )
-        if item.expected_tool == "resample_data"
+        for item in load_precision_cases(DEFAULT_PRECISION_CASES)
+        if item.case_id == "set_montage_before_epochs_en"
     )
-    source = next(
-        item for item in precision_cases if item.case_id == case.source_case_id
-    )
-    first_response = (
+    invalid_typed = (
         '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
-        '"parameters":{"message":"What resampling rate should I use?",'
-        '"pending_action":"resample_data","missing_inputs":["rate"]}}'
-    )
-    admission = admit_clarification_receipt(
-        source,
-        first_response,
-        expected_tool=case.expected_tool,
-        registry=registry,
-    )
-    assert admission is not None
-    invalid_typed_reply = (
-        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
-        '"parameters":{"message":"What resampling rate should I use?",'
-        '"pending_action":"resample_data","missing_inputs":["rate"]}}'
+        '"parameters":{"message":"I need one value first.",'
+        '"pending_action":"set_montage","missing_inputs":["montage_name"]}}'
     )
     recorder = GenerationTraceRecorder()
-    trajectory = evaluate_clarification_trajectory(
+    trajectory = evaluate_case_trajectory(
         case,
-        source,
-        admission=admission,
-        registry=registry,
-        generate_response=lambda _messages: invalid_typed_reply,
+        registry,
+        lambda _messages: invalid_typed,
         generation_recorder=recorder,
     )
 
@@ -934,18 +986,16 @@ def test_repeated_invalid_typed_clarification_exhausts_controller_recovery() -> 
     assert trajectory.attempts[-1].recovery_action == "exhausted"
     assert trajectory.final_score.passed is False
     assert trajectory.final_score.failure_type != "none"
-    assert trajectory.post_recovery_score.failure_type != "none"
     assert trajectory.product_terminal is not None
     assert trajectory.product_terminal["kind"] == "format_recovery_exhausted"
     assert trajectory.product_terminal["confirmation_observed"] is False
     assert trajectory.product_terminal["execution_boundary_reached"] is False
-    assert trajectory.product_terminal["execution_suppressed"] is False
     assert trajectory.product_terminal["gui_handoff_reached"] is False
     assert trajectory.product_terminal["application_service_called"] is False
     assert trajectory.product_terminal["tool_executor_called"] is False
     assert trajectory.product_terminal["state_mutation_observed"] is False
     assert [entry.turn_purpose for entry in recorder.entries] == [
-        "clarification_proposal",
+        "first_turn",
         *(
             ["format_retry"]
             * DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY.max_recovery_attempts
