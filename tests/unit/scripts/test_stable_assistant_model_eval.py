@@ -1,5 +1,6 @@
 """Stable-v2 local-model selection evaluation contracts."""
 
+import hashlib
 import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -9,6 +10,7 @@ from scripts.dev.run_stable_assistant_model_eval import (
     DEFAULT_CLARIFICATION_CASES,
     DEFAULT_PRECISION_CASES,
     CaseTrajectoryResult,
+    GenerationTraceRecorder,
     ModelGenerationAttempt,
     TargetEvalScore,
     _build_recovery_case_messages,
@@ -16,6 +18,7 @@ from scripts.dev.run_stable_assistant_model_eval import (
     _evaluation_generation_policy,
     _experiment_identity,
     _stable_eval_config,
+    _trajectory_payload,
     admit_clarification_receipt,
     build_case_messages,
     build_clarification_messages,
@@ -202,7 +205,7 @@ def test_run_eval_admits_direct_receipts_from_serialized_final_response(
         attempts=(
             ModelGenerationAttempt(
                 attempt_number=1,
-                response=response,
+                response_preview=response,
                 envelope_status="no_tool",
                 workflow_stage="data_loaded",
                 recovery_action="accept",
@@ -267,6 +270,58 @@ def test_run_eval_admits_direct_receipts_from_serialized_final_response(
         row["source_raw_model_score"] == row["first_generation_score"]
         for row in direct_rows
     )
+
+
+def test_run_eval_records_every_lower_engine_generation_in_global_order(
+    monkeypatch,
+) -> None:
+    """The report trace is runner-owned, not a reconstruction of policy attempts."""
+    raw_response = (
+        ' \n{"workflow_stage":"empty","tool_name":"respond_to_user",'
+        '"parameters":{"message":"I need more information."}}\n'
+    )
+    config = _stable_eval_config(LLMConfig(), device="cpu")
+    monkeypatch.setattr(config, "local_backend_ready", lambda _model_id: True)
+    precision_cases = load_precision_cases(DEFAULT_PRECISION_CASES)
+    clarification_cases = load_clarification_cases(
+        DEFAULT_CLARIFICATION_CASES,
+        precision_cases=precision_cases,
+    )
+    engine = MagicMock()
+    engine.generate_stream.side_effect = lambda *_args, **_kwargs: iter((raw_response,))
+
+    with patch(
+        "scripts.dev.run_stable_assistant_model_eval.LLMEngine",
+        return_value=engine,
+    ):
+        report = run_eval(
+            config,
+            (),
+            precision_cases=precision_cases,
+            clarification_cases=clarification_cases,
+        )
+
+    trace = report["generation_trace"]
+    assert report["generation_attempt_count"] == engine.generate_stream.call_count
+    assert report["generation_attempt_count"] > len(precision_cases)
+    assert [entry["global_call_index"] for entry in trace] == list(
+        range(1, len(trace) + 1)
+    )
+    assert all(
+        entry["raw_output_bytes"] == len(raw_response.encode("utf-8"))
+        for entry in trace
+    )
+    assert all(
+        entry["raw_output_sha256"]
+        == hashlib.sha256(raw_response.encode("utf-8")).hexdigest()
+        for entry in trace
+    )
+    for row in report["results"]:
+        assert row["trajectory"]["actual_generation_call_indices"] == [
+            entry["global_call_index"]
+            for entry in trace
+            if entry["case_id"] == row["case"]["case_id"]
+        ]
 
 
 def test_clarification_prompt_and_score_use_product_receipt_boundary() -> None:
@@ -511,6 +566,168 @@ def test_discriminated_clarification_trajectories_use_scripted_model_turns() -> 
     assert partial_result.final_score.product_outcome is not None
 
 
+def test_generic_clarification_uses_the_checked_in_second_turn() -> None:
+    """The evaluated prompt must use the transcript persisted in the corpus."""
+    registry = target_tool_registry()
+    precision_cases = load_precision_cases(DEFAULT_PRECISION_CASES)
+    generic = next(
+        case
+        for case in load_clarification_cases(
+            DEFAULT_CLARIFICATION_CASES,
+            precision_cases=precision_cases,
+        )
+        if case.trajectory_kind == "generic_filter_selection"
+    )
+    responses = iter(
+        (
+            '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+            '"parameters":{"message":"Should I apply a bandpass or notch filter?"}}',
+            '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+            '"parameters":{"message":"What low and high cutoffs should I use?",'
+            '"pending_action":"apply_bandpass_filter",'
+            '"missing_inputs":["low_freq","high_freq"]}}',
+            '{"workflow_stage":"data_loaded","tool_name":"apply_bandpass_filter",'
+            '"parameters":{"low_freq":12,"high_freq":40}}',
+        )
+    )
+    generated_messages: list[list[dict[str, str]]] = []
+
+    def generate(messages: list[dict[str, str]]) -> str:
+        generated_messages.append(messages)
+        return next(responses)
+
+    result = evaluate_discriminated_clarification_trajectory(
+        generic,
+        registry,
+        generate,
+    )
+
+    assert result.final_score.passed is True
+    assert generated_messages[1][-1] == {
+        "role": "user",
+        "content": generic.turns[1],
+    }
+
+
+def test_generation_trace_preserves_pre_strip_raw_identity_and_bounds_preview() -> None:
+    registry = target_tool_registry()
+    case = next(
+        item
+        for item in load_precision_cases(DEFAULT_PRECISION_CASES)
+        if item.case_id == "general_en"
+    )
+    raw_response = (
+        " \n"
+        + json.dumps(
+            {
+                "workflow_stage": "empty",
+                "tool_name": "respond_to_user",
+                "parameters": {"message": "x" * 1_100},
+            }
+        )
+        + "\n"
+    )
+    recorder = GenerationTraceRecorder()
+
+    trajectory = evaluate_case_trajectory(
+        case,
+        registry,
+        lambda _messages: raw_response,
+        generation_recorder=recorder,
+        trace_case_id=case.case_id,
+    )
+
+    assert trajectory.final_score.passed is True
+    assert trajectory.final_response == raw_response.strip()
+    assert len(recorder.entries) == 1
+    entry = recorder.entries[0]
+    assert entry.global_call_index == 1
+    assert entry.case_id == case.case_id
+    assert entry.turn_purpose == "first_turn"
+    assert entry.raw_output_bytes == len(raw_response.encode("utf-8"))
+    assert (
+        entry.raw_output_sha256
+        == hashlib.sha256(raw_response.encode("utf-8")).hexdigest()
+    )
+    assert entry.raw_output_preview == raw_response[:1_000]
+    assert entry.raw_output_preview != trajectory.final_response[:1_000]
+    assert trajectory.attempts[0].response_preview == trajectory.final_response[:1_000]
+
+
+def test_generation_trace_records_each_format_retry_in_order() -> None:
+    registry = target_tool_registry()
+    case = next(
+        item
+        for item in load_precision_cases(DEFAULT_PRECISION_CASES)
+        if item.case_id == "general_en"
+    )
+    responses = iter(
+        (
+            '{"workflow_stage":"empty","tool_name":"respond_to_user",',
+            (
+                '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+                '"parameters":{"message":"I can explain the EEG workflow."}}'
+            ),
+        )
+    )
+    recorder = GenerationTraceRecorder()
+
+    trajectory = evaluate_case_trajectory(
+        case,
+        registry,
+        lambda _messages: next(responses),
+        generation_recorder=recorder,
+        trace_case_id=case.case_id,
+    )
+
+    assert trajectory.final_score.passed is True
+    assert [entry.global_call_index for entry in recorder.entries] == [1, 2]
+    assert [entry.turn_purpose for entry in recorder.entries] == [
+        "first_turn",
+        "format_retry",
+    ]
+    assert [entry.raw_output_sha256 for entry in recorder.entries] == [
+        hashlib.sha256(response.encode("utf-8")).hexdigest()
+        for response in (
+            '{"workflow_stage":"empty","tool_name":"respond_to_user",',
+            (
+                '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+                '"parameters":{"message":"I can explain the EEG workflow."}}'
+            ),
+        )
+    ]
+
+
+def test_trajectory_payload_separates_policy_from_actual_generation_calls() -> None:
+    recorder = GenerationTraceRecorder()
+    recorder.record("first", case_id="case", turn_purpose="first_turn")
+    recorder.record("partial", case_id="case", turn_purpose="partial_reply")
+    attempts = (
+        ModelGenerationAttempt(
+            attempt_number=1,
+            response_preview="first",
+            envelope_status="valid",
+            workflow_stage="data_loaded",
+            recovery_action="accept_tool",
+            taxonomy="first_attempt_tool",
+            recovery_attempts_after=0,
+        ),
+    )
+
+    payload = _trajectory_payload(attempts, recorder, case_id="case")
+
+    assert set(payload) == {
+        "policy_attempts",
+        "format_recovery_attempts",
+        "policy_terminal_action",
+        "policy_terminal_taxonomy",
+        "actual_generation_call_indices",
+    }
+    assert payload["actual_generation_call_indices"] == [1, 2]
+    assert len(payload["policy_attempts"]) == 1
+    assert payload["format_recovery_attempts"] == 0
+
+
 def test_partial_trajectory_fails_when_controller_rejects_the_partial_proposal() -> (
     None
 ):
@@ -534,6 +751,7 @@ def test_partial_trajectory_fails_when_controller_rejects_the_partial_proposal()
             '"parameters":{"low_freq":12}}',
         )
     )
+    recorder = GenerationTraceRecorder()
 
     with patch(
         "scripts.dev.run_stable_assistant_model_eval.LLMController._evaluate_tool_proposal",
@@ -543,10 +761,40 @@ def test_partial_trajectory_fails_when_controller_rejects_the_partial_proposal()
             partial,
             registry,
             lambda _messages: next(responses),
+            generation_recorder=recorder,
+            trace_case_id=partial.case_id,
         )
 
     assert result.final_score.passed is False
     assert result.final_score.failure_type == "partial_accumulation"
+    assert [attempt.response_preview for attempt in result.attempts] == [
+        (
+            '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+            '"parameters":{"message":"What low and high cutoffs should I use?",'
+            '"pending_action":"apply_bandpass_filter",'
+            '"missing_inputs":["low_freq","high_freq"]}}'
+        )
+    ]
+    assert [entry.global_call_index for entry in recorder.entries] == [1, 2]
+    assert [entry.turn_purpose for entry in recorder.entries] == [
+        "first_turn",
+        "partial_reply",
+    ]
+    assert [entry.raw_output_sha256 for entry in recorder.entries] == [
+        hashlib.sha256(response.encode("utf-8")).hexdigest()
+        for response in (
+            (
+                '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+                '"parameters":{"message":"What low and high cutoffs should I use?",'
+                '"pending_action":"apply_bandpass_filter",'
+                '"missing_inputs":["low_freq","high_freq"]}}'
+            ),
+            (
+                '{"workflow_stage":"data_loaded","tool_name":"apply_bandpass_filter",'
+                '"parameters":{"low_freq":12}}'
+            ),
+        )
+    ]
 
 
 def test_precision_scoring_uses_parser_and_host_attempt_outcome_not_keywords() -> None:
@@ -923,6 +1171,8 @@ def test_evaluation_uses_product_structured_generation_budget_not_legacy_128_cap
         "profile": "structured_decision",
         "max_new_tokens": 384,
         "do_sample": False,
+        "temperature": None,
+        "top_p": None,
         "max_format_recovery_attempts": 2,
     }
 
@@ -988,7 +1238,9 @@ def test_report_separates_raw_model_host_safety_and_product_outcomes() -> None:
         complete=True,
     )
 
-    assert report["schema_version"] == "xbrainlab.stable_assistant_model_eval.v10"
+    assert report["schema_version"] == "xbrainlab.stable_assistant_model_eval.v11"
+    assert report["generation_attempt_count"] == 0
+    assert report["generation_trace"] == []
     assert report["suite_summary"]["positive"]["case_count"] == 36
     assert report["suite_summary"]["challenge"]["case_count"] == 14
     assert report["summary"] == {

@@ -11,7 +11,7 @@ import subprocess
 import sys
 from collections.abc import Callable
 from contextlib import suppress
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -80,9 +80,10 @@ DEFAULT_PRECISION_CASES = (
 DEFAULT_CLARIFICATION_CASES = (
     ROOT / "scripts" / "dev" / "stable_assistant_clarification_cases.json"
 )
-REPORT_SCHEMA = "xbrainlab.stable_assistant_model_eval.v10"
+REPORT_SCHEMA = "xbrainlab.stable_assistant_model_eval.v11"
 PRECISION_CASE_COUNT = 24
 CLARIFICATION_CASE_COUNT = 7
+RAW_OUTPUT_PREVIEW_CHAR_LIMIT = 1_000
 MISSING_PARAMETER_HOST_TOOLS = {
     "missing_bandpass_bounds_01": "apply_bandpass_filter",
     "missing_notch_frequency_01": "apply_notch_filter",
@@ -179,15 +180,55 @@ class TargetEvalScore:
 
 @dataclass(frozen=True, slots=True)
 class ModelGenerationAttempt:
-    """One production-policy classification in a bounded generation trajectory."""
+    """One policy classification; its preview is never raw-output identity evidence."""
 
     attempt_number: int
-    response: str
+    response_preview: str
     envelope_status: str
     workflow_stage: str | None
     recovery_action: str
     taxonomy: str
     recovery_attempts_after: int
+
+
+@dataclass(frozen=True, slots=True)
+class GenerationTraceEntry:
+    """One exact raw model output identity recorded by the evaluator runner."""
+
+    global_call_index: int
+    case_id: str
+    turn_purpose: str
+    raw_output_bytes: int
+    raw_output_sha256: str
+    raw_output_preview: str
+
+
+@dataclass(slots=True)
+class GenerationTraceRecorder:
+    """Record each evaluator generation before scoring normalizes its output."""
+
+    entries: list[GenerationTraceEntry] = field(default_factory=list)
+
+    def record(
+        self,
+        raw_output: str,
+        *,
+        case_id: str,
+        turn_purpose: str,
+    ) -> None:
+        if type(raw_output) is not str:
+            raise TypeError("Model generation must return one exact string.")
+        raw_bytes = raw_output.encode("utf-8")
+        self.entries.append(
+            GenerationTraceEntry(
+                global_call_index=len(self.entries) + 1,
+                case_id=case_id,
+                turn_purpose=turn_purpose,
+                raw_output_bytes=len(raw_bytes),
+                raw_output_sha256=hashlib.sha256(raw_bytes).hexdigest(),
+                raw_output_preview=raw_output[:RAW_OUTPUT_PREVIEW_CHAR_LIMIT],
+            )
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1428,6 +1469,8 @@ def _evaluate_trajectory(
     score_response: Callable[[str], TargetEvalScore],
     score_raw_model_response: Callable[[str], TargetEvalScore],
     generate_response: Callable[[list[dict[str, str]]], str],
+    generation_recorder: GenerationTraceRecorder | None,
+    trace_case_id: str,
 ) -> CaseTrajectoryResult:
     """Generate one strict-envelope trajectory through the production policy."""
     recovery_messages: list[str] = []
@@ -1439,6 +1482,14 @@ def _evaluate_trajectory(
         response = generate_response(messages)
         if type(response) is not str:
             raise TypeError("Model generation must return one exact string.")
+        if generation_recorder is not None:
+            generation_recorder.record(
+                response,
+                case_id=trace_case_id,
+                turn_purpose=(
+                    "first_turn" if not recovery_messages else "format_retry"
+                ),
+            )
         response = response.strip()
         if raw_score is None:
             raw_score = score_raw_model_response(response)
@@ -1456,7 +1507,7 @@ def _evaluate_trajectory(
         attempts.append(
             ModelGenerationAttempt(
                 attempt_number=len(attempts) + 1,
-                response=response[:1000],
+                response_preview=response[:RAW_OUTPUT_PREVIEW_CHAR_LIMIT],
                 envelope_status=envelope.status.value,
                 workflow_stage=parsed_stage,
                 recovery_action=decision.action.value,
@@ -1493,6 +1544,9 @@ def evaluate_case_trajectory(
     case: TargetEvalCase | TargetChallengeCase | PrecisionCase,
     registry: ToolRegistry,
     generate_response: Callable[[list[dict[str, str]]], str],
+    *,
+    generation_recorder: GenerationTraceRecorder | None = None,
+    trace_case_id: str | None = None,
 ) -> CaseTrajectoryResult:
     """Generate and score one case through the product strict-recovery policy."""
 
@@ -1517,6 +1571,8 @@ def evaluate_case_trajectory(
             registry,
         ),
         generate_response=generate_response,
+        generation_recorder=generation_recorder,
+        trace_case_id=trace_case_id or case.case_id,
     )
 
 
@@ -1565,6 +1621,8 @@ def evaluate_clarification_trajectory(
     admission: ClarificationAdmission,
     registry: ToolRegistry,
     generate_response: Callable[[list[dict[str, str]]], str],
+    generation_recorder: GenerationTraceRecorder | None = None,
+    trace_case_id: str | None = None,
 ) -> CaseTrajectoryResult:
     """Generate an admitted receipt-backed second turn through recovery policy."""
     harness = admission.harness
@@ -1674,6 +1732,8 @@ def evaluate_clarification_trajectory(
             score_response=score,
             score_raw_model_response=raw_score,
             generate_response=generate_response,
+            generation_recorder=generation_recorder,
+            trace_case_id=trace_case_id or case.case_id,
         ),
         receipt_origin=admission.receipt_origin,
     )
@@ -1683,6 +1743,9 @@ def evaluate_discriminated_clarification_trajectory(
     case: ClarificationCase,
     registry: ToolRegistry,
     generate_response: Callable[[list[dict[str, str]]], str],
+    *,
+    generation_recorder: GenerationTraceRecorder | None = None,
+    trace_case_id: str | None = None,
 ) -> CaseTrajectoryResult:
     """Run the two approved multi-turn clarification trajectories."""
     if (
@@ -1694,6 +1757,7 @@ def evaluate_discriminated_clarification_trajectory(
         or len(case.turns) != 3
     ):
         raise ValueError("Unsupported discriminated clarification trajectory.")
+    trace_case_id = trace_case_id or case.case_id
     first = PrecisionCase(
         case_id=f"{case.case_id}_first",
         user_input=case.turns[0],
@@ -1707,7 +1771,13 @@ def evaluate_discriminated_clarification_trajectory(
             else case.expected_tool
         ),
     )
-    first_trajectory = evaluate_case_trajectory(first, registry, generate_response)
+    first_trajectory = evaluate_case_trajectory(
+        first,
+        registry,
+        generate_response,
+        generation_recorder=generation_recorder,
+        trace_case_id=trace_case_id,
+    )
     first_envelope = CommandParser.parse_product(first_trajectory.final_response)
     if case.trajectory_kind == "generic_filter_selection":
         first_ok = (
@@ -1715,7 +1785,7 @@ def evaluate_discriminated_clarification_trajectory(
             and first_envelope.status is ToolEnvelopeStatus.NO_TOOL
             and not first_envelope.pending_action
         )
-        action_request = "bandpass"
+        action_request = case.turns[1]
     else:
         first_ok = first_trajectory.final_score.passed
         action_request = first.user_input
@@ -1737,7 +1807,11 @@ def evaluate_discriminated_clarification_trajectory(
             requested_tool=case.expected_tool,
         )
         action_trajectory = evaluate_case_trajectory(
-            source, registry, generate_response
+            source,
+            registry,
+            generate_response,
+            generation_recorder=generation_recorder,
+            trace_case_id=trace_case_id,
         )
         admission = admit_clarification_receipt(
             source,
@@ -1774,6 +1848,12 @@ def evaluate_discriminated_clarification_trajectory(
             partial_case, source, receipt=receipt, registry=registry
         )
         partial_response = generate_response(messages)
+        if generation_recorder is not None and type(partial_response) is str:
+            generation_recorder.record(
+                partial_response,
+                case_id=trace_case_id,
+                turn_purpose="partial_reply",
+            )
         partial_decision, partial_parameters = harness.evaluate_proposal(
             partial_response
         )
@@ -1797,7 +1877,7 @@ def evaluate_discriminated_clarification_trajectory(
                 post_recovery_score=action_trajectory.post_recovery_score,
                 final_score=failed,
                 final_response=partial_response,
-                attempts=first_trajectory.attempts + action_trajectory.attempts,
+                attempts=first_trajectory.attempts,
                 receipt_origin=admission.receipt_origin,
             )
     final_case = replace(case, reply=case.turns[2])
@@ -1807,6 +1887,8 @@ def evaluate_discriminated_clarification_trajectory(
         admission=admission,
         registry=registry,
         generate_response=generate_response,
+        generation_recorder=generation_recorder,
+        trace_case_id=trace_case_id,
     )
     return CaseTrajectoryResult(
         raw_score=first_trajectory.raw_score,
@@ -1939,6 +2021,8 @@ def _build_report(
     expected_case_count: int,
     complete: bool,
     generation_policy: dict[str, Any] | None = None,
+    generation_trace: tuple[GenerationTraceEntry, ...]
+    | list[GenerationTraceEntry] = (),
 ) -> dict[str, Any]:
     core_rows = [
         row for row in results if row.get("suite") in {"positive", "challenge"}
@@ -2106,6 +2190,8 @@ def _build_report(
             "deterministic": True,
         },
         "generation_policy": generation_policy,
+        "generation_attempt_count": len(generation_trace),
+        "generation_trace": [asdict(entry) for entry in generation_trace],
         "target_surface": sorted(AGENT_ACTION_CONTRACTS.model_tool_names()),
         "suite_summary": suite_summary,
         "first_generation_summary": first_generation_summary,
@@ -2150,6 +2236,8 @@ def _build_report(
             "product safety but never counts as raw model quality. Seven controller-backed "
             "clarification trajectories (five direct actions, generic filter selection, and "
             "partial bandpass accumulation) must reach the verified execution boundary. "
+            "Score response fields are bounded diagnostic previews; generation_trace records "
+            "the pre-normalization raw-output byte count and SHA-256 for capture correlation. "
             "These suites are not workflow success or thesis-grade model accuracy."
         ),
     }
@@ -2230,9 +2318,34 @@ def _evaluation_generation_policy(config: LLMConfig) -> dict[str, Any]:
         "profile": GenerationProfile.STRUCTURED_DECISION.value,
         "max_new_tokens": options.max_new_tokens,
         "do_sample": options.do_sample,
+        "temperature": options.temperature,
+        "top_p": options.top_p,
         "max_format_recovery_attempts": (
             DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY.max_recovery_attempts
         ),
+    }
+
+
+def _trajectory_payload(
+    attempts: tuple[ModelGenerationAttempt, ...],
+    generation_recorder: GenerationTraceRecorder,
+    *,
+    case_id: str,
+) -> dict[str, Any]:
+    """Keep policy classification distinct from actual model-call provenance."""
+    return {
+        "policy_attempts": [asdict(attempt) for attempt in attempts],
+        "format_recovery_attempts": sum(
+            attempt.recovery_action == StrictEnvelopeRecoveryAction.RETRY_FORMAT.value
+            for attempt in attempts
+        ),
+        "policy_terminal_action": attempts[-1].recovery_action if attempts else None,
+        "policy_terminal_taxonomy": attempts[-1].taxonomy if attempts else None,
+        "actual_generation_call_indices": [
+            entry.global_call_index
+            for entry in generation_recorder.entries
+            if entry.case_id == case_id
+        ],
     }
 
 
@@ -2263,6 +2376,16 @@ def run_eval(
     generation_policy = _evaluation_generation_policy(config)
     registry = target_tool_registry()
     engine = LLMEngine(config)
+
+    def generate_from_engine(messages: list[dict[str, str]]) -> str:
+        return "".join(
+            engine.generate_stream(
+                messages,
+                profile=GenerationProfile.STRUCTURED_DECISION,
+            )
+        )
+
+    generation_recorder = GenerationTraceRecorder()
     results: list[dict[str, Any]] = []
     try:
         engine.load_model()
@@ -2281,12 +2404,9 @@ def run_eval(
             trajectory = evaluate_case_trajectory(
                 case,
                 registry,
-                lambda messages: "".join(
-                    engine.generate_stream(
-                        messages,
-                        profile=GenerationProfile.STRUCTURED_DECISION,
-                    )
-                ),
+                generate_from_engine,
+                generation_recorder=generation_recorder,
+                trace_case_id=case.case_id,
             )
             response = trajectory.final_response
             score = trajectory.final_score
@@ -2312,12 +2432,11 @@ def run_eval(
                 "first_generation_score": first_generation_score_payload,
                 "post_recovery_score": post_recovery_score_payload,
                 "score": score_payload,
-                "trajectory": {
-                    "attempts": [asdict(attempt) for attempt in trajectory.attempts],
-                    "recovery_attempts_used": len(trajectory.attempts) - 1,
-                    "terminal_action": trajectory.attempts[-1].recovery_action,
-                    "terminal_taxonomy": trajectory.attempts[-1].taxonomy,
-                },
+                "trajectory": _trajectory_payload(
+                    trajectory.attempts,
+                    generation_recorder,
+                    case_id=case.case_id,
+                ),
             }
             if isinstance(case, TargetEvalCase) and (
                 case.expected_tool in DIRECT_PARAMETER_TOOLS
@@ -2345,6 +2464,7 @@ def run_eval(
                         expected_case_count=len(cases) + len(challenge_cases),
                         complete=False,
                         generation_policy=generation_policy,
+                        generation_trace=generation_recorder.entries,
                     ),
                 )
         precision_by_id = {case.case_id: case for case in precision_cases}
@@ -2360,17 +2480,14 @@ def run_eval(
                 trajectory = evaluate_discriminated_clarification_trajectory(
                     case,
                     registry,
-                    lambda messages: "".join(
-                        engine.generate_stream(
-                            messages,
-                            profile=GenerationProfile.STRUCTURED_DECISION,
-                        )
-                    ),
+                    generate_from_engine,
+                    generation_recorder=generation_recorder,
+                    trace_case_id=case.case_id,
                 )
                 score_payload = asdict(trajectory.final_score)
                 first_generation_score_payload = asdict(trajectory.raw_score)
                 post_recovery_score_payload = asdict(trajectory.post_recovery_score)
-                attempts = [asdict(attempt) for attempt in trajectory.attempts]
+                trajectory_attempts = trajectory.attempts
                 source = None
                 receipt_origin = trajectory.receipt_origin
                 source_has_receipt = receipt_origin is not None
@@ -2396,17 +2513,14 @@ def run_eval(
                         source,
                         admission=admission,
                         registry=registry,
-                        generate_response=lambda messages: "".join(
-                            engine.generate_stream(
-                                messages,
-                                profile=GenerationProfile.STRUCTURED_DECISION,
-                            )
-                        ),
+                        generate_response=generate_from_engine,
+                        generation_recorder=generation_recorder,
+                        trace_case_id=case.case_id,
                     )
                     score_payload = asdict(trajectory.final_score)
                     first_generation_score_payload = asdict(trajectory.raw_score)
                     post_recovery_score_payload = asdict(trajectory.post_recovery_score)
-                    attempts = [asdict(attempt) for attempt in trajectory.attempts]
+                    trajectory_attempts = trajectory.attempts
                 else:
                     unavailable = TargetEvalScore(
                         False,
@@ -2420,7 +2534,7 @@ def run_eval(
                     score_payload = asdict(unavailable)
                     first_generation_score_payload = dict(score_payload)
                     post_recovery_score_payload = dict(score_payload)
-                    attempts = []
+                    trajectory_attempts = ()
             if score_payload.get("product_outcome") is None:
                 score_payload.pop("product_outcome", None)
             if first_generation_score_payload.get("product_outcome") is None:
@@ -2441,16 +2555,11 @@ def run_eval(
                     "first_generation_score": first_generation_score_payload,
                     "post_recovery_score": post_recovery_score_payload,
                     "score": score_payload,
-                    "trajectory": {
-                        "attempts": attempts,
-                        "recovery_attempts_used": max(len(attempts) - 1, 0),
-                        "terminal_action": (
-                            attempts[-1]["recovery_action"] if attempts else None
-                        ),
-                        "terminal_taxonomy": (
-                            attempts[-1]["taxonomy"] if attempts else None
-                        ),
-                    },
+                    "trajectory": _trajectory_payload(
+                        trajectory_attempts,
+                        generation_recorder,
+                        case_id=case.case_id,
+                    ),
                 }
             )
             if checkpoint_path is not None:
@@ -2462,6 +2571,7 @@ def run_eval(
                         expected_case_count=len(cases) + len(challenge_cases),
                         complete=False,
                         generation_policy=generation_policy,
+                        generation_trace=generation_recorder.entries,
                     ),
                 )
     finally:
@@ -2474,6 +2584,7 @@ def run_eval(
         expected_case_count=len(cases) + len(challenge_cases),
         complete=True,
         generation_policy=generation_policy,
+        generation_trace=generation_recorder.entries,
     )
 
 
