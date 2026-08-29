@@ -30,6 +30,13 @@ missing-input state，讓 Assistant 能安全地向使用者追問並接受下�
   full evaluator unit、LocalBackend runtime capture 與 model-context boundary，共 `515 passed`（一個既有
   MNE deprecation warning）；touched Python scope 的 `ruff check`、`ruff format --check` 與
   `git diff --check` 均通過。未跑 81-case pinned-model suite、未建立 PR、未 push 或 merge。
+- Fresh reviewer 發現 direct action classifier 的 `Would`／`Avoid` negative gap、`fifty hertz` lifecycle
+  assertion，以及 capture finalization-only writer failure coverage 不足。最小修正已整合為
+  `8cd50da5`（source `87a9268c`：verifier + existing controller/policy/verifier tests，production net `0`）與
+  `5bca6ecf`（source `59319557`：capture tests-only）。同一聯合 suite 已重跑為 `521 passed`（同一既有 MNE
+  warning）；ruff 與 diff checks 再次通過，production scope 仍是四檔 net `+228`。
+- 原先兩位 reviewers 對 integration SHA `1d389275` 的結論，因 `8cd50da5`／`5bca6ecf` 已失效；兩位 fresh
+  reviewers 必須改對本 checkpoint 之後的 exact HEAD 重做 independent review，才可進 model run／PR。
 - 下一步是兩位 **fresh reviewers**：admission reviewer 檢查 receipt action/verified-value/negative lifecycle
   與 owner boundary；evidence/privacy reviewer 檢查 env-disabled zero filesystem、prepared/completed/
   cancelled/failed artifacts、hash／attempt count、runtime privacy warning與 evaluator raw/Host/product score
