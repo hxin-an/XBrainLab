@@ -285,3 +285,44 @@ def test_invalid_or_writer_failure_capture_is_nonblocking_and_redacted(
         assert _generate(backend, options) == ["raw ", "output"]
     assert "relative/private/path" not in caplog.text
     assert "secret path" not in caplog.text
+
+
+def test_capture_finalization_writer_failure_is_nonblocking_and_redacted(
+    tmp_path: Path, monkeypatch, caplog
+) -> None:
+    capture_dir = tmp_path / "private-capture-root"
+    monkeypatch.setenv("XBRAINLAB_ASSISTANT_PROMPT_CAPTURE_DIR", str(capture_dir))
+    backend = _backend()
+    original_writer = backend._write_capture_file
+    written_paths: list[Path] = []
+
+    def _fail_only_after_prepared(path: Path, content: str) -> None:
+        if len(written_paths) >= 3:
+            raise OSError("/private/finalize-path should not leak")
+        written_paths.append(path)
+        original_writer(path, content)
+
+    with patch.object(
+        backend, "_write_capture_file", side_effect=_fail_only_after_prepared
+    ):
+        assert _generate(
+            backend, ResolvedGenerationOptions(max_new_tokens=128, do_sample=False)
+        ) == ["raw ", "output"]
+
+    assert [path.name for path in written_paths] == [
+        "prompt.txt",
+        "raw-output.txt",
+        "metadata.json",
+    ]
+    artifact = next(capture_dir.glob("*/*"))
+    assert (artifact / "prompt.txt").read_text(encoding="utf-8") == (
+        "<user>hello<assistant>"
+    )
+    assert (artifact / "raw-output.txt").read_text(encoding="utf-8") == ""
+    assert (
+        json.loads((artifact / "metadata.json").read_text(encoding="utf-8"))["status"]
+        == "prepared"
+    )
+    assert "/private/finalize-path" not in caplog.text
+    assert "hello" not in caplog.text
+    assert "raw output" not in caplog.text
