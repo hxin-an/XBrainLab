@@ -861,6 +861,32 @@ class _EvaluatorControllerHarness:
         """Delegate one reply to the controller before evaluator generation."""
         return LLMController._collect_active_tool_input_reply(self, text)  # type: ignore[arg-type]
 
+    def _complete_tool_input_receipt(
+        self,
+        receipt: AssistantToolInputReceipt,
+        latest_user_text: str,
+    ) -> bool:
+        """Mirror the production no-model receipt completion boundary."""
+        self.pending_interactions.clear_active_tool_input()
+        self.assembler.build_system_prompt(latest_user_text)
+        publication = self.assembler.latest_tool_publication
+        self._turn_orchestrator.set_active_publication(publication)
+        decision = self._tool_attempt_coordinator.evaluate(
+            ToolAttemptRequest(
+                command_name=receipt.command_name,
+                params=dict(receipt.verified_parameters),
+                confidence=1.0,
+                publication=publication,
+                latest_user_text=latest_user_text,
+                tool_input_receipt=receipt,
+            )
+        )
+        self._observed_decision = decision
+        if self._present_tool_attempt_boundary(decision):
+            return True
+        self._execute_tool_attempt(decision)
+        return True
+
     def begin_turn(
         self,
         user_text: str,
@@ -1210,7 +1236,7 @@ def build_clarification_messages(
     PromptToolPublication,
     ApplicationViewPublication,
 ]:
-    """Project an admitted production receipt through the product assembler."""
+    """Build the visible clarification history without a receipt prompt bridge."""
     if (
         case.trajectory_kind == "direct" and source.case_id != case.source_case_id
     ) or source.category != "missing_parameter":
@@ -1221,7 +1247,6 @@ def build_clarification_messages(
         _PublicationBackedEvaluatorStudy(),
         application_runtime=_EvaluatorApplicationRuntime(publication),
     )
-    assembler.set_tool_input_receipt(receipt)
     for message in recovery_messages:
         assembler.add_context(message)
     messages = assembler.get_messages(
@@ -2071,33 +2096,63 @@ def evaluate_clarification_trajectory(
     receipt = harness.begin_turn(case.reply, admission.prompt_publication)
     if receipt is None:
         raise RuntimeError("Controller did not activate the admitted clarification.")
-    # The product may requeue or terminate this user reply before model dispatch.
+    # A completed value-shaped reply must reach the product execution boundary
+    # without another model generation.
     if harness.collect_active_tool_input_reply(case.reply):
-        terminal_response = (
-            harness.history[-1]["content"]
-            if harness.history
-            else "The Host ended the clarification before model generation."
+        decision = harness._observed_decision
+        parameters = decision.params if decision is not None else None
+        passed = bool(
+            decision is not None
+            and decision.action is ToolAttemptAction.EXECUTE
+            and decision.command_name == case.expected_tool
+            and parameters == case.expected_parameters
         )
         terminal_score = TargetEvalScore(
-            False,
-            "clarification_collection",
+            passed,
+            "none" if passed else "clarification_collection",
             "",
             source.workflow_stage,
-            None,
-            None,
-            "Host ended the clarification before a model continuation.",
+            decision.command_name if decision is not None else None,
+            parameters,
+            (
+                "Controller reached the exact verified execution boundary without "
+                "a second model turn."
+                if passed
+                else "Controller did not admit the verified receipt for execution."
+            ),
             PrecisionProductOutcome(
-                "clarification_collection",
-                terminal_response,
+                "execute_boundary"
+                if decision is not None and decision.action is ToolAttemptAction.EXECUTE
+                else (
+                    decision.action.value if decision is not None else "format_error"
+                ),
+                decision.message if decision is not None else None,
+                gui_handoff_permitted=bool(
+                    decision is not None
+                    and decision.action is ToolAttemptAction.EXECUTE
+                ),
+                application_service_permitted=bool(
+                    decision is not None
+                    and decision.action is ToolAttemptAction.EXECUTE
+                ),
+                tool_executor_permitted=bool(
+                    decision is not None
+                    and decision.action is ToolAttemptAction.EXECUTE
+                ),
+                state_mutation_permitted=bool(
+                    decision is not None
+                    and decision.action is ToolAttemptAction.EXECUTE
+                ),
             ),
         )
         return CaseTrajectoryResult(
             raw_score=terminal_score,
             post_recovery_score=terminal_score,
             final_score=terminal_score,
-            final_response=terminal_response,
+            final_response="",
             attempts=(),
             receipt_origin=admission.receipt_origin,
+            product_terminal=harness._observed_terminal,
         )
     receipt = harness.pending_interactions.active_tool_input
     if receipt is None:

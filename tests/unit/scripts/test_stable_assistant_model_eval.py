@@ -649,16 +649,12 @@ def test_clarification_prompt_and_score_use_product_receipt_boundary() -> None:
     )
 
     assert messages[-1] == {"role": "user", "content": "128 Hz"}
-    assert "tool_input_clarification" in messages[1]["content"]
-    response = (
-        '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
-        '"parameters":{"rate":128}}'
-    )
+    assert "tool_input_clarification" not in messages[1]["content"]
     generated_messages: list[list[dict[str, str]]] = []
 
     def generate(messages: list[dict[str, str]]) -> str:
         generated_messages.append(messages)
-        return response
+        return "unused"
 
     trajectory = evaluate_clarification_trajectory(
         case,
@@ -669,10 +665,9 @@ def test_clarification_prompt_and_score_use_product_receipt_boundary() -> None:
     )
 
     assert trajectory.final_score.passed is True
-    assert len(generated_messages) == 1
+    assert generated_messages == []
     active_receipt = admission.harness.pending_interactions.active_tool_input
-    assert active_receipt is not None
-    assert dict(active_receipt.verified_parameters) == {"rate": 128}
+    assert active_receipt is None
     assert trajectory.receipt_origin == "model_typed"
     assert trajectory.final_score.product_outcome is not None
     assert trajectory.final_score.product_outcome.disposition == "execute_boundary"

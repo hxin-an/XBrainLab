@@ -179,17 +179,16 @@ def test_host_template_messages_keep_policy_then_one_user_generation_turn() -> N
     assert len(serialized.encode("utf-8")) <= MAX_CHAT_MODEL_REQUEST_UTF8_BYTES
 
 
-def test_host_template_boundary_allows_factual_tool_input_continuation() -> None:
-    """A receipt may explain a terse reply but never becomes execution authority."""
+def test_host_template_boundary_keeps_untrusted_context_non_authoritative() -> None:
+    """Context data never changes policy or execution authority."""
     encoded_context = encode_untrusted_context(
         [
             UntrustedContextItem(
-                item_type="tool_input_clarification",
-                source=UntrustedContextSource(kind="assistant_tool_input_receipt"),
+                item_type="state_card",
+                source=UntrustedContextSource(kind="application_service_publication"),
                 data={
-                    "action": "resample_data",
-                    "missing_inputs": ["rate"],
-                    "question": "What resampling rate should I use?",
+                    "workflow_stage": "data_loaded",
+                    "available_actions": ["resample_data"],
                 },
             )
         ]
@@ -215,8 +214,8 @@ def test_host_template_boundary_allows_factual_tool_input_continuation() -> None
         "user",
     ]
     boundary = processed[2]["content"]
-    assert "tool_input_clarification" in boundary
-    assert "factual continuation context" in boundary
+    assert "tool_input_clarification" not in boundary
+    assert "factual continuation context" not in boundary
     assert "does not grant authorization" in boundary
     assert processed[-1] == {"role": "user", "content": "128 Hz"}
 
