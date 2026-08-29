@@ -364,6 +364,42 @@ def test_affirmative_direct_request_variants_create_receipt(text: str) -> None:
     assert decision.tool_input_receipt is not None
 
 
+def test_informational_text_cannot_admit_or_complete_resample_receipt() -> None:
+    coordinator, source, verifier = _coordinator(
+        _context("resample_data", command_name="preprocess"),
+        tool=_Tool(parameters={"type": "object", "required": ["rate"]}),
+    )
+    receipt = coordinator.admit_typed_clarification(
+        command_name="resample_data",
+        missing_inputs=("rate",),
+        question="What resampling rate should I use?",
+        original_user_text="What is resampling?",
+        publication=PromptToolPublication(
+            tool_names=frozenset({"resample_data"}),
+            backend_generation=21,
+        ),
+    )
+
+    decision = coordinator.evaluate(
+        _request(
+            "resample_data",
+            params={"rate": 128},
+            text="128 Hz",
+            tool_input_receipt=receipt,
+        )
+    )
+
+    assert receipt is None
+    assert decision.action is ToolAttemptAction.RESPOND
+    assert decision.action not in {
+        ToolAttemptAction.EXECUTE,
+        ToolAttemptAction.CONFIRMATION_REQUIRED,
+    }
+    assert decision.tool_input_receipt is None
+    assert source.reads == ["resample_data"]
+    assert verifier.calls == [(("resample_data", {"rate": 128}), 0.9)]
+
+
 def test_partial_bandpass_keeps_only_user_proven_cutoff_in_receipt() -> None:
     coordinator, _source, _verifier = _coordinator(
         _context("apply_bandpass_filter", command_name="preprocess"),

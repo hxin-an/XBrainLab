@@ -247,8 +247,13 @@ class ToolAttemptCoordinator:
         verified_parameters: tuple[tuple[str, Any], ...] = (),
     ) -> AssistantToolInputReceipt | None:
         """Admit one exact direct-tool clarification without granting execution."""
-        if command_name not in DIRECT_PARAMETER_TOOLS or not publication.permits(
-            command_name
+        if (
+            command_name not in DIRECT_PARAMETER_TOOLS
+            or not publication.permits(command_name)
+            or not direct_parameter_action_request_matches(
+                command_name,
+                original_user_text,
+            )
         ):
             return None
         generation = publication.backend_generation

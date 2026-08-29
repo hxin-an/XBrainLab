@@ -1297,6 +1297,34 @@ class TestOnGenerationFinished:
         assert receipt.missing_inputs == ("low_freq", "high_freq")
         assert receipt.remaining_reply_budget == 2
 
+    def test_informational_user_cannot_arm_typed_resample_receipt(self, ctrl):
+        ctrl._append_history("user", "What is resampling?")
+        ctrl._turn_orchestrator.active_publication = PromptToolPublication(
+            tool_names=frozenset({"resample_data"}),
+            workflow_stage="data_loaded",
+            backend_generation=17,
+        )
+        ctrl.registry.get_tool.return_value.parameters = {
+            "type": "object",
+            "required": ["rate"],
+        }
+        ctrl.current_response = (
+            '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+            '"parameters":{"message":"What resampling rate should I use?",'
+            '"pending_action":"resample_data","missing_inputs":["rate"]}}'
+        )
+        ctrl.is_processing = True
+        ctrl._turn_orchestrator.active_generation_id = 123
+        ctrl._execute_tool_attempt = MagicMock()
+        ctrl._request_tool_confirmation = MagicMock()
+
+        ctrl._on_generation_finished(123, [])
+
+        assert ctrl.pending_interactions.tool_input is None
+        assert ctrl.pending_interactions.active_tool_input is None
+        ctrl._execute_tool_attempt.assert_not_called()
+        ctrl._request_tool_confirmation.assert_not_called()
+
     def test_active_bandpass_receipt_collects_bare_pair_before_model_generation(
         self,
         ctrl,
