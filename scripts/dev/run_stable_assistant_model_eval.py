@@ -730,6 +730,9 @@ class _EvaluatorControllerHarness:
         self._observed_decision: ToolAttemptDecision | None = None
         self._observed_terminal: dict[str, Any] | None = None
         self._terminal_override: str | None = None
+        self.current_response = ""
+        self._recovery_generation_requested = False
+        self._recovery_context: str | None = None
         self._publication = publication
         runtime = _EvaluatorApplicationRuntime(publication)
         self.assembler = ContextAssembler(
@@ -771,6 +774,62 @@ class _EvaluatorControllerHarness:
     def _finalize_turn(self, response_text: str) -> None:
         LLMController._finalize_turn(self, response_text)  # type: ignore[arg-type]
         self._record_terminal(self._terminal_override or "respond")
+
+    def _arbitrate_generation_terminal(self, generation_id: int, _phase: Any) -> bool:
+        """Keep controller generation correlation without a Qt event surface."""
+        return self._turn_orchestrator.accept_generation_terminal(
+            generation_id,
+            _phase,
+        )
+
+    def _generate_response(self) -> bool:
+        """Record a controller-requested retry; the evaluator owns model I/O."""
+        if not self.assembler.context_notes:
+            raise RuntimeError(
+                "Controller format retry did not publish recovery context."
+            )
+        self._recovery_generation_requested = True
+        self._recovery_context = self.assembler.context_notes[-1]
+        return True
+
+    def _handle_tool_envelope_failure(
+        self,
+        response_text: str,
+        envelope: ToolEnvelopeParseResult,
+    ) -> bool:
+        return LLMController._handle_tool_envelope_failure(  # type: ignore[arg-type]
+            self,
+            response_text,
+            envelope,
+        )
+
+    def _begin_typed_tool_input(self, envelope: ToolEnvelopeParseResult) -> bool:
+        return LLMController._begin_typed_tool_input(self, envelope)  # type: ignore[arg-type]
+
+    def _process_tool_calls(self, command_result: Any, response_text: str) -> None:
+        LLMController._process_tool_calls(self, command_result, response_text)  # type: ignore[arg-type]
+
+    def replay_clarification_generation(
+        self,
+        response: str,
+    ) -> tuple[StrictEnvelopeRecoveryAction | None, str | None]:
+        """Drive one clarification output through the product controller path."""
+        self._observed_decision = None
+        self._observed_terminal = None
+        self._recovery_generation_requested = False
+        self._recovery_context = None
+        self.current_response = response
+        # The evaluator has already admitted this model dispatch after the
+        # user-authored clarification reply; model completion is processing.
+        self.is_processing = True
+        generation_id = self._turn_orchestrator.begin_generation()
+        LLMController._on_generation_finished(self, generation_id, [])  # type: ignore[arg-type]
+        if self._recovery_generation_requested:
+            return StrictEnvelopeRecoveryAction.RETRY_FORMAT, self._recovery_context
+        if not self.is_processing and self._observed_terminal is None:
+            self._record_terminal("format_recovery_exhausted")
+            return StrictEnvelopeRecoveryAction.EXHAUSTED, None
+        return None, None
 
     @staticmethod
     def _empty_effects() -> dict[str, Any]:
@@ -1835,6 +1894,9 @@ def _evaluate_trajectory(
     generation_recorder: GenerationTraceRecorder | None,
     trace_case_id: str,
     initial_turn_purpose: str = "first_turn",
+    replay_controller_response: (
+        Callable[[str], tuple[StrictEnvelopeRecoveryAction | None, str | None]] | None
+    ) = None,
 ) -> CaseTrajectoryResult:
     """Generate one strict-envelope trajectory through the production policy."""
     recovery_messages: list[str] = []
@@ -1862,17 +1924,30 @@ def _evaluate_trajectory(
             response,
             workflow_stage=workflow_stage,
         )
+        controller_action: StrictEnvelopeRecoveryAction | None = None
+        controller_context: str | None = None
+        if replay_controller_response is not None:
+            controller_action, controller_context = replay_controller_response(response)
+        recovery_envelope = envelope
+        if controller_action is not None:
+            recovery_envelope = ToolEnvelopeParseResult.format_error(
+                "Controller rejected the clarification envelope."
+            )
         decision = DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY.decide(
             StrictEnvelopeRecoveryRequest(
-                envelope=envelope,
+                envelope=recovery_envelope,
                 recovery_attempts_used=len(recovery_messages),
             )
         )
+        if controller_action is not None and decision.action is not controller_action:
+            raise RuntimeError(
+                "Controller and evaluator format-recovery decisions diverged."
+            )
         attempts.append(
             ModelGenerationAttempt(
                 attempt_number=len(attempts) + 1,
                 response_preview=response[:RAW_OUTPUT_PREVIEW_CHAR_LIMIT],
-                envelope_status=envelope.status.value,
+                envelope_status=recovery_envelope.status.value,
                 workflow_stage=parsed_stage,
                 recovery_action=decision.action.value,
                 taxonomy=decision.taxonomy.value,
@@ -1881,6 +1956,11 @@ def _evaluate_trajectory(
         )
 
         if decision.action is StrictEnvelopeRecoveryAction.RETRY_FORMAT:
+            if controller_action is StrictEnvelopeRecoveryAction.RETRY_FORMAT:
+                if controller_context is None:
+                    raise RuntimeError("Controller retry is missing recovery context.")
+                recovery_messages.append(controller_context)
+                continue
             if decision.message is None:
                 raise RuntimeError("Format retry decision is missing recovery context.")
             recovery_messages.append(decision.message.content)
@@ -2063,7 +2143,7 @@ def evaluate_clarification_trajectory(
         if cached is not None:
             return cached
         envelope = CommandParser.parse_product(response)
-        decision, _supplied = harness.evaluate_proposal(response)
+        decision = harness._observed_decision
         parameters = decision.params if decision is not None else None
         passed = bool(
             envelope.status is ToolEnvelopeStatus.VALID
@@ -2162,8 +2242,10 @@ def evaluate_clarification_trajectory(
             generation_recorder=generation_recorder,
             trace_case_id=trace_case_id or case.case_id,
             initial_turn_purpose="clarification_proposal",
+            replay_controller_response=harness.replay_clarification_generation,
         ),
         receipt_origin=admission.receipt_origin,
+        product_terminal=harness._observed_terminal,
     )
 
 

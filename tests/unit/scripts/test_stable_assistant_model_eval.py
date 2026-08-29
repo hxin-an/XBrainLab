@@ -43,6 +43,9 @@ from scripts.dev.run_stable_assistant_model_eval import (
 )
 from XBrainLab.chat_contract import MODEL_UNTRUSTED_CONTEXT_BOUNDARY_MESSAGE
 from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
+from XBrainLab.llm.agent.strict_envelope_recovery import (
+    DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY,
+)
 from XBrainLab.llm.core.backends.local import LocalBackend
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.model_catalog import local_model_spec
@@ -814,6 +817,139 @@ def test_clarification_trajectory_uses_product_format_recovery() -> None:
     assert [entry.turn_purpose for entry in recorder.entries] == [
         "clarification_proposal",
         "format_retry",
+    ]
+
+
+def test_invalid_typed_clarification_replays_controller_format_recovery() -> None:
+    registry = target_tool_registry()
+    precision_cases = load_precision_cases(DEFAULT_PRECISION_CASES)
+    case = next(
+        item
+        for item in load_clarification_cases(
+            DEFAULT_CLARIFICATION_CASES,
+            precision_cases=precision_cases,
+        )
+        if item.expected_tool == "resample_data"
+    )
+    source = next(
+        item for item in precision_cases if item.case_id == case.source_case_id
+    )
+    first_response = (
+        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '"parameters":{"message":"What resampling rate should I use?",'
+        '"pending_action":"resample_data","missing_inputs":["rate"]}}'
+    )
+    admission = admit_clarification_receipt(
+        source,
+        first_response,
+        expected_tool=case.expected_tool,
+        registry=registry,
+    )
+    assert admission is not None
+    invalid_typed_reply = (
+        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '"parameters":{"message":"What resampling rate should I use?",'
+        '"pending_action":"resample_data","missing_inputs":["rate"]}}'
+    )
+    repaired_reply = (
+        '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
+        '"parameters":{"rate":128}}'
+    )
+    responses = iter((invalid_typed_reply, repaired_reply))
+    generated_messages: list[list[dict[str, str]]] = []
+    recorder = GenerationTraceRecorder()
+
+    def generate(messages: list[dict[str, str]]) -> str:
+        generated_messages.append(messages)
+        return next(responses)
+
+    trajectory = evaluate_clarification_trajectory(
+        case,
+        source,
+        admission=admission,
+        registry=registry,
+        generate_response=generate,
+        generation_recorder=recorder,
+    )
+
+    assert trajectory.raw_score.passed is False
+    assert trajectory.attempts[0].recovery_action == "retry_format"
+    assert [entry.turn_purpose for entry in recorder.entries] == [
+        "clarification_proposal",
+        "format_retry",
+    ]
+    assert any(
+        "FORMAT CORRECTION REQUIRED" in message["content"]
+        for message in generated_messages[1]
+    )
+    assert trajectory.final_score.passed is True
+    assert trajectory.product_terminal is not None
+    assert trajectory.product_terminal["kind"] == "execution_boundary_suppressed"
+
+
+def test_repeated_invalid_typed_clarification_exhausts_controller_recovery() -> None:
+    registry = target_tool_registry()
+    precision_cases = load_precision_cases(DEFAULT_PRECISION_CASES)
+    case = next(
+        item
+        for item in load_clarification_cases(
+            DEFAULT_CLARIFICATION_CASES,
+            precision_cases=precision_cases,
+        )
+        if item.expected_tool == "resample_data"
+    )
+    source = next(
+        item for item in precision_cases if item.case_id == case.source_case_id
+    )
+    first_response = (
+        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '"parameters":{"message":"What resampling rate should I use?",'
+        '"pending_action":"resample_data","missing_inputs":["rate"]}}'
+    )
+    admission = admit_clarification_receipt(
+        source,
+        first_response,
+        expected_tool=case.expected_tool,
+        registry=registry,
+    )
+    assert admission is not None
+    invalid_typed_reply = (
+        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '"parameters":{"message":"What resampling rate should I use?",'
+        '"pending_action":"resample_data","missing_inputs":["rate"]}}'
+    )
+    recorder = GenerationTraceRecorder()
+    trajectory = evaluate_clarification_trajectory(
+        case,
+        source,
+        admission=admission,
+        registry=registry,
+        generate_response=lambda _messages: invalid_typed_reply,
+        generation_recorder=recorder,
+    )
+
+    assert len(trajectory.attempts) == (
+        DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY.max_recovery_attempts + 1
+    )
+    assert trajectory.attempts[-1].recovery_action == "exhausted"
+    assert trajectory.final_score.passed is False
+    assert trajectory.final_score.failure_type != "none"
+    assert trajectory.post_recovery_score.failure_type != "none"
+    assert trajectory.product_terminal is not None
+    assert trajectory.product_terminal["kind"] == "format_recovery_exhausted"
+    assert trajectory.product_terminal["confirmation_observed"] is False
+    assert trajectory.product_terminal["execution_boundary_reached"] is False
+    assert trajectory.product_terminal["execution_suppressed"] is False
+    assert trajectory.product_terminal["gui_handoff_reached"] is False
+    assert trajectory.product_terminal["application_service_called"] is False
+    assert trajectory.product_terminal["tool_executor_called"] is False
+    assert trajectory.product_terminal["state_mutation_observed"] is False
+    assert [entry.turn_purpose for entry in recorder.entries] == [
+        "clarification_proposal",
+        *(
+            ["format_retry"]
+            * DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY.max_recovery_attempts
+        ),
     ]
 
 
