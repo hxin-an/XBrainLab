@@ -215,6 +215,11 @@ worker 或 reviewer 判定。
 - Next step is fresh non-author lifecycle and evidence/privacy review on the eventual clean integrated SHA,
   followed by the focused union regression. This checkpoint records no test, model, CI, handoff or manual-acceptance
   result.
+- Evaluator follow-up source `9a1fa6656bef1f87da4e63ba1d3846e34fea05c3` was cherry-picked as `ca5183e0` after
+  the first union regression exposed four obsolete harness continuations: the harness reset a receipt but did not
+  replay the product's pre-model user-evidence collection. The correction stays in the evaluator/test boundary;
+  the next step is to rerun the same union regression and then obtain fresh review. This entry intentionally records
+  no rerun, model or acceptance result.
 
 ## Focused validation、v11 trace 與 model gates
 
