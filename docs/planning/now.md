@@ -439,6 +439,23 @@ receipt/parameter synthesis, threshold/gate change, side effect, or unresolved r
 stop and return evidence rather than expanding scope. If model evidence later fails, preserve its report and stop;
 do not tune prompts, change models or relax gates.
 
+#### Corrective scope: first-turn precision recovery
+
+Review of `968bf7b8` found that its replay hook covered only the already-admitted clarification continuation.
+The observed false-negative report rows are first-turn `PrecisionCase` trajectories—specifically
+`set_montage_before_epochs_en` and `split_before_epochs_en`—which still score a model-shaped invalid typed
+clarification before `observe_first_turn` can drive controller recovery. The corrective evaluator-only change must
+reuse the same harness replay for first-turn and clarification trajectories, so the active controller path issues
+the retry context, consumes another generation, and records the real safe terminal/exhaustion result. It must not
+retain a second policy or static `format_retry_required` surrogate for these paths.
+
+Add red tests using both exact precision rows and their model-shaped invalid typed response; prove a retry reaches a
+controller terminal and repeated output reaches bounded exhaustion with `passed=false` and non-`none` failure. Keep
+only non-duplicative continuation coverage: retain it if it proves receipt-specific behavior not covered by the
+first-turn rows, otherwise compress it while preserving one direct active-receipt regression. Then run the focused
+evaluator suite, ruff and diff checks. No model or handoff follows until this corrected exact SHA is independently
+reviewed.
+
 ## Focused validation、v11 trace 與 model gates
 
 ### Direct behavior tests
