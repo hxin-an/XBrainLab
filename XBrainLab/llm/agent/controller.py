@@ -1220,6 +1220,7 @@ class LLMController(QObject):
 
     def _process_tool_calls(self, command_result: Any, response_text: str):
         """Verify and execute at most one model-proposed command."""
+        is_single = not isinstance(command_result, list) or len(command_result) < 2
         command = self._select_tool_proposal(command_result)
         if command is None:
             self._finalize_turn_after_tool()
@@ -1227,7 +1228,11 @@ class LLMController(QObject):
 
         if self._reject_excluded_turn_command(command[0]):
             return
-        decision = self._evaluate_tool_proposal(command, response_text)
+        decision = self._evaluate_tool_proposal(
+            command,
+            response_text,
+            single_proposal=is_single,
+        )
         if self._present_tool_attempt_boundary(decision):
             return
         self._execute_tool_attempt(decision)
@@ -1279,6 +1284,8 @@ class LLMController(QObject):
         self,
         command: tuple[str, dict[str, Any]],
         response_text: str,
+        *,
+        single_proposal: bool = True,
     ) -> ToolAttemptDecision:
         """Evaluate one normalized proposal against one backend publication."""
         self._append_history("assistant", response_text)
@@ -1353,6 +1360,7 @@ class LLMController(QObject):
                 repeated=repeated,
                 tool_input_receipt=receipt,
                 supplied_parameters=supplied_params,
+                single_proposal=single_proposal,
             )
         )
 
@@ -1378,6 +1386,9 @@ class LLMController(QObject):
             return True
         if decision.action is ToolAttemptAction.RESPOND:
             message = decision.message or "Please provide the required values."
+            receipt = decision.tool_input_receipt
+            if receipt is not None:
+                self.pending_interactions.begin_tool_input(receipt)
             self._finalize_turn(message)
             return True
         if decision.action in {

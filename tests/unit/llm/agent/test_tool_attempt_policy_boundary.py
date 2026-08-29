@@ -28,6 +28,7 @@ from XBrainLab.llm.tools.application_surface import (
 class _Tool:
     requires_confirmation: bool = False
     description: str = "Test tool"
+    parameters: dict[str, Any] | None = None
 
 
 class _Registry:
@@ -93,6 +94,7 @@ def _request(
     text: str,
     publication: PromptToolPublication | None = None,
     tool_input_receipt: AssistantToolInputReceipt | None = None,
+    single_proposal: bool = True,
 ) -> ToolAttemptRequest:
     return ToolAttemptRequest(
         command_name=tool_name,
@@ -105,6 +107,7 @@ def _request(
         ),
         latest_user_text=text,
         tool_input_receipt=tool_input_receipt,
+        single_proposal=single_proposal,
     )
 
 
@@ -296,11 +299,126 @@ def test_explicit_direct_parameter_value_reaches_execution_boundary() -> None:
     assert verifier.calls == [(("resample_data", {"rate": 128}), 0.9)]
 
 
-def test_invented_direct_parameter_returns_assistant_question_without_execution() -> (
-    None
-):
+@pytest.mark.parametrize(
+    ("tool_name", "params", "text"),
+    (
+        (
+            "apply_bandpass_filter",
+            {"low_freq": 1, "high_freq": 40},
+            "Apply a bandpass filter.",
+        ),
+        ("apply_notch_filter", {"freq": 50}, "Apply a notch filter."),
+        ("resample_data", {"rate": 128}, "Resample the EEG data."),
+        ("set_reference", {"method": "average"}, "Set the EEG reference."),
+        ("normalize_data", {"method": "z-score"}, "Normalize the EEG data."),
+    ),
+)
+def test_invented_direct_parameter_creates_typed_followup_receipt(
+    tool_name: str,
+    params: dict[str, Any],
+    text: str,
+) -> None:
     coordinator, source, verifier = _coordinator(
-        _context("resample_data", command_name="preprocess")
+        _context(tool_name, command_name="preprocess"),
+        tool=_Tool(parameters={"type": "object", "required": list(params)}),
+    )
+
+    decision = coordinator.evaluate(
+        _request(
+            tool_name,
+            params=params,
+            text=text,
+        )
+    )
+
+    assert decision.action is ToolAttemptAction.RESPOND
+    assert decision.tool_input_receipt is not None
+    assert decision.tool_input_receipt.command_name == tool_name
+    assert decision.tool_input_receipt.missing_inputs == tuple(params)
+    assert decision.tool_input_receipt.verified_parameters == ()
+    assert decision.result is None
+    assert decision.context == _context(tool_name, command_name="preprocess")
+    assert source.reads == [tool_name]
+    assert verifier.calls == [((tool_name, params), 0.9)]
+
+
+def test_partial_bandpass_keeps_only_user_proven_cutoff_in_receipt() -> None:
+    coordinator, _source, _verifier = _coordinator(
+        _context("apply_bandpass_filter", command_name="preprocess"),
+        tool=_Tool(
+            parameters={"type": "object", "required": ["low_freq", "high_freq"]}
+        ),
+    )
+
+    decision = coordinator.evaluate(
+        _request(
+            "apply_bandpass_filter",
+            params={"low_freq": 1, "high_freq": 40},
+            text="Apply a 1 to 38 Hz bandpass filter.",
+        )
+    )
+
+    assert decision.action is ToolAttemptAction.RESPOND
+    assert (
+        decision.message
+        == "What high cutoff frequency should I use for the bandpass filter?"
+    )
+    assert decision.tool_input_receipt is not None
+    assert decision.tool_input_receipt.verified_parameters == (("low_freq", 1),)
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "params", "text", "single_proposal"),
+    (
+        ("resample_data", {"rate": 128}, "Do not resample the EEG data.", True),
+        ("resample_data", {"rate": 128}, "What is resampling?", True),
+        ("normalize_data", {"method": "z-score"}, "What is normalization?", True),
+        ("set_reference", {"method": "average"}, "What reference should I use?", True),
+        ("resample_data", {"rate": 128}, "Apply a notch filter.", True),
+        ("resample_data", {"rate": 128}, "Open the visualization panel.", True),
+        ("resample_data", {"rate": 128}, "Resample the EEG data.", False),
+        (
+            "apply_notch_filter",
+            {"freq": 50},
+            "Tell me how to apply a notch filter.",
+            True,
+        ),
+        (
+            "apply_notch_filter",
+            {"freq": 50},
+            "Never apply a notch filter.",
+            True,
+        ),
+    ),
+)
+def test_untrusted_direct_parameter_proposal_never_creates_receipt(
+    tool_name: str,
+    params: dict[str, Any],
+    text: str,
+    single_proposal: bool,
+) -> None:
+    coordinator, _source, _verifier = _coordinator(
+        _context(tool_name, command_name="preprocess"),
+        tool=_Tool(parameters={"type": "object", "required": list(params)}),
+    )
+
+    decision = coordinator.evaluate(
+        _request(
+            tool_name,
+            params=params,
+            text=text,
+            single_proposal=single_proposal,
+        )
+    )
+
+    assert decision.action is ToolAttemptAction.RESPOND
+    assert decision.tool_input_receipt is None
+
+
+def test_unavailable_direct_parameter_proposal_never_creates_receipt() -> None:
+    coordinator, _source, _verifier = _coordinator(
+        _context("resample_data", enabled=False, command_name="preprocess"),
+        tool=_Tool(parameters={"type": "object", "required": ["rate"]}),
     )
 
     decision = coordinator.evaluate(
@@ -312,11 +430,7 @@ def test_invented_direct_parameter_returns_assistant_question_without_execution(
     )
 
     assert decision.action is ToolAttemptAction.RESPOND
-    assert decision.message == "What resampling rate should I use?"
-    assert decision.result is None
-    assert decision.context == _context("resample_data", command_name="preprocess")
-    assert source.reads == ["resample_data"]
-    assert verifier.calls == [(("resample_data", {"rate": 128}), 0.9)]
+    assert decision.tool_input_receipt is None
 
 
 @pytest.mark.parametrize(

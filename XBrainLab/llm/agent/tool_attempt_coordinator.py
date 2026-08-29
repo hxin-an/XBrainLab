@@ -47,6 +47,8 @@ from .verifier import (
     DIRECT_PARAMETER_TOOLS,
     PathProvenanceVerifier,
     VerificationResult,
+    direct_parameter_action_request_matches,
+    verified_direct_parameter_origin_values,
     verify_direct_parameter_origins,
     verify_direct_parameter_reply_values,
 )
@@ -135,6 +137,7 @@ class ToolAttemptRequest:
     enforce_direct_parameter_origins: bool = True
     tool_input_receipt: AssistantToolInputReceipt | None = None
     supplied_parameters: dict[str, Any] | None = None
+    single_proposal: bool = True
 
 
 @dataclass(frozen=True)
@@ -152,6 +155,7 @@ class ToolAttemptDecision:
     resource_preflight_receipt: ResourceConfirmationChallenge | None = None
     edited_recommendation_fields: tuple[TrainingRecommendationField, ...] | None = None
     feedback: ToolAttemptFeedback = ToolAttemptFeedback.SYSTEM_REJECTION
+    tool_input_receipt: AssistantToolInputReceipt | None = None
 
 
 @dataclass(frozen=True)
@@ -240,6 +244,7 @@ class ToolAttemptCoordinator:
         question: str,
         original_user_text: str,
         publication: PromptToolPublication,
+        verified_parameters: tuple[tuple[str, Any], ...] = (),
     ) -> AssistantToolInputReceipt | None:
         """Admit one exact direct-tool clarification without granting execution."""
         if command_name not in DIRECT_PARAMETER_TOOLS or not publication.permits(
@@ -263,6 +268,15 @@ class ToolAttemptCoordinator:
             or not 1 <= len(missing_inputs) <= 2
             or len(set(missing_inputs)) != len(missing_inputs)
             or bool(set(missing_inputs) - set(required_names))
+            or any(
+                not isinstance(item, tuple)
+                or len(item) != 2
+                or not isinstance(item[0], str)
+                or item[0] not in required_names
+                for item in verified_parameters
+            )
+            or len({item[0] for item in verified_parameters})
+            != len(verified_parameters)
         ):
             return None
         return AssistantToolInputReceipt(
@@ -271,6 +285,7 @@ class ToolAttemptCoordinator:
             question=question,
             publication_generation=generation,
             missing_inputs=required_names,
+            verified_parameters=verified_parameters,
         )
 
     def select_proposal(
@@ -399,6 +414,7 @@ class ToolAttemptCoordinator:
                     request.latest_user_text,
                 )
             if not origin_validation.is_valid:
+                receipt = self._origin_receipt(request, context, origin_validation)
                 return ToolAttemptDecision(
                     ToolAttemptAction.RESPOND,
                     command_name,
@@ -408,6 +424,7 @@ class ToolAttemptCoordinator:
                         origin_validation.error_message
                         or "What parameters should I use for this action?"
                     ),
+                    tool_input_receipt=receipt,
                 )
 
         if not context.availability.enabled:
@@ -452,6 +469,38 @@ class ToolAttemptCoordinator:
             context=context,
             tool=tool,
             edited_recommendation_fields=edited_recommendation_fields,
+        )
+
+    def _origin_receipt(
+        self,
+        request: ToolAttemptRequest,
+        context: ToolAvailabilityContext,
+        origin: VerificationResult,
+    ) -> AssistantToolInputReceipt | None:
+        """Turn one safe direct-parameter rejection into bounded follow-up state."""
+        if (
+            request.tool_input_receipt is not None
+            or not request.single_proposal
+            or not context.availability.enabled
+            or not direct_parameter_action_request_matches(
+                request.command_name,
+                request.latest_user_text,
+            )
+        ):
+            return None
+        return self.admit_typed_clarification(
+            command_name=request.command_name,
+            missing_inputs=tuple(request.params),
+            question=(
+                origin.error_message or "What parameters should I use for this action?"
+            ),
+            original_user_text=request.latest_user_text,
+            publication=request.publication,
+            verified_parameters=verified_direct_parameter_origin_values(
+                request.command_name,
+                request.params,
+                request.latest_user_text,
+            ),
         )
 
     def context_for(self, command_name: str) -> ToolAvailabilityContext:

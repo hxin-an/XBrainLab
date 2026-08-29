@@ -3324,7 +3324,7 @@ class TestExecuteDebugTool:
         assert ctrl.pending_interactions.tool_input is None
         assert ctrl.pending_interactions.active_tool_input is receipt
 
-    def test_model_invented_parameter_publishes_message_and_never_executes(
+    def test_model_invented_parameter_creates_typed_followup_receipt_and_never_executes(
         self,
         ctrl,
     ):
@@ -3341,6 +3341,10 @@ class TestExecuteDebugTool:
             return_value=_enabled_tool_context("resample_data", generation=17),
         )
         ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+        ctrl.registry.get_tool.return_value.parameters = {
+            "type": "object",
+            "required": ["rate"],
+        }
         ctrl._execute_tool_attempt = MagicMock()
 
         ctrl._process_tool_calls(
@@ -3352,6 +3356,55 @@ class TestExecuteDebugTool:
         presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
         assert presentation.kind is AssistantResponseKind.MESSAGE
         assert presentation.text == "What resampling rate should I use?"
+        receipt = ctrl.pending_interactions.tool_input
+        assert receipt is not None
+        assert receipt.command_name == "resample_data"
+        assert receipt.publication_generation == 17
+        assert receipt.missing_inputs == ("rate",)
+        assert receipt.verified_parameters == ()
+
+        ctrl._append_history("user", "128 Hz")
+        ctrl._reset_user_turn_state()
+        ctrl._turn_orchestrator.active_publication = PromptToolPublication(
+            tool_names=frozenset({"resample_data"}),
+            workflow_stage="data_loaded",
+            backend_generation=17,
+        )
+        ctrl.registry.get_tool.return_value.requires_confirmation = False
+        ctrl._process_tool_calls(
+            [("resample_data", {"rate": 128})],
+            '{"tool_name":"resample_data","parameters":{"rate":128}}',
+        )
+
+        executed = ctrl._execute_tool_attempt.call_args.args[0]
+        assert executed.action is ToolAttemptAction.EXECUTE
+        assert executed.params == {"rate": 128}
+
+    def test_multiple_direct_proposals_cannot_create_a_followup_receipt(self, ctrl):
+        ctrl._append_history("user", "Resample the EEG data.")
+        ctrl._turn_orchestrator.active_publication = PromptToolPublication(
+            tool_names=frozenset({"resample_data", "apply_notch_filter"}),
+            workflow_stage="data_loaded",
+            backend_generation=17,
+        )
+        _set_context_reader(
+            ctrl,
+            return_value=_enabled_tool_context("resample_data", generation=17),
+        )
+        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+        ctrl.registry.get_tool.return_value.parameters = {
+            "type": "object",
+            "required": ["rate"],
+        }
+
+        ctrl._process_tool_calls(
+            [
+                ("resample_data", {"rate": 128}),
+                ("apply_notch_filter", {"freq": 50}),
+            ],
+            "model supplied multiple actions",
+        )
+
         assert ctrl.pending_interactions.tool_input is None
 
     def test_ready_debug_training_requests_confirmation_before_execution(self, ctrl):

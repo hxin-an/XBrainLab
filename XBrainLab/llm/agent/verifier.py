@@ -62,6 +62,33 @@ _CLAUSE_SEPARATOR = re.compile(
 )
 
 
+def direct_parameter_action_request_matches(tool_name: str, text: str) -> bool:
+    """Require an explicit, singular, non-negated action request for admission."""
+    normalized = unicodedata.normalize("NFKC", text).casefold()
+    if _clarification_reply_is_cancelled(normalized):
+        return False
+    if re.search(r"\b(?:tell\s+me\s+how|how\s+to|explain)\b", normalized):
+        return False
+    if re.match(r"^\s*(?:what|which|why|how|is|are|should)\b", normalized):
+        return False
+    markers = {
+        "apply_bandpass_filter": "bandpass",
+        "apply_notch_filter": "notch",
+        "resample_data": "resampl",
+        "set_reference": "reference",
+        "normalize_data": "normaliz",
+    }
+    target = markers.get(tool_name)
+    return bool(
+        target
+        and re.search(r"\b(?:apply|run|use|set|resampl|normaliz)\w*\b", normalized)
+        and normalized.count(target) == 1
+        and all(
+            marker not in normalized for marker in markers.values() if marker != target
+        )
+    )
+
+
 def verify_direct_parameter_origins(
     tool_name: str,
     params: dict[str, Any],
@@ -114,6 +141,27 @@ def verify_direct_parameter_origins(
             question="Which normalization method should I use: z-score or min-max?",
         )
     return _verify_reference_origin(params.get("method"), clauses)
+
+
+def verified_direct_parameter_origin_values(
+    tool_name: str,
+    params: dict[str, Any],
+    latest_user_text: str,
+) -> tuple[tuple[str, Any], ...]:
+    """Return only direct parameter values proven by the current user text."""
+    if tool_name != "apply_bandpass_filter":
+        return ()
+    text = unicodedata.normalize("NFKC", latest_user_text).strip()
+    clauses = tuple(
+        clause.strip() for clause in _CLAUSE_SEPARATOR.split(text) if clause.strip()
+    )
+    low_verified, high_verified = _bandpass_origin_matches(params, clauses)
+    verified: list[tuple[str, Any]] = []
+    if low_verified:
+        verified.append(("low_freq", params.get("low_freq")))
+    if high_verified:
+        verified.append(("high_freq", params.get("high_freq")))
+    return tuple(verified)
 
 
 def verify_direct_parameter_clarification_reply(
@@ -219,7 +267,7 @@ def verify_direct_parameter_reply_values(
 def _clarification_reply_is_cancelled(text: str) -> bool:
     return bool(
         re.search(
-            r"(?:\b(?:cancel|never\s+mind|do\s+not|don't|not\s+now)\b|"
+            r"(?:\b(?:cancel|never(?:\s+mind)?|do\s+not|don't|not\s+now)\b|"
             r"算了|取消|不要|不用|先不要)",
             text,
             re.IGNORECASE,
@@ -246,6 +294,29 @@ def _verify_bandpass_origins(
     params: dict[str, Any],
     clauses: tuple[str, ...],
 ) -> VerificationResult:
+    low_verified, high_verified = _bandpass_origin_matches(params, clauses)
+    if low_verified and high_verified:
+        return VerificationResult(True)
+    if high_verified and not low_verified:
+        return VerificationResult(
+            False,
+            "What low cutoff frequency should I use for the bandpass filter?",
+        )
+    if low_verified and not high_verified:
+        return VerificationResult(
+            False,
+            "What high cutoff frequency should I use for the bandpass filter?",
+        )
+    return VerificationResult(
+        False,
+        "What low and high cutoff frequencies should I use for the bandpass filter?",
+    )
+
+
+def _bandpass_origin_matches(
+    params: dict[str, Any], clauses: tuple[str, ...]
+) -> tuple[bool, bool]:
+    """Return independently proven cutoffs from the existing origin grammar."""
     low = params.get("low_freq")
     high = params.get("high_freq")
     cue = re.compile(r"(?:band[\s-]*pass|帶通)", re.IGNORECASE)
@@ -261,27 +332,9 @@ def _verify_bandpass_origins(
         if cue.search(clause) is None:
             continue
         for match in range_pattern.finditer(clause):
-            low_matches = _numbers_equal(low, match.group("low"))
-            high_matches = _numbers_equal(high, match.group("high"))
-            low_verified = low_verified or low_matches
-            high_verified = high_verified or high_matches
-            if low_matches and high_matches:
-                return VerificationResult(True)
-
-    if high_verified and not low_verified:
-        return VerificationResult(
-            False,
-            "What low cutoff frequency should I use for the bandpass filter?",
-        )
-    if low_verified and not high_verified:
-        return VerificationResult(
-            False,
-            "What high cutoff frequency should I use for the bandpass filter?",
-        )
-    return VerificationResult(
-        False,
-        "What low and high cutoff frequencies should I use for the bandpass filter?",
-    )
+            low_verified = low_verified or _numbers_equal(low, match.group("low"))
+            high_verified = high_verified or _numbers_equal(high, match.group("high"))
+    return low_verified, high_verified
 
 
 def _verify_single_numeric_origin(
