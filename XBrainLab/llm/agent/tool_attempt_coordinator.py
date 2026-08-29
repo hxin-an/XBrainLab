@@ -404,6 +404,30 @@ class ToolAttemptCoordinator:
                 result=provenance_result,
             )
 
+        origin_validation = (
+            VerificationResult(True)
+            if not request.enforce_direct_parameter_origins or receipt_complete
+            else verify_direct_parameter_origins(
+                command_name,
+                params,
+                request.latest_user_text,
+            )
+        )
+        if not origin_validation.is_valid:
+            receipt = self._origin_receipt(request, context, origin_validation)
+            if receipt is not None:
+                return ToolAttemptDecision(
+                    ToolAttemptAction.RESPOND,
+                    command_name,
+                    params,
+                    context=context,
+                    message=(
+                        origin_validation.error_message
+                        or "What parameters should I use for this action?"
+                    ),
+                    tool_input_receipt=receipt,
+                )
+
         validation = self._verifier.verify_tool_call(
             (command_name, params),
             confidence=request.confidence,
@@ -423,28 +447,17 @@ class ToolAttemptCoordinator:
                 feedback=ToolAttemptFeedback.TOOL_OUTPUT,
             )
 
-        if request.enforce_direct_parameter_origins:
-            if receipt_complete:
-                origin_validation = VerificationResult(True)
-            else:
-                origin_validation = verify_direct_parameter_origins(
-                    command_name,
-                    params,
-                    request.latest_user_text,
-                )
-            if not origin_validation.is_valid:
-                receipt = self._origin_receipt(request, context, origin_validation)
-                return ToolAttemptDecision(
-                    ToolAttemptAction.RESPOND,
-                    command_name,
-                    params,
-                    context=context,
-                    message=(
-                        origin_validation.error_message
-                        or "What parameters should I use for this action?"
-                    ),
-                    tool_input_receipt=receipt,
-                )
+        if not origin_validation.is_valid:
+            return ToolAttemptDecision(
+                ToolAttemptAction.RESPOND,
+                command_name,
+                params,
+                context=context,
+                message=(
+                    origin_validation.error_message
+                    or "What parameters should I use for this action?"
+                ),
+            )
 
         if not context.availability.enabled:
             return ToolAttemptDecision(

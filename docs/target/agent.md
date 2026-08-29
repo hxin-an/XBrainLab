@@ -101,7 +101,7 @@ form 只可處理下列五個已核准 tool 的 required fields，且只接受�
 
 | Tool | Bounded form evidence |
 | --- | --- |
-| `apply_bandpass_filter` | `low_freq`、`high_freq` 的 Arabic decimal cutoff。首次指派時，`low`／`lower` 與 `high`／`upper` 的 explicit labels 直接綁定對應 field，並優先於 sort。沒有任何 assigned field 時，兩個 unlabelled decimal cutoffs 可在同一或連續兩個 bounded reply 收集，完成後才以 `min → low_freq`、`max → high_freq` 排序；單一 unlabelled cutoff 只作 unassigned evidence，絕不猜測 field。已驗證 field 不可覆寫；mixed labelled／unlabelled、contradictory、correction 或 invalid evidence 一律清除 receipt 並要求以新 request 重啟。 |
+| `apply_bandpass_filter` | Host 只檢查 model-proposed `low_freq`、`high_freq` 是否各自出現在 latest user text 的 Arabic decimals；tool identity 和 low/high mapping 都是模型責任，Host 不解析 `bandpass`、`filter`、action verb 或 request grammar。receipt 首次沒有 assigned field 時，兩個 bare decimal cutoffs 以 `min → low_freq`、`max → high_freq` 收集；單一 bare cutoff 暫存為 unassigned evidence。已有一個 verified field 時，一個 bare cutoff 只填 sole remaining field，既有 schema/range validation 仍決定是否可執行。 |
 | `apply_notch_filter` | 一個 user-proven decimal `freq`。 |
 | `resample_data` | 一個 user-proven decimal `rate`。 |
 | `set_reference` | 一個符合既有 backend-supported reference contract 的 user-proven `method`。 |
@@ -300,8 +300,10 @@ runtime本身失敗時不做生成，ChatPanel顯示local runtime error。
 
 ## Verification、execution與presentation
 
-Verification順序固定為：strict schema → backend generation／stage → target publication → parameter
-schema → ApplicationService capability → confirmation。Prompt與UI不可成為alternate readiness engine。
+Execution verification順序固定為：strict schema → backend generation／stage → target publication → parameter
+schema → ApplicationService capability → confirmation。對 direct preprocess 的 schema-incomplete proposal，Host 可先做
+zero-execution Arabic-decimal membership admission，以保存 user-proven fields 到既有 receipt；receipt 完成後仍依上述
+完整順序重跑，任何 model-mapped reversal 都由 schema/range 拒絕。Prompt與UI不可成為alternate readiness engine。
 
 Direct-preprocess clarification 的第一個 action identity 由模型選擇；receipt-bound form 只把 latest user
 evidence累積成該 receipt 的 fields，且不採用模型、prompt、history 或 default 的 value。收齊 fields 後，Host

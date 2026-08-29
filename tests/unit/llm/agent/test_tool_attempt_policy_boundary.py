@@ -339,7 +339,7 @@ def test_invented_direct_parameter_creates_typed_followup_receipt(
     assert decision.result is None
     assert decision.context == _context(tool_name, command_name="preprocess")
     assert source.reads == [tool_name]
-    assert verifier.calls == [((tool_name, params), 0.9)]
+    assert verifier.calls == []
 
 
 @pytest.mark.parametrize(
@@ -409,6 +409,78 @@ def test_partial_bandpass_keeps_only_user_proven_cutoff_in_receipt() -> None:
     )
     assert decision.tool_input_receipt is not None
     assert decision.tool_input_receipt.verified_parameters == (("low_freq", 1),)
+
+
+def test_partial_bandpass_creates_receipt_before_schema_for_proven_value() -> None:
+    verifier = _Verifier(valid=False)
+    coordinator, _source, observed_verifier = _coordinator(
+        _context("apply_bandpass_filter", command_name="preprocess"),
+        verifier=verifier,
+        tool=_Tool(
+            parameters={"type": "object", "required": ["low_freq", "high_freq"]}
+        ),
+    )
+
+    decision = coordinator.evaluate(
+        _request(
+            "apply_bandpass_filter",
+            params={"high_freq": 20},
+            text="20 Hz",
+        )
+    )
+
+    assert decision.action is ToolAttemptAction.RESPOND
+    assert decision.tool_input_receipt is not None
+    assert decision.tool_input_receipt.verified_parameters == (("high_freq", 20),)
+    assert observed_verifier.calls == []
+
+
+def test_inadmissible_partial_bandpass_keeps_schema_rejection() -> None:
+    verifier = _Verifier(valid=False)
+    coordinator, _source, observed_verifier = _coordinator(
+        _context("apply_bandpass_filter", command_name="preprocess"),
+        verifier=verifier,
+        tool=_Tool(
+            parameters={"type": "object", "required": ["low_freq", "high_freq"]}
+        ),
+    )
+
+    decision = coordinator.evaluate(
+        _request(
+            "apply_bandpass_filter",
+            params={"high_freq": 20, "unexpected": 1},
+            text="20 Hz",
+        )
+    )
+
+    assert decision.action is ToolAttemptAction.VERIFICATION_BLOCKED
+    assert observed_verifier.calls == [
+        (("apply_bandpass_filter", {"high_freq": 20, "unexpected": 1}), 0.9)
+    ]
+
+
+def test_model_mapped_reversed_bandpass_reaches_schema_validation() -> None:
+    verifier = _Verifier(valid=False)
+    coordinator, _source, observed_verifier = _coordinator(
+        _context("apply_bandpass_filter", command_name="preprocess"),
+        verifier=verifier,
+        tool=_Tool(
+            parameters={"type": "object", "required": ["low_freq", "high_freq"]}
+        ),
+    )
+
+    decision = coordinator.evaluate(
+        _request(
+            "apply_bandpass_filter",
+            params={"low_freq": 40, "high_freq": 10},
+            text="10 Hz 40 Hz",
+        )
+    )
+
+    assert decision.action is ToolAttemptAction.VERIFICATION_BLOCKED
+    assert observed_verifier.calls == [
+        (("apply_bandpass_filter", {"low_freq": 40, "high_freq": 10}), 0.9)
+    ]
 
 
 def test_word_number_frequency_creates_no_verified_value_in_the_receipt() -> None:

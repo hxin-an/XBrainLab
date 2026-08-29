@@ -1380,6 +1380,46 @@ class TestOnGenerationFinished:
         assert decision.command_name == "apply_bandpass_filter"
         assert decision.params == {"low_freq": 12, "high_freq": 40}
 
+    def test_active_bandpass_receipt_bare_value_fills_sole_remaining_field(
+        self,
+        ctrl,
+    ):
+        receipt = AssistantToolInputReceipt(
+            command_name="apply_bandpass_filter",
+            original_user_text="Apply a bandpass filter.",
+            question="What low cutoff frequency should I use?",
+            publication_generation=17,
+            missing_inputs=("low_freq", "high_freq"),
+            verified_parameters=(("high_freq", 20),),
+        )
+        ctrl.pending_interactions.begin_tool_input(receipt)
+        lifecycle = _use_rag_probe(ctrl)
+        ctrl._generate_response = MagicMock()
+        ctrl._execute_tool_attempt = MagicMock()
+        ctrl.assembler.build_system_prompt = MagicMock()
+        ctrl.assembler.latest_tool_publication = PromptToolPublication(
+            tool_names=frozenset({"apply_bandpass_filter"}),
+            workflow_stage="data_loaded",
+            backend_generation=17,
+        )
+        _set_context_reader(
+            ctrl,
+            return_value=_enabled_tool_context("apply_bandpass_filter", generation=17),
+        )
+        ctrl.registry.get_tool.return_value.requires_confirmation = False
+        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+        coordinator_evaluate = ctrl._tool_attempt_coordinator.evaluate
+        ctrl._tool_attempt_coordinator.evaluate = MagicMock(wraps=coordinator_evaluate)
+
+        _submit_user_turn(ctrl, "5")
+
+        assert lifecycle.requests == []
+        ctrl._generate_response.assert_not_called()
+        ctrl.assembler.build_system_prompt.assert_called_once_with("5")
+        decision = ctrl._tool_attempt_coordinator.evaluate.call_args.args[0]
+        assert decision.params == {"low_freq": 5, "high_freq": 20}
+        ctrl._execute_tool_attempt.assert_called_once()
+
     def test_explicit_receipt_cancel_is_terminal_without_rag_or_execution(self, ctrl):
         receipt = AssistantToolInputReceipt(
             command_name="resample_data",

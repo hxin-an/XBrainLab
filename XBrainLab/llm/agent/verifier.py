@@ -56,17 +56,6 @@ DIRECT_PARAMETER_TOOLS = frozenset(
     }
 )
 _DECIMAL_NUMBER_PATTERN = r"(?<![\w.])[-+]?(?:\d+(?:\.\d+)?|\.\d+)(?![\w.])"
-_BANDPASS_LABELLED_VALUE = re.compile(
-    rf"\b(?P<label>low|lower|high|upper)\b"
-    rf"(?:\s+(?:cutoff|frequency|freq))?\s*(?:is|=|:|to)?\s*"
-    rf"(?P<value>{_DECIMAL_NUMBER_PATTERN})(?:\s*hz)?",
-    re.IGNORECASE,
-)
-_BANDPASS_VALUE_LABELLED = re.compile(
-    rf"(?P<value>{_DECIMAL_NUMBER_PATTERN})(?:\s*hz)?\s*"
-    rf"(?P<label>low|lower|high|upper)\b",
-    re.IGNORECASE,
-)
 
 
 def collect_direct_parameter_reply_evidence(
@@ -98,36 +87,21 @@ def collect_direct_parameter_reply_evidence(
     if tool_name == "apply_bandpass_filter":
         if not values or any(value is None for value in values):
             return None
-        labelled: dict[str, float | int] = {}
-        for pattern in (_BANDPASS_LABELLED_VALUE, _BANDPASS_VALUE_LABELLED):
-            for match in pattern.finditer(text):
-                value = _positive_arabic_decimal(match.group("value"))
-                field = (
-                    "low_freq"
-                    if match.group("label").casefold() in {"low", "lower"}
-                    else "high_freq"
-                )
-                if value is None or field in labelled:
-                    return None
-                labelled[field] = value
-        if labelled:
+        if verified:
             if (
-                unassigned_bandpass_cutoff is not None
-                or len(labelled) != len(values)
-                or any(field in verified for field in labelled)
+                len(verified) != 1
+                or unassigned_bandpass_cutoff is not None
+                or len(values) != 1
             ):
                 return None
-            verified.update(labelled)
+            remaining = next(
+                field for field in ("low_freq", "high_freq") if field not in verified
+            )
+            verified[remaining] = values[0]
             return (
-                tuple(
-                    (field, verified[field])
-                    for field in ("low_freq", "high_freq")
-                    if field in verified
-                ),
+                tuple((field, verified[field]) for field in ("low_freq", "high_freq")),
                 None,
             )
-        if verified:
-            return None
         if len(values) == 1:
             value = values[0]
             if value is None:
@@ -193,14 +167,16 @@ def _is_direct_parameter_value_reply(tool_name: str, text: str) -> bool:
             )
         )
     if tool_name == "apply_bandpass_filter":
-        remainder = re.sub(_DECIMAL_NUMBER_PATTERN, "", stripped)
-        remainder = re.sub(
-            r"\b(?:low|lower|high|upper|cutoff|frequency|freq|hz|is|to)\b",
-            "",
-            remainder,
-            flags=re.IGNORECASE,
+        return bool(
+            re.fullmatch(
+                rf"{_DECIMAL_NUMBER_PATTERN}(?:\s*(?:hz|赫茲))?"
+                rf"(?:\s+{_DECIMAL_NUMBER_PATTERN}(?:\s*(?:hz|赫茲))?"
+                rf"|\s*(?:,|;|/|:|=|~|-|\u2013|\u2014|and)\s*"
+                rf"{_DECIMAL_NUMBER_PATTERN}(?:\s*(?:hz|赫茲))?)?",
+                stripped,
+                re.IGNORECASE,
+            )
         )
-        return bool(re.fullmatch(r"(?:[\s,;:/=~\-\u2013\u2014]|\band\b)*", remainder))
     if tool_name == "normalize_data":
         return bool(
             re.fullmatch(r"(?:z[\s-]*score|min[\s-]*max)", stripped, re.IGNORECASE)
@@ -316,37 +292,14 @@ def _verify_bandpass_origins(
 
 
 def _bandpass_origin_matches(params: dict[str, Any], text: str) -> tuple[bool, bool]:
-    """Return cutoffs proven by values and optional low/high labels only."""
+    """Return cutoffs proven only by Arabic-decimal membership."""
     low = params.get("low_freq")
     high = params.get("high_freq")
-    range_pattern = re.compile(
-        rf"(?P<low>{_DECIMAL_NUMBER_PATTERN})\s*(?:hz\s*)?"
-        rf"(?:to|through|[-\u2013\u2014~\uff5e]|到|至)\s*"
-        rf"(?P<high>{_DECIMAL_NUMBER_PATTERN})\s*(?:hz)?",
-        re.IGNORECASE,
+    values = tuple(re.finditer(_DECIMAL_NUMBER_PATTERN, text))
+    return (
+        any(_numbers_equal(low, value.group(0)) for value in values),
+        any(_numbers_equal(high, value.group(0)) for value in values),
     )
-    labelled: dict[str, str] = {}
-    for pattern in (_BANDPASS_LABELLED_VALUE, _BANDPASS_VALUE_LABELLED):
-        for match in pattern.finditer(text):
-            field = (
-                "low_freq"
-                if match.group("label").casefold() in {"low", "lower"}
-                else "high_freq"
-            )
-            if field in labelled:
-                return False, False
-            labelled[field] = match.group("value")
-    if labelled:
-        return (
-            _numbers_equal(low, labelled.get("low_freq")),
-            _numbers_equal(high, labelled.get("high_freq")),
-        )
-    for match in range_pattern.finditer(text):
-        if _numbers_equal(low, match.group("low")) and _numbers_equal(
-            high, match.group("high")
-        ):
-            return True, True
-    return False, False
 
 
 def _verify_single_numeric_origin(

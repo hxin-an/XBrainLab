@@ -20,6 +20,10 @@ Host 不以英文語法取代模型做 intent 判斷。
   這個多餘 generation 產生 prose / envelope failure，使用者明明補齊值卻不能執行。
 - 現有 prompt 的單條規則可讀，但 `respond_to_user` 與 no-action fallback 重複出現，決策
   層級不清楚，會誘導模型教使用者「應呼叫哪個函式」而不是自己 dispatch。
+- `335ca018` manual artifact 的 bandpass turn 已有模型提出的 `low_freq=10`、`high_freq=40`，且
+  latest user text 含兩個 Arabic decimals；Host 卻因 `high filter is 40` 不符合 label regex
+  只建立 partial receipt。下一輪自然補值含 `bandpass/filter` prose 又被 receipt value-shape
+  regex 清除，導致模型被迫重試並提出 schema-incomplete action。
 
 ### Outcome
 
@@ -38,7 +42,10 @@ Host 不以英文語法取代模型做 intent 判斷。
 - 刪除 import positive-origin gate、direct English action matcher、`INTENT_BLOCKED` /
   `intent_mismatch`、receipt-to-prompt bridge 與 completed receipt 的第二次 model proposal。
 - 限定五個 direct preprocess tools：bandpass、notch、resample、reference、normalization。
-  value grammar 可辨識數字、單位、low/high labels 與已核准 method token；不得選 action。
+  action 與 low/high mapping 都由模型 proposal 決定；Host 對 bandpass 只檢查 latest user text
+  是否包含同一 Arabic-decimal values，不解析 `bandpass`、`filter` 或英文 request grammar。
+  首次純值 pair 仍以 min→low、max→high 收集；receipt 已有一個 field 時，一個 bare value
+  只填其 sole remaining field。
 - 保留 strict JSON parser、tool membership/schema、ApplicationService、confirmation、UI 與模型
   revision；不新增 module、owner、router、state machine 或 receipt type。
 - Arabic decimal only；不加入 word-number parsing，不修改 UI 或 root `settings.json`。

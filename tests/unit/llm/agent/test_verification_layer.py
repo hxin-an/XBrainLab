@@ -235,49 +235,43 @@ def test_direct_form_collects_only_current_user_values_for_single_field_tools(
     assert evidence == (expected, None)
 
 
-def test_direct_form_collects_bare_bandpass_values_and_preserves_labels() -> None:
+def test_direct_form_collects_bare_bandpass_values_without_host_label_mapping() -> None:
     first = collect_direct_parameter_reply_evidence(
-        "apply_bandpass_filter",
-        (),
-        None,
-        "12",
+        "apply_bandpass_filter", (), None, "12"
     )
     second = collect_direct_parameter_reply_evidence(
-        "apply_bandpass_filter",
-        (),
-        12,
-        "40",
-    )
-    labelled = collect_direct_parameter_reply_evidence(
-        "apply_bandpass_filter",
-        (),
-        None,
-        "low 12 Hz and high 40 Hz",
+        "apply_bandpass_filter", (), 12, "40"
     )
     same_reply = collect_direct_parameter_reply_evidence(
-        "apply_bandpass_filter",
-        (),
-        None,
-        "40 12",
+        "apply_bandpass_filter", (), None, "40 12"
     )
-    labelled_out_of_range = collect_direct_parameter_reply_evidence(
-        "apply_bandpass_filter",
-        (),
-        None,
-        "low 40 Hz and high 12 Hz",
+    sole_remaining = collect_direct_parameter_reply_evidence(
+        "apply_bandpass_filter", (("low_freq", 12),), None, "40 Hz"
     )
 
     assert first == ((), 12)
     assert second == ((("low_freq", 12), ("high_freq", 40)), None)
-    assert labelled == ((("low_freq", 12), ("high_freq", 40)), None)
     assert same_reply == ((("low_freq", 12), ("high_freq", 40)), None)
-    assert labelled_out_of_range == ((("low_freq", 40), ("high_freq", 12)), None)
-    assert (
-        FrequencyRangeValidator()
-        .validate("apply_bandpass_filter", dict(labelled_out_of_range[0]))
-        .is_valid
-        is False
+    assert sole_remaining == ((("low_freq", 12), ("high_freq", 40)), None)
+
+
+def test_bandpass_provenance_uses_decimal_membership_not_english_labels() -> None:
+    result = verify_direct_parameter_origins(
+        "apply_bandpass_filter",
+        {"low_freq": 10, "high_freq": 40},
+        "bandpass high filter is 40 hz low is 10 hz",
     )
+
+    assert result == VerificationResult(True)
+
+
+def test_model_mapped_reversed_bandpass_remains_range_invalid() -> None:
+    result = FrequencyRangeValidator().validate(
+        "apply_bandpass_filter",
+        {"low_freq": 40, "high_freq": 10},
+    )
+
+    assert result.is_valid is False
 
 
 @pytest.mark.parametrize(
