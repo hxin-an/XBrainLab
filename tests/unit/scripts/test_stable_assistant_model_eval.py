@@ -292,6 +292,13 @@ def test_run_eval_admits_direct_receipts_from_full_final_response_not_score_prev
             ),
         ),
     )
+    direct_receipt_trajectory = CaseTrajectoryResult(
+        raw_score=replace(score, passed=True, failure_type="none"),
+        post_recovery_score=replace(score, passed=True, failure_type="none"),
+        final_score=replace(score, passed=True, failure_type="none"),
+        final_response="",
+        attempts=(),
+    )
     config = _stable_eval_config(LLMConfig(), device="cpu")
     monkeypatch.setattr(config, "local_backend_ready", lambda _model_id: True)
     precision_cases = load_precision_cases(DEFAULT_PRECISION_CASES)
@@ -313,7 +320,7 @@ def test_run_eval_admits_direct_receipts_from_full_final_response_not_score_prev
         patch(
             "scripts.dev.run_stable_assistant_model_eval."
             "evaluate_clarification_trajectory",
-            return_value=trajectory,
+            return_value=direct_receipt_trajectory,
         ),
         patch(
             "scripts.dev.run_stable_assistant_model_eval."
@@ -347,6 +354,10 @@ def test_run_eval_admits_direct_receipts_from_full_final_response_not_score_prev
     assert all(row["source_raw_model_score"]["passed"] is False for row in direct_rows)
     assert all(
         row["source_raw_model_score"] == row["first_generation_score"]
+        for row in direct_rows
+    )
+    assert all(
+        row["followup_model_generation"] == {"occurred": False, "attempt_count": 0}
         for row in direct_rows
     )
     assert response not in json.dumps(report)

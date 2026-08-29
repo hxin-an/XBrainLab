@@ -3241,6 +3241,10 @@ def run_eval(
                 receipt_origin = trajectory.receipt_origin
                 source_has_receipt = receipt_origin is not None
                 source_first_generation_score = None
+                followup_model_generation = {
+                    "occurred": bool(trajectory_attempts),
+                    "attempt_count": len(trajectory_attempts),
+                }
             else:
                 source = precision_by_id[case.source_case_id]
                 source_row = result_by_id[case.source_case_id]
@@ -3266,9 +3270,17 @@ def run_eval(
                         trace_case_id=case.case_id,
                     )
                     score_payload = asdict(trajectory.final_score)
-                    first_generation_score_payload = asdict(trajectory.raw_score)
+                    first_generation_score_payload = (
+                        asdict(trajectory.raw_score)
+                        if trajectory.attempts
+                        else dict(source_first_generation_score)
+                    )
                     post_recovery_score_payload = asdict(trajectory.post_recovery_score)
                     trajectory_attempts = trajectory.attempts
+                    followup_model_generation = {
+                        "occurred": bool(trajectory_attempts),
+                        "attempt_count": len(trajectory_attempts),
+                    }
                 else:
                     unavailable = TargetEvalScore(
                         False,
@@ -3283,6 +3295,10 @@ def run_eval(
                     first_generation_score_payload = dict(score_payload)
                     post_recovery_score_payload = dict(score_payload)
                     trajectory_attempts = ()
+                    followup_model_generation = {
+                        "occurred": False,
+                        "attempt_count": 0,
+                    }
             if score_payload.get("product_outcome") is None:
                 score_payload.pop("product_outcome", None)
             if first_generation_score_payload.get("product_outcome") is None:
@@ -3303,6 +3319,7 @@ def run_eval(
                     "first_generation_score": first_generation_score_payload,
                     "post_recovery_score": post_recovery_score_payload,
                     "score": score_payload,
+                    "followup_model_generation": followup_model_generation,
                     "trajectory": _trajectory_payload(
                         trajectory_attempts,
                         generation_recorder,
