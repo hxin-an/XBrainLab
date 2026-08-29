@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from scripts.dev.run_stable_assistant_model_eval import (
+    DEFAULT_CASES,
     DEFAULT_CHALLENGES,
     DEFAULT_CLARIFICATION_CASES,
     DEFAULT_PRECISION_CASES,
@@ -50,8 +51,18 @@ from XBrainLab.llm.agent.strict_envelope_recovery import (
 from XBrainLab.llm.core.backends.local import LocalBackend
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.model_catalog import local_model_spec
+from XBrainLab.llm.rag.config import RAGConfig
 
-GOLD_SET = Path("XBrainLab/llm/rag/data/gold_set.json")
+EVALUATOR_POSITIVE_CASES = (
+    Path(__file__).resolve().parents[3]
+    / "scripts"
+    / "dev"
+    / "stable_assistant_positive_cases.json"
+)
+EVALUATOR_POSITIVE_CASES_SHA256 = (
+    "5d60662ce3f43e36c346dbda238a23f7"  # pragma: allowlist secret
+    "b22377c04043e1833a77296931546577"  # pragma: allowlist secret
+)
 
 
 def _write_runtime_capture_session(
@@ -117,8 +128,20 @@ def test_eval_config_uses_fixed_product_model_without_mutating_user_settings() -
     assert eval_config.assistant_runtime_selection().backend_mode == "local"
 
 
+def test_evaluator_default_positive_cases_are_script_owned_and_english() -> None:
+    assert DEFAULT_CASES.resolve() == EVALUATOR_POSITIVE_CASES.resolve()
+    assert DEFAULT_CASES.resolve() != RAGConfig.get_gold_set_path().resolve()
+
+    fixture_bytes = DEFAULT_CASES.read_bytes()
+    payload = json.loads(fixture_bytes)
+
+    assert hashlib.sha256(fixture_bytes).hexdigest() == EVALUATOR_POSITIVE_CASES_SHA256
+    assert len(payload) == 36
+    assert all(item["input"].isascii() for item in payload)
+
+
 def test_target_cases_cover_each_approved_tool_twice() -> None:
-    cases = load_target_cases(GOLD_SET)
+    cases = load_target_cases(DEFAULT_CASES)
 
     counts = {
         tool_name: sum(case.expected_tool == tool_name for case in cases)
@@ -134,14 +157,14 @@ def test_each_positive_case_is_callable_from_its_production_fixture() -> None:
     """The positive gate may not score a tool omitted by backend publication."""
     registry = target_tool_registry()
 
-    for case in load_target_cases(GOLD_SET):
+    for case in load_target_cases(DEFAULT_CASES):
         messages = build_case_messages(case, registry)
 
         assert f'"name": "{case.expected_tool}"' in messages[0]["content"]
 
 
 def test_target_case_loader_rejects_duplicate_normalized_inputs(tmp_path: Path) -> None:
-    payload = json.loads(GOLD_SET.read_text(encoding="utf-8"))
+    payload = json.loads(DEFAULT_CASES.read_text(encoding="utf-8"))
     payload[1]["input"] = payload[0]["input"].upper()
     cases_path = tmp_path / "duplicate-input.json"
     cases_path.write_text(json.dumps(payload), encoding="utf-8")
@@ -166,7 +189,7 @@ def test_challenge_cases_extend_positive_matrix_to_exact_50_case_gate() -> None:
         "multi_action",
         "out_of_stage",
     }
-    assert len(load_target_cases(GOLD_SET)) + len(cases) == 50
+    assert len(load_target_cases(DEFAULT_CASES)) + len(cases) == 50
 
 
 def test_precision_cases_cover_tools_and_english_no_action_categories() -> None:
@@ -223,7 +246,7 @@ def test_active_assistant_evidence_cases_are_english_only() -> None:
         precision_cases=precision_cases,
     )
     inputs = [
-        *(case.user_input for case in load_target_cases(GOLD_SET)),
+        *(case.user_input for case in load_target_cases(DEFAULT_CASES)),
         *(case.user_input for case in load_challenge_cases(DEFAULT_CHALLENGES)),
         *(case.user_input for case in precision_cases),
         *(case.reply for case in clarification_cases),
@@ -1976,7 +1999,7 @@ def test_case_messages_publish_stage_tools_without_retired_surface() -> None:
     registry = target_tool_registry()
     case = next(
         item
-        for item in load_target_cases(GOLD_SET)
+        for item in load_target_cases(DEFAULT_CASES)
         if item.case_id == "create_epochs_01"
     )
 
@@ -2035,7 +2058,7 @@ def test_positive_and_challenge_first_turns_use_product_context_and_boundary() -
     registry = target_tool_registry()
     positive = next(
         case
-        for case in load_target_cases(GOLD_SET)
+        for case in load_target_cases(DEFAULT_CASES)
         if case.case_id == "apply_bandpass_filter_01"
     )
     challenge = next(
@@ -2070,7 +2093,7 @@ def test_format_recovery_keeps_production_state_and_runtime_context_boundary() -
     registry = target_tool_registry()
     case = next(
         item
-        for item in load_target_cases(GOLD_SET)
+        for item in load_target_cases(DEFAULT_CASES)
         if item.case_id == "apply_bandpass_filter_01"
     )
 
@@ -2120,7 +2143,7 @@ def test_score_accepts_only_exact_stage_tool_and_schema() -> None:
     registry = target_tool_registry()
     case = next(
         item
-        for item in load_target_cases(GOLD_SET)
+        for item in load_target_cases(DEFAULT_CASES)
         if item.case_id == "switch_panel_01"
     )
     valid = (
@@ -2212,7 +2235,7 @@ def test_explicit_positive_values_pass_the_same_host_guard() -> None:
     registry = target_tool_registry()
     case = next(
         item
-        for item in load_target_cases(GOLD_SET)
+        for item in load_target_cases(DEFAULT_CASES)
         if item.case_id == "apply_bandpass_filter_01"
     )
     response = (
@@ -2377,7 +2400,7 @@ def test_first_turn_rows_record_controller_admission_and_terminal_for_all_core_c
     """Every 36+14+24 row must retain controller-boundary evidence."""
     registry = target_tool_registry()
     core_cases = (
-        *load_target_cases(GOLD_SET),
+        *load_target_cases(DEFAULT_CASES),
         *load_challenge_cases(DEFAULT_CHALLENGES),
         *load_precision_cases(DEFAULT_PRECISION_CASES),
     )
@@ -2408,7 +2431,7 @@ def test_first_turn_positive_stops_at_controller_execution_boundary_without_side
     registry = target_tool_registry()
     case = next(
         item
-        for item in load_target_cases(GOLD_SET)
+        for item in load_target_cases(DEFAULT_CASES)
         if item.expected_tool == "resample_data"
     )
     response = json.dumps(

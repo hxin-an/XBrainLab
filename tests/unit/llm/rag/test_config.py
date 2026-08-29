@@ -23,7 +23,8 @@ class TestRAGConfig:
             canonical_bytes,
             canonical_bytes.replace(b"\n", b"\r\n"),
         }
-        assert RAGConfig.gold_set_integrity_ok() is (raw_digest == expected_digest)
+        assert raw_digest == expected_digest
+        assert RAGConfig.gold_set_integrity_ok() is True
 
     def test_embedding_model(self):
         assert isinstance(RAGConfig.EMBEDDING_MODEL, str)

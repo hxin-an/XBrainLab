@@ -74,7 +74,7 @@ from XBrainLab.llm.tools.application_surface import (
 from XBrainLab.llm.tools.tool_registry import ToolRegistry
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CASES = ROOT / "XBrainLab" / "llm" / "rag" / "data" / "gold_set.json"
+DEFAULT_CASES = ROOT / "scripts" / "dev" / "stable_assistant_positive_cases.json"
 DEFAULT_CHALLENGES = ROOT / "scripts" / "dev" / "stable_assistant_challenge_cases.json"
 DEFAULT_PRECISION_CASES = (
     ROOT / "scripts" / "dev" / "stable_assistant_no_action_precision_cases.json"
