@@ -221,6 +221,36 @@ worker 或 reviewer 判定。
   the next step is to rerun the same union regression and then obtain fresh review. This entry intentionally records
   no rerun, model or acceptance result.
 
+### Fresh-review blocker repair — 2026-08-29
+
+Fresh non-author review of clean integrated `f37416e523f023fc69f868d1f77aaf75b2bb20bc` found two bounded
+blocker groups. This repair remains part of the same closure: it does not add a LocalBackend/product owner, UI,
+model change, new exception-control-flow path, receipt type, queue, or generic semantic router.
+
+1. **Typed clarification origin.** `respond_to_user` must not mint a direct receipt merely because a typed pending
+   tool is otherwise current. Reuse the existing affirmative direct-action matcher at typed clarification admission.
+   Add the regression ``What is resampling?`` → ``128 Hz``: it neither admits a receipt nor reaches execution. The
+   five affirmative direct-tool cases remain admitted.
+2. **Evaluator/product evidence closure.** The evaluator must preserve typed adjacent complete objects as a
+   Host choose-one product-safe terminal while keeping raw failure; narrowly recognise the existing
+   `import_eeg_data` positive-origin `INTENT_BLOCKED` terminal as product no-action (not a raw pass); and use an
+   internal untruncated final raw response for direct receipt admission while retaining only the bounded report
+   preview. Its raw candidate gate is only first-generation positive `36/36`; challenge, precision and clarification
+   raw results remain per-case diagnostics. Add a separate exact direct-admission `5/5` gate.
+
+   The script-only evaluator also gains opt-in prompt-capture integrity. With capture disabled it performs zero
+   capture filesystem I/O. With it enabled it validates one fresh session, contiguous completed sequence, recorded
+   prompt/raw bytes and SHA-256, model/revision/options, and evaluator trace index-to-capture raw hash equality.
+   The report exposes only redacted session identity, counts and booleans—never paths or content. Missing, malformed
+   or mismatched capture is evidence-gate failure only: inference/report generation remains nonblocking. This is
+   evidence validation over the existing LocalBackend capture, not a LocalBackend change or a concurrent-writer
+   guarantee.
+
+Repair ownership is deliberately disjoint: the lifecycle worker may change only existing coordinator/controller
+admission and direct tests; the evaluator worker may change only evaluator script/tests/report cases. After both
+focused checkpoints, integration reruns their union, ruff and diff checks, then fresh lifecycle and evidence review
+on the exact clean SHA. No model run, handoff, PR, UI acceptance or merge is implied by this checkpoint.
+
 ## Focused validation、v11 trace 與 model gates
 
 ### Direct behavior tests
@@ -258,6 +288,9 @@ outcome 不共用分數欄位；Host block/receipt/reconstruction 永遠不得�
 - product outcome：`24/24` precision no-action、`7/7` clarification execution boundary；
 - 81-case 中所有 no-action rows，及 import/adjacent-object-multiple focused probes：零 confirmation、GUI
   handoff、ApplicationService／ToolExecutor execution或state mutation。
+- prompt capture integrity is opt-in evaluator evidence: disabled runs add no capture filesystem access; enabled
+  runs must prove a single fresh session, completed contiguous sequence and capture/trace byte-SHA/model/options
+  agreement through a redacted report. Integrity failure fails only evidence gating, not inference control flow.
 
 Focused Python tests、`ruff check`、`ruff format --check` 與 `git diff --check` 必須先通過。任何 Qt/PyTorch/MNE
 related validation 使用明確 timeout 與 `prlimit --core=0`。之後才以固定 Granite model/revision 和 clean exact
