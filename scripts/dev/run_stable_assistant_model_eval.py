@@ -257,6 +257,11 @@ class CaseTrajectoryResult:
     final_response: str
     attempts: tuple[ModelGenerationAttempt, ...]
     receipt_origin: str | None = None
+    # First-turn evaluator rows carry controller-observed evidence separately
+    # from raw and semantic scores. Clarification trajectories already expose
+    # their own pending-receipt trace and therefore leave these unset.
+    host_admission: dict[str, Any] | None = None
+    product_terminal: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -675,6 +680,23 @@ class _PublicationBackedEvaluatorStudy(Study):
         pass
 
 
+class _EvaluatorSignal:
+    """Minimal signal recorder for controller presentation calls without Qt."""
+
+    def __init__(self) -> None:
+        self.events: list[tuple[Any, ...]] = []
+
+    def emit(self, *args: Any) -> None:
+        self.events.append(args)
+
+
+class _EvaluatorMetrics:
+    """Keep controller terminal methods callable without collecting runtime metrics."""
+
+    def finish_turn(self) -> None:
+        return None
+
+
 class _EvaluatorControllerHarness:
     """Minimal evaluator adapter that invokes the controller's existing policy.
 
@@ -693,9 +715,21 @@ class _EvaluatorControllerHarness:
         self._turn_orchestrator = AssistantTurnOrchestrator()
         self._turn_orchestrator.active_publication = PromptToolPublication.empty()
         self._tool_attempt_session = AssistantToolAttemptSession()
+        self._strict_envelope_recovery_policy = DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY
         self._max_tool_executions = 5
         self._pending_interactions = PendingInteractionCoordinator()
         self._history: list[dict[str, str]] = []
+        self.presentations: list[str] = []
+        self.metrics = _EvaluatorMetrics()
+        self.status_update = _EvaluatorSignal()
+        self.activity_changed = _EvaluatorSignal()
+        self.response_presentation_ready = _EvaluatorSignal()
+        self.confirmation_requested = _EvaluatorSignal()
+        self.processing_finished = _EvaluatorSignal()
+        self.is_processing = True
+        self._observed_decision: ToolAttemptDecision | None = None
+        self._observed_terminal: dict[str, Any] | None = None
+        self._terminal_override: str | None = None
         self._publication = publication
         runtime = _EvaluatorApplicationRuntime(publication)
         self.assembler = ContextAssembler(
@@ -718,6 +752,48 @@ class _EvaluatorControllerHarness:
 
     def _append_history(self, role: str, content: str) -> None:
         self._history.append({"role": role, "content": content})
+
+    def _publish_response(self, text: str, **_kwargs: Any) -> None:
+        """Record a trusted controller presentation without creating a Qt event."""
+        self.presentations.append(text)
+        if (
+            self._terminal_override == "format_recovery_exhausted"
+            and self._observed_terminal is None
+        ):
+            self._record_terminal("format_recovery_exhausted")
+
+    def _publish_activity(self, *_args: Any, **_kwargs: Any) -> None:
+        """The evaluator intentionally has no activity presentation surface."""
+
+    def _emit_processing_finished(self, _outcome: str = "completed") -> None:
+        self.pending_interactions.clear_active_tool_input()
+
+    def _finalize_turn(self, response_text: str) -> None:
+        LLMController._finalize_turn(self, response_text)  # type: ignore[arg-type]
+        self._record_terminal(self._terminal_override or "respond")
+
+    @staticmethod
+    def _empty_effects() -> dict[str, Any]:
+        return {
+            "confirmation_observed": False,
+            "execution_boundary_reached": False,
+            "execution_suppressed": False,
+            "gui_handoff_reached": False,
+            "application_service_called": False,
+            "tool_executor_called": False,
+            "state_mutation_observed": False,
+        }
+
+    def _record_terminal(self, kind: str) -> None:
+        payload = {
+            "kind": kind,
+            "message": self.presentations[-1] if self.presentations else None,
+            **self._empty_effects(),
+        }
+        if self._observed_terminal is not None:
+            payload.update(self._observed_terminal)
+            payload["kind"] = kind
+        self._observed_terminal = payload
 
     def _latest_user_request_text(self) -> str:
         return LLMController._latest_user_request_text(self)  # type: ignore[arg-type]
@@ -749,8 +825,72 @@ class _EvaluatorControllerHarness:
         LLMController._begin_typed_tool_input(self, envelope)  # type: ignore[arg-type]
         return self.pending_interactions.tool_input
 
-    def _finalize_turn(self, response_text: str) -> None:
-        self._append_history("assistant", response_text)
+    def _select_tool_proposal(
+        self,
+        command_result: Any,
+    ) -> tuple[str, dict[str, Any]] | None:
+        return LLMController._select_tool_proposal(self, command_result)  # type: ignore[arg-type]
+
+    def _reject_excluded_turn_command(self, command_name: str) -> bool:
+        return LLMController._reject_excluded_turn_command(  # type: ignore[arg-type]
+            self,
+            command_name,
+        )
+
+    def _evaluate_tool_proposal(
+        self,
+        command: tuple[str, dict[str, Any]],
+        response_text: str,
+        *,
+        single_proposal: bool = True,
+    ) -> ToolAttemptDecision:
+        decision = LLMController._evaluate_tool_proposal(  # type: ignore[arg-type]
+            self,
+            command,
+            response_text,
+            single_proposal=single_proposal,
+        )
+        self._observed_decision = decision
+        return decision
+
+    def _handle_tool_attempt_blocked(self, *_args: Any, **_kwargs: Any) -> None:
+        self._record_terminal("blocked")
+
+    def _present_tool_attempt_boundary(self, decision: ToolAttemptDecision) -> bool:
+        return LLMController._present_tool_attempt_boundary(  # type: ignore[arg-type]
+            self,
+            decision,
+        )
+
+    def _request_tool_confirmation(
+        self,
+        decision: ToolAttemptDecision,
+        _context: ToolAvailabilityContext | None = None,
+    ) -> None:
+        self._observed_terminal = {
+            "kind": "confirmation",
+            "message": None,
+            **self._empty_effects(),
+            "confirmation_observed": True,
+        }
+        # The controller has already selected this branch. The real UI signal
+        # is deliberately not emitted in evaluator mode.
+        self.confirmation_requested.emit(decision)
+
+    def _execute_tool_attempt(
+        self, _decision: ToolAttemptDecision, **_kwargs: Any
+    ) -> None:
+        """Stop at the controller execution boundary; never invoke a tool."""
+        self._observed_terminal = {
+            "kind": "execution_boundary_suppressed",
+            "message": None,
+            **self._empty_effects(),
+            "execution_boundary_reached": True,
+            "execution_suppressed": True,
+        }
+
+    def _finalize_turn_after_tool(self, _outcome: str = "completed") -> None:
+        self._record_terminal("proposal_not_selected")
 
     def evaluate_proposal(
         self,
@@ -759,14 +899,10 @@ class _EvaluatorControllerHarness:
         envelope = CommandParser.parse_product(response)
         if envelope.status is not ToolEnvelopeStatus.VALID:
             return None, None
-        command = LLMController._select_tool_proposal(  # type: ignore[arg-type]
-            self,
-            list(envelope.commands),
-        )
+        command = self._select_tool_proposal(list(envelope.commands))
         if command is None:
             return None, None
-        decision = LLMController._evaluate_tool_proposal(  # type: ignore[arg-type]
-            self,
+        decision = self._evaluate_tool_proposal(
             command,
             response,
             single_proposal=len(envelope.commands) == 1,
@@ -782,6 +918,105 @@ class _EvaluatorControllerHarness:
             return None
         LLMController._present_tool_attempt_boundary(self, decision)  # type: ignore[arg-type]
         return self.pending_interactions.tool_input
+
+    def observe_first_turn(
+        self,
+        response: str,
+        *,
+        workflow_stage: str,
+        recovery_action: str,
+        recovery_attempts_used: int,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Replay a final evaluator response through controller-owned boundaries."""
+        self._terminal_override = None
+        self._observed_decision = None
+        self._observed_terminal = None
+        envelope, _parsed_stage = _recovery_envelope(
+            response,
+            workflow_stage=workflow_stage,
+        )
+        if recovery_action in {"choose_one", "exhausted"}:
+            for attempt in range(recovery_attempts_used):
+                self._tool_attempt_session.record_format_retry(attempt + 1)
+            self._terminal_override = (
+                "choose_one"
+                if recovery_action == "choose_one"
+                else "format_recovery_exhausted"
+            )
+            LLMController._handle_tool_envelope_failure(  # type: ignore[arg-type]
+                self,
+                response,
+                envelope,
+            )
+        elif envelope.status is ToolEnvelopeStatus.VALID:
+            LLMController._process_tool_calls(  # type: ignore[arg-type]
+                self,
+                list(envelope.commands),
+                response,
+            )
+        elif envelope.status is ToolEnvelopeStatus.NO_TOOL:
+            typed_admitted = False
+            if envelope.pending_action:
+                typed_admitted = LLMController._begin_typed_tool_input(  # type: ignore[arg-type]
+                    self,
+                    envelope,
+                )
+            if typed_admitted or not envelope.pending_action:
+                self._finalize_turn(envelope.message or response)
+            else:
+                # The real controller re-enters strict format recovery here.
+                # This evaluator already exhausted its generation loop, so it
+                # records that required continuation rather than pretending
+                # the rejected typed payload is an accepted terminal.
+                self._record_terminal("format_retry_required")
+        else:
+            self._record_terminal("format_recovery_required")
+
+        receipt = self.pending_interactions.tool_input
+        action = (
+            self._observed_decision.action.value
+            if self._observed_decision is not None
+            else None
+        )
+        receipt_origin = (
+            "model_typed"
+            if envelope.status is ToolEnvelopeStatus.NO_TOOL and receipt is not None
+            else "host_parameter_origin"
+            if self._observed_decision is not None
+            and self._observed_decision.tool_input_receipt is not None
+            else None
+        )
+        admission = {
+            "path": (
+                "typed_receipt"
+                if receipt_origin == "model_typed"
+                else "proposal"
+                if self._observed_decision is not None
+                else "recovery"
+                if recovery_action in {"choose_one", "exhausted"}
+                else "no_tool"
+            ),
+            "attempt_action": action,
+            "receipt_created": receipt is not None,
+            "receipt_origin": receipt_origin,
+            "result_error_type": (
+                self._observed_decision.result.error_type
+                if self._observed_decision is not None
+                and self._observed_decision.result is not None
+                else None
+            ),
+            "result_policy": (
+                self._observed_decision.result.diagnostics.get("policy")
+                if self._observed_decision is not None
+                and self._observed_decision.result is not None
+                else None
+            ),
+        }
+        return admission, self._observed_terminal or {
+            "kind": "unobserved",
+            "message": None,
+            **self._empty_effects(),
+        }
 
 
 def _case_application_publication(
@@ -1476,7 +1711,11 @@ def _score_case_response(
     registry: ToolRegistry,
 ) -> TargetEvalScore:
     if isinstance(case, PrecisionCase):
-        return score_precision_response(case, response, registry)
+        # Product admission is evaluated only after the final response has
+        # crossed the controller harness below. This first score remains the
+        # model's semantic diagnostic and never instantiates an evaluator-side
+        # coordinator surrogate.
+        return score_raw_precision_response(case, response, registry)
     if isinstance(case, TargetChallengeCase):
         return score_challenge_response(case, response, registry)
     return score_model_response(case, response, registry)
@@ -1490,6 +1729,79 @@ def _score_raw_model_response(
     if isinstance(case, PrecisionCase):
         return score_raw_precision_response(case, response, registry)
     return _score_case_response(case, response, registry)
+
+
+def _score_precision_controller_terminal(
+    case: PrecisionCase,
+    response: str,
+    admission: dict[str, Any],
+    terminal: dict[str, Any],
+    baseline: TargetEvalScore,
+) -> TargetEvalScore:
+    """Score the product no-action result from the observed controller terminal."""
+    envelope = CommandParser.parse_product(response)
+    kind = terminal["kind"]
+    no_side_effect = not any(
+        terminal[key]
+        for key in (
+            "confirmation_observed",
+            "execution_boundary_reached",
+            "gui_handoff_reached",
+            "application_service_called",
+            "tool_executor_called",
+            "state_mutation_observed",
+        )
+    )
+    import_blocked = bool(
+        case.requested_tool == "import_eeg_data"
+        and envelope.status is ToolEnvelopeStatus.VALID
+        and envelope.commands[0][0] == "import_eeg_data"
+        and kind == "blocked"
+        and admission.get("attempt_action") == "intent_blocked"
+        and admission.get("result_error_type") == "intent_mismatch"
+        and admission.get("result_policy") == "import_eeg_data_positive_origin"
+    )
+    passed = bool(
+        no_side_effect
+        and (
+            (case.category == "multi_action" and kind == "choose_one")
+            or (case.category == "missing_parameter" and kind == "respond")
+            or (
+                case.category == "out_of_stage"
+                and envelope.status is ToolEnvelopeStatus.VALID
+                and envelope.commands[0][0] == case.requested_tool
+                and kind == "blocked"
+            )
+            or import_blocked
+            or (
+                envelope.status is ToolEnvelopeStatus.NO_TOOL
+                and kind == "respond"
+                and _valid_precision_message(envelope.message)
+            )
+        )
+    )
+    return TargetEvalScore(
+        passed,
+        "none" if passed else baseline.failure_type,
+        baseline.response,
+        baseline.parsed_stage,
+        baseline.parsed_tool,
+        baseline.parsed_parameters,
+        (
+            "Controller replay reached the required no-action terminal."
+            if passed
+            else "Controller replay did not reach the required safe terminal."
+        ),
+        PrecisionProductOutcome(
+            disposition=kind,
+            message=terminal["message"],
+            confirmation_requested=bool(terminal["confirmation_observed"]),
+            gui_handoff_permitted=bool(terminal["gui_handoff_reached"]),
+            application_service_permitted=bool(terminal["application_service_called"]),
+            tool_executor_permitted=bool(terminal["tool_executor_called"]),
+            state_mutation_permitted=bool(terminal["state_mutation_observed"]),
+        ),
+    )
 
 
 def _recovery_envelope(
@@ -1609,7 +1921,7 @@ def evaluate_case_trajectory(
             else build_case_messages(case, registry)
         )
 
-    return _evaluate_trajectory(
+    trajectory = _evaluate_trajectory(
         workflow_stage=case.workflow_stage,
         build_messages=messages,
         score_response=lambda response: _score_case_response(
@@ -1625,6 +1937,38 @@ def evaluate_case_trajectory(
         generate_response=generate_response,
         generation_recorder=generation_recorder,
         trace_case_id=trace_case_id or case.case_id,
+    )
+    _messages, prompt_publication, backend_publication = _case_projection(
+        case,
+        registry,
+    )
+    harness = _EvaluatorControllerHarness(
+        registry=registry,
+        publication=backend_publication,
+    )
+    harness.begin_turn(case.user_input, prompt_publication)
+    host_admission, product_terminal = harness.observe_first_turn(
+        trajectory.final_response,
+        workflow_stage=case.workflow_stage,
+        recovery_action=trajectory.attempts[-1].recovery_action,
+        recovery_attempts_used=len(trajectory.attempts) - 1,
+    )
+    final_score = (
+        _score_precision_controller_terminal(
+            case,
+            trajectory.final_response,
+            host_admission,
+            product_terminal,
+            trajectory.final_score,
+        )
+        if isinstance(case, PrecisionCase)
+        else trajectory.final_score
+    )
+    return replace(
+        trajectory,
+        final_score=final_score,
+        host_admission=host_admission,
+        product_terminal=product_terminal,
     )
 
 
@@ -2331,19 +2675,46 @@ def _build_report(
             "failed_count": len(suite_rows) - post_recovery_passed,
         }
     positive_guard_rows = [
-        row["parameter_origin_guard"]
+        row
         for row in results
-        if isinstance(row.get("parameter_origin_guard"), dict)
-        and row["parameter_origin_guard"].get("applicable") is True
+        if row.get("suite") == "positive"
+        and row.get("case", {}).get("expected_tool") in DIRECT_PARAMETER_TOOLS
     ]
-    positive_guard_passed = sum(bool(row.get("passed")) for row in positive_guard_rows)
+    positive_guard_passed = sum(
+        bool(
+            isinstance(row.get("host_admission"), dict)
+            and row["host_admission"].get("attempt_action") == "execute"
+            and row.get("score", {}).get("passed") is True
+        )
+        for row in positive_guard_rows
+    )
     host_guard_rows = [
-        row["host_guard"]
+        row
         for row in results
-        if isinstance(row.get("host_guard"), dict)
-        and row["host_guard"].get("applicable") is True
+        if row.get("suite") == "challenge"
+        and row.get("case", {}).get("case_id") in MISSING_PARAMETER_HOST_TOOLS
     ]
-    host_guard_passed = sum(bool(row.get("passed")) for row in host_guard_rows)
+    host_guard_passed = sum(
+        bool(
+            isinstance(row.get("host_admission"), dict)
+            and isinstance(row.get("product_terminal"), dict)
+            and row["product_terminal"].get("execution_boundary_reached") is False
+            and (
+                (
+                    row["host_admission"].get("attempt_action") == "respond"
+                    and row["host_admission"].get("receipt_origin")
+                    == "host_parameter_origin"
+                )
+                or (
+                    row["host_admission"].get("attempt_action") is None
+                    and row["host_admission"].get("path") == "no_tool"
+                    and row["product_terminal"].get("kind") == "respond"
+                    and row.get("score", {}).get("passed") is True
+                )
+            )
+        )
+        for row in host_guard_rows
+    )
     challenge_rows = [row for row in results if row.get("suite") == "challenge"]
     challenge_critical_failures = sum(
         row.get("first_generation_score", row["score"]).get("failure_type")
@@ -2759,23 +3130,9 @@ def run_eval(
                     generation_recorder,
                     case_id=case.case_id,
                 ),
+                "host_admission": trajectory.host_admission,
+                "product_terminal": trajectory.product_terminal,
             }
-            if isinstance(case, TargetEvalCase) and (
-                case.expected_tool in DIRECT_PARAMETER_TOOLS
-            ):
-                row["parameter_origin_guard"] = score_positive_parameter_host_guard(
-                    case,
-                    response,
-                    registry,
-                )
-            if isinstance(case, TargetChallengeCase) and (
-                case.case_id in MISSING_PARAMETER_HOST_TOOLS
-            ):
-                row["host_guard"] = score_missing_parameter_host_guard(
-                    case,
-                    response,
-                    registry,
-                )
             results.append(row)
             if checkpoint_path is not None:
                 _write_report(

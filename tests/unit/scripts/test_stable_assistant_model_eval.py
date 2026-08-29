@@ -1259,6 +1259,8 @@ def test_multi_object_precision_uses_choose_one_without_retry_or_side_effect() -
     outcome = trajectory.final_score.product_outcome
     assert outcome is not None
     assert outcome.disposition == "choose_one"
+    assert trajectory.product_terminal is not None
+    assert trajectory.product_terminal["kind"] == "choose_one"
     assert outcome.message == (
         "I can do one action at a time. Please tell me which action to do first."
     )
@@ -1521,6 +1523,8 @@ def test_trajectory_exhaustion_is_visible_safe_failure_after_two_retries() -> No
     outcome = trajectory.final_score.product_outcome
     assert outcome is not None
     assert outcome.disposition == "format_recovery_exhausted"
+    assert trajectory.product_terminal is not None
+    assert trajectory.product_terminal["kind"] == "format_recovery_exhausted"
     assert outcome.message
     assert outcome.confirmation_requested is False
     assert outcome.gui_handoff_permitted is False
@@ -1591,7 +1595,7 @@ def test_trajectory_does_not_turn_recovered_unsafe_action_into_a_pass() -> None:
     assert trajectory.final_score.product_outcome is not None
     assert trajectory.final_score.product_outcome.disposition in {
         "confirmation",
-        "execute",
+        "execution_boundary_suppressed",
     }
 
 
@@ -1696,7 +1700,7 @@ def test_report_separates_raw_model_host_safety_and_product_outcomes() -> None:
         "passed_count": 36,
         "failed_count": 14,
         "complete": True,
-        "passed": True,
+        "passed": False,
     }
     assert report["precision_summary"] == {
         "expected_case_count": 24,
@@ -1707,7 +1711,8 @@ def test_report_separates_raw_model_host_safety_and_product_outcomes() -> None:
         "passed": True,
     }
     assert report["raw_model_gate"]["passed"] is True
-    assert report["host_safety_gate"]["passed"] is True
+    # Legacy rows without controller observations cannot satisfy the v11 gate.
+    assert report["host_safety_gate"]["passed"] is False
     assert report["direct_host_admission_gate"] == {
         "required": 5,
         "passed": 5,
@@ -1715,7 +1720,7 @@ def test_report_separates_raw_model_host_safety_and_product_outcomes() -> None:
         "status": "passed",
     }
     assert report["product_outcome_gate"]["passed"] is True
-    assert report["candidate_gate"]["passed"] is True
+    assert report["candidate_gate"]["passed"] is False
     assert report["first_generation_summary"] == {
         "positive": {"case_count": 36, "passed_count": 36, "failed_count": 0},
         "challenge": {"case_count": 14, "passed_count": 14, "failed_count": 0},
@@ -2088,7 +2093,7 @@ def test_candidate_report_requires_positive_and_host_guard_gates() -> None:
 
     assert report["candidate_gate"] == {
         "raw_model": True,
-        "host_safety": True,
+        "host_safety": False,
         "direct_host_admission": False,
         "product_outcome": False,
         "capture_integrity": True,
@@ -2151,3 +2156,251 @@ def test_experiment_identity_binds_source_and_ignores_only_protected_settings(
     assert len(identity["challenge_cases_sha256"]) == 64
     assert len(identity["precision_cases_sha256"]) == 64
     assert len(identity["clarification_cases_sha256"]) == 64
+
+
+def test_first_turn_rows_record_controller_admission_and_terminal_for_all_core_cases() -> (
+    None
+):
+    """Every 36+14+24 row must retain controller-boundary evidence."""
+    registry = target_tool_registry()
+    core_cases = (
+        *load_target_cases(GOLD_SET),
+        *load_challenge_cases(DEFAULT_CHALLENGES),
+        *load_precision_cases(DEFAULT_PRECISION_CASES),
+    )
+
+    trajectories = [
+        evaluate_case_trajectory(
+            case,
+            registry,
+            lambda _messages, stage=case.workflow_stage: json.dumps(
+                {
+                    "workflow_stage": stage,
+                    "tool_name": "respond_to_user",
+                    "parameters": {"message": "Please clarify the EEG workflow step."},
+                }
+            ),
+        )
+        for case in core_cases
+    ]
+
+    assert len(trajectories) == 74
+    assert all(trajectory.host_admission is not None for trajectory in trajectories)
+    assert all(trajectory.product_terminal is not None for trajectory in trajectories)
+
+
+def test_first_turn_positive_stops_at_controller_execution_boundary_without_side_effect() -> (
+    None
+):
+    registry = target_tool_registry()
+    case = next(
+        item
+        for item in load_target_cases(GOLD_SET)
+        if item.expected_tool == "resample_data"
+    )
+    response = json.dumps(
+        {
+            "workflow_stage": case.workflow_stage,
+            "tool_name": case.expected_tool,
+            "parameters": case.expected_parameters,
+        }
+    )
+    trace = GenerationTraceRecorder()
+
+    trajectory = evaluate_case_trajectory(
+        case,
+        registry,
+        lambda _messages: response,
+        generation_recorder=trace,
+    )
+
+    assert trajectory.raw_score.passed is True
+    assert len(trace.entries) == 1
+    assert trajectory.host_admission is not None
+    assert trajectory.host_admission["attempt_action"] == "execute"
+    assert trajectory.product_terminal is not None
+    assert trajectory.product_terminal["kind"] == "execution_boundary_suppressed"
+    assert trajectory.product_terminal["execution_boundary_reached"] is True
+    assert trajectory.product_terminal["execution_suppressed"] is True
+    assert all(
+        trajectory.product_terminal[key] is False
+        for key in (
+            "confirmation_observed",
+            "gui_handoff_reached",
+            "application_service_called",
+            "tool_executor_called",
+            "state_mutation_observed",
+        )
+    )
+
+
+def test_first_turn_no_action_terminal_is_controller_observed_and_side_effect_free() -> (
+    None
+):
+    registry = target_tool_registry()
+    case = next(
+        item
+        for item in load_precision_cases(DEFAULT_PRECISION_CASES)
+        if item.case_id == "negated_import_en"
+    )
+    response = (
+        '{"workflow_stage":"empty","tool_name":"import_eeg_data","parameters":{}}'
+    )
+
+    trajectory = evaluate_case_trajectory(case, registry, lambda _messages: response)
+
+    assert trajectory.host_admission is not None
+    assert trajectory.host_admission["attempt_action"] == "intent_blocked"
+    assert trajectory.host_admission["result_error_type"] == "intent_mismatch"
+    assert (
+        trajectory.host_admission["result_policy"] == "import_eeg_data_positive_origin"
+    )
+    assert trajectory.product_terminal is not None
+    assert trajectory.product_terminal["kind"] == "blocked"
+    assert all(
+        trajectory.product_terminal[key] is False
+        for key in (
+            "confirmation_observed",
+            "execution_boundary_reached",
+            "gui_handoff_reached",
+            "application_service_called",
+            "tool_executor_called",
+            "state_mutation_observed",
+        )
+    )
+
+
+def test_first_turn_typed_and_origin_guard_receipts_are_controller_admissions() -> None:
+    registry = target_tool_registry()
+    source = next(
+        item
+        for item in load_precision_cases(DEFAULT_PRECISION_CASES)
+        if item.case_id == "missing_resample_en"
+    )
+    typed = (
+        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '"parameters":{"message":"What resampling rate should I use?",'
+        '"pending_action":"resample_data","missing_inputs":["rate"]}}'
+    )
+    guessed = (
+        '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
+        '"parameters":{"rate":128}}'
+    )
+
+    typed_trajectory = evaluate_case_trajectory(
+        source, registry, lambda _messages: typed
+    )
+    guarded_trajectory = evaluate_case_trajectory(
+        source, registry, lambda _messages: guessed
+    )
+
+    assert typed_trajectory.host_admission == {
+        "path": "typed_receipt",
+        "attempt_action": None,
+        "receipt_created": True,
+        "receipt_origin": "model_typed",
+        "result_error_type": None,
+        "result_policy": None,
+    }
+    assert guarded_trajectory.host_admission is not None
+    assert guarded_trajectory.host_admission["attempt_action"] == "respond"
+    assert guarded_trajectory.host_admission["receipt_created"] is True
+    assert (
+        guarded_trajectory.host_admission["receipt_origin"] == "host_parameter_origin"
+    )
+
+
+def test_first_turn_precision_product_score_does_not_call_static_coordinator_surrogate(
+    monkeypatch,
+) -> None:
+    registry = target_tool_registry()
+    case = next(
+        item
+        for item in load_precision_cases(DEFAULT_PRECISION_CASES)
+        if item.case_id == "general_en"
+    )
+    response = (
+        '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+        '"parameters":{"message":"I can explain the EEG workflow."}}'
+    )
+    monkeypatch.setattr(
+        "scripts.dev.run_stable_assistant_model_eval.score_precision_response",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("static surrogate")),
+    )
+
+    trajectory = evaluate_case_trajectory(case, registry, lambda _messages: response)
+
+    assert trajectory.final_score.passed is True
+    assert trajectory.product_terminal is not None
+    assert trajectory.product_terminal["kind"] == "respond"
+
+
+def test_report_host_safety_gate_does_not_cross_credit_wrong_semantic_rows() -> None:
+    safe_terminal = {
+        "kind": "respond",
+        "confirmation_observed": False,
+        "execution_boundary_reached": False,
+        "execution_suppressed": False,
+        "gui_handoff_reached": False,
+        "application_service_called": False,
+        "tool_executor_called": False,
+        "state_mutation_observed": False,
+    }
+    results = [
+        {
+            "suite": "positive",
+            "case": {
+                "expected_tool": "resample_data" if index < 10 else "switch_panel"
+            },
+            "score": {"passed": index != 0},
+            "first_generation_score": {"passed": True, "failure_type": "none"},
+            "host_admission": {"attempt_action": "execute"},
+            "product_terminal": safe_terminal,
+        }
+        for index in range(36)
+    ]
+    missing_ids = [
+        "missing_bandpass_bounds_01",
+        "missing_notch_frequency_01",
+        "missing_resample_rate_01",
+        "missing_reference_method_01",
+        "missing_normalization_method_01",
+    ]
+    results.extend(
+        {
+            "suite": "challenge",
+            "case": {"case_id": case_id},
+            "score": {"passed": index not in {0, 1}},
+            "first_generation_score": {"passed": True, "failure_type": "none"},
+            "host_admission": {
+                "path": "proposal" if index == 0 else "no_tool",
+                "attempt_action": "respond" if index == 0 else None,
+                "receipt_origin": "host_parameter_origin" if index == 0 else None,
+            },
+            "product_terminal": safe_terminal,
+        }
+        for index, case_id in enumerate(missing_ids)
+    )
+    results.extend(
+        {
+            "suite": "challenge",
+            "case": {"case_id": f"other_{index}"},
+            "score": {"passed": False},
+            "first_generation_score": {"passed": True, "failure_type": "none"},
+            "host_admission": {"path": "no_tool", "attempt_action": None},
+            "product_terminal": safe_terminal,
+        }
+        for index in range(9)
+    )
+
+    report = _build_report(
+        model_id="ibm-granite/granite-3.3-2b-instruct",
+        results=results,
+        expected_case_count=50,
+        complete=True,
+    )
+
+    assert report["raw_model_gate"]["passed"] is True
+    assert report["host_safety_gate"]["explicit_parameter_origin"]["passed"] == 9
+    assert report["host_safety_gate"]["missing_parameter_origin"]["passed"] == 4
+    assert report["host_safety_gate"]["passed"] is False
