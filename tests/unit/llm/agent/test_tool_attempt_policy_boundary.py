@@ -389,7 +389,7 @@ def test_partial_bandpass_keeps_only_user_proven_cutoff_in_receipt() -> None:
     assert decision.tool_input_receipt.verified_parameters == (("low_freq", 1),)
 
 
-def test_word_number_frequency_never_verifies_or_reaches_execution_boundary() -> None:
+def test_word_number_frequency_creates_no_verified_value_in_the_receipt() -> None:
     coordinator, _source, _verifier = _coordinator(
         _context("apply_notch_filter", command_name="preprocess"),
         tool=_Tool(parameters={"type": "object", "required": ["freq"]}),
@@ -406,21 +406,6 @@ def test_word_number_frequency_never_verifies_or_reaches_execution_boundary() ->
     assert first.action is ToolAttemptAction.RESPOND
     assert first.tool_input_receipt is not None
     assert first.tool_input_receipt.verified_parameters == ()
-    followup = coordinator.evaluate(
-        _request(
-            "apply_notch_filter",
-            params={"freq": 50},
-            text="fifty hertz",
-            tool_input_receipt=first.tool_input_receipt,
-        )
-    )
-
-    assert followup.action is ToolAttemptAction.RESPOND
-    assert followup.action not in {
-        ToolAttemptAction.EXECUTE,
-        ToolAttemptAction.CONFIRMATION_REQUIRED,
-    }
-    assert followup.tool_input_receipt is None
 
 
 @pytest.mark.parametrize(
@@ -524,6 +509,107 @@ def test_unavailable_direct_parameter_proposal_never_creates_receipt() -> None:
 
 
 @pytest.mark.parametrize(
+    "text",
+    (
+        "What does importing an EEG dataset do?",
+        "Do not import the EEG dataset.",
+        "Cancel the EEG data import.",
+        "Browse the EEG files.",
+        "/tmp/recording.gdf",
+        "Import an EEG dataset and create epochs.",
+        "Import EEG data and stop.",
+        "Load EEG data then switch panels.",
+        "Open the epochs.",
+        "Load the training model.",
+    ),
+)
+def test_import_eeg_data_requires_a_narrow_positive_origin(text: str) -> None:
+    coordinator, source, verifier = _coordinator(
+        _context("import_eeg_data", command_name="scan_source")
+    )
+
+    decision = coordinator.evaluate(_request("import_eeg_data", text=text))
+
+    assert decision.action is ToolAttemptAction.INTENT_BLOCKED
+    assert decision.result is not None
+    assert decision.result.error_type == "intent_mismatch"
+    assert source.reads == ["import_eeg_data"]
+    assert verifier.calls == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    (
+        "Import an EEG dataset.",
+        "Load EEG data.",
+        "Open the EEG file.",
+        "Select an EEG folder.",
+        "Choose the EEG data file.",
+        "Can you import EEG data?",
+    ),
+)
+def test_import_eeg_data_allows_only_a_direct_positive_request(text: str) -> None:
+    coordinator, source, verifier = _coordinator(
+        _context("import_eeg_data", command_name="scan_source")
+    )
+
+    decision = coordinator.evaluate(_request("import_eeg_data", text=text))
+
+    assert decision.action is ToolAttemptAction.EXECUTE
+    assert source.reads == ["import_eeg_data"]
+    assert verifier.calls == [(("import_eeg_data", {}), 0.9)]
+
+
+def test_complete_receipt_rebuilds_required_values_but_rejects_unknown_model_fields() -> (
+    None
+):
+    coordinator, source, verifier = _coordinator(
+        _context("resample_data", command_name="preprocess")
+    )
+    receipt = AssistantToolInputReceipt(
+        command_name="resample_data",
+        original_user_text="Resample the EEG data.",
+        question="What resampling rate should I use?",
+        publication_generation=21,
+        missing_inputs=("rate",),
+        verified_parameters=(("rate", 128),),
+    )
+
+    rebuilt = coordinator.evaluate(
+        replace(
+            _request(
+                "resample_data",
+                params={"rate": 128},
+                text="128 Hz",
+                tool_input_receipt=receipt,
+            ),
+            supplied_parameters={"rate": 512},
+        )
+    )
+    unknown = coordinator.evaluate(
+        replace(
+            _request(
+                "resample_data",
+                params={"rate": 128},
+                text="128 Hz",
+                tool_input_receipt=receipt,
+            ),
+            supplied_parameters={"rate": 512, "invented": "value"},
+        )
+    )
+
+    assert rebuilt.action is ToolAttemptAction.EXECUTE
+    assert rebuilt.params == {"rate": 128}
+    assert unknown.action is ToolAttemptAction.VERIFICATION_BLOCKED
+    assert unknown.result is not None
+    assert "Unknown parameter" in unknown.result.message
+    assert source.reads == ["resample_data", "resample_data"]
+    assert verifier.calls == [
+        (("resample_data", {"rate": 128}), 0.9),
+    ]
+
+
+@pytest.mark.parametrize(
     ("tool_name", "params", "reply"),
     (
         (
@@ -551,6 +637,7 @@ def test_same_tool_clarification_reply_reaches_execution_boundary(
         question="Which required value should I use?",
         publication_generation=21,
         missing_inputs=tuple(params),
+        verified_parameters=tuple(params.items()),
     )
 
     decision = coordinator.evaluate(
@@ -615,6 +702,7 @@ def test_clarification_reply_still_passes_schema_verification_first() -> None:
         question="What resampling rate should I use?",
         publication_generation=21,
         missing_inputs=("rate",),
+        verified_parameters=(("rate", 128),),
     )
 
     decision = coordinator.evaluate(

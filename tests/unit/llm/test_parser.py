@@ -18,6 +18,27 @@ def test_product_parser_accepts_one_complete_strict_envelope():
     assert CommandParser.parse(text) == [("load_data", {"file_paths": ["/data/A.gdf"]})]
 
 
+def test_product_parser_classifies_adjacent_complete_objects_without_commands():
+    result = CommandParser.parse_product(
+        '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
+        '"parameters":{"rate":128}}\n'
+        '{"workflow_stage":"data_loaded","tool_name":"apply_notch_filter",'
+        '"parameters":{"freq":50}}'
+    )
+
+    assert result.status is ToolEnvelopeStatus.MULTIPLE_OBJECTS
+    assert result.commands == ()
+
+
+def test_product_parser_keeps_top_level_arrays_on_the_general_format_error_path():
+    result = CommandParser.parse_product(
+        '[{"workflow_stage":"data_loaded","tool_name":"resample_data",'
+        '"parameters":{"rate":128}}]'
+    )
+
+    assert result.status is ToolEnvelopeStatus.FORMAT_ERROR
+
+
 def test_product_parser_rejects_the_retired_two_field_root():
     result = CommandParser.parse_product(
         '{"tool_name":"scan_source","parameters":{"source_path":"/data/A.gdf"}}'

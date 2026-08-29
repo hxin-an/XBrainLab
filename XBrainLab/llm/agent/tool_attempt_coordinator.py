@@ -48,9 +48,9 @@ from .verifier import (
     PathProvenanceVerifier,
     VerificationResult,
     direct_parameter_action_request_matches,
+    import_eeg_data_positive_origin_matches,
     verified_direct_parameter_origin_values,
     verify_direct_parameter_origins,
-    verify_direct_parameter_reply_values,
 )
 
 logger = logging.getLogger(__name__)
@@ -366,6 +366,54 @@ class ToolAttemptCoordinator:
                     },
                 ),
             )
+        import_intent_result = (
+            self._import_eeg_data_intent_result(request, context)
+            if request.enforce_direct_parameter_origins
+            else None
+        )
+        if import_intent_result is not None:
+            return ToolAttemptDecision(
+                ToolAttemptAction.INTENT_BLOCKED,
+                command_name,
+                params,
+                context=context,
+                result=import_intent_result,
+            )
+        receipt = request.tool_input_receipt
+        receipt_matches = receipt is not None and receipt.matches(
+            command_name,
+            request.publication.backend_generation,
+        )
+        receipt_complete = receipt_matches and set(
+            dict(receipt.verified_parameters)
+        ) == set(receipt.missing_inputs)
+        if receipt_matches and not receipt_complete:
+            return ToolAttemptDecision(
+                ToolAttemptAction.RESPOND,
+                command_name,
+                params,
+                context=context,
+                message=(
+                    "I could not confirm all required values. Please start the "
+                    "action again with all required parameters."
+                ),
+            )
+        if receipt_complete:
+            supplied = request.supplied_parameters or request.params
+            if set(supplied) - set(receipt.missing_inputs):
+                return ToolAttemptDecision(
+                    ToolAttemptAction.VERIFICATION_BLOCKED,
+                    command_name,
+                    params,
+                    context=context,
+                    result=self._verification_result(
+                        request,
+                        context,
+                        "Unknown parameter in a receipt-bound assistant action.",
+                    ),
+                    feedback=ToolAttemptFeedback.TOOL_OUTPUT,
+                )
+            params = dict(receipt.verified_parameters)
         provenance_result = self._provenance_result(request, context)
         if provenance_result is not None:
             return ToolAttemptDecision(
@@ -396,17 +444,8 @@ class ToolAttemptCoordinator:
             )
 
         if request.enforce_direct_parameter_origins:
-            receipt = request.tool_input_receipt
-            if receipt is not None and receipt.matches(
-                command_name,
-                request.publication.backend_generation,
-            ):
-                supplied = request.supplied_parameters or params
-                origin_validation = verify_direct_parameter_reply_values(
-                    command_name,
-                    supplied,
-                    request.latest_user_text,
-                )
+            if receipt_complete:
+                origin_validation = VerificationResult(True)
             else:
                 origin_validation = verify_direct_parameter_origins(
                     command_name,
@@ -501,6 +540,33 @@ class ToolAttemptCoordinator:
                 request.params,
                 request.latest_user_text,
             ),
+        )
+
+    @staticmethod
+    def _import_eeg_data_intent_result(
+        request: ToolAttemptRequest,
+        context: ToolAvailabilityContext,
+    ) -> ToolCommandResult | None:
+        """Keep the import chooser behind its one approved positive request."""
+        if (
+            request.command_name != "import_eeg_data"
+            or import_eeg_data_positive_origin_matches(request.latest_user_text)
+        ):
+            return None
+        mapped_command = TOOL_TO_COMMAND.get(request.command_name)
+        return ToolCommandResult.failure(
+            request.command_name,
+            "Please make one direct request to import an EEG data, dataset, file, "
+            "or folder.",
+            command_name=(mapped_command.value if mapped_command is not None else None),
+            state=context.state,
+            capability=context.availability.to_dict(),
+            error_type="intent_mismatch",
+            recoverable=True,
+            diagnostics={
+                "policy": "import_eeg_data_positive_origin",
+                "publication_generation": context.generation,
+            },
         )
 
     def context_for(self, command_name: str) -> ToolAvailabilityContext:

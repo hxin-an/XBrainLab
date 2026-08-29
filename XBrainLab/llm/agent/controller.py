@@ -128,7 +128,7 @@ from .ui_handoff import (
 )
 from .verifier import (
     VerificationLayer,
-    verify_direct_parameter_reply_values,
+    collect_direct_parameter_reply_evidence,
 )
 from .worker import AgentWorker
 
@@ -717,6 +717,8 @@ class LLMController(QObject):
             self._append_history("user", text)
 
             self._reset_user_turn_state()
+            if self._collect_active_tool_input_reply(text):
+                return
             turn_id = self._begin_rag_turn()
             self.assembler.clear_context()
 
@@ -758,6 +760,48 @@ class LLMController(QObject):
         self.assembler.set_tool_input_receipt(receipt)
         self.assembler.clear_recovery_feedback()
         self.assembler.clear_turn_authorization()
+
+    def _collect_active_tool_input_reply(self, text: str) -> bool:
+        """Resolve one bounded receipt reply before any RAG/model dispatch."""
+        receipt = self.pending_interactions.active_tool_input
+        if receipt is None:
+            return False
+        evidence = collect_direct_parameter_reply_evidence(
+            receipt.command_name,
+            receipt.verified_parameters,
+            receipt.unassigned_bandpass_cutoff,
+            text,
+        )
+        if evidence is None:
+            self.pending_interactions.clear_active_tool_input()
+            self.assembler.set_tool_input_receipt(None)
+            self._finalize_turn(
+                "I could not confirm those values. Please start that action again "
+                "with its required parameters."
+            )
+            return True
+        verified_parameters, unassigned_cutoff = evidence
+        receipt = replace(
+            receipt,
+            verified_parameters=verified_parameters,
+            unassigned_bandpass_cutoff=unassigned_cutoff,
+        )
+        self.pending_interactions.replace_active_tool_input(receipt)
+        if set(dict(receipt.verified_parameters)) == set(receipt.missing_inputs):
+            self.assembler.set_tool_input_receipt(receipt)
+            return False
+        requeued = self.pending_interactions.requeue_active_tool_input_for_reply()
+        if requeued is None:
+            self.pending_interactions.clear_active_tool_input()
+            self.assembler.set_tool_input_receipt(None)
+            self._finalize_turn(
+                "I could not confirm all required values within this clarification. "
+                "Please start the action again with all required parameters."
+            )
+            return True
+        self.assembler.set_tool_input_receipt(requeued)
+        self._finalize_turn(self._remaining_tool_input_question(requeued))
+        return True
 
     def _workflow_ui_handoff_request(
         self,
@@ -1067,7 +1111,7 @@ class LLMController(QObject):
 
         envelope = CommandParser.parse_product(response_text)
         if (
-            envelope.status is not ToolEnvelopeStatus.FORMAT_ERROR
+            envelope.status in {ToolEnvelopeStatus.NO_TOOL, ToolEnvelopeStatus.VALID}
             and envelope.workflow_stage
             != self._turn_orchestrator.active_publication.workflow_stage
         ):
@@ -1183,6 +1227,12 @@ class LLMController(QObject):
                 recovery_attempts_used=self._tool_attempt_session.retry_count,
             )
         )
+        if decision.action is StrictEnvelopeRecoveryAction.CHOOSE_ONE:
+            if decision.message is None:
+                raise RuntimeError("Choose-one decision is missing its trusted message")
+            self._tool_attempt_session.clear_format_retries()
+            self._finalize_turn(decision.message.content)
+            return True
         if decision.action not in {
             StrictEnvelopeRecoveryAction.RETRY_FORMAT,
             StrictEnvelopeRecoveryAction.EXHAUSTED,
@@ -1299,54 +1349,35 @@ class LLMController(QObject):
             cmd,
             self._turn_orchestrator.active_publication.backend_generation,
         ):
-            # A new action or a changed backend publication ends the bounded
-            # clarification lease before the normal origin guard considers it.
-            # Its verified values must never leak into another command.
             self.pending_interactions.clear_active_tool_input()
             self.assembler.set_tool_input_receipt(None)
-            receipt = None
+            return ToolAttemptDecision(
+                ToolAttemptAction.RESPOND,
+                cmd,
+                params,
+                message=(
+                    "The pending action or workflow state changed. Please start the "
+                    "requested action again."
+                ),
+            )
         if receipt is not None and receipt.matches(
             cmd,
             self._turn_orchestrator.active_publication.backend_generation,
         ):
-            allowed = set(receipt.missing_inputs)
-            if set(supplied_params).issubset(allowed) and supplied_params:
-                provenance = verify_direct_parameter_reply_values(
+            verified = dict(receipt.verified_parameters)
+            if set(verified) != set(receipt.missing_inputs):
+                self.pending_interactions.clear_active_tool_input()
+                self.assembler.set_tool_input_receipt(None)
+                return ToolAttemptDecision(
+                    ToolAttemptAction.RESPOND,
                     cmd,
-                    supplied_params,
-                    self._latest_user_request_text(),
+                    params,
+                    message=(
+                        "I could not confirm all required values. Please start the "
+                        "action again with all required parameters."
+                    ),
                 )
-                if provenance.is_valid:
-                    verified = dict(receipt.verified_parameters)
-                    verified.update(supplied_params)
-                    receipt = replace(
-                        receipt,
-                        verified_parameters=tuple(verified.items()),
-                    )
-                    pending = self.pending_interactions
-                    pending.replace_active_tool_input(receipt)
-                    params = verified
-                    if set(verified) != set(receipt.missing_inputs):
-                        requeued = pending.requeue_active_tool_input_for_reply()
-                        if requeued is None:
-                            pending.clear_active_tool_input()
-                            self.assembler.set_tool_input_receipt(None)
-                            return ToolAttemptDecision(
-                                ToolAttemptAction.RESPOND,
-                                cmd,
-                                params,
-                                message=(
-                                    "I could not confirm all required values within "
-                                    "this clarification. Please start the action again "
-                                    "with all required parameters."
-                                ),
-                            )
-                        return ToolAttemptDecision(
-                            ToolAttemptAction.RESPOND,
-                            cmd,
-                            params,
-                            message=self._remaining_tool_input_question(receipt),
-                        )
+            params = verified
         repeated = self._tool_attempt_session.record_tool_proposal(cmd, params)
         latest_user_text = self._latest_user_request_text()
         publication = self._turn_orchestrator.active_publication
@@ -1367,6 +1398,8 @@ class LLMController(QObject):
     @staticmethod
     def _remaining_tool_input_question(receipt: AssistantToolInputReceipt) -> str:
         """Name the unverified bandpass cutoff instead of reasking both."""
+        if receipt.unassigned_bandpass_cutoff is not None:
+            return "Please provide one more cutoff frequency for the bandpass filter."
         verified = dict(receipt.verified_parameters)
         remaining = [name for name in receipt.missing_inputs if name not in verified]
         if receipt.command_name == "apply_bandpass_filter" and len(remaining) == 1:

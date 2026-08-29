@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, replace
@@ -236,6 +237,7 @@ class AssistantToolInputReceipt:
     publication_generation: int
     missing_inputs: tuple[str, ...]
     verified_parameters: tuple[tuple[str, Any], ...] = ()
+    unassigned_bandpass_cutoff: float | int | None = None
     remaining_reply_budget: int = 2
 
     def __post_init__(self) -> None:
@@ -292,6 +294,19 @@ class AssistantToolInputReceipt:
                 "Tool-input receipt verified parameters must match missing fields."
             )
         object.__setattr__(self, "verified_parameters", verified_parameters)
+        cutoff = self.unassigned_bandpass_cutoff
+        if cutoff is not None and (
+            self.command_name != "apply_bandpass_filter"
+            or verified_parameters
+            or isinstance(cutoff, bool)
+            or not isinstance(cutoff, (int, float))
+            or not math.isfinite(cutoff)
+            or cutoff <= 0
+        ):
+            raise ValueError(
+                "Tool-input unassigned bandpass cutoff must be a finite positive "
+                "value on an otherwise unassigned bandpass receipt."
+            )
         if self.remaining_reply_budget not in {1, 2}:
             raise ValueError("Tool-input receipt reply budget must be one or two.")
 

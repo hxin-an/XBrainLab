@@ -13,9 +13,8 @@ from XBrainLab.llm.agent.verifier import (
     ValidatorStrategy,
     VerificationLayer,
     VerificationResult,
-    verify_direct_parameter_clarification_reply,
+    collect_direct_parameter_reply_evidence,
     verify_direct_parameter_origins,
-    verify_direct_parameter_reply_values,
 )
 from XBrainLab.llm.tools import authorized_paths
 from XBrainLab.llm.tools.authorized_paths import FilesystemIdentity, PathKind
@@ -205,16 +204,97 @@ def test_direct_parameter_verifiers_reject_word_number_frequency() -> None:
         is False
     )
     assert (
-        verify_direct_parameter_clarification_reply(
-            "apply_notch_filter", params, "fifty hertz"
-        ).is_valid
+        collect_direct_parameter_reply_evidence(
+            "apply_notch_filter", (), None, "fifty hertz"
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "text", "expected"),
+    (
+        ("apply_notch_filter", "50 Hz", (("freq", 50),)),
+        ("resample_data", "128 Hz", (("rate", 128),)),
+        ("set_reference", "average", (("method", "average"),)),
+        ("normalize_data", "z-score", (("method", "z-score"),)),
+    ),
+)
+def test_direct_form_collects_only_current_user_values_for_single_field_tools(
+    tool_name: str,
+    text: str,
+    expected: tuple[tuple[str, object], ...],
+) -> None:
+    evidence = collect_direct_parameter_reply_evidence(
+        tool_name,
+        (),
+        None,
+        text,
+    )
+
+    assert evidence == (expected, None)
+
+
+def test_direct_form_collects_bare_bandpass_values_and_preserves_labels() -> None:
+    first = collect_direct_parameter_reply_evidence(
+        "apply_bandpass_filter",
+        (),
+        None,
+        "12",
+    )
+    second = collect_direct_parameter_reply_evidence(
+        "apply_bandpass_filter",
+        (),
+        12,
+        "40",
+    )
+    labelled = collect_direct_parameter_reply_evidence(
+        "apply_bandpass_filter",
+        (),
+        None,
+        "low 12 Hz and high 40 Hz",
+    )
+    same_reply = collect_direct_parameter_reply_evidence(
+        "apply_bandpass_filter",
+        (),
+        None,
+        "40 12",
+    )
+    labelled_out_of_range = collect_direct_parameter_reply_evidence(
+        "apply_bandpass_filter",
+        (),
+        None,
+        "low 40 Hz and high 12 Hz",
+    )
+
+    assert first == ((), 12)
+    assert second == ((("low_freq", 12), ("high_freq", 40)), None)
+    assert labelled == ((("low_freq", 12), ("high_freq", 40)), None)
+    assert same_reply == ((("low_freq", 12), ("high_freq", 40)), None)
+    assert labelled_out_of_range == ((("low_freq", 40), ("high_freq", 12)), None)
+    assert (
+        FrequencyRangeValidator()
+        .validate("apply_bandpass_filter", dict(labelled_out_of_range[0]))
+        .is_valid
         is False
     )
+
+
+@pytest.mark.parametrize(
+    "text",
+    ("low 12 Hz and 40 Hz", "actually 12 Hz", "fifty hertz", "cancel"),
+)
+def test_direct_form_fails_closed_for_mixed_correction_or_word_number_input(
+    text: str,
+) -> None:
     assert (
-        verify_direct_parameter_reply_values(
-            "apply_notch_filter", params, "fifty hertz"
-        ).is_valid
-        is False
+        collect_direct_parameter_reply_evidence(
+            "apply_bandpass_filter",
+            (),
+            None,
+            text,
+        )
+        is None
     )
 
 

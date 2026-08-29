@@ -1297,6 +1297,47 @@ class TestOnGenerationFinished:
         assert receipt.missing_inputs == ("low_freq", "high_freq")
         assert receipt.remaining_reply_budget == 2
 
+    def test_active_bandpass_receipt_collects_bare_pair_before_model_generation(
+        self,
+        ctrl,
+    ):
+        receipt = AssistantToolInputReceipt(
+            command_name="apply_bandpass_filter",
+            original_user_text="Apply a bandpass filter.",
+            question="What low and high cutoff frequencies should I use?",
+            publication_generation=17,
+            missing_inputs=("low_freq", "high_freq"),
+        )
+        ctrl.pending_interactions.begin_tool_input(receipt)
+        lifecycle = _use_rag_probe(ctrl)
+        ctrl._generate_response = MagicMock()
+        ctrl._execute_tool_attempt = MagicMock()
+
+        _submit_user_turn(ctrl, "12")
+
+        waiting = ctrl.pending_interactions.tool_input
+        assert isinstance(waiting, AssistantToolInputReceipt)
+        assert waiting.unassigned_bandpass_cutoff == 12
+        assert waiting.verified_parameters == ()
+        assert waiting.remaining_reply_budget == 1
+        assert lifecycle.requests == []
+        ctrl._generate_response.assert_not_called()
+        ctrl._execute_tool_attempt.assert_not_called()
+
+        _submit_user_turn(ctrl, "40")
+
+        active = ctrl.pending_interactions.active_tool_input
+        assert isinstance(active, AssistantToolInputReceipt)
+        assert active.verified_parameters == (("low_freq", 12), ("high_freq", 40))
+        assert active.unassigned_bandpass_cutoff is None
+        assert lifecycle.requests[-1][1] == "40"
+        ctrl._generate_response.assert_not_called()
+
+        lifecycle.complete()
+
+        ctrl._generate_response.assert_called_once_with()
+        ctrl._execute_tool_attempt.assert_not_called()
+
     def test_invalid_typed_clarification_retries_without_unbacked_question(
         self,
         ctrl,
@@ -1327,56 +1368,61 @@ class TestOnGenerationFinished:
         ctrl.response_presentation_ready.emit.assert_not_called()
         ctrl._generate_response.assert_called_once()
 
-    def test_partial_bandpass_reply_requeues_once_then_merges_at_execute_boundary(
+    def test_complete_receipt_replaces_model_required_values_but_blocks_extra_fields(
         self,
         ctrl,
     ):
         receipt = AssistantToolInputReceipt(
-            command_name="apply_bandpass_filter",
-            original_user_text="Apply a bandpass filter.",
-            question="What low and high cutoffs should I use?",
+            command_name="resample_data",
+            original_user_text="Resample the EEG data.",
+            question="What resampling rate should I use?",
             publication_generation=17,
-            missing_inputs=("low_freq", "high_freq"),
+            missing_inputs=("rate",),
+            verified_parameters=(("rate", 128),),
         )
         ctrl.pending_interactions.begin_tool_input(receipt)
-        ctrl._append_history("user", "12 Hz")
-        ctrl._reset_user_turn_state()
+        ctrl.pending_interactions.activate_tool_input()
+        ctrl._append_history("user", "128 Hz")
         ctrl._turn_orchestrator.active_publication = PromptToolPublication(
-            tool_names=frozenset({"apply_bandpass_filter"}),
+            tool_names=frozenset({"resample_data"}),
             workflow_stage="data_loaded",
             backend_generation=17,
         )
         _set_context_reader(
             ctrl,
-            return_value=_enabled_tool_context("apply_bandpass_filter", generation=17),
+            return_value=_enabled_tool_context("resample_data", generation=17),
         )
         ctrl.registry.get_tool.return_value.requires_confirmation = False
         ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
 
-        first = ctrl._evaluate_tool_proposal(
-            ("apply_bandpass_filter", {"low_freq": 12}), "{}"
+        rebuilt = ctrl._evaluate_tool_proposal(
+            ("resample_data", {"rate": 512}),
+            "{}",
         )
 
-        assert first.action is ToolAttemptAction.RESPOND
-        assert first.message == "What high cutoff should I use?"
-        waiting = ctrl.pending_interactions.tool_input
-        assert isinstance(waiting, AssistantToolInputReceipt)
-        assert waiting.remaining_reply_budget == 1
-        assert dict(waiting.verified_parameters) == {"low_freq": 12}
-        ctrl._append_history("user", "128 Hz")
-        ctrl._reset_user_turn_state()
-        ctrl._turn_orchestrator.active_publication = PromptToolPublication(
-            tool_names=frozenset({"apply_bandpass_filter"}),
-            workflow_stage="data_loaded",
-            backend_generation=17,
+        assert rebuilt.action is ToolAttemptAction.EXECUTE
+        assert rebuilt.params == {"rate": 128}
+
+        second_receipt = AssistantToolInputReceipt(
+            command_name="resample_data",
+            original_user_text="Resample the EEG data.",
+            question="What resampling rate should I use?",
+            publication_generation=17,
+            missing_inputs=("rate",),
+            verified_parameters=(("rate", 128),),
+        )
+        ctrl.pending_interactions.clear_active_tool_input()
+        ctrl.pending_interactions.begin_tool_input(second_receipt)
+        ctrl.pending_interactions.activate_tool_input()
+
+        blocked = ctrl._evaluate_tool_proposal(
+            ("resample_data", {"rate": 512, "invented": "value"}),
+            "{}",
         )
 
-        second = ctrl._evaluate_tool_proposal(
-            ("apply_bandpass_filter", {"high_freq": 128}), "{}"
-        )
-
-        assert second.action is ToolAttemptAction.EXECUTE
-        assert second.params == {"low_freq": 12, "high_freq": 128}
+        assert blocked.action is ToolAttemptAction.VERIFICATION_BLOCKED
+        assert blocked.result is not None
+        assert "Unknown parameter" in blocked.result.message
 
     def test_stale_or_different_followup_never_reuses_receipt_values(self, ctrl):
         receipt = AssistantToolInputReceipt(
@@ -1404,34 +1450,30 @@ class TestOnGenerationFinished:
 
         decision = ctrl._evaluate_tool_proposal(("resample_data", {"rate": 128}), "{}")
 
-        assert decision.action is ToolAttemptAction.EXECUTE
-        assert decision.params == {"rate": 128}
+        assert decision.action is ToolAttemptAction.RESPOND
         assert ctrl.pending_interactions.active_tool_input is None
 
-    def test_exhausted_partial_reply_budget_clears_without_execution(self, ctrl):
+    def test_correction_of_a_verified_bandpass_value_clears_before_model(self, ctrl):
         receipt = AssistantToolInputReceipt(
             command_name="apply_bandpass_filter",
             original_user_text="Apply a bandpass filter.",
             question="What low and high cutoffs should I use?",
             publication_generation=17,
             missing_inputs=("low_freq", "high_freq"),
-            remaining_reply_budget=1,
+            verified_parameters=(("low_freq", 12),),
         )
         ctrl.pending_interactions.begin_tool_input(receipt)
-        ctrl.pending_interactions.activate_tool_input()
-        ctrl._append_history("user", "12 Hz")
-        ctrl._turn_orchestrator.active_publication = PromptToolPublication(
-            tool_names=frozenset({"apply_bandpass_filter"}),
-            workflow_stage="data_loaded",
-            backend_generation=17,
-        )
+        lifecycle = _use_rag_probe(ctrl)
+        ctrl._generate_response = MagicMock()
+        ctrl._execute_tool_attempt = MagicMock()
 
-        decision = ctrl._evaluate_tool_proposal(
-            ("apply_bandpass_filter", {"low_freq": 12}), "{}"
-        )
+        _submit_user_turn(ctrl, "low 20 Hz")
 
-        assert decision.action is ToolAttemptAction.RESPOND
         assert ctrl.pending_interactions.active_tool_input is None
+        assert ctrl.pending_interactions.tool_input is None
+        assert lifecycle.requests == []
+        ctrl._generate_response.assert_not_called()
+        ctrl._execute_tool_attempt.assert_not_called()
 
     def test_stale_receipt_cannot_execute_same_action_from_reply_only_values(
         self, ctrl
@@ -1465,83 +1507,6 @@ class TestOnGenerationFinished:
 
         assert decision.action is ToolAttemptAction.RESPOND
         assert ctrl.pending_interactions.active_tool_input is None
-
-    def test_active_receipt_typed_false_missing_retries_without_terminal_clear(
-        self,
-        ctrl,
-    ):
-        receipt = AssistantToolInputReceipt(
-            command_name="resample_data",
-            original_user_text="Resample the EEG data.",
-            question="What resampling rate should I use?",
-            publication_generation=17,
-            missing_inputs=("rate",),
-        )
-        ctrl.pending_interactions.begin_tool_input(receipt)
-        ctrl.pending_interactions.activate_tool_input()
-        ctrl._turn_orchestrator.active_publication = PromptToolPublication(
-            tool_names=frozenset({"resample_data"}),
-            workflow_stage="data_loaded",
-            backend_generation=17,
-        )
-        ctrl.current_response = (
-            '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
-            '"parameters":{"message":"What rate?","pending_action":"resample_data",'
-            '"missing_inputs":["rate"]}}'
-        )
-        ctrl.is_processing = True
-        ctrl._turn_orchestrator.active_generation_id = 122
-        ctrl._generate_response = MagicMock()
-
-        ctrl._on_generation_finished(122, [])
-
-        ctrl._generate_response.assert_called_once()
-        assert ctrl.pending_interactions.active_tool_input is receipt
-        ctrl.processing_finished.emit.assert_not_called()
-
-    def test_false_missing_recovery_then_exact_reply_executes_once(self, ctrl):
-        receipt = AssistantToolInputReceipt(
-            command_name="resample_data",
-            original_user_text="Resample the EEG data.",
-            question="What resampling rate should I use?",
-            publication_generation=17,
-            missing_inputs=("rate",),
-        )
-        ctrl.pending_interactions.begin_tool_input(receipt)
-        ctrl.pending_interactions.activate_tool_input()
-        ctrl._turn_orchestrator.active_publication = PromptToolPublication(
-            tool_names=frozenset({"resample_data"}),
-            workflow_stage="data_loaded",
-            backend_generation=17,
-        )
-        ctrl.current_response = (
-            '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
-            '"parameters":{"message":"What rate?","pending_action":"resample_data",'
-            '"missing_inputs":["rate"]}}'
-        )
-        ctrl.is_processing = True
-        ctrl._turn_orchestrator.active_generation_id = 125
-        ctrl._generate_response = MagicMock()
-        ctrl._on_generation_finished(125, [])
-        ctrl._append_history("user", "128 Hz")
-        _set_context_reader(
-            ctrl,
-            return_value=_enabled_tool_context("resample_data", generation=17),
-        )
-        ctrl.registry.get_tool.return_value.requires_confirmation = False
-        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
-        ctrl._execute_tool_attempt = MagicMock()
-
-        ctrl._process_tool_calls(
-            [("resample_data", {"rate": 128})],
-            '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
-            '"parameters":{"rate":128}}',
-        )
-
-        ctrl._execute_tool_attempt.assert_called_once()
-        decision = ctrl._execute_tool_attempt.call_args.args[0]
-        assert decision.action is ToolAttemptAction.EXECUTE
-        assert decision.params == {"rate": 128}
 
     def test_ordinary_cancel_reply_clears_active_receipt_without_execution(self, ctrl):
         receipt = AssistantToolInputReceipt(
@@ -3266,6 +3231,7 @@ class TestExecuteDebugTool:
             question="What resampling rate should I use?",
             publication_generation=17,
             missing_inputs=("rate",),
+            verified_parameters=(("rate", 128),),
         )
         ctrl.pending_interactions.begin_tool_input(receipt)
         ctrl._append_history("assistant", receipt.question)
@@ -3308,26 +3274,14 @@ class TestExecuteDebugTool:
             missing_inputs=("freq",),
         )
         ctrl.pending_interactions.begin_tool_input(receipt)
-        ctrl._append_history("user", "fifty hertz")
-        ctrl._reset_user_turn_state()
-        ctrl._turn_orchestrator.active_publication = PromptToolPublication(
-            tool_names=frozenset({"apply_notch_filter"}),
-            workflow_stage="data_loaded",
-            backend_generation=17,
-        )
-        _set_context_reader(
-            ctrl,
-            return_value=_enabled_tool_context("apply_notch_filter", generation=17),
-        )
-        ctrl.registry.get_tool.return_value.requires_confirmation = True
-        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+        lifecycle = _use_rag_probe(ctrl)
+        ctrl._generate_response = MagicMock()
         ctrl._execute_tool_attempt = MagicMock()
 
-        ctrl._process_tool_calls(
-            [("apply_notch_filter", {"freq": 50})],
-            '{"tool_name":"apply_notch_filter","parameters":{"freq":50}}',
-        )
+        _submit_user_turn(ctrl, "fifty hertz")
 
+        assert lifecycle.requests == []
+        ctrl._generate_response.assert_not_called()
         ctrl._execute_tool_attempt.assert_not_called()
         assert ctrl.pending_interactions.confirmation_decision is None
         assert ctrl.pending_interactions.active_tool_input is None
@@ -3396,49 +3350,66 @@ class TestExecuteDebugTool:
         assert receipt.missing_inputs == ("rate",)
         assert receipt.verified_parameters == ()
 
-        ctrl._append_history("user", "128 Hz")
-        ctrl._reset_user_turn_state()
+    def test_import_origin_block_has_no_confirmation_or_gui_side_effect(self, ctrl):
+        ctrl._append_history("user", "Import an EEG dataset and create epochs.")
         ctrl._turn_orchestrator.active_publication = PromptToolPublication(
-            tool_names=frozenset({"resample_data"}),
-            workflow_stage="data_loaded",
+            tool_names=frozenset({"import_eeg_data"}),
+            workflow_stage="empty",
             backend_generation=17,
         )
-        ctrl.registry.get_tool.return_value.requires_confirmation = False
+        _set_context_reader(
+            ctrl,
+            return_value=_enabled_tool_context("import_eeg_data", generation=17),
+        )
+        ctrl._execute_tool_attempt = MagicMock()
+        ctrl._request_tool_confirmation = MagicMock()
+
         ctrl._process_tool_calls(
-            [("resample_data", {"rate": 128})],
-            '{"tool_name":"resample_data","parameters":{"rate":128}}',
+            [("import_eeg_data", {})],
+            '{"workflow_stage":"empty","tool_name":"import_eeg_data","parameters":{}}',
         )
 
-        executed = ctrl._execute_tool_attempt.call_args.args[0]
-        assert executed.action is ToolAttemptAction.EXECUTE
-        assert executed.params == {"rate": 128}
+        ctrl._execute_tool_attempt.assert_not_called()
+        ctrl._request_tool_confirmation.assert_not_called()
+        ctrl.confirmation_requested.emit.assert_not_called()
+        ctrl.workflow_ui_handoff_requested.emit.assert_not_called()
+        ctrl.panel_navigation_requested.emit.assert_not_called()
+        assert ctrl.pending_interactions.workflow_handoff is None
 
-    def test_multiple_direct_proposals_cannot_create_a_followup_receipt(self, ctrl):
-        ctrl._append_history("user", "Resample the EEG data.")
+    def test_multiple_strict_envelopes_choose_one_without_side_effects(self, ctrl):
+        ctrl._append_history("user", "Resample then apply a notch filter.")
         ctrl._turn_orchestrator.active_publication = PromptToolPublication(
             tool_names=frozenset({"resample_data", "apply_notch_filter"}),
             workflow_stage="data_loaded",
             backend_generation=17,
         )
-        _set_context_reader(
-            ctrl,
-            return_value=_enabled_tool_context("resample_data", generation=17),
+        ctrl.current_response = (
+            '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
+            '"parameters":{"rate":128}}\n'
+            '{"workflow_stage":"data_loaded","tool_name":"apply_notch_filter",'
+            '"parameters":{"freq":50}}'
         )
-        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
-        ctrl.registry.get_tool.return_value.parameters = {
-            "type": "object",
-            "required": ["rate"],
-        }
+        ctrl.is_processing = True
+        ctrl._turn_orchestrator.active_generation_id = 17
+        ctrl._generate_response = MagicMock()
+        ctrl._process_tool_calls = MagicMock()
+        ctrl._execute_tool_attempt = MagicMock()
+        ctrl._request_tool_confirmation = MagicMock()
+        ctrl._tool_attempt_coordinator.evaluate = MagicMock()
 
-        ctrl._process_tool_calls(
-            [
-                ("resample_data", {"rate": 128}),
-                ("apply_notch_filter", {"freq": 50}),
-            ],
-            "model supplied multiple actions",
-        )
+        ctrl._on_generation_finished(17, [])
 
+        assert ctrl._tool_attempt_session.retry_count == 0
+        ctrl._generate_response.assert_not_called()
+        ctrl._process_tool_calls.assert_not_called()
+        ctrl._tool_attempt_coordinator.evaluate.assert_not_called()
+        ctrl._execute_tool_attempt.assert_not_called()
+        ctrl._request_tool_confirmation.assert_not_called()
+        ctrl.confirmation_requested.emit.assert_not_called()
+        ctrl.workflow_ui_handoff_requested.emit.assert_not_called()
+        ctrl.panel_navigation_requested.emit.assert_not_called()
         assert ctrl.pending_interactions.tool_input is None
+        assert ctrl.pending_interactions.active_tool_input is None
 
     def test_ready_debug_training_requests_confirmation_before_execution(self, ctrl):
         ctrl._turn_orchestrator.host_turn_generation = None
