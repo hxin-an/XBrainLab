@@ -3275,6 +3275,7 @@ def run_eval(
 
 
 def main(argv: list[str] | None = None) -> int:
+    effective_argv = list(sys.argv[1:] if argv is None else argv)
     parser = argparse.ArgumentParser()
     parser.add_argument("--cases", type=Path, default=DEFAULT_CASES)
     parser.add_argument("--challenges", type=Path, default=DEFAULT_CHALLENGES)
@@ -3287,7 +3288,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json-out", type=Path)
     parser.add_argument("--device", choices=("cpu", "cuda"))
     parser.add_argument("--strict", action="store_true")
-    args = parser.parse_args(argv)
+    args = parser.parse_args(effective_argv)
 
     config = _stable_eval_config(
         LLMConfig.load_from_file(),
@@ -3318,6 +3319,10 @@ def main(argv: list[str] | None = None) -> int:
             "summary": {"passed": False, "case_count": 0},
             "failure": f"{type(exc).__name__}: {exc}",
         }
+    report["invocation"] = {
+        "argv": effective_argv,
+        "working_directory_is_repository_root": Path.cwd().resolve() == ROOT,
+    }
     rendered = json.dumps(report, ensure_ascii=False, indent=2)
     print(rendered)
     if args.json_out is not None:

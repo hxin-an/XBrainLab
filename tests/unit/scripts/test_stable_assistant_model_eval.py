@@ -2158,6 +2158,33 @@ def test_experiment_identity_binds_source_and_ignores_only_protected_settings(
     assert len(identity["clarification_cases_sha256"]) == 64
 
 
+def test_main_records_actual_invocation_without_local_working_directory(
+    monkeypatch,
+) -> None:
+    from scripts.dev import run_stable_assistant_model_eval as evaluator
+
+    monkeypatch.chdir(evaluator.ROOT)
+    argv = ["--device", "cpu", "--strict", "--json-out", "artifacts/stable-eval.json"]
+    write_report = MagicMock()
+    monkeypatch.setattr(
+        evaluator.LLMConfig,
+        "load_from_file",
+        staticmethod(lambda: LLMConfig()),
+    )
+    with patch.multiple(
+        evaluator,
+        run_eval=MagicMock(return_value={"summary": {"passed": True}}),
+        _experiment_identity=MagicMock(return_value={"source_sha": "test"}),
+        _write_report=write_report,
+    ):
+        assert evaluator.main(argv) == 0
+
+    assert write_report.call_args.args[1]["invocation"] == {
+        "argv": argv,
+        "working_directory_is_repository_root": True,
+    }
+
+
 def test_first_turn_rows_record_controller_admission_and_terminal_for_all_core_cases() -> (
     None
 ):
