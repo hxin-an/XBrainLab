@@ -13,7 +13,9 @@ from XBrainLab.llm.agent.verifier import (
     ValidatorStrategy,
     VerificationLayer,
     VerificationResult,
+    verify_direct_parameter_clarification_reply,
     verify_direct_parameter_origins,
+    verify_direct_parameter_reply_values,
 )
 from XBrainLab.llm.tools import authorized_paths
 from XBrainLab.llm.tools.authorized_paths import FilesystemIdentity, PathKind
@@ -192,6 +194,28 @@ def test_direct_parameter_origins_ignore_non_direct_tools() -> None:
     )
 
     assert result == VerificationResult(True)
+
+
+def test_direct_parameter_verifiers_reject_word_number_frequency() -> None:
+    params = {"freq": 50}
+    text = "Apply a notch filter at fifty hertz."
+
+    assert (
+        verify_direct_parameter_origins("apply_notch_filter", params, text).is_valid
+        is False
+    )
+    assert (
+        verify_direct_parameter_clarification_reply(
+            "apply_notch_filter", params, "fifty hertz"
+        ).is_valid
+        is False
+    )
+    assert (
+        verify_direct_parameter_reply_values(
+            "apply_notch_filter", params, "fifty hertz"
+        ).is_valid
+        is False
+    )
 
 
 @pytest.mark.parametrize(

@@ -3299,6 +3299,39 @@ class TestExecuteDebugTool:
         assert executed.command_name == "resample_data"
         assert executed.params == {"rate": 128}
 
+    def test_word_number_reply_never_executes_or_requests_confirmation(self, ctrl):
+        receipt = AssistantToolInputReceipt(
+            command_name="apply_notch_filter",
+            original_user_text="Apply a notch filter.",
+            question="What notch frequency should I use?",
+            publication_generation=17,
+            missing_inputs=("freq",),
+        )
+        ctrl.pending_interactions.begin_tool_input(receipt)
+        ctrl._append_history("user", "fifty hertz")
+        ctrl._reset_user_turn_state()
+        ctrl._turn_orchestrator.active_publication = PromptToolPublication(
+            tool_names=frozenset({"apply_notch_filter"}),
+            workflow_stage="data_loaded",
+            backend_generation=17,
+        )
+        _set_context_reader(
+            ctrl,
+            return_value=_enabled_tool_context("apply_notch_filter", generation=17),
+        )
+        ctrl.registry.get_tool.return_value.requires_confirmation = True
+        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+        ctrl._execute_tool_attempt = MagicMock()
+
+        ctrl._process_tool_calls(
+            [("apply_notch_filter", {"freq": 50})],
+            '{"tool_name":"apply_notch_filter","parameters":{"freq":50}}',
+        )
+
+        ctrl._execute_tool_attempt.assert_not_called()
+        assert ctrl.pending_interactions.confirmation_decision is None
+        assert ctrl.pending_interactions.active_tool_input is None
+
     def test_parameter_followup_response_does_not_rearm_receipt(self, ctrl):
         receipt = AssistantToolInputReceipt(
             command_name="resample_data",

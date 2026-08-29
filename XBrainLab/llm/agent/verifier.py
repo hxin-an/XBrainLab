@@ -69,7 +69,7 @@ def direct_parameter_action_request_matches(tool_name: str, text: str) -> bool:
         return False
     if re.search(r"\b(?:tell\s+me\s+how|how\s+to|explain)\b", normalized):
         return False
-    if re.match(r"^\s*(?:what|which|why|how|is|are|should)\b", normalized):
+    if re.match(r"^\s*(?:what|which|why|how|is|are|should|would)\b", normalized):
         return False
     markers = {
         "apply_bandpass_filter": "bandpass",
@@ -267,7 +267,7 @@ def verify_direct_parameter_reply_values(
 def _clarification_reply_is_cancelled(text: str) -> bool:
     return bool(
         re.search(
-            r"(?:\b(?:cancel|never(?:\s+mind)?|do\s+not|don't|not\s+now)\b|"
+            r"(?:\b(?:cancel|never(?:\s+mind)?|avoid|do\s+not|don't|not\s+now)\b|"
             r"算了|取消|不要|不用|先不要)",
             text,
             re.IGNORECASE,

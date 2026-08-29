@@ -367,6 +367,40 @@ def test_partial_bandpass_keeps_only_user_proven_cutoff_in_receipt() -> None:
     assert decision.tool_input_receipt.verified_parameters == (("low_freq", 1),)
 
 
+def test_word_number_frequency_never_verifies_or_reaches_execution_boundary() -> None:
+    coordinator, _source, _verifier = _coordinator(
+        _context("apply_notch_filter", command_name="preprocess"),
+        tool=_Tool(parameters={"type": "object", "required": ["freq"]}),
+    )
+
+    first = coordinator.evaluate(
+        _request(
+            "apply_notch_filter",
+            params={"freq": 50},
+            text="Apply a notch filter at fifty hertz.",
+        )
+    )
+
+    assert first.action is ToolAttemptAction.RESPOND
+    assert first.tool_input_receipt is not None
+    assert first.tool_input_receipt.verified_parameters == ()
+    followup = coordinator.evaluate(
+        _request(
+            "apply_notch_filter",
+            params={"freq": 50},
+            text="fifty hertz",
+            tool_input_receipt=first.tool_input_receipt,
+        )
+    )
+
+    assert followup.action is ToolAttemptAction.RESPOND
+    assert followup.action not in {
+        ToolAttemptAction.EXECUTE,
+        ToolAttemptAction.CONFIRMATION_REQUIRED,
+    }
+    assert followup.tool_input_receipt is None
+
+
 @pytest.mark.parametrize(
     ("tool_name", "params", "text", "single_proposal"),
     (
@@ -387,6 +421,18 @@ def test_partial_bandpass_keeps_only_user_proven_cutoff_in_receipt() -> None:
             "apply_notch_filter",
             {"freq": 50},
             "Never apply a notch filter.",
+            True,
+        ),
+        (
+            "apply_notch_filter",
+            {"freq": 50},
+            "Would you use a notch filter?",
+            True,
+        ),
+        (
+            "apply_notch_filter",
+            {"freq": 50},
+            "Avoid applying a notch filter.",
             True,
         ),
     ),
@@ -413,6 +459,10 @@ def test_untrusted_direct_parameter_proposal_never_creates_receipt(
 
     assert decision.action is ToolAttemptAction.RESPOND
     assert decision.tool_input_receipt is None
+    assert decision.action not in {
+        ToolAttemptAction.EXECUTE,
+        ToolAttemptAction.CONFIRMATION_REQUIRED,
+    }
 
 
 def test_unavailable_direct_parameter_proposal_never_creates_receipt() -> None:
