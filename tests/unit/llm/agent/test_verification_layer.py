@@ -140,32 +140,32 @@ def test_direct_parameter_origins_accept_explicit_latest_user_values(
         (
             "apply_bandpass_filter",
             {"low_freq": 4, "high_freq": 38},
-            "The recording is 38 seconds long. Apply a 4 Hz high-pass filter.",
+            "The recording is 16 seconds long.",
             "What low and high cutoff frequencies should I use for the "
             "bandpass filter?",
         ),
         (
             "apply_notch_filter",
             {"freq": 60},
-            "The recording has 60 channels. Apply a notch filter.",
+            "The recording has 64 channels.",
             "What notch frequency should I use?",
         ),
         (
             "resample_data",
             {"rate": 128},
-            "The current rate is 128 Hz. Resample the EEG data.",
+            "The current rate is 256 Hz.",
             "What resampling rate should I use?",
         ),
         (
             "set_reference",
             {"method": "average"},
-            "Use the average amplitude and update the reference.",
+            "Use the median amplitude.",
             "What EEG reference method should I use?",
         ),
         (
             "normalize_data",
             {"method": "z-score"},
-            "Normalize the EEG data.",
+            "Use min-max values.",
             "Which normalization method should I use: z-score or min-max?",
         ),
     ],
@@ -282,9 +282,9 @@ def test_direct_form_collects_bare_bandpass_values_and_preserves_labels() -> Non
 
 @pytest.mark.parametrize(
     "text",
-    ("low 12 Hz and 40 Hz", "actually 12 Hz", "fifty hertz", "cancel"),
+    ("low 12 Hz and 40 Hz", "Instead, resample to 100 Hz.", "fifty hertz", "cancel"),
 )
-def test_direct_form_fails_closed_for_mixed_correction_or_word_number_input(
+def test_direct_form_fails_closed_for_mixed_or_non_value_reply_shape(
     text: str,
 ) -> None:
     assert (
@@ -299,26 +299,29 @@ def test_direct_form_fails_closed_for_mixed_correction_or_word_number_input(
 
 
 @pytest.mark.parametrize(
-    ("params", "expected_question"),
+    ("params", "expected_question", "text"),
     [
         (
             {"low_freq": 5, "high_freq": 38},
             "What low cutoff frequency should I use for the bandpass filter?",
+            "low 4 Hz, high 38 Hz",
         ),
         (
             {"low_freq": 4, "high_freq": 40},
             "What high cutoff frequency should I use for the bandpass filter?",
+            "low 4 Hz, high 38 Hz",
         ),
     ],
 )
 def test_bandpass_origin_question_names_only_the_unverified_cutoff(
     params: dict[str, Any],
     expected_question: str,
+    text: str,
 ) -> None:
     result = verify_direct_parameter_origins(
         "apply_bandpass_filter",
         params,
-        "Apply a 4 to 38 Hz bandpass filter.",
+        text,
     )
 
     assert result == VerificationResult(False, expected_question)

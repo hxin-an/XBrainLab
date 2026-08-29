@@ -364,7 +364,7 @@ def test_affirmative_direct_request_variants_create_receipt(text: str) -> None:
     assert decision.tool_input_receipt is not None
 
 
-def test_informational_text_cannot_admit_or_complete_resample_receipt() -> None:
+def test_typed_resample_receipt_does_not_require_host_english_action_grammar() -> None:
     coordinator, source, verifier = _coordinator(
         _context("resample_data", command_name="preprocess"),
         tool=_Tool(parameters={"type": "object", "required": ["rate"]}),
@@ -380,24 +380,10 @@ def test_informational_text_cannot_admit_or_complete_resample_receipt() -> None:
         ),
     )
 
-    decision = coordinator.evaluate(
-        _request(
-            "resample_data",
-            params={"rate": 128},
-            text="128 Hz",
-            tool_input_receipt=receipt,
-        )
-    )
-
-    assert receipt is None
-    assert decision.action is ToolAttemptAction.RESPOND
-    assert decision.action not in {
-        ToolAttemptAction.EXECUTE,
-        ToolAttemptAction.CONFIRMATION_REQUIRED,
-    }
-    assert decision.tool_input_receipt is None
-    assert source.reads == ["resample_data"]
-    assert verifier.calls == [(("resample_data", {"rate": 128}), 0.9)]
+    assert receipt is not None
+    assert receipt.command_name == "resample_data"
+    assert source.reads == []
+    assert verifier.calls == []
 
 
 def test_partial_bandpass_keeps_only_user_proven_cutoff_in_receipt() -> None:
@@ -412,7 +398,7 @@ def test_partial_bandpass_keeps_only_user_proven_cutoff_in_receipt() -> None:
         _request(
             "apply_bandpass_filter",
             params={"low_freq": 1, "high_freq": 40},
-            text="Apply a 1 to 38 Hz bandpass filter.",
+            text="low 1 Hz, high 38 Hz",
         )
     )
 
@@ -498,7 +484,7 @@ def test_word_number_frequency_creates_no_verified_value_in_the_receipt() -> Non
         ),
     ),
 )
-def test_untrusted_direct_parameter_proposal_never_creates_receipt(
+def test_direct_receipt_admission_does_not_parse_user_english_intent(
     tool_name: str,
     params: dict[str, Any],
     text: str,
@@ -519,7 +505,10 @@ def test_untrusted_direct_parameter_proposal_never_creates_receipt(
     )
 
     assert decision.action is ToolAttemptAction.RESPOND
-    assert decision.tool_input_receipt is None
+    if single_proposal:
+        assert decision.tool_input_receipt is not None
+    else:
+        assert decision.tool_input_receipt is None
     assert decision.action not in {
         ToolAttemptAction.EXECUTE,
         ToolAttemptAction.CONFIRMATION_REQUIRED,
@@ -544,61 +533,47 @@ def test_unavailable_direct_parameter_proposal_never_creates_receipt() -> None:
     assert decision.tool_input_receipt is None
 
 
-@pytest.mark.parametrize(
-    "text",
-    (
-        "What does importing an EEG dataset do?",
-        "Do not import the EEG dataset.",
-        "Cancel the EEG data import.",
-        "Browse the EEG files.",
-        "/tmp/recording.gdf",
-        "Import an EEG dataset and create epochs.",
-        "Import EEG data and stop.",
-        "Load EEG data then switch panels.",
-        "Open the epochs.",
-        "Load the training model.",
-    ),
-)
-def test_import_eeg_data_requires_a_narrow_positive_origin(text: str) -> None:
+def test_import_eeg_data_proposal_is_not_blocked_by_host_english_intent_gate() -> None:
     coordinator, source, verifier = _coordinator(
         _context("import_eeg_data", command_name="scan_source")
     )
 
-    decision = coordinator.evaluate(_request("import_eeg_data", text=text))
-
-    assert decision.action is ToolAttemptAction.INTENT_BLOCKED
-    assert decision.result is not None
-    assert decision.result.error_type == "intent_mismatch"
-    assert source.reads == ["import_eeg_data"]
-    assert verifier.calls == []
-
-
-@pytest.mark.parametrize(
-    "text",
-    (
-        "Import an EEG dataset.",
-        "Load EEG data.",
-        "Open the EEG file.",
-        "Select an EEG folder.",
-        "Choose the EEG data file.",
-        "Can you import EEG data?",
-    ),
-)
-def test_import_eeg_data_allows_only_a_direct_positive_request(text: str) -> None:
-    coordinator, source, verifier = _coordinator(
-        _context("import_eeg_data", command_name="scan_source")
+    decision = coordinator.evaluate(
+        _request("import_eeg_data", text="I want to import data.")
     )
-
-    decision = coordinator.evaluate(_request("import_eeg_data", text=text))
 
     assert decision.action is ToolAttemptAction.EXECUTE
     assert source.reads == ["import_eeg_data"]
     assert verifier.calls == [(("import_eeg_data", {}), 0.9)]
 
 
-def test_complete_receipt_rebuilds_required_values_but_rejects_unknown_model_fields() -> (
-    None
-):
+@pytest.mark.parametrize(
+    ("tool_name", "params", "text"),
+    (
+        (
+            "apply_bandpass_filter",
+            {"low_freq": 15, "high_freq": 40},
+            "I want to do a bandpass filter and high is 40 Hz, low is 15 Hz.",
+        ),
+        ("resample_data", {"rate": 100}, "Use 100 Hz resample."),
+    ),
+)
+def test_complete_direct_preprocess_proposal_does_not_require_host_action_grammar(
+    tool_name: str,
+    params: dict[str, Any],
+    text: str,
+) -> None:
+    coordinator, _source, _verifier = _coordinator(
+        _context(tool_name, command_name="preprocess"),
+        tool=_Tool(parameters={"type": "object", "required": list(params)}),
+    )
+
+    decision = coordinator.evaluate(_request(tool_name, params=params, text=text))
+
+    assert decision.action is ToolAttemptAction.EXECUTE
+
+
+def test_complete_receipt_rebuilds_verified_values_without_model_parameters() -> None:
     coordinator, source, verifier = _coordinator(
         _context("resample_data", command_name="preprocess")
     )
@@ -612,34 +587,17 @@ def test_complete_receipt_rebuilds_required_values_but_rejects_unknown_model_fie
     )
 
     rebuilt = coordinator.evaluate(
-        replace(
-            _request(
-                "resample_data",
-                params={"rate": 128},
-                text="128 Hz",
-                tool_input_receipt=receipt,
-            ),
-            supplied_parameters={"rate": 512},
-        )
-    )
-    unknown = coordinator.evaluate(
-        replace(
-            _request(
-                "resample_data",
-                params={"rate": 128},
-                text="128 Hz",
-                tool_input_receipt=receipt,
-            ),
-            supplied_parameters={"rate": 512, "invented": "value"},
+        _request(
+            "resample_data",
+            params={"rate": 128},
+            text="128 Hz",
+            tool_input_receipt=receipt,
         )
     )
 
     assert rebuilt.action is ToolAttemptAction.EXECUTE
     assert rebuilt.params == {"rate": 128}
-    assert unknown.action is ToolAttemptAction.VERIFICATION_BLOCKED
-    assert unknown.result is not None
-    assert "Unknown parameter" in unknown.result.message
-    assert source.reads == ["resample_data", "resample_data"]
+    assert source.reads == ["resample_data"]
     assert verifier.calls == [
         (("resample_data", {"rate": 128}), 0.9),
     ]

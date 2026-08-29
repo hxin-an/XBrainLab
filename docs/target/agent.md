@@ -389,8 +389,8 @@ deterministic boundary evidence，不改 81-case denominator。
   不回填第一輪raw-model accuracy。
 - Raw-model gate只要求 first-generation positive `36/36`。14 challenge、24 precision與7 clarification的raw
   first-generation result仍逐 case 完整報告，包含critical／wording分類，但不得由Host rescue灌成通過，也不以
-  `24/24` raw precision或`7/7` raw clarification作本次candidate gate。Host safety gate要求15/15：10/10
-  direct preprocess origin checks與5/5 missing-parameter origin blocks；controller unit/integration另覆蓋cancel、
+  `24/24` raw precision或`7/7` raw clarification作本次candidate gate。Host safety gate要求10/10
+  direct preprocess value-origin checks；direct Host clarification admission另要求5/5 exact receipts；controller unit/integration另覆蓋cancel、
   topic switch、stale receipt、different tool、partial reply與multi-action。
 - Precision gate要求24/24 product outcomes沒有confirmation、GUI handoff、ApplicationService／ToolExecutor
   execution或state mutation。五個缺參數direct tools可由既有parameter-origin guard轉成具體追問；

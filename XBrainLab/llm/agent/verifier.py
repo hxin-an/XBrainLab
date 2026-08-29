@@ -56,29 +56,6 @@ DIRECT_PARAMETER_TOOLS = frozenset(
     }
 )
 _DECIMAL_NUMBER_PATTERN = r"(?<![\w.])[-+]?(?:\d+(?:\.\d+)?|\.\d+)(?![\w.])"
-_CLAUSE_SEPARATOR = re.compile(
-    r"(?<!\d)[.!?。\uff01\uff1f\uff1b;\n]+|"
-    r"[.!?。\uff01\uff1f\uff1b;\n]+(?!\d)"
-)
-_DIRECT_ACTION_MARKERS = {
-    "apply_bandpass_filter": "bandpass",
-    "apply_notch_filter": "notch",
-    "resample_data": "resampl",
-    "set_reference": "reference",
-    "normalize_data": "normaliz",
-}
-_IMPORT_EEG_POSITIVE_REQUEST = re.compile(
-    r"^\s*(?:(?:please\s+)|(?:(?:can|could)\s+you(?:\s+please)?\s+)|"
-    r"(?:i\s+(?:would\s+)?like\s+to\s+)|(?:i\s+want\s+to\s+))?"
-    r"(?:import|load|open|select|choose)\s+(?:(?:an?|the)\s+)?eeg\s+"
-    r"(?:data(?:set)?|file|folder)(?:\s+file)?\s*[.!?]?\s*$",
-    re.IGNORECASE,
-)
-_REPLY_CORRECTION = re.compile(
-    r"\b(?:actually|instead|change|replace|correction|correct(?:ion)?|rather)\b|"
-    r"(?:改成|更正)",
-    re.IGNORECASE,
-)
 _BANDPASS_LABELLED_VALUE = re.compile(
     rf"\b(?P<label>low|lower|high|upper)\b"
     rf"(?:\s+(?:cutoff|frequency|freq))?\s*(?:is|=|:|to)?\s*"
@@ -90,44 +67,6 @@ _BANDPASS_VALUE_LABELLED = re.compile(
     rf"(?P<label>low|lower|high|upper)\b",
     re.IGNORECASE,
 )
-
-
-def direct_parameter_action_request_matches(tool_name: str, text: str) -> bool:
-    """Require an explicit, singular, non-negated action request for admission."""
-    normalized = unicodedata.normalize("NFKC", text).casefold()
-    if _clarification_reply_is_cancelled(normalized):
-        return False
-    target = _DIRECT_ACTION_MARKERS.get(tool_name)
-    return bool(
-        target
-        and re.match(
-            r"^\s*(?:(?:can|could)\s+you(?:\s+please)?\s+|please\s+)?"
-            r"(?:apply|run|use|set|resampl\w*|normaliz\w*)\b",
-            normalized,
-        )
-        and normalized.count(target) == 1
-        and all(
-            marker not in normalized
-            for marker in _DIRECT_ACTION_MARKERS.values()
-            if marker != target
-        )
-    )
-
-
-def import_eeg_data_positive_origin_matches(text: str) -> bool:
-    """Accept one direct English request to open the EEG import chooser.
-
-    This is intentionally a narrow guard for the sole zero-parameter import
-    handoff.  It does not classify general intents or select an alternative
-    tool.
-    """
-    normalized = unicodedata.normalize("NFKC", text).casefold().strip()
-    return bool(
-        normalized
-        and len(normalized) <= 256
-        and not _clarification_reply_is_cancelled(normalized)
-        and _IMPORT_EEG_POSITIVE_REQUEST.fullmatch(normalized)
-    )
 
 
 def collect_direct_parameter_reply_evidence(
@@ -148,14 +87,7 @@ def collect_direct_parameter_reply_evidence(
     if (
         not text
         or len(text) > 256
-        or _clarification_reply_is_cancelled(text)
-        or _REPLY_CORRECTION.search(text) is not None
-    ):
-        return None
-    if any(
-        marker in text.casefold()
-        for name, marker in _DIRECT_ACTION_MARKERS.items()
-        if name != tool_name
+        or not _is_direct_parameter_value_reply(tool_name, text)
     ):
         return None
     verified = dict(verified_parameters)
@@ -232,22 +164,48 @@ def collect_direct_parameter_reply_evidence(
             if re.search(pattern, text, re.IGNORECASE)
         ]
         return ((("method", methods[0]),), None) if len(methods) == 1 else None
-    stripped = text.rstrip(".。!")
-    match = re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,63}", stripped)
-    if match is None:
-        match = re.search(
-            r"\b(?:set|use)\s+(?P<method>[A-Za-z][A-Za-z0-9_-]{0,63})\s+"
-            r"as\s+(?:the\s+)?(?:eeg\s+)?reference\b|"
-            r"\b(?P<method2>[A-Za-z][A-Za-z0-9_-]{0,63})\s+"
-            r"(?:eeg\s+)?reference\b|\breference\s+(?:to|using|with|as)\s+"
-            r"(?P<method3>[A-Za-z][A-Za-z0-9_-]{0,63})\b",
-            text,
+    method = text.rstrip(".。!").strip()
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,63}", method):
+        return None
+    return (("method", method),), None
+
+
+def is_explicit_tool_input_cancel(text: str) -> bool:
+    """Recognize only a standalone receipt cancellation token."""
+    return bool(
+        re.fullmatch(
+            r"\s*(?:cancel|never\s+mind|取消|算了)\s*[.!。\uff01]?\s*",
+            unicodedata.normalize("NFKC", text),
             re.IGNORECASE,
         )
-    if match is None:
-        return None
-    method = next((value for value in match.groups() if value), match.group(0))
-    return (("method", method),), None
+    )
+
+
+def _is_direct_parameter_value_reply(tool_name: str, text: str) -> bool:
+    """Accept only a bounded value shape, never an action or intent sentence."""
+    stripped = text.strip().rstrip(".。!\uff01")
+    if tool_name in {"apply_notch_filter", "resample_data"}:
+        return bool(
+            re.fullmatch(
+                rf"{_DECIMAL_NUMBER_PATTERN}(?:\s*(?:hz|赫茲))?",
+                stripped,
+                re.IGNORECASE,
+            )
+        )
+    if tool_name == "apply_bandpass_filter":
+        remainder = re.sub(_DECIMAL_NUMBER_PATTERN, "", stripped)
+        remainder = re.sub(
+            r"\b(?:low|lower|high|upper|cutoff|frequency|freq|hz|is|to)\b",
+            "",
+            remainder,
+            flags=re.IGNORECASE,
+        )
+        return bool(re.fullmatch(r"(?:[\s,;:/=~\-\u2013\u2014]|\band\b)*", remainder))
+    if tool_name == "normalize_data":
+        return bool(
+            re.fullmatch(r"(?:z[\s-]*score|min[\s-]*max)", stripped, re.IGNORECASE)
+        )
+    return bool(re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,63}", stripped))
 
 
 def _positive_arabic_decimal(value: str) -> float | int | None:
@@ -278,42 +236,27 @@ def verify_direct_parameter_origins(
         return VerificationResult(True)
 
     text = unicodedata.normalize("NFKC", latest_user_text).strip()
-    clauses = tuple(
-        clause.strip() for clause in _CLAUSE_SEPARATOR.split(text) if clause.strip()
-    )
     if tool_name == "apply_bandpass_filter":
-        return _verify_bandpass_origins(params, clauses)
+        return _verify_bandpass_origins(params, text)
     if tool_name == "apply_notch_filter":
         return _verify_single_numeric_origin(
-            params.get("freq"),
-            clauses,
-            before_pattern=r"(?:notch|陷波)(?:\s+(?:filter|濾波))?[^\d\n]{0,24}?",
-            after_pattern=r"\s*(?:hz)?\s*(?:notch|陷波)",
-            question="What notch frequency should I use?",
+            params.get("freq"), text, "What notch frequency should I use?"
         )
     if tool_name == "resample_data":
         return _verify_single_numeric_origin(
-            params.get("rate"),
-            clauses,
-            before_pattern=(
-                r"(?:re[\s-]*sampl(?:e|ing)|重採樣|重取樣)"
-                r"[^\d\n]{0,32}?(?:to|at|into|到|至|為)\s*"
-            ),
-            after_pattern=None,
-            question="What resampling rate should I use?",
+            params.get("rate"), text, "What resampling rate should I use?"
         )
     if tool_name == "normalize_data":
         return _verify_method_origin(
             params.get("method"),
-            clauses,
-            cue_pattern=r"(?:normaliz(?:e|ation)|正規化|標準化)",
+            text,
             aliases={
                 "zscore": r"z[\s-]*score",
                 "minmax": r"min[\s-]*max",
             },
             question="Which normalization method should I use: z-score or min-max?",
         )
-    return _verify_reference_origin(params.get("method"), clauses)
+    return _verify_reference_origin(params.get("method"), text)
 
 
 def verified_direct_parameter_origin_values(
@@ -325,27 +268,13 @@ def verified_direct_parameter_origin_values(
     if tool_name != "apply_bandpass_filter":
         return ()
     text = unicodedata.normalize("NFKC", latest_user_text).strip()
-    clauses = tuple(
-        clause.strip() for clause in _CLAUSE_SEPARATOR.split(text) if clause.strip()
-    )
-    low_verified, high_verified = _bandpass_origin_matches(params, clauses)
+    low_verified, high_verified = _bandpass_origin_matches(params, text)
     verified: list[tuple[str, Any]] = []
     if low_verified:
         verified.append(("low_freq", params.get("low_freq")))
     if high_verified:
         verified.append(("high_freq", params.get("high_freq")))
     return tuple(verified)
-
-
-def _clarification_reply_is_cancelled(text: str) -> bool:
-    return bool(
-        re.search(
-            r"(?:\b(?:cancel|never(?:\s+mind)?|avoid|no|without|except|do\s+not|don't|not\s+now)\b|"
-            r"算了|取消|不要|不用|先不要)",
-            text,
-            re.IGNORECASE,
-        )
-    )
 
 
 def _clarification_reply_contains_number(value: Any, text: str) -> bool:
@@ -365,9 +294,9 @@ def _clarification_reply_contains_number(value: Any, text: str) -> bool:
 
 def _verify_bandpass_origins(
     params: dict[str, Any],
-    clauses: tuple[str, ...],
+    text: str,
 ) -> VerificationResult:
-    low_verified, high_verified = _bandpass_origin_matches(params, clauses)
+    low_verified, high_verified = _bandpass_origin_matches(params, text)
     if low_verified and high_verified:
         return VerificationResult(True)
     if high_verified and not low_verified:
@@ -386,64 +315,57 @@ def _verify_bandpass_origins(
     )
 
 
-def _bandpass_origin_matches(
-    params: dict[str, Any], clauses: tuple[str, ...]
-) -> tuple[bool, bool]:
-    """Return independently proven cutoffs from the existing origin grammar."""
+def _bandpass_origin_matches(params: dict[str, Any], text: str) -> tuple[bool, bool]:
+    """Return cutoffs proven by values and optional low/high labels only."""
     low = params.get("low_freq")
     high = params.get("high_freq")
-    cue = re.compile(r"(?:band[\s-]*pass|帶通)", re.IGNORECASE)
     range_pattern = re.compile(
         rf"(?P<low>{_DECIMAL_NUMBER_PATTERN})\s*(?:hz\s*)?"
         rf"(?:to|through|[-\u2013\u2014~\uff5e]|到|至)\s*"
         rf"(?P<high>{_DECIMAL_NUMBER_PATTERN})\s*(?:hz)?",
         re.IGNORECASE,
     )
-    low_verified = False
-    high_verified = False
-    for clause in clauses:
-        if cue.search(clause) is None:
-            continue
-        for match in range_pattern.finditer(clause):
-            low_verified = low_verified or _numbers_equal(low, match.group("low"))
-            high_verified = high_verified or _numbers_equal(high, match.group("high"))
-    return low_verified, high_verified
+    labelled: dict[str, str] = {}
+    for pattern in (_BANDPASS_LABELLED_VALUE, _BANDPASS_VALUE_LABELLED):
+        for match in pattern.finditer(text):
+            field = (
+                "low_freq"
+                if match.group("label").casefold() in {"low", "lower"}
+                else "high_freq"
+            )
+            if field in labelled:
+                return False, False
+            labelled[field] = match.group("value")
+    if labelled:
+        return (
+            _numbers_equal(low, labelled.get("low_freq")),
+            _numbers_equal(high, labelled.get("high_freq")),
+        )
+    for match in range_pattern.finditer(text):
+        if _numbers_equal(low, match.group("low")) and _numbers_equal(
+            high, match.group("high")
+        ):
+            return True, True
+    return False, False
 
 
 def _verify_single_numeric_origin(
     value: Any,
-    clauses: tuple[str, ...],
-    *,
-    before_pattern: str,
-    after_pattern: str | None,
+    text: str,
     question: str,
 ) -> VerificationResult:
-    before = re.compile(
-        rf"{before_pattern}(?P<value>{_DECIMAL_NUMBER_PATTERN})\s*(?:hz)?",
-        re.IGNORECASE,
-    )
-    after = (
-        re.compile(
-            rf"(?P<value>{_DECIMAL_NUMBER_PATTERN}){after_pattern}",
-            re.IGNORECASE,
-        )
-        if after_pattern is not None
-        else None
-    )
-    for clause in clauses:
-        matches = list(before.finditer(clause))
-        if after is not None:
-            matches.extend(after.finditer(clause))
-        if any(_numbers_equal(value, match.group("value")) for match in matches):
-            return VerificationResult(True)
+    if any(
+        _numbers_equal(value, match.group(0))
+        for match in re.finditer(_DECIMAL_NUMBER_PATTERN, text)
+    ):
+        return VerificationResult(True)
     return VerificationResult(False, question)
 
 
 def _verify_method_origin(
     value: Any,
-    clauses: tuple[str, ...],
+    text: str,
     *,
-    cue_pattern: str,
     aliases: dict[str, str],
     question: str,
 ) -> VerificationResult:
@@ -451,16 +373,15 @@ def _verify_method_origin(
     alias_pattern = aliases.get(normalized_value)
     if alias_pattern is None:
         return VerificationResult(False, question)
-    cue = re.compile(cue_pattern, re.IGNORECASE)
     alias = re.compile(alias_pattern, re.IGNORECASE)
-    if any(cue.search(clause) and alias.search(clause) for clause in clauses):
+    if alias.search(text):
         return VerificationResult(True)
     return VerificationResult(False, question)
 
 
 def _verify_reference_origin(
     value: Any,
-    clauses: tuple[str, ...],
+    text: str,
 ) -> VerificationResult:
     question = "What EEG reference method should I use?"
     if not isinstance(value, str) or not value.strip():
@@ -469,26 +390,7 @@ def _verify_reference_origin(
     if not escaped_words:
         return VerificationResult(False, question)
     method = r"[\s_-]*".join(escaped_words)
-    patterns = (
-        re.compile(rf"\b{method}\b\s+(?:eeg\s+)?reference\b", re.IGNORECASE),
-        re.compile(
-            rf"\b(?:set|use)\s+\b{method}\b\s+as\s+(?:the\s+)?"
-            r"(?:eeg\s+)?reference\b",
-            re.IGNORECASE,
-        ),
-        re.compile(
-            rf"\breference\b[^.!?。\uff01\uff1f\n]{{0,24}}?"
-            rf"(?:to|using|with|as)\s+\b{method}\b",
-            re.IGNORECASE,
-        ),
-        re.compile(
-            rf"(?:重新參考|重參考|參考)[^。\uff01\uff1f\n]{{0,16}}?"
-            rf"(?:到|至|為|使用)\s*{method}",
-            re.IGNORECASE,
-        ),
-        re.compile(rf"{method}\s*(?:重新參考|重參考|參考)", re.IGNORECASE),
-    )
-    if any(pattern.search(clause) for clause in clauses for pattern in patterns):
+    if re.search(rf"\b{method}\b", text, re.IGNORECASE):
         return VerificationResult(True)
     return VerificationResult(False, question)
 

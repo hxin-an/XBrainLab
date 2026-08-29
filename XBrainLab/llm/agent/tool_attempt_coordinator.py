@@ -47,8 +47,6 @@ from .verifier import (
     DIRECT_PARAMETER_TOOLS,
     PathProvenanceVerifier,
     VerificationResult,
-    direct_parameter_action_request_matches,
-    import_eeg_data_positive_origin_matches,
     verified_direct_parameter_origin_values,
     verify_direct_parameter_origins,
 )
@@ -105,7 +103,6 @@ class ToolAttemptAction(str, Enum):
     RESPOND = "respond"
     PUBLICATION_BLOCKED = "publication_blocked"
     PROVENANCE_BLOCKED = "provenance_blocked"
-    INTENT_BLOCKED = "intent_blocked"
     VERIFICATION_BLOCKED = "verification_blocked"
     CAPABILITY_BLOCKED = "capability_blocked"
     RESOURCE_CONFIRMATION_BLOCKED = "resource_confirmation_blocked"
@@ -136,7 +133,6 @@ class ToolAttemptRequest:
     repeated: bool = False
     enforce_direct_parameter_origins: bool = True
     tool_input_receipt: AssistantToolInputReceipt | None = None
-    supplied_parameters: dict[str, Any] | None = None
     single_proposal: bool = True
 
 
@@ -247,13 +243,8 @@ class ToolAttemptCoordinator:
         verified_parameters: tuple[tuple[str, Any], ...] = (),
     ) -> AssistantToolInputReceipt | None:
         """Admit one exact direct-tool clarification without granting execution."""
-        if (
-            command_name not in DIRECT_PARAMETER_TOOLS
-            or not publication.permits(command_name)
-            or not direct_parameter_action_request_matches(
-                command_name,
-                original_user_text,
-            )
+        if command_name not in DIRECT_PARAMETER_TOOLS or not publication.permits(
+            command_name
         ):
             return None
         generation = publication.backend_generation
@@ -371,24 +362,22 @@ class ToolAttemptCoordinator:
                     },
                 ),
             )
-        import_intent_result = (
-            self._import_eeg_data_intent_result(request, context)
-            if request.enforce_direct_parameter_origins
-            else None
-        )
-        if import_intent_result is not None:
-            return ToolAttemptDecision(
-                ToolAttemptAction.INTENT_BLOCKED,
-                command_name,
-                params,
-                context=context,
-                result=import_intent_result,
-            )
         receipt = request.tool_input_receipt
         receipt_matches = receipt is not None and receipt.matches(
             command_name,
             request.publication.backend_generation,
         )
+        if receipt is not None and not receipt_matches:
+            return ToolAttemptDecision(
+                ToolAttemptAction.RESPOND,
+                command_name,
+                params,
+                context=context,
+                message=(
+                    "The pending action or workflow state changed. Please start the "
+                    "requested action again."
+                ),
+            )
         receipt_complete = receipt_matches and set(
             dict(receipt.verified_parameters)
         ) == set(receipt.missing_inputs)
@@ -404,20 +393,6 @@ class ToolAttemptCoordinator:
                 ),
             )
         if receipt_complete:
-            supplied = request.supplied_parameters or request.params
-            if set(supplied) - set(receipt.missing_inputs):
-                return ToolAttemptDecision(
-                    ToolAttemptAction.VERIFICATION_BLOCKED,
-                    command_name,
-                    params,
-                    context=context,
-                    result=self._verification_result(
-                        request,
-                        context,
-                        "Unknown parameter in a receipt-bound assistant action.",
-                    ),
-                    feedback=ToolAttemptFeedback.TOOL_OUTPUT,
-                )
             params = dict(receipt.verified_parameters)
         provenance_result = self._provenance_result(request, context)
         if provenance_result is not None:
@@ -526,10 +501,6 @@ class ToolAttemptCoordinator:
             request.tool_input_receipt is not None
             or not request.single_proposal
             or not context.availability.enabled
-            or not direct_parameter_action_request_matches(
-                request.command_name,
-                request.latest_user_text,
-            )
         ):
             return None
         return self.admit_typed_clarification(
@@ -545,33 +516,6 @@ class ToolAttemptCoordinator:
                 request.params,
                 request.latest_user_text,
             ),
-        )
-
-    @staticmethod
-    def _import_eeg_data_intent_result(
-        request: ToolAttemptRequest,
-        context: ToolAvailabilityContext,
-    ) -> ToolCommandResult | None:
-        """Keep the import chooser behind its one approved positive request."""
-        if (
-            request.command_name != "import_eeg_data"
-            or import_eeg_data_positive_origin_matches(request.latest_user_text)
-        ):
-            return None
-        mapped_command = TOOL_TO_COMMAND.get(request.command_name)
-        return ToolCommandResult.failure(
-            request.command_name,
-            "Please make one direct request to import an EEG data, dataset, file, "
-            "or folder.",
-            command_name=(mapped_command.value if mapped_command is not None else None),
-            state=context.state,
-            capability=context.availability.to_dict(),
-            error_type="intent_mismatch",
-            recoverable=True,
-            diagnostics={
-                "policy": "import_eeg_data_positive_origin",
-                "publication_generation": context.generation,
-            },
         )
 
     def context_for(self, command_name: str) -> ToolAvailabilityContext:

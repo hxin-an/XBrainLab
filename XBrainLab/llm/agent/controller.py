@@ -129,6 +129,7 @@ from .ui_handoff import (
 from .verifier import (
     VerificationLayer,
     collect_direct_parameter_reply_evidence,
+    is_explicit_tool_input_cancel,
 )
 from .worker import AgentWorker
 
@@ -156,7 +157,6 @@ _BLOCKED_TOOL_ERROR_TYPES = frozenset(
     {
         "confirmation_required",
         "input",
-        "intent_mismatch",
         "precondition",
         "stale_confirmation",
         "stale_publication",
@@ -651,7 +651,6 @@ class LLMController(QObject):
     def _emit_processing_finished(self, outcome: str = "completed") -> None:
         """Publish UI completion and a correlated host terminal exactly once."""
         self.pending_interactions.clear_active_tool_input()
-        self.assembler.set_tool_input_receipt(None)
         correlation = self._turn_orchestrator.finish_host_turn()
         self.processing_finished.emit()
         if correlation is not None:
@@ -756,8 +755,7 @@ class LLMController(QObject):
         self._tool_attempt_session.reset_for_user_turn()
         self._turn_orchestrator.reset_for_user_turn()
         self.pending_interactions.clear_workflow_handoff()
-        receipt = self.pending_interactions.activate_tool_input()
-        self.assembler.set_tool_input_receipt(receipt)
+        self.pending_interactions.activate_tool_input()
         self.assembler.clear_recovery_feedback()
         self.assembler.clear_turn_authorization()
 
@@ -766,6 +764,10 @@ class LLMController(QObject):
         receipt = self.pending_interactions.active_tool_input
         if receipt is None:
             return False
+        if is_explicit_tool_input_cancel(text):
+            self.pending_interactions.clear_active_tool_input()
+            self._finalize_turn("Cancelled.")
+            return True
         evidence = collect_direct_parameter_reply_evidence(
             receipt.command_name,
             receipt.verified_parameters,
@@ -774,12 +776,7 @@ class LLMController(QObject):
         )
         if evidence is None:
             self.pending_interactions.clear_active_tool_input()
-            self.assembler.set_tool_input_receipt(None)
-            self._finalize_turn(
-                "I could not confirm those values. Please start that action again "
-                "with its required parameters."
-            )
-            return True
+            return False
         verified_parameters, unassigned_cutoff = evidence
         receipt = replace(
             receipt,
@@ -788,19 +785,51 @@ class LLMController(QObject):
         )
         self.pending_interactions.replace_active_tool_input(receipt)
         if set(dict(receipt.verified_parameters)) == set(receipt.missing_inputs):
-            self.assembler.set_tool_input_receipt(receipt)
-            return False
+            return self._complete_tool_input_receipt(receipt, text)
         requeued = self.pending_interactions.requeue_active_tool_input_for_reply()
         if requeued is None:
             self.pending_interactions.clear_active_tool_input()
-            self.assembler.set_tool_input_receipt(None)
             self._finalize_turn(
                 "I could not confirm all required values within this clarification. "
                 "Please start the action again with all required parameters."
             )
             return True
-        self.assembler.set_tool_input_receipt(requeued)
         self._finalize_turn(self._remaining_tool_input_question(requeued))
+        return True
+
+    def _complete_tool_input_receipt(
+        self,
+        receipt: AssistantToolInputReceipt,
+        latest_user_text: str,
+    ) -> bool:
+        """Finish one verified receipt without another model or RAG turn."""
+        self.pending_interactions.clear_active_tool_input()
+        try:
+            self.assembler.build_system_prompt(latest_user_text)
+        except Exception as exc:
+            failure = safe_unexpected_failure(
+                logger,
+                exc,
+                boundary="assistant_tool_input_receipt",
+                operation="refresh_publication",
+            )
+            self._finalize_turn(failure.message)
+            return True
+        publication = self.assembler.latest_tool_publication
+        self._turn_orchestrator.set_active_publication(publication)
+        decision = self._tool_attempt_coordinator.evaluate(
+            ToolAttemptRequest(
+                command_name=receipt.command_name,
+                params=dict(receipt.verified_parameters),
+                confidence=1.0,
+                publication=publication,
+                latest_user_text=latest_user_text,
+                tool_input_receipt=receipt,
+            )
+        )
+        if self._present_tool_attempt_boundary(decision):
+            return True
+        self._execute_tool_attempt(decision)
         return True
 
     def _workflow_ui_handoff_request(
@@ -1119,22 +1148,6 @@ class LLMController(QObject):
                 "workflow_stage does not match the current backend publication."
             )
 
-        if envelope.status is ToolEnvelopeStatus.NO_TOOL:
-            active_receipt = self.pending_interactions.active_tool_input
-            if active_receipt is not None and envelope.pending_action:
-                if active_receipt.matches(
-                    envelope.pending_action,
-                    self._turn_orchestrator.active_publication.backend_generation,
-                ):
-                    envelope = ToolEnvelopeParseResult.format_error(
-                        "A pending direct-preprocess clarification must propose the "
-                        "same exact action instead of repeating a typed missing-input "
-                        "reply."
-                    )
-                else:
-                    self.pending_interactions.clear_active_tool_input()
-                    self.assembler.set_tool_input_receipt(None)
-
         # Invalid tool-shaped output is never treated as user-facing prose and
         # never reaches verification or execution.
         if self._handle_tool_envelope_failure(response_text, envelope):
@@ -1343,41 +1356,6 @@ class LLMController(QObject):
         logger.debug("Heuristic confidence: %.2f", confidence)
 
         cmd, params = command
-        supplied_params = dict(params)
-        receipt = self.pending_interactions.active_tool_input
-        if receipt is not None and not receipt.matches(
-            cmd,
-            self._turn_orchestrator.active_publication.backend_generation,
-        ):
-            self.pending_interactions.clear_active_tool_input()
-            self.assembler.set_tool_input_receipt(None)
-            return ToolAttemptDecision(
-                ToolAttemptAction.RESPOND,
-                cmd,
-                params,
-                message=(
-                    "The pending action or workflow state changed. Please start the "
-                    "requested action again."
-                ),
-            )
-        if receipt is not None and receipt.matches(
-            cmd,
-            self._turn_orchestrator.active_publication.backend_generation,
-        ):
-            verified = dict(receipt.verified_parameters)
-            if set(verified) != set(receipt.missing_inputs):
-                self.pending_interactions.clear_active_tool_input()
-                self.assembler.set_tool_input_receipt(None)
-                return ToolAttemptDecision(
-                    ToolAttemptAction.RESPOND,
-                    cmd,
-                    params,
-                    message=(
-                        "I could not confirm all required values. Please start the "
-                        "action again with all required parameters."
-                    ),
-                )
-            params = verified
         repeated = self._tool_attempt_session.record_tool_proposal(cmd, params)
         latest_user_text = self._latest_user_request_text()
         publication = self._turn_orchestrator.active_publication
@@ -1389,8 +1367,6 @@ class LLMController(QObject):
                 publication=publication,
                 latest_user_text=latest_user_text,
                 repeated=repeated,
-                tool_input_receipt=receipt,
-                supplied_parameters=supplied_params,
                 single_proposal=single_proposal,
             )
         )
@@ -1427,7 +1403,6 @@ class LLMController(QObject):
         if decision.action in {
             ToolAttemptAction.PUBLICATION_BLOCKED,
             ToolAttemptAction.PROVENANCE_BLOCKED,
-            ToolAttemptAction.INTENT_BLOCKED,
             ToolAttemptAction.VERIFICATION_BLOCKED,
             ToolAttemptAction.CAPABILITY_BLOCKED,
             ToolAttemptAction.RESOURCE_CONFIRMATION_BLOCKED,
@@ -2808,7 +2783,6 @@ class LLMController(QObject):
         # Clear Assembler context as well
         self.assembler.clear_context()
         self.assembler.clear_turn_authorization()
-        self.assembler.set_tool_input_receipt(None)
 
         self.status_update.emit("Conversation reset.")
         self._publish_activity(AssistantTurnActivityPhase.IDLE)

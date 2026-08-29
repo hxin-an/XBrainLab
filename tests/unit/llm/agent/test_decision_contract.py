@@ -86,7 +86,7 @@ def test_prompt_policy_preserves_explicit_supported_optional_values() -> None:
 def test_prompt_policy_uses_no_action_for_ambiguous_or_negated_requests() -> None:
     prompt = StrictToolResponsePromptPolicy().decision_instructions().lower()
 
-    assert "negates an action" in prompt
+    assert "negated" in prompt
     assert "ambiguous" in prompt
     assert "use respond_to_user" in prompt
 
@@ -94,9 +94,8 @@ def test_prompt_policy_uses_no_action_for_ambiguous_or_negated_requests() -> Non
 def test_prompt_policy_defers_multi_action_requests_without_execution() -> None:
     prompt = StrictToolResponsePromptPolicy().decision_instructions().lower()
 
-    assert "more than one action" in prompt
-    assert "ask which action to do first" in prompt
-    assert "do not call any tool in that turn" in prompt
+    assert "multi-action request" in prompt
+    assert "respond_to_user with message only" in prompt
 
 
 def test_prompt_policy_forbids_unverified_completion_claims() -> None:

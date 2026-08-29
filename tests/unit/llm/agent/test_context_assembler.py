@@ -33,7 +33,6 @@ from XBrainLab.llm.agent.decision_context import (
 )
 from XBrainLab.llm.agent.turn import (
     AssistantResponseContract,
-    AssistantToolInputReceipt,
     AssistantTurnScope,
 )
 from XBrainLab.llm.pipeline_state import STAGE_CONFIG, PipelineStage
@@ -69,7 +68,8 @@ def test_generation_request_keeps_concept_question_on_strict_response_contract()
     assert request.response_contract is AssistantResponseContract.STRUCTURED_ACTION
     system_prompt = " ".join(request.to_model_messages()[0]["content"].split())
     assert '"name": "respond_to_user"' in system_prompt
-    assert '"workflow_stage":"empty"' in system_prompt
+    assert "Final no-action envelope" not in system_prompt
+    assert "never explain that the user should call an internal tool" in system_prompt
 
 
 def test_external_envelope_cannot_forge_authoritative_workflow_item_type() -> None:
@@ -141,7 +141,7 @@ def test_question_does_not_narrow_backend_stage_published_actions() -> None:
     card = _context_item(context, "state_card")["data"]
 
     assert request.response_contract is AssistantResponseContract.STRUCTURED_ACTION
-    assert '"workflow_stage":"data_loaded"' in prompt
+    assert "Final no-action envelope" not in prompt
     assert '"name": "respond_to_user"' in prompt
     assert runtime.publication_reads == 1
     assert assembler.latest_tool_publication.tool_names == frozenset(
@@ -335,7 +335,7 @@ def test_zero_parameter_action_contract_has_one_final_output_reminder():
     assert not contracts.lstrip().startswith("[")
 
 
-def test_single_action_contract_ends_with_no_action_envelope() -> None:
+def test_single_action_contract_ends_with_action_first_reminder() -> None:
     registry = ToolRegistry()
     registry.register(BaseStartTrainingTool())
     assembler = ContextAssembler(registry, Study())
@@ -343,8 +343,7 @@ def test_single_action_contract_ends_with_no_action_envelope() -> None:
     contracts = assembler._format_tools(["start_training"])
 
     assert contracts.rstrip().endswith(
-        '{"workflow_stage":"unavailable","tool_name":"respond_to_user",'
-        '"parameters":{"message":"<concise response or one clarifying question>"}}'
+        "never explain that the user should call an internal tool or function."
     )
 
 
@@ -367,7 +366,7 @@ def test_action_catalog_ends_with_one_short_output_reminder() -> None:
     assert "Decision checkpoint" not in reminder
 
 
-def test_action_catalog_ends_with_exact_stage_no_action_envelope() -> None:
+def test_action_catalog_ends_with_action_first_reminder() -> None:
     registry = ToolRegistry()
     registry.register(BaseStartTrainingTool())
     assembler = ContextAssembler(registry, Study())
@@ -378,8 +377,7 @@ def test_action_catalog_ends_with_exact_stage_no_action_envelope() -> None:
     )
 
     assert contracts.rstrip().endswith(
-        '{"workflow_stage":"epoch_ready","tool_name":"respond_to_user",'
-        '"parameters":{"message":"<concise response or one clarifying question>"}}'
+        "never explain that the user should call an internal tool or function."
     )
 
 
@@ -415,10 +413,13 @@ def test_prompt_policy_consolidation_preserves_publication_and_decision_contract
     assert '"name": "select_channels"' in prompt
     assert '"name": "switch_panel"' in prompt
     assert '"name": "respond_to_user"' in prompt
-    assert "tool_input_clarification" in prompt
-    assert "Do not call any tool in that turn" in prompt
+    assert "tool_input_clarification" not in prompt
+    assert prompt.rstrip().endswith(
+        "For a clear enabled action, choose it now; never explain that the user "
+        "should call an internal tool or function.\n"
+        "Only the listed workflow actions are available at this stage."
+    )
     assert "Never claim that an action completed" in prompt
-    assert '"workflow_stage":"data_loaded","tool_name":"respond_to_user",' in prompt
 
 
 @pytest.mark.parametrize(
@@ -795,7 +796,7 @@ def test_explanatory_no_tool_turn_publishes_no_workflow_tools() -> None:
     )
 
     assert "STRICT RESPONSE CONTRACT" in prompt
-    assert '"workflow_stage":"preprocessed"' in prompt
+    assert "Final no-action envelope" not in prompt
     assert '"name": "respond_to_user"' in prompt
     assert "unique description for epoch_data" not in prompt
     assert assembler.latest_tool_publication.tool_names == frozenset()
@@ -1075,7 +1076,7 @@ def test_prompt_history_keeps_only_latest_visible_assistant_message() -> None:
     assert messages[-1] == {"role": "user", "content": "Why is that useful?"}
 
 
-def test_current_tool_input_receipt_is_projected_as_bounded_context() -> None:
+def test_tool_input_receipt_is_never_projected_into_prompt_context() -> None:
     state = _state(
         pipeline_stage="data_loaded",
         raw=RawStateSnapshot(loaded=True, count=1),
@@ -1093,15 +1094,8 @@ def test_current_tool_input_receipt_is_projected_as_bounded_context() -> None:
         Study(),
         application_runtime=_ApplicationRuntimeFake(publication),
     )
-    assembler.set_tool_input_receipt(
-        AssistantToolInputReceipt(
-            command_name="resample_data",
-            original_user_text="Resample the EEG data.",
-            question="What resampling rate should I use?",
-            publication_generation=81,
-            missing_inputs=("rate",),
-        )
-    )
+    assert not hasattr(assembler, "set_tool_input_receipt")
+    assert not hasattr(assembler, "_tool_input_receipt")
 
     messages = assembler.get_messages(
         [
@@ -1114,106 +1108,9 @@ def test_current_tool_input_receipt_is_projected_as_bounded_context() -> None:
     )
 
     context = _untrusted_context(messages)
-    clarification = _context_item(context, "tool_input_clarification")
-    assert clarification["source"]["kind"] == "assistant_tool_input_receipt"
-    assert clarification["data"] == {
-        "action": "resample_data",
-        "original_user_request": "Resample the EEG data.",
-        "question": "What resampling rate should I use?",
-        "publication_generation": 81,
-        "missing_inputs": ["rate"],
-        "verified_parameters": {},
-        "remaining_reply_budget": 2,
-    }
-    assert "tool_input_clarification" in messages[0]["content"]
+    assert "tool_input_clarification" not in {item["type"] for item in context["items"]}
+    assert "assistant_tool_input_receipt" not in messages[0]["content"]
     assert messages[-1] == {"role": "user", "content": "128 Hz"}
-
-
-def test_tool_input_receipt_does_not_duplicate_its_question_in_history() -> None:
-    state = _state(
-        pipeline_stage="data_loaded",
-        raw=RawStateSnapshot(loaded=True, count=1),
-        active_dataset=ActiveDatasetSnapshot(has_raw_data=True),
-    )
-    publication = ApplicationViewPublication(
-        generation=81,
-        state=state,
-        capabilities=build_capability_policy(state),
-    )
-    registry = ToolRegistry()
-    registry.register(_NamedTool("resample_data"))
-    assembler = ContextAssembler(
-        registry,
-        Study(),
-        application_runtime=_ApplicationRuntimeFake(publication),
-    )
-    question = "What resampling rate should I use?"
-    assembler.set_tool_input_receipt(
-        AssistantToolInputReceipt(
-            command_name="resample_data",
-            original_user_text="Resample the EEG data.",
-            question=question,
-            publication_generation=81,
-            missing_inputs=("rate",),
-        )
-    )
-
-    messages = assembler.get_messages(
-        [
-            {"role": "assistant", "content": "Earlier unrelated assistant text."},
-            {"role": "assistant", "content": question},
-            {"role": "user", "content": "128 Hz"},
-        ]
-    )
-
-    context = _untrusted_context(messages)
-    assert "tool_input_clarification" in {item["type"] for item in context["items"]}
-    assert "conversation_history" not in {item["type"] for item in context["items"]}
-
-
-@pytest.mark.parametrize(
-    ("receipt_generation", "receipt_tool"),
-    (
-        (80, "resample_data"),
-        (81, "not_registered_for_this_stage"),
-    ),
-)
-def test_stale_or_unavailable_tool_input_receipt_is_not_projected(
-    receipt_generation: int,
-    receipt_tool: str,
-) -> None:
-    state = _state(
-        pipeline_stage="data_loaded",
-        raw=RawStateSnapshot(loaded=True, count=1),
-        active_dataset=ActiveDatasetSnapshot(has_raw_data=True),
-    )
-    publication = ApplicationViewPublication(
-        generation=81,
-        state=state,
-        capabilities=build_capability_policy(state),
-    )
-    registry = ToolRegistry()
-    registry.register(_NamedTool("resample_data"))
-    assembler = ContextAssembler(
-        registry,
-        Study(),
-        application_runtime=_ApplicationRuntimeFake(publication),
-    )
-    assembler.set_tool_input_receipt(
-        AssistantToolInputReceipt(
-            command_name=receipt_tool,
-            original_user_text="Run a preprocessing action.",
-            question="Which required value should I use?",
-            publication_generation=receipt_generation,
-            missing_inputs=("rate",),
-        )
-    )
-
-    context = _untrusted_context(
-        assembler.get_messages([{"role": "user", "content": "128 Hz"}])
-    )
-
-    assert all(item["type"] != "tool_input_clarification" for item in context["items"])
 
 
 def test_referential_explanation_keeps_immediate_conversation_context() -> None:

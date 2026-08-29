@@ -49,7 +49,6 @@ from .tool_feedback import ToolRecoveryFeedback
 from .turn import (
     AssistantGenerationRequest,
     AssistantResponseContract,
-    AssistantToolInputReceipt,
     AssistantTurnScope,
 )
 
@@ -151,7 +150,6 @@ Action Contract Catalog (input definitions, never an output array):
         self.context_notes: list[str] = []
         self._latest_context_items: tuple[UntrustedContextItem, ...] = ()
         self._recovery_feedback: ToolRecoveryFeedback | None = None
-        self._tool_input_receipt: AssistantToolInputReceipt | None = None
         self._latest_tool_publication = PromptToolPublication.empty()
         self._turn_authorized_command: str | None = None
         self._turn_authorization_is_continuation = False
@@ -273,11 +271,8 @@ Action Contract Catalog (input definitions, never an output array):
             + workflow_stage
             + "', an exact enabled action name or respond_to_user, and parameters "
             "matching the selected contract. Add no prose outside the object.",
-            "Final no-action envelope (replace the message placeholder):",
-            '{"workflow_stage":"'
-            + workflow_stage
-            + '","tool_name":"respond_to_user","parameters":{"message":'
-            '"<concise response or one clarifying question>"}}',
+            "For a clear enabled action, choose it now; never explain that the "
+            "user should call an internal tool or function.",
         )
 
     def _application_allowed_tools(
@@ -451,36 +446,6 @@ Action Contract Catalog (input definitions, never an output array):
                 ),
             )
         ]
-        receipt = self._tool_input_receipt
-        if (
-            receipt is not None
-            and receipt.matches(receipt.command_name, policy_read.backend_generation)
-            and receipt.command_name in allowed_tools
-            and not workflow_status_unavailable
-        ):
-            context_items.append(
-                UntrustedContextItem(
-                    item_type="tool_input_clarification",
-                    source=UntrustedContextSource(
-                        kind="assistant_tool_input_receipt",
-                    ),
-                    data={
-                        "action": receipt.command_name,
-                        "original_user_request": sanitize_untrusted_text(
-                            receipt.original_user_text,
-                            max_chars=MAX_UNTRUSTED_STRING_CHARS,
-                        ),
-                        "question": sanitize_untrusted_text(
-                            receipt.question,
-                            max_chars=MAX_UNTRUSTED_STRING_CHARS,
-                        ),
-                        "publication_generation": receipt.publication_generation,
-                        "missing_inputs": receipt.missing_inputs,
-                        "verified_parameters": dict(receipt.verified_parameters),
-                        "remaining_reply_budget": receipt.remaining_reply_budget,
-                    },
-                )
-            )
         if self._recovery_feedback is not None:
             context_items.append(
                 UntrustedContextItem(
@@ -664,15 +629,6 @@ Action Contract Catalog (input definitions, never an output array):
         self._turn_authorized_command = None
         self._turn_authorization_is_continuation = False
 
-    def set_tool_input_receipt(
-        self,
-        receipt: AssistantToolInputReceipt | None,
-    ) -> None:
-        """Bind one host-owned clarification receipt to the current turn."""
-        if receipt is not None and not isinstance(receipt, AssistantToolInputReceipt):
-            raise TypeError("Assistant tool-input receipt must be typed.")
-        self._tool_input_receipt = receipt
-
     def clear_recovery_feedback(self) -> None:
         """Discard failure feedback at a user-turn or success boundary."""
         self._recovery_feedback = None
@@ -726,19 +682,10 @@ Action Contract Catalog (input definitions, never an output array):
         messages: list[dict[str, Any]] = [system_message]
 
         context_items = list(self._latest_context_items)
-        receipt = self._tool_input_receipt
-        receipt_question = (
-            receipt.question.strip()
-            if receipt is not None
-            and any(
-                item.item_type == "tool_input_clarification" for item in context_items
-            )
-            else None
-        )
         history_item = self._conversation_history_item(
             prior_history,
             input_truncated=history_input_truncated,
-            receipt_question=receipt_question,
+            receipt_question=None,
         )
         if history_item is not None:
             context_items.append(history_item)

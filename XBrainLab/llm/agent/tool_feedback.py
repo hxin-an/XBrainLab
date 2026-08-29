@@ -97,9 +97,6 @@ def build_recovery_feedback(
             "Do not substitute a different tool. Explain the blocker or wait for "
             "the required workflow state."
         ),
-        "intent_mismatch": (
-            "Select the tool that directly matches the latest user request."
-        ),
         "tool_not_published": (
             "Use only a tool published in the current Available Tools block."
         ),
