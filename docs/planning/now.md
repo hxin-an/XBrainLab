@@ -1,6 +1,6 @@
 # XBrainLab Now
 
-最後更新：`2026-08-29`
+最後更新：`2026-08-30`
 
 ## 目前焦點：Assistant dispatch / prompt iteration v1
 
@@ -30,8 +30,8 @@ and are not published at `empty`, `epoch_ready`, `dataset_ready`, `training`, or
 - Change only the existing Assistant `STAGE_CONFIG` projection in
   `XBrainLab/llm/pipeline_state.py`, its exact publication tests, the directly affected no-action
   evaluator case, and the canonical Complete Workflow order.
-- The existing GUI/backend channel and montage capability remains intentionally broader; this slice
-  does not change it. It also does not alter tool schemas, prompts, evaluator denominators, UI,
+- Existing GUI/backend capabilities remain unchanged; montage remains broader after epochs. This
+  slice does not change them. It also does not alter tool schemas, prompts, evaluator denominators, UI,
   model selection, or root `settings.json`.
 
 #### Assumption, steps, and focused validation
