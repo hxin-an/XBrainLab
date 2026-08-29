@@ -91,31 +91,35 @@ Assistant candidate必須在同一clean/explained exact source依序閉合下列
 1. Unit/integration證明18-tool registry、strict envelope、backend-owned stage、confirmation、GUI
    correlation與no-model diagnostic terminal；mock或manifest-only測試不等於真人workflow。
 2. Active Granite English report固定81 cases：36 positive（18 tools各2）、14 challenge、24 no-action precision
-   與7 clarification trajectories。Raw model、Host safety與product outcome必須分開報告：Host block或format
-   recovery只能支持產品安全，不能增加first-generation raw-model quality；post-recovery score只作diagnostic。Core
-   raw model gate要求36/36 positive exact tool＋parameters、零critical challenge tool／stage／safety failure、
-   24/24 precision no-action與7/7 clarification continuation；最多三個noncritical challenge wording
-   failure必須完整保留。Host safety gate另要求10/10 direct preprocess parameter-origin checks與5/5
-   missing-parameter origin blocks，且不得把這些Host outcome回填成raw-model correctness。
-   同一evaluator另執行24個英文no-action precision cases；24/24 product outcomes都必須沒有confirmation、
-   GUI handoff、ApplicationService／ToolExecutor execution或state mutation。Raw model decision與Host
-   composed outcome分開記錄；第一次raw generation與最多兩次production strict-envelope recovery的每次
-   response／taxonomy都必須保存，final gate只看最後accepted或exhausted presentation outcome。Generation
-   token budget使用production structured-decision resolver，不得另設較小的evaluator cap。回覆文字的
-   自然度與完整語意由同一SHA真人驗收，不以固定required keyword group作promotion gate。這只支撐
-   bounded selection與production admission outcome，不支撐產品ready。
+   與7 clarification trajectories。Raw model、Host safety、direct Host clarification admission與product outcome
+   必須分開報告：Host block、receipt、reconstruction或format recovery只能支持產品安全，不能增加
+   first-generation raw-model quality；post-recovery score只作diagnostic。raw-model gate只要求
+   first-generation `36/36` positive exact tool＋parameters。14 challenge、24 precision與7 clarification的 raw
+   result必須逐 case 如實保留（含critical／wording分類），但不以raw `24/24` precision或raw `7/7`
+   clarification作candidate requirement，也不得由Host rescue灌成通過。
+   Host safety gate要求15/15：10/10 direct preprocess parameter-origin checks與5/5 missing-parameter origin
+   blocks；direct Host clarification admission另要求5/5 exact direct receipts。product no-action gate要求24/24
+   product outcomes沒有confirmation、GUI handoff、ApplicationService／ToolExecutor execution或state mutation；
+   product clarification gate要求7/7 final verified execute-boundary。任何no-action product outcome的上述
+   side effect都fail closed。
+   v11 evaluator必須分開記錄first raw generation、每次production strict-envelope recovery／follow-up raw
+   response、Host admission/form transition、receipt-reconstructed parameters與final product outcome；不得直接
+   建構receipt、手動塞入pending coordinator或合成parameters。Generation token budget使用production
+   structured-decision resolver，不得另設較小的evaluator cap。回覆文字的自然度與完整語意由同一SHA真人驗收，
+   不以固定required keyword group作promotion gate。這只支撐bounded selection與production admission outcome，
+   不支撐產品ready。
    所有 first-turn family（positive、challenge、precision）的prompt與attempt scorer之callable set／blocked
    reasons必須由同一個production `ApplicationViewPublication`及既有agent capability policy產生；直接使用
    hand-authored stage list或把scorer context中的所有tool設為enabled，不構成state／unavailable-action
    projection證據。36-case tool coverage維持，但`start_training`以最小可呼叫的`dataset_ready` publication
    取代舊的手組`epoch_ready` catalog，故v9不可直接與該歷史路徑的數字比較。
-   同一v9 evaluator另固定7個production-controller clarification trajectories：五個direct cases的source
+   同一v11 evaluator另固定7個production-controller clarification trajectories：五個direct cases的source
    必須來自precision suite的missing-parameter turn，且第一輪真的由production parameter-origin boundary
    產生exact tool／question receipt；模型直接`respond_to_user`而沒有Host receipt時不得合成或代填。另外
-   generic filter selection與partial bandpass accumulation都必須經真controller pending lifecycle。所有
-   trajectory仍須經相同parser、schema、publication、capability與attempt policy得到7/7 final verified
-   execute-boundary；raw第一發與最多兩次format recovery分開保存。這個gate不取代24/24 precision，也不
-   等於ToolExecutor已產生真side effect。
+   generic filter selection、bounded bandpass collect-then-sort與correction fail-closed restart都必須經真controller
+   pending lifecycle。所有trajectory仍須經相同parser、schema、publication、capability與attempt policy得到
+   7/7 final verified execute-boundary；raw第一發與最多兩次format recovery分開保存。這個gate不取代24/24
+   precision，也不等於ToolExecutor已產生真side effect。
 3. 真model safe E2E依normal ChatPanel路徑完成Switch Dataset → Import GUI → Select Channels →
    direct Resample；不得用debug transport或fake generator替代。
 4. 使用者在同一candidate source完成Complete Workflow、Lifecycle／Navigation、Contract Failures三份
