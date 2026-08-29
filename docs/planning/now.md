@@ -402,6 +402,43 @@ This docs commit is the new final exact source. Reviewers must attest the correc
 exact SHA before the model run. After that attestation, no tracked code/docs changes are permitted; model failure
 still preserves its report and stops tuning. No model, handoff, PR or manual acceptance is claimed here.
 
+### Approved bounded-baseline evaluator stabilization — 2026-08-29
+
+The user-approved decision freezes product behavior, prompts, model/revision, case denominator and all raw/Host/
+product gates. This is an evaluator-only evidence repair, not a Stable promotion: the resulting baseline remains
+**bounded baseline**, not `Stable` and not `handoff-ready`. It supersedes the preceding source freeze solely until
+this repair is reviewed and a new exact source is frozen.
+
+#### Problem and outcome
+
+For an invalid typed clarification response, the evaluator must replay the actual production strict-format recovery
+through the existing controller, record the recovery context and every generated retry, then record the final
+controller terminal. It must not shortcut a static evaluator decision. Repeated invalid typed responses must use the
+existing maximum recovery budget, remain side-effect-free, and produce a truthful failed product terminal rather
+than a contradictory `passed=false`/`failure_type=none` report.
+
+#### Scope and non-goals
+
+Only `scripts/dev/run_stable_assistant_model_eval.py` and
+`tests/unit/scripts/test_stable_assistant_model_eval.py` may change. The evaluator reuses the production
+`LLMController` and strict-envelope recovery policy; it may not synthesize receipts or parameters, introduce a
+second recovery policy, or alter dynamic generation count/capture correlation. No `XBrainLab/` production code,
+prompt, model/catalog/revision, case data, settings, public contract, UI, handoff specification, threshold or
+81-case denominator may change.
+
+#### TDD, validation and stop condition
+
+First add focused red tests for: (1) invalid typed clarification → production recovery context → a second generated
+response → final controller terminal with `format_retry` trace; (2) repeated invalid output → existing retry budget
+exhaustion, zero confirmation/UI/ApplicationService/ToolExecutor/state-mutation crossing, and a non-`none`
+failure type. Then make only the evaluator/test repair green, run the focused evaluator file plus ruff check,
+ruff format check and `git diff --check` for changed Python. Preserve all v11 report fields and gates.
+
+No model run occurs before a clean exact-SHA review of this repair. If production changes, a new alternate policy,
+receipt/parameter synthesis, threshold/gate change, side effect, or unresolved report contradiction is required,
+stop and return evidence rather than expanding scope. If model evidence later fails, preserve its report and stop;
+do not tune prompts, change models or relax gates.
+
 ## Focused validation、v11 trace 與 model gates
 
 ### Direct behavior tests
