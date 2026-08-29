@@ -251,6 +251,23 @@ admission and direct tests; the evaluator worker may change only evaluator scrip
 focused checkpoints, integration reruns their union, ruff and diff checks, then fresh lifecycle and evidence review
 on the exact clean SHA. No model run, handoff, PR, UI acceptance or merge is implied by this checkpoint.
 
+### Repair integration checkpoint — 2026-08-29
+
+Clean `cad16a8494c1bb1d5a297ac79b7849faf5250f94` received evaluator source
+`e334dc22b4d74584d3af3efdfc7e7a480c2a9662` as integrated commit `330f6684551bd30f02091e4ee539b09ed4777060`;
+there was no cherry-pick conflict. The lifecycle author checkpoint is `cad16a84`: existing typed admission now
+requires the affirmative direct-action matcher, with the informational-question/numeric-follow-up regression and
+retained positive direct cases in its focused controller/policy tests. The evaluator author checkpoint is
+`330f6684`: its focused script tests cover safe adjacent-object choose-one, narrow import-origin no-action,
+untruncated direct admission, raw-positive-only and direct-admission gates, plus opt-in capture integrity.
+
+The evaluator change is confined to the existing development evaluator and its test file (`+707/-19` lines across
+two non-production files); the lifecycle repair changes the existing coordinator and direct tests only. It does not
+change a production owner, LocalBackend, UI, model, tool/public contract, or exception control flow. Author
+checkpoints are implementation evidence, not a review, model, handoff or manual-acceptance result. Next: run the
+specified model-free union and static checks on the exact integrated SHA, then obtain fresh non-author lifecycle and
+evidence/privacy reviews before any model run.
+
 ## Focused validation、v11 trace 與 model gates
 
 ### Direct behavior tests
