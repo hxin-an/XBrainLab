@@ -296,6 +296,21 @@ model-free union, ruff and diff checks; fresh lifecycle and evidence reviewers r
 run remains stopped until that review closes. No test, model, handoff, PR or manual success is claimed by this
 planning checkpoint.
 
+### Controller-trace repair integration checkpoint — 2026-08-29
+
+Clean `8be12cbc6d0fdb3dbba3443d3f295418b6e6e7b6` received evaluator source
+`a5596e82095f231dcc12d8b58d4974ab0b195480` as integrated commit
+`cd30efae7dd4d0103a4f907075f36936ee03ec7a`; the cherry-pick had no conflict. The author checkpoint reports
+`59` focused evaluator tests. Integration's exact model-free seven-file union passed `610` tests (three existing
+third-party deprecation warnings); `ruff check`, `ruff format --check` and `git diff --check` also passed.
+
+The controller-trace repair changes only the existing evaluator script and its tests (`+649/-39` in that worker
+commit). Across complete `main..cd30efae`, production `XBrainLab/` remains 10 code files, `+696/-245`, net `+451`
+(excluding static data); no production owner changes, owner delta remains `0`. The prior lifecycle PASS is invalid
+only because the exact source SHA changed: production source remains unchanged by this evaluator-only commit, but
+both lifecycle and evidence/privacy reviews must nevertheless be fresh on the next clean SHA. No fresh review,
+model, handoff, PR or manual-acceptance success is implied here.
+
 ## Focused validation、v11 trace 與 model gates
 
 ### Direct behavior tests
