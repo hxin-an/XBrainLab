@@ -456,6 +456,31 @@ first-turn rows, otherwise compress it while preserving one direct active-receip
 evaluator suite, ruff and diff checks. No model or handoff follows until this corrected exact SHA is independently
 reviewed.
 
+### Boundary correction: evaluator positive fixture ownership — 2026-08-29
+
+A full LLM regression found that this candidate's English-only 36-case evaluation corpus was accidentally written
+into the bundled product RAG corpus. The candidate bytes currently hash to
+`5d60662ce3f43e36c346dbda238a23f7b22377c04043e1833a77296931546577`, while the reviewed product corpus and
+`RAGConfig.GOLD_SET_SHA256` require the exact `main` bytes with digest
+`a4311b63165c2f4fb1c68d88c1ed8c81ecb9ae3beb1760bf1c2e52cda57f31bc`. This is a data-ownership mismatch, not a
+RAG migration or a model-evaluation result.
+
+The bounded repair restores `XBrainLab/llm/rag/data/gold_set.json` byte-for-byte to `main`, then relocates the
+existing byte-identical English 36-case fixture to
+`scripts/dev/stable_assistant_positive_cases.json`. The stable evaluator's `DEFAULT_CASES` and direct evaluator
+tests must own that scripts/dev fixture; the command-line default/export path inherits `DEFAULT_CASES` rather than
+introducing another path. Case contents, IDs, the 36/two-per-tool positive matrix, evaluator fixture digest,
+81-case denominator, model/revision, prompt, gates and report contract remain unchanged.
+
+No `RAGConfig` digest/config/index change, corpus migration, retriever change, product behavior change, new owner,
+or UI change is allowed. The direct red protections are: current candidate product corpus fails its reviewed digest,
+and evaluator defaults/tests still point at product RAG data. Green protection must prove product RAG identity is
+valid, evaluator fixture identity is all-English and exactly 36/two-per-tool at the stated digest, and the evaluator
+does not depend on the product corpus. Then run the focused RAG config test, full evaluator suite, changed-Python
+ruff check/format check, JSON parse/hash checks and `git diff --check`. Stop rather than changing any RAG
+digest/config/index or evaluation content if byte identity cannot be preserved. This is a bounded-baseline repair;
+it claims neither model success, handoff readiness nor manual acceptance.
+
 ## Focused validation、v11 trace 與 model gates
 
 ### Direct behavior tests
