@@ -97,8 +97,9 @@ Assistant candidate必須在同一clean/explained exact source依序閉合下列
    first-generation `36/36` positive exact tool＋parameters。14 challenge、24 precision與7 clarification的 raw
    result必須逐 case 如實保留（含critical／wording分類），但不以raw `24/24` precision或raw `7/7`
    clarification作candidate requirement，也不得由Host rescue灌成通過。
-   Host safety gate要求15/15：10/10 direct preprocess parameter-origin checks與5/5 missing-parameter origin
-   blocks；direct Host clarification admission另要求5/5 exact direct receipts。product no-action gate要求24/24
+   Host safety gate要求10/10 direct preprocess value-origin checks；direct Host clarification admission另要求5/5
+   exact direct receipts。Host 不以英文 action／intent grammar 或 import positive-origin rescue 改寫 raw/product
+   outcome。product no-action gate要求24/24
    product outcomes沒有confirmation、GUI handoff、ApplicationService／ToolExecutor execution或state mutation；
    product clarification gate要求7/7 final verified execute-boundary。任何no-action product outcome的上述
    side effect都fail closed。
@@ -114,11 +115,11 @@ Assistant candidate必須在同一clean/explained exact source依序閉合下列
    projection證據。36-case tool coverage維持，但`start_training`以最小可呼叫的`dataset_ready` publication
    取代舊的手組`epoch_ready` catalog，故v9不可直接與該歷史路徑的數字比較。
    同一v11 evaluator另固定7個production-controller clarification trajectories：五個direct cases的source
-   必須來自precision suite的missing-parameter turn，且第一輪真的由production parameter-origin boundary
+   必須來自precision suite的missing-parameter turn，且第一輪真的由production parameter value-origin boundary
    產生exact tool／question receipt；模型直接`respond_to_user`而沒有Host receipt時不得合成或代填。另外
    generic filter selection、bounded bandpass collect-then-sort與correction fail-closed restart都必須經真controller
    pending lifecycle。所有trajectory仍須經相同parser、schema、publication、capability與attempt policy得到
-   7/7 final verified execute-boundary；raw第一發與最多兩次format recovery分開保存。這個gate不取代24/24
+   7/7 final verified execute-boundary；receipt 收齊後必須零額外 LLM/RAG generation。raw第一發與最多兩次format recovery分開保存。這個gate不取代24/24
    precision，也不等於ToolExecutor已產生真side effect。
 3. 真model safe E2E依normal ChatPanel路徑完成Switch Dataset → Import GUI → Select Channels →
    direct Resample；不得用debug transport或fake generator替代。

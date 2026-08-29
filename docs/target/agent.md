@@ -69,12 +69,11 @@ cancel 都由該 GUI owner 完成。`opened`／`accepted` 不是成功，只有 
 七個 names 共用既有 typed UI handoff registry 與一個 thin adapter。Internal route identity、underlying
 command 與 decision fields 由 trusted action contract 固定，不是模型參數，也不建立新 UI owner。
 
-`import_eeg_data` 是唯一追加 narrow positive-origin guard 的 GUI entry：current publication 已啟用也不足以
-讓模型單獨開啟 Import UI。latest user text 必須以肯定動詞 `import`、`load`、`open`、`select` 或 `choose`，
-對應 EEG `data`、`dataset`、`file` 或 `folder` 的單一直接請求，才可進入既有 UI handoff。guard 必須拒絕
-negation、cancel、multi-action、資訊問句、path-only、browse／list，以及不對應 EEG data object 的 `open`／`load`
-（例如 open epochs、load model）；它只能讀 latest text，不能選擇替代 tool、讀取 history 或成為 general Host
-intent owner。窄中文對應可維持未承諾相容，active evidence 仍只計英文 cases。
+`import_eeg_data` 的 action identity 完全由模型 proposal 與 current publication 決定。它是 zero-parameter
+GUI handoff，Host 不讀 latest user text 判斷 import、肯定／否定、英文動詞或 object grammar，也不以文字
+heuristic 取代模型的選擇。publication、schema、capability、confirmation 與既有 UI handoff 仍是唯一 trusted
+boundary；模型把資訊或否定 request 誤判為 import 必須如實記為 model/product accuracy failure，不能由 Host
+semantic rescue 隱藏。
 
 ### Direct preprocessing tools
 
@@ -92,13 +91,11 @@ Backend 仍負責 Nyquist、range、state、resource 與 scientific precondition
 
 ### Direct-preprocess bounded Host collection
 
-當模型已提出一個 exact direct-preprocess tool、該 tool 仍由 current publication 啟用，且 latest user
-text 是對同一 action 的明確肯定請求時，Host 可使用既有
+當模型已提出一個 exact direct-preprocess tool、該 tool 仍由 current publication 啟用時，Host 可使用既有
 `AssistantToolInputReceipt` 收集缺少的 **user-authored evidence**。這是 bounded form，不是 general
 intent router：它不能由 user text 選 tool、替換 tool、恢復 unavailable capability、推論科學值或執行。
-generic 的「filter data」不是 tool identity；模型仍須先以一般 reply 請使用者選 bandpass 或 notch。後續
-明確的「use a bandpass filter」才可依上述條件建立同一 exact action 的 receipt，無需建立 generic-filter
-state。
+Host 不解析 `use`、`apply`、`run`、`do` 等英文 action verb，也不判斷肯定、否定或 request grammar。generic
+「filter data」仍不是 tool identity：模型必須先決定 exact tool，Host 才能建立 receipt。
 
 form 只可處理下列五個已核准 tool 的 required fields，且只接受現有 origin grammar 可證明的值：
 
@@ -116,11 +113,10 @@ contradiction、invalid value 或 mixed ambiguous evidence 都清除 receipt，�
 change、explicit cancel、new chat、topic switch、different tool 或 reply budget exhausted 也一律清除 receipt，零
 execution。word-number parsing（例如 `fifty hertz`）不屬於此 contract，保持 fail closed。
 
-form 收齊 fields 後仍不得 auto-execute。模型必須在 current publication 下再輸出同一 exact tool 的單一
-strict envelope；Host 只將該 proposal 當 action identity，從 receipt 重建完整 parameters，忽略模型在
-receipt-bound parameter object 中臆測的值，然後重跑 strict schema、range、publication、capability、
-confirmation 與 one-action checks。不同 tool、stale publication、NO_TOOL、format failure 或任何未完成 form
-均不得藉 receipt 執行。
+form 收齊 fields 後，Host 必須取得 fresh publication，並以 receipt 原有 exact tool identity 與 verified
+parameters 走既有 strict schema、range、publication、capability、confirmation 與 one-action checks。它不建立
+alternate execution path，也不採用模型臆測的 values；完成 receipt 不得再要求模型輸出同一 JSON，並且零 RAG、
+零 LLM generation。不同 tool、stale publication、explicit cancel 或任何未完成 form 均不得藉 receipt 執行。
 
 ### Lifecycle tools
 
@@ -239,8 +235,8 @@ strict format rejection／有限 repair budget；不能以 error-string heuristi
 generic filter／模糊 action，Host 不從 user text 或 bubble 推測它；模型必須先以一般回覆請使用者選定
 exact action。
 
-符合上述 typed clarification 的 response，或 direct tool 被 parameter-origin guard 擋下時，Host 可以在
-零 execution 的具體追問旁建立 typed tool-input receipt。Receipt 只保存 exact tool ID、實際缺少欄位、
+符合上述 typed clarification 的 response，或模型已提出缺少值的 direct tool 時，Host 可以在零 execution
+的具體追問旁建立 typed tool-input receipt。Receipt 只保存 exact tool ID、實際缺少欄位、
 可由 user 原文驗證的 values、bounded question evidence、prompt-time publication generation 與最多兩次
 parameter reply budget；不得保存或授權模型臆測的參數。它不是新的 model output branch，也不改變三欄
 envelope。
@@ -264,9 +260,6 @@ Repair budget 是 initial generation 加最多兩次 repair：
 4. hidden minimal state card。
 5. 最新 user message。
 6. 最多上一則 Assistant-visible message。
-7. 若存在尚未消費且generation仍相符的direct-preprocess tool-input receipt，加入一筆獨立、host-owned、
-   bounded clarification context，指出可由最新回答補齊的exact action；不把它渲染成chat role或callable
-   authority。
 
 Callable集合固定為approved stage membership、同一份ApplicationService publication的enabled
 `ToolAvailability`與目前registry／target membership的交集。其餘已註冊target tools只可出現在明確分隔的
@@ -289,8 +282,8 @@ State card 只投影 ApplicationService publication：
 - trained：finished run count、results available。
 
 不放 file paths、完整 channels、完整 settings、diagnostics、recommended next step、full capability map、
-舊 tool output或一般pending intent。唯一例外是上述direct-preprocess bounded clarification receipt；其
-tool仍須同時存在於current callable publication，receipt本身不能恢復stale capability。
+舊 tool output或一般pending intent。receipt 不投影進 prompt；它只在 Host lifecycle 中保存 verified values，
+並且不能恢復 stale capability。
 
 RAG／examples規則：
 
@@ -310,11 +303,11 @@ runtime本身失敗時不做生成，ChatPanel顯示local runtime error。
 Verification順序固定為：strict schema → backend generation／stage → target publication → parameter
 schema → ApplicationService capability → confirmation。Prompt與UI不可成為alternate readiness engine。
 
-Direct-preprocess clarification follow-up仍由模型選擇action，Host不自動continuation。receipt-bound form 只把
-latest user evidence累積成該 receipt 的 fields；它不採用模型、prompt、history 或 default 的 value。只有模型在
-reply budget 內再次提出同一 exact tool 時，Host 才以 receipt 重建 parameters，並依上述固定順序重跑
-schema、range、current publication、capability、confirmation 與 one-action checks。模型提出其他 tool／topic、
-explicit cancel、stale publication、new chat、stop、close 或第三次 parameter reply 都清除 receipt，零 execution。
+Direct-preprocess clarification 的第一個 action identity 由模型選擇；receipt-bound form 只把 latest user
+evidence累積成該 receipt 的 fields，且不採用模型、prompt、history 或 default 的 value。收齊 fields 後，Host
+以 fresh publication 和 receipt 的同一 exact tool 重建 parameters，依上述固定順序重跑 schema、range、current
+publication、capability、confirmation 與 one-action checks；不再次問模型。不同 action／topic、explicit cancel、
+stale publication、new chat、stop、close 或第三次 parameter reply 都清除 receipt，零 execution。
 同 action 的 NO_TOOL、single malformed envelope 或尚缺值只可在剩餘 budget 內維持既有 requeue semantics；
 proven adjacent-complete-object multiple proposal 遵守 strict-output contract 的直接 choose-one terminal，不能
 requeue 成 action。
@@ -363,17 +356,17 @@ denominator、case identity 與既有 raw gate；不得用新增 Host rescue、�
 每個 row 必須以同一 controller/pending boundary 依序記錄：
 
 1. first raw model response、strict-envelope taxonomy 與 raw score；
-2. first-turn Host admission（current publication、positive-origin／parameter-origin outcome、receipt created 或
+2. first-turn Host admission（current publication、parameter value-origin outcome、receipt created 或
    rejected）；
 3. 每一個 follow-up raw response 與 receipt form transition（bound、unassigned、reconstructed、requeued 或
    cleared）；
-4. final same-tool proposal、receipt-reconstructed parameters、normal verification／confirmation／handoff decision，
+4. receipt-direct reconstructed parameters、normal verification／confirmation／handoff decision，
    以及可信 product terminal。
 
 Evaluator 不得直接建構 `AssistantToolInputReceipt`、手動塞入 pending coordinator、合成 verified parameters
 或把 source raw、follow-up raw 與 product outcome 互相計分。它可使用 product-equivalent controller harness
 觀察 receipt 與 terminal，但 source raw score、Host safety／admission、follow-up diagnostic 與 product outcome
-必須是分開欄位。focused import-positive-origin 與 adjacent-complete-object choose-one probes 是額外
+必須是分開欄位。focused natural import dispatch 與 adjacent-complete-object choose-one probes 是額外
 deterministic boundary evidence，不改 81-case denominator。
 
 36 positive、14 challenge與24 no-action precision的每個first turn都必須以stage-consistent
@@ -389,7 +382,7 @@ deterministic boundary evidence，不改 81-case denominator。
   必須逐 case 完整報告；若模型提出 tool，parameter-origin guard仍必須確保零ApplicationService／ToolExecutor
   execution，但該Host rescue不得回填 raw-model accuracy。
 - Clarification gate固定為7條production trajectory：五種direct-preprocess bounded form 證明 user evidence
-  收齊後仍需同一 exact model proposal，才可用 receipt-reconstructed parameters 執行；generic filter先選
+  收齊後以 receipt 的同一 exact model-selected tool、fresh publication與receipt-reconstructed parameters執行；generic filter先選
   bandpass後才建立typed receipt；bandpass 的 explicit labels、同／跨 reply unlabelled pair collect-then-sort、
   單一 unassigned cutoff 與 correction fail-closed restart 都須在既有兩次 reply budget 內可觀察。取消、無關回答、
   stale generation與不同tool不得使用receipt取得execution authority。這是clarification recovery evidence，
@@ -404,8 +397,8 @@ deterministic boundary evidence，不改 81-case denominator。
   out-of-stage的精確requested tool可由既有publication／capability boundary安全阻擋。General、negated、
   ambiguous與multi-action不得以任何substitute tool進入執行路徑。Raw model選擇另行記錄，不冒充產品結果。
 - Direct Host clarification admission gate要求5/5 exact direct receipts；product clarification要求7/7 verified
-  execution boundary。`import_eeg_data` positive-origin 與 proven adjacent-complete-object multiple output 的
-  focused probes 都必須是零 execution、零 confirmation、零 UI handoff。81-case 中所有 no-action row 與上述
+  execution boundary。proven adjacent-complete-object multiple output 的 focused probe 必須是零 execution、零
+  confirmation、零 UI handoff。81-case 中所有 no-action row 與上述
   focused probe 的 confirmation、GUI handoff、ApplicationService／ToolExecutor execution或state mutation都使
   product gate fail closed。
 - 同一訊息要求多個mutation時一律用`respond_to_user`請使用者選擇第一個要執行的action；本回合不部分

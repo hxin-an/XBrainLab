@@ -2,568 +2,63 @@
 
 最後更新：`2026-08-29`
 
-## 目前焦點
-
-唯一 active slice 是 **Assistant bounded clarification closure v1**。它從
-`fix/assistant-clarification-capture-v1` 的 clean exact base
-`ed184ce4b2ad831624e40ebc500e396f050d3e41` 開始；先前 clarification-capture v1 的 receipt bridge、
-prompt/raw capture 與其歷史 evidence 保留在該 base，不在本 slice 重做或重新宣稱模型能力。
-
-### 問題與 trace evidence
-
-目前 direct-preprocess clarification 的資料流是：
-
-```text
-latest user text
-  → model guessed/partial direct tool proposal
-  → LLMController._evaluate_tool_proposal
-  → ToolAttemptCoordinator / verify_direct_parameter_origins
-  → existing AssistantToolInputReceipt + PendingInteractionCoordinator
-  → next model proposal → normal verification / execution
-```
-
-這條路已能 fail closed，但仍有四個可觀察缺口。
-
-1. `LLMController._evaluate_tool_proposal` 目前只在模型再次提出 partial parameters 時累積 values；它不能
-   以 bounded Host form 安全處理「12、40」這類未標示的 bandpass values，也不能在 receipt 中保存一個
-   unassigned cutoff。因此模型猜參數或遺漏參數時，使用者補得再清楚也可能在多輪後失去可執行的 same-tool
-   路徑。
-2. `AssistantToolInputReceipt`／`PendingInteractionCoordinator` 已是正確的 cross-turn evidence owner，卻只存
-   verified fields；目前沒有「先收集、再排序」的窄範圍 representation。若另建 generic intent state、
-   action queue 或自動 execution，會重複 owner 並改變 one-action contract。
-3. `import_eeg_data` 是 zero-parameter GUI handoff，現有 publication pass 即可讓模型 proposal 前進；它缺少
-   對 latest user text 的 narrow positive-origin guard，資訊／browse／否定內容不應開啟 Import UI。
-4. strict parser 對 malformed output fail closed，但一般 format recovery 可再要求模型輸出 single action；這不
-   等同於「已知兩個以上相鄰完整 top-level JSON objects 由 Host 請使用者選一個且零 action」。top-level array
-   仍是一般 strict format rejection／recovery，不在本 slice 擴張。
-   `run_stable_assistant_model_eval.py` 的 v10 同時保存 raw、Host 與 product 欄位，但 v11 尚未記下整條
-   receipt/form/reconstruction trace，不能證明這次的 lifecycle contract。
-
-## Observable outcome
-
-- 對五個 direct preprocessing tools，Host 只收集 latest user-authored、field-bounded evidence；它不選工具、
-  不猜科學值、不能自動執行。
-- Bandpass 在首次指派時可由 explicit `low`／`high` labels 直接收集，或在沒有 assigned field 時把兩個 Arabic
-  decimal cutoffs（同一或兩個 bounded reply）排序為 `min → low_freq`、`max → high_freq`；一個 unlabelled cutoff
-  只能保存為 unassigned evidence，直到第二個值到來。已驗證 field immutable；correction、contradiction、invalid
-  或 mixed ambiguous evidence 清除 receipt，必須以新 request 重啟。
-- 收齊 evidence 後，模型仍須在 current publication 下提出同一 exact tool；Host 從 receipt 重建完整 params，
-  再走既有 schema、range、publication、capability、confirmation、ApplicationService／UI handoff。receipt
-  永不直接執行。
-- `import_eeg_data` 只有 approved positive verb `import/load/open/select/choose` 對應 EEG `data/dataset/file/folder`
-  的單一 request 才能進既有 GUI handoff；問題、browse/list、否定、cancel、ambiguous、path-only、multi-action、
-  open epochs 或 load model 不得開 UI。
-- 可證明的兩個以上相鄰完整 top-level JSON objects 一律零 retry-to-action、零 receipt、零 confirmation、零 UI
-  handoff、零 execution，並得到 Host-owned trusted choose-one reply；array 維持一般 format recovery。
-- v11 evaluator 用真實 controller/pending boundary 產生可檢查 trace，raw first model decision、Host boundary、
-  follow-up raw decision 與 final product outcome 分開報告；Host rescue 不得增加 raw-model score。
-
-## Scope、non-goals 與 assumptions
-
-### In scope
-
-- 修改既有 `AssistantToolInputReceipt` 的最小 bounded evidence field，並復用
-  `PendingInteractionCoordinator`、`ToolAttemptCoordinator`、`LLMController` 與 verifier。
-- 五個 direct preprocessing tools 的 bounded Host form：
-
-  | Tool | Form fields |
-  | --- | --- |
-  | `apply_bandpass_filter` | `low_freq`、`high_freq`；首次 explicit labels 優先；沒有 assigned field 時完整 unlabelled pair 才 sort；single value unassigned；correction/ambiguity clears receipt。 |
-  | `apply_notch_filter` | `freq` 的 user-proven decimal。 |
-  | `resample_data` | `rate` 的 user-proven decimal。 |
-  | `set_reference` | backend-supported、user-proven `method`。 |
-  | `normalize_data` | user-proven `z-score` 或 `min-max`。 |
-
-- Receipt-bound same-tool final proposal、receipt-reconstructed params、current publication／stale／cancel／
-  correction-fail-closed restart lifecycle，以及 `import_eeg_data` narrow positive-origin guard。
-- strict parser／recovery 對已證明相鄰完整 multiple top-level objects 的 direct choose-one terminal。
-- v11 stable evaluator、case trace／report schema、focused unit/integration tests 與同一 pinned model 的 81-case
-  run。
-
-### Non-goals
-
-- 不重啟 `GUIDED_WORKFLOW`，不建立 cross-turn multi-action queue／ordered action receipt，也不對「first … then …」
-  部分執行；同一 user turn 仍只允許一個 action 或一個 reply。
-- 不換 model／revision、quantization、catalog、tool membership、tool schema、ApplicationService command、
-  capability policy、confirmation authority 或 GUI handoff owner。
-- 不新增 word-number parsing；`fifty hertz` 及其他未被既有 decimal grammar 證明的字詞維持 fail closed。
-- 不做 UI layout、widget、copy styling、中文 IME、prompt-capture、import/data workflow、performance 或 legacy-wide
-  cleanup。Assistant trusted reply 的行為契約已由使用者核准；**UI confirmation = N/A**，因本 slice 不修改
-  `XBrainLab/ui/` 的可見 layout／interaction。若施工發現需要 UI change，停止並取得新的明確確認。
-
-### Assumptions
-
-- latest user text 是唯一可供 form 證明 value 的來源；model parameters、examples、history、defaults 都不是
-  evidence。
-- 所有已驗證 receipt field immutable；explicit bandpass label 只在首次指派時優先於 sorting，不能覆寫早期
-  evidence。任何 tool form 的 correction、contradiction、invalid 或 mixed ambiguous input 都清除 receipt，使用者
-  必須以新 request 重啟。
-- generic `filter data` 不建立 pending intent；模型先要求選 bandpass/notch，後續明確同 action request 才能
-  走 existing receipt admission。
-- `import_eeg_data` guard 只讀 latest text、只保護此 GUI entry，不能演變成 general semantic Host router。
-- target 中的 public behavior 已由使用者核准；任何超出本 plan 的 tool/action/confirmation/public behavior
-  變更仍須重新決策。
-
-## Owner、deletion-first 與 complexity boundary
-
-### Current call sites and owners
-
-- `CommandParser`／strict-envelope recovery：classify raw output before any proposal reaches execution.
-- `ToolAttemptCoordinator`：current publication admission、origin rejection、existing typed receipt admission 與
-  deterministic attempt decision。
-- verifier：direct parameter provenance 和 narrow affirmative request matching；不選 action。
-- `PendingInteractionCoordinator`：唯一 receipt lease、replace、requeue、clear lifecycle owner。
-- `LLMController`：turn lifecycle、receipt activation／presentation、same-tool attempt 與 existing terminal handoff。
-- `ContextAssembler`：只投影 host-owned receipt context；`ApplicationService`／capability／confirmation／UI owner
-  維持不變。
-- stable evaluator：evidence consumer，不得成為 receipt／execution owner。
-
-### Target owner delta
-
-Owner 數為 **0 delta**。`AssistantToolInputReceipt` 只擴充 bandpass unassigned evidence，
-`PendingInteractionCoordinator` 仍是唯一 pending owner；collection/reconstruction 是 verifier + existing
-coordinator/controller 的 bounded deterministic policy，不新增 generic form controller、intent classifier、queue、
-state machine、second receipt type、fallback tool selection 或 alternate execution path。
-
-施工前必須先檢查且能刪才刪的 candidates：
-
-- controller 內目前只為模型 partial params 寫的 hand-coded merge/requeue branch；若 bounded form 完整取代其
-  policy，移除重複 accumulation，不能同時保留兩套 precedence。
-- evaluator 內任何手動 receipt／parameter accumulation surrogate；v11 必須改由 product-equivalent controller
-  boundary 觀察，不能留下第二套 lifecycle。
-- `GUIDED_WORKFLOW` compatibility residue **不是** 本 slice 的 deletion target；不重啟也不混入清理。
-
-Complexity review **已觸發，先記錄而非以 incremental base 規避**。`ed184ce4` 相對 `main` 的既有 production
-scope 是 7 files、`+317/-105`、net `+212`；本 closure 預估另增 net `+180–260`，並會新增 parser/recovery
-等 touched files。因此整個 PR projected total 是 net `+392–472`，且很可能超過 8 production files。施工與
-review 都必須在 exact integrated SHA 重算完整 `main..HEAD` 的 files、`+/-/net LOC`，不只看
-`ed184ce4..HEAD`。
-
-這個 full closure 可維持同一 PR 的唯一理由是：所有差異都完成同一既有 receipt transaction（user evidence →
-same-tool proposal → existing command boundary），可刪除／取代 controller partial merge 與 evaluator-local
-surrogate，且 owners 維持 0 delta、沒有 new public tool、queue、state machine 或 alternate execution path。兩位
-fresh reviewers 必須明確判斷這仍是 coherent slice；若任一 reviewer 判定無法合理維持同 PR，停止並回報 Root，
-不得默默以 `ed184ce4` incremental delta 掩蓋。
-
-可能的既有 production 檔案僅限 `turn.py`、`verifier.py`、`tool_attempt_coordinator.py`、`controller.py`、
-`parser.py`、`strict_envelope_recovery.py`，以及只有在直接需要 receipt-bound prompt/context 時的既有
-`prompt_policy.py`／`assembler.py`；不新增 module／public class／authoritative owner。若實際 total production
-delta 超過 `1,500` net LOC，必須拆 PR；若需要 new receipt type／queue／owner、或無法刪除重複 policy，先停下
-做補充 complexity review，列出 `+/-/net LOC`、owners before/after、deletion/reuse、rollback，再請 Root 決策。
-
-Rollback 是回退本 slice 的 production commits 到此 exact base；target contract 若要撤回則需新的使用者決策，
-不得以 runtime fallback 偷改行為。
-
-## Repair steps、two-worker boundary 與 review
-
-兩位 worker 不可同時修改同一 production file；Root 只協調 exact SHA、scope、review 與 gates，不代替任何
-worker 或 reviewer 判定。
-
-1. **Worker A — Host form / lifecycle author（TDD）**
-
-   - Owns `turn.py`、`verifier.py`、`tool_attempt_coordinator.py`、`controller.py`，及其直接 tests；只在必要時
-     接上既有 prompt/context file，先在 plan 記錄原因。
-   - 以 existing receipt 實作五個 bounded fields；bandpass explicit-label 首次指派 precedence、single unassigned
-     value、two-value sort、以及 correction/contradictory/invalid/mixed ambiguity 的 clear-and-restart、budget、
-     cancel/topic-switch/stale/different-tool clear 都須經 existing pending coordinator。
-   - 要求 same-tool final proposal，將 receipt evidence 重建 params，再重跑既有 admission chain；不讓 model
-     params 成為 value source，不 auto-execute。
-   - 新增 `import_eeg_data` narrow positive-origin guard，並證明 no UI handoff on non-positive cases。
-   - 接上 Worker B 的 typed multiple-proposal decision，但不實作 parser/recovery policy。
-
-2. **Worker B — strict output / evaluator author（TDD）**
-
-   - Owns `parser.py`、`strict_envelope_recovery.py`、`scripts/dev/run_stable_assistant_model_eval.py`、case/report
-     data 與其直接 tests；不得改 controller、receipt lifecycle 或 tool policy。
-   - 先定義可證明兩個以上相鄰完整 top-level JSON objects 的 typed classification／direct choose-one outcome；
-     top-level array 與一般 malformed JSON 保持 existing repair，不能依 error text 猜 multi。
-   - Worker A 接上 typed outcome 後，把 evaluator 升為 v11：保持 81 denominator、以 actual controller/pending
-     boundary trace raw → Host admission → receipt form → final model proposal → reconstructed params → product terminal；
-     不自行建立 receipt 或合成 values。
-
-3. **Fresh lifecycle reviewer（非 Worker A）**
-
-   - Review exact integrated SHA 的 authority、receipt data provenance、首次 explicit/unlabelled bandpass precedence、
-     immutable-field correction restart、same-tool/stale/cancel/topic/different-tool lifecycle、import guard、
-     zero-execution adjacent-object multiple path、
-     deletion/owner/LOC boundary。最多三個 blocking findings；不能以 broad robustness 擴 scope。
-
-4. **Fresh evidence reviewer（非 Worker B）**
-
-   - Review v11 trace source separation、81 denominator、raw/Host/product gates、no synthesized receipt、report source
-     identity、focused model command/result。最多三個 blocking findings；不能把 raw limitation 改記為 product success。
-
-5. **Integration Lead / Root**
-
-   - 只在兩個 focused green checkpoints 與兩份 fresh review 都無 blocker 後整合；核對 clean exact head、base、
-     production numstat 與 protected `settings.json`。不在 review 時順手改 implementation。
-
-### Integration checkpoint — 2026-08-29
-
-- Clean integration base `f7a29284f2c779b0345fffb517d303163c074511` received product commit
-  `9fe169af4537832a59003cec22db2ae1d75ed019` as integrated commit `54e93599` and evaluator commit
-  `03d671610984083d1f5e0d11aba1298e8fe2b2c6` as integrated commit `9070ff11`. Cherry-picks had no
-  conflict; this checkpoint itself must be committed separately before validation so the later exact source is
-  reproducible.
-- On `main..9070ff11`, runtime `XBrainLab/` production code is 11 files, `+707/-261`, net `+446` LOC.
-  Including executable `scripts/dev/` code gives 13 files, `+1,610/-463`, net `+1,147` LOC; docs, cases and
-  tests are excluded from both figures. This exceeds the net-300 and eight-production-file complexity triggers,
-  but remains below the 1,500-net mandatory split threshold. Owners remain the existing parser/recovery,
-  coordinator, verifier, pending coordinator, controller, assembler, backend and evaluator boundaries; no new
-  production module or authoritative owner was added. The two planned deletion/replacement candidates are the
-  controller's old model-partial merge path and evaluator-local duplicate trace composition.
-- Next step is fresh non-author lifecycle and evidence/privacy review on the eventual clean integrated SHA,
-  followed by the focused union regression. This checkpoint records no test, model, CI, handoff or manual-acceptance
-  result.
-- Evaluator follow-up source `9a1fa6656bef1f87da4e63ba1d3846e34fea05c3` was cherry-picked as `ca5183e0` after
-  the first union regression exposed four obsolete harness continuations: the harness reset a receipt but did not
-  replay the product's pre-model user-evidence collection. The correction stays in the evaluator/test boundary;
-  the next step is to rerun the same union regression and then obtain fresh review. This entry intentionally records
-  no rerun, model or acceptance result.
-
-### Fresh-review blocker repair — 2026-08-29
-
-Fresh non-author review of clean integrated `f37416e523f023fc69f868d1f77aaf75b2bb20bc` found two bounded
-blocker groups. This repair remains part of the same closure: it does not add a LocalBackend/product owner, UI,
-model change, new exception-control-flow path, receipt type, queue, or generic semantic router.
-
-1. **Typed clarification origin.** `respond_to_user` must not mint a direct receipt merely because a typed pending
-   tool is otherwise current. Reuse the existing affirmative direct-action matcher at typed clarification admission.
-   Add the regression ``What is resampling?`` → ``128 Hz``: it neither admits a receipt nor reaches execution. The
-   five affirmative direct-tool cases remain admitted.
-2. **Evaluator/product evidence closure.** The evaluator must preserve typed adjacent complete objects as a
-   Host choose-one product-safe terminal while keeping raw failure; narrowly recognise the existing
-   `import_eeg_data` positive-origin `INTENT_BLOCKED` terminal as product no-action (not a raw pass); and use an
-   internal untruncated final raw response for direct receipt admission while retaining only the bounded report
-   preview. Its raw candidate gate is only first-generation positive `36/36`; challenge, precision and clarification
-   raw results remain per-case diagnostics. Add a separate exact direct-admission `5/5` gate.
-
-   The script-only evaluator also gains opt-in prompt-capture integrity. With capture disabled it performs zero
-   capture filesystem I/O. With it enabled it validates one fresh session, contiguous completed sequence, recorded
-   prompt/raw bytes and SHA-256, model/revision/options, and evaluator trace index-to-capture raw hash equality.
-   The report exposes only redacted session identity, counts and booleans—never paths or content. Missing, malformed
-   or mismatched capture is evidence-gate failure only: inference/report generation remains nonblocking. This is
-   evidence validation over the existing LocalBackend capture, not a LocalBackend change or a concurrent-writer
-   guarantee.
-
-Repair ownership is deliberately disjoint: the lifecycle worker may change only existing coordinator/controller
-admission and direct tests; the evaluator worker may change only evaluator script/tests/report cases. After both
-focused checkpoints, integration reruns their union, ruff and diff checks, then fresh lifecycle and evidence review
-on the exact clean SHA. No model run, handoff, PR, UI acceptance or merge is implied by this checkpoint.
-
-### Repair integration checkpoint — 2026-08-29
-
-Clean `cad16a8494c1bb1d5a297ac79b7849faf5250f94` received evaluator source
-`e334dc22b4d74584d3af3efdfc7e7a480c2a9662` as integrated commit `330f6684551bd30f02091e4ee539b09ed4777060`;
-there was no cherry-pick conflict. The lifecycle author checkpoint is `cad16a84`: existing typed admission now
-requires the affirmative direct-action matcher, with the informational-question/numeric-follow-up regression and
-retained positive direct cases in its focused controller/policy tests. The evaluator author checkpoint is
-`330f6684`: its focused script tests cover safe adjacent-object choose-one, narrow import-origin no-action,
-untruncated direct admission, raw-positive-only and direct-admission gates, plus opt-in capture integrity.
-
-The evaluator change is confined to the existing development evaluator and its test file (`+707/-19` lines across
-two non-production files); the lifecycle repair changes the existing coordinator and direct tests only. It does not
-change a production owner, LocalBackend, UI, model, tool/public contract, or exception control flow. Author
-checkpoints are implementation evidence, not a review, model, handoff or manual-acceptance result. Next: run the
-specified model-free union and static checks on the exact integrated SHA, then obtain fresh non-author lifecycle and
-evidence/privacy reviews before any model run.
-
-### Fresh review outcome and evaluator trace repair — 2026-08-29
-
-The fresh lifecycle review is **PASS** on `22449a0083426e05b38e4da9da13f0ee2fe7d5d0`. The fresh evidence review is
-**BLOCKED**: 74 first-turn rows directly infer a product decision from evaluator-side static logic and therefore omit
-controller-observed Host admission and product terminal. That conflicts with the v11 trace contract; a safe-looking
-score is not evidence that the product boundary was actually reached.
-
-The approved minimal repair is evaluator-only. Extend existing `_EvaluatorControllerHarness` and its direct tests so
-that, after strict recovery, every final first-turn response is replayed through the existing unbound
-`LLMController` parsing, admission, processing and presentation methods. Recorder adapters stop at execution,
-confirmation, UI handoff, ApplicationService, ToolExecutor and state-mutation boundaries; they record crossing
-attempts but never perform side effects. Every first-turn row must then carry explicit controller-observed
-`host_admission` and `product_terminal`. The `24/24` product no-action gate must prove no boundary crossing through
-that replay. Positive execution rows may state only **execution boundary suppressed**, never downstream execution
-proof.
-
-Raw score/generation capture, case taxonomy and fixed 81-case denominator remain unchanged. Remove or replace the
-static product-surrogate and duplicate guards where the controller trace now owns the answer. This does not alter
-product code, UI, LocalBackend, model/revision, receipt lifecycle, owner count or public contract; UI confirmation
-remains N/A. The estimated delta is `+250–350` evaluator script LOC and `+180–260` test LOC, with production delta
-`0` and owner delta `0`.
-
-The evaluator worker begins with focused red tests for the absent controller fields and for recorder no-side-effect
-boundaries, then makes the focused evaluator suite green. Integration subsequently repeats the exact seven-file
-model-free union, ruff and diff checks; fresh lifecycle and evidence reviewers re-review the new clean SHA. A model
-run remains stopped until that review closes. No test, model, handoff, PR or manual success is claimed by this
-planning checkpoint.
-
-### Controller-trace repair integration checkpoint — 2026-08-29
-
-Clean `8be12cbc6d0fdb3dbba3443d3f295418b6e6e7b6` received evaluator source
-`a5596e82095f231dcc12d8b58d4974ab0b195480` as integrated commit
-`cd30efae7dd4d0103a4f907075f36936ee03ec7a`; the cherry-pick had no conflict. The author checkpoint reports
-`59` focused evaluator tests. Integration's exact model-free seven-file union passed `610` tests (three existing
-third-party deprecation warnings); `ruff check`, `ruff format --check` and `git diff --check` also passed.
-
-The controller-trace repair changes only the existing evaluator script and its tests (`+649/-39` in that worker
-commit). Across complete `main..cd30efae`, production `XBrainLab/` remains 10 code files, `+696/-245`, net `+451`
-(excluding static data); no production owner changes, owner delta remains `0`. The prior lifecycle PASS is invalid
-only because the exact source SHA changed: production source remains unchanged by this evaluator-only commit, but
-both lifecycle and evidence/privacy reviews must nevertheless be fresh on the next clean SHA. No fresh review,
-model, handoff, PR or manual-acceptance success is implied here.
-
-### Final invocation-evidence checkpoint — 2026-08-29
-
-On exact `30fa46bcdc4d5e4e119971a30cd297c2a44c5ede`, the two fresh reviews of the completed controller-trace repair
-are **PASS**: lifecycle verified the bounded receipt/controller path and no-side-effect harness (`551` focused
-tests, one existing MNE deprecation warning), and the complementary context/capture/parser/export focused suite
-passed `150` tests. The evidence review also confirms the controller-observed first-turn repair; its final artifact
-check nevertheless identifies one narrow remaining blocker: the v11 report does not record the *actual* process
-argv required by the canonical report contract.
-
-The approved minimum repair is evaluator `main` and its direct tests only, estimated under `30` net script/test LOC.
-It records the actual `argparse` process argv and a truthful working-directory identity/condition relative to the
-repository root before stdout/JSON report output. It must not emit environment variables, secrets, absolute capture
-paths or capture contents. The final model invocation will run from the repository root and use a relative JSON
-output path, so the recorded command is meaningful without leaking local layout. No product, model/revision, UI,
-LocalBackend, receipt, owner or public-contract change is allowed.
-
-Add the focused invocation report test, then repeat the existing union/static checks and obtain one targeted
-non-author evidence review on the new exact SHA. Only then freeze the final docs/source and run the model evidence
-command; until then there is no implementation, model, handoff, PR or manual-acceptance claim.
-
-### Final source freeze for v11 model evidence — 2026-08-29
-
-Invocation evidence integrated as `d99e9cb64e09b278116ef7faeafae234a70e51a6`. Its exact union passed `611`
-tests with three existing third-party deprecation warnings; the focused evaluator suite passed `60` tests. The
-targeted non-author evidence reviewer is **PASS** on that exact SHA. The earlier fresh lifecycle and evidence passes
-remain recorded; this last evaluator-only change leaves production source unchanged and owner delta `0`.
-
-Preflight evidence for the frozen run: RTX 5070 Ti has `16,303 MiB` total and `14,504 MiB` free VRAM; external
-PyTorch reports CUDA available; `/home/administrator/.local/share/xbrainlab/models` is `12G`, within the `20G`
-cache ceiling; and `ibm-granite/granite-4.0-micro` exact revision
-`56111ae135df9c53a78c99028e7bc24035a9e979` is complete. This is a fixed model/revision decision, not permission
-to download, substitute or tune a model.
-
-Before invoking the command, create a **fresh, empty**
-`build/dev-artifacts/stable-assistant-v11-20260829-closure/runtime-prompts` capture root under this exact worktree;
-do not reuse another run's capture session. From the repository root, the sole frozen invocation is:
-
-```bash
-cd /tmp/xbrainlab-assistant-clarification-capture-v1 && \
-env \
-  PYTHONPATH="$PWD" \
-  XBRAINLAB_ASSISTANT_PROMPT_CAPTURE_DIR="$PWD/build/dev-artifacts/stable-assistant-v11-20260829-closure/runtime-prompts" \
-  XBRAINLAB_MODEL_CACHE_DIR=/home/administrator/.local/share/xbrainlab/models \
-  HF_HUB_OFFLINE=1 \
-  TRANSFORMERS_OFFLINE=1 \
-  MNE_DONTWRITE_HOME=true \
-  MPLCONFIGDIR=/tmp/xbrainlab-assistant-v11-mpl \
-  timeout 1800 \
-  prlimit --core=0 -- \
-  /home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-xaLO7TCQ-py3.12/bin/python \
-  scripts/dev/run_stable_assistant_model_eval.py \
-  --device cuda \
-  --strict \
-  --json-out build/dev-artifacts/stable-assistant-v11-20260829-closure/stable-assistant-model-eval.json
-```
-
-The relative output path and recorded invocation make the artifact reproducible from the repository root without
-revealing local capture contents. A model failure preserves its report/artifacts and stops the line: no prompt
-tuning, gate relaxation, model substitution, handoff, PR or manual claim follows. After this docs-only commit no
-tracked docs or source may change; the next action is exact-SHA reviewer attestation, then this model command.
-
-### Freeze correction: candidate import origin — 2026-08-29
-
-The model run has **not** started. A pre-run import-origin probe invoked the frozen explicit venv without
-`PYTHONPATH` and resolved `XBrainLab` from main worktree
-`/mnt/d/workspace_v2/projects/lab/xbrainlab`, not this candidate. It failed during import before model loading and
-is not model evidence, but it exposes an unacceptable mixed-source risk. The preceding freeze is therefore invalid
-as an invocation instruction.
-
-The corrected sole command above adds `PYTHONPATH="$PWD"`; its venv remains responsible for dependencies and every
-other environment setting and argv is unchanged. Immediately before it, from the same repository root and with the
-same venv/environment, run this no-model preflight (it makes no tracked change):
-
-```bash
-cd /tmp/xbrainlab-assistant-clarification-capture-v1 && \
-env \
-  PYTHONPATH="$PWD" \
-  XBRAINLAB_ASSISTANT_PROMPT_CAPTURE_DIR="$PWD/build/dev-artifacts/stable-assistant-v11-20260829-closure/runtime-prompts" \
-  XBRAINLAB_MODEL_CACHE_DIR=/home/administrator/.local/share/xbrainlab/models \
-  HF_HUB_OFFLINE=1 \
-  TRANSFORMERS_OFFLINE=1 \
-  MNE_DONTWRITE_HOME=true \
-  MPLCONFIGDIR=/tmp/xbrainlab-assistant-v11-mpl \
-  /home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-xaLO7TCQ-py3.12/bin/python \
-  -c 'from pathlib import Path; import subprocess, XBrainLab; root = Path.cwd().resolve(); module = Path(XBrainLab.__file__).resolve(); assert module.is_relative_to(root), f"mixed source: {module} outside {root}"; print(f"module_file={module}"); print("source_sha=" + subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip())'
-```
-
-This docs commit is the new final exact source. Reviewers must attest the corrected command and preflight on its
-exact SHA before the model run. After that attestation, no tracked code/docs changes are permitted; model failure
-still preserves its report and stops tuning. No model, handoff, PR or manual acceptance is claimed here.
-
-### Approved bounded-baseline evaluator stabilization — 2026-08-29
-
-The user-approved decision freezes product behavior, prompts, model/revision, case denominator and all raw/Host/
-product gates. This is an evaluator-only evidence repair, not a Stable promotion: the resulting baseline remains
-**bounded baseline**, not `Stable` and not `handoff-ready`. It supersedes the preceding source freeze solely until
-this repair is reviewed and a new exact source is frozen.
-
-#### Problem and outcome
-
-For an invalid typed clarification response, the evaluator must replay the actual production strict-format recovery
-through the existing controller, record the recovery context and every generated retry, then record the final
-controller terminal. It must not shortcut a static evaluator decision. Repeated invalid typed responses must use the
-existing maximum recovery budget, remain side-effect-free, and produce a truthful failed product terminal rather
-than a contradictory `passed=false`/`failure_type=none` report.
-
-#### Scope and non-goals
-
-Only `scripts/dev/run_stable_assistant_model_eval.py` and
-`tests/unit/scripts/test_stable_assistant_model_eval.py` may change. The evaluator reuses the production
-`LLMController` and strict-envelope recovery policy; it may not synthesize receipts or parameters, introduce a
-second recovery policy, or alter dynamic generation count/capture correlation. No `XBrainLab/` production code,
-prompt, model/catalog/revision, case data, settings, public contract, UI, handoff specification, threshold or
-81-case denominator may change.
-
-#### TDD, validation and stop condition
-
-First add focused red tests for: (1) invalid typed clarification → production recovery context → a second generated
-response → final controller terminal with `format_retry` trace; (2) repeated invalid output → existing retry budget
-exhaustion, zero confirmation/UI/ApplicationService/ToolExecutor/state-mutation crossing, and a non-`none`
-failure type. Then make only the evaluator/test repair green, run the focused evaluator file plus ruff check,
-ruff format check and `git diff --check` for changed Python. Preserve all v11 report fields and gates.
-
-No model run occurs before a clean exact-SHA review of this repair. If production changes, a new alternate policy,
-receipt/parameter synthesis, threshold/gate change, side effect, or unresolved report contradiction is required,
-stop and return evidence rather than expanding scope. If model evidence later fails, preserve its report and stop;
-do not tune prompts, change models or relax gates.
-
-#### Corrective scope: first-turn precision recovery
-
-Review of `968bf7b8` found that its replay hook covered only the already-admitted clarification continuation.
-The observed false-negative report rows are first-turn `PrecisionCase` trajectories—specifically
-`set_montage_before_epochs_en` and `split_before_epochs_en`—which still score a model-shaped invalid typed
-clarification before `observe_first_turn` can drive controller recovery. The corrective evaluator-only change must
-reuse the same harness replay for first-turn and clarification trajectories, so the active controller path issues
-the retry context, consumes another generation, and records the real safe terminal/exhaustion result. It must not
-retain a second policy or static `format_retry_required` surrogate for these paths.
-
-Add red tests using both exact precision rows and their model-shaped invalid typed response; prove a retry reaches a
-controller terminal and repeated output reaches bounded exhaustion with `passed=false` and non-`none` failure. Keep
-only non-duplicative continuation coverage: retain it if it proves receipt-specific behavior not covered by the
-first-turn rows, otherwise compress it while preserving one direct active-receipt regression. Then run the focused
-evaluator suite, ruff and diff checks. No model or handoff follows until this corrected exact SHA is independently
-reviewed.
-
-### Boundary correction: evaluator positive fixture ownership — 2026-08-29
-
-A full LLM regression found that this candidate's English-only 36-case evaluation corpus was accidentally written
-into the bundled product RAG corpus. The candidate bytes currently hash to
-`5d60662ce3f43e36c346dbda238a23f7b22377c04043e1833a77296931546577`, while the reviewed product corpus and
-`RAGConfig.GOLD_SET_SHA256` require the exact `main` bytes with digest
-`a4311b63165c2f4fb1c68d88c1ed8c81ecb9ae3beb1760bf1c2e52cda57f31bc`. This is a data-ownership mismatch, not a
-RAG migration or a model-evaluation result.
-
-The bounded repair restores `XBrainLab/llm/rag/data/gold_set.json` byte-for-byte to `main`, then relocates the
-existing byte-identical English 36-case fixture to
-`scripts/dev/stable_assistant_positive_cases.json`. The stable evaluator's `DEFAULT_CASES` and direct evaluator
-tests must own that scripts/dev fixture; the command-line default/export path inherits `DEFAULT_CASES` rather than
-introducing another path. Case contents, IDs, the 36/two-per-tool positive matrix, evaluator fixture digest,
-81-case denominator, model/revision, prompt, gates and report contract remain unchanged.
-
-No `RAGConfig` digest/config/index change, corpus migration, retriever change, product behavior change, new owner,
-or UI change is allowed. The direct red protections are: current candidate product corpus fails its reviewed digest,
-and evaluator defaults/tests still point at product RAG data. Green protection must prove product RAG identity is
-valid, evaluator fixture identity is all-English and exactly 36/two-per-tool at the stated digest, and the evaluator
-does not depend on the product corpus. Then run the focused RAG config test, full evaluator suite, changed-Python
-ruff check/format check, JSON parse/hash checks and `git diff --check`. Stop rather than changing any RAG
-digest/config/index or evaluation content if byte identity cannot be preserved. This is a bounded-baseline repair;
-it claims neither model success, handoff readiness nor manual acceptance.
-
-### CI blocker correction: explicit import walkthrough fixture — 2026-08-29
-
-PR #71 exact source `1364d14d` fails the same integration assertion on Linux, Windows and macOS:
-`tests/integration/ui/test_product_walkthrough.py::test_model_import_action_opens_typed_product_surface_directly`.
-Its fixture submits the known ambiguous text `幫我處理資料`, but the already-approved `import_eeg_data`
-positive-origin admission correctly returns `Please make one direct request to import an EEG data, dataset, file, or
-folder.` rather than opening the chooser. The failure is a stale test expectation, not evidence that the admission
-rule, model, prompt or product surface regressed.
-
-The only repair is a docs checkpoint plus that integration test: replace the fixture input and matching submission
-assertion with the direct affirmative request `Import an EEG data file.` so it exercises the stated typed import
-handoff contract. No production source, prompt, model/revision, model gate, tool membership, verifier/admission
-policy, UI layout/copy, RAG data, evaluator denominator or handoff rule may change. UI confirmation is N/A because
-the product UI is untouched.
-
-TDD evidence begins with the exact existing test red on its old input, then the changed test must be green. Validate
-the exact test, authoritative `linux-integration-ui` shard under timeout/prlimit, relevant platform UI set where the
-local source-isolated environment can run it, plus ruff, diff and clean status. Stop and return evidence if the
-explicit request does not reach the existing typed chooser surface, if a production change appears necessary, or if
-the platform failure is unrelated to the fixture. This correction makes no model, handoff, PR or manual-acceptance
-claim.
-
-## Focused validation、v11 trace 與 model gates
-
-### Direct behavior tests
-
-- Five direct tools：model guessed missing value → Host receipt has only user-proven evidence；scalar/method fields不從
-  model/default取得。
-- Bandpass：both labels、one label、two unlabelled in one reply、one then second unlabelled reply、mixed values、
-  contradictory input、explicit correction、partial/requeue/budget exhaustion；所有 receipt field immutable，任何 tool
-  form correction/contradiction/invalid/mixed ambiguity clear receipt and restart，single unassigned never maps to
-  low/high。
-- Generic filter → user selects bandpass：不建立 generic state，只有 exact action request 才有 receipt。
-- Receipt complete：wrong/different/no-tool/malformed final output 不執行；same exact model proposal 才以
-  receipt-reconstructed params 通過 normal schema/range/publication/capability/confirmation path。
-- cancel、new chat、topic switch、stale publication、unavailable action、active receipt replacement、multi-action：
-  zero execution，evidence 不外洩。
-- `import_eeg_data`：approved verb/object affirmative request 能進既有 handoff；question/browse/negated/cancel/
-  ambiguous/path-only/multi、open epochs與load model 零 UI handoff。
-- parser/recovery：two adjacent complete top-level objects 得 trusted choose-one、零 retry-to-action/receipt/
-  confirmation/execution；top-level array與single malformed JSON仍用既有 finite repair。
-
-### v11 report contract
-
-v11 的每一 row 必須包含 first raw output/taxonomy/raw score、由 controller replay 觀察的 first Host
-origin/admission decision 與 product terminal、每次 follow-up raw output 與 form transition、final same-tool
-proposal、receipt-reconstructed params、verification/confirmation/UI-handoff decision。source raw、follow-up raw、Host safety/admission、product
-outcome 不共用分數欄位；Host block/receipt/reconstruction 永遠不得回填 raw score。
-
-81-case denominator 固定為 `36 positive + 14 challenge + 24 precision + 7 clarification`。Gate 不能降低：
-
-- raw first-generation：只 gate `36/36` positive；14 challenge、24 precision與7 clarification raw result逐 case
-  完整報告（包含 critical／wording 分類），不得由 Host rescue 灌成通過，但不以 raw `24/24` precision或raw
-  `7/7` clarification作 candidate requirement；
-- Host safety：`15/15`，即 `10/10` explicit direct-parameter origins + `5/5` missing-parameter origin blocks；
-- direct Host clarification admission：`5/5` exact direct receipts；
-- product outcome：`24/24` precision no-action、`7/7` clarification execution boundary；
-- 81-case 中所有 no-action rows，及 import/adjacent-object-multiple focused probes：零 confirmation、GUI
-  handoff、ApplicationService／ToolExecutor execution或state mutation。
-- prompt capture integrity is opt-in evaluator evidence: disabled runs add no capture filesystem access; enabled
-  runs must prove a single fresh session, completed contiguous sequence and capture/trace byte-SHA/model/options
-  agreement through a redacted report. Integrity failure fails only evidence gating, not inference control flow.
-- report invocation evidence records the actual parsed process argv and a truthful repository-root working-directory
-  condition, with no environment, secret, absolute capture-path or captured-content disclosure. The final model
-  command uses a relative JSON output path from the repository root.
-
-Focused Python tests、`ruff check`、`ruff format --check` 與 `git diff --check` 必須先通過。任何 Qt/PyTorch/MNE
-related validation 使用明確 timeout 與 `prlimit --core=0`。之後才以固定 Granite model/revision 和 clean exact
-SHA 執行 v11 81-case command；report 記錄 exact argv、model/revision、case SHA、source SHA、working-tree identity
-與完整 gate outcome。model run 結果是 capability evidence，不是手測或 merge 授權。
-
-## Stop condition、PR、CI 與 manual acceptance
-
-- **Scope-complete checkpoint**：上述 focused tests、v11 report/unit coverage、兩份 fresh review 和 complexity
-  accounting 都完成；model run 如有 gate failure，保留 exact report 並交回 Root，不能改 model、放鬆門檻、
-  prompt-tune 到「看似通過」或擴張 Host authority。
-- **Fail closed**：若需要 general intent owner、multi-action queue/guided workflow、auto execution、word-number
-  parser、UI change、新 tool/public side effect、receipt type/owner、或 unsafe execution/confirmation，立即停止，
-  保留 evidence 並要求新決策。
-- **PR gate**：PR base/head 必須精確、branch clean/explained，CI 所有 non-skipped checks 都
-  `completed/success`；missing/pending/stale/cancelled/failed 都不能 handoff。只可在同一 production exact SHA
-  上附上 focused evidence、v11 report與兩份 review。
-- **Manual gate**：Root 只在 PR/CI green 的 exact head 提供手測。使用者至少驗收 direct bandpass clarification
-  （labels 或 two unlabelled values）、cancel/different-tool、affirmative vs informational import、以及 trusted
-  choose-one boundary；source 改動即使 commit 後也使舊 hand test 失效。使用者明確通過並同意 merge 前不得 merge。
-- `settings.json` 和任何 worktree-local settings 永遠不得 stage、commit、覆寫、revert 或隱藏。
+## 目前焦點：Assistant dispatch / prompt iteration v1
+
+唯一 active slice 是 `fix/assistant-clarification-capture-v1`，以
+`69a1ea40492ad92b92a59fadb14a1163e60293f3` 為施工起點。目標不是讓 prompt
+「看起來清楚」，而是讓真實 Granite 3B 在產品 context 中自己選對 action，並確保
+Host 不以英文語法取代模型做 intent 判斷。
+
+### 問題與證據
+
+- `I want to import data.` 被 import 的 positive-origin English matcher 擋成
+  `intent_mismatch`，即使模型已提出 `import_eeg_data`。
+- 完整的 `I want to do a bandpass filter and high is 40 Hz, low is 15 Hz.` 與
+  `Use 100 Hz resample.` 被 direct-action English grammar 擋下；Host 把模型應負責的
+  action recognition 搬進了 regex。
+- 收齊 preprocess receipt 後，controller 又要求模型重送同一 JSON。真實 session 曾因
+  這個多餘 generation 產生 prose / envelope failure，使用者明明補齊值卻不能執行。
+- 現有 prompt 的單條規則可讀，但 `respond_to_user` 與 no-action fallback 重複出現，決策
+  層級不清楚，會誘導模型教使用者「應呼叫哪個函式」而不是自己 dispatch。
+
+### Outcome
+
+1. 模型選 tool；Host 不判斷 import intent、英文 action verb、negation 或 request grammar。
+2. Host 對五個 direct preprocess tools 只驗證 latest user text 的 value provenance / shape，
+   然後重跑既有 schema、range、fresh publication、capability、confirmation 與 command path。
+3. receipt 收齊後，以 receipt 的 exact tool 與 verified values 直接進既有
+   `ToolAttemptCoordinator → presentation / execution`；不得再呼叫 RAG 或 LLM。
+4. Prompt 採 action-first 決策順序，明確禁止把 internal function/tool 呼叫責任推回使用者，
+   且 fallback schema / no-action example 不重複。
+5. 成功證據必須同時包含 fitted prompt、raw model output 與 product terminal，不能由人工閱讀
+   prompt 或 Host rescue 宣稱改善。
+
+### Scope
+
+- 刪除 import positive-origin gate、direct English action matcher、`INTENT_BLOCKED` /
+  `intent_mismatch`、receipt-to-prompt bridge 與 completed receipt 的第二次 model proposal。
+- 限定五個 direct preprocess tools：bandpass、notch、resample、reference、normalization。
+  value grammar 可辨識數字、單位、low/high labels 與已核准 method token；不得選 action。
+- 保留 strict JSON parser、tool membership/schema、ApplicationService、confirmation、UI 與模型
+  revision；不新增 module、owner、router、state machine 或 receipt type。
+- Arabic decimal only；不加入 word-number parsing，不修改 UI 或 root `settings.json`。
+
+### TDD / evidence loop
+
+先加最小 red reproductions，再做 deletion-first repair。每輪由 Implementation Agent 修一個已證明原因；
+User Agent 以黑箱正常入口記錄 prompt/raw/visible terminal；Reviewer 檢查模型是否真的 dispatch、Host
+有沒有重建英文 intent router、以及 lifecycle 是否仍走既有 owner。Reviewer 不自行擴增極端案例。
+
+固定中央情境：import、完整 bandpass、完整 resample、一般問題、否定 import、empty-stage epochs；
+中央情境通過後，才跑五個 preprocess 的補值、切換 action、cancel 與 stale publication。任何清楚
+action 回覆「應呼叫某函式」都是 `model_declined_required_action`，不可 handoff。
+
+既有 81-case report 保留作歷史比較；新增 exact-SHA natural-dispatch / receipt lifecycle evidence，
+raw model、Host 與 product outcome 分欄，不能靠 Host 加分。每一 source change 都使先前 manual
+acceptance 失效。達 focused tests、review、CI 與 exact-SHA evidence 後才交使用者手測；使用者明確
+手測通過並同意 merge 前不合併。
+
+### Stop condition
+
+若下一步只能靠新增英文 intent regex、放寬 strict JSON、替換模型、改 tool public contract 或新增
+owner/state machine 才能通過，停止並回報；不得把這些擴張藏在 repair 裡。
