@@ -1,7 +1,7 @@
 [
   {"id":"negated_import_en","category":"negated","input":"Do not import EEG data.","workflow_stage":"empty","requested_tool":"import_eeg_data"},
   {"id":"select_channels_before_data_en","category":"out_of_stage","input":"Select EEG channels.","workflow_stage":"empty","requested_tool":"select_channels"},
-  {"id":"set_montage_before_epochs_en","category":"out_of_stage","input":"Set the montage.","workflow_stage":"data_loaded","requested_tool":"set_montage"},
+  {"id":"set_montage_after_epochs_en","category":"out_of_stage","input":"Set the montage.","workflow_stage":"epoch_ready","requested_tool":"set_montage"},
   {"id":"epochs_before_data_en","category":"out_of_stage","input":"Create EEG epochs.","workflow_stage":"empty","requested_tool":"create_epochs"},
   {"id":"split_before_epochs_en","category":"out_of_stage","input":"Configure the dataset split.","workflow_stage":"data_loaded","requested_tool":"configure_dataset_split"},
   {"id":"model_before_epochs_en","category":"out_of_stage","input":"Choose a training model.","workflow_stage":"data_loaded","requested_tool":"select_model"},

@@ -86,6 +86,7 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
     PipelineStage.DATA_LOADED: {
         "tools": [
             "select_channels",
+            "set_montage",
             *_PREPROCESS_TOOLS,
             "create_epochs",
             "switch_panel",
@@ -102,6 +103,8 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
     },
     PipelineStage.PREPROCESSED: {
         "tools": [
+            "select_channels",
+            "set_montage",
             *_PREPROCESS_TOOLS,
             "create_epochs",
             "reset_preprocessing",
@@ -121,7 +124,6 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
     },
     PipelineStage.EPOCH_READY: {
         "tools": [
-            "set_montage",
             *_SETUP_TOOLS,
             "start_training",
             "reset_preprocessing",
@@ -139,7 +141,6 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
     },
     PipelineStage.DATASET_READY: {
         "tools": [
-            "set_montage",
             *_SETUP_TOOLS,
             "start_training",
             "reset_preprocessing",
@@ -172,7 +173,6 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
     },
     PipelineStage.TRAINED: {
         "tools": [
-            "set_montage",
             *_SETUP_TOOLS,
             "start_training",
             "reset_preprocessing",

@@ -911,10 +911,10 @@ def test_first_turn_invalid_typed_precision_rows_replay_controller_recovery() ->
     }
     scenarios = (
         (
-            "set_montage_before_epochs_en",
+            "set_montage_after_epochs_en",
             "set_montage",
             "montage_name",
-            "I can't set a montage until EEG epochs are available.",
+            "I can't set a montage after EEG epochs have been created.",
         ),
         (
             "split_before_epochs_en",
@@ -927,13 +927,13 @@ def test_first_turn_invalid_typed_precision_rows_replay_controller_recovery() ->
     for case_id, pending_action, missing_input, safe_message in scenarios:
         case = cases[case_id]
         invalid_typed = (
-            '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+            f'{{"workflow_stage":"{case.workflow_stage}","tool_name":"respond_to_user",'
             f'"parameters":{{"message":"I need one value first.",'
             f'"pending_action":"{pending_action}",'
             f'"missing_inputs":["{missing_input}"]}}}}'
         )
         repaired = (
-            '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+            f'{{"workflow_stage":"{case.workflow_stage}","tool_name":"respond_to_user",'
             f'"parameters":{{"message":"{safe_message}"}}}}'
         )
         responses = iter((invalid_typed, repaired))
@@ -981,10 +981,10 @@ def test_first_turn_invalid_typed_precision_exhaustion_has_failure_type() -> Non
     case = next(
         item
         for item in load_precision_cases(DEFAULT_PRECISION_CASES)
-        if item.case_id == "set_montage_before_epochs_en"
+        if item.case_id == "set_montage_after_epochs_en"
     )
     invalid_typed = (
-        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        f'{{"workflow_stage":"{case.workflow_stage}","tool_name":"respond_to_user",'
         '"parameters":{"message":"I need one value first.",'
         '"pending_action":"set_montage","missing_inputs":["montage_name"]}}'
     )

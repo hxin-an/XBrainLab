@@ -1411,6 +1411,58 @@ def _usable_epoch_state() -> EpochStateSnapshot:
     )
 
 
+@pytest.mark.parametrize(
+    ("stage", "expected_callable"),
+    (
+        (PipelineStage.DATA_LOADED, {"select_channels", "set_montage"}),
+        (PipelineStage.PREPROCESSED, {"select_channels", "set_montage"}),
+        (PipelineStage.EPOCH_READY, set()),
+        (PipelineStage.DATASET_READY, set()),
+        (PipelineStage.TRAINING, set()),
+        (PipelineStage.TRAINED, set()),
+    ),
+)
+def test_model_facing_channel_and_montage_schema_obeys_pre_epoch_stage_projection(
+    stage: PipelineStage,
+    expected_callable: set[str],
+) -> None:
+    """The prompt surface narrows the broader backend capability by stage."""
+    state = _state(
+        pipeline_stage=stage.value,
+        raw=RawStateSnapshot(loaded=True, count=1),
+        preprocessed=PreprocessedStateSnapshot(available=True, count=1),
+        active_dataset=ActiveDatasetSnapshot(
+            has_raw_data=True,
+            has_preprocessed_data=True,
+        ),
+    )
+    publication = ApplicationViewPublication(
+        generation=100,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
+    registry = ToolRegistry()
+    for tool_name in ("select_channels", "set_montage"):
+        registry.register(_NamedTool(tool_name))
+    assembler = ContextAssembler(
+        registry,
+        Study(),
+        application_runtime=_ApplicationRuntimeFake(publication),
+    )
+
+    prompt = assembler.build_system_prompt("Configure the EEG layout.")
+
+    callable_tools = set(assembler.latest_tool_publication.tool_names) & {
+        "select_channels",
+        "set_montage",
+    }
+    assert callable_tools == expected_callable
+    for tool_name in expected_callable:
+        assert f'"name": "{tool_name}"' in prompt
+    for tool_name in {"select_channels", "set_montage"} - expected_callable:
+        assert f'"name": "{tool_name}"' not in prompt
+
+
 def test_assembler_filtering():
     """Test that Assembler includes only tools allowed by the stage config."""
 

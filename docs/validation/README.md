@@ -192,7 +192,7 @@ Complete Workflow使用已provision的
 
 - Import以embedded events將T1對應`left fist`、T2對應`right fist`，排除T0。
 - Channel Selection套用一組有效EEG subset，至少保留畫面上的C3、Cz與C4。
-- EEG Epoch選T1／T2、`0–2` seconds；Montage選當前可用的standard montage。
+- Channel與Montage都在Epoch前完成；Montage選當前可用的standard montage，再以EEG Epoch選T1／T2、`0–2` seconds。
 - Data Split選Individual／Trial，validation與test皆為`0.2`。
 - Model選EEGNet；Training Settings選CPU、1 epoch、batch 8、Adam、learning rate `0.001`。
 - 先核准Start Training；若resource preflight另顯示確認，再核准該次receipt，等到training completed。
