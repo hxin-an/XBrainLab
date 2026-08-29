@@ -40,6 +40,11 @@ missing-input state，讓 Assistant 能安全地向使用者追問並接受下�
 - Privacy reviewer 另指出 capture docs/evidence 將 generation-boundary artifact 誤寫成 admission／product
   outcome record。此 documentation blocker 由下一個 docs-only checkpoint 校準；其後所有舊 review 結論仍待
   fresh re-review，未完成前不進 model run／PR。
+- Privacy docs/evidence blocker 已由 `ffc87875` 校準完成；capture v1 僅記 generation-boundary artifact，
+  admission/product outcome 仍由 v10 evaluator report 另存。final matcher blocker 已由 `18b91db0`
+  （source `19e4a779`）關閉：只有 affirmative direct request 可建立 receipt，並保留 question／skip／
+  without／word-number fail-closed negatives。這兩個新 commits 使所有既有 reviewer conclusions 再次失效，
+  仍待兩位 fresh reviewers 對下一個 exact docs checkpoint re-review。
 - 下一步是兩位 **fresh reviewers**：admission reviewer 檢查 receipt action/verified-value/negative lifecycle
   與 owner boundary；evidence/privacy reviewer 檢查 env-disabled zero filesystem、prepared/completed/
   cancelled/failed artifacts、SHA、runtime privacy warning與 evaluator raw/Host/product score
@@ -148,11 +153,13 @@ missing-input state，讓 Assistant 能安全地向使用者追問並接受下�
   維持零 execution；raw score、Host safety 與 product outcome 分開報告。
 - 只在 focused unit/integration、capture tests、source guards（若穩定）全綠後，才由 worker 對同一 clean
   exact SHA 跑一次 pinned-model 81-case suite。這不是 full handoff，也不是 hand test gate。
-- `521 passed` 是 Lead 在 `5bca6ecf` integrated checkpoint 的 observed result，不是可外部驗證 artifact。
-  可重跑的 exact focused selection 是 controller、tool-attempt coordinator/policy、verification layer、full
-  evaluator unit、LocalBackend、runtime prompt capture 與 model-context boundary，argv 概要：
-  `env PYTHONPATH="$PWD:/home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-IiX9BmR2-py3.12/lib/python3.12/site-packages:/home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-IiX9BmR2-py3.12/local/lib/python3.12/dist-packages" MNE_DONTWRITE_HOME=true MPLCONFIGDIR=/tmp/xbrainlab-clarification-capture-mpl timeout 900 prlimit --core=0 -- /home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-IiX9BmR2-py3.12/bin/python -m pytest tests/unit/llm/agent/test_controller.py tests/unit/llm/agent/test_tool_attempt_coordinator.py tests/unit/llm/agent/test_tool_attempt_policy_boundary.py tests/unit/llm/agent/test_verification_layer.py tests/unit/scripts/test_stable_assistant_model_eval.py tests/unit/llm/core/test_local_backend.py tests/unit/llm/core/test_runtime_prompt_capture.py tests/integration/llm/test_model_context_boundary.py -q`。
-  Fresh reviewers 必須在新的 exact HEAD 重新執行此 selection；在重跑前不得把 521 視為外部 attestation。
+- Lead 在 code checkpoint `18b91db0` 保存的 exact joint command 已完成，結果為 `535 passed`、一個既有
+  MNE deprecation warning、耗時 `9.91s`；這是同一 code SHA 的 observed result，docs-only checkpoint 不改
+  該結果。argv 為：
+  `env PYTHONPATH="$PWD:/home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-IiX9BmR2-py3.12/lib/python3.12/site-packages:/home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-IiX9BmR2-py3.12/local/lib/python3.12/dist-packages" MNE_DONTWRITE_HOME=true MPLCONFIGDIR=/tmp/xbrainlab-clarification-capture-mpl timeout 900 prlimit --core=0 -- /home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-IiX9BmR2-py3.12/bin/python -m pytest tests/unit/llm/agent/test_controller.py tests/unit/llm/agent/test_tool_attempt_coordinator.py tests/unit/llm/agent/test_tool_attempt_policy_boundary.py tests/unit/llm/agent/test_verification_layer.py tests/unit/scripts/test_stable_assistant_model_eval.py tests/unit/llm/core/test_local_backend.py tests/unit/llm/core/test_backend_local.py tests/unit/llm/core/test_runtime_prompt_capture.py tests/integration/llm/test_model_context_boundary.py -q`。
+  Touched scope 的 `ruff check`、`ruff format --check` 與 `git diff --check` 也通過；production 仍為四檔
+  net `+228`。Fresh reviewers 必須在本 docs checkpoint 的 exact HEAD 重跑此 selection，才可將結果作為
+  re-review evidence；在此之前不進 model／PR。
 
 ## Stop condition 與 handoff
 
