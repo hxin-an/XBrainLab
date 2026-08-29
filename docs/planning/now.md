@@ -16,6 +16,28 @@ action，81-case clarification trajectory 是 `0/7`。本 slice 的目標不是�
 而是在 origin guard 已經拒絕不受使用者支持的 required values 時，保留該次產品 admission 已知的 factual
 missing-input state，讓 Assistant 能安全地向使用者追問並接受下一輪補值。
 
+## 施工進度（integration checkpoint）
+
+- Plan commit `610f7640` 已完成；integrated exact commits 依序為 `3e1da98d`
+  （origin guard → existing typed receipt）、`7d010388`（evaluator receipt-origin evidence）與
+  `98f2839f`（LocalBackend opt-in runtime capture／developer testing docs／direct tests）。目前 HEAD
+  是這三個 commit 之後的 integration branch，active slice 尚未關閉。
+- 相對 exact base `9e9df2af` 的 production scope 正好四檔：`LLMController`、
+  `ToolAttemptCoordinator`、`verifier`、`LocalBackend`；numstat 為 `+261/-33`、net `+228`，符合
+  `<=4 files`／`<=230 net LOC`。沒有 UI、prompt wording、model/revision/catalog、tool membership、
+  settings 或新增 production module／owner 變更。
+- 同一 integrated HEAD 已完成 focused joint validation：controller／tool-attempt policy／verification、
+  full evaluator unit、LocalBackend runtime capture 與 model-context boundary，共 `515 passed`（一個既有
+  MNE deprecation warning）；touched Python scope 的 `ruff check`、`ruff format --check` 與
+  `git diff --check` 均通過。未跑 81-case pinned-model suite、未建立 PR、未 push 或 merge。
+- 下一步是兩位 **fresh reviewers**：admission reviewer 檢查 receipt action/verified-value/negative lifecycle
+  與 owner boundary；evidence/privacy reviewer 檢查 env-disabled zero filesystem、prepared/completed/
+  cancelled/failed artifacts、hash／attempt count、runtime privacy warning與 evaluator raw/Host/product score
+  separation。兩份 review 都無 blocking finding 前，不進 81-case model run 或 PR。
+- 已知 unsupported claims：尚無 integrated exact HEAD 的真實 GUI runtime capture artifact、81-case real-model
+  score 或使用者手測；Host-origin receipt 只證明 fail-closed continuation admission，不證明 first-turn raw
+  model clarification accuracy，也不承諾 prompt-only capability boundary 已被消除。
+
 ## Outcome
 
 - 當模型選擇一個 direct preprocessing action、required parameters 含有非使用者／receipt 支持的值而被
