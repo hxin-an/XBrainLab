@@ -5,6 +5,7 @@ from __future__ import annotations
 import hmac
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
+from math import isfinite
 from typing import Any
 
 from XBrainLab.backend.exceptions import StaleTrainingPipelineMutationError
@@ -326,6 +327,30 @@ class PreprocessCommandService:
             )
         if operation == PreprocessOperation.NOTCH:
             freq = self._require(command.notch_freq, "notch_freq")
+            sampling_rate = self._lowest_reliable_sampling_rate(source_data)
+            requested_frequency = self._finite_float(freq)
+            if (
+                sampling_rate is not None
+                and requested_frequency is not None
+                and requested_frequency >= sampling_rate / 2
+            ):
+                nyquist = sampling_rate / 2
+                raise PreconditionError(
+                    "Notch filtering at "
+                    f"{requested_frequency:g} Hz cannot run because the lowest "
+                    f"sampling rate is {sampling_rate:g} Hz (Nyquist limit "
+                    f"{nyquist:g} Hz). Use a notch frequency below {nyquist:g} Hz. "
+                    "If this data was resampled, reset preprocessing, apply notch "
+                    "filtering before resampling, then resample again.",
+                    diagnostics={
+                        "code": "notch_frequency_at_or_above_nyquist",
+                        "operation": operation.value,
+                        "requested_frequency": requested_frequency,
+                        "sampling_rate": sampling_rate,
+                        "nyquist": nyquist,
+                        "state_preserved": True,
+                    },
+                )
             return (
                 target.prepare_filter(None, None, [freq]),
                 f"Applied notch filter: {freq} Hz.",
@@ -391,6 +416,29 @@ class PreprocessCommandService:
         raise ValueError(
             f"Unsupported prepared preprocess operation: {operation.value}"
         )
+
+    @staticmethod
+    def _finite_float(value: Any) -> float | None:
+        if isinstance(value, bool):
+            return None
+        try:
+            converted = float(value)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        return converted if isfinite(converted) else None
+
+    @classmethod
+    def _lowest_reliable_sampling_rate(cls, source_data: Sequence[Any]) -> float | None:
+        reliable_rates: list[float] = []
+        for data in source_data:
+            getter = getattr(data, "get_sfreq", None)
+            if not callable(getter):
+                continue
+            with suppress(Exception):
+                sampling_rate = cls._finite_float(getter())
+                if sampling_rate is not None and sampling_rate > 0:
+                    reliable_rates.append(sampling_rate)
+        return min(reliable_rates, default=None)
 
     def _prepare_epoch(
         self,

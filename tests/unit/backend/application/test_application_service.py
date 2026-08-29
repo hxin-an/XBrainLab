@@ -200,6 +200,137 @@ def _minimal_raw(
     )
 
 
+@pytest.mark.parametrize("frequency", (50.0, 60.0))
+def test_notch_at_or_above_lowest_source_nyquist_preserves_pipeline(
+    frequency: float,
+) -> None:
+    study = Study()
+    raw = _minimal_raw(Path("low-rate-recording.fif"), sfreq=100.0)
+    study.set_loaded_data_list([raw], force_update=True)
+    service = ApplicationService(study)
+    before = service.get_view_publication()
+    original_data = study.preprocessed_data_list
+    detached_targets = []
+    detached_preparation_service = service.preprocess.detached_preparation_service
+
+    def capture_detached_target(source_data):
+        target = detached_preparation_service(source_data)
+        target.prepare_filter = MagicMock(wraps=target.prepare_filter)
+        detached_targets.append(target)
+        return target
+
+    service.preprocess.detached_preparation_service = capture_detached_target
+    commit_prepared = MagicMock(wraps=service.preprocess.commit_prepared)
+    service.preprocess.commit_prepared = commit_prepared
+
+    result = service.execute(
+        PreprocessCommand(
+            operation=PreprocessOperation.NOTCH,
+            notch_freq=frequency,
+        )
+    )
+
+    assert result.failed
+    assert result.error_type is ErrorType.PRECONDITION
+    assert f"{frequency:g} Hz" in result.message
+    assert "100 Hz" in result.message
+    assert "Nyquist limit 50 Hz" in result.message
+    assert "reset preprocessing" in result.message.lower()
+    assert result.changed_state == ChangedState(error_changed=True)
+    assert result.state.pipeline_stage == before.state.pipeline_stage
+    assert result.state.raw == before.state.raw
+    assert result.state.preprocessed == before.state.preprocessed
+    assert result.state.epoch == before.state.epoch
+    assert result.diagnostics["code"] == "notch_frequency_at_or_above_nyquist"
+    assert result.diagnostics["requested_frequency"] == frequency
+    assert result.diagnostics["sampling_rate"] == 100.0
+    assert result.diagnostics["nyquist"] == 50.0
+    assert result.diagnostics["state_preserved"] is True
+    assert len(detached_targets) == 1
+    assert detached_targets[0].prepare_filter.call_count == 0
+    assert commit_prepared.call_count == 0
+    assert study.preprocessed_data_list is original_data
+    assert raw.get_preprocess_history() == []
+
+
+def test_notch_below_lowest_source_nyquist_uses_existing_prepare_and_commit() -> None:
+    study = Study()
+    raw = _minimal_raw(Path("low-rate-recording.fif"), sfreq=100.0)
+    study.set_loaded_data_list([raw], force_update=True)
+    service = ApplicationService(study)
+    detached_targets = []
+    detached_preparation_service = service.preprocess.detached_preparation_service
+
+    def capture_detached_target(source_data):
+        target = detached_preparation_service(source_data)
+        target.prepare_filter = MagicMock(wraps=target.prepare_filter)
+        detached_targets.append(target)
+        return target
+
+    service.preprocess.detached_preparation_service = capture_detached_target
+    commit_prepared = MagicMock(wraps=service.preprocess.commit_prepared)
+    service.preprocess.commit_prepared = commit_prepared
+
+    result = service.execute(
+        PreprocessCommand(operation=PreprocessOperation.NOTCH, notch_freq=40.0)
+    )
+
+    assert result.ok
+    assert len(detached_targets) == 1
+    assert detached_targets[0].prepare_filter.call_count == 1
+    assert commit_prepared.call_count == 1
+    assert (
+        "notch [40.0] hz"
+        in study.preprocessed_data_list[0].get_preprocess_history()[-1].lower()
+    )
+
+
+def test_notch_uses_lowest_reliable_sampling_rate_across_recordings() -> None:
+    study = Study()
+    high_rate = _minimal_raw(Path("high-rate.fif"), sfreq=200.0)
+    low_rate = _minimal_raw(Path("low-rate.fif"), sfreq=100.0)
+    study.set_loaded_data_list([high_rate, low_rate], force_update=True)
+    service = ApplicationService(study)
+
+    result = service.execute(
+        PreprocessCommand(operation=PreprocessOperation.NOTCH, notch_freq=60.0)
+    )
+
+    assert result.failed
+    assert result.error_type is ErrorType.PRECONDITION
+    assert result.diagnostics["requested_frequency"] == 60.0
+    assert result.diagnostics["sampling_rate"] == 100.0
+    assert result.diagnostics["nyquist"] == 50.0
+    assert high_rate.get_preprocess_history() == []
+    assert low_rate.get_preprocess_history() == []
+
+
+def test_notch_skips_unreadable_sampling_rate_and_uses_existing_prepare_path() -> None:
+    study = Study()
+    raw = _minimal_raw(Path("unreadable-rate.fif"), sfreq=100.0)
+    raw.get_sfreq = MagicMock(side_effect=RuntimeError("unreadable sampling rate"))
+    study.set_loaded_data_list([raw], force_update=True)
+    service = ApplicationService(study)
+    detached_targets = []
+    detached_preparation_service = service.preprocess.detached_preparation_service
+
+    def capture_detached_target(source_data):
+        target = detached_preparation_service(source_data)
+        target.prepare_filter = MagicMock(wraps=target.prepare_filter)
+        detached_targets.append(target)
+        return target
+
+    service.preprocess.detached_preparation_service = capture_detached_target
+
+    result = service.execute(
+        PreprocessCommand(operation=PreprocessOperation.NOTCH, notch_freq=40.0)
+    )
+
+    assert result.error_type is not ErrorType.PRECONDITION
+    assert len(detached_targets) == 1
+    assert detached_targets[0].prepare_filter.call_count == 1
+
+
 def _raw_with_event_codes(filepath: Path, event_codes: list[int]) -> Raw:
     """Build a real Raw wrapper with deterministic reviewed EEG triggers."""
     raw = _minimal_raw(filepath)
