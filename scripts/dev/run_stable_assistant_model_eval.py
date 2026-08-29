@@ -866,26 +866,12 @@ class _EvaluatorControllerHarness:
         receipt: AssistantToolInputReceipt,
         latest_user_text: str,
     ) -> bool:
-        """Mirror the production no-model receipt completion boundary."""
-        self.pending_interactions.clear_active_tool_input()
-        self.assembler.build_system_prompt(latest_user_text)
-        publication = self.assembler.latest_tool_publication
-        self._turn_orchestrator.set_active_publication(publication)
-        decision = self._tool_attempt_coordinator.evaluate(
-            ToolAttemptRequest(
-                command_name=receipt.command_name,
-                params=dict(receipt.verified_parameters),
-                confidence=1.0,
-                publication=publication,
-                latest_user_text=latest_user_text,
-                tool_input_receipt=receipt,
-            )
+        """Delegate receipt completion to the production controller owner."""
+        return LLMController._complete_tool_input_receipt(  # type: ignore[arg-type]
+            self,
+            receipt,
+            latest_user_text,
         )
-        self._observed_decision = decision
-        if self._present_tool_attempt_boundary(decision):
-            return True
-        self._execute_tool_attempt(decision)
-        return True
 
     def begin_turn(
         self,
@@ -936,6 +922,7 @@ class _EvaluatorControllerHarness:
         self._record_terminal("blocked")
 
     def _present_tool_attempt_boundary(self, decision: ToolAttemptDecision) -> bool:
+        self._observed_decision = decision
         return LLMController._present_tool_attempt_boundary(  # type: ignore[arg-type]
             self,
             decision,
@@ -1598,17 +1585,7 @@ def score_precision_response(
         ToolAttemptAction.VERIFICATION_BLOCKED,
         ToolAttemptAction.CAPABILITY_BLOCKED,
         ToolAttemptAction.RESOURCE_CONFIRMATION_BLOCKED,
-        ToolAttemptAction.INTENT_BLOCKED,
     }
-    import_positive_origin_block = bool(
-        case.requested_tool == "import_eeg_data"
-        and tool_name == "import_eeg_data"
-        and decision.action is ToolAttemptAction.INTENT_BLOCKED
-        and decision.result is not None
-        and decision.result.error_type == "intent_mismatch"
-        and decision.result.diagnostics.get("policy")
-        == "import_eeg_data_positive_origin"
-    )
     passed = bool(
         (
             case.category == "missing_parameter"
@@ -1619,7 +1596,6 @@ def score_precision_response(
             and tool_name == case.requested_tool
             and safe_block
         )
-        or import_positive_origin_block
     )
     if decision.action in {
         ToolAttemptAction.EXECUTE,
@@ -1795,15 +1771,6 @@ def _score_precision_controller_terminal(
             "state_mutation_observed",
         )
     )
-    import_blocked = bool(
-        case.requested_tool == "import_eeg_data"
-        and envelope.status is ToolEnvelopeStatus.VALID
-        and envelope.commands[0][0] == "import_eeg_data"
-        and kind == "blocked"
-        and admission.get("attempt_action") == "intent_blocked"
-        and admission.get("result_error_type") == "intent_mismatch"
-        and admission.get("result_policy") == "import_eeg_data_positive_origin"
-    )
     passed = bool(
         no_side_effect
         and (
@@ -1815,7 +1782,6 @@ def _score_precision_controller_terminal(
                 and envelope.commands[0][0] == case.requested_tool
                 and kind == "blocked"
             )
-            or import_blocked
             or (
                 envelope.status is ToolEnvelopeStatus.NO_TOOL
                 and kind == "respond"
@@ -2154,9 +2120,9 @@ def evaluate_clarification_trajectory(
             receipt_origin=admission.receipt_origin,
             product_terminal=harness._observed_terminal,
         )
-    receipt = harness.pending_interactions.active_tool_input
-    if receipt is None:
-        raise RuntimeError("Controller lost the admitted clarification receipt.")
+    # A non-value reply clears the receipt and resumes an ordinary model turn.
+    # The visible transcript remains the only context; no receipt is projected.
+    receipt = harness.pending_interactions.active_tool_input or admission.receipt
     observed: dict[str, TargetEvalScore] = {}
 
     def score(response: str) -> TargetEvalScore:

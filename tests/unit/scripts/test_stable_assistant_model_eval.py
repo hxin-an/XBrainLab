@@ -45,6 +45,7 @@ from scripts.dev.run_stable_assistant_model_eval import (
 )
 from XBrainLab.chat_contract import MODEL_UNTRUSTED_CONTEXT_BOUNDARY_MESSAGE
 from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
+from XBrainLab.llm.agent.controller import LLMController
 from XBrainLab.llm.agent.strict_envelope_recovery import (
     DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY,
 )
@@ -656,16 +657,29 @@ def test_clarification_prompt_and_score_use_product_receipt_boundary() -> None:
         generated_messages.append(messages)
         return "unused"
 
-    trajectory = evaluate_clarification_trajectory(
-        case,
-        source,
-        admission=admission,
-        registry=registry,
-        generate_response=generate,
-    )
+    owner = LLMController._complete_tool_input_receipt
+    owner_calls: list[tuple[object, object, str]] = []
+
+    def observe_owner(controller, pending_receipt, latest_user_text):
+        owner_calls.append((controller, pending_receipt, latest_user_text))
+        return owner(controller, pending_receipt, latest_user_text)
+
+    with patch.object(LLMController, "_complete_tool_input_receipt", observe_owner):
+        trajectory = evaluate_clarification_trajectory(
+            case,
+            source,
+            admission=admission,
+            registry=registry,
+            generate_response=generate,
+        )
 
     assert trajectory.final_score.passed is True
     assert generated_messages == []
+    assert len(owner_calls) == 1
+    controller, completed_receipt, latest_user_text = owner_calls[0]
+    assert controller is admission.harness
+    assert latest_user_text == case.reply
+    assert dict(completed_receipt.verified_parameters) == {"rate": 128}
     active_receipt = admission.harness.pending_interactions.active_tool_input
     assert active_receipt is None
     assert trajectory.receipt_origin == "model_typed"
@@ -783,7 +797,7 @@ def test_clarification_admission_accepts_a_long_legal_typed_response() -> None:
     assert admission.receipt.command_name == "resample_data"
 
 
-def test_clarification_trajectory_uses_product_format_recovery() -> None:
+def test_completed_clarification_skips_product_format_recovery() -> None:
     registry = target_tool_registry()
     precision_cases = load_precision_cases(DEFAULT_PRECISION_CASES)
     case = next(
@@ -796,15 +810,6 @@ def test_clarification_trajectory_uses_product_format_recovery() -> None:
     )
     source = next(
         item for item in precision_cases if item.case_id == case.source_case_id
-    )
-    responses = iter(
-        (
-            '{"workflow_stage":"data_loaded","tool_name":"resample_data",',
-            (
-                '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
-                '"parameters":{"rate":128}}'
-            ),
-        )
     )
 
     first_response = (
@@ -825,21 +830,19 @@ def test_clarification_trajectory_uses_product_format_recovery() -> None:
         source,
         admission=admission,
         registry=registry,
-        generate_response=lambda _messages: next(responses),
+        generate_response=lambda _messages: (_ for _ in ()).throw(
+            AssertionError("completed receipt must not generate")
+        ),
         generation_recorder=recorder,
     )
 
-    assert trajectory.raw_score.passed is False
+    assert trajectory.raw_score.passed is True
     assert trajectory.final_score.passed is True
-    assert len(trajectory.attempts) == 2
-    assert trajectory.attempts[0].recovery_action == "retry_format"
-    assert [entry.turn_purpose for entry in recorder.entries] == [
-        "clarification_proposal",
-        "format_retry",
-    ]
+    assert trajectory.attempts == ()
+    assert recorder.entries == []
 
 
-def test_invalid_typed_clarification_replays_controller_format_recovery() -> None:
+def test_completed_clarification_does_not_replay_model_typed_reply() -> None:
     registry = target_tool_registry()
     precision_cases = load_precision_cases(DEFAULT_PRECISION_CASES)
     case = next(
@@ -865,22 +868,12 @@ def test_invalid_typed_clarification_replays_controller_format_recovery() -> Non
         registry=registry,
     )
     assert admission is not None
-    invalid_typed_reply = (
-        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
-        '"parameters":{"message":"What resampling rate should I use?",'
-        '"pending_action":"resample_data","missing_inputs":["rate"]}}'
-    )
-    repaired_reply = (
-        '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
-        '"parameters":{"rate":128}}'
-    )
-    responses = iter((invalid_typed_reply, repaired_reply))
     generated_messages: list[list[dict[str, str]]] = []
     recorder = GenerationTraceRecorder()
 
     def generate(messages: list[dict[str, str]]) -> str:
         generated_messages.append(messages)
-        return next(responses)
+        raise AssertionError("completed receipt must not generate")
 
     trajectory = evaluate_clarification_trajectory(
         case,
@@ -891,16 +884,10 @@ def test_invalid_typed_clarification_replays_controller_format_recovery() -> Non
         generation_recorder=recorder,
     )
 
-    assert trajectory.raw_score.passed is False
-    assert trajectory.attempts[0].recovery_action == "retry_format"
-    assert [entry.turn_purpose for entry in recorder.entries] == [
-        "clarification_proposal",
-        "format_retry",
-    ]
-    assert any(
-        "FORMAT CORRECTION REQUIRED" in message["content"]
-        for message in generated_messages[1]
-    )
+    assert trajectory.raw_score.passed is True
+    assert trajectory.attempts == ()
+    assert recorder.entries == []
+    assert generated_messages == []
     assert trajectory.final_score.passed is True
     assert trajectory.product_terminal is not None
     assert trajectory.product_terminal["kind"] == "execution_boundary_suppressed"
@@ -1021,7 +1008,7 @@ def test_first_turn_invalid_typed_precision_exhaustion_has_failure_type() -> Non
     ]
 
 
-def test_clarification_collection_cancellation_or_correction_skips_generation() -> None:
+def test_explicit_clarification_cancellation_skips_generation() -> None:
     registry = target_tool_registry()
     precision_cases = load_precision_cases(DEFAULT_PRECISION_CASES)
     case = next(
@@ -1041,7 +1028,7 @@ def test_clarification_collection_cancellation_or_correction_skips_generation() 
         '"pending_action":"resample_data","missing_inputs":["rate"]}}'
     )
 
-    for reply in ("cancel", "Actually 256 Hz"):
+    for reply in ("cancel",):
         admission = admit_clarification_receipt(
             source,
             first_response,
@@ -1167,10 +1154,7 @@ def test_generic_clarification_uses_the_checked_in_second_turn() -> None:
         "role": "user",
         "content": generic.turns[1],
     }
-    assert generated_messages[2][-1] == {
-        "role": "user",
-        "content": generic.turns[2],
-    }
+    assert len(generated_messages) == 2
     assert result.receipt_origin == "model_typed"
 
 
@@ -1334,28 +1318,17 @@ def test_partial_bandpass_reply_requeues_without_model_generation_before_final_p
     assert result.final_score.passed is True
     assert [messages[-1]["content"] for messages in generated_messages] == [
         partial.turns[0],
-        partial.turns[2],
     ]
-    assert [entry.global_call_index for entry in recorder.entries] == [1, 2]
-    assert [entry.turn_purpose for entry in recorder.entries] == [
-        "first_turn",
-        "clarification_proposal",
-    ]
+    assert [entry.global_call_index for entry in recorder.entries] == [1]
+    assert [entry.turn_purpose for entry in recorder.entries] == ["first_turn"]
     assert all(entry.turn_purpose != "partial_reply" for entry in recorder.entries)
     assert [entry.raw_output_sha256 for entry in recorder.entries] == [
-        hashlib.sha256(response.encode("utf-8")).hexdigest()
-        for response in (
-            (
-                '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
-                '"parameters":{"message":"What low and high cutoffs should I use?",'
-                '"pending_action":"apply_bandpass_filter",'
-                '"missing_inputs":["low_freq","high_freq"]}}'
-            ),
-            (
-                '{"workflow_stage":"data_loaded","tool_name":"apply_bandpass_filter",'
-                '"parameters":{"high_freq":128}}'
-            ),
-        )
+        hashlib.sha256(
+            b'{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+            b'"parameters":{"message":"What low and high cutoffs should I use?",'
+            b'"pending_action":"apply_bandpass_filter",'
+            b'"missing_inputs":["low_freq","high_freq"]}}'
+        ).hexdigest()
     ]
 
 
@@ -1475,7 +1448,7 @@ def test_multi_object_precision_uses_choose_one_without_retry_or_side_effect() -
     assert outcome.state_mutation_permitted is False
 
 
-def test_import_intent_block_requires_typed_positive_origin_proof() -> None:
+def test_import_precision_score_does_not_restore_host_intent_rescue() -> None:
     registry = target_tool_registry()
     cases = load_precision_cases(DEFAULT_PRECISION_CASES)
     negated_import = next(item for item in cases if item.case_id == "negated_import_en")
@@ -1500,14 +1473,14 @@ def test_import_intent_block_requires_typed_positive_origin_proof() -> None:
         ).passed
         is False
     )
-    assert product_score.passed is True
+    assert product_score.passed is False
     assert product_score.product_outcome is not None
-    assert product_score.product_outcome.disposition == "blocked"
+    assert product_score.product_outcome.disposition == "execute"
     assert product_score.product_outcome.confirmation_requested is False
-    assert product_score.product_outcome.gui_handoff_permitted is False
-    assert product_score.product_outcome.application_service_permitted is False
-    assert product_score.product_outcome.tool_executor_permitted is False
-    assert product_score.product_outcome.state_mutation_permitted is False
+    assert product_score.product_outcome.gui_handoff_permitted is True
+    assert product_score.product_outcome.application_service_permitted is True
+    assert product_score.product_outcome.tool_executor_permitted is True
+    assert product_score.product_outcome.state_mutation_permitted is True
     assert (
         score_precision_response(epochs_before_data, import_response, registry).passed
         is False
@@ -2465,9 +2438,7 @@ def test_first_turn_positive_stops_at_controller_execution_boundary_without_side
     )
 
 
-def test_first_turn_no_action_terminal_is_controller_observed_and_side_effect_free() -> (
-    None
-):
+def test_negated_import_proposal_is_model_failure_not_host_intent_block() -> None:
     registry = target_tool_registry()
     case = next(
         item
@@ -2481,24 +2452,12 @@ def test_first_turn_no_action_terminal_is_controller_observed_and_side_effect_fr
     trajectory = evaluate_case_trajectory(case, registry, lambda _messages: response)
 
     assert trajectory.host_admission is not None
-    assert trajectory.host_admission["attempt_action"] == "intent_blocked"
-    assert trajectory.host_admission["result_error_type"] == "intent_mismatch"
-    assert (
-        trajectory.host_admission["result_policy"] == "import_eeg_data_positive_origin"
-    )
+    assert trajectory.host_admission["attempt_action"] == "execute"
+    assert trajectory.host_admission["result_error_type"] is None
+    assert trajectory.host_admission["result_policy"] is None
     assert trajectory.product_terminal is not None
-    assert trajectory.product_terminal["kind"] == "blocked"
-    assert all(
-        trajectory.product_terminal[key] is False
-        for key in (
-            "confirmation_observed",
-            "execution_boundary_reached",
-            "gui_handoff_reached",
-            "application_service_called",
-            "tool_executor_called",
-            "state_mutation_observed",
-        )
-    )
+    assert trajectory.product_terminal["kind"] == "execution_boundary_suppressed"
+    assert trajectory.product_terminal["execution_boundary_reached"] is True
 
 
 def test_first_turn_typed_and_origin_guard_receipts_are_controller_admissions() -> None:
