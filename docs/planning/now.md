@@ -331,6 +331,46 @@ Add the focused invocation report test, then repeat the existing union/static ch
 non-author evidence review on the new exact SHA. Only then freeze the final docs/source and run the model evidence
 command; until then there is no implementation, model, handoff, PR or manual-acceptance claim.
 
+### Final source freeze for v11 model evidence — 2026-08-29
+
+Invocation evidence integrated as `d99e9cb64e09b278116ef7faeafae234a70e51a6`. Its exact union passed `611`
+tests with three existing third-party deprecation warnings; the focused evaluator suite passed `60` tests. The
+targeted non-author evidence reviewer is **PASS** on that exact SHA. The earlier fresh lifecycle and evidence passes
+remain recorded; this last evaluator-only change leaves production source unchanged and owner delta `0`.
+
+Preflight evidence for the frozen run: RTX 5070 Ti has `16,303 MiB` total and `14,504 MiB` free VRAM; external
+PyTorch reports CUDA available; `/home/administrator/.local/share/xbrainlab/models` is `12G`, within the `20G`
+cache ceiling; and `ibm-granite/granite-4.0-micro` exact revision
+`56111ae135df9c53a78c99028e7bc24035a9e979` is complete. This is a fixed model/revision decision, not permission
+to download, substitute or tune a model.
+
+Before invoking the command, create a **fresh, empty**
+`build/dev-artifacts/stable-assistant-v11-20260829-closure/runtime-prompts` capture root under this exact worktree;
+do not reuse another run's capture session. From the repository root, the sole frozen invocation is:
+
+```bash
+cd /tmp/xbrainlab-assistant-clarification-capture-v1 && \
+env \
+  XBRAINLAB_ASSISTANT_PROMPT_CAPTURE_DIR="$PWD/build/dev-artifacts/stable-assistant-v11-20260829-closure/runtime-prompts" \
+  XBRAINLAB_MODEL_CACHE_DIR=/home/administrator/.local/share/xbrainlab/models \
+  HF_HUB_OFFLINE=1 \
+  TRANSFORMERS_OFFLINE=1 \
+  MNE_DONTWRITE_HOME=true \
+  MPLCONFIGDIR=/tmp/xbrainlab-assistant-v11-mpl \
+  timeout 1800 \
+  prlimit --core=0 -- \
+  /home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-xaLO7TCQ-py3.12/bin/python \
+  scripts/dev/run_stable_assistant_model_eval.py \
+  --device cuda \
+  --strict \
+  --json-out build/dev-artifacts/stable-assistant-v11-20260829-closure/stable-assistant-model-eval.json
+```
+
+The relative output path and recorded invocation make the artifact reproducible from the repository root without
+revealing local capture contents. A model failure preserves its report/artifacts and stops the line: no prompt
+tuning, gate relaxation, model substitution, handoff, PR or manual claim follows. After this docs-only commit no
+tracked docs or source may change; the next action is exact-SHA reviewer attestation, then this model command.
+
 ## Focused validation、v11 trace 與 model gates
 
 ### Direct behavior tests
