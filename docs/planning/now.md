@@ -268,6 +268,34 @@ checkpoints are implementation evidence, not a review, model, handoff or manual-
 specified model-free union and static checks on the exact integrated SHA, then obtain fresh non-author lifecycle and
 evidence/privacy reviews before any model run.
 
+### Fresh review outcome and evaluator trace repair — 2026-08-29
+
+The fresh lifecycle review is **PASS** on `22449a0083426e05b38e4da9da13f0ee2fe7d5d0`. The fresh evidence review is
+**BLOCKED**: 74 first-turn rows directly infer a product decision from evaluator-side static logic and therefore omit
+controller-observed Host admission and product terminal. That conflicts with the v11 trace contract; a safe-looking
+score is not evidence that the product boundary was actually reached.
+
+The approved minimal repair is evaluator-only. Extend existing `_EvaluatorControllerHarness` and its direct tests so
+that, after strict recovery, every final first-turn response is replayed through the existing unbound
+`LLMController` parsing, admission, processing and presentation methods. Recorder adapters stop at execution,
+confirmation, UI handoff, ApplicationService, ToolExecutor and state-mutation boundaries; they record crossing
+attempts but never perform side effects. Every first-turn row must then carry explicit controller-observed
+`host_admission` and `product_terminal`. The `24/24` product no-action gate must prove no boundary crossing through
+that replay. Positive execution rows may state only **execution boundary suppressed**, never downstream execution
+proof.
+
+Raw score/generation capture, case taxonomy and fixed 81-case denominator remain unchanged. Remove or replace the
+static product-surrogate and duplicate guards where the controller trace now owns the answer. This does not alter
+product code, UI, LocalBackend, model/revision, receipt lifecycle, owner count or public contract; UI confirmation
+remains N/A. The estimated delta is `+250–350` evaluator script LOC and `+180–260` test LOC, with production delta
+`0` and owner delta `0`.
+
+The evaluator worker begins with focused red tests for the absent controller fields and for recorder no-side-effect
+boundaries, then makes the focused evaluator suite green. Integration subsequently repeats the exact seven-file
+model-free union, ruff and diff checks; fresh lifecycle and evidence reviewers re-review the new clean SHA. A model
+run remains stopped until that review closes. No test, model, handoff, PR or manual success is claimed by this
+planning checkpoint.
+
 ## Focused validation、v11 trace 與 model gates
 
 ### Direct behavior tests
@@ -290,9 +318,9 @@ evidence/privacy reviews before any model run.
 
 ### v11 report contract
 
-v11 的每一 row 必須包含 first raw output/taxonomy/raw score、first Host origin/admission decision、每次
-follow-up raw output 與 form transition、final same-tool proposal、receipt-reconstructed params、verification/
-confirmation/UI-handoff decision 和 product terminal。source raw、follow-up raw、Host safety/admission、product
+v11 的每一 row 必須包含 first raw output/taxonomy/raw score、由 controller replay 觀察的 first Host
+origin/admission decision 與 product terminal、每次 follow-up raw output 與 form transition、final same-tool
+proposal、receipt-reconstructed params、verification/confirmation/UI-handoff decision。source raw、follow-up raw、Host safety/admission、product
 outcome 不共用分數欄位；Host block/receipt/reconstruction 永遠不得回填 raw score。
 
 81-case denominator 固定為 `36 positive + 14 challenge + 24 precision + 7 clarification`。Gate 不能降低：
