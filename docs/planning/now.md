@@ -481,6 +481,28 @@ ruff check/format check, JSON parse/hash checks and `git diff --check`. Stop rat
 digest/config/index or evaluation content if byte identity cannot be preserved. This is a bounded-baseline repair;
 it claims neither model success, handoff readiness nor manual acceptance.
 
+### CI blocker correction: explicit import walkthrough fixture — 2026-08-29
+
+PR #71 exact source `1364d14d` fails the same integration assertion on Linux, Windows and macOS:
+`tests/integration/ui/test_product_walkthrough.py::test_model_import_action_opens_typed_product_surface_directly`.
+Its fixture submits the known ambiguous text `幫我處理資料`, but the already-approved `import_eeg_data`
+positive-origin admission correctly returns `Please make one direct request to import an EEG data, dataset, file, or
+folder.` rather than opening the chooser. The failure is a stale test expectation, not evidence that the admission
+rule, model, prompt or product surface regressed.
+
+The only repair is a docs checkpoint plus that integration test: replace the fixture input and matching submission
+assertion with the direct affirmative request `Import an EEG data file.` so it exercises the stated typed import
+handoff contract. No production source, prompt, model/revision, model gate, tool membership, verifier/admission
+policy, UI layout/copy, RAG data, evaluator denominator or handoff rule may change. UI confirmation is N/A because
+the product UI is untouched.
+
+TDD evidence begins with the exact existing test red on its old input, then the changed test must be green. Validate
+the exact test, authoritative `linux-integration-ui` shard under timeout/prlimit, relevant platform UI set where the
+local source-isolated environment can run it, plus ruff, diff and clean status. Stop and return evidence if the
+explicit request does not reach the existing typed chooser surface, if a production change appears necessary, or if
+the platform failure is unrelated to the fixture. This correction makes no model, handoff, PR or manual-acceptance
+claim.
+
 ## Focused validation、v11 trace 與 model gates
 
 ### Direct behavior tests
