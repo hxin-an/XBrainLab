@@ -351,6 +351,7 @@ do not reuse another run's capture session. From the repository root, the sole f
 ```bash
 cd /tmp/xbrainlab-assistant-clarification-capture-v1 && \
 env \
+  PYTHONPATH="$PWD" \
   XBRAINLAB_ASSISTANT_PROMPT_CAPTURE_DIR="$PWD/build/dev-artifacts/stable-assistant-v11-20260829-closure/runtime-prompts" \
   XBRAINLAB_MODEL_CACHE_DIR=/home/administrator/.local/share/xbrainlab/models \
   HF_HUB_OFFLINE=1 \
@@ -370,6 +371,36 @@ The relative output path and recorded invocation make the artifact reproducible 
 revealing local capture contents. A model failure preserves its report/artifacts and stops the line: no prompt
 tuning, gate relaxation, model substitution, handoff, PR or manual claim follows. After this docs-only commit no
 tracked docs or source may change; the next action is exact-SHA reviewer attestation, then this model command.
+
+### Freeze correction: candidate import origin — 2026-08-29
+
+The model run has **not** started. A pre-run import-origin probe invoked the frozen explicit venv without
+`PYTHONPATH` and resolved `XBrainLab` from main worktree
+`/mnt/d/workspace_v2/projects/lab/xbrainlab`, not this candidate. It failed during import before model loading and
+is not model evidence, but it exposes an unacceptable mixed-source risk. The preceding freeze is therefore invalid
+as an invocation instruction.
+
+The corrected sole command above adds `PYTHONPATH="$PWD"`; its venv remains responsible for dependencies and every
+other environment setting and argv is unchanged. Immediately before it, from the same repository root and with the
+same venv/environment, run this no-model preflight (it makes no tracked change):
+
+```bash
+cd /tmp/xbrainlab-assistant-clarification-capture-v1 && \
+env \
+  PYTHONPATH="$PWD" \
+  XBRAINLAB_ASSISTANT_PROMPT_CAPTURE_DIR="$PWD/build/dev-artifacts/stable-assistant-v11-20260829-closure/runtime-prompts" \
+  XBRAINLAB_MODEL_CACHE_DIR=/home/administrator/.local/share/xbrainlab/models \
+  HF_HUB_OFFLINE=1 \
+  TRANSFORMERS_OFFLINE=1 \
+  MNE_DONTWRITE_HOME=true \
+  MPLCONFIGDIR=/tmp/xbrainlab-assistant-v11-mpl \
+  /home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-xaLO7TCQ-py3.12/bin/python \
+  -c 'from pathlib import Path; import subprocess, XBrainLab; root = Path.cwd().resolve(); module = Path(XBrainLab.__file__).resolve(); assert module.is_relative_to(root), f"mixed source: {module} outside {root}"; print(f"module_file={module}"); print("source_sha=" + subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip())'
+```
+
+This docs commit is the new final exact source. Reviewers must attest the corrected command and preflight on its
+exact SHA before the model run. After that attestation, no tracked code/docs changes are permitted; model failure
+still preserves its report and stops tuning. No model, handoff, PR or manual acceptance is claimed here.
 
 ## Focused validation、v11 trace 與 model gates
 
