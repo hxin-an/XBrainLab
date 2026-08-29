@@ -361,6 +361,10 @@ def test_action_catalog_ends_with_one_short_output_reminder() -> None:
     )
 
     reminder = contracts.rsplit("Final output reminder:\n", maxsplit=1)[1]
+    assert (
+        '{"workflow_stage":"epoch_ready","tool_name":"<exact enabled action '
+        'or respond_to_user>","parameters":{...}}'
+    ) in reminder
     assert "exact enabled action name or respond_to_user" in reminder
     assert "Add no prose outside the object" in reminder
     assert "Decision checkpoint" not in reminder

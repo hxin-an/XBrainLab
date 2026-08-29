@@ -91,6 +91,16 @@ def test_prompt_policy_uses_no_action_for_ambiguous_or_negated_requests() -> Non
     assert "use respond_to_user" in prompt
 
 
+def test_prompt_policy_orders_meaning_before_callable_action_selection() -> None:
+    prompt = StrictToolResponsePromptPolicy().decision_instructions().lower()
+
+    assert "first identify the exact action requested by meaning" in prompt
+    assert "only call it when that exact action is listed as callable" in prompt
+    assert "a prerequisite named in a blocker is not a user request" in prompt
+    assert "do not perform a prerequisite or substitute action" in prompt
+    assert prompt.index("first identify") < prompt.index("direct preprocessing")
+
+
 def test_prompt_policy_defers_multi_action_requests_without_execution() -> None:
     prompt = StrictToolResponsePromptPolicy().decision_instructions().lower()
 

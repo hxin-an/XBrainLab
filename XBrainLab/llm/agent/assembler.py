@@ -267,6 +267,10 @@ Action Contract Catalog (input definitions, never an output array):
         """Keep one short output reminder after the action schemas."""
         return (
             "Final output reminder:",
+            'Exact envelope shape: {"workflow_stage":"'
+            + workflow_stage
+            + '","tool_name":"<exact enabled action or respond_to_user>",'
+            '"parameters":{...}}',
             "Return exactly one JSON object with workflow_stage '"
             + workflow_stage
             + "', an exact enabled action name or respond_to_user, and parameters "
