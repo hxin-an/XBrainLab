@@ -9,6 +9,45 @@
 「看起來清楚」，而是讓真實 Granite 3B 在產品 context 中自己選對 action，並確保
 Host 不以英文語法取代模型做 intent 判斷。
 
+### Current implementation checkpoint: montage and channel publication lifecycle
+
+#### Problem and evidence
+
+- A real Assistant session requested montage three times and received `tools=0/0`; the model could
+  not select the existing GUI handoff even though the GUI/backend montage capability is broader.
+- The current stage projection publishes `set_montage` only after epochs, while `select_channels`
+  disappears after `data_loaded`. That stage mismatch makes the assistant-facing lifecycle disagree
+  with the intended pre-epoch workflow.
+
+#### Outcome
+
+`select_channels` and `set_montage` are published only at `data_loaded` and `preprocessed`.
+They remain available after preprocessing, disappear immediately after successful epoch creation,
+and are not published at `empty`, `epoch_ready`, `dataset_ready`, `training`, or `trained`.
+
+#### Scope and non-goals
+
+- Change only the existing Assistant `STAGE_CONFIG` projection in
+  `XBrainLab/llm/pipeline_state.py`, its exact publication tests, the directly affected no-action
+  evaluator case, and the canonical Complete Workflow order.
+- The existing GUI/backend channel and montage capability remains intentionally broader; this slice
+  does not change it. It also does not alter tool schemas, prompts, evaluator denominators, UI,
+  model selection, or root `settings.json`.
+
+#### Assumption, steps, and focused validation
+
+The immutable ApplicationService publication remains the authoritative stage input; this is solely
+the Assistant tool-surface projection. First make exact stage-membership tests red, then change the
+mapping and align only direct contract consumers: pipeline/assembler publication tests, the
+epoch-after-unavailable montage precision case, and Complete Workflow profile plus its canonical
+walkthrough text. Run those focused tests, Ruff for touched Python, and `git diff --check`.
+
+#### Stop condition and UI confirmation
+
+Stop if the desired lifecycle requires changing backend/GUI capability, adding an owner, schema,
+prompt heuristic, or a new state machine. UI confirmation: not applicable; this slice has no UI
+edit.
+
 ### 問題與證據
 
 - `I want to import data.` 被 import 的 positive-origin English matcher 擋成

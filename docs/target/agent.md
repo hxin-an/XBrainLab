@@ -59,8 +59,8 @@ cancel 都由該 GUI owner 完成。`opened`／`accepted` 不是成功，只有 
 | Tool | Published stage | Existing owner／authoritative side effect | Terminal evidence |
 | --- | --- | --- | --- |
 | `import_eeg_data` | `empty` | Data Import chooser、Data Interpretation lifecycle、reviewed ApplicationService apply | import applied、cancelled、blocked 或 failed |
-| `select_channels` | `data_loaded` | Dataset Channel Selection dialog；`PreprocessCommand(SELECT_CHANNELS)` | selected channels applied、cancelled、blocked 或 failed |
-| `set_montage` | `epoch_ready`、`dataset_ready`、`trained` | Montage Settings；`ApplyMontageCommand` | montage applied、cancelled、blocked 或 failed |
+| `select_channels` | `data_loaded`、`preprocessed` | Dataset Channel Selection dialog；`PreprocessCommand(SELECT_CHANNELS)` | selected channels applied、cancelled、blocked 或 failed |
+| `set_montage` | `data_loaded`、`preprocessed` | Montage Settings；`ApplyMontageCommand` | montage applied、cancelled、blocked 或 failed |
 | `create_epochs` | `data_loaded`、`preprocessed` | Epoch Settings；`CreateEpochCommand` | epochs created、cancelled、blocked 或 failed |
 | `configure_dataset_split` | `epoch_ready`、`dataset_ready`、`trained` | Dataset Split dialog；`SaveDatasetSplitCommand` | split saved／datasets generated、cancelled、blocked 或 failed |
 | `select_model` | `epoch_ready`、`dataset_ready`、`trained` | Model Selection dialog；existing ConfigureTraining command owner | model selection saved、cancelled、blocked 或 failed |
@@ -179,16 +179,17 @@ Confirmation、resource receipt、generation token與 filesystem path 都由 tru
 | Stage | Backend meaning | Target candidates before capability filtering |
 | --- | --- | --- |
 | `empty` | 無 raw data | Import、Switch |
-| `data_loaded` | 有 raw、尚無 derived preprocessing | Channel、五項 direct preprocess、Epoch、Switch |
-| `preprocessed` | Channel 或任一 preprocess 已成功 | 五項 direct preprocess、Epoch、Reset、Switch |
-| `epoch_ready` | 已有 supervised epochs，但 split／model／training settings 尚未全部完成 | Montage、三項 setup tools、Start、Reset、Switch |
-| `dataset_ready` | saved split、model、training settings 三項全部完成 | setup 可修改；Start confirmation；Montage、Reset、Switch |
+| `data_loaded` | 有 raw、尚無 derived preprocessing | Channel、Montage、五項 direct preprocess、Epoch、Switch |
+| `preprocessed` | Channel 或任一 preprocess 已成功 | Channel、Montage、五項 direct preprocess、Epoch、Reset、Switch |
+| `epoch_ready` | 已有 supervised epochs，但 split／model／training settings 尚未全部完成 | 三項 setup tools、Start、Reset、Switch |
+| `dataset_ready` | saved split、model、training settings 三項全部完成 | setup 可修改；Start confirmation；Reset、Switch |
 | `training` | active training job | Stop、Switch；不發布其他 mutation |
-| `trained` | 至少一個 completed run | setup／retrain、Montage、Reset、Clear History、Compute Saliency、results navigation |
+| `trained` | 至少一個 completed run | setup／retrain、Reset、Clear History、Compute Saliency、results navigation |
 
-`select_channels` 或任一 direct preprocess 成功會自然投影為 `preprocessed`。Raw data可直接建立
-Epoch；`CreateEpochCommand`要求raw與合法epoch context，不以preprocessing operation作前置條件，成功後
-直接投影為`epoch_ready`。Montage只在epoch後提供、不改變stage。`start_training` 是 `epoch_ready`
+`select_channels` 或任一 direct preprocess 成功會自然投影為 `preprocessed`。Channel與Montage都在
+`data_loaded`／`preprocessed` publication中可用，且在Epoch成功後隨即消失；這不縮限既有GUI/backend的較寬
+capability。Raw data可直接建立Epoch；`CreateEpochCommand`要求raw與合法epoch context，不以preprocessing
+operation作前置條件，成功後直接投影為`epoch_ready`。`start_training` 是 `epoch_ready`
 stage candidate，但split、model或training settings未齊時由同一publication capability排除schema並在
 unavailable reference精確說明缺項，不能部分執行；全部ready後才成為callable。
 
