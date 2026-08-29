@@ -80,7 +80,7 @@ DEFAULT_PRECISION_CASES = (
 DEFAULT_CLARIFICATION_CASES = (
     ROOT / "scripts" / "dev" / "stable_assistant_clarification_cases.json"
 )
-REPORT_SCHEMA = "xbrainlab.stable_assistant_model_eval.v9"
+REPORT_SCHEMA = "xbrainlab.stable_assistant_model_eval.v10"
 PRECISION_CASE_COUNT = 24
 CLARIFICATION_CASE_COUNT = 7
 MISSING_PARAMETER_HOST_TOOLS = {
@@ -201,6 +201,7 @@ class CaseTrajectoryResult:
     final_score: TargetEvalScore
     final_response: str
     attempts: tuple[ModelGenerationAttempt, ...]
+    receipt_origin: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -208,6 +209,7 @@ class ClarificationAdmission:
     """One controller-admitted typed receipt retained for evaluator follow-up."""
 
     receipt: AssistantToolInputReceipt
+    receipt_origin: str
     harness: _EvaluatorControllerHarness
     prompt_publication: PromptToolPublication
     backend_publication: ApplicationViewPublication
@@ -688,6 +690,9 @@ class _EvaluatorControllerHarness:
         LLMController._begin_typed_tool_input(self, envelope)  # type: ignore[arg-type]
         return self.pending_interactions.tool_input
 
+    def _finalize_turn(self, response_text: str) -> None:
+        self._append_history("assistant", response_text)
+
     def evaluate_proposal(
         self,
         response: str,
@@ -705,8 +710,19 @@ class _EvaluatorControllerHarness:
             self,
             command,
             response,
+            single_proposal=len(envelope.commands) == 1,
         )
         return decision, command[1]
+
+    def admit_origin_guard_response(
+        self, response: str
+    ) -> AssistantToolInputReceipt | None:
+        """Present a Host-origin clarification through the controller boundary."""
+        decision, _parameters = self.evaluate_proposal(response)
+        if decision is None or decision.tool_input_receipt is None:
+            return None
+        LLMController._present_tool_attempt_boundary(self, decision)  # type: ignore[arg-type]
+        return self.pending_interactions.tool_input
 
 
 def _case_application_publication(
@@ -1527,10 +1543,15 @@ def admit_clarification_receipt(
     )
     harness.begin_turn(source.user_input, prompt_publication)
     receipt = harness.admit_typed_response(response)
+    receipt_origin = "model_typed"
+    if receipt is None:
+        receipt = harness.admit_origin_guard_response(response)
+        receipt_origin = "host_parameter_origin"
     if receipt is None or receipt.command_name != expected_tool:
         return None
     return ClarificationAdmission(
         receipt=receipt,
+        receipt_origin=receipt_origin,
         harness=harness,
         prompt_publication=prompt_publication,
         backend_publication=backend_publication,
@@ -1640,18 +1661,21 @@ def evaluate_clarification_trajectory(
             ),
         )
 
-    return _evaluate_trajectory(
-        workflow_stage=source.workflow_stage,
-        build_messages=lambda recovery: build_clarification_messages(
-            case,
-            source,
-            receipt=receipt,
-            registry=registry,
-            recovery_messages=recovery,
-        )[0],
-        score_response=score,
-        score_raw_model_response=raw_score,
-        generate_response=generate_response,
+    return replace(
+        _evaluate_trajectory(
+            workflow_stage=source.workflow_stage,
+            build_messages=lambda recovery: build_clarification_messages(
+                case,
+                source,
+                receipt=receipt,
+                registry=registry,
+                recovery_messages=recovery,
+            )[0],
+            score_response=score,
+            score_raw_model_response=raw_score,
+            generate_response=generate_response,
+        ),
+        receipt_origin=admission.receipt_origin,
     )
 
 
@@ -1738,6 +1762,7 @@ def evaluate_discriminated_clarification_trajectory(
                 if action_trajectory is first_trajectory
                 else first_trajectory.attempts + action_trajectory.attempts
             ),
+            receipt_origin=None,
         )
     if case.trajectory_kind == "partial_bandpass_accumulation":
         harness = admission.harness
@@ -1773,6 +1798,7 @@ def evaluate_discriminated_clarification_trajectory(
                 final_score=failed,
                 final_response=partial_response,
                 attempts=first_trajectory.attempts + action_trajectory.attempts,
+                receipt_origin=admission.receipt_origin,
             )
     final_case = replace(case, reply=case.turns[2])
     final_trajectory = evaluate_clarification_trajectory(
@@ -1794,6 +1820,7 @@ def evaluate_discriminated_clarification_trajectory(
             + action_trajectory.attempts
             + final_trajectory.attempts
         ),
+        receipt_origin=admission.receipt_origin,
     )
 
 
@@ -2345,22 +2372,24 @@ def run_eval(
                 post_recovery_score_payload = asdict(trajectory.post_recovery_score)
                 attempts = [asdict(attempt) for attempt in trajectory.attempts]
                 source = None
-                source_has_receipt = True
+                receipt_origin = trajectory.receipt_origin
+                source_has_receipt = receipt_origin is not None
+                source_first_generation_score = None
             else:
                 source = precision_by_id[case.source_case_id]
                 source_row = result_by_id[case.source_case_id]
                 source_score = source_row["score"]
-                admission = (
-                    admit_clarification_receipt(
-                        source,
-                        str(source_score.get("response", "")),
-                        expected_tool=case.expected_tool,
-                        registry=registry,
-                    )
-                    if source_score.get("passed") is True
-                    else None
+                source_first_generation_score = source_row["first_generation_score"]
+                admission = admit_clarification_receipt(
+                    source,
+                    str(source_score.get("response", "")),
+                    expected_tool=case.expected_tool,
+                    registry=registry,
                 )
                 source_has_receipt = admission is not None
+                receipt_origin = (
+                    admission.receipt_origin if admission is not None else None
+                )
                 if admission is not None:
                     trajectory = evaluate_clarification_trajectory(
                         case,
@@ -2404,6 +2433,11 @@ def run_eval(
                     "case": asdict(case),
                     "source_case": asdict(source) if source is not None else None,
                     "source_has_host_receipt": source_has_receipt,
+                    "receipt_admission": {
+                        "admitted": source_has_receipt,
+                        "origin": receipt_origin,
+                    },
+                    "source_raw_model_score": source_first_generation_score,
                     "first_generation_score": first_generation_score_payload,
                     "post_recovery_score": post_recovery_score_payload,
                     "score": score_payload,

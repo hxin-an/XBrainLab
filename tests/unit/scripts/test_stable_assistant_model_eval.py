@@ -186,13 +186,13 @@ def test_run_eval_admits_direct_receipts_from_serialized_final_response(
         '"pending_action":"resample_data","missing_inputs":["rate"]}}'
     )
     score = TargetEvalScore(
-        True,
-        "",
+        False,
+        "parameter_origin",
         response,
         "data_loaded",
         "respond_to_user",
         {"message": "Please provide the required value."},
-        "accepted",
+        "Model-proposed parameters are not user-proven.",
     )
     trajectory = CaseTrajectoryResult(
         raw_score=score,
@@ -241,10 +241,10 @@ def test_run_eval_admits_direct_receipts_from_serialized_final_response(
         ),
         patch(
             "scripts.dev.run_stable_assistant_model_eval.admit_clarification_receipt",
-            return_value=object(),
+            return_value=MagicMock(receipt_origin="host_parameter_origin"),
         ) as admit_receipt,
     ):
-        run_eval(
+        report = run_eval(
             config,
             (),
             precision_cases=precision_cases,
@@ -253,6 +253,20 @@ def test_run_eval_admits_direct_receipts_from_serialized_final_response(
 
     assert len(admit_receipt.call_args_list) == 5
     assert {call.args[1] for call in admit_receipt.call_args_list} == {response}
+    direct_rows = [
+        row
+        for row in report["results"]
+        if row["suite"] == "clarification" and row["source_case"] is not None
+    ]
+    assert len(direct_rows) == 5
+    assert {row["receipt_admission"]["origin"] for row in direct_rows} == {
+        "host_parameter_origin"
+    }
+    assert all(row["source_raw_model_score"]["passed"] is False for row in direct_rows)
+    assert all(
+        row["source_raw_model_score"] == row["first_generation_score"]
+        for row in direct_rows
+    )
 
 
 def test_clarification_prompt_and_score_use_product_receipt_boundary() -> None:
@@ -304,6 +318,7 @@ def test_clarification_prompt_and_score_use_product_receipt_boundary() -> None:
     )
 
     assert trajectory.final_score.passed is True
+    assert trajectory.receipt_origin == "model_typed"
     assert trajectory.final_score.product_outcome is not None
     assert trajectory.final_score.product_outcome.disposition == "execute_boundary"
     assert trajectory.final_score.product_outcome.tool_executor_permitted is True
@@ -328,6 +343,69 @@ def test_clarification_admission_rejects_incomplete_tool_call_fixture() -> None:
     )
 
     assert admission is None
+
+
+def test_clarification_admission_records_host_parameter_origin_for_all_direct_tools() -> (
+    None
+):
+    registry = target_tool_registry()
+    cases = load_precision_cases(DEFAULT_PRECISION_CASES)
+    invented_parameters = {
+        "apply_bandpass_filter": {"low_freq": 1, "high_freq": 40},
+        "apply_notch_filter": {"freq": 50},
+        "resample_data": {"rate": 128},
+        "set_reference": {"method": "average"},
+        "normalize_data": {"method": "z-score"},
+    }
+
+    for source in (case for case in cases if case.category == "missing_parameter"):
+        response = json.dumps(
+            {
+                "workflow_stage": source.workflow_stage,
+                "tool_name": source.requested_tool,
+                "parameters": invented_parameters[source.requested_tool],
+            }
+        )
+        admission = admit_clarification_receipt(
+            source,
+            response,
+            expected_tool=source.requested_tool,
+            registry=registry,
+        )
+
+        assert admission is not None
+        assert admission.receipt_origin == "host_parameter_origin"
+        assert admission.harness.pending_interactions.tool_input == admission.receipt
+
+
+def test_clarification_admission_keeps_model_typed_origin_and_never_synthesizes() -> (
+    None
+):
+    registry = target_tool_registry()
+    source = next(
+        case
+        for case in load_precision_cases(DEFAULT_PRECISION_CASES)
+        if case.case_id == "missing_resample_en"
+    )
+    typed = (
+        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '"parameters":{"message":"What resampling rate should I use?",'
+        '"pending_action":"resample_data","missing_inputs":["rate"]}}'
+    )
+
+    admission = admit_clarification_receipt(
+        source, typed, expected_tool="resample_data", registry=registry
+    )
+    missing = admit_clarification_receipt(
+        source,
+        '{"workflow_stage":"data_loaded","tool_name":"resample_data","parameters":{}}',
+        expected_tool="resample_data",
+        registry=registry,
+    )
+
+    assert admission is not None
+    assert admission.receipt_origin == "model_typed"
+    assert missing is None
 
 
 def test_clarification_trajectory_uses_product_format_recovery() -> None:
@@ -910,7 +988,7 @@ def test_report_separates_raw_model_host_safety_and_product_outcomes() -> None:
         complete=True,
     )
 
-    assert report["schema_version"] == "xbrainlab.stable_assistant_model_eval.v9"
+    assert report["schema_version"] == "xbrainlab.stable_assistant_model_eval.v10"
     assert report["suite_summary"]["positive"]["case_count"] == 36
     assert report["suite_summary"]["challenge"]["case_count"] == 14
     assert report["summary"] == {
