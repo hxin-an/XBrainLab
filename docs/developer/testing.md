@@ -191,6 +191,19 @@ poetry run python scripts/dev/export_assistant_prompt.py \
 
 每份dossier都標記HEAD SHA與clean/dirty source state；dirty prompt不可以被誤稱為該HEAD的exact artifact。
 
+### Opt-in runtime prompt capture
+
+要擷取 GUI 實際送入本機模型的 fitted prompt 與 raw output，啟動前明確設定絕對路徑：
+
+```bash
+export XBRAINLAB_ASSISTANT_PROMPT_CAPTURE_DIR="$PWD/build/dev-artifacts/assistant-runtime-prompts"
+```
+
+每次 generation（包括 retry）會在 child-local session 的遞增序號目錄寫入
+`prompt.txt`、`raw-output.txt` 與 `metadata.json`。未設定旗標時不做 capture I/O；capture 寫入失敗不會影響
+模型推論。artifact 可能包含 chat、檔案路徑和 dataset／subject metadata。`build/` 被 Git ignore **不代表保密**：
+只能選受控本機目錄，不要納入 support bundle 或上傳，完成後由操作者人工刪除。
+
 所有 active first-turn cases（36 positive、14 challenge、24 no-action precision）都會經同一個
 `ApplicationViewPublication` fixture 與 `ContextAssembler.get_messages`。dossier中的 state card、不可用
 action projection與 LocalBackend role boundary 因此是產品路徑，而不是 evaluator 手組的 stage catalog。

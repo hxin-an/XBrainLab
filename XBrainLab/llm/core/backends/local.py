@@ -5,11 +5,15 @@ HuggingFace ``transformers`` with optional 4-bit quantization.
 """
 
 import gc
+import hashlib
 import json
 import logging
-from dataclasses import dataclass
+import os
+from dataclasses import asdict, dataclass
+from pathlib import Path
 from threading import Event, Lock, Thread
 from typing import Any, cast
+from uuid import uuid4
 
 from XBrainLab.backend.application.errors import PreconditionError
 from XBrainLab.backend.application.resource_guard import (
@@ -33,6 +37,8 @@ from XBrainLab.llm.core.model_catalog import (
 from .base import BaseBackend
 
 logger = logging.getLogger("XBrainLab.LLM.Local")
+
+_PROMPT_CAPTURE_DIRECTORY_ENV = "XBRAINLAB_ASSISTANT_PROMPT_CAPTURE_DIR"
 
 
 @dataclass(slots=True)
@@ -77,6 +83,93 @@ class LocalBackend(BaseBackend):
         self._generation_lock = Lock()
         self._active_generation: _GenerationLease | None = None
         self._unloading = False
+        self._prompt_capture_session_id = uuid4().hex
+        self._prompt_capture_sequence = 0
+
+    @staticmethod
+    def _write_capture_file(path: Path, content: str) -> None:
+        path.write_text(content, encoding="utf-8")
+
+    def _start_prompt_capture(
+        self,
+        prompt: str,
+        options: ResolvedGenerationOptions,
+        model_id: str,
+        revision: str,
+    ) -> dict[str, Any] | None:
+        """Persist prepared exact input only when a developer opts in by env."""
+        configured = os.environ.get(_PROMPT_CAPTURE_DIRECTORY_ENV, "").strip()
+        if not configured:
+            return None
+        self._prompt_capture_sequence += 1
+        root = Path(configured).expanduser()
+        if not root.is_absolute():
+            logger.warning("Assistant prompt capture needs an absolute directory.")
+            return None
+        try:
+            root.mkdir(parents=True, exist_ok=True)
+            root = root.resolve(strict=True)
+            directory = (
+                root
+                / self._prompt_capture_session_id
+                / str(self._prompt_capture_sequence)
+            )
+            directory.mkdir(parents=True, exist_ok=False)
+            directory.chmod(0o700)
+            prompt_bytes = prompt.encode("utf-8")
+            metadata = {
+                "model": {"id": model_id, "revision": revision},
+                "options": asdict(options),
+                "session_id": self._prompt_capture_session_id,
+                "sequence": self._prompt_capture_sequence,
+                "prompt_bytes": len(prompt_bytes),
+                "prompt_sha256": hashlib.sha256(prompt_bytes).hexdigest(),
+                "raw_output_bytes": 0,
+                "raw_output_sha256": hashlib.sha256(b"").hexdigest(),
+                "status": "prepared",
+            }
+            self._write_capture_file(directory / "prompt.txt", prompt)
+            self._write_capture_file(directory / "raw-output.txt", "")
+            self._write_capture_file(
+                directory / "metadata.json",
+                json.dumps(metadata, ensure_ascii=False, sort_keys=True, indent=2)
+                + "\n",
+            )
+        except Exception:
+            logger.warning(
+                "Assistant prompt capture preparation failed; inference continues."
+            )
+            return None
+        else:
+            return {"directory": directory, "metadata": metadata}
+
+    def _finish_prompt_capture(
+        self,
+        capture: dict[str, Any] | None,
+        raw_output: str,
+        status: str,
+    ) -> None:
+        if capture is None:
+            return
+        try:
+            metadata = dict(capture["metadata"])
+            raw_bytes = raw_output.encode("utf-8")
+            metadata.update(
+                raw_output_bytes=len(raw_bytes),
+                raw_output_sha256=hashlib.sha256(raw_bytes).hexdigest(),
+                status=status,
+            )
+            directory = capture["directory"]
+            self._write_capture_file(directory / "raw-output.txt", raw_output)
+            self._write_capture_file(
+                directory / "metadata.json",
+                json.dumps(metadata, ensure_ascii=False, sort_keys=True, indent=2)
+                + "\n",
+            )
+        except Exception:
+            logger.warning(
+                "Assistant prompt capture finalization failed; inference continues."
+            )
 
     def _normalize_runtime_device(self, torch_module) -> None:
         """Fail visibly if the pre-resolved CUDA device became unavailable."""
@@ -478,6 +571,9 @@ class LocalBackend(BaseBackend):
             self.load()
         lease = self._acquire_generation_lease()
         thread_started = False
+        capture: dict[str, Any] | None = None
+        raw_chunks: list[str] = []
+        terminal_status = "failed"
         try:
             import transformers
 
@@ -499,6 +595,9 @@ class LocalBackend(BaseBackend):
                 lease.tokenizer,
                 messages,
                 max_input_tokens=max_input_tokens,
+            )
+            capture = self._start_prompt_capture(
+                prompt, options, spec.repo_id, spec.revision
             )
             inputs = lease.tokenizer(
                 prompt,
@@ -550,21 +649,37 @@ class LocalBackend(BaseBackend):
                 if self._active_generation is not lease:
                     raise RuntimeError("Local generation lease was lost.")
                 if lease.cancel_event.is_set():
+                    terminal_status = "cancelled"
                     return
                 lease.thread = thread
             thread.start()
             thread_started = True
-
+            terminal_status = "completed"
             try:
-                for chunk in streamer:
-                    if lease.cancel_event.is_set():
-                        break
-                    yield chunk
-            finally:
-                thread.join()
-            if errors and not lease.cancel_event.is_set():
-                raise RuntimeError(f"Local generation failed: {errors[0]}")
+                try:
+                    for chunk in streamer:
+                        if lease.cancel_event.is_set():
+                            terminal_status = "cancelled"
+                            break
+                        text_chunk = str(chunk)
+                        raw_chunks.append(text_chunk)
+                        yield text_chunk
+                finally:
+                    thread.join()
+                if lease.cancel_event.is_set():
+                    terminal_status = "cancelled"
+                if errors and not lease.cancel_event.is_set():
+                    terminal_status = "failed"
+                    error_message = f"Local generation failed: {errors[0]}"
+                    raise RuntimeError(error_message)  # noqa: TRY301
+            except GeneratorExit:
+                terminal_status = "cancelled"
+                raise
+            except BaseException:
+                terminal_status = "failed"
+                raise
         finally:
+            self._finish_prompt_capture(capture, "".join(raw_chunks), terminal_status)
             if not thread_started:
                 self._release_generation_lease(lease)
 
