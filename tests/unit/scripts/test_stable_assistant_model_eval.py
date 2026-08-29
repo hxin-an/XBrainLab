@@ -16,6 +16,8 @@ from scripts.dev.run_stable_assistant_model_eval import (
     TargetEvalScore,
     _build_recovery_case_messages,
     _build_report,
+    _capture_audit_request,
+    _capture_integrity_report,
     _evaluation_generation_policy,
     _experiment_identity,
     _stable_eval_config,
@@ -43,8 +45,54 @@ from XBrainLab.chat_contract import MODEL_UNTRUSTED_CONTEXT_BOUNDARY_MESSAGE
 from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 from XBrainLab.llm.core.backends.local import LocalBackend
 from XBrainLab.llm.core.config import LLMConfig
+from XBrainLab.llm.core.model_catalog import local_model_spec
 
 GOLD_SET = Path("XBrainLab/llm/rag/data/gold_set.json")
+
+
+def _write_runtime_capture_session(
+    root: Path,
+    session_id: str,
+    *,
+    model_id: str,
+    generation_policy: dict[str, object],
+    raw_output: str,
+    sequence_count: int,
+    raw_sha256: str | None = None,
+) -> None:
+    """Write a lower-engine capture fixture matching the LocalBackend schema."""
+    spec = local_model_spec(model_id)
+    assert spec is not None
+    raw_bytes = raw_output.encode("utf-8")
+    options = {
+        name: generation_policy[name]
+        for name in ("max_new_tokens", "do_sample", "temperature", "top_p")
+    }
+    for sequence in range(1, sequence_count + 1):
+        directory = root / session_id / str(sequence)
+        directory.mkdir(parents=True)
+        prompt = f"private prompt {sequence}"
+        prompt_bytes = prompt.encode("utf-8")
+        (directory / "prompt.txt").write_text(prompt, encoding="utf-8")
+        (directory / "raw-output.txt").write_text(raw_output, encoding="utf-8")
+        (directory / "metadata.json").write_text(
+            json.dumps(
+                {
+                    "model": {"id": spec.repo_id, "revision": spec.revision},
+                    "options": options,
+                    "session_id": session_id,
+                    "sequence": sequence,
+                    "prompt_bytes": len(prompt_bytes),
+                    "prompt_sha256": hashlib.sha256(prompt_bytes).hexdigest(),
+                    "raw_output_bytes": len(raw_bytes),
+                    "raw_output_sha256": raw_sha256
+                    or hashlib.sha256(raw_bytes).hexdigest(),
+                    "status": "completed",
+                },
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
 
 
 def test_eval_config_uses_fixed_product_model_without_mutating_user_settings() -> None:
@@ -181,18 +229,19 @@ def test_active_assistant_evidence_cases_are_english_only() -> None:
     assert all(text.isascii() for text in inputs)
 
 
-def test_run_eval_admits_direct_receipts_from_serialized_final_response(
+def test_run_eval_admits_direct_receipts_from_full_final_response_not_score_preview(
     monkeypatch,
 ) -> None:
+    long_question = "What resampling rate should I use? " + ("x" * 1_100)
     response = (
         '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
-        '"parameters":{"message":"Please provide the required value.",'
+        f'"parameters":{{"message":{json.dumps(long_question)},'
         '"pending_action":"resample_data","missing_inputs":["rate"]}}'
     )
     score = TargetEvalScore(
         False,
         "parameter_origin",
-        response,
+        response[:1_000],
         "data_loaded",
         "respond_to_user",
         {"message": "Please provide the required value."},
@@ -257,6 +306,7 @@ def test_run_eval_admits_direct_receipts_from_serialized_final_response(
 
     assert len(admit_receipt.call_args_list) == 5
     assert {call.args[1] for call in admit_receipt.call_args_list} == {response}
+    assert len(response) > 1_000
     direct_rows = [
         row
         for row in report["results"]
@@ -271,6 +321,7 @@ def test_run_eval_admits_direct_receipts_from_serialized_final_response(
         row["source_raw_model_score"] == row["first_generation_score"]
         for row in direct_rows
     )
+    assert response not in json.dumps(report)
 
 
 def test_run_eval_records_every_lower_engine_generation_in_global_order(
@@ -323,6 +374,217 @@ def test_run_eval_records_every_lower_engine_generation_in_global_order(
             for entry in trace
             if entry["case_id"] == row["case"]["case_id"]
         ]
+
+
+def test_run_eval_without_capture_does_not_probe_capture_filesystem(
+    monkeypatch,
+) -> None:
+    config = _stable_eval_config(LLMConfig(), device="cpu")
+    monkeypatch.setattr(config, "local_backend_ready", lambda _model_id: True)
+    monkeypatch.delenv("XBRAINLAB_ASSISTANT_PROMPT_CAPTURE_DIR", raising=False)
+    precision_cases = load_precision_cases(DEFAULT_PRECISION_CASES)
+    clarification_cases = load_clarification_cases(
+        DEFAULT_CLARIFICATION_CASES,
+        precision_cases=precision_cases,
+    )
+    engine = MagicMock()
+    engine.generate_stream.side_effect = lambda *_args, **_kwargs: iter(
+        (
+            '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+            '"parameters":{"message":"I need more information."}}',
+        )
+    )
+
+    with (
+        patch(
+            "scripts.dev.run_stable_assistant_model_eval.LLMEngine",
+            return_value=engine,
+        ),
+        patch(
+            "scripts.dev.run_stable_assistant_model_eval.Path.exists",
+            side_effect=AssertionError("capture path probe"),
+        ),
+        patch(
+            "scripts.dev.run_stable_assistant_model_eval.Path.iterdir",
+            side_effect=AssertionError("capture directory listing"),
+        ),
+    ):
+        report = run_eval(
+            config,
+            (),
+            precision_cases=precision_cases,
+            clarification_cases=clarification_cases,
+        )
+
+    assert report["capture_integrity"]["requested"] is False
+    assert report["capture_integrity"]["status"] == "not_requested"
+    assert report["capture_integrity"]["failure_codes"] == []
+
+
+def test_run_eval_validates_opt_in_capture_with_dynamic_trace_and_redacted_report(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    capture_root = tmp_path / "private-capture-root"
+    (capture_root / "previous-session").mkdir(parents=True)
+    monkeypatch.setenv("XBRAINLAB_ASSISTANT_PROMPT_CAPTURE_DIR", str(capture_root))
+    config = _stable_eval_config(LLMConfig(), device="cpu")
+    monkeypatch.setattr(config, "local_backend_ready", lambda _model_id: True)
+    precision_cases = load_precision_cases(DEFAULT_PRECISION_CASES)
+    clarification_cases = load_clarification_cases(
+        DEFAULT_CLARIFICATION_CASES,
+        precision_cases=precision_cases,
+    )
+    raw_output = (
+        ' {"workflow_stage":"empty","tool_name":"respond_to_user",'
+        '"parameters":{"message":"I need more information."}}\n'
+    )
+    engine = MagicMock()
+    engine.generate_stream.side_effect = lambda *_args, **_kwargs: iter((raw_output,))
+    checkpoint_reports: list[dict[str, object]] = []
+
+    def finish_capture() -> None:
+        _write_runtime_capture_session(
+            capture_root,
+            "new-session",
+            model_id=config.assistant_runtime_selection().model_id,
+            generation_policy=_evaluation_generation_policy(config),
+            raw_output=raw_output,
+            sequence_count=engine.generate_stream.call_count,
+        )
+
+    engine.close.side_effect = finish_capture
+    with (
+        patch(
+            "scripts.dev.run_stable_assistant_model_eval.LLMEngine",
+            return_value=engine,
+        ),
+        patch(
+            "scripts.dev.run_stable_assistant_model_eval._write_report",
+            side_effect=lambda _path, payload: checkpoint_reports.append(payload),
+        ),
+    ):
+        report = run_eval(
+            config,
+            (),
+            precision_cases=precision_cases,
+            clarification_cases=clarification_cases,
+            checkpoint_path=tmp_path / "checkpoint.json",
+        )
+
+    audit = report["capture_integrity"]
+    assert audit["requested"] is True
+    assert audit["status"] == "verified"
+    assert audit["artifact_count"] == report["generation_attempt_count"]
+    assert audit["session_id_sha256"] == hashlib.sha256(b"new-session").hexdigest()
+    assert all(audit["checks"].values())
+    assert audit["failure_codes"] == []
+    rendered = json.dumps(audit)
+    assert str(capture_root) not in rendered
+    assert "previous-session" not in rendered
+    assert "new-session" not in rendered
+    assert "private prompt" not in rendered
+    assert checkpoint_reports
+    assert all(
+        item["capture_integrity"]
+        == {
+            "requested": True,
+            "status": "incomplete",
+            "artifact_count": 0,
+            "session_id_sha256": None,
+            "checks": {},
+            "failure_codes": [],
+        }
+        for item in checkpoint_reports
+    )
+
+
+def test_run_eval_capture_mismatch_or_ambiguous_session_fails_candidate_evidence(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    capture_root = tmp_path / "private-capture-root"
+    monkeypatch.setenv("XBRAINLAB_ASSISTANT_PROMPT_CAPTURE_DIR", str(capture_root))
+    config = _stable_eval_config(LLMConfig(), device="cpu")
+    monkeypatch.setattr(config, "local_backend_ready", lambda _model_id: True)
+    precision_cases = load_precision_cases(DEFAULT_PRECISION_CASES)
+    clarification_cases = load_clarification_cases(
+        DEFAULT_CLARIFICATION_CASES,
+        precision_cases=precision_cases,
+    )
+    raw_output = (
+        '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+        '"parameters":{"message":"I need more information."}}'
+    )
+    engine = MagicMock()
+    engine.generate_stream.side_effect = lambda *_args, **_kwargs: iter((raw_output,))
+
+    def finish_capture() -> None:
+        kwargs = {
+            "model_id": config.assistant_runtime_selection().model_id,
+            "generation_policy": _evaluation_generation_policy(config),
+            "raw_output": raw_output,
+            "sequence_count": engine.generate_stream.call_count,
+        }
+        _write_runtime_capture_session(capture_root, "first-session", **kwargs)
+        _write_runtime_capture_session(capture_root, "second-session", **kwargs)
+
+    engine.close.side_effect = finish_capture
+    with patch(
+        "scripts.dev.run_stable_assistant_model_eval.LLMEngine",
+        return_value=engine,
+    ):
+        report = run_eval(
+            config,
+            (),
+            precision_cases=precision_cases,
+            clarification_cases=clarification_cases,
+        )
+
+    audit = report["capture_integrity"]
+    assert audit["status"] == "failed"
+    assert audit["failure_codes"] == ["new_session_ambiguity"]
+    assert report["candidate_gate"]["capture_integrity"] is False
+    rendered = json.dumps(audit)
+    assert str(capture_root) not in rendered
+    assert "first-session" not in rendered
+    assert "second-session" not in rendered
+
+
+def test_capture_audit_reports_raw_hash_mismatch_without_disclosing_content(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    capture_root = tmp_path / "private-capture-root"
+    monkeypatch.setenv("XBRAINLAB_ASSISTANT_PROMPT_CAPTURE_DIR", str(capture_root))
+    request = _capture_audit_request()
+    config = _stable_eval_config(LLMConfig(), device="cpu")
+    raw_output = "private raw output"
+    recorder = GenerationTraceRecorder()
+    recorder.record(raw_output, case_id="case", turn_purpose="first_turn")
+    _write_runtime_capture_session(
+        capture_root,
+        "new-session",
+        model_id=config.assistant_runtime_selection().model_id,
+        generation_policy=_evaluation_generation_policy(config),
+        raw_output=raw_output,
+        sequence_count=1,
+        raw_sha256="0" * 64,
+    )
+
+    audit = _capture_integrity_report(
+        request,
+        recorder.entries,
+        model_id=config.assistant_runtime_selection().model_id,
+        generation_policy=_evaluation_generation_policy(config),
+    )
+
+    assert audit["status"] == "failed"
+    assert "capture_content_hash_mismatch" in audit["failure_codes"]
+    assert "capture_trace_raw_mismatch" in audit["failure_codes"]
+    rendered = json.dumps(audit)
+    assert str(capture_root) not in rendered
+    assert raw_output not in rendered
 
 
 def test_clarification_prompt_and_score_use_product_receipt_boundary() -> None:
@@ -472,6 +734,31 @@ def test_clarification_admission_keeps_model_typed_origin_and_never_synthesizes(
     assert admission is not None
     assert admission.receipt_origin == "model_typed"
     assert missing is None
+
+
+def test_clarification_admission_accepts_a_long_legal_typed_response() -> None:
+    registry = target_tool_registry()
+    source = next(
+        item
+        for item in load_precision_cases(DEFAULT_PRECISION_CASES)
+        if item.case_id == "missing_resample_en"
+    )
+    response = (
+        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        f'"parameters":{{"message":{json.dumps("rate? " + "x" * 1_100)},'
+        '"pending_action":"resample_data","missing_inputs":["rate"]}}'
+    )
+
+    admission = admit_clarification_receipt(
+        source,
+        response,
+        expected_tool="resample_data",
+        registry=registry,
+    )
+
+    assert len(response) > 1_000
+    assert admission is not None
+    assert admission.receipt.command_name == "resample_data"
 
 
 def test_clarification_trajectory_uses_product_format_recovery() -> None:
@@ -942,6 +1229,85 @@ def test_precision_scoring_uses_parser_and_host_attempt_outcome_not_keywords() -
         assert outcome.state_mutation_permitted is False
 
 
+def test_multi_object_precision_uses_choose_one_without_retry_or_side_effect() -> None:
+    registry = target_tool_registry()
+    case = next(
+        item
+        for item in load_precision_cases(DEFAULT_PRECISION_CASES)
+        if item.case_id == "multi_en"
+    )
+    response = (
+        '{"workflow_stage":"data_loaded","tool_name":"apply_bandpass_filter",'
+        '"parameters":{"low_freq":4,"high_freq":38}}'
+        '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
+        '"parameters":{"rate":128}}'
+    )
+    calls = 0
+
+    def generate(_messages: list[dict[str, str]]) -> str:
+        nonlocal calls
+        calls += 1
+        return response
+
+    trajectory = evaluate_case_trajectory(case, registry, generate)
+
+    assert calls == 1
+    assert trajectory.raw_score.passed is False
+    assert trajectory.final_score.passed is True
+    assert trajectory.attempts[0].envelope_status == "multiple_objects"
+    assert trajectory.attempts[0].recovery_action == "choose_one"
+    outcome = trajectory.final_score.product_outcome
+    assert outcome is not None
+    assert outcome.disposition == "choose_one"
+    assert outcome.message == (
+        "I can do one action at a time. Please tell me which action to do first."
+    )
+    assert outcome.confirmation_requested is False
+    assert outcome.gui_handoff_permitted is False
+    assert outcome.application_service_permitted is False
+    assert outcome.tool_executor_permitted is False
+    assert outcome.state_mutation_permitted is False
+
+
+def test_import_intent_block_requires_typed_positive_origin_proof() -> None:
+    registry = target_tool_registry()
+    cases = load_precision_cases(DEFAULT_PRECISION_CASES)
+    negated_import = next(item for item in cases if item.case_id == "negated_import_en")
+    epochs_before_data = next(
+        item for item in cases if item.case_id == "epochs_before_data_en"
+    )
+    import_response = (
+        '{"workflow_stage":"empty","tool_name":"import_eeg_data","parameters":{}}'
+    )
+
+    product_score = score_precision_response(
+        negated_import,
+        import_response,
+        registry,
+    )
+
+    assert (
+        score_raw_precision_response(
+            negated_import,
+            import_response,
+            registry,
+        ).passed
+        is False
+    )
+    assert product_score.passed is True
+    assert product_score.product_outcome is not None
+    assert product_score.product_outcome.disposition == "blocked"
+    assert product_score.product_outcome.confirmation_requested is False
+    assert product_score.product_outcome.gui_handoff_permitted is False
+    assert product_score.product_outcome.application_service_permitted is False
+    assert product_score.product_outcome.tool_executor_permitted is False
+    assert product_score.product_outcome.state_mutation_permitted is False
+    assert (
+        score_precision_response(epochs_before_data, import_response, registry).passed
+        is False
+    )
+
+
 def test_raw_missing_parameter_score_requires_the_exact_missing_fields() -> None:
     registry = target_tool_registry()
     case = next(
@@ -973,9 +1339,7 @@ def test_raw_missing_parameter_score_requires_the_exact_missing_fields() -> None
     )
 
 
-def test_raw_model_gate_allows_only_three_noncritical_challenge_wording_failures() -> (
-    None
-):
+def test_raw_model_gate_keeps_challenge_diagnostics_out_of_its_pass_decision() -> None:
     results = [
         {
             "suite": "positive",
@@ -1010,7 +1374,7 @@ def test_raw_model_gate_allows_only_three_noncritical_challenge_wording_failures
         "max_wording_failures": 3,
         "unclassified_failures": 0,
     }
-    assert report["raw_model_gate"]["passed"] is False
+    assert report["raw_model_gate"]["passed"] is True
 
 
 def test_format_recovery_never_repairs_the_first_generation_raw_model_gate() -> None:
@@ -1081,7 +1445,7 @@ def test_format_recovery_never_repairs_the_first_generation_raw_model_gate() -> 
         "required": 7,
         "passed": 6,
     }
-    assert report["raw_model_gate"]["passed"] is False
+    assert report["raw_model_gate"]["passed"] is True
 
 
 def test_trajectory_retries_format_error_with_product_policy_and_scores_final() -> None:
@@ -1301,8 +1665,20 @@ def test_report_separates_raw_model_host_safety_and_product_outcomes() -> None:
                     "suite": "clarification",
                     "first_generation_score": {"passed": True, "failure_type": "none"},
                     "score": {"passed": True},
+                    **(
+                        {
+                            "source_case": {"case_id": f"missing_{index}"},
+                            "source_has_host_receipt": True,
+                            "receipt_admission": {
+                                "admitted": True,
+                                "origin": "host_parameter_origin",
+                            },
+                        }
+                        if index < 5
+                        else {}
+                    ),
                 }
-                for _ in range(7)
+                for index in range(7)
             ],
         ],
         expected_case_count=50,
@@ -1332,6 +1708,12 @@ def test_report_separates_raw_model_host_safety_and_product_outcomes() -> None:
     }
     assert report["raw_model_gate"]["passed"] is True
     assert report["host_safety_gate"]["passed"] is True
+    assert report["direct_host_admission_gate"] == {
+        "required": 5,
+        "passed": 5,
+        "complete": True,
+        "status": "passed",
+    }
     assert report["product_outcome_gate"]["passed"] is True
     assert report["candidate_gate"]["passed"] is True
     assert report["first_generation_summary"] == {
@@ -1705,9 +2087,11 @@ def test_candidate_report_requires_positive_and_host_guard_gates() -> None:
     )
 
     assert report["candidate_gate"] == {
-        "raw_model": False,
+        "raw_model": True,
         "host_safety": True,
+        "direct_host_admission": False,
         "product_outcome": False,
+        "capture_integrity": True,
         "passed": False,
     }
     assert report["host_safety_gate"]["continuation_boundaries"] == {
