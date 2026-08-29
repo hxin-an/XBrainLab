@@ -198,6 +198,24 @@ worker 或 reviewer 判定。
    - 只在兩個 focused green checkpoints 與兩份 fresh review 都無 blocker 後整合；核對 clean exact head、base、
      production numstat 與 protected `settings.json`。不在 review 時順手改 implementation。
 
+### Integration checkpoint — 2026-08-29
+
+- Clean integration base `f7a29284f2c779b0345fffb517d303163c074511` received product commit
+  `9fe169af4537832a59003cec22db2ae1d75ed019` as integrated commit `54e93599` and evaluator commit
+  `03d671610984083d1f5e0d11aba1298e8fe2b2c6` as integrated commit `9070ff11`. Cherry-picks had no
+  conflict; this checkpoint itself must be committed separately before validation so the later exact source is
+  reproducible.
+- On `main..9070ff11`, runtime `XBrainLab/` production code is 11 files, `+707/-261`, net `+446` LOC.
+  Including executable `scripts/dev/` code gives 13 files, `+1,610/-463`, net `+1,147` LOC; docs, cases and
+  tests are excluded from both figures. This exceeds the net-300 and eight-production-file complexity triggers,
+  but remains below the 1,500-net mandatory split threshold. Owners remain the existing parser/recovery,
+  coordinator, verifier, pending coordinator, controller, assembler, backend and evaluator boundaries; no new
+  production module or authoritative owner was added. The two planned deletion/replacement candidates are the
+  controller's old model-partial merge path and evaluator-local duplicate trace composition.
+- Next step is fresh non-author lifecycle and evidence/privacy review on the eventual clean integrated SHA,
+  followed by the focused union regression. This checkpoint records no test, model, CI, handoff or manual-acceptance
+  result.
+
 ## Focused validation、v11 trace 與 model gates
 
 ### Direct behavior tests
