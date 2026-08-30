@@ -67,6 +67,40 @@ EVALUATOR_POSITIVE_CASES_SHA256 = (
 )
 
 
+def _complete_v12_case_summaries() -> dict[str, dict[str, object]]:
+    return {
+        "core": {
+            "expected_case_count": 50,
+            "case_count": 50,
+            "passed_count": 36,
+            "failed_count": 14,
+            "complete": True,
+            "passed": False,
+        },
+        "precision": {
+            "expected_case_count": 24,
+            "case_count": 24,
+            "passed_count": 24,
+            "failed_count": 0,
+            "complete": True,
+            "passed": True,
+        },
+        "clarification": {
+            "expected_case_count": 7,
+            "case_count": 7,
+            "passed_count": 7,
+            "failed_count": 0,
+            "complete": True,
+            "passed": True,
+        },
+        "total": {
+            "expected_case_count": 81,
+            "case_count": 81,
+            "complete": True,
+        },
+    }
+
+
 def _write_runtime_capture_session(
     root: Path,
     session_id: str,
@@ -1910,8 +1944,43 @@ def test_report_separates_raw_model_host_safety_and_product_outcomes() -> None:
         "case_count": 81,
         "complete": True,
     }
+    assert set(report["case_summaries"]) == {
+        "core",
+        "precision",
+        "clarification",
+        "total",
+    }
+    assert set(report["case_summaries"]["core"]) == {
+        "expected_case_count",
+        "case_count",
+        "passed_count",
+        "failed_count",
+        "complete",
+        "passed",
+    }
+    assert set(report["case_summaries"]["precision"]) == {
+        "expected_case_count",
+        "case_count",
+        "passed_count",
+        "failed_count",
+        "complete",
+        "passed",
+    }
+    assert set(report["case_summaries"]["clarification"]) == {
+        "expected_case_count",
+        "case_count",
+        "passed_count",
+        "failed_count",
+        "complete",
+        "passed",
+    }
+    assert set(report["case_summaries"]["total"]) == {
+        "expected_case_count",
+        "case_count",
+        "complete",
+    }
     assert report["candidate_gate"]["raw_model"]["passed"] is True
-    # Legacy rows without controller observations cannot satisfy the v11 gate.
+    # Legacy rows without controller observations cannot satisfy the v12 gate.
     assert report["candidate_gate"]["host_safety"]["passed"] is False
     assert report["candidate_gate"]["direct_host_admission"] == {
         "required": 5,
@@ -2195,12 +2264,45 @@ def test_candidate_consumer_rejects_v11_summary_and_accepts_only_v12_gate() -> N
         report_candidate_passed(
             {
                 "schema_version": "xbrainlab.stable_assistant_model_eval.v12",
-                "case_summaries": {},
+                "case_summaries": _complete_v12_case_summaries(),
                 "candidate_gate": {"passed": True},
             }
         )
         is True
     )
+    summaries_with_leaked_aggregate = _complete_v12_case_summaries()
+    summaries_with_leaked_aggregate["total"]["passed"] = True
+    assert (
+        report_candidate_passed(
+            {
+                "schema_version": "xbrainlab.stable_assistant_model_eval.v12",
+                "case_summaries": summaries_with_leaked_aggregate,
+                "candidate_gate": {"passed": True},
+            }
+        )
+        is False
+    )
+
+
+def test_main_strict_fails_closed_for_a_v11_artifact(monkeypatch) -> None:
+    from scripts.dev import run_stable_assistant_model_eval as evaluator
+
+    monkeypatch.setattr(
+        evaluator.LLMConfig,
+        "load_from_file",
+        staticmethod(lambda: LLMConfig()),
+    )
+    with patch.multiple(
+        evaluator,
+        run_eval=MagicMock(
+            return_value={
+                "schema_version": "xbrainlab.stable_assistant_model_eval.v11",
+                "summary": {"passed": True},
+            }
+        ),
+        _experiment_identity=MagicMock(return_value={"source_sha": "test"}),
+    ):
+        assert evaluator.main(["--strict"]) == 1
 
 
 def test_report_separates_positive_and_challenge_results() -> None:
@@ -2396,7 +2498,7 @@ def test_main_records_actual_invocation_without_local_working_directory(
         run_eval=MagicMock(
             return_value={
                 "schema_version": "xbrainlab.stable_assistant_model_eval.v12",
-                "case_summaries": {},
+                "case_summaries": _complete_v12_case_summaries(),
                 "candidate_gate": {"passed": True},
             }
         ),

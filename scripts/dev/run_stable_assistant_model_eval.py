@@ -2993,7 +2993,63 @@ def report_candidate_passed(report: object) -> bool:
     if not isinstance(report, dict) or report.get("schema_version") != REPORT_SCHEMA:
         return False
     candidate_gate = report.get("candidate_gate")
-    return isinstance(candidate_gate, dict) and candidate_gate.get("passed") is True
+    if not isinstance(candidate_gate, dict) or candidate_gate.get("passed") is not True:
+        return False
+    case_summaries = report.get("case_summaries")
+    if not isinstance(case_summaries, dict) or set(case_summaries) != {
+        "core",
+        "precision",
+        "clarification",
+        "total",
+    }:
+        return False
+    expected_summaries = {
+        "core": (
+            50,
+            {
+                "expected_case_count",
+                "case_count",
+                "passed_count",
+                "failed_count",
+                "complete",
+                "passed",
+            },
+        ),
+        "precision": (
+            PRECISION_CASE_COUNT,
+            {
+                "expected_case_count",
+                "case_count",
+                "passed_count",
+                "failed_count",
+                "complete",
+                "passed",
+            },
+        ),
+        "clarification": (
+            CLARIFICATION_CASE_COUNT,
+            {
+                "expected_case_count",
+                "case_count",
+                "passed_count",
+                "failed_count",
+                "complete",
+                "passed",
+            },
+        ),
+        "total": (
+            81,
+            {"expected_case_count", "case_count", "complete"},
+        ),
+    }
+    return all(
+        isinstance(case_summaries[name], dict)
+        and set(case_summaries[name]) == required_keys
+        and case_summaries[name].get("expected_case_count") == expected_count
+        and case_summaries[name].get("case_count") == expected_count
+        and case_summaries[name].get("complete") is True
+        for name, (expected_count, required_keys) in expected_summaries.items()
+    )
 
 
 def _write_report(path: Path, report: dict[str, Any]) -> None:
