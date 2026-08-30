@@ -1,6 +1,6 @@
 # XBrainLab Target
 
-最後更新：`2026-07-03`
+最後更新：`2026-08-30`
 
 這個資料夾定義 XBrainLab 的目標態。
 
@@ -19,6 +19,7 @@
 | [architecture.md](architecture.md) | 理想系統架構與 backend command surface。 |
 | [data_interpretation_system.md](data_interpretation_system.md) | 資料匯入、label / event 解讀、BIDS、recipe、UI / agent 行為的終局設計。 |
 | [agent.md](agent.md) | agent 目標、local-only runtime、tool-call 驗證方向。 |
+| [training.md](training.md) | Class loss weighting、validation early stopping 與可重現 training evidence 邊界。 |
 
 ## 核心目標
 
