@@ -483,9 +483,10 @@ settings全部完成後才是`dataset_ready`。
 - Windows native layout、dialog interaction與完整PhysioNet CPU workflow仍需要使用者手測。
 
 Historical Phi evaluation artifacts are not current product or thesis evidence. Superseded raw、
-host-assisted或`121/121` reports不得作為current Granite accuracy。Current v8 claim必須使用同一candidate
-source的81-case report（core 50＋precision 24＋clarification 7）；舊v7 artifact只保留歷史checkpoint，且
-verified execution boundary仍不等於真ToolExecutor side effect或產品ready。
+host-assisted或`121/121` reports不得作為current Granite accuracy。Current v12 evidence在同一candidate
+source分開保存50-case core、24-case precision與7-case clarification；81-case `total`只表示inventory
+completeness，嚴格promotion只讀獨立`candidate_gate.passed`，不把它宣稱成單一accuracy。舊v7 artifact
+只保留歷史checkpoint，且verified execution boundary仍不等於真ToolExecutor side effect或產品ready。
 
 ## 架構評斷
 
@@ -512,7 +513,8 @@ verified execution boundary仍不等於真ToolExecutor side effect或產品ready
 - `CommandParser`驗證模型產生的strict JSON text envelope；它不是host-native structured tool calling，
   但不掃描prose或接受wrapper。
 - strict envelope、publication/stage verification、capability與confirmation守住目前product
-  contract；模型selection仍必須由composed 50-case report gate與真人safe E2E驗證。
+  contract；模型selection仍必須由v12分離的case evidence與獨立`candidate_gate.passed`，以及真人safe
+  E2E驗證。
 - `AgentManager` 已抽出 presentation、runtime lifecycle、workflow handoff 與 montage coordinator，
   但仍是偏大的 Qt orchestrator，後續應按責任切片而不是新增 fallback。
 - RAG 已接入 controller，但本輪尚未驗證資料來源和品質。

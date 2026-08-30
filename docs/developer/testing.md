@@ -235,10 +235,11 @@ timeout 30m prlimit --core=0 -- \
 故障；只用於bounded baseline比較。只有要判定Stable promotion時才加入`--strict`，canonical handoff
 registry也維持strict模式。
 
-目前v9 runner固定執行81個英文案例：36個positive、14個challenge、24個no-action precision與
-7個controller-backed clarification trajectories。report分成first-generation raw model、post-recovery diagnostic、
-Host safety與product outcome；Host block或format recovery只能證明產品安全，不能增加first-generation
-raw model分數。候選 gate 要求：
+目前v12 runner固定執行81個英文案例：36個positive、14個challenge、24個no-action precision與
+7個controller-backed clarification trajectories。`case_summaries.core`、`precision`與`clarification`
+各自保留其分母，`case_summaries.total`只表示81-case inventory完整性；raw model、post-recovery diagnostic、
+Host safety、direct admission、product outcome與overall pass都位於獨立`candidate_gate`。Host block或format
+recovery只能證明產品安全，不能增加first-generation raw model分數。候選 gate 要求：
 
 - 36/36 positive cases 的工具與參數完全正確。
 - 10/10 明確參數來源檢查通過。

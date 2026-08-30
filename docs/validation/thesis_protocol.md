@@ -147,16 +147,19 @@ Local tool-call eval 不是每個小修都跑 full primary / fallback x3。正�
 
 Release / thesis local gate 前必須先記錄 disk / cache / `nvidia-smi` VRAM preflight。舊
 21-action deterministic／local runners已隨Stable v2 surface退役，不能再用歷史121-case artifact
-刷新current claim。產品重建期間只使用`scripts/dev/run_stable_assistant_model_eval.py`的50-case
-target gate（36 positive＋14 challenge）；它要求exact stage、tool、parameters／response contract與
-schema，但不是thesis benchmark。
+刷新current claim。產品重建期間只使用`scripts/dev/run_stable_assistant_model_eval.py`的v12
+evaluator evidence：`case_summaries.core`保留50-case core（36 positive＋14 challenge）、`precision`
+保留24-case no-action、`clarification`保留7-case continuation，而`total`只表示81-case inventory
+完整性；它要求相關case的exact stage、tool、parameters／response contract與schema，但不把81個case
+合成單一模型accuracy分母，也不是thesis benchmark。
 正式thesis runner必須等產品surface凍結後另以approved target cases重建，並重新定義repeat、resource
-preflight、confidence interval與artifact schema；不得把產品50-case結果升格為thesis-ready rerun。
+preflight、confidence interval與artifact schema；不得把產品v12 candidate artifact升格為thesis-ready rerun。
 
 Local LLM CLI 的 process exit 與 artifact contract 如下：
 
-- Stable v2產品gate的`--strict`在任何failed case、空case set或不完整summary時回傳非零；partial
-  artifact必須保持`complete=false`與`passed=false`。
+- Stable v2產品gate的`--strict`只在v12 `candidate_gate.passed=true`時成功；legacy v11、空case set、
+  failed gate或不完整artifact一律fail closed。partial artifact的`case_summaries.total.complete`與
+  `candidate_gate.passed`必須是`false`。
 - 歷史`xbrainlab.local_tool_call_eval.v4`／v5 artifact只能作provenance，不是current Stable v2 gate。
 - 未來thesis runner的process exit、resource-preflight與artifact contract必須在重建時重新批准；不能
   從已退役CLI自動繼承。
@@ -362,9 +365,11 @@ build/dev-artifacts/thesis/<run_id>/
 ## Current Gap
 
 舊121-case deterministic／primary／fallback artifacts屬superseded provenance，不能作為Stable v2
-或thesis-candidate current evidence。Current產品層只有50-case bounded target selection gate；
-正式thesis benchmark、repeat-run matrix、confidence interval、resource／latency條件與dashboard均待
-產品主線穩定後重建。tool-call benchmark也不能取代UI、launcher或import wizard的產品驗收evidence。
+或thesis-candidate current evidence。Current產品層只有v12 separated evaluator evidence：50-case core、
+24-case precision、7-case clarification各自保留分母，81-case total只證明inventory completeness；strict
+promotion判斷只讀獨立的`candidate_gate.passed`，不宣稱81-case model accuracy。正式thesis benchmark、
+repeat-run matrix、confidence interval、resource／latency條件與dashboard均待產品主線穩定後重建。tool-call
+benchmark也不能取代UI、launcher或import wizard的產品驗收evidence。
 
 external EEG dataset runner、repeat runs、baseline comparison 和 statistical reporting 是可選的
 pipeline support，不是目前 thesis 主線。這些不能取代 local LLM 真實 tool-call accuracy run。
