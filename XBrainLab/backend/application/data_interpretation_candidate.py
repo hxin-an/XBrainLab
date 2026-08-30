@@ -390,10 +390,6 @@ def build_interpretation_candidate(
             has_internal_event_rows
         ):
             event_roles["internal_events"] = "event role candidates"
-            confirmation_items.append(
-                "Confirm which events are trial anchors, class cues, responses, "
-                "artifacts, or boundaries.",
-            )
         event_roles.update(_string_mapping(choices.get("event_roles")))
         explicit_internal_event_selection = isinstance(
             choices.get("internal_event_selection"),
@@ -409,6 +405,15 @@ def build_interpretation_candidate(
             or explicit_internal_event_selection
             else {}
         )
+        if has_internal_event_rows and not _internal_event_selection_is_complete(
+            internal_event_preview,
+            choices.get("internal_event_selection"),
+            choices.get("event_roles"),
+        ):
+            confirmation_items.append(
+                "Confirm which events are trial anchors, class cues, responses, "
+                "artifacts, or boundaries.",
+            )
     if label_carrier_source == "embedded_events" and not class_map:
         selection_class_map = _string_mapping(internal_event_selection.get("class_map"))
         if selection_class_map:
@@ -977,6 +982,49 @@ def _internal_event_selection(
             key: class_map[key] for key in _sorted_event_codes(class_map)
         }
     return result
+
+
+def _internal_event_selection_is_complete(
+    internal_event_preview: dict[str, Any],
+    explicit_selection: Any,
+    explicit_roles: Any,
+) -> bool:
+    """Return whether user-authored buckets cover every observed event."""
+    if not isinstance(explicit_selection, dict):
+        return False
+    required_fields = {
+        "label_event_codes",
+        "not_label_event_codes",
+        "class_map",
+    }
+    if not required_fields.issubset(explicit_selection):
+        return False
+    observed = set(
+        _internal_event_codes(internal_event_preview.get("candidate_label_events"))
+        + _internal_event_codes(internal_event_preview.get("not_used_events"))
+    )
+    selected = set(_string_list(explicit_selection.get("label_event_codes")))
+    not_selected = set(_string_list(explicit_selection.get("not_label_event_codes")))
+    if (
+        not observed
+        or bool(selected & not_selected)
+        or not observed.issubset(selected | not_selected)
+    ):
+        return False
+    class_map = _string_mapping(explicit_selection.get("class_map"))
+    if not all(str(class_map.get(code) or "").strip() for code in selected):
+        return False
+    if not isinstance(explicit_roles, dict):
+        return True
+    roles = {
+        str(code).strip(): str(role).strip().lower()
+        for code, role in explicit_roles.items()
+        if str(code).strip()
+    }
+    return all(
+        roles.get(code) == ("class label" if code in selected else "not a label")
+        for code in observed
+    )
 
 
 def _internal_event_counts(internal_event_preview: dict[str, Any]) -> dict[str, int]:

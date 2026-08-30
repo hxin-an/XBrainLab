@@ -2303,6 +2303,35 @@ def test_load_labels_step_keeps_custom_fallback_out_of_first_layer(qtbot):
     assert "custom parser" not in visible_text
 
 
+def test_load_labels_does_not_show_missing_external_source_for_internal_events(qtbot):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+            "label_carriers": [],
+        },
+        preview={
+            "event_roles": {"internal_events": "event role candidates"},
+            "internal_event_preview": {
+                "candidate_label_events": [
+                    {"event_code": "769", "event_count": 12},
+                ],
+            },
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    _show_step(dialog, "Load Labels")
+    qtbot.wait(0)
+
+    assert "No nearby label/event source detected." not in _visible_step_text(
+        dialog,
+        "Load Labels",
+    )
+
+
 def test_converted_label_table_dialog_shows_required_format(qtbot):
     dialog = _ConvertedLabelTableDialog(parent=None)
     qtbot.addWidget(dialog)
