@@ -1077,7 +1077,7 @@ class DataInterpretationActionCoordinator:
 
             if continuation_choices != comparison_choices:
                 resume_step = str(dialog_result.get("resume_step") or "").strip()
-                if resume_step == "Match Labels":
+                if resume_step in {"Match Labels", "Review and Import"}:
                     return self._repreview_interpretation_async(
                         source_path=source_path,
                         source_hint=source_hint,
@@ -1766,23 +1766,19 @@ class DataInterpretationActionCoordinator:
         def _apply_validated_review(
             validated_state: _InterpretationReviewState,
         ) -> InteractionOutcome:
-            if str(validated_state.decision.get("decision")) == "blocked":
-                outcome = InteractionOutcome.blocked(
-                    self._decision_reason(validated_state.decision)
-                )
-                _replace_preparing_status(outcome)
-                return outcome
-
-            def _retry_cancelled_apply() -> InteractionOutcome:
-                return self.review_current_import(
-                    initial_step="Review and Import",
-                    expected_identity=self._review_identity(validated_state),
-                )
-
-            return self._apply_interpretation_async(
-                validated_state,
-                dialog_result,
-                retry_cancelled_apply=_retry_cancelled_apply,
+            # A final-review edit invalidates the confirmation that accompanied
+            # the prior draft.  The fresh backend decision (including ``safe``)
+            # must be rendered and explicitly confirmed before Apply can run.
+            # Normal Match -> Review already takes the repreview path, so this
+            # only adds the required confirmation after a changed final review.
+            return self._continue_data_interpretation_import(
+                source_path=source_path,
+                source_hint=source_hint,
+                choices=dict(choices),
+                label_sources=list(label_sources),
+                review_state=validated_state,
+                initial_step="Review and Import",
+                validated_choices=dict(choices),
             )
 
         def _retry_cancelled_revalidation() -> InteractionOutcome:

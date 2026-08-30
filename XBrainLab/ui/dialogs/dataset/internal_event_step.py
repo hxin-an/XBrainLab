@@ -302,6 +302,7 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
             self.event_group.setVisible(True)
         if hasattr(self, "rule_status_label"):
             self.rule_status_label.setText(self._label_rule_status_text())
+        self._sync_apply_state()
         self._sync_scroll_policy()
 
     def _remember_internal_class_name_edits(self) -> None:

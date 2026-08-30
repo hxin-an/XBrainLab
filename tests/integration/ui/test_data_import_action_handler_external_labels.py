@@ -246,8 +246,12 @@ def _start_wizard_driver(*, save_recipe: bool) -> _WizardDriver:
 
             if not isinstance(modal, DataInterpretationPreviewDialog):
                 return
-            if modal not in driver.dialogs:
+            is_new_dialog = modal not in driver.dialogs
+            if is_new_dialog:
                 driver.dialogs.append(modal)
+            if driver.phase == 5 and is_new_dialog:
+                _fail("Confirm opened an unexpected additional review dialog.", modal)
+                return
 
             if driver.phase == 0:
                 if modal.step_stack.currentIndex() != 0:
@@ -309,8 +313,24 @@ def _start_wizard_driver(*, save_recipe: bool) -> _WizardDriver:
                 QTest.mouseClick(modal.next_button, Qt.MouseButton.LeftButton)
                 return
 
-            if driver.phase == 4 and modal is driver.dialogs[1]:
+            if driver.phase == 4:
+                if len(driver.dialogs) < 3:
+                    return
+                if len(driver.dialogs) > 3 or modal is not driver.dialogs[2]:
+                    _fail("Mapping opened an unexpected review dialog.", modal)
+                    return
                 if modal.step_stack.currentIndex() != 4:
+                    _fail("Fresh review did not resume at Review and Import.", modal)
+                    return
+                if modal.decision != "safe" or modal.validation_decision.get(
+                    "action_items"
+                ):
+                    _fail(
+                        "Fresh review is not safe and action-free: "
+                        f"decision={modal.decision!r}; actions="
+                        f"{modal.validation_decision.get('action_items')!r}.",
+                        modal,
+                    )
                     return
                 if not modal.apply_button.isVisibleTo(modal):
                     _fail("Confirm and Import is not visible.", modal)
@@ -525,8 +545,12 @@ def _start_label_source_lifecycle_driver(
 
             if not isinstance(modal, DataInterpretationPreviewDialog):
                 return
-            if modal not in driver.dialogs:
+            is_new_dialog = modal not in driver.dialogs
+            if is_new_dialog:
                 driver.dialogs.append(modal)
+            if driver.phase == 5 and is_new_dialog:
+                _fail("Confirm opened an unexpected additional review dialog.", modal)
+                return
 
             if driver.phase == 0:
                 if modal.step_stack.currentIndex() != 0:
@@ -670,8 +694,24 @@ def _start_label_source_lifecycle_driver(
                 QTest.mouseClick(modal.next_button, Qt.MouseButton.LeftButton)
                 return
 
-            if driver.phase == 44 and modal is driver.dialogs[3]:
+            if driver.phase == 44:
+                if len(driver.dialogs) < 5:
+                    return
+                if len(driver.dialogs) > 5 or modal is not driver.dialogs[4]:
+                    _fail("Mapping opened an unexpected review dialog.", modal)
+                    return
                 if modal.step_stack.currentIndex() != 4:
+                    _fail("Fresh review did not resume at Review and Import.", modal)
+                    return
+                if modal.decision != "safe" or modal.validation_decision.get(
+                    "action_items"
+                ):
+                    _fail(
+                        "Fresh review is not safe and action-free: "
+                        f"decision={modal.decision!r}; actions="
+                        f"{modal.validation_decision.get('action_items')!r}.",
+                        modal,
+                    )
                     return
                 if not modal.apply_button.isEnabled():
                     _fail("Completed review did not enable Confirm and Import.", modal)
@@ -776,7 +816,7 @@ def test_dataset_action_handler_imports_real_gdf_with_external_mat_labels(
         f"driver phase={driver.phase}, errors={driver.errors!r}."
     )
     assert driver.phase == 5
-    assert len(driver.dialogs) == 2
+    assert len(driver.dialogs) == 3
     assert chooser_calls == [
         "Choose EEG files",
         "Load label file",
@@ -971,7 +1011,7 @@ def test_outer_async_review_remove_then_readd_keeps_one_real_label_source(
     )
 
     assert driver.phase == 5
-    assert len(driver.dialogs) == 4
+    assert len(driver.dialogs) == 5
     assert chooser_calls == [
         "Choose EEG files",
         "Load label file",

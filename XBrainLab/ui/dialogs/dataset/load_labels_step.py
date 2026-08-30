@@ -45,7 +45,11 @@ class LoadLabelsStepMixin(DataImportWizardStepHostProtocol):
             for source in self._extra_label_sources
             if not self._looks_like_file(source)
         ]
-        if not carriers and not self._extra_label_sources:
+        if (
+            not carriers
+            and not self._extra_label_sources
+            and not self._has_internal_event_evidence()
+        ):
             layout.addWidget(
                 self._empty_state("No nearby label/event source detected.")
             )
@@ -106,6 +110,15 @@ class LoadLabelsStepMixin(DataImportWizardStepHostProtocol):
                     ),
                 )
             )
+
+    def _has_internal_event_evidence(self) -> bool:
+        preview = self.preview.get("internal_event_preview")
+        if not isinstance(preview, dict):
+            return False
+        return any(
+            isinstance(preview.get(key), list) and bool(preview[key])
+            for key in ("candidate_label_events", "not_used_events")
+        )
 
     def _refresh_label_source_rows(self) -> None:
         self._clear_layout(self.label_source_rows_layout)
