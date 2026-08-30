@@ -66,7 +66,6 @@ from XBrainLab.llm.agent.turn import (
     AssistantDebugToolRequest,
     AssistantTurnCorrelation,
     AssistantTurnRequest,
-    AssistantTurnScope,
     AssistantTurnTerminal,
 )
 from XBrainLab.llm.agent.ui_handoff import (
@@ -189,7 +188,7 @@ class _ReadyTestRuntime(QObject):
         )
         self._next_turn_id += 1
         self.controller.handle_user_turn(
-            AssistantTurnRequest.single_action(
+            AssistantTurnRequest(
                 correlation=correlation,
                 text=text,
             )
@@ -767,40 +766,6 @@ class TestAgentManagerMethods:
         )
         agent_mgr.chat_panel.accept_composer_submission.assert_called_once_with(
             "runtime-owned admission"
-        )
-
-    def test_admitted_guided_scope_is_visible_in_progress_before_execution(
-        self,
-        agent_mgr,
-    ) -> None:
-        agent_mgr.chat_panel = MagicMock()
-        agent_mgr._assistant_runtime.submit.return_value = (
-            RuntimeCommandAdmissionResult(
-                command_name="submit",
-                status=RuntimeCommandAdmissionStatus.ACCEPTED,
-                turn_id=44,
-                generation=1,
-                scope=AssistantTurnScope.GUIDED_WORKFLOW,
-                terminal_command=CommandName.CREATE_EPOCH.value,
-                excluded_commands=(CommandName.TRAIN,),
-            )
-        )
-
-        agent_mgr.handle_user_input(
-            "Load the data and create epochs, but do not train it."
-        )
-        agent_mgr.on_assistant_activity_changed(
-            AssistantTurnActivity(
-                AssistantTurnActivityPhase.THINKING,
-                turn_id=44,
-                generation=1,
-            )
-        )
-
-        presentation = agent_mgr.chat_panel.set_turn_activity.call_args.args[0]
-        assert presentation.scope_summary == (
-            "Scope: Continue through Create EEG epochs; stop for decisions. "
-            "Excluded: Start training."
         )
 
     def test_controller_wiring_fails_fast_when_core_signals_are_missing(

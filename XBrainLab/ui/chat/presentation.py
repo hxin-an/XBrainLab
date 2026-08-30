@@ -41,7 +41,6 @@ class ChatTurnPresentation:
     phase: ChatTurnPresentationPhase
     primary_status: str = ""
     step: str = ""
-    scope_summary: str = ""
     cancelability: ChatTurnCancelability = ChatTurnCancelability.NONE
     cancelability_text: str = ""
 
@@ -53,7 +52,6 @@ class ChatTurnPresentation:
         for field_name in (
             "primary_status",
             "step",
-            "scope_summary",
             "cancelability_text",
         ):
             value = getattr(self, field_name)

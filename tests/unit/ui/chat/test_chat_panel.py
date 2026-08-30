@@ -1888,9 +1888,6 @@ class TestChatPanelInit:
             phase=ChatTurnPresentationPhase.WORKING,
             primary_status="Working on your request",
             step="Checking the current EEG workflow",
-            scope_summary=(
-                "Scope: Continue through Create EEG epochs; stop for decisions."
-            ),
             cancelability=ChatTurnCancelability.CANCELLABLE,
             cancelability_text="You can stop before an XBrainLab action starts.",
         )
@@ -1903,13 +1900,10 @@ class TestChatPanelInit:
         assert chat_panel.turn_activity_step.text() == (
             "Current step: Checking the current EEG workflow"
         )
-        assert chat_panel.turn_activity_scope.text() == (
-            "Scope: Continue through Create EEG epochs; stop for decisions."
-        )
-        assert chat_panel.turn_activity_scope.isVisible()
         assert chat_panel.turn_activity_cancelability.text() == (
             "You can stop before an XBrainLab action starts."
         )
+        assert chat_panel.findChild(QLabel, "AssistantTurnActivityScope") is None
         assert chat_panel.send_btn.text() == "Stop"
         assert chat_panel.send_btn.accessibleName() == "Stop current request"
         assert chat_panel.send_btn.isEnabled()

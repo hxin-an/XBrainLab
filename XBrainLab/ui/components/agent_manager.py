@@ -1,6 +1,6 @@
 """Qt composition and presentation adapter for the in-app assistant."""
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Any, cast
 
 from PyQt6.QtCore import (
@@ -28,7 +28,6 @@ from XBrainLab.backend.application import (
     ApplicationViewPublication,
     get_application_service,
 )
-from XBrainLab.backend.application.pipeline_stage import workflow_command_label
 from XBrainLab.backend.controller.chat_controller import (
     ChatController,
     ChatMessagePresentationKind,
@@ -60,7 +59,6 @@ from XBrainLab.llm.agent.runtime_state import (
 )
 from XBrainLab.llm.agent.turn import (
     AssistantTurnCorrelation,
-    AssistantTurnScope,
     AssistantTurnTerminal,
 )
 from XBrainLab.llm.agent.ui_handoff import (
@@ -316,7 +314,6 @@ class AgentManager(QObject):
             self._flush_assistant_training_terminal
         )
         self._last_assistant_activity: AssistantTurnActivity | None = None
-        self._active_turn_scope_summary = ""
         self._assistant_turn_state = AssistantUiTurnStateMachine()
         self._deferred_submission_events: list[tuple[str, object]] | None = None
         self._assistant_runtime = runtime_lifecycle or AssistantRuntimeLifecycle(
@@ -798,7 +795,7 @@ class AgentManager(QObject):
                     if isinstance(activity, AssistantTurnActivity)
                     else ChatTurnPresentation.application_command()
                 )
-            self.chat_panel.set_turn_activity(self._with_active_scope(presentation))
+            self.chat_panel.set_turn_activity(presentation)
 
     def _on_application_command_completed(self, result) -> None:
         """Release command ownership and track asynchronous training completion."""
@@ -904,7 +901,6 @@ class AgentManager(QObject):
             )
             return AssistantTurnAdmissionResult()
         self._prepare_admitted_transcript_turn()
-        self._active_turn_scope_summary = self._scope_summary_for_admission(admission)
         self.chat_controller.add_user_message(text)
         if self.chat_panel is not None and hasattr(
             self.chat_panel, "accept_composer_submission"
@@ -912,41 +908,6 @@ class AgentManager(QObject):
             self.chat_panel.accept_composer_submission(text)
         self._replay_deferred_submission_events(deferred_events)
         return AssistantTurnAdmissionResult(correlation=correlation)
-
-    @staticmethod
-    def _scope_summary_for_admission(
-        admission: RuntimeCommandAdmissionResult,
-    ) -> str:
-        """Describe host-enforced autonomy without exposing an internal mode."""
-        if admission.scope is AssistantTurnScope.GUIDED_WORKFLOW:
-            if admission.terminal_command:
-                label = workflow_command_label(admission.terminal_command)
-                summary = f"Scope: Continue through {label}; stop for decisions."
-            else:
-                summary = (
-                    "Scope: Continue one verified step at a time; stop for decisions."
-                )
-        else:
-            summary = "Scope: Only this request."
-        if admission.excluded_commands:
-            exclusions = ", ".join(
-                workflow_command_label(command).rstrip(".")
-                for command in admission.excluded_commands
-            )
-            summary = f"{summary} Excluded: {exclusions}."
-        return summary
-
-    def _with_active_scope(
-        self,
-        presentation: ChatTurnPresentation,
-    ) -> ChatTurnPresentation:
-        """Attach the admitted host scope to one active progress projection."""
-        if not self._active_turn_scope_summary or not presentation.is_visible:
-            return presentation
-        return replace(
-            presentation,
-            scope_summary=self._active_turn_scope_summary,
-        )
 
     def _handle_debug_tool_requested(
         self,
@@ -1278,9 +1239,7 @@ class AgentManager(QObject):
                     return
                 self._workflow_ui_handoff_host.abandon_active()
                 if self.chat_panel:
-                    self.chat_panel.set_turn_activity(
-                        self._with_active_scope(ChatTurnPresentation.stopping())
-                    )
+                    self.chat_panel.set_turn_activity(ChatTurnPresentation.stopping())
 
     def set_model(self, model_name):
         """Switch the active LLM model and check for VRAM conflicts.
@@ -1458,11 +1417,9 @@ class AgentManager(QObject):
             if correlation is not None:
                 self._assistant_turn_state.latch_stop(correlation)
         self._last_assistant_activity = payload
-        presentation = self._with_active_scope(
-            present_assistant_activity(
-                payload,
-                application_command_in_flight=self._application_command_in_flight,
-            )
+        presentation = present_assistant_activity(
+            payload,
+            application_command_in_flight=self._application_command_in_flight,
         )
         processing = presentation.is_busy
         if self.chat_controller.is_processing != processing:
@@ -1512,7 +1469,6 @@ class AgentManager(QObject):
         if self.chat_panel:
             self.chat_panel.clear_confirmation_request()
         self._last_assistant_activity = None
-        self._active_turn_scope_summary = ""
         if self.chat_controller.is_processing:
             self.chat_controller.set_processing(False)
         elif self.chat_panel:
