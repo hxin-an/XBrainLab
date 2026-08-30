@@ -14,6 +14,11 @@ from XBrainLab.backend.training.input_contract import (
     normalize_positive_integer,
     normalize_training_input,
 )
+from XBrainLab.backend.training.option import (
+    ClassWeightMode,
+    class_map_fingerprint,
+    normalize_class_weight_mode,
+)
 from XBrainLab.backend.training_state_contract import (
     TrainingOutcomeState,
     TrainingTerminalOutcome,
@@ -118,6 +123,10 @@ class TrainingCommandService:
             epoch, batch_size, learning_rate = self._normalize_training_numbers(
                 command,
             )
+            weight_mode = normalize_class_weight_mode(command.class_weight_mode)
+            class_identity = None
+            if weight_mode is not ClassWeightMode.OFF:
+                class_identity = class_map_fingerprint(self._current_class_map())
             option = TrainingOption(
                 output_dir=command.output_dir,
                 optim=optim_class,
@@ -131,6 +140,9 @@ class TrainingCommandService:
                 evaluation_option=evaluation_option,
                 repeat_num=repeat,
                 seed=command.seed,
+                class_weight_mode=weight_mode,
+                custom_class_weights=dict(command.custom_class_weights),
+                class_map_fingerprint_value=class_identity,
             )
 
         holder: ModelHolder | None = None
@@ -170,6 +182,24 @@ class TrainingCommandService:
         if holder is not None:
             diagnostics["model_name"] = self.model_name(holder)
         return "Training configured.", diagnostics
+
+    def _current_class_map(self) -> dict[int, str]:
+        """Read the reviewed epoch class map from the application publication."""
+        state = self._get_state()
+        epoch = getattr(state, "epoch", None)
+        event_ids = getattr(epoch, "event_ids", None)
+        if not isinstance(event_ids, dict):
+            raise PreconditionError("Reviewed epoch class mapping is unavailable.")
+        class_map: dict[int, str] = {}
+        for name, index in event_ids.items():
+            if type(index) is not int or not isinstance(name, str) or not name.strip():
+                raise PreconditionError("Reviewed epoch class mapping is invalid.")
+            if index in class_map:
+                raise PreconditionError("Reviewed epoch class mapping is invalid.")
+            class_map[index] = name.strip()
+        if not class_map:
+            raise PreconditionError("Reviewed epoch class mapping is unavailable.")
+        return class_map
 
     def handle_train(
         self,

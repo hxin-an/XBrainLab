@@ -192,6 +192,7 @@ def _decode_training_artifact(
     int,
     int,
     dict[str, str] | None,
+    dict[str, object],
 ]:
     record_schema_version = data.get("record_schema_version")
     if (
@@ -262,7 +263,24 @@ def _decode_training_artifact(
         raise UnsupportedArtifactError(
             "Training artifact model identity is malformed. Start a new training run."
         ) from exc
-    return train, val, test, normalized_best, seed, epoch, model_identity
+    resolution = data.get("class_weighting_resolution")
+    if resolution is None:
+        resolution = {
+            "mode": "off",
+            "class_order": [],
+            "class_counts": {},
+            "weights": [],
+        }
+    if (
+        type(resolution) is not dict
+        or set(resolution) != {"mode", "class_order", "class_counts", "weights"}
+        or resolution.get("mode") not in {"off", "balanced", "custom"}
+        or not isinstance(resolution.get("class_order"), list)
+        or not isinstance(resolution.get("class_counts"), dict)
+        or not isinstance(resolution.get("weights"), list)
+    ):
+        raise ArtifactStoreError("Training class-weighting metadata is malformed.")
+    return train, val, test, normalized_best, seed, epoch, model_identity, resolution
 
 
 class TrainRecord:
@@ -316,6 +334,7 @@ class TrainRecord:
         seed: int,
         plan_id: str | None = None,
         model_identity: dict[str, str] | None = None,
+        class_weighting_resolution: dict[str, object] | None = None,
     ):
         """Initialize a training record.
 
@@ -341,7 +360,16 @@ class TrainRecord:
         self.model_identity = _normalize_model_identity(model_identity)
         self.model = model
         self.optim = self.option.get_optim(model)
-        self.criterion = self.option.criterion
+        self.class_weighting_resolution = dict(
+            class_weighting_resolution
+            or {"mode": "off", "class_order": [], "class_counts": {}, "weights": []}
+        )
+        weights = self.class_weighting_resolution.get("weights", [])
+        self.criterion = (
+            torch.nn.CrossEntropyLoss(weight=torch.tensor(weights, dtype=torch.float32))
+            if weights
+            else torch.nn.CrossEntropyLoss()
+        )
         self._state_tracker: TrainingStateTracker | None = None
         self.eval_record: EvalRecord | None = None
         self.evaluation_records: dict[str, EvalRecord] = {}
@@ -708,6 +736,7 @@ class TrainRecord:
                 ),
                 "best_record": self.best_record,
                 "seed": self.seed,
+                "class_weighting_resolution": self.class_weighting_resolution,
             }
             if self.model_identity is not None:
                 payload["model_identity"] = dict(self.model_identity)
@@ -753,6 +782,7 @@ class TrainRecord:
                             seed,
                             epoch,
                             loaded_model_identity,
+                            class_weighting_resolution,
                         ) = _decode_training_artifact(
                             data,
                             arrays,
@@ -770,6 +800,7 @@ class TrainRecord:
                         self.epoch = epoch
                         if loaded_model_identity is not None:
                             self.model_identity = loaded_model_identity
+                        self.class_weighting_resolution = class_weighting_resolution
                     except (FilesystemIdentityError, UnsupportedArtifactError):
                         raise
                     except Exception as e:

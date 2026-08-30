@@ -51,6 +51,13 @@ def training_option_snapshot(option: Any) -> dict[str, Any]:
         "checkpoint_epoch": getattr(option, "checkpoint_epoch", None),
         "output_dir": getattr(option, "output_dir", None),
         "evaluation_option": evaluation_value,
+        "class_weight_mode": str(
+            getattr(option, "class_weight_mode", "off").value
+            if hasattr(getattr(option, "class_weight_mode", "off"), "value")
+            else getattr(option, "class_weight_mode", "off")
+        ),
+        "custom_class_weights": dict(getattr(option, "custom_class_weights", {}) or {}),
+        "class_map_fingerprint": getattr(option, "class_map_fingerprint", None),
     }
 
 

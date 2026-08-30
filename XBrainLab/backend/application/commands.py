@@ -353,6 +353,8 @@ class ConfigureTrainingCommand:
     model_name: str | None = None
     model_params: dict[str, Any] = field(default_factory=dict)
     pretrained_weight_path: str | None = None
+    class_weight_mode: str = "off"
+    custom_class_weights: dict[str, float] = field(default_factory=dict)
 
     @property
     def name(self) -> CommandName:

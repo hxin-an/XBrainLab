@@ -24,7 +24,11 @@ from XBrainLab.backend.exceptions import (
 )
 from XBrainLab.backend.load_data import Raw
 from XBrainLab.backend.training.evaluator import Evaluator
-from XBrainLab.backend.training.option import TrainingEvaluation
+from XBrainLab.backend.training.option import (
+    ClassWeightMode,
+    TrainingEvaluation,
+    class_map_fingerprint,
+)
 from XBrainLab.backend.training.record import EvalRecord, RecordKey
 from XBrainLab.backend.training.trainer import Trainer
 from XBrainLab.backend.training.training_plan import (
@@ -245,6 +249,24 @@ def test_training_plan_holder_check_data(
         else:
             with pytest.raises(ValueError):
                 TrainingPlanHolder(**args)
+
+
+def test_balanced_weighting_is_fold_local_and_does_not_mutate_shared_option(
+    export_mocker, model_holder, dataset, training_option
+):
+    class_map = dataset.get_epoch_data().get_label_map()
+    training_option.class_weight_mode = ClassWeightMode.BALANCED
+    training_option.class_map_fingerprint = class_map_fingerprint(class_map)
+    holder = TrainingPlanHolder(model_holder, dataset, training_option, {})
+
+    labels = dataset.get_epoch_data().get_label_list()[dataset.train_mask]
+    expected_counts = {
+        str(index): int((labels == index).sum()) for index in sorted(class_map)
+    }
+    record = holder.get_plans()[0]
+    assert record.class_weighting_resolution["class_counts"] == expected_counts
+    assert record.criterion is not training_option.criterion
+    assert training_option.criterion.weight is None
 
 
 def test_training_plan_holder_rejects_nonfinite_epoch_data(

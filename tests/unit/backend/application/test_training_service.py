@@ -335,6 +335,9 @@ def test_training_service_configures_model_and_options() -> None:
         "evaluation_option": "Last Epoch",
         "checkpoint_epoch": 0,
         "output_dir": "./tmp-output",
+        "class_weight_mode": "off",
+        "custom_class_weights": {},
+        "class_map_fingerprint": None,
     }
 
 

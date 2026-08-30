@@ -11,6 +11,23 @@ from XBrainLab.backend.training import (
     parse_device_name,
     parse_optim_name,
 )
+from XBrainLab.backend.training.option import (
+    class_map_fingerprint,
+    normalize_custom_class_weights,
+)
+
+
+def test_class_weighting_helpers_reject_invalid_custom_values_and_stabilize_map_identity():
+    assert class_map_fingerprint({1: "right", 0: "left"}) == class_map_fingerprint(
+        {0: "left", 1: "right"}
+    )
+    assert normalize_custom_class_weights({"left": 1, "right": 2.5}) == {
+        "left": 1.0,
+        "right": 2.5,
+    }
+    for bad in ({}, {"left": 0}, {"left": float("nan")}, {1: 1}):
+        with pytest.raises(ValueError):
+            normalize_custom_class_weights(bad)
 
 
 @pytest.mark.parametrize(

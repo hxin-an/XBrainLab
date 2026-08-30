@@ -29,7 +29,12 @@ from ..exceptions import StaleSaliencyUpdateError
 from ..utils import set_seed, validate_type
 from .evaluator import Evaluator
 from .model_holder import ModelHolder
-from .option import TrainingEvaluation, TrainingOption
+from .option import (
+    ClassWeightMode,
+    TrainingEvaluation,
+    TrainingOption,
+    class_map_fingerprint,
+)
 from .record import EvalRecord, RecordKey, TrainRecord, TrainRecordKey
 from .saliency_provenance import (
     SaliencyContextError,
@@ -343,6 +348,7 @@ class TrainingPlanHolder:
         self.saliency_params: dict = dict(saliency_params or {})
 
         self.check_data()
+        self._weighting_resolution = self._resolve_class_weighting()
 
         # Human-readable time plus random identity prevents concurrent collisions.
         timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")
@@ -379,9 +385,53 @@ class TrainingPlanHolder:
                     seed=seed,
                     plan_id=self.plan_id,
                     model_identity=self.model_holder.catalog_identity,
+                    class_weighting_resolution=self._weighting_resolution,
                 ),
             )
         self._validate_loaded_saliency_artifacts()
+
+    def _resolve_class_weighting(self) -> dict[str, object]:
+        """Resolve one fold-local loss policy before records or trainer mutate."""
+        mode = self.option.class_weight_mode
+        if mode is ClassWeightMode.OFF:
+            return {"mode": "off", "class_order": [], "class_counts": {}, "weights": []}
+        epoch_data = self.dataset.get_epoch_data()
+        class_map = dict(epoch_data.get_label_map())
+        if class_map_fingerprint(class_map) != self.option.class_map_fingerprint:
+            raise ValueError(
+                "Reviewed class mapping changed. Reopen Training Settings "
+                "before training."
+            )
+        class_order = sorted(class_map)
+        labels = np.asarray(epoch_data.get_label_list())
+        train_labels = labels[np.asarray(self.dataset.train_mask, dtype=bool)]
+        counts = {index: int(np.sum(train_labels == index)) for index in class_order}
+        missing = [index for index, count in counts.items() if count == 0]
+        if missing:
+            raise ValueError(
+                "Training split is missing class(es): "
+                + ", ".join(class_map[index] for index in missing)
+                + "."
+            )
+        if mode is ClassWeightMode.BALANCED:
+            total = len(train_labels)
+            weights = [
+                total / (len(class_order) * counts[index]) for index in class_order
+            ]
+        else:
+            requested = self.option.custom_class_weights
+            expected_names = [class_map[index] for index in class_order]
+            if set(requested) != set(expected_names):
+                raise ValueError(
+                    "Custom class loss weights do not match the reviewed class map."
+                )
+            weights = [requested[class_map[index]] for index in class_order]
+        return {
+            "mode": mode.value,
+            "class_order": class_order,
+            "class_counts": {str(index): counts[index] for index in class_order},
+            "weights": weights,
+        }
 
     def _verified_repeat_seed(
         self,
@@ -860,6 +910,7 @@ class TrainingPlanHolder:
             optimizer,
             criterion,
             train_record,
+            validation_criterion=torch.nn.CrossEntropyLoss(),
         )
 
     @property

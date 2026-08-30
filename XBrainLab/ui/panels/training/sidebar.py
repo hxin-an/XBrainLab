@@ -51,6 +51,7 @@ from XBrainLab.backend.application.training_resource_preview_coordinator import 
 from XBrainLab.backend.application.training_submission import (
     attach_training_submission_provenance,
 )
+from XBrainLab.backend.training.option import class_map_fingerprint
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -1214,6 +1215,20 @@ class TrainingSidebar(QWidget):
         if isinstance(snapshot, InteractionOutcome):
             return snapshot
         initial_option: dict[str, Any] = dict(snapshot)
+        publication = get_application_view_publication(self)
+        epoch = getattr(getattr(publication, "state", None), "epoch", None)
+        event_ids = getattr(epoch, "event_ids", None)
+        if isinstance(event_ids, dict):
+            class_map = {
+                int(index): str(name).strip()
+                for name, index in event_ids.items()
+                if type(index) is int and isinstance(name, str) and name.strip()
+            }
+            if class_map and len(class_map) == len(event_ids):
+                initial_option["class_map"] = class_map
+                initial_option["class_map_fingerprint"] = class_map_fingerprint(
+                    class_map
+                )
         if suggested_values:
             initial_option.update(
                 {
@@ -1609,6 +1624,12 @@ class TrainingSidebar(QWidget):
                     getattr(option, "evaluation_option", None),
                     "value",
                     None,
+                ),
+                class_weight_mode=getattr(
+                    getattr(option, "class_weight_mode", None), "value", "off"
+                ),
+                custom_class_weights=dict(
+                    getattr(option, "custom_class_weights", {}) or {}
                 ),
             )
         return attach_training_submission_provenance(

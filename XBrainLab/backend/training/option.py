@@ -1,5 +1,7 @@
 """Training option and configuration classes for model training."""
 
+import hashlib
+import json
 import os
 import secrets
 from collections.abc import Callable
@@ -63,6 +65,55 @@ class TrainingEvaluation(Enum):
                 migrated.value,
             )
         return migrated
+
+
+class ClassWeightMode(str, Enum):
+    """Requested training-loss weighting policy."""
+
+    OFF = "off"
+    BALANCED = "balanced"
+    CUSTOM = "custom"
+
+
+def class_map_fingerprint(class_map: dict[int, str]) -> str:
+    """Return a stable identity for one reviewed numeric class map."""
+    normalized = {
+        str(index): str(name).strip()
+        for index, name in sorted(class_map.items())
+        if type(index) is int and isinstance(name, str) and name.strip()
+    }
+    if len(normalized) != len(class_map):
+        raise ValueError("Training class map is invalid")
+    payload = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def normalize_class_weight_mode(value: Any) -> ClassWeightMode:
+    try:
+        if isinstance(value, ClassWeightMode):
+            return value
+        return ClassWeightMode(str(value))
+    except ValueError as exc:
+        raise ValueError("Invalid class loss weighting mode") from exc
+
+
+def normalize_custom_class_weights(value: Any) -> dict[str, float]:
+    if not isinstance(value, dict) or not value:
+        raise ValueError("Custom class loss weights are required")
+    normalized: dict[str, float] = {}
+    for name, multiplier in value.items():
+        if not isinstance(name, str) or not name.strip() or name in normalized:
+            raise ValueError("Custom class loss weights must use unique class names")
+        try:
+            parsed = float(multiplier)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError(
+                "Custom class loss weights must be positive and finite"
+            ) from exc
+        if not torch.isfinite(torch.tensor(parsed)) or parsed <= 0:
+            raise ValueError("Custom class loss weights must be positive and finite")
+        normalized[name.strip()] = parsed
+    return normalized
 
 
 def parse_device_name(use_cpu: bool, gpu_idx: int | None) -> str:
@@ -167,6 +218,9 @@ class TrainingOption:
         evaluation_option: TrainingEvaluation,
         repeat_num: int,
         seed: int | None = None,
+        class_weight_mode: ClassWeightMode | str = ClassWeightMode.OFF,
+        custom_class_weights: dict[str, float] | None = None,
+        class_map_fingerprint_value: str | None = None,
     ):
         """Initialize training options and validate them.
 
@@ -203,6 +257,9 @@ class TrainingOption:
         self.evaluation_option = evaluation_option
         self.repeat_num = repeat_num
         self.seed = seed
+        self.class_weight_mode = class_weight_mode
+        self.custom_class_weights = custom_class_weights
+        self.class_map_fingerprint = class_map_fingerprint_value
         self.criterion = nn.CrossEntropyLoss()
         self.optimizer_name = "adam"  # Default
         self.validate()
@@ -252,6 +309,22 @@ class TrainingOption:
             errors.append("Device not set")
         if not isinstance(self.evaluation_option, TrainingEvaluation):
             errors.append("Evaluation option not set")
+        try:
+            mode = normalize_class_weight_mode(self.class_weight_mode)
+            custom = (
+                normalize_custom_class_weights(self.custom_class_weights)
+                if mode is ClassWeightMode.CUSTOM
+                else {}
+            )
+            if mode is not ClassWeightMode.OFF and (
+                not isinstance(self.class_map_fingerprint, str)
+                or len(self.class_map_fingerprint) != 64
+            ):
+                errors.append("Training class map identity is required")
+        except ValueError as exc:
+            errors.append(str(exc))
+            mode = ClassWeightMode.OFF
+            custom = {}
 
         normalized: dict[str, int | float] = {}
 
@@ -329,6 +402,8 @@ class TrainingOption:
         self.checkpoint_epoch = int(normalized["checkpoint_epoch"])
         self.repeat_num = int(normalized["repeat_num"])
         self.seed = normalized_seed
+        self.class_weight_mode = mode
+        self.custom_class_weights = custom
         if self.gpu_idx is not None:
             self.gpu_idx = int(normalized["gpu_idx"])
 
