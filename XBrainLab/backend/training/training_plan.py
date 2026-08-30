@@ -29,7 +29,12 @@ from ..exceptions import StaleSaliencyUpdateError
 from ..utils import set_seed, validate_type
 from .evaluator import Evaluator
 from .model_holder import ModelHolder
-from .option import TrainingEvaluation, TrainingOption
+from .option import (
+    TrainingEvaluation,
+    TrainingOption,
+    class_weighting_request,
+    resolve_class_weighting,
+)
 from .record import EvalRecord, RecordKey, TrainRecord, TrainRecordKey
 from .saliency_provenance import (
     SaliencyContextError,
@@ -343,6 +348,7 @@ class TrainingPlanHolder:
         self.saliency_params: dict = dict(saliency_params or {})
 
         self.check_data()
+        self._weighting_resolution = self._resolve_class_weighting()
 
         # Human-readable time plus random identity prevents concurrent collisions.
         timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")
@@ -379,9 +385,26 @@ class TrainingPlanHolder:
                     seed=seed,
                     plan_id=self.plan_id,
                     model_identity=self.model_holder.catalog_identity,
+                    class_weighting_resolution=self._weighting_resolution,
+                    class_weighting_requested=class_weighting_request(
+                        self.option,
+                        class_map=dict(self.dataset.get_epoch_data().get_label_map()),
+                    ),
                 ),
             )
         self._validate_loaded_saliency_artifacts()
+
+    def _resolve_class_weighting(self) -> dict[str, object]:
+        """Resolve one fold-local loss policy before records or trainer mutate."""
+        epoch_data = self.dataset.get_epoch_data()
+        return resolve_class_weighting(
+            mode=self.option.class_weight_mode,
+            custom_class_weights=self.option.custom_class_weights,
+            class_map_fingerprint_value=self.option.class_map_fingerprint,
+            class_map=dict(epoch_data.get_label_map()),
+            labels=epoch_data.get_label_list(),
+            train_mask=self.dataset.train_mask,
+        )
 
     def _verified_repeat_seed(
         self,
@@ -587,6 +610,7 @@ class TrainingPlanHolder:
         """Move archived model and optimizer state to CPU without losing history."""
         try:
             train_record.model.cpu()
+            train_record.criterion.cpu()
             optimizer = getattr(train_record, "optim", None)
             if optimizer is not None:
                 for state in optimizer.state.values():
@@ -860,6 +884,7 @@ class TrainingPlanHolder:
             optimizer,
             criterion,
             train_record,
+            validation_criterion=torch.nn.CrossEntropyLoss(),
         )
 
     @property
@@ -982,6 +1007,7 @@ class TrainingPlanHolder:
                     f"{evaluation_option.__class__.__qualname__}."
                     f"{evaluation_option.name}"
                 ),
+                "class_weighting": train_record.class_weighting,
             },
         }
         model_component = {

@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 import time
 from contextlib import nullcontext
+from copy import deepcopy
+from math import isclose, isfinite
 from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
@@ -24,6 +26,14 @@ from ...utils.filesystem_identity import (
     retain_directory_identity,
 )
 from ...utils.logger import logger
+from ..option import (
+    ClassWeightMode,
+    class_map_fingerprint,
+    class_weighting_request,
+    is_canonical_class_map_fingerprint,
+    normalize_class_weight_mode,
+    normalize_custom_class_weights,
+)
 from .artifact_store import (
     TRAINING_RECORD_ARTIFACT_TYPE,
     ArtifactStoreError,
@@ -38,9 +48,179 @@ from .key import RecordKey, TrainRecordKey
 if TYPE_CHECKING:
     from ..state_tracker import TrainingStateTracker
 
-TRAIN_RECORD_SCHEMA_VERSION = 1
+TRAIN_RECORD_SCHEMA_VERSION = 2
 EVALUATION_SPLITS = ("training", "validation", "test")
 _MODEL_IDENTITY_FIELDS = {"model_id", "provider", "source_revision"}
+_CLASS_WEIGHTING_FIELDS = {"requested", "resolved"}
+_CLASS_WEIGHTING_REQUEST_FIELDS = {
+    "mode",
+    "custom_class_weights",
+    "class_map_fingerprint",
+}
+_CLASS_WEIGHTING_RESOLUTION_FIELDS = {
+    "class_names",
+    "class_order",
+    "class_counts",
+    "weights",
+}
+
+
+def _off_class_weighting() -> dict[str, object]:
+    """Return the explicit migration target for historical unweighted records."""
+    return {
+        "requested": {
+            "mode": ClassWeightMode.OFF.value,
+            "custom_class_weights": {},
+            "class_map_fingerprint": None,
+        },
+        "resolved": {
+            "class_names": [],
+            "class_order": [],
+            "class_counts": [],
+            "weights": [],
+        },
+    }
+
+
+def _build_class_weighting_criterion(
+    class_weighting: dict[str, object],
+) -> torch.nn.CrossEntropyLoss:
+    """Build only this record's training criterion from detached resolution."""
+    requested = class_weighting["requested"]
+    resolved = class_weighting["resolved"]
+    if not isinstance(requested, dict) or not isinstance(resolved, dict):
+        raise ValueError("Training class-weighting metadata is malformed.")
+    if requested.get("mode") == ClassWeightMode.OFF.value:
+        return torch.nn.CrossEntropyLoss()
+    weights = resolved.get("weights")
+    if not isinstance(weights, list):
+        raise ValueError("Training class-weighting metadata is malformed.")
+    return torch.nn.CrossEntropyLoss(
+        weight=torch.tensor(weights, dtype=torch.float32),
+    )
+
+
+def _normalize_v2_class_weighting(value: object) -> dict[str, object]:
+    """Validate the complete v2 persistence contract without fallback defaults."""
+    if type(value) is not dict or set(value) != _CLASS_WEIGHTING_FIELDS:
+        raise ArtifactStoreError("Training class-weighting metadata is malformed.")
+    requested = value["requested"]
+    resolved = value["resolved"]
+    if (
+        type(requested) is not dict
+        or set(requested) != _CLASS_WEIGHTING_REQUEST_FIELDS
+        or type(resolved) is not dict
+        or set(resolved) != _CLASS_WEIGHTING_RESOLUTION_FIELDS
+    ):
+        raise ArtifactStoreError("Training class-weighting metadata is malformed.")
+    try:
+        mode = normalize_class_weight_mode(requested["mode"])
+        raw_custom = requested["custom_class_weights"]
+        custom = (
+            normalize_custom_class_weights(raw_custom)
+            if mode is ClassWeightMode.CUSTOM
+            else {}
+        )
+    except ValueError as exc:
+        raise ArtifactStoreError(
+            "Training class-weighting metadata is malformed."
+        ) from exc
+    if (mode is ClassWeightMode.CUSTOM and custom != raw_custom) or (
+        mode is not ClassWeightMode.CUSTOM and raw_custom != {}
+    ):
+        raise ArtifactStoreError("Training class-weighting metadata is malformed.")
+    fingerprint = requested["class_map_fingerprint"]
+    if fingerprint is not None and not is_canonical_class_map_fingerprint(fingerprint):
+        raise ArtifactStoreError("Training class-weighting metadata is malformed.")
+
+    class_names = resolved["class_names"]
+    class_order = resolved["class_order"]
+    class_counts = resolved["class_counts"]
+    weights = resolved["weights"]
+    if not all(
+        isinstance(items, list)
+        for items in (class_names, class_order, class_counts, weights)
+    ):
+        raise ArtifactStoreError("Training class-weighting metadata is malformed.")
+    if not (len(class_names) == len(class_order) == len(class_counts) == len(weights)):
+        raise ArtifactStoreError("Training class-weighting metadata is malformed.")
+    if any(
+        not isinstance(name, str) or not name or name != name.strip()
+        for name in class_names
+    ) or len(set(class_names)) != len(class_names):
+        raise ArtifactStoreError("Training class-weighting metadata is malformed.")
+    if (
+        any(type(index) is not int for index in class_order)
+        or class_order != sorted(class_order)
+        or len(set(class_order)) != len(class_order)
+        or any(type(count) is not int or count <= 0 for count in class_counts)
+        or any(
+            isinstance(weight, bool)
+            or not isinstance(weight, (int, float))
+            or not isfinite(float(weight))
+            or float(weight) <= 0
+            for weight in weights
+        )
+    ):
+        raise ArtifactStoreError("Training class-weighting metadata is malformed.")
+    if class_names:
+        if not is_canonical_class_map_fingerprint(fingerprint) or (
+            fingerprint
+            != class_map_fingerprint(dict(zip(class_order, class_names, strict=True)))
+        ):
+            raise ArtifactStoreError("Training class-weighting metadata is malformed.")
+    elif mode is not ClassWeightMode.OFF or fingerprint is not None:
+        raise ArtifactStoreError("Training class-weighting metadata is malformed.")
+
+    normalized_weights = [float(weight) for weight in weights]
+    if mode is ClassWeightMode.OFF:
+        if any(weight != 1.0 for weight in normalized_weights):
+            raise ArtifactStoreError("Training class-weighting metadata is malformed.")
+    elif mode is ClassWeightMode.BALANCED:
+        total = sum(class_counts)
+        expected_weights = [
+            total / (len(class_order) * count) for count in class_counts
+        ]
+        if any(
+            not isclose(weight, expected, rel_tol=1e-12, abs_tol=0.0)
+            for weight, expected in zip(
+                normalized_weights, expected_weights, strict=True
+            )
+        ):
+            raise ArtifactStoreError("Training class-weighting metadata is malformed.")
+    elif set(custom) != set(class_names) or any(
+        normalized_weight != custom[name]
+        for name, normalized_weight in zip(
+            class_names,
+            normalized_weights,
+            strict=True,
+        )
+    ):
+        raise ArtifactStoreError("Training class-weighting metadata is malformed.")
+
+    return {
+        "requested": {
+            "mode": mode.value,
+            "custom_class_weights": custom,
+            "class_map_fingerprint": fingerprint,
+        },
+        "resolved": {
+            "class_names": list(class_names),
+            "class_order": list(class_order),
+            "class_counts": list(class_counts),
+            "weights": normalized_weights,
+        },
+    }
+
+
+def _migrate_v1_class_weighting() -> dict[str, object]:
+    """Migrate pre-class-weighting v1 records explicitly to Off.
+
+    The real migration target is a training record created before this feature
+    existed.  Removing v1 support needs a separate public artifact-support
+    decision; a missing field in v2 is never a migration signal.
+    """
+    return _off_class_weighting()
 
 
 def _normalize_model_identity(value: object) -> dict[str, str] | None:
@@ -192,12 +372,13 @@ def _decode_training_artifact(
     int,
     int,
     dict[str, str] | None,
+    dict[str, object],
 ]:
     record_schema_version = data.get("record_schema_version")
-    if (
-        type(record_schema_version) is not int
-        or record_schema_version != TRAIN_RECORD_SCHEMA_VERSION
-    ):
+    if type(record_schema_version) is not int or record_schema_version not in {
+        1,
+        TRAIN_RECORD_SCHEMA_VERSION,
+    }:
         raise UnsupportedArtifactError(
             "Unsupported training record schema version "
             f"{record_schema_version!r}. Start a new training run; unsafe "
@@ -262,7 +443,25 @@ def _decode_training_artifact(
         raise UnsupportedArtifactError(
             "Training artifact model identity is malformed. Start a new training run."
         ) from exc
-    return train, val, test, normalized_best, seed, epoch, model_identity
+    if record_schema_version == 1:
+        if "class_weighting" in data:
+            raise UnsupportedArtifactError(
+                "v1 training artifact contains class-weighting metadata; "
+                "unsafe schema downgrade is not supported."
+            )
+        class_weighting = _migrate_v1_class_weighting()
+    else:
+        class_weighting = _normalize_v2_class_weighting(data.get("class_weighting"))
+    return (
+        train,
+        val,
+        test,
+        normalized_best,
+        seed,
+        epoch,
+        model_identity,
+        class_weighting,
+    )
 
 
 class TrainRecord:
@@ -316,6 +515,8 @@ class TrainRecord:
         seed: int,
         plan_id: str | None = None,
         model_identity: dict[str, str] | None = None,
+        class_weighting_resolution: dict[str, object] | None = None,
+        class_weighting_requested: dict[str, object] | None = None,
     ):
         """Initialize a training record.
 
@@ -341,7 +542,14 @@ class TrainRecord:
         self.model_identity = _normalize_model_identity(model_identity)
         self.model = model
         self.optim = self.option.get_optim(model)
-        self.criterion = self.option.criterion
+        requested = class_weighting_requested or class_weighting_request(self.option)
+        resolved = class_weighting_resolution or _off_class_weighting()["resolved"]
+        self._set_class_weighting(
+            {
+                "requested": requested,
+                "resolved": resolved,
+            }
+        )
         self._state_tracker: TrainingStateTracker | None = None
         self.eval_record: EvalRecord | None = None
         self.evaluation_records: dict[str, EvalRecord] = {}
@@ -375,6 +583,19 @@ class TrainRecord:
         """Return the shared mutation context when attached to a trainer."""
         tracker = self._state_tracker
         return tracker.mutation() if tracker is not None else nullcontext()
+
+    def _set_class_weighting(self, class_weighting: dict[str, object]) -> None:
+        """Replace record-local weighting evidence and its matching criterion."""
+        requested = class_weighting.get("requested")
+        resolved = class_weighting.get("resolved")
+        if not isinstance(requested, dict) or not isinstance(resolved, dict):
+            raise ValueError("Training class-weighting metadata is malformed.")
+        self.class_weighting = {
+            "requested": deepcopy(requested),
+            "resolved": deepcopy(resolved),
+        }
+        self.class_weighting_resolution = self.class_weighting["resolved"]
+        self.criterion = _build_class_weighting_criterion(self.class_weighting)
 
     def init_dir(self) -> None:
         """Initialize the output directory for saving checkpoints and records.
@@ -469,7 +690,9 @@ class TrainRecord:
             The model on the target device.
 
         """
-        return self.model.to(device)
+        self.model = self.model.to(device)
+        self.criterion = self.criterion.to(device)
+        return self.model
 
     def is_finished(self) -> bool:
         """Check whether training and evaluation are both complete.
@@ -708,6 +931,7 @@ class TrainRecord:
                 ),
                 "best_record": self.best_record,
                 "seed": self.seed,
+                "class_weighting": deepcopy(self.class_weighting),
             }
             if self.model_identity is not None:
                 payload["model_identity"] = dict(self.model_identity)
@@ -753,6 +977,7 @@ class TrainRecord:
                             seed,
                             epoch,
                             loaded_model_identity,
+                            class_weighting,
                         ) = _decode_training_artifact(
                             data,
                             arrays,
@@ -770,6 +995,7 @@ class TrainRecord:
                         self.epoch = epoch
                         if loaded_model_identity is not None:
                             self.model_identity = loaded_model_identity
+                        self._set_class_weighting(class_weighting)
                     except (FilesystemIdentityError, UnsupportedArtifactError):
                         raise
                     except Exception as e:

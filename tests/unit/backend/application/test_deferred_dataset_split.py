@@ -530,6 +530,7 @@ def test_train_materializes_once_and_state_reads_skip_epoch_payload(
     )
 
     first = service.execute(TrainCommand(confirmed=True))
+    original_epoch_getter = dataset.get_epoch_data
     hostile_epoch_getter = MagicMock(
         side_effect=AssertionError("state reads must not access epoch payload")
     )
@@ -538,6 +539,7 @@ def test_train_materializes_once_and_state_reads_skip_epoch_payload(
     first_snapshot = service.get_state()
     second_snapshot = service.get_state()
     hostile_epoch_getter.assert_not_called()
+    dataset.get_epoch_data = original_epoch_getter  # type: ignore[method-assign]
 
     unchanged_generation = service.get_view_publication().generation
     unchanged = service.execute(

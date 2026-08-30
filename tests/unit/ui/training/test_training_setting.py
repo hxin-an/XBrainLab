@@ -338,6 +338,77 @@ class TestTrainingSetting:
         assert dialog.evaluation_combo.currentText() == "Validation accuracy"
         assert dialog.evaluation_combo.currentData() is TrainingEvaluation.VAL_ACC
 
+    def test_class_weight_multiplier_rows_only_show_for_custom_and_restore_values(
+        self,
+        qtbot,
+    ):
+        controller = MagicMock()
+        controller.get_training_option.return_value = None
+        snapshot = {
+            "class_weight_mode": "custom",
+            "custom_class_weights": {"left": 2.5, "right": 0.5},
+            "class_map": {0: "left", 1: "right"},
+            "class_map_fingerprint": "a" * 64,
+        }
+        with patch(
+            "XBrainLab.ui.dialogs.training.training_setting_dialog.get_optimizer_classes",
+            return_value={"Adam": torch.optim.Adam},
+        ):
+            dialog = TrainingSettingDialog(None, controller, initial_option=snapshot)
+            qtbot.addWidget(dialog)
+        dialog.resize(QSize(520, 390))
+        dialog.show()
+        qtbot.wait(0)
+
+        assert dialog.class_weight_combo.currentData() == "custom"
+        assert dialog.class_weight_entries["left"].text() == "2.5"
+        assert not dialog.class_weight_entries["left"].isHidden()
+
+        for mode in ("off", "balanced"):
+            dialog.class_weight_combo.setCurrentIndex(
+                dialog.class_weight_combo.findData(mode)
+            )
+            assert all(
+                entry.isHidden() for entry in dialog.class_weight_entries.values()
+            )
+
+        dialog.class_weight_combo.setCurrentIndex(
+            dialog.class_weight_combo.findData("custom")
+        )
+        assert all(
+            not entry.isHidden() for entry in dialog.class_weight_entries.values()
+        )
+        assert dialog.class_weight_entries["left"].text() == "2.5"
+        dialog.content_scroll.ensureWidgetVisible(dialog.class_weight_combo)
+        qtbot.wait(0)
+        assert dialog.class_weight_combo.visibleRegion().contains(
+            dialog.class_weight_combo.rect()
+        )
+
+    def test_custom_weight_invalid_value_is_blocked_before_accept(self, qtbot):
+        controller = MagicMock()
+        controller.get_training_option.return_value = None
+        snapshot = {
+            "class_weight_mode": "custom",
+            "class_map": {0: "left", 1: "right"},
+            "class_map_fingerprint": "a" * 64,
+        }
+        with patch(
+            "XBrainLab.ui.dialogs.training.training_setting_dialog.get_optimizer_classes",
+            return_value={"Adam": torch.optim.Adam},
+        ):
+            dialog = TrainingSettingDialog(None, controller, initial_option=snapshot)
+            qtbot.addWidget(dialog)
+        dialog.class_weight_entries["left"].setText("0")
+
+        with patch(
+            "XBrainLab.ui.dialogs.training.training_setting_dialog.show_warning"
+        ) as warning:
+            dialog.accept()
+
+        warning.assert_called_once()
+        assert dialog.get_result() is None
+
     def test_backend_recommendation_prefills_only_recommended_fields(self, qtbot):
         controller = MagicMock()
         controller.get_training_option.return_value = None

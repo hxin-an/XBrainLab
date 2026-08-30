@@ -24,7 +24,11 @@ from XBrainLab.backend.exceptions import (
 )
 from XBrainLab.backend.load_data import Raw
 from XBrainLab.backend.training.evaluator import Evaluator
-from XBrainLab.backend.training.option import TrainingEvaluation
+from XBrainLab.backend.training.option import (
+    ClassWeightMode,
+    TrainingEvaluation,
+    class_map_fingerprint,
+)
 from XBrainLab.backend.training.record import EvalRecord, RecordKey
 from XBrainLab.backend.training.trainer import Trainer
 from XBrainLab.backend.training.training_plan import (
@@ -245,6 +249,129 @@ def test_training_plan_holder_check_data(
         else:
             with pytest.raises(ValueError):
                 TrainingPlanHolder(**args)
+
+
+def test_balanced_weighting_is_fold_local_and_does_not_mutate_shared_option(
+    export_mocker, model_holder, dataset, training_option
+):
+    class_map = dataset.get_epoch_data().get_label_map()
+    training_option.class_weight_mode = ClassWeightMode.BALANCED
+    training_option.class_map_fingerprint = class_map_fingerprint(class_map)
+    holder = TrainingPlanHolder(model_holder, dataset, training_option, {})
+
+    labels = dataset.get_epoch_data().get_label_list()[dataset.train_mask]
+    expected_counts = [int((labels == index).sum()) for index in sorted(class_map)]
+    expected_weights = [
+        len(labels) / (len(class_map) * count) for count in expected_counts
+    ]
+    record = holder.get_plans()[0]
+    assert record.class_weighting_resolution["class_counts"] == expected_counts
+    assert record.class_weighting_resolution["class_names"] == [
+        class_map[index] for index in sorted(class_map)
+    ]
+    assert record.class_weighting_resolution["weights"] == pytest.approx(
+        expected_weights
+    )
+    assert record.class_weighting["requested"]["mode"] == "balanced"
+    assert record.criterion is not training_option.criterion
+    assert training_option.criterion.weight is None
+
+
+def test_weighted_plan_rechecks_stale_map_and_zero_train_count(
+    export_mocker,
+    model_holder,
+    dataset,
+    training_option,
+):
+    class_map = dataset.get_epoch_data().get_label_map()
+    training_option.class_weight_mode = ClassWeightMode.CUSTOM
+    training_option.custom_class_weights = dict.fromkeys(class_map.values(), 1.0)
+    training_option.class_map_fingerprint = class_map_fingerprint(
+        {**class_map, 0: "obsolete"}
+    )
+    with pytest.raises(ValueError, match="mapping changed"):
+        TrainingPlanHolder(model_holder, dataset, training_option, {})
+
+    training_option.class_map_fingerprint = class_map_fingerprint(class_map)
+    labels = dataset.get_epoch_data().get_label_list()
+    original_mask = dataset.train_mask.copy()
+    dataset.train_mask = np.asarray(labels == min(class_map), dtype=bool)
+    try:
+        with pytest.raises(ValueError, match="missing class"):
+            TrainingPlanHolder(model_holder, dataset, training_option, {})
+    finally:
+        dataset.train_mask = original_mask
+
+
+def test_off_weighting_preserves_an_unweighted_record_criterion(base_holder):
+    record = base_holder.get_plans()[0]
+
+    assert record.class_weighting == {
+        "requested": {
+            "mode": "off",
+            "custom_class_weights": {},
+            "class_map_fingerprint": class_map_fingerprint(
+                base_holder.dataset.get_epoch_data().get_label_map()
+            ),
+        },
+        "resolved": record.class_weighting_resolution,
+    }
+    assert record.criterion.weight is None
+
+
+def test_weighted_criterion_moves_with_the_record_and_is_released_to_cpu(
+    export_mocker,
+    model_holder,
+    dataset,
+    training_option,
+):
+    class _CriterionSpy(torch.nn.CrossEntropyLoss):
+        def __init__(self) -> None:
+            super().__init__(weight=torch.ones(CLASS_NUM))
+            self.move_calls: list[str] = []
+            self.cpu_calls = 0
+
+        def to(self, *args, **kwargs):
+            device = kwargs.get("device", args[0] if args else None)
+            self.move_calls.append(str(device))
+            return super().to(*args, **kwargs)
+
+        def cpu(self):
+            self.cpu_calls += 1
+            return super().cpu()
+
+    class_map = dataset.get_epoch_data().get_label_map()
+    training_option.class_weight_mode = ClassWeightMode.BALANCED
+    training_option.class_map_fingerprint = class_map_fingerprint(class_map)
+    holder = TrainingPlanHolder(model_holder, dataset, training_option, {})
+    record = holder.get_plans()[0]
+    spy = _CriterionSpy()
+    record.criterion = spy
+
+    record.get_training_model("cpu")
+    holder._safe_move_to_cpu(record)
+
+    assert spy.move_calls == ["cpu"]
+    assert spy.cpu_calls == 1
+
+
+def test_epoch_runner_receives_a_distinct_unweighted_validation_criterion(
+    base_holder,
+):
+    record = base_holder.get_plans()[0]
+    with patch("XBrainLab.backend.training.epoch_runner.EpochRunner.run") as run:
+        base_holder.train_one_epoch(
+            record.model,
+            Mock(),
+            Mock(),
+            record.optim,
+            record.criterion,
+            record,
+        )
+
+    validation_criterion = run.call_args.kwargs["validation_criterion"]
+    assert validation_criterion is not record.criterion
+    assert validation_criterion.weight is None
 
 
 def test_training_plan_holder_rejects_nonfinite_epoch_data(
@@ -580,6 +707,25 @@ def test_saliency_producer_identity_is_stable_for_same_training_run(base_holder)
 
     assert first == second
     assert first.fingerprint == second.fingerprint
+
+
+def test_saliency_producer_identity_includes_record_weighting(base_holder):
+    record = base_holder.get_plans()[0]
+    record.best_val_loss_model = record.model.state_dict()
+    baseline = base_holder.build_saliency_producer_identity(
+        record,
+        evaluation_split="test",
+    )
+    record.class_weighting["resolved"]["weights"] = [2.0] * len(
+        record.class_weighting["resolved"]["class_order"]
+    )
+
+    changed = base_holder.build_saliency_producer_identity(
+        record,
+        evaluation_split="test",
+    )
+
+    assert changed.run_fingerprint != baseline.run_fingerprint
 
 
 def test_saliency_rejects_holder_identity_different_from_captured_run(base_holder):

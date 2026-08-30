@@ -820,6 +820,9 @@ def test_pending_training_submission_publishes_coherent_recommendation_once() ->
         "checkpoint_epoch": 0,
         "output_dir": "./output",
         "evaluation_option": "Last Epoch",
+        "class_weight_mode": "off",
+        "custom_class_weights": {},
+        "class_map_fingerprint": None,
     }
     assert recommendation.values.to_mapping() == {
         TrainingRecommendationField.EPOCHS: 30,
@@ -1991,6 +1994,7 @@ def test_query_state_service_returns_readonly_summaries() -> None:
             },
             "test": {"accuracy": []},
         },
+        "class_weighting": {},
     }
 
     with pytest.raises(

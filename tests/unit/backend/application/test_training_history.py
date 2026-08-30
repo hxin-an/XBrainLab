@@ -117,3 +117,43 @@ def test_completed_training_history_row_publishes_detached_final_test_accuracy()
 
     assert rows[0]["metrics"]["test"]["accuracy"] == [100.0]
     assert "record" not in rows[0]
+
+
+def test_training_history_detaches_requested_and_resolved_class_weighting() -> None:
+    plan = MagicMock()
+    plan.get_training_status.return_value = "Done"
+    plan.option.epoch = 1
+    record = MagicMock()
+    record.get_epoch.return_value = 1
+    record.is_finished.return_value = True
+    record.train = {}
+    record.val = {}
+    record.class_weighting = {
+        "requested": {
+            "mode": "custom",
+            "custom_class_weights": {"left": 2.0, "right": 1.0},
+            "class_map_fingerprint": "a" * 64,
+        },
+        "resolved": {
+            "class_names": ["left", "right"],
+            "class_order": [0, 1],
+            "class_counts": [3, 6],
+            "weights": [2.0, 1.0],
+        },
+    }
+
+    rows = project_training_history_rows(
+        [
+            {
+                "plan": plan,
+                "record": record,
+                "group_name": "Group 1",
+                "run_name": "1",
+                "model_name": "EEGNet",
+            }
+        ]
+    )
+    record.class_weighting["resolved"]["weights"][0] = 99.0
+
+    assert rows[0]["class_weighting"]["requested"]["mode"] == "custom"
+    assert rows[0]["class_weighting"]["resolved"]["weights"] == [2.0, 1.0]

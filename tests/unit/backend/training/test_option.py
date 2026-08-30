@@ -11,6 +11,89 @@ from XBrainLab.backend.training import (
     parse_device_name,
     parse_optim_name,
 )
+from XBrainLab.backend.training.option import (
+    class_map_fingerprint,
+    normalize_custom_class_weights,
+    resolve_class_weighting,
+)
+
+
+def test_class_weighting_helpers_reject_invalid_custom_values_and_stabilize_map_identity():
+    assert class_map_fingerprint({1: "right", 0: "left"}) == class_map_fingerprint(
+        {0: "left", 1: "right"}
+    )
+    assert normalize_custom_class_weights({"left": 1, "right": 2.5}) == {
+        "left": 1.0,
+        "right": 2.5,
+    }
+    for bad in ({}, {"left": 0}, {"left": float("nan")}, {1: 1}):
+        with pytest.raises(ValueError):
+            normalize_custom_class_weights(bad)
+
+
+def test_class_weighting_resolution_uses_only_the_current_training_split() -> None:
+    """Balanced weights are derived from one fold's train mask, not held-out data."""
+    resolved = resolve_class_weighting(
+        mode="balanced",
+        custom_class_weights={},
+        class_map_fingerprint_value=class_map_fingerprint({0: "left", 1: "right"}),
+        class_map={0: "left", 1: "right"},
+        labels=[0, 0, 1, 1, 1, 1],
+        train_mask=[True, True, True, False, False, False],
+    )
+
+    assert resolved == {
+        "class_names": ["left", "right"],
+        "class_order": [0, 1],
+        "class_counts": [2, 1],
+        "weights": [0.75, 1.5],
+    }
+
+
+def test_class_weighting_resolution_rejects_zero_training_count_and_stale_map() -> None:
+    class_map = {0: "left", 1: "right"}
+    with pytest.raises(ValueError, match="missing class"):
+        resolve_class_weighting(
+            mode="balanced",
+            custom_class_weights={},
+            class_map_fingerprint_value=class_map_fingerprint(class_map),
+            class_map=class_map,
+            labels=[0, 0, 1],
+            train_mask=[True, True, False],
+        )
+    with pytest.raises(ValueError, match="mapping changed"):
+        resolve_class_weighting(
+            mode="custom",
+            custom_class_weights={"left": 1.0, "right": 2.0},
+            class_map_fingerprint_value=class_map_fingerprint({0: "left", 1: "old"}),
+            class_map=class_map,
+            labels=[0, 1],
+            train_mask=[True, True],
+        )
+
+
+def test_custom_weights_strip_before_rejecting_duplicate_class_names() -> None:
+    with pytest.raises(ValueError, match="unique class names"):
+        normalize_custom_class_weights({"left": 1.0, " left ": 2.0})
+
+
+def test_weighted_option_rejects_noncanonical_class_map_fingerprint() -> None:
+    with pytest.raises(ValueError, match="class map identity"):
+        TrainingOption(
+            output_dir="ok",
+            optim=torch.optim.Adam,
+            optim_params={},
+            use_cpu=True,
+            gpu_idx=None,
+            epoch=1,
+            bs=1,
+            lr=0.01,
+            checkpoint_epoch=0,
+            evaluation_option=TrainingEvaluation.VAL_LOSS,
+            repeat_num=1,
+            class_weight_mode="balanced",
+            class_map_fingerprint_value="g" * 64,
+        )
 
 
 @pytest.mark.parametrize(

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from copy import deepcopy
+from dataclasses import dataclass, field
 from typing import Any
 
 MetricValue = float | None
@@ -56,6 +57,7 @@ class TrainingHistoryRow:
     validation_auc: tuple[MetricValue, ...]
     test_accuracy: tuple[MetricValue, ...]
     runtime_device: str = ""
+    class_weighting: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """Return a detached, strictly JSON-safe row."""
@@ -90,6 +92,7 @@ class TrainingHistoryRow:
                 },
             },
             "runtime_device": self.runtime_device,
+            "class_weighting": deepcopy(self.class_weighting),
         }
 
 
@@ -178,6 +181,7 @@ def _project_training_history_row(
         validation_auc=_copy_metric_series(validation_metrics, _AUC_KEY),
         test_accuracy=_copy_metric_series(test_metrics, _ACCURACY_KEY),
         runtime_device=_runtime_device(plan, record),
+        class_weighting=deepcopy(getattr(record, "class_weighting", {}) or {}),
     )
 
 

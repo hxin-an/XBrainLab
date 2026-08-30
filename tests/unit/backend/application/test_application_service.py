@@ -163,6 +163,25 @@ STALE_SALIENCY_MESSAGE = (
     "Training or evaluation state changed during saliency recomputation. "
     "No saliency changes were applied; retry after training is idle."
 )
+
+
+def _off_class_weighting() -> dict[str, object]:
+    """Return detached record metadata for lightweight TrainRecord test stubs."""
+    return {
+        "requested": {
+            "mode": "off",
+            "custom_class_weights": {},
+            "class_map_fingerprint": None,
+        },
+        "resolved": {
+            "class_names": [],
+            "class_order": [],
+            "class_counts": [],
+            "weights": [],
+        },
+    }
+
+
 SALIENCY_OOM_MESSAGE = (
     "Not enough GPU memory to recompute saliency. Existing evaluation results "
     "were kept. Reduce the selected saliency methods or sample count, then retry."
@@ -2186,6 +2205,7 @@ def test_transient_real_training_mutation_keeps_last_verified_view_until_publish
     record.train = {key: [] for key in TrainRecordKey()}
     record.val = {key: [] for key in RecordKey()}
     record.eval_record = None
+    record.class_weighting = _off_class_weighting()
 
     holder = object.__new__(TrainingPlanHolder)
     holder.train_record_list = [record]
@@ -5809,6 +5829,7 @@ def test_training_history_query_returns_detached_json_rows(monkeypatch):
             "test": {"accuracy": []},
         },
         "runtime_device": "",
+        "class_weighting": {},
     }
     assert returned_row == expected_row
 
@@ -7470,6 +7491,7 @@ def test_evaluate_command_returns_typed_service_backed_summary():
     run.is_finished.return_value = True
     run.get_name.return_value = "Repeat-0"
     run.eval_record.evaluation_split = "test"
+    run.class_weighting = _off_class_weighting()
     plan = MagicMock()
     plan.get_name.return_value = "Plan A"
     plan.get_plans.return_value = [run]
@@ -7532,6 +7554,7 @@ def test_model_summary_shutdown_cancel_is_terminal_and_retryable(
     run.is_finished.return_value = True
     run.get_name.return_value = "Repeat-0"
     run.eval_record.evaluation_split = "test"
+    run.class_weighting = _off_class_weighting()
     plan = MagicMock()
     plan.dataset = dataset
     plan.model_holder = SimpleNamespace(get_model=lambda _args: model)
@@ -7647,6 +7670,7 @@ def test_model_summary_model_construction_does_not_hold_command_lock(
     run = MagicMock()
     run.is_finished.return_value = True
     run.eval_record.evaluation_split = "test"
+    run.class_weighting = _off_class_weighting()
     plan = MagicMock()
     plan.dataset = dataset
     plan.model_holder = SimpleNamespace(get_model=build_model)
@@ -7701,6 +7725,7 @@ def test_model_summary_rejects_result_after_training_identity_changes(
     run = MagicMock()
     run.is_finished.return_value = True
     run.eval_record.evaluation_split = "test"
+    run.class_weighting = _off_class_weighting()
     plan = MagicMock()
     plan.dataset = dataset
     plan.model_holder = SimpleNamespace(get_model=lambda _args: model)
@@ -7760,6 +7785,7 @@ def test_evaluation_query_fails_when_training_generation_changes_mid_read() -> N
     service = ApplicationService(Study())
     run = MagicMock()
     run.is_finished.return_value = True
+    run.class_weighting = _off_class_weighting()
     plan = MagicMock()
     plan.get_name.return_value = "Plan A"
     plan.get_plans.return_value = [run]
@@ -7794,6 +7820,7 @@ def test_evaluation_catalog_keeps_the_generation_read_under_command_lock() -> No
     run.is_finished.return_value = True
     run.get_name.return_value = "Repeat-0"
     run.eval_record.evaluation_split = "test"
+    run.class_weighting = _off_class_weighting()
     plan = MagicMock()
     plan.get_name.return_value = "Old plan"
     plan.get_plans.return_value = [run]
@@ -8134,6 +8161,7 @@ def _saliency_recompute_service() -> tuple[
     record.seed = 7
     record.plan_id = "saliency-plan"
     record.model_identity = model_holder.catalog_identity
+    record.class_weighting = _off_class_weighting()
 
     holder = object.__new__(TrainingPlanHolder)
     holder.model_holder = cast(Any, model_holder)
@@ -8271,6 +8299,7 @@ def test_explicit_saliency_compute_mutates_only_the_selected_run() -> None:
     second_record.seed = 8
     second_record.plan_id = first_record.plan_id
     second_record.model_identity = first_record.model_identity
+    second_record.class_weighting = _off_class_weighting()
     holder.train_record_list.append(second_record)
     run = TrainingRunIdentity(
         trainer_id=trainer.get_state_snapshot_identity(),

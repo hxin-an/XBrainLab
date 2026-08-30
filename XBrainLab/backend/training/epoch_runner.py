@@ -55,6 +55,7 @@ class EpochRunner:
         optimizer: torch.optim.Optimizer,
         criterion: torch.nn.Module,
         train_record: TrainRecord,
+        validation_criterion: torch.nn.Module,
     ) -> None:
         """Execute one full epoch: train → metrics → eval → checkpoint.
 
@@ -99,7 +100,7 @@ class EpochRunner:
 
         # 4. Validation. The test split is evaluated only after model selection.
         if val_loader:
-            result = Evaluator.evaluate_metrics(model, val_loader, criterion)
+            result = Evaluator.evaluate_metrics(model, val_loader, validation_criterion)
             train_record.update_validation(result)
 
         train_record.step()

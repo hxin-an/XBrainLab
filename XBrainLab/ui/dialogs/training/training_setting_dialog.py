@@ -42,6 +42,7 @@ from XBrainLab.backend.training import (
     parse_optim_name,
 )
 from XBrainLab.backend.training.input_contract import DEFAULT_TRAINING_OUTPUT_DIR
+from XBrainLab.backend.training.option import ClassWeightMode
 from XBrainLab.backend.training.utils import get_optimizer_classes
 from XBrainLab.ui.application_capabilities import (
     ControllerCompatibilityUnavailableError,
@@ -158,6 +159,9 @@ class TrainingSettingDialog(BaseDialog):
         self.dev_label: QLabel | None = None
         self.output_dir_label: QLabel | None = None
         self.evaluation_combo: QComboBox | None = None
+        self.class_weight_combo: QComboBox | None = None
+        self.class_weight_entries: dict[str, QLineEdit] = {}
+        self._class_weight_row_widgets: list[QWidget] = []
         self.recommendation_note: QLabel | None = None
         self.resource_preview_note: QLabel | None = None
         self.content_scroll: QScrollArea | None = None
@@ -442,6 +446,16 @@ class TrainingSettingDialog(BaseDialog):
         evaluation = option.get("evaluation_option")
         if evaluation and self.evaluation_combo:
             self._set_evaluation_option(evaluation)
+        mode = option.get("class_weight_mode", "off")
+        if self.class_weight_combo is not None:
+            index = self.class_weight_combo.findData(str(mode))
+            if index >= 0:
+                self.class_weight_combo.setCurrentIndex(index)
+        custom = option.get("custom_class_weights", {})
+        if isinstance(custom, dict):
+            for name, entry in self.class_weight_entries.items():
+                if name in custom:
+                    entry.setText(str(custom[name]))
 
     def apply_recommendation(
         self,
@@ -694,13 +708,14 @@ class TrainingSettingDialog(BaseDialog):
         form_layout.setColumnStretch(1, 1)
         self.form_layout = form_layout
 
-        def add_simple_row(row: int, label: str, widget) -> None:
+        def add_simple_row(row: int, label: str, widget) -> QLabel:
             lbl = QLabel(label)
             lbl.setObjectName("TrainingSettingLabel")
             lbl.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             form_layout.addWidget(lbl, row, 0)
             widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             form_layout.addWidget(widget, row, 1)
+            return lbl
 
         def add_set_row(
             row: int,
@@ -788,10 +803,37 @@ class TrainingSettingDialog(BaseDialog):
         self._set_evaluation_option(TrainingEvaluation.VAL_LOSS)
         add_simple_row(7, "Evaluation", evaluation_combo)
 
+        class_weight_combo = QComboBox()
+        self.class_weight_combo = class_weight_combo
+        for mode, label in (
+            (ClassWeightMode.OFF, "Off"),
+            (ClassWeightMode.BALANCED, "Balanced"),
+            (ClassWeightMode.CUSTOM, "Custom"),
+        ):
+            class_weight_combo.addItem(label, mode.value)
+        add_simple_row(8, "Class loss weighting", class_weight_combo)
+        class_weight_combo.currentIndexChanged.connect(self._sync_class_weight_rows)
+        class_map = (
+            self.initial_option.get("class_map", {})
+            if isinstance(self.initial_option, dict)
+            else {}
+        )
+        row = 9
+        if isinstance(class_map, dict):
+            for _, name in sorted(class_map.items()):
+                if not isinstance(name, str) or not name.strip():
+                    continue
+                entry = QLineEdit("1.0")
+                entry.setObjectName(f"TrainingClassWeightInput_{name}")
+                self.class_weight_entries[name] = entry
+                multiplier_label = add_simple_row(row, f"{name} multiplier", entry)
+                self._class_weight_row_widgets.extend((multiplier_label, entry))
+                row += 1
+
         repeat_entry = QLineEdit("1")
         self.repeat_entry = repeat_entry
         repeat_entry.setObjectName("TrainingRepeatsInput")
-        add_simple_row(8, "Repeat number", repeat_entry)
+        add_simple_row(row, "Repeat number", repeat_entry)
 
         resource_preview_note = QLabel("")
         self.resource_preview_note = resource_preview_note
@@ -822,6 +864,16 @@ class TrainingSettingDialog(BaseDialog):
         buttons.rejected.connect(self.reject)
         footer.addWidget(buttons)
         layout.addLayout(footer)
+        self._sync_class_weight_rows()
+
+    def _sync_class_weight_rows(self, _index: int | None = None) -> None:
+        """Show class multipliers only when their Custom policy uses them."""
+        custom = (
+            self.class_weight_combo is not None
+            and self.class_weight_combo.currentData() == ClassWeightMode.CUSTOM.value
+        )
+        for widget in self._class_weight_row_widgets:
+            widget.setVisible(custom)
 
     def set_optimizer(self):
         """Open the optimizer setting dialog and apply the result."""
@@ -1065,6 +1117,20 @@ class TrainingSettingDialog(BaseDialog):
                 ckpt,
                 evaluation_option,
                 repeat,
+                class_weight_mode=(
+                    self.class_weight_combo.currentData()
+                    if self.class_weight_combo is not None
+                    else "off"
+                ),
+                custom_class_weights={
+                    name: entry.text()
+                    for name, entry in self.class_weight_entries.items()
+                },
+                class_map_fingerprint_value=(
+                    self.initial_option.get("class_map_fingerprint")
+                    if isinstance(self.initial_option, dict)
+                    else None
+                ),
             )
             super().accept()
         except ValueError:
