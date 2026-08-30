@@ -660,10 +660,12 @@ def _run_shards(
         if not paths:
             continue
         print(f"\n=== {gate_name} shard: {label} ===", flush=True)
+        inner_plugin_args = ("-p", "no:forked") if label == "assistant-runtime" else ()
         args = (
             "--capture=sys",
             *paths,
             "-q",
+            *inner_plugin_args,
             *_shard_runtime_args(gate_name=gate_name, label=label),
         )
         if attestation_sink is None:
