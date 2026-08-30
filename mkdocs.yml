@@ -69,6 +69,7 @@ nav:
       - 產品需求: target/requirements.md
       - Data Interpretation 目標: target/data_interpretation_system.md
       - Assistant 目標: target/agent.md
+      - Training 目標: target/training.md
       - 決策紀錄: decisions/README.md
   - 研究:
       - EEG Import / Label Design: research/bci_eeg_import_label_design_source.md

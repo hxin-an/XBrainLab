@@ -1,6 +1,6 @@
 # XBrainLab Agent 目標
 
-最後更新：`2026-08-29`
+最後更新：`2026-08-30`
 
 這份文件是 XBrainLab Assistant 產品目標的唯一權威。Runtime inventory、目前測試集合與歷史
 artifact 只能描述 current implementation，不能反推本文件的產品契約。
@@ -68,6 +68,9 @@ cancel 都由該 GUI owner 完成。`opened`／`accepted` 不是成功，只有 
 
 七個 names 共用既有 typed UI handoff registry 與一個 thin adapter。Internal route identity、underlying
 command 與 decision fields 由 trusted action contract 固定，不是模型參數，也不建立新 UI owner。
+新的 class loss weighting 與 validation early stopping 仍由 Training Settings 以人類決策完成；
+`configure_training` 對模型維持零參數，不公開 weighting mode、class multipliers、patience 或
+`min_delta` schema。完整 contract 見 [Training target](training.md)。
 
 `import_eeg_data` 的 action identity 完全由模型 proposal 與 current publication 決定。它是 zero-parameter
 GUI handoff，Host 不讀 latest user text 判斷 import、肯定／否定、英文動詞或 object grammar，也不以文字
