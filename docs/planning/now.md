@@ -26,18 +26,20 @@ SourceFileBoundary、rollback 與 label／event semantics，但 WSL 及 native W
 定義的效能門檻；候選已關閉，沒有 PR，也不宣稱 Import 已加速。下一個 Import
 optimization 必須從新的 Windows product-equivalent profile 另立 plan。
 
-PR #75 的 B2 product candidate 已 freeze 於
-`82c3e51cf705d9573f0f305a54ed28c649d50e67`；30 個 focused tests、33 個 async teardown tests、
-9-state capture 與 independent review 通過。但 exact-head GitHub required check
-`linux-integration-rest` 連續兩次在無 diff overlap 的 `assistant-runtime` domain 超過 1200 秒，
-因此 B2 現在是 CI checkpoint，尚未可交付人工驗收。
+PR #79 已在不跳過測試、不增加 timeout 的前提下修復 `assistant-runtime` shard 的重複
+process isolation，並以 merge commit `65d5957947eae8c20be9b9c91efae468c4779bcd`
+合併。B2 已 rebase 並 freeze 於 `a121cebb787d62fa54d3b91696917088b876fdeb`；
+exact-head CI 與 independent review 通過，但使用者檢查發現單一 raw event anchor 會被誤讀為
+class 清單，且 `Suggested from import`／`Suggested from loaded label files` 重複。PR #75 尚未
+通過 manual acceptance，必須在同一 branch 收斂 presentation 後重生所有 exact-source evidence。
 
 本 campaign 要在不新增 workflow owner、不建立第二套 command／state truth 的前提下，交付：
 
-1. 一份無混合分母、可人工閱讀的 Assistant evaluator report contract。
-2. Epoch anchor 文案、全域 Warning 視覺去重複。
+1. 保留已完成的 Assistant evaluator report contract；沒有新 hypothesis 時暫停 Lane A。
+2. 收斂 Epoch import setup presentation，再依序完成全域 Warning 視覺去重複。
 3. Training Settings 中已核准的 class loss weighting 與 validation early stopping。
-4. 以 current-main 的 BIDS Review／Apply 實測為基礎，刪除重複 path resolution 並改善 Import latency。
+4. 以 Windows product-equivalent GUI workflow 重新建立完整 Import 時間帳；只有 measured dominant
+   cost 達門檻後才另開 bounded optimization，不延續 C1 的 path／SHA 猜測。
 
 本文件合併後，所有 implementation branch 必須從當時的 exact `main` 建立；
 `5bb55c20` 只是 pre-plan identity，不得當成後續 product branch base。
@@ -59,11 +61,16 @@ PR #75 的 B2 product candidate 已 freeze 於
 - **Cross user-simulator**：非作者 worker 用 product-equivalent scenario 交叉驗證。這只是第二層
   保險，不取代 exact-SHA Windows 真人手測。
 
-現階段明確允許 `main + B2 frozen product worktree + G1 gate-repair worktree`，再加一個
-ephemeral reviewer worktree。A2 與 C1 worktree 已收旗。G1 合併後先清理其 worktree，再將
-B2 cleanly rebase 到新 `main`；不用 cherry-pick 將 gate 修復塞進 product branch。
+現階段明確允許 `main + B2 product worktree + C2 Import profiling worktree`，再加一個
+ephemeral reviewer worktree。A2、C1 與 G1 worktree 已收旗；B3／B4／B5 不預先建立空 branch。
+Root 是唯一能修改本 plan 與處理兩條 branch rebase／status reconciliation 的角色。
 
 ## Lane A — comprehensive Assistant cleanup
+
+Lane A 暫停。A1 cleanup 與 A2 evaluator evidence contract 已完成；same-source evaluator gate 仍為
+false，但目前沒有新的 product defect 或可驗證 improvement hypothesis。不得為了維持施工而再改
+prompt、scorer 或 model。只有出現可重現產品失敗、新模型候選，或能對 frozen evaluator 定義明確
+before／after outcome 時才重新立 plan。
 
 ### A2. Evaluator evidence contract cleanup (completed in PR #78)
 
@@ -83,39 +90,11 @@ generation policy、promotion gate 一律不變。Consumer migration test 必須
 並對 v12 的各自 denominator／inventory／gate 作 exact assertions。
 以同一 source 重生 artifact，除 schema path 外，每個 case outcome 與 gate 必須與 baseline 一致。
 
-## Gate repair G1 — Assistant runtime domain isolation
+## Gate repair G1 — completed in PR #79
 
-**Problem and evidence**
-
-PR #75 old head `0803d84bdc4e184d5877a1a8aba4a1c274230d59` 與 rebased head
-`82c3e51cf705d9573f0f305a54ed28c649d50e67` 的兩次 GitHub run，都在
-`tests/integration/assistant_runtime` 的第一個 domain process 超過 1200 秒；前一次 log
-顯示 16 個 forked Qt lifecycle cases 只產生 13 個 dots，其後所有 integration domains 皆完成。
-B2 diff 與 Assistant runtime／test runner 為零 overlap。同一 exact B2 source 在 WSL 以 CI 環境旗標
-連續 5 輪通過 80／80 cases，每輪約 12 秒；移除重複的 per-test fork 後同樣通過
-16／16。直前 PR #78 的同一 required shard 可在 4m39s 成功，證據指向 GitHub Linux
-hosted runner 上的間歇 Qt／`pytest-forked` process-exit lifecycle，不是 B2 defect。
-
-**Outcome, scope, and non-goals**
-
-- 保留 `scripts/dev/run_tests.py` 已有的每 domain owned process、`prlimit --core=0`、
-  completion attestation、1200-second hard timeout、JUnit 與 coverage。
-- 只對已有 dedicated `assistant-runtime` domain 停用內層 `pytest-forked` plugin，讓 16 個案例
-  在該獨立子程序中共用一個 Qt event-loop lifecycle；直接執行 test file 的現有隔離仍保留。
-- 不改產品碼、Assistant lifecycle semantics、test assertions、通過條件、skip policy 或 timeout；
-  不加 rerun，也不為 CI 建立新 control plane。Owner delta `0`。UI 修改不適用。
-
-**Repair, focused validation, and stop condition**
-
-1. 先用 runner unit test 固定：只有 `assistant-runtime` shard argv 含 `-p no:forked`，其他
-   shard argv、attestation expected args、JUnit／coverage 不變。
-2. 跑 runner focused tests，並在 dedicated domain 中連續執行至少 5 輪 Assistant runtime tests；
-   每輪必須 16／16，且 teardown assertions 不能弱化。
-3. 非作者 test-quality reviewer 審 frozen SHA，確認這是移除重複 process boundary，不是
-   隱藏 hang。推送 test／CI-only PR，exact-head required checks 必須全部 completed／success。
-4. G1 若仍在同一 domain 超時，停為 checkpoint 並收集 per-test identification；不加長
-   timeout。G1 成功則使用 tests／CI exemption 合併，清理 worktree，然後 rebase B2 並重跑
-   exact-head evidence。
+G1 已完成並合併。它只移除 dedicated `assistant-runtime` domain 內重複的 nested
+`pytest-forked`，保留 owned domain process、16 個案例、teardown assertions、hard timeout、JUnit、
+coverage 與 completion attestation。後續 lane 不再重開這個 scope。
 
 ## Lane B — product correctness and training
 
@@ -140,19 +119,23 @@ A2 evaluator scripts／docs、B2 Epoch UI 與 C1 Import backend 的預期 produc
 incomplete mapping 與 Review 後替換 source；交付前跑 canonical source-diverse data gate。可見 UI 已取得
 使用者修改授權，但仍需 exact-SHA Windows 手測。
 
-### B2. Epoch anchor language
+### B2. Epoch imported-event presentation
 
-`Timing 719` 不是 duration／sample count／epoch window，而是 import 儲存的 event anchor。只調整
-Epoch 上方的 presentation label：
+單一 `719`／`769` 是 placement anchor，不是多 class 清單；Apply 後 runtime event ID 也可能被重映射。
+PR #75 只收斂 Epoch 上方 presentation：
 
-- internal event：`Event anchor` / `Event onset`
-- event-code：`Event anchor` / 實際 code，例如 `719`
-- time-field：`Time field`
-- interval：`Start field` / `Duration field`
-- BIDS wording 保持既有 source-aware 表達
+- 非 BIDS title 使用 `Imported event setup`，成功 handoff 不再顯示 `Suggested from ...` summary；
+  mismatch／blocker／unavailable summary 保留。
+- internal event、event-code、EEG-event 不顯示 `Event anchor`、`Epoch anchor` 或任何新增 raw code；
+  只顯示 `Source`、`Placement` 與必要的 `Label field`。
+- time-field 保留 `Time field`；interval 保留 `Start field`／`Duration field`。
+- BIDS 保留既有 source-aware title、`Label field` 與 `Window mode`，移除非操作性的
+  `Epoch anchor / Event onset`。
+- Events table 仍是所有實際 class event 的選取入口；raw provenance 留在 Import Review。
 
-不改 `t_min`、`t_max`、event placement／selection 或 epoch execution。UI 文案修改已授權；需
-layout variants capture、epoch context／runtime tests 與真實 internal／interval workflow 手測。
+不改 context DTO、`t_min`、`t_max`、event placement／selection、recipe 或 epoch execution。先加會對
+舊 presentation 失敗的 observable tests，再做最小修正。需 normal／narrow capture、真實 multi-class
+GDF 與 BIDS／interval walkthrough、source-diverse gate、independent review 及 exact-SHA manual acceptance。
 
 ### B3. Global Warning severity-label cleanup
 
@@ -249,10 +232,50 @@ implementation 單次完整 SHA-256 約 `0.32s`，Review 與 Apply 合計上限�
 若 canonical path reuse 未達雙平台門檻，C1 停為 checkpoint 並關閉 candidate；不以更多 abstraction、
 弱化 digest 或 broad loader parallelism 湊數。下一個 optimization 需依新的 measured profile 另立 plan。
 
+### C2. Windows-first product-equivalent Import profile
+
+**Problem and evidence**
+
+現有 `teacher-dataset-import-performance` 只量同步 ApplicationService 的 catalog／review／apply／
+background idle；`import-loading-profile` 只量 fresh-service command lifecycle；Dataset latency unit tests
+則固定 cold module-import boundary。沒有 artifact 從真 Qt `Import Data`、chooser、worker queue、loading
+surface、wizard review、Apply 到 Dataset publication ready 分解使用者等待。C1 已量得完整 SHA-256 每次
+約 `0.32s`、Review＋Apply 上限約 `0.64s`，且 path identity candidate 在 native Windows 只改善約
+`0.738%`／`9ms`；不得再預設 SHA 或 path 是主因。
+
+**Outcome, scope, and non-goals**
+
+- 建立 `perf/import-e2e-profile-v1`，只修改 dev tooling、tests 與本 plan；透過真 Qt wizard、既有
+  ApplicationService command spine 與 visible controls 執行，不新增 production telemetry／hook／owner。
+- dev-only tracer 在 runtime 外部記錄 Import click→chooser、chooser accept→operation allocation／start、
+  catalog／scan／review→wizard ready、re-preview／validate、Apply→raw load／label／metadata／identity verify／
+  commit、Dataset publication ready 與 background idle。另記錄 wall／CPU／peak RSS／process I/O、Qt
+  heartbeat、cancel delivery 與 tracer overhead。
+- 固定三個主要 workload：BBCI GDF single file internal events、A01T–A03T GDF＋MAT folder、OpenNeuro
+  ds003061 P300 subject 001 三 run BIDS；小型 MNE-BIDS 只作控制組。
+- Windows native 是產品結論來源；WSL 只作 baseline。每個 workload 記錄 first fresh-process diagnostic，
+  再做一次 warm-up 與三次 measured fresh-app passes；OS page cache 不宣稱為真正 cold cache。
+- Artifact 寫到 ignored `build/dev-artifacts/import-e2e/<exact-SHA>/` JSON＋Markdown，只保存 fixture role／
+  count／bytes，不保存使用者 absolute path。
+- 不修改 loader、cache、worker pool、SHA、scope、SourceFileBoundary、Review→Apply digest、rollback、
+  cancellation、label／event semantics 或 UI copy。
+
+**Correctness, decision, and stop condition**
+
+每次 timed Apply 同時核對 raw count、event `(sample, label)` digest、label apply、recipe/content identity、
+BIDS channel／electrode metadata 與 Dataset-ready publication；source replacement、cancel 與 rollback 另以
+non-timed case 證明。非作者 performance＋data reviewer 審 frozen exact SHA 與 artifact。
+
+若同一 Windows phase 三輪都佔 total 至少 35%，且 deletion／reuse intervention 能留在既有 owner、最多
+8 個 production files、pure-refactor net `+100 LOC` 內，才從 exact main 另開 bounded optimization。
+候選需讓 Windows total median 同時改善至少 15% 與 0.25 秒、target phase 至少改善 15%，且任何其他
+phase 不得退步超過 10%。若無 reproducible dominant cost，或修理需要新 cache／pool／owner／state／
+semantic trade-off，C2 以 ranked diagnostic checkpoint 結束，不繼續猜測。
+
 ## Progression, review, and merge gates
 
-1. G1 先在 exact `8e21de11` main 上獨立修復 required-check lifecycle；合併並清理後，
-   B2 才 rebase 到新 main、重生 capture／focused evidence 並觸發新 exact-head CI。
+1. B2 與 C2 可在 production files 不重疊的兩個 worktree 並行；B2 仍留在 PR #75，C2 從 exact main
+   建立。B3 只有 B2 merge／cleanup 後才建立；B4／B5 依序串行。
 2. 每個 worker 先建 characterization／regression baseline，再施工。作者 focused tests 通過後 freeze
    exact head；非作者 user-simulator 交叉跑 user-like path，然後 independent reviewer 才能審查。
 3. Reviewer finding 只有重現本 scope contract、直接 safety／data loss，或使證據無法支撐本次
@@ -263,18 +286,19 @@ implementation 單次完整 SHA-256 約 `0.32s`，Review 與 Apply 合計上限�
 5. 可以在使用者離席時完成 code、focused validation、artifact inspection、PR 與 exact-head CI，
    並標示 `scope-complete, awaiting manual acceptance`。任一 product／UI／data／training behavior
    PR 不得自動 merge。
-6. 使用者回來後的手測順序：BIDS Import latency → Epoch → Warning → Class weighting →
-   Early stopping。每個 product PR 都需當前 exact SHA 的明確「手測通過」與「同意
-   merge」，並記錄在 PR。純 docs／tests／CI／guidance 才可使用 repo exemption。
+6. B2 手測完成後依序為 Warning → Class weighting → Early stopping。C2 profiling 若始終只有
+   scripts／tests／docs，可使用 repo exemption；後續任何 production optimization 都需同一 exact SHA 的
+   Windows manual acceptance 與 merge 同意。
 
 ## Campaign stop condition
 
 下列條件全部成立才能宣稱本 campaign 完成：
 
-- G1 已在不跳過案例、不加長 timeout 的情況下讓 exact-head required CI 穩定通過。
+- G1 的已合併 evidence 不被後續 branch 逆轉。
 - B2–B5 各自的 observable outcome、focused evidence、applicable source-diverse gate、exact-head CI、
   人工驗收與 merge approval 完成。
-- A2 與 C1 的已記錄 outcome 不被後續 branch 逆轉；不將 C1 關閉候選宣稱為產品加速。
+- A2 與 C1 的已記錄 outcome 不被後續 branch 逆轉；C2 交付 Windows-first ranked timing report，且
+  不將 C1 關閉候選或 WSL-only improvement 宣稱為產品加速。
 - 所有 merged／abandoned candidate 已有明確記錄；本機再次只留 `main`，root
   `settings.json` 未被 stage／commit／revert／overwrite，並提供最終 Git worktree／branch／SHA／status
   inventory。
