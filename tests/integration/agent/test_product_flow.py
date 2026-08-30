@@ -15,12 +15,20 @@ from pathlib import Path
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
+import mne
+import numpy as np
 import pytest
 
 from tests.qt_lifecycle import close_controller_and_wait
+from XBrainLab.backend.application import ApplicationService, LoadDataCommand
 from XBrainLab.backend.controller.chat_controller import ChatController
 from XBrainLab.backend.study import Study
+from XBrainLab.llm.agent.assembler import PromptToolPublication
 from XBrainLab.llm.agent.controller import LLMController
+from XBrainLab.llm.agent.response_presentation import (
+    AssistantPanelNavigationRequest,
+    AssistantPanelTarget,
+)
 from XBrainLab.llm.agent.turn import (
     AssistantGenerationDispatchAcknowledgement,
     AssistantGenerationDispatchPhase,
@@ -29,11 +37,12 @@ from XBrainLab.llm.agent.turn import (
     AssistantGenerationRequest,
     AssistantGenerationStopAcknowledgement,
     AssistantGenerationStopRequest,
+    AssistantToolInputReceipt,
     AssistantTurnCorrelation,
     AssistantTurnRequest,
 )
-from XBrainLab.llm.agent.turn_scope import resolve_assistant_turn_scope
 from XBrainLab.llm.agent.worker import AgentWorker
+from XBrainLab.llm.tools.application_surface import ToolCommandResult
 
 
 class _NoopWorker(AgentWorker):
@@ -95,6 +104,7 @@ class _ImmediateRagLifecycle:
 
     def __init__(self, retriever: _NoopRag | None = None) -> None:
         self.retriever = retriever or _NoopRag()
+        self.retrieve_calls: list[tuple[int, str]] = []
 
     def start(self) -> bool:
         self.retriever.initialize()
@@ -108,6 +118,7 @@ class _ImmediateRagLifecycle:
         *,
         allowed_tool_names: frozenset[str] | None = None,
     ) -> bool:
+        self.retrieve_calls.append((turn_id, query))
         callback(
             turn_id,
             query,
@@ -130,6 +141,7 @@ class ProductHarness:
     chat: ChatController
     statuses: list[str]
     generation_events: list[AssistantGenerationEvent]
+    rag_lifecycle: _ImmediateRagLifecycle
     wait_for_generation_start: Callable[[], None]
     turn_sequence: int = 0
 
@@ -148,7 +160,6 @@ class ProductHarness:
     def send(self, user_text: str, model_text: str | None = None) -> None:
         self.turn_sequence += 1
         self.chat.add_user_message(user_text)
-        scope = resolve_assistant_turn_scope(user_text)
         self.controller.handle_user_turn(
             AssistantTurnRequest(
                 correlation=AssistantTurnCorrelation(
@@ -156,8 +167,6 @@ class ProductHarness:
                     turn_id=self.turn_sequence,
                 ),
                 text=user_text,
-                scope=scope.scope,
-                terminal_command=scope.terminal_command,
             )
         )
         if model_text is not None:
@@ -174,14 +183,9 @@ class ProductHarness:
 def product_harness(qtbot) -> Iterator[ProductHarness]:
     statuses: list[str] = []
     generation_events: list[AssistantGenerationEvent] = []
-    with (
-        patch("XBrainLab.llm.agent.controller.AgentWorker", _NoopWorker),
-        patch(
-            "XBrainLab.llm.agent.controller.ProcessRAGRetrieverLifecycle",
-            _ImmediateRagLifecycle,
-        ),
-    ):
-        controller = LLMController(Study())
+    with patch("XBrainLab.llm.agent.controller.AgentWorker", _NoopWorker):
+        rag_lifecycle = _ImmediateRagLifecycle()
+        controller = LLMController(Study(), rag_lifecycle=rag_lifecycle)
         chat = ChatController()
 
         controller.response_presentation_ready.connect(
@@ -202,6 +206,7 @@ def product_harness(qtbot) -> Iterator[ProductHarness]:
             chat=chat,
             statuses=statuses,
             generation_events=generation_events,
+            rag_lifecycle=rag_lifecycle,
             wait_for_generation_start=lambda: qtbot.waitUntil(
                 lambda: (
                     controller._turn_orchestrator.dispatch_phase
@@ -224,6 +229,18 @@ def _tool_json(name: str, parameters: dict) -> str:
             "parameters": parameters,
         }
     )
+
+
+def _load_tiny_raw_via_command_spine(study: Study, tmp_path: Path) -> None:
+    """Load a real 256 Hz recording before the Assistant receives a receipt."""
+    info = mne.create_info(["C3", "C4"], sfreq=256, ch_types="eeg")
+    raw = mne.io.RawArray(np.zeros((2, 512)), info)
+    path = tmp_path / "assistant-resample_raw.fif"
+    raw.save(path, overwrite=True, verbose=False)
+
+    result = ApplicationService(study).execute(LoadDataCommand(paths=[str(path)]))
+
+    assert result.ok is True
 
 
 def _assert_no_raw_tool_language(text: str) -> None:
@@ -257,6 +274,115 @@ def test_greeting_flow_is_friendly_and_does_not_call_tools(product_harness):
     _assert_no_raw_tool_language(visible)
 
 
+def test_product_controller_executes_one_published_navigation_action(
+    product_harness,
+) -> None:
+    """Exercise the real controller/coordinator boundary with only IO seams."""
+    navigations: list[AssistantPanelNavigationRequest] = []
+    product_harness.controller.panel_navigation_requested.connect(navigations.append)
+    product_harness.send(
+        "Open the Dataset panel.",
+        _tool_json("switch_panel", {"panel_name": "dataset"}),
+    )
+
+    assert product_harness.controller._tool_attempt_session.execution_count == 1
+    assert product_harness.controller._tool_attempt_session.last_tool_summary
+    assert len(navigations) == 1
+    assert isinstance(navigations[0], AssistantPanelNavigationRequest)
+    assert navigations[0].target is AssistantPanelTarget.DATASET
+    assert navigations[0].correlation is not None
+
+
+def test_product_controller_cancel_then_close_publishes_one_terminal(
+    product_harness,
+    qtbot,
+) -> None:
+    terminals = []
+    product_harness.controller.turn_finished.connect(terminals.append)
+    product_harness.send("Explain the current workflow.")
+    product_harness.wait_for_generation_start()
+
+    product_harness.controller.stop_generation()
+    qtbot.waitUntil(lambda: len(terminals) == 1, timeout=2_000)
+    product_harness.controller.close()
+    qtbot.wait(20)
+    assert len(terminals) == 1
+
+
+def test_stale_product_receipt_never_executes_or_dispatches_generation(
+    product_harness,
+) -> None:
+    receipt = AssistantToolInputReceipt(
+        command_name="resample_data",
+        original_user_text="Resample EEG data.",
+        question="Which rate?",
+        publication_generation=17,
+        missing_inputs=("rate",),
+    )
+    controller = product_harness.controller
+    controller.pending_interactions.begin_tool_input(receipt)
+    controller.assembler._latest_tool_publication = PromptToolPublication(
+        tool_names=frozenset({"resample_data"}),
+        workflow_stage="data_loaded",
+        backend_generation=18,
+    )
+
+    product_harness.send("128 Hz")
+
+    assert controller._tool_attempt_session.execution_count == 0
+    assert product_harness.generation_events == []
+
+
+def test_current_published_resample_receipt_executes_once_without_model_or_rag(
+    product_harness,
+    qtbot,
+    tmp_path: Path,
+) -> None:
+    controller = product_harness.controller
+    _load_tiny_raw_via_command_spine(controller.study, tmp_path)
+    controller.assembler.build_system_prompt("Resample the EEG data.")
+    publication = controller.assembler.latest_tool_publication
+    assert publication.permits("resample_data")
+
+    completions: list[ToolCommandResult] = []
+    terminals = []
+    navigations: list[AssistantPanelNavigationRequest] = []
+    controller.application_command_completed.connect(completions.append)
+    controller.turn_finished.connect(terminals.append)
+    controller.panel_navigation_requested.connect(navigations.append)
+    controller.pending_interactions.begin_tool_input(
+        AssistantToolInputReceipt(
+            command_name="resample_data",
+            original_user_text="Resample the EEG data.",
+            question="Which rate?",
+            publication_generation=publication.backend_generation,
+            missing_inputs=("rate",),
+        )
+    )
+
+    product_harness.send("128 Hz")
+    qtbot.waitUntil(
+        lambda: len(completions) == 1 and len(terminals) == 1,
+        timeout=2_000,
+    )
+
+    assert controller.pending_interactions.tool_input is None
+    assert controller.pending_interactions.active_tool_input is None
+    assert len(completions) == 1
+    assert len(terminals) == 1
+    result = completions[0]
+    assert result.ok is True
+    assert result.tool_name == "resample_data"
+    assert result.command_name == "preprocess"
+    assert result.changed_state["preprocessed_changed"] is True
+    assert controller.study.preprocessed_data_list[0].get_mne().info["sfreq"] == 128
+    assert len(navigations) == 1
+    assert isinstance(navigations[0], AssistantPanelNavigationRequest)
+    assert navigations[0].target is AssistantPanelTarget.PREPROCESS
+    assert product_harness.rag_lifecycle.retrieve_calls == []
+    assert product_harness.generation_events == []
+
+
 def test_qt_chat_wiring_rejects_prose_prefixed_target_action_without_execution(
     qtbot,
     tmp_path: Path,
@@ -284,7 +410,7 @@ def test_qt_chat_wiring_rejects_prose_prefixed_target_action_without_execution(
         controller.generation_event.connect(generation_events.append)
 
         controller.handle_user_turn(
-            AssistantTurnRequest.single_action(
+            AssistantTurnRequest(
                 correlation=AssistantTurnCorrelation(generation=1, turn_id=1),
                 text="Import EEG data.",
             )

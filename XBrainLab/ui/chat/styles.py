@@ -265,15 +265,6 @@ TURN_ACTIVITY_STEP_STYLE = f"""
     }}
 """
 
-TURN_ACTIVITY_SCOPE_STYLE = f"""
-    QLabel#AssistantTurnActivityScope {{
-        color: {Theme.TEXT_SECONDARY};
-        background: transparent;
-        border: none;
-        font-size: 12px;
-    }}
-"""
-
 TURN_ACTIVITY_CANCELABILITY_STYLE = f"""
     QLabel#AssistantTurnActivityCancelability {{
         color: {Theme.TEXT_SECONDARY};

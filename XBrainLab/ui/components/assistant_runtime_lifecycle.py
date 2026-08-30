@@ -11,7 +11,6 @@ from typing import Any, Protocol, cast
 
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal, pyqtSlot
 
-from XBrainLab.backend.application.commands import CommandName
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.chat_contract import (
     MAX_CHAT_MESSAGE_CONTENT_LENGTH,
@@ -28,10 +27,8 @@ from XBrainLab.llm.agent.turn import (
     AssistantTurnDeliveryAcknowledgement,
     AssistantTurnDeliveryPhase,
     AssistantTurnRequest,
-    AssistantTurnScope,
     AssistantTurnTerminal,
 )
-from XBrainLab.llm.agent.turn_scope import resolve_assistant_turn_scope
 from XBrainLab.llm.agent.ui_handoff import WorkflowUiHandoffResolution
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.runtime_selection import (
@@ -132,22 +129,6 @@ class RuntimeCommandAdmissionResult:
     message: str = ""
     turn_id: int | None = None
     generation: int | None = None
-    scope: AssistantTurnScope | None = None
-    terminal_command: str | None = None
-    excluded_commands: tuple[CommandName, ...] = ()
-
-    def __post_init__(self) -> None:
-        if self.scope is not None and not isinstance(self.scope, AssistantTurnScope):
-            raise TypeError("Runtime admission scope must be typed.")
-        if self.terminal_command is not None and not isinstance(
-            self.terminal_command,
-            str,
-        ):
-            raise TypeError("Runtime admission terminal command must be a string.")
-        if not isinstance(self.excluded_commands, tuple) or any(
-            not isinstance(command, CommandName) for command in self.excluded_commands
-        ):
-            raise TypeError("Runtime admission excluded commands must be typed.")
 
     @property
     def accepted(self) -> bool:
@@ -1165,13 +1146,9 @@ class AssistantRuntimeLifecycle(QObject):
             generation=generation,
             turn_id=next(self._turn_ids),
         )
-        scope = resolve_assistant_turn_scope(normalized)
         request = AssistantTurnRequest(
             correlation=correlation,
             text=normalized,
-            scope=scope.scope,
-            terminal_command=scope.terminal_command,
-            excluded_commands=scope.excluded_commands,
         )
         self._active_turn = correlation
         self._arm_turn_delivery_watchdog(correlation)
@@ -1185,9 +1162,6 @@ class AssistantRuntimeLifecycle(QObject):
             message=admission.message,
             turn_id=request.turn_id,
             generation=request.generation,
-            scope=request.scope,
-            terminal_command=request.terminal_command,
-            excluded_commands=request.excluded_commands,
         )
 
     def stop_generation(self) -> RuntimeCommandAdmissionResult:

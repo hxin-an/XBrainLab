@@ -170,7 +170,7 @@ def _admit_walkthrough_turn(
     controller: WalkthroughAssistantController,
     text: str,
 ) -> AssistantTurnRequest:
-    request = AssistantTurnRequest.single_action(
+    request = AssistantTurnRequest(
         correlation=AssistantTurnCorrelation(generation=1, turn_id=1),
         text=text,
     )

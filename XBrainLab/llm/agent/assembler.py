@@ -37,7 +37,6 @@ from .decision_context import (
     STEP_BY_STEP_MODE,
     WorkflowDecisionContext,
     build_workflow_decision_context,
-    normalize_workflow_mode,
 )
 from .decision_contract import model_response_tool_contract
 from .prompt_policy import (
@@ -49,7 +48,6 @@ from .tool_feedback import ToolRecoveryFeedback
 from .turn import (
     AssistantGenerationRequest,
     AssistantResponseContract,
-    AssistantTurnScope,
 )
 
 _MAX_CONTEXT_NOTES = 4
@@ -153,7 +151,6 @@ Action Contract Catalog (input definitions, never an output array):
         self._latest_tool_publication = PromptToolPublication.empty()
         self._turn_authorized_command: str | None = None
         self._turn_authorization_is_continuation = False
-        self._turn_policy_mode = STEP_BY_STEP_MODE
         self.max_history_utf8_bytes = _MAX_HISTORY_UTF8_BYTES
 
     def _get_stage_config(
@@ -413,7 +410,7 @@ Action Contract Catalog (input definitions, never an output array):
             if unavailable_reason is None and publication is not None:
                 unavailable_reason = PUBLIC_VIEW_UNAVAILABLE_MESSAGE
             decision_context = WorkflowDecisionContext(
-                mode=normalize_workflow_mode(self._turn_policy_mode),
+                mode=STEP_BY_STEP_MODE,
                 workflow_stage="Workflow status unavailable",
                 latest_user_request=latest_user_text.strip(),
                 blocked_reasons=[unavailable_reason or PUBLIC_VIEW_UNAVAILABLE_MESSAGE],
@@ -423,7 +420,7 @@ Action Contract Catalog (input definitions, never an output array):
             decision_context = build_workflow_decision_context(
                 self.study_state,
                 latest_user_text=latest_user_text,
-                mode=self._turn_policy_mode,
+                mode=STEP_BY_STEP_MODE,
                 publication=publication,
             )
 
@@ -622,7 +619,7 @@ Action Contract Catalog (input definitions, never an output array):
             and next_command != self._turn_authorized_command
         ):
             # Retrieved examples are scoped to the command that authorized the
-            # generation. Reusing them after a Guided Workflow transition can
+            # generation. Reusing them after a command authorization transition can
             # make a small local model repeat the command that just completed.
             self.clear_context()
         self._turn_authorized_command = next_command
@@ -716,12 +713,6 @@ Action Contract Catalog (input definitions, never an output array):
             messages,
             response_contract=AssistantResponseContract.STRUCTURED_ACTION,
         )
-
-    def bind_turn_scope(self, scope: AssistantTurnScope) -> None:
-        """Bind prompt autonomy to the host-admitted immutable turn scope."""
-        if not isinstance(scope, AssistantTurnScope):
-            raise TypeError("Assistant prompt scope must be typed.")
-        self._turn_policy_mode = normalize_workflow_mode(scope.policy_mode)
 
     def _history_for_llm(self, history: list) -> list[dict[str, Any]]:
         """Return exact built-in user-visible rows eligible for projection.

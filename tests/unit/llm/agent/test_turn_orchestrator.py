@@ -1,4 +1,3 @@
-from XBrainLab.backend.application import CommandName
 from XBrainLab.llm.agent.response_presentation import (
     AssistantResponseKind,
 )
@@ -7,7 +6,6 @@ from XBrainLab.llm.agent.turn import (
     AssistantGenerationEventPhase,
     AssistantTurnCorrelation,
     AssistantTurnRequest,
-    AssistantTurnScope,
 )
 from XBrainLab.llm.agent.turn_orchestrator import (
     AssistantToolAttemptSession,
@@ -22,9 +20,6 @@ def _request(*, turn_id: int = 11, generation: int = 7) -> AssistantTurnRequest:
             turn_id=turn_id,
         ),
         text="Prepare training",
-        scope=AssistantTurnScope.GUIDED_WORKFLOW,
-        terminal_command=CommandName.TRAIN.value,
-        excluded_commands=(CommandName.CLEAR_DATASETS,),
     )
 
 
@@ -37,9 +32,6 @@ def test_turn_terminal_consumes_host_correlation_exactly_once() -> None:
     assert lifecycle.correlation == request.correlation
     assert lifecycle.finish_host_turn() == request.correlation
     assert lifecycle.finish_host_turn() is None
-    assert lifecycle.scope is None
-    assert lifecycle.terminal_command is None
-    assert lifecycle.excluded_commands == frozenset()
 
 
 def test_generation_terminal_gives_cancellation_priority() -> None:

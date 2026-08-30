@@ -6,8 +6,6 @@ import json
 from collections import deque
 from dataclasses import dataclass, field
 
-from XBrainLab.backend.application import CommandName
-
 from .assembler import PromptToolPublication
 from .response_presentation import AssistantResponseKind
 from .turn import (
@@ -15,7 +13,6 @@ from .turn import (
     AssistantGenerationEventPhase,
     AssistantTurnCorrelation,
     AssistantTurnRequest,
-    AssistantTurnScope,
 )
 
 
@@ -25,9 +22,6 @@ class AssistantTurnOrchestrator:
 
     host_turn_id: int | None = None
     host_turn_generation: int | None = None
-    scope: AssistantTurnScope | None = None
-    terminal_command: str | None = None
-    excluded_commands: frozenset[CommandName] = field(default_factory=frozenset)
     generation_sequence: int = 0
     active_generation_id: int | None = None
     dispatch_phase: AssistantGenerationDispatchPhase | None = None
@@ -58,30 +52,24 @@ class AssistantTurnOrchestrator:
         return self.host_turn_id is not None
 
     def bind_host_turn(self, request: AssistantTurnRequest) -> None:
-        """Bind one typed host turn and its immutable endpoint policy."""
+        """Bind one typed host turn."""
         if self.has_active_host_turn:
             raise RuntimeError("An assistant host turn is already active.")
         self.host_turn_id = request.turn_id
         self.host_turn_generation = request.generation
-        self.scope = request.scope
-        self.terminal_command = request.terminal_command
-        self.excluded_commands = frozenset(request.excluded_commands)
 
     def bind_correlation(self, correlation: AssistantTurnCorrelation) -> None:
-        """Bind a host correlation for diagnostic requests without turn policy."""
+        """Bind a host correlation for diagnostic requests."""
         if self.has_active_host_turn:
             raise RuntimeError("An assistant host turn is already active.")
         self.host_turn_id = correlation.turn_id
         self.host_turn_generation = correlation.generation
 
     def finish_host_turn(self) -> AssistantTurnCorrelation | None:
-        """Consume the active correlation once and clear terminal turn state."""
+        """Consume the active correlation once and clear turn state."""
         correlation = self.correlation
         self.host_turn_id = None
         self.host_turn_generation = None
-        self.scope = None
-        self.terminal_command = None
-        self.excluded_commands = frozenset()
         self.active_generation_id = None
         self.dispatch_phase = None
         self.stopping_generation_id = None
@@ -228,9 +216,6 @@ class AssistantTurnOrchestrator:
         self.stopping_generation_id = None
         self.admitted_command_name = None
         self.admitted_publication_generation = None
-        self.scope = None
-        self.terminal_command = None
-        self.excluded_commands = frozenset()
         self.active_publication = PromptToolPublication.empty()
         self.cancelled = False
         self.cancellation_response_sent = False
@@ -238,9 +223,6 @@ class AssistantTurnOrchestrator:
     def reset_conversation(self) -> None:
         """Reset non-active turn state after the host has admitted a reset."""
         self.reset_for_user_turn()
-        self.scope = None
-        self.terminal_command = None
-        self.excluded_commands = frozenset()
 
     def reset_for_shutdown(self) -> None:
         """Clear active generation state when controller teardown owns no turn."""
@@ -299,10 +281,6 @@ class AssistantToolAttemptSession:
     def begin_execution(self) -> int:
         self.execution_count += 1
         return self.execution_count
-
-    def record_guided_repair(self) -> None:
-        """Consume the one repair slot for an invented published tool name."""
-        self.tool_failure_count = 1
 
     def record_failure(self) -> int:
         self.tool_failure_count += 1

@@ -11,19 +11,15 @@ def test_only_first_model_proposal_is_eligible_for_execution() -> None:
     assert policy.first_command([("one", {}), ("two", {})]) == ("one", {})
 
 
-def test_every_turn_is_limited_to_one_action_even_if_legacy_mode_is_multi() -> None:
+def test_every_turn_is_limited_to_one_action() -> None:
     policy = HostExecutionPolicy()
 
     first = policy.before_command(
-        mode="multi",
         execution_count=0,
-        workflow_tool_cap=5,
         cancelled=False,
     )
     second = policy.before_command(
-        mode="multi",
         execution_count=1,
-        workflow_tool_cap=5,
         cancelled=False,
     )
 
@@ -33,9 +29,7 @@ def test_every_turn_is_limited_to_one_action_even_if_legacy_mode_is_multi() -> N
 
 def test_cancelled_turn_never_starts_an_action() -> None:
     decision = HostExecutionPolicy().before_command(
-        mode="single",
         execution_count=0,
-        workflow_tool_cap=1,
         cancelled=True,
     )
 

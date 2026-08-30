@@ -112,7 +112,6 @@ from .turn import (
     AssistantTurnDeliveryAcknowledgement,
     AssistantTurnDeliveryPhase,
     AssistantTurnRequest,
-    AssistantTurnScope,
     AssistantTurnTerminal,
 )
 from .turn_orchestrator import (
@@ -395,8 +394,6 @@ class LLMController(QObject):
         )
         self._initialize_shutdown_lifecycle()
 
-        self._max_tool_executions = 5
-
         self._pending_interactions = PendingInteractionCoordinator()
 
     def _initialize_shutdown_lifecycle(self) -> None:
@@ -482,13 +479,6 @@ class LLMController(QObject):
         self.response_presentation_ready.emit(presentation)
         if marks_current_turn:
             self._tool_attempt_session.mark_response_visible()
-
-    def _active_policy_mode(self) -> str:
-        """Return immutable autonomy for the active turn."""
-        active_scope = self._turn_orchestrator.scope
-        if active_scope is not None:
-            return active_scope.policy_mode
-        return AssistantTurnScope.SINGLE_ACTION.policy_mode
 
     @staticmethod
     def _workflow_handoff_decision_owner(
@@ -578,7 +568,6 @@ class LLMController(QObject):
                     message="Assistant controller is busy.",
                 )
             self._turn_orchestrator.bind_host_turn(payload)
-            self.assembler.bind_turn_scope(payload.scope)
             self._handle_admitted_user_input(payload.text)
         except Exception as exc:
             failure = safe_unexpected_failure(
@@ -1289,8 +1278,6 @@ class LLMController(QObject):
             self._finalize_turn_after_tool()
             return
 
-        if self._reject_excluded_turn_command(command[0]):
-            return
         decision = self._evaluate_tool_proposal(
             command,
             response_text,
@@ -1322,9 +1309,7 @@ class LLMController(QObject):
         ]
         selection = self._tool_attempt_coordinator.select_proposal(
             normalized_commands,
-            mode=self._active_policy_mode(),
             execution_count=self._tool_attempt_session.execution_count,
-            workflow_tool_cap=self._max_tool_executions,
             cancelled=self._turn_orchestrator.cancelled,
         )
         command = selection.command
@@ -1488,8 +1473,6 @@ class LLMController(QObject):
     ) -> None:
         """Execute a verified decision and apply its continuation policy."""
         cmd = decision.command_name
-        if self._reject_excluded_turn_command(cmd):
-            return
         params = decision.params if execution_params is None else execution_params
         tool_context = execution_context or cast(
             ToolAvailabilityContext,
@@ -1690,48 +1673,6 @@ class LLMController(QObject):
             redact_public_text(command_name),
         )
         self._finalize_turn_after_tool()
-
-    def _reject_excluded_turn_command(self, command_name: str) -> bool:
-        """Fail closed before any command excluded by the user can run."""
-        mapped_command = AGENT_ACTION_CONTRACTS.tool_to_command().get(command_name)
-        if mapped_command is None:
-            try:
-                mapped_command = CommandName(command_name)
-            except ValueError:
-                return False
-        excluded_commands = self._turn_orchestrator.excluded_commands
-        if mapped_command not in excluded_commands:
-            return False
-
-        action_label = tool_action_label(command_name)
-        message = (
-            f"{action_label} was not run because your request explicitly excluded "
-            "that workflow stage."
-        )
-        logger.warning(
-            "Turn policy blocked excluded command: %s",
-            redact_public_text(mapped_command.value),
-        )
-        self.status_update.emit(f"Blocked: {message}")
-        self._publish_activity(
-            AssistantTurnActivityPhase.NEEDS_ATTENTION,
-            command_name=command_name,
-            message=message,
-        )
-        self._publish_response(
-            message,
-            kind=AssistantResponseKind.BLOCKED,
-        )
-        self._append_history(
-            "user",
-            f"System: Action excluded by the user: {mapped_command.value}",
-        )
-        self._tool_attempt_session.record_summary(
-            message,
-            AssistantResponseKind.BLOCKED,
-        )
-        self._finalize_turn_after_tool("blocked")
-        return True
 
     def _finalize_turn_after_tool(self, outcome: str = "completed"):
         """Finalizes the turn after tool execution.

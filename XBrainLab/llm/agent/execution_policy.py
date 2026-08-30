@@ -20,8 +20,6 @@ class ExecutionDecision:
 class HostExecutionPolicy:
     """Enforce one command and backend-owned confirmation per user turn."""
 
-    ASK_MODE = "single"
-
     @staticmethod
     def first_command(commands: Sequence[_Command]) -> _Command | None:
         return commands[0] if commands else None
@@ -44,15 +42,12 @@ class HostExecutionPolicy:
     def before_command(
         self,
         *,
-        mode: str,
         execution_count: int,
-        workflow_tool_cap: int,
         cancelled: bool,
     ) -> ExecutionDecision:
         """Enforce cancellation and per-turn tool caps before execution."""
         if cancelled:
             return ExecutionDecision(False, "cancelled")
-        del mode, workflow_tool_cap
         if execution_count >= 1:
             return ExecutionDecision(False, "tool_cap")
         return ExecutionDecision(True, "execute")

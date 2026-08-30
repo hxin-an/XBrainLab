@@ -298,7 +298,7 @@ class _ControllerRuntime(QObject):
         )
         self._next_turn_id += 1
         delivery = self.controller.handle_user_turn(
-            AssistantTurnRequest.single_action(
+            AssistantTurnRequest(
                 correlation=correlation,
                 text=text,
             )

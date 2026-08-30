@@ -2,7 +2,7 @@
 
 Provides the ``ChatPanel`` widget implementing a Copilot-style chat interface
 using ``MessageBubble`` widgets. Handles user input, streaming responses, and
-debug-mode interception. Execution scope is inferred by the host per turn.
+debug-mode interception.
 """
 
 from contextlib import suppress
@@ -75,7 +75,6 @@ from .styles import (
     SEND_BUTTON_STYLE,
     TURN_ACTIVITY_CANCELABILITY_STYLE,
     TURN_ACTIVITY_PROGRESS_STYLE,
-    TURN_ACTIVITY_SCOPE_STYLE,
     TURN_ACTIVITY_STEP_STYLE,
     TURN_ACTIVITY_STYLE,
     TURN_ACTIVITY_TITLE_STYLE,
@@ -567,13 +566,6 @@ class ChatPanel(QWidget):
         self.turn_activity_step.setWordWrap(True)
         activity_layout.addWidget(self.turn_activity_step)
 
-        self.turn_activity_scope = QLabel("")
-        self.turn_activity_scope.setObjectName("AssistantTurnActivityScope")
-        self.turn_activity_scope.setStyleSheet(TURN_ACTIVITY_SCOPE_STYLE)
-        self.turn_activity_scope.setWordWrap(True)
-        self.turn_activity_scope.setVisible(False)
-        activity_layout.addWidget(self.turn_activity_scope)
-
         self.turn_activity_progress = QProgressBar()
         self.turn_activity_progress.setObjectName("AssistantTurnActivityProgress")
         self.turn_activity_progress.setRange(0, 0)
@@ -1057,8 +1049,6 @@ class ChatPanel(QWidget):
         self.turn_activity_step.setText(
             f"Current step: {presentation.step}" if presentation.step else ""
         )
-        self.turn_activity_scope.setText(presentation.scope_summary)
-        self.turn_activity_scope.setVisible(bool(presentation.scope_summary))
         self.turn_activity_cancelability.setText(presentation.cancelability_text)
         self.turn_activity_widget.setProperty(
             "assistantCancelability",
@@ -1842,7 +1832,6 @@ class ChatPanel(QWidget):
             for label in (
                 self.turn_activity_title,
                 self.turn_activity_step,
-                self.turn_activity_scope,
                 self.turn_activity_cancelability,
             ):
                 self._fit_wrapped_label_height(label)

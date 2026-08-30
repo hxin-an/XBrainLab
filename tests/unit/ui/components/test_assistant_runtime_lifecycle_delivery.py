@@ -22,7 +22,6 @@ from XBrainLab.llm.agent.turn import (
     AssistantTurnDeliveryAcknowledgement,
     AssistantTurnDeliveryPhase,
     AssistantTurnRequest,
-    AssistantTurnScope,
     AssistantTurnTerminal,
 )
 from XBrainLab.llm.agent.ui_handoff import (
@@ -257,7 +256,7 @@ def test_rejected_submit_releases_the_reserved_turn() -> None:
     assert lifecycle.turn_in_flight is False
 
 
-def test_submit_resolves_one_immutable_scope_from_each_natural_request() -> None:
+def test_submit_preserves_each_natural_request_without_host_scope_routing() -> None:
     dispatcher = _DeliveryDispatcher()
     lifecycle, controller = _ready_lifecycle(dispatcher)
 
@@ -265,8 +264,6 @@ def test_submit_resolves_one_immutable_scope_from_each_natural_request() -> None
 
     assert single.accepted is True
     [single_request] = dispatcher.turn_requests
-    assert single_request.scope is AssistantTurnScope.SINGLE_ACTION
-    assert single_request.terminal_command is None
     controller.turn_finished.emit(
         AssistantTurnTerminal(
             correlation=single_request.correlation,
@@ -277,28 +274,21 @@ def test_submit_resolves_one_immutable_scope_from_each_natural_request() -> None
     guided = lifecycle.submit("Load this EEG file, preprocess it, and create epochs.")
 
     assert guided.accepted is True
-    assert guided.scope is AssistantTurnScope.SINGLE_ACTION
-    assert guided.terminal_command is None
-    assert guided.excluded_commands == ()
     guided_request = dispatcher.turn_requests[-1]
-    assert guided_request.scope is AssistantTurnScope.SINGLE_ACTION
-    assert guided_request.terminal_command is None
+    assert (
+        guided_request.text == "Load this EEG file, preprocess it, and create epochs."
+    )
 
 
-def test_submit_does_not_grant_an_excluded_preprocess_endpoint() -> None:
+def test_submit_leaves_natural_request_meaning_to_the_model() -> None:
     dispatcher = _DeliveryDispatcher()
     lifecycle, _controller = _ready_lifecycle(dispatcher)
 
     result = lifecycle.submit("Load the data but not preprocess it.")
 
     assert result.accepted is True
-    assert result.scope is AssistantTurnScope.SINGLE_ACTION
-    assert result.terminal_command is None
-    assert result.excluded_commands == ()
     [request] = dispatcher.turn_requests
-    assert request.scope is AssistantTurnScope.SINGLE_ACTION
-    assert request.terminal_command is None
-    assert request.excluded_commands == ()
+    assert request.text == "Load the data but not preprocess it."
 
 
 def test_delivery_error_releases_only_its_correlated_turn() -> None:

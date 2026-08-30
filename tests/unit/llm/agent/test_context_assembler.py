@@ -33,7 +33,6 @@ from XBrainLab.llm.agent.decision_context import (
 )
 from XBrainLab.llm.agent.turn import (
     AssistantResponseContract,
-    AssistantTurnScope,
 )
 from XBrainLab.llm.pipeline_state import STAGE_CONFIG, PipelineStage
 from XBrainLab.llm.tools.base import BaseTool
@@ -1833,7 +1832,6 @@ def test_assembler_sends_state_card_and_one_clean_assistant_message():
         return_value=PipelineStage.EMPTY,
     ):
         assembler = ContextAssembler(registry, mock_study)
-        assembler.bind_turn_scope(AssistantTurnScope.GUIDED_WORKFLOW)
         messages = assembler.get_messages(history)
 
     assert "Workflow Decision Context:" not in messages[0]["content"]
@@ -1944,7 +1942,6 @@ def test_continuation_authorization_does_not_narrow_backend_stage() -> None:
         Study(),
         application_runtime=_ApplicationRuntimeFake(publication),
     )
-    assembler.bind_turn_scope(AssistantTurnScope.GUIDED_WORKFLOW)
     assembler.set_turn_authorized_command(
         "preview_interpretation",
         continuation=True,

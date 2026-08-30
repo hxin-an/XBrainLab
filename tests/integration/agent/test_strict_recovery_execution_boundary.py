@@ -202,7 +202,7 @@ def _controller_with_script(
 
 def _submit_user_turn(controller: LLMController, text: str) -> None:
     controller.handle_user_turn(
-        AssistantTurnRequest.single_action(
+        AssistantTurnRequest(
             correlation=AssistantTurnCorrelation(generation=1, turn_id=1),
             text=text,
         )
