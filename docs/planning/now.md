@@ -28,10 +28,10 @@ optimization 必須從新的 Windows product-equivalent profile 另立 plan。
 
 PR #79 已在不跳過測試、不增加 timeout 的前提下修復 `assistant-runtime` shard 的重複
 process isolation，並以 merge commit `65d5957947eae8c20be9b9c91efae468c4779bcd`
-合併。B2 已 rebase 並 freeze 於 `a121cebb787d62fa54d3b91696917088b876fdeb`；
-exact-head CI 與 independent review 通過，但使用者檢查發現單一 raw event anchor 會被誤讀為
-class 清單，且 `Suggested from import`／`Suggested from loaded label files` 重複。PR #75 尚未
-通過 manual acceptance，必須在同一 branch 收斂 presentation 後重生所有 exact-source evidence。
+合併。B2 後續在同一 branch 收斂單一 raw event anchor 與重複 suggestion presentation；使用者已於
+`2026-08-30` 對 exact head `2cb82134a3973c7e322508e77d672c050a1aa25c` 完成手測並同意
+merge。PR #75 已以 merge commit `c7cf4b831c3a7579ee99a23b1a41c65251fa0c57` 合併，B2
+worktree 與本機／遠端 task branch 已清理；Lane B 現在進入 B3。
 
 本 campaign 要在不新增 workflow owner、不建立第二套 command／state truth 的前提下，交付：
 
@@ -61,8 +61,8 @@ class 清單，且 `Suggested from import`／`Suggested from loaded label files`
 - **Cross user-simulator**：非作者 worker 用 product-equivalent scenario 交叉驗證。這只是第二層
   保險，不取代 exact-SHA Windows 真人手測。
 
-現階段明確允許 `main + B2 product worktree + C2 Import profiling worktree`，再加一個
-ephemeral reviewer worktree。A2、C1 與 G1 worktree 已收旗；B3／B4／B5 不預先建立空 branch。
+現階段明確允許 `main + B3 product worktree + C2 Import profiling worktree`，再加一個
+ephemeral reviewer worktree。A2、B2、C1 與 G1 worktree 已收旗；B4／B5 不預先建立空 branch。
 Root 是唯一能修改本 plan 與處理兩條 branch rebase／status reconciliation 的角色。
 
 ## Lane A — comprehensive Assistant cleanup
@@ -119,7 +119,7 @@ A2 evaluator scripts／docs、B2 Epoch UI 與 C1 Import backend 的預期 produc
 incomplete mapping 與 Review 後替換 source；交付前跑 canonical source-diverse data gate。可見 UI 已取得
 使用者修改授權，但仍需 exact-SHA Windows 手測。
 
-### B2. Epoch imported-event presentation
+### B2. Epoch imported-event presentation (completed in PR #75)
 
 單一 `719`／`769` 是 placement anchor，不是多 class 清單；Apply 後 runtime event ID 也可能被重映射。
 PR #75 只收斂 Epoch 上方 presentation：

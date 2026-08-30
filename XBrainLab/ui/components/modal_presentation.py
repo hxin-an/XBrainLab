@@ -126,12 +126,16 @@ class ModalAlertDialog(BaseDialog):
         layout.setContentsMargins(18, 14, 18, 14)
         layout.setSpacing(8)
 
-        if self.is_confirmation:
+        if self.is_confirmation and self._severity is not AlertSeverity.WARNING:
             heading_row = QHBoxLayout()
             self.severity_label = self._create_severity_label()
             heading_row.addWidget(self.severity_label)
             heading_row.addStretch(1)
             layout.addLayout(heading_row)
+        if self.is_confirmation:
+            if self._severity is AlertSeverity.WARNING:
+                self.severity_label = self._create_severity_label()
+                self.severity_label.hide()
             self._add_message(layout)
         else:
             self._add_acknowledgement_content(layout)
@@ -220,7 +224,7 @@ class ModalAlertDialog(BaseDialog):
             self.windowTitle().strip().casefold()
             == self.severity_label.text().casefold()
         )
-        if not title_matches_severity:
+        if self._severity is not AlertSeverity.WARNING and not title_matches_severity:
             header_column.addWidget(self.severity_label)
         else:
             self.severity_label.hide()
