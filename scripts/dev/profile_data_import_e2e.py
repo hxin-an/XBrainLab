@@ -444,6 +444,11 @@ def validate_workload_correctness(
         return "interpretation was not applied"
     if not _is_sha256(value.get("event_sample_label_digest")):
         return "event digest is missing"
+    if workload_id == "bbci_gdf_file" and (
+        not isinstance(value.get("event_sample_label_row_count"), int)
+        or value["event_sample_label_row_count"] <= 0
+    ):
+        return "BBCI embedded event/sample-label rows are missing"
     recipe = value.get("recipe_identity")
     if not isinstance(recipe, Mapping) or not _is_sha256(
         recipe.get("reviewed_content_identity_digest")
@@ -523,6 +528,9 @@ def _correctness_signature(item: Mapping[str, Any]) -> str | None:
             "raw_file_count": correctness["raw_file_count"],
             "applied": correctness["applied"],
             "event_sample_label_digest": digest,
+            "event_sample_label_row_count": correctness.get(
+                "event_sample_label_row_count"
+            ),
             "recipe_identity": dict(recipe),
             "label_status": correctness.get("label_status"),
             "dataset_metadata": correctness.get("dataset_metadata"),
@@ -645,6 +653,158 @@ def _validate_recorded_source_identity(
     )
 
 
+_FULL_RUN_FIELDS = frozenset(
+    {"diagnostic", "warmup", "trace_calibration", "measured_trace_mode"}
+)
+_PASSED_MEASUREMENT_FIELDS = frozenset(
+    {
+        "events",
+        "heartbeat",
+        "process_resources",
+        "correctness",
+        "fixture",
+        "trace",
+    }
+)
+
+
+def _validate_passed_measurement(
+    identifier: str,
+    item: object,
+    *,
+    expected_trace_available: bool | None = None,
+) -> str | None:
+    if not isinstance(item, Mapping) or item.get("status") != "passed":
+        return "measurement is not passed"
+    trace = item.get("trace")
+    if (
+        not isinstance(item.get("timeline"), Mapping)
+        or not set(TIMING_FIELDS).issubset(item["timeline"])
+        or not _PASSED_MEASUREMENT_FIELDS.issubset(item)
+        or not isinstance(trace, Mapping)
+        or not isinstance(trace.get("available"), bool)
+        or _correctness_signature(item) is None
+    ):
+        return "measurement is incomplete"
+    if (
+        expected_trace_available is not None
+        and trace["available"] is not expected_trace_available
+    ):
+        return "measurement trace availability disagrees with its mode"
+    correctness_error = validate_workload_correctness(
+        identifier, item.get("correctness")
+    )
+    if correctness_error is not None:
+        return correctness_error
+    return None
+
+
+def _is_full_profile_run(run: Mapping[str, Any]) -> bool:
+    summary = run.get("summary")
+    return bool(_FULL_RUN_FIELDS.intersection(run)) or (
+        isinstance(summary, Mapping) and summary.get("required_pass_count") == 3
+    )
+
+
+def _validate_full_profile_run(
+    identifier: str,
+    run: Mapping[str, Any],
+    *,
+    environment_trace_mode: str,
+) -> str | None:
+    if not _FULL_RUN_FIELDS.issubset(run):
+        return "full profile run is missing calibration or trace mode fields"
+    mode = run.get("measured_trace_mode")
+    if mode not in {"coarse", "detailed"} or mode != environment_trace_mode:
+        return "full profile run trace mode disagrees with the environment"
+    passes = run.get("passes")
+    if not isinstance(passes, list) or len(passes) != 3:
+        return "full profile run must contain exactly three measured passes"
+    for item in passes:
+        error = _validate_passed_measurement(
+            identifier,
+            item,
+            expected_trace_available=mode == "detailed",
+        )
+        if error is not None:
+            return error
+    expected_summary = aggregate_passes(
+        passes,
+        required_count=3,
+        workload_id=identifier,
+    )
+    summary = run.get("summary")
+    if not isinstance(summary, Mapping) or dict(summary) != expected_summary:
+        return "full profile summary does not match measured passes"
+
+    calibration = run.get("trace_calibration")
+    if not isinstance(calibration, Mapping):
+        return "full profile calibration is missing"
+    coarse, detailed = calibration.get("coarse"), calibration.get("detailed")
+    if not isinstance(coarse, list) or not isinstance(detailed, list):
+        return "full profile calibration has an invalid shape"
+    if len(coarse) != 2 or len(detailed) != 2:
+        return (
+            "full profile calibration must contain two coarse and two detailed passes"
+        )
+    for item in coarse:
+        error = _validate_passed_measurement(
+            identifier,
+            item,
+            expected_trace_available=False,
+        )
+        if error is not None:
+            return f"coarse calibration {error}"
+    for item in detailed:
+        error = _validate_passed_measurement(
+            identifier,
+            item,
+            expected_trace_available=True,
+        )
+        if error is not None:
+            return f"detailed calibration {error}"
+    expected_calibration = calibrate_trace_overhead(coarse, detailed)
+    saved_calibration = calibration.get("summary")
+    if (
+        not isinstance(saved_calibration, Mapping)
+        or dict(saved_calibration) != expected_calibration
+    ):
+        return "full profile calibration result is inconsistent"
+    expected_mode = "detailed" if expected_calibration["detailed_allowed"] else "coarse"
+    if mode != expected_mode:
+        return "full profile run did not use the calibrated trace mode"
+    if run.get("diagnostic") != detailed[0] or run.get("warmup") != coarse[0]:
+        return "full profile diagnostic or warmup disagrees with calibration"
+    return None
+
+
+def _validate_one_pass_run(
+    identifier: str,
+    run: Mapping[str, Any],
+    *,
+    environment_trace_mode: str,
+) -> str | None:
+    passes = run.get("passes")
+    if not isinstance(passes, list) or len(passes) != 1:
+        return "one-pass profile must contain exactly one measured pass"
+    error = _validate_passed_measurement(
+        identifier,
+        passes[0],
+        expected_trace_available=environment_trace_mode == "detailed",
+    )
+    if error is not None:
+        return error
+    expected_summary = aggregate_passes(
+        passes,
+        required_count=1,
+        workload_id=identifier,
+    )
+    summary = run.get("summary")
+    if not isinstance(summary, Mapping) or dict(summary) != expected_summary:
+        return "one-pass summary does not match its measured pass"
+    return None
+
+
 def validate_artifact(
     payload: Mapping[str, Any],
     *,
@@ -698,14 +858,7 @@ def validate_artifact(
     )
     if environment.get("trace_mode") != expected_trace_mode:
         return False, "environment trace mode is inconsistent"
-    fields = {
-        "events",
-        "heartbeat",
-        "process_resources",
-        "correctness",
-        "fixture",
-        "trace",
-    }
+    run_records: list[tuple[str, Mapping[str, Any]]] = []
     for workload in workloads:
         identifier = workload.get("id") if isinstance(workload, Mapping) else None
         run = runs.get(identifier)
@@ -713,27 +866,37 @@ def validate_artifact(
             not isinstance(identifier, str)
             or not isinstance(run, Mapping)
             or not isinstance(run.get("passes"), list)
+            or not isinstance(run.get("summary"), Mapping)
         ):
-            return False, "workload is missing an id or pass list"
-        for item in run["passes"]:
-            if not isinstance(item, Mapping) or item.get("status") != "passed":
-                continue
-            trace, correctness = item.get("trace"), item.get("correctness")
-            if (
-                not isinstance(item.get("timeline"), Mapping)
-                or not set(TIMING_FIELDS).issubset(item["timeline"])
-                or not fields.issubset(item)
-                or not isinstance(trace, Mapping)
-                or not isinstance(trace.get("available"), bool)
-                or _correctness_signature(item) is None
-            ):
-                return False, f"passed {identifier} run is incomplete"
-            correctness_error = validate_workload_correctness(
+            return False, "workload is missing an id, summary, or pass list"
+        run_records.append((identifier, run))
+    one_pass_artifact = (
+        len(run_records) == 1
+        and not _is_full_profile_run(run_records[0][1])
+        and run_records[0][1]["summary"].get("required_pass_count") == 1
+    )
+    if not one_pass_artifact and not all(
+        _is_full_profile_run(run) for _identifier, run in run_records
+    ):
+        return False, "artifact has an incomplete full-profile workload"
+
+    for identifier, run in run_records:
+        if not one_pass_artifact:
+            error = _validate_full_profile_run(
                 identifier,
-                correctness,
+                run,
+                environment_trace_mode=str(trace_modes[identifier]),
             )
-            if correctness_error is not None:
-                return False, f"passed {identifier} run is invalid: {correctness_error}"
+            if error is not None:
+                return False, f"full {identifier} run is invalid: {error}"
+            continue
+        error = _validate_one_pass_run(
+            identifier,
+            run,
+            environment_trace_mode=str(trace_modes[identifier]),
+        )
+        if error is not None:
+            return False, f"one-pass {identifier} run is invalid: {error}"
     return True, "ok"
 
 
@@ -812,7 +975,7 @@ def fixture_inventory(workload: ImportWorkload) -> dict[str, int]:
     }
 
 
-def event_sample_label_digest(study: Any) -> str:
+def event_sample_label_summary(study: Any) -> tuple[int, str]:
     rows: list[tuple[int, str]] = []
     for data in study.loaded_data_list:
         events, event_id = data.get_event_list()
@@ -825,7 +988,7 @@ def event_sample_label_digest(study: Any) -> str:
     encoded = json.dumps(sorted(rows), ensure_ascii=True, separators=(",", ":")).encode(
         "utf-8"
     )
-    return hashlib.sha256(encoded).hexdigest()
+    return len(rows), hashlib.sha256(encoded).hexdigest()
 
 
 def _identity_digest(value: Any) -> str:
@@ -863,10 +1026,12 @@ def _base_correctness(state: Any, study: Any) -> dict[str, Any]:
     identity_rows = [
         data.get_source_content_identity() for data in study.loaded_data_list
     ]
+    event_row_count, event_digest = event_sample_label_summary(study)
     return {
         "raw_file_count": state.raw.count,
         "applied": interpretation.has_applied_interpretation,
-        "event_sample_label_digest": event_sample_label_digest(study),
+        "event_sample_label_digest": event_digest,
+        "event_sample_label_row_count": event_row_count,
         "label_status": {
             "source_kind": str(interpretation.source_kind or ""),
             "mode": "external_carriers" if label_plans else "embedded_events",

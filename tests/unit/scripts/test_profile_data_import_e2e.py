@@ -17,6 +17,7 @@ def _correctness(workload_id: str) -> dict[str, Any]:
         "raw_file_count": 1 if workload_id == "bbci_gdf_file" else 3,
         "applied": True,
         "event_sample_label_digest": EVENT_DIGEST,
+        "event_sample_label_row_count": 1,
         "recipe_identity": {
             "applied_interpretation_id": "interpretation-6",
             "saved_recipe_id": None,
@@ -87,13 +88,69 @@ def _artifact(
     source: dict[str, Any],
 ) -> dict[str, Any]:
     workload = _workload(workload_id)
+    passed = _passed(workload_id)
     return profile.build_artifact(
         source_identity=source,
         environment=profile.environment_identity(
             measured_trace_modes={workload_id: "detailed"}
         ),
         workloads=[workload],
-        workload_runs={workload_id: {"passes": [_passed(workload_id)]}},
+        workload_runs={
+            workload_id: {
+                "summary": profile.aggregate_passes(
+                    [passed],
+                    required_count=1,
+                    workload_id=workload_id,
+                ),
+                "passes": [passed],
+            }
+        },
+    )
+
+
+def _full_artifact(
+    workload_id: str,
+    source: dict[str, Any],
+    *,
+    force_coarse: bool = False,
+) -> dict[str, Any]:
+    workload = _workload(workload_id)
+    coarse = [_passed(workload_id) for _ in range(2)]
+    detailed = [_passed(workload_id) for _ in range(2)]
+    for item in coarse:
+        item["trace"] = {"available": False}
+    if force_coarse:
+        for item in detailed:
+            item["timeline"]["stable_idle_seconds"] = 1.0
+    calibration = profile.calibrate_trace_overhead(coarse, detailed)
+    measured = [_passed(workload_id) for _ in range(3)]
+    mode = "detailed" if calibration["detailed_allowed"] else "coarse"
+    if mode == "coarse":
+        for item in measured:
+            item["trace"] = {"available": False}
+    run = {
+        "diagnostic": detailed[0],
+        "warmup": coarse[0],
+        "passes": measured,
+        "summary": profile.aggregate_passes(
+            measured,
+            required_count=3,
+            workload_id=workload_id,
+        ),
+        "measured_trace_mode": mode,
+        "trace_calibration": {
+            "coarse": coarse,
+            "detailed": detailed,
+            "summary": calibration,
+        },
+    }
+    return profile.build_artifact(
+        source_identity=source,
+        environment=profile.environment_identity(
+            measured_trace_modes={workload_id: mode}
+        ),
+        workloads=[workload],
+        workload_runs={workload_id: run},
     )
 
 
@@ -111,6 +168,20 @@ def test_redaction_removes_any_string_with_an_absolute_path() -> None:
     }
     assert profile.contains_absolute_path(payload)
     assert not profile.contains_absolute_path(redacted)
+
+
+def test_event_summary_counts_observable_sample_label_rows() -> None:
+    class Data:
+        def get_event_list(self) -> tuple[list[tuple[int, int, int]], dict[str, int]]:
+            return [(10, 0, 1), (20, 0, 99), (30, 0, 2)], {"left": 1, "right": 2}
+
+    class Study:
+        def __init__(self) -> None:
+            self.loaded_data_list = [Data()]
+
+    count, digest = profile.event_sample_label_summary(Study())
+    assert count == 2
+    assert profile._is_sha256(digest)
 
 
 def test_trace_uses_exact_apply_stages_and_restores_original_once() -> None:
@@ -198,6 +269,7 @@ def test_timeline_heartbeat_and_aggregate_fail_closed() -> None:
         ("bbci_gdf_file", ("raw_file_count",), 2),
         ("bbci_gdf_file", ("applied",), False),
         ("bbci_gdf_file", ("event_sample_label_digest",), ""),
+        ("bbci_gdf_file", ("event_sample_label_row_count",), 0),
         ("bbci_gdf_file", ("recipe_identity", "applied_interpretation_id"), ""),
         ("bbci_gdf_file", ("recipe_identity", "reviewed_content_identity_digest"), ""),
         ("bbci_gdf_file", ("label_status", "mode"), "external_carriers"),
@@ -297,3 +369,78 @@ def test_calibration_requires_two_complete_detailed_passes() -> None:
         ]
         is False
     )
+
+
+def test_full_artifact_accepts_calibrated_coarse_fallback() -> None:
+    current = profile.collect_source_identity(profile.ROOT, refresh=True)
+    identity = {**current, "repo_root": profile.REPO_ROOT_TOKEN}
+    artifact = _full_artifact("bbci_gdf_file", identity, force_coarse=True)
+    run = artifact["runs"]["bbci_gdf_file"]
+    assert run["trace_calibration"]["summary"]["detailed_allowed"] is False
+    assert run["measured_trace_mode"] == "coarse"
+    assert profile.validate_artifact(artifact, current_identity=current) == (True, "ok")
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ("failed_pass", "extra_pass", "summary_corruption", "trace_mode_mismatch"),
+)
+def test_one_pass_artifact_rejects_measurement_summary_and_mode_mutations(
+    mutation: str,
+) -> None:
+    current = profile.collect_source_identity(profile.ROOT, refresh=True)
+    identity = {**current, "repo_root": profile.REPO_ROOT_TOKEN}
+    artifact = _artifact("bbci_gdf_file", identity)
+    assert profile.validate_artifact(artifact, current_identity=current) == (True, "ok")
+    mutated = deepcopy(artifact)
+    run = mutated["runs"]["bbci_gdf_file"]
+    if mutation == "failed_pass":
+        run["passes"][0]["status"] = "failed"
+    elif mutation == "extra_pass":
+        run["passes"].append(_passed("bbci_gdf_file"))
+    elif mutation == "summary_corruption":
+        run["summary"]["passed_pass_count"] = 0
+    else:
+        mutated["environment"]["measured_trace_modes"]["bbci_gdf_file"] = "coarse"
+        mutated["environment"]["trace_mode"] = "coarse"
+    assert profile.validate_artifact(mutated, current_identity=current)[0] is False
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "failed_measurement",
+        "extra_measurement",
+        "missing_calibration",
+        "failed_calibration",
+        "mode_mismatch",
+        "summary_corruption",
+        "calibration_summary_corruption",
+    ),
+)
+def test_full_artifact_rejects_measurement_and_calibration_mutations(
+    mutation: str,
+) -> None:
+    current = profile.collect_source_identity(profile.ROOT, refresh=True)
+    identity = {**current, "repo_root": profile.REPO_ROOT_TOKEN}
+    artifact = _full_artifact("bbci_gdf_file", identity)
+    assert profile.validate_artifact(artifact, current_identity=current) == (True, "ok")
+    mutated = deepcopy(artifact)
+    run = mutated["runs"]["bbci_gdf_file"]
+    if mutation == "failed_measurement":
+        run["passes"][0]["status"] = "failed"
+    elif mutation == "extra_measurement":
+        run["passes"].append(_passed("bbci_gdf_file"))
+    elif mutation == "missing_calibration":
+        del run["trace_calibration"]
+    elif mutation == "failed_calibration":
+        run["trace_calibration"]["coarse"][1]["status"] = "failed"
+    elif mutation == "mode_mismatch":
+        run["measured_trace_mode"] = "coarse"
+        mutated["environment"]["measured_trace_modes"]["bbci_gdf_file"] = "coarse"
+        mutated["environment"]["trace_mode"] = "coarse"
+    elif mutation == "summary_corruption":
+        run["summary"]["passed_pass_count"] = 2
+    else:
+        run["trace_calibration"]["summary"]["detailed_allowed"] = False
+    assert profile.validate_artifact(mutated, current_identity=current)[0] is False
