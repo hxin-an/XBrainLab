@@ -84,6 +84,7 @@ EXPECTED_TARGET_TOOLS = {
     PipelineStage.EMPTY: {"import_eeg_data", "switch_panel"},
     PipelineStage.DATA_LOADED: {
         "select_channels",
+        "set_montage",
         "apply_bandpass_filter",
         "apply_notch_filter",
         "resample_data",
@@ -93,6 +94,7 @@ EXPECTED_TARGET_TOOLS = {
         "switch_panel",
     },
     PipelineStage.PREPROCESSED: {
+        "set_montage",
         "apply_bandpass_filter",
         "apply_notch_filter",
         "resample_data",
@@ -103,7 +105,6 @@ EXPECTED_TARGET_TOOLS = {
         "switch_panel",
     },
     PipelineStage.EPOCH_READY: {
-        "set_montage",
         "configure_dataset_split",
         "select_model",
         "configure_training",
@@ -112,7 +113,6 @@ EXPECTED_TARGET_TOOLS = {
         "switch_panel",
     },
     PipelineStage.DATASET_READY: {
-        "set_montage",
         "configure_dataset_split",
         "select_model",
         "configure_training",
@@ -122,7 +122,6 @@ EXPECTED_TARGET_TOOLS = {
     },
     PipelineStage.TRAINING: {"stop_training", "switch_panel"},
     PipelineStage.TRAINED: {
-        "set_montage",
         "configure_dataset_split",
         "select_model",
         "configure_training",
@@ -358,6 +357,7 @@ class TestStageConfig:
     def test_data_loaded_has_preprocess_and_epoch_tools(self):
         tools = STAGE_CONFIG[PipelineStage.DATA_LOADED]["tools"]
         assert "select_channels" in tools
+        assert "set_montage" in tools
         assert "apply_bandpass_filter" in tools
         assert "create_epochs" in tools
         assert "apply_standard_preprocess" not in tools
@@ -374,6 +374,8 @@ class TestStageConfig:
 
     def test_preprocessed_has_epoching_but_not_dataset_generation(self):
         tools = STAGE_CONFIG[PipelineStage.PREPROCESSED]["tools"]
+        assert "select_channels" not in tools
+        assert "set_montage" in tools
         assert "create_epochs" in tools
         assert "configure_dataset_split" not in tools
         assert "validate_interpretation" not in tools
@@ -381,6 +383,8 @@ class TestStageConfig:
 
     def test_epoch_ready_has_configure_dataset_split(self):
         tools = STAGE_CONFIG[PipelineStage.EPOCH_READY]["tools"]
+        assert "select_channels" not in tools
+        assert "set_montage" not in tools
         assert "configure_dataset_split" in tools
         assert "create_epochs" not in tools
         assert "select_model" in tools
@@ -401,6 +405,8 @@ class TestStageConfig:
 
     def test_dataset_ready_has_training_but_no_preprocess(self):
         tools = STAGE_CONFIG[PipelineStage.DATASET_READY]["tools"]
+        assert "select_channels" not in tools
+        assert "set_montage" not in tools
         assert "select_model" in tools
         assert "configure_training" in tools
         assert "start_training" in tools
@@ -417,6 +423,26 @@ class TestStageConfig:
         trained = set(STAGE_CONFIG[PipelineStage.TRAINED]["tools"])
         ready = set(STAGE_CONFIG[PipelineStage.DATASET_READY]["tools"])
         assert trained == ready | {"clear_training_history", "compute_saliency"}
+
+    def test_channel_and_montage_are_published_only_before_epochs(self):
+        published = {
+            tool_name: {
+                stage
+                for stage, config in STAGE_CONFIG.items()
+                if tool_name in config["tools"]
+            }
+            for tool_name in ("select_channels", "set_montage")
+        }
+
+        assert published == {
+            "select_channels": {
+                PipelineStage.DATA_LOADED,
+            },
+            "set_montage": {
+                PipelineStage.DATA_LOADED,
+                PipelineStage.PREPROCESSED,
+            },
+        }
 
 
 # ---------------------------------------------------------------------------

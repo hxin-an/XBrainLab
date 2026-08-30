@@ -47,8 +47,8 @@ from .verifier import (
     DIRECT_PARAMETER_TOOLS,
     PathProvenanceVerifier,
     VerificationResult,
+    verified_direct_parameter_origin_values,
     verify_direct_parameter_origins,
-    verify_direct_parameter_reply_values,
 )
 
 logger = logging.getLogger(__name__)
@@ -103,7 +103,6 @@ class ToolAttemptAction(str, Enum):
     RESPOND = "respond"
     PUBLICATION_BLOCKED = "publication_blocked"
     PROVENANCE_BLOCKED = "provenance_blocked"
-    INTENT_BLOCKED = "intent_blocked"
     VERIFICATION_BLOCKED = "verification_blocked"
     CAPABILITY_BLOCKED = "capability_blocked"
     RESOURCE_CONFIRMATION_BLOCKED = "resource_confirmation_blocked"
@@ -134,7 +133,7 @@ class ToolAttemptRequest:
     repeated: bool = False
     enforce_direct_parameter_origins: bool = True
     tool_input_receipt: AssistantToolInputReceipt | None = None
-    supplied_parameters: dict[str, Any] | None = None
+    single_proposal: bool = True
 
 
 @dataclass(frozen=True)
@@ -152,6 +151,7 @@ class ToolAttemptDecision:
     resource_preflight_receipt: ResourceConfirmationChallenge | None = None
     edited_recommendation_fields: tuple[TrainingRecommendationField, ...] | None = None
     feedback: ToolAttemptFeedback = ToolAttemptFeedback.SYSTEM_REJECTION
+    tool_input_receipt: AssistantToolInputReceipt | None = None
 
 
 @dataclass(frozen=True)
@@ -240,6 +240,7 @@ class ToolAttemptCoordinator:
         question: str,
         original_user_text: str,
         publication: PromptToolPublication,
+        verified_parameters: tuple[tuple[str, Any], ...] = (),
     ) -> AssistantToolInputReceipt | None:
         """Admit one exact direct-tool clarification without granting execution."""
         if command_name not in DIRECT_PARAMETER_TOOLS or not publication.permits(
@@ -263,6 +264,15 @@ class ToolAttemptCoordinator:
             or not 1 <= len(missing_inputs) <= 2
             or len(set(missing_inputs)) != len(missing_inputs)
             or bool(set(missing_inputs) - set(required_names))
+            or any(
+                not isinstance(item, tuple)
+                or len(item) != 2
+                or not isinstance(item[0], str)
+                or item[0] not in required_names
+                for item in verified_parameters
+            )
+            or len({item[0] for item in verified_parameters})
+            != len(verified_parameters)
         ):
             return None
         return AssistantToolInputReceipt(
@@ -271,6 +281,7 @@ class ToolAttemptCoordinator:
             question=question,
             publication_generation=generation,
             missing_inputs=required_names,
+            verified_parameters=verified_parameters,
         )
 
     def select_proposal(
@@ -351,6 +362,38 @@ class ToolAttemptCoordinator:
                     },
                 ),
             )
+        receipt = request.tool_input_receipt
+        receipt_matches = receipt is not None and receipt.matches(
+            command_name,
+            request.publication.backend_generation,
+        )
+        if receipt is not None and not receipt_matches:
+            return ToolAttemptDecision(
+                ToolAttemptAction.RESPOND,
+                command_name,
+                params,
+                context=context,
+                message=(
+                    "The pending action or workflow state changed. Please start the "
+                    "requested action again."
+                ),
+            )
+        receipt_complete = receipt_matches and set(
+            dict(receipt.verified_parameters)
+        ) == set(receipt.missing_inputs)
+        if receipt_matches and not receipt_complete:
+            return ToolAttemptDecision(
+                ToolAttemptAction.RESPOND,
+                command_name,
+                params,
+                context=context,
+                message=(
+                    "I could not confirm all required values. Please start the "
+                    "action again with all required parameters."
+                ),
+            )
+        if receipt_complete:
+            params = dict(receipt.verified_parameters)
         provenance_result = self._provenance_result(request, context)
         if provenance_result is not None:
             return ToolAttemptDecision(
@@ -360,6 +403,30 @@ class ToolAttemptCoordinator:
                 context=context,
                 result=provenance_result,
             )
+
+        origin_validation = (
+            VerificationResult(True)
+            if not request.enforce_direct_parameter_origins or receipt_complete
+            else verify_direct_parameter_origins(
+                command_name,
+                params,
+                request.latest_user_text,
+            )
+        )
+        if not origin_validation.is_valid:
+            receipt = self._origin_receipt(request, context, origin_validation)
+            if receipt is not None:
+                return ToolAttemptDecision(
+                    ToolAttemptAction.RESPOND,
+                    command_name,
+                    params,
+                    context=context,
+                    message=(
+                        origin_validation.error_message
+                        or "What parameters should I use for this action?"
+                    ),
+                    tool_input_receipt=receipt,
+                )
 
         validation = self._verifier.verify_tool_call(
             (command_name, params),
@@ -380,35 +447,17 @@ class ToolAttemptCoordinator:
                 feedback=ToolAttemptFeedback.TOOL_OUTPUT,
             )
 
-        if request.enforce_direct_parameter_origins:
-            receipt = request.tool_input_receipt
-            if receipt is not None and receipt.matches(
+        if not origin_validation.is_valid:
+            return ToolAttemptDecision(
+                ToolAttemptAction.RESPOND,
                 command_name,
-                request.publication.backend_generation,
-            ):
-                supplied = request.supplied_parameters or params
-                origin_validation = verify_direct_parameter_reply_values(
-                    command_name,
-                    supplied,
-                    request.latest_user_text,
-                )
-            else:
-                origin_validation = verify_direct_parameter_origins(
-                    command_name,
-                    params,
-                    request.latest_user_text,
-                )
-            if not origin_validation.is_valid:
-                return ToolAttemptDecision(
-                    ToolAttemptAction.RESPOND,
-                    command_name,
-                    params,
-                    context=context,
-                    message=(
-                        origin_validation.error_message
-                        or "What parameters should I use for this action?"
-                    ),
-                )
+                params,
+                context=context,
+                message=(
+                    origin_validation.error_message
+                    or "What parameters should I use for this action?"
+                ),
+            )
 
         if not context.availability.enabled:
             return ToolAttemptDecision(
@@ -452,6 +501,34 @@ class ToolAttemptCoordinator:
             context=context,
             tool=tool,
             edited_recommendation_fields=edited_recommendation_fields,
+        )
+
+    def _origin_receipt(
+        self,
+        request: ToolAttemptRequest,
+        context: ToolAvailabilityContext,
+        origin: VerificationResult,
+    ) -> AssistantToolInputReceipt | None:
+        """Turn one safe direct-parameter rejection into bounded follow-up state."""
+        if (
+            request.tool_input_receipt is not None
+            or not request.single_proposal
+            or not context.availability.enabled
+        ):
+            return None
+        return self.admit_typed_clarification(
+            command_name=request.command_name,
+            missing_inputs=tuple(request.params),
+            question=(
+                origin.error_message or "What parameters should I use for this action?"
+            ),
+            original_user_text=request.latest_user_text,
+            publication=request.publication,
+            verified_parameters=verified_direct_parameter_origin_values(
+                request.command_name,
+                request.params,
+                request.latest_user_text,
+            ),
         )
 
     def context_for(self, command_name: str) -> ToolAvailabilityContext:

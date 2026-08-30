@@ -767,11 +767,11 @@ def test_model_import_action_opens_typed_product_surface_directly(
         qtbot.waitUntil(manager.chat_dock.isVisible, timeout=2_000)
 
         panel = manager.chat_panel
-        panel.input_field.setText("幫我處理資料")
+        panel.input_field.setText("Import an EEG data file.")
         qtbot.waitUntil(panel.send_btn.isEnabled, timeout=2_000)
         _click(qtbot, panel.send_btn)
         qtbot.waitUntil(lambda: bool(chooser_calls), timeout=2_000)
-        assert runtime.submissions == ["幫我處理資料"]
+        assert runtime.submissions == ["Import an EEG data file."]
         assert runtime.delivery_phases == [AssistantTurnDeliveryPhase.ACCEPTED]
         assert len(handoff_requests) == 1
         assert handoff_requests[0].command is CommandName.SCAN_SOURCE

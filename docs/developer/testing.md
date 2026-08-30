@@ -179,6 +179,37 @@ timeout 30m prlimit --core=0 -- \
 
 這個評分會真的讓 Granite 回答固定 prompt，但不會執行模型選出的工具。
 
+在載入模型前，可先輸出一個只使用checked-in synthetic case與pinned tokenizer的Markdown dossier。它會完整
+保留`ContextAssembler` raw messages、`LocalBackend` processed messages，以及runtime context-fit後真正會送進
+`generate_stream`的prompt；不載入model weights：
+
+```bash
+poetry run python scripts/dev/export_assistant_prompt.py \
+  --case-id clarify_notch_en \
+  --out build/dev-artifacts/assistant-prompt-review/clarify_notch_en.md
+```
+
+每份dossier都標記HEAD SHA與clean/dirty source state；dirty prompt不可以被誤稱為該HEAD的exact artifact。
+
+### Opt-in runtime prompt capture
+
+要擷取 GUI 實際送入本機模型的 fitted prompt 與 raw output，啟動前明確設定絕對路徑：
+
+```bash
+export XBRAINLAB_ASSISTANT_PROMPT_CAPTURE_DIR="$PWD/build/dev-artifacts/assistant-runtime-prompts"
+```
+
+每次 generation（包括 retry）會在 child-local session 的遞增序號目錄寫入
+`prompt.txt`、`raw-output.txt` 與 `metadata.json`。未設定旗標時不做 capture I/O；capture 寫入失敗不會影響
+模型推論。artifact 可能包含 chat、檔案路徑和 dataset／subject metadata。`build/` 被 Git ignore **不代表保密**：
+只能選受控本機目錄，不要納入 support bundle 或上傳，完成後由操作者人工刪除。
+
+所有 active first-turn cases（36 positive、14 challenge、24 no-action precision）都會經同一個
+`ApplicationViewPublication` fixture 與 `ContextAssembler.get_messages`。dossier中的 state card、不可用
+action projection與 LocalBackend role boundary 因此是產品路徑，而不是 evaluator 手組的 stage catalog。
+36-case count維持不變；`start_training`改由最小可呼叫的`dataset_ready` fixture產生，故v9結果不可與舊有
+把它手組在`epoch_ready`的結果直接比較。
+
 執行前先確認 active decision 指定的 Granite 4.0 Micro 3B exact revision已存在active model cache。將下列兩個範例
 路徑換成本機實際位置：
 
@@ -204,18 +235,21 @@ timeout 30m prlimit --core=0 -- \
 故障；只用於bounded baseline比較。只有要判定Stable promotion時才加入`--strict`，canonical handoff
 registry也維持strict模式。
 
-目前v8 runner固定執行81個案例：36個positive、14個challenge、24個雙語no-action precision與
-7個controller-backed clarification trajectories。候選 gate 要求：
+目前v9 runner固定執行81個英文案例：36個positive、14個challenge、24個no-action precision與
+7個controller-backed clarification trajectories。report分成first-generation raw model、post-recovery diagnostic、
+Host safety與product outcome；Host block或format recovery只能證明產品安全，不能增加first-generation
+raw model分數。候選 gate 要求：
 
 - 36/36 positive cases 的工具與參數完全正確。
 - 10/10 明確參數來源檢查通過。
-- 5/5 缺少參數時的 host guard 通過。
+- 5/5 缺少參數時的 host guard 通過；raw model本身必須追問正確缺少欄位。
 - 24/24 no-action precision outcomes沒有confirmation、GUI handoff、execution或state mutation。
 - 7/7 clarification trajectories經production controller抵達verified execute boundary：五個direct
   preprocess continuation、generic filter選擇bandpass後再追問，以及bandpass先low再high的partial
   accumulation；raw第一發與最多兩次format recovery分開記錄。
 
-其餘 challenge 結果用來記錄模型限制，不回填raw-model accuracy。產生的 JSON report 只支持該次
+challenge的tool／stage／parameter／continuation／safety錯誤為零；最多三個非關鍵回覆措詞問題會完整列出。
+產生的 JSON report 只支持該次
 使用的 exact model、revision、source 和81個固定案例；它不能證明任意對話、工具實際執行或
 論文等級的整體正確率。
 
@@ -303,12 +337,12 @@ poetry run python run.py --model local
    若手動把focus移到其他控制，Assistant不得搶回。
 5. 用完整單一要求`Apply a 12 to 40 Hz bandpass filter`確認既有confirmation／GUI workflow仍可到達，
    但不要把confirmation、dialog或working-copy mutation誤寫成raw EEG被覆寫。
-6. 診斷多輪路徑：輸入`Filter the data`→`bandpass`→`12 to 40 Hz`，再於New Chat輸入
-   `Apply a bandpass filter`→`12 to 40 Hz`。記錄每輪terminal與是否只產生一個bounded action；目前exact
-   v8的production-controller final為0/7，因此無法續接或再次追問可列為已知限制，不得宣稱已解決。
-7. 在對應安全stage重現`請建立 EEG epochs。`、`幫我處理一下這些 EEG 資料。`、
-   `Apply a 4 to 38 Hz bandpass and then resample to 128 Hz.`與`先套用 4 到 38 Hz 帶通，再重採樣成
-   128 Hz。`。記錄response、confirmation／handoff與bounded action；必要時取消dialog／confirmation。
+6. 診斷多輪路徑：輸入`Filter the data`→`Use a bandpass filter`→`12 to 40 Hz`，再於New Chat輸入
+   `Apply a bandpass filter`→`12 to 40 Hz`。記錄每輪terminal與是否只產生一個bounded action；以同一SHA的
+   v9 report和prompt dossier判讀，不將Host receipt或format recovery當成模型自行續接的證據。
+7. 在對應安全stage重現`Create EEG epochs.`、`Please process this EEG data.`、
+   `Apply a 4 to 38 Hz bandpass and then resample to 128 Hz.`與`Set average reference and normalize with
+   z-score.`。記錄response、confirmation／handoff與bounded action；必要時取消dialog／confirmation。
 
 Modal、按鈕不可用、Space清對話、中文無法commit／重複送出、focus被搶、短bubble尾端空白、完整單一
 action回歸、crash、資料損失、跨New Chat／Stop／Close繼承receipt或失控重複執行都算失敗並停止。第6、7步

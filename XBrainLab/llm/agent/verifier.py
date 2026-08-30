@@ -56,10 +56,144 @@ DIRECT_PARAMETER_TOOLS = frozenset(
     }
 )
 _DECIMAL_NUMBER_PATTERN = r"(?<![\w.])[-+]?(?:\d+(?:\.\d+)?|\.\d+)(?![\w.])"
-_CLAUSE_SEPARATOR = re.compile(
-    r"(?<!\d)[.!?。\uff01\uff1f\uff1b;\n]+|"
-    r"[.!?。\uff01\uff1f\uff1b;\n]+(?!\d)"
-)
+
+
+def collect_direct_parameter_reply_evidence(
+    tool_name: str,
+    verified_parameters: tuple[tuple[str, Any], ...],
+    unassigned_bandpass_cutoff: float | int | None,
+    latest_user_text: str,
+) -> tuple[tuple[tuple[str, Any], ...], float | int | None] | None:
+    """Collect bounded user evidence for one already-admitted direct action.
+
+    The receipt supplies the action identity.  This function never chooses an
+    action, trusts model values, or changes capability/execution policy.
+    ``None`` is a fail-closed clear-and-restart result.
+    """
+    if tool_name not in DIRECT_PARAMETER_TOOLS:
+        return None
+    text = unicodedata.normalize("NFKC", latest_user_text).strip()
+    if (
+        not text
+        or len(text) > 256
+        or not _is_direct_parameter_value_reply(tool_name, text)
+    ):
+        return None
+    verified = dict(verified_parameters)
+    values = [
+        _positive_arabic_decimal(match.group(0))
+        for match in re.finditer(_DECIMAL_NUMBER_PATTERN, text)
+    ]
+    if tool_name == "apply_bandpass_filter":
+        if not values or any(value is None for value in values):
+            return None
+        if verified:
+            if (
+                len(verified) != 1
+                or unassigned_bandpass_cutoff is not None
+                or len(values) != 1
+            ):
+                return None
+            remaining = next(
+                field for field in ("low_freq", "high_freq") if field not in verified
+            )
+            verified[remaining] = values[0]
+            return (
+                tuple((field, verified[field]) for field in ("low_freq", "high_freq")),
+                None,
+            )
+        if len(values) == 1:
+            value = values[0]
+            if value is None:
+                return None
+            if unassigned_bandpass_cutoff is None:
+                return (), value
+            values = [unassigned_bandpass_cutoff, value]
+        if len(values) != 2:
+            return None
+        low, high = sorted(values)
+        return (
+            (
+                (("low_freq", low), ("high_freq", high)),
+                None,
+            )
+            if low < high
+            else None
+        )
+    if verified or unassigned_bandpass_cutoff is not None:
+        return None
+    if tool_name in {"apply_notch_filter", "resample_data"}:
+        field = "freq" if tool_name == "apply_notch_filter" else "rate"
+        value = values[0] if len(values) == 1 else None
+        if value is None or not _clarification_reply_contains_number(value, text):
+            return None
+        return ((field, value),), None
+    if tool_name == "normalize_data":
+        methods = [
+            method
+            for method, pattern in {
+                "z-score": r"\bz[\s-]*score\b",
+                "min-max": r"\bmin[\s-]*max\b",
+            }.items()
+            if re.search(pattern, text, re.IGNORECASE)
+        ]
+        return ((("method", methods[0]),), None) if len(methods) == 1 else None
+    method = text.rstrip(".。!").strip()
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,63}", method):
+        return None
+    return (("method", method),), None
+
+
+def is_explicit_tool_input_cancel(text: str) -> bool:
+    """Recognize only a standalone receipt cancellation token."""
+    return bool(
+        re.fullmatch(
+            r"\s*(?:cancel|never\s+mind|取消|算了)\s*[.!。\uff01]?\s*",
+            unicodedata.normalize("NFKC", text),
+            re.IGNORECASE,
+        )
+    )
+
+
+def _is_direct_parameter_value_reply(tool_name: str, text: str) -> bool:
+    """Accept only a bounded value shape, never an action or intent sentence."""
+    stripped = text.strip().rstrip(".。!\uff01")
+    if tool_name in {"apply_notch_filter", "resample_data"}:
+        return bool(
+            re.fullmatch(
+                rf"{_DECIMAL_NUMBER_PATTERN}(?:\s*(?:hz|赫茲))?",
+                stripped,
+                re.IGNORECASE,
+            )
+        )
+    if tool_name == "apply_bandpass_filter":
+        return bool(
+            re.fullmatch(
+                rf"{_DECIMAL_NUMBER_PATTERN}(?:\s*(?:hz|赫茲))?"
+                rf"(?:\s+{_DECIMAL_NUMBER_PATTERN}(?:\s*(?:hz|赫茲))?"
+                rf"|\s*(?:,|;|/|:|=|~|-|\u2013|\u2014|and|to)\s*"
+                rf"{_DECIMAL_NUMBER_PATTERN}(?:\s*(?:hz|赫茲))?)?",
+                stripped,
+                re.IGNORECASE,
+            )
+        )
+    if tool_name == "normalize_data":
+        return bool(
+            re.fullmatch(r"(?:z[\s-]*score|min[\s-]*max)", stripped, re.IGNORECASE)
+        )
+    return bool(re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,63}", stripped))
+
+
+def _positive_arabic_decimal(value: str) -> float | int | None:
+    try:
+        decimal = Decimal(value)
+    except InvalidOperation:
+        return None
+    if not decimal.is_finite() or decimal <= 0:
+        return None
+    if decimal == decimal.to_integral_value():
+        return int(decimal)
+    return float(decimal)
 
 
 def verify_direct_parameter_origins(
@@ -78,153 +212,45 @@ def verify_direct_parameter_origins(
         return VerificationResult(True)
 
     text = unicodedata.normalize("NFKC", latest_user_text).strip()
-    clauses = tuple(
-        clause.strip() for clause in _CLAUSE_SEPARATOR.split(text) if clause.strip()
-    )
     if tool_name == "apply_bandpass_filter":
-        return _verify_bandpass_origins(params, clauses)
+        return _verify_bandpass_origins(params, text)
     if tool_name == "apply_notch_filter":
         return _verify_single_numeric_origin(
-            params.get("freq"),
-            clauses,
-            before_pattern=r"(?:notch|陷波)(?:\s+(?:filter|濾波))?[^\d\n]{0,24}?",
-            after_pattern=r"\s*(?:hz)?\s*(?:notch|陷波)",
-            question="What notch frequency should I use?",
+            params.get("freq"), text, "What notch frequency should I use?"
         )
     if tool_name == "resample_data":
         return _verify_single_numeric_origin(
-            params.get("rate"),
-            clauses,
-            before_pattern=(
-                r"(?:re[\s-]*sampl(?:e|ing)|重採樣|重取樣)"
-                r"[^\d\n]{0,32}?(?:to|at|into|到|至|為)\s*"
-            ),
-            after_pattern=None,
-            question="What resampling rate should I use?",
+            params.get("rate"), text, "What resampling rate should I use?"
         )
     if tool_name == "normalize_data":
         return _verify_method_origin(
             params.get("method"),
-            clauses,
-            cue_pattern=r"(?:normaliz(?:e|ation)|正規化|標準化)",
+            text,
             aliases={
                 "zscore": r"z[\s-]*score",
                 "minmax": r"min[\s-]*max",
             },
             question="Which normalization method should I use: z-score or min-max?",
         )
-    return _verify_reference_origin(params.get("method"), clauses)
+    return _verify_reference_origin(params.get("method"), text)
 
 
-def verify_direct_parameter_clarification_reply(
+def verified_direct_parameter_origin_values(
     tool_name: str,
     params: dict[str, Any],
     latest_user_text: str,
-) -> VerificationResult:
-    """Verify values in an immediate answer to a typed direct-tool question.
-
-    The receipt supplies the exact action identity. This function supplies no
-    action selection or capability; it only proves that the model's proposed
-    values are present in the latest user-authored answer.
-    """
-    regular = verify_direct_parameter_origins(tool_name, params, latest_user_text)
-    if regular.is_valid or tool_name not in DIRECT_PARAMETER_TOOLS:
-        return regular
-
+) -> tuple[tuple[str, Any], ...]:
+    """Return only direct parameter values proven by the current user text."""
+    if tool_name != "apply_bandpass_filter":
+        return ()
     text = unicodedata.normalize("NFKC", latest_user_text).strip()
-    if not text or len(text) > 256 or _clarification_reply_is_cancelled(text):
-        return regular
-
-    if tool_name == "apply_bandpass_filter":
-        range_pattern = re.compile(
-            rf"(?P<low>{_DECIMAL_NUMBER_PATTERN})\s*(?:hz\s*)?"
-            rf"(?:to|through|[-\u2013\u2014~\uff5e]|到|至)\s*"
-            rf"(?P<high>{_DECIMAL_NUMBER_PATTERN})\s*(?:hz)?",
-            re.IGNORECASE,
-        )
-        return (
-            VerificationResult(True)
-            if any(
-                _numbers_equal(params.get("low_freq"), match.group("low"))
-                and _numbers_equal(params.get("high_freq"), match.group("high"))
-                for match in range_pattern.finditer(text)
-            )
-            else regular
-        )
-
-    if tool_name in {"apply_notch_filter", "resample_data"}:
-        field_name = "freq" if tool_name == "apply_notch_filter" else "rate"
-        return (
-            VerificationResult(True)
-            if _clarification_reply_contains_number(params.get(field_name), text)
-            else regular
-        )
-
-    if tool_name == "normalize_data":
-        method = str(params.get("method", "")).strip().lower()
-        patterns = {
-            "z-score": r"\bz[\s-]*score\b",
-            "min-max": r"\bmin[\s-]*max\b",
-        }
-        pattern = patterns.get(method)
-        return (
-            VerificationResult(True)
-            if pattern is not None and re.search(pattern, text, re.IGNORECASE)
-            else regular
-        )
-
-    method = str(params.get("method", "")).strip()
-    if not method:
-        return regular
-    return (
-        VerificationResult(True)
-        if re.search(rf"(?<!\w){re.escape(method)}(?!\w)", text, re.IGNORECASE)
-        else regular
-    )
-
-
-def verify_direct_parameter_reply_values(
-    tool_name: str,
-    params: dict[str, Any],
-    latest_user_text: str,
-) -> VerificationResult:
-    """Verify a bounded partial answer without selecting an action."""
-    text = unicodedata.normalize("NFKC", latest_user_text).strip()
-    if not text or len(text) > 256 or _clarification_reply_is_cancelled(text):
-        return VerificationResult(False, "The requested value was not provided.")
-    if tool_name == "apply_bandpass_filter":
-        return VerificationResult(
-            all(
-                any(
-                    _numbers_equal(value, match.group(0))
-                    for match in re.finditer(_DECIMAL_NUMBER_PATTERN, text)
-                )
-                for value in params.values()
-            ),
-            "The requested cutoff values were not provided.",
-        )
-    if tool_name in {"apply_notch_filter", "resample_data"}:
-        return VerificationResult(
-            all(
-                _clarification_reply_contains_number(value, text)
-                for value in params.values()
-            ),
-            "The requested frequency was not provided.",
-        )
-    if tool_name == "normalize_data":
-        return verify_direct_parameter_clarification_reply(tool_name, params, text)
-    return verify_direct_parameter_clarification_reply(tool_name, params, text)
-
-
-def _clarification_reply_is_cancelled(text: str) -> bool:
-    return bool(
-        re.search(
-            r"(?:\b(?:cancel|never\s+mind|do\s+not|don't|not\s+now)\b|"
-            r"算了|取消|不要|不用|先不要)",
-            text,
-            re.IGNORECASE,
-        )
-    )
+    low_verified, high_verified = _bandpass_origin_matches(params, text)
+    verified: list[tuple[str, Any]] = []
+    if low_verified:
+        verified.append(("low_freq", params.get("low_freq")))
+    if high_verified:
+        verified.append(("high_freq", params.get("high_freq")))
+    return tuple(verified)
 
 
 def _clarification_reply_contains_number(value: Any, text: str) -> bool:
@@ -244,30 +270,11 @@ def _clarification_reply_contains_number(value: Any, text: str) -> bool:
 
 def _verify_bandpass_origins(
     params: dict[str, Any],
-    clauses: tuple[str, ...],
+    text: str,
 ) -> VerificationResult:
-    low = params.get("low_freq")
-    high = params.get("high_freq")
-    cue = re.compile(r"(?:band[\s-]*pass|帶通)", re.IGNORECASE)
-    range_pattern = re.compile(
-        rf"(?P<low>{_DECIMAL_NUMBER_PATTERN})\s*(?:hz\s*)?"
-        rf"(?:to|through|[-\u2013\u2014~\uff5e]|到|至)\s*"
-        rf"(?P<high>{_DECIMAL_NUMBER_PATTERN})\s*(?:hz)?",
-        re.IGNORECASE,
-    )
-    low_verified = False
-    high_verified = False
-    for clause in clauses:
-        if cue.search(clause) is None:
-            continue
-        for match in range_pattern.finditer(clause):
-            low_matches = _numbers_equal(low, match.group("low"))
-            high_matches = _numbers_equal(high, match.group("high"))
-            low_verified = low_verified or low_matches
-            high_verified = high_verified or high_matches
-            if low_matches and high_matches:
-                return VerificationResult(True)
-
+    low_verified, high_verified = _bandpass_origin_matches(params, text)
+    if low_verified and high_verified:
+        return VerificationResult(True)
     if high_verified and not low_verified:
         return VerificationResult(
             False,
@@ -284,40 +291,34 @@ def _verify_bandpass_origins(
     )
 
 
+def _bandpass_origin_matches(params: dict[str, Any], text: str) -> tuple[bool, bool]:
+    """Return cutoffs proven only by Arabic-decimal membership."""
+    low = params.get("low_freq")
+    high = params.get("high_freq")
+    values = tuple(re.finditer(_DECIMAL_NUMBER_PATTERN, text))
+    return (
+        any(_numbers_equal(low, value.group(0)) for value in values),
+        any(_numbers_equal(high, value.group(0)) for value in values),
+    )
+
+
 def _verify_single_numeric_origin(
     value: Any,
-    clauses: tuple[str, ...],
-    *,
-    before_pattern: str,
-    after_pattern: str | None,
+    text: str,
     question: str,
 ) -> VerificationResult:
-    before = re.compile(
-        rf"{before_pattern}(?P<value>{_DECIMAL_NUMBER_PATTERN})\s*(?:hz)?",
-        re.IGNORECASE,
-    )
-    after = (
-        re.compile(
-            rf"(?P<value>{_DECIMAL_NUMBER_PATTERN}){after_pattern}",
-            re.IGNORECASE,
-        )
-        if after_pattern is not None
-        else None
-    )
-    for clause in clauses:
-        matches = list(before.finditer(clause))
-        if after is not None:
-            matches.extend(after.finditer(clause))
-        if any(_numbers_equal(value, match.group("value")) for match in matches):
-            return VerificationResult(True)
+    if any(
+        _numbers_equal(value, match.group(0))
+        for match in re.finditer(_DECIMAL_NUMBER_PATTERN, text)
+    ):
+        return VerificationResult(True)
     return VerificationResult(False, question)
 
 
 def _verify_method_origin(
     value: Any,
-    clauses: tuple[str, ...],
+    text: str,
     *,
-    cue_pattern: str,
     aliases: dict[str, str],
     question: str,
 ) -> VerificationResult:
@@ -325,16 +326,15 @@ def _verify_method_origin(
     alias_pattern = aliases.get(normalized_value)
     if alias_pattern is None:
         return VerificationResult(False, question)
-    cue = re.compile(cue_pattern, re.IGNORECASE)
     alias = re.compile(alias_pattern, re.IGNORECASE)
-    if any(cue.search(clause) and alias.search(clause) for clause in clauses):
+    if alias.search(text):
         return VerificationResult(True)
     return VerificationResult(False, question)
 
 
 def _verify_reference_origin(
     value: Any,
-    clauses: tuple[str, ...],
+    text: str,
 ) -> VerificationResult:
     question = "What EEG reference method should I use?"
     if not isinstance(value, str) or not value.strip():
@@ -343,26 +343,7 @@ def _verify_reference_origin(
     if not escaped_words:
         return VerificationResult(False, question)
     method = r"[\s_-]*".join(escaped_words)
-    patterns = (
-        re.compile(rf"\b{method}\b\s+(?:eeg\s+)?reference\b", re.IGNORECASE),
-        re.compile(
-            rf"\b(?:set|use)\s+\b{method}\b\s+as\s+(?:the\s+)?"
-            r"(?:eeg\s+)?reference\b",
-            re.IGNORECASE,
-        ),
-        re.compile(
-            rf"\breference\b[^.!?。\uff01\uff1f\n]{{0,24}}?"
-            rf"(?:to|using|with|as)\s+\b{method}\b",
-            re.IGNORECASE,
-        ),
-        re.compile(
-            rf"(?:重新參考|重參考|參考)[^。\uff01\uff1f\n]{{0,16}}?"
-            rf"(?:到|至|為|使用)\s*{method}",
-            re.IGNORECASE,
-        ),
-        re.compile(rf"{method}\s*(?:重新參考|重參考|參考)", re.IGNORECASE),
-    )
-    if any(pattern.search(clause) for clause in clauses for pattern in patterns):
+    if re.search(rf"\b{method}\b", text, re.IGNORECASE):
         return VerificationResult(True)
     return VerificationResult(False, question)
 

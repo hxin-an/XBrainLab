@@ -171,6 +171,36 @@ def test_direct_preprocess_precondition_uses_a_two_part_product_message() -> Non
     )
 
 
+def test_notch_nyquist_precondition_preserves_actionable_backend_values() -> None:
+    result = ToolCommandResult.failure(
+        "apply_notch_filter",
+        (
+            "Notch filtering at 60 Hz cannot run because the lowest sampling rate "
+            "is 100 Hz (Nyquist limit 50 Hz). Use a notch frequency below 50 Hz. "
+            "If this data was resampled, reset preprocessing, apply notch filtering "
+            "before resampling, then resample again."
+        ),
+        command_name="preprocess",
+        error_type="precondition",
+        diagnostics={
+            "code": "notch_frequency_at_or_above_nyquist",
+            "requested_frequency": 60.0,
+            "sampling_rate": 100.0,
+            "nyquist": 50.0,
+            "state_preserved": True,
+        },
+    )
+
+    summary = summarize_tool_result("apply_notch_filter", False, result)
+
+    assert "60 Hz" in summary
+    assert "100 Hz" in summary
+    assert "Nyquist limit 50 Hz" in summary
+    assert "reset preprocessing" in summary.lower()
+    assert "status bar" not in summary.lower()
+    assert "try again" not in summary.lower()
+
+
 def test_training_precondition_preserves_already_running_truth() -> None:
     result = ToolCommandResult.failure(
         "start_training",

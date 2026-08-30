@@ -1,53 +1,9 @@
 [
-  {
-    "id": "clarify_bandpass_zh",
-    "source_case_id": "missing_bandpass_en",
-    "reply": "1 到 40 Hz",
-    "expected_tool": "apply_bandpass_filter",
-    "expected_parameters": {"low_freq": 1, "high_freq": 40}
-  },
-  {
-    "id": "clarify_notch_zh",
-    "source_case_id": "missing_notch_zh",
-    "reply": "50 赫茲",
-    "expected_tool": "apply_notch_filter",
-    "expected_parameters": {"freq": 50}
-  },
-  {
-    "id": "clarify_resample_en",
-    "source_case_id": "missing_resample_en",
-    "reply": "128 Hz",
-    "expected_tool": "resample_data",
-    "expected_parameters": {"rate": 128}
-  },
-  {
-    "id": "clarify_reference_zh",
-    "source_case_id": "missing_reference_zh",
-    "reply": "使用 average",
-    "expected_tool": "set_reference",
-    "expected_parameters": {"method": "average"}
-  },
-  {
-    "id": "clarify_normalize_en",
-    "source_case_id": "missing_normalize_en",
-    "reply": "Use z-score.",
-    "expected_tool": "normalize_data",
-    "expected_parameters": {"method": "z-score"}
-  },
-  {
-    "id": "generic_filter_selection",
-    "trajectory_kind": "generic_filter_selection",
-    "workflow_stage": "data_loaded",
-    "turns": ["filter the data", "bandpass", "12 to 40 Hz"],
-    "expected_tool": "apply_bandpass_filter",
-    "expected_parameters": {"low_freq": 12, "high_freq": 40}
-  },
-  {
-    "id": "partial_bandpass_accumulation",
-    "trajectory_kind": "partial_bandpass_accumulation",
-    "workflow_stage": "data_loaded",
-    "turns": ["Apply a bandpass filter.", "12 Hz", "128 Hz"],
-    "expected_tool": "apply_bandpass_filter",
-    "expected_parameters": {"low_freq": 12, "high_freq": 128}
-  }
+  {"id":"clarify_bandpass_en","source_case_id":"missing_bandpass_en","reply":"1 to 40 Hz","expected_tool":"apply_bandpass_filter","expected_parameters":{"low_freq":1,"high_freq":40}},
+  {"id":"clarify_notch_en","source_case_id":"missing_notch_en","reply":"50 Hz","expected_tool":"apply_notch_filter","expected_parameters":{"freq":50}},
+  {"id":"clarify_resample_en","source_case_id":"missing_resample_en","reply":"128 Hz","expected_tool":"resample_data","expected_parameters":{"rate":128}},
+  {"id":"clarify_reference_en","source_case_id":"missing_reference_en","reply":"Use average reference.","expected_tool":"set_reference","expected_parameters":{"method":"average"}},
+  {"id":"clarify_normalize_en","source_case_id":"missing_normalize_en","reply":"Use z-score.","expected_tool":"normalize_data","expected_parameters":{"method":"z-score"}},
+  {"id":"generic_filter_selection","trajectory_kind":"generic_filter_selection","workflow_stage":"data_loaded","turns":["Filter the data.","Use a bandpass filter.","12 to 40 Hz"],"expected_tool":"apply_bandpass_filter","expected_parameters":{"low_freq":12,"high_freq":40}},
+  {"id":"partial_bandpass_accumulation","trajectory_kind":"partial_bandpass_accumulation","workflow_stage":"data_loaded","turns":["Apply a bandpass filter.","12 Hz","128 Hz"],"expected_tool":"apply_bandpass_filter","expected_parameters":{"low_freq":12,"high_freq":128}}
 ]

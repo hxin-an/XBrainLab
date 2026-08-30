@@ -59,6 +59,7 @@ class ToolEnvelopeStatus(str, Enum):
 
     NO_TOOL = "no_tool"
     VALID = "valid"
+    MULTIPLE_OBJECTS = "multiple_objects"
     FORMAT_ERROR = "format_error"
 
 
@@ -109,6 +110,14 @@ class ToolEnvelopeParseResult:
             workflow_stage=workflow_stage,
             decision="tool",
             intent=intent,
+        )
+
+    @classmethod
+    def multiple_objects(cls) -> ToolEnvelopeParseResult:
+        """Classify an adjacent object stream without exposing commands."""
+        return cls(
+            ToolEnvelopeStatus.MULTIPLE_OBJECTS,
+            error="A response contained multiple complete top-level JSON objects.",
         )
 
     @classmethod
@@ -169,6 +178,8 @@ class CommandParser:
                 "A tool proposal must not contain non-standard JSON values.",
             )
         except json.JSONDecodeError as exc:
+            if CommandParser._has_multiple_adjacent_objects(stripped):
+                return ToolEnvelopeParseResult.multiple_objects()
             if not CommandParser._looks_like_tool_attempt(stripped):
                 return ToolEnvelopeParseResult.format_error(
                     "A structured assistant response must be one JSON object.",
@@ -228,6 +239,32 @@ class CommandParser:
             (tool_name, parameters),
             workflow_stage=workflow_stage,
         )
+
+    @staticmethod
+    def _has_multiple_adjacent_objects(text: str) -> bool:
+        """Recognize only a whitespace-separated stream of complete objects."""
+        decoder = json.JSONDecoder(
+            object_pairs_hook=_unique_object,
+            parse_constant=_reject_non_standard_json,
+        )
+        cursor = 0
+        objects = 0
+        try:
+            while cursor < len(text):
+                while cursor < len(text) and text[cursor].isspace():
+                    cursor += 1
+                if cursor == len(text) or text[cursor] != "{":
+                    return False
+                decoded, cursor = decoder.raw_decode(text, cursor)
+                if (
+                    not isinstance(decoded, dict)
+                    or frozenset(decoded) != _STRICT_TOOL_FIELDS
+                ):
+                    return False
+                objects += 1
+        except (json.JSONDecodeError, _DuplicateKeyError, _NonStandardJsonValueError):
+            return False
+        return objects >= 2
 
     @staticmethod
     def _parse_model_response(

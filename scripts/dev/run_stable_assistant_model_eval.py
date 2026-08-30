@@ -6,27 +6,26 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
 from collections.abc import Callable
 from contextlib import suppress
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
 from XBrainLab.backend.application.capabilities import build_capability_policy
 from XBrainLab.backend.application.pipeline_stage import PipelineStage
-from XBrainLab.backend.application.state import ApplicationStateSnapshot
+from XBrainLab.backend.application.state import (
+    ApplicationStateSnapshot,
+    DatasetSplitLifecycle,
+)
 from XBrainLab.backend.application.view_publication import ApplicationViewPublication
 from XBrainLab.backend.study import Study
 from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 from XBrainLab.llm.agent.assembler import ContextAssembler, PromptToolPublication
-from XBrainLab.llm.agent.context_encoding import (
-    UntrustedContextItem,
-    UntrustedContextSource,
-    encode_untrusted_context,
-)
 from XBrainLab.llm.agent.controller import LLMController
 from XBrainLab.llm.agent.parser import (
     CommandParser,
@@ -34,10 +33,10 @@ from XBrainLab.llm.agent.parser import (
     ToolEnvelopeStatus,
 )
 from XBrainLab.llm.agent.pending_interaction import PendingInteractionCoordinator
-from XBrainLab.llm.agent.prompt_policy import STRICT_TOOL_RESPONSE_PROMPT_POLICY
 from XBrainLab.llm.agent.strict_envelope_recovery import (
     DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY,
     STRICT_ENVELOPE_EXHAUSTED_MESSAGE,
+    STRICT_ENVELOPE_MULTIPLE_OBJECTS_MESSAGE,
     StrictEnvelopeRecoveryAction,
     StrictEnvelopeRecoveryRequest,
 )
@@ -75,7 +74,7 @@ from XBrainLab.llm.tools.application_surface import (
 from XBrainLab.llm.tools.tool_registry import ToolRegistry
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CASES = ROOT / "XBrainLab" / "llm" / "rag" / "data" / "gold_set.json"
+DEFAULT_CASES = ROOT / "scripts" / "dev" / "stable_assistant_positive_cases.json"
 DEFAULT_CHALLENGES = ROOT / "scripts" / "dev" / "stable_assistant_challenge_cases.json"
 DEFAULT_PRECISION_CASES = (
     ROOT / "scripts" / "dev" / "stable_assistant_no_action_precision_cases.json"
@@ -83,9 +82,12 @@ DEFAULT_PRECISION_CASES = (
 DEFAULT_CLARIFICATION_CASES = (
     ROOT / "scripts" / "dev" / "stable_assistant_clarification_cases.json"
 )
-REPORT_SCHEMA = "xbrainlab.stable_assistant_model_eval.v8"
+REPORT_SCHEMA = "xbrainlab.stable_assistant_model_eval.v11"
 PRECISION_CASE_COUNT = 24
 CLARIFICATION_CASE_COUNT = 7
+RAW_OUTPUT_PREVIEW_CHAR_LIMIT = 1_000
+_PROMPT_CAPTURE_DIRECTORY_ENV = "XBRAINLAB_ASSISTANT_PROMPT_CAPTURE_DIR"
+_CAPTURE_FILE_NAMES = ("prompt.txt", "raw-output.txt", "metadata.json")
 MISSING_PARAMETER_HOST_TOOLS = {
     "missing_bandpass_bounds_01": "apply_bandpass_filter",
     "missing_notch_frequency_01": "apply_notch_filter",
@@ -94,6 +96,16 @@ MISSING_PARAMETER_HOST_TOOLS = {
     "missing_normalization_method_01": "normalize_data",
 }
 DIRECT_PARAMETER_TOOLS = frozenset(MISSING_PARAMETER_HOST_TOOLS.values())
+_MISSING_PARAMETER_CONCEPTS = {
+    "apply_bandpass_filter": (("bandpass",), ("low", "lower"), ("high", "upper")),
+    "apply_notch_filter": (("notch",), ("frequency", "freq", "hz")),
+    "resample_data": (("resample",), ("rate", "hz")),
+    "set_reference": (("reference",), ("method", "average")),
+    "normalize_data": (
+        ("normalize", "normalization"),
+        ("method", "z-score", "min-max"),
+    ),
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,7 +133,7 @@ class TargetChallengeCase:
 
 @dataclass(frozen=True, slots=True)
 class PrecisionCase:
-    """One bilingual no-action outcome case against the product boundary."""
+    """One English no-action outcome case against the product boundary."""
 
     case_id: str
     user_input: str
@@ -172,10 +184,10 @@ class TargetEvalScore:
 
 @dataclass(frozen=True, slots=True)
 class ModelGenerationAttempt:
-    """One production-policy classification in a bounded generation trajectory."""
+    """One policy classification; its preview is never raw-output identity evidence."""
 
     attempt_number: int
-    response: str
+    response_preview: str
     envelope_status: str
     workflow_stage: str | None
     recovery_action: str
@@ -184,13 +196,72 @@ class ModelGenerationAttempt:
 
 
 @dataclass(frozen=True, slots=True)
-class CaseTrajectoryResult:
-    """Raw and final scores for one product-like strict-envelope trajectory."""
+class GenerationTraceEntry:
+    """One exact raw model output identity recorded by the evaluator runner."""
 
+    global_call_index: int
+    case_id: str
+    turn_purpose: str
+    raw_output_bytes: int
+    raw_output_sha256: str
+    raw_output_preview: str
+
+
+@dataclass(frozen=True, slots=True)
+class _CaptureAuditRequest:
+    """One opt-in capture root snapshot made before the evaluator loads a model."""
+
+    requested: bool
+    root: Path | None
+    prior_session_names: frozenset[str] = frozenset()
+    failure_code: str | None = None
+
+
+@dataclass(slots=True)
+class GenerationTraceRecorder:
+    """Record each evaluator generation before scoring normalizes its output."""
+
+    entries: list[GenerationTraceEntry] = field(default_factory=list)
+
+    def record(
+        self,
+        raw_output: str,
+        *,
+        case_id: str,
+        turn_purpose: str,
+    ) -> None:
+        if type(raw_output) is not str:
+            raise TypeError("Model generation must return one exact string.")
+        raw_bytes = raw_output.encode("utf-8")
+        self.entries.append(
+            GenerationTraceEntry(
+                global_call_index=len(self.entries) + 1,
+                case_id=case_id,
+                turn_purpose=turn_purpose,
+                raw_output_bytes=len(raw_bytes),
+                raw_output_sha256=hashlib.sha256(raw_bytes).hexdigest(),
+                raw_output_preview=raw_output[:RAW_OUTPUT_PREVIEW_CHAR_LIMIT],
+            )
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CaseTrajectoryResult:
+    """First-generation, post-recovery, and product scores for one trajectory."""
+
+    # This is the first model output, before any Host-issued recovery message.
     raw_score: TargetEvalScore
+    # Diagnostic only: a later model output after format recovery, if any.
+    post_recovery_score: TargetEvalScore
     final_score: TargetEvalScore
     final_response: str
     attempts: tuple[ModelGenerationAttempt, ...]
+    receipt_origin: str | None = None
+    # First-turn evaluator rows carry controller-observed evidence separately
+    # from raw and semantic scores. Clarification trajectories already expose
+    # their own pending-receipt trace and therefore leave these unset.
+    host_admission: dict[str, Any] | None = None
+    product_terminal: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -198,6 +269,7 @@ class ClarificationAdmission:
     """One controller-admitted typed receipt retained for evaluator follow-up."""
 
     receipt: AssistantToolInputReceipt
+    receipt_origin: str
     harness: _EvaluatorControllerHarness
     prompt_publication: PromptToolPublication
     backend_publication: ApplicationViewPublication
@@ -214,6 +286,13 @@ def target_tool_registry() -> ToolRegistry:
 
 
 def _first_stage_for_tool(tool_name: str) -> PipelineStage:
+    # The historic 36-case catalog predates capability-filtered publication.
+    # Starting a run needs a saved split, model, and training settings, which
+    # truthfully places the product in dataset_ready rather than epoch_ready.
+    # Keep the two-per-tool corpus count but evaluate that action at the first
+    # production state where its command is actually published.
+    if tool_name == "start_training":
+        return PipelineStage.DATASET_READY
     for stage, config in STAGE_CONFIG.items():
         if tool_name in config["tools"]:
             return stage
@@ -221,7 +300,7 @@ def _first_stage_for_tool(tool_name: str) -> PipelineStage:
 
 
 def load_target_cases(path: Path = DEFAULT_CASES) -> tuple[TargetEvalCase, ...]:
-    """Load the bilingual target examples and reject catalog drift."""
+    """Load active English target examples and reject catalog drift."""
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -232,6 +311,7 @@ def load_target_cases(path: Path = DEFAULT_CASES) -> tuple[TargetEvalCase, ...]:
     approved = AGENT_ACTION_CONTRACTS.model_tool_names()
     cases: list[TargetEvalCase] = []
     seen_ids: set[str] = set()
+    seen_normalized_inputs: set[str] = set()
     for row in payload:
         if not isinstance(row, dict):
             raise ValueError("Each target model eval case must be one object.")
@@ -242,6 +322,11 @@ def load_target_cases(path: Path = DEFAULT_CASES) -> tuple[TargetEvalCase, ...]:
             raise ValueError(f"Invalid or duplicate target case id: {case_id!r}")
         if not isinstance(user_input, str) or not user_input.strip():
             raise ValueError(f"Target case {case_id} lacks a user input.")
+        normalized_input = user_input.strip().casefold()
+        if normalized_input in seen_normalized_inputs:
+            raise ValueError(
+                f"Target case {case_id} duplicates a normalized user input."
+            )
         if not isinstance(calls, list) or len(calls) != 1:
             raise ValueError(f"Target case {case_id} must expect exactly one tool.")
         call = calls[0]
@@ -262,6 +347,7 @@ def load_target_cases(path: Path = DEFAULT_CASES) -> tuple[TargetEvalCase, ...]:
             )
         )
         seen_ids.add(case_id)
+        seen_normalized_inputs.add(normalized_input)
 
     counts = {
         tool_name: sum(case.expected_tool == tool_name for case in cases)
@@ -361,7 +447,7 @@ def load_challenge_cases(
 def load_precision_cases(
     path: Path = DEFAULT_PRECISION_CASES,
 ) -> tuple[PrecisionCase, ...]:
-    """Load the separately versioned bilingual no-action precision corpus."""
+    """Load the separately versioned English no-action precision corpus."""
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -437,9 +523,11 @@ def load_precision_cases(
             raise ValueError(f"Precision suite must contain two {category} cases.")
         if {case.case_id.rsplit("_", 1)[-1] for case in category_cases} != {
             "en",
-            "zh",
+            "alt",
         }:
-            raise ValueError(f"Precision {category} cases must be bilingual.")
+            raise ValueError(
+                f"Precision {category} cases must provide two English variants."
+            )
     if any(
         (case.category in {"general", "ambiguous", "multi_action"})
         != (case.requested_tool is None)
@@ -575,23 +663,6 @@ def load_clarification_cases(
     return tuple(cases)
 
 
-def _stage_catalog(
-    case: TargetEvalCase | TargetChallengeCase | PrecisionCase,
-    registry: ToolRegistry,
-) -> tuple[PipelineStage, str]:
-    stage = PipelineStage(case.workflow_stage)
-    allowed_tools = list(STAGE_CONFIG[stage]["tools"])
-    assembler = ContextAssembler(
-        registry,
-        object(),
-        application_runtime=object(),  # type: ignore[arg-type]
-    )
-    return stage, assembler._format_tools(
-        allowed_tools,
-        workflow_stage=stage.value,
-    )
-
-
 @dataclass(frozen=True, slots=True)
 class _EvaluatorApplicationRuntime:
     """Read one immutable evaluator publication without a second state source."""
@@ -607,6 +678,23 @@ class _PublicationBackedEvaluatorStudy(Study):
 
     def __init__(self) -> None:
         pass
+
+
+class _EvaluatorSignal:
+    """Minimal signal recorder for controller presentation calls without Qt."""
+
+    def __init__(self) -> None:
+        self.events: list[tuple[Any, ...]] = []
+
+    def emit(self, *args: Any) -> None:
+        self.events.append(args)
+
+
+class _EvaluatorMetrics:
+    """Keep controller terminal methods callable without collecting runtime metrics."""
+
+    def finish_turn(self) -> None:
+        return None
 
 
 class _EvaluatorControllerHarness:
@@ -627,9 +715,23 @@ class _EvaluatorControllerHarness:
         self._turn_orchestrator = AssistantTurnOrchestrator()
         self._turn_orchestrator.active_publication = PromptToolPublication.empty()
         self._tool_attempt_session = AssistantToolAttemptSession()
+        self._strict_envelope_recovery_policy = DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY
         self._max_tool_executions = 5
         self._pending_interactions = PendingInteractionCoordinator()
         self._history: list[dict[str, str]] = []
+        self.presentations: list[str] = []
+        self.metrics = _EvaluatorMetrics()
+        self.status_update = _EvaluatorSignal()
+        self.activity_changed = _EvaluatorSignal()
+        self.response_presentation_ready = _EvaluatorSignal()
+        self.confirmation_requested = _EvaluatorSignal()
+        self.processing_finished = _EvaluatorSignal()
+        self.is_processing = True
+        self._observed_decision: ToolAttemptDecision | None = None
+        self._observed_terminal: dict[str, Any] | None = None
+        self.current_response = ""
+        self._recovery_generation_requested = False
+        self._recovery_context: str | None = None
         self._publication = publication
         runtime = _EvaluatorApplicationRuntime(publication)
         self.assembler = ContextAssembler(
@@ -653,6 +755,99 @@ class _EvaluatorControllerHarness:
     def _append_history(self, role: str, content: str) -> None:
         self._history.append({"role": role, "content": content})
 
+    def _publish_response(self, text: str, **_kwargs: Any) -> None:
+        """Record a trusted controller presentation without creating a Qt event."""
+        self.presentations.append(text)
+
+    def _publish_activity(self, *_args: Any, **_kwargs: Any) -> None:
+        """The evaluator intentionally has no activity presentation surface."""
+
+    def _emit_processing_finished(self, _outcome: str = "completed") -> None:
+        self.pending_interactions.clear_active_tool_input()
+
+    def _finalize_turn(self, response_text: str) -> None:
+        LLMController._finalize_turn(self, response_text)  # type: ignore[arg-type]
+        self._record_terminal("respond")
+
+    def _arbitrate_generation_terminal(self, generation_id: int, _phase: Any) -> bool:
+        """Keep controller generation correlation without a Qt event surface."""
+        return self._turn_orchestrator.accept_generation_terminal(
+            generation_id,
+            _phase,
+        )
+
+    def _generate_response(self) -> bool:
+        """Record a controller-requested retry; the evaluator owns model I/O."""
+        if not self.assembler.context_notes:
+            raise RuntimeError(
+                "Controller format retry did not publish recovery context."
+            )
+        self._recovery_generation_requested = True
+        self._recovery_context = self.assembler.context_notes[-1]
+        return True
+
+    def _handle_tool_envelope_failure(
+        self,
+        response_text: str,
+        envelope: ToolEnvelopeParseResult,
+    ) -> bool:
+        return LLMController._handle_tool_envelope_failure(  # type: ignore[arg-type]
+            self,
+            response_text,
+            envelope,
+        )
+
+    def _begin_typed_tool_input(self, envelope: ToolEnvelopeParseResult) -> bool:
+        return LLMController._begin_typed_tool_input(self, envelope)  # type: ignore[arg-type]
+
+    def _process_tool_calls(self, command_result: Any, response_text: str) -> None:
+        LLMController._process_tool_calls(self, command_result, response_text)  # type: ignore[arg-type]
+
+    def replay_controller_generation(
+        self,
+        response: str,
+    ) -> tuple[StrictEnvelopeRecoveryAction | None, str | None]:
+        """Drive one evaluator output through the product controller path."""
+        self._observed_decision = None
+        self._observed_terminal = None
+        self._recovery_generation_requested = False
+        self._recovery_context = None
+        self.current_response = response
+        # The evaluator has already admitted this model dispatch after the
+        # user-authored clarification reply; model completion is processing.
+        self.is_processing = True
+        generation_id = self._turn_orchestrator.begin_generation()
+        LLMController._on_generation_finished(self, generation_id, [])  # type: ignore[arg-type]
+        if self._recovery_generation_requested:
+            return StrictEnvelopeRecoveryAction.RETRY_FORMAT, self._recovery_context
+        if not self.is_processing and self._observed_terminal is None:
+            self._record_terminal("format_recovery_exhausted")
+            return StrictEnvelopeRecoveryAction.EXHAUSTED, None
+        return None, None
+
+    @staticmethod
+    def _empty_effects() -> dict[str, Any]:
+        return {
+            "confirmation_observed": False,
+            "execution_boundary_reached": False,
+            "execution_suppressed": False,
+            "gui_handoff_reached": False,
+            "application_service_called": False,
+            "tool_executor_called": False,
+            "state_mutation_observed": False,
+        }
+
+    def _record_terminal(self, kind: str) -> None:
+        payload = {
+            "kind": kind,
+            "message": self.presentations[-1] if self.presentations else None,
+            **self._empty_effects(),
+        }
+        if self._observed_terminal is not None:
+            payload.update(self._observed_terminal)
+            payload["kind"] = kind
+        self._observed_terminal = payload
+
     def _latest_user_request_text(self) -> str:
         return LLMController._latest_user_request_text(self)  # type: ignore[arg-type]
 
@@ -661,6 +856,22 @@ class _EvaluatorControllerHarness:
 
     def _remaining_tool_input_question(self, receipt: AssistantToolInputReceipt) -> str:
         return LLMController._remaining_tool_input_question(receipt)
+
+    def collect_active_tool_input_reply(self, text: str) -> bool:
+        """Delegate one reply to the controller before evaluator generation."""
+        return LLMController._collect_active_tool_input_reply(self, text)  # type: ignore[arg-type]
+
+    def _complete_tool_input_receipt(
+        self,
+        receipt: AssistantToolInputReceipt,
+        latest_user_text: str,
+    ) -> bool:
+        """Delegate receipt completion to the production controller owner."""
+        return LLMController._complete_tool_input_receipt(  # type: ignore[arg-type]
+            self,
+            receipt,
+            latest_user_text,
+        )
 
     def begin_turn(
         self,
@@ -679,6 +890,74 @@ class _EvaluatorControllerHarness:
         LLMController._begin_typed_tool_input(self, envelope)  # type: ignore[arg-type]
         return self.pending_interactions.tool_input
 
+    def _select_tool_proposal(
+        self,
+        command_result: Any,
+    ) -> tuple[str, dict[str, Any]] | None:
+        return LLMController._select_tool_proposal(self, command_result)  # type: ignore[arg-type]
+
+    def _reject_excluded_turn_command(self, command_name: str) -> bool:
+        return LLMController._reject_excluded_turn_command(  # type: ignore[arg-type]
+            self,
+            command_name,
+        )
+
+    def _evaluate_tool_proposal(
+        self,
+        command: tuple[str, dict[str, Any]],
+        response_text: str,
+        *,
+        single_proposal: bool = True,
+    ) -> ToolAttemptDecision:
+        decision = LLMController._evaluate_tool_proposal(  # type: ignore[arg-type]
+            self,
+            command,
+            response_text,
+            single_proposal=single_proposal,
+        )
+        self._observed_decision = decision
+        return decision
+
+    def _handle_tool_attempt_blocked(self, *_args: Any, **_kwargs: Any) -> None:
+        self._record_terminal("blocked")
+
+    def _present_tool_attempt_boundary(self, decision: ToolAttemptDecision) -> bool:
+        self._observed_decision = decision
+        return LLMController._present_tool_attempt_boundary(  # type: ignore[arg-type]
+            self,
+            decision,
+        )
+
+    def _request_tool_confirmation(
+        self,
+        decision: ToolAttemptDecision,
+        _context: ToolAvailabilityContext | None = None,
+    ) -> None:
+        self._observed_terminal = {
+            "kind": "confirmation",
+            "message": None,
+            **self._empty_effects(),
+            "confirmation_observed": True,
+        }
+        # The controller has already selected this branch. The real UI signal
+        # is deliberately not emitted in evaluator mode.
+        self.confirmation_requested.emit(decision)
+
+    def _execute_tool_attempt(
+        self, _decision: ToolAttemptDecision, **_kwargs: Any
+    ) -> None:
+        """Stop at the controller execution boundary; never invoke a tool."""
+        self._observed_terminal = {
+            "kind": "execution_boundary_suppressed",
+            "message": None,
+            **self._empty_effects(),
+            "execution_boundary_reached": True,
+            "execution_suppressed": True,
+        }
+
+    def _finalize_turn_after_tool(self, _outcome: str = "completed") -> None:
+        self._record_terminal("proposal_not_selected")
+
     def evaluate_proposal(
         self,
         response: str,
@@ -686,37 +965,213 @@ class _EvaluatorControllerHarness:
         envelope = CommandParser.parse_product(response)
         if envelope.status is not ToolEnvelopeStatus.VALID:
             return None, None
-        command = LLMController._select_tool_proposal(  # type: ignore[arg-type]
-            self,
-            list(envelope.commands),
-        )
+        command = self._select_tool_proposal(list(envelope.commands))
         if command is None:
             return None, None
-        decision = LLMController._evaluate_tool_proposal(  # type: ignore[arg-type]
-            self,
+        decision = self._evaluate_tool_proposal(
             command,
             response,
+            single_proposal=len(envelope.commands) == 1,
         )
         return decision, command[1]
 
+    def admit_origin_guard_response(
+        self, response: str
+    ) -> AssistantToolInputReceipt | None:
+        """Present a Host-origin clarification through the controller boundary."""
+        decision, _parameters = self.evaluate_proposal(response)
+        if decision is None or decision.tool_input_receipt is None:
+            return None
+        LLMController._present_tool_attempt_boundary(self, decision)  # type: ignore[arg-type]
+        return self.pending_interactions.tool_input
 
-def _precision_application_publication(
-    case: PrecisionCase,
+    def observed_controller_outcome(
+        self,
+        response: str,
+        *,
+        workflow_stage: str,
+        recovery_action: str,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Project the most recent controller replay without another policy path."""
+        envelope, _parsed_stage = _recovery_envelope(
+            response,
+            workflow_stage=workflow_stage,
+        )
+        receipt = self.pending_interactions.tool_input
+        action = (
+            self._observed_decision.action.value
+            if self._observed_decision is not None
+            else None
+        )
+        receipt_origin = (
+            "model_typed"
+            if envelope.status is ToolEnvelopeStatus.NO_TOOL and receipt is not None
+            else "host_parameter_origin"
+            if self._observed_decision is not None
+            and self._observed_decision.tool_input_receipt is not None
+            else None
+        )
+        admission = {
+            "path": (
+                "typed_receipt"
+                if receipt_origin == "model_typed"
+                else "proposal"
+                if self._observed_decision is not None
+                else "recovery"
+                if recovery_action in {"choose_one", "exhausted", "retry_format"}
+                else "no_tool"
+            ),
+            "attempt_action": action,
+            "receipt_created": receipt is not None,
+            "receipt_origin": receipt_origin,
+            "result_error_type": (
+                self._observed_decision.result.error_type
+                if self._observed_decision is not None
+                and self._observed_decision.result is not None
+                else None
+            ),
+            "result_policy": (
+                self._observed_decision.result.diagnostics.get("policy")
+                if self._observed_decision is not None
+                and self._observed_decision.result is not None
+                else None
+            ),
+        }
+        terminal = self._observed_terminal or {
+            "kind": "unobserved",
+            "message": None,
+            **self._empty_effects(),
+        }
+        if recovery_action == "choose_one" and terminal["kind"] == "respond":
+            # The controller publishes the trusted reply through its normal
+            # response terminal; the shared recovery decision owns this
+            # evaluator-facing choose-one classification.
+            terminal = {**terminal, "kind": "choose_one"}
+        return admission, terminal
+
+
+def _case_application_publication(
+    case: TargetEvalCase | TargetChallengeCase | PrecisionCase,
 ) -> ApplicationViewPublication:
-    """Build the smallest backend state that truthfully represents one case."""
+    """Build the smallest internally consistent product state for one stage."""
     stage = PipelineStage(case.workflow_stage)
     state = ApplicationStateSnapshot.empty()
-    if stage is PipelineStage.DATA_LOADED:
+
+    if stage is not PipelineStage.EMPTY:
         state = replace(
             state,
             pipeline_stage=stage.value,
             raw=replace(state.raw, loaded=True, count=1),
             active_dataset=replace(state.active_dataset, has_raw_data=True),
         )
-    elif stage is not PipelineStage.EMPTY:
-        raise ValueError(
-            "Precision capability fixtures currently support only empty and "
-            "data_loaded stages."
+    if stage in {
+        PipelineStage.PREPROCESSED,
+        PipelineStage.EPOCH_READY,
+        PipelineStage.DATASET_READY,
+        PipelineStage.TRAINING,
+        PipelineStage.TRAINED,
+    }:
+        state = replace(
+            state,
+            preprocessed=replace(
+                state.preprocessed,
+                available=True,
+                count=1,
+                operations=["bandpass_filter"],
+            ),
+            active_dataset=replace(state.active_dataset, has_preprocessed_data=True),
+        )
+    if stage in {
+        PipelineStage.EPOCH_READY,
+        PipelineStage.DATASET_READY,
+        PipelineStage.TRAINING,
+        PipelineStage.TRAINED,
+    }:
+        state = replace(
+            state,
+            epoch=replace(
+                state.epoch,
+                available=True,
+                exists=True,
+                epoch_count=120,
+                n_channels=22,
+                n_times=256,
+                sfreq=128.0,
+                event_names=["rest", "task"],
+                event_ids={"rest": 1, "task": 2},
+            ),
+            active_dataset=replace(state.active_dataset, has_epoch_data=True),
+        )
+    if stage in {
+        PipelineStage.DATASET_READY,
+        PipelineStage.TRAINING,
+        PipelineStage.TRAINED,
+    }:
+        state = replace(
+            state,
+            dataset=replace(
+                state.dataset,
+                available=True,
+                count=1,
+                split_spec_saved=True,
+                split_lifecycle=DatasetSplitLifecycle.VERIFIED,
+                split_materialized=True,
+            ),
+            training=replace(
+                state.training,
+                has_model=True,
+                model_name="EEGNet",
+                has_training_option=True,
+                training_option={"epoch": 1},
+            ),
+            active_dataset=replace(
+                state.active_dataset,
+                has_datasets=True,
+                has_saved_split=True,
+            ),
+            active_training=replace(
+                state.active_training,
+                has_model=True,
+                has_training_option=True,
+            ),
+        )
+    if stage is PipelineStage.TRAINING:
+        state = replace(
+            state,
+            training=replace(
+                state.training,
+                has_trainer=True,
+                is_running=True,
+                progress_message="Synthetic training run in progress.",
+            ),
+            active_training=replace(
+                state.active_training,
+                has_trainer=True,
+                is_running=True,
+            ),
+        )
+    if stage is PipelineStage.TRAINED:
+        state = replace(
+            state,
+            training=replace(
+                state.training,
+                has_trainer=True,
+                run_count=1,
+                finished_run_count=1,
+            ),
+            evaluation=replace(
+                state.evaluation,
+                available=True,
+                total_plans=1,
+                total_runs=1,
+                finished_runs=1,
+                metrics_available=True,
+            ),
+            active_training=replace(
+                state.active_training,
+                has_trainer=True,
+                finished_run_count=1,
+            ),
         )
     return ApplicationViewPublication(
         generation=1,
@@ -725,20 +1180,35 @@ def _precision_application_publication(
     )
 
 
-def _precision_case_projection(
-    case: PrecisionCase,
+def _case_projection(
+    case: TargetEvalCase | TargetChallengeCase | PrecisionCase,
     registry: ToolRegistry,
-) -> tuple[str, PromptToolPublication, ApplicationViewPublication]:
-    """Build one precision prompt and admission publication from backend truth."""
-    publication = _precision_application_publication(case)
+    *,
+    recovery_messages: tuple[str, ...] = (),
+) -> tuple[
+    list[dict[str, str]],
+    PromptToolPublication,
+    ApplicationViewPublication,
+]:
+    """Build one first-turn request from the product publication boundary."""
+    publication = _case_application_publication(case)
     runtime = _EvaluatorApplicationRuntime(publication)
     assembler = ContextAssembler(
         registry,
         _PublicationBackedEvaluatorStudy(),
         application_runtime=runtime,
     )
-    system_prompt = assembler.build_system_prompt(case.user_input)
-    return system_prompt, assembler.latest_tool_publication, publication
+    for message in recovery_messages:
+        assembler.add_context(message)
+    messages = assembler.get_messages([{"role": "user", "content": case.user_input}])
+    if isinstance(
+        case, TargetEvalCase
+    ) and not assembler.latest_tool_publication.permits(case.expected_tool):
+        raise ValueError(
+            f"Target case {case.case_id} is not callable from its production "
+            f"fixture at {case.workflow_stage}."
+        )
+    return messages, assembler.latest_tool_publication, publication
 
 
 def build_clarification_messages(
@@ -753,18 +1223,17 @@ def build_clarification_messages(
     PromptToolPublication,
     ApplicationViewPublication,
 ]:
-    """Project an admitted production receipt through the product assembler."""
+    """Build the visible clarification history without a receipt prompt bridge."""
     if (
         case.trajectory_kind == "direct" and source.case_id != case.source_case_id
     ) or source.category != "missing_parameter":
         raise ValueError("Clarification source does not match its missing case.")
-    publication = _precision_application_publication(source)
+    publication = _case_application_publication(source)
     assembler = ContextAssembler(
         registry,
         _PublicationBackedEvaluatorStudy(),
         application_runtime=_EvaluatorApplicationRuntime(publication),
     )
-    assembler.set_tool_input_receipt(receipt)
     for message in recovery_messages:
         assembler.add_context(message)
     messages = assembler.get_messages(
@@ -780,30 +1249,12 @@ def build_case_messages(
     case: TargetEvalCase | TargetChallengeCase | PrecisionCase,
     registry: ToolRegistry,
 ) -> list[dict[str, str]]:
-    """Build the product strict contract with the case's stage tool projection."""
-    if isinstance(case, PrecisionCase):
-        system, _prompt_publication, _backend_publication = _precision_case_projection(
-            case, registry
-        )
-        return [
-            {"role": "system", "content": system},
-            {"role": "user", "content": case.user_input},
-        ]
-
-    # The evaluator deliberately reuses the product formatter so schemas cannot drift.
-    stage, catalog = _stage_catalog(case, registry)
-    system = (
-        ContextAssembler._ACTION_SYSTEM_PROMPT
-        + "\n"
-        + STRICT_TOOL_RESPONSE_PROMPT_POLICY.decision_instructions(stage.value)
-        + "\nAction Contract Catalog (input definitions, never an output array):\n"
-        + catalog
-        + "\nOnly the listed workflow actions are available at this stage."
+    """Build every active first turn through the product context assembler."""
+    messages, _prompt_publication, _backend_publication = _case_projection(
+        case,
+        registry,
     )
-    return [
-        {"role": "system", "content": system},
-        {"role": "user", "content": case.user_input},
-    ]
+    return messages
 
 
 def _build_recovery_case_messages(
@@ -811,19 +1262,13 @@ def _build_recovery_case_messages(
     registry: ToolRegistry,
     recovery_messages: tuple[str, ...],
 ) -> list[dict[str, str]]:
-    """Rebuild the eval request with the product's untrusted recovery-note encoding."""
-    messages = build_case_messages(case, registry)
-    context = encode_untrusted_context(
-        tuple(
-            UntrustedContextItem(
-                item_type="runtime_context",
-                source=UntrustedContextSource(kind="assistant_runtime_context"),
-                data={"text": content},
-            )
-            for content in recovery_messages
-        )
+    """Rebuild retry input through the same production context assembler."""
+    messages, _prompt_publication, _backend_publication = _case_projection(
+        case,
+        registry,
+        recovery_messages=recovery_messages,
     )
-    return [messages[0], {"role": "user", "content": context}, messages[-1]]
+    return messages
 
 
 def score_model_response(
@@ -1057,6 +1502,25 @@ def score_precision_response(
 ) -> TargetEvalScore:
     """Score no-action safety through the product parser and attempt boundary."""
     envelope = CommandParser.parse_product(response)
+    if envelope.status is ToolEnvelopeStatus.MULTIPLE_OBJECTS:
+        passed = case.category == "multi_action"
+        return TargetEvalScore(
+            passed,
+            "none" if passed else "multiple_objects",
+            response[:RAW_OUTPUT_PREVIEW_CHAR_LIMIT],
+            None,
+            None,
+            None,
+            (
+                "Host returned the trusted one-action-at-a-time boundary."
+                if passed
+                else "Multiple complete objects are not a valid response for this case."
+            ),
+            PrecisionProductOutcome(
+                disposition="choose_one",
+                message=STRICT_ENVELOPE_MULTIPLE_OBJECTS_MESSAGE,
+            ),
+        )
     if envelope.status is ToolEnvelopeStatus.FORMAT_ERROR:
         return TargetEvalScore(
             False,
@@ -1098,7 +1562,7 @@ def score_precision_response(
         )
 
     tool_name, parameters = envelope.commands[0]
-    _system, prompt_publication, backend_publication = _precision_case_projection(
+    _messages, prompt_publication, backend_publication = _case_projection(
         case,
         registry,
     )
@@ -1121,7 +1585,6 @@ def score_precision_response(
         ToolAttemptAction.VERIFICATION_BLOCKED,
         ToolAttemptAction.CAPABILITY_BLOCKED,
         ToolAttemptAction.RESOURCE_CONFIRMATION_BLOCKED,
-        ToolAttemptAction.INTENT_BLOCKED,
     }
     passed = bool(
         (
@@ -1174,6 +1637,10 @@ def score_precision_response(
         and _valid_precision_message(product_message)
         and not confirmation_requested
         and not execution_permitted
+        and not outcome.gui_handoff_permitted
+        and not outcome.application_service_permitted
+        and not outcome.tool_executor_permitted
+        and not outcome.state_mutation_permitted
     )
     return TargetEvalScore(
         passed,
@@ -1191,16 +1658,166 @@ def score_precision_response(
     )
 
 
+def score_raw_precision_response(
+    case: PrecisionCase,
+    response: str,
+    registry: ToolRegistry,
+) -> TargetEvalScore:
+    """Score the model's no-action choice before any Host intervention."""
+    del registry
+    envelope = CommandParser.parse_product(response)
+    if envelope.status is ToolEnvelopeStatus.FORMAT_ERROR:
+        return TargetEvalScore(
+            False,
+            "output_format",
+            response[:1000],
+            envelope.workflow_stage,
+            None,
+            None,
+            envelope.error,
+        )
+    if envelope.workflow_stage != case.workflow_stage:
+        return TargetEvalScore(
+            False,
+            "workflow_stage",
+            response[:1000],
+            envelope.workflow_stage,
+            None,
+            None,
+            "Model did not acknowledge the exact target stage.",
+        )
+    if envelope.status is ToolEnvelopeStatus.VALID:
+        tool_name, parameters = envelope.commands[0]
+        return TargetEvalScore(
+            False,
+            "unexpected_tool",
+            response[:1000],
+            envelope.workflow_stage,
+            tool_name,
+            parameters,
+            "Model proposed a tool where the case requires a no-action response.",
+        )
+    message = envelope.message
+    passed = _valid_precision_message(message)
+    if passed and case.category == "missing_parameter":
+        concepts = _MISSING_PARAMETER_CONCEPTS.get(case.requested_tool or "", ())
+        folded_message = message.casefold()
+        passed = bool(
+            concepts
+            and all(
+                any(term.casefold() in folded_message for term in group)
+                for group in concepts
+            )
+        )
+    return TargetEvalScore(
+        passed,
+        "none" if passed else "response_content",
+        response[:1000],
+        envelope.workflow_stage,
+        "respond_to_user",
+        {"message": message},
+        (
+            "Model selected a valid no-action response."
+            if passed
+            else "Model did not provide the case-required no-action response."
+        ),
+    )
+
+
 def _score_case_response(
     case: TargetEvalCase | TargetChallengeCase | PrecisionCase,
     response: str,
     registry: ToolRegistry,
 ) -> TargetEvalScore:
     if isinstance(case, PrecisionCase):
-        return score_precision_response(case, response, registry)
+        # Product admission is evaluated only after the final response has
+        # crossed the controller harness below. This first score remains the
+        # model's semantic diagnostic and never instantiates an evaluator-side
+        # coordinator surrogate.
+        return score_raw_precision_response(case, response, registry)
     if isinstance(case, TargetChallengeCase):
         return score_challenge_response(case, response, registry)
     return score_model_response(case, response, registry)
+
+
+def _score_raw_model_response(
+    case: TargetEvalCase | TargetChallengeCase | PrecisionCase,
+    response: str,
+    registry: ToolRegistry,
+) -> TargetEvalScore:
+    if isinstance(case, PrecisionCase):
+        return score_raw_precision_response(case, response, registry)
+    return _score_case_response(case, response, registry)
+
+
+def _score_precision_controller_terminal(
+    case: PrecisionCase,
+    response: str,
+    admission: dict[str, Any],
+    terminal: dict[str, Any],
+    baseline: TargetEvalScore,
+) -> TargetEvalScore:
+    """Score the product no-action result from the observed controller terminal."""
+    envelope = CommandParser.parse_product(response)
+    kind = terminal["kind"]
+    no_side_effect = not any(
+        terminal[key]
+        for key in (
+            "confirmation_observed",
+            "execution_boundary_reached",
+            "gui_handoff_reached",
+            "application_service_called",
+            "tool_executor_called",
+            "state_mutation_observed",
+        )
+    )
+    passed = bool(
+        no_side_effect
+        and (
+            (case.category == "multi_action" and kind == "choose_one")
+            or (case.category == "missing_parameter" and kind == "respond")
+            or (
+                case.category == "out_of_stage"
+                and envelope.status is ToolEnvelopeStatus.VALID
+                and envelope.commands[0][0] == case.requested_tool
+                and kind == "blocked"
+            )
+            or (
+                envelope.status is ToolEnvelopeStatus.NO_TOOL
+                and kind == "respond"
+                and _valid_precision_message(envelope.message)
+            )
+        )
+    )
+    failure_type = baseline.failure_type
+    if not passed and failure_type == "none":
+        failure_type = (
+            "format_recovery_exhausted"
+            if kind == "format_recovery_exhausted"
+            else "controller_terminal"
+        )
+    return TargetEvalScore(
+        passed,
+        "none" if passed else failure_type,
+        baseline.response,
+        baseline.parsed_stage,
+        baseline.parsed_tool,
+        baseline.parsed_parameters,
+        (
+            "Controller replay reached the required no-action terminal."
+            if passed
+            else "Controller replay did not reach the required safe terminal."
+        ),
+        PrecisionProductOutcome(
+            disposition=kind,
+            message=terminal["message"],
+            confirmation_requested=bool(terminal["confirmation_observed"]),
+            gui_handoff_permitted=bool(terminal["gui_handoff_reached"]),
+            application_service_permitted=bool(terminal["application_service_called"]),
+            tool_executor_permitted=bool(terminal["tool_executor_called"]),
+            state_mutation_permitted=bool(terminal["state_mutation_observed"]),
+        ),
+    )
 
 
 def _recovery_envelope(
@@ -1212,7 +1829,7 @@ def _recovery_envelope(
     parsed = CommandParser.parse_product(response)
     parsed_stage = parsed.workflow_stage
     if (
-        parsed.status is not ToolEnvelopeStatus.FORMAT_ERROR
+        parsed.status in {ToolEnvelopeStatus.VALID, ToolEnvelopeStatus.NO_TOOL}
         and parsed.workflow_stage != workflow_stage
     ):
         return (
@@ -1229,7 +1846,14 @@ def _evaluate_trajectory(
     workflow_stage: str,
     build_messages: Callable[[tuple[str, ...]], list[dict[str, str]]],
     score_response: Callable[[str], TargetEvalScore],
+    score_raw_model_response: Callable[[str], TargetEvalScore],
     generate_response: Callable[[list[dict[str, str]]], str],
+    generation_recorder: GenerationTraceRecorder | None,
+    trace_case_id: str,
+    initial_turn_purpose: str = "first_turn",
+    replay_controller_response: (
+        Callable[[str], tuple[StrictEnvelopeRecoveryAction | None, str | None]] | None
+    ) = None,
 ) -> CaseTrajectoryResult:
     """Generate one strict-envelope trajectory through the production policy."""
     recovery_messages: list[str] = []
@@ -1241,25 +1865,46 @@ def _evaluate_trajectory(
         response = generate_response(messages)
         if type(response) is not str:
             raise TypeError("Model generation must return one exact string.")
+        if generation_recorder is not None:
+            generation_recorder.record(
+                response,
+                case_id=trace_case_id,
+                turn_purpose=(
+                    initial_turn_purpose if not recovery_messages else "format_retry"
+                ),
+            )
         response = response.strip()
         if raw_score is None:
-            raw_score = score_response(response)
+            raw_score = score_raw_model_response(response)
 
         envelope, parsed_stage = _recovery_envelope(
             response,
             workflow_stage=workflow_stage,
         )
+        controller_action: StrictEnvelopeRecoveryAction | None = None
+        controller_context: str | None = None
+        if replay_controller_response is not None:
+            controller_action, controller_context = replay_controller_response(response)
+        recovery_envelope = envelope
+        if controller_action is not None:
+            recovery_envelope = ToolEnvelopeParseResult.format_error(
+                "Controller rejected the clarification envelope."
+            )
         decision = DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY.decide(
             StrictEnvelopeRecoveryRequest(
-                envelope=envelope,
+                envelope=recovery_envelope,
                 recovery_attempts_used=len(recovery_messages),
             )
         )
+        if controller_action is not None and decision.action is not controller_action:
+            raise RuntimeError(
+                "Controller and evaluator format-recovery decisions diverged."
+            )
         attempts.append(
             ModelGenerationAttempt(
                 attempt_number=len(attempts) + 1,
-                response=response[:1000],
-                envelope_status=envelope.status.value,
+                response_preview=response[:RAW_OUTPUT_PREVIEW_CHAR_LIMIT],
+                envelope_status=recovery_envelope.status.value,
                 workflow_stage=parsed_stage,
                 recovery_action=decision.action.value,
                 taxonomy=decision.taxonomy.value,
@@ -1268,6 +1913,11 @@ def _evaluate_trajectory(
         )
 
         if decision.action is StrictEnvelopeRecoveryAction.RETRY_FORMAT:
+            if controller_action is StrictEnvelopeRecoveryAction.RETRY_FORMAT:
+                if controller_context is None:
+                    raise RuntimeError("Controller retry is missing recovery context.")
+                recovery_messages.append(controller_context)
+                continue
             if decision.message is None:
                 raise RuntimeError("Format retry decision is missing recovery context.")
             recovery_messages.append(decision.message.content)
@@ -1284,6 +1934,7 @@ def _evaluate_trajectory(
             )
         return CaseTrajectoryResult(
             raw_score=raw_score,
+            post_recovery_score=score_raw_model_response(response),
             final_score=final_score,
             final_response=response,
             attempts=tuple(attempts),
@@ -1294,6 +1945,9 @@ def evaluate_case_trajectory(
     case: TargetEvalCase | TargetChallengeCase | PrecisionCase,
     registry: ToolRegistry,
     generate_response: Callable[[list[dict[str, str]]], str],
+    *,
+    generation_recorder: GenerationTraceRecorder | None = None,
+    trace_case_id: str | None = None,
 ) -> CaseTrajectoryResult:
     """Generate and score one case through the product strict-recovery policy."""
 
@@ -1304,7 +1958,16 @@ def evaluate_case_trajectory(
             else build_case_messages(case, registry)
         )
 
-    return _evaluate_trajectory(
+    _messages, prompt_publication, backend_publication = _case_projection(
+        case,
+        registry,
+    )
+    harness = _EvaluatorControllerHarness(
+        registry=registry,
+        publication=backend_publication,
+    )
+    harness.begin_turn(case.user_input, prompt_publication)
+    trajectory = _evaluate_trajectory(
         workflow_stage=case.workflow_stage,
         build_messages=messages,
         score_response=lambda response: _score_case_response(
@@ -1312,7 +1975,37 @@ def evaluate_case_trajectory(
             response,
             registry,
         ),
+        score_raw_model_response=lambda response: _score_raw_model_response(
+            case,
+            response,
+            registry,
+        ),
         generate_response=generate_response,
+        generation_recorder=generation_recorder,
+        trace_case_id=trace_case_id or case.case_id,
+        replay_controller_response=harness.replay_controller_generation,
+    )
+    host_admission, product_terminal = harness.observed_controller_outcome(
+        trajectory.final_response,
+        workflow_stage=case.workflow_stage,
+        recovery_action=trajectory.attempts[-1].recovery_action,
+    )
+    final_score = (
+        _score_precision_controller_terminal(
+            case,
+            trajectory.final_response,
+            host_admission,
+            product_terminal,
+            trajectory.final_score,
+        )
+        if isinstance(case, PrecisionCase)
+        else trajectory.final_score
+    )
+    return replace(
+        trajectory,
+        final_score=final_score,
+        host_admission=host_admission,
+        product_terminal=product_terminal,
     )
 
 
@@ -1329,7 +2022,7 @@ def admit_clarification_receipt(
     derives one only from the model's first response plus the same parser,
     attempt coordinator, and pending-interaction owner used by the product.
     """
-    _system, prompt_publication, backend_publication = _precision_case_projection(
+    _messages, prompt_publication, backend_publication = _case_projection(
         source,
         registry,
     )
@@ -1339,10 +2032,15 @@ def admit_clarification_receipt(
     )
     harness.begin_turn(source.user_input, prompt_publication)
     receipt = harness.admit_typed_response(response)
+    receipt_origin = "model_typed"
+    if receipt is None:
+        receipt = harness.admit_origin_guard_response(response)
+        receipt_origin = "host_parameter_origin"
     if receipt is None or receipt.command_name != expected_tool:
         return None
     return ClarificationAdmission(
         receipt=receipt,
+        receipt_origin=receipt_origin,
         harness=harness,
         prompt_publication=prompt_publication,
         backend_publication=backend_publication,
@@ -1356,12 +2054,75 @@ def evaluate_clarification_trajectory(
     admission: ClarificationAdmission,
     registry: ToolRegistry,
     generate_response: Callable[[list[dict[str, str]]], str],
+    generation_recorder: GenerationTraceRecorder | None = None,
+    trace_case_id: str | None = None,
 ) -> CaseTrajectoryResult:
     """Generate an admitted receipt-backed second turn through recovery policy."""
     harness = admission.harness
     receipt = harness.begin_turn(case.reply, admission.prompt_publication)
     if receipt is None:
         raise RuntimeError("Controller did not activate the admitted clarification.")
+    # A completed value-shaped reply must reach the product execution boundary
+    # without another model generation.
+    if harness.collect_active_tool_input_reply(case.reply):
+        decision = harness._observed_decision
+        parameters = decision.params if decision is not None else None
+        passed = bool(
+            decision is not None
+            and decision.action is ToolAttemptAction.EXECUTE
+            and decision.command_name == case.expected_tool
+            and parameters == case.expected_parameters
+        )
+        terminal_score = TargetEvalScore(
+            passed,
+            "none" if passed else "clarification_collection",
+            "",
+            source.workflow_stage,
+            decision.command_name if decision is not None else None,
+            parameters,
+            (
+                "Controller reached the exact verified execution boundary without "
+                "a second model turn."
+                if passed
+                else "Controller did not admit the verified receipt for execution."
+            ),
+            PrecisionProductOutcome(
+                "execute_boundary"
+                if decision is not None and decision.action is ToolAttemptAction.EXECUTE
+                else (
+                    decision.action.value if decision is not None else "format_error"
+                ),
+                decision.message if decision is not None else None,
+                gui_handoff_permitted=bool(
+                    decision is not None
+                    and decision.action is ToolAttemptAction.EXECUTE
+                ),
+                application_service_permitted=bool(
+                    decision is not None
+                    and decision.action is ToolAttemptAction.EXECUTE
+                ),
+                tool_executor_permitted=bool(
+                    decision is not None
+                    and decision.action is ToolAttemptAction.EXECUTE
+                ),
+                state_mutation_permitted=bool(
+                    decision is not None
+                    and decision.action is ToolAttemptAction.EXECUTE
+                ),
+            ),
+        )
+        return CaseTrajectoryResult(
+            raw_score=terminal_score,
+            post_recovery_score=terminal_score,
+            final_score=terminal_score,
+            final_response="",
+            attempts=(),
+            receipt_origin=admission.receipt_origin,
+            product_terminal=harness._observed_terminal,
+        )
+    # A non-value reply clears the receipt and resumes an ordinary model turn.
+    # The visible transcript remains the only context; no receipt is projected.
+    receipt = harness.pending_interactions.active_tool_input or admission.receipt
     observed: dict[str, TargetEvalScore] = {}
 
     def score(response: str) -> TargetEvalScore:
@@ -1369,7 +2130,7 @@ def evaluate_clarification_trajectory(
         if cached is not None:
             return cached
         envelope = CommandParser.parse_product(response)
-        decision, _supplied = harness.evaluate_proposal(response)
+        decision = harness._observed_decision
         parameters = decision.params if decision is not None else None
         passed = bool(
             envelope.status is ToolEnvelopeStatus.VALID
@@ -1420,17 +2181,58 @@ def evaluate_clarification_trajectory(
         )
         return observed[response]
 
-    return _evaluate_trajectory(
-        workflow_stage=source.workflow_stage,
-        build_messages=lambda recovery: build_clarification_messages(
-            case,
-            source,
-            receipt=receipt,
-            registry=registry,
-            recovery_messages=recovery,
-        )[0],
-        score_response=score,
-        generate_response=generate_response,
+    def raw_score(response: str) -> TargetEvalScore:
+        envelope = CommandParser.parse_product(response)
+        if envelope.status is not ToolEnvelopeStatus.VALID:
+            return TargetEvalScore(
+                False,
+                "output_format",
+                response[:1000],
+                envelope.workflow_stage,
+                None,
+                None,
+                envelope.error,
+            )
+        tool_name, parameters = envelope.commands[0]
+        passed = bool(
+            envelope.workflow_stage == source.workflow_stage
+            and tool_name == case.expected_tool
+            and parameters == case.expected_parameters
+        )
+        return TargetEvalScore(
+            passed,
+            "none" if passed else "clarification_continuation",
+            response[:1000],
+            envelope.workflow_stage,
+            tool_name,
+            parameters,
+            (
+                "Model selected the exact continuation action."
+                if passed
+                else "Model did not select the exact continuation action."
+            ),
+        )
+
+    return replace(
+        _evaluate_trajectory(
+            workflow_stage=source.workflow_stage,
+            build_messages=lambda recovery: build_clarification_messages(
+                case,
+                source,
+                receipt=receipt,
+                registry=registry,
+                recovery_messages=recovery,
+            )[0],
+            score_response=score,
+            score_raw_model_response=raw_score,
+            generate_response=generate_response,
+            generation_recorder=generation_recorder,
+            trace_case_id=trace_case_id or case.case_id,
+            initial_turn_purpose="clarification_proposal",
+            replay_controller_response=harness.replay_controller_generation,
+        ),
+        receipt_origin=admission.receipt_origin,
+        product_terminal=harness._observed_terminal,
     )
 
 
@@ -1438,6 +2240,9 @@ def evaluate_discriminated_clarification_trajectory(
     case: ClarificationCase,
     registry: ToolRegistry,
     generate_response: Callable[[list[dict[str, str]]], str],
+    *,
+    generation_recorder: GenerationTraceRecorder | None = None,
+    trace_case_id: str | None = None,
 ) -> CaseTrajectoryResult:
     """Run the two approved multi-turn clarification trajectories."""
     if (
@@ -1449,6 +2254,7 @@ def evaluate_discriminated_clarification_trajectory(
         or len(case.turns) != 3
     ):
         raise ValueError("Unsupported discriminated clarification trajectory.")
+    trace_case_id = trace_case_id or case.case_id
     first = PrecisionCase(
         case_id=f"{case.case_id}_first",
         user_input=case.turns[0],
@@ -1462,7 +2268,13 @@ def evaluate_discriminated_clarification_trajectory(
             else case.expected_tool
         ),
     )
-    first_trajectory = evaluate_case_trajectory(first, registry, generate_response)
+    first_trajectory = evaluate_case_trajectory(
+        first,
+        registry,
+        generate_response,
+        generation_recorder=generation_recorder,
+        trace_case_id=trace_case_id,
+    )
     first_envelope = CommandParser.parse_product(first_trajectory.final_response)
     if case.trajectory_kind == "generic_filter_selection":
         first_ok = (
@@ -1470,7 +2282,7 @@ def evaluate_discriminated_clarification_trajectory(
             and first_envelope.status is ToolEnvelopeStatus.NO_TOOL
             and not first_envelope.pending_action
         )
-        action_request = "bandpass"
+        action_request = case.turns[1]
     else:
         first_ok = first_trajectory.final_score.passed
         action_request = first.user_input
@@ -1492,7 +2304,11 @@ def evaluate_discriminated_clarification_trajectory(
             requested_tool=case.expected_tool,
         )
         action_trajectory = evaluate_case_trajectory(
-            source, registry, generate_response
+            source,
+            registry,
+            generate_response,
+            generation_recorder=generation_recorder,
+            trace_case_id=trace_case_id,
         )
         admission = admit_clarification_receipt(
             source,
@@ -1509,6 +2325,7 @@ def evaluate_discriminated_clarification_trajectory(
         )
         return CaseTrajectoryResult(
             raw_score=first_trajectory.raw_score,
+            post_recovery_score=action_trajectory.post_recovery_score,
             final_score=failed,
             final_response=action_trajectory.final_response,
             attempts=(
@@ -1516,27 +2333,20 @@ def evaluate_discriminated_clarification_trajectory(
                 if action_trajectory is first_trajectory
                 else first_trajectory.attempts + action_trajectory.attempts
             ),
+            receipt_origin=None,
         )
     if case.trajectory_kind == "partial_bandpass_accumulation":
         harness = admission.harness
-        partial_case = replace(case, reply=case.turns[1])
         receipt = harness.begin_turn(case.turns[1], admission.prompt_publication)
         if receipt is None:
             raise RuntimeError("Controller did not activate partial clarification.")
-        messages, _prompt, _backend = build_clarification_messages(
-            partial_case, source, receipt=receipt, registry=registry
-        )
-        partial_response = generate_response(messages)
-        partial_decision, partial_parameters = harness.evaluate_proposal(
-            partial_response
-        )
+        requeued_for_reply = harness.collect_active_tool_input_reply(case.turns[1])
         requeued = harness.pending_interactions.tool_input
         if (
-            partial_decision is None
-            or partial_decision.action is not ToolAttemptAction.RESPOND
-            or partial_parameters != {"low_freq": 12}
+            not requeued_for_reply
             or requeued is None
-            or dict(requeued.verified_parameters) != {"low_freq": 12}
+            or dict(requeued.verified_parameters)
+            or requeued.unassigned_bandpass_cutoff is None
             or requeued.remaining_reply_budget != 1
         ):
             failed = replace(
@@ -1546,10 +2356,14 @@ def evaluate_discriminated_clarification_trajectory(
                 detail="Controller did not verify and requeue the partial reply.",
             )
             return CaseTrajectoryResult(
-                first_trajectory.raw_score,
-                failed,
-                partial_response,
-                first_trajectory.attempts + action_trajectory.attempts,
+                raw_score=first_trajectory.raw_score,
+                post_recovery_score=action_trajectory.post_recovery_score,
+                final_score=failed,
+                final_response=(
+                    harness.history[-1]["content"] if harness.history else case.turns[1]
+                ),
+                attempts=first_trajectory.attempts,
+                receipt_origin=admission.receipt_origin,
             )
     final_case = replace(case, reply=case.turns[2])
     final_trajectory = evaluate_clarification_trajectory(
@@ -1558,9 +2372,12 @@ def evaluate_discriminated_clarification_trajectory(
         admission=admission,
         registry=registry,
         generate_response=generate_response,
+        generation_recorder=generation_recorder,
+        trace_case_id=trace_case_id,
     )
     return CaseTrajectoryResult(
         raw_score=first_trajectory.raw_score,
+        post_recovery_score=final_trajectory.post_recovery_score,
         final_score=final_trajectory.final_score,
         final_response=final_trajectory.final_response,
         attempts=(
@@ -1570,6 +2387,7 @@ def evaluate_discriminated_clarification_trajectory(
             + action_trajectory.attempts
             + final_trajectory.attempts
         ),
+        receipt_origin=admission.receipt_origin,
     )
 
 
@@ -1681,6 +2499,198 @@ def score_positive_parameter_host_guard(
     }
 
 
+def _capture_audit_request() -> _CaptureAuditRequest:
+    """Snapshot child session names only when developer capture is enabled."""
+    configured = os.environ.get(_PROMPT_CAPTURE_DIRECTORY_ENV, "").strip()
+    if not configured:
+        return _CaptureAuditRequest(requested=False, root=None)
+    root = Path(configured).expanduser()
+    if not root.is_absolute():
+        return _CaptureAuditRequest(
+            requested=True,
+            root=None,
+            failure_code="invalid_capture_root",
+        )
+    try:
+        prior_sessions = (
+            frozenset(child.name for child in root.iterdir())
+            if root.exists()
+            else frozenset()
+        )
+    except OSError:
+        return _CaptureAuditRequest(
+            requested=True,
+            root=None,
+            failure_code="capture_snapshot_failed",
+        )
+    return _CaptureAuditRequest(
+        requested=True,
+        root=root,
+        prior_session_names=prior_sessions,
+    )
+
+
+def _capture_integrity_report(
+    request: _CaptureAuditRequest,
+    generation_trace: tuple[GenerationTraceEntry, ...] | list[GenerationTraceEntry],
+    *,
+    model_id: str,
+    generation_policy: dict[str, Any],
+) -> dict[str, Any]:
+    """Check one opt-in LocalBackend capture session without disclosing its content."""
+    if not request.requested:
+        return {
+            "requested": False,
+            "status": "not_requested",
+            "artifact_count": 0,
+            "session_id_sha256": None,
+            "checks": {},
+            "failure_codes": [],
+        }
+    checks = {
+        "single_new_session": False,
+        "artifact_directories": False,
+        "contiguous_sequences": False,
+        "completed_metadata": False,
+        "regular_files": False,
+        "metadata_matches_runtime": False,
+        "utf8_byte_hashes": False,
+        "trace_raw_identity": False,
+    }
+    report: dict[str, Any] = {
+        "requested": True,
+        "status": "failed",
+        "artifact_count": 0,
+        "session_id_sha256": None,
+        "checks": checks,
+        "failure_codes": [],
+    }
+
+    def fail(*codes: str) -> dict[str, Any]:
+        report["failure_codes"] = list(codes)
+        return report
+
+    if request.failure_code is not None or request.root is None:
+        return fail(request.failure_code or "capture_snapshot_failed")
+    try:
+        new_sessions = tuple(
+            child
+            for child in request.root.iterdir()
+            if child.name not in request.prior_session_names
+        )
+    except OSError:
+        return fail("capture_session_listing_failed")
+    if len(new_sessions) != 1:
+        return fail(
+            "new_session_missing" if not new_sessions else "new_session_ambiguity"
+        )
+
+    session = new_sessions[0]
+    checks["single_new_session"] = True
+    report["session_id_sha256"] = hashlib.sha256(
+        session.name.encode("utf-8")
+    ).hexdigest()
+    try:
+        if session.is_symlink() or not session.is_dir():
+            return fail("capture_session_invalid")
+        artifact_directories = tuple(session.iterdir())
+    except OSError:
+        return fail("capture_artifact_listing_failed")
+
+    expected_count = len(generation_trace)
+    report["artifact_count"] = len(artifact_directories)
+    if len(artifact_directories) != expected_count:
+        return fail("artifact_count_mismatch")
+
+    metadata_by_sequence: dict[int, tuple[dict[str, Any], bytes, bytes]] = {}
+    try:
+        for directory in artifact_directories:
+            if directory.is_symlink() or not directory.is_dir():
+                return fail("capture_artifact_directory_invalid")
+            files = {name: directory / name for name in _CAPTURE_FILE_NAMES}
+            if any(path.is_symlink() or not path.is_file() for path in files.values()):
+                return fail("capture_artifact_file_invalid")
+            prompt_bytes = files["prompt.txt"].read_bytes()
+            raw_bytes = files["raw-output.txt"].read_bytes()
+            metadata = json.loads(files["metadata.json"].read_text(encoding="utf-8"))
+            prompt_bytes.decode("utf-8")
+            raw_bytes.decode("utf-8")
+            if type(metadata) is not dict:
+                return fail("capture_metadata_mismatch")
+            sequence = metadata.get("sequence")
+            if (
+                type(sequence) is not int
+                or directory.name != str(sequence)
+                or sequence in metadata_by_sequence
+            ):
+                return fail("capture_sequence_mismatch")
+            metadata_by_sequence[sequence] = (metadata, prompt_bytes, raw_bytes)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return fail("capture_artifact_read_failed")
+
+    expected_sequences = set(range(1, expected_count + 1))
+    if set(metadata_by_sequence) != expected_sequences:
+        return fail("capture_sequence_mismatch")
+    checks.update(
+        artifact_directories=True,
+        regular_files=True,
+        contiguous_sequences=True,
+    )
+    expected_model = local_model_spec(model_id)
+    expected_options = {
+        name: generation_policy[name]
+        for name in ("max_new_tokens", "do_sample", "temperature", "top_p")
+    }
+    expected_model_payload = (
+        {"id": expected_model.repo_id, "revision": expected_model.revision}
+        if expected_model is not None
+        else None
+    )
+    metadata_rows = tuple(
+        metadata_by_sequence[sequence] for sequence in expected_sequences
+    )
+    checks["completed_metadata"] = all(
+        metadata.get("status") == "completed"
+        for metadata, _prompt, _raw in metadata_rows
+    )
+    checks["metadata_matches_runtime"] = bool(expected_model_payload) and all(
+        metadata.get("model") == expected_model_payload
+        and metadata.get("options") == expected_options
+        and metadata.get("session_id") == session.name
+        for metadata, _prompt, _raw in metadata_rows
+    )
+    checks["utf8_byte_hashes"] = all(
+        metadata.get("prompt_bytes") == len(prompt)
+        and metadata.get("prompt_sha256") == hashlib.sha256(prompt).hexdigest()
+        and metadata.get("raw_output_bytes") == len(raw)
+        and metadata.get("raw_output_sha256") == hashlib.sha256(raw).hexdigest()
+        for metadata, prompt, raw in metadata_rows
+    )
+    checks["trace_raw_identity"] = all(
+        trace.global_call_index == sequence
+        and len(raw) == trace.raw_output_bytes
+        and hashlib.sha256(raw).hexdigest() == trace.raw_output_sha256
+        and metadata.get("raw_output_bytes") == trace.raw_output_bytes
+        and metadata.get("raw_output_sha256") == trace.raw_output_sha256
+        for sequence, trace in enumerate(generation_trace, start=1)
+        for metadata, _prompt, raw in (metadata_by_sequence[sequence],)
+    )
+    failure_codes = [
+        code
+        for check, code in (
+            ("completed_metadata", "capture_not_completed"),
+            ("metadata_matches_runtime", "capture_metadata_mismatch"),
+            ("utf8_byte_hashes", "capture_content_hash_mismatch"),
+            ("trace_raw_identity", "capture_trace_raw_mismatch"),
+        )
+        if not checks[check]
+    ]
+    if failure_codes:
+        return fail(*failure_codes)
+    report["status"] = "verified"
+    return report
+
+
 def _build_report(
     *,
     model_id: str,
@@ -1688,6 +2698,9 @@ def _build_report(
     expected_case_count: int,
     complete: bool,
     generation_policy: dict[str, Any] | None = None,
+    generation_trace: tuple[GenerationTraceEntry, ...]
+    | list[GenerationTraceEntry] = (),
+    capture_integrity: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     core_rows = [
         row for row in results if row.get("suite") in {"positive", "challenge"}
@@ -1708,38 +2721,132 @@ def _build_report(
     clarification_passed = sum(
         bool(row["score"]["passed"]) for row in clarification_rows
     )
-    raw_generation_summary: dict[str, dict[str, int]] = {}
+    first_generation_summary: dict[str, dict[str, int]] = {}
+    post_recovery_summary: dict[str, dict[str, int]] = {}
     for suite in ("positive", "challenge", "precision", "clarification"):
         suite_rows = [row for row in results if row.get("suite") == suite]
-        raw_passed = sum(
-            bool(row.get("raw_score", row["score"])["passed"]) for row in suite_rows
+        first_generation_passed = sum(
+            bool(row.get("first_generation_score", row["score"])["passed"])
+            for row in suite_rows
         )
-        raw_generation_summary[suite] = {
+        post_recovery_passed = sum(
+            bool(row.get("post_recovery_score", row["score"])["passed"])
+            for row in suite_rows
+        )
+        first_generation_summary[suite] = {
             "case_count": len(suite_rows),
-            "passed_count": raw_passed,
-            "failed_count": len(suite_rows) - raw_passed,
+            "passed_count": first_generation_passed,
+            "failed_count": len(suite_rows) - first_generation_passed,
         }
-    positive_passed = suite_summary["positive"]["passed_count"]
+        post_recovery_summary[suite] = {
+            "case_count": len(suite_rows),
+            "passed_count": post_recovery_passed,
+            "failed_count": len(suite_rows) - post_recovery_passed,
+        }
     positive_guard_rows = [
-        row["parameter_origin_guard"]
+        row
         for row in results
-        if isinstance(row.get("parameter_origin_guard"), dict)
-        and row["parameter_origin_guard"].get("applicable") is True
+        if row.get("suite") == "positive"
+        and row.get("case", {}).get("expected_tool") in DIRECT_PARAMETER_TOOLS
     ]
-    positive_guard_passed = sum(bool(row.get("passed")) for row in positive_guard_rows)
+    positive_guard_passed = sum(
+        bool(
+            isinstance(row.get("host_admission"), dict)
+            and row["host_admission"].get("attempt_action") == "execute"
+            and row.get("score", {}).get("passed") is True
+        )
+        for row in positive_guard_rows
+    )
     host_guard_rows = [
-        row["host_guard"]
+        row
         for row in results
-        if isinstance(row.get("host_guard"), dict)
-        and row["host_guard"].get("applicable") is True
+        if row.get("suite") == "challenge"
+        and row.get("case", {}).get("case_id") in MISSING_PARAMETER_HOST_TOOLS
     ]
-    host_guard_passed = sum(bool(row.get("passed")) for row in host_guard_rows)
-    frozen_core_passed = bool(
+    host_guard_passed = sum(
+        bool(
+            isinstance(row.get("host_admission"), dict)
+            and isinstance(row.get("product_terminal"), dict)
+            and row["product_terminal"].get("execution_boundary_reached") is False
+            and (
+                (
+                    row["host_admission"].get("attempt_action") == "respond"
+                    and row["host_admission"].get("receipt_origin")
+                    == "host_parameter_origin"
+                )
+                or (
+                    row["host_admission"].get("attempt_action") is None
+                    and row["host_admission"].get("path") == "no_tool"
+                    and row["product_terminal"].get("kind") == "respond"
+                    and row.get("score", {}).get("passed") is True
+                )
+            )
+        )
+        for row in host_guard_rows
+    )
+    challenge_rows = [row for row in results if row.get("suite") == "challenge"]
+    challenge_critical_failures = sum(
+        row.get("first_generation_score", row["score"]).get("failure_type")
+        in {"output_format", "workflow_stage", "unexpected_tool"}
+        for row in challenge_rows
+    )
+    challenge_wording_failures = sum(
+        row.get("first_generation_score", row["score"]).get("failure_type")
+        == "response_content"
+        for row in challenge_rows
+    )
+    challenge_unclassified_failures = (
+        len(challenge_rows)
+        - first_generation_summary["challenge"]["passed_count"]
+        - challenge_critical_failures
+        - challenge_wording_failures
+    )
+    raw_model_gate = {
+        "positive_exact": {
+            "required": 36,
+            "passed": first_generation_summary["positive"]["passed_count"],
+        },
+        "challenge_decision": {
+            "required": 14,
+            "critical_failures": challenge_critical_failures,
+            "wording_failures": challenge_wording_failures,
+            "max_wording_failures": 3,
+            "unclassified_failures": challenge_unclassified_failures,
+        },
+        "precision_no_action": {
+            "required": PRECISION_CASE_COUNT,
+            "passed": first_generation_summary["precision"]["passed_count"],
+        },
+        "clarification_continuation": {
+            "required": CLARIFICATION_CASE_COUNT,
+            "passed": first_generation_summary["clarification"]["passed_count"],
+        },
+    }
+    raw_model_gate["passed"] = bool(
+        complete
+        and first_generation_summary["positive"]["case_count"] == 36
+        and raw_model_gate["positive_exact"]["passed"] == 36
+    )
+    host_safety_gate = {
+        "explicit_parameter_origin": {"required": 10, "passed": positive_guard_passed},
+        "missing_parameter_origin": {"required": 5, "passed": host_guard_passed},
+        "continuation_boundaries": {
+            "not_counted_in_model_report": [
+                "cancel",
+                "topic_switch",
+                "stale_receipt",
+                "different_tool",
+                "partial_reply",
+                "multi_action",
+            ],
+            "report_status": "not_measured_by_this_model_report",
+            "external_evidence": "controller unit/integration coverage required",
+        },
+    }
+    host_safety_gate["passed"] = bool(
         complete
         and expected_case_count == 50
         and len(core_rows) == 50
-        and suite_summary["positive"]["case_count"] == 36
-        and positive_passed == 36
         and len(positive_guard_rows) == 10
         and positive_guard_passed == 10
         and len(host_guard_rows) == 5
@@ -1755,8 +2862,60 @@ def _build_report(
     clarification_passed_gate = bool(
         clarification_complete and clarification_passed == CLARIFICATION_CASE_COUNT
     )
-    candidate_passed = (
-        frozen_core_passed and precision_passed_gate and clarification_passed_gate
+    direct_host_rows = [
+        row for row in clarification_rows if row.get("source_case") is not None
+    ]
+    direct_host_admitted = sum(
+        bool(
+            row.get("source_has_host_receipt") is True
+            and isinstance(row.get("receipt_admission"), dict)
+            and row["receipt_admission"].get("admitted") is True
+            and row["receipt_admission"].get("origin")
+            in {"model_typed", "host_parameter_origin"}
+        )
+        for row in direct_host_rows
+    )
+    direct_host_admission_complete = bool(complete and len(direct_host_rows) == 5)
+    direct_host_admission_passed = bool(
+        direct_host_admission_complete and direct_host_admitted == 5
+    )
+    direct_host_admission_gate = {
+        "required": 5,
+        "passed": direct_host_admitted,
+        "complete": direct_host_admission_complete,
+        "status": "passed" if direct_host_admission_passed else "failed",
+    }
+    product_outcome_gate = {
+        "precision_no_action": {
+            "required": PRECISION_CASE_COUNT,
+            "passed": precision_passed,
+        },
+        "clarification_execution_boundary": {
+            "required": CLARIFICATION_CASE_COUNT,
+            "passed": clarification_passed,
+        },
+    }
+    product_outcome_gate["passed"] = bool(
+        precision_passed_gate and clarification_passed_gate
+    )
+    capture_integrity = capture_integrity or {
+        "requested": False,
+        "status": "not_requested",
+        "artifact_count": 0,
+        "session_id_sha256": None,
+        "checks": {},
+        "failure_codes": [],
+    }
+    capture_integrity_passed = capture_integrity.get("status") in {
+        "not_requested",
+        "verified",
+    }
+    candidate_passed = bool(
+        raw_model_gate["passed"]
+        and host_safety_gate["passed"]
+        and direct_host_admission_passed
+        and product_outcome_gate["passed"]
+        and capture_integrity_passed
     )
     spec = local_model_spec(model_id)
     return {
@@ -1768,28 +2927,23 @@ def _build_report(
             "deterministic": True,
         },
         "generation_policy": generation_policy,
+        "generation_attempt_count": len(generation_trace),
+        "generation_trace": [asdict(entry) for entry in generation_trace],
         "target_surface": sorted(AGENT_ACTION_CONTRACTS.model_tool_names()),
         "suite_summary": suite_summary,
-        "raw_generation_summary": raw_generation_summary,
+        "first_generation_summary": first_generation_summary,
+        "post_recovery_summary": post_recovery_summary,
+        "raw_model_gate": raw_model_gate,
+        "host_safety_gate": host_safety_gate,
+        "direct_host_admission_gate": direct_host_admission_gate,
+        "product_outcome_gate": product_outcome_gate,
+        "capture_integrity": capture_integrity,
         "candidate_gate": {
-            "positive_exact": {"required": 36, "passed": positive_passed},
-            "explicit_parameter_host_guard": {
-                "required": 10,
-                "passed": positive_guard_passed,
-            },
-            "missing_parameter_host_guard": {
-                "required": 5,
-                "passed": host_guard_passed,
-            },
-            "frozen_core_passed": frozen_core_passed,
-            "precision_no_action": {
-                "required": PRECISION_CASE_COUNT,
-                "passed": precision_passed,
-            },
-            "clarification_continuation": {
-                "required": CLARIFICATION_CASE_COUNT,
-                "passed": clarification_passed,
-            },
+            "raw_model": raw_model_gate["passed"],
+            "host_safety": host_safety_gate["passed"],
+            "direct_host_admission": direct_host_admission_passed,
+            "product_outcome": product_outcome_gate["passed"],
+            "capture_integrity": capture_integrity_passed,
             "passed": candidate_passed,
         },
         "summary": {
@@ -1818,14 +2972,14 @@ def _build_report(
         },
         "results": results,
         "claim_boundary": (
-            "Frozen bilingual core preserves exact selection for 36 complete requests plus the "
-            "deterministic host parameter-origin boundary for five missing-value "
-            "requests. Candidate gates use the final bounded strict-envelope recovery, "
-            "parser, attempt, and presentation outcome. Seven controller-backed "
-            "clarification trajectories (five direct actions, generic filter selection, "
-            "and partial bandpass accumulation) must reach the verified execution boundary; "
-            "raw first-generation scores remain separate diagnostics. These suites are not "
-            "workflow success or thesis-grade model accuracy."
+            "Active English cases report raw model decisions, Host safety boundaries, and "
+            "final product outcomes separately. A Host block or recovery can establish "
+            "product safety but never counts as raw model quality. Seven controller-backed "
+            "clarification trajectories (five direct actions, generic filter selection, and "
+            "partial bandpass accumulation) must reach the verified execution boundary. "
+            "Score response fields are bounded diagnostic previews; generation_trace records "
+            "the pre-normalization raw-output byte count and SHA-256 for capture correlation. "
+            "These suites are not workflow success or thesis-grade model accuracy."
         ),
     }
 
@@ -1905,9 +3059,34 @@ def _evaluation_generation_policy(config: LLMConfig) -> dict[str, Any]:
         "profile": GenerationProfile.STRUCTURED_DECISION.value,
         "max_new_tokens": options.max_new_tokens,
         "do_sample": options.do_sample,
+        "temperature": options.temperature,
+        "top_p": options.top_p,
         "max_format_recovery_attempts": (
             DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY.max_recovery_attempts
         ),
+    }
+
+
+def _trajectory_payload(
+    attempts: tuple[ModelGenerationAttempt, ...],
+    generation_recorder: GenerationTraceRecorder,
+    *,
+    case_id: str,
+) -> dict[str, Any]:
+    """Keep policy classification distinct from actual model-call provenance."""
+    return {
+        "policy_attempts": [asdict(attempt) for attempt in attempts],
+        "format_recovery_attempts": sum(
+            attempt.recovery_action == StrictEnvelopeRecoveryAction.RETRY_FORMAT.value
+            for attempt in attempts
+        ),
+        "policy_terminal_action": attempts[-1].recovery_action if attempts else None,
+        "policy_terminal_taxonomy": attempts[-1].taxonomy if attempts else None,
+        "actual_generation_call_indices": [
+            entry.global_call_index
+            for entry in generation_recorder.entries
+            if entry.case_id == case_id
+        ],
     }
 
 
@@ -1938,7 +3117,37 @@ def run_eval(
     generation_policy = _evaluation_generation_policy(config)
     registry = target_tool_registry()
     engine = LLMEngine(config)
+    capture_request = _capture_audit_request()
+    checkpoint_capture_integrity = (
+        {
+            "requested": True,
+            "status": (
+                "failed" if capture_request.failure_code is not None else "incomplete"
+            ),
+            "artifact_count": 0,
+            "session_id_sha256": None,
+            "checks": {},
+            "failure_codes": (
+                [capture_request.failure_code]
+                if capture_request.failure_code is not None
+                else []
+            ),
+        }
+        if capture_request.requested
+        else None
+    )
+
+    def generate_from_engine(messages: list[dict[str, str]]) -> str:
+        return "".join(
+            engine.generate_stream(
+                messages,
+                profile=GenerationProfile.STRUCTURED_DECISION,
+            )
+        )
+
+    generation_recorder = GenerationTraceRecorder()
     results: list[dict[str, Any]] = []
+    final_responses_by_case: dict[str, str] = {}
     try:
         engine.load_model()
         all_cases: tuple[TargetEvalCase | TargetChallengeCase | PrecisionCase, ...] = (
@@ -1956,14 +3165,12 @@ def run_eval(
             trajectory = evaluate_case_trajectory(
                 case,
                 registry,
-                lambda messages: "".join(
-                    engine.generate_stream(
-                        messages,
-                        profile=GenerationProfile.STRUCTURED_DECISION,
-                    )
-                ),
+                generate_from_engine,
+                generation_recorder=generation_recorder,
+                trace_case_id=case.case_id,
             )
             response = trajectory.final_response
+            final_responses_by_case[case.case_id] = response
             score = trajectory.final_score
             suite = (
                 "precision"
@@ -1975,37 +3182,26 @@ def run_eval(
             score_payload = asdict(score)
             if score.product_outcome is None:
                 score_payload.pop("product_outcome")
-            raw_score_payload = asdict(trajectory.raw_score)
+            first_generation_score_payload = asdict(trajectory.raw_score)
             if trajectory.raw_score.product_outcome is None:
-                raw_score_payload.pop("product_outcome")
+                first_generation_score_payload.pop("product_outcome")
+            post_recovery_score_payload = asdict(trajectory.post_recovery_score)
+            if trajectory.post_recovery_score.product_outcome is None:
+                post_recovery_score_payload.pop("product_outcome")
             row = {
                 "suite": suite,
                 "case": asdict(case),
-                "raw_score": raw_score_payload,
+                "first_generation_score": first_generation_score_payload,
+                "post_recovery_score": post_recovery_score_payload,
                 "score": score_payload,
-                "trajectory": {
-                    "attempts": [asdict(attempt) for attempt in trajectory.attempts],
-                    "recovery_attempts_used": len(trajectory.attempts) - 1,
-                    "terminal_action": trajectory.attempts[-1].recovery_action,
-                    "terminal_taxonomy": trajectory.attempts[-1].taxonomy,
-                },
+                "trajectory": _trajectory_payload(
+                    trajectory.attempts,
+                    generation_recorder,
+                    case_id=case.case_id,
+                ),
+                "host_admission": trajectory.host_admission,
+                "product_terminal": trajectory.product_terminal,
             }
-            if isinstance(case, TargetEvalCase) and (
-                case.expected_tool in DIRECT_PARAMETER_TOOLS
-            ):
-                row["parameter_origin_guard"] = score_positive_parameter_host_guard(
-                    case,
-                    response,
-                    registry,
-                )
-            if isinstance(case, TargetChallengeCase) and (
-                case.case_id in MISSING_PARAMETER_HOST_TOOLS
-            ):
-                row["host_guard"] = score_missing_parameter_host_guard(
-                    case,
-                    response,
-                    registry,
-                )
             results.append(row)
             if checkpoint_path is not None:
                 _write_report(
@@ -2016,6 +3212,8 @@ def run_eval(
                         expected_case_count=len(cases) + len(challenge_cases),
                         complete=False,
                         generation_policy=generation_policy,
+                        generation_trace=generation_recorder.entries,
+                        capture_integrity=checkpoint_capture_integrity,
                     ),
                 )
         precision_by_id = {case.case_id: case for case in precision_cases}
@@ -2031,49 +3229,58 @@ def run_eval(
                 trajectory = evaluate_discriminated_clarification_trajectory(
                     case,
                     registry,
-                    lambda messages: "".join(
-                        engine.generate_stream(
-                            messages,
-                            profile=GenerationProfile.STRUCTURED_DECISION,
-                        )
-                    ),
+                    generate_from_engine,
+                    generation_recorder=generation_recorder,
+                    trace_case_id=case.case_id,
                 )
                 score_payload = asdict(trajectory.final_score)
-                raw_score_payload = asdict(trajectory.raw_score)
-                attempts = [asdict(attempt) for attempt in trajectory.attempts]
+                first_generation_score_payload = asdict(trajectory.raw_score)
+                post_recovery_score_payload = asdict(trajectory.post_recovery_score)
+                trajectory_attempts = trajectory.attempts
                 source = None
-                source_has_receipt = True
+                receipt_origin = trajectory.receipt_origin
+                source_has_receipt = receipt_origin is not None
+                source_first_generation_score = None
+                followup_model_generation = {
+                    "occurred": bool(trajectory_attempts),
+                    "attempt_count": len(trajectory_attempts),
+                }
             else:
                 source = precision_by_id[case.source_case_id]
                 source_row = result_by_id[case.source_case_id]
-                source_score = source_row["score"]
-                admission = (
-                    admit_clarification_receipt(
-                        source,
-                        str(source_score.get("response", "")),
-                        expected_tool=case.expected_tool,
-                        registry=registry,
-                    )
-                    if source_score.get("passed") is True
-                    else None
+                source_first_generation_score = source_row["first_generation_score"]
+                admission = admit_clarification_receipt(
+                    source,
+                    final_responses_by_case[case.source_case_id],
+                    expected_tool=case.expected_tool,
+                    registry=registry,
                 )
                 source_has_receipt = admission is not None
+                receipt_origin = (
+                    admission.receipt_origin if admission is not None else None
+                )
                 if admission is not None:
                     trajectory = evaluate_clarification_trajectory(
                         case,
                         source,
                         admission=admission,
                         registry=registry,
-                        generate_response=lambda messages: "".join(
-                            engine.generate_stream(
-                                messages,
-                                profile=GenerationProfile.STRUCTURED_DECISION,
-                            )
-                        ),
+                        generate_response=generate_from_engine,
+                        generation_recorder=generation_recorder,
+                        trace_case_id=case.case_id,
                     )
                     score_payload = asdict(trajectory.final_score)
-                    raw_score_payload = asdict(trajectory.raw_score)
-                    attempts = [asdict(attempt) for attempt in trajectory.attempts]
+                    first_generation_score_payload = (
+                        asdict(trajectory.raw_score)
+                        if trajectory.attempts
+                        else dict(source_first_generation_score)
+                    )
+                    post_recovery_score_payload = asdict(trajectory.post_recovery_score)
+                    trajectory_attempts = trajectory.attempts
+                    followup_model_generation = {
+                        "occurred": bool(trajectory_attempts),
+                        "attempt_count": len(trajectory_attempts),
+                    }
                 else:
                     unavailable = TargetEvalScore(
                         False,
@@ -2085,30 +3292,39 @@ def run_eval(
                         "First turn did not produce the exact Host clarification receipt.",
                     )
                     score_payload = asdict(unavailable)
-                    raw_score_payload = dict(score_payload)
-                    attempts = []
+                    first_generation_score_payload = dict(score_payload)
+                    post_recovery_score_payload = dict(score_payload)
+                    trajectory_attempts = ()
+                    followup_model_generation = {
+                        "occurred": False,
+                        "attempt_count": 0,
+                    }
             if score_payload.get("product_outcome") is None:
                 score_payload.pop("product_outcome", None)
-            if raw_score_payload.get("product_outcome") is None:
-                raw_score_payload.pop("product_outcome", None)
+            if first_generation_score_payload.get("product_outcome") is None:
+                first_generation_score_payload.pop("product_outcome", None)
+            if post_recovery_score_payload.get("product_outcome") is None:
+                post_recovery_score_payload.pop("product_outcome", None)
             results.append(
                 {
                     "suite": "clarification",
                     "case": asdict(case),
                     "source_case": asdict(source) if source is not None else None,
                     "source_has_host_receipt": source_has_receipt,
-                    "raw_score": raw_score_payload,
-                    "score": score_payload,
-                    "trajectory": {
-                        "attempts": attempts,
-                        "recovery_attempts_used": max(len(attempts) - 1, 0),
-                        "terminal_action": (
-                            attempts[-1]["recovery_action"] if attempts else None
-                        ),
-                        "terminal_taxonomy": (
-                            attempts[-1]["taxonomy"] if attempts else None
-                        ),
+                    "receipt_admission": {
+                        "admitted": source_has_receipt,
+                        "origin": receipt_origin,
                     },
+                    "source_raw_model_score": source_first_generation_score,
+                    "first_generation_score": first_generation_score_payload,
+                    "post_recovery_score": post_recovery_score_payload,
+                    "score": score_payload,
+                    "followup_model_generation": followup_model_generation,
+                    "trajectory": _trajectory_payload(
+                        trajectory_attempts,
+                        generation_recorder,
+                        case_id=case.case_id,
+                    ),
                 }
             )
             if checkpoint_path is not None:
@@ -2120,6 +3336,8 @@ def run_eval(
                         expected_case_count=len(cases) + len(challenge_cases),
                         complete=False,
                         generation_policy=generation_policy,
+                        generation_trace=generation_recorder.entries,
+                        capture_integrity=checkpoint_capture_integrity,
                     ),
                 )
     finally:
@@ -2132,10 +3350,18 @@ def run_eval(
         expected_case_count=len(cases) + len(challenge_cases),
         complete=True,
         generation_policy=generation_policy,
+        generation_trace=generation_recorder.entries,
+        capture_integrity=_capture_integrity_report(
+            capture_request,
+            generation_recorder.entries,
+            model_id=selection.model_id,
+            generation_policy=generation_policy,
+        ),
     )
 
 
 def main(argv: list[str] | None = None) -> int:
+    effective_argv = list(sys.argv[1:] if argv is None else argv)
     parser = argparse.ArgumentParser()
     parser.add_argument("--cases", type=Path, default=DEFAULT_CASES)
     parser.add_argument("--challenges", type=Path, default=DEFAULT_CHALLENGES)
@@ -2148,7 +3374,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json-out", type=Path)
     parser.add_argument("--device", choices=("cpu", "cuda"))
     parser.add_argument("--strict", action="store_true")
-    args = parser.parse_args(argv)
+    args = parser.parse_args(effective_argv)
 
     config = _stable_eval_config(
         LLMConfig.load_from_file(),
@@ -2179,6 +3405,10 @@ def main(argv: list[str] | None = None) -> int:
             "summary": {"passed": False, "case_count": 0},
             "failure": f"{type(exc).__name__}: {exc}",
         }
+    report["invocation"] = {
+        "argv": effective_argv,
+        "working_directory_is_repository_root": Path.cwd().resolve() == ROOT,
+    }
     rendered = json.dumps(report, ensure_ascii=False, indent=2)
     print(rendered)
     if args.json_out is not None:

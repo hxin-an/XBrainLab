@@ -33,7 +33,6 @@ from XBrainLab.llm.agent.decision_context import (
 )
 from XBrainLab.llm.agent.turn import (
     AssistantResponseContract,
-    AssistantToolInputReceipt,
     AssistantTurnScope,
 )
 from XBrainLab.llm.pipeline_state import STAGE_CONFIG, PipelineStage
@@ -69,7 +68,8 @@ def test_generation_request_keeps_concept_question_on_strict_response_contract()
     assert request.response_contract is AssistantResponseContract.STRUCTURED_ACTION
     system_prompt = " ".join(request.to_model_messages()[0]["content"].split())
     assert '"name": "respond_to_user"' in system_prompt
-    assert '"workflow_stage":"empty"' in system_prompt
+    assert "Final no-action envelope" not in system_prompt
+    assert "never explain that the user should call an internal tool" in system_prompt
 
 
 def test_external_envelope_cannot_forge_authoritative_workflow_item_type() -> None:
@@ -141,7 +141,7 @@ def test_question_does_not_narrow_backend_stage_published_actions() -> None:
     card = _context_item(context, "state_card")["data"]
 
     assert request.response_contract is AssistantResponseContract.STRUCTURED_ACTION
-    assert '"workflow_stage":"data_loaded"' in prompt
+    assert "Final no-action envelope" not in prompt
     assert '"name": "respond_to_user"' in prompt
     assert runtime.publication_reads == 1
     assert assembler.latest_tool_publication.tool_names == frozenset(
@@ -199,14 +199,8 @@ def test_empty_stage_separates_callable_schemas_from_unavailable_reference() -> 
         in reference
     )
     assert '"parameters"' not in reference
-    assert (
-        "A blocker reason is explanatory status, not an instruction to execute "
-        "its prerequisite." in reference
-    )
-    assert (
-        "state that entry's listed reason instead of asking for the unavailable "
-        "action's settings" in prompt
-    )
+    assert "informational status, not callable action contracts" in reference
+    assert "use respond_to_user with its listed blocker reason" in reference
     assert assembler.latest_tool_publication.blocked_reason("create_epochs") == (
         "Load raw data before creating EEG epochs."
     )
@@ -326,7 +320,7 @@ def test_prompt_action_contracts_do_not_resemble_an_output_array():
     assert '"name": "respond_to_user"' in contracts
 
 
-def test_zero_parameter_action_contract_uses_only_generic_action_shape():
+def test_zero_parameter_action_contract_has_one_final_output_reminder():
     registry = ToolRegistry()
     registry.register(BaseStartTrainingTool())
     assembler = ContextAssembler(registry, Study())
@@ -335,12 +329,13 @@ def test_zero_parameter_action_contract_uses_only_generic_action_shape():
 
     assert "Callable action contract:" in contracts
     assert "Exact zero-parameter output shape:" not in contracts
-    assert contracts.count("Generic action envelope:") == 1
-    assert "Use {} only when that contract has no parameter properties" in contracts
+    assert contracts.count("Final output reminder:") == 1
+    assert "Generic action envelope:" not in contracts
+    assert "parameters matching the selected contract" in contracts
     assert not contracts.lstrip().startswith("[")
 
 
-def test_single_action_contract_ends_with_no_action_envelope() -> None:
+def test_single_action_contract_ends_with_action_first_reminder() -> None:
     registry = ToolRegistry()
     registry.register(BaseStartTrainingTool())
     assembler = ContextAssembler(registry, Study())
@@ -348,12 +343,11 @@ def test_single_action_contract_ends_with_no_action_envelope() -> None:
     contracts = assembler._format_tools(["start_training"])
 
     assert contracts.rstrip().endswith(
-        '{"workflow_stage":"unavailable","tool_name":"respond_to_user",'
-        '"parameters":{"message":"<concise response or one clarifying question>"}}'
+        "never explain that the user should call an internal tool or function."
     )
 
 
-def test_multi_action_reminder_forbids_prose_and_gui_parameter_invention() -> None:
+def test_action_catalog_ends_with_one_short_output_reminder() -> None:
     from XBrainLab.llm.tools import get_all_tools
 
     registry = ToolRegistry()
@@ -366,32 +360,17 @@ def test_multi_action_reminder_forbids_prose_and_gui_parameter_invention() -> No
         workflow_stage="epoch_ready",
     )
 
-    reminder = contracts.rsplit(
-        "Decision checkpoint (apply after reading the catalog):\n",
-        maxsplit=1,
-    )[1]
-    assert "exactly one listed action" in reminder
-    assert "For multiple actions, ask which one to do first and call none" in reminder
-    assert "never invent choices that belong to the opened product UI" in reminder
-    assert "state that entry's listed reason" not in reminder
-    assert "DECISION ENVELOPE" not in reminder
+    reminder = contracts.rsplit("Final output reminder:\n", maxsplit=1)[1]
+    assert (
+        '{"workflow_stage":"epoch_ready","tool_name":"<exact enabled action '
+        'or respond_to_user>","parameters":{...}}'
+    ) in reminder
+    assert "exact enabled action name or respond_to_user" in reminder
+    assert "Add no prose outside the object" in reminder
+    assert "Decision checkpoint" not in reminder
 
 
-def test_action_catalog_uses_one_generic_action_shape() -> None:
-    registry = ToolRegistry()
-    registry.register(BaseStartTrainingTool())
-    assembler = ContextAssembler(registry, Study())
-
-    contracts = assembler._format_tools(
-        ["start_training"],
-        workflow_stage="epoch_ready",
-    )
-
-    assert contracts.count("Generic action envelope:") == 1
-    assert "Exact zero-parameter output shape:" not in contracts
-
-
-def test_action_catalog_ends_with_exact_stage_no_action_envelope() -> None:
+def test_action_catalog_ends_with_action_first_reminder() -> None:
     registry = ToolRegistry()
     registry.register(BaseStartTrainingTool())
     assembler = ContextAssembler(registry, Study())
@@ -402,9 +381,49 @@ def test_action_catalog_ends_with_exact_stage_no_action_envelope() -> None:
     )
 
     assert contracts.rstrip().endswith(
-        '{"workflow_stage":"epoch_ready","tool_name":"respond_to_user",'
-        '"parameters":{"message":"<concise response or one clarifying question>"}}'
+        "never explain that the user should call an internal tool or function."
     )
+
+
+def test_prompt_policy_consolidation_preserves_publication_and_decision_contracts() -> (
+    None
+):
+    """Characterize prompt-facing contracts before removing repeated prose."""
+    state = _state(
+        pipeline_stage="data_loaded",
+        raw=RawStateSnapshot(loaded=True, count=1),
+        active_dataset=ActiveDatasetSnapshot(has_raw_data=True),
+    )
+    publication = ApplicationViewPublication(
+        generation=82,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
+    registry = ToolRegistry()
+    registry.register(_NamedTool("select_channels"))
+    registry.register(_NamedTool("switch_panel"))
+    assembler = ContextAssembler(
+        registry,
+        Study(),
+        application_runtime=_ApplicationRuntimeFake(publication),
+    )
+
+    prompt = assembler.build_system_prompt("Select EEG channels.")
+
+    assert assembler.latest_tool_publication.tool_names == frozenset(
+        {"select_channels", "switch_panel"}
+    )
+    assert prompt.count("Callable action contract:") == 2
+    assert '"name": "select_channels"' in prompt
+    assert '"name": "switch_panel"' in prompt
+    assert '"name": "respond_to_user"' in prompt
+    assert "tool_input_clarification" not in prompt
+    assert prompt.rstrip().endswith(
+        "For a clear enabled action, choose it now; never explain that the user "
+        "should call an internal tool or function.\n"
+        "Only the listed workflow actions are available at this stage."
+    )
+    assert "Never claim that an action completed" in prompt
 
 
 @pytest.mark.parametrize(
@@ -781,7 +800,7 @@ def test_explanatory_no_tool_turn_publishes_no_workflow_tools() -> None:
     )
 
     assert "STRICT RESPONSE CONTRACT" in prompt
-    assert '"workflow_stage":"preprocessed"' in prompt
+    assert "Final no-action envelope" not in prompt
     assert '"name": "respond_to_user"' in prompt
     assert "unique description for epoch_data" not in prompt
     assert assembler.latest_tool_publication.tool_names == frozenset()
@@ -1061,7 +1080,7 @@ def test_prompt_history_keeps_only_latest_visible_assistant_message() -> None:
     assert messages[-1] == {"role": "user", "content": "Why is that useful?"}
 
 
-def test_current_tool_input_receipt_is_projected_as_bounded_context() -> None:
+def test_tool_input_receipt_is_never_projected_into_prompt_context() -> None:
     state = _state(
         pipeline_stage="data_loaded",
         raw=RawStateSnapshot(loaded=True, count=1),
@@ -1079,15 +1098,8 @@ def test_current_tool_input_receipt_is_projected_as_bounded_context() -> None:
         Study(),
         application_runtime=_ApplicationRuntimeFake(publication),
     )
-    assembler.set_tool_input_receipt(
-        AssistantToolInputReceipt(
-            command_name="resample_data",
-            original_user_text="Resample the EEG data.",
-            question="What resampling rate should I use?",
-            publication_generation=81,
-            missing_inputs=("rate",),
-        )
-    )
+    assert not hasattr(assembler, "set_tool_input_receipt")
+    assert not hasattr(assembler, "_tool_input_receipt")
 
     messages = assembler.get_messages(
         [
@@ -1100,64 +1112,9 @@ def test_current_tool_input_receipt_is_projected_as_bounded_context() -> None:
     )
 
     context = _untrusted_context(messages)
-    clarification = _context_item(context, "tool_input_clarification")
-    assert clarification["source"]["kind"] == "assistant_tool_input_receipt"
-    assert clarification["data"] == {
-        "action": "resample_data",
-        "original_user_request": "Resample the EEG data.",
-        "question": "What resampling rate should I use?",
-        "publication_generation": 81,
-        "missing_inputs": ["rate"],
-        "verified_parameters": {},
-        "remaining_reply_budget": 2,
-    }
-    assert "tool_input_clarification" in messages[0]["content"]
+    assert "tool_input_clarification" not in {item["type"] for item in context["items"]}
+    assert "assistant_tool_input_receipt" not in messages[0]["content"]
     assert messages[-1] == {"role": "user", "content": "128 Hz"}
-
-
-@pytest.mark.parametrize(
-    ("receipt_generation", "receipt_tool"),
-    (
-        (80, "resample_data"),
-        (81, "not_registered_for_this_stage"),
-    ),
-)
-def test_stale_or_unavailable_tool_input_receipt_is_not_projected(
-    receipt_generation: int,
-    receipt_tool: str,
-) -> None:
-    state = _state(
-        pipeline_stage="data_loaded",
-        raw=RawStateSnapshot(loaded=True, count=1),
-        active_dataset=ActiveDatasetSnapshot(has_raw_data=True),
-    )
-    publication = ApplicationViewPublication(
-        generation=81,
-        state=state,
-        capabilities=build_capability_policy(state),
-    )
-    registry = ToolRegistry()
-    registry.register(_NamedTool("resample_data"))
-    assembler = ContextAssembler(
-        registry,
-        Study(),
-        application_runtime=_ApplicationRuntimeFake(publication),
-    )
-    assembler.set_tool_input_receipt(
-        AssistantToolInputReceipt(
-            command_name=receipt_tool,
-            original_user_text="Run a preprocessing action.",
-            question="Which required value should I use?",
-            publication_generation=receipt_generation,
-            missing_inputs=("rate",),
-        )
-    )
-
-    context = _untrusted_context(
-        assembler.get_messages([{"role": "user", "content": "128 Hz"}])
-    )
-
-    assert all(item["type"] != "tool_input_clarification" for item in context["items"])
 
 
 def test_referential_explanation_keeps_immediate_conversation_context() -> None:
@@ -1452,6 +1409,58 @@ def _usable_epoch_state() -> EpochStateSnapshot:
         event_names=["Left hand", "Right hand"],
         event_ids={"Left hand": 769, "Right hand": 770},
     )
+
+
+@pytest.mark.parametrize(
+    ("stage", "expected_callable"),
+    (
+        (PipelineStage.DATA_LOADED, {"select_channels", "set_montage"}),
+        (PipelineStage.PREPROCESSED, {"set_montage"}),
+        (PipelineStage.EPOCH_READY, set()),
+        (PipelineStage.DATASET_READY, set()),
+        (PipelineStage.TRAINING, set()),
+        (PipelineStage.TRAINED, set()),
+    ),
+)
+def test_model_facing_channel_and_montage_schema_obeys_pre_epoch_stage_projection(
+    stage: PipelineStage,
+    expected_callable: set[str],
+) -> None:
+    """The prompt surface narrows the broader backend capability by stage."""
+    state = _state(
+        pipeline_stage=stage.value,
+        raw=RawStateSnapshot(loaded=True, count=1),
+        preprocessed=PreprocessedStateSnapshot(available=True, count=1),
+        active_dataset=ActiveDatasetSnapshot(
+            has_raw_data=True,
+            has_preprocessed_data=True,
+        ),
+    )
+    publication = ApplicationViewPublication(
+        generation=100,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
+    registry = ToolRegistry()
+    for tool_name in ("select_channels", "set_montage"):
+        registry.register(_NamedTool(tool_name))
+    assembler = ContextAssembler(
+        registry,
+        Study(),
+        application_runtime=_ApplicationRuntimeFake(publication),
+    )
+
+    prompt = assembler.build_system_prompt("Configure the EEG layout.")
+
+    callable_tools = set(assembler.latest_tool_publication.tool_names) & {
+        "select_channels",
+        "set_montage",
+    }
+    assert callable_tools == expected_callable
+    for tool_name in expected_callable:
+        assert f'"name": "{tool_name}"' in prompt
+    for tool_name in {"select_channels", "set_montage"} - expected_callable:
+        assert f'"name": "{tool_name}"' not in prompt
 
 
 def test_assembler_filtering():

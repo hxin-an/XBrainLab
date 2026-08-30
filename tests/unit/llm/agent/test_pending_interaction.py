@@ -69,6 +69,38 @@ def test_tool_input_receipt_requires_typed_missing_fields() -> None:
         )
 
 
+def test_bandpass_receipt_can_hold_one_finite_unassigned_cutoff_only() -> None:
+    receipt = AssistantToolInputReceipt(
+        command_name="apply_bandpass_filter",
+        original_user_text="Apply a bandpass filter.",
+        question="What low and high cutoff frequencies should I use?",
+        publication_generation=7,
+        missing_inputs=("low_freq", "high_freq"),
+        unassigned_bandpass_cutoff=12.5,
+    )
+
+    assert receipt.unassigned_bandpass_cutoff == 12.5
+
+    with pytest.raises(ValueError, match="unassigned bandpass cutoff"):
+        AssistantToolInputReceipt(
+            command_name="resample_data",
+            original_user_text="Resample the EEG data.",
+            question="What resampling rate should I use?",
+            publication_generation=7,
+            missing_inputs=("rate",),
+            unassigned_bandpass_cutoff=12.5,
+        )
+    with pytest.raises(ValueError, match="finite positive"):
+        AssistantToolInputReceipt(
+            command_name="apply_bandpass_filter",
+            original_user_text="Apply a bandpass filter.",
+            question="What low and high cutoff frequencies should I use?",
+            publication_generation=7,
+            missing_inputs=("low_freq", "high_freq"),
+            unassigned_bandpass_cutoff=float("nan"),
+        )
+
+
 def test_tool_input_receipt_is_nonblocking_and_activates_once() -> None:
     session = PendingInteractionCoordinator()
     receipt = _tool_input_receipt()

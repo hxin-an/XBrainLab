@@ -68,6 +68,14 @@ def test_walkthrough_profiles_never_bypass_product_confirmation() -> None:
         assert '"authorization_text"' not in source
 
 
+def test_complete_workflow_places_channel_and_montage_before_epochs() -> None:
+    profile = ToolDebugMode(str(PROFILE_ROOT / "complete-workflow.json"))
+    positions = {call.step_id: index for index, call in enumerate(profile.calls)}
+
+    assert positions["channels"] < positions["epochs"]
+    assert positions["montage"] < positions["epochs"]
+
+
 def test_validation_guide_publishes_each_parseable_manual_walkthrough_command() -> None:
     guide = VALIDATION_GUIDE.read_text(encoding="utf-8")
 
