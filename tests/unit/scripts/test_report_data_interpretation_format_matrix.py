@@ -83,9 +83,7 @@ def test_build_format_capability_snapshot_covers_import_boundary_formats():
 
     rows_by_label = {str(row["coverage_label"]): row for row in snapshot["rows"]}
     assert rows_by_label["GDF recording"]["status"] == "needs_review"
-    assert rows_by_label["GDF recording"]["validation_decision"] == (
-        "needs_confirmation"
-    )
+    assert rows_by_label["GDF recording"]["validation_decision"] == "safe"
     assert "trial anchor" in rows_by_label["GDF recording"]["message"]
     assert rows_by_label["BIDS events.tsv"]["format"] == "BIDS events"
     assert rows_by_label["BIDS events.tsv"]["role"] == "external_labels"

@@ -234,7 +234,7 @@ FORMAT_CASES: tuple[FormatCase, ...] = (
         title="GDF recording with external MAT labels",
         source_entry=".",
         source_hint="auto",
-        expected_validation="needs_confirmation",
+        expected_validation="safe",
         files=(
             FixtureFile("sub-01_ses-01_task-mi_run-1.gdf"),
             FixtureFile("sub-01_ses-01_task-mi_run-1.mat", "mat_labels"),

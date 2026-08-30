@@ -143,6 +143,71 @@ ApplicationService／Import publication，或 A2 需要修改 `docs/target/{agen
 incomplete mapping 與 Review 後替換 source；交付前跑 canonical source-diverse data gate。可見 UI 已取得
 使用者修改授權，但仍需 exact-SHA Windows 手測。
 
+#### B1 manual-failure follow-up (`2026-08-30`)
+
+**Problem and evidence**
+
+在 PR #73 exact head `f8510bcc9bc4b6c721c3cd532a1961a0aa81cf61` 的 WSLg 真人手測中，
+使用者已選定 subject 並完成 `Review and Import`，最終 Review 仍顯示
+`Need your decision`，但 Import 隨後成功。這證明目前 Review presentation 與真正 import
+admission 沒有共同反映同一份已確認 decision；既有 focused evidence 未覆蓋這條 product-equivalent
+路徑。PR #73 的本次人工驗收作廢，修正前不得 merge。
+
+**Current checkpoint and next step**
+
+`f8510bcc` 的手測失敗包含兩個相連問題：舊 Confirm 可以在 presentation 仍為
+`needs_confirmation` 時 Apply；fresh-review 修正關閉這條路後，又揭露 external MAT 已完整解析時，
+candidate 仍錯套 GDF embedded-event completeness confirmation。choices 與 coordinator merge 均完整，
+根因是既有 backend candidate gate，而不是 subject override 遺失。
+
+目前 candidate 只在沒有 active external label carrier 時要求完整 internal-event partition；external
+carrier 自己的 role／keep／class 未完成仍由既有 unresolved-value validation blocked。真實 GDF + MAT
+visible workflow、remove/re-add、BIDS fresh Review、embedded complete／incomplete 與全 integration-UI
+shard 已通過，獨立 reviewer 判定 owner delta `0`。exact head `614fc1c1` 的 CI 另揭露兩個直接相關的
+舊 evidence assumptions：backend test 仍要求已刪除的 generic `trial anchors` 警告；human-like driver
+在 candidate 已為 `safe` 時先執行未確認 Apply，再重複 confirmed Apply；recipe replay 也在同一
+session 對已套用的 interpretation 重複 Apply。下一步只校準這兩個 test／evidence driver：external
+placement blocker 仍須 blocked；unconfirmed rejection 只在真正 `needs_confirmation` 時探測，safe
+path 只 Apply 一次；recipe replay 必須先進入 fresh session，且後續 preprocessing／training 仍可完成。
+walkthrough 必須從 NewSession 的 authoritative command state 證明 raw、preprocess、epoch、dataset 與
+interpretation 已清空，並將這個 fresh-session boundary 納入 artifact contract，不能只接受 `ok=true`。
+之後建立新 exact commit 並重跑 CI／handoff，
+再交付 Windows 真人手測；不調寬 timeout、不修 unrelated owner，也不退回 stale-confirm 保護。
+
+**Outcome, scope, and non-goals**
+
+- subject override 與完整顯式 internal-event selection／roles／class map 經確認後，最終 Review
+  不得保留相同 required-decision；Import 可正常執行。
+- 只要必要 subject／event decision 仍是 `needs_confirmation` 或 `blocked`，相同 admission truth
+  必須阻止 Import，且不得先 mutation 再顯示警告。
+- Review status、action items、Import enablement 與 backend apply admission 必須來自既有 shared
+  interpretation validation，不新增 UI-only bypass、第二套 policy、owner、state machine 或 receipt。
+- Scope 限於 subject override publication，以及 internal／external GDF 已完成 event mapping 的
+  final-review／apply consistency；不改 parser、cache、source scope、文案／版面、label semantics、
+  digest、rollback 或其他 Import workflow。
+- 證據已確認失敗路徑是 GDF + external MAT carrier；修正仍需同時保留 embedded-events 與 BIDS
+  邊界，不泛化重寫其他 label policy。
+
+**Repair and focused validation**
+
+1. 先建立 product-equivalent regression，走 metadata subject selection、event mapping Recheck、
+   final Review 與 Import admission，證明修正前的 status／admission 矛盾。
+2. 追蹤 decision 從 wizard draft、confirmed candidate／validation 到 apply command 的 publication，
+   在既有 owner 中刪除或修正分岔 truth。
+3. 正向案例必須同時證明 required decision 消失且真實 import 成功；負向 incomplete／unconfirmed
+   案例必須證明 Import 不可執行、study 未 mutation。再覆蓋 file／folder／BIDS 與 canonical
+   source-diverse data gate，避免只針對 renderer 字串。
+4. 作者 focused validation 後，由非作者 user-simulator 重走相同 GDF path，independent reviewer
+   核對 shared truth、test quality、owner delta `0` 與 exact clean SHA；source 改變後重跑 CI 與
+   handoff evidence。
+
+**Stop condition and UI authorization**
+
+只有「已確認的 subject + 完整 internal／external mapping」不再顯示 required decision 且成功 import，
+以及未確認必要 decision 無法 apply 且無 mutation，兩者都通過時才 scope-complete。若需要新增
+owner／receipt、改 public label semantics 或超出上述 workflow，停為 checkpoint。這個 follow-up
+沿用 B1 已取得的可見 UI 修改授權；最終仍需新 exact-SHA Windows 真人手測與明確 merge approval。
+
 ### B2. Epoch anchor language
 
 `Timing 719` 不是 duration／sample count／epoch window，而是 import 儲存的 event anchor。只調整

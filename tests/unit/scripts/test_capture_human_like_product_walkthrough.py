@@ -409,6 +409,13 @@ def _base_payload() -> dict:
         }
     }
     by_name = {phase["phase"]: phase for phase in phases}
+    by_name["data_interpretation_decisions"]["notes"] = {
+        "reviewed_validation": {"decision": "safe"},
+        "unconfirmed_apply": {
+            "executed": False,
+            "status": "not_applicable",
+        },
+    }
     for phase_name, source_phase in PHASE_ALIASES.items():
         by_name[phase_name]["alias_of"] = source_phase
         by_name[phase_name]["screenshot"] = by_name[source_phase]["screenshot"]
@@ -3982,6 +3989,158 @@ def test_workflow_contract_requires_reapply_after_recipe_reload() -> None:
         "data_interpretation_reapply_recipe command apply_interpretation did not succeed"
         in failures
     )
+
+
+@pytest.mark.parametrize(
+    "fresh_session",
+    [
+        None,
+        {
+            "raw_loaded": True,
+            "preprocessed_available": False,
+            "epoch_exists": False,
+            "dataset_available": False,
+            "has_applied_interpretation": False,
+            "has_recipe": False,
+        },
+        {
+            "raw_loaded": False,
+            "preprocessed_available": False,
+            "epoch_exists": False,
+            "dataset_available": False,
+            "has_applied_interpretation": True,
+            "has_recipe": False,
+        },
+    ],
+)
+def test_workflow_contract_rejects_recipe_replay_without_a_cleared_session_boundary(
+    fresh_session: dict[str, bool] | None,
+) -> None:
+    notes: dict[str, Any] = {
+        "session_reset": {"command": "new_session", "ok": True},
+        "reload": {"command": "reload_interpretation_recipe", "ok": True},
+        "validation": {"command": "validate_interpretation", "ok": True},
+        "reapply": {"command": "apply_interpretation", "ok": True},
+    }
+    if fresh_session is not None:
+        notes["fresh_session"] = fresh_session
+    phases = [
+        {
+            "phase": "data_interpretation_reload_recipe",
+            "workflow_state": {},
+            "notes": notes,
+        }
+    ]
+
+    failures = build_workflow_contract_failures(phases)
+
+    assert any("fresh session" in failure for failure in failures)
+
+
+def test_workflow_contract_accepts_recipe_replay_with_a_cleared_session_boundary() -> (
+    None
+):
+    phases = [
+        {
+            "phase": "data_interpretation_reload_recipe",
+            "workflow_state": {},
+            "notes": {
+                "session_reset": {"command": "new_session", "ok": True},
+                "fresh_session": {
+                    "raw_loaded": False,
+                    "preprocessed_available": False,
+                    "epoch_exists": False,
+                    "dataset_available": False,
+                    "has_applied_interpretation": False,
+                    "has_recipe": False,
+                },
+                "reload": {"command": "reload_interpretation_recipe", "ok": True},
+                "validation": {"command": "validate_interpretation", "ok": True},
+                "reapply": {"command": "apply_interpretation", "ok": True},
+            },
+        }
+    ]
+
+    failures = build_workflow_contract_failures(phases)
+
+    assert not any("fresh session" in failure for failure in failures)
+
+
+def test_workflow_contract_accepts_safe_review_with_skipped_unconfirmed_apply() -> None:
+    phases = [
+        {
+            "phase": "data_interpretation_decisions",
+            "workflow_state": {},
+            "notes": {
+                "reviewed_validation": {"decision": "safe"},
+                "unconfirmed_apply": {
+                    "executed": False,
+                    "status": "not_applicable",
+                },
+            },
+        }
+    ]
+
+    failures = build_workflow_contract_failures(phases)
+
+    assert not any("data_interpretation_decisions" in failure for failure in failures)
+
+
+@pytest.mark.parametrize(
+    "unconfirmed_apply",
+    [
+        None,
+        {
+            "executed": True,
+            "command": "apply_interpretation",
+            "ok": False,
+            "status": "failed",
+            "error_type": "confirmation_required",
+        },
+    ],
+)
+def test_workflow_contract_rejects_safe_review_without_a_skipped_probe_marker(
+    unconfirmed_apply: dict[str, Any] | None,
+) -> None:
+    notes: dict[str, Any] = {"reviewed_validation": {"decision": "safe"}}
+    if unconfirmed_apply is not None:
+        notes["unconfirmed_apply"] = unconfirmed_apply
+    phases = [
+        {
+            "phase": "data_interpretation_decisions",
+            "workflow_state": {},
+            "notes": notes,
+        }
+    ]
+
+    failures = build_workflow_contract_failures(phases)
+
+    assert any("safe review" in failure for failure in failures)
+
+
+def test_workflow_contract_accepts_rejected_unconfirmed_apply_for_review_needing_confirmation() -> (
+    None
+):
+    phases = [
+        {
+            "phase": "data_interpretation_decisions",
+            "workflow_state": {},
+            "notes": {
+                "reviewed_validation": {"decision": "needs_confirmation"},
+                "unconfirmed_apply": {
+                    "executed": True,
+                    "command": "apply_interpretation",
+                    "ok": False,
+                    "status": "failed",
+                    "error_type": "confirmation_required",
+                },
+            },
+        }
+    ]
+
+    failures = build_workflow_contract_failures(phases)
+
+    assert not any("data_interpretation_decisions" in failure for failure in failures)
 
 
 def test_workflow_contract_requires_observed_training_completion() -> None:

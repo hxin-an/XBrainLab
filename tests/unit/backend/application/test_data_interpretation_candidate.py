@@ -6,6 +6,9 @@ from tests.unit.backend.path_assertions import (
     assert_filesystem_path_lists_equal,
     assert_filesystem_paths_equal,
 )
+from XBrainLab.backend.application import (
+    data_interpretation_candidate as candidate_module,
+)
 from XBrainLab.backend.application import data_interpretation_internal_events
 from XBrainLab.backend.application.data_interpretation import AppliedInterpretation
 from XBrainLab.backend.application.data_interpretation_candidate import (
@@ -240,6 +243,9 @@ def test_build_interpretation_candidate_applies_user_choices_and_recipe_trace(
     assert candidate.event_roles["trial_type"] == "class cue"
     assert candidate.class_map == {"left": "0"}
     assert candidate.class_map_source == "value_decisions"
+    assert not any(
+        "subject metadata" in item.casefold() for item in candidate.confirmation_items
+    )
     assert "choices:metadata_overrides" in candidate.recipe_trace
     assert "choices:class_map" not in candidate.recipe_trace
     assert "choices:event_roles" in candidate.recipe_trace
@@ -596,6 +602,274 @@ def test_explicit_empty_internal_label_selection_does_not_restore_suggestions(
     assert candidate.class_map == {}
 
 
+def test_complete_internal_event_decisions_clear_generic_mapping_confirmation(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        data_interpretation_internal_events,
+        "_read_internal_events_for_file",
+        lambda _path: {
+            "events": {
+                "768": {"count": 36, "description": "768"},
+                "769": {"count": 18, "description": "769"},
+                "1023": {"count": 6, "description": "1023"},
+            }
+        },
+    )
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-complete-internal-events",
+        scan=_scan(
+            source_kind="folder",
+            eeg_files=["/data/A01T.gdf"],
+            label_carriers=[],
+            label_carrier_sources={},
+            bids={"is_bids": False, "events_files": []},
+            metadata=[],
+        ),
+        choices={
+            "label_carrier": "embedded_events",
+            "class_map": {"769": "Left hand"},
+            "event_roles": {
+                "768": "not a label",
+                "769": "class label",
+                "1023": "not a label",
+            },
+            "internal_event_selection": {
+                "label_event_codes": ["769"],
+                "not_label_event_codes": ["768", "1023"],
+                "class_map": {"769": "Left hand"},
+            },
+        },
+    )
+
+    assert candidate.confirmation_items == []
+    assert (
+        validate_interpretation_candidate(
+            candidate,
+            recheck_content_identity=False,
+        ).decision
+        == "safe"
+    )
+
+
+def test_suggested_internal_events_without_explicit_selection_need_confirmation(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        data_interpretation_internal_events,
+        "_read_internal_events_for_file",
+        lambda _path: {
+            "events": {
+                "768": {"count": 36, "description": "768"},
+                "769": {"count": 18, "description": "769"},
+                "1023": {"count": 6, "description": "1023"},
+            }
+        },
+    )
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-suggested-internal-events",
+        scan=_scan(
+            source_kind="folder",
+            eeg_files=["/data/A01T.gdf"],
+            label_carriers=[],
+            label_carrier_sources={},
+            bids={"is_bids": False, "events_files": []},
+            metadata=[],
+        ),
+        choices={"label_carrier": "embedded_events"},
+    )
+
+    assert candidate.confirmation_items == [
+        "Confirm which events are trial anchors, class cues, responses, artifacts, "
+        "or boundaries."
+    ]
+    assert (
+        validate_interpretation_candidate(
+            candidate,
+            recheck_content_identity=False,
+        ).decision
+        == "needs_confirmation"
+    )
+
+
+def test_extension_only_internal_event_context_needs_confirmation(monkeypatch):
+    monkeypatch.setattr(
+        data_interpretation_internal_events,
+        "_read_internal_events_for_file",
+        lambda _path: {"events": {}},
+    )
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-empty-edf-events",
+        scan=_scan(
+            source_kind="folder",
+            eeg_files=["/data/no-events.edf"],
+            label_carriers=[],
+            label_carrier_sources={},
+            bids={"is_bids": False, "events_files": []},
+            metadata=[],
+        ),
+        choices={"label_carrier": "embedded_events"},
+    )
+
+    assert candidate.event_roles["internal_events"] == "event role candidates"
+    assert candidate.confirmation_items == [
+        "Confirm which events are trial anchors, class cues, responses, artifacts, "
+        "or boundaries."
+    ]
+    assert (
+        validate_interpretation_candidate(
+            candidate,
+            recheck_content_identity=False,
+        ).decision
+        == "needs_confirmation"
+    )
+
+
+def test_partial_internal_event_decisions_keep_mapping_confirmation(monkeypatch):
+    monkeypatch.setattr(
+        data_interpretation_internal_events,
+        "_read_internal_events_for_file",
+        lambda _path: {
+            "events": {
+                "768": {"count": 36, "description": "768"},
+                "769": {"count": 18, "description": "769"},
+                "1023": {"count": 6, "description": "1023"},
+            }
+        },
+    )
+    preview = {
+        "candidate_label_events": [{"event_code": "769"}],
+        "not_used_events": [{"event_code": "768"}],
+    }
+    complete_selection = {
+        "label_event_codes": ["769"],
+        "not_label_event_codes": ["768"],
+        "class_map": {"769": "Left hand"},
+    }
+
+    assert not candidate_module._internal_event_selection_is_complete(
+        preview,
+        complete_selection,
+        {"768": "not a label", "769": "not a label"},
+    )
+    assert not candidate_module._internal_event_selection_is_complete(
+        preview,
+        {
+            **complete_selection,
+            "not_label_event_codes": ["768", "769"],
+        },
+        {"768": "not a label", "769": "class label"},
+    )
+    assert not candidate_module._internal_event_selection_is_complete(
+        preview,
+        {
+            "label_event_codes": ["769", "stale-removed"],
+            "not_label_event_codes": ["768"],
+            "class_map": {
+                "769": "Left hand",
+                "stale-removed": "Stale class",
+            },
+        },
+        {
+            "768": "not a label",
+            "769": "class label",
+            "stale-removed": "class label",
+        },
+    )
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-partial-internal-events",
+        scan=_scan(
+            source_kind="folder",
+            eeg_files=["/data/A01T.gdf"],
+            label_carriers=[],
+            label_carrier_sources={},
+            bids={"is_bids": False, "events_files": []},
+            metadata=[],
+        ),
+        choices={
+            "label_carrier": "embedded_events",
+            "class_map": {"769": "Left hand"},
+            "internal_event_selection": {
+                "label_event_codes": ["769"],
+                "not_label_event_codes": ["768"],
+                "class_map": {"769": "Left hand"},
+            },
+        },
+    )
+
+    assert candidate.confirmation_items == [
+        "Confirm which events are trial anchors, class cues, responses, artifacts, "
+        "or boundaries."
+    ]
+    assert (
+        validate_interpretation_candidate(
+            candidate,
+            recheck_content_identity=False,
+        ).decision
+        == "needs_confirmation"
+    )
+
+
+def test_stale_internal_event_selection_keeps_mapping_confirmation(monkeypatch):
+    monkeypatch.setattr(
+        data_interpretation_internal_events,
+        "_read_internal_events_for_file",
+        lambda _path: {
+            "events": {
+                "768": {"count": 36, "description": "768"},
+                "769": {"count": 18, "description": "769"},
+                "1023": {"count": 6, "description": "1023"},
+            }
+        },
+    )
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-stale-internal-events",
+        scan=_scan(
+            source_kind="folder",
+            eeg_files=["/data/A01T.gdf"],
+            label_carriers=[],
+            label_carrier_sources={},
+            bids={"is_bids": False, "events_files": []},
+            metadata=[],
+        ),
+        choices={
+            "label_carrier": "embedded_events",
+            "class_map": {"769": "Left hand", "stale-removed": "Stale class"},
+            "event_roles": {
+                "768": "not a label",
+                "769": "class label",
+                "1023": "not a label",
+                "stale-removed": "class label",
+            },
+            "internal_event_selection": {
+                "label_event_codes": ["769", "stale-removed"],
+                "not_label_event_codes": ["768", "1023"],
+                "class_map": {
+                    "769": "Left hand",
+                    "stale-removed": "Stale class",
+                },
+            },
+        },
+    )
+
+    assert candidate.confirmation_items == [
+        "Confirm which events are trial anchors, class cues, responses, artifacts, "
+        "or boundaries."
+    ]
+    assert (
+        validate_interpretation_candidate(
+            candidate,
+            recheck_content_identity=False,
+        ).decision
+        == "needs_confirmation"
+    )
+
+
 def test_build_interpretation_candidate_excludes_removed_label_carrier(tmp_path):
     removed = tmp_path / "A01T.mat"
     kept = tmp_path / "A02T.mat"
@@ -749,6 +1023,100 @@ def test_build_interpretation_candidate_previews_mat_label_class_values(tmp_path
         for item in candidate.confirmation_items
     )
     assert "choices:class_map" not in candidate.recipe_trace
+
+
+def test_external_mat_decisions_do_not_require_internal_event_roles(
+    tmp_path,
+    monkeypatch,
+):
+    from scipy.io import savemat
+
+    label_path = tmp_path / "A01T.mat"
+    savemat(label_path, {"classlabel": [1, 2, 1, 2]})
+    monkeypatch.setattr(
+        data_interpretation_internal_events,
+        "_read_internal_events_for_file",
+        lambda _path: {
+            "events": {
+                "768": {"count": 4, "description": "trial start"},
+                "769": {"count": 2, "description": "left"},
+                "770": {"count": 2, "description": "right"},
+            }
+        },
+    )
+    scan = _scan(
+        source_kind="folder",
+        eeg_files=["/data/A01T.gdf"],
+        label_carriers=[str(label_path)],
+        label_carrier_sources={str(label_path): "auto"},
+        bids={"is_bids": False, "events_files": []},
+        metadata=[],
+    )
+    complete_choices = {
+        "label_carrier_choices": {
+            str(label_path): {
+                "label_field": "classlabel",
+                "anchor": "768",
+                "placement_method": "eeg_event",
+                "value_decisions": {
+                    "1": _class_value_decision("left hand"),
+                    "2": _class_value_decision("right hand"),
+                },
+            }
+        }
+    }
+
+    complete = build_interpretation_candidate(
+        candidate_id="candidate-complete-external-mat",
+        scan=scan,
+        choices=complete_choices,
+    )
+    partial = build_interpretation_candidate(
+        candidate_id="candidate-partial-external-mat",
+        scan=scan,
+        choices={
+            "label_carrier_choices": {
+                str(label_path): {
+                    **complete_choices["label_carrier_choices"][str(label_path)],
+                    "value_decisions": {
+                        "1": _class_value_decision("left hand"),
+                        "2": {
+                            "role": "stimulus",
+                            "keep_event": True,
+                            "use_as_class": True,
+                            "class_name": "",
+                        },
+                    },
+                }
+            }
+        },
+    )
+
+    generic_internal_confirmation = (
+        "Confirm which events are trial anchors, class cues, responses, artifacts, "
+        "or boundaries."
+    )
+    assert generic_internal_confirmation not in complete.confirmation_items
+    assert complete.confirmation_items == []
+    assert complete.blocked_reasons == []
+    assert (
+        validate_interpretation_candidate(
+            complete,
+            recheck_content_identity=False,
+        ).decision
+        == "safe"
+    )
+    assert partial.blocked_reasons == [
+        "Observed event values require complete role/keep/class decisions for "
+        "A01T.mat: 2."
+    ]
+    assert (
+        validate_interpretation_candidate(
+            partial,
+            recheck_content_identity=False,
+        ).decision
+        == "blocked"
+    )
 
 
 def test_build_interpretation_candidate_reviews_bids_interval_placement(tmp_path):

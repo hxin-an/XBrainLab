@@ -406,7 +406,18 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
         if self._skip_labels:
             return False
         if self._label_source_mode() == "internal_events":
-            return not bool(self._class_map_items or self._event_role_items)
+            if not self._internal_event_preview_payload():
+                return not bool(self._class_map_items or self._event_role_items)
+            selection = self._current_internal_event_selection()
+            selected = set(selection["label_event_codes"])
+            not_selected = set(selection["not_label_event_codes"])
+            observed = selected | not_selected
+            class_map = selection["class_map"]
+            return (
+                not observed
+                or bool(selected & not_selected)
+                or not all(str(class_map.get(code) or "").strip() for code in selected)
+            )
         if self._label_source_mode() == "loaded_label_files":
             if self._active_label_carrier_count() <= 0:
                 return True

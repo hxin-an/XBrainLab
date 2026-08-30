@@ -11,7 +11,9 @@ import numpy as np
 from XBrainLab.backend.application import (
     ApplicationService,
     ApplyInterpretationCommand,
+    PreviewInterpretationCommand,
     ReviewInterpretationCommand,
+    ValidateInterpretationCommand,
 )
 from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
     DataInterpretationPreviewDialog,
@@ -56,7 +58,10 @@ def _write_value_decision_bids_fixture(tmp_path: Path) -> Path:
     return root.resolve()
 
 
-def test_bids_value_decisions_recheck_and_apply(qtbot, tmp_path: Path) -> None:
+def test_bids_value_decisions_recheck_and_apply(
+    qtbot,
+    tmp_path: Path,
+) -> None:
     root = _write_value_decision_bids_fixture(tmp_path)
     service = ApplicationService()
     initial = service.execute(
@@ -73,6 +78,8 @@ def test_bids_value_decisions_recheck_and_apply(qtbot, tmp_path: Path) -> None:
         initial_step="Match Labels",
     )
     qtbot.addWidget(dialog)
+    dialog.show()
+    qtbot.wait(0)
 
     assert diagnostics["validation_decision"]["decision"] == "blocked"
     assert dialog.event_value_editor is not None
@@ -97,34 +104,50 @@ def test_bids_value_decisions_recheck_and_apply(qtbot, tmp_path: Path) -> None:
 
     dialog.next_button.click()
     qtbot.wait(0)
-    review_rows = {row["item"]: row for row in dialog._review_import_status_rows()}
+    assert dialog.result() == dialog.DialogCode.Accepted
+    stale_result = dialog.get_result()
+    assert stale_result["resume_step"] == "Review and Import"
 
-    assert dialog.apply_button.isEnabled()
-    assert dialog.apply_button.isVisibleTo(dialog)
-    assert dialog.decision_label.text() == "Ready to recheck and import."
-    assert not dialog.review_actions_panel.isVisible()
-    assert review_rows["Recipe"]["status"] == "Not saved"
-    assert (
-        review_rows["Recipe"]["summary"]
-        == "Save the current data import and label mapping settings for reuse."
+    reviewed_preview = service.execute(
+        PreviewInterpretationCommand(choices=stale_result["choices"])
     )
-    result = dialog.get_result()
+    assert reviewed_preview.ok, reviewed_preview.message
+    reviewed_validation = service.execute(ValidateInterpretationCommand())
+    assert reviewed_validation.ok, reviewed_validation.message
+    assert reviewed_validation.diagnostics["validation_decision"]["decision"] == "safe"
+    assert reviewed_validation.diagnostics["validation_decision"]["action_items"] == []
 
-    assert result["confirmed"] is True
-    reviewed = service.execute(
-        ReviewInterpretationCommand(
-            source_path=str(root),
-            source_hint="bids",
-            choices=result["choices"],
-        )
+    fresh_dialog = DataInterpretationPreviewDialog(
+        scan_result=diagnostics["scan_result"],
+        preview=reviewed_preview.diagnostics["preview"],
+        validation_decision=reviewed_validation.diagnostics["validation_decision"],
+        initial_step="Review and Import",
+        choices=stale_result["choices"],
     )
-    assert reviewed.ok
-    assert reviewed.diagnostics["validation_decision"]["decision"] == "safe"
-    assert reviewed.diagnostics["validation_decision"]["action_items"] == []
+    qtbot.addWidget(fresh_dialog)
+    fresh_dialog.show()
+    qtbot.wait(0)
+    assert fresh_dialog.step_stack.currentIndex() == 4
+    assert fresh_dialog.decision == "safe"
+    assert fresh_dialog.apply_button.isEnabled()
+    before_confirm = service.get_view_publication().state
+    assert before_confirm.raw.count == 0
+    assert before_confirm.interpretation.has_applied_interpretation is False
+    fresh_dialog.apply_button.click()
+    qtbot.wait(0)
+    assert fresh_dialog.result() == fresh_dialog.DialogCode.Accepted
+    fresh_result = fresh_dialog.get_result()
+    assert fresh_result["confirmed"] is True
 
-    applied = service.execute(ApplyInterpretationCommand(confirmed=result["confirmed"]))
+    applied = service.execute(
+        ApplyInterpretationCommand(confirmed=fresh_result["confirmed"])
+    )
     assert applied.ok
     assert applied.state.raw.loaded
+    assert applied.state.raw.count == 1
+    assert applied.state.interpretation.has_applied_interpretation is True
+    assert len(service.study.loaded_data_list) == 1
+    assert applied.state.interpretation.class_map == {"show_stimulus": "Stimulus"}
     loaded = service.study.loaded_data_list[0]
     descriptions = set(loaded.get_mne().annotations.description)
     events, event_id = loaded.get_event_list()
