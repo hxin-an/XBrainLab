@@ -40,6 +40,39 @@ head 以 `archive/worktrees-20260830/*` 保存，只有使用者擁有的 root `
 freeze 後，可移除本機 worktree、保留 branch 等待 CI／手測；需修正時才以原 exact
 branch 重建。Worker 不得以 detached／歷史 branch 當 base，不得自動 cherry-pick 其他 lane。
 
+## Active bounded slice — saliency Qt teardown evidence repair
+
+**Evidence.** PR #74 and PR #75 show the same node-level CI failure. An independent reviewer then
+ran the node in twelve separate processes: ten passed and two failed, with the only failure surface
+in weakref callback thread-id probes.
+
+**Outcome.** Keep the saliency teardown test as a deterministic characterization of observable
+lifecycle behavior, without treating Python weakref callback execution context as a product
+thread-affinity contract.
+
+**Scope / non-goals.** Test-only change to
+`tests/unit/ui/visualization/test_base_saliency_view_async.py::test_qt_teardown_drops_late_result_and_releases_figure`.
+Do not change production or UI source, teardown implementation, cleanup policy, or native cleanup
+thread coverage. The adjacent test that directly verifies native cleanup-thread behavior remains
+the relevant evidence.
+
+**Owners before / after.** Production lifecycle owners are unchanged; test ownership remains the
+existing saliency async test module. Production LOC: `0`. Test-only deletion removes weakref
+callback probes and their callback-thread assertions.
+
+**Steps.** Remove worker/signals weakref callback probes, callback thread-id collection, and their
+assertions; retain lifecycle retention/release/publication assertions and assert the cleanup owner
+is configured on the view thread. Run the single node once plus Ruff check/format on the changed
+test file.
+
+**Focused validation.** One `prlimit --core=0` + timeout node run for this test, then Ruff
+check/format for the changed test file under the same resource boundary. This supports only the
+bounded unit lifecycle characterization, not native UI acceptance or a full shard claim.
+
+**Stop condition.** Stop after the exact test-only diff and requested focused validation; root
+performs the multi-process confirmation. UI confirmation: N/A (no UI source or visible behavior
+changes).
+
 ## Lane A — comprehensive Assistant cleanup
 
 ### A1. Production and test legacy cleanup
