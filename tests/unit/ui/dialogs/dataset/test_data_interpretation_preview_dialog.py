@@ -1204,6 +1204,168 @@ def test_match_labels_internal_source_uses_task_panel_for_suggested_events(qtbot
         "769": "left hand",
         "770": "right hand",
     }
+    assert dialog.get_result()["choices"]["internal_event_selection"] == {
+        "label_event_codes": ["769", "770"],
+        "not_label_event_codes": ["768", "1023"],
+        "class_map": {"769": "left hand", "770": "right hand"},
+    }
+    assert dialog.get_result()["choices"]["event_roles"] == {
+        "769": "class label",
+        "770": "class label",
+        "768": "not a label",
+        "1023": "not a label",
+    }
+
+
+def test_match_labels_internal_source_requires_complete_named_selection(qtbot):
+    """An embedded-event draft cannot bypass review on a partial local choice."""
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+        },
+        preview={
+            "metadata_preview": [
+                {
+                    "file": "A01T.gdf",
+                    "subject": {"value": "", "decision": "needs_confirmation"},
+                    "session": {"value": "", "decision": "safe"},
+                    "task": {"value": "", "decision": "safe"},
+                    "run": {"value": "", "decision": "safe"},
+                }
+            ],
+            "internal_event_preview": {
+                "candidate_label_events": [
+                    {"event_code": "769", "event_count": 72},
+                    {"event_code": "770", "event_count": 72},
+                ],
+                "not_used_events": [{"event_code": "768", "event_count": 72}],
+            },
+        },
+        validation_decision=_validation_decision(
+            "needs_confirmation",
+            [
+                _review_action(
+                    target_step="Review Metadata",
+                    issue="Confirm subject metadata for A01T.gdf.",
+                    severity="needs_confirmation",
+                ),
+                _review_action(
+                    target_step="Match Labels",
+                    issue="Confirm which EEG events become training labels.",
+                    severity="needs_confirmation",
+                ),
+            ],
+        ),
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    _show_step(dialog, "Match Labels")
+    qtbot.wait(0)
+
+    assert dialog._label_placement_needs_review() is True
+    assert dialog.can_submit_for_backend_review() is False
+    assert not dialog.next_button.isEnabled()
+
+    first_item = dialog.event_tree.topLevelItem(0)
+    assert first_item is not None
+    assert isinstance(dialog.event_tree.itemWidget(first_item, 2), QComboBox)
+    first_selector = dialog._clone_class_map_selector(first_item, dialog)
+    first_selector.setCurrentText("Left hand")
+    metadata_item, _metadata_original = dialog._metadata_items[0]
+    metadata_item.setText(1, "01")
+    qtbot.wait(0)
+
+    assert dialog._label_placement_needs_review() is True
+    assert dialog.can_submit_for_backend_review() is False
+    assert not dialog.next_button.isEnabled()
+
+    second_item = dialog.event_tree.topLevelItem(1)
+    assert second_item is not None
+    assert isinstance(dialog.event_tree.itemWidget(second_item, 2), QComboBox)
+    second_selector = dialog._clone_class_map_selector(second_item, dialog)
+    second_selector.setCurrentText("Right hand")
+    qtbot.wait(0)
+
+    assert dialog._label_placement_needs_review() is False
+    assert dialog._match_labels_need_fresh_review() is True
+    assert dialog.next_button.isEnabled()
+
+
+def test_internal_event_role_transition_immediately_disables_match_next(qtbot):
+    """Adding a blank embedded-event class updates Match Labels immediately."""
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+        },
+        preview={
+            "metadata_preview": [
+                {
+                    "file": "A01T.gdf",
+                    "subject": {"value": "01", "decision": "safe"},
+                    "session": {"value": "", "decision": "safe"},
+                    "task": {"value": "", "decision": "safe"},
+                    "run": {"value": "", "decision": "safe"},
+                }
+            ],
+            "internal_event_preview": {
+                "candidate_label_events": [
+                    {"event_code": "769", "event_count": 72},
+                    {"event_code": "770", "event_count": 72},
+                ],
+                "not_used_events": [{"event_code": "768", "event_count": 72}],
+            },
+        },
+        validation_decision=_validation_decision(
+            "needs_confirmation",
+            [
+                _review_action(
+                    target_step="Match Labels",
+                    issue="Confirm which EEG events become training labels.",
+                    severity="needs_confirmation",
+                )
+            ],
+        ),
+        choices={
+            "label_carrier": "embedded_events",
+            "internal_event_selection": {
+                "label_event_codes": ["769", "770"],
+                "not_label_event_codes": ["768"],
+                "class_map": {"769": "left", "770": "right"},
+            },
+            "event_roles": {
+                "769": "class label",
+                "770": "class label",
+                "768": "not a label",
+            },
+            "class_map": {"769": "left", "770": "right"},
+        },
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    _show_step(dialog, "Match Labels")
+    qtbot.wait(0)
+
+    assert dialog.next_button.isEnabled()
+    add_768 = next(
+        (
+            button
+            for button in dialog.findChildren(QPushButton, "DataImportInlineAction")
+            if button.property("event_code") == "768"
+            and button.text() == "Use for training"
+        ),
+        None,
+    )
+    assert add_768 is not None
+    qtbot.mouseClick(add_768, Qt.MouseButton.LeftButton)
+    qtbot.wait(0)
+
+    assert "768" in dialog._current_internal_event_selection()["label_event_codes"]
+    assert dialog._label_placement_needs_review() is True
+    assert not dialog.next_button.isEnabled()
 
 
 def test_cancelled_physionet_revalidation_restores_staged_event_draft(qtbot):
@@ -1285,7 +1447,19 @@ def test_cancelled_physionet_revalidation_restores_staged_event_draft(qtbot):
         for item, code, _original in dialog._class_map_items
     }
     assert visible_class_map == class_map
-    assert dialog.get_result()["choices"] == staged_choices
+    assert dialog.get_result()["choices"] == {
+        **staged_choices,
+        "internal_event_selection": {
+            "label_event_codes": ["T1", "T2"],
+            "not_label_event_codes": ["T0"],
+            "class_map": class_map,
+        },
+        "event_roles": {
+            "T0": "not a label",
+            "T1": "class label",
+            "T2": "class label",
+        },
+    }
 
 
 def test_cancelled_revalidation_restores_staged_metadata_draft(qtbot):
@@ -1570,13 +1744,21 @@ def test_match_labels_internal_source_moves_events_between_sections(qtbot):
     visible_text = _visible_step_text(dialog, "Match Labels")
     assert "Changed by user" not in visible_text
     assert [item[1] for item in dialog._class_map_items] == ["770"]
-    assert dialog.get_result()["choices"]["event_roles"] == {"769": "not a label"}
+    assert dialog.get_result()["choices"]["event_roles"] == {
+        "768": "not a label",
+        "769": "not a label",
+        "770": "class label",
+    }
 
     _click_button(dialog, "Use for training", event_code="769")
     qtbot.wait(0)
 
     assert [item[1] for item in dialog._class_map_items] == ["769", "770"]
-    assert dialog.get_result()["choices"]["event_roles"] == {"769": "class label"}
+    assert dialog.get_result()["choices"]["event_roles"] == {
+        "768": "not a label",
+        "769": "class label",
+        "770": "class label",
+    }
 
 
 def test_match_labels_class_names_are_sorted_by_code(qtbot):

@@ -1718,6 +1718,14 @@ class DataInterpretationPreviewDialog(
             self._resume_step_after_accept = "Match Labels"
             self.accept()
             return
+        if (
+            current < len(self._step_titles)
+            and self._step_titles[current] == "Match Labels"
+            and self._match_labels_need_fresh_review()
+        ):
+            self._resume_step_after_accept = "Review and Import"
+            self.accept()
+            return
         self._go_to_step(current + 1)
 
     def _go_previous_step(self) -> None:
@@ -4015,12 +4023,20 @@ class DataInterpretationPreviewDialog(
             choices["eeg_file_remap"] = eeg_file_remap
         if self._skip_labels:
             return choices
+        internal_event_selection: dict[str, Any] = {}
+        using_internal_events = bool(
+            self._label_source_mode() == "internal_events"
+            and self._internal_event_preview_payload()
+        )
         class_map = self._class_map_overrides()
+        if using_internal_events:
+            internal_event_selection = self._current_internal_event_selection()
+            class_map = dict(internal_event_selection["class_map"])
         if class_map:
             choices["class_map"] = class_map
         event_roles = self._event_role_overrides()
-        if self._label_source_mode() == "internal_events":
-            event_roles.update(self._internal_event_role_overrides())
+        if using_internal_events:
+            event_roles.update(self._current_internal_event_roles())
         if event_roles:
             choices["event_roles"] = event_roles
         if self._excluded_label_carriers:
@@ -4028,7 +4044,9 @@ class DataInterpretationPreviewDialog(
         label_carrier_source = self._label_carrier_source_choice()
         if label_carrier_source:
             choices["label_carrier"] = label_carrier_source
-            for key in ("internal_event_selection", "run_event_mappings"):
+            if using_internal_events:
+                choices["internal_event_selection"] = internal_event_selection
+            for key in ("run_event_mappings",):
                 value = self._initial_choices.get(key)
                 if isinstance(value, dict) and value:
                     choices[key] = dict(value)
@@ -4043,6 +4061,46 @@ class DataInterpretationPreviewDialog(
         if label_carrier_remap:
             choices["label_carrier_remap"] = label_carrier_remap
         return choices
+
+    def _current_internal_event_selection(self) -> dict[str, Any]:
+        """Serialize the complete, visible embedded-event decision.
+
+        The embedded-event table is a full decision surface, unlike the generic
+        event-role editor which only needs to send a delta.  Keeping this
+        projection here makes Review and backend validation receive the same
+        selected/not-selected partition that the user just saw.
+        """
+        selected = [
+            str(row.get("code") or "").strip()
+            for row in self._internal_candidate_label_event_rows()
+        ]
+        not_selected = [
+            str(row.get("code") or "").strip()
+            for row in self._internal_not_used_event_rows()
+        ]
+        selected = list(dict.fromkeys(code for code in selected if code))
+        not_selected = list(
+            dict.fromkeys(
+                code for code in not_selected if code and code not in selected
+            )
+        )
+        class_names = {
+            code: self._class_map_item_text(item).strip()
+            for item, code, _original in self._class_map_items
+            if code in selected and self._class_map_item_text(item).strip()
+        }
+        return {
+            "label_event_codes": selected,
+            "not_label_event_codes": not_selected,
+            "class_map": class_names,
+        }
+
+    def _current_internal_event_roles(self) -> dict[str, str]:
+        selection = self._current_internal_event_selection()
+        return {
+            **dict.fromkeys(selection["label_event_codes"], "class label"),
+            **dict.fromkeys(selection["not_label_event_codes"], "not a label"),
+        }
 
     def _event_semantic_evidence(self) -> list[dict[str, Any]]:
         """Project the exact semantic choices visible on Match Labels."""
@@ -4177,6 +4235,10 @@ class DataInterpretationPreviewDialog(
             selector.setCurrentIndex(current_index)
         elif current_value:
             selector.setEditText(self._label_choice_display(current_value))
+        # Class names are an editable Match Labels decision.  Reuse the
+        # existing decision-change path so Next/Review state follows typing in
+        # either the hidden tree selector or one of its visible clones.
+        selector.currentTextChanged.connect(self._handle_event_value_decisions_changed)
         self._class_map_widgets[id(item)] = selector
         self.event_tree.setItemWidget(item, 2, selector)
 
@@ -4452,6 +4514,17 @@ class DataInterpretationPreviewDialog(
             and editor.has_rows()
             and editor.is_complete()
             and editor.changed_decisions_by_carrier()
+        )
+
+    def _match_labels_need_fresh_review(self) -> bool:
+        """Return whether visible edits cover every current actionable review item."""
+        review = self._validation_review_contract()
+        actionable_targets = {item.target_step for item in review.actionable_items}
+        return bool(
+            review.is_valid
+            and actionable_targets
+            and actionable_targets.issubset(self._edited_action_targets())
+            and not self._has_unresolved_required_decisions()
         )
 
     def _event_value_carrier_plans(self) -> list[dict[str, Any]]:

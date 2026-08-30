@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
+    QPushButton,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -37,6 +38,7 @@ from scripts.dev.fetch_public_eeg_fixtures import (
 from tests.integration.ui.modal_helpers import visible_modal_dialog
 from XBrainLab.backend.application import (
     ApplicationService,
+    ApplyInterpretationCommand,
     PreviewInterpretationCommand,
     ScanSourceCommand,
     ValidateInterpretationCommand,
@@ -216,6 +218,7 @@ class _WizardDriver:
     resolve_bids_values: bool = False
     resolve_openneuro_values: bool = False
     resolve_openneuro_trial_types: bool = False
+    resolve_bbci_internal_events: bool = False
     expect_blocked: bool = False
     awaiting_label_field_refresh: bool = False
     dialog_count: int = 0
@@ -236,6 +239,10 @@ class _WizardDriver:
     max_heartbeat_gap_context: str = ""
     last_progress_at: float = field(default_factory=time.monotonic)
     last_progress_key: tuple[object, ...] | None = None
+    bbci_review_decisions: list[str] = field(default_factory=list)
+    bbci_fresh_action_items: list[tuple[str, str, str]] = field(default_factory=list)
+    bbci_pre_confirm_state: tuple[int, bool] | None = None
+    runtime: Any | None = None
 
 
 def _require_manifest_group(group_name: str) -> None:
@@ -624,6 +631,59 @@ def _complete_required_metadata(dialog: DataInterpretationPreviewDialog) -> None
         raise AssertionError(f"Required metadata remains incomplete: {missing!r}")
 
 
+def _complete_bbci_internal_event_choices(
+    dialog: DataInterpretationPreviewDialog,
+) -> None:
+    """Use the visible embedded-event controls for the BBCI GDF review."""
+
+    def _move_event(code: str, action: str) -> None:
+        button = next(
+            (
+                candidate
+                for candidate in dialog.findChildren(QPushButton)
+                if candidate.objectName() == "DataImportInlineAction"
+                and candidate.property("event_code") == code
+                and candidate.text() == action
+            ),
+            None,
+        )
+        if button is None:
+            raise AssertionError(f"Missing {action!r} control for GDF {code}.")
+        QTEST.mouseClick(button, Qt.MouseButton.LeftButton)
+        QApplication.processEvents()
+
+    # The GDF preview suggests 768/781/785.  This is the explicit user choice:
+    # train on 769/770 and keep all remaining observed events out of classes.
+    for code in ("768", "781", "785"):
+        _move_event(code, "Exclude from training")
+    for code in ("769", "770"):
+        _move_event(code, "Use for training")
+
+    table = dialog.findChild(QFrame, "DataImportInternalLabelsTable")
+    if table is None:
+        raise AssertionError("BBCI training-label table is not visible.")
+    selectors = [
+        selector for selector in table.findChildren(QComboBox) if selector.isEditable()
+    ]
+    if len(selectors) != 2:
+        raise AssertionError(
+            f"Expected two visible BBCI class-name controls, found {len(selectors)}."
+        )
+    for selector, class_name in zip(selectors, ("left", "right"), strict=True):
+        selector.setFocus()
+        QTEST.mouseClick(selector, Qt.MouseButton.LeftButton)
+        QTEST.keyClick(
+            selector,
+            Qt.Key.Key_A,
+            Qt.KeyboardModifier.ControlModifier,
+        )
+        QTEST.keyClicks(selector, class_name)
+    QApplication.processEvents()
+
+    if not dialog.next_button.isEnabled():
+        raise AssertionError("Complete BBCI Match Labels did not enable Next.")
+
+
 def _visible_step_text(dialog: DataInterpretationPreviewDialog) -> str:
     current = dialog.step_stack.currentWidget()
     if current is None:
@@ -667,7 +727,9 @@ def _start_wizard_driver(
     resolve_bids_values: bool = False,
     resolve_openneuro_values: bool = False,
     resolve_openneuro_trial_types: bool = False,
+    resolve_bbci_internal_events: bool = False,
     expect_blocked: bool = False,
+    runtime: Any | None = None,
 ) -> _WizardDriver:
     driver = _WizardDriver(
         timer=QTimer(),
@@ -676,7 +738,9 @@ def _start_wizard_driver(
         resolve_bids_values=resolve_bids_values,
         resolve_openneuro_values=resolve_openneuro_values,
         resolve_openneuro_trial_types=resolve_openneuro_trial_types,
+        resolve_bbci_internal_events=resolve_bbci_internal_events,
         expect_blocked=expect_blocked,
+        runtime=runtime,
     )
     # Human-scale actions must leave one event-loop turn for combo popups,
     # geometry refreshes, and asynchronous command delivery to settle.
@@ -795,6 +859,8 @@ def _start_wizard_driver(
             if driver.dialog is None:
                 driver.dialog = modal
                 driver.dialog_count = 1
+                if driver.resolve_bbci_internal_events:
+                    driver.bbci_review_decisions.append(str(modal.decision))
             elif modal is not driver.dialog:
                 if (
                     driver.resolve_openneuro_values
@@ -804,6 +870,20 @@ def _start_wizard_driver(
                     driver.dialog_count += 1
                     driver.awaiting_label_field_refresh = False
                     driver.trace.append("label field preview refreshed")
+                elif (
+                    driver.resolve_bbci_internal_events
+                    and driver.dialog_count == 1
+                    and driver.phase == len(STEP_TITLES) - 1
+                ):
+                    driver.dialog = modal
+                    driver.dialog_count += 1
+                    driver.bbci_review_decisions.append(str(modal.decision))
+                    fresh_contract = modal._validation_review_contract()
+                    driver.bbci_fresh_action_items = [
+                        (item.issue, item.severity, item.target_step)
+                        for item in fresh_contract.action_items
+                    ]
+                    driver.trace.append("fresh BBCI review")
                 else:
                     _fail(
                         "The acceptance flow unexpectedly opened a second wizard.",
@@ -853,6 +933,9 @@ def _start_wizard_driver(
                 return
 
             if driver.phase == 3:
+                if driver.resolve_bbci_internal_events:
+                    _complete_bbci_internal_event_choices(modal)
+                    driver.trace.append("review BBCI internal events")
                 if driver.resolve_openneuro_trial_types:
                     if (
                         driver.dialog_count == 1
@@ -949,6 +1032,22 @@ def _start_wizard_driver(
                     modal,
                 )
                 return
+            if driver.resolve_bbci_internal_events:
+                if driver.runtime is None:
+                    _fail("BBCI driver has no runtime for pre-confirm check.", modal)
+                    return
+                state_before_confirm = driver.runtime.get_view_publication().state
+                driver.bbci_pre_confirm_state = (
+                    state_before_confirm.raw.count,
+                    state_before_confirm.interpretation.has_applied_interpretation,
+                )
+                if driver.bbci_pre_confirm_state != (0, False):
+                    _fail(
+                        "BBCI fresh Review mutated before Confirm: "
+                        f"{driver.bbci_pre_confirm_state!r}",
+                        modal,
+                    )
+                    return
             driver.trace.append("confirm and import")
             driver.phase = 5
             QTEST.mouseClick(modal.apply_button, Qt.MouseButton.LeftButton)
@@ -1149,6 +1248,124 @@ def test_physionet_r04_staged_review_restores_t1_t2_choices(qtbot: Any) -> None:
             == (staged_choices["internal_event_selection"])
         )
         assert restored["run_event_mappings"] == staged_choices["run_event_mappings"]
+    finally:
+        service.close()
+
+
+def test_bbci_subject_and_internal_event_review_republishes_safe_before_apply(
+    qtbot: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The visible coordinator revalidates BBCI before its second Confirm."""
+    _require_manifest_group("bbci-gdf")
+    chooser_calls: list[str] = []
+
+    def _choose_files(
+        _parent: QWidget,
+        title: str,
+        _directory: str,
+        _filter_text: str,
+        **_kwargs: Any,
+    ) -> tuple[list[str], str]:
+        chooser_calls.append(title)
+        return [str(BBCI_GDF)], ""
+
+    monkeypatch.setattr(QFileDialog, "getOpenFileNames", staticmethod(_choose_files))
+    host, panel, runtime = _build_dataset_panel(qtbot)
+    service = get_application_service(host.study)
+    real_execute = service.execute
+    command_types: list[type[Any]] = []
+    completed_command_types: list[type[Any]] = []
+
+    def _counting_execute(command: Any, *args: Any, **kwargs: Any) -> Any:
+        command_types.append(type(command))
+        result = real_execute(command, *args, **kwargs)
+        if result.ok:
+            completed_command_types.append(type(command))
+        return result
+
+    monkeypatch.setattr(service, "execute", _counting_execute)
+    before = runtime.get_view_publication().state
+    assert before.raw.count == 0
+    assert not before.interpretation.has_applied_interpretation
+
+    driver = _start_wizard_driver(
+        resolve_bbci_internal_events=True,
+        runtime=runtime,
+    )
+    QTEST.mouseClick(panel.sidebar.import_btn, Qt.MouseButton.LeftButton)
+    _wait_for_applied_interpretation(qtbot, driver, runtime, panel, timeout=60_000)
+
+    publication = runtime.get_view_publication()
+    state = publication.state
+    assert chooser_calls == ["Choose EEG files"]
+    assert driver.errors == []
+    assert driver.dialog_count == 2
+    assert driver.bbci_review_decisions == ["needs_confirmation", "safe"]
+    assert driver.bbci_fresh_action_items == []
+    assert driver.bbci_pre_confirm_state == (0, False)
+    assert "fresh BBCI review" in driver.trace
+    assert command_types.count(PreviewInterpretationCommand) == 1
+    assert command_types.count(ValidateInterpretationCommand) == 1
+    assert command_types.count(ApplyInterpretationCommand) == 1
+    assert completed_command_types.count(ApplyInterpretationCommand) == 1
+    assert application_command_registry().active_count(panel) == 0
+    assert state.raw.count == 1
+    assert state.interpretation.has_applied_interpretation is True
+    assert state.interpretation.class_map == {"769": "left", "770": "right hand"}
+
+
+def test_bbci_empty_internal_class_name_cannot_confirm_or_mutate(qtbot: Any) -> None:
+    """An incomplete internal-event class decision leaves final Confirm disabled."""
+    _require_manifest_group("bbci-gdf")
+    service = ApplicationService()
+    try:
+        scan_result = service.execute(
+            ScanSourceCommand(source_path=str(BBCI_GDF), source_hint="file")
+        )
+        assert scan_result.ok, scan_result.message
+        incomplete_choices = {
+            "metadata_overrides": {BBCI_GDF.name: {"subject": "subject-01"}},
+            "label_carrier": "embedded_events",
+            "internal_event_selection": {
+                "label_event_codes": ["769", "770"],
+                "not_label_event_codes": ["768", "781", "783", "785"],
+                "class_map": {"770": "right"},
+            },
+            "event_roles": {
+                "768": "not a label",
+                "769": "class label",
+                "770": "class label",
+                "781": "not a label",
+                "783": "not a label",
+                "785": "not a label",
+            },
+            "class_map": {"770": "right"},
+        }
+        preview = service.execute(
+            PreviewInterpretationCommand(choices=incomplete_choices)
+        )
+        validation = service.execute(ValidateInterpretationCommand())
+        assert preview.ok, preview.message
+        assert validation.ok, validation.message
+        decision = validation.diagnostics["validation_decision"]
+        assert decision["decision"] == "needs_confirmation"
+        assert not service.get_view_publication().state.interpretation.has_applied_interpretation
+
+        dialog = DataInterpretationPreviewDialog(
+            scan_result=scan_result.diagnostics["scan_result"],
+            preview=preview.diagnostics["preview"],
+            validation_decision=decision,
+            initial_step="Match Labels",
+            choices=incomplete_choices,
+        )
+        qtbot.addWidget(dialog)
+        dialog.show()
+        qtbot.wait(0)
+        assert not dialog.next_button.isEnabled()
+        assert dialog.result() == 0
+        dialog.close()
+        assert not service.get_view_publication().state.interpretation.has_applied_interpretation
     finally:
         service.close()
 

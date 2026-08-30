@@ -1110,17 +1110,19 @@ def test_confirmed_direct_apply_immediately_publishes_owned_status(
     _assert_visible_apply_completes(qtbot, status, runtime)
 
 
-def test_confirmed_revalidation_to_apply_immediately_publishes_owned_status(
+def test_confirmed_revalidation_reopens_fresh_review_before_owned_apply(
     qtbot,
     monkeypatch,
 ) -> None:
     _window, handler, status = _visible_apply_handler(qtbot)
     runtime = _BlockingVisibleApplyRuntime("revalidated-apply-operation")
     revised_choices = {"class_map": {"1": "Target"}}
+    dialog_opens = 0
 
     class _ConfirmedDialog:
         def __init__(self, *_args, **_kwargs) -> None:
-            pass
+            nonlocal dialog_opens
+            dialog_opens += 1
 
         @staticmethod
         def exec() -> bool:
@@ -1160,6 +1162,9 @@ def test_confirmed_revalidation_to_apply_immediately_publishes_owned_status(
     )
 
     assert outcome.status is InteractionStatus.ACCEPTED
+    # The first confirmation belongs to the old draft.  Revalidation must
+    # reopen fresh Review even when the fresh decision is already safe.
+    assert dialog_opens == 2
     _assert_visible_apply_completes(qtbot, status, runtime)
 
 
@@ -1254,6 +1259,28 @@ def test_real_async_revalidation_handoff_keeps_apply_as_visible_owner(
         "application_ui_runtime",
         lambda _context: _Runtime(),
     )
+    fresh_review_opens = 0
+
+    class _FreshReviewDialog:
+        def __init__(self, *_args, **_kwargs) -> None:
+            nonlocal fresh_review_opens
+            fresh_review_opens += 1
+
+        @staticmethod
+        def exec() -> bool:
+            return True
+
+        @staticmethod
+        def get_result() -> dict[str, Any]:
+            # This is the second, freshly validated Review confirmation.  Its
+            # unchanged choices may now start the visible Apply owner.
+            return {
+                "confirmed": True,
+                "choices": {"class_map": {"1": "Target"}},
+                "save_recipe": False,
+            }
+
+    monkeypatch.setattr(actions, "DataInterpretationPreviewDialog", _FreshReviewDialog)
     terminal = []
     completion = InteractionCompletionSession(
         request_id="revalidation-apply",
@@ -1275,6 +1302,7 @@ def test_real_async_revalidation_handoff_keeps_apply_as_visible_owner(
     assert outcome is not None
     assert outcome.status is InteractionStatus.ACCEPTED
     qtbot.waitUntil(lambda: bool(terminal), timeout=2_000)
+    assert fresh_review_opens == 1
     assert terminal[0].status is InteractionCompletionStatus.COMPLETED
     qtbot.waitUntil(
         lambda: status.property("operationId") == "apply-operation"
@@ -1377,6 +1405,70 @@ def test_label_field_repreview_reopens_match_labels_instead_of_applying(
         label_sources=[],
         review_state=review_state,
         initial_step="Match Labels",
+    )
+
+
+def test_complete_match_draft_repreviews_before_first_final_review(monkeypatch) -> None:
+    """A Match Labels decision reaches Review only after backend revalidation."""
+    panel = MagicMock()
+    handler = DatasetActionHandler(panel)
+    coordinator = handler._data_interpretation
+    choices = {
+        "label_carrier": "embedded_events",
+        "internal_event_selection": {
+            "label_event_codes": ["769", "770"],
+            "not_label_event_codes": ["768"],
+            "class_map": {"769": "left", "770": "right"},
+        },
+        "event_roles": {
+            "769": "class label",
+            "770": "class label",
+            "768": "not a label",
+        },
+        "class_map": {"769": "left", "770": "right"},
+    }
+
+    class _Dialog:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        @staticmethod
+        def exec() -> bool:
+            return True
+
+        @staticmethod
+        def get_result() -> dict[str, Any]:
+            return {
+                "confirmed": True,
+                "choices": choices,
+                "resume_step": "Review and Import",
+            }
+
+    monkeypatch.setattr(actions, "DataInterpretationPreviewDialog", _Dialog)
+    repreview = MagicMock(return_value=InteractionOutcome.accepted("refresh"))
+    apply_review = MagicMock()
+    monkeypatch.setattr(coordinator, "_repreview_interpretation_async", repreview)
+    monkeypatch.setattr(
+        coordinator, "_review_interpretation_for_apply_async", apply_review
+    )
+    review_state = _review_state()
+
+    outcome = coordinator._continue_data_interpretation_import(
+        source_path="/data/A01T.gdf",
+        source_hint="file",
+        choices={},
+        label_sources=[],
+        review_state=review_state,
+    )
+
+    assert outcome.status is InteractionStatus.ACCEPTED
+    repreview.assert_called_once_with(
+        source_path="/data/A01T.gdf",
+        source_hint="file",
+        choices=choices,
+        label_sources=[],
+        review_state=review_state,
+        initial_step="Review and Import",
     )
     apply_review.assert_not_called()
 
@@ -1755,6 +1847,113 @@ def test_reopened_revalidation_cancel_cannot_apply_unvalidated_edited_choices(
         label_sources=["/data/sub-01/sub-01_events.tsv"],
         review_state=review_state,
         dialog_result={"confirmed": True, "choices": revised_choices},
+    )
+    apply_review.assert_not_called()
+
+
+def test_final_changed_choices_with_fresh_confirmation_reopen_review(
+    monkeypatch,
+) -> None:
+    """A stale Confirm cannot apply a revalidated needs-confirmation draft."""
+    panel = MagicMock()
+    handler = DatasetActionHandler(panel)
+    coordinator = handler._data_interpretation
+    previous_state = _review_state(publication_generation=17)
+    refreshed_state = replace(
+        previous_state,
+        decision={
+            "candidate_id": "candidate-1",
+            "decision": "needs_confirmation",
+            "action_items": [
+                {
+                    "target_step": "Match Labels",
+                    "issue": "Confirm the selected EEG events.",
+                    "impact": "Training labels remain ambiguous.",
+                    "next_action": "Review Match Labels.",
+                    "severity": "needs_confirmation",
+                }
+            ],
+        },
+    )
+    choices = {"metadata_overrides": {"A01T.gdf": {"subject": "01"}}}
+    reopen = MagicMock(return_value=InteractionOutcome.accepted("review reopened"))
+    apply_review = MagicMock()
+
+    def _validate(**kwargs):
+        return kwargs["on_validated"](refreshed_state)
+
+    monkeypatch.setattr(
+        coordinator, "_preview_and_validate_interpretation_async", _validate
+    )
+    monkeypatch.setattr(coordinator, "_continue_data_interpretation_import", reopen)
+    monkeypatch.setattr(coordinator, "_apply_interpretation_async", apply_review)
+
+    outcome = coordinator._review_interpretation_for_apply_async(
+        source_path="/data/A01T.gdf",
+        source_hint="file",
+        choices=choices,
+        validated_choices={},
+        label_sources=[],
+        review_state=previous_state,
+        dialog_result={"confirmed": True, "choices": choices},
+    )
+
+    assert outcome is not None
+    assert outcome.status is InteractionStatus.ACCEPTED
+    reopen.assert_called_once_with(
+        source_path="/data/A01T.gdf",
+        source_hint="file",
+        choices=choices,
+        label_sources=[],
+        review_state=refreshed_state,
+        initial_step="Review and Import",
+        validated_choices=choices,
+    )
+    apply_review.assert_not_called()
+
+
+def test_final_changed_choices_with_fresh_safe_review_reopen_before_apply(
+    monkeypatch,
+) -> None:
+    """A stale Confirm cannot apply even when the refreshed draft is safe."""
+    panel = MagicMock()
+    handler = DatasetActionHandler(panel)
+    coordinator = handler._data_interpretation
+    previous_state = _review_state(publication_generation=17)
+    refreshed_state = _review_state(publication_generation=18)
+    choices = {"metadata_overrides": {"A01T.gdf": {"subject": "01"}}}
+    reopen = MagicMock(return_value=InteractionOutcome.accepted("review reopened"))
+    apply_review = MagicMock()
+
+    def _validate(**kwargs):
+        return kwargs["on_validated"](refreshed_state)
+
+    monkeypatch.setattr(
+        coordinator, "_preview_and_validate_interpretation_async", _validate
+    )
+    monkeypatch.setattr(coordinator, "_continue_data_interpretation_import", reopen)
+    monkeypatch.setattr(coordinator, "_apply_interpretation_async", apply_review)
+
+    outcome = coordinator._review_interpretation_for_apply_async(
+        source_path="/data/A01T.gdf",
+        source_hint="file",
+        choices=choices,
+        validated_choices={},
+        label_sources=[],
+        review_state=previous_state,
+        dialog_result={"confirmed": True, "choices": choices},
+    )
+
+    assert outcome is not None
+    assert outcome.status is InteractionStatus.ACCEPTED
+    reopen.assert_called_once_with(
+        source_path="/data/A01T.gdf",
+        source_hint="file",
+        choices=choices,
+        label_sources=[],
+        review_state=refreshed_state,
+        initial_step="Review and Import",
+        validated_choices=choices,
     )
     apply_review.assert_not_called()
 

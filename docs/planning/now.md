@@ -143,6 +143,58 @@ ApplicationService／Import publication，或 A2 需要修改 `docs/target/{agen
 incomplete mapping 與 Review 後替換 source；交付前跑 canonical source-diverse data gate。可見 UI 已取得
 使用者修改授權，但仍需 exact-SHA Windows 手測。
 
+#### B1 manual-failure follow-up (`2026-08-30`)
+
+**Problem and evidence**
+
+在 PR #73 exact head `f8510bcc9bc4b6c721c3cd532a1961a0aa81cf61` 的 WSLg 真人手測中，
+使用者已選定 subject 並完成 `Review and Import`，最終 Review 仍顯示
+`Need your decision`，但 Import 隨後成功。這證明目前 Review presentation 與真正 import
+admission 沒有共同反映同一份已確認 decision；既有 focused evidence 未覆蓋這條 product-equivalent
+路徑。PR #73 的本次人工驗收作廢，修正前不得 merge。
+
+**Current checkpoint and next step**
+
+完整 subject／internal event roles／class names 現在會立即同步 Match Labels admission；class name 空白
+或新增未命名 class 時，`Next` 會維持或回到 disabled，且 study 零 mutation。真實 BBCI GDF 已由
+Import button 經 DatasetActionHandler／Coordinator、ApplicationService 與 fresh Review 走完正負向；
+獨立 reviewer 已確認舊 Confirm 不會直接 Apply、fresh Confirm 前零 mutation、Apply 正好一次。下一步
+只建立 exact commit、重跑 applicable handoff／source-diverse／CI evidence，再交付 Windows 真人手測；
+不擴張到 parser 或 backend policy。
+
+**Outcome, scope, and non-goals**
+
+- subject override 與完整顯式 internal-event selection／roles／class map 經確認後，最終 Review
+  不得保留相同 required-decision；Import 可正常執行。
+- 只要必要 subject／event decision 仍是 `needs_confirmation` 或 `blocked`，相同 admission truth
+  必須阻止 Import，且不得先 mutation 再顯示警告。
+- Review status、action items、Import enablement 與 backend apply admission 必須來自既有 shared
+  interpretation validation，不新增 UI-only bypass、第二套 policy、owner、state machine 或 receipt。
+- Scope 限於 subject override publication 與 internal GDF final-review／apply consistency；不改 parser、
+  cache、source scope、文案／版面、label semantics、digest、rollback 或其他 Import workflow。
+- 假設使用者手測的是公開 GDF internal-events path；先以同一 fixture／相同 wizard transition
+  重現。若證據顯示是另一 source type，再停在 checkpoint 校準，而不泛化重寫。
+
+**Repair and focused validation**
+
+1. 先建立 product-equivalent regression，走 metadata subject selection、event mapping Recheck、
+   final Review 與 Import admission，證明修正前的 status／admission 矛盾。
+2. 追蹤 decision 從 wizard draft、confirmed candidate／validation 到 apply command 的 publication，
+   在既有 owner 中刪除或修正分岔 truth。
+3. 正向案例必須同時證明 required decision 消失且真實 import 成功；負向 incomplete／unconfirmed
+   案例必須證明 Import 不可執行、study 未 mutation。再覆蓋 file／folder／BIDS 與 canonical
+   source-diverse data gate，避免只針對 renderer 字串。
+4. 作者 focused validation 後，由非作者 user-simulator 重走相同 GDF path，independent reviewer
+   核對 shared truth、test quality、owner delta `0` 與 exact clean SHA；source 改變後重跑 CI 與
+   handoff evidence。
+
+**Stop condition and UI authorization**
+
+只有「已確認的 subject + 完整 internal mapping」不再顯示 required decision 且成功 import，
+以及未確認必要 decision 無法 apply 且無 mutation，兩者都通過時才 scope-complete。若需要新增
+owner／receipt、改 public label semantics 或超出上述 workflow，停為 checkpoint。這個 follow-up
+沿用 B1 已取得的可見 UI 修改授權；最終仍需新 exact-SHA Windows 真人手測與明確 merge approval。
+
 ### B2. Epoch anchor language
 
 `Timing 719` 不是 duration／sample count／epoch window，而是 import 儲存的 event anchor。只調整
