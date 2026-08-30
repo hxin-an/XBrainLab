@@ -156,6 +156,10 @@ def test_warning_confirmation_keeps_icon_cue_and_safe_cancel_contract(qtbot):
     assert dialog.severity_icon_label.accessibleName() == "Warning icon"
     assert dialog.severity_icon_label.pixmap() is not None
     assert not dialog.severity_icon_label.pixmap().isNull()
+    assert dialog.title_label is not None
+    assert dialog.title_label.isVisible()
+    assert dialog.title_label.text() == "VRAM Warning"
+    assert dialog.title_label.accessibleName() == "Alert title"
     assert dialog.cancel_button is not None
     assert dialog.cancel_button.isDefault()
     assert not any(

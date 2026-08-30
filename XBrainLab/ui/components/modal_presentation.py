@@ -143,7 +143,9 @@ class ModalAlertDialog(BaseDialog):
                     alignment=Qt.AlignmentFlag.AlignTop,
                 )
                 copy_column = QVBoxLayout()
+                copy_column.setSpacing(6)
                 copy_column.setAlignment(Qt.AlignmentFlag.AlignTop)
+                copy_column.addWidget(self._create_title_label())
                 self._add_message(copy_column)
                 heading_row.addLayout(copy_column, 1)
                 layout.addLayout(heading_row)
@@ -214,12 +216,7 @@ class ModalAlertDialog(BaseDialog):
         copy_column.setAlignment(Qt.AlignmentFlag.AlignTop)
         header_column = QVBoxLayout()
         header_column.setSpacing(2)
-        title_label = QLabel(self.windowTitle())
-        self.title_label = title_label
-        title_label.setObjectName("ModalAlertTitle")
-        title_label.setWordWrap(True)
-        title_label.setAccessibleName("Alert title")
-        header_column.addWidget(title_label)
+        header_column.addWidget(self._create_title_label())
         self.severity_label = self._create_severity_label()
         title_matches_severity = (
             self.windowTitle().strip().casefold()
@@ -234,6 +231,14 @@ class ModalAlertDialog(BaseDialog):
         heading_row.addLayout(copy_column, 1)
 
         layout.addLayout(heading_row)
+
+    def _create_title_label(self) -> QLabel:
+        title_label = QLabel(self.windowTitle())
+        self.title_label = title_label
+        title_label.setObjectName("ModalAlertTitle")
+        title_label.setWordWrap(True)
+        title_label.setAccessibleName("Alert title")
+        return title_label
 
     def _create_severity_icon_label(self) -> QLabel:
         severity_icon_label = QLabel()
