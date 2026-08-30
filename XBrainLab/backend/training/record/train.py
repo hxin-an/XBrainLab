@@ -443,11 +443,15 @@ def _decode_training_artifact(
         raise UnsupportedArtifactError(
             "Training artifact model identity is malformed. Start a new training run."
         ) from exc
-    class_weighting = (
-        _migrate_v1_class_weighting()
-        if record_schema_version == 1
-        else _normalize_v2_class_weighting(data.get("class_weighting"))
-    )
+    if record_schema_version == 1:
+        if "class_weighting" in data:
+            raise UnsupportedArtifactError(
+                "v1 training artifact contains class-weighting metadata; "
+                "unsafe schema downgrade is not supported."
+            )
+        class_weighting = _migrate_v1_class_weighting()
+    else:
+        class_weighting = _normalize_v2_class_weighting(data.get("class_weighting"))
     return (
         train,
         val,

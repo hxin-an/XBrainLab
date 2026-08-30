@@ -26,6 +26,7 @@ from XBrainLab.backend.training.option import class_map_fingerprint
 from XBrainLab.backend.training.record import EvalRecord, RecordKey, TrainRecord
 from XBrainLab.backend.training.record import artifact_store as artifact_store_module
 from XBrainLab.backend.training.record.artifact_store import (
+    ArtifactStoreError,
     load_model_state_dict,
     read_json_npz_artifact,
     write_json_npz_artifact,
@@ -576,6 +577,53 @@ def test_training_record_v1_migrates_to_explicit_off_weighting(
             "weights": [],
         },
     }
+
+
+def test_training_record_rejects_v2_weighting_downgraded_only_by_schema_number(
+    tmp_path: Path,
+    dataset,  # noqa: F811
+    training_option,  # noqa: F811
+    model_holder,  # noqa: F811
+) -> None:
+    requested, resolved = _class_weighting_payload(dataset, mode="custom")
+    with patch.object(TrainRecord, "init_dir"):
+        record = TrainRecord(
+            0,
+            dataset,
+            model_holder.get_model({}),
+            training_option,
+            1,
+            class_weighting_requested=requested,
+            class_weighting_resolution=resolved,
+        )
+    record.target_path = str(tmp_path)
+    record._artifact_io_path = str(tmp_path)
+    record.export_checkpoint()
+
+    manifest_path = tmp_path / "record"
+    manifest = _read_manifest(manifest_path)
+    manifest["payload"]["record_schema_version"] = 1
+    manifest_path.write_text(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+
+    with patch.object(TrainRecord, "init_dir"):
+        restored = TrainRecord(
+            0,
+            dataset,
+            model_holder.get_model({}),
+            training_option,
+            0,
+        )
+    restored.target_path = str(tmp_path)
+    restored._artifact_io_path = str(tmp_path)
+    before = copy.deepcopy(restored.class_weighting)
+
+    with pytest.raises(ArtifactStoreError, match=r"v1.*class-weighting"):
+        restored.load()
+
+    assert restored.class_weighting == before
 
 
 def test_training_record_rejects_different_provider_identity(
