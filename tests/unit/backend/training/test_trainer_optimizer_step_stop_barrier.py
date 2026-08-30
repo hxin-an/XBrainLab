@@ -49,10 +49,12 @@ def _real_holder(tmp_path: Path, name: str) -> TrainingPlanHolder:
         [
             [[1.0, 0.0]],
             [[0.0, 1.0]],
+            [[1.0, 0.0]],
+            [[0.0, 1.0]],
         ],
         dtype=np.float32,
     )
-    epoch_data.label = np.array([0, 1], dtype=np.int64)
+    epoch_data.label = np.array([0, 1, 0, 1], dtype=np.int64)
     epoch_data.label_map = {0: "left", 1: "right"}
     epoch_data.ch_names = ["Cz"]
     epoch_data.sfreq = 1.0
@@ -61,11 +63,12 @@ def _real_holder(tmp_path: Path, name: str) -> TrainingPlanHolder:
     split_config = DataSplittingConfig(TrainingType.FULL, False, [], [])
     dataset = Dataset(epoch_data, split_config)
     dataset.set_name(name)
-    dataset.train_mask[0] = True
-    dataset.val_mask[1] = True
+    dataset.train_mask[:2] = True
+    dataset.val_mask[:] = False
+    dataset.test_mask[2:] = True
     dataset.remaining_mask[:] = False
-    assert set(dataset.get_training_indices()) == {0}
-    assert set(dataset.get_val_indices()) == {1}
+    assert set(dataset.get_training_indices()) == {0, 1}
+    assert set(dataset.get_val_indices()) == set()
 
     option = TrainingOption(
         output_dir=str(tmp_path / name),

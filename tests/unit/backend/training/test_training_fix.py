@@ -49,6 +49,12 @@ class TestTrainingFix(unittest.TestCase):
         self.mock_option.get_optim.return_value = MagicMock()
         self.mock_option.get_seed_for_repeat.return_value = 0
         self.mock_option.criterion = MagicMock()
+        self.mock_option.class_weight_mode = "off"
+        self.mock_option.custom_class_weights = {}
+        self.mock_option.class_map_fingerprint = None
+        self.mock_epochs.get_label_map.return_value = {0: "left", 1: "right"}
+        self.mock_epochs.get_label_list.return_value = np.array([0, 1], dtype=np.int64)
+        self.mock_dataset.train_mask = np.array([True, True])
 
         self.mock_model = MagicMock(spec=torch.nn.Module)
         self.mock_model.__class__.__name__ = "TestModel"

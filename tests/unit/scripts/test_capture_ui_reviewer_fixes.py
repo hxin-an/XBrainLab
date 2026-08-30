@@ -342,7 +342,8 @@ def test_training_setting_geometry_is_observed_at_supported_font_scales(
     assert check["passed"] is True
     assert check["overlap_count"] == 0
     assert check["clipped_text_count"] == 0
-    assert len(check["rows"]) == 9
+    assert len(check["rows"]) == 10
+    assert any(row["label"] == "Class loss weighting" for row in check["rows"])
     assert check["set_button_count"] == 3
     assert check["footer"]["passed"] is True
     assert check["resource_preview"]["passed"] is True

@@ -58,6 +58,23 @@ _THREAD_WATCHDOG_SECONDS = 3.0
 _BASELINE_METHODS = ("Gradient", "Gradient * Input")
 
 
+def _off_class_weighting() -> dict[str, object]:
+    """Return detached record metadata for the partial TrainRecord fixture."""
+    return {
+        "requested": {
+            "mode": "off",
+            "custom_class_weights": {},
+            "class_map_fingerprint": None,
+        },
+        "resolved": {
+            "class_names": [],
+            "class_order": [],
+            "class_counts": [],
+            "weights": [],
+        },
+    }
+
+
 class _TrainerAliasRaisesStudy(Study):
     @property
     def trainer(self) -> Any:
@@ -168,6 +185,7 @@ def _completed_training_service(
     record.seed = 7
     record.plan_id = "saliency-publication"
     record.model_identity = model_holder.catalog_identity
+    record.class_weighting = _off_class_weighting()
 
     holder = object.__new__(TrainingPlanHolder)
     holder.model_holder = cast(Any, model_holder)
