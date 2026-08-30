@@ -1,6 +1,6 @@
 # XBrainLab Now
 
-最後更新：`2026-08-30`
+最後更新：`2026-08-31`
 
 ## Current baseline and campaign outcome
 
@@ -28,10 +28,17 @@ optimization 必須從新的 Windows product-equivalent profile 另立 plan。
 
 PR #79 已在不跳過測試、不增加 timeout 的前提下修復 `assistant-runtime` shard 的重複
 process isolation，並以 merge commit `65d5957947eae8c20be9b9c91efae468c4779bcd`
-合併。B2 已 rebase 並 freeze 於 `a121cebb787d62fa54d3b91696917088b876fdeb`；
-exact-head CI 與 independent review 通過，但使用者檢查發現單一 raw event anchor 會被誤讀為
-class 清單，且 `Suggested from import`／`Suggested from loaded label files` 重複。PR #75 尚未
-通過 manual acceptance，必須在同一 branch 收斂 presentation 後重生所有 exact-source evidence。
+合併。B2 後續在同一 branch 收斂單一 raw event anchor 與重複 suggestion presentation；使用者已於
+`2026-08-30` 對 exact head `2cb82134a3973c7e322508e77d672c050a1aa25c` 完成手測並同意
+merge。PR #75 已以 merge commit `c7cf4b831c3a7579ee99a23b1a41c65251fa0c57` 合併，B2
+worktree 與本機／遠端 task branch 已清理；Lane B 現在進入 B3。
+
+PR #82 已將 C2 product-equivalent Import profiler 以 exact head
+`faf86c8772d48674ab02936fa444dad4ed49f38d` 合併，merge commit 為
+`d36cfdee21b82084094757b369c3b9ab6c4fb677`。它只修改 dev tooling／tests，沒有產品行為
+變更；C2 task worktree 與本機／遠端 branch 已清理。Exact Windows／WSL report 與 teacher gate
+證據保存在 ignored `build/dev-artifacts/import-e2e/faf86c87/`；isolated Windows 3.12 environment
+與 native measurement clone 暫留到 C3 結束後再清理。
 
 本 campaign 要在不新增 workflow owner、不建立第二套 command／state truth 的前提下，交付：
 
@@ -61,8 +68,9 @@ class 清單，且 `Suggested from import`／`Suggested from loaded label files`
 - **Cross user-simulator**：非作者 worker 用 product-equivalent scenario 交叉驗證。這只是第二層
   保險，不取代 exact-SHA Windows 真人手測。
 
-現階段明確允許 `main + B2 product worktree + C2 Import profiling worktree`，再加一個
-ephemeral reviewer worktree。A2、C1 與 G1 worktree 已收旗；B3／B4／B5 不預先建立空 branch。
+現階段明確允許 `main + B3 product worktree`，再加一個 ephemeral reviewer worktree。C2、A2、
+B2、C1 與 G1 worktree 已收旗；B4／B5 不預先建立空 branch。C3 只能在本 plan 進入 `main`
+後另建 dev-only measurement branch，不與 B3 共用 product source。
 Root 是唯一能修改本 plan 與處理兩條 branch rebase／status reconciliation 的角色。
 
 ## Lane A — comprehensive Assistant cleanup
@@ -119,7 +127,7 @@ A2 evaluator scripts／docs、B2 Epoch UI 與 C1 Import backend 的預期 produc
 incomplete mapping 與 Review 後替換 source；交付前跑 canonical source-diverse data gate。可見 UI 已取得
 使用者修改授權，但仍需 exact-SHA Windows 手測。
 
-### B2. Epoch imported-event presentation
+### B2. Epoch imported-event presentation (completed in PR #75)
 
 單一 `719`／`769` 是 placement anchor，不是多 class 清單；Apply 後 runtime event ID 也可能被重映射。
 PR #75 只收斂 Epoch 上方 presentation：
@@ -143,6 +151,10 @@ GDF 與 BIDS／interval walkthrough、source-diverse gate、independent review �
 caller title、message 與 confirmation controls；Information／Error 不變。這是 shared presentation
 修正，不在個別 caller 分別改 title。UI 修改已授權；需 shared modal tests／capture 與真實
 Assistant + 3D VRAM conflict 手測，確認沒有重複 modal loop。
+
+Implementation 與兩輪 independent review 已完成；PR #81 在 C2 merge 後已重疊最新 `main`。
+舊 exact head／capture／CI 因 rebase 失效。Root 先提交本 plan，再對新 exact head 重跑 focused
+tests、normal／narrow capture、review 與所有 CI；只有全部屬於同一 SHA 時才交付一次真人手測。
 
 ### B4. Class loss weighting
 
@@ -232,7 +244,7 @@ implementation 單次完整 SHA-256 約 `0.32s`，Review 與 Apply 合計上限�
 若 canonical path reuse 未達雙平台門檻，C1 停為 checkpoint 並關閉 candidate；不以更多 abstraction、
 弱化 digest 或 broad loader parallelism 湊數。下一個 optimization 需依新的 measured profile 另立 plan。
 
-### C2. Windows-first product-equivalent Import profile
+### C2. Windows-first product-equivalent Import profile (completed in PR #82)
 
 **Problem and evidence**
 
@@ -272,10 +284,54 @@ non-timed case 證明。非作者 performance＋data reviewer 審 frozen exact S
 phase 不得退步超過 10%。若無 reproducible dominant cost，或修理需要新 cache／pool／owner／state／
 semantic trade-off，C2 以 ranked diagnostic checkpoint 結束，不繼續猜測。
 
+Exact Windows report 的 stable medians 為 BBCI `1.601s`、Graz folder `1.940s`、P300 BIDS
+`4.096s`。BBCI／Graz 的 Review 分別佔 `68.2%`／`61.5%`；P300 Apply 為 `2.484s`，佔
+`60.8%`。Windows source identity 約 `0.001s`，final identity verify 約 `0.087s`；Qt heartbeat
+max median 約 `0.12–0.20s`。因此 C2 已交付 ranked timing report，但沒有證據支持刪 SHA／path
+boundary、增加 worker，或直接宣稱產品已加速。下一步只量 P300 Apply 是否有可刪除的重複工作。
+
+### C3. Windows P300 Apply duplicate-work decision
+
+**Problem, evidence, and outcome**
+
+Windows C2 的 P300 Apply median `2.484s / 4.096s`（`60.8%`）已超過 35% dominant-phase
+門檻，但現有 trace 尚不能區分必要的 MNE EEGLAB materialization 與同一 raw／label 在一次 Apply
+內被重複處理。C3 只回答這個問題，不改產品行為，也不把「很慢」當成「可刪除」。
+
+**Assumptions, scope, and non-goals**
+
+- Isolated Windows environment 只能在 exact source `dirty=false`、lockfile dependencies 與 C2 fixture
+  identity 不變時作產品量測；WSL 結果仍只作對照。
+- 只在既有 `profile_data_import_e2e.py` 加一個 runtime-external、dev-only `ApplyPhaseTracer`，並加
+  focused profiler tests；production files 預設 `0`。
+- 以互斥時間、call count 與 redacted path／config digest 分解：resource preflight、每個 EEGLAB
+  raw-holder load、BIDS channel／metadata、label materialization／placement、epoch hints、final content
+  verify、commit／publication。不得把 nested Review trace 加總成 Apply 結論。
+- 不新增 production hook、UI、worker、cache、receipt、owner、loader、SHA／path policy 或 persistence；
+  不改 source scope、label／event semantics、cancellation 或 rollback。
+
+**Method, focused validation, and stop condition**
+
+在 isolated native Windows 3.12 environment，以同一 P300 fixture 與真 Qt workflow 跑 2 次 coarse＋
+2 次 traced calibration，再跑 3 次 fresh-app traced measured passes；同時保留 wall／CPU／RSS／I/O、
+Qt heartbeat 與 C2 的 raw count、BIDS detection、classes、event sample／label digest、recipe／content
+identity assertions。若 tracer 使 stable-idle median 改變超過 5% 或 `0.05s`，artifact 只能作 diagnostic，
+不得做 production 決策。
+
+只有下列條件全部成立才另開 production optimization：單一互斥 Apply 子階段佔 Apply median 至少
+35%（以 C2 約為 `0.869s`）、三輪 path／config trace 都證明同一 selected raw 或 admitted label
+resource 在一次 Apply 內被重複 materialize，且刪除重複預估可同時節省至少 `0.25s` 與 P300 Apply
+的 15%。否則 C3 以 measured checkpoint 結束。若成立，production slice 只允許既有 owner path
+加最多一個 direct collaborator、最多 2 個 production files、net production `+120 LOC`；只能重用
+request-local prepared object。需要第三個 production file、新 owner／state／receipt／cache／worker，
+或弱化 regular-file／scope、byte count、完整 reviewed-content SHA-256、Review→Apply digest、final full
+identity verify、SourceFileBoundary、atomic replacement／rollback 任一 invariant 時立即停止並重開 plan。
+
 ## Progression, review, and merge gates
 
-1. B2 與 C2 可在 production files 不重疊的兩個 worktree 並行；B2 仍留在 PR #75，C2 從 exact main
-   建立。B3 只有 B2 merge／cleanup 後才建立；B4／B5 依序串行。
+1. B2 與 C2 已完成並收旗。B3 只等待新 exact SHA 的 evidence／CI／manual acceptance；B4／B5
+   仍依序串行。C3 在本 plan 隨 B3 merge 進入 `main` 後，可與 B4 的產品施工並行，但只修改 dev
+   tooling／tests；若量測證明可進 production，必須另開串行 slice。
 2. 每個 worker 先建 characterization／regression baseline，再施工。作者 focused tests 通過後 freeze
    exact head；非作者 user-simulator 交叉跑 user-like path，然後 independent reviewer 才能審查。
 3. Reviewer finding 只有重現本 scope contract、直接 safety／data loss，或使證據無法支撐本次
@@ -286,9 +342,9 @@ semantic trade-off，C2 以 ranked diagnostic checkpoint 結束，不繼續猜�
 5. 可以在使用者離席時完成 code、focused validation、artifact inspection、PR 與 exact-head CI，
    並標示 `scope-complete, awaiting manual acceptance`。任一 product／UI／data／training behavior
    PR 不得自動 merge。
-6. B2 手測完成後依序為 Warning → Class weighting → Early stopping。C2 profiling 若始終只有
-   scripts／tests／docs，可使用 repo exemption；後續任何 production optimization 都需同一 exact SHA 的
-   Windows manual acceptance 與 merge 同意。
+6. B2 手測完成後依序為 Warning → Class weighting → Early stopping。C2 profiling 已使用
+   scripts／tests exemption 合併；C3 measurement 同樣可免真人手測，但後續任何 production optimization
+   都需同一 exact SHA 的 Windows manual acceptance 與 merge 同意。
 
 ## Campaign stop condition
 
@@ -297,8 +353,8 @@ semantic trade-off，C2 以 ranked diagnostic checkpoint 結束，不繼續猜�
 - G1 的已合併 evidence 不被後續 branch 逆轉。
 - B2–B5 各自的 observable outcome、focused evidence、applicable source-diverse gate、exact-head CI、
   人工驗收與 merge approval 完成。
-- A2 與 C1 的已記錄 outcome 不被後續 branch 逆轉；C2 交付 Windows-first ranked timing report，且
-  不將 C1 關閉候選或 WSL-only improvement 宣稱為產品加速。
+- A2、C1 與 C2 的已記錄 outcome 不被後續 branch 逆轉；C3 交付 Windows P300 Apply duplicate-work
+  decision，且不將必要 materialization、C1 關閉候選或 WSL-only improvement 宣稱為產品加速。
 - 所有 merged／abandoned candidate 已有明確記錄；本機再次只留 `main`，root
   `settings.json` 未被 stage／commit／revert／overwrite，並提供最終 Git worktree／branch／SHA／status
   inventory。

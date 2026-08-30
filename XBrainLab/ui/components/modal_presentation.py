@@ -126,13 +126,31 @@ class ModalAlertDialog(BaseDialog):
         layout.setContentsMargins(18, 14, 18, 14)
         layout.setSpacing(8)
 
-        if self.is_confirmation:
+        if self.is_confirmation and self._severity is not AlertSeverity.WARNING:
             heading_row = QHBoxLayout()
             self.severity_label = self._create_severity_label()
             heading_row.addWidget(self.severity_label)
             heading_row.addStretch(1)
             layout.addLayout(heading_row)
-            self._add_message(layout)
+        if self.is_confirmation:
+            if self._severity is AlertSeverity.WARNING:
+                self.severity_label = self._create_severity_label()
+                self.severity_label.hide()
+                heading_row = QHBoxLayout()
+                heading_row.setSpacing(10)
+                heading_row.addWidget(
+                    self._create_severity_icon_label(),
+                    alignment=Qt.AlignmentFlag.AlignTop,
+                )
+                copy_column = QVBoxLayout()
+                copy_column.setSpacing(6)
+                copy_column.setAlignment(Qt.AlignmentFlag.AlignTop)
+                copy_column.addWidget(self._create_title_label())
+                self._add_message(copy_column)
+                heading_row.addLayout(copy_column, 1)
+                layout.addLayout(heading_row)
+            else:
+                self._add_message(layout)
         else:
             self._add_acknowledgement_content(layout)
 
@@ -188,6 +206,41 @@ class ModalAlertDialog(BaseDialog):
     def _add_acknowledgement_content(self, layout: QVBoxLayout) -> None:
         heading_row = QHBoxLayout()
         heading_row.setSpacing(10)
+        heading_row.addWidget(
+            self._create_severity_icon_label(),
+            alignment=Qt.AlignmentFlag.AlignTop,
+        )
+
+        copy_column = QVBoxLayout()
+        copy_column.setSpacing(6)
+        copy_column.setAlignment(Qt.AlignmentFlag.AlignTop)
+        header_column = QVBoxLayout()
+        header_column.setSpacing(2)
+        header_column.addWidget(self._create_title_label())
+        self.severity_label = self._create_severity_label()
+        title_matches_severity = (
+            self.windowTitle().strip().casefold()
+            == self.severity_label.text().casefold()
+        )
+        if self._severity is not AlertSeverity.WARNING and not title_matches_severity:
+            header_column.addWidget(self.severity_label)
+        else:
+            self.severity_label.hide()
+        copy_column.addLayout(header_column)
+        self._add_message(copy_column)
+        heading_row.addLayout(copy_column, 1)
+
+        layout.addLayout(heading_row)
+
+    def _create_title_label(self) -> QLabel:
+        title_label = QLabel(self.windowTitle())
+        self.title_label = title_label
+        title_label.setObjectName("ModalAlertTitle")
+        title_label.setWordWrap(True)
+        title_label.setAccessibleName("Alert title")
+        return title_label
+
+    def _create_severity_icon_label(self) -> QLabel:
         severity_icon_label = QLabel()
         self.severity_icon_label = severity_icon_label
         severity_icon_label.setObjectName("ModalAlertSeverityIcon")
@@ -199,36 +252,7 @@ class ModalAlertDialog(BaseDialog):
         severity_icon_label.setPixmap(
             self.style().standardIcon(_SEVERITY_PIXMAPS[self._severity]).pixmap(20, 20)
         )
-        heading_row.addWidget(
-            severity_icon_label,
-            alignment=Qt.AlignmentFlag.AlignTop,
-        )
-
-        copy_column = QVBoxLayout()
-        copy_column.setSpacing(6)
-        copy_column.setAlignment(Qt.AlignmentFlag.AlignTop)
-        header_column = QVBoxLayout()
-        header_column.setSpacing(2)
-        title_label = QLabel(self.windowTitle())
-        self.title_label = title_label
-        title_label.setObjectName("ModalAlertTitle")
-        title_label.setWordWrap(True)
-        title_label.setAccessibleName("Alert title")
-        header_column.addWidget(title_label)
-        self.severity_label = self._create_severity_label()
-        title_matches_severity = (
-            self.windowTitle().strip().casefold()
-            == self.severity_label.text().casefold()
-        )
-        if not title_matches_severity:
-            header_column.addWidget(self.severity_label)
-        else:
-            self.severity_label.hide()
-        copy_column.addLayout(header_column)
-        self._add_message(copy_column)
-        heading_row.addLayout(copy_column, 1)
-
-        layout.addLayout(heading_row)
+        return severity_icon_label
 
     def _create_severity_label(self) -> QLabel:
         severity_label = QLabel(_SEVERITY_LABELS[self._severity])

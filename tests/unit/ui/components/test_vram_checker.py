@@ -10,6 +10,7 @@ from XBrainLab.llm.agent.runtime_state import (
     AssistantRuntimePhase,
     AssistantRuntimeSnapshot,
 )
+from XBrainLab.ui.components.modal_presentation import AlertSeverity
 from XBrainLab.ui.components.vram_checker import (
     PANEL_VISUALIZATION,
     VIZ_TAB_3D_PLOT,
@@ -53,7 +54,16 @@ class TestVRAMConflictChecker:
             patch("XBrainLab.ui.components.vram_checker.show_alert") as show_alert,
         ):
             checker.check(switching_to_local=True, switching_to_3d=True)
-            show_alert.assert_called_once()
+            show_alert.assert_called_once_with(
+                checker.main_window,
+                severity=AlertSeverity.WARNING,
+                title="VRAM Warning",
+                message=(
+                    "This requires significant VRAM (Video Memory). "
+                    "If you experience crashes or lag, please close the 3D view "
+                    "before using the assistant."
+                ),
+            )
 
     def test_no_warning_when_local_but_no_3d(self, make_checker):
         checker = make_checker()

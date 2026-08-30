@@ -68,13 +68,11 @@ def test_acknowledgement_alert_has_single_surface_hierarchy_without_inner_card(
     dialog.show()
     qtbot.waitUntil(dialog.isVisible)
     assert dialog.message_label.x() == dialog.title_label.x()
+    visible_labels = (dialog.title_label, dialog.message_label)
+    if severity is not AlertSeverity.WARNING:
+        visible_labels += (dialog.severity_label,)
     assert all(
-        label.height() == label.minimumSizeHint().height()
-        for label in (
-            dialog.title_label,
-            dialog.severity_label,
-            dialog.message_label,
-        )
+        label.height() == label.minimumSizeHint().height() for label in visible_labels
     )
 
 
@@ -120,17 +118,71 @@ def test_generic_warning_title_does_not_repeat_visible_warning_copy(qtbot):
     )
 
 
+@pytest.mark.parametrize("confirm_text", [None, "Continue"])
+def test_warning_modal_hides_redundant_severity_word(qtbot, confirm_text):
+    dialog = ModalAlertDialog(
+        severity=AlertSeverity.WARNING,
+        title="VRAM Warning",
+        message=(
+            "This requires significant VRAM (Video Memory). "
+            "If you experience crashes or lag, please close the 3D view "
+            "before using the assistant."
+        ),
+        confirm_text=confirm_text,
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    qtbot.waitUntil(dialog.isVisible)
+
+    assert not any(
+        label.isVisible() and label.text() == "Warning"
+        for label in dialog.findChildren(QLabel)
+    )
+
+
+def test_warning_confirmation_keeps_icon_cue_and_safe_cancel_contract(qtbot):
+    dialog = ModalAlertDialog(
+        severity=AlertSeverity.WARNING,
+        title="VRAM Warning",
+        message="Close the 3D view before using the assistant.",
+        confirm_text="Continue",
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    qtbot.waitUntil(dialog.isVisible)
+
+    assert dialog.severity_icon_label is not None
+    assert dialog.severity_icon_label.isVisible()
+    assert dialog.severity_icon_label.accessibleName() == "Warning icon"
+    assert dialog.severity_icon_label.pixmap() is not None
+    assert not dialog.severity_icon_label.pixmap().isNull()
+    assert dialog.title_label is not None
+    assert dialog.title_label.isVisible()
+    assert dialog.title_label.text() == "VRAM Warning"
+    assert dialog.title_label.accessibleName() == "Alert title"
+    assert dialog.cancel_button is not None
+    assert dialog.cancel_button.isDefault()
+    assert not any(
+        label.isVisible() and label.text() == "Warning"
+        for label in dialog.findChildren(QLabel)
+    )
+
+    QTest.keyClick(dialog, Qt.Key.Key_Escape)
+
+    assert dialog.result() == dialog.DialogCode.Rejected
+
+
 @pytest.mark.parametrize("destructive", [False, True])
 def test_severity_typography_keeps_acknowledgement_and_confirmation_contracts(
     qtbot, destructive
 ):
     acknowledgement = ModalAlertDialog(
-        severity=AlertSeverity.WARNING,
+        severity=AlertSeverity.INFORMATION,
         title="Review import",
         message="Read the detail before continuing.",
     )
     confirmation = ModalAlertDialog(
-        severity=AlertSeverity.WARNING,
+        severity=AlertSeverity.CRITICAL,
         title="Delete model",
         message="Delete this model from this device?",
         confirm_text="Delete Model",
