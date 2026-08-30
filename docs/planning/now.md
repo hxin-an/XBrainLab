@@ -58,9 +58,10 @@ receipt／policy／product-flow tests 通過，且該檔 Basedpyright 診斷歸�
 dialog 的兩個 diff 外診斷不納入 A1。非作者 user-simulator 亦在 frozen `e0cf4909` 通過 9 個
 receipt／cancel／ChatPanel scenarios；independent reviewer 找到的唯一 blocker 是 canonical evaluator
 harness 仍委派到已刪除的 `_reject_excluded_turn_command`，該無 caller wrapper 現已直接刪除，evaluator
-與 product-flow 共 71 個 tests 通過。下一步建立新 frozen SHA，重做非作者審查、canonical handoff／CI
-與 exact-SHA 手測。不得新增 replacement、owner、receipt、compatibility path 或其他 Assistant
-cleanup candidate。
+與 product-flow 共 71 個 tests 通過。修正後的 frozen candidate 已由非作者重新驗證 evaluator、
+receipt／cancel／ChatPanel scenarios，independent reviewer 判定 scope-complete。下一步只執行 canonical
+UI artifact、PR exact-head CI 與 Windows 真人手測；任何 product source 再修改都使這些 gate 重新開始。
+不得新增 replacement、owner、receipt、compatibility path 或其他 Assistant cleanup candidate。
 
 **Problem and evidence**
 
