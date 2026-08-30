@@ -50,18 +50,21 @@ branch 重建。Worker 不得以 detached／歷史 branch 當 base，不得自�
 
 **Current checkpoint and next step**
 
-PR #74 原 head `8b9d2af4b5b7ac344de20a4154226f96ad22dfb7` 已完成 frozen inventory、
-net-negative cleanup、focused evidence 與 CI；B1 合併後已將新 `main` merge 進 A1，舊 head 的
-exact-source evidence 只保留為 baseline。receipt optional-access 已在既有
-`tool_attempt_coordinator.py` owner 內以明確 `receipt is not None` 分支收窄，43 個 direct
-receipt／policy／product-flow tests 通過，且該檔 Basedpyright 診斷歸零；`verifier.py` 與 montage
-dialog 的兩個 diff 外診斷不納入 A1。非作者 user-simulator 亦在 frozen `e0cf4909` 通過 9 個
-receipt／cancel／ChatPanel scenarios；independent reviewer 找到的唯一 blocker 是 canonical evaluator
-harness 仍委派到已刪除的 `_reject_excluded_turn_command`，該無 caller wrapper 現已直接刪除，evaluator
-與 product-flow 共 71 個 tests 通過。修正後的 frozen candidate 已由非作者重新驗證 evaluator、
-receipt／cancel／ChatPanel scenarios，independent reviewer 判定 scope-complete。下一步只執行 canonical
-UI artifact、PR exact-head CI 與 Windows 真人手測；任何 product source 再修改都使這些 gate 重新開始。
-不得新增 replacement、owner、receipt、compatibility path 或其他 Assistant cleanup candidate。
+PR #74 原 frozen candidate `ad7f59c048d590adc7f13e39c8b75a6bd99826d1` 已完成 inventory、
+net-negative cleanup、focused evidence、非作者 user-simulation、independent review 與 canonical UI
+artifact；production `+41/-402`、test `+171/-439`，owner delta `0`。其 CI 唯一 product-shard failure
+與 B2 完全相同：saliency teardown test 將 Python weakref callback thread 誤當 Qt cleanup owner
+contract。tests-only PR #76 已在 independent review、20/20 fresh-process stress、2696-test local UI
+shard 與全 PR CI 通過後合併為 `main` `67027a26292352ec77dbf2d846cf68d3a1c6983c`；A1 已於
+sync checkpoint `7f6c2c719b1636f7a591ea2c06960b320fddd9cb` 合併該基線，沒有新增 A1 product
+或 Assistant test 行為變更，舊 exact-source evidence 只保留為 baseline。
+
+下一步在新的 frozen exact SHA 重跑 direct receipt／policy／product-flow、canonical evaluator、
+非作者 user-simulation、Assistant security／frontend contract、canonical ChatPanel UI artifact 與 PR CI。
+configured full-project Basedpyright 若仍只剩 `verifier.py` 與 montage dialog 的兩個 diff 外既有診斷，
+如實記錄為 checkpoint，不在 A1 擴張；任何新 A1 diff、public tool／side-effect 改變或 owner 增加都
+停止交付。上述 gate 通過後才提供 Windows 真人手測，source 再修改即使舊人工批准失效。不得新增
+replacement、owner、receipt、compatibility path 或其他 Assistant cleanup candidate。
 
 **Problem and evidence**
 
