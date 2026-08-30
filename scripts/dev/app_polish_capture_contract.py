@@ -566,7 +566,7 @@ def _validate_surface_contract(filename: str, value: object) -> tuple[bool, str]
             "preprocess-epoching-internal-events-dialog.png": (
                 "Create EEG Epochs",
                 "Confirm",
-                "Suggested from import",
+                "Imported event setup",
                 "labels inside EEG files",
                 "Events inside EEG files",
                 "Events",
@@ -579,8 +579,6 @@ def _validate_surface_contract(filename: str, value: object) -> tuple[bool, str]
                 "Confirm",
                 "BIDS events from import",
                 "trial_type",
-                "Epoch anchor",
-                "Event onset",
                 "Window mode",
                 "Fixed to largest duration",
                 "Use one fixed window.",

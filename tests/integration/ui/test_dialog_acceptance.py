@@ -200,8 +200,8 @@ def test_epoching_dialog_uses_import_interval_defaults(qtbot):
     assert "BIDS events from import" in visible_text
     assert "Label field" in visible_text
     assert "trial_type" in visible_text
-    assert "Epoch anchor" in visible_text
-    assert "Event onset" in visible_text
+    assert "Epoch anchor" not in visible_text
+    assert "Event onset" not in visible_text
     assert "Window mode" in visible_text
     assert "Fixed to largest duration" in visible_text
     assert dialog.tmin_spin is not None
@@ -254,8 +254,8 @@ def test_epoching_dialog_shows_effective_event_locked_timing_and_separate_baseli
     assert baseline_card is not None
     assert "Label field" in visible_text
     assert "value" in visible_text
-    assert "Epoch anchor" in visible_text
-    assert "Event onset" in visible_text
+    assert "Epoch anchor" not in visible_text
+    assert "Event onset" not in visible_text
     assert "Window mode" in visible_text
     assert "Event-locked" in visible_text
     assert "Timing\nonset + duration" not in visible_text
@@ -272,17 +272,43 @@ def test_epoching_dialog_shows_effective_event_locked_timing_and_separate_baseli
         "time_field",
         "duration_field",
         "expected_labels",
+        "unexpected_labels",
     ),
     [
-        ("internal_events", "", "", ("Event anchor", "Event onset")),
-        ("event_code", "719", "", ("Event anchor", "719")),
-        ("eeg_event", "", "", ("Event anchor", "EEG event order")),
-        ("time_field", "onset", "", ("Time field", "onset")),
+        (
+            "internal_events",
+            "",
+            "",
+            (),
+            ("Event anchor", "Epoch anchor", "Event onset"),
+        ),
+        (
+            "event_code",
+            "719",
+            "",
+            (),
+            ("Event anchor", "Epoch anchor", "719"),
+        ),
+        (
+            "eeg_event",
+            "",
+            "",
+            (),
+            ("Event anchor", "Epoch anchor"),
+        ),
+        (
+            "time_field",
+            "onset",
+            "",
+            ("Time field", "onset"),
+            ("Event anchor", "Epoch anchor"),
+        ),
         (
             "interval",
             "onset",
             "duration",
             ("Start field", "onset", "Duration field", "duration"),
+            ("Event anchor", "Epoch anchor"),
         ),
     ],
 )
@@ -292,8 +318,9 @@ def test_epoching_dialog_names_import_timing_fields_by_placement(
     time_field,
     duration_field,
     expected_labels,
+    unexpected_labels,
 ):
-    """Imported anchors must not be presented as an ambiguous timing value."""
+    """Only actionable imported timing fields belong in the epoch setup card."""
     data = MagicMock()
     data.get_event_list.return_value = (None, {"Left hand": 1, "Right hand": 2})
     data.get_runtime_detail.return_value = {
@@ -314,9 +341,13 @@ def test_epoching_dialog_names_import_timing_fields_by_placement(
         for label in dialog.findChildren(QLabel)
         if label.text().strip() and label.isVisibleTo(dialog)
     )
+    assert "Imported event setup" in visible_text
+    assert dialog.handoff_label is None
     assert "Timing" not in visible_text
     for label in expected_labels:
         assert label in visible_text
+    for label in unexpected_labels:
+        assert label not in visible_text
 
 
 def test_epoching_baseline_validation_reacts_without_waiting_for_accept(qtbot):

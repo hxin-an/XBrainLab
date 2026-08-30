@@ -761,7 +761,7 @@ class EpochingDialog(BaseDialog):
         title = QLabel(
             "BIDS events from import"
             if self._is_bids_epoch_context()
-            else "Suggested from import"
+            else "Imported event setup"
         )
         title.setObjectName("EpochImportHintTitle")
         title_row.addWidget(title)
@@ -784,12 +784,7 @@ class EpochingDialog(BaseDialog):
             rows = []
             if label_field:
                 rows.append(("Label field", label_field))
-            rows.extend(
-                [
-                    ("Epoch anchor", "Event onset"),
-                    ("Window mode", self._effective_window_mode_text()),
-                ]
-            )
+            rows.append(("Window mode", self._effective_window_mode_text()))
         else:
             rows = [
                 ("Source", self.epoch_context.get("source")),
@@ -833,12 +828,8 @@ class EpochingDialog(BaseDialog):
         placement = str(self.epoch_context.get("placement_method") or "").strip()
         time_field = str(self.epoch_context.get("time_field") or "").strip()
         duration_field = str(self.epoch_context.get("duration_field") or "").strip()
-        if placement == "internal_events":
-            return [("Event anchor", "Event onset")]
-        if placement == "event_code":
-            return [("Event anchor", time_field)]
-        if placement == "eeg_event":
-            return [("Event anchor", time_field or "EEG event order")]
+        if placement in {"internal_events", "event_code", "eeg_event"}:
+            return []
         if placement == "time_field":
             return [("Time field", time_field)]
         if placement == "interval":
@@ -846,7 +837,7 @@ class EpochingDialog(BaseDialog):
                 ("Start field", time_field),
                 ("Duration field", duration_field),
             ]
-        return [("Event anchor", time_field or "Event onset")]
+        return []
 
     def _effective_window_mode_text(self) -> str:
         if self.window_mode is EpochWindowMode.DURATION:
@@ -1044,9 +1035,7 @@ class EpochingDialog(BaseDialog):
             if blockers:
                 blocker_text = "; ".join(str(item) for item in blockers)
                 return f"{source} needs review: {blocker_text}"
-            if self._is_bids_epoch_context():
-                return ""
-            return f"Suggested from {source}."
+            return ""
         if self.epoch_context.get("has_import_hint"):
             if self._is_bids_epoch_context():
                 return ""

@@ -1764,7 +1764,7 @@ def _assert_epoching_dialog_contract(
         INTERNAL_EPOCH_SCREENSHOT: (
             "Create EEG Epochs",
             "Confirm",
-            "Suggested from import",
+            "Imported event setup",
             "labels inside EEG files",
             "Events inside EEG files",
             "Events",
@@ -1777,8 +1777,6 @@ def _assert_epoching_dialog_contract(
             "Confirm",
             "BIDS events from import",
             "trial_type",
-            "Epoch anchor",
-            "Event onset",
             "Window mode",
             "Fixed to largest duration",
             "Use one fixed window.",

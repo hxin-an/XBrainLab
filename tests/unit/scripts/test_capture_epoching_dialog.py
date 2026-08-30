@@ -56,7 +56,7 @@ def test_epoch_capture_manifest_records_exact_source_and_invalid_states(
     states = {item["state"]: item for item in payload["captures"]}
     assert set(states) == {
         "interval-import",
-        "event-code-anchor",
+        "event-code-setup",
         "internal-events",
         "baseline-enabled",
         "baseline-disabled",
@@ -66,11 +66,13 @@ def test_epoch_capture_manifest_records_exact_source_and_invalid_states(
     assert states["baseline-enabled"]["semantic_checks"]["baseline_enabled"] is True
     assert states["baseline-disabled"]["semantic_checks"]["baseline_enabled"] is False
     assert states["baseline-disabled"]["semantic_checks"]["create_enabled"] is True
-    event_code_hint = states["event-code-anchor"]["semantic_checks"]["import_hint"]
+    event_code_hint = states["event-code-setup"]["semantic_checks"]["import_hint"]
     assert event_code_hint["expected_pairs"] == [
-        {"key": "Event anchor", "value": "719"},
+        {"key": "Source", "value": "Loaded label files"},
+        {"key": "Placement", "value": "Label event code"},
+        {"key": "Label field", "value": "classlabel"},
     ]
-    assert event_code_hint["contains_expected_pairs"] is True
+    assert event_code_hint["matches_expected_pairs"] is True
     assert event_code_hint["has_timing_key"] is False
     assert event_code_hint["passed"] is True
     assert states["baseline-order-invalid"]["semantic_checks"]["invalid"] is True

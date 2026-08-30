@@ -78,14 +78,18 @@ def main(argv: list[str] | None = None) -> int:
             None,
         ),
         (
-            "event-code-anchor",
-            "epoching-event-code-anchor.png",
+            "event-code-setup",
+            "epoching-event-code-setup.png",
             _event_code_epoch_data,
             True,
             None,
             "production",
             False,
-            {"Event anchor": "719"},
+            {
+                "Source": "Loaded label files",
+                "Placement": "Label event code",
+                "Label field": "classlabel",
+            },
         ),
         (
             "internal-events",
@@ -472,11 +476,9 @@ def _semantic_evidence(
         checks["import_hint"] = {
             "pairs": pairs,
             "expected_pairs": expected_pairs,
-            "contains_expected_pairs": all(pair in pairs for pair in expected_pairs),
+            "matches_expected_pairs": pairs == expected_pairs,
             "has_timing_key": "Timing" in keys,
-            "passed": (
-                all(pair in pairs for pair in expected_pairs) and "Timing" not in keys
-            ),
+            "passed": (pairs == expected_pairs and "Timing" not in keys),
         }
     checks["passed"] = bool(
         checks["baseline_enabled"] is expected_baseline_enabled
