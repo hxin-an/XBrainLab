@@ -34,6 +34,7 @@ from scripts.dev.run_stable_assistant_model_eval import (
     load_clarification_cases,
     load_precision_cases,
     load_target_cases,
+    report_candidate_passed,
     run_eval,
     score_challenge_response,
     score_missing_parameter_host_guard,
@@ -455,9 +456,10 @@ def test_run_eval_without_capture_does_not_probe_capture_filesystem(
             clarification_cases=clarification_cases,
         )
 
-    assert report["capture_integrity"]["requested"] is False
-    assert report["capture_integrity"]["status"] == "not_requested"
-    assert report["capture_integrity"]["failure_codes"] == []
+    capture_integrity = report["candidate_gate"]["capture_integrity"]["evidence"]
+    assert capture_integrity["requested"] is False
+    assert capture_integrity["status"] == "not_requested"
+    assert capture_integrity["failure_codes"] == []
 
 
 def test_run_eval_validates_opt_in_capture_with_dynamic_trace_and_redacted_report(
@@ -511,7 +513,7 @@ def test_run_eval_validates_opt_in_capture_with_dynamic_trace_and_redacted_repor
             checkpoint_path=tmp_path / "checkpoint.json",
         )
 
-    audit = report["capture_integrity"]
+    audit = report["candidate_gate"]["capture_integrity"]["evidence"]
     assert audit["requested"] is True
     assert audit["status"] == "verified"
     assert audit["artifact_count"] == report["generation_attempt_count"]
@@ -525,7 +527,7 @@ def test_run_eval_validates_opt_in_capture_with_dynamic_trace_and_redacted_repor
     assert "private prompt" not in rendered
     assert checkpoint_reports
     assert all(
-        item["capture_integrity"]
+        item["candidate_gate"]["capture_integrity"]["evidence"]
         == {
             "requested": True,
             "status": "incomplete",
@@ -580,10 +582,10 @@ def test_run_eval_capture_mismatch_or_ambiguous_session_fails_candidate_evidence
             clarification_cases=clarification_cases,
         )
 
-    audit = report["capture_integrity"]
+    audit = report["candidate_gate"]["capture_integrity"]["evidence"]
     assert audit["status"] == "failed"
     assert audit["failure_codes"] == ["new_session_ambiguity"]
-    assert report["candidate_gate"]["capture_integrity"] is False
+    assert report["candidate_gate"]["capture_integrity"]["passed"] is False
     rendered = json.dumps(audit)
     assert str(capture_root) not in rendered
     assert "first-session" not in rendered
@@ -1562,14 +1564,14 @@ def test_raw_model_gate_keeps_challenge_diagnostics_out_of_its_pass_decision() -
         complete=True,
     )
 
-    assert report["raw_model_gate"]["challenge_decision"] == {
+    assert report["candidate_gate"]["raw_model"]["challenge_decision"] == {
         "required": 14,
         "critical_failures": 0,
         "wording_failures": 4,
         "max_wording_failures": 3,
         "unclassified_failures": 0,
     }
-    assert report["raw_model_gate"]["passed"] is True
+    assert report["candidate_gate"]["raw_model"]["passed"] is True
 
 
 def test_format_recovery_never_repairs_the_first_generation_raw_model_gate() -> None:
@@ -1636,11 +1638,11 @@ def test_format_recovery_never_repairs_the_first_generation_raw_model_gate() -> 
         "failed_count": 1,
     }
     assert report["post_recovery_summary"]["clarification"]["passed_count"] == 7
-    assert report["raw_model_gate"]["clarification_continuation"] == {
+    assert report["candidate_gate"]["raw_model"]["clarification_continuation"] == {
         "required": 7,
         "passed": 6,
     }
-    assert report["raw_model_gate"]["passed"] is True
+    assert report["candidate_gate"]["raw_model"]["passed"] is True
 
 
 def test_trajectory_retries_format_error_with_product_policy_and_scores_final() -> None:
@@ -1882,12 +1884,12 @@ def test_report_separates_raw_model_host_safety_and_product_outcomes() -> None:
         complete=True,
     )
 
-    assert report["schema_version"] == "xbrainlab.stable_assistant_model_eval.v11"
+    assert report["schema_version"] == "xbrainlab.stable_assistant_model_eval.v12"
     assert report["generation_attempt_count"] == 0
     assert report["generation_trace"] == []
     assert report["suite_summary"]["positive"]["case_count"] == 36
     assert report["suite_summary"]["challenge"]["case_count"] == 14
-    assert report["summary"] == {
+    assert report["case_summaries"]["core"] == {
         "expected_case_count": 50,
         "case_count": 50,
         "passed_count": 36,
@@ -1895,7 +1897,7 @@ def test_report_separates_raw_model_host_safety_and_product_outcomes() -> None:
         "complete": True,
         "passed": False,
     }
-    assert report["precision_summary"] == {
+    assert report["case_summaries"]["precision"] == {
         "expected_case_count": 24,
         "case_count": 24,
         "passed_count": 24,
@@ -1903,16 +1905,21 @@ def test_report_separates_raw_model_host_safety_and_product_outcomes() -> None:
         "complete": True,
         "passed": True,
     }
-    assert report["raw_model_gate"]["passed"] is True
+    assert report["case_summaries"]["total"] == {
+        "expected_case_count": 81,
+        "case_count": 81,
+        "complete": True,
+    }
+    assert report["candidate_gate"]["raw_model"]["passed"] is True
     # Legacy rows without controller observations cannot satisfy the v11 gate.
-    assert report["host_safety_gate"]["passed"] is False
-    assert report["direct_host_admission_gate"] == {
+    assert report["candidate_gate"]["host_safety"]["passed"] is False
+    assert report["candidate_gate"]["direct_host_admission"] == {
         "required": 5,
         "passed": 5,
         "complete": True,
         "status": "passed",
     }
-    assert report["product_outcome_gate"]["passed"] is True
+    assert report["candidate_gate"]["product_outcome"]["passed"] is True
     assert report["candidate_gate"]["passed"] is False
     assert report["first_generation_summary"] == {
         "positive": {"case_count": 36, "passed_count": 36, "failed_count": 0},
@@ -1920,7 +1927,7 @@ def test_report_separates_raw_model_host_safety_and_product_outcomes() -> None:
         "precision": {"case_count": 24, "passed_count": 24, "failed_count": 0},
         "clarification": {"case_count": 7, "passed_count": 7, "failed_count": 0},
     }
-    assert report["clarification_summary"] == {
+    assert report["case_summaries"]["clarification"] == {
         "expected_case_count": 7,
         "case_count": 7,
         "passed_count": 7,
@@ -2164,7 +2171,7 @@ def test_partial_report_never_claims_the_suite_passed() -> None:
         complete=False,
     )
 
-    assert report["summary"] == {
+    assert report["case_summaries"]["core"] == {
         "expected_case_count": 50,
         "case_count": 0,
         "passed_count": 0,
@@ -2172,6 +2179,28 @@ def test_partial_report_never_claims_the_suite_passed() -> None:
         "complete": False,
         "passed": False,
     }
+
+
+def test_candidate_consumer_rejects_v11_summary_and_accepts_only_v12_gate() -> None:
+    assert (
+        report_candidate_passed(
+            {
+                "schema_version": "xbrainlab.stable_assistant_model_eval.v11",
+                "summary": {"passed": True},
+            }
+        )
+        is False
+    )
+    assert (
+        report_candidate_passed(
+            {
+                "schema_version": "xbrainlab.stable_assistant_model_eval.v12",
+                "case_summaries": {},
+                "candidate_gate": {"passed": True},
+            }
+        )
+        is True
+    )
 
 
 def test_report_separates_positive_and_challenge_results() -> None:
@@ -2284,15 +2313,13 @@ def test_candidate_report_requires_positive_and_host_guard_gates() -> None:
         complete=True,
     )
 
-    assert report["candidate_gate"] == {
-        "raw_model": True,
-        "host_safety": False,
-        "direct_host_admission": False,
-        "product_outcome": False,
-        "capture_integrity": True,
-        "passed": False,
-    }
-    assert report["host_safety_gate"]["continuation_boundaries"] == {
+    assert report["candidate_gate"]["raw_model"]["passed"] is True
+    assert report["candidate_gate"]["host_safety"]["passed"] is False
+    assert report["candidate_gate"]["direct_host_admission"]["status"] == "failed"
+    assert report["candidate_gate"]["product_outcome"]["passed"] is False
+    assert report["candidate_gate"]["capture_integrity"]["passed"] is True
+    assert report["candidate_gate"]["passed"] is False
+    assert report["candidate_gate"]["host_safety"]["continuation_boundaries"] == {
         "not_counted_in_model_report": [
             "cancel",
             "topic_switch",
@@ -2304,8 +2331,8 @@ def test_candidate_report_requires_positive_and_host_guard_gates() -> None:
         "report_status": "not_measured_by_this_model_report",
         "external_evidence": "controller unit/integration coverage required",
     }
-    assert report["summary"]["passed"] is False
-    assert report["precision_summary"] == {
+    assert report["case_summaries"]["core"]["passed"] is False
+    assert report["case_summaries"]["precision"] == {
         "expected_case_count": 24,
         "case_count": 0,
         "passed_count": 0,
@@ -2366,7 +2393,13 @@ def test_main_records_actual_invocation_without_local_working_directory(
     )
     with patch.multiple(
         evaluator,
-        run_eval=MagicMock(return_value={"summary": {"passed": True}}),
+        run_eval=MagicMock(
+            return_value={
+                "schema_version": "xbrainlab.stable_assistant_model_eval.v12",
+                "case_summaries": {},
+                "candidate_gate": {"passed": True},
+            }
+        ),
         _experiment_identity=MagicMock(return_value={"source_sha": "test"}),
         _write_report=write_report,
     ):
@@ -2606,7 +2639,13 @@ def test_report_host_safety_gate_does_not_cross_credit_wrong_semantic_rows() -> 
         complete=True,
     )
 
-    assert report["raw_model_gate"]["passed"] is True
-    assert report["host_safety_gate"]["explicit_parameter_origin"]["passed"] == 9
-    assert report["host_safety_gate"]["missing_parameter_origin"]["passed"] == 4
-    assert report["host_safety_gate"]["passed"] is False
+    assert report["candidate_gate"]["raw_model"]["passed"] is True
+    assert (
+        report["candidate_gate"]["host_safety"]["explicit_parameter_origin"]["passed"]
+        == 9
+    )
+    assert (
+        report["candidate_gate"]["host_safety"]["missing_parameter_origin"]["passed"]
+        == 4
+    )
+    assert report["candidate_gate"]["host_safety"]["passed"] is False

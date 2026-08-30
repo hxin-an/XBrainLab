@@ -82,7 +82,7 @@ DEFAULT_PRECISION_CASES = (
 DEFAULT_CLARIFICATION_CASES = (
     ROOT / "scripts" / "dev" / "stable_assistant_clarification_cases.json"
 )
-REPORT_SCHEMA = "xbrainlab.stable_assistant_model_eval.v11"
+REPORT_SCHEMA = "xbrainlab.stable_assistant_model_eval.v12"
 PRECISION_CASE_COUNT = 24
 CLARIFICATION_CASE_COUNT = 7
 RAW_OUTPUT_PREVIEW_CHAR_LIMIT = 1_000
@@ -2908,6 +2908,13 @@ def _build_report(
         and capture_integrity_passed
     )
     spec = local_model_spec(model_id)
+    core_complete = bool(complete and len(core_rows) == expected_case_count)
+    core_passed = bool(core_complete and passed_count == expected_case_count)
+    total_expected_case_count = (
+        expected_case_count + PRECISION_CASE_COUNT + CLARIFICATION_CASE_COUNT
+    )
+    total_case_count = len(results)
+    total_complete = bool(complete and total_case_count == total_expected_case_count)
     return {
         "schema_version": REPORT_SCHEMA,
         "model": {
@@ -2923,42 +2930,49 @@ def _build_report(
         "suite_summary": suite_summary,
         "first_generation_summary": first_generation_summary,
         "post_recovery_summary": post_recovery_summary,
-        "raw_model_gate": raw_model_gate,
-        "host_safety_gate": host_safety_gate,
-        "direct_host_admission_gate": direct_host_admission_gate,
-        "product_outcome_gate": product_outcome_gate,
-        "capture_integrity": capture_integrity,
         "candidate_gate": {
-            "raw_model": raw_model_gate["passed"],
-            "host_safety": host_safety_gate["passed"],
-            "direct_host_admission": direct_host_admission_passed,
-            "product_outcome": product_outcome_gate["passed"],
-            "capture_integrity": capture_integrity_passed,
+            "raw_model": raw_model_gate,
+            "host_safety": host_safety_gate,
+            "direct_host_admission": direct_host_admission_gate,
+            "product_outcome": product_outcome_gate,
+            "capture_integrity": {
+                "passed": capture_integrity_passed,
+                "evidence": capture_integrity,
+            },
             "passed": candidate_passed,
         },
-        "summary": {
-            "expected_case_count": expected_case_count,
-            "case_count": len(core_rows),
-            "passed_count": passed_count,
-            "failed_count": len(core_rows) - passed_count,
-            "complete": complete,
-            "passed": candidate_passed,
-        },
-        "precision_summary": {
-            "expected_case_count": PRECISION_CASE_COUNT,
-            "case_count": len(precision_rows),
-            "passed_count": precision_passed,
-            "failed_count": len(precision_rows) - precision_passed,
-            "complete": precision_complete,
-            "passed": precision_passed_gate,
-        },
-        "clarification_summary": {
-            "expected_case_count": CLARIFICATION_CASE_COUNT,
-            "case_count": len(clarification_rows),
-            "passed_count": clarification_passed,
-            "failed_count": len(clarification_rows) - clarification_passed,
-            "complete": clarification_complete,
-            "passed": clarification_passed_gate,
+        "case_summaries": {
+            "core": {
+                "expected_case_count": expected_case_count,
+                "case_count": len(core_rows),
+                "passed_count": passed_count,
+                "failed_count": len(core_rows) - passed_count,
+                "complete": core_complete,
+                "passed": core_passed,
+            },
+            "precision": {
+                "expected_case_count": PRECISION_CASE_COUNT,
+                "case_count": len(precision_rows),
+                "passed_count": precision_passed,
+                "failed_count": len(precision_rows) - precision_passed,
+                "complete": precision_complete,
+                "passed": precision_passed_gate,
+            },
+            "clarification": {
+                "expected_case_count": CLARIFICATION_CASE_COUNT,
+                "case_count": len(clarification_rows),
+                "passed_count": clarification_passed,
+                "failed_count": len(clarification_rows) - clarification_passed,
+                "complete": clarification_complete,
+                "passed": clarification_passed_gate,
+            },
+            # This is inventory completeness only. It deliberately makes no
+            # aggregate model-quality or candidate-promotion claim.
+            "total": {
+                "expected_case_count": total_expected_case_count,
+                "case_count": total_case_count,
+                "complete": total_complete,
+            },
         },
         "results": results,
         "claim_boundary": (
@@ -2972,6 +2986,14 @@ def _build_report(
             "These suites are not workflow success or thesis-grade model accuracy."
         ),
     }
+
+
+def report_candidate_passed(report: object) -> bool:
+    """Read only the v12 candidate gate; legacy report shapes fail closed."""
+    if not isinstance(report, dict) or report.get("schema_version") != REPORT_SCHEMA:
+        return False
+    candidate_gate = report.get("candidate_gate")
+    return isinstance(candidate_gate, dict) and candidate_gate.get("passed") is True
 
 
 def _write_report(path: Path, report: dict[str, Any]) -> None:
@@ -3392,7 +3414,25 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:
         report = {
             "schema_version": REPORT_SCHEMA,
-            "summary": {"passed": False, "case_count": 0},
+            "case_summaries": {
+                "core": {"expected_case_count": 50, "case_count": 0, "complete": False},
+                "precision": {
+                    "expected_case_count": PRECISION_CASE_COUNT,
+                    "case_count": 0,
+                    "complete": False,
+                },
+                "clarification": {
+                    "expected_case_count": CLARIFICATION_CASE_COUNT,
+                    "case_count": 0,
+                    "complete": False,
+                },
+                "total": {
+                    "expected_case_count": 81,
+                    "case_count": 0,
+                    "complete": False,
+                },
+            },
+            "candidate_gate": {"passed": False},
             "failure": f"{type(exc).__name__}: {exc}",
         }
     report["invocation"] = {
@@ -3403,7 +3443,7 @@ def main(argv: list[str] | None = None) -> int:
     print(rendered)
     if args.json_out is not None:
         _write_report(args.json_out, report)
-    passed = bool(report.get("summary", {}).get("passed"))
+    passed = report_candidate_passed(report)
     return 1 if args.strict and not passed else 0
 
 

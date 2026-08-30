@@ -103,7 +103,7 @@ Assistant candidate必須在同一clean/explained exact source依序閉合下列
    product outcomes沒有confirmation、GUI handoff、ApplicationService／ToolExecutor execution或state mutation；
    product clarification gate要求7/7 final verified execute-boundary。任何no-action product outcome的上述
    side effect都fail closed。
-   v11 evaluator必須分開記錄first raw generation、每次production strict-envelope recovery／follow-up raw
+   v12 evaluator必須分開記錄first raw generation、每次production strict-envelope recovery／follow-up raw
    response、Host admission/form transition、receipt-reconstructed parameters與final product outcome；不得直接
    建構receipt、手動塞入pending coordinator或合成parameters。Generation token budget使用production
    structured-decision resolver，不得另設較小的evaluator cap。回覆文字的自然度與完整語意由同一SHA真人驗收，
@@ -114,7 +114,7 @@ Assistant candidate必須在同一clean/explained exact source依序閉合下列
    hand-authored stage list或把scorer context中的所有tool設為enabled，不構成state／unavailable-action
    projection證據。36-case tool coverage維持，但`start_training`以最小可呼叫的`dataset_ready` publication
    取代舊的手組`epoch_ready` catalog，故v9不可直接與該歷史路徑的數字比較。
-   同一v11 evaluator另固定7個production-controller clarification trajectories：五個direct cases的source
+   同一v12 evaluator另固定7個production-controller clarification trajectories：五個direct cases的source
    必須來自precision suite的missing-parameter turn，且第一輪真的由production parameter value-origin boundary
    產生exact tool／question receipt；模型直接`respond_to_user`而沒有Host receipt時不得合成或代填。另外
    generic filter selection、bounded bandpass collect-then-sort與correction fail-closed restart都必須經真controller
