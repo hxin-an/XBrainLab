@@ -140,6 +140,34 @@ def test_warning_modal_hides_redundant_severity_word(qtbot, confirm_text):
     )
 
 
+def test_warning_confirmation_keeps_icon_cue_and_safe_cancel_contract(qtbot):
+    dialog = ModalAlertDialog(
+        severity=AlertSeverity.WARNING,
+        title="VRAM Warning",
+        message="Close the 3D view before using the assistant.",
+        confirm_text="Continue",
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    qtbot.waitUntil(dialog.isVisible)
+
+    assert dialog.severity_icon_label is not None
+    assert dialog.severity_icon_label.isVisible()
+    assert dialog.severity_icon_label.accessibleName() == "Warning icon"
+    assert dialog.severity_icon_label.pixmap() is not None
+    assert not dialog.severity_icon_label.pixmap().isNull()
+    assert dialog.cancel_button is not None
+    assert dialog.cancel_button.isDefault()
+    assert not any(
+        label.isVisible() and label.text() == "Warning"
+        for label in dialog.findChildren(QLabel)
+    )
+
+    QTest.keyClick(dialog, Qt.Key.Key_Escape)
+
+    assert dialog.result() == dialog.DialogCode.Rejected
+
+
 @pytest.mark.parametrize("destructive", [False, True])
 def test_severity_typography_keeps_acknowledgement_and_confirmation_contracts(
     qtbot, destructive

@@ -136,7 +136,19 @@ class ModalAlertDialog(BaseDialog):
             if self._severity is AlertSeverity.WARNING:
                 self.severity_label = self._create_severity_label()
                 self.severity_label.hide()
-            self._add_message(layout)
+                heading_row = QHBoxLayout()
+                heading_row.setSpacing(10)
+                heading_row.addWidget(
+                    self._create_severity_icon_label(),
+                    alignment=Qt.AlignmentFlag.AlignTop,
+                )
+                copy_column = QVBoxLayout()
+                copy_column.setAlignment(Qt.AlignmentFlag.AlignTop)
+                self._add_message(copy_column)
+                heading_row.addLayout(copy_column, 1)
+                layout.addLayout(heading_row)
+            else:
+                self._add_message(layout)
         else:
             self._add_acknowledgement_content(layout)
 
@@ -192,19 +204,8 @@ class ModalAlertDialog(BaseDialog):
     def _add_acknowledgement_content(self, layout: QVBoxLayout) -> None:
         heading_row = QHBoxLayout()
         heading_row.setSpacing(10)
-        severity_icon_label = QLabel()
-        self.severity_icon_label = severity_icon_label
-        severity_icon_label.setObjectName("ModalAlertSeverityIcon")
-        severity_icon_label.setAccessibleName(
-            f"{_SEVERITY_LABELS[self._severity]} icon"
-        )
-        severity_icon_label.setFixedSize(24, 24)
-        severity_icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        severity_icon_label.setPixmap(
-            self.style().standardIcon(_SEVERITY_PIXMAPS[self._severity]).pixmap(20, 20)
-        )
         heading_row.addWidget(
-            severity_icon_label,
+            self._create_severity_icon_label(),
             alignment=Qt.AlignmentFlag.AlignTop,
         )
 
@@ -233,6 +234,20 @@ class ModalAlertDialog(BaseDialog):
         heading_row.addLayout(copy_column, 1)
 
         layout.addLayout(heading_row)
+
+    def _create_severity_icon_label(self) -> QLabel:
+        severity_icon_label = QLabel()
+        self.severity_icon_label = severity_icon_label
+        severity_icon_label.setObjectName("ModalAlertSeverityIcon")
+        severity_icon_label.setAccessibleName(
+            f"{_SEVERITY_LABELS[self._severity]} icon"
+        )
+        severity_icon_label.setFixedSize(24, 24)
+        severity_icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        severity_icon_label.setPixmap(
+            self.style().standardIcon(_SEVERITY_PIXMAPS[self._severity]).pixmap(20, 20)
+        )
+        return severity_icon_label
 
     def _create_severity_label(self) -> QLabel:
         severity_label = QLabel(_SEVERITY_LABELS[self._severity])

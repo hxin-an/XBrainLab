@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Capture the shared acknowledgement-alert presentation surfaces.
+"""Capture the shared alert and confirmation presentation surfaces.
 
 The generated files are development evidence only. They show the three
-acknowledgement severities plus the long-text and narrow-width layouts. An
-explicit 150% offscreen run records its measured device pixel ratio; native
-WSLg/Windows acceptance remains a separate human gate.
+acknowledgement severities plus the long-text, narrow-width, and warning
+confirmation layouts. An explicit 150% offscreen run records its measured
+device pixel ratio; native WSLg/Windows acceptance remains a separate human
+gate.
 """
 
 from __future__ import annotations
@@ -31,12 +32,13 @@ EVIDENCE_FILENAME = "modal-alert-presentation-evidence.json"
 _LONG_MESSAGE = "Review this detail before continuing.\n" * 40
 
 
-def _cases() -> Iterable[tuple[str, AlertSeverity, str, str, int | None]]:
+def _cases() -> Iterable[tuple[str, AlertSeverity, str, str, int | None, str | None]]:
     yield (
         "information.png",
         AlertSeverity.INFORMATION,
         "Project saved",
         "Your project was saved successfully.",
+        None,
         None,
     )
     yield (
@@ -45,12 +47,14 @@ def _cases() -> Iterable[tuple[str, AlertSeverity, str, str, int | None]]:
         "Review import settings",
         "One or more imported values need your review.",
         None,
+        None,
     )
     yield (
         "warning-generic-title.png",
         AlertSeverity.WARNING,
         "Warning",
         "No data loaded.",
+        None,
         None,
     )
     yield (
@@ -59,12 +63,14 @@ def _cases() -> Iterable[tuple[str, AlertSeverity, str, str, int | None]]:
         "Import could not finish",
         "The file could not be imported. Review the detail and try again.",
         None,
+        None,
     )
     yield (
         "long-text.png",
         AlertSeverity.WARNING,
         "Detailed import report",
         _LONG_MESSAGE,
+        None,
         None,
     )
     yield (
@@ -73,6 +79,31 @@ def _cases() -> Iterable[tuple[str, AlertSeverity, str, str, int | None]]:
         "Review import settings",
         "One or more imported values need your review before continuing.",
         420,
+        None,
+    )
+    yield (
+        "warning-confirmation.png",
+        AlertSeverity.WARNING,
+        "VRAM Warning",
+        (
+            "This requires significant VRAM (Video Memory). "
+            "If you experience crashes or lag, please close the 3D view "
+            "before using the assistant."
+        ),
+        640,
+        "Continue",
+    )
+    yield (
+        "warning-confirmation-narrow.png",
+        AlertSeverity.WARNING,
+        "VRAM Warning",
+        (
+            "This requires significant VRAM (Video Memory). "
+            "If you experience crashes or lag, please close the 3D view "
+            "before using the assistant."
+        ),
+        420,
+        "Continue",
     )
 
 
@@ -85,8 +116,14 @@ def _capture_case(
     title: str,
     message: str,
     width: int | None,
+    confirm_text: str | None,
 ) -> None:
-    dialog = ModalAlertDialog(severity=severity, title=title, message=message)
+    dialog = ModalAlertDialog(
+        severity=severity,
+        title=title,
+        message=message,
+        confirm_text=confirm_text,
+    )
     try:
         if width is not None:
             dialog.resize(width, dialog.height())
@@ -138,7 +175,7 @@ def main(argv: list[str] | None = None) -> int:
             f"expected {expected_dpr}, observed {device_pixel_ratio}."
         )
     captured_names: list[str] = []
-    for filename, severity, title, message, width in _cases():
+    for filename, severity, title, message, width, confirm_text in _cases():
         _capture_case(
             app,
             output_dir,
@@ -147,6 +184,7 @@ def main(argv: list[str] | None = None) -> int:
             title=title,
             message=message,
             width=width,
+            confirm_text=confirm_text,
         )
         captured_names.append(filename)
     source_at_end = collect_source_identity(ROOT, refresh=True)
