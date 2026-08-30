@@ -1008,7 +1008,7 @@ def _internal_event_selection_is_complete(
     if (
         not observed
         or bool(selected & not_selected)
-        or not observed.issubset(selected | not_selected)
+        or selected | not_selected != observed
     ):
         return False
     class_map = _string_mapping(explicit_selection.get("class_map"))

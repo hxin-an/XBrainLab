@@ -729,6 +729,22 @@ def test_partial_internal_event_decisions_keep_mapping_confirmation(monkeypatch)
         },
         {"768": "not a label", "769": "class label"},
     )
+    assert not candidate_module._internal_event_selection_is_complete(
+        preview,
+        {
+            "label_event_codes": ["769", "stale-removed"],
+            "not_label_event_codes": ["768"],
+            "class_map": {
+                "769": "Left hand",
+                "stale-removed": "Stale class",
+            },
+        },
+        {
+            "768": "not a label",
+            "769": "class label",
+            "stale-removed": "class label",
+        },
+    )
 
     candidate = build_interpretation_candidate(
         candidate_id="candidate-partial-internal-events",
@@ -747,6 +763,62 @@ def test_partial_internal_event_decisions_keep_mapping_confirmation(monkeypatch)
                 "label_event_codes": ["769"],
                 "not_label_event_codes": ["768"],
                 "class_map": {"769": "Left hand"},
+            },
+        },
+    )
+
+    assert candidate.confirmation_items == [
+        "Confirm which events are trial anchors, class cues, responses, artifacts, "
+        "or boundaries."
+    ]
+    assert (
+        validate_interpretation_candidate(
+            candidate,
+            recheck_content_identity=False,
+        ).decision
+        == "needs_confirmation"
+    )
+
+
+def test_stale_internal_event_selection_keeps_mapping_confirmation(monkeypatch):
+    monkeypatch.setattr(
+        data_interpretation_internal_events,
+        "_read_internal_events_for_file",
+        lambda _path: {
+            "events": {
+                "768": {"count": 36, "description": "768"},
+                "769": {"count": 18, "description": "769"},
+                "1023": {"count": 6, "description": "1023"},
+            }
+        },
+    )
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-stale-internal-events",
+        scan=_scan(
+            source_kind="folder",
+            eeg_files=["/data/A01T.gdf"],
+            label_carriers=[],
+            label_carrier_sources={},
+            bids={"is_bids": False, "events_files": []},
+            metadata=[],
+        ),
+        choices={
+            "label_carrier": "embedded_events",
+            "class_map": {"769": "Left hand", "stale-removed": "Stale class"},
+            "event_roles": {
+                "768": "not a label",
+                "769": "class label",
+                "1023": "not a label",
+                "stale-removed": "class label",
+            },
+            "internal_event_selection": {
+                "label_event_codes": ["769", "stale-removed"],
+                "not_label_event_codes": ["768", "1023"],
+                "class_map": {
+                    "769": "Left hand",
+                    "stale-removed": "Stale class",
+                },
             },
         },
     )
