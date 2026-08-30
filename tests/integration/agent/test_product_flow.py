@@ -253,6 +253,19 @@ def test_greeting_flow_is_friendly_and_does_not_call_tools(product_harness):
     _assert_no_raw_tool_language(visible)
 
 
+def test_product_controller_executes_one_published_navigation_action(
+    product_harness,
+) -> None:
+    """Exercise the real controller/coordinator boundary with only IO seams."""
+    product_harness.send(
+        "Open the Dataset panel.",
+        _tool_json("switch_panel", {"panel_name": "dataset"}),
+    )
+
+    assert product_harness.controller._tool_attempt_session.execution_count == 1
+    assert product_harness.controller._tool_attempt_session.last_tool_summary
+
+
 def test_qt_chat_wiring_rejects_prose_prefixed_target_action_without_execution(
     qtbot,
     tmp_path: Path,
