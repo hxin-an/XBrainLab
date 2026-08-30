@@ -12,7 +12,6 @@ from tests.architecture_compliance import (
     check_application_shutdown_lifecycle_ownership,
     check_assistant_presentation_ownership,
     check_assistant_runtime_selection_ownership,
-    check_assistant_turn_scope_ownership,
     check_backend_facade_test_usage,
     check_backend_llm_imports,
     check_concrete_llm_tool_result_contracts,
@@ -2843,84 +2842,6 @@ def test_product_assistant_presentation_has_one_semantic_owner() -> None:
     root = Path(__file__).resolve().parents[2]
 
     assert check_assistant_presentation_ownership(root) == []
-
-
-def test_assistant_turn_scope_guard_rejects_manual_product_mode_transport(
-    tmp_path: Path,
-) -> None:
-    _write_product_file(
-        tmp_path,
-        "XBrainLab/llm/agent/controller.py",
-        """
-class LLMController:
-    execution_mode_changed = signal()
-    def set_execution_mode(self, mode):
-        self._execution_mode = mode
-""",
-    )
-    _write_product_file(
-        tmp_path,
-        "XBrainLab/ui/components/assistant_command_dispatcher.py",
-        """
-class AssistantCommandDispatcher:
-    mode_requested = signal()
-    def set_mode(self, mode):
-        return self._emit_or_call("set_execution_mode", mode)
-""",
-    )
-    _write_product_file(
-        tmp_path,
-        "XBrainLab/ui/components/assistant_runtime_lifecycle.py",
-        """
-class AssistantRuntimeLifecycle:
-    def set_execution_mode(self, mode):
-        self.runtime.set_mode(mode)
-    def set_mode(self, mode):
-        self.runtime.set_mode(mode)
-    def activate(self, config, execution_mode: str):
-        return self.runtime.activate(config)
-""",
-    )
-    _write_product_file(
-        tmp_path,
-        "XBrainLab/ui/components/agent_manager.py",
-        """
-_ASSISTANT_IDLE_POLICY_MODE = "ask"
-class AgentManager:
-    def configure(self, mode):
-        self._execution_mode = mode
-        self.lifecycle.activate(self.config, execution_mode=mode)
-    def _on_execution_mode_changed(self, mode):
-        self._execution_mode = mode
-    def _sync_execution_mode_ui(self):
-        return self._execution_mode
-""",
-    )
-    _write_product_file(
-        tmp_path,
-        "XBrainLab/llm/agent/assembler.py",
-        """
-class ContextAssembler:
-    def set_execution_mode(self, mode):
-        self._execution_mode = mode
-""",
-    )
-
-    violations = check_assistant_turn_scope_ownership(tmp_path)
-
-    assert len(violations) == 18
-    assert sum("controller.py" in item for item in violations) == 3
-    assert sum("assistant_command_dispatcher.py" in item for item in violations) == 3
-    assert sum("assistant_runtime_lifecycle.py" in item for item in violations) == 3
-    assert sum("agent_manager.py" in item for item in violations) == 7
-    assert sum("assembler.py" in item for item in violations) == 2
-    assert all("immutable AssistantTurnRequest scope" in item for item in violations)
-
-
-def test_product_assistant_autonomy_has_no_manual_mode_transport() -> None:
-    root = Path(__file__).resolve().parents[2]
-
-    assert check_assistant_turn_scope_ownership(root) == []
 
 
 def test_agent_manager_runtime_lifecycle_has_one_focused_owner():

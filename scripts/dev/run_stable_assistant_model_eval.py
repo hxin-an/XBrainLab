@@ -716,7 +716,6 @@ class _EvaluatorControllerHarness:
         self._turn_orchestrator.active_publication = PromptToolPublication.empty()
         self._tool_attempt_session = AssistantToolAttemptSession()
         self._strict_envelope_recovery_policy = DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY
-        self._max_tool_executions = 5
         self._pending_interactions = PendingInteractionCoordinator()
         self._history: list[dict[str, str]] = []
         self.presentations: list[str] = []
@@ -850,9 +849,6 @@ class _EvaluatorControllerHarness:
 
     def _latest_user_request_text(self) -> str:
         return LLMController._latest_user_request_text(self)  # type: ignore[arg-type]
-
-    def _active_policy_mode(self) -> str:
-        return LLMController._active_policy_mode(self)  # type: ignore[arg-type]
 
     def _remaining_tool_input_question(self, receipt: AssistantToolInputReceipt) -> str:
         return LLMController._remaining_tool_input_question(receipt)

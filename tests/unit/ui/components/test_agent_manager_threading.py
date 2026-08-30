@@ -659,7 +659,7 @@ def test_failed_shutdown_retains_thread_ownership_for_retry(qtbot):
     assert dispatcher.accepts_commands is False
 
     dispatcher.submit(
-        AssistantTurnRequest.single_action(
+        AssistantTurnRequest(
             correlation=AssistantTurnCorrelation(generation=1, turn_id=1),
             text="after-close-started",
         )
@@ -708,7 +708,7 @@ def test_terminal_controller_close_rejects_commands_while_thread_cleanup_retries
     assert dispatcher.accepts_commands is False
 
     dispatcher.submit(
-        AssistantTurnRequest.single_action(
+        AssistantTurnRequest(
             correlation=AssistantTurnCorrelation(generation=1, turn_id=1),
             text="after-close",
         )

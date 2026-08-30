@@ -61,7 +61,6 @@ from XBrainLab.llm.agent.turn import (
     AssistantTurnCorrelation,
     AssistantTurnDeliveryPhase,
     AssistantTurnRequest,
-    AssistantTurnScope,
     AssistantTurnTerminal,
 )
 from XBrainLab.llm.agent.ui_handoff import (
@@ -112,15 +111,8 @@ def _submit_user_turn(ctrl: Any, text: str) -> AssistantTurnCorrelation:
         generation=sequence,
         turn_id=sequence,
     )
-    ctrl.handle_user_turn(
-        AssistantTurnRequest.single_action(correlation=correlation, text=text)
-    )
+    ctrl.handle_user_turn(AssistantTurnRequest(correlation=correlation, text=text))
     return correlation
-
-
-def _set_guided_turn_scope(ctrl: Any) -> None:
-    """Set the immutable scope used by focused controller-policy tests."""
-    ctrl._turn_orchestrator.scope = AssistantTurnScope.GUIDED_WORKFLOW
 
 
 def _tool_outcome(
@@ -727,7 +719,7 @@ def test_runtime_snapshot_rejects_untyped_payload_without_losing_truth(ctrl):
 class TestHandleUserInput:
     def test_ignores_empty(self, ctrl):
         with pytest.raises(ValueError, match="must not be empty"):
-            AssistantTurnRequest.single_action(
+            AssistantTurnRequest(
                 correlation=AssistantTurnCorrelation(generation=1, turn_id=1),
                 text="   ",
             )
@@ -2135,7 +2127,6 @@ class TestProcessToolCalls:
 
     def test_ui_request_stops_before_workflow_continuation(self, ctrl):
         _allow_prompt_tools(ctrl)
-        _set_guided_turn_scope(ctrl)
         ctrl._execute_tool_no_loop = MagicMock(
             return_value=ToolExecutionOutcome(
                 True,
@@ -2166,7 +2157,6 @@ class TestProcessToolCalls:
     def test_workflow_executes_one_command_then_finishes_turn(self, ctrl):
         context = _enabled_tool_context("first", generation=12)
         context_reader = _set_context_reader(ctrl, return_value=context)
-        _set_guided_turn_scope(ctrl)
         ctrl._execute_tool_no_loop = MagicMock(return_value=_tool_outcome("ok"))
         ctrl._handle_tool_result_logic = MagicMock(return_value=False)
         ctrl._finalize_turn_after_tool = MagicMock()
@@ -2193,7 +2183,6 @@ class TestProcessToolCalls:
 
     def test_recoverable_failure_finishes_without_host_regeneration(self, ctrl):
         _allow_prompt_tools(ctrl)
-        _set_guided_turn_scope(ctrl)
         failure = ToolCommandResult.failure(
             "cmd",
             "Temporary runtime failure",
@@ -2238,7 +2227,6 @@ class TestProcessToolCalls:
 
     def test_failure_without_reliable_state_finishes_without_retry(self, ctrl):
         _allow_prompt_tools(ctrl)
-        _set_guided_turn_scope(ctrl)
         ctrl._execute_tool_no_loop = MagicMock(
             return_value=_tool_outcome("err", ok=False)
         )
@@ -2318,23 +2306,13 @@ class TestProcessToolCalls:
         assert result.error_type == "input"
         ctrl._generate_response.assert_not_called()
 
-    @pytest.mark.parametrize(
-        ("scope", "failure_count"),
-        [
-            (AssistantTurnScope.SINGLE_ACTION, 0),
-            (AssistantTurnScope.GUIDED_WORKFLOW, 1),
-        ],
-    )
     def test_unpublished_model_tool_is_presented_after_repair_boundary(
         self,
         ctrl,
-        scope,
-        failure_count,
     ):
         from XBrainLab.llm.agent.assembler import PromptToolPublication
 
-        ctrl._turn_orchestrator.scope = scope
-        ctrl._tool_attempt_session.tool_failure_count = failure_count
+        ctrl._tool_attempt_session.tool_failure_count = 0
         ctrl._turn_orchestrator.active_publication = PromptToolPublication(
             tool_names=frozenset({"validate_interpretation"}),
             backend_generation=3,
@@ -2995,9 +2973,6 @@ class TestResetConversation:
         ctrl._tool_attempt_session.retry_count = 5
         ctrl._turn_orchestrator.host_turn_generation = None
         ctrl._turn_orchestrator.host_turn_id = None
-        ctrl._turn_orchestrator.scope = AssistantTurnScope.GUIDED_WORKFLOW
-        ctrl._turn_orchestrator.terminal_command = CommandName.CREATE_EPOCH.value
-        ctrl._turn_orchestrator.excluded_commands = frozenset({CommandName.PREPROCESS})
         ctrl._turn_orchestrator.admitted_command_name = CommandName.SCAN_SOURCE.value
         ctrl._turn_orchestrator.admitted_publication_generation = 7
         ctrl.pending_interactions.begin_tool_input(
@@ -3012,9 +2987,6 @@ class TestResetConversation:
         ctrl.reset_conversation()
         assert ctrl.history == []
         assert ctrl._tool_attempt_session.retry_count == 0
-        assert ctrl._turn_orchestrator.scope is None
-        assert ctrl._turn_orchestrator.terminal_command is None
-        assert ctrl._turn_orchestrator.excluded_commands == frozenset()
         assert ctrl._turn_orchestrator.admitted_command_name is None
         assert ctrl._turn_orchestrator.admitted_publication_generation is None
         assert ctrl.pending_interactions.tool_input is None
@@ -4359,7 +4331,7 @@ class TestOnUserConfirmed:
         assert "completed" not in presentation.text.lower()
 
         ctrl.handle_user_turn(
-            AssistantTurnRequest.single_action(
+            AssistantTurnRequest(
                 correlation=AssistantTurnCorrelation(generation=40, turn_id=40),
                 text="hello",
             )
@@ -4392,7 +4364,7 @@ class TestOnUserConfirmed:
         # projection incorrectly clears the legacy processing flag.
         ctrl.is_processing = False
         ctrl.handle_user_turn(
-            AssistantTurnRequest.single_action(
+            AssistantTurnRequest(
                 correlation=AssistantTurnCorrelation(generation=41, turn_id=41),
                 text="hello",
             )
@@ -4411,7 +4383,7 @@ class TestOnUserConfirmed:
         assert ctrl.pending_interactions.workflow_handoff is None
         assert ctrl.is_processing is False
         ctrl.handle_user_turn(
-            AssistantTurnRequest.single_action(
+            AssistantTurnRequest(
                 correlation=AssistantTurnCorrelation(generation=42, turn_id=42),
                 text="hello",
             )
@@ -5459,86 +5431,3 @@ class TestPipelineGate:
             "Save a valid data splitting specification before training"
             in result.message
         )
-
-
-# --- Immutable turn scope ---
-class TestTurnScope:
-    def test_idle_policy_is_single_action(self, ctrl):
-        assert (
-            ctrl._active_policy_mode() == AssistantTurnScope.SINGLE_ACTION.policy_mode
-        )
-
-    def test_guided_turn_stops_after_its_declared_endpoint(self, ctrl):
-        from XBrainLab.backend.application import CommandName
-        from XBrainLab.llm.agent.turn import AssistantTurnScope
-
-        ctrl._turn_orchestrator.scope = AssistantTurnScope.GUIDED_WORKFLOW
-        ctrl._turn_orchestrator.terminal_command = CommandName.CREATE_EPOCH.value
-        ctrl._finalize_turn_after_tool = MagicMock()
-        ctrl._generate_response = MagicMock()
-
-        ctrl._handle_tool_success(None, command_name="epoch_data")
-
-        ctrl._finalize_turn_after_tool.assert_called_once_with()
-        ctrl._generate_response.assert_not_called()
-
-    def test_turn_delivery_preserves_host_excluded_commands(self, ctrl):
-        correlation = AssistantTurnCorrelation(generation=4, turn_id=9)
-        request = AssistantTurnRequest(
-            correlation=correlation,
-            text="Load the data without doing preprocessing.",
-            scope=AssistantTurnScope.SINGLE_ACTION,
-            terminal_command=None,
-            excluded_commands=(CommandName.PREPROCESS,),
-        )
-        ctrl._handle_admitted_user_input = MagicMock()
-        ctrl._turn_orchestrator.host_turn_id = None
-        ctrl._turn_orchestrator.host_turn_generation = None
-        ctrl.is_processing = False
-
-        acknowledgement = ctrl.handle_user_turn(request)
-
-        assert acknowledgement.phase is AssistantTurnDeliveryPhase.ACCEPTED
-        assert ctrl._turn_orchestrator.excluded_commands == frozenset(
-            {CommandName.PREPROCESS}
-        )
-        ctrl._handle_admitted_user_input.assert_called_once_with(request.text)
-
-    def test_single_mode_finalizes_on_success(self, ctrl):
-        """In single mode, a successful tool call finalizes immediately."""
-        _allow_prompt_tools(ctrl)
-        ctrl._execute_tool_no_loop = MagicMock(return_value=_tool_outcome("ok"))
-        ctrl._handle_tool_result_logic = MagicMock(return_value=False)
-        ctrl._finalize_turn_after_tool = MagicMock()
-        ctrl._generate_response = MagicMock()
-        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
-        ctrl.registry.get_tool.return_value.requires_confirmation = False
-
-        ctrl._process_tool_calls([("cmd", {})], "json")
-        ctrl._finalize_turn_after_tool.assert_called_once()
-        ctrl._generate_response.assert_not_called()
-
-    def test_multi_mode_stops_at_cap(self, ctrl):
-        """Multi mode stops after reaching the max successful tool count."""
-        _allow_prompt_tools(ctrl)
-        _set_guided_turn_scope(ctrl)
-        ctrl._tool_attempt_session.execution_count = ctrl._max_tool_executions - 1
-        ctrl._execute_tool_no_loop = MagicMock(return_value=_tool_outcome("ok"))
-        ctrl._handle_tool_result_logic = MagicMock(return_value=False)
-        ctrl._finalize_turn_after_tool = MagicMock()
-        ctrl._generate_response = MagicMock()
-        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
-        ctrl.registry.get_tool.return_value.requires_confirmation = False
-
-        ctrl._process_tool_calls([("cmd", {})], "json")
-        ctrl._finalize_turn_after_tool.assert_called_once()
-        ctrl._generate_response.assert_not_called()
-
-    def test_handle_user_input_resets_counter(self, ctrl):
-        """Starting a new user turn resets the successful tool counter."""
-        ctrl._tool_attempt_session.successful_tool_count = 3
-        _use_rag_probe(ctrl)
-        ctrl._generate_response = MagicMock()
-        _submit_user_turn(ctrl, "hello")
-        assert ctrl._tool_attempt_session.successful_tool_count == 0
-        ctrl._generate_response.assert_not_called()

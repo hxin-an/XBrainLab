@@ -32,7 +32,6 @@ from XBrainLab.llm.agent.turn import (
     AssistantTurnCorrelation,
     AssistantTurnRequest,
 )
-from XBrainLab.llm.agent.turn_scope import resolve_assistant_turn_scope
 from XBrainLab.llm.agent.worker import AgentWorker
 
 
@@ -148,7 +147,6 @@ class ProductHarness:
     def send(self, user_text: str, model_text: str | None = None) -> None:
         self.turn_sequence += 1
         self.chat.add_user_message(user_text)
-        scope = resolve_assistant_turn_scope(user_text)
         self.controller.handle_user_turn(
             AssistantTurnRequest(
                 correlation=AssistantTurnCorrelation(
@@ -156,8 +154,6 @@ class ProductHarness:
                     turn_id=self.turn_sequence,
                 ),
                 text=user_text,
-                scope=scope.scope,
-                terminal_command=scope.terminal_command,
             )
         )
         if model_text is not None:
@@ -284,7 +280,7 @@ def test_qt_chat_wiring_rejects_prose_prefixed_target_action_without_execution(
         controller.generation_event.connect(generation_events.append)
 
         controller.handle_user_turn(
-            AssistantTurnRequest.single_action(
+            AssistantTurnRequest(
                 correlation=AssistantTurnCorrelation(generation=1, turn_id=1),
                 text="Import EEG data.",
             )

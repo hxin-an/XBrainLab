@@ -374,9 +374,7 @@ def test_selection_policy_keeps_only_first_normalized_proposal() -> None:
 
     decision = coordinator.select_proposal(
         commands,
-        mode="multi",
         execution_count=0,
-        workflow_tool_cap=5,
         cancelled=False,
     )
 

@@ -273,7 +273,7 @@ def _dispatch_all(dispatcher: AssistantCommandDispatcher) -> dict[str, bool]:
     return {
         "initialize": dispatcher.initialize(launch_spec),
         "submit": dispatcher.submit(
-            AssistantTurnRequest.single_action(
+            AssistantTurnRequest(
                 correlation=AssistantTurnCorrelation(generation=1, turn_id=1),
                 text="inspect state",
             )
@@ -450,11 +450,11 @@ def test_queued_submit_exception_is_acknowledged_without_sys_excepthook(
         lambda _type, value, _traceback: uncaught.append(value),
     )
     dispatcher.bind(controller)
-    first = AssistantTurnRequest.single_action(
+    first = AssistantTurnRequest(
         correlation=AssistantTurnCorrelation(generation=1, turn_id=1),
         text="first",
     )
-    second = AssistantTurnRequest.single_action(
+    second = AssistantTurnRequest(
         correlation=AssistantTurnCorrelation(generation=2, turn_id=2),
         text="second",
     )
@@ -483,7 +483,7 @@ def test_queued_submit_contains_hostile_exception_at_public_boundary(
     acknowledgements: list[AssistantTurnDeliveryAcknowledgement] = []
     dispatcher.turn_delivery_acknowledged.connect(acknowledgements.append)
     dispatcher.bind(controller)
-    request = AssistantTurnRequest.single_action(
+    request = AssistantTurnRequest(
         correlation=AssistantTurnCorrelation(generation=1, turn_id=1),
         text="inspect state",
     )

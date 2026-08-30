@@ -288,9 +288,7 @@ class ToolAttemptCoordinator:
         self,
         commands: list[_Command],
         *,
-        mode: str,
         execution_count: int,
-        workflow_tool_cap: int,
         cancelled: bool,
     ) -> ToolProposalDecision[_Command]:
         """Select at most one proposal and enforce the per-turn host cap."""
@@ -298,9 +296,7 @@ class ToolAttemptCoordinator:
         if command is None:
             return ToolProposalDecision(None, "no_command")
         start = self._execution_policy.before_command(
-            mode=mode,
             execution_count=execution_count,
-            workflow_tool_cap=workflow_tool_cap,
             cancelled=cancelled,
         )
         if not start.continue_workflow:

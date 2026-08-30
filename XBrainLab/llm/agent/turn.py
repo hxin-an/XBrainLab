@@ -9,7 +9,6 @@ from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Any
 
-from XBrainLab.backend.application import CommandName
 from XBrainLab.backend.utils.public_diagnostics import (
     DiagnosticTextLayout,
     public_diagnostic_text,
@@ -213,20 +212,6 @@ class AssistantTurnCorrelation:
                 raise ValueError(f"Assistant turn {field_name} must be positive.")
 
 
-class AssistantTurnScope(str, Enum):
-    """Immutable host autonomy granted to one admitted user turn."""
-
-    SINGLE_ACTION = "single_action"
-    GUIDED_WORKFLOW = "guided_workflow"
-
-    @property
-    def policy_mode(self) -> str:
-        """Return the existing policy vocabulary without exposing it in the UI."""
-        if self is AssistantTurnScope.GUIDED_WORKFLOW:
-            return "multi"
-        return "single"
-
-
 @dataclass(frozen=True, slots=True)
 class AssistantToolInputReceipt:
     """Bounded reply evidence linking direct input to an earlier action."""
@@ -349,50 +334,10 @@ class AssistantTurnRequest:
 
     correlation: AssistantTurnCorrelation
     text: str
-    scope: AssistantTurnScope
-    terminal_command: str | None
-    excluded_commands: tuple[CommandName, ...] = ()
-
-    @classmethod
-    def single_action(
-        cls,
-        *,
-        correlation: AssistantTurnCorrelation,
-        text: str,
-        excluded_commands: tuple[CommandName, ...] = (),
-    ) -> AssistantTurnRequest:
-        """Build an explicitly atomic request for tests and non-product hosts."""
-        return cls(
-            correlation=correlation,
-            text=text,
-            scope=AssistantTurnScope.SINGLE_ACTION,
-            terminal_command=None,
-            excluded_commands=excluded_commands,
-        )
-
-    @classmethod
-    def guided_workflow(
-        cls,
-        *,
-        correlation: AssistantTurnCorrelation,
-        text: str,
-        terminal_command: str | None = None,
-        excluded_commands: tuple[CommandName, ...] = (),
-    ) -> AssistantTurnRequest:
-        """Build an explicitly bounded workflow request."""
-        return cls(
-            correlation=correlation,
-            text=text,
-            scope=AssistantTurnScope.GUIDED_WORKFLOW,
-            terminal_command=terminal_command,
-            excluded_commands=excluded_commands,
-        )
 
     def __post_init__(self) -> None:
         if not isinstance(self.correlation, AssistantTurnCorrelation):
             raise TypeError("Assistant turn requests require typed correlation.")
-        if not isinstance(self.scope, AssistantTurnScope):
-            raise TypeError("Assistant turn requests require a typed execution scope.")
         object.__setattr__(
             self,
             "text",
@@ -404,29 +349,6 @@ class AssistantTurnRequest:
         )
         if not self.text.strip():
             raise ValueError("Assistant turn text must not be empty.")
-        terminal = self.terminal_command
-        if terminal is not None:
-            if not isinstance(terminal, str):
-                raise TypeError("Assistant turn terminal command must be a string.")
-            terminal = terminal.strip()
-            if not terminal:
-                raise ValueError("Assistant turn terminal command must not be empty.")
-            if self.scope is not AssistantTurnScope.GUIDED_WORKFLOW:
-                raise ValueError(
-                    "Only guided workflow turns may define a terminal command."
-                )
-            if len(terminal) > 128:
-                raise ValueError(
-                    "Assistant turn terminal commands are limited to 128 characters."
-                )
-            object.__setattr__(self, "terminal_command", terminal)
-        excluded = self.excluded_commands
-        if not isinstance(excluded, tuple):
-            raise TypeError("Assistant turn excluded commands must be a tuple.")
-        if any(not isinstance(command, CommandName) for command in excluded):
-            raise TypeError("Assistant turn excluded commands must be typed.")
-        if len(set(excluded)) != len(excluded):
-            raise ValueError("Assistant turn excluded commands must be unique.")
 
     @property
     def turn_id(self) -> int:
