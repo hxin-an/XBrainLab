@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterable, Mapping
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -91,7 +92,7 @@ class TrainingHistoryRow:
                 },
             },
             "runtime_device": self.runtime_device,
-            "class_weighting": dict(self.class_weighting),
+            "class_weighting": deepcopy(self.class_weighting),
         }
 
 
@@ -180,7 +181,7 @@ def _project_training_history_row(
         validation_auc=_copy_metric_series(validation_metrics, _AUC_KEY),
         test_accuracy=_copy_metric_series(test_metrics, _ACCURACY_KEY),
         runtime_device=_runtime_device(plan, record),
-        class_weighting=dict(getattr(record, "class_weighting_resolution", {}) or {}),
+        class_weighting=deepcopy(getattr(record, "class_weighting", {}) or {}),
     )
 
 

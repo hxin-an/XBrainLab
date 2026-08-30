@@ -30,10 +30,10 @@ from ..utils import set_seed, validate_type
 from .evaluator import Evaluator
 from .model_holder import ModelHolder
 from .option import (
-    ClassWeightMode,
     TrainingEvaluation,
     TrainingOption,
-    class_map_fingerprint,
+    class_weighting_request,
+    resolve_class_weighting,
 )
 from .record import EvalRecord, RecordKey, TrainRecord, TrainRecordKey
 from .saliency_provenance import (
@@ -386,52 +386,25 @@ class TrainingPlanHolder:
                     plan_id=self.plan_id,
                     model_identity=self.model_holder.catalog_identity,
                     class_weighting_resolution=self._weighting_resolution,
+                    class_weighting_requested=class_weighting_request(
+                        self.option,
+                        class_map=dict(self.dataset.get_epoch_data().get_label_map()),
+                    ),
                 ),
             )
         self._validate_loaded_saliency_artifacts()
 
     def _resolve_class_weighting(self) -> dict[str, object]:
         """Resolve one fold-local loss policy before records or trainer mutate."""
-        mode = self.option.class_weight_mode
-        if mode is ClassWeightMode.OFF:
-            return {"mode": "off", "class_order": [], "class_counts": {}, "weights": []}
         epoch_data = self.dataset.get_epoch_data()
-        class_map = dict(epoch_data.get_label_map())
-        if class_map_fingerprint(class_map) != self.option.class_map_fingerprint:
-            raise ValueError(
-                "Reviewed class mapping changed. Reopen Training Settings "
-                "before training."
-            )
-        class_order = sorted(class_map)
-        labels = np.asarray(epoch_data.get_label_list())
-        train_labels = labels[np.asarray(self.dataset.train_mask, dtype=bool)]
-        counts = {index: int(np.sum(train_labels == index)) for index in class_order}
-        missing = [index for index, count in counts.items() if count == 0]
-        if missing:
-            raise ValueError(
-                "Training split is missing class(es): "
-                + ", ".join(class_map[index] for index in missing)
-                + "."
-            )
-        if mode is ClassWeightMode.BALANCED:
-            total = len(train_labels)
-            weights = [
-                total / (len(class_order) * counts[index]) for index in class_order
-            ]
-        else:
-            requested = self.option.custom_class_weights
-            expected_names = [class_map[index] for index in class_order]
-            if set(requested) != set(expected_names):
-                raise ValueError(
-                    "Custom class loss weights do not match the reviewed class map."
-                )
-            weights = [requested[class_map[index]] for index in class_order]
-        return {
-            "mode": mode.value,
-            "class_order": class_order,
-            "class_counts": {str(index): counts[index] for index in class_order},
-            "weights": weights,
-        }
+        return resolve_class_weighting(
+            mode=self.option.class_weight_mode,
+            custom_class_weights=self.option.custom_class_weights,
+            class_map_fingerprint_value=self.option.class_map_fingerprint,
+            class_map=dict(epoch_data.get_label_map()),
+            labels=epoch_data.get_label_list(),
+            train_mask=self.dataset.train_mask,
+        )
 
     def _verified_repeat_seed(
         self,
@@ -637,6 +610,7 @@ class TrainingPlanHolder:
         """Move archived model and optimizer state to CPU without losing history."""
         try:
             train_record.model.cpu()
+            train_record.criterion.cpu()
             optimizer = getattr(train_record, "optim", None)
             if optimizer is not None:
                 for state in optimizer.state.values():
@@ -1033,6 +1007,7 @@ class TrainingPlanHolder:
                     f"{evaluation_option.__class__.__qualname__}."
                     f"{evaluation_option.name}"
                 ),
+                "class_weighting": train_record.class_weighting,
             },
         }
         model_component = {

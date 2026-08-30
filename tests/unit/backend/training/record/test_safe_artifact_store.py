@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import ast
+import copy
 import hashlib
 import json
 import os
 import re
+from contextlib import suppress
 from pathlib import Path
 from unittest.mock import patch
 
@@ -20,6 +22,7 @@ from tests.unit.backend.training.test_training_plan import (
     training_option,  # noqa: F401
     y,  # noqa: F401
 )
+from XBrainLab.backend.training.option import class_map_fingerprint
 from XBrainLab.backend.training.record import EvalRecord, RecordKey, TrainRecord
 from XBrainLab.backend.training.record import artifact_store as artifact_store_module
 from XBrainLab.backend.training.record.artifact_store import (
@@ -358,6 +361,221 @@ def test_training_record_round_trip_uses_safe_store_and_state_dicts(
     assert loaded.train[RecordKey.LOSS] == [0.5]
     assert loaded.val[RecordKey.ACC] == [70.0]
     assert loaded.model_identity == model_identity
+
+
+def _class_weighting_payload(
+    epoch_dataset,
+    *,
+    mode: str,
+) -> tuple[dict[str, object], dict[str, object]]:
+    class_map = epoch_dataset.get_epoch_data().get_label_map()
+    class_order = sorted(class_map)
+    class_names = [class_map[index] for index in class_order]
+    counts = [5] * len(class_order)
+    fingerprint = class_map_fingerprint(class_map)
+    if mode == "off":
+        requested = {
+            "mode": "off",
+            "custom_class_weights": {},
+            "class_map_fingerprint": fingerprint,
+        }
+        weights = [1.0] * len(class_order)
+    elif mode == "balanced":
+        requested = {
+            "mode": "balanced",
+            "custom_class_weights": {},
+            "class_map_fingerprint": fingerprint,
+        }
+        weights = [1.0] * len(class_order)
+    else:
+        custom = {name: index + 1.0 for index, name in enumerate(class_names)}
+        requested = {
+            "mode": "custom",
+            "custom_class_weights": custom,
+            "class_map_fingerprint": fingerprint,
+        }
+        weights = [custom[name] for name in class_names]
+    return requested, {
+        "class_names": class_names,
+        "class_order": class_order,
+        "class_counts": counts,
+        "weights": weights,
+    }
+
+
+@pytest.mark.parametrize("mode", ["off", "balanced", "custom"])
+def test_training_record_v2_weighting_round_trip_is_lossless(
+    tmp_path: Path,
+    dataset,  # noqa: F811
+    training_option,  # noqa: F811
+    model_holder,  # noqa: F811
+    mode: str,
+) -> None:
+    requested, resolved = _class_weighting_payload(dataset, mode=mode)
+    with patch.object(TrainRecord, "init_dir"):
+        record = TrainRecord(
+            0,
+            dataset,
+            model_holder.get_model({}),
+            training_option,
+            1,
+            class_weighting_requested=requested,
+            class_weighting_resolution=resolved,
+        )
+    record.target_path = str(tmp_path)
+    record._artifact_io_path = str(tmp_path)
+    record.export_checkpoint()
+
+    manifest = _read_manifest(tmp_path / "record")
+    payload = manifest["payload"]
+    assert payload["record_schema_version"] == 2
+    assert payload["class_weighting"] == {
+        "requested": requested,
+        "resolved": resolved,
+    }
+
+    with patch.object(TrainRecord, "init_dir"):
+        loaded = TrainRecord(
+            0,
+            dataset,
+            model_holder.get_model({}),
+            training_option,
+            0,
+        )
+    loaded.target_path = str(tmp_path)
+    loaded._artifact_io_path = str(tmp_path)
+    loaded.load()
+
+    assert loaded.class_weighting == {
+        "requested": requested,
+        "resolved": resolved,
+    }
+    if mode == "off":
+        assert loaded.criterion.weight is None
+    else:
+        assert loaded.criterion.weight.tolist() == pytest.approx(resolved["weights"])
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda weighting: weighting["requested"].pop("mode"),
+        lambda weighting: weighting["resolved"].pop("weights"),
+        lambda weighting: weighting["resolved"]["weights"].__setitem__(0, float("nan")),
+        lambda weighting: weighting["resolved"]["weights"].__setitem__(0, -1.0),
+        lambda weighting: weighting["resolved"]["class_counts"].__setitem__(0, -1),
+        lambda weighting: weighting["resolved"]["weights"].append(1.0),
+        lambda weighting: weighting["resolved"]["class_names"].__setitem__(
+            0, "renamed"
+        ),
+        lambda weighting: weighting["requested"]["custom_class_weights"].__setitem__(
+            " C1 ",
+            weighting["requested"]["custom_class_weights"].pop("C1"),
+        ),
+    ],
+)
+def test_training_record_v2_rejects_weighting_mutations_without_partial_load(
+    tmp_path: Path,
+    dataset,  # noqa: F811
+    training_option,  # noqa: F811
+    model_holder,  # noqa: F811
+    mutate,
+) -> None:
+    requested, resolved = _class_weighting_payload(dataset, mode="custom")
+    with patch.object(TrainRecord, "init_dir"):
+        record = TrainRecord(
+            0,
+            dataset,
+            model_holder.get_model({}),
+            training_option,
+            1,
+            class_weighting_requested=requested,
+            class_weighting_resolution=resolved,
+        )
+    record.target_path = str(tmp_path)
+    record._artifact_io_path = str(tmp_path)
+    record.export_checkpoint()
+    manifest_path = tmp_path / "record"
+    manifest = _read_manifest(manifest_path)
+    mutate(manifest["payload"]["class_weighting"])
+    manifest_path.write_text(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+
+    with patch.object(TrainRecord, "init_dir"):
+        restored = TrainRecord(
+            0,
+            dataset,
+            model_holder.get_model({}),
+            training_option,
+            0,
+        )
+    restored.target_path = str(tmp_path)
+    restored._artifact_io_path = str(tmp_path)
+    before = copy.deepcopy(restored.class_weighting)
+    # Non-standard JSON NaN is rejected by the safe store before the v2 schema
+    # parser; all other mutations reach its fail-closed validator.
+    with suppress(RuntimeError):
+        restored.load()
+
+    assert restored.class_weighting == before
+
+
+def test_training_record_v1_migrates_to_explicit_off_weighting(
+    tmp_path: Path,
+    dataset,  # noqa: F811
+    training_option,  # noqa: F811
+    model_holder,  # noqa: F811
+) -> None:
+    requested, resolved = _class_weighting_payload(dataset, mode="custom")
+    with patch.object(TrainRecord, "init_dir"):
+        record = TrainRecord(
+            0,
+            dataset,
+            model_holder.get_model({}),
+            training_option,
+            1,
+            class_weighting_requested=requested,
+            class_weighting_resolution=resolved,
+        )
+    record.target_path = str(tmp_path)
+    record._artifact_io_path = str(tmp_path)
+    record.export_checkpoint()
+    manifest_path = tmp_path / "record"
+    manifest = _read_manifest(manifest_path)
+    manifest["payload"]["record_schema_version"] = 1
+    del manifest["payload"]["class_weighting"]
+    manifest_path.write_text(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+
+    with patch.object(TrainRecord, "init_dir"):
+        restored = TrainRecord(
+            0,
+            dataset,
+            model_holder.get_model({}),
+            training_option,
+            0,
+        )
+    restored.target_path = str(tmp_path)
+    restored._artifact_io_path = str(tmp_path)
+    restored.load()
+
+    assert restored.class_weighting == {
+        "requested": {
+            "mode": "off",
+            "custom_class_weights": {},
+            "class_map_fingerprint": None,
+        },
+        "resolved": {
+            "class_names": [],
+            "class_order": [],
+            "class_counts": [],
+            "weights": [],
+        },
+    }
 
 
 def test_training_record_rejects_different_provider_identity(

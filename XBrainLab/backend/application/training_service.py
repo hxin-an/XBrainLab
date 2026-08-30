@@ -18,6 +18,8 @@ from XBrainLab.backend.training.option import (
     ClassWeightMode,
     class_map_fingerprint,
     normalize_class_weight_mode,
+    resolve_class_weighting,
+    validate_custom_class_weight_names,
 )
 from XBrainLab.backend.training_state_contract import (
     TrainingOutcomeState,
@@ -125,8 +127,18 @@ class TrainingCommandService:
             )
             weight_mode = normalize_class_weight_mode(command.class_weight_mode)
             class_identity = None
+            custom_weights = dict(command.custom_class_weights)
             if weight_mode is not ClassWeightMode.OFF:
-                class_identity = class_map_fingerprint(self._current_class_map())
+                class_map = self._current_class_map()
+                class_identity = class_map_fingerprint(class_map)
+                if weight_mode is ClassWeightMode.CUSTOM:
+                    try:
+                        custom_weights = validate_custom_class_weight_names(
+                            custom_weights,
+                            class_map,
+                        )
+                    except ValueError as exc:
+                        raise PreconditionError(str(exc)) from exc
             option = TrainingOption(
                 output_dir=command.output_dir,
                 optim=optim_class,
@@ -141,7 +153,7 @@ class TrainingCommandService:
                 repeat_num=repeat,
                 seed=command.seed,
                 class_weight_mode=weight_mode,
-                custom_class_weights=dict(command.custom_class_weights),
+                custom_class_weights=custom_weights,
                 class_map_fingerprint_value=class_identity,
             )
 
@@ -246,6 +258,7 @@ class TrainingCommandService:
             raise TypeError("Invalid command for train")
         if not isinstance(preflight, ResourcePreflightResult):
             raise TypeError("preflight must be a ResourcePreflightResult")
+        self._validate_class_weighting_start_admission()
         handoff_generation = self.training.start_training(
             append=command.append,
             interactive=command.interactive or defer_synchronous_completion,
@@ -286,6 +299,34 @@ class TrainingCommandService:
                 **completion_diagnostics,
             },
         )
+
+    def _validate_class_weighting_start_admission(self) -> None:
+        """Block stale maps or zero-count classes before runtime mutation."""
+        context = self.training_runtime.resource_context()
+        option = context.training_option
+        if not isinstance(option, TrainingOption):
+            return
+        try:
+            mode = normalize_class_weight_mode(
+                getattr(option, "class_weight_mode", ClassWeightMode.OFF)
+            )
+        except ValueError as exc:
+            raise PreconditionError(str(exc)) from exc
+        try:
+            for dataset in context.datasets:
+                epoch_data = dataset.get_epoch_data()
+                resolve_class_weighting(
+                    mode=mode,
+                    custom_class_weights=getattr(option, "custom_class_weights", None),
+                    class_map_fingerprint_value=getattr(
+                        option, "class_map_fingerprint", None
+                    ),
+                    class_map=dict(epoch_data.get_label_map()),
+                    labels=epoch_data.get_label_list(),
+                    train_mask=dataset.train_mask,
+                )
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise PreconditionError(str(exc)) from exc
 
     def discard_train_preflight(self, token: str | None) -> None:
         """Invalidate a pending training-resource confirmation receipt."""

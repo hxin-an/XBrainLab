@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import fields
+from dataclasses import fields, replace
 from threading import Barrier, Event, Thread
 from time import sleep
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock
 
+import numpy as np
 import pytest
+import torch
 
 from XBrainLab.backend.application import resource_guard
 from XBrainLab.backend.application import (
@@ -61,6 +63,7 @@ from XBrainLab.backend.application.training_submission import (
 )
 from XBrainLab.backend.model_base import model_catalog as model_catalog_module
 from XBrainLab.backend.training import option as training_option_module
+from XBrainLab.backend.training.option import ClassWeightMode, class_map_fingerprint
 from XBrainLab.backend.training_state_contract import (
     TrainingOutcomeState,
     TrainingRunIdentity,
@@ -296,6 +299,30 @@ def _service() -> tuple[TrainingCommandService, _TrainingController]:
     )
 
 
+def _class_weighting_option(
+    *,
+    mode: ClassWeightMode,
+    custom_class_weights: dict[str, float],
+    fingerprint: str | None,
+):
+    return training_option_module.TrainingOption(
+        output_dir="./tmp-output",
+        optim=torch.optim.Adam,
+        optim_params={},
+        use_cpu=True,
+        gpu_idx=None,
+        epoch=1,
+        bs=1,
+        lr=0.001,
+        checkpoint_epoch=0,
+        evaluation_option=training_option_module.TrainingEvaluation.VAL_LOSS,
+        repeat_num=1,
+        class_weight_mode=mode,
+        custom_class_weights=custom_class_weights,
+        class_map_fingerprint_value=fingerprint,
+    )
+
+
 def test_training_service_configures_model_and_options() -> None:
     service, training = _service()
 
@@ -345,6 +372,127 @@ def test_configure_training_command_has_no_unvalidated_option_object_path() -> N
     assert "training_option" not in {
         field.name for field in fields(ConfigureTrainingCommand)
     }
+
+
+def test_configure_custom_weights_require_the_current_reviewed_class_names() -> None:
+    training = _TrainingController()
+    state = replace(
+        _state(),
+        epoch=EpochStateSnapshot(
+            available=True,
+            event_ids={"left": 0, "right": 1},
+        ),
+    )
+    service = TrainingCommandService(
+        training=training,
+        training_runtime=_TrainingRuntime(training),
+        get_state=lambda: state,
+    )
+    command = ConfigureTrainingCommand(
+        epoch=2,
+        batch_size=4,
+        learning_rate=0.001,
+        device="cpu",
+        class_weight_mode="custom",
+        custom_class_weights={"left": 1.0, "right": 2.0},
+    )
+
+    service.handle_configure_training(command)
+
+    assert training.training_option.class_weight_mode is ClassWeightMode.CUSTOM
+    assert training.training_option.custom_class_weights == {
+        "left": 1.0,
+        "right": 2.0,
+    }
+    assert training.training_option.class_map_fingerprint == class_map_fingerprint(
+        {0: "left", 1: "right"}
+    )
+
+    with pytest.raises(PreconditionError, match="do not match"):
+        service.handle_configure_training(
+            ConfigureTrainingCommand(
+                epoch=2,
+                batch_size=4,
+                learning_rate=0.001,
+                device="cpu",
+                class_weight_mode="custom",
+                custom_class_weights={"left": 1.0, "unknown": 2.0},
+            )
+        )
+
+
+@pytest.mark.parametrize("mode", [ClassWeightMode.OFF, ClassWeightMode.BALANCED])
+def test_start_training_blocks_zero_class_before_runtime_handoff(
+    mode: ClassWeightMode,
+) -> None:
+    class _WeightingEpoch:
+        def get_label_map(self) -> dict[int, str]:
+            return {0: "left", 1: "right"}
+
+        def get_label_list(self) -> np.ndarray:
+            return np.asarray([0, 0, 1])
+
+    class _WeightingDataset:
+        train_mask = np.asarray([True, True, False])
+
+        def get_epoch_data(self) -> _WeightingEpoch:
+            return _WeightingEpoch()
+
+    service, training = _service()
+    training.resource_context = {
+        "datasets": [_WeightingDataset()],
+        "training_option": _class_weighting_option(
+            mode=mode,
+            custom_class_weights={},
+            fingerprint=class_map_fingerprint({0: "left", 1: "right"}),
+        ),
+        "model_holder": object(),
+    }
+    preflight = resource_guard.ResourcePreflightResult(issues=(), diagnostics={})
+
+    with pytest.raises(PreconditionError, match="missing class"):
+        service.start_train_after_preflight(
+            TrainCommand(),
+            preflight=preflight,
+            receipt_reused=False,
+        )
+
+    assert training.start_count == 0
+
+
+def test_start_training_rechecks_custom_weights_against_the_current_map() -> None:
+    class _WeightingEpoch:
+        def get_label_map(self) -> dict[int, str]:
+            return {0: "left", 1: "right"}
+
+        def get_label_list(self) -> np.ndarray:
+            return np.asarray([0, 1])
+
+    class _WeightingDataset:
+        train_mask = np.asarray([True, True])
+
+        def get_epoch_data(self) -> _WeightingEpoch:
+            return _WeightingEpoch()
+
+    service, training = _service()
+    training.resource_context = {
+        "datasets": [_WeightingDataset()],
+        "training_option": _class_weighting_option(
+            mode=ClassWeightMode.CUSTOM,
+            custom_class_weights={"left": 1.0, "old-right": 2.0},
+            fingerprint=class_map_fingerprint({0: "left", 1: "old-right"}),
+        ),
+        "model_holder": object(),
+    }
+
+    with pytest.raises(PreconditionError, match="mapping changed"):
+        service.start_train_after_preflight(
+            TrainCommand(),
+            preflight=resource_guard.ResourcePreflightResult(issues=(), diagnostics={}),
+            receipt_reused=False,
+        )
+
+    assert training.start_count == 0
 
 
 def test_training_service_forwards_only_typed_edited_recommendation_fields() -> None:

@@ -161,6 +161,7 @@ class TrainingSettingDialog(BaseDialog):
         self.evaluation_combo: QComboBox | None = None
         self.class_weight_combo: QComboBox | None = None
         self.class_weight_entries: dict[str, QLineEdit] = {}
+        self._class_weight_row_widgets: list[QWidget] = []
         self.recommendation_note: QLabel | None = None
         self.resource_preview_note: QLabel | None = None
         self.content_scroll: QScrollArea | None = None
@@ -707,13 +708,14 @@ class TrainingSettingDialog(BaseDialog):
         form_layout.setColumnStretch(1, 1)
         self.form_layout = form_layout
 
-        def add_simple_row(row: int, label: str, widget) -> None:
+        def add_simple_row(row: int, label: str, widget) -> QLabel:
             lbl = QLabel(label)
             lbl.setObjectName("TrainingSettingLabel")
             lbl.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             form_layout.addWidget(lbl, row, 0)
             widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             form_layout.addWidget(widget, row, 1)
+            return lbl
 
         def add_set_row(
             row: int,
@@ -810,6 +812,7 @@ class TrainingSettingDialog(BaseDialog):
         ):
             class_weight_combo.addItem(label, mode.value)
         add_simple_row(8, "Class loss weighting", class_weight_combo)
+        class_weight_combo.currentIndexChanged.connect(self._sync_class_weight_rows)
         class_map = (
             self.initial_option.get("class_map", {})
             if isinstance(self.initial_option, dict)
@@ -823,7 +826,8 @@ class TrainingSettingDialog(BaseDialog):
                 entry = QLineEdit("1.0")
                 entry.setObjectName(f"TrainingClassWeightInput_{name}")
                 self.class_weight_entries[name] = entry
-                add_simple_row(row, f"{name} multiplier", entry)
+                multiplier_label = add_simple_row(row, f"{name} multiplier", entry)
+                self._class_weight_row_widgets.extend((multiplier_label, entry))
                 row += 1
 
         repeat_entry = QLineEdit("1")
@@ -860,6 +864,16 @@ class TrainingSettingDialog(BaseDialog):
         buttons.rejected.connect(self.reject)
         footer.addWidget(buttons)
         layout.addLayout(footer)
+        self._sync_class_weight_rows()
+
+    def _sync_class_weight_rows(self, _index: int | None = None) -> None:
+        """Show class multipliers only when their Custom policy uses them."""
+        custom = (
+            self.class_weight_combo is not None
+            and self.class_weight_combo.currentData() == ClassWeightMode.CUSTOM.value
+        )
+        for widget in self._class_weight_row_widgets:
+            widget.setVisible(custom)
 
     def set_optimizer(self):
         """Open the optimizer setting dialog and apply the result."""

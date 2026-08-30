@@ -45,6 +45,7 @@ from XBrainLab.backend.application.training_submission import (
 from XBrainLab.backend.model_base.model_catalog import get_model_spec
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training.model_holder import ModelHolder
+from XBrainLab.backend.training.option import class_map_fingerprint
 from XBrainLab.ui.application_capabilities import CommandReviewContext
 from XBrainLab.ui.panels.training.sidebar import TrainingSidebar
 from XBrainLab.ui.refresh_coordinator import refresh_after_command
@@ -382,6 +383,33 @@ def test_configure_training_command_preserves_auto_and_exact_edited_fields() -> 
             TrainingRecommendationField.EPOCHS,
             TrainingRecommendationField.OPTIMIZER,
         }
+    )
+
+
+def test_training_settings_snapshot_uses_the_current_reviewed_class_map(sidebar):
+    publication = SimpleNamespace(
+        state=SimpleNamespace(epoch=SimpleNamespace(event_ids={"right": 1, "left": 0}))
+    )
+    with (
+        patch.object(
+            sidebar,
+            "_training_option_snapshot",
+            return_value={
+                "class_weight_mode": "custom",
+                "custom_class_weights": {"left": 2.0, "right": 1.0},
+                "class_map_fingerprint": "stale",
+            },
+        ),
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
+            return_value=publication,
+        ),
+    ):
+        initial = sidebar._training_setting_initial_option(None)
+
+    assert initial["class_map"] == {0: "left", 1: "right"}
+    assert initial["class_map_fingerprint"] == class_map_fingerprint(
+        {0: "left", 1: "right"}
     )
 
 
