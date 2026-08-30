@@ -793,7 +793,7 @@ class EpochingDialog(BaseDialog):
         else:
             rows = [
                 ("Source", self.epoch_context.get("source")),
-                ("Timing", self._timing_summary_text()),
+                *self._import_timing_rows(),
                 ("Placement", self.epoch_context.get("placement_label")),
             ]
             if label_field:
@@ -828,14 +828,25 @@ class EpochingDialog(BaseDialog):
             )
         return "Select the event types that should become EEG epochs."
 
-    def _timing_summary_text(self) -> str:
+    def _import_timing_rows(self) -> list[tuple[str, str]]:
+        """Name imported timing values by their reviewed placement semantics."""
+        placement = str(self.epoch_context.get("placement_method") or "").strip()
         time_field = str(self.epoch_context.get("time_field") or "").strip()
         duration_field = str(self.epoch_context.get("duration_field") or "").strip()
-        if time_field and duration_field:
-            return f"{time_field} + {duration_field}"
-        if time_field:
-            return time_field
-        return "Event onset"
+        if placement == "internal_events":
+            return [("Event anchor", "Event onset")]
+        if placement == "event_code":
+            return [("Event anchor", time_field)]
+        if placement == "eeg_event":
+            return [("Event anchor", time_field or "EEG event order")]
+        if placement == "time_field":
+            return [("Time field", time_field)]
+        if placement == "interval":
+            return [
+                ("Start field", time_field),
+                ("Duration field", duration_field),
+            ]
+        return [("Event anchor", time_field or "Event onset")]
 
     def _effective_window_mode_text(self) -> str:
         if self.window_mode is EpochWindowMode.DURATION:

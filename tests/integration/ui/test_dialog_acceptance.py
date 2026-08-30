@@ -266,6 +266,59 @@ def test_epoching_dialog_shows_effective_event_locked_timing_and_separate_baseli
     )
 
 
+@pytest.mark.parametrize(
+    (
+        "placement_method",
+        "time_field",
+        "duration_field",
+        "expected_labels",
+    ),
+    [
+        ("internal_events", "", "", ("Event anchor", "Event onset")),
+        ("event_code", "719", "", ("Event anchor", "719")),
+        ("eeg_event", "", "", ("Event anchor", "EEG event order")),
+        ("time_field", "onset", "", ("Time field", "onset")),
+        (
+            "interval",
+            "onset",
+            "duration",
+            ("Start field", "onset", "Duration field", "duration"),
+        ),
+    ],
+)
+def test_epoching_dialog_names_import_timing_fields_by_placement(
+    qtbot,
+    placement_method,
+    time_field,
+    duration_field,
+    expected_labels,
+):
+    """Imported anchors must not be presented as an ambiguous timing value."""
+    data = MagicMock()
+    data.get_event_list.return_value = (None, {"Left hand": 1, "Right hand": 2})
+    data.get_runtime_detail.return_value = {
+        "source": "Loaded label files",
+        "placement_method": placement_method,
+        "label_field": "classlabel",
+        "time_field": time_field,
+        "duration_field": duration_field,
+        "duration_stats": {"numeric_count": 2, "min": 0.5, "max": 1.0},
+        "class_map": {"left": "Left hand", "right": "Right hand"},
+    }
+    dialog = EpochingDialog(None, epoch_context=_admitted_epoch_context(data))
+
+    _show_dialog(qtbot, dialog)
+
+    visible_text = "\n".join(
+        label.text()
+        for label in dialog.findChildren(QLabel)
+        if label.text().strip() and label.isVisibleTo(dialog)
+    )
+    assert "Timing" not in visible_text
+    for label in expected_labels:
+        assert label in visible_text
+
+
 def test_epoching_baseline_validation_reacts_without_waiting_for_accept(qtbot):
     data = MagicMock()
     data.get_event_list.return_value = (None, {"left": 1})
