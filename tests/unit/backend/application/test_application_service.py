@@ -5850,7 +5850,8 @@ def test_data_interpretation_unresolved_sequence_target_cannot_be_confirmed(tmp_
         preview.diagnostics["preview"]["confirmation_items"]
     ).lower()
     assert "label placement" in confirmation_text
-    assert "trial anchors" in confirmation_text
+    assert "explicit target eeg event" in confirmation_text
+    assert "trial anchors" not in confirmation_text
     assert validation.ok is True
     [carrier] = preview.diagnostics["candidate"]["label_carrier_plan"]
     assert carrier["placement_review"]["status"] == "blocked"

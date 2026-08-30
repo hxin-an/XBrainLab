@@ -163,9 +163,16 @@ candidate 仍錯套 GDF embedded-event completeness confirmation。choices 與 c
 目前 candidate 只在沒有 active external label carrier 時要求完整 internal-event partition；external
 carrier 自己的 role／keep／class 未完成仍由既有 unresolved-value validation blocked。真實 GDF + MAT
 visible workflow、remove/re-add、BIDS fresh Review、embedded complete／incomplete 與全 integration-UI
-shard 已通過，獨立 reviewer 判定 owner delta `0`。下一步只建立 exact commit，重跑 applicable
-source-diverse／handoff／CI evidence，再交付 Windows 真人手測；不調寬 timeout、不修 unrelated owner，
-也不退回 stale-confirm 保護。
+shard 已通過，獨立 reviewer 判定 owner delta `0`。exact head `614fc1c1` 的 CI 另揭露兩個直接相關的
+舊 evidence assumptions：backend test 仍要求已刪除的 generic `trial anchors` 警告；human-like driver
+在 candidate 已為 `safe` 時先執行未確認 Apply，再重複 confirmed Apply；recipe replay 也在同一
+session 對已套用的 interpretation 重複 Apply。下一步只校準這兩個 test／evidence driver：external
+placement blocker 仍須 blocked；unconfirmed rejection 只在真正 `needs_confirmation` 時探測，safe
+path 只 Apply 一次；recipe replay 必須先進入 fresh session，且後續 preprocessing／training 仍可完成。
+walkthrough 必須從 NewSession 的 authoritative command state 證明 raw、preprocess、epoch、dataset 與
+interpretation 已清空，並將這個 fresh-session boundary 納入 artifact contract，不能只接受 `ok=true`。
+之後建立新 exact commit 並重跑 CI／handoff，
+再交付 Windows 真人手測；不調寬 timeout、不修 unrelated owner，也不退回 stale-confirm 保護。
 
 **Outcome, scope, and non-goals**
 

@@ -1046,13 +1046,44 @@ def _run_walkthrough_steps(
         expected=reviewed_candidate_id,
         context="reviewed interpretation validation",
     )
-    unconfirmed_apply_generation = service.get_view_publication().generation
-    apply_without_confirmation = execute_recorded(
-        service,
-        ApplyInterpretationCommand(candidate_id=reviewed_candidate_id),
-        command_results,
-        expected_publication_generation=unconfirmed_apply_generation,
+    reviewed_validation_decision = str(
+        reviewed_validation_payload["validation_decision"].get("decision") or ""
     )
+    apply_without_confirmation: CommandResult | None = None
+    if reviewed_validation_decision == "blocked":
+        raise RuntimeError(
+            "Reviewed interpretation validation is blocked; do not apply the candidate."
+        )
+    if reviewed_validation_decision == "needs_confirmation":
+        unconfirmed_apply_generation = service.get_view_publication().generation
+        apply_without_confirmation = execute_recorded(
+            service,
+            ApplyInterpretationCommand(candidate_id=reviewed_candidate_id),
+            command_results,
+            expected_publication_generation=unconfirmed_apply_generation,
+        )
+        unconfirmed_apply = {
+            "executed": True,
+            **command_summary(apply_without_confirmation),
+        }
+        if (
+            apply_without_confirmation.ok
+            or getattr(apply_without_confirmation.error_type, "value", "")
+            != "confirmation_required"
+        ):
+            raise RuntimeError(
+                "Unconfirmed Apply did not preserve the confirmation_required boundary."
+            )
+    elif reviewed_validation_decision == "safe":
+        unconfirmed_apply = {
+            "executed": False,
+            "status": "not_applicable",
+        }
+    else:
+        raise RuntimeError(
+            "Reviewed interpretation validation returned an unsupported decision: "
+            f"{reviewed_validation_decision or 'missing'}."
+        )
     reviewed_apply_generation = service.get_view_publication().generation
     apply_confirmed = execute_recorded(
         service,
@@ -1092,6 +1123,35 @@ def _run_walkthrough_steps(
     )
     if save_recipe is None:
         raise RuntimeError("The explicit Save recipe choice was not executed.")
+    recipe_replay_reset = execute_recorded(
+        service,
+        NewSessionCommand(confirmed=True),
+        command_results,
+    )
+    if not recipe_replay_reset.ok:
+        raise RuntimeError(
+            "The reviewed import session could not be reset before recipe replay."
+        )
+    recipe_replay_fresh_session = {
+        "raw_loaded": bool(recipe_replay_reset.state.raw.loaded),
+        "preprocessed_available": bool(
+            recipe_replay_reset.state.preprocessed.available
+        ),
+        "epoch_exists": bool(recipe_replay_reset.state.epoch.exists),
+        "dataset_available": bool(recipe_replay_reset.state.dataset.available),
+        "has_applied_interpretation": bool(
+            recipe_replay_reset.state.interpretation.has_applied_interpretation
+        ),
+        "has_recipe": bool(recipe_replay_reset.state.interpretation.has_recipe),
+    }
+    if any(recipe_replay_fresh_session.values()):
+        retained_state = ", ".join(
+            name for name, present in recipe_replay_fresh_session.items() if present
+        )
+        raise RuntimeError(
+            "The fresh session retained prior workflow state before recipe replay: "
+            f"{retained_state}."
+        )
     reload_recipe = execute_recorded(
         service,
         ReloadInterpretationRecipeCommand(recipe_path=str(recipe_path)),
@@ -1158,19 +1218,20 @@ def _run_walkthrough_steps(
         "validation_publication_generation": reload_validation_generation,
         "apply_publication_generation": reload_apply_generation,
     }
-    tool_transcript.extend(
-        command_summary(item)
-        for item in [
-            reviewed_preview,
-            reviewed_validation,
-            apply_without_confirmation,
+    reviewed_transcript = [reviewed_preview, reviewed_validation]
+    if apply_without_confirmation is not None:
+        reviewed_transcript.append(apply_without_confirmation)
+    reviewed_transcript.extend(
+        [
             apply_confirmed,
             save_recipe,
+            recipe_replay_reset,
             reload_recipe,
             reload_validation,
             reload_apply,
         ]
     )
+    tool_transcript.extend(command_summary(item) for item in reviewed_transcript)
 
     window.dataset_panel.update_panel()
     open_workflow_panel(window, 0)
@@ -1180,9 +1241,9 @@ def _run_walkthrough_steps(
         "applied",
         notes={
             "safe": safe_probe,
-            "needs_confirmation": reviewed_validation_payload["validation_decision"],
+            "reviewed_validation": reviewed_validation_payload["validation_decision"],
             "blocked": blocked_probe,
-            "unconfirmed_apply": command_summary(apply_without_confirmation),
+            "unconfirmed_apply": unconfirmed_apply,
             "ui_geometry": dataset_page_geometry(window),
         },
     )
@@ -1223,6 +1284,8 @@ def _run_walkthrough_steps(
         widget=reload_dialog,
         notes=lambda: {
             "reload": command_summary(reload_recipe),
+            "session_reset": command_summary(recipe_replay_reset),
+            "fresh_session": recipe_replay_fresh_session,
             "validation": command_summary(reload_validation),
             "reapply": command_summary(reload_apply),
             "strict_review_handoff": reload_handoff,
@@ -1238,6 +1301,8 @@ def _run_walkthrough_steps(
         "recipe_reapplied",
         notes={
             "validation": command_summary(reload_validation),
+            "session_reset": command_summary(recipe_replay_reset),
+            "fresh_session": recipe_replay_fresh_session,
             "reapply": command_summary(reload_apply),
             "strict_review_handoff": reload_handoff,
             "ui_geometry": dataset_page_geometry(window),
@@ -3412,14 +3477,38 @@ def build_workflow_contract_failures(phases: list[dict[str, Any]]) -> list[str]:
                 "candidate through validate and apply"
             )
 
+    def require_recipe_replay_fresh_session(phase_name: str) -> None:
+        phase = by_name.get(phase_name)
+        if phase is None:
+            return
+        expected_fresh_session = {
+            "raw_loaded": False,
+            "preprocessed_available": False,
+            "epoch_exists": False,
+            "dataset_available": False,
+            "has_applied_interpretation": False,
+            "has_recipe": False,
+        }
+        fresh_session = (phase.get("notes") or {}).get("fresh_session")
+        if fresh_session != expected_fresh_session:
+            failures.append(
+                f"{phase_name} did not record a cleared fresh session before "
+                "recipe replay"
+            )
+
     for phase_name, note_names in {
         "data_interpretation_apply": ("validation", "applied", "recipe"),
         "data_interpretation_reload_recipe": (
+            "session_reset",
             "reload",
             "validation",
             "reapply",
         ),
-        "data_interpretation_reapply_recipe": ("validation", "reapply"),
+        "data_interpretation_reapply_recipe": (
+            "session_reset",
+            "validation",
+            "reapply",
+        ),
         "preprocessing": ("preprocess",),
         "epoch_creation": ("epoch",),
         "dataset_generation": ("dataset",),
@@ -3442,7 +3531,9 @@ def build_workflow_contract_failures(phases: list[dict[str, Any]]) -> list[str]:
         "did not produce preprocessed data",
     )
     require_strict_review_handoff("data_interpretation_apply")
+    require_recipe_replay_fresh_session("data_interpretation_reload_recipe")
     require_strict_review_handoff("data_interpretation_reapply_recipe")
+    require_recipe_replay_fresh_session("data_interpretation_reapply_recipe")
     require_state("epoch_creation", ("epoch", "exists"), "did not produce epochs")
     split_phase = by_name.get("dataset_generation")
     split_state = (
@@ -3504,11 +3595,49 @@ def build_workflow_contract_failures(phases: list[dict[str, Any]]) -> list[str]:
         "did not produce evaluation results",
     )
 
+    interpretation_phase = by_name.get("data_interpretation_decisions")
+    if interpretation_phase is not None:
+        notes = interpretation_phase.get("notes") or {}
+        reviewed_validation = notes.get("reviewed_validation")
+        reviewed_decision = (
+            str(reviewed_validation.get("decision") or "")
+            if isinstance(reviewed_validation, dict)
+            else ""
+        )
+        unconfirmed_apply = notes.get("unconfirmed_apply")
+        if reviewed_decision == "safe":
+            if unconfirmed_apply != {
+                "executed": False,
+                "status": "not_applicable",
+            }:
+                failures.append(
+                    "data_interpretation_decisions safe review must record an "
+                    "unexecuted unconfirmed Apply marker"
+                )
+        elif reviewed_decision == "needs_confirmation":
+            if (
+                not isinstance(unconfirmed_apply, dict)
+                or unconfirmed_apply.get("executed") is not True
+                or bool(unconfirmed_apply.get("ok"))
+                or str(unconfirmed_apply.get("error_type") or "")
+                != "confirmation_required"
+            ):
+                failures.append(
+                    "data_interpretation_decisions needs_confirmation review did "
+                    "not preserve the confirmation_required Apply boundary"
+                )
+        elif reviewed_decision == "blocked":
+            failures.append(
+                "data_interpretation_decisions recorded a blocked reviewed "
+                "validation instead of stopping before Apply"
+            )
+        else:
+            failures.append(
+                "data_interpretation_decisions is missing a supported reviewed "
+                "validation decision"
+            )
+
     intentional_failures = {
-        "data_interpretation_decisions": (
-            "unconfirmed_apply",
-            "confirmation_required",
-        ),
         "reset_new_session_boundary": ("unconfirmed", "confirmation_required"),
         "error_recovery": ("blocked_preview", "precondition"),
     }
