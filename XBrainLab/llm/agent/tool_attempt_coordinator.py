@@ -359,36 +359,36 @@ class ToolAttemptCoordinator:
                 ),
             )
         receipt = request.tool_input_receipt
-        receipt_matches = receipt is not None and receipt.matches(
-            command_name,
-            request.publication.backend_generation,
-        )
-        if receipt is not None and not receipt_matches:
-            return ToolAttemptDecision(
-                ToolAttemptAction.RESPOND,
+        receipt_complete = False
+        if receipt is not None:
+            if not receipt.matches(
                 command_name,
-                params,
-                context=context,
-                message=(
-                    "The pending action or workflow state changed. Please start the "
-                    "requested action again."
-                ),
+                request.publication.backend_generation,
+            ):
+                return ToolAttemptDecision(
+                    ToolAttemptAction.RESPOND,
+                    command_name,
+                    params,
+                    context=context,
+                    message=(
+                        "The pending action or workflow state changed. "
+                        "Please start the requested action again."
+                    ),
+                )
+            receipt_complete = set(dict(receipt.verified_parameters)) == set(
+                receipt.missing_inputs
             )
-        receipt_complete = receipt_matches and set(
-            dict(receipt.verified_parameters)
-        ) == set(receipt.missing_inputs)
-        if receipt_matches and not receipt_complete:
-            return ToolAttemptDecision(
-                ToolAttemptAction.RESPOND,
-                command_name,
-                params,
-                context=context,
-                message=(
-                    "I could not confirm all required values. Please start the "
-                    "action again with all required parameters."
-                ),
-            )
-        if receipt_complete:
+            if not receipt_complete:
+                return ToolAttemptDecision(
+                    ToolAttemptAction.RESPOND,
+                    command_name,
+                    params,
+                    context=context,
+                    message=(
+                        "I could not confirm all required values. Please start the "
+                        "action again with all required parameters."
+                    ),
+                )
             params = dict(receipt.verified_parameters)
         provenance_result = self._provenance_result(request, context)
         if provenance_result is not None:
