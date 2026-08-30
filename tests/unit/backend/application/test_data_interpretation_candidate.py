@@ -694,6 +694,40 @@ def test_suggested_internal_events_without_explicit_selection_need_confirmation(
     )
 
 
+def test_extension_only_internal_event_context_needs_confirmation(monkeypatch):
+    monkeypatch.setattr(
+        data_interpretation_internal_events,
+        "_read_internal_events_for_file",
+        lambda _path: {"events": {}},
+    )
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-empty-edf-events",
+        scan=_scan(
+            source_kind="folder",
+            eeg_files=["/data/no-events.edf"],
+            label_carriers=[],
+            label_carrier_sources={},
+            bids={"is_bids": False, "events_files": []},
+            metadata=[],
+        ),
+        choices={"label_carrier": "embedded_events"},
+    )
+
+    assert candidate.event_roles["internal_events"] == "event role candidates"
+    assert candidate.confirmation_items == [
+        "Confirm which events are trial anchors, class cues, responses, artifacts, "
+        "or boundaries."
+    ]
+    assert (
+        validate_interpretation_candidate(
+            candidate,
+            recheck_content_identity=False,
+        ).decision
+        == "needs_confirmation"
+    )
+
+
 def test_partial_internal_event_decisions_keep_mapping_confirmation(monkeypatch):
     monkeypatch.setattr(
         data_interpretation_internal_events,

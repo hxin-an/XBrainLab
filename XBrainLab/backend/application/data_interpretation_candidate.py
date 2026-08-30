@@ -386,9 +386,11 @@ def build_interpretation_candidate(
             internal_event_preview.get("candidate_label_events")
             or internal_event_preview.get("not_used_events")
         )
-        if extensions & {".gdf", ".edf", ".bdf", ".set", ".vhdr"} or (
-            has_internal_event_rows
-        ):
+        internal_event_review_context = (
+            bool(extensions & {".gdf", ".edf", ".bdf", ".set", ".vhdr"})
+            or has_internal_event_rows
+        )
+        if internal_event_review_context:
             event_roles["internal_events"] = "event role candidates"
         event_roles.update(_string_mapping(choices.get("event_roles")))
         explicit_internal_event_selection = isinstance(
@@ -405,7 +407,7 @@ def build_interpretation_candidate(
             or explicit_internal_event_selection
             else {}
         )
-        if has_internal_event_rows and not _internal_event_selection_is_complete(
+        if internal_event_review_context and not _internal_event_selection_is_complete(
             internal_event_preview,
             choices.get("internal_event_selection"),
             choices.get("event_roles"),
