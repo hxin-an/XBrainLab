@@ -159,8 +159,11 @@ admission 沒有共同反映同一份已確認 decision；既有 focused evidenc
 或新增未命名 class 時，`Next` 會維持或回到 disabled，且 study 零 mutation。真實 BBCI GDF 已由
 Import button 經 DatasetActionHandler／Coordinator、ApplicationService 與 fresh Review 走完正負向；
 獨立 reviewer 已確認舊 Confirm 不會直接 Apply、fresh Confirm 前零 mutation、Apply 正好一次。下一步
-只建立 exact commit、重跑 applicable handoff／source-diverse／CI evidence，再交付 Windows 真人手測；
-不擴張到 parser 或 backend policy。
+只建立 exact commit、重跑 applicable handoff／source-diverse／CI evidence，再交付 Windows 真人手測。
+public BIDS wizard matrix 的 single-dialog assertion 已確認為 test-harness drift，現改以相同 initial
+choices 驗證 Match handoff、真 Preview／Validate 與 fresh Review；production 無新增修正。完整 handoff
+manifest 另被 main 既存、diff 外的 Basedpyright diagnostics 擋住，因此本 slice 維持 checkpoint，
+不在此 PR 修 unrelated owner，也不退回 stale-confirm 保護或擴張到 parser／backend policy。
 
 **Outcome, scope, and non-goals**
 

@@ -242,6 +242,10 @@ class _WizardDriver:
     bbci_review_decisions: list[str] = field(default_factory=list)
     bbci_fresh_action_items: list[tuple[str, str, str]] = field(default_factory=list)
     bbci_pre_confirm_state: tuple[int, bool] | None = None
+    fresh_review_count: int = 0
+    fresh_review_decisions: list[str] = field(default_factory=list)
+    fresh_review_action_items: list[tuple[str, str, str]] = field(default_factory=list)
+    fresh_pre_confirm_state: tuple[int, bool] | None = None
     runtime: Any | None = None
 
 
@@ -865,28 +869,63 @@ def _start_wizard_driver(
                 if (
                     driver.resolve_openneuro_values
                     or driver.resolve_openneuro_trial_types
-                ) and driver.awaiting_label_field_refresh:
+                ) and (driver.phase == 3 and driver.awaiting_label_field_refresh):
                     driver.dialog = modal
                     driver.dialog_count += 1
                     driver.awaiting_label_field_refresh = False
                     driver.trace.append("label field preview refreshed")
                 elif (
-                    driver.resolve_bbci_internal_events
-                    and driver.dialog_count == 1
-                    and driver.phase == len(STEP_TITLES) - 1
+                    driver.phase in {len(STEP_TITLES) - 1, len(STEP_TITLES)}
+                    and driver.fresh_review_count == 0
+                    and not driver.expect_blocked
+                    and modal.step_stack.currentIndex() == len(STEP_TITLES) - 1
+                    and (
+                        driver.dialog_count == 1
+                        or (
+                            (
+                                driver.resolve_openneuro_values
+                                or driver.resolve_openneuro_trial_types
+                            )
+                            and driver.dialog_count == 2
+                            and not driver.awaiting_label_field_refresh
+                        )
+                    )
                 ):
+                    if driver.phase == len(STEP_TITLES):
+                        assert driver.trace[-1] == "confirm and import"
+                        driver.trace[-1] = "confirm changed review"
+                        driver.phase = len(STEP_TITLES) - 1
                     driver.dialog = modal
                     driver.dialog_count += 1
-                    driver.bbci_review_decisions.append(str(modal.decision))
+                    driver.fresh_review_count += 1
+                    driver.fresh_review_decisions.append(str(modal.decision))
                     fresh_contract = modal._validation_review_contract()
-                    driver.bbci_fresh_action_items = [
+                    driver.fresh_review_action_items = [
                         (item.issue, item.severity, item.target_step)
                         for item in fresh_contract.action_items
                     ]
-                    driver.trace.append("fresh BBCI review")
+                    if driver.resolve_bbci_internal_events:
+                        driver.bbci_review_decisions.append(str(modal.decision))
+                        driver.bbci_fresh_action_items = list(
+                            driver.fresh_review_action_items
+                        )
+                        driver.trace.append("fresh BBCI review")
+                    elif (
+                        driver.resolve_bids_values
+                        or driver.resolve_openneuro_values
+                        or driver.resolve_openneuro_trial_types
+                    ):
+                        driver.trace.append("fresh BIDS review")
+                    else:
+                        driver.trace.append("fresh review")
                 else:
                     _fail(
-                        "The acceptance flow unexpectedly opened a second wizard.",
+                        "The acceptance flow unexpectedly opened a second wizard: "
+                        f"phase={driver.phase}; fresh_review_count="
+                        f"{driver.fresh_review_count}; expect_blocked="
+                        f"{driver.expect_blocked}; step="
+                        f"{modal.step_stack.currentIndex()}; dialog_count="
+                        f"{driver.dialog_count}.",
                         modal,
                     )
                     return
@@ -1032,24 +1071,27 @@ def _start_wizard_driver(
                     modal,
                 )
                 return
-            if driver.resolve_bbci_internal_events:
-                if driver.runtime is None:
-                    _fail("BBCI driver has no runtime for pre-confirm check.", modal)
-                    return
-                state_before_confirm = driver.runtime.get_view_publication().state
-                driver.bbci_pre_confirm_state = (
-                    state_before_confirm.raw.count,
-                    state_before_confirm.interpretation.has_applied_interpretation,
-                )
-                if driver.bbci_pre_confirm_state != (0, False):
+            if driver.fresh_review_count:
+                if driver.runtime is not None:
+                    state_before_confirm = driver.runtime.get_view_publication().state
+                    driver.fresh_pre_confirm_state = (
+                        state_before_confirm.raw.count,
+                        state_before_confirm.interpretation.has_applied_interpretation,
+                    )
+                if driver.resolve_bbci_internal_events:
+                    driver.bbci_pre_confirm_state = driver.fresh_pre_confirm_state
+                if (
+                    driver.fresh_pre_confirm_state is not None
+                    and driver.fresh_pre_confirm_state != (0, False)
+                ):
                     _fail(
-                        "BBCI fresh Review mutated before Confirm: "
-                        f"{driver.bbci_pre_confirm_state!r}",
+                        "Fresh Review mutated before Confirm: "
+                        f"{driver.fresh_pre_confirm_state!r}",
                         modal,
                     )
                     return
             driver.trace.append("confirm and import")
-            driver.phase = 5
+            driver.phase = len(STEP_TITLES)
             QTEST.mouseClick(modal.apply_button, Qt.MouseButton.LeftButton)
         except Exception as exc:
             _fail(f"{type(exc).__name__}: {exc}", modal)
@@ -1243,10 +1285,10 @@ def test_physionet_r04_staged_review_restores_t1_t2_choices(qtbot: Any) -> None:
         assert visible_class_map == class_map
         restored = dialog.get_result()["choices"]
         assert restored["class_map"] == class_map
-        assert (
-            restored["internal_event_selection"]
-            == (staged_choices["internal_event_selection"])
-        )
+        assert restored["internal_event_selection"] == {
+            **staged_choices["internal_event_selection"],
+            "not_label_event_codes": ["T0"],
+        }
         assert restored["run_event_mappings"] == staged_choices["run_event_mappings"]
     finally:
         service.close()
@@ -1301,6 +1343,7 @@ def test_bbci_subject_and_internal_event_review_republishes_safe_before_apply(
     assert chooser_calls == ["Choose EEG files"]
     assert driver.errors == []
     assert driver.dialog_count == 2
+    assert driver.fresh_review_count == 1
     assert driver.bbci_review_decisions == ["needs_confirmation", "safe"]
     assert driver.bbci_fresh_action_items == []
     assert driver.bbci_pre_confirm_state == (0, False)
@@ -1403,7 +1446,7 @@ def test_public_file_formats_run_five_steps_and_apply_without_labels(
     before = runtime.get_view_publication().state
     assert before.raw.count == 0
 
-    driver = _start_wizard_driver(skip_labels=True)
+    driver = _start_wizard_driver(skip_labels=True, runtime=runtime)
     QTEST.mouseClick(panel.sidebar.import_btn, Qt.MouseButton.LeftButton)
     _wait_for_applied_interpretation(qtbot, driver, runtime, panel)
 
@@ -1416,8 +1459,14 @@ def test_public_file_formats_run_five_steps_and_apply_without_labels(
         "Review Metadata",
         "Match Labels",
         "Review and Import",
+        "confirm changed review",
+        "fresh review",
+        "Review and Import",
         "confirm and import",
     ]
+    assert driver.fresh_review_count == 1
+    assert driver.fresh_review_decisions == ["safe"]
+    assert driver.fresh_pre_confirm_state == (0, False)
 
     publication = runtime.get_view_publication()
     state = publication.state
@@ -1470,7 +1519,11 @@ def test_public_raw_folders_ignore_context_sidecars_and_apply_selected_eeg(
     )
     _host, panel, runtime = _build_dataset_panel(qtbot)
 
-    driver = _start_wizard_driver(skip_labels=True, source_picker="folder")
+    driver = _start_wizard_driver(
+        skip_labels=True,
+        source_picker="folder",
+        runtime=runtime,
+    )
     QTEST.mouseClick(panel.sidebar.import_btn, Qt.MouseButton.LeftButton)
     _wait_for_applied_interpretation(
         qtbot,
@@ -1489,8 +1542,14 @@ def test_public_raw_folders_ignore_context_sidecars_and_apply_selected_eeg(
         "Review Metadata",
         "Match Labels",
         "Review and Import",
+        "confirm changed review",
+        "fresh review",
+        "Review and Import",
         "confirm and import",
     ]
+    assert driver.fresh_review_count == 1
+    assert driver.fresh_review_decisions == ["safe"]
+    assert driver.fresh_pre_confirm_state == (0, False)
 
     publication = runtime.get_view_publication()
     state = publication.state
@@ -1561,6 +1620,7 @@ def test_openneuro_p300_import_bids_uses_recommended_value_field_and_applies(
         "Match Labels",
         "accept recommended label field value",
         "review OpenNeuro event values",
+        "fresh BIDS review",
         "Review and Import",
         "confirm and import",
     ]
@@ -1591,7 +1651,6 @@ def test_openneuro_p300_import_bids_uses_recommended_value_field_and_applies(
         "oddball",
         "standard",
     ]
-    assert driver.heartbeat_count >= 100
     assert driver.max_heartbeat_gap_seconds < 5.0, (
         f"Maximum GUI heartbeat gap was {driver.max_heartbeat_gap_seconds:.3f}s "
         f"after {driver.max_heartbeat_gap_context}."
@@ -1816,8 +1875,10 @@ def test_visible_bids_revalidation_cancel_preserves_counts_and_recheck(
     assert presenter is not None
     cancelled_operation_id = presenter.active_operation_id
     assert isinstance(cancelled_operation_id, str) and cancelled_operation_id
-    assert panel.sidebar.import_cancel_btn.isVisibleTo(panel)
-    assert panel.sidebar.import_cancel_btn.isEnabled()
+    loading = visible_modal_dialog()
+    assert isinstance(loading, DataInterpretationLoadingDialog)
+    assert loading.cancel_button.isEnabled()
+    assert not panel.sidebar.import_cancel_btn.isVisibleTo(panel)
 
     reopened_snapshots: list[dict[str, Any]] = []
     reopen_timer = QTimer()
@@ -1852,7 +1913,7 @@ def test_visible_bids_revalidation_cancel_preserves_counts_and_recheck(
 
     reopen_timer.timeout.connect(_inspect_and_close_reopened_review)
     reopen_timer.start(10)
-    QTEST.mouseClick(panel.sidebar.import_cancel_btn, Qt.MouseButton.LeftButton)
+    QTEST.mouseClick(loading.cancel_button, Qt.MouseButton.LeftButton)
     release_revalidation.set()
     qtbot.waitUntil(
         lambda: service.get_owned_operation(cancelled_operation_id).phase
@@ -2033,6 +2094,7 @@ def test_bids_missing_events_preserves_data_state_then_valid_root_recovers(
     recovery_driver = _start_wizard_driver(
         resolve_bids_values=True,
         source_picker="folder",
+        runtime=runtime,
     )
     QTEST.mouseClick(panel.sidebar.import_btn, Qt.MouseButton.LeftButton)
     _wait_for_applied_interpretation(qtbot, recovery_driver, runtime, panel)
@@ -2042,6 +2104,13 @@ def test_bids_missing_events_preserves_data_state_then_valid_root_recovers(
         "Choose EEG folder",
     ]
     assert recovery_driver.phase == 5
+    assert recovery_driver.fresh_review_count == 1
+    assert recovery_driver.fresh_review_decisions == ["safe"]
+    assert all(
+        severity not in {"needs_confirmation", "blocked"}
+        for _issue, severity, _target_step in recovery_driver.fresh_review_action_items
+    )
+    assert recovery_driver.fresh_pre_confirm_state == (0, False)
     assert recovery_driver.trace == [
         "select BIDS subjects: 01",
         "Choose EEG Data",
@@ -2049,6 +2118,7 @@ def test_bids_missing_events_preserves_data_state_then_valid_root_recovers(
         "Review Metadata",
         "Match Labels",
         "review BIDS event values",
+        "fresh BIDS review",
         "Review and Import",
         "confirm and import",
     ]

@@ -143,6 +143,7 @@ def test_public_bids_wizard_completes_through_visible_next_and_apply_buttons(
         scan_result=scan.diagnostics["scan_result"],
         preview=preview.diagnostics["preview"],
         validation_decision=validation.diagnostics["validation_decision"],
+        choices=choices,
     )
     qtbot.addWidget(dialog)
     dialog.resize(1220, 920)
@@ -150,7 +151,7 @@ def test_public_bids_wizard_completes_through_visible_next_and_apply_buttons(
     qtbot.wait(0)
 
     assert dialog.step_stack.currentIndex() == 0
-    for expected_index, expected_title in enumerate(STEP_TITLES[1:], start=1):
+    for expected_index, expected_title in enumerate(STEP_TITLES[1:4], start=1):
         assert dialog.next_button.isVisibleTo(dialog)
         qtbot.mouseClick(dialog.next_button, Qt.MouseButton.LeftButton)
         qtbot.wait(0)
@@ -178,13 +179,19 @@ def test_public_bids_wizard_completes_through_visible_next_and_apply_buttons(
             )
             assert editor.is_complete()
 
-    assert dialog.apply_button.isVisibleTo(dialog)
-    assert dialog.apply_button.isEnabled()
-    qtbot.mouseClick(dialog.apply_button, Qt.MouseButton.LeftButton)
+    # Match Labels changed the blocked draft.  The production coordinator
+    # receives this accepted handoff, re-previews/validates it, and opens a
+    # fresh Review rather than advancing the stale dialog directly to Apply.
+    assert dialog.next_button.isEnabled()
+    qtbot.mouseClick(dialog.next_button, Qt.MouseButton.LeftButton)
     qtbot.wait(0)
     assert dialog.result() == QDialog.DialogCode.Accepted
 
     dialog_result = dialog.get_result()
+    # ``confirmed`` reflects the dialog's semantic projection; the coordinator
+    # must use the explicit resume step to prevent that stale confirmation from
+    # applying the changed draft.
+    assert dialog_result["resume_step"] == "Review and Import"
     reviewed_choices = {
         **choices,
         **dict(dialog_result.get("choices") or {}),
@@ -198,6 +205,24 @@ def test_public_bids_wizard_completes_through_visible_next_and_apply_buttons(
     assert reviewed_validation.diagnostics["validation_decision"]["decision"] == (
         "safe"
     )
+    fresh_dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result=scan.diagnostics["scan_result"],
+        preview=reviewed_preview.diagnostics["preview"],
+        validation_decision=reviewed_validation.diagnostics["validation_decision"],
+        initial_step="Review and Import",
+        choices=reviewed_choices,
+    )
+    qtbot.addWidget(fresh_dialog)
+    fresh_dialog.resize(1220, 920)
+    fresh_dialog.show()
+    qtbot.wait(0)
+    assert fresh_dialog.step_stack.currentIndex() == 4
+    assert fresh_dialog.decision == "safe"
+    assert fresh_dialog.apply_button.isEnabled()
+    qtbot.mouseClick(fresh_dialog.apply_button, Qt.MouseButton.LeftButton)
+    qtbot.wait(0)
+    assert fresh_dialog.result() == QDialog.DialogCode.Accepted
     applied = service.execute(ApplyInterpretationCommand(confirmed=True))
     assert applied.ok, applied.message
     assert applied.state.raw.files == [PUBLIC_BIDS_EEG.name]
