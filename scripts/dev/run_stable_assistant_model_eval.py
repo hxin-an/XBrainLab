@@ -892,12 +892,6 @@ class _EvaluatorControllerHarness:
     ) -> tuple[str, dict[str, Any]] | None:
         return LLMController._select_tool_proposal(self, command_result)  # type: ignore[arg-type]
 
-    def _reject_excluded_turn_command(self, command_name: str) -> bool:
-        return LLMController._reject_excluded_turn_command(  # type: ignore[arg-type]
-            self,
-            command_name,
-        )
-
     def _evaluate_tool_proposal(
         self,
         command: tuple[str, dict[str, Any]],

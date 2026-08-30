@@ -52,13 +52,15 @@ branch 重建。Worker 不得以 detached／歷史 branch 當 base，不得自�
 
 PR #74 原 head `8b9d2af4b5b7ac344de20a4154226f96ad22dfb7` 已完成 frozen inventory、
 net-negative cleanup、focused evidence 與 CI；B1 合併後已將新 `main` merge 進 A1，舊 head 的
-exact-source evidence 只保留為 baseline。canonical Basedpyright 在 A1 已修改的
-`tool_attempt_coordinator.py` 顯示三個 receipt optional-access 診斷。下一步只在同一 existing owner
-明確收窄 `receipt is None` 分支，保持 receipt matching／completion／provenance 與 side effect 不變；
-`verifier.py` 與 montage dialog 的兩個 diff 外診斷不納入 A1。完成後重跑相同 direct receipt、
-controller、runtime、ChatPanel 與 product-flow baseline，再由非作者 user-simulator、independent
-reviewer、canonical handoff／CI 與 exact-SHA 手測收斂。不得新增 owner、receipt、compatibility path
-或其他 Assistant cleanup candidate。
+exact-source evidence 只保留為 baseline。receipt optional-access 已在既有
+`tool_attempt_coordinator.py` owner 內以明確 `receipt is not None` 分支收窄，43 個 direct
+receipt／policy／product-flow tests 通過，且該檔 Basedpyright 診斷歸零；`verifier.py` 與 montage
+dialog 的兩個 diff 外診斷不納入 A1。非作者 user-simulator 亦在 frozen `e0cf4909` 通過 9 個
+receipt／cancel／ChatPanel scenarios；independent reviewer 找到的唯一 blocker 是 canonical evaluator
+harness 仍委派到已刪除的 `_reject_excluded_turn_command`，該無 caller wrapper 現已直接刪除，evaluator
+與 product-flow 共 71 個 tests 通過。下一步建立新 frozen SHA，重做非作者審查、canonical handoff／CI
+與 exact-SHA 手測。不得新增 replacement、owner、receipt、compatibility path 或其他 Assistant
+cleanup candidate。
 
 **Problem and evidence**
 
