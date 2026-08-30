@@ -155,18 +155,17 @@ admission 沒有共同反映同一份已確認 decision；既有 focused evidenc
 
 **Current checkpoint and next step**
 
-完整 subject／internal event roles／class names 現在會立即同步 Match Labels admission；class name 空白
-或新增未命名 class 時，`Next` 會維持或回到 disabled，且 study 零 mutation。真實 BBCI GDF 已由
-Import button 經 DatasetActionHandler／Coordinator、ApplicationService 與 fresh Review 走完正負向；
-獨立 reviewer 已確認舊 Confirm 不會直接 Apply、fresh Confirm 前零 mutation、Apply 正好一次。下一步
-只建立 exact commit、重跑 applicable handoff／source-diverse／CI evidence，再交付 Windows 真人手測。
-public BIDS wizard matrix 的 single-dialog assertion 已確認為 test-harness drift，現改以相同 initial
-choices 驗證 Match handoff、真 Preview／Validate 與 fresh Review；production 無新增修正。完整 handoff
-manifest 另被 main 既存、diff 外的 Basedpyright diagnostics 擋住，因此本 slice 維持 checkpoint。
-exact-head CI 的 `linux-integration-ui` 另揭露既有 BIDS value-decision integration test 仍假設舊 dialog
-可直接 Apply；本機前三個 collected nodes 已重現同一 assertion。下一步只把該直接相關測試校準為
-Match handoff → 真 Preview／Validate → fresh Review → exactly-once Apply，再重跑 exact CI；不在此 PR
-修 unrelated owner，也不退回 stale-confirm 保護或擴張到 parser／backend policy。
+`f8510bcc` 的手測失敗包含兩個相連問題：舊 Confirm 可以在 presentation 仍為
+`needs_confirmation` 時 Apply；fresh-review 修正關閉這條路後，又揭露 external MAT 已完整解析時，
+candidate 仍錯套 GDF embedded-event completeness confirmation。choices 與 coordinator merge 均完整，
+根因是既有 backend candidate gate，而不是 subject override 遺失。
+
+目前 candidate 只在沒有 active external label carrier 時要求完整 internal-event partition；external
+carrier 自己的 role／keep／class 未完成仍由既有 unresolved-value validation blocked。真實 GDF + MAT
+visible workflow、remove/re-add、BIDS fresh Review、embedded complete／incomplete 與全 integration-UI
+shard 已通過，獨立 reviewer 判定 owner delta `0`。下一步只建立 exact commit，重跑 applicable
+source-diverse／handoff／CI evidence，再交付 Windows 真人手測；不調寬 timeout、不修 unrelated owner，
+也不退回 stale-confirm 保護。
 
 **Outcome, scope, and non-goals**
 
@@ -176,10 +175,11 @@ Match handoff → 真 Preview／Validate → fresh Review → exactly-once Apply
   必須阻止 Import，且不得先 mutation 再顯示警告。
 - Review status、action items、Import enablement 與 backend apply admission 必須來自既有 shared
   interpretation validation，不新增 UI-only bypass、第二套 policy、owner、state machine 或 receipt。
-- Scope 限於 subject override publication 與 internal GDF final-review／apply consistency；不改 parser、
-  cache、source scope、文案／版面、label semantics、digest、rollback 或其他 Import workflow。
-- 假設使用者手測的是公開 GDF internal-events path；先以同一 fixture／相同 wizard transition
-  重現。若證據顯示是另一 source type，再停在 checkpoint 校準，而不泛化重寫。
+- Scope 限於 subject override publication，以及 internal／external GDF 已完成 event mapping 的
+  final-review／apply consistency；不改 parser、cache、source scope、文案／版面、label semantics、
+  digest、rollback 或其他 Import workflow。
+- 證據已確認失敗路徑是 GDF + external MAT carrier；修正仍需同時保留 embedded-events 與 BIDS
+  邊界，不泛化重寫其他 label policy。
 
 **Repair and focused validation**
 
@@ -196,7 +196,7 @@ Match handoff → 真 Preview／Validate → fresh Review → exactly-once Apply
 
 **Stop condition and UI authorization**
 
-只有「已確認的 subject + 完整 internal mapping」不再顯示 required decision 且成功 import，
+只有「已確認的 subject + 完整 internal／external mapping」不再顯示 required decision 且成功 import，
 以及未確認必要 decision 無法 apply 且無 mutation，兩者都通過時才 scope-complete。若需要新增
 owner／receipt、改 public label semantics 或超出上述 workflow，停為 checkpoint。這個 follow-up
 沿用 B1 已取得的可見 UI 修改授權；最終仍需新 exact-SHA Windows 真人手測與明確 merge approval。

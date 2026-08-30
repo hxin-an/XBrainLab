@@ -407,10 +407,14 @@ def build_interpretation_candidate(
             or explicit_internal_event_selection
             else {}
         )
-        if internal_event_review_context and not _internal_event_selection_is_complete(
-            internal_event_preview,
-            choices.get("internal_event_selection"),
-            choices.get("event_roles"),
+        if (
+            internal_event_review_context
+            and not active_label_carriers
+            and not _internal_event_selection_is_complete(
+                internal_event_preview,
+                choices.get("internal_event_selection"),
+                choices.get("event_roles"),
+            )
         ):
             confirmation_items.append(
                 "Confirm which events are trial anchors, class cues, responses, "

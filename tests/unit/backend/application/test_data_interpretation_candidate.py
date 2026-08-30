@@ -1025,6 +1025,100 @@ def test_build_interpretation_candidate_previews_mat_label_class_values(tmp_path
     assert "choices:class_map" not in candidate.recipe_trace
 
 
+def test_external_mat_decisions_do_not_require_internal_event_roles(
+    tmp_path,
+    monkeypatch,
+):
+    from scipy.io import savemat
+
+    label_path = tmp_path / "A01T.mat"
+    savemat(label_path, {"classlabel": [1, 2, 1, 2]})
+    monkeypatch.setattr(
+        data_interpretation_internal_events,
+        "_read_internal_events_for_file",
+        lambda _path: {
+            "events": {
+                "768": {"count": 4, "description": "trial start"},
+                "769": {"count": 2, "description": "left"},
+                "770": {"count": 2, "description": "right"},
+            }
+        },
+    )
+    scan = _scan(
+        source_kind="folder",
+        eeg_files=["/data/A01T.gdf"],
+        label_carriers=[str(label_path)],
+        label_carrier_sources={str(label_path): "auto"},
+        bids={"is_bids": False, "events_files": []},
+        metadata=[],
+    )
+    complete_choices = {
+        "label_carrier_choices": {
+            str(label_path): {
+                "label_field": "classlabel",
+                "anchor": "768",
+                "placement_method": "eeg_event",
+                "value_decisions": {
+                    "1": _class_value_decision("left hand"),
+                    "2": _class_value_decision("right hand"),
+                },
+            }
+        }
+    }
+
+    complete = build_interpretation_candidate(
+        candidate_id="candidate-complete-external-mat",
+        scan=scan,
+        choices=complete_choices,
+    )
+    partial = build_interpretation_candidate(
+        candidate_id="candidate-partial-external-mat",
+        scan=scan,
+        choices={
+            "label_carrier_choices": {
+                str(label_path): {
+                    **complete_choices["label_carrier_choices"][str(label_path)],
+                    "value_decisions": {
+                        "1": _class_value_decision("left hand"),
+                        "2": {
+                            "role": "stimulus",
+                            "keep_event": True,
+                            "use_as_class": True,
+                            "class_name": "",
+                        },
+                    },
+                }
+            }
+        },
+    )
+
+    generic_internal_confirmation = (
+        "Confirm which events are trial anchors, class cues, responses, artifacts, "
+        "or boundaries."
+    )
+    assert generic_internal_confirmation not in complete.confirmation_items
+    assert complete.confirmation_items == []
+    assert complete.blocked_reasons == []
+    assert (
+        validate_interpretation_candidate(
+            complete,
+            recheck_content_identity=False,
+        ).decision
+        == "safe"
+    )
+    assert partial.blocked_reasons == [
+        "Observed event values require complete role/keep/class decisions for "
+        "A01T.mat: 2."
+    ]
+    assert (
+        validate_interpretation_candidate(
+            partial,
+            recheck_content_identity=False,
+        ).decision
+        == "blocked"
+    )
+
+
 def test_build_interpretation_candidate_reviews_bids_interval_placement(tmp_path):
     events = tmp_path / "sub-01_task-mi_events.tsv"
     events.write_text(
