@@ -11,21 +11,16 @@ from threading import Event
 from typing import Any
 
 import pytest
-from PyQt6.QtCore import QPoint, QRect, Qt, QThreadPool, QTimer
+from PyQt6.QtCore import Qt, QThreadPool, QTimer
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import (
-    QApplication,
     QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
-    QFrame,
     QLabel,
     QLineEdit,
     QMessageBox,
-    QPushButton,
-    QStackedWidget,
-    QVBoxLayout,
     QWidget,
 )
 from pytestqt.exceptions import TimeoutError as QtBotTimeoutError
@@ -34,6 +29,30 @@ from scripts.dev.fetch_public_eeg_fixtures import (
     FIXTURE_GROUPS,
     fixture_file_is_valid,
     resolve_public_fixture_dir,
+)
+from tests.integration.ui.data_import_wizard_harness import (
+    DatasetHost as _DatasetHost,
+)
+from tests.integration.ui.data_import_wizard_harness import (
+    P300BidsWizardDriver,
+)
+from tests.integration.ui.data_import_wizard_harness import (
+    build_dataset_panel as _shared_build_dataset_panel,
+)
+from tests.integration.ui.data_import_wizard_harness import (
+    complete_bbci_internal_event_choices as _complete_bbci_internal_event_choices,
+)
+from tests.integration.ui.data_import_wizard_harness import (
+    complete_required_metadata as _complete_required_metadata,
+)
+from tests.integration.ui.data_import_wizard_harness import (
+    decision_value_text as _decision_value_text,
+)
+from tests.integration.ui.data_import_wizard_harness import (
+    replace_line_edit_text as _replace_line_edit_text,
+)
+from tests.integration.ui.data_import_wizard_harness import (
+    select_combo_data as _select_combo_data,
 )
 from tests.integration.ui.modal_helpers import visible_modal_dialog
 from XBrainLab.backend.application import (
@@ -48,8 +67,6 @@ from XBrainLab.backend.application import (
 )
 from XBrainLab.backend.application.owned_work import OwnedWorkPhase
 from XBrainLab.backend.application.state import ApplicationStateSnapshot
-from XBrainLab.backend.study import Study
-from XBrainLab.ui.application_capabilities import application_ui_runtime
 from XBrainLab.ui.async_command_runner import application_command_registry
 from XBrainLab.ui.dialogs.dataset.bids_subject_selection_dialog import (
     BidsSubjectSelectionDialog,
@@ -180,43 +197,12 @@ PUBLIC_FOLDER_ACCEPTANCE_CASES = (
 )
 
 
-class _RefreshProbe:
-    def update_panel(self) -> None:
-        pass
-
-    def mark_refresh_dirty(self) -> None:
-        pass
-
-
-class _DatasetHost(QWidget):
-    """Minimal real-Study host for the Dataset panel refresh contract."""
-
-    def __init__(self, study: Study) -> None:
-        super().__init__()
-        self.study = study
-        self.stack = QStackedWidget(self)
-        self.dataset_panel: DatasetPanel | None = None
-        self.preprocess_panel = _RefreshProbe()
-        self.training_panel = _RefreshProbe()
-        self.evaluation_panel = _RefreshProbe()
-        self.visualization_panel = _RefreshProbe()
-        self.info_refresh_count = 0
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self.stack)
-
-    def update_info_panel(self) -> None:
-        self.info_refresh_count += 1
-
-
 @dataclass
 class _WizardDriver:
     timer: QTimer
     source_picker: str = "files"
     skip_labels: bool = False
     resolve_bids_values: bool = False
-    resolve_openneuro_values: bool = False
     resolve_openneuro_trial_types: bool = False
     resolve_bbci_internal_events: bool = False
     expect_blocked: bool = False
@@ -230,10 +216,6 @@ class _WizardDriver:
     heartbeat_count: int = 0
     last_heartbeat_at: float = field(default_factory=time.monotonic)
     max_heartbeat_gap_seconds: float = 0.0
-    openneuro_values_started: bool = False
-    openneuro_setup_stage: int = 0
-    openneuro_value_index: int = 0
-    openneuro_value_stage: int = 0
     last_surface_key: tuple[int, int] | None = None
     last_heartbeat_context: str = "driver startup"
     max_heartbeat_gap_context: str = ""
@@ -292,80 +274,7 @@ def _require_manifest_group(group_name: str) -> None:
 
 
 def _build_dataset_panel(qtbot: Any) -> tuple[_DatasetHost, DatasetPanel, Any]:
-    host = _DatasetHost(Study())
-    qtbot.addWidget(host)
-    controller = host.study.get_controller("dataset")
-    panel = DatasetPanel(controller=controller, parent=host)
-    host.dataset_panel = panel
-    host.stack.addWidget(panel)
-    host.resize(1180, 760)
-    host.show()
-    panel.update_panel()
-    qtbot.wait(0)
-
-    runtime = application_ui_runtime(panel)
-    assert runtime is not None
-    return host, panel, runtime
-
-
-def _select_combo_data(combo: QComboBox, value: str) -> None:
-    index = combo.findData(value)
-    if index < 0:
-        raise AssertionError(f"{combo.objectName()} does not offer {value!r}.")
-    combo.setFocus()
-    QTEST.mouseClick(combo, Qt.MouseButton.LeftButton)
-    QTEST.keyClick(combo, Qt.Key.Key_Home)
-    for _ in range(index):
-        QTEST.keyClick(combo, Qt.Key.Key_Down)
-    QTEST.keyClick(combo, Qt.Key.Key_Return)
-    combo.hidePopup()
-    QApplication.processEvents()
-    if combo.currentData() != value:
-        raise AssertionError(
-            f"{combo.objectName()} selected {combo.currentData()!r}, expected {value!r}."
-        )
-
-
-def _replace_line_edit_text(editor: QLineEdit, value: str) -> None:
-    QTEST.mouseClick(editor, Qt.MouseButton.LeftButton)
-    QTEST.keyClick(
-        editor,
-        Qt.Key.Key_A,
-        Qt.KeyboardModifier.ControlModifier,
-    )
-    QTEST.keyClicks(editor, value)
-
-
-def _decision_value_text(label: QLabel) -> str:
-    """Read the semantic value even when the visible label is safely elided."""
-    return str(label.accessibleName() or label.text())
-
-
-def _capture_teacher_ui(
-    dialog: DataInterpretationPreviewDialog,
-    filename: str,
-    *,
-    widget: QWidget | None = None,
-) -> None:
-    raw_output_dir = os.environ.get("XBRAINLAB_TEACHER_UI_ARTIFACT_DIR", "").strip()
-    if not raw_output_dir:
-        return
-    output_dir = Path(raw_output_dir).expanduser().resolve()
-    output_dir.mkdir(parents=True, exist_ok=True)
-    QApplication.processEvents()
-    target = widget or dialog
-    if widget is None:
-        pixmap = target.grab()
-    else:
-        target_rect = QRect(target.mapTo(dialog, QPoint(0, 0)), target.size())
-        if not dialog.rect().contains(target_rect):
-            raise AssertionError(
-                f"UI artifact target is not fully visible in the dialog: {filename}"
-            )
-        pixmap = dialog.grab(target_rect)
-    output_path = output_dir / filename
-    if pixmap.isNull() or not pixmap.save(str(output_path), "PNG"):
-        raise AssertionError(f"Failed to capture current UI artifact: {output_path}")
+    return _shared_build_dataset_panel(qtbot)
 
 
 def _complete_bids_event_values(dialog: DataInterpretationPreviewDialog) -> None:
@@ -471,223 +380,6 @@ def _complete_openneuro_trial_types(
         )
 
 
-def _advance_openneuro_event_values(
-    dialog: DataInterpretationPreviewDialog,
-    driver: _WizardDriver,
-) -> bool:
-    """Perform one human-scale OpenNeuro control action per timer callback."""
-    if dialog.label_source_mode_combo.currentData() != "loaded_label_files":
-        _select_combo_data(dialog.label_source_mode_combo, "loaded_label_files")
-    editor = dialog.event_value_editor
-    if editor is None or not editor.isVisibleTo(dialog):
-        raise AssertionError("OpenNeuro Match Labels did not expose value decisions.")
-    expected = {
-        "ignore",
-        "noise",
-        "noise_with_reponse",
-        "oddball",
-        "oddball_with_reponse",
-        "response",
-        "standard",
-        "standard_with_reponse",
-    }
-    if (
-        not driver.openneuro_values_started
-        and set(editor.unresolved_values()) != expected
-    ):
-        raise AssertionError(
-            "OpenNeuro value preview did not refresh to the selected `value` "
-            f"column: {editor.unresolved_values()!r}"
-        )
-    driver.openneuro_values_started = True
-    values = [
-        _decision_value_text(label)
-        for label in editor.findChildren(QLabel)
-        if label.objectName() == "DataImportValueDecisionValue"
-    ]
-    role_selectors = editor.findChildren(QComboBox, "EventValueRoleSelector")
-    use_selectors = editor.findChildren(QComboBox, "EventValueUseSelector")
-    class_editors = editor.findChildren(QLineEdit, "EventValueClassNameEditor")
-    if not (
-        len(values)
-        == len(role_selectors)
-        == len(use_selectors)
-        == len(class_editors)
-        == len(expected)
-    ):
-        raise AssertionError(
-            "OpenNeuro value controls are incomplete: "
-            f"values={values!r}, roles={len(role_selectors)}, "
-            f"uses={len(use_selectors)}, classes={len(class_editors)}."
-        )
-    decisions = {
-        raw_value: (
-            (
-                "response",
-                "ignore",
-                "",
-            )
-            if raw_value == "response"
-            else (
-                "system",
-                "ignore",
-                "",
-            )
-            if raw_value == "ignore"
-            else (
-                "stimulus",
-                "class",
-                raw_value.replace("_with_reponse", ""),
-            )
-        )
-        for raw_value in expected
-    }
-    rows = list(
-        zip(
-            values,
-            role_selectors,
-            use_selectors,
-            class_editors,
-            strict=True,
-        )
-    )
-    if driver.openneuro_value_index >= len(rows):
-        if not editor.is_complete():
-            raise AssertionError(
-                "OpenNeuro event-value decisions remain incomplete: "
-                f"{editor.unresolved_values()!r}"
-            )
-        scroll_content = dialog.scroll_area.widget()
-        if scroll_content is None:
-            raise AssertionError("Match Labels scroll content is unavailable.")
-        editor_top = editor.mapTo(scroll_content, QPoint(0, 0)).y()
-        vertical_scrollbar = dialog.scroll_area.verticalScrollBar()
-        if vertical_scrollbar is None:
-            raise AssertionError("Match Labels vertical scrollbar is unavailable.")
-        vertical_scrollbar.setValue(max(editor_top - 96, 0))
-        QApplication.processEvents()
-        _capture_teacher_ui(
-            dialog,
-            "openneuro-match-labels-dialog.png",
-        )
-        value_table = editor.findChild(QFrame, "DataImportValueDecisionTable")
-        if value_table is None:
-            raise AssertionError("OpenNeuro event-value table is unavailable.")
-        _capture_teacher_ui(
-            dialog,
-            "openneuro-event-value-controls.png",
-            widget=value_table,
-        )
-        return True
-
-    raw_value, role_selector, use_selector, class_editor = rows[
-        driver.openneuro_value_index
-    ]
-    if raw_value not in decisions:
-        raise AssertionError(f"Unexpected OpenNeuro event value: {raw_value}")
-    role, use, class_name = decisions[raw_value]
-    dialog.scroll_area.ensureWidgetVisible(role_selector)
-    QApplication.processEvents()
-    if (
-        not role_selector.isEnabled()
-        or not use_selector.isEnabled()
-        or role_selector.size().isEmpty()
-        or use_selector.size().isEmpty()
-    ):
-        raise AssertionError(f"OpenNeuro controls are not operable for {raw_value!r}.")
-
-    if driver.openneuro_value_stage == 0:
-        _select_combo_data(role_selector, role)
-        driver.openneuro_value_stage = 1
-        return False
-    if driver.openneuro_value_stage == 1:
-        _select_combo_data(use_selector, use)
-        driver.openneuro_value_stage = 2
-        return False
-    if class_name:
-        if class_editor.isReadOnly() or class_editor.size().isEmpty():
-            raise AssertionError(
-                f"Class-name editor is not operable for {raw_value!r}."
-            )
-        _replace_line_edit_text(class_editor, class_name)
-        if class_editor.text() != class_name:
-            raise AssertionError(
-                f"Class name did not retain the typed value for {raw_value!r}."
-            )
-    driver.openneuro_value_index += 1
-    driver.openneuro_value_stage = 0
-    return False
-
-
-def _complete_required_metadata(dialog: DataInterpretationPreviewDialog) -> None:
-    for index in range(dialog.file_tree.topLevelItemCount()):
-        item = dialog.file_tree.topLevelItem(index)
-        if item is None:
-            continue
-        if not item.text(1).strip():
-            item.setText(1, f"subject-{index + 1:02d}")
-        if not item.text(3).strip():
-            item.setText(3, "rest")
-    missing = dialog._metadata_required_missing_fields(
-        dialog._metadata_completion_counts()[1]
-    )
-    if missing:
-        raise AssertionError(f"Required metadata remains incomplete: {missing!r}")
-
-
-def _complete_bbci_internal_event_choices(
-    dialog: DataInterpretationPreviewDialog,
-) -> None:
-    """Use the visible embedded-event controls for the BBCI GDF review."""
-
-    def _move_event(code: str, action: str) -> None:
-        button = next(
-            (
-                candidate
-                for candidate in dialog.findChildren(QPushButton)
-                if candidate.objectName() == "DataImportInlineAction"
-                and candidate.property("event_code") == code
-                and candidate.text() == action
-            ),
-            None,
-        )
-        if button is None:
-            raise AssertionError(f"Missing {action!r} control for GDF {code}.")
-        QTEST.mouseClick(button, Qt.MouseButton.LeftButton)
-        QApplication.processEvents()
-
-    # The GDF preview suggests 768/781/785.  This is the explicit user choice:
-    # train on 769/770 and keep all remaining observed events out of classes.
-    for code in ("768", "781", "785"):
-        _move_event(code, "Exclude from training")
-    for code in ("769", "770"):
-        _move_event(code, "Use for training")
-
-    table = dialog.findChild(QFrame, "DataImportInternalLabelsTable")
-    if table is None:
-        raise AssertionError("BBCI training-label table is not visible.")
-    selectors = [
-        selector for selector in table.findChildren(QComboBox) if selector.isEditable()
-    ]
-    if len(selectors) != 2:
-        raise AssertionError(
-            f"Expected two visible BBCI class-name controls, found {len(selectors)}."
-        )
-    for selector, class_name in zip(selectors, ("left", "right"), strict=True):
-        selector.setFocus()
-        QTEST.mouseClick(selector, Qt.MouseButton.LeftButton)
-        QTEST.keyClick(
-            selector,
-            Qt.Key.Key_A,
-            Qt.KeyboardModifier.ControlModifier,
-        )
-        QTEST.keyClicks(selector, class_name)
-    QApplication.processEvents()
-
-    if not dialog.next_button.isEnabled():
-        raise AssertionError("Complete BBCI Match Labels did not enable Next.")
-
-
 def _visible_step_text(dialog: DataInterpretationPreviewDialog) -> str:
     current = dialog.step_stack.currentWidget()
     if current is None:
@@ -729,7 +421,6 @@ def _start_wizard_driver(
     source_picker: str = "files",
     skip_labels: bool = False,
     resolve_bids_values: bool = False,
-    resolve_openneuro_values: bool = False,
     resolve_openneuro_trial_types: bool = False,
     resolve_bbci_internal_events: bool = False,
     expect_blocked: bool = False,
@@ -740,7 +431,6 @@ def _start_wizard_driver(
         source_picker=source_picker,
         skip_labels=skip_labels,
         resolve_bids_values=resolve_bids_values,
-        resolve_openneuro_values=resolve_openneuro_values,
         resolve_openneuro_trial_types=resolve_openneuro_trial_types,
         resolve_bbci_internal_events=resolve_bbci_internal_events,
         expect_blocked=expect_blocked,
@@ -769,9 +459,6 @@ def _start_wizard_driver(
             driver.phase,
             driver.dialog_count,
             driver.awaiting_label_field_refresh,
-            driver.openneuro_setup_stage,
-            driver.openneuro_value_index,
-            driver.openneuro_value_stage,
             type(modal).__name__ if modal is not None else "None",
         )
         if progress_key != driver.last_progress_key:
@@ -791,9 +478,6 @@ def _start_wizard_driver(
                 f"{stall_limit:.0f} seconds: "
                 f"phase={driver.phase}; dialog_count={driver.dialog_count}; "
                 f"awaiting_refresh={driver.awaiting_label_field_refresh}; "
-                f"openneuro_setup_stage={driver.openneuro_setup_stage}; "
-                f"openneuro_row={driver.openneuro_value_index}; "
-                f"openneuro_stage={driver.openneuro_value_stage}; "
                 f"modal={type(modal).__name__ if modal is not None else 'None'}; "
                 f"trace={driver.trace!r}",
                 modal,
@@ -803,8 +487,6 @@ def _start_wizard_driver(
             f"phase={driver.phase}; dialog_count={driver.dialog_count}; "
             f"modal={type(modal).__name__ if modal is not None else 'None'}; "
             f"last_trace={driver.trace[-1] if driver.trace else 'none'}; "
-            f"openneuro_row={driver.openneuro_value_index}; "
-            f"openneuro_stage={driver.openneuro_value_stage}"
         )
         try:
             if isinstance(modal, EegSourceChooserDialog):
@@ -866,10 +548,9 @@ def _start_wizard_driver(
                 if driver.resolve_bbci_internal_events:
                     driver.bbci_review_decisions.append(str(modal.decision))
             elif modal is not driver.dialog:
-                if (
-                    driver.resolve_openneuro_values
-                    or driver.resolve_openneuro_trial_types
-                ) and (driver.phase == 3 and driver.awaiting_label_field_refresh):
+                if (driver.resolve_openneuro_trial_types) and (
+                    driver.phase == 3 and driver.awaiting_label_field_refresh
+                ):
                     driver.dialog = modal
                     driver.dialog_count += 1
                     driver.awaiting_label_field_refresh = False
@@ -882,10 +563,7 @@ def _start_wizard_driver(
                     and (
                         driver.dialog_count == 1
                         or (
-                            (
-                                driver.resolve_openneuro_values
-                                or driver.resolve_openneuro_trial_types
-                            )
+                            (driver.resolve_openneuro_trial_types)
                             and driver.dialog_count == 2
                             and not driver.awaiting_label_field_refresh
                         )
@@ -912,7 +590,6 @@ def _start_wizard_driver(
                         driver.trace.append("fresh BBCI review")
                     elif (
                         driver.resolve_bids_values
-                        or driver.resolve_openneuro_values
                         or driver.resolve_openneuro_trial_types
                     ):
                         driver.trace.append("fresh BIDS review")
@@ -994,37 +671,6 @@ def _start_wizard_driver(
                         return
                     _complete_openneuro_trial_types(modal)
                     driver.trace.append("review OpenNeuro trial_type values")
-                if (
-                    driver.resolve_openneuro_values
-                    and driver.dialog_count == 1
-                    and not driver.awaiting_label_field_refresh
-                ):
-                    if driver.openneuro_setup_stage == 0:
-                        if modal.rule_label_field_combo.currentData() != "value":
-                            _fail(
-                                "OpenNeuro value is not the recommended label field.",
-                                modal,
-                            )
-                            return
-                        driver.trace.append("accept recommended label field value")
-                        driver.openneuro_setup_stage = 1
-                        return
-                    if driver.openneuro_setup_stage == 1:
-                        placement_button = modal.placement_method_buttons["time_field"]
-                        QTEST.mouseClick(
-                            placement_button,
-                            Qt.MouseButton.LeftButton,
-                        )
-                        driver.openneuro_setup_stage = 2
-                        return
-                    if driver.openneuro_setup_stage == 2:
-                        _select_combo_data(modal.time_field_combo, "onset")
-                        driver.openneuro_setup_stage = 3
-                        return
-                if driver.resolve_openneuro_values:
-                    if not _advance_openneuro_event_values(modal, driver):
-                        return
-                    driver.trace.append("review OpenNeuro event values")
                 if driver.resolve_bids_values:
                     _complete_bids_event_values(modal)
                     driver.trace.append("review BIDS event values")
@@ -1058,11 +704,6 @@ def _start_wizard_driver(
                 QTEST.mouseClick(modal.cancel_button, Qt.MouseButton.LeftButton)
                 return
 
-            if driver.resolve_openneuro_values:
-                _capture_teacher_ui(
-                    modal,
-                    "openneuro-review-and-import.png",
-                )
             if not modal.apply_button.isEnabled():
                 _fail(
                     "Reviewed import did not enable Apply: "
@@ -1596,10 +1237,8 @@ def test_openneuro_p300_import_bids_uses_recommended_value_field_and_applies(
     )
     _host, panel, runtime = _build_dataset_panel(qtbot)
 
-    driver = _start_wizard_driver(
-        resolve_openneuro_values=True,
-        source_picker="folder",
-    )
+    driver = P300BidsWizardDriver(visible_modal_dialog)
+    driver.start()
     QTEST.mouseClick(panel.sidebar.import_btn, Qt.MouseButton.LeftButton)
     _wait_for_applied_interpretation(
         qtbot,

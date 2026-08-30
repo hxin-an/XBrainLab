@@ -20,12 +20,16 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QStackedWidget,
-    QVBoxLayout,
     QWidget,
 )
 from pytestqt.exceptions import TimeoutError as QtBotTimeoutError
 
+from tests.integration.ui.data_import_wizard_harness import (
+    DatasetHost as _DatasetHost,
+)
+from tests.integration.ui.data_import_wizard_harness import (
+    SuggestedLabelWizardDriver,
+)
 from tests.integration.ui.modal_helpers import visible_modal_dialog
 from XBrainLab.backend.study import Study
 from XBrainLab.ui.application_capabilities import application_ui_runtime
@@ -51,35 +55,6 @@ EXPECTED_TARGET_EVENT_CODES = {"769", "770", "771", "772"}
 pytestmark = pytest.mark.usefixtures("allow_real_modals")
 
 
-class _RefreshProbe:
-    def update_panel(self) -> None:
-        pass
-
-    def mark_refresh_dirty(self) -> None:
-        pass
-
-
-class _DatasetHost(QWidget):
-    """Small real-Study host satisfying the shared UI refresh contract."""
-
-    def __init__(self, study: Study) -> None:
-        super().__init__()
-        self.study = study
-        self.stack = QStackedWidget(self)
-        self.preprocess_panel = _RefreshProbe()
-        self.training_panel = _RefreshProbe()
-        self.evaluation_panel = _RefreshProbe()
-        self.visualization_panel = _RefreshProbe()
-        self.info_refresh_count = 0
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self.stack)
-
-    def update_info_panel(self) -> None:
-        self.info_refresh_count += 1
-
-
 @dataclass
 class _WizardDriver:
     timer: QTimer
@@ -97,19 +72,6 @@ class _LabelSourceLifecycleDriver:
     dialogs: list[DataInterpretationPreviewDialog] = field(default_factory=list)
     trace: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
-
-
-@dataclass
-class _AutoDetectedLabelDriver:
-    """Drive the ordinary multi-GDF flow without manually repairing defaults."""
-
-    timer: QTimer
-    phase: int = 0
-    dialog: DataInterpretationPreviewDialog | None = None
-    dialogs: list[DataInterpretationPreviewDialog] = field(default_factory=list)
-    trace: list[str] = field(default_factory=list)
-    errors: list[str] = field(default_factory=list)
-    unexpected_messages: list[str] = field(default_factory=list)
 
 
 def _select_combo_data(combo: QComboBox, value: str) -> None:
@@ -373,7 +335,7 @@ def _start_wizard_driver(*, save_recipe: bool) -> _WizardDriver:
 
 def _wait_for_interpretation_publication(
     qtbot: Any,
-    driver: _WizardDriver,
+    driver: Any,
     runtime: Any,
     *,
     timeout: int,
@@ -396,79 +358,13 @@ def _wait_for_interpretation_publication(
         thread_pool = QThreadPool.globalInstance()
         pytest.fail(
             "Data Import walkthrough stalled before publication: "
-            f"driver_phase={driver.phase}, dialogs={len(driver.dialogs)}, "
-            f"trace={driver.trace!r}, errors={driver.errors!r}, "
+            f"driver_phase={driver.phase}, dialogs={len(getattr(driver, 'dialogs', []))}, "
+            f"trace={getattr(driver, 'trace', [])!r}, errors={driver.errors!r}, "
             f"active_modal={modal_name}, step_index={step_index}, "
             f"active_commands={application_command_registry().active_count()}, "
             f"active_threads={thread_pool.activeThreadCount()}, "
             f"max_threads={thread_pool.maxThreadCount()}."
         )
-
-
-def _start_auto_detected_label_driver() -> _AutoDetectedLabelDriver:
-    driver = _AutoDetectedLabelDriver(timer=QTimer())
-    driver.timer.setInterval(5)
-
-    def _fail(message: str, modal: QWidget | None) -> None:
-        driver.errors.append(message)
-        driver.timer.stop()
-        if isinstance(modal, QDialog):
-            modal.reject()
-
-    def _poll() -> None:
-        modal = visible_modal_dialog()
-        try:
-            if _accept_eeg_source_chooser(modal):
-                return
-            if isinstance(modal, QMessageBox):
-                driver.unexpected_messages.append(
-                    f"{modal.windowTitle()}: {modal.text()}"
-                )
-                _fail(driver.unexpected_messages[-1], modal)
-                return
-            if not isinstance(modal, DataInterpretationPreviewDialog):
-                return
-            driver.dialog = modal
-            if modal not in driver.dialogs:
-                driver.dialogs.append(modal)
-            if driver.phase < 4:
-                if modal.step_stack.currentIndex() != driver.phase:
-                    return
-                if driver.phase == 2:
-                    for row in range(modal.file_tree.topLevelItemCount()):
-                        item = modal.file_tree.topLevelItem(row)
-                        if item is not None:
-                            item.setText(1, Path(item.text(0)).stem)
-                if not modal.next_button.isEnabled():
-                    _fail(
-                        f"Next is disabled at {modal._step_titles[driver.phase]}",
-                        modal,
-                    )
-                    return
-                driver.trace.append(modal._step_titles[driver.phase])
-                driver.phase += 1
-                QTest.mouseClick(modal.next_button, Qt.MouseButton.LeftButton)
-                return
-            if modal.step_stack.currentIndex() != 4:
-                return
-            if not modal.apply_button.isEnabled():
-                _fail(
-                    "Confirm and Import is disabled for suggested defaults: "
-                    f"facts={modal._submission_facts()!r}; "
-                    f"choices={modal.get_result().get('choices')!r}; "
-                    f"placement={modal._review_label_placement_text()!r}",
-                    modal,
-                )
-                return
-            driver.trace.append("Confirm and Import")
-            driver.phase = 5
-            QTest.mouseClick(modal.apply_button, Qt.MouseButton.LeftButton)
-        except Exception as exc:
-            _fail(f"{type(exc).__name__}: {exc}", modal)
-
-    driver.timer.timeout.connect(_poll)
-    driver.timer.start()
-    return driver
 
 
 def _visible_label_source_titles(
@@ -900,7 +796,8 @@ def test_multi_gdf_auto_detected_labels_import_without_blocked_dialog(
 
     runtime = application_ui_runtime(panel)
     assert runtime is not None
-    driver = _start_auto_detected_label_driver()
+    driver = SuggestedLabelWizardDriver(visible_modal_dialog)
+    driver.start()
     QTest.mouseClick(panel.sidebar.import_btn, Qt.MouseButton.LeftButton)
 
     _wait_for_interpretation_publication(
@@ -909,7 +806,7 @@ def test_multi_gdf_auto_detected_labels_import_without_blocked_dialog(
         runtime,
         timeout=60_000,
     )
-    driver.timer.stop()
+    driver.stop()
 
     assert driver.errors == []
     assert driver.unexpected_messages == []
