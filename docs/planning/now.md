@@ -162,8 +162,11 @@ Import button 經 DatasetActionHandler／Coordinator、ApplicationService 與 fr
 只建立 exact commit、重跑 applicable handoff／source-diverse／CI evidence，再交付 Windows 真人手測。
 public BIDS wizard matrix 的 single-dialog assertion 已確認為 test-harness drift，現改以相同 initial
 choices 驗證 Match handoff、真 Preview／Validate 與 fresh Review；production 無新增修正。完整 handoff
-manifest 另被 main 既存、diff 外的 Basedpyright diagnostics 擋住，因此本 slice 維持 checkpoint，
-不在此 PR 修 unrelated owner，也不退回 stale-confirm 保護或擴張到 parser／backend policy。
+manifest 另被 main 既存、diff 外的 Basedpyright diagnostics 擋住，因此本 slice 維持 checkpoint。
+exact-head CI 的 `linux-integration-ui` 另揭露既有 BIDS value-decision integration test 仍假設舊 dialog
+可直接 Apply；本機前三個 collected nodes 已重現同一 assertion。下一步只把該直接相關測試校準為
+Match handoff → 真 Preview／Validate → fresh Review → exactly-once Apply，再重跑 exact CI；不在此 PR
+修 unrelated owner，也不退回 stale-confirm 保護或擴張到 parser／backend policy。
 
 **Outcome, scope, and non-goals**
 
