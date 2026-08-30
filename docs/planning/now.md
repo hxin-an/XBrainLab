@@ -17,7 +17,20 @@ PR #73 已以 exact head `4dda38269e443ecb683c40280d586eb9746ba11d` 通過使用
 
 PR #74 已以 exact head `9b29f5c6799eea83758ae6906e68419858aa60f9` 通過使用者手測，並以
 merge commit `60c53727ced15da910a24d341ab2bb67883633e8` 合併；A1 worktree 與本機／
-遠端 task branch 已清理。Lane A 的下一個 slice 是 A2。
+遠端 task branch 已清理。PR #78 已將 A2 evaluator report contract v11→v12 以
+exact head `1804217f5856aa3b658bc114a6194e065eb35c52` 合併，merge commit 為
+`8e21de1175b3d0cc71ea1a0bc0331a9e54066ab2`；same-source 81-case outcome 與 gate 未變。
+
+C1 candidate `82ad9545644d29a550a2b41202e7bab2379a0b88` 保留完整 SHA、scope、
+SourceFileBoundary、rollback 與 label／event semantics，但 WSL 及 native Windows 都未達預先
+定義的效能門檻；候選已關閉，沒有 PR，也不宣稱 Import 已加速。下一個 Import
+optimization 必須從新的 Windows product-equivalent profile 另立 plan。
+
+PR #75 的 B2 product candidate 已 freeze 於
+`82c3e51cf705d9573f0f305a54ed28c649d50e67`；30 個 focused tests、33 個 async teardown tests、
+9-state capture 與 independent review 通過。但 exact-head GitHub required check
+`linux-integration-rest` 連續兩次在無 diff overlap 的 `assistant-runtime` domain 超過 1200 秒，
+因此 B2 現在是 CI checkpoint，尚未可交付人工驗收。
 
 本 campaign 要在不新增 workflow owner、不建立第二套 command／state truth 的前提下，交付：
 
@@ -46,14 +59,13 @@ merge commit `60c53727ced15da910a24d341ab2bb67883633e8` 合併；A1 worktree 與
 - **Cross user-simulator**：非作者 worker 用 product-equivalent scenario 交叉驗證。這只是第二層
   保險，不取代 exact-SHA Windows 真人手測。
 
-本 wave 明確允許 `main + 3 implementer worktrees + 1 ephemeral reviewer worktree`。三個 worker
-分別擁有 A2、B2 與 C1；任一 worker freeze 後釋放 agent slot，再由非作者 reviewer／user-simulator
-進場。一個 PR 推送並 freeze 後，可移除本機 worktree、保留 branch 等待 CI／手測；需修正時才以
-原 exact branch 重建。Worker 不得以 detached／歷史 branch 當 base，不得自動 cherry-pick 其他 lane。
+現階段明確允許 `main + B2 frozen product worktree + G1 gate-repair worktree`，再加一個
+ephemeral reviewer worktree。A2 與 C1 worktree 已收旗。G1 合併後先清理其 worktree，再將
+B2 cleanly rebase 到新 `main`；不用 cherry-pick 將 gate 修復塞進 product branch。
 
 ## Lane A — comprehensive Assistant cleanup
 
-### A2. Evaluator evidence contract cleanup
+### A2. Evaluator evidence contract cleanup (completed in PR #78)
 
 A1 完成並合併後才開始 A2。將模糊的 top-level `summary`、`precision_summary`、
 `clarification_summary` 收旂為：
@@ -70,6 +82,40 @@ docs／walkthrough readers；不保留會再產生混淆的 legacy `summary`。C
 generation policy、promotion gate 一律不變。Consumer migration test 必須對 v11 keys fail closed，
 並對 v12 的各自 denominator／inventory／gate 作 exact assertions。
 以同一 source 重生 artifact，除 schema path 外，每個 case outcome 與 gate 必須與 baseline 一致。
+
+## Gate repair G1 — Assistant runtime domain isolation
+
+**Problem and evidence**
+
+PR #75 old head `0803d84bdc4e184d5877a1a8aba4a1c274230d59` 與 rebased head
+`82c3e51cf705d9573f0f305a54ed28c649d50e67` 的兩次 GitHub run，都在
+`tests/integration/assistant_runtime` 的第一個 domain process 超過 1200 秒；前一次 log
+顯示 16 個 forked Qt lifecycle cases 只產生 13 個 dots，其後所有 integration domains 皆完成。
+B2 diff 與 Assistant runtime／test runner 為零 overlap。同一 exact B2 source 在 WSL 以 CI 環境旗標
+連續 5 輪通過 80／80 cases，每輪約 12 秒；移除重複的 per-test fork 後同樣通過
+16／16。直前 PR #78 的同一 required shard 可在 4m39s 成功，證據指向 GitHub Linux
+hosted runner 上的間歇 Qt／`pytest-forked` process-exit lifecycle，不是 B2 defect。
+
+**Outcome, scope, and non-goals**
+
+- 保留 `scripts/dev/run_tests.py` 已有的每 domain owned process、`prlimit --core=0`、
+  completion attestation、1200-second hard timeout、JUnit 與 coverage。
+- 只對已有 dedicated `assistant-runtime` domain 停用內層 `pytest-forked` plugin，讓 16 個案例
+  在該獨立子程序中共用一個 Qt event-loop lifecycle；直接執行 test file 的現有隔離仍保留。
+- 不改產品碼、Assistant lifecycle semantics、test assertions、通過條件、skip policy 或 timeout；
+  不加 rerun，也不為 CI 建立新 control plane。Owner delta `0`。UI 修改不適用。
+
+**Repair, focused validation, and stop condition**
+
+1. 先用 runner unit test 固定：只有 `assistant-runtime` shard argv 含 `-p no:forked`，其他
+   shard argv、attestation expected args、JUnit／coverage 不變。
+2. 跑 runner focused tests，並在 dedicated domain 中連續執行至少 5 輪 Assistant runtime tests；
+   每輪必須 16／16，且 teardown assertions 不能弱化。
+3. 非作者 test-quality reviewer 審 frozen SHA，確認這是移除重複 process boundary，不是
+   隱藏 hang。推送 test／CI-only PR，exact-head required checks 必須全部 completed／success。
+4. G1 若仍在同一 domain 超時，停為 checkpoint 並收集 per-test identification；不加長
+   timeout。G1 成功則使用 tests／CI exemption 合併，清理 worktree，然後 rebase B2 並重跑
+   exact-head evidence。
 
 ## Lane B — product correctness and training
 
@@ -153,7 +199,7 @@ Training Settings／history 手測。
 
 ## Lane C — BIDS Import latency
 
-### C1. Reuse admitted canonical path identity
+### C1. Reuse admitted canonical path identity (closed below threshold)
 
 **Problem and evidence**
 
@@ -205,9 +251,8 @@ implementation 單次完整 SHA-256 約 `0.32s`，Review 與 Apply 合計上限�
 
 ## Progression, review, and merge gates
 
-1. PR #74 merge／cleanup 與本 planning PR 合併後，從同一 exact `main` 同步 B2，並新建 A2、C1
-   worktrees。三條 lane 可以並行；新增 shared-file conflict 時由 root 串行，worker 不自行解決
-   scope overlap。
+1. G1 先在 exact `8e21de11` main 上獨立修復 required-check lifecycle；合併並清理後，
+   B2 才 rebase 到新 main、重生 capture／focused evidence 並觸發新 exact-head CI。
 2. 每個 worker 先建 characterization／regression baseline，再施工。作者 focused tests 通過後 freeze
    exact head；非作者 user-simulator 交叉跑 user-like path，然後 independent reviewer 才能審查。
 3. Reviewer finding 只有重現本 scope contract、直接 safety／data loss，或使證據無法支撐本次
@@ -226,11 +271,10 @@ implementation 單次完整 SHA-256 約 `0.32s`，Review 與 Apply 合計上限�
 
 下列條件全部成立才能宣稱本 campaign 完成：
 
-- A2 沒有 ambiguous legacy summary consumer，same-source case outcome／gate 未變。
+- G1 已在不跳過案例、不加長 timeout 的情況下讓 exact-head required CI 穩定通過。
 - B2–B5 各自的 observable outcome、focused evidence、applicable source-diverse gate、exact-head CI、
   人工驗收與 merge approval 完成。
-- C1 只在 Windows 與 WSL 同 workload 都達性能門檻、資料語意／digest／rollback 未變、exact-head
-  CI 與人工驗收完成後合併；否則以 checkpoint／closed candidate 收尾，不宣稱產品加速。
+- A2 與 C1 的已記錄 outcome 不被後續 branch 逆轉；不將 C1 關閉候選宣稱為產品加速。
 - 所有 merged／abandoned candidate 已有明確記錄；本機再次只留 `main`，root
   `settings.json` 未被 stage／commit／revert／overwrite，並提供最終 Git worktree／branch／SHA／status
   inventory。

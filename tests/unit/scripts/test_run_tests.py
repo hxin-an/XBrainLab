@@ -71,6 +71,55 @@ def test_run_shards_executes_every_declared_domain(monkeypatch) -> None:
     ]
 
 
+def test_assistant_runtime_shard_disables_only_inner_forked_plugin(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    calls: list[tuple[str, ...]] = []
+    junit_dir = tmp_path / "junit"
+    monkeypatch.setenv("XBL_TEST_JUNIT_DIR", str(junit_dir))
+    monkeypatch.setenv("XBL_TEST_COVERAGE", "1")
+
+    monkeypatch.setattr(
+        run_tests,
+        "run_pytest",
+        lambda args: calls.append(tuple(args)) or 0,
+    )
+
+    run_tests._run_shards(
+        gate_name="Linux CI linux-integration-rest",
+        shards=(
+            ("assistant-runtime", ("tests/integration/assistant_runtime",)),
+            ("agent-contracts", ("tests/integration/agent",)),
+        ),
+    )
+
+    assert calls == [
+        (
+            "--capture=sys",
+            "tests/integration/assistant_runtime",
+            "-q",
+            "-p",
+            "no:forked",
+            f"--junitxml={junit_dir / 'linux-ci-linux-integration-rest-assistant-runtime.xml'}",
+            "--cov=XBrainLab",
+            "--cov-append",
+            "--cov-report=",
+            "--cov-fail-under=0",
+        ),
+        (
+            "--capture=sys",
+            "tests/integration/agent",
+            "-q",
+            f"--junitxml={junit_dir / 'linux-ci-linux-integration-rest-agent-contracts.xml'}",
+            "--cov=XBrainLab",
+            "--cov-append",
+            "--cov-report=",
+            "--cov-fail-under=0",
+        ),
+    ]
+
+
 def test_generic_runner_explicitly_allows_only_optional_public_fixture_skips() -> None:
     result_path = Path("build/tmp/example-result.json")
 
