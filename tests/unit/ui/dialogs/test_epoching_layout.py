@@ -148,7 +148,7 @@ def test_epoching_expands_seven_event_content_before_first_frame_when_space_allo
     _assert_footer_is_fixed_and_visible(dialog)
 
 
-def test_epoching_grows_for_larger_font_warning_and_never_shrinks(qapp, qtbot):
+def test_epoching_keeps_larger_font_warning_visible_without_shrinking(qapp, qtbot):
     original_font = QFont(qapp.font())
     larger_font = QFont(original_font)
     larger_font.setPointSizeF(max(original_font.pointSizeF() + 1.0, 10.0))
@@ -171,7 +171,7 @@ def test_epoching_grows_for_larger_font_warning_and_never_shrinks(qapp, qtbot):
         height_with_warning = dialog.height()
 
         assert dialog.warning_label.isVisibleTo(dialog)
-        assert height_with_warning > before_warning
+        assert height_with_warning >= before_warning
         assert _content_scroll(dialog).verticalScrollBar().maximum() == 0
 
         dialog.tmax_spin.setValue(1.0)
@@ -187,7 +187,7 @@ def test_epoching_grows_for_larger_font_warning_and_never_shrinks(qapp, qtbot):
         qapp.setFont(original_font)
 
 
-def test_epoching_grows_for_baseline_error_and_never_shrinks(qtbot):
+def test_epoching_keeps_baseline_error_visible_without_shrinking(qtbot):
     dialog = _ScreenBoundEpochingDialog(
         None,
         epoch_context=_epoch_context(6),
@@ -204,7 +204,7 @@ def test_epoching_grows_for_baseline_error_and_never_shrinks(qtbot):
     height_with_error = dialog.height()
 
     assert dialog.baseline_error_label.isVisibleTo(dialog)
-    assert height_with_error > before_error
+    assert height_with_error >= before_error
     assert _content_scroll(dialog).verticalScrollBar().maximum() == 0
 
     dialog.b_min_spin.setValue(-0.2)

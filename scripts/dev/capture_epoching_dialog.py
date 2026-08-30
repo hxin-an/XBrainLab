@@ -14,7 +14,7 @@ from typing import Any
 
 from PIL import Image
 from PyQt6.QtCore import QElapsedTimer, QEventLoop, QPoint, QRect, QSize
-from PyQt6.QtWidgets import QApplication, QPushButton, QScrollArea, QWidget
+from PyQt6.QtWidgets import QApplication, QLabel, QPushButton, QScrollArea, QWidget
 
 from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
     collect_source_identity,
@@ -75,6 +75,21 @@ def main(argv: list[str] | None = None) -> int:
             None,
             "production",
             False,
+            None,
+        ),
+        (
+            "event-code-setup",
+            "epoching-event-code-setup.png",
+            _event_code_epoch_data,
+            True,
+            None,
+            "production",
+            False,
+            {
+                "Source": "Loaded label files",
+                "Placement": "Label event code",
+                "Label field": "classlabel",
+            },
         ),
         (
             "internal-events",
@@ -84,6 +99,7 @@ def main(argv: list[str] | None = None) -> int:
             None,
             "production",
             False,
+            None,
         ),
         (
             "baseline-enabled",
@@ -93,6 +109,7 @@ def main(argv: list[str] | None = None) -> int:
             None,
             "production",
             False,
+            None,
         ),
         (
             "baseline-disabled",
@@ -102,6 +119,7 @@ def main(argv: list[str] | None = None) -> int:
             None,
             "production",
             False,
+            None,
         ),
         (
             "baseline-order-invalid",
@@ -111,6 +129,7 @@ def main(argv: list[str] | None = None) -> int:
             "baseline-order",
             "production",
             False,
+            None,
         ),
         (
             "time-window-invalid",
@@ -120,6 +139,7 @@ def main(argv: list[str] | None = None) -> int:
             "time-window",
             "production",
             False,
+            None,
         ),
     ]
     if args.include_layout_variants:
@@ -133,6 +153,7 @@ def main(argv: list[str] | None = None) -> int:
                     None,
                     "production",
                     False,
+                    None,
                 ),
                 (
                     "bounded-overflow",
@@ -142,6 +163,7 @@ def main(argv: list[str] | None = None) -> int:
                     None,
                     "narrow",
                     True,
+                    None,
                 ),
             )
         )
@@ -155,6 +177,7 @@ def main(argv: list[str] | None = None) -> int:
         invalid_state,
         layout_mode,
         expected_vertical_scroll,
+        expected_import_hint,
     ) in capture_specs:
         data = data_factory()
         dialog = EpochingDialog(
@@ -186,6 +209,7 @@ def main(argv: list[str] | None = None) -> int:
             dialog,
             expected_baseline_enabled=baseline_enabled,
             invalid_state=invalid_state,
+            expected_import_hint=expected_import_hint,
         )
         geometry_checks = _geometry_evidence(
             dialog,
@@ -284,6 +308,19 @@ def _internal_event_epoch_data() -> _EpochData:
     )
 
 
+def _event_code_epoch_data() -> _EpochData:
+    return _EpochData(
+        {"Left hand": 1, "Right hand": 2},
+        {
+            "source": "Loaded label files",
+            "placement_method": "event_code",
+            "label_field": "classlabel",
+            "time_field": "719",
+            "class_map": {"left": "Left hand", "right": "Right hand"},
+        },
+    )
+
+
 def _available_space_epoch_data() -> _EpochData:
     return _internal_event_data(6)
 
@@ -309,7 +346,13 @@ def _internal_event_data(event_count: int) -> _EpochData:
 def _epoch_handoff(data: _EpochData) -> dict[str, Any]:
     placement_method = str(data.hint.get("placement_method") or "")
     source = str(data.hint.get("source") or "").casefold()
-    label_source = "bids_events" if "bids" in source else "internal_events"
+    label_source = (
+        "bids_events"
+        if "bids" in source
+        else "internal_events"
+        if placement_method == "internal_events"
+        else "loaded_label_files"
+    )
     selected_events = [str(value) for value in data.hint.get("class_map", {}).values()]
     return {
         "ready": True,
@@ -378,6 +421,7 @@ def _semantic_evidence(
     *,
     expected_baseline_enabled: bool,
     invalid_state: str | None,
+    expected_import_hint: dict[str, str] | None,
 ) -> dict[str, Any]:
     if (
         dialog.baseline_check is None
@@ -410,11 +454,38 @@ def _semantic_evidence(
         "window_warning_visible": window_warning_visible,
         "window_warning": dialog.warning_label.text(),
     }
+    if expected_import_hint is not None:
+        keys = [
+            label.text()
+            for label in dialog.findChildren(QLabel)
+            if label.objectName() == "EpochImportHintKey" and label.isVisibleTo(dialog)
+        ]
+        values = [
+            label.text()
+            for label in dialog.findChildren(QLabel)
+            if label.objectName() == "EpochImportHintValue"
+            and label.isVisibleTo(dialog)
+        ]
+        pairs = [
+            {"key": key, "value": value}
+            for key, value in zip(keys, values, strict=True)
+        ]
+        expected_pairs = [
+            {"key": key, "value": value} for key, value in expected_import_hint.items()
+        ]
+        checks["import_hint"] = {
+            "pairs": pairs,
+            "expected_pairs": expected_pairs,
+            "matches_expected_pairs": pairs == expected_pairs,
+            "has_timing_key": "Timing" in keys,
+            "passed": (pairs == expected_pairs and "Timing" not in keys),
+        }
     checks["passed"] = bool(
         checks["baseline_enabled"] is expected_baseline_enabled
         and checks["baseline_fields_enabled"] is expected_baseline_enabled
         and checks["baseline_help_conditional"]
         and (not invalid or (not checks["create_enabled"] and expected_error_visible))
+        and (expected_import_hint is None or checks["import_hint"]["passed"])
     )
     return checks
 

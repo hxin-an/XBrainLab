@@ -761,7 +761,7 @@ class EpochingDialog(BaseDialog):
         title = QLabel(
             "BIDS events from import"
             if self._is_bids_epoch_context()
-            else "Suggested from import"
+            else "Imported event setup"
         )
         title.setObjectName("EpochImportHintTitle")
         title_row.addWidget(title)
@@ -784,16 +784,11 @@ class EpochingDialog(BaseDialog):
             rows = []
             if label_field:
                 rows.append(("Label field", label_field))
-            rows.extend(
-                [
-                    ("Epoch anchor", "Event onset"),
-                    ("Window mode", self._effective_window_mode_text()),
-                ]
-            )
+            rows.append(("Window mode", self._effective_window_mode_text()))
         else:
             rows = [
                 ("Source", self.epoch_context.get("source")),
-                ("Timing", self._timing_summary_text()),
+                *self._import_timing_rows(),
                 ("Placement", self.epoch_context.get("placement_label")),
             ]
             if label_field:
@@ -828,14 +823,21 @@ class EpochingDialog(BaseDialog):
             )
         return "Select the event types that should become EEG epochs."
 
-    def _timing_summary_text(self) -> str:
+    def _import_timing_rows(self) -> list[tuple[str, str]]:
+        """Name imported timing values by their reviewed placement semantics."""
+        placement = str(self.epoch_context.get("placement_method") or "").strip()
         time_field = str(self.epoch_context.get("time_field") or "").strip()
         duration_field = str(self.epoch_context.get("duration_field") or "").strip()
-        if time_field and duration_field:
-            return f"{time_field} + {duration_field}"
-        if time_field:
-            return time_field
-        return "Event onset"
+        if placement in {"internal_events", "event_code", "eeg_event"}:
+            return []
+        if placement == "time_field":
+            return [("Time field", time_field)]
+        if placement == "interval":
+            return [
+                ("Start field", time_field),
+                ("Duration field", duration_field),
+            ]
+        return []
 
     def _effective_window_mode_text(self) -> str:
         if self.window_mode is EpochWindowMode.DURATION:
@@ -1033,9 +1035,7 @@ class EpochingDialog(BaseDialog):
             if blockers:
                 blocker_text = "; ".join(str(item) for item in blockers)
                 return f"{source} needs review: {blocker_text}"
-            if self._is_bids_epoch_context():
-                return ""
-            return f"Suggested from {source}."
+            return ""
         if self.epoch_context.get("has_import_hint"):
             if self._is_bids_epoch_context():
                 return ""
