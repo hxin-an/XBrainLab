@@ -31,25 +31,31 @@ process isolation，並以 merge commit `65d5957947eae8c20be9b9c91efae468c4779bc
 合併。B2 後續在同一 branch 收斂單一 raw event anchor 與重複 suggestion presentation；使用者已於
 `2026-08-30` 對 exact head `2cb82134a3973c7e322508e77d672c050a1aa25c` 完成手測並同意
 merge。PR #75 已以 merge commit `c7cf4b831c3a7579ee99a23b1a41c65251fa0c57` 合併，B2
-worktree 與本機／遠端 task branch 已清理；Lane B 現在進入 B3。
+worktree 與本機／遠端 task branch 已清理；Lane B 當時進入 B3。
 
 PR #82 已將 C2 product-equivalent Import profiler 以 exact head
 `faf86c8772d48674ab02936fa444dad4ed49f38d` 合併，merge commit 為
 `d36cfdee21b82084094757b369c3b9ab6c4fb677`。它只修改 dev tooling／tests，沒有產品行為
 變更；C2 task worktree 與本機／遠端 branch 已清理。Exact Windows／WSL report 與 teacher gate
-證據保存在 ignored `build/dev-artifacts/import-e2e/faf86c87/`；isolated Windows 3.12 environment
-與 native measurement clone 暫留到 C3 結束後再清理。
+證據保存在 ignored `build/dev-artifacts/import-e2e/faf86c87/`。
+
+PR #81 已以 exact head `d32eb4dfe438fecf9c12875d04cbe6360b24b4eb` 通過使用者手測，並以 merge commit
+`13532b817d230283dcbe2b92cdf2bcacc28c5333` 合併 B3 Warning severity-label cleanup。PR #83
+已以 exact head `0159383990b1b0219a66113a57e262b5624225c4` 通過使用者手測與所有 non-skipped
+checks，並以 merge commit `c57cee24ceb10c826ac7716bf2df63b1ab8f4b2e` 合併 B4 class loss
+weighting。Lane B 下一個 active slice 是 B5；B6 只保留為 B5 後的 candidate。
 
 本 campaign 要在不新增 workflow owner、不建立第二套 command／state truth 的前提下，交付：
 
 1. 保留已完成的 Assistant evaluator report contract；沒有新 hypothesis 時暫停 Lane A。
-2. 收斂 Epoch import setup presentation，再依序完成全域 Warning 視覺去重複。
-3. Training Settings 中已核准的 class loss weighting 與 validation early stopping。
-4. 以 Windows product-equivalent GUI workflow 重新建立完整 Import 時間帳；只有 measured dominant
-   cost 達門檻後才另開 bounded optimization，不延續 C1 的 path／SHA 猜測。
+2. 保留已完成的 Epoch import setup、Warning presentation 與 class loss weighting outcome。
+3. 在既有 training lifecycle 內完成 validation early stopping；更進階的 bounded training search
+   只能在 B5 合併後另作 target decision。
+4. 沿用 C2 已建立的 Windows 時間帳，直接判斷 P300 Apply 是否有同一 request 內可刪除的重複
+   materialization；不再擴張 profiler／validator framework。
 
-本文件合併後，所有 implementation branch 必須從當時的 exact `main` 建立；
-`5bb55c20` 只是 pre-plan identity，不得當成後續 product branch base。
+本次 plan calibration 合併後，B5 與 C4 必須從當時的 exact `main` 分別建立；任何舊 baseline
+或 abandoned C3 candidate 都不得作 product branch base。
 
 ## Roles and worktree control
 
@@ -58,20 +64,19 @@ PR #82 已將 C2 product-equivalent Import profiler 以 exact head
   取代 worker 或 reviewer。
 - **Assistant implementer**：一次只擁有 Lane A 的一個 bounded PR；不修改 product lane，
   不自行 merge 或宣稱 handoff-ready。
-- **Product implementer**：按 Lane B 順序一次處理一個 product PR；不與另一 worker
-  同時修改 ApplicationService／Training shared owners。
-- **Import performance implementer**：只擁有 Lane C 的 bounded PR；先量測再修改，不能弱化
-  source scope、content digest、label／event semantics、rollback 或 cancellation。
+- **Training implementer**：只擁有 B5；重用既有 training owners，不同時施工 B6，也不修改
+  Import workflow。
+- **Import performance implementer**：只擁有 C4；先用既有 C2 baseline 做一次 bounded direct
+  audit，只有發現同 request 的可刪除重複工作才修改產品。不能弱化 source scope、content digest、
+  label／event semantics、rollback 或 cancellation。
 - **Independent reviewer**：只審查 frozen exact SHA，檢查 scope、owner、observable behavior、
   test quality 與 claim。可以因可重現的 contract／lifecycle／evidence defect veto，不在被審
   branch 實作自己的 finding。
-- **Cross user-simulator**：非作者 worker 用 product-equivalent scenario 交叉驗證。這只是第二層
-  保險，不取代 exact-SHA Windows 真人手測。
 
-現階段明確允許 `main + B3 product worktree`，再加一個 ephemeral reviewer worktree。C2、A2、
-B2、C1 與 G1 worktree 已收旗；B4／B5 不預先建立空 branch。C3 只能在本 plan 進入 `main`
-後另建 dev-only measurement branch，不與 B3 共用 product source。
-Root 是唯一能修改本 plan 與處理兩條 branch rebase／status reconciliation 的角色。
+本 plan 合併並完成舊資源清理後，允許 `main + B5 worktree + C4 worktree`，以及在 frozen exact
+SHA 後使用一個 ephemeral reviewer slot。每條 lane 只配置一位作者與一位獨立 reviewer；不再派
+額外 user-simulator 重複同一維度。B5 與 C4 預期不重疊；若實際碰到同一 production owner，root
+立即改為串行。Root 是唯一能修改本 plan 與處理 rebase／status reconciliation 的角色。
 
 ## Lane A — comprehensive Assistant cleanup
 
@@ -106,9 +111,9 @@ coverage 與 completion attestation。後續 lane 不再重開這個 scope。
 
 ## Lane B — product correctness and training
 
-Lane B 由同一 product implementer 串行；每個編號是獨立 branch／PR，上一個 merge 並重新從
-`main` 建立下一個。B4／B5 共用 training command、option、snapshot、receipt、dialog 與 history
-owners，禁止並行。
+Lane B 的 B1–B4 已完成。B5 必須從 PR #83 merge 後且包含本次 plan calibration 的 exact `main`
+建立；它仍使用既有 training command、option、snapshot、dialog 與 history owners。B6 不與 B5
+並行，也不為 future search 預建 owner、database 或 scheduler。
 
 A2 evaluator scripts／docs、B2 Epoch UI 與 C1 Import backend 的預期 production／test files 不重疊。
 若實際 diff 新增 shared ApplicationService、training owner 或同一 canonical doc，必須由 root 串行，
@@ -145,18 +150,16 @@ PR #75 只收斂 Epoch 上方 presentation：
 舊 presentation 失敗的 observable tests，再做最小修正。需 normal／narrow capture、真實 multi-class
 GDF 與 BIDS／interval walkthrough、source-diverse gate、independent review 及 exact-SHA manual acceptance。
 
-### B3. Global Warning severity-label cleanup
+### B3. Global Warning severity-label cleanup (completed in PR #81)
 
 所有 `AlertSeverity.WARNING` modal 隱藏黃色的重複 `Warning` severity word，保留 icon、accent、
 caller title、message 與 confirmation controls；Information／Error 不變。這是 shared presentation
 修正，不在個別 caller 分別改 title。UI 修改已授權；需 shared modal tests／capture 與真實
 Assistant + 3D VRAM conflict 手測，確認沒有重複 modal loop。
 
-Implementation 與兩輪 independent review 已完成；PR #81 在 C2 merge 後已重疊最新 `main`。
-舊 exact head／capture／CI 因 rebase 失效。Root 先提交本 plan，再對新 exact head 重跑 focused
-tests、normal／narrow capture、review 與所有 CI；只有全部屬於同一 SHA 時才交付一次真人手測。
+PR #81 已完成 exact-head tests／capture／CI 與使用者手測，後續 lane 不再重開這個 scope。
 
-### B4. Class loss weighting
+### B4. Class loss weighting (completed in PR #83)
 
 在 Training Settings 增加 target contract 已定義的 Off／Balanced／Custom；Off 為預設。權重只來自
 當次 fold／repeat 的 training split class counts，只套用 training criterion；validation／test 不加權。
@@ -172,6 +175,10 @@ Focused evidence 要能證明 train-only counts、formula、criterion-only effec
 zero-count block、per-fold resolution、persistence 與 cancel／rollback；再跑 training source-diverse gate 與
 Training Settings 手測。
 
+上述 contract 已在 exact head `0159383990b1b0219a66113a57e262b5624225c4` 通過 independent
+review、canonical UI／source-diverse／CUDA evidence、所有 non-skipped CI 與使用者手測，並以 merge
+commit `c57cee24ceb10c826ac7716bf2df63b1ab8f4b2e` 進入 `main`。B5 必須保留這些語意。
+
 ### B5. Validation early stopping
 
 只能在 B4 merge 後從新 `main` 建立。Training Settings 中預設 disabled；啟用後監控當次
@@ -185,12 +192,22 @@ configured epoch。B5 因此必須在既有 owners 內一起收旂：`EpochRunne
 `TrainingPlanHolder` 在提前停止後仍 reload best 並走 final evaluation；`TrainRecord` 與 `is_finished()`
 記錄 successful early-stop terminal；snapshot／checkpoint／history 保存 settings、observations 與 reason。
 不得只在 epoch loop 加 `break`，也不新增第二個 training lifecycle owner。B5 開工前由 root 以這些
-既有 files 做 complexity review；若預計超過 1,500 production LOC，先拆成「backend terminal／persistence」與
-「Training Settings／presentation」兩個串行 PR，不申請大型例外。
+既有 files 做 complexity review。目標是最多 10 個 production files、net `+450 LOC`、不新增
+production module／public class／owner；預估超過任一門檻就先停下做 deletion／reuse review，再決定
+縮小或拆成「backend terminal／persistence」與「Training Settings／presentation」兩個串行 PR，
+不得接近 1,500 LOC 才處理。
 
 Focused evidence 要覆蓋三種 metric direction／threshold、patience boundary、undefined AUC、per-repeat
 reset、best-checkpoint reload、terminal reason、cancel 與 disabled equivalence；再跑 training source-diverse gate 與
 Training Settings／history 手測。
+
+### B6 candidate. Bounded training search (not active)
+
+B6 只在 B5 合併與手測後進行 target discussion，不屬於本輪 active implementation。候選方向是讓
+使用者以固定的小型 trial／time budget 搜尋少量既有 TrainingOption 參數；搜尋 metric、參數集合、
+budget、cancel／resume 與可見結果必須先形成 public target。不得預先恢復 archived Optuna／SQLite
+設計，不新增 search database、parallel training owner、scheduler 或第二套 trial state。若既有
+training lifecycle 無法以一個 direct collaborator 表達，B6 在 planning 階段停止。
 
 ## Lane C — BIDS Import latency
 
@@ -288,52 +305,54 @@ Exact Windows report 的 stable medians 為 BBCI `1.601s`、Graz folder `1.940s`
 `4.096s`。BBCI／Graz 的 Review 分別佔 `68.2%`／`61.5%`；P300 Apply 為 `2.484s`，佔
 `60.8%`。Windows source identity 約 `0.001s`，final identity verify 約 `0.087s`；Qt heartbeat
 max median 約 `0.12–0.20s`。因此 C2 已交付 ranked timing report，但沒有證據支持刪 SHA／path
-boundary、增加 worker，或直接宣稱產品已加速。下一步只量 P300 Apply 是否有可刪除的重複工作。
+boundary、增加 worker，或直接宣稱產品已加速；後續調查因此只限 P300 Apply 的可刪除重複工作。
 
-### C3. Windows P300 Apply duplicate-work decision
+### C3. Detailed Apply tracer (abandoned before product measurement)
 
-**Problem, evidence, and outcome**
+C3 candidate 在 production `0` files 的前提下，將既有 profiler／tests 擴張約 `+1327/-151`，並把
+主要時間投入 trace identity、strict validator 與 native environment proof。它雖修正了已重現的
+evidence ambiguity，但沒有完成 Windows P300 measurement，也沒有改善 Import latency；繼續投入的
+成本已高於本輪產品目標。Candidate exact `2674192125209fc928b93790a65f8225213df8fa`
+沒有 PR、不得 merge，相關 isolated clone／venv 與 branch 在 C4 開工前按 exact target 清理。
 
-Windows C2 的 P300 Apply median `2.484s / 4.096s`（`60.8%`）已超過 35% dominant-phase
-門檻，但現有 trace 尚不能區分必要的 MNE EEGLAB materialization 與同一 raw／label 在一次 Apply
-內被重複處理。C3 只回答這個問題，不改產品行為，也不把「很慢」當成「可刪除」。
+後續不得把 C3 code、artifact schema 或 environment framework 當成 C4 的必要前置；C2 的 Windows
+product-equivalent timing 已足以把調查範圍限定在 P300 Apply。
 
-**Assumptions, scope, and non-goals**
+### C4. Direct P300 Apply de-duplication
 
-- Isolated Windows environment 只能在 exact source `dirty=false`、lockfile dependencies 與 C2 fixture
-  identity 不變時作產品量測；WSL 結果仍只作對照。
-- 只在既有 `profile_data_import_e2e.py` 加一個 runtime-external、dev-only `ApplyPhaseTracer`，並加
-  focused profiler tests；production files 預設 `0`。
-- 以互斥時間、call count 與 redacted path／config digest 分解：resource preflight、每個 EEGLAB
-  raw-holder load、BIDS channel／metadata、label materialization／placement、epoch hints、final content
-  verify、commit／publication。不得把 nested Review trace 加總成 Apply 結論。
-- 不新增 production hook、UI、worker、cache、receipt、owner、loader、SHA／path policy 或 persistence；
-  不改 source scope、label／event semantics、cancellation 或 rollback。
+**Problem and outcome**
 
-**Method, focused validation, and stop condition**
+C2 已證明 P300 Apply median 為 `2.484s / 4.096s`（`60.8%`），但尚未證明同一 raw 或 admitted
+label 在一次 request 中被重複 materialize。C4 只做一個 bounded direct audit：閱讀既有 Apply owner
+與 direct collaborators，並用一個不提交的本機 call-count／cProfile run 確認實際 invocation。
+若沒有同 resource、同 config、同 request 的重複工作，C4 以「沒有可安全刪除 candidate」結束，
+不再增建 profiler。
 
-在 isolated native Windows 3.12 environment，以同一 P300 fixture 與真 Qt workflow 跑 2 次 coarse＋
-2 次 traced calibration，再跑 3 次 fresh-app traced measured passes；同時保留 wall／CPU／RSS／I/O、
-Qt heartbeat 與 C2 的 raw count、BIDS detection、classes、event sample／label digest、recipe／content
-identity assertions。若 tracer 使 stable-idle median 改變超過 5% 或 `0.05s`，artifact 只能作 diagnostic，
-不得做 production 決策。
+**Implementation ceiling**
 
-只有下列條件全部成立才另開 production optimization：單一互斥 Apply 子階段佔 Apply median 至少
-35%（以 C2 約為 `0.869s`）、三輪 path／config trace 都證明同一 selected raw 或 admitted label
-resource 在一次 Apply 內被重複 materialize，且刪除重複預估可同時節省至少 `0.25s` 與 P300 Apply
-的 15%。否則 C3 以 measured checkpoint 結束。若成立，production slice 只允許既有 owner path
-加最多一個 direct collaborator、最多 2 個 production files、net production `+120 LOC`；只能重用
-request-local prepared object。需要第三個 production file、新 owner／state／receipt／cache／worker，
-或弱化 regular-file／scope、byte count、完整 reviewed-content SHA-256、Review→Apply digest、final full
-identity verify、SourceFileBoundary、atomic replacement／rollback 任一 invariant 時立即停止並重開 plan。
+- 只有直接證據成立才修改產品；優先刪除第二次 load／materialization，或重用既有 request-local
+  prepared object。
+- 最多 2 個 production files，owner delta `0`，net production 不超過 `+80 LOC`；不得新增 cache、
+  worker、state machine、receipt、persistent telemetry、artifact schema 或 compatibility path。
+- regular-file／scope、byte count、完整 reviewed-content SHA-256、Review→Apply digest、final identity
+  verify、SourceFileBoundary、atomic replacement、rollback、cancel 與 label／event semantics全部保留。
+- 需要第三個 production file、跨 request state，或只能靠弱化上述 invariant 加速時立即停止。
+
+**Validation and stop condition**
+
+先跑同一 Windows P300 fixture 三次簡單 before，再對 frozen candidate 跑三次 after；只比較既有
+product-equivalent Apply／total timing，不建立新 report contract。Candidate 至少要讓 Apply median
+改善 `0.25s` 且 `10%`，並維持 raw count、BIDS metadata、event sample／label digest、recipe／content
+identity、source replacement、cancel 與 rollback。Focused observable tests、canonical source-diverse
+Import gate、independent review 與 exact-SHA Windows 手測仍必須通過。未達門檻即撤回 product diff。
 
 ## Progression, review, and merge gates
 
-1. B2 與 C2 已完成並收旗。B3 只等待新 exact SHA 的 evidence／CI／manual acceptance；B4／B5
-   仍依序串行。C3 在本 plan 隨 B3 merge 進入 `main` 後，可與 B4 的產品施工並行，但只修改 dev
-   tooling／tests；若量測證明可進 production，必須另開串行 slice。
-2. 每個 worker 先建 characterization／regression baseline，再施工。作者 focused tests 通過後 freeze
-   exact head；非作者 user-simulator 交叉跑 user-like path，然後 independent reviewer 才能審查。
+1. B3、B4 與 C2 已完成；C3 已放棄且不得 merge。本 plan 合併並清理舊資源後，B5 與 C4 從同一
+   exact `main` 建立兩個互不重疊 worktree 並行。B6 維持 not active。
+2. 每條 lane 只有一位 worker。B5 先建 deterministic lifecycle baseline；C4 先完成 source audit 與
+   一次不提交的 call-count run，證據不成立就停止。作者 focused tests 通過後 freeze exact head，
+   再由一位非作者 reviewer 審查；不新增重複 user-simulator role。
 3. Reviewer finding 只有重現本 scope contract、直接 safety／data loss，或使證據無法支撐本次
    claim 時才 blocker；其他最多三項 follow-up，不擴大 diff。
 4. 通過 review 後才跑 applicable canonical gates。Executable IDs、argv、timeout 與 artifact contract
@@ -342,9 +361,9 @@ identity verify、SourceFileBoundary、atomic replacement／rollback 任一 inva
 5. 可以在使用者離席時完成 code、focused validation、artifact inspection、PR 與 exact-head CI，
    並標示 `scope-complete, awaiting manual acceptance`。任一 product／UI／data／training behavior
    PR 不得自動 merge。
-6. B2 手測完成後依序為 Warning → Class weighting → Early stopping。C2 profiling 已使用
-   scripts／tests exemption 合併；C3 measurement 同樣可免真人手測，但後續任何 production optimization
-   都需同一 exact SHA 的 Windows manual acceptance 與 merge 同意。
+6. B5 與任何 C4 product diff 都各自需要同一 exact SHA 的 Windows manual acceptance 與 merge
+   同意。若其中一條先 merge，另一條在交付手測前必須對最新 `main` 做 base reconciliation；source
+   改變即重跑適用證據。
 
 ## Campaign stop condition
 
@@ -352,9 +371,10 @@ identity verify、SourceFileBoundary、atomic replacement／rollback 任一 inva
 
 - G1 的已合併 evidence 不被後續 branch 逆轉。
 - B2–B5 各自的 observable outcome、focused evidence、applicable source-diverse gate、exact-head CI、
-  人工驗收與 merge approval 完成。
-- A2、C1 與 C2 的已記錄 outcome 不被後續 branch 逆轉；C3 交付 Windows P300 Apply duplicate-work
-  decision，且不將必要 materialization、C1 關閉候選或 WSL-only improvement 宣稱為產品加速。
+  人工驗收與 merge approval 完成；B6 是否啟動屬於下一輪決策。
+- A2、C1 與 C2 的已記錄 outcome 不被後續 branch 逆轉；C3 保持 abandoned／unmerged。C4 必須交付
+  一個通過 before／after 門檻的 bounded product improvement，或明確的 no-safe-candidate 結論；不得把
+  必要 materialization、C1 關閉候選或 WSL-only improvement 宣稱為產品加速。
 - 所有 merged／abandoned candidate 已有明確記錄；本機再次只留 `main`，root
   `settings.json` 未被 stage／commit／revert／overwrite，並提供最終 Git worktree／branch／SHA／status
   inventory。
