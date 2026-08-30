@@ -20,6 +20,7 @@ import pytest
 from tests.qt_lifecycle import close_controller_and_wait
 from XBrainLab.backend.controller.chat_controller import ChatController
 from XBrainLab.backend.study import Study
+from XBrainLab.llm.agent.assembler import PromptToolPublication
 from XBrainLab.llm.agent.controller import LLMController
 from XBrainLab.llm.agent.turn import (
     AssistantGenerationDispatchAcknowledgement,
@@ -29,6 +30,7 @@ from XBrainLab.llm.agent.turn import (
     AssistantGenerationRequest,
     AssistantGenerationStopAcknowledgement,
     AssistantGenerationStopRequest,
+    AssistantToolInputReceipt,
     AssistantTurnCorrelation,
     AssistantTurnRequest,
 )
@@ -264,6 +266,66 @@ def test_product_controller_executes_one_published_navigation_action(
 
     assert product_harness.controller._tool_attempt_session.execution_count == 1
     assert product_harness.controller._tool_attempt_session.last_tool_summary
+
+
+def test_product_controller_cancel_then_close_publishes_one_terminal(
+    product_harness,
+    qtbot,
+) -> None:
+    terminals = []
+    product_harness.controller.turn_finished.connect(terminals.append)
+    product_harness.send("Explain the current workflow.")
+    product_harness.wait_for_generation_start()
+
+    product_harness.controller.stop_generation()
+    qtbot.waitUntil(lambda: len(terminals) == 1, timeout=2_000)
+    product_harness.controller.close()
+    qtbot.wait(20)
+    assert len(terminals) == 1
+
+
+def test_stale_product_receipt_never_executes_or_dispatches_generation(
+    product_harness,
+) -> None:
+    receipt = AssistantToolInputReceipt(
+        command_name="resample_data",
+        original_user_text="Resample EEG data.",
+        question="Which rate?",
+        publication_generation=17,
+        missing_inputs=("rate",),
+    )
+    controller = product_harness.controller
+    controller.pending_interactions.begin_tool_input(receipt)
+    controller.assembler._latest_tool_publication = PromptToolPublication(
+        tool_names=frozenset({"resample_data"}),
+        workflow_stage="data_loaded",
+        backend_generation=18,
+    )
+
+    product_harness.send("128 Hz")
+
+    assert controller._tool_attempt_session.execution_count == 0
+    assert product_harness.generation_events == []
+
+
+def test_completed_product_receipt_does_not_start_another_model_turn(
+    product_harness,
+) -> None:
+    controller = product_harness.controller
+    controller.pending_interactions.begin_tool_input(
+        AssistantToolInputReceipt(
+            command_name="resample_data",
+            original_user_text="Resample EEG data.",
+            question="Which rate?",
+            publication_generation=0,
+            missing_inputs=("rate",),
+            verified_parameters=(("rate", 128),),
+        )
+    )
+
+    product_harness.send("128 Hz")
+
+    assert product_harness.generation_events == []
 
 
 def test_qt_chat_wiring_rejects_prose_prefixed_target_action_without_execution(
