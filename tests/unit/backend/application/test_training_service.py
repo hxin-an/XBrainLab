@@ -406,6 +406,95 @@ def test_configure_early_stopping_accepts_saved_unmaterialized_validation_previe
     assert message == "Training configured."
 
 
+@pytest.mark.parametrize(
+    ("split_materialized", "preview_summary", "active_summary"),
+    [
+        (False, {"validation_count": 0}, {"val_count": 2}),
+        (False, {"validation_count": "2"}, {"val_count": 2}),
+        (False, {"validation_count": True}, {"val_count": 2}),
+        (True, {"validation_count": 2}, {"val_count": 0}),
+    ],
+)
+def test_configure_early_stopping_fails_closed_on_authoritative_split_count(
+    split_materialized: bool,
+    preview_summary: dict[str, object],
+    active_summary: dict[str, object],
+) -> None:
+    training = _TrainingController()
+    training.resource_context = {
+        "datasets": [SimpleNamespace(val_mask=np.asarray([True]))],
+        "training_option": None,
+        "model_holder": None,
+    }
+    state = replace(
+        _state(),
+        dataset=DatasetStateSnapshot(
+            split_spec_saved=True,
+            split_materialized=split_materialized,
+            split_preview_summary=preview_summary,
+            active_split_summary=active_summary,
+        ),
+    )
+    service = TrainingCommandService(
+        training=training,
+        training_runtime=_TrainingRuntime(training),
+        get_state=lambda: state,
+    )
+
+    with pytest.raises(
+        PreconditionError, match=r"^Early stopping requires a validation split$"
+    ):
+        service.handle_configure_training(
+            ConfigureTrainingCommand(
+                epoch=2,
+                batch_size=4,
+                learning_rate=0.001,
+                optimizer="Adam",
+                device="cpu",
+                evaluation_option="Best validation loss",
+                early_stopping_enabled=True,
+            )
+        )
+
+    assert training.training_option is None
+
+
+def test_public_start_rejects_early_stopping_without_actual_validation_mask() -> None:
+    class _Epoch:
+        def get_label_map(self) -> dict[int, str]:
+            return {0: "left"}
+
+        def get_label_list(self) -> np.ndarray:
+            return np.asarray([0, 0])
+
+    class _Dataset:
+        train_mask = np.asarray([True, True])
+        val_mask = np.asarray([False, False])
+
+        def get_epoch_data(self) -> _Epoch:
+            return _Epoch()
+
+    service, training = _service()
+    option = _class_weighting_option(
+        mode=ClassWeightMode.OFF,
+        custom_class_weights={},
+        fingerprint=None,
+    )
+    option.early_stopping_enabled = True
+    training.resource_context = {
+        "datasets": [_Dataset()],
+        "training_option": option,
+        "model_holder": None,
+    }
+
+    with pytest.raises(
+        PreconditionError, match=r"^Early stopping requires a validation split$"
+    ):
+        service.handle_train(TrainCommand(resource_preflight_confirmed=True))
+
+    assert training.start_count == 0
+
+
 def test_configure_training_command_has_no_unvalidated_option_object_path() -> None:
     assert "training_option" not in {
         field.name for field in fields(ConfigureTrainingCommand)
