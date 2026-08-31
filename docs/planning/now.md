@@ -241,6 +241,50 @@ input column。focused validation 包含 13-row capture（明確三個 new label
 strict guard。後續 G2 已合併全域零診斷 gate；B5 rebase 後必須維持 Basedpyright baseline `0`、
 observed `0`。
 
+#### B5 manual-blocker repair (active)
+
+Exact candidate `0e1af06f492b05a0cea6820e62b09de6ab5bfc56` 的自動證據已完成，但首次設定仍有一個
+可重現的手測 blocker：`SaveDatasetSplitCommand` 已保存 receipt-validated split preview，實際 dataset
+materialization 則延後到 Start Training；Training Settings projection 與 Configure admission 卻只讀尚未
+存在的 active validation mask。結果是使用者已儲存含 validation samples 的 split，第一次開啟設定仍無法
+勾選 Early stopping，形成 Configure 必須等 Start、Start 又必須等 Configure 的循環。這是產品 defect，
+不是缺少使用者操作；上述 exact source 的舊手測／handoff 證據在後續 product source 改動後失效。
+
+本 repair 的 observable outcome 是：尚未 materialize、但已保存且驗證成功的 split，以既有
+`split_preview_summary.validation_count` 支撐 Configure draft；已 materialize 時只讀 authoritative active
+`val_count`。真正 Start boundary 在 candidate commit 後仍逐一驗證實際 dataset `val_mask`，不得以 preview
+fallback、舊 active dataset 或 UI boolean 取代。missing、invalid 或 zero validation count 一律 fail closed，
+Configure 不為此提前 materialize dataset。
+
+同一 repair 將既有 Training Settings 由單一長表單原地重排為一個可捲動頁面的四個常駐 neutral section：
+`Training Run`、`Optimization`、`Validation & Checkpoints`、`Runtime & Output`。不使用 tabs、accordion、
+stage switching、藍色 category fill 或 nested card；固定 footer 顯示 `Cancel` 與 `Save Settings`。Early stopping
+可用時顯示 validation sample count；無 split／zero samples 或 Last Epoch 時，在同一 section 以 muted inline
+文字說明，沒有 warning modal、直接導頁或第二套 admission policy。Patience 與 Minimum improvement 保持
+可見，只在 toggle 開啟時 enabled；預設仍為 disabled、`3`、`0`。Custom class multiplier 與 resource preview
+保留在各自 section。使用者已於 `2026-08-31` 明確確認上述分類、單頁互動、文案方向及實作，UI authorization
+有效。`docs/target/training.md` 仍寫 patience `5` 的舊值，本 slice 校準為既有已批准且已實作的 `3`。
+
+Scope ceiling 是三個既有 production files：Training Settings dialog、Training sidebar projection、training
+application service；tests、既有 capture owner 與上述 target truth 可直接配套更新。Owners before／after 均為
+既有 dialog／sidebar projection／`TrainingCommandService`，owner delta `0`；不新增 production module、public
+class、command、tool、schema、state machine、receipt 或 shared card framework。優先刪除／替換 flat form
+layout 與只讀 active mask 的 admission 分支，不保留平行 UI／compatibility path。Production net delta 上限
+`+200 LOC`，超過或觸及第四個 production file 即停止做 complexity review；rollback 是 revert 本 repair
+commits，回到 `0e1af06f` 的既有 B5 behavior。
+
+先以最小紅測證明：(1) saved verified preview、尚無 runtime dataset 時 Configure 可接受 early stopping；
+(2) sidebar 能從同一 preview 呈現可用狀態；(3) 現有 flat dialog 尚未提供四個 section 與 inline blocked state。
+實作後重跑同一組測試，並覆蓋 materialized active split、pending new preview 不誤讀 old masks、missing／zero／
+invalid preview、Last Epoch、Start 的 stale／empty actual mask fail-closed、toggle round-trip、Custom multiplier
+及 resource preview。完成 focused Ruff／Basedpyright／architecture／docs，更新既有 Training Settings capture
+在 normal、narrow 與 100／125／150% 的 exact-source artifacts，主 agent 肉眼檢查 hierarchy、spacing、scroll、
+disabled／available copy；handoff 前再跑 canonical source-diverse training gate與所有 applicable exact-head CI。
+
+Stop condition：上述 authority 與 UI observable tests 都綠、production scope／LOC 沒超標、獨立 reviewer 沒有
+in-scope blocker、同一 clean/explained pushed SHA 的 applicable gates 完成，才交付使用者以 native product source
+手測。未取得該 exact SHA 的手測通過與 merge 同意前，PR #87 保持 open，不開始 B6、不 merge。
+
 ### B6 candidate. Bounded training search (not active)
 
 B6 只在 B5 合併與手測後進行 target discussion，不屬於本輪 active implementation。候選方向是讓
