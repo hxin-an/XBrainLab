@@ -759,10 +759,10 @@ class TrainingSettingDialog(BaseDialog):
 
         def add_section(title: str) -> QGridLayout:
             section = QFrame()
-            section.setObjectName(f"TrainingSettingSection_{title.replace(' ', '')}")
+            section.setObjectName("TrainingSettingSectionCard")
             section.setStyleSheet(
-                "QFrame { background: #222426; border: 1px solid #3b3f45; "
-                "border-radius: 6px; }"
+                "QFrame#TrainingSettingSectionCard { background: #222426; "
+                "border: 1px solid #3b3f45; border-radius: 6px; }"
             )
             section_box = QVBoxLayout(section)
             section_box.setContentsMargins(12, 9, 12, 10)

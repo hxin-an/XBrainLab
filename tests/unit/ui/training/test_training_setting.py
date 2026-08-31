@@ -8,6 +8,7 @@ from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QApplication,
     QDialogButtonBox,
+    QFrame,
     QLabel,
     QScrollArea,
     QWidget,
@@ -127,6 +128,13 @@ class TestTrainingSetting:
         assert dialog.resource_preview_note is not None
         assert (
             runtime_layout.itemAtPosition(3, 0).widget() is dialog.resource_preview_note
+        )
+        section_cards = dialog.findChildren(QFrame, "TrainingSettingSectionCard")
+        assert len(section_cards) == 4
+        assert all(
+            "QFrame#TrainingSettingSectionCard" in card.styleSheet()
+            and "QFrame {" not in card.styleSheet()
+            for card in section_cards
         )
 
     def test_early_stopping_is_disabled_without_validation_samples(self, qtbot):
