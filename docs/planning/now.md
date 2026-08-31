@@ -181,25 +181,48 @@ commit `c57cee24ceb10c826ac7716bf2df63b1ab8f4b2e` 進入 `main`。B5 必須保�
 
 ### B5. Validation early stopping
 
-只能在 B4 merge 後從新 `main` 建立。Training Settings 中預設 disabled；啟用後監控當次
-validation checkpoint-selection metric（loss／accuracy／AUC），使用 absolute `min_delta` 與
-`patience`。Last Epoch selection 或沒有 validation 時禁止啟用；undefined AUC 不計入 patience。
-每個 repeat 獨立計數，early stop 是 successful terminal，不是 cancel。Best validation checkpoint 維持為
-final evaluation、history 與 saliency 來源；test 不參與停止或 checkpoint selection。
+只能在 B4 merge 後且包含本 execution calibration 的新 `main` 建立。Training Settings 在既有
+`Evaluation` 下加入 `Early stopping`、`Patience` 與 `Minimum improvement`；預設分別為 disabled、
+`3`、`0`。`patience` 必須是正整數，absolute `min_delta` 必須是有限非負數。UI 不增加第二個 metric
+選單：Best validation loss／performance／AUC 分別以 validation loss／accuracy／AUC 作 monitor；Last Epoch
+或無法證明 validation split 有樣本時禁止啟用。UI 只作 presentation，configure 與實際 Start boundary
+都要由 backend 重驗。使用者已在本輪規劃中確認上述 layout／default／History outcome，且後續明確要求
+實作本 plan，故 UI authorization 已取得。
 
-現有 source 只在 `epoch == configured target` 時做 final evaluation，`TrainRecord.is_finished()` 也依賴
-configured epoch。B5 因此必須在既有 owners 內一起收旂：`EpochRunner` 回報 validation monitor；
-`TrainingPlanHolder` 在提前停止後仍 reload best 並走 final evaluation；`TrainRecord` 與 `is_finished()`
-記錄 successful early-stop terminal；snapshot／checkpoint／history 保存 settings、observations 與 reason。
-不得只在 epoch loop 加 `break`，也不新增第二個 training lifecycle owner。B5 開工前由 root 以這些
-既有 files 做 complexity review。目標是最多 10 個 production files、net `+450 LOC`、不新增
-production module／public class／owner；預估超過任一門檻就先停下做 deletion／reuse review，再決定
-縮小或拆成「backend terminal／persistence」與「Training Settings／presentation」兩個串行 PR，
-不得接近 1,500 LOC 才處理。
+Early-stop monitor 使用 strict improvement：loss 必須下降超過 `min_delta`，accuracy／AUC 必須上升超過
+`min_delta`；相等不重設 patience。第一個 finite observation 建立 monitor baseline。AUC `None` 不增加也
+不重設 counter；若全程都 undefined，跑滿 configured epochs 後沿用既有 selected-checkpoint-unavailable
+失敗，不 fallback。既有 `TrainRecord._update_validation_metrics()` 的 checkpoint tie semantics 保持不變：
+loss 的 `<=` 與 accuracy／AUC 的 `>=` 仍可讓較晚的 tie 成為 selected checkpoint；History 顯示實際
+selected checkpoint epoch，不把它誤稱為 strict monitor first-best。
 
-Focused evidence 要覆蓋三種 metric direction／threshold、patience boundary、undefined AUC、per-repeat
-reset、best-checkpoint reload、terminal reason、cancel 與 disabled equivalence；再跑 training source-diverse gate 與
-Training Settings／history 手測。
+每個 `TrainRecord` 自有 monitor／counter／terminal evidence；某 repeat early stop 後仍 final-evaluate，
+再依序執行後續 repeats，下一 repeat 從空 state 開始。Interrupt 在 batch／epoch boundary 被觀察到時優先
+成為 Cancelled，不得被 early stop 覆寫。Early stop 是 successful completion；`TrainingPlanHolder` 仍以
+既有 Evaluation option reload selected validation checkpoint，再對 final split 評估。Test 不參與停止或
+checkpoint selection。B4 train-only weighting 不變：monitor 只讀既有 unweighted validation result。
+
+不修改 `EpochRunner`：它已把 validation result 寫入 `TrainRecord`，`TrainingPlanHolder` 只需在每輪完成後
+讀取 record-owned observation。現有 `epoch == configured target` final-evaluation boundary 與
+`TrainRecord.is_finished()` 要共同接受 successful early stop；不得只在 loop 加 `break`。Trainer terminal
+仍為 `COMPLETED`。Training History 顯示 `Completed early`，detail 包含 completed／configured epochs、
+monitor、patience 與以 1 起算的 selected checkpoint epoch。
+
+`ConfigureTrainingCommand`、`TrainingOption`、state snapshot 與 dialog round-trip 保存三個設定；Assistant
+model-facing `configure_training` 維持零參數 GUI handoff。Training record schema 升為 v3，嚴格保存
+early-stop request／result；真實 v1／v2 artifact 明確遷移為 disabled／not-stopped，未知或缺損 v3 fail
+closed。既有 v1／v2 reader 的移除仍需另立 artifact-support decision。Saliency producer identity 納入設定，
+實際 selected state fingerprint 仍是模型來源真相。
+
+Owners before／after 都是既有 TrainingOption／TrainRecord／TrainingPlanHolder／Trainer 與 application／UI
+projection，owner delta `0`。預計最多 11 個既有 production files、net `+450 LOC`；不新增 production
+module／public class／owner。超標即停止並先做 deletion／reuse review，不自動建立第二套 lifecycle 或
+future B6 abstraction。
+
+Focused evidence 要覆蓋三種 metric direction、strict threshold／tie distinction、patience exact boundary、
+undefined AUC、per-repeat reset／continuation、cancel priority、best-checkpoint reload、successful terminal、
+v1／v2→v3、snapshot reopen、History presentation、disabled equivalence 與 B4 validation isolation；再跑
+Training Settings capture、training source-diverse gate 與 exact-SHA Windows 手測。
 
 ### B6 candidate. Bounded training search (not active)
 
@@ -322,36 +345,43 @@ product-equivalent timing 已足以把調查範圍限定在 P300 Apply。
 
 **Problem and outcome**
 
-C2 已證明 P300 Apply median 為 `2.484s / 4.096s`（`60.8%`），但尚未證明同一 raw 或 admitted
-label 在一次 request 中被重複 materialize。C4 只做一個 bounded direct audit：閱讀既有 Apply owner
-與 direct collaborators，並用一個不提交的本機 call-count／cProfile run 確認實際 invocation。
-若沒有同 resource、同 config、同 request 的重複工作，C4 以「沒有可安全刪除 candidate」結束，
-不再增建 profiler。
+C2 已證明 P300 Apply median 為 `2.484s / 4.096s`（`60.8%`）。本輪 static audit 顯示 selected EEG
+目前只在 `DatasetStateService.prepare_replacement_import()` 各 load 一次，commit 重用同一批 prepared
+Raw；source 尚未證明 duplicate。C4 因此只沿用 C2 exact Windows OpenNeuro P300 fixture 與既有
+`--p300-once` 路徑，先做一次 warm-up 與三次 measured before，再用一個 repo 外、執行後刪除且不提交的
+call-count／cProfile 確認實際 invocation。若沒有同 canonical resource、同 parser config、同 request 的
+重複 application-level Raw load、完整 sample materialization 或 label decode，C4 以
+`no bounded safe candidate` 結束，不再增建 profiler。
 
 **Implementation ceiling**
 
-- 只有直接證據成立才修改產品；優先刪除第二次 load／materialization，或重用既有 request-local
-  prepared object。
+- 只有直接證據成立，且 duplicate 的可移除 cumulative cost 足以支持門檻時才修改產品；優先刪除
+  第二次 load／materialization，或重用既有 request-local prepared object。
 - 最多 2 個 production files，owner delta `0`，net production 不超過 `+80 LOC`；不得新增 cache、
   worker、state machine、receipt、persistent telemetry、artifact schema 或 compatibility path。
 - regular-file／scope、byte count、完整 reviewed-content SHA-256、Review→Apply digest、final identity
   verify、SourceFileBoundary、atomic replacement、rollback、cancel 與 label／event semantics全部保留。
+- header admission→lazy sample read、完整 SHA／final verify、SourceFileBoundary、stat／metadata projection
+  與 MNE 內部必要 IO 不算 duplicate，不以弱化它們湊加速。
 - 需要第三個 production file、跨 request state，或只能靠弱化上述 invariant 加速時立即停止。
 
 **Validation and stop condition**
 
-先跑同一 Windows P300 fixture 三次簡單 before，再對 frozen candidate 跑三次 after；只比較既有
-product-equivalent Apply／total timing，不建立新 report contract。Candidate 至少要讓 Apply median
-改善 `0.25s` 且 `10%`，並維持 raw count、BIDS metadata、event sample／label digest、recipe／content
-identity、source replacement、cancel 與 rollback。Focused observable tests、canonical source-diverse
-Import gate、independent review 與 exact-SHA Windows 手測仍必須通過。未達門檻即撤回 product diff。
+對 frozen candidate 使用相同 Windows environment、fixture、fresh-process command，再做一次 warm-up 與
+三次 measured after；只比較既有 product-equivalent Apply／total timing，不建立新 report contract。
+Apply median 必須同時改善 `0.25s` 與 `10%`，total median 必須同時改善 `0.20s` 與 `5%`，其他 phase
+不得退步超過 `10%`；三輪 correctness identity 都必須一致。另維持 raw count、BIDS metadata、event
+sample／label digest、recipe／content identity、source replacement、cancel 與 rollback。Focused observable
+tests、canonical source-diverse Import gate、independent performance＋data review 與 exact-SHA Windows
+手測仍必須通過。未達門檻即撤回 product diff；沒有 product diff 時只以 canonical docs 記錄 bounded
+negative result，不要求 manual acceptance。
 
 ## Progression, review, and merge gates
 
 1. B3、B4 與 C2 已完成；C3 已放棄且不得 merge。本 plan 合併並清理舊資源後，B5 與 C4 從同一
    exact `main` 建立兩個互不重疊 worktree 並行。B6 維持 not active。
-2. 每條 lane 只有一位 worker。B5 先建 deterministic lifecycle baseline；C4 先完成 source audit 與
-   一次不提交的 call-count run，證據不成立就停止。作者 focused tests 通過後 freeze exact head，
+2. 每條 lane 只有一位 worker。B5 先建 deterministic lifecycle baseline；C4 先完成固定 Windows
+   before 與一次不提交的 call-count run，證據不成立就停止。作者 focused tests 通過後 freeze exact head，
    再由一位非作者 reviewer 審查；不新增重複 user-simulator role。
 3. Reviewer finding 只有重現本 scope contract、直接 safety／data loss，或使證據無法支撐本次
    claim 時才 blocker；其他最多三項 follow-up，不擴大 diff。
