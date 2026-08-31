@@ -417,6 +417,7 @@ def test_training_settings_use_saved_preview_before_split_materializes(sidebar):
     publication = SimpleNamespace(
         state=SimpleNamespace(
             dataset=SimpleNamespace(
+                split_spec_saved=True,
                 split_materialized=False,
                 split_preview_summary={"validation_count": 3},
                 active_split_summary={"val_count": 0},
@@ -435,6 +436,31 @@ def test_training_settings_use_saved_preview_before_split_materializes(sidebar):
 
     assert initial["validation_samples_available"] is True
     assert initial["validation_sample_count"] == 3
+
+
+def test_training_settings_fail_closed_for_an_unsaved_split_preview(sidebar):
+    publication = SimpleNamespace(
+        state=SimpleNamespace(
+            dataset=SimpleNamespace(
+                split_spec_saved=False,
+                split_materialized=False,
+                split_preview_summary={"validation_count": 3},
+                active_split_summary={"val_count": 3},
+            ),
+            epoch=SimpleNamespace(event_ids={}),
+        )
+    )
+    with (
+        patch.object(sidebar, "_training_option_snapshot", return_value={}),
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
+            return_value=publication,
+        ),
+    ):
+        initial = sidebar._training_setting_initial_option(None)
+
+    assert initial["validation_samples_available"] is False
+    assert initial["validation_sample_count"] == 0
 
 
 def test_configure_training_command_carries_exact_applied_preview_receipt() -> None:

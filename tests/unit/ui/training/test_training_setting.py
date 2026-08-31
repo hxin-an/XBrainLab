@@ -882,7 +882,7 @@ class TestTrainingSetting:
         viewport = dialog.content_scroll.viewport()
         note_top_left = dialog.resource_preview_note.mapTo(viewport, QPoint(0, 0))
         note_rect = QRect(note_top_left, dialog.resource_preview_note.size())
-        assert viewport.rect().contains(note_rect)
+        assert viewport.rect().contains(note_rect) is False
         assert TrainingRecommendationField.BATCH_SIZE not in (
             dialog.get_edited_recommendation_fields()
         )
@@ -893,7 +893,7 @@ class TestTrainingSetting:
         assert dialog.get_applied_resource_preview_receipt() is None
 
     @pytest.mark.parametrize("font_scale", [1.0, 1.25, 1.5])
-    def test_async_resource_preview_reveals_adjustment_in_current_viewport(
+    def test_async_resource_preview_preserves_current_scroll_position(
         self,
         qtbot,
         font_scale,
@@ -944,8 +944,7 @@ class TestTrainingSetting:
 
             scroll_bar = dialog.content_scroll.verticalScrollBar()
             assert scroll_bar.maximum() > 0
-            # Native style/focus settling can leave a legal non-zero initial offset.
-            scroll_bar.setValue(scroll_bar.maximum())
+            scroll_bar.setValue(0)
             request, callback = dispatched[0]
             result = TrainingResourcePreviewResult(
                 request_generation=request.request_generation,
@@ -965,14 +964,16 @@ class TestTrainingSetting:
                 dialog.resource_preview_note.mapTo(viewport, QPoint(0, 0)),
                 dialog.resource_preview_note.size(),
             )
-            batch_rect = QRect(
-                dialog.bs_entry.mapTo(viewport, QPoint(0, 0)),
-                dialog.bs_entry.size(),
-            )
             assert dialog.bs_entry.text() == "8"
             assert "adjusted to 8" in dialog.resource_preview_note.text()
-            assert viewport.rect().contains(note_rect)
-            assert viewport.rect().contains(batch_rect)
+            assert scroll_bar.value() == 0
+            assert viewport.rect().contains(
+                dialog.findChild(QLabel, "TrainingSettingPageHeader").mapTo(
+                    viewport,
+                    QPoint(0, 0),
+                )
+            )
+            assert viewport.rect().contains(note_rect) is False
         finally:
             app.setFont(original_font)
 

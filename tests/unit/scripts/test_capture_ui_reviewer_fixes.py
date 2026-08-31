@@ -101,14 +101,14 @@ def test_surface_capture_can_skip_scroll_clipped_child_references(
 def test_surface_inventory_preserves_existing_artifacts_and_adds_review_states() -> (
     None
 ):
-    assert len(capture_script.LEGACY_REVIEWER_FIX_SURFACES) == 26
+    assert len(capture_script.LEGACY_REVIEWER_FIX_SURFACES) == 29
     assert "preprocess-filtering-toggled.png" in (
         capture_script.LEGACY_REVIEWER_FIX_SURFACES
     )
-    assert capture_script.REVIEWER_FIX_SURFACES[:26] == (
+    assert capture_script.REVIEWER_FIX_SURFACES[:29] == (
         capture_script.LEGACY_REVIEWER_FIX_SURFACES
     )
-    assert capture_script.REVIEWER_FIX_SURFACES[26:] == (
+    assert capture_script.REVIEWER_FIX_SURFACES[29:] == (
         "saliency-setting-empty.png",
         "saliency-setting-single-method.png",
         "saliency-setting-multi-method.png",
@@ -402,6 +402,8 @@ def test_training_setting_bounds_inflated_native_combo_size_hint(qapp) -> None:
         dialog.evaluation_combo.sizeHint = lambda: QSize(1200, 36)
         dialog._fit_dialog_to_content()
         _settle(qapp, dialog)
+        dialog.resize(dialog.width() + 32, dialog.height())
+        qapp.processEvents()
 
         check = capture_script._observe_training_setting_geometry(
             dialog,

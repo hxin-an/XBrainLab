@@ -117,6 +117,11 @@ TRAINING_SETTING_SURFACES = {
     125: "training-setting-125-percent.png",
     150: "training-setting-150-percent.png",
 }
+TRAINING_SETTING_RESOURCE_PREVIEW_SURFACES = {
+    100: "training-setting-100-percent-resource-preview.png",
+    125: "training-setting-125-percent-resource-preview.png",
+    150: "training-setting-150-percent-resource-preview.png",
+}
 LEGACY_REVIEWER_FIX_SURFACES = (
     "preprocess-no-data.png",
     "preprocess-loaded.png",
@@ -135,6 +140,7 @@ LEGACY_REVIEWER_FIX_SURFACES = (
     "preprocess-resample-dialog.png",
     "training-history-empty.png",
     *TRAINING_SETTING_SURFACES.values(),
+    *TRAINING_SETTING_RESOURCE_PREVIEW_SURFACES.values(),
     "smart-parser-simple.png",
     "smart-parser-regex.png",
     "smart-parser-folder.png",
@@ -574,20 +580,32 @@ def _capture_training_setting_surfaces(
             _apply_training_setting_font_scale(dialog, scale)
             dialog.show()
             _settle_widget(app, dialog)
+            if dialog.content_scroll is None:
+                raise RuntimeError("Training Setting scroll content is unavailable.")
+            scroll_bar = dialog.content_scroll.verticalScrollBar()
+            scroll_bar.setValue(0)
+            _capture(
+                app,
+                dialog,
+                TRAINING_SETTING_SURFACES[round(scale * 100)],
+                output_dir=output_dir,
+                # The geometry audit above owns scroll-viewport containment;
+                # clipped child grabs are not stable references for that check.
+                compare_child_references=False,
+            )
+            scroll_bar.setValue(scroll_bar.maximum())
+            app.processEvents()
             checks.append(
                 _observe_training_setting_geometry(
                     dialog,
                     font_scale=scale,
                 )
             )
-            filename = TRAINING_SETTING_SURFACES[round(scale * 100)]
             _capture(
                 app,
                 dialog,
-                filename,
+                TRAINING_SETTING_RESOURCE_PREVIEW_SURFACES[round(scale * 100)],
                 output_dir=output_dir,
-                # The geometry audit above owns scroll-viewport containment;
-                # clipped child grabs are not stable references for that check.
                 compare_child_references=False,
             )
             dialog = None
@@ -823,6 +841,10 @@ def _observe_training_setting_geometry(
     content_scroll = dialog.content_scroll
     if resource_preview_note is None or content_scroll is None:
         raise RuntimeError("Training Setting resource preview UI is unavailable.")
+    content_scroll.verticalScrollBar().setValue(
+        content_scroll.verticalScrollBar().maximum()
+    )
+    QApplication.processEvents()
     resource_viewport = content_scroll.viewport()
     resource_note_top_left = resource_preview_note.mapTo(
         resource_viewport,

@@ -1180,26 +1180,7 @@ class TrainingSettingDialog(BaseDialog):
             self.resource_preview_note.show()
             self.resource_preview_note.updateGeometry()
             self._fit_dialog_to_content()
-            self._reveal_resource_preview_note()
-            QTimer.singleShot(0, self._reveal_resource_preview_note)
         return True
-
-    def _reveal_resource_preview_note(self) -> None:
-        """Keep an automatic draft change and its explanation visible together."""
-        note = self.resource_preview_note
-        scroll = self.content_scroll
-        if note is None or scroll is None or note.isHidden():
-            return
-        layout = self.layout()
-        if layout is not None:
-            layout.activate()
-        content_layout = self.content_widget.layout() if self.content_widget else None
-        if content_layout is not None:
-            content_layout.activate()
-        if self.content_widget is not None:
-            self.content_widget.adjustSize()
-        scroll.ensureWidgetVisible(note, 0, 0)
-        scroll.verticalScrollBar().setValue(scroll.verticalScrollBar().maximum())
 
     def set_output_dir(self):
         """Open a directory picker for the training output path."""
