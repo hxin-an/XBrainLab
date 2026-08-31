@@ -10,6 +10,7 @@ from typing import Any, ClassVar
 
 from PyQt6.QtCore import QEvent, QRect, QSize, Qt, QTimer
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialogButtonBox,
     QFileDialog,
@@ -155,6 +156,10 @@ class TrainingSettingDialog(BaseDialog):
         self.lr_entry: QLineEdit | None = None
         self.checkpoint_entry: QLineEdit | None = None
         self.repeat_entry: QLineEdit | None = None
+        self.early_stopping_check: QCheckBox | None = None
+        self.early_stopping_patience_entry: QLineEdit | None = None
+        self.early_stopping_min_delta_entry: QLineEdit | None = None
+        self._validation_samples_available: bool | None = None
         self.opt_label: QLabel | None = None
         self.dev_label: QLabel | None = None
         self.output_dir_label: QLabel | None = None
@@ -355,6 +360,18 @@ class TrainingSettingDialog(BaseDialog):
                 self.checkpoint_entry.setText(str(opt.checkpoint_epoch))
             if self.repeat_entry:
                 self.repeat_entry.setText(str(opt.repeat_num))
+            if self.early_stopping_check:
+                self.early_stopping_check.setChecked(
+                    bool(getattr(opt, "early_stopping_enabled", False))
+                )
+            if self.early_stopping_patience_entry:
+                self.early_stopping_patience_entry.setText(
+                    str(getattr(opt, "early_stopping_patience", 3))
+                )
+            if self.early_stopping_min_delta_entry:
+                self.early_stopping_min_delta_entry.setText(
+                    str(getattr(opt, "early_stopping_min_delta", 0.0))
+                )
 
             # Restore optimizer
             self.optim = opt.optim
@@ -401,6 +418,10 @@ class TrainingSettingDialog(BaseDialog):
 
     def _load_settings_snapshot(self, option: dict[str, Any]) -> None:
         """Load saved settings from an ApplicationService state snapshot."""
+        validation_available = option.get("validation_samples_available")
+        self._validation_samples_available = (
+            validation_available if isinstance(validation_available, bool) else None
+        )
         if self.epoch_entry and option.get("epoch") is not None:
             self.epoch_entry.setText(str(option["epoch"]))
         if self.bs_entry and option.get("batch_size") is not None:
@@ -411,6 +432,19 @@ class TrainingSettingDialog(BaseDialog):
             self.checkpoint_entry.setText(str(option["checkpoint_epoch"]))
         if self.repeat_entry and option.get("repeat") is not None:
             self.repeat_entry.setText(str(option["repeat"]))
+        if self.early_stopping_check is not None:
+            self.early_stopping_check.setChecked(
+                bool(option.get("early_stopping_enabled", False))
+            )
+            self._sync_early_stopping_inputs()
+        if self.early_stopping_patience_entry is not None:
+            self.early_stopping_patience_entry.setText(
+                str(option.get("early_stopping_patience", 3))
+            )
+        if self.early_stopping_min_delta_entry is not None:
+            self.early_stopping_min_delta_entry.setText(
+                str(option.get("early_stopping_min_delta", 0.0))
+            )
 
         optimizer_name = option.get("optimizer")
         if optimizer_name:
@@ -801,7 +835,19 @@ class TrainingSettingDialog(BaseDialog):
                 option,
             )
         self._set_evaluation_option(TrainingEvaluation.VAL_LOSS)
+        evaluation_combo.currentIndexChanged.connect(self._sync_early_stopping_inputs)
         add_simple_row(7, "Evaluation", evaluation_combo)
+
+        early_stopping = QCheckBox("Enabled")
+        self.early_stopping_check = early_stopping
+        early_stopping.toggled.connect(self._sync_early_stopping_inputs)
+        add_simple_row(8, "Early stopping", early_stopping)
+        patience = QLineEdit("3")
+        self.early_stopping_patience_entry = patience
+        add_simple_row(9, "Early stopping patience", patience)
+        min_delta = QLineEdit("0")
+        self.early_stopping_min_delta_entry = min_delta
+        add_simple_row(10, "Minimum improvement", min_delta)
 
         class_weight_combo = QComboBox()
         self.class_weight_combo = class_weight_combo
@@ -811,14 +857,14 @@ class TrainingSettingDialog(BaseDialog):
             (ClassWeightMode.CUSTOM, "Custom"),
         ):
             class_weight_combo.addItem(label, mode.value)
-        add_simple_row(8, "Class loss weighting", class_weight_combo)
+        add_simple_row(11, "Class loss weighting", class_weight_combo)
         class_weight_combo.currentIndexChanged.connect(self._sync_class_weight_rows)
         class_map = (
             self.initial_option.get("class_map", {})
             if isinstance(self.initial_option, dict)
             else {}
         )
-        row = 9
+        row = 12
         if isinstance(class_map, dict):
             for _, name in sorted(class_map.items()):
                 if not isinstance(name, str) or not name.strip():
@@ -865,6 +911,7 @@ class TrainingSettingDialog(BaseDialog):
         footer.addWidget(buttons)
         layout.addLayout(footer)
         self._sync_class_weight_rows()
+        self._sync_early_stopping_inputs()
 
     def _sync_class_weight_rows(self, _index: int | None = None) -> None:
         """Show class multipliers only when their Custom policy uses them."""
@@ -874,6 +921,37 @@ class TrainingSettingDialog(BaseDialog):
         )
         for widget in self._class_weight_row_widgets:
             widget.setVisible(custom)
+
+    def _sync_early_stopping_inputs(self, _value: object = None) -> None:
+        """Keep an invalid Last epoch combination out of the visible form."""
+        validation_available = self._validation_samples_available is True
+        valid_evaluation = bool(
+            self.evaluation_combo is not None
+            and self.evaluation_combo.currentData() is not TrainingEvaluation.LAST_EPOCH
+        )
+        enabled = bool(
+            self.early_stopping_check is not None
+            and self.early_stopping_check.isChecked()
+            and validation_available
+            and valid_evaluation
+        )
+        unavailable = not validation_available
+        if (
+            self.evaluation_combo is not None
+            and self.evaluation_combo.currentData() is TrainingEvaluation.LAST_EPOCH
+            and self.early_stopping_check is not None
+        ):
+            self.early_stopping_check.setChecked(False)
+        if unavailable and self.early_stopping_check is not None:
+            self.early_stopping_check.setChecked(False)
+        if self.early_stopping_check is not None:
+            self.early_stopping_check.setEnabled(valid_evaluation and not unavailable)
+        for entry in (
+            self.early_stopping_patience_entry,
+            self.early_stopping_min_delta_entry,
+        ):
+            if entry is not None:
+                entry.setEnabled(enabled)
 
     def set_optimizer(self):
         """Open the optimizer setting dialog and apply the result."""
@@ -1074,6 +1152,9 @@ class TrainingSettingDialog(BaseDialog):
             or not self.lr_entry
             or not self.checkpoint_entry
             or not self.repeat_entry
+            or not self.early_stopping_check
+            or not self.early_stopping_patience_entry
+            or not self.early_stopping_min_delta_entry
         ):
             return
 
@@ -1091,7 +1172,9 @@ class TrainingSettingDialog(BaseDialog):
                 bs = int(self.bs_entry.text())
                 ckpt = int(self.checkpoint_entry.text())
                 repeat = int(self.repeat_entry.text())
+                early_patience = int(self.early_stopping_patience_entry.text())
                 lr = float(self.lr_entry.text())
+                early_min_delta = float(self.early_stopping_min_delta_entry.text())
             except ValueError as e:
                 msg = (
                     "Training epochs, Batch Size, Checkpoint, Repeat must be "
@@ -1131,6 +1214,9 @@ class TrainingSettingDialog(BaseDialog):
                     if isinstance(self.initial_option, dict)
                     else None
                 ),
+                early_stopping_enabled=self.early_stopping_check.isChecked(),
+                early_stopping_patience=early_patience,
+                early_stopping_min_delta=early_min_delta,
             )
             super().accept()
         except ValueError:

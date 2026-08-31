@@ -1225,8 +1225,14 @@ class TrainingPanel(BasePanel):
             self.log_text.append(f"Training failed: {message}")
         elif status == "Stopped":
             self.log_text.append("Training stopped before completion.")
-        elif status == "Completed":
-            self.log_text.append("All training jobs finished.")
+        elif status in {"Completed", "Completed early"}:
+            self.log_text.append(
+                str(detail).strip()
+                if status == "Completed early"
+                and isinstance(detail, str)
+                and detail.strip()
+                else "All training jobs finished."
+            )
 
     @staticmethod
     def _completed_epoch_count(row) -> int:

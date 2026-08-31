@@ -1216,6 +1216,16 @@ class TrainingSidebar(QWidget):
             return snapshot
         initial_option: dict[str, Any] = dict(snapshot)
         publication = get_application_view_publication(self)
+        dataset_state = getattr(getattr(publication, "state", None), "dataset", None)
+        split_summary = getattr(dataset_state, "active_split_summary", {})
+        if isinstance(split_summary, dict):
+            validation_count = split_summary.get(
+                "val_count", split_summary.get("validation_count")
+            )
+            if isinstance(validation_count, int) and not isinstance(
+                validation_count, bool
+            ):
+                initial_option["validation_samples_available"] = validation_count > 0
         epoch = getattr(getattr(publication, "state", None), "epoch", None)
         event_ids = getattr(epoch, "event_ids", None)
         if isinstance(event_ids, dict):
@@ -1630,6 +1640,13 @@ class TrainingSidebar(QWidget):
                 ),
                 custom_class_weights=dict(
                     getattr(option, "custom_class_weights", {}) or {}
+                ),
+                early_stopping_enabled=bool(
+                    getattr(option, "early_stopping_enabled", False)
+                ),
+                early_stopping_patience=getattr(option, "early_stopping_patience", 3),
+                early_stopping_min_delta=getattr(
+                    option, "early_stopping_min_delta", 0.0
                 ),
             )
         return attach_training_submission_provenance(

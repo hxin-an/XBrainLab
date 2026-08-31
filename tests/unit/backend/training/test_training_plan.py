@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 import torch
 
+from XBrainLab.backend.application.training_history import project_training_history_rows
 from XBrainLab.backend.dataset import (
     DatasetGenerator,
     DataSplitter,
@@ -2401,3 +2402,104 @@ def test_training_plan_holder_init_error(
         pytest.raises(RuntimeError, match="Other error"),
     ):
         TrainingPlanHolder(**args)
+
+
+def test_early_stopping_strict_min_delta_and_none_auc_hold_counter(base_holder):
+    """Early stopping uses validation observations, not checkpoint tie rules."""
+    option = base_holder.option
+    option.early_stopping_enabled = True
+    option.early_stopping_patience = 2
+    option.early_stopping_min_delta = 0.1
+    option.evaluation_option = TrainingEvaluation.VAL_AUC
+    record = base_holder.get_plans()[0]
+    record.early_stopping.update(
+        enabled=True,
+        patience=2,
+        min_delta=0.1,
+    )
+
+    assert record.observe_early_stopping() is False
+    record.step()
+    record.update_validation({RecordKey.AUC: 0.50})
+    assert record.observe_early_stopping() is False  # establishes baseline
+    record.step()
+    record.update_validation({RecordKey.AUC: 0.60})
+    assert record.observe_early_stopping() is False  # equal delta is not improvement
+    record.step()
+    record.update_validation({RecordKey.AUC: None})
+    assert record.observe_early_stopping() is False  # undefined AUC holds patience
+    record.step()
+    record.update_validation({RecordKey.AUC: 0.59})
+    assert record.observe_early_stopping() is True
+    assert record.early_stopping["stopped_early"] is True
+    assert record.early_stopping["best_epoch"] == 1
+
+
+def test_early_stopping_completes_repeat_and_evaluates_selected_checkpoint(base_holder):
+    option = base_holder.option
+    option.epoch = 8
+    option.repeat_num = 1
+    option.early_stopping_enabled = True
+    option.early_stopping_patience = 1
+    option.early_stopping_min_delta = 1.0
+    option.evaluation_option = TrainingEvaluation.VAL_LOSS
+    record = base_holder.get_plans()[0]
+    record.early_stopping.update(enabled=True, patience=1, min_delta=1.0)
+
+    def run_epoch(*args):
+        active_record = args[-1]
+        active_record.step()
+        active_record.update_validation({RecordKey.LOSS: 1.0})
+
+    train_loader, val_loader, test_loader = [1], [2], [3]
+
+    def selected_pair(active_record, _val_loader, _test_loader):
+        assert (
+            base_holder._selected_evaluation_state(active_record)
+            is active_record.best_val_loss_model
+        )
+        return active_record.model, test_loader
+
+    with (
+        patch.object(base_holder, "train_one_epoch", side_effect=run_epoch),
+        patch.object(
+            base_holder,
+            "get_loader",
+            return_value=(train_loader, val_loader, test_loader),
+        ),
+        patch.object(base_holder, "get_eval_pair", side_effect=selected_pair),
+        patch.object(Evaluator, "evaluate", return_value=Mock(spec=EvalRecord)),
+        patch.object(record, "export_checkpoint"),
+    ):
+        base_holder.train_one_repeat(record)
+
+    assert record.early_stopping["stopped_early"] is True
+    assert record.get_epoch() == 2
+    assert record.eval_record is not None
+    assert record.is_finished() is True
+
+
+def test_early_stop_history_uses_checkpoint_tie_epoch_not_monitor_epoch(base_holder):
+    option = base_holder.option
+    option.evaluation_option = TrainingEvaluation.VAL_LOSS
+    record = base_holder.get_plans()[0]
+    record.early_stopping.update(
+        enabled=True,
+        stopped_early=True,
+        best_value=0.5,
+        best_epoch=1,
+        consecutive_non_improvements=1,
+        stop_epoch=2,
+    )
+    record.step()
+    record.update_validation({RecordKey.LOSS: 0.5})
+    record.step()
+    record.update_validation({RecordKey.LOSS: 0.5})
+    record.eval_record = Mock(spec=EvalRecord)
+
+    row = project_training_history_rows(
+        [{"plan": base_holder, "record": record, "run_name": "Repeat-0"}]
+    )[0]
+
+    assert row["status"] == "Completed early"
+    assert "selected checkpoint epoch 2" in row["status_detail"]

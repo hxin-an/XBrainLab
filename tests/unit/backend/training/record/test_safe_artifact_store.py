@@ -405,7 +405,7 @@ def _class_weighting_payload(
 
 
 @pytest.mark.parametrize("mode", ["off", "balanced", "custom"])
-def test_training_record_v2_weighting_round_trip_is_lossless(
+def test_training_record_v3_weighting_round_trip_is_lossless(
     tmp_path: Path,
     dataset,  # noqa: F811
     training_option,  # noqa: F811
@@ -429,10 +429,20 @@ def test_training_record_v2_weighting_round_trip_is_lossless(
 
     manifest = _read_manifest(tmp_path / "record")
     payload = manifest["payload"]
-    assert payload["record_schema_version"] == 2
+    assert payload["record_schema_version"] == 3
     assert payload["class_weighting"] == {
         "requested": requested,
         "resolved": resolved,
+    }
+    assert payload["early_stopping"] == {
+        "enabled": False,
+        "patience": 3,
+        "min_delta": 0.0,
+        "stopped_early": False,
+        "best_value": None,
+        "best_epoch": None,
+        "consecutive_non_improvements": 0,
+        "stop_epoch": None,
     }
 
     with patch.object(TrainRecord, "init_dir"):
@@ -455,6 +465,37 @@ def test_training_record_v2_weighting_round_trip_is_lossless(
         assert loaded.criterion.weight is None
     else:
         assert loaded.criterion.weight.tolist() == pytest.approx(resolved["weights"])
+
+
+def test_training_record_v2_migrates_early_stopping_to_disabled(
+    tmp_path: Path,
+    dataset,  # noqa: F811
+    training_option,  # noqa: F811
+    model_holder,  # noqa: F811
+) -> None:
+    with patch.object(TrainRecord, "init_dir"):
+        record = TrainRecord(0, dataset, model_holder.get_model({}), training_option, 1)
+    record.target_path = str(tmp_path)
+    record._artifact_io_path = str(tmp_path)
+    record.export_checkpoint()
+    manifest_path = tmp_path / "record"
+    manifest = _read_manifest(manifest_path)
+    manifest["payload"]["record_schema_version"] = 2
+    del manifest["payload"]["early_stopping"]
+    manifest_path.write_text(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    with patch.object(TrainRecord, "init_dir"):
+        restored = TrainRecord(
+            0, dataset, model_holder.get_model({}), training_option, 1
+        )
+    restored.target_path = str(tmp_path)
+    restored._artifact_io_path = str(tmp_path)
+    restored.load()
+
+    assert restored.early_stopping["enabled"] is False
+    assert restored.early_stopping["stopped_early"] is False
 
 
 @pytest.mark.parametrize(

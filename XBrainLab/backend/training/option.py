@@ -361,6 +361,9 @@ class TrainingOption:
         class_weight_mode: ClassWeightMode | str = ClassWeightMode.OFF,
         custom_class_weights: dict[str, float] | None = None,
         class_map_fingerprint_value: str | None = None,
+        early_stopping_enabled: bool = False,
+        early_stopping_patience: int = 3,
+        early_stopping_min_delta: float = 0.0,
     ):
         """Initialize training options and validate them.
 
@@ -400,6 +403,9 @@ class TrainingOption:
         self.class_weight_mode = class_weight_mode
         self.custom_class_weights = custom_class_weights
         self.class_map_fingerprint = class_map_fingerprint_value
+        self.early_stopping_enabled = early_stopping_enabled
+        self.early_stopping_patience = early_stopping_patience
+        self.early_stopping_min_delta = early_stopping_min_delta
         self.criterion = nn.CrossEntropyLoss()
         self.optimizer_name = "adam"  # Default
         self.validate()
@@ -449,6 +455,12 @@ class TrainingOption:
             errors.append("Device not set")
         if not isinstance(self.evaluation_option, TrainingEvaluation):
             errors.append("Evaluation option not set")
+        if not isinstance(self.early_stopping_enabled, bool):
+            errors.append("Invalid early stopping setting")
+        if self.early_stopping_enabled and (
+            self.evaluation_option is TrainingEvaluation.LAST_EPOCH
+        ):
+            errors.append("Early stopping requires a validation evaluation option")
         try:
             mode = normalize_class_weight_mode(self.class_weight_mode)
             custom = (
@@ -515,6 +527,18 @@ class TrainingOption:
             normalize_positive_integer,
             self.repeat_num,
         )
+        normalize_value(
+            "early_stopping_patience",
+            "Invalid early stopping patience",
+            normalize_positive_integer,
+            self.early_stopping_patience,
+        )
+        normalize_value(
+            "early_stopping_min_delta",
+            "Invalid early stopping minimum improvement",
+            normalize_non_negative_finite_float,
+            self.early_stopping_min_delta,
+        )
 
         normalized_seed: int | None = None
         try:
@@ -540,6 +564,8 @@ class TrainingOption:
         self.lr = float(normalized["lr"])
         self.checkpoint_epoch = int(normalized["checkpoint_epoch"])
         self.repeat_num = int(normalized["repeat_num"])
+        self.early_stopping_patience = int(normalized["early_stopping_patience"])
+        self.early_stopping_min_delta = float(normalized["early_stopping_min_delta"])
         self.seed = normalized_seed
         self.class_weight_mode = mode
         self.custom_class_weights = custom

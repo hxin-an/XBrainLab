@@ -355,6 +355,9 @@ class ConfigureTrainingCommand:
     pretrained_weight_path: str | None = None
     class_weight_mode: str = "off"
     custom_class_weights: dict[str, float] = field(default_factory=dict)
+    early_stopping_enabled: bool = False
+    early_stopping_patience: int = 3
+    early_stopping_min_delta: float = 0.0
 
     @property
     def name(self) -> CommandName:

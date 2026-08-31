@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from typing import Any
 
+import numpy as np
 import torch
 
 from XBrainLab.backend.model_base.model_catalog import get_model_spec
@@ -155,6 +156,9 @@ class TrainingCommandService:
                 class_weight_mode=weight_mode,
                 custom_class_weights=custom_weights,
                 class_map_fingerprint_value=class_identity,
+                early_stopping_enabled=command.early_stopping_enabled,
+                early_stopping_patience=command.early_stopping_patience,
+                early_stopping_min_delta=command.early_stopping_min_delta,
             )
 
         holder: ModelHolder | None = None
@@ -259,6 +263,7 @@ class TrainingCommandService:
         if not isinstance(preflight, ResourcePreflightResult):
             raise TypeError("preflight must be a ResourcePreflightResult")
         self._validate_class_weighting_start_admission()
+        self._validate_early_stopping_start_admission()
         handoff_generation = self.training.start_training(
             append=command.append,
             interactive=command.interactive or defer_synchronous_completion,
@@ -327,6 +332,19 @@ class TrainingCommandService:
                 )
         except (AttributeError, TypeError, ValueError) as exc:
             raise PreconditionError(str(exc)) from exc
+
+    def _validate_early_stopping_start_admission(self) -> None:
+        """Reject a stale enabled request when no validation samples remain."""
+        context = self.training_runtime.resource_context()
+        option = context.training_option
+        if not isinstance(option, TrainingOption) or not option.early_stopping_enabled:
+            return
+        if option.evaluation_option is TrainingEvaluation.LAST_EPOCH:
+            raise PreconditionError(
+                "Early stopping requires a validation evaluation option"
+            )
+        if any(not np.any(dataset.val_mask) for dataset in context.datasets):
+            raise PreconditionError("Early stopping requires a validation split")
 
     def discard_train_preflight(self, token: str | None) -> None:
         """Invalidate a pending training-resource confirmation receipt."""

@@ -75,6 +75,19 @@ def _recommendation(
 
 
 class TestTrainingSetting:
+    def test_early_stopping_is_disabled_without_validation_samples(self, qtbot):
+        dialog = TrainingSettingDialog(
+            None,
+            None,
+            initial_option={"validation_samples_available": False},
+        )
+        qtbot.addWidget(dialog)
+
+        assert dialog.early_stopping_check is not None
+        assert dialog.early_stopping_check.isEnabled() is False
+        assert dialog.early_stopping_patience_entry is not None
+        assert dialog.early_stopping_patience_entry.isEnabled() is False
+
     @pytest.fixture
     def window(self, qtbot):
         mock_controller = MagicMock()

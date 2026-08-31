@@ -141,6 +141,10 @@ def _project_training_history_row(
         source_row,
         record,
     )
+    early_stopping = getattr(record, "early_stopping", {})
+    stopped_early = isinstance(early_stopping, Mapping) and bool(
+        early_stopping.get("stopped_early", False)
+    )
     status = _training_status(
         plan,
         record,
@@ -154,7 +158,14 @@ def _project_training_history_row(
         run_name=str(source_row.get("run_name", "")),
         model_name=str(source_row.get("model_name", "")),
         status=status,
-        status_detail=_training_status_detail(plan, source_row, status=status),
+        status_detail=_training_status_detail(
+            plan,
+            record,
+            source_row,
+            status=status,
+            early_stopping=early_stopping if stopped_early else None,
+            max_epochs=max_epochs,
+        ),
         epoch=epoch,
         max_epochs=max_epochs,
         is_active=bool(source_row.get("is_active", False)),
@@ -280,6 +291,11 @@ def _training_status(
         except Exception:
             finished = False
     if finished:
+        early_stopping = getattr(record, "early_stopping", {})
+        if isinstance(early_stopping, Mapping) and early_stopping.get(
+            "stopped_early", False
+        ):
+            return "Completed early"
         return "Completed"
     if is_current_run:
         return "Running"
@@ -291,11 +307,34 @@ def _training_status(
 
 def _training_status_detail(
     plan: Any,
+    record: Any,
     source_row: Mapping[str, Any],
     *,
     status: str,
+    early_stopping: Mapping[str, Any] | None = None,
+    max_epochs: int = 0,
 ) -> str | None:
     """Detach the terminal explanation for the row that actually failed."""
+    if status == "Completed early" and early_stopping is not None:
+        metric = getattr(getattr(plan, "option", None), "evaluation_option", None)
+        metric_name = str(getattr(metric, "value", metric) or "validation metric")
+        selected_epoch_key = {
+            "Best validation loss": "best_val_loss_epoch",
+            "Best validation performance": "best_val_accuracy_epoch",
+            "Best validation AUC": "best_val_auc_epoch",
+        }.get(metric_name)
+        best_record = getattr(record, "best_record", {})
+        selected_epoch = (
+            best_record.get(selected_epoch_key)
+            if isinstance(best_record, Mapping) and selected_epoch_key is not None
+            else None
+        )
+        patience = early_stopping.get("patience")
+        return (
+            f"Stopped at epoch {early_stopping.get('stop_epoch')} of {max_epochs}; "
+            f"{metric_name}, patience {patience}; selected checkpoint epoch "
+            f"{selected_epoch}."
+        )
     if status != "Failed":
         return None
     explicit = source_row.get("status_detail")

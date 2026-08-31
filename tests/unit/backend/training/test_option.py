@@ -31,6 +31,33 @@ def test_class_weighting_helpers_reject_invalid_custom_values_and_stabilize_map_
             normalize_custom_class_weights(bad)
 
 
+def test_early_stopping_rejects_last_epoch_and_invalid_boundaries(tmp_path) -> None:
+    common = {
+        "output_dir": str(tmp_path),
+        "optim": torch.optim.Adam,
+        "optim_params": {},
+        "use_cpu": True,
+        "gpu_idx": None,
+        "epoch": 2,
+        "bs": 2,
+        "lr": 0.01,
+        "checkpoint_epoch": 0,
+        "evaluation_option": TrainingEvaluation.LAST_EPOCH,
+        "repeat_num": 1,
+        "early_stopping_enabled": True,
+    }
+    with pytest.raises(ValueError, match="validation evaluation"):
+        TrainingOption(**common)
+    common["evaluation_option"] = TrainingEvaluation.VAL_LOSS
+    common["early_stopping_patience"] = 0
+    with pytest.raises(ValueError, match="patience"):
+        TrainingOption(**common)
+    common["early_stopping_patience"] = 1
+    common["early_stopping_min_delta"] = float("nan")
+    with pytest.raises(ValueError, match="minimum improvement"):
+        TrainingOption(**common)
+
+
 def test_class_weighting_resolution_uses_only_the_current_training_split() -> None:
     """Balanced weights are derived from one fold's train mask, not held-out data."""
     resolved = resolve_class_weighting(

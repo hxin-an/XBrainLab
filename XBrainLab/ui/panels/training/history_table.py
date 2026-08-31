@@ -274,10 +274,10 @@ class TrainingHistoryTable(QTableWidget):
             max_epochs = int(data.get("max_epochs", 0))
             status = str(data.get("status", "Pending"))
             runtime_device = str(data.get("runtime_device") or "").strip()
-            if status == "Completed" and runtime_device:
+            if status in {"Completed", "Completed early"} and runtime_device:
                 terminal_devices.append(runtime_device)
 
-            def set_item(col, text, r=row_idx):
+            def set_item(col, text, r=row_idx, tooltip=None):
                 item = self.item(r, col)
                 if not item:
                     item = QTableWidgetItem()
@@ -285,12 +285,21 @@ class TrainingHistoryTable(QTableWidget):
                     self.setItem(r, col, item)
                 if item.text() != text:
                     item.setText(text)
-                item.setToolTip(text)
+                item.setToolTip(tooltip if tooltip is not None else text)
 
             set_item(0, group_name)
             set_item(1, run_name)
             set_item(2, model_name)
-            set_item(3, status)
+            detail = data.get("status_detail")
+            set_item(
+                3,
+                status,
+                tooltip=(
+                    f"{status}\n{detail}"
+                    if isinstance(detail, str) and detail.strip()
+                    else status
+                ),
+            )
             set_item(4, f"{epoch}/{max_epochs}")
 
             metrics = data.get("metrics", {})
@@ -333,7 +342,7 @@ class TrainingHistoryTable(QTableWidget):
             test_acc_str = (
                 f"{test_acc:.2f}%"
                 if test_acc is not None
-                else ("N/A" if status == "Completed" else "—")
+                else ("N/A" if status in {"Completed", "Completed early"} else "—")
             )
 
             set_item(5, f"{train_loss:.4f}")
