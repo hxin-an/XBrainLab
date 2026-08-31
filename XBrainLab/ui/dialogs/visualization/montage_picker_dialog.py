@@ -156,6 +156,7 @@ class PickMontageDialog(BaseDialog):
         self.summary_page = None
         self.mapping_page = None
         self.button_box = None
+        self.apply_button: QPushButton | None = None
 
         super().__init__(parent, title="Electrode Layout")
         self.setMinimumWidth(540)

@@ -73,6 +73,22 @@ class TestPickMontageInit:
     def test_creates_dialog(self, dialog):
         assert dialog.windowTitle() == "Electrode Layout"
 
+    def test_empty_channel_rejection_keeps_apply_sync_safe(self, qtbot):
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        with patch(
+            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.show_error"
+        ):
+            rejected_dialog = PickMontageDialog(parent=None, channel_names=[])
+        qtbot.addWidget(rejected_dialog)
+
+        rejected_dialog._sync_apply_enabled()
+
+        assert rejected_dialog.button_box is None
+        assert getattr(rejected_dialog, "apply_button", None) is None
+
     def test_has_montage_combo(self, dialog):
         assert isinstance(dialog.montage_combo, QComboBox)
         assert dialog.montage_combo.count() >= 3
