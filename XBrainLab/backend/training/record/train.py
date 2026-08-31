@@ -174,7 +174,7 @@ def _build_class_weighting_criterion(
     if not isinstance(weights, list):
         raise ValueError("Training class-weighting metadata is malformed.")
     return torch.nn.CrossEntropyLoss(
-        weight=torch.tensor(weights, dtype=torch.float32),
+        weight=torch.tensor(weights, dtype=torch.float32),  # pyright: ignore[reportPrivateImportUsage]
     )
 
 

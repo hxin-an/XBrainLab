@@ -209,7 +209,7 @@ def instantiate_optimizer(optimizer_class, optim_params, lr=1):
     """
     # Use a real trainable tensor so native optimizer validation follows the
     # same parameter contract as training without allocating a model.
-    parameter = torch.nn.Parameter(torch.zeros((1, 1)))
+    parameter = torch.nn.Parameter(torch.zeros((1, 1)))  # pyright: ignore[reportPrivateImportUsage]
     return optimizer_class([parameter], lr=lr, **optim_params)
 
 
