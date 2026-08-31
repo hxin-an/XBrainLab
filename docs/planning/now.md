@@ -2,93 +2,83 @@
 
 最後更新：`2026-08-31`
 
-## Current baseline and release status
+## Current baseline and release decision
 
-`main` 與 `origin/main` 目前同為
-`9cf2637bc1f8c8f180e463ca1bbda141e2f680de`。Repo-root `settings.json` 的本機修改仍由使用者擁有，
-不得提交、覆寫或隱藏。
+`main` 與 `origin/main` 在本計畫開始時同為
+`c339884a611b18c6ac3e4582760d7aa518ab51ba`。PR #92 的 Saliency Spectrogram 修復已由使用者手測通過並
+合併；舊 release candidate PR #91 的 source、artifact 與 manual acceptance 仍為失效歷史，不得重用。
+Repo-root `settings.json` 的本機修改由使用者擁有，不得 stage、commit、revert、覆寫或隱藏。
 
-原 `v0.9.0` candidate PR #91（head
-`cacf0b86b4353b9d3023af98bbd9cc46aec28d7a`）雖然 CI 完成，但使用者在真人操作發現 Saliency
-Spectrogram 排版會重疊，因此已明確否決並關閉；該 head 不得 merge 或 tag。修復進入 `main` 並完成完整
-驗證前，不建立新的 release candidate。
+使用者於 `2026-08-31` 決定下一個版本為 **v0.9.0 Desktop Core Stable source release**：同一 candidate
+必須完成人工 Windows Python native 與 WSLg 驗收；沒有 signed installer。Local Assistant 隨產品提供但
+維持 **bounded preview**，不宣稱 Assistant Stable promotion。中文輸入不屬於本次 release blocker。
 
-## Active slice — Saliency Spectrogram responsive layout
+## Active program — v0.9.0 stable source convergence
 
-### Problem and evidence
+### Evidence and blockers
 
-四類別 Spectrogram 初始 `640×480` 可正常顯示，但存在三個可重現觸發：
+1. Basedpyright `1.39.2` 在受限 sandbox 會對 416 個 production files 回報假綠 `0 diagnostics`；同一
+   `c339884a` 在可解析完整 Poetry dependencies 的外部環境連續兩次回報 `67 diagnostics`。目前 zero
+   baseline 與 runner 都不能證明 type gate 通過。
+2. Canonical handoff manifest 目前只表示包含 Assistant strict promotion 的單一 required set；Granite 3B
+   已驗收基準仍是 36/36 positive、10/10 explicit parameter origin、5/5 missing guard、22/24 product
+   no-action、6/7 clarification。這可支持 bounded preview，不可被改寫為 24/24、7/7 Stable promotion。
+3. PR #91 的 0.9.0 version／release truth 變更尚未進入 main。必須先閉合上述 prerequisite，再從新的
+   fixed main 建立全新 candidate。
 
-1. 切換到其他 workflow panel 再回到 Visualization；
-2. 開啟 Assistant，使 Visualization controls 換行並縮小 tab 的可用高度／寬度；
-3. 重新計算 Saliency，替換目前 Matplotlib figure／canvas。
+### Outcomes
 
-可見結果是 class title、axis labels、plot 與 colorbar 疊在一起。唯讀重現已排除重複 canvas：舊 canvas
-會被移除、隱藏與 detach。實際幾何證據為：
+- Basedpyright runner 在 dependency type information 不可解析時 fail closed；完整依賴環境及 CI 結果一致。
+- 正確環境中的 67 diagnostics 經分群修正或精確、可審查的第三方 stub boundary 收斂到 zero observed
+  diagnostics；不得擴大 exclude 或把整批 debt 寫入 baseline。
+- 既有 canonical handoff runner 新增唯一命名的 `desktop-source` release profile；無參數 strict 行為維持
+  不變，不建立第二套 manifest 或任意 skip list。
+- Desktop profile 跑全部核心產品 gate，並以 case-level no-regression 的 bounded Assistant gate取代
+  strict promotion gate；artifact 必須明示 `assistant_stable_promotion=false`。
+- 所有 prerequisite 進 main 後，才建立新 `release/v0.9.0-source-baseline-v2`、同步 0.9.0 identity、跑
+  exact-source automated dossier，再交同一 SHA 的 Windows native／WSLg 真人驗收。
 
-- 四類別 Spectrogram 在 `500×300` 時上下兩列 data-axis tight bounds 相交；
-- `500×480` 時既有 shared colorbar 與右欄兩個 data axes 相交；
-- 共用 `fit_figure_subplots_to_canvas` 從目前已調整的 margins 繼續修改，compact → normal 後不會恢復
-  visualizer authored margins。
+### Scope, ownership, and complexity
 
-Saliency Map 已有可重用的 product pattern：scrollable canvas、row-based minimum height 與 GridSpec 專用
-colorbar 欄。使用者已於 `2026-08-31` 明確批准 Spectrogram 在受限高度下沿用其垂直捲動行為；正常尺寸
-外觀維持不變。
+- **Root coordinator** 是唯一 plan、branch／worktree、scope、merge order、exact SHA、artifact、manual
+  acceptance 與 release owner。
+- **Validation worker** 只負責 Basedpyright resolver probe、runner/tests 與按 subsystem 分片的 diagnostics。
+- **Release-contract worker** 只負責 handoff profile、bounded evaluator result contract、tests 與 canonical
+  claim docs；不得修改 product Assistant tool、prompt、Host admission 或 runtime behavior。
+- **Independent reviewer** 在每個 frozen slice 後審 diff、test quality、claim boundary 與 complexity；不在
+  受審 branch 補功能。最多兩個互不重疊 worker，不派重複 reviewer。
+- Basedpyright debt 跨過 8 個 production files，必須拆成每 PR 不超過 8 個 production files的 data／
+  preprocess、training／model、UI／plot 等 slices。每個 slice owner delta `0`，優先 narrowing、runtime
+  guard、正確 import 或 deletion；不得新增 owner、state machine、receipt 或 compatibility path。
+- Validation／release-profile production delta 預計限於既有 `scripts/dev` commands，product runtime
+  delta `0`。若任一 pure refactor 淨增超過 100 production LOC 或 owner 增加，停止並做 complexity review。
+- 使用者已明確批准計畫中 **type-only、無可見行為變更** 的 `XBrainLab/ui/` 修正；若需要改 layout、文案、
+  互動、狀態或流程，立即停止並另取 UI 確認。
 
-### Outcome
+## Progression and focused validation
 
-- 正常尺寸維持目前多欄 Spectrogram hierarchy、文案、色彩與互動。
-- 高度不足時保留至少 `max(420, rows * 240)` 的 canvas，使用既有垂直 scrollbar，不壓縮到 artist overlap。
-- colorbar 使用自己的 GridSpec column；在約 500px 寬的 compact canvas 不碰右欄 data axes。
-- 每次 resize 從該 figure 的 authored subplot margins 重新 fitting；normal → compact → normal 不累積變形。
-- panel hide/show、Assistant-like resize 與 recompute figure replacement 後仍只有一個 live canvas，且版面可讀。
+1. **Plan checkpoint**：先合併本 canonical plan；之後才建立兩條 prerequisite worktree。
+2. **Basedpyright determinism**：先建立 observable fake-green red test／dependency-resolution probe，再修 runner；
+   在 fresh process、完整 Poetry 3.12 env 與 CI 各連跑兩次。Sandbox 無 dependency types 時必須明確失敗。
+3. **Type debt slices**：保留或新增直接 runtime characterization；每片修後跑 focused tests、external full
+   Basedpyright、Ruff、architecture及受影響 subsystem tests。第三方 stub mismatch 只允許精確行級
+   suppression並附 runtime evidence；最終 external observed count 必須為 0。
+4. **Release evidence contract**：test-first證明 default profile仍使用 strict 24/24、7/7；desktop profile
+   不能任意漏 gate，bounded report必須 exact model/revision、81/81 complete，且 PR #71 所有 passed case
+   不得退步。三個已知失敗可維持或改善，不能換成新失敗。
+5. **Fresh candidate**：重建 0.9.0 identity／docs，clean、push、freeze exact SHA，以 D-mounted model／RAG
+   caches及offline Granite跑 `desktop-source` canonical manifest；所有 non-skipped CI completed/success。
+6. **Manual acceptance**：Windows native完成 startup、PhysioNet核心 workflow、BIDS／GDF import spot checks、
+   recipe reload、四種 Saliency view、Spectrogram 四條重現與 3D time；WSLg完成 launcher、model settings、
+   bounded Assistant及 Spectrogram＋Assistant interaction。兩邊完整 SHA 必須相同。
 
-### Scope, ownership, and non-goals
+## Stop conditions
 
-- 重用既有 `SaliencySpectrogramMapViz` figure layout、`BaseSaliencyView` canvas lifecycle、
-  `_xbrainlab_min_canvas_height` 與 Saliency Map scroll pattern；不建立新 owner、module、public class、state
-  machine、receipt 或 layout framework。
-- 預計最多 3 個既有 production files，owner delta `0`，production net LOC `<100`。超出即停止並先做
-  complexity review。
-- 不修改 Saliency 計算、STFT/cache、class identity、ApplicationService、Assistant prompt/tool contract、
-  model、其他 workflow UI、可見文案、字體縮放或自動單欄重排。
-- resize 只重新 layout／draw 現有 figure，不得觸發新的 backend Saliency 計算。
-
-## Roles and progression
-
-- **Root coordinator**：唯一管理 plan、branch/worktree、scope／LOC、視覺 artifact、canonical gates、PR、
-  manual acceptance 與 release progression；不以作者自評代替 reviewer。
-- **Implementer**：先建立 observable red tests，再做最小 coherent repair；不擴張到其他 Saliency redesign。
-- **Independent reviewer**：在 freeze exact SHA 後審查 overlap geometry、canvas lifecycle、sibling regression、
-  test quality 與 scope；不在受審 branch 直接補功能。
-
-完成順序：red reproduction → 最小修復 → same tests green → adjacent Saliency tests → exact-source screenshots／
-walkthrough → reviewer → canonical handoff gates → PR CI → 使用者 exact-SHA 手測與 merge 批准。任何 source
-改動會使舊手測失效。
-
-## Focused validation and handoff
-
-1. Backend 四類別 Spectrogram 證明 minimum height 至少 480px，且 dedicated colorbar column 與 data axes
-   在 compact width 不相交。
-2. Qt lifecycle regression 覆蓋 `640×480`、`500×480`、`500×300`、normal → compact → normal、hide/show、
-   Assistant-like geometry 與 figure replacement；檢查 scrollbar、authored margin recovery、single live canvas、
-   plot／label／colorbar non-overlap，以及 resize 不增加 render generation。
-3. 重跑直接相鄰 Spectrogram、BaseSaliencyView、Map、Topographic Map 與 Visualization panel tests。
-4. 產生 normal／compact exact-source screenshots，由 root 肉眼檢查 hierarchy、clipping、overlap、scroll 與
-   normal-size regression；offscreen 不取代 WSLg／Windows 真人驗收。
-5. 依 `scripts/dev/handoff_gate_spec.py` 跑 applicable Visualization walkthrough、default UI baseline、
-   source-diverse dataset與 static quality gates。只有同一 clean/explained pushed SHA 的 non-skipped CI 全部
-   `completed/success`，才交給使用者手測。
-
-手測必須重現四個路徑：初次開啟 Spectrogram、切走再返回、開關 Assistant、重新計算 Saliency；正常與受限
-尺寸都不得再出現標籤／圖／colorbar 疊圖。通過並取得明確 merge 同意後才合併。
-
-## Release stop condition
-
-本 PR 合併後先移除 task worktree與已辨識的 XBrainLab 暫存，確認唯一產品基線為最新 `main`，再執行完整
-canonical handoff manifest。全部通過後才從 fixed `main` 建立全新 `v0.9.0` release branch／PR；不重用
-PR #91 的 candidate identity。
-
-新的 exact release candidate 還必須完成 Windows Python 3.12 native source launch、核心 workflow、此次
-Spectrogram 四路徑、3D、Granite 3B bounded Assistant與中文輸入真人驗收。PR CI、Windows手測與 merge
-批准全部對應同一 source後，才 merge並建立 annotated `v0.9.0` tag／GitHub source release。
+- 任一 prerequisite source變更未經 focused test／review／PR，不建立 release candidate。
+- Basedpyright fake green、external diagnostics非零、bounded Assistant出現任何新的 case failure、required gate
+  missing／pending／stale／failed，或 exact-source dossier不完整，皆為 checkpoint。
+- 真人發現 crash、資料損失、重複 execution、錯誤 workflow mutation、import/review不一致、recipe reload
+  失敗、visual overlap、modal trap或無限 checking，立即關閉 candidate；另開短修復 PR 回 main 後重建。
+- 只有同一 frozen candidate 的 desktop-source dossier、Windows native、WSLg、PR CI 與使用者明確手測通過／
+  merge同意全部閉合，才 merge。Merge tree必須等於已測 candidate tree，之後才建立 immutable annotated
+  `v0.9.0` tag與 GitHub source release；缺陷以 revert／`v0.9.1` 處理，不移動 tag。
