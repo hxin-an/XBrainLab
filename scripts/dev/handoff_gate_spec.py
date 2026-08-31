@@ -512,6 +512,24 @@ _GATE_SPECS = (
         required_artifact_paths=("stable-assistant-model-eval.json",),
     ),
     GateSpec(
+        check_id="bounded-assistant-model-eval",
+        section="4",
+        argv=(
+            *_PRLIMIT,
+            *_POETRY_EXEC,
+            "python",
+            "scripts/dev/run_stable_assistant_model_eval.py",
+            "--device",
+            "cuda",
+            "--require-bounded-baseline",
+            "--json-out",
+            f"{EVIDENCE_ROOT_TOKEN}/bounded-assistant-model-eval.json",
+        ),
+        timeout_seconds=1800,
+        environment=_LOCAL_RUNTIME_OFFLINE,
+        required_artifact_paths=("bounded-assistant-model-eval.json",),
+    ),
+    GateSpec(
         check_id="rag-offline",
         section="4",
         argv=(
@@ -925,6 +943,28 @@ _GATE_SPECS = (
         required_artifact_paths=("resource-calibration.json", "dashboard"),
         preserved_input_artifact_paths=("resource-calibration.json",),
     ),
+    GateSpec(
+        check_id="desktop-source-handoff-dashboard",
+        section="8",
+        argv=(
+            *_PRLIMIT,
+            *_POETRY_EXEC,
+            "python",
+            "scripts/dev/update_quality_dashboard.py",
+            "--handoff",
+            "--handoff-profile",
+            "desktop-source",
+            "--output-dir",
+            f"{EVIDENCE_ROOT_TOKEN}/dashboard",
+            "--resource-calibration-path",
+            f"{EVIDENCE_ROOT_TOKEN}/resource-calibration.json",
+            "--handoff-evidence-path",
+            f"{EVIDENCE_ROOT_TOKEN}/handoff-evidence.json",
+        ),
+        timeout_seconds=7200,
+        required_artifact_paths=("resource-calibration.json", "dashboard"),
+        preserved_input_artifact_paths=("resource-calibration.json",),
+    ),
 )
 
 if len({spec.check_id for spec in _GATE_SPECS}) != len(_GATE_SPECS):
@@ -933,4 +973,33 @@ if len({spec.check_id for spec in _GATE_SPECS}) != len(_GATE_SPECS):
 HANDOFF_GATE_SPECS: Final = MappingProxyType(
     {spec.check_id: spec for spec in _GATE_SPECS}
 )
-REQUIRED_HANDOFF_CHECK_IDS: Final = tuple(HANDOFF_GATE_SPECS)
+REQUIRED_HANDOFF_CHECK_IDS: Final = tuple(
+    spec.check_id
+    for spec in _GATE_SPECS
+    if spec.check_id
+    not in {"bounded-assistant-model-eval", "desktop-source-handoff-dashboard"}
+)
+_DESKTOP_SOURCE_CHECK_IDS: Final = tuple(
+    "bounded-assistant-model-eval"
+    if check_id == "stable-assistant-model-eval"
+    else "desktop-source-handoff-dashboard"
+    if check_id == "handoff-dashboard"
+    else check_id
+    for check_id in REQUIRED_HANDOFF_CHECK_IDS
+)
+HANDOFF_RELEASE_PROFILES: Final = MappingProxyType(
+    {
+        "handoff": REQUIRED_HANDOFF_CHECK_IDS,
+        "desktop-source": _DESKTOP_SOURCE_CHECK_IDS,
+    }
+)
+
+
+def handoff_profile_check_ids(profile: str) -> tuple[str, ...]:
+    """Return one fixed registered release profile; arbitrary subsets are invalid."""
+    try:
+        return HANDOFF_RELEASE_PROFILES[profile]
+    except KeyError as error:
+        raise ValueError(
+            f"Unsupported handoff release profile: {profile!r}."
+        ) from error

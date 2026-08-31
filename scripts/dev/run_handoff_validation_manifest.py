@@ -24,7 +24,9 @@ from scripts.dev.handoff_evidence_recorder import (
 )
 from scripts.dev.handoff_gate_spec import (
     HANDOFF_GATE_SPECS,
+    HANDOFF_RELEASE_PROFILES,
     REQUIRED_HANDOFF_CHECK_IDS,
+    handoff_profile_check_ids,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -98,12 +100,20 @@ def run_handoff_manifest(
     expected_branch: str = DEFAULT_BRANCH,
     require_upstream: bool = True,
     allow_external_evidence_root: bool = False,
+    release_profile: str = "handoff",
 ) -> dict[str, Any]:
     """Record all required gates in order, then verify the complete dossier."""
-    registered_ids = tuple(HANDOFF_GATE_SPECS)
-    if registered_ids != REQUIRED_HANDOFF_CHECK_IDS:
+    try:
+        required_check_ids = handoff_profile_check_ids(release_profile)
+    except ValueError as error:
+        raise HandoffManifestError(str(error)) from error
+    if (
+        not required_check_ids
+        or len(required_check_ids) != len(set(required_check_ids))
+        or any(check_id not in HANDOFF_GATE_SPECS for check_id in required_check_ids)
+    ):
         raise HandoffManifestError(
-            "Required handoff gate registry drifted from its registered command order."
+            "Required handoff release profile drifted from its registered command set."
         )
 
     root = repo_root.expanduser().resolve()
@@ -120,7 +130,8 @@ def run_handoff_manifest(
         raise HandoffManifestError(
             "Handoff manifest requires a clean full-source identity."
         )
-    _validate_fixed_execution_plan(registered_ids)
+    execution_plan = _execution_plan_for_profile(release_profile)
+    _validate_fixed_execution_plan(required_check_ids, execution_plan)
     completed: list[str] = []
 
     def record_gate(
@@ -148,23 +159,36 @@ def run_handoff_manifest(
             allow_external_evidence_root=allow_external_evidence_root,
             manifest_source_identity=manifest_source_identity,
             defer_dossier_update=defer_dossier_update,
+            release_profile=release_profile,
         )
         return record
 
-    for check_id in _SERIAL_GATE_IDS:
+    (
+        serial_gate_ids,
+        deferred_prerequisite_ids,
+        post_regression_lanes,
+        final_gate_ids,
+    ) = execution_plan
+    for check_id in serial_gate_ids:
         record = record_gate(check_id, defer_dossier_update=False)
         completed.append(check_id)
         if not record.get("passed"):
-            return _failed_result(check_id, record=record, completed=completed)
+            return _failed_result(
+                check_id,
+                record=record,
+                completed=completed,
+                required_check_ids=required_check_ids,
+                release_profile=release_profile,
+            )
 
     deferred_records: list[dict[str, Any]] = []
-    for check_id in _DEFERRED_PREREQUISITE_IDS:
+    for check_id in deferred_prerequisite_ids:
         record = record_gate(check_id, defer_dossier_update=True)
         deferred_records.append(record)
         if not record.get("passed"):
             break
 
-    if _POST_REGRESSION_LANES and all(
+    if post_regression_lanes and all(
         record.get("passed") for record in deferred_records
     ):
 
@@ -178,11 +202,11 @@ def run_handoff_manifest(
             return lane_records
 
         with ThreadPoolExecutor(
-            max_workers=len(_POST_REGRESSION_LANES),
+            max_workers=len(post_regression_lanes),
             thread_name_prefix="handoff-lane",
         ) as executor:
             futures = [
-                executor.submit(record_lane, lane) for lane in _POST_REGRESSION_LANES
+                executor.submit(record_lane, lane) for lane in post_regression_lanes
             ]
             for future in futures:
                 deferred_records.extend(future.result())
@@ -190,7 +214,7 @@ def run_handoff_manifest(
     deferred_by_id = {str(record["check_id"]): record for record in deferred_records}
     ordered_deferred = [
         deferred_by_id[check_id]
-        for check_id in REQUIRED_HANDOFF_CHECK_IDS
+        for check_id in required_check_ids
         if check_id in deferred_by_id
     ]
     persist_handoff_records(
@@ -203,6 +227,7 @@ def run_handoff_manifest(
         rag_cache_dir=rag_cache_dir,
         allow_external_evidence_root=allow_external_evidence_root,
         manifest_source_identity=manifest_source_identity,
+        release_profile=release_profile,
     )
     completed.extend(str(record["check_id"]) for record in ordered_deferred)
     for record in ordered_deferred:
@@ -211,48 +236,104 @@ def run_handoff_manifest(
                 str(record["check_id"]),
                 record=record,
                 completed=completed,
+                required_check_ids=required_check_ids,
+                release_profile=release_profile,
             )
 
-    for check_id in _FINAL_GATE_IDS:
+    for check_id in final_gate_ids:
         record = record_gate(check_id, defer_dossier_update=False)
         completed.append(check_id)
         if not record.get("passed"):
-            return _failed_result(check_id, record=record, completed=completed)
+            return _failed_result(
+                check_id,
+                record=record,
+                completed=completed,
+                required_check_ids=required_check_ids,
+                release_profile=release_profile,
+            )
 
     ok, reason = validate_handoff_dossier(
         repo_root=root,
         evidence_root=output_root,
-        required_check_ids=REQUIRED_HANDOFF_CHECK_IDS,
+        required_check_ids=required_check_ids,
         expected_branch=expected_branch,
         require_upstream=require_upstream,
         model_cache_dir=model_cache_dir,
         rag_cache_dir=rag_cache_dir,
         allow_external_evidence_root=allow_external_evidence_root,
+        release_profile=release_profile,
     )
     return {
         "ok": ok,
         "reason": reason,
         "completed_check_ids": completed,
-        "required_check_ids": list(REQUIRED_HANDOFF_CHECK_IDS),
+        "required_check_ids": list(required_check_ids),
+        "release_profile": release_profile,
         "dossier_verified": ok,
     }
 
 
-def _validate_fixed_execution_plan(registered_ids: tuple[str, ...]) -> None:
+def _execution_plan_for_profile(
+    profile: str,
+) -> tuple[
+    tuple[str, ...], tuple[str, ...], tuple[tuple[str, ...], ...], tuple[str, ...]
+]:
+    if profile not in HANDOFF_RELEASE_PROFILES:
+        raise HandoffManifestError(f"Unsupported handoff release profile: {profile!r}.")
+    if profile == "handoff":
+        return (
+            _SERIAL_GATE_IDS,
+            _DEFERRED_PREREQUISITE_IDS,
+            _POST_REGRESSION_LANES,
+            _FINAL_GATE_IDS,
+        )
+    replacements = dict(
+        zip(
+            HANDOFF_RELEASE_PROFILES["handoff"],
+            HANDOFF_RELEASE_PROFILES[profile],
+            strict=True,
+        )
+    )
+
+    def replace_ids(values: tuple[str, ...]) -> tuple[str, ...]:
+        return tuple(replacements.get(value, value) for value in values)
+
+    return (
+        replace_ids(_SERIAL_GATE_IDS),
+        replace_ids(_DEFERRED_PREREQUISITE_IDS),
+        tuple(replace_ids(lane) for lane in _POST_REGRESSION_LANES),
+        replace_ids(_FINAL_GATE_IDS),
+    )
+
+
+def _validate_fixed_execution_plan(
+    required_check_ids: tuple[str, ...],
+    execution_plan: tuple[
+        tuple[str, ...], tuple[str, ...], tuple[tuple[str, ...], ...], tuple[str, ...]
+    ],
+) -> None:
+    (
+        serial_gate_ids,
+        deferred_prerequisite_ids,
+        post_regression_lanes,
+        final_gate_ids,
+    ) = execution_plan
     sequences = (
-        _SERIAL_GATE_IDS,
-        _DEFERRED_PREREQUISITE_IDS,
-        *_POST_REGRESSION_LANES,
-        _FINAL_GATE_IDS,
+        serial_gate_ids,
+        deferred_prerequisite_ids,
+        *post_regression_lanes,
+        final_gate_ids,
     )
     planned_ids = tuple(check_id for sequence in sequences for check_id in sequence)
     if len(planned_ids) != len(set(planned_ids)) or set(planned_ids) != set(
-        registered_ids
+        required_check_ids
     ):
         raise HandoffManifestError(
             "Fixed handoff execution plan drifted from the required gate registry."
         )
-    registry_index = {check_id: index for index, check_id in enumerate(registered_ids)}
+    registry_index = {
+        check_id: index for index, check_id in enumerate(required_check_ids)
+    }
     for sequence in sequences:
         indexes = tuple(registry_index[check_id] for check_id in sequence)
         if indexes != tuple(sorted(indexes)):
@@ -266,13 +347,16 @@ def _failed_result(
     *,
     record: dict[str, Any],
     completed: list[str],
+    required_check_ids: tuple[str, ...] = REQUIRED_HANDOFF_CHECK_IDS,
+    release_profile: str = "handoff",
 ) -> dict[str, Any]:
     reason = str(record.get("failure_reason") or "gate did not pass")
     return {
         "ok": False,
         "reason": f"{check_id}: {reason}",
         "completed_check_ids": completed,
-        "required_check_ids": list(REQUIRED_HANDOFF_CHECK_IDS),
+        "required_check_ids": list(required_check_ids),
+        "release_profile": release_profile,
         "dossier_verified": False,
     }
 
@@ -304,6 +388,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--expected-branch", default=DEFAULT_BRANCH)
     parser.add_argument("--no-upstream-check", action="store_true")
     parser.add_argument("--allow-external-evidence-root", action="store_true")
+    parser.add_argument(
+        "--release-profile",
+        choices=tuple(HANDOFF_RELEASE_PROFILES),
+        default="handoff",
+    )
     return parser
 
 
@@ -322,6 +411,7 @@ def main() -> int:
             expected_branch=args.expected_branch,
             require_upstream=not args.no_upstream_check,
             allow_external_evidence_root=args.allow_external_evidence_root,
+            release_profile=args.release_profile,
         )
     except (HandoffEvidenceError, HandoffManifestError, OSError) as error:
         print(str(error), file=sys.stderr)

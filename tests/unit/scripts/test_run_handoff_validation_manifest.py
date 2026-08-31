@@ -19,6 +19,13 @@ def _install_serial_plan(
     monkeypatch.setattr(runner, "_DEFERRED_PREREQUISITE_IDS", ())
     monkeypatch.setattr(runner, "_POST_REGRESSION_LANES", ())
     monkeypatch.setattr(runner, "_FINAL_GATE_IDS", ())
+    monkeypatch.setattr(
+        runner,
+        "handoff_profile_check_ids",
+        lambda profile: tuple(check_ids)
+        if profile == "handoff"
+        else (_ for _ in ()).throw(ValueError("unsupported test profile")),
+    )
 
 
 def test_runner_records_every_required_gate_in_registry_order_then_verifies(
@@ -95,6 +102,7 @@ def test_runner_records_every_required_gate_in_registry_order_then_verifies(
         "reason": "",
         "completed_check_ids": ["first-gate", "second-gate"],
         "required_check_ids": ["first-gate", "second-gate"],
+        "release_profile": "handoff",
         "dossier_verified": True,
     }
 
@@ -174,7 +182,12 @@ def test_runner_rejects_registry_required_id_drift(monkeypatch) -> None:
     monkeypatch.setattr(runner, "REQUIRED_HANDOFF_CHECK_IDS", ("missing-gate",))
     _install_serial_plan(monkeypatch, "registered-gate")
 
-    with pytest.raises(runner.HandoffManifestError, match="registry drift"):
+    monkeypatch.setattr(
+        runner,
+        "handoff_profile_check_ids",
+        lambda _profile: ("missing-gate",),
+    )
+    with pytest.raises(runner.HandoffManifestError, match="release profile drift"):
         runner.run_handoff_manifest(
             repo_root=Path("/tmp/repo"),
             evidence_root=Path("/tmp/evidence") / ("c" * 40),
@@ -184,6 +197,102 @@ def test_runner_rejects_registry_required_id_drift(monkeypatch) -> None:
             require_upstream=False,
             allow_external_evidence_root=True,
         )
+
+
+def test_desktop_source_profile_replaces_only_assistant_and_dashboard_gates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    check_ids = (
+        "bounded-assistant-model-eval",
+        "desktop-source-handoff-dashboard",
+    )
+    specs = tuple(
+        GateSpec(
+            check_id=check_id,
+            section="4" if check_id.startswith("bounded") else "8",
+            argv=("python", "-c", f"print('{check_id}')"),
+            timeout_seconds=10,
+        )
+        for check_id in check_ids
+    )
+    monkeypatch.setattr(
+        runner,
+        "HANDOFF_GATE_SPECS",
+        MappingProxyType({spec.check_id: spec for spec in specs}),
+    )
+    monkeypatch.setattr(
+        runner,
+        "HANDOFF_RELEASE_PROFILES",
+        MappingProxyType(
+            {
+                "handoff": (
+                    "stable-assistant-model-eval",
+                    "handoff-dashboard",
+                ),
+                "desktop-source": check_ids,
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        runner,
+        "handoff_profile_check_ids",
+        lambda profile: check_ids
+        if profile == "desktop-source"
+        else (_ for _ in ()).throw(ValueError("unsupported test profile")),
+    )
+    monkeypatch.setattr(runner, "_SERIAL_GATE_IDS", ())
+    monkeypatch.setattr(runner, "_DEFERRED_PREREQUISITE_IDS", ())
+    monkeypatch.setattr(
+        runner,
+        "_POST_REGRESSION_LANES",
+        (("stable-assistant-model-eval",),),
+    )
+    monkeypatch.setattr(runner, "_FINAL_GATE_IDS", ("handoff-dashboard",))
+    source_identity = {"source_digest": "f" * 64, "dirty": False}
+    recorded: list[dict[str, Any]] = []
+    persisted: list[dict[str, Any]] = []
+    verified: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        runner,
+        "record_handoff_command",
+        lambda **kwargs: recorded.append(kwargs)
+        or {"check_id": kwargs["check_id"], "passed": True},
+    )
+    monkeypatch.setattr(
+        runner,
+        "persist_handoff_records",
+        lambda **kwargs: persisted.append(kwargs),
+    )
+    monkeypatch.setattr(
+        runner,
+        "validate_handoff_dossier",
+        lambda **kwargs: verified.append(kwargs) or (True, ""),
+    )
+    monkeypatch.setattr(
+        runner,
+        "collect_source_identity",
+        lambda *_args, **_kwargs: source_identity,
+    )
+
+    result = runner.run_handoff_manifest(
+        repo_root=tmp_path,
+        evidence_root=tmp_path / "external" / ("f" * 40),
+        model_cache_dir=Path("/mnt/d/XBrainLabCache/models"),
+        rag_cache_dir=Path("/mnt/d/XBrainLabCache/rag"),
+        expected_branch="test-branch",
+        require_upstream=False,
+        allow_external_evidence_root=True,
+        release_profile="desktop-source",
+    )
+
+    assert [item["check_id"] for item in recorded] == list(check_ids)
+    assert all(item["release_profile"] == "desktop-source" for item in recorded)
+    assert persisted[0]["release_profile"] == "desktop-source"
+    assert verified[0]["release_profile"] == "desktop-source"
+    assert result["release_profile"] == "desktop-source"
+    assert "stable-assistant-model-eval" not in result["completed_check_ids"]
+    assert "handoff-dashboard" not in result["completed_check_ids"]
 
 
 def test_post_regression_lanes_run_concurrently_then_persist_in_registry_order(
@@ -221,6 +330,11 @@ def test_post_regression_lanes_run_concurrently_then_persist_in_registry_order(
         (("lane-a-first", "lane-a-second"), ("lane-b",)),
     )
     monkeypatch.setattr(runner, "_FINAL_GATE_IDS", ("dashboard-gate",))
+    monkeypatch.setattr(
+        runner,
+        "handoff_profile_check_ids",
+        lambda _profile: check_ids,
+    )
     source_identity = {"source_digest": "d" * 64, "dirty": False}
     first_lane_barrier = Barrier(2)
     events: list[str] = []
@@ -303,6 +417,11 @@ def test_failed_parallel_lane_prevents_final_gate_and_dossier_verification(
         (("lane-a",), ("lane-b",)),
     )
     monkeypatch.setattr(runner, "_FINAL_GATE_IDS", ("dashboard-gate",))
+    monkeypatch.setattr(
+        runner,
+        "handoff_profile_check_ids",
+        lambda _profile: check_ids,
+    )
     source_identity = {"source_digest": "e" * 64, "dirty": False}
     executed: list[str] = []
     verified = False

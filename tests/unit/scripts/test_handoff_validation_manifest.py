@@ -9,6 +9,7 @@ import pytest
 from scripts.dev.handoff_gate_spec import (
     EVIDENCE_ROOT_TOKEN,
     HANDOFF_GATE_SPECS,
+    HANDOFF_RELEASE_PROFILES,
     MODEL_CACHE_DIR_TOKEN,
     RAG_CACHE_DIR_TOKEN,
     REQUIRED_HANDOFF_CHECK_IDS,
@@ -72,7 +73,20 @@ LOCAL_RUNTIME_CHECK_IDS = (
 
 def test_checked_in_registry_is_nonempty_exact_and_complete() -> None:
     assert REQUIRED_HANDOFF_CHECK_IDS == EXPECTED_HANDOFF_CHECK_IDS
-    assert tuple(HANDOFF_GATE_SPECS) == EXPECTED_HANDOFF_CHECK_IDS
+    assert set(HANDOFF_GATE_SPECS) == {
+        *EXPECTED_HANDOFF_CHECK_IDS,
+        "bounded-assistant-model-eval",
+        "desktop-source-handoff-dashboard",
+    }
+    assert HANDOFF_RELEASE_PROFILES["handoff"] == EXPECTED_HANDOFF_CHECK_IDS
+    assert HANDOFF_RELEASE_PROFILES["desktop-source"] == tuple(
+        "bounded-assistant-model-eval"
+        if check_id == "stable-assistant-model-eval"
+        else "desktop-source-handoff-dashboard"
+        if check_id == "handoff-dashboard"
+        else check_id
+        for check_id in EXPECTED_HANDOFF_CHECK_IDS
+    )
     assert {spec.section for spec in HANDOFF_GATE_SPECS.values()} == {
         str(number) for number in range(1, 9)
     }
@@ -217,6 +231,13 @@ def test_stable_assistant_frontend_and_model_gates_are_exact() -> None:
     assert model_eval.timeout_seconds == 1800
     assert model_eval.required_artifact_paths == ("stable-assistant-model-eval.json",)
     assert model_eval.preserved_input_artifact_paths == ()
+
+    bounded = HANDOFF_GATE_SPECS["bounded-assistant-model-eval"]
+    assert bounded.argv[-2:] == (
+        "--json-out",
+        f"{EVIDENCE_ROOT_TOKEN}/bounded-assistant-model-eval.json",
+    )
+    assert "--require-bounded-baseline" in bounded.argv
 
 
 def test_resource_calibration_is_generated_then_preserved_for_dashboard() -> None:
