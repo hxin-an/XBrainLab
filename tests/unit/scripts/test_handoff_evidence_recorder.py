@@ -148,6 +148,148 @@ def test_recorded_command_is_bound_to_clean_sha_and_hashed_logs(tmp_path) -> Non
     ) == (True, "")
 
 
+def test_explicit_profile_rejects_a_gate_from_the_other_fixed_profile(
+    tmp_path: Path,
+) -> None:
+    repo, sha, branch = _repo(tmp_path)
+
+    with pytest.raises(HandoffEvidenceError, match="not part of release profile"):
+        record_handoff_command(
+            repo_root=repo,
+            evidence_root=repo / "build" / "handoff-evidence" / sha,
+            section="4",
+            check_id="stable-assistant-model-eval",
+            command=("not-used",),
+            timeout_seconds=1800,
+            expected_branch=branch,
+            require_upstream=False,
+            release_profile="desktop-source",
+        )
+
+
+@pytest.mark.parametrize(
+    ("profile", "check_ids"),
+    [
+        ("desktop-source", ("stable-assistant-model-eval",)),
+        ("handoff", ("bounded-assistant-model-eval",)),
+    ],
+)
+def test_full_profile_validation_rejects_mixed_gate_sets(
+    profile: str,
+    check_ids: tuple[str, ...],
+) -> None:
+    ok, reason = validate_handoff_dossier(
+        repo_root=Path("/not-used"),
+        evidence_root=Path("/not-used"),
+        required_check_ids=check_ids,
+        release_profile=profile,
+    )
+
+    assert ok is False
+    assert "must exactly match the selected release profile" in reason
+
+
+def test_dossier_rejects_an_injected_registered_gate_from_the_other_profile(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, sha, branch = _repo(tmp_path)
+    evidence_root = repo / "build" / "handoff-evidence" / sha
+    first = GateSpec(
+        check_id="first-gate",
+        section="1",
+        argv=(sys.executable, "-c", "print('first')"),
+        timeout_seconds=30,
+    )
+    strict = GateSpec(
+        check_id="strict-gate",
+        section="1",
+        argv=(sys.executable, "-c", "print('strict')"),
+        timeout_seconds=30,
+    )
+    bounded = GateSpec(
+        check_id="bounded-gate",
+        section="1",
+        argv=(sys.executable, "-c", "print('bounded')"),
+        timeout_seconds=30,
+    )
+    _install_test_gates(monkeypatch, first, strict, bounded)
+    monkeypatch.setattr(
+        recorder_module,
+        "HANDOFF_RELEASE_PROFILES",
+        MappingProxyType(
+            {
+                "handoff": ("first-gate", "strict-gate"),
+                "desktop-source": ("first-gate", "bounded-gate"),
+            }
+        ),
+    )
+    for spec in (first, strict, bounded):
+        record_handoff_command(
+            repo_root=repo,
+            evidence_root=evidence_root,
+            section=spec.section,
+            check_id=spec.check_id,
+            command=spec.argv,
+            timeout_seconds=spec.timeout_seconds,
+            expected_branch=branch,
+            require_upstream=False,
+        )
+
+    common = {
+        "repo_root": repo,
+        "evidence_root": evidence_root,
+        "expected_branch": branch,
+        "require_upstream": False,
+    }
+    assert validate_handoff_dossier(
+        **common,
+        required_check_ids=("first-gate", "strict-gate"),
+        release_profile="handoff",
+    ) == (
+        False,
+        "Handoff dossier checks do not exactly match the selected profile (missing=[], extras=['bounded-gate']).",
+    )
+
+    dossier_path = evidence_root / "handoff-evidence.json"
+    payload = json.loads(dossier_path.read_text(encoding="utf-8"))
+    payload["profile"] = "desktop-source"
+    dossier_path.write_text(json.dumps(payload), encoding="utf-8")
+    assert validate_handoff_dossier(
+        **common,
+        required_check_ids=("first-gate", "bounded-gate"),
+        release_profile="desktop-source",
+    ) == (
+        False,
+        "Handoff dossier checks do not exactly match the selected profile (missing=[], extras=['strict-gate']).",
+    )
+
+
+@pytest.mark.parametrize(
+    ("profile", "check_id"),
+    [
+        ("desktop-source", "stable-assistant-model-eval"),
+        ("handoff", "bounded-assistant-model-eval"),
+    ],
+)
+def test_deferred_profile_persistence_rejects_mixed_gate_records(
+    tmp_path: Path,
+    profile: str,
+    check_id: str,
+) -> None:
+    repo, sha, branch = _repo(tmp_path)
+
+    with pytest.raises(HandoffEvidenceError, match="outside release profile"):
+        persist_handoff_records(
+            repo_root=repo,
+            evidence_root=repo / "build" / "handoff-evidence" / sha,
+            records=({"check_id": check_id},),
+            expected_branch=branch,
+            require_upstream=False,
+            release_profile=profile,
+        )
+
+
 def test_manifest_source_identity_uses_lightweight_per_gate_guard(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
@@ -370,7 +512,11 @@ def test_rerunning_an_earlier_gate_invalidates_later_dossier_records(
         required_check_ids=("first-gate", "second-gate"),
         expected_branch=branch,
         require_upstream=False,
-    ) == (False, "Handoff dossier is missing required checks: ['second-gate'].")
+    ) == (
+        False,
+        "Handoff dossier checks do not exactly match the selected profile "
+        "(missing=['second-gate'], extras=[]).",
+    )
 
 
 def test_dossier_validation_rejects_edited_execution_order(

@@ -23,6 +23,7 @@ from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
 )
 from scripts.dev.handoff_gate_spec import (
     HANDOFF_GATE_SPECS,
+    HANDOFF_RELEASE_PROFILES,
     MODEL_CACHE_DIR_TOKEN,
     RAG_CACHE_DIR_TOKEN,
     GateSpec,
@@ -82,12 +83,21 @@ def record_handoff_command(
     allow_external_evidence_root: bool = False,
     manifest_source_identity: Mapping[str, Any] | None = None,
     defer_dossier_update: bool = False,
+    release_profile: str | None = None,
 ) -> dict[str, Any]:
     """Execute one gate and atomically append its exact-source evidence."""
     root = repo_root.expanduser().resolve(strict=True)
+    profile = _validated_release_profile(release_profile or "handoff")
     check_name = _validated_id(check_id, field="check id")
     section_name = _validated_id(str(section), field="section")
     spec = _registered_gate(check_name)
+    if (
+        release_profile is not None
+        and check_name not in HANDOFF_RELEASE_PROFILES[profile]
+    ):
+        raise HandoffEvidenceError(
+            f"Gate {check_name!r} is not part of release profile {profile!r}."
+        )
     if section_name != spec.section:
         raise HandoffEvidenceError(
             f"Gate {check_name!r} must use registered section {spec.section!r}."
@@ -275,6 +285,7 @@ def record_handoff_command(
             evidence_root_policy=evidence_root_policy,
             source_identity=source_before,
             record=record,
+            release_profile=profile,
         )
     return record
 
@@ -290,12 +301,14 @@ def persist_handoff_records(
     rag_cache_dir: Path | None = None,
     allow_external_evidence_root: bool = False,
     manifest_source_identity: Mapping[str, Any] | None = None,
+    release_profile: str | None = None,
 ) -> None:
     """Validate and persist deferred gate records in canonical registry order."""
     pending = tuple(records)
     if not pending:
         return
     root = repo_root.expanduser().resolve(strict=True)
+    profile = _validated_release_profile(release_profile or "handoff")
     checkout = _checkout_identity(
         root,
         expected_branch=expected_branch,
@@ -329,6 +342,15 @@ def persist_handoff_records(
         raise HandoffEvidenceError(
             f"Deferred handoff records contain unregistered checks: {unknown}."
         )
+    if release_profile is not None:
+        outside_profile = sorted(
+            set(check_ids).difference(HANDOFF_RELEASE_PROFILES[profile])
+        )
+        if outside_profile:
+            raise HandoffEvidenceError(
+                f"Deferred handoff records are outside release profile {profile!r}: "
+                f"{outside_profile}."
+            )
     if check_ids != tuple(sorted(check_ids, key=registry_index.__getitem__)):
         raise HandoffEvidenceError(
             "Deferred handoff records must be persisted in registry order."
@@ -355,6 +377,7 @@ def persist_handoff_records(
             evidence_root_policy=evidence_root_policy,
             source_identity=source_identity,
             record=record,
+            release_profile=profile,
         )
 
 
@@ -368,10 +391,14 @@ def validate_handoff_dossier(
     model_cache_dir: Path | None = None,
     rag_cache_dir: Path | None = None,
     allow_external_evidence_root: bool = False,
+    release_profile: str | None = None,
 ) -> tuple[bool, str]:
     """Validate one complete dossier against the current clean checkout."""
     try:
-        required = _validated_required_check_ids(required_check_ids)
+        profile, required = _validated_dossier_requirements(
+            release_profile=release_profile,
+            required_check_ids=required_check_ids,
+        )
         root = repo_root.expanduser().resolve(strict=True)
         checkout = _checkout_identity(
             root,
@@ -391,7 +418,7 @@ def validate_handoff_dossier(
 
     if payload.get("schema_version") != SCHEMA_VERSION:
         return False, "Handoff dossier schema is unsupported."
-    if payload.get("profile") != "handoff":
+    if payload.get("profile") != profile:
         return False, "Handoff dossier profile is invalid."
     if payload.get("evidence_root_policy") != evidence_root_policy:
         return False, "Handoff dossier evidence-root policy is stale."
@@ -424,15 +451,17 @@ def validate_handoff_dossier(
     unregistered = sorted(set(checks).difference(HANDOFF_GATE_SPECS))
     if unregistered:
         return False, f"Handoff dossier contains unregistered checks: {unregistered}."
+    if set(checks) != set(required):
+        extras = sorted(set(checks).difference(required))
+        missing = sorted(set(required).difference(checks))
+        return False, (
+            "Handoff dossier checks do not exactly match the selected profile "
+            f"(missing={missing}, extras={extras})."
+        )
     execution_order = payload.get("execution_order")
-    expected_execution_order = [
-        check_id for check_id in HANDOFF_GATE_SPECS if check_id in checks
-    ]
+    expected_execution_order = list(required)
     if execution_order != expected_execution_order:
         return False, "Handoff dossier execution order is missing, stale, or edited."
-    missing = [check_id for check_id in required if check_id not in checks]
-    if missing:
-        return False, f"Handoff dossier is missing required checks: {missing}."
     for check_id in required:
         ok, reason = _validate_check_record(
             output_root=output_root,
@@ -961,6 +990,27 @@ def _validated_id(value: str, *, field: str) -> str:
     return normalized
 
 
+def _validated_release_profile(value: str) -> str:
+    profile = _validated_id(value, field="release profile")
+    if profile not in HANDOFF_RELEASE_PROFILES:
+        raise HandoffEvidenceError(f"Unsupported handoff release profile: {value!r}.")
+    return profile
+
+
+def _validated_dossier_requirements(
+    *,
+    release_profile: str | None,
+    required_check_ids: Sequence[str],
+) -> tuple[str, tuple[str, ...]]:
+    profile = _validated_release_profile(release_profile or "handoff")
+    required = _validated_required_check_ids(required_check_ids)
+    if release_profile is not None and required != HANDOFF_RELEASE_PROFILES[profile]:
+        raise HandoffEvidenceError(
+            "Full handoff dossier checks must exactly match the selected release profile."
+        )
+    return profile, required
+
+
 def _registered_gate(check_id: str) -> GateSpec:
     spec = HANDOFF_GATE_SPECS.get(check_id)
     if spec is None:
@@ -1241,11 +1291,12 @@ def _update_dossier(
     evidence_root_policy: dict[str, str],
     source_identity: dict[str, Any],
     record: dict[str, Any],
+    release_profile: str,
 ) -> None:
     dossier_path = output_root / DOSSIER_NAME
     payload: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
-        "profile": "handoff",
+        "profile": release_profile,
         "generated_at": datetime.now(UTC).isoformat(),
         "checkout": checkout,
         "evidence_root_policy": evidence_root_policy,
@@ -1261,6 +1312,7 @@ def _update_dossier(
             ) from error
         if (
             existing.get("schema_version") != SCHEMA_VERSION
+            or existing.get("profile") != release_profile
             or existing.get("checkout", {}).get("commit_sha")
             != checkout.get("commit_sha")
             or existing.get("evidence_root_policy") != evidence_root_policy
@@ -1359,6 +1411,11 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--rag-cache-dir", type=Path)
     run.add_argument("--allow-external-evidence-root", action="store_true")
     run.add_argument(
+        "--release-profile",
+        choices=tuple(HANDOFF_RELEASE_PROFILES),
+        default="handoff",
+    )
+    run.add_argument(
         "--enforce-pytest-outcomes",
         action="store_true",
         default=None,
@@ -1375,6 +1432,11 @@ def _build_parser() -> argparse.ArgumentParser:
     verify.add_argument("--model-cache-dir", type=Path)
     verify.add_argument("--rag-cache-dir", type=Path)
     verify.add_argument("--allow-external-evidence-root", action="store_true")
+    verify.add_argument(
+        "--release-profile",
+        choices=tuple(HANDOFF_RELEASE_PROFILES),
+        default="handoff",
+    )
     return parser
 
 
@@ -1399,6 +1461,7 @@ def main() -> int:
                 model_cache_dir=args.model_cache_dir,
                 rag_cache_dir=args.rag_cache_dir,
                 allow_external_evidence_root=args.allow_external_evidence_root,
+                release_profile=args.release_profile,
             )
             print(json.dumps(record, indent=2, sort_keys=True))
             exit_code = 0 if record["passed"] else 1
@@ -1412,6 +1475,7 @@ def main() -> int:
                 model_cache_dir=args.model_cache_dir,
                 rag_cache_dir=args.rag_cache_dir,
                 allow_external_evidence_root=args.allow_external_evidence_root,
+                release_profile=args.release_profile,
             )
             print(json.dumps({"ok": ok, "reason": reason}, sort_keys=True))
             exit_code = 0 if ok else 1

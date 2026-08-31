@@ -85,6 +85,23 @@ DEFAULT_CLARIFICATION_CASES = (
 REPORT_SCHEMA = "xbrainlab.stable_assistant_model_eval.v12"
 PRECISION_CASE_COUNT = 24
 CLARIFICATION_CASE_COUNT = 7
+BOUNDED_BASELINE_FAILURE_CASE_IDS = frozenset(
+    {
+        "select_channels_before_data_en",
+        "ambiguous_en",
+        "generic_filter_selection",
+    }
+)
+FROZEN_CASE_FILE_SHA256 = {  # pragma: allowlist secret - public fixture digests.
+    "positive_cases_sha256": "5d60662ce3f43e36c346dbda238a23f7b22377c04043e1833a77296931546577",  # pragma: allowlist secret
+    "challenge_cases_sha256": "e3625687d931be3c0abf5003af3bc9323bcc0c1cc11207249d7762db364beaa3",  # pragma: allowlist secret
+    "precision_cases_sha256": "273834533ab7842899cf80c4d97b3ac83e7dd4c76bb9aa3da18891f5b21fe839",  # pragma: allowlist secret
+    "clarification_cases_sha256": "18cd515562af68bbeaee1cd5e4a73def48ebab64717641634b3624f2912850d2",  # pragma: allowlist secret
+}
+BOUNDED_BASELINE_MODEL_ID = "ibm-granite/granite-4.0-micro"
+BOUNDED_BASELINE_MODEL_REVISION = (  # pragma: allowlist secret - public model revision.
+    "56111ae135df9c53a78c99028e7bc24035a9e979"  # pragma: allowlist secret
+)
 RAW_OUTPUT_PREVIEW_CHAR_LIMIT = 1_000
 _PROMPT_CAPTURE_DIRECTORY_ENV = "XBRAINLAB_ASSISTANT_PROMPT_CAPTURE_DIR"
 _CAPTURE_FILE_NAMES = ("prompt.txt", "raw-output.txt", "metadata.json")
@@ -2915,7 +2932,7 @@ def _build_report(
     )
     total_case_count = len(results)
     total_complete = bool(complete and total_case_count == total_expected_case_count)
-    return {
+    report = {
         "schema_version": REPORT_SCHEMA,
         "model": {
             "id": model_id,
@@ -2986,6 +3003,7 @@ def _build_report(
             "These suites are not workflow success or thesis-grade model accuracy."
         ),
     }
+    return report
 
 
 def report_candidate_passed(report: object) -> bool:
@@ -3049,6 +3067,175 @@ def report_candidate_passed(report: object) -> bool:
         and case_summaries[name].get("case_count") == expected_count
         and case_summaries[name].get("complete") is True
         for name, (expected_count, required_keys) in expected_summaries.items()
+    )
+
+
+def _bounded_baseline_gate(report: object) -> dict[str, Any]:
+    """Evaluate the accepted 3B release baseline without claiming promotion."""
+    expected_model = {
+        "id": BOUNDED_BASELINE_MODEL_ID,
+        "revision": BOUNDED_BASELINE_MODEL_REVISION,
+    }
+    results = report.get("results") if isinstance(report, dict) else None
+    expected_inventory = _frozen_case_id_inventory()
+    actual_inventory: dict[str, set[str]] = {
+        suite: set() for suite in expected_inventory
+    }
+    failure_case_ids: set[str] = set()
+    seen_case_ids: set[str] = set()
+    rows_well_formed = isinstance(results, list) and len(results) == 81
+    if isinstance(results, list):
+        for row in results:
+            if not isinstance(row, dict):
+                rows_well_formed = False
+                continue
+            suite = row.get("suite")
+            case = row.get("case")
+            score = row.get("score")
+            case_id = case.get("case_id") if isinstance(case, dict) else None
+            passed = score.get("passed") if isinstance(score, dict) else None
+            if (
+                suite not in expected_inventory
+                or not isinstance(case_id, str)
+                or not case_id
+                or type(passed) is not bool
+                or case_id in seen_case_ids
+            ):
+                rows_well_formed = False
+                continue
+            seen_case_ids.add(case_id)
+            actual_inventory[str(suite)].add(case_id)
+            if passed is False:
+                failure_case_ids.add(case_id)
+    inventory_matches = bool(
+        rows_well_formed
+        and actual_inventory == expected_inventory
+        and len(seen_case_ids) == 81
+    )
+    summaries = report.get("case_summaries") if isinstance(report, dict) else None
+    candidate_gate = report.get("candidate_gate") if isinstance(report, dict) else None
+    model = report.get("model") if isinstance(report, dict) else None
+    host_safety = (
+        candidate_gate.get("host_safety") if isinstance(candidate_gate, dict) else None
+    )
+    positive_rows = [
+        row
+        for row in results or []
+        if isinstance(row, dict) and row.get("suite") == "positive"
+    ]
+    positive_passed = sum(
+        bool(isinstance(row.get("score"), dict) and row["score"].get("passed") is True)
+        for row in positive_rows
+    )
+    total = summaries.get("total") if isinstance(summaries, dict) else None
+    experiment_identity = (
+        report.get("experiment_identity") if isinstance(report, dict) else None
+    )
+    frozen_case_files = bool(
+        isinstance(experiment_identity, dict)
+        and all(
+            experiment_identity.get(name) == digest
+            for name, digest in FROZEN_CASE_FILE_SHA256.items()
+        )
+    )
+    explicit_origin = (
+        host_safety.get("explicit_parameter_origin")
+        if isinstance(host_safety, dict)
+        else None
+    )
+    missing_origin = (
+        host_safety.get("missing_parameter_origin")
+        if isinstance(host_safety, dict)
+        else None
+    )
+    complete = bool(
+        isinstance(total, dict)
+        and total.get("expected_case_count") == 81
+        and total.get("case_count") == 81
+        and total.get("complete") is True
+    )
+    passed = bool(
+        complete
+        and inventory_matches
+        and frozen_case_files
+        and model == {**expected_model, "backend": "local", "deterministic": True}
+        and len(positive_rows) == 36
+        and positive_passed == 36
+        and isinstance(explicit_origin, dict)
+        and explicit_origin.get("required") == 10
+        and explicit_origin.get("passed") == 10
+        and isinstance(missing_origin, dict)
+        and missing_origin.get("required") == 5
+        and missing_origin.get("passed") == 5
+        and failure_case_ids.issubset(BOUNDED_BASELINE_FAILURE_CASE_IDS)
+    )
+    return {
+        "model": expected_model,
+        "inventory": {
+            "required": 81,
+            "complete": complete,
+            "exact_case_inventory": inventory_matches,
+            "suite_counts": {
+                suite: len(case_ids) for suite, case_ids in expected_inventory.items()
+            },
+        },
+        "frozen_case_files": {
+            "required": FROZEN_CASE_FILE_SHA256,
+            "matched": frozen_case_files,
+        },
+        "positive_exact": {"required": 36, "passed": positive_passed},
+        "explicit_parameter_origin": {
+            "required": 10,
+            "passed": explicit_origin.get("passed")
+            if isinstance(explicit_origin, dict)
+            else None,
+        },
+        "missing_parameter_origin": {
+            "required": 5,
+            "passed": missing_origin.get("passed")
+            if isinstance(missing_origin, dict)
+            else None,
+        },
+        "known_failure_case_ids": sorted(BOUNDED_BASELINE_FAILURE_CASE_IDS),
+        "observed_failure_case_ids": sorted(failure_case_ids),
+        "assistant_stable_promotion": False,
+        "passed": passed,
+    }
+
+
+def _frozen_case_id_inventory() -> dict[str, set[str]]:
+    """Read the checked-in English corpus only after its digest is bound."""
+    paths = {
+        "positive": DEFAULT_CASES,
+        "challenge": DEFAULT_CHALLENGES,
+        "precision": DEFAULT_PRECISION_CASES,
+        "clarification": DEFAULT_CLARIFICATION_CASES,
+    }
+    inventory: dict[str, set[str]] = {}
+    for suite, path in paths.items():
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, list):
+            raise ValueError(f"Frozen {suite} corpus must be a JSON list.")
+        case_ids = {
+            row.get("id")
+            for row in payload
+            if isinstance(row, dict) and isinstance(row.get("id"), str)
+        }
+        if len(case_ids) != len(payload):
+            raise ValueError(f"Frozen {suite} corpus case ids are invalid.")
+        inventory[suite] = case_ids
+    return inventory
+
+
+def report_bounded_baseline_passed(report: object) -> bool:
+    """Accept only the explicit bounded release baseline artifact."""
+    if not isinstance(report, dict) or report.get("schema_version") != REPORT_SCHEMA:
+        return False
+    gate = report.get("bounded_baseline_gate")
+    return bool(
+        isinstance(gate, dict)
+        and gate.get("assistant_stable_promotion") is False
+        and gate.get("passed") is True
     )
 
 
@@ -3441,7 +3628,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--json-out", type=Path)
     parser.add_argument("--device", choices=("cpu", "cuda"))
-    parser.add_argument("--strict", action="store_true")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--strict", action="store_true")
+    mode.add_argument("--require-bounded-baseline", action="store_true")
     args = parser.parse_args(effective_argv)
 
     config = _stable_eval_config(
@@ -3467,6 +3656,8 @@ def main(argv: list[str] | None = None) -> int:
             precision_cases_path=args.precision_cases,
             clarification_cases_path=args.clarification_cases,
         )
+        if args.require_bounded_baseline:
+            report["bounded_baseline_gate"] = _bounded_baseline_gate(report)
     except Exception as exc:
         report = {
             "schema_version": REPORT_SCHEMA,
@@ -3499,8 +3690,14 @@ def main(argv: list[str] | None = None) -> int:
     print(rendered)
     if args.json_out is not None:
         _write_report(args.json_out, report)
-    passed = report_candidate_passed(report)
-    return 1 if args.strict and not passed else 0
+    passed = (
+        report_candidate_passed(report)
+        if args.strict
+        else report_bounded_baseline_passed(report)
+        if args.require_bounded_baseline
+        else True
+    )
+    return 1 if not passed else 0
 
 
 if __name__ == "__main__":

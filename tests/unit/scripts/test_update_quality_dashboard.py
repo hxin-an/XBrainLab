@@ -1613,6 +1613,7 @@ def test_handoff_report_requires_external_manifest_sections_3_to_6(monkeypatch):
         "requires_upstream_sync": True,
         "executed_check_ids": [],
         "source_of_truth": "handoff gate records",
+        "release_profile": "handoff",
     }
     rendered = render_markdown(reports[0])
     assert "Dashboard summary only" in rendered

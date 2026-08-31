@@ -29,7 +29,10 @@ from scripts.dev.capture_ui_baseline import (
 from scripts.dev.handoff_evidence_recorder import (
     SCHEMA_VERSION as HANDOFF_SCHEMA_VERSION,
 )
-from scripts.dev.handoff_gate_spec import HANDOFF_GATE_SPECS
+from scripts.dev.handoff_gate_spec import (
+    HANDOFF_RELEASE_PROFILES,
+    handoff_profile_check_ids,
+)
 from scripts.dev.owned_process_group import spawn_owned_process, terminate_and_collect
 from scripts.dev.pytest_completion_attestation import (
     REQUIRED_PYTEST_RUNNER_ID,
@@ -579,6 +582,7 @@ def handoff_manifest_summary_check(
     *,
     expected_check_ids: tuple[str, ...],
     commit: str,
+    release_profile: str = "handoff",
 ) -> CheckResult:
     """Summarize already-recorded gates without rerunning their commands."""
     started = time.monotonic()
@@ -601,7 +605,7 @@ def handoff_manifest_summary_check(
         checks = payload.get("checks")
         if (
             payload.get("schema_version") != HANDOFF_SCHEMA_VERSION
-            or payload.get("profile") != "handoff"
+            or payload.get("profile") != release_profile
         ):
             failure = "Handoff evidence schema or profile is invalid."
         elif not isinstance(source_identity, dict) or (
@@ -1546,6 +1550,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--handoff-profile",
+        choices=tuple(HANDOFF_RELEASE_PROFILES),
+        default="handoff",
+        help="Fixed registered release profile used only with --handoff.",
+    )
+    parser.add_argument(
         "--expected-branch",
         default=None,
         help=(
@@ -1586,7 +1596,11 @@ def main(argv: list[str] | None = None) -> int:
     """Refresh the dashboard unless it is still fresh enough."""
     args = parse_args(sys.argv[1:] if argv is None else argv)
     include_slow_checks = bool(args.include_slow_checks)
-    profile = "handoff" if args.handoff else ("full" if include_slow_checks else "fast")
+    profile = (
+        args.handoff_profile
+        if args.handoff
+        else ("full" if include_slow_checks else "fast")
+    )
     git_state = collect_git_state()
     handoff_expected_branch = args.expected_branch or git_state.branch
     traceability = workspace_traceability_check(
@@ -1621,9 +1635,11 @@ def main(argv: list[str] | None = None) -> int:
         checks = preflight_checks
         git_state_after = collect_git_state()
     elif args.handoff:
-        prior_check_ids = tuple(HANDOFF_GATE_SPECS)[:-1]
-        if tuple(HANDOFF_GATE_SPECS)[-1:] != ("handoff-dashboard",):
-            raise RuntimeError("Handoff dashboard must remain the final gate.")
+        required_check_ids = handoff_profile_check_ids(args.handoff_profile)
+        final_gate = required_check_ids[-1]
+        if final_gate not in {"handoff-dashboard", "desktop-source-handoff-dashboard"}:
+            raise RuntimeError("Handoff dashboard must remain the final profile gate.")
+        prior_check_ids = required_check_ids[:-1]
         checks = [
             resource_calibration_evidence_check(
                 artifact_path=args.resource_calibration_path,
@@ -1634,6 +1650,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.handoff_evidence_path,
                 expected_check_ids=prior_check_ids,
                 commit=git_state.commit,
+                release_profile=args.handoff_profile,
             ),
         ]
         checks[0:0] = preflight_checks
@@ -1677,6 +1694,7 @@ def main(argv: list[str] | None = None) -> int:
             "requires_upstream_sync": True,
             "executed_check_ids": [],
             "source_of_truth": "handoff gate records",
+            "release_profile": args.handoff_profile,
         }
     if report_output_dir is None:
         write_report(report)

@@ -1,6 +1,6 @@
 # XBrainLab 目前狀態
 
-最後更新：`2026-08-30`
+最後更新：`2026-08-31`
 
 ## 一句話
 
@@ -20,7 +20,7 @@ local Granite透過18個核准action進入相同GUI與Command workflow。
 | Model catalog | Pinned Braindecode 1.6.1提供61個可搜尋contracts，其中54個符合目前classification workflow而可選；provider失效時改列distinct `legacy.braindecode.*` recovery IDs。Model Selection使用catalog reviewed defaults。 | 不可選contracts會顯示license、task或resource reason；桌面UI不提供model constructor調參；upstream與legacy禁止silent fallback，catalog execution不代表科學品質。 |
 | Evaluation | Individual fold/run支援Train、Validation、Test；cross-fold Summary只pool同一training round的disjoint Test masks。 | `All Folds`的Split只有Test是刻意的統計邊界。 |
 | Saliency | 明確Compute Saliency、累加method recompute、exact Fold／Evaluation-admitted Fold Set publication存在；尚未計算者顯示Compute要求，舊結果可刻意回看；單一class selector可切all-class比較與single-class細看，3D控制使用epoch-relative time並在重複render維持單一orientation widget。 | 不代表attribution具科學有效性或腦內source localisation，不把epoch time冒充已審查event marker，也不保證所有模型梯度相容。 |
-| Assistant | Local catalog以Granite 4.0 Micro 3B作recommended primary、Granite 3.3 2B作lower-memory選項；per-user settings保留上次確認的supported model，已退役selection會靜默正規化為recommended model。Strict envelope、18-action stage surface、parameter provenance、typed pending receipt infrastructure、capability、confirmation、GUI handoff與model-free walkthrough存在。 | PR #71 的exact 3B bounded baseline為36/36 positive、10/10 explicit parameter origin、5/5 missing guard、22/24 product no-action與6/7 clarification execution boundary；這是已驗收的improved baseline，不是24/24、7/7 Stable promotion或安全零容忍，任一新source仍須自己的exact report。 |
+| Assistant | Local catalog以Granite 4.0 Micro 3B作recommended primary、Granite 3.3 2B作lower-memory選項；per-user settings保留上次確認的supported model，已退役selection會靜默正規化為recommended model。Strict envelope、18-action stage surface、parameter provenance、typed pending receipt infrastructure、capability、confirmation、GUI handoff與model-free walkthrough存在。 | PR #71 的exact 3B bounded baseline為36/36 positive、10/10 explicit parameter origin、5/5 missing guard、22/24 product no-action與6/7 clarification execution boundary；`desktop-source` release profile可重跑其frozen 81-case no-regression evidence，但artifact明示它不是24/24、7/7 Stable promotion或安全零容忍。 |
 | MCP | Executable package、transport、CLI、capture、schema projection與tests已退役；provenance只留在Git history。 | 不是release能力；未來若要恢復，必須另開public contract、security與validation decision。 |
 | Packaging | Windows launcher與source啟動方式存在。 | 沒有signed installer。 |
 

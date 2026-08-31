@@ -8,14 +8,18 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from scripts.dev.run_stable_assistant_model_eval import (
+    BOUNDED_BASELINE_MODEL_ID,
+    BOUNDED_BASELINE_MODEL_REVISION,
     DEFAULT_CASES,
     DEFAULT_CHALLENGES,
     DEFAULT_CLARIFICATION_CASES,
     DEFAULT_PRECISION_CASES,
+    FROZEN_CASE_FILE_SHA256,
     CaseTrajectoryResult,
     GenerationTraceRecorder,
     ModelGenerationAttempt,
     TargetEvalScore,
+    _bounded_baseline_gate,
     _build_recovery_case_messages,
     _build_report,
     _capture_audit_request,
@@ -34,6 +38,7 @@ from scripts.dev.run_stable_assistant_model_eval import (
     load_clarification_cases,
     load_precision_cases,
     load_target_cases,
+    report_bounded_baseline_passed,
     report_candidate_passed,
     run_eval,
     score_challenge_response,
@@ -98,6 +103,51 @@ def _complete_v12_case_summaries() -> dict[str, dict[str, object]]:
             "case_count": 81,
             "complete": True,
         },
+    }
+
+
+def _bounded_baseline_report() -> dict[str, object]:
+    corpus_paths = {
+        "positive": DEFAULT_CASES,
+        "challenge": DEFAULT_CHALLENGES,
+        "precision": DEFAULT_PRECISION_CASES,
+        "clarification": DEFAULT_CLARIFICATION_CASES,
+    }
+    results = [
+        {
+            "suite": suite,
+            "case": {"case_id": row["id"]},
+            "score": {
+                "passed": row["id"]
+                not in {
+                    "select_channels_before_data_en",
+                    "ambiguous_en",
+                    "generic_filter_selection",
+                }
+            },
+        }
+        for suite, path in corpus_paths.items()
+        for row in json.loads(path.read_text(encoding="utf-8"))
+    ]
+    return {
+        "schema_version": "xbrainlab.stable_assistant_model_eval.v12",
+        "model": {
+            "id": BOUNDED_BASELINE_MODEL_ID,
+            "revision": BOUNDED_BASELINE_MODEL_REVISION,
+            "backend": "local",
+            "deterministic": True,
+        },
+        "results": results,
+        "case_summaries": {
+            "total": {"expected_case_count": 81, "case_count": 81, "complete": True}
+        },
+        "candidate_gate": {
+            "host_safety": {
+                "explicit_parameter_origin": {"required": 10, "passed": 10},
+                "missing_parameter_origin": {"required": 5, "passed": 5},
+            }
+        },
+        "experiment_identity": dict(FROZEN_CASE_FILE_SHA256),
     }
 
 
@@ -2284,6 +2334,74 @@ def test_candidate_consumer_rejects_v11_summary_and_accepts_only_v12_gate() -> N
     )
 
 
+def test_bounded_baseline_accepts_only_the_approved_failures_and_never_promotes() -> (
+    None
+):
+    report = _bounded_baseline_report()
+
+    gate = _bounded_baseline_gate(report)
+    report["bounded_baseline_gate"] = gate
+
+    assert gate["passed"] is True
+    assert gate["assistant_stable_promotion"] is False
+    assert report_bounded_baseline_passed(report) is True
+
+    report["results"].append(  # type: ignore[index]
+        {"suite": "precision", "case": {"case_id": "new"}, "score": {"passed": False}}
+    )
+    assert _bounded_baseline_gate(report)["passed"] is False
+
+
+def test_bounded_baseline_rejects_incomplete_duplicate_or_unscored_rows() -> None:
+    missing = _bounded_baseline_report()
+    missing["results"].pop()  # type: ignore[index]
+    assert _bounded_baseline_gate(missing)["passed"] is False
+
+    duplicate = _bounded_baseline_report()
+    duplicate["results"][-1] = duplicate["results"][0].copy()  # type: ignore[index]
+    assert _bounded_baseline_gate(duplicate)["passed"] is False
+
+    unknown = _bounded_baseline_report()
+    unknown["results"][-1] = {  # type: ignore[index]
+        "suite": "clarification",
+        "case": {"case_id": "custom-unapproved-case"},
+        "score": {"passed": True},
+    }
+    assert _bounded_baseline_gate(unknown)["passed"] is False
+
+    wrong_suite = _bounded_baseline_report()
+    wrong_suite["results"][-1] = {  # type: ignore[index]
+        "suite": "precision",
+        "case": {"case_id": "partial_bandpass_accumulation"},
+        "score": {"passed": True},
+    }
+    assert _bounded_baseline_gate(wrong_suite)["passed"] is False
+
+    unscored = _bounded_baseline_report()
+    unscored["results"][0] = {  # type: ignore[index]
+        "suite": "positive",
+        "case": {"case_id": "import_eeg_data_01"},
+        "score": {"passed": "yes"},
+    }
+    assert _bounded_baseline_gate(unscored)["passed"] is False
+
+
+def test_bounded_baseline_is_pinned_independently_of_catalog_defaults(
+    monkeypatch,
+) -> None:
+    from scripts.dev import run_stable_assistant_model_eval as evaluator
+
+    report = _bounded_baseline_report()
+    monkeypatch.setattr(
+        evaluator.LLMConfig,
+        "default_local_model_id",
+        staticmethod(lambda: "not-the-release-model"),
+    )
+    monkeypatch.setattr(evaluator, "local_model_spec", lambda _model: None)
+
+    assert _bounded_baseline_gate(report)["passed"] is True
+
+
 def test_main_strict_fails_closed_for_a_v11_artifact(monkeypatch) -> None:
     from scripts.dev import run_stable_assistant_model_eval as evaluator
 
@@ -2511,6 +2629,7 @@ def test_main_records_actual_invocation_without_local_working_directory(
         "argv": argv,
         "working_directory_is_repository_root": True,
     }
+    assert "bounded_baseline_gate" not in write_report.call_args.args[1]
 
 
 def test_first_turn_rows_record_controller_admission_and_terminal_for_all_core_cases() -> (

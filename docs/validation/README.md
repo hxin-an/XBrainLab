@@ -78,11 +78,19 @@ exact commit完成後才可稱`handoff-ready`。
 ### Bounded Assistant baseline merge
 
 使用者可明確批准一個尚未達Stable promotion gate、但相對既有main有可驗證進步的bounded Assistant
-baseline。這不是可重用的promotion gate，也不修改`handoff_gate_spec.py`：PR必須保存同一exact source的
+baseline。這不是可重用的promotion gate：PR必須保存同一exact source的
 完整非strict model report、相較既有baseline不得退步的項目、全部known failures與claim boundary，並在
 所有applicable non-skipped CI成功後取得同一SHA的Windows真人手測與merge同意。這類source只能稱
 bounded baseline或checkpoint，不能稱Stable candidate、promotion或handoff-ready；後續24/24 no-action與
 7/7 clarification仍由下列strict gate判定。
+
+`handoff_gate_spec.py`另提供兩個固定、不可任意刪減的manifest profile：預設`handoff`仍使用
+`stable-assistant-model-eval --strict`；`desktop-source`只以`bounded-assistant-model-eval
+--require-bounded-baseline`替換它，並使用同profile的dashboard。bounded artifact必須綁定primary Granite
+exact revision與四份frozen English case files的SHA，完整81/81 inventory、36/36 positive、10/10 explicit
+parameter origin、5/5 missing guard，且失敗case只能是PR #71已知的`select_channels_before_data_en`、
+`ambiguous_en`、`generic_filter_selection`之一。artifact一律寫`assistant_stable_promotion=false`；profile
+不使bounded Assistant成為Stable promotion或完整`handoff-ready`證據。
 
 ### Stable Assistant candidate
 

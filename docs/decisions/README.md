@@ -1,6 +1,6 @@
 # XBrainLab Decisions
 
-最後更新：`2026-08-30`
+最後更新：`2026-08-31`
 
 ## 這份文件的用途
 
@@ -23,7 +23,7 @@
 | Assistant tool surface 由 approved intent 決定 | active | Tool 不由 runtime inventory 或既有測試反推。名稱、membership、side effect、confirmation 與 visible result 必須先在 `docs/target/agent.md` 的 intent ledger 取得使用者核准；current model-facing projection 只描述現況。 |
 | Assistant Stable v2 target surface | active | Target intent ledger 已鎖定18個產品tools、backend-owned stage、strict三欄envelope、一回合一動作、thin Host與GUI completion terminal。Implementation只能投影該ledger；不得用Host heuristic、silent substitution、auto continuation或runtime fallback補模型決策。 |
 | Assistant Stable v2 staged promotion | active | Stable promotion先在暫時integration branch組裝；該branch不是產品基線。只有完整candidate在同一exact SHA通過工程證據、使用者手測並取得明確merge同意後，才可宣稱promotion或handoff-ready；source改變即使批准失效。 |
-| Assistant bounded improved baseline | active | 使用者於2026-08-30核准並驗收PR #71的Granite 4.0 Micro 3B累積改良基準：36/36 positive、10/10 explicit parameter origin、5/5 missing guard、22/24 product no-action與6/7 clarification execution boundary。這是bounded baseline merge decision，不降低24/24與7/7 Stable promotion gate，也不授權新prompt treatment、Host semantic router或架構重構；任一新source仍須獨立exact report、PR全綠、Windows真人手測與明確merge同意。 |
+| Assistant bounded improved baseline | active | 使用者於2026-08-30核准並驗收PR #71的Granite 4.0 Micro 3B累積改良基準：36/36 positive、10/10 explicit parameter origin、5/5 missing guard、22/24 product no-action與6/7 clarification execution boundary。固定`desktop-source` evidence profile可重跑frozen case SHA及case-level no-regression，但不降低24/24與7/7 Stable promotion gate，也不授權新prompt treatment、Host semantic router或架構重構；artifact必須明示`assistant_stable_promotion=false`。 |
 | validation 是 thesis-critical | active | 測試和 evidence 是論文主張的一部分。 |
 | 文件要少數 canonical 化 | active | 短期 AI / agent 文件整合後刪除，只保留少數 canonical 文件。 |
 | Agent guidance 採 lean single-authority contract | active | Root 保存授權、safety、scope ceiling、complexity trigger 與 handoff 不變量；skills 只保存 routing/方法，workflows 保存多步程序。Static audit 只限制上限與 authority integrity，不再要求最低篇幅或大量外部 A/B。 |
