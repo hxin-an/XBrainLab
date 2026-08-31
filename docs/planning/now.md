@@ -4,9 +4,9 @@
 
 ## Current baseline and release decision
 
-`76ca41a81ba62cff965cf75991d2e6c53cc13644` 是本次 plan 的 product parent baseline。PR #94 已關閉
-Basedpyright 假綠，PR #96 已建立 Desktop source release profile；PR #97、#99、#100、#102 與 #103
-累計清除 46 項型別 diagnostics，把全案真實基準由 67 降為 21。舊 release candidate PR #91 的
+`e9e28d19784231bd73cc18cbc15b9d3b060fb738` 是本次 plan 的 product parent baseline。PR #94 已關閉
+Basedpyright 假綠，PR #96 已建立 Desktop source release profile；PR #97、#99、#100、#102、#103 與 #105
+累計清除 66 項型別 diagnostics，把全案真實基準由 67 降為 1。舊 release candidate PR #91 的
 source、artifact 與 manual acceptance 仍為失效歷史，不得重用。
 Repo-root `settings.json` 的本機修改由使用者擁有，不得 stage、commit、revert、覆寫或隱藏。
 
@@ -18,7 +18,7 @@ Repo-root `settings.json` 的本機修改由使用者擁有，不得 stage、com
 
 ### Evidence and blockers
 
-1. 完整 Poetry 3.12 環境如實分析 416 個 production files；PR #103 後仍有 `21 diagnostics`。
+1. 完整 Poetry 3.12 環境如實分析 416 個 production files；PR #105 後仍有 `1 diagnostic`。
    Fake-green 已關閉，但真實 type debt 尚未清零，Basedpyright 也還未接入現有 full-dependency
    CI job，所以 release gate 仍不可宣稱通過。
 2. PR #96 的 canonical `desktop-source` profile 已進入 main：Desktop 核心 gate 保持完整，bounded
@@ -31,7 +31,7 @@ Repo-root `settings.json` 的本機修改由使用者擁有，不得 stage、com
 ### Outcomes
 
 - Basedpyright runner 在 dependency type information 不可解析時 fail closed；完整依賴環境及 CI 結果一致。
-- 正確環境中剩餘的 21 diagnostics 經分群修正或精確、可審查的第三方 stub boundary 收斂到 zero observed
+- 正確環境中剩餘的 1 diagnostic 經可觀察的 behavior fix 收斂到 zero observed
   diagnostics；不得擴大 exclude 或把整批 debt 寫入 baseline。
 - 既有 canonical handoff runner 新增唯一命名的 `desktop-source` release profile；無參數 strict 行為維持
   不變，不建立第二套 manifest 或任意 skip list。
@@ -57,47 +57,36 @@ Repo-root `settings.json` 的本機修改由使用者擁有，不得 stage、com
 - 使用者已明確批准計畫中 **type-only、無可見行為變更** 的 `XBrainLab/ui/` 修正；若需要改 layout、文案、
   互動、狀態或流程，立即停止並另取 UI 確認。
 
-### Current slice E — UI and plot type boundaries
+### Current slice F — reject the NumPy `allow_pickle` control key
 
-- **Problem and evidence**：剩餘 21 項中有 20 項集中於
-  `modal_presentation.py`、`single_plot_window.py`、`data_splitting_preview_dialog.py`、
-  `training_setting_dialog.py`、`preprocess/preview_widget.py` 與 `base_saliency_view.py`。分布為
-  optional Qt access 3 項、Matplotlib private re-export 1 項、training numeric narrowing 1 項、
-  PyQtGraph public／private boundary 14 項與 Figure metadata 1 項；直接 UI baseline 為 192 passed。
-- **Outcome**：用 Qt local narrowing、Matplotlib public import、現有 `TrainingOption` 所需的 `float` boundary、
-  PyQtGraph public `PlotItem`／`ViewBox` API 與實際 `QEvent.Leave` event filter，取代 private field 與
-  `leaveEvent` monkey-patch；Figure metadata 僅把 dotted assignment 改成同一 Figure 上的 `setattr`。
-  六檔 20→0，全案 observed count 由 21 降為 1。
-- **Scope／non-goals**：只改上述 6 個 production files與兩個直接 leave-event tests；不改 layout、文案、
-  icon、crosshair outcome、plot bounds、dataset split flow、class-weight validation結果、saliency margin計算、
-  public API 或 backend state。不新增 screenshot、source guard、compatibility path或泛用 UI abstraction。
-- **Ownership／deletion**：六個既有 dialog／view owners 不變，delta `0`；刪除兩組 monkey-patch closures／
-  stored handlers，復用 QObject event filter與既有 plot owners。不建立 `WeakKeyDictionary`、global cache或第二套
-  metadata policy。預期 production net LOC 介於 -10 至 +20。
-- **Repair and validation**：先保留 192-test baseline；把兩個直接呼叫 monkey-patched handler 的弱測試改為
-  發送真實 `QEvent.Leave`，分別確認 time／frequency 的水平線、垂直線與 tooltip label 都隱藏且 event 不被
-  消耗。再跑同一 focused suite、六檔 Ruff、
-  完整外部 Basedpyright 21→1、frozen-SHA review、PR CI與既有 Windows／macOS／Linux UI lifecycle gates。
-- **Stop／UI status**：若 icon／geometry／copy、crosshair ordering或 native `leaveEvent`、invalid class-weight
-  feedback、plot item ownership／teardown、saliency resize recovery有任何可見或互動差異，立即停止並另取 UI
-  確認。使用者已批准本計畫中的 type-only、無可見行為 UI 修改；本 slice 不授權產品 redesign。
-
-### Deferred behavior bug — artifact key `allow_pickle`
-
-`backend/training/record/artifact_store.py` 的 1 項 diagnostic 對應真實 persistence defect：NumPy 將
-`allow_pickle` 視為 `np.savez_compressed` 的 control argument，而不是 array key；目前 GUI 的固定 key vocabulary
-不會產生此名稱，但 direct internal caller 會得到「寫入成功、讀回 integrity failure」的自相矛盾 artifact。
-這不能用 suppression 消掉；待 slice E 完成後另開 bug-fix plan，只復用現有 key validation 提前拒絕
-`allow_pickle`，不建立 reserved-name registry，並要求原子 side-effect test 與使用者批准。
+- **Problem and evidence**：`backend/training/record/artifact_store.py` 的最後 1 項 `reportArgumentType` 對應真實
+  persistence defect。鎖定的 NumPy `2.5.2` 將 `allow_pickle` 視為 `np.savez_compressed` control argument；
+  `write_json_npz_artifact(arrays={"allow_pickle": ...})` 目前回報寫入成功，但 NPZ 丟失該 array、manifest仍記錄
+  該 key，第一次讀回即以 `ArtifactIntegrityError` 失敗。現有 GUI／TrainRecord／EvalRecord 使用固定 key
+  vocabulary，不會產生此名稱；缺陷只在 direct internal writer caller 可達。
+- **Outcome**：復用 writer 現有 per-key validation，在任何 directory／temporary／manifest／NPZ mutation 前，
+  以既有 `ArtifactStoreError` 拒絕精確名稱 `allow_pickle`。單檔 1→0，全案 observed count 由 1 降為 0。
+- **Scope／non-goals**：只改 `artifact_store.py` 與 `test_safe_artifact_store.py`；不改 schema、reader、hash、
+  atomic replace、directory identity、production writer key vocabulary、UI 或 public artifact shape。不建立
+  reserved-name registry，不順手處理會立即 TypeError且不發布 artifact的 `file` key，也不新增 compatibility path。
+- **Ownership／deletion**：既有 artifact store仍是唯一 persistence owner，delta `0`；在既有 invalid-name條件
+  增加一個 proven collision，沒有新 helper／class／state。預期 production net LOC 介於 0 至 +2。
+- **Repair and validation**：先新增一個 side-effect test，證明舊版不拒絕且發布自相矛盾檔案；修正後要求
+  `ArtifactStoreError` 且 manifest／NPZ皆不存在。跑完整 safe-artifact focused suite、相關 record exports、Ruff、
+  完整外部 Basedpyright 1→0、frozen-SHA review與 PR CI。
+- **Stop／manual status**：若修正需要新 policy owner、泛用 key framework、schema／normal product writer變更，
+  或不是單一既有 validation condition即停止。這是 non-UI internal behavior fix，沒有有意義的 click-through；
+  frozen SHA 必須以 automated side-effect evidence交使用者明確批准，批准前不 merge。
 
 ## Progression and focused validation
 
-1. **Current plan checkpoint**：合併本 canonical plan，再從 fixed main 建立單一 slice E worktree；一個 worker
+1. **Current plan checkpoint**：合併本 canonical plan，再從 fixed main 建立單一 slice F worktree；一個 worker
    實作，root 重跑 focused／external gates，同一 independent reviewer 只在 frozen commit 後審查。
-2. **Slice E exact validation**：保留 192-test baseline並強化兩個真實 Leave events；跑 external full
-   Basedpyright、Ruff、diff、frozen-SHA review與 PR CI。observed count 必須由 21 精確降為 1，不可有 UI delta。
-3. **Final behavior debt**：另開 plan與短 PR，只修 artifact `allow_pickle` 的已證明 silent inconsistency；
-   以 atomic failure test與使用者批准收斂最後 1 項，external observed count 必須為 0。
+2. **Slice F exact validation**：執行 failing characterization → 單一 validation condition → passing artifact／
+   record suites；跑 external full Basedpyright、Ruff、diff、frozen-SHA review與 PR CI，使用者批准後才 merge。
+   observed count 必須由 1 精確降為 0，不可擴張 key policy。
+3. **Zero-debt checkpoint**：slice F 合併後從 clean main重跑 deterministic external analyzer與 dependency probe；
+   zero observed diagnostics只代表 type gate閉合，不自動宣稱產品 release-ready。
 4. **CI closure**：diagnostics 清零後，將 deterministic Basedpyright runner 接入現有 full-dependency job；不建立
    第二套 CI truth。
 5. **Fresh candidate**：重建 0.9.0 identity／docs，clean、push、freeze exact SHA，以 D-mounted model／RAG
