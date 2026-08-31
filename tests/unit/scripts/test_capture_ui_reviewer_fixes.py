@@ -222,6 +222,21 @@ def test_extended_review_capture_writes_all_full_content_frames(qapp, tmp_path) 
             assert image.getbbox() is not None
 
 
+def test_training_setting_capture_writes_top_and_resource_preview_frames(
+    qapp,
+    tmp_path,
+) -> None:
+    checks = capture_script._capture_training_setting_surfaces(qapp, tmp_path)
+
+    assert len(checks) == len(capture_script.TRAINING_FONT_SCALES)
+    assert all(check["passed"] is True for check in checks)
+    for filename in (
+        *capture_script.TRAINING_SETTING_SURFACES.values(),
+        *capture_script.TRAINING_SETTING_RESOURCE_PREVIEW_SURFACES.values(),
+    ):
+        assert (tmp_path / filename).is_file()
+
+
 def test_real_fixture_preview_populates_time_and_psd_curves(qapp) -> None:
     preview, fixture_evidence = capture_script._real_fixture_preview(FIXTURE)
     try:

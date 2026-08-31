@@ -592,6 +592,7 @@ def _capture_training_setting_surfaces(
                 # The geometry audit above owns scroll-viewport containment;
                 # clipped child grabs are not stable references for that check.
                 compare_child_references=False,
+                dispose=False,
             )
             scroll_bar.setValue(scroll_bar.maximum())
             app.processEvents()

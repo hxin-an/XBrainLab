@@ -326,8 +326,9 @@ class TrainingSettingDialog(BaseDialog):
         )
         target_height = max(390, min(content_hint + 92, 620))
         needs_vertical_scroll = content_hint + 92 > target_height
-        if needs_vertical_scroll and self.content_scroll is not None:
-            target_width += self.content_scroll.verticalScrollBar().sizeHint().width()
+        content_scroll = self.content_scroll
+        if needs_vertical_scroll and content_scroll is not None:
+            target_width += content_scroll.verticalScrollBar().sizeHint().width()
         self.setMinimumSize(target_width, 390)
         self.resize(max(self.width(), target_width), max(self.height(), target_height))
 
