@@ -380,14 +380,21 @@ def test_failed_final_3d_render_allows_retry_of_the_same_scene(
         "left",
         absolute=False,
     )
+    time_axis = np.array([-0.2, 0.0])
+    engine_contract = {
+        "time_axis_seconds": time_axis,
+        "time_range_seconds": (-0.2, 0.0),
+        "initial_time_seconds": -0.2,
+        "sample_index_for_time": lambda _time: 0,
+    }
     failed_scene = SimpleNamespace(
         init_error="",
-        engine=object(),
+        engine=SimpleNamespace(**engine_contract),
         get_3d_head_plot=MagicMock(side_effect=RuntimeError("head plot failed")),
     )
     rendered_scene = SimpleNamespace(
         init_error="",
-        engine=object(),
+        engine=SimpleNamespace(**engine_contract),
         get_3d_head_plot=MagicMock(),
     )
     monkeypatch.setattr(

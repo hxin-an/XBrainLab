@@ -26,6 +26,7 @@ from PyQt6.QtGui import QStandardItemModel
 from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
+    QDoubleSpinBox,
     QHBoxLayout,
     QLabel,
     QSizePolicy,
@@ -301,13 +302,23 @@ class Saliency3DPlotWidget(QWidget):
         scene_layout = QHBoxLayout(self.scene_controls)
         scene_layout.setContentsMargins(8, 0, 8, 0)
         scene_layout.setSpacing(8)
-        self.epoch_time_label = QLabel("Epoch time (s):", self.scene_controls)
+        self.epoch_time_label = QLabel("Epoch time", self.scene_controls)
         scene_layout.addWidget(self.epoch_time_label)
         self.time_slider = QSlider(Qt.Orientation.Horizontal, self.scene_controls)
         self.time_slider.setObjectName("Saliency3DEpochTimeSlider")
         self.time_slider.setRange(0, 1000)
         self.time_slider.valueChanged.connect(self._set_epoch_time)
         scene_layout.addWidget(self.time_slider, stretch=1)
+        self.epoch_time_spin = QDoubleSpinBox(self.scene_controls)
+        self.epoch_time_spin.setObjectName("Saliency3DEpochTimeSpinBox")
+        self.epoch_time_spin.setDecimals(3)
+        self.epoch_time_spin.setSuffix(" s")
+        self.epoch_time_spin.setMinimumWidth(108)
+        self.epoch_time_spin.setMaximumWidth(128)
+        self.epoch_time_spin.setKeyboardTracking(False)
+        self.epoch_time_spin.setEnabled(False)
+        self.epoch_time_spin.valueChanged.connect(self._set_epoch_time_spin)
+        scene_layout.addWidget(self.epoch_time_spin)
         self.scene_controls.hide()
 
         # Plot Area
@@ -1164,6 +1175,7 @@ class Saliency3DPlotWidget(QWidget):
                 return
             saliency.get_3d_head_plot()
             self._saliency_scene = saliency
+            self._configure_epoch_time_controls()
             self.scene_controls.show()
             self.scene_controls_changed.emit()
         except Exception as e:
@@ -1192,7 +1204,46 @@ class Saliency3DPlotWidget(QWidget):
         if scene is None or scene.engine is None:
             return
         low, high = scene.engine.time_range_seconds
-        scene._set_time_seconds(low + (high - low) * value / 1000)
+        self._apply_epoch_time(low + (high - low) * value / 1000)
+
+    def _set_epoch_time_spin(self, value: float) -> None:
+        self._apply_epoch_time(value)
+
+    def _configure_epoch_time_controls(self) -> None:
+        scene = self._saliency_scene
+        if scene is None or scene.engine is None:
+            return
+        engine = scene.engine
+        time_axis = engine.time_axis_seconds
+        low, high = engine.time_range_seconds
+        sample_count = len(time_axis)
+        step = float(time_axis[1] - time_axis[0]) if sample_count > 1 else 1.0
+        step_decimals = len(f"{abs(step):.6f}".rstrip("0").partition(".")[2])
+        enabled = sample_count > 1 and high > low
+        with QSignalBlocker(self.time_slider), QSignalBlocker(self.epoch_time_spin):
+            self.time_slider.setValue(0)
+            self.time_slider.setEnabled(enabled)
+            self.epoch_time_spin.setRange(low, high)
+            self.epoch_time_spin.setDecimals(max(3, step_decimals))
+            self.epoch_time_spin.setSingleStep(step)
+            self.epoch_time_spin.setValue(engine.initial_time_seconds)
+            self.epoch_time_spin.setEnabled(enabled)
+
+    def _apply_epoch_time(self, time_seconds: float) -> None:
+        scene = self._saliency_scene
+        if scene is None or scene.engine is None:
+            return
+        engine = scene.engine
+        sample_index = engine.sample_index_for_time(float(time_seconds))
+        selected_time = float(engine.time_axis_seconds[sample_index])
+        low, high = engine.time_range_seconds
+        slider_value = (
+            0 if high <= low else round((selected_time - low) * 1000 / (high - low))
+        )
+        scene._set_time_seconds(selected_time)
+        with QSignalBlocker(self.time_slider), QSignalBlocker(self.epoch_time_spin):
+            self.time_slider.setValue(slider_value)
+            self.epoch_time_spin.setValue(selected_time)
 
     def _toggle_electrodes(self, checked: bool) -> None:
         scene = self._saliency_scene

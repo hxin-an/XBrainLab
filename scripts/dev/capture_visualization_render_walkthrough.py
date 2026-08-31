@@ -470,10 +470,10 @@ def _prepare_tiny_trained_state(
         ApplyMontageCommand(
             channels=["C3", "C4", "Cz", "Pz"],
             positions=[
-                (-0.06, 0.0, 0.0),
-                (0.06, 0.0, 0.0),
-                (0.0, 0.04, 0.0),
-                (0.0, -0.08, 0.0),
+                (-0.06, 0.0, 0.04),
+                (0.06, 0.0, 0.04),
+                (0.0, 0.04, 0.08),
+                (0.0, -0.08, 0.02),
             ],
             montage_name="synthetic-4ch",
         ),
