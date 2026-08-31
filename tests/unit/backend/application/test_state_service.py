@@ -823,6 +823,9 @@ def test_pending_training_submission_publishes_coherent_recommendation_once() ->
         "class_weight_mode": "off",
         "custom_class_weights": {},
         "class_map_fingerprint": None,
+        "early_stopping_enabled": False,
+        "early_stopping_patience": 3,
+        "early_stopping_min_delta": 0.0,
     }
     assert recommendation.values.to_mapping() == {
         TrainingRecommendationField.EPOCHS: 30,

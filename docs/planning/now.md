@@ -255,6 +255,11 @@ undefined AUC、per-repeat reset／continuation、cancel priority、best-checkpo
 v1／v2→v3、snapshot reopen、History presentation、disabled equivalence 與 B4 validation isolation；再跑
 Training Settings capture、training source-diverse gate 與 exact-SHA Windows 手測。
 
+本輪 CI blocker repair 已完成：兩個既有 backend snapshot assertion 納入三個 default；Training Settings 在
+150% 且內容超過高度上限時，必須以 native vertical scrollbar 寬度預留 dialog 寬度，避免 viewport 吃掉
+input column。focused validation 包含 13-row capture（明確三個 new labels）及既有 inflated-native-combo
+strict guard；不變更 global basedpyright baseline／四項既有 diagnostics。
+
 ### B6 candidate. Bounded training search (not active)
 
 B6 只在 B5 合併與手測後進行 target discussion，不屬於本輪 active implementation。候選方向是讓
