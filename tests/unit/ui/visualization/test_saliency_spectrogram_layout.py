@@ -84,6 +84,8 @@ def test_compact_spectrogram_viewport_preserves_rows_and_one_live_canvas(qtbot) 
     top_row = [bound for bound in bounds[:2] if bound is not None]
     bottom_row = [bound for bound in bounds[2:] if bound is not None]
     assert min(bound.y0 for bound in top_row) > max(bound.y1 for bound in bottom_row)
+    assert top_row[1].x0 - top_row[0].x1 >= 6.0
+    assert bottom_row[1].x0 - bottom_row[0].x1 >= 6.0
 
     view.hide()
     qtbot.wait(0)

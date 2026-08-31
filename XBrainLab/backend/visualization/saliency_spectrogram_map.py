@@ -611,7 +611,7 @@ class SaliencySpectrogramMapViz(Visualizer):
             rows,
             cols + 1,
             width_ratios=[1.0] * cols + [0.075],
-            wspace=0.38,
+            wspace=0.65,
             hspace=0.55,
         )
         image = None
