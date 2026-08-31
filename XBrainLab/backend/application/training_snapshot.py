@@ -32,6 +32,7 @@ def training_option_snapshot(option: Any) -> dict[str, Any]:
     evaluation_value = getattr(evaluation_option, "value", evaluation_option)
     optimizer_params = getattr(option, "optim_params", None)
     repeat_seed_getter = getattr(option, "get_configured_repeat_seeds", None)
+    class_weight_mode = getattr(option, "class_weight_mode", "off")
     return {
         "epoch": getattr(option, "epoch", None),
         "batch_size": getattr(option, "bs", None),
@@ -52,9 +53,7 @@ def training_option_snapshot(option: Any) -> dict[str, Any]:
         "output_dir": getattr(option, "output_dir", None),
         "evaluation_option": evaluation_value,
         "class_weight_mode": str(
-            getattr(option, "class_weight_mode", "off").value
-            if hasattr(getattr(option, "class_weight_mode", "off"), "value")
-            else getattr(option, "class_weight_mode", "off")
+            getattr(class_weight_mode, "value", class_weight_mode)
         ),
         "custom_class_weights": dict(getattr(option, "custom_class_weights", {}) or {}),
         "class_map_fingerprint": getattr(option, "class_map_fingerprint", None),
