@@ -51,11 +51,13 @@ weighting。Lane B 下一個 active slice 是 B5；B6 只保留為 B5 後的 can
 2. 保留已完成的 Epoch import setup、Warning presentation 與 class loss weighting outcome。
 3. 在既有 training lifecycle 內完成 validation early stopping；更進階的 bounded training search
    只能在 B5 合併後另作 target decision。
-4. 沿用 C2 已建立的 Windows 時間帳，直接判斷 P300 Apply 是否有同一 request 內可刪除的重複
-   materialization；不再擴張 profiler／validator framework。
+4. 保留 C4 已完成的 bounded negative result：P300 Apply 沒有同一 request 內可安全刪除的重複
+   Raw load、完整 sample materialization 或 label decode；不為了湊加速擴張 profiler／validator
+   framework 或修改產品。
 
-本次 plan calibration 合併後，B5 與 C4 必須從當時的 exact `main` 分別建立；任何舊 baseline
-或 abandoned C3 candidate 都不得作 product branch base。
+本次 plan calibration 合併後，B5 與 C4 已從 exact
+`fb752a5a3c810b249576b28f6e18baec38c81c16` 分別建立；任何舊 baseline 或 abandoned C3
+candidate 都沒有作為 product branch base。C4 維持零 product diff，B5 繼續施工。
 
 ## Roles and worktree control
 
@@ -341,7 +343,25 @@ evidence ambiguity，但沒有完成 Windows P300 measurement，也沒有改善 
 後續不得把 C3 code、artifact schema 或 environment framework 當成 C4 的必要前置；C2 的 Windows
 product-equivalent timing 已足以把調查範圍限定在 P300 Apply。
 
-### C4. Direct P300 Apply de-duplication
+### C4. Direct P300 Apply de-duplication (closed: no bounded safe candidate)
+
+作者在 exact clean base `fb752a5a3c810b249576b28f6e18baec38c81c16` 對同一 OpenNeuro
+P300 subject 001 三個 selected runs 做 repo 外、執行後刪除的 application-seam call-count：
+`RawDataLoaderFactory.load = 3`、`AdmittedLabelResourceSession.load = 3`、
+`BaseRaw.load_data = 0`、`BaseRaw.get_data = 0`。也就是每個 distinct EEG 與 event carrier 各
+load 一次，沒有 application-level 完整 sample materialization。Static trace 亦證明
+`prepare_replacement_import()` 載入後，detached interpretation 與 commit 重用同一批 prepared Raw。
+
+非作者 reviewer 在相同 frozen SHA 核對 BIDS unique projection、selected-resource scan、Apply label
+loop 與 prepared commit，沒有發現同 canonical path／parser config／request 的重複工作。因此 C4
+依既定 stop condition 以零 product diff 關閉；不新增 cache、worker、state、測試或 profiler
+framework。暫存 script、fixture symlink 與 result directory 已移除。
+
+本 session 的 Windows interop 在 command dispatch 前以
+`WSL ERROR: UtilBindVsockAnyPort:307` 失敗，所以沒有取得 current-source Windows warm-up＋三輪
+before。既有 native Windows artifact 缺 exact source／fixture identity，且不是 current real-Qt
+`--p300-once` path，不能代替本輪 baseline。這限制任何 current Windows timing、before／after 或
+產品加速宣稱，但不會把已證明不存在的 application-level duplicate 變成安全候選。
 
 **Problem and outcome**
 
@@ -378,11 +398,11 @@ negative result，不要求 manual acceptance。
 
 ## Progression, review, and merge gates
 
-1. B3、B4 與 C2 已完成；C3 已放棄且不得 merge。本 plan 合併並清理舊資源後，B5 與 C4 從同一
-   exact `main` 建立兩個互不重疊 worktree 並行。B6 維持 not active。
-2. 每條 lane 只有一位 worker。B5 先建 deterministic lifecycle baseline；C4 先完成固定 Windows
-   before 與一次不提交的 call-count run，證據不成立就停止。作者 focused tests 通過後 freeze exact head，
-   再由一位非作者 reviewer 審查；不新增重複 user-simulator role。
+1. B3、B4 與 C2 已完成；C3 已放棄且不得 merge。B5 與 C4 已從同一 exact `main` 建立互不重疊
+   worktree；C4 已依 negative-result stop condition 關閉，B5 繼續施工，B6 維持 not active。
+2. C4 的作者 call-count 與非作者 review 已完成，沒有 product diff 或人工驗收需求。B5 仍由單一
+   worker 建 deterministic lifecycle evidence，focused tests 通過後 freeze exact head，再由一位非作者
+   reviewer 審查；不新增重複 user-simulator role。
 3. Reviewer finding 只有重現本 scope contract、直接 safety／data loss，或使證據無法支撐本次
    claim 時才 blocker；其他最多三項 follow-up，不擴大 diff。
 4. 通過 review 後才跑 applicable canonical gates。Executable IDs、argv、timeout 與 artifact contract
