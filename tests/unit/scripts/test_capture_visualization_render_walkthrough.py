@@ -52,7 +52,14 @@ from scripts.dev.capture_visualization_render_walkthrough import (
 from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
     source_identity_digest,
 )
-from XBrainLab.backend.application import SaliencyCommand, TrainCommand
+from XBrainLab.backend.application import (
+    ApplyMontageCommand,
+    SaliencyCommand,
+    TrainCommand,
+)
+from XBrainLab.backend.application.montage_capability import (
+    montage_geometry_capabilities,
+)
 from XBrainLab.backend.application.results import ErrorType
 from XBrainLab.ui.interaction_outcome import InteractionOutcome
 
@@ -1560,3 +1567,14 @@ def test_visualization_training_walkthrough_confirms_training_boundary():
     assert isinstance(service.commands[-1], TrainCommand)
     assert service.commands[-1].confirmed is True
     assert service.commands[-1].interactive is False
+    montage = next(
+        command
+        for command in service.commands
+        if isinstance(command, ApplyMontageCommand)
+    )
+    supports_topographic, supports_three_dimensional = montage_geometry_capabilities(
+        tuple(tuple(position) for position in montage.positions),
+        coordinate_dimension=3,
+    )
+    assert supports_topographic is True
+    assert supports_three_dimensional is True
