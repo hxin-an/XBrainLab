@@ -1,12 +1,13 @@
 # XBrainLab Now
 
-最後更新：`2026-08-31`
+最後更新：`2026-09-01`
 
 ## Current baseline and release decision
 
-`main` 與 `origin/main` 在本計畫開始時同為
-`c339884a611b18c6ac3e4582760d7aa518ab51ba`。PR #92 的 Saliency Spectrogram 修復已由使用者手測通過並
-合併；舊 release candidate PR #91 的 source、artifact 與 manual acceptance 仍為失效歷史，不得重用。
+`54ca582aa63f96f9fdd395c6e761c96ff038e297` 是本次 plan 的 product parent baseline。PR #94 已關閉
+Basedpyright 假綠，PR #96 已建立 Desktop source release profile，PR #97 已將 MNE Raw／Epochs
+17 項型別 diagnostics 清零並把全案真實基準由 67 降為 50。舊 release candidate PR #91 的
+source、artifact 與 manual acceptance 仍為失效歷史，不得重用。
 Repo-root `settings.json` 的本機修改由使用者擁有，不得 stage、commit、revert、覆寫或隱藏。
 
 使用者於 `2026-08-31` 決定下一個版本為 **v0.9.0 Desktop Core Stable source release**：同一 candidate
@@ -17,19 +18,20 @@ Repo-root `settings.json` 的本機修改由使用者擁有，不得 stage、com
 
 ### Evidence and blockers
 
-1. PR #94 已在 `main` 的 `f456acb7` 讓 Basedpyright runner 於依賴型別不可解析時 fail closed；完整
-   Poetry 3.12 環境仍如實分析 416 個 production files 並回報 `67 diagnostics`。假綠路徑已關閉，但真正
-   type debt 尚未清零，所以 gate 仍不可宣稱通過。
-2. Canonical handoff manifest 目前只表示包含 Assistant strict promotion 的單一 required set；Granite 3B
-   已驗收基準仍是 36/36 positive、10/10 explicit parameter origin、5/5 missing guard、22/24 product
-   no-action、6/7 clarification。這可支持 bounded preview，不可被改寫為 24/24、7/7 Stable promotion。
-3. PR #91 的 0.9.0 version／release truth 變更尚未進入 main。必須先閉合上述 prerequisite，再從新的
-   fixed main 建立全新 candidate。
+1. 完整 Poetry 3.12 環境如實分析 416 個 production files；PR #97 後仍有 `50 diagnostics`。
+   Fake-green 已關閉，但真實 type debt 尚未清零，Basedpyright 也還未接入現有 full-dependency
+   CI job，所以 release gate 仍不可宣稱通過。
+2. PR #96 的 canonical `desktop-source` profile 已進入 main：Desktop 核心 gate 保持完整，bounded
+   Assistant 固定 Granite 4.0 Micro 與 81-case inventory，並明示
+   `assistant_stable_promotion=false`。目前結果仍只支持 bounded preview，不可宣稱
+   Assistant Stable promotion。
+3. PR #91 的 0.9.0 version／release truth 變更尚未進入 main。必須先將真實 diagnostics 清零、將
+   deterministic runner 接入 CI，再從新的 fixed main 建立全新 candidate。
 
 ### Outcomes
 
 - Basedpyright runner 在 dependency type information 不可解析時 fail closed；完整依賴環境及 CI 結果一致。
-- 正確環境中的 67 diagnostics 經分群修正或精確、可審查的第三方 stub boundary 收斂到 zero observed
+- 正確環境中剩餘的 50 diagnostics 經分群修正或精確、可審查的第三方 stub boundary 收斂到 zero observed
   diagnostics；不得擴大 exclude 或把整批 debt 寫入 baseline。
 - 既有 canonical handoff runner 新增唯一命名的 `desktop-source` release profile；無參數 strict 行為維持
   不變，不建立第二套 manifest 或任意 skip list。
@@ -55,38 +57,58 @@ Repo-root `settings.json` 的本機修改由使用者擁有，不得 stage、com
 - 使用者已明確批准計畫中 **type-only、無可見行為變更** 的 `XBrainLab/ui/` 修正；若需要改 layout、文案、
   互動、狀態或流程，立即停止並另取 UI 確認。
 
-### Current slice — MNE Raw／Epochs type narrowing
+### Current slice A — evaluation metrics type narrowing
 
-- **Problem and evidence**：`backend/load_data/raw.py` 有 9 項、`backend/preprocessor/resample.py` 有 8 項
-  diagnostics；原因是 `is_raw()` 無法替 static analyzer 收窄 `BaseRaw | BaseEpochs`，以及 MNE resample
-  stub 對回傳聯集與 `events=None` 的保守描述。完整依賴環境的 focused count 是 17；直接相關的 Raw、
-  resample、preprocess及controller characterization 共 70 tests passed。
-- **Outcome**：在不改 runtime observable behavior 的前提下，以 concrete `isinstance` branch 與 MNE public
-  in-place resample API 將這兩檔收斂為 0 diagnostics；保留 raw event sample scaling、epoch event wipe、
-  finite-data guard、publication與error semantics。
-- **Scope／non-goals**：只改上述 2 個 production files與直接必要測試；不改 ApplicationService／controller、
-  UI、文案、資料流程、public API、其他 type debt或 baseline。不得使用 `Any`、broad cast／ignore、private MNE
-  API、compatibility path或新 abstraction。
-- **Ownership／deletion**：owner before／after皆為既有 Raw data wrapper與Resample processor，delta `0`；刪除
-  重複 resample comment與不必要的 `events=None`，復用既有 `set_mne`、`set_mne_and_wipe_events`及event setter。
-  預估 production delta約等量替換，遠低於 pure-refactor complexity trigger。
-- **Repair and validation**：先保留同一70-test passing baseline，再做 concrete narrowing；重跑完全相同測試、
-  完整外部 Basedpyright（兩檔 17→0、全案 67→50）、兩檔 Ruff與diff check。MNE／Qt相關測試使用明確 timeout、
-  `prlimit --core=0`、`MNE_DONTWRITE_HOME=true`與暫存config目錄。
-- **Stop／UI status**：若需要型別掩蓋、private API、行為或owner變更即停止；只有17項全消失且70-test baseline
-  不退步才 scope-complete。這是使用者已批准的 non-UI type-only slice，沒有可見 UI 變更；不需新增 screenshot。
+- **Problem and evidence**：`backend/training/record/eval.py` 有 7 項 sklearn typing diagnostics；目前 production
+  同時由 `precision_recall_fscore_support` 與既有 confusion matrix 推導同一組 metrics，但現有測試只覆蓋兩組
+  一般輸入，沒有缺 class 的真實邊界。
+- **Outcome**：復用現有 `calculate_confusion` 導出 per-class precision／recall／F1／support 與 macro，保留
+  fixed class labels 和 `zero_division=0` 的輸出語意；單檔 7→0，全案從 50 獨立降為 43。
+- **Scope／non-goals**：只改 `eval.py` 與直接 metrics test；不改 training workflow、UI、public schema、
+  metric key／shape／value contract，也不混入 artifact persistence bug。不使用 broad cast、`Any`或 ignore。
+- **Ownership／deletion**：owner before／after皆是既有 evaluation record，delta `0`；刪除重複 sklearn metric
+  derivation，不新增 abstraction。預期 production net LOC 非正或接近零。
+- **Repair and validation**：先保留現有 metrics passing baseline，新增 3-class 但只出現 class 0 的
+  observable test，再復用 confusion matrix；跑 focused tests、相關 training record tests、完整外部
+  Basedpyright、Ruff與diff check。
+- **Stop／UI status**：若任一現有 metric 值／shape／missing-class 語意變更或需要新 owner 即停止。
+  這是 non-UI type-only slice，無可見行為與 screenshot。
+
+### Current slice B — third-party boundary cleanup
+
+- **Problem and evidence**：`evaluation_render.py`、`visualization_controller.py`、`saliency_3d_engine.py`與
+  `llm/core/downloader.py` 合計 5 項 diagnostics，分別來自 torchinfo、無法到達的 dict reconstruction、
+  PyVista return type 與 Hugging Face private re-export import。現有 focused baseline 共 114 tests passed。
+- **Outcome**：用最小 precise cast／public import／return annotation／刪除 impossible branch 表達現有 runtime
+  contract；四檔 5→0，全案從 50 獨立降為 45，與 slice A 合併後預期 38。
+- **Scope／non-goals**：只改上述 4 個 production files與直接必要 characterization；不改 evaluation／
+  visualization／saliency／download 行為、UI、文案或 public API，不建立 compatibility path。
+- **Ownership／deletion**：四個既有 owner 不變，delta `0`；刪除 `EvalRecord.output` 不可達的 dict
+  重建邏輯，其餘僅為第三方 boundary 精確化。預期 production net LOC 介於 -2 至 +5。
+- **Repair and validation**：以真實 `EvalRecord` 新增 independent-copy characterization，保留同一 114-test
+  baseline，並跑完整外部 Basedpyright、四檔 Ruff與diff check。只有已驗證 public runtime API 才能使用。
+- **Stop／UI status**：若需要 broad ignore／cast、第二套 output policy、行為或 owner 變更即停止。這是
+  non-UI type-only slice，無可見行為與 screenshot。
+
+### Deferred behavior bug — artifact key `allow_pickle`
+
+`backend/training/record/artifact_store.py` 的 1 項 diagnostic 對應真實 persistence defect：NumPy 將
+`allow_pickle` 視為 `np.savez_compressed` 的 control argument，而不是 array key。這不能在 type-only slice
+裡用 suppression 消掉；待 A／B 完成後另開 bug-fix plan，提前拒絕該 reserved name，並要求續寫等
+真實 side-effect test 與使用者手測批准。
 
 ## Progression and focused validation
 
-1. **Plan checkpoint**：先合併本 canonical plan；之後才建立兩條 prerequisite worktree。
-2. **Basedpyright determinism**：先建立 observable fake-green red test／dependency-resolution probe，再修 runner；
-   在 fresh process、完整 Poetry 3.12 env 與 CI 各連跑兩次。Sandbox 無 dependency types 時必須明確失敗。
-3. **Type debt slices**：保留或新增直接 runtime characterization；每片修後跑 focused tests、external full
-   Basedpyright、Ruff、architecture及受影響 subsystem tests。第三方 stub mismatch 只允許精確行級
-   suppression並附 runtime evidence；最終 external observed count 必須為 0。
-4. **Release evidence contract**：test-first證明 default profile仍使用 strict 24/24、7/7；desktop profile
-   不能任意漏 gate，bounded report必須 exact model/revision、81/81 complete，且 PR #71 所有 passed case
-   不得退步。三個已知失敗可維持或改善，不能換成新失敗。
+1. **Current plan checkpoint**：合併本 canonical plan，再從同一 fixed main 建立 A／B 兩條互不重疊
+   worktree；兩個 worker 各自實作，同一 independent reviewer 只在 frozen commit 後審查。
+2. **A／B exact validation**：每片各自保留 passing baseline，只新增能使真實 defect 可觀察的 test；各自
+   跑 focused tests、external full Basedpyright、Ruff、diff、review 與 PR CI。兩片合併後重跑全案，
+   observed count 必須由 50 精確降為 38，不可有新 diagnostic。
+3. **Remaining type debt**：依 8-file 上限繼續分為 model loop、training setup、UI／plot；最後單獨處理
+   artifact behavior bug。第三方 stub mismatch 只允許已有 runtime evidence 的精確行級 suppression，最終
+   external observed count 必須為 0。
+4. **CI closure**：diagnostics 清零後，將 deterministic Basedpyright runner 接入現有 full-dependency job；不建立
+   第二套 CI truth。
 5. **Fresh candidate**：重建 0.9.0 identity／docs，clean、push、freeze exact SHA，以 D-mounted model／RAG
    caches及offline Granite跑 `desktop-source` canonical manifest；所有 non-skipped CI completed/success。
 6. **Manual acceptance**：Windows native完成 startup、PhysioNet核心 workflow、BIDS／GDF import spot checks、
