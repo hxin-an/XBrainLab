@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QProxyStyle,
     QStyle,
+    QWidget,
 )
 
 import scripts.dev.capture_ui_reviewer_fixes as capture_script
@@ -69,6 +70,32 @@ def test_dispose_widget_tolerates_an_already_deleted_qt_wrapper(qapp) -> None:
             raise RuntimeError("wrapped C/C++ object of type QWidget has been deleted")
 
     capture_script._dispose_widget(qapp, DeletedWidget())  # type: ignore[arg-type]
+
+
+def test_surface_capture_can_skip_scroll_clipped_child_references(
+    qapp,
+    tmp_path,
+) -> None:
+    surface = QWidget()
+    surface.resize(200, 100)
+    QLabel("Training Settings", surface).move(12, 12)
+    clipped_child = QLabel("Patience", surface)
+    clipped_child.setGeometry(12, 90, 100, 24)
+    screenshot = tmp_path / "surface.png"
+    try:
+        _settle(qapp, surface)
+        capture_script._save_capture(surface, screenshot)
+
+        with pytest.raises(RuntimeError, match="clipped outside"):
+            capture_script._assert_reviewer_surface_pixels(surface, screenshot)
+
+        capture_script._assert_reviewer_surface_pixels(
+            surface,
+            screenshot,
+            compare_child_references=False,
+        )
+    finally:
+        _dispose(qapp, surface)
 
 
 def test_surface_inventory_preserves_existing_artifacts_and_adds_review_states() -> (

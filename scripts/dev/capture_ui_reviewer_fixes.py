@@ -1490,12 +1490,16 @@ def _assert_reviewer_surface_pixels(
     required: dict[str, QWidget] = {
         f"{type(widget).__name__} complete surface": widget,
     }
-    controls: list[QWidget] = [
-        *widget.findChildren(QLabel),
-        *widget.findChildren(QAbstractButton),
-        *widget.findChildren(QComboBox),
-        *widget.findChildren(QAbstractItemView),
-    ]
+    controls: list[QWidget] = (
+        [
+            *widget.findChildren(QLabel),
+            *widget.findChildren(QAbstractButton),
+            *widget.findChildren(QComboBox),
+            *widget.findChildren(QAbstractItemView),
+        ]
+        if compare_child_references
+        else []
+    )
     for index, control in enumerate(controls):
         if not control.isVisibleTo(widget) or control.visibleRegion().isEmpty():
             continue
@@ -1535,8 +1539,6 @@ def _assert_reviewer_surface_pixels(
             surface_name=surface_name,
             max_black_ratio=0.20,
         )
-        if control is not widget and not compare_child_references:
-            continue
         is_text = isinstance(control, (QLabel, QAbstractButton, QComboBox))
         assert_region_matches_reference(
             screenshot,
