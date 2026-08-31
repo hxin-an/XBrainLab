@@ -71,10 +71,10 @@ def test_checked_in_baseline_and_all_handoff_consumers_are_read_only() -> None:
     baseline = load_baseline(BASELINE_PATH)
 
     assert baseline.source_sha == (
-        "70274bed4c41331965e7d4795d0d16520cb0aada"  # pragma: allowlist secret
+        "2bec837648199df15823d64436d70e362e3fdd33"  # pragma: allowlist secret
     )
     assert baseline.basedpyright_version == "1.39.2"
-    assert len(baseline.diagnostics) == 81
+    assert baseline.diagnostics == ()
     assert HANDOFF_GATE_SPECS["basedpyright"].argv == (
         "poetry",
         "run",
