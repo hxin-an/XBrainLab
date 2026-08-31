@@ -281,6 +281,21 @@ invalid preview、Last Epoch、Start 的 stale／empty actual mask fail-closed�
 在 normal、narrow 與 100／125／150% 的 exact-source artifacts，主 agent 肉眼檢查 hierarchy、spacing、scroll、
 disabled／available copy；handoff 前再跑 canonical source-diverse training gate與所有 applicable exact-head CI。
 
+第二次 native 手測在 exact `19d8d6bdf34f477c9cebc293e1c3a3b396225f35` 發現同一 dialog 的可見
+layout blocker：vertical scrollbar 右界固定比 dialog 右界內縮 `18px`，三個 `Set` 到 scrollbar 只有
+`13px`，使用者觀察到滑桿未貼最右側且會與 `Set` 重疊。Root 以 WSLg／XCB 與 geometry probe 重現
+相同 `18px`／`13px` 量測；既有 capture 只檢查 `Set` 與 value label，沒有保護 scrollbar boundary。
+使用者已於 `2026-08-31` 確認採用 full-edge scrollbar：只把既有右側 `18px` 從 scroll area 外 margin
+搬到 scroll content，footer 自有 `18px` right margin；卡片、欄位、`Set` 與 footer 保持原位，scrollbar
+移到 dialog 最右界，`Set` 到 scrollbar 預期約 `31px`。本 repair 只修改既有 Training Settings dialog，
+不擴張至其他 dialog，也不改 training／resource-preview 行為、owner、state 或 public contract。
+
+先以 observable geometry red test 鎖定 scrollbar right gap 必須不超過 `1px`、所有 `Set` 不得相交且
+最小水平間距至少 `18px`；再覆蓋 100／125／150% 與較寬 native scrollbar。既有 initial-top、bottom
+resource preview、fixed footer 與 Early stopping tests 必須維持。新 source 使 `19d8d6bd` 的 UI／CI／
+manual evidence 失效；完成後須重生 exact-source offscreen／XCB artifacts、獨立 review、push、全部
+non-skipped CI，再交使用者以新 exact SHA 重測。
+
 Stop condition：上述 authority 與 UI observable tests 都綠、production scope／LOC 沒超標、獨立 reviewer 沒有
 in-scope blocker、同一 clean/explained pushed SHA 的 applicable gates 完成，才交付使用者以 native product source
 手測。未取得該 exact SHA 的手測通過與 merge 同意前，PR #87 保持 open，不開始 B6、不 merge。
