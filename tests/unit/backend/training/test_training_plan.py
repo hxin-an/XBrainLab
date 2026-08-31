@@ -729,6 +729,26 @@ def test_saliency_producer_identity_includes_record_weighting(base_holder):
     assert changed.run_fingerprint != baseline.run_fingerprint
 
 
+def test_saliency_producer_identity_includes_early_stopping_settings(base_holder):
+    record = base_holder.get_plans()[0]
+    record.best_val_loss_model = record.model.state_dict()
+    baseline = base_holder.build_saliency_producer_identity(
+        record,
+        evaluation_split="test",
+    )
+
+    base_holder.option.early_stopping_enabled = True
+    base_holder.option.early_stopping_patience = 7
+    base_holder.option.early_stopping_min_delta = 0.25
+    changed = base_holder.build_saliency_producer_identity(
+        record,
+        evaluation_split="test",
+    )
+
+    assert changed.run_fingerprint != baseline.run_fingerprint
+    assert changed.model_fingerprint == baseline.model_fingerprint
+
+
 def test_saliency_rejects_holder_identity_different_from_captured_run(base_holder):
     record = base_holder.get_plans()[0]
     record.best_val_loss_model = record.model.state_dict()
@@ -2491,10 +2511,10 @@ def test_early_stop_history_uses_checkpoint_tie_epoch_not_monitor_epoch(base_hol
         consecutive_non_improvements=1,
         stop_epoch=2,
     )
-    record.step()
     record.update_validation({RecordKey.LOSS: 0.5})
     record.step()
     record.update_validation({RecordKey.LOSS: 0.5})
+    record.step()
     record.eval_record = Mock(spec=EvalRecord)
 
     row = project_training_history_rows(

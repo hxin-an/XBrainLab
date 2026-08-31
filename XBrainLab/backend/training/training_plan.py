@@ -1019,6 +1019,11 @@ class TrainingPlanHolder:
                     f"{evaluation_option.name}"
                 ),
                 "class_weighting": train_record.class_weighting,
+                "early_stopping": {
+                    "enabled": bool(option.early_stopping_enabled),
+                    "patience": int(option.early_stopping_patience),
+                    "min_delta": float(option.early_stopping_min_delta),
+                },
             },
         }
         model_component = {

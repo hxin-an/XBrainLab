@@ -329,6 +329,8 @@ def _training_status_detail(
             if isinstance(best_record, Mapping) and selected_epoch_key is not None
             else None
         )
+        if isinstance(selected_epoch, int) and not isinstance(selected_epoch, bool):
+            selected_epoch += 1
         patience = early_stopping.get("patience")
         return (
             f"Stopped at epoch {early_stopping.get('stop_epoch')} of {max_epochs}; "

@@ -160,6 +160,7 @@ class TrainingCommandService:
                 early_stopping_patience=command.early_stopping_patience,
                 early_stopping_min_delta=command.early_stopping_min_delta,
             )
+            self._validate_early_stopping_admission(option)
 
         holder: ModelHolder | None = None
         if command.model_name:
@@ -263,7 +264,7 @@ class TrainingCommandService:
         if not isinstance(preflight, ResourcePreflightResult):
             raise TypeError("preflight must be a ResourcePreflightResult")
         self._validate_class_weighting_start_admission()
-        self._validate_early_stopping_start_admission()
+        self._validate_early_stopping_admission()
         handoff_generation = self.training.start_training(
             append=command.append,
             interactive=command.interactive or defer_synchronous_completion,
@@ -333,17 +334,22 @@ class TrainingCommandService:
         except (AttributeError, TypeError, ValueError) as exc:
             raise PreconditionError(str(exc)) from exc
 
-    def _validate_early_stopping_start_admission(self) -> None:
-        """Reject a stale enabled request when no validation samples remain."""
+    def _validate_early_stopping_admission(
+        self,
+        option: TrainingOption | None = None,
+    ) -> None:
+        """Require proven validation samples for proposed or active settings."""
         context = self.training_runtime.resource_context()
-        option = context.training_option
+        option = option if option is not None else context.training_option
         if not isinstance(option, TrainingOption) or not option.early_stopping_enabled:
             return
         if option.evaluation_option is TrainingEvaluation.LAST_EPOCH:
             raise PreconditionError(
                 "Early stopping requires a validation evaluation option"
             )
-        if any(not np.any(dataset.val_mask) for dataset in context.datasets):
+        if not context.datasets or any(
+            not np.any(dataset.val_mask) for dataset in context.datasets
+        ):
             raise PreconditionError("Early stopping requires a validation split")
 
     def discard_train_preflight(self, token: str | None) -> None:
