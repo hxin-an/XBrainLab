@@ -204,10 +204,7 @@ class VisualizationController(Observable):
 
         return EvalRecord(
             label=base.label.copy() if hasattr(base.label, "copy") else base.label,
-            # Copy output to avoid shared mutable reference
-            output={k: v.copy() for k, v in base.output.items()}
-            if isinstance(base.output, dict)
-            else base.output,
+            output=base.output.copy(),
             gradient=avg_gradient,
             gradient_input=avg_gradient_input,
             smoothgrad=avg_smoothgrad,

@@ -6,6 +6,7 @@ import pytest
 from XBrainLab.backend.controller.visualization_controller import (
     VisualizationController,
 )
+from XBrainLab.backend.training.record.eval import EvalRecord
 
 
 @pytest.fixture
@@ -115,6 +116,41 @@ def test_get_averaged_record_empty(controller):
     holder = MagicMock()
     holder.get_plans.return_value = []
     assert controller.get_averaged_record(holder) is None
+
+
+def test_get_averaged_record_copies_real_eval_record_output(controller):
+    source = EvalRecord(
+        label=np.array([0]),
+        output=np.array([[0.9, 0.1]]),
+        gradient={},
+        gradient_input={},
+        smoothgrad={},
+        smoothgrad_sq={},
+        vargrad={},
+    )
+    other = EvalRecord(
+        label=np.array([1]),
+        output=np.array([[0.2, 0.8]]),
+        gradient={},
+        gradient_input={},
+        smoothgrad={},
+        smoothgrad_sq={},
+        vargrad={},
+    )
+    first_plan = MagicMock()
+    first_plan.get_eval_record.return_value = source
+    second_plan = MagicMock()
+    second_plan.get_eval_record.return_value = other
+    holder = MagicMock()
+    holder.get_plans.return_value = [first_plan, second_plan]
+
+    averaged = controller.get_averaged_record(holder)
+
+    assert isinstance(averaged, EvalRecord)
+    assert averaged.output is not source.output
+    np.testing.assert_array_equal(averaged.output, source.output)
+    source.output[0, 0] = 0.0
+    assert averaged.output[0, 0] == 0.9
 
 
 def test_set_montage_observer(controller, mock_study):

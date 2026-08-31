@@ -50,7 +50,7 @@ def inverse_dist_weighted_sum(dist, val):
     return (weight * val).sum()
 
 
-def channel_convex_hull(ch_pos):
+def channel_convex_hull(ch_pos: np.ndarray) -> pv.PolyData:
     """Build a triangulated surface mesh from channel positions.
 
     Uses Delaunay 2-D triangulation on a point cloud to create a surface
@@ -67,7 +67,7 @@ def channel_convex_hull(ch_pos):
     # Delaunay 2D is better for surface reconstruction of EEG cap (manifold)
     # Delaunay 3D tries to make a volume, which fails for scalp points.
     surf = cloud.delaunay_2d()
-    return surf
+    return cast(pv.PolyData, surf)
 
 
 class Saliency3DEngine:
@@ -396,9 +396,12 @@ class Saliency3DEngine:
         if self.head_mesh is None or self.brain_mesh is None:
             raise RuntimeError("Meshes not loaded")
         self._ensure_scaled_meshes()
-        self.saliency_cap = channel_convex_hull(self.pos_on_3d).scale(
-            np.ones(3) * self.mesh_scale_scalar,
-            inplace=False,
+        self.saliency_cap = cast(
+            pv.PolyData,
+            channel_convex_hull(self.pos_on_3d).scale(
+                np.ones(3) * self.mesh_scale_scalar,
+                inplace=False,
+            ),
         )
 
         self.scalar_buffer = np.zeros(self.saliency_cap.n_points)

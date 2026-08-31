@@ -35,7 +35,9 @@ snapshot_download: Callable[..., Any] | None
 disable_hf_progress_bars: Callable[[], None] | None
 try:
     from huggingface_hub import snapshot_download as _snapshot_download
-    from huggingface_hub.utils import disable_progress_bars as _disable_progress_bars
+    from huggingface_hub.utils.tqdm import (
+        disable_progress_bars as _disable_progress_bars,
+    )
 except ImportError:
     snapshot_download = None
     disable_hf_progress_bars = None
