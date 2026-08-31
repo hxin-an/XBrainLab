@@ -249,9 +249,11 @@ class ModalAlertDialog(BaseDialog):
         )
         severity_icon_label.setFixedSize(24, 24)
         severity_icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        severity_icon_label.setPixmap(
-            self.style().standardIcon(_SEVERITY_PIXMAPS[self._severity]).pixmap(20, 20)
-        )
+        style = self.style()
+        if style is not None:
+            severity_icon_label.setPixmap(
+                style.standardIcon(_SEVERITY_PIXMAPS[self._severity]).pixmap(20, 20)
+            )
         return severity_icon_label
 
     def _create_severity_label(self) -> QLabel:

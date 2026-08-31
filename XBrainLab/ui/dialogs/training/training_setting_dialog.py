@@ -1229,6 +1229,11 @@ class TrainingSettingDialog(BaseDialog):
             if isinstance(selected_evaluation, TrainingEvaluation)
             else TrainingEvaluation.VAL_LOSS
         )
+        class_weight_mode = (
+            self.class_weight_combo.currentData()
+            if self.class_weight_combo is not None
+            else ClassWeightMode.OFF.value
+        )
 
         try:
             # Validate inputs
@@ -1265,15 +1270,15 @@ class TrainingSettingDialog(BaseDialog):
                 ckpt,
                 evaluation_option,
                 repeat,
-                class_weight_mode=(
-                    self.class_weight_combo.currentData()
-                    if self.class_weight_combo is not None
-                    else "off"
+                class_weight_mode=class_weight_mode,
+                custom_class_weights=(
+                    {
+                        name: float(entry.text())
+                        for name, entry in self.class_weight_entries.items()
+                    }
+                    if class_weight_mode == ClassWeightMode.CUSTOM.value
+                    else {}
                 ),
-                custom_class_weights={
-                    name: entry.text()
-                    for name, entry in self.class_weight_entries.items()
-                },
                 class_map_fingerprint_value=(
                     self.initial_option.get("class_map_fingerprint")
                     if isinstance(self.initial_option, dict)

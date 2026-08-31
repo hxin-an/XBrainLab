@@ -11,8 +11,8 @@ if matplotlib.get_backend().lower() != "agg":
     with contextlib.suppress(ImportError):
         matplotlib.use("QtAgg")
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_qt import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
 
 from XBrainLab.ui.core.base_dialog import BaseDialog
 

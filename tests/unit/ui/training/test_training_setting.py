@@ -467,6 +467,49 @@ class TestTrainingSetting:
         assert dialog.class_weight_combo.visibleRegion().contains(
             dialog.class_weight_combo.rect()
         )
+        with patch(
+            "XBrainLab.ui.dialogs.training.training_setting_dialog.show_warning"
+        ) as warning:
+            dialog.accept()
+
+        warning.assert_not_called()
+        result = dialog.get_result()
+        assert result is not None
+        assert result.custom_class_weights == {"left": 2.5, "right": 0.5}
+
+    @pytest.mark.parametrize("mode", ("off", "balanced"))
+    def test_non_custom_weighting_ignores_stale_invalid_custom_input(
+        self,
+        qtbot,
+        mode,
+    ):
+        controller = MagicMock()
+        controller.get_training_option.return_value = None
+        snapshot = {
+            "class_map": {0: "left", 1: "right"},
+            "class_map_fingerprint": "a" * 64,
+        }
+        with patch(
+            "XBrainLab.ui.dialogs.training.training_setting_dialog.get_optimizer_classes",
+            return_value={"Adam": torch.optim.Adam},
+        ):
+            dialog = TrainingSettingDialog(None, controller, initial_option=snapshot)
+            qtbot.addWidget(dialog)
+
+        dialog.class_weight_combo.setCurrentIndex(
+            dialog.class_weight_combo.findData(mode)
+        )
+        dialog.class_weight_entries["left"].setText("not-a-number")
+
+        with patch(
+            "XBrainLab.ui.dialogs.training.training_setting_dialog.show_warning"
+        ) as warning:
+            dialog.accept()
+
+        warning.assert_not_called()
+        result = dialog.get_result()
+        assert result is not None
+        assert result.custom_class_weights == {}
 
     def test_custom_weight_invalid_value_is_blocked_before_accept(self, qtbot):
         controller = MagicMock()

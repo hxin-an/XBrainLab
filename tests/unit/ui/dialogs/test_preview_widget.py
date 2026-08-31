@@ -159,25 +159,32 @@ class TestPreviewWidgetMethods:
         preview._mouse_moved_time((far_away,))
 
     def test_leave_event_hides_crosshairs(self, preview):
-        """Exercise the monkey-patched leaveEvent."""
-        from unittest.mock import MagicMock
+        """A real time-plot leave event hides its crosshair without consuming it."""
+        from PyQt6.QtCore import QEvent
+        from PyQt6.QtWidgets import QApplication
 
         preview.v_line_time.show()
         preview.h_line_time.show()
         preview.label_time.show()
-        # Use a mock event to avoid pyqtgraph GraphicsScene crash
-        mock_event = MagicMock()
-        preview.plot_time.leaveEvent(mock_event)
+        QApplication.sendEvent(preview.plot_time, QEvent(QEvent.Type.Leave))
         assert not preview.v_line_time.isVisible()
         assert not preview.h_line_time.isVisible()
+        assert not preview.label_time.isVisible()
+        assert (
+            preview.eventFilter(preview.plot_time, QEvent(QEvent.Type.Leave)) is False
+        )
 
     def test_leave_event_freq_hides_crosshairs(self, preview):
-        from unittest.mock import MagicMock
+        from PyQt6.QtCore import QEvent
+        from PyQt6.QtWidgets import QApplication
 
         preview.v_line_freq.show()
         preview.h_line_freq.show()
         preview.label_freq.show()
-        mock_event = MagicMock()
-        preview.plot_freq.leaveEvent(mock_event)
+        QApplication.sendEvent(preview.plot_freq, QEvent(QEvent.Type.Leave))
         assert not preview.v_line_freq.isVisible()
         assert not preview.h_line_freq.isVisible()
+        assert not preview.label_freq.isVisible()
+        assert (
+            preview.eventFilter(preview.plot_freq, QEvent(QEvent.Type.Leave)) is False
+        )
