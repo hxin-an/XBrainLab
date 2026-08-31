@@ -4,9 +4,9 @@
 
 ## Current baseline and release decision
 
-`54ca582aa63f96f9fdd395c6e761c96ff038e297` 是本次 plan 的 product parent baseline。PR #94 已關閉
-Basedpyright 假綠，PR #96 已建立 Desktop source release profile，PR #97 已將 MNE Raw／Epochs
-17 項型別 diagnostics 清零並把全案真實基準由 67 降為 50。舊 release candidate PR #91 的
+`f37e40e774f17e135416899da6bfb565312ed2e9` 是本次 plan 的 product parent baseline。PR #94 已關閉
+Basedpyright 假綠，PR #96 已建立 Desktop source release profile；PR #97、#99 與 #100 累計清除
+29 項型別 diagnostics，把全案真實基準由 67 降為 38。舊 release candidate PR #91 的
 source、artifact 與 manual acceptance 仍為失效歷史，不得重用。
 Repo-root `settings.json` 的本機修改由使用者擁有，不得 stage、commit、revert、覆寫或隱藏。
 
@@ -18,7 +18,7 @@ Repo-root `settings.json` 的本機修改由使用者擁有，不得 stage、com
 
 ### Evidence and blockers
 
-1. 完整 Poetry 3.12 環境如實分析 416 個 production files；PR #97 後仍有 `50 diagnostics`。
+1. 完整 Poetry 3.12 環境如實分析 416 個 production files；PR #100 後仍有 `38 diagnostics`。
    Fake-green 已關閉，但真實 type debt 尚未清零，Basedpyright 也還未接入現有 full-dependency
    CI job，所以 release gate 仍不可宣稱通過。
 2. PR #96 的 canonical `desktop-source` profile 已進入 main：Desktop 核心 gate 保持完整，bounded
@@ -31,7 +31,7 @@ Repo-root `settings.json` 的本機修改由使用者擁有，不得 stage、com
 ### Outcomes
 
 - Basedpyright runner 在 dependency type information 不可解析時 fail closed；完整依賴環境及 CI 結果一致。
-- 正確環境中剩餘的 50 diagnostics 經分群修正或精確、可審查的第三方 stub boundary 收斂到 zero observed
+- 正確環境中剩餘的 38 diagnostics 經分群修正或精確、可審查的第三方 stub boundary 收斂到 zero observed
   diagnostics；不得擴大 exclude 或把整批 debt 寫入 baseline。
 - 既有 canonical handoff runner 新增唯一命名的 `desktop-source` release profile；無參數 strict 行為維持
   不變，不建立第二套 manifest 或任意 skip list。
@@ -57,56 +57,59 @@ Repo-root `settings.json` 的本機修改由使用者擁有，不得 stage、com
 - 使用者已明確批准計畫中 **type-only、無可見行為變更** 的 `XBrainLab/ui/` 修正；若需要改 layout、文案、
   互動、狀態或流程，立即停止並另取 UI 確認。
 
-### Current slice A — evaluation metrics type narrowing
+### Current slice C — Torch model and loop boundaries
 
-- **Problem and evidence**：`backend/training/record/eval.py` 有 7 項 sklearn typing diagnostics；目前 production
-  同時由 `precision_recall_fscore_support` 與既有 confusion matrix 推導同一組 metrics，但現有測試只覆蓋兩組
-  一般輸入，沒有缺 class 的真實邊界。
-- **Outcome**：復用現有 `calculate_confusion` 導出 per-class precision／recall／F1／support 與 macro，保留
-  fixed class labels 和 `zero_division=0` 的輸出語意；單檔 7→0，全案從 50 獨立降為 43。
-- **Scope／non-goals**：只改 `eval.py` 與直接 metrics test；不改 training workflow、UI、public schema、
-  metric key／shape／value contract，也不混入 artifact persistence bug。不使用 broad cast、`Any`或 ignore。
-- **Ownership／deletion**：owner before／after皆是既有 evaluation record，delta `0`；刪除重複 sklearn metric
-  derivation，不新增 abstraction。預期 production net LOC 非正或接近零。
-- **Repair and validation**：先保留現有 metrics passing baseline，新增 3-class 但只出現 class 0 的
-  observable test，再復用 confusion matrix；跑 focused tests、相關 training record tests、完整外部
-  Basedpyright、Ruff與diff check。
-- **Stop／UI status**：若任一現有 metric 值／shape／missing-class 語意變更或需要新 owner 即停止。
-  這是 non-UI type-only slice，無可見行為與 screenshot。
+- **Problem and evidence**：`EEGNet.py`、`SCCNet.py`、`ShallowConvNet.py`、`epoch_runner.py` 與
+  `evaluator.py` 合計 10 項 `reportPrivateImportUsage`。鎖定的 PyTorch `2.11.0+cu130` 中
+  `ones`、`log`、`clamp` 與 `cat` 皆實際存在且列於 `torch.__all__`，因此這是 dynamic export／
+  stub boundary，不是 runtime defect。直接 model、runner、evaluator 與 trainer integration 基準為 248 passed。
+- **Outcome**：兩處 `torch.log(torch.clamp(x, min=1e-7))` 改用等價 `x.clamp(min=1e-7).log()`，
+  消除 4 項；其餘兩處 `ones` 與四處 `cat` 只在原 public call 加診斷專用行級 suppression。
+  五檔 10→0，全案從 38 獨立降為 28。
+- **Scope／non-goals**：只改上述 5 個 production files；現有 characterization 已直接覆蓋行為，不為
+  suppression 新增 source guard。不改 model architecture／shape、device／dtype、batch order、gradient、
+  empty-loader semantics、public API、UI 或 persistence。
+- **Ownership／deletion**：現有三個 model class 與 runner／evaluator owners 不變，delta `0`；方法鏈替換
+  嵌套函式，不新增 wrapper／helper。預期 production net LOC 不超過 +6。
+- **Repair and validation**：保留同一 248-test baseline，驗證四個 runtime public exports，並跑完整外部
+  Basedpyright、五檔 Ruff／diff，frozen-SHA review 與 PR CI。
+- **Stop／UI status**：若 suppression 不是單一 public call，或輸出、gradient、allocation、empty batch、owner
+  有任何變更即停止。這是 non-UI type-only slice，無可見行為與 screenshot。
 
-### Current slice B — third-party boundary cleanup
+### Current slice D — Torch training setup boundaries
 
-- **Problem and evidence**：`evaluation_render.py`、`visualization_controller.py`、`saliency_3d_engine.py`與
-  `llm/core/downloader.py` 合計 5 項 diagnostics，分別來自 torchinfo、無法到達的 dict reconstruction、
-  PyVista return type 與 Hugging Face private re-export import。現有 focused baseline 共 114 tests passed。
-- **Outcome**：用最小 precise cast／public import／return annotation／刪除 impossible branch 表達現有 runtime
-  contract；四檔 5→0，全案從 50 獨立降為 45，與 slice A 合併後預期 38。
-- **Scope／non-goals**：只改上述 4 個 production files與直接必要 characterization；不改 evaluation／
-  visualization／saliency／download 行為、UI、文案或 public API，不建立 compatibility path。
-- **Ownership／deletion**：四個既有 owner 不變，delta `0`；刪除 `EvalRecord.output` 不可達的 dict
-  重建邏輯，其餘僅為第三方 boundary 精確化。預期 production net LOC 介於 -2 至 +5。
-- **Repair and validation**：以真實 `EvalRecord` 新增 independent-copy characterization，保留同一 114-test
-  baseline，並跑完整外部 Basedpyright、四檔 Ruff與diff check。只有已驗證 public runtime API 才能使用。
-- **Stop／UI status**：若需要 broad ignore／cast、第二套 output policy、行為或 owner 變更即停止。這是
-  non-UI type-only slice，無可見行為與 screenshot。
+- **Problem and evidence**：`training/option.py`、`training/record/train.py`、`training/training_plan.py` 與
+  `training/utils.py` 合計 7 項 `reportPrivateImportUsage`，分布在 6 個精確 call sites。鎖定 runtime 已實際
+  驗證 `zeros`、`tensor`、`float32`、`from_numpy` 與 `Generator.manual_seed`；直接基準為 263 passed。
+- **Outcome**：只在六個現有 public call 加行級 `reportPrivateImportUsage` suppression，不替換 API 或
+  建立 wrapper。四檔 7→0，全案從 38 獨立降為 31；與 slice C 合併後預期 21。
+- **Scope／non-goals**：只改上述 4 個 production files，不新增測試／source guard；不改 CUDA probe、
+  class-weight dtype／device、SharedMemoryDataset copy／hot path、DataLoader seed／ordering、optimizer validation、
+  public API、UI 或 persistence。
+- **Ownership／deletion**：TrainingOption、TrainRecord、TrainingPlan 與 optimizer helper 的現有 owners 不變，
+  delta `0`；沒有更正確且不改 runtime 的 deletion／public import。預期 production net LOC 約 +6。
+- **Repair and validation**：保留同一 263-test baseline，跑完整外部 Basedpyright、四檔 Ruff／diff、
+  frozen-SHA review 與 PR CI。`training_plan.py` 的 CRLF 不得因行級修改變成全檔 line-ending diff。
+- **Stop／UI status**：若出現非該單一診斷的 ignore、行為／line-ending／owner 變更或 focused
+  baseline 退步即停止。這是 non-UI type-only slice，無可見行為與 screenshot。
 
 ### Deferred behavior bug — artifact key `allow_pickle`
 
 `backend/training/record/artifact_store.py` 的 1 項 diagnostic 對應真實 persistence defect：NumPy 將
 `allow_pickle` 視為 `np.savez_compressed` 的 control argument，而不是 array key。這不能在 type-only slice
-裡用 suppression 消掉；待 A／B 完成後另開 bug-fix plan，提前拒絕該 reserved name，並要求續寫等
+裡用 suppression 消掉；待 Torch 與 UI slices 完成後另開 bug-fix plan，提前拒絕該 reserved name，並要求續寫等
 真實 side-effect test 與使用者手測批准。
 
 ## Progression and focused validation
 
-1. **Current plan checkpoint**：合併本 canonical plan，再從同一 fixed main 建立 A／B 兩條互不重疊
+1. **Current plan checkpoint**：合併本 canonical plan，再從同一 fixed main 建立 C／D 兩條互不重疊
    worktree；兩個 worker 各自實作，同一 independent reviewer 只在 frozen commit 後審查。
-2. **A／B exact validation**：每片各自保留 passing baseline，只新增能使真實 defect 可觀察的 test；各自
-   跑 focused tests、external full Basedpyright、Ruff、diff、review 與 PR CI。兩片合併後重跑全案，
-   observed count 必須由 50 精確降為 38，不可有新 diagnostic。
-3. **Remaining type debt**：依 8-file 上限繼續分為 model loop、training setup、UI／plot；最後單獨處理
-   artifact behavior bug。第三方 stub mismatch 只允許已有 runtime evidence 的精確行級 suppression，最終
-   external observed count 必須為 0。
+2. **C／D exact validation**：每片保留既有 passing characterization baseline，核對鎖定 PyTorch runtime 的
+   public exports；各自跑 focused tests、external full Basedpyright、Ruff、diff、frozen-SHA review 與 PR CI。
+   兩片依序進 main 後重跑 combined gate，observed count 必須由 38 精確降為 21，不可有新 diagnostic。
+3. **Remaining type debt**：依 8-file 上限完成 UI／plot 的 20 項 type-only diagnostics；最後才獨立判定並
+   修理 artifact 的 1 項 behavior bug。第三方 stub mismatch 只允許已有 runtime evidence 的精確行級
+   suppression，最終 external observed count 必須為 0。
 4. **CI closure**：diagnostics 清零後，將 deterministic Basedpyright runner 接入現有 full-dependency job；不建立
    第二套 CI truth。
 5. **Fresh candidate**：重建 0.9.0 identity／docs，clean、push、freeze exact SHA，以 D-mounted model／RAG
