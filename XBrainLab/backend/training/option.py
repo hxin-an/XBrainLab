@@ -299,7 +299,7 @@ def is_cuda_device_usable(gpu_idx: int | None) -> tuple[bool, str | None]:
         return False, f"CUDA device index {gpu_idx} is out of range"
 
     try:
-        probe = torch.zeros(1, device=f"cuda:{gpu_idx}")
+        probe = torch.zeros(1, device=f"cuda:{gpu_idx}")  # pyright: ignore[reportPrivateImportUsage]
         del probe
     except Exception as exc:  # pragma: no cover - hardware/runtime specific
         return False, str(exc)

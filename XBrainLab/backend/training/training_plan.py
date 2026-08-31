@@ -195,8 +195,8 @@ class SharedMemoryDataset(torch_data.Dataset):
 
         """
         real_idx = self.indices[idx]
-        x = torch.from_numpy(self.data[real_idx]).float()
-        y = torch.tensor(self.labels[real_idx]).long()
+        x = torch.from_numpy(self.data[real_idx]).float()  # pyright: ignore[reportPrivateImportUsage]
+        y = torch.tensor(self.labels[real_idx]).long()  # pyright: ignore[reportPrivateImportUsage]
         return x, y
 
 
@@ -240,7 +240,7 @@ def to_holder(
         batch_size=bs,
         shuffle=shuffle,
         pin_memory=dev.startswith("cuda"),
-        generator=torch.Generator().manual_seed(seed),
+        generator=torch.Generator().manual_seed(seed),  # pyright: ignore[reportPrivateImportUsage]
     )
     return dataloader
 
