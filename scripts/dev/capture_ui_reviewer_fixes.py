@@ -680,86 +680,88 @@ def _observe_training_setting_geometry(
     *,
     font_scale: float,
 ) -> dict[str, Any]:
-    form_layout = dialog.form_layout
     content_ancestor = dialog.content_widget or dialog
     rows: list[dict[str, Any]] = []
-    for row_index in range(form_layout.rowCount()):
-        label_item = form_layout.itemAtPosition(row_index, 0)
-        input_item = form_layout.itemAtPosition(row_index, 1)
-        button_item = form_layout.itemAtPosition(row_index, 2)
-        label = label_item.widget() if label_item is not None else None
-        input_widget = input_item.widget() if input_item is not None else None
-        set_button = button_item.widget() if button_item is not None else None
-        if not isinstance(label, QLabel) or input_widget is None:
-            raise RuntimeError(
-                f"Training Setting row {row_index} has incomplete form geometry."
-            )
+    for section, form_layout in dialog.section_layouts.items():
+        for row_index in range(form_layout.rowCount()):
+            label_item = form_layout.itemAtPosition(row_index, 0)
+            input_item = form_layout.itemAtPosition(row_index, 1)
+            button_item = form_layout.itemAtPosition(row_index, 2)
+            label = label_item.widget() if label_item is not None else None
+            input_widget = input_item.widget() if input_item is not None else None
+            set_button = button_item.widget() if button_item is not None else None
+            if (
+                not isinstance(label, QLabel)
+                or label.objectName() != "TrainingSettingLabel"
+                or input_widget is None
+            ):
+                continue
 
-        label_rect = _widget_rect_in(dialog, label)
-        input_rect = _widget_rect_in(dialog, input_widget)
-        overlap = label_rect.intersects(input_rect)
-        label_text_clipped = _control_text_is_clipped(label)
-        input_text_clipped = _control_text_is_clipped(input_widget)
-        contained = content_ancestor.rect().contains(
-            _widget_rect_in(content_ancestor, label)
-        ) and content_ancestor.rect().contains(
-            _widget_rect_in(content_ancestor, input_widget)
-        )
-        horizontal_gap = input_rect.left() - label_rect.right() - 1
-        set_button_evidence: dict[str, Any] = {}
-        if set_button is not None:
-            if not isinstance(set_button, QAbstractButton):
-                raise RuntimeError(
-                    f"Training Setting row {row_index} has an invalid Set control."
-                )
-            set_rect = _widget_rect_in(dialog, set_button)
-            set_overlap = input_rect.intersects(set_rect)
-            set_gap = set_rect.left() - input_rect.right() - 1
-            set_contained = content_ancestor.rect().contains(
-                _widget_rect_in(content_ancestor, set_button)
+            label_rect = _widget_rect_in(dialog, label)
+            input_rect = _widget_rect_in(dialog, input_widget)
+            overlap = label_rect.intersects(input_rect)
+            label_text_clipped = _control_text_is_clipped(label)
+            input_text_clipped = _control_text_is_clipped(input_widget)
+            contained = content_ancestor.rect().contains(
+                _widget_rect_in(content_ancestor, label)
+            ) and content_ancestor.rect().contains(
+                _widget_rect_in(content_ancestor, input_widget)
             )
-            set_text_clipped = _control_text_is_clipped(set_button)
-            set_button_evidence = {
-                "text": set_button.text(),
-                "geometry": _rect_payload(set_rect),
-                "horizontal_gap_px": int(set_gap),
-                "overlap": set_overlap,
-                "text_clipped": set_text_clipped,
-                "contained_in_dialog": set_contained,
-                "visible": set_button.isVisibleTo(dialog),
-                "passed": bool(
-                    set_button.text() == "Set"
-                    and not set_overlap
-                    and set_gap >= 0
-                    and not set_text_clipped
-                    and set_contained
-                    and set_button.isVisibleTo(dialog)
-                ),
-            }
-            contained = contained and set_contained
-        rows.append(
-            {
-                "row": row_index,
-                "label": " ".join(cast(QLabel, label).text().split()),
-                "label_geometry": _rect_payload(label_rect),
-                "input_type": type(input_widget).__name__,
-                "input_geometry": _rect_payload(input_rect),
-                "horizontal_gap_px": int(horizontal_gap),
-                "overlap": overlap,
-                "label_text_clipped": label_text_clipped,
-                "input_text_clipped": input_text_clipped,
-                "contained_in_dialog": contained,
-                "set_button": set_button_evidence,
-                "passed": (
-                    not overlap
-                    and not label_text_clipped
-                    and not input_text_clipped
-                    and contained
-                    and horizontal_gap >= 0
-                    and (not set_button_evidence or bool(set_button_evidence["passed"]))
-                ),
-            }
-        )
+            horizontal_gap = input_rect.left() - label_rect.right() - 1
+            set_button_evidence: dict[str, Any] = {}
+            if isinstance(set_button, QAbstractButton):
+                set_rect = _widget_rect_in(dialog, set_button)
+                set_overlap = input_rect.intersects(set_rect)
+                set_gap = set_rect.left() - input_rect.right() - 1
+                set_contained = content_ancestor.rect().contains(
+                    _widget_rect_in(content_ancestor, set_button)
+                )
+                set_text_clipped = _control_text_is_clipped(set_button)
+                set_button_evidence = {
+                    "text": set_button.text(),
+                    "geometry": _rect_payload(set_rect),
+                    "horizontal_gap_px": int(set_gap),
+                    "overlap": set_overlap,
+                    "text_clipped": set_text_clipped,
+                    "contained_in_dialog": set_contained,
+                    "visible": set_button.isVisibleTo(dialog),
+                    "passed": bool(
+                        set_button.text() == "Set"
+                        and not set_overlap
+                        and set_gap >= 0
+                        and not set_text_clipped
+                        and set_contained
+                        and set_button.isVisibleTo(dialog)
+                    ),
+                }
+                contained = contained and set_contained
+            rows.append(
+                {
+                    "section": section,
+                    "row": row_index,
+                    "label": " ".join(cast(QLabel, label).text().split()),
+                    "label_geometry": _rect_payload(label_rect),
+                    "input_type": type(input_widget).__name__,
+                    "input_geometry": _rect_payload(input_rect),
+                    "horizontal_gap_px": int(horizontal_gap),
+                    "overlap": overlap,
+                    "label_text_clipped": label_text_clipped,
+                    "input_text_clipped": input_text_clipped,
+                    "contained_in_dialog": contained,
+                    "set_button": set_button_evidence,
+                    "passed": (
+                        not overlap
+                        and not label_text_clipped
+                        and not input_text_clipped
+                        and contained
+                        and horizontal_gap >= 0
+                        and (
+                            not set_button_evidence
+                            or bool(set_button_evidence["passed"])
+                        )
+                    ),
+                }
+            )
 
     overlap_rows = [
         row for row in rows if row["overlap"] or row["horizontal_gap_px"] < 0

@@ -348,7 +348,7 @@ class TrainingSidebar(QWidget):
         self.btn_model.clicked.connect(self.select_model)
         config_layout.addWidget(self.btn_model)
 
-        self.btn_setting = QPushButton("Training Setting")
+        self.btn_setting = QPushButton("Training Settings")
         self.btn_setting.setStyleSheet(Stylesheets.SIDEBAR_BTN)
         self.btn_setting.clicked.connect(self.training_setting)
         config_layout.addWidget(self.btn_setting)
@@ -1217,15 +1217,21 @@ class TrainingSidebar(QWidget):
         initial_option: dict[str, Any] = dict(snapshot)
         publication = get_application_view_publication(self)
         dataset_state = getattr(getattr(publication, "state", None), "dataset", None)
-        split_summary = getattr(dataset_state, "active_split_summary", {})
+        materialized = getattr(dataset_state, "split_materialized", None) is True
+        split_summary = getattr(
+            dataset_state,
+            "active_split_summary" if materialized else "split_preview_summary",
+            {},
+        )
         if isinstance(split_summary, dict):
             validation_count = split_summary.get(
-                "val_count", split_summary.get("validation_count")
+                "val_count" if materialized else "validation_count"
             )
             if isinstance(validation_count, int) and not isinstance(
                 validation_count, bool
             ):
                 initial_option["validation_samples_available"] = validation_count > 0
+                initial_option["validation_sample_count"] = validation_count
         epoch = getattr(getattr(publication, "state", None), "epoch", None)
         event_ids = getattr(epoch, "event_ids", None)
         if isinstance(event_ids, dict):

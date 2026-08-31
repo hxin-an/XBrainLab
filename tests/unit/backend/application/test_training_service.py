@@ -371,6 +371,41 @@ def test_training_service_configures_model_and_options() -> None:
     }
 
 
+def test_configure_early_stopping_accepts_saved_unmaterialized_validation_preview() -> (
+    None
+):
+    training = _TrainingController()
+    state = replace(
+        _state(),
+        dataset=DatasetStateSnapshot(
+            split_spec_saved=True,
+            split_materialized=False,
+            split_preview_summary={"validation_count": 2},
+        ),
+    )
+    service = TrainingCommandService(
+        training=training,
+        training_runtime=_TrainingRuntime(training),
+        get_state=lambda: state,
+    )
+
+    message, _diagnostics = _expect_payload(
+        service.handle_configure_training(
+            ConfigureTrainingCommand(
+                epoch=2,
+                batch_size=4,
+                learning_rate=0.001,
+                optimizer="Adam",
+                device="cpu",
+                evaluation_option="Best validation loss",
+                early_stopping_enabled=True,
+            )
+        )
+    )
+
+    assert message == "Training configured."
+
+
 def test_configure_training_command_has_no_unvalidated_option_object_path() -> None:
     assert "training_option" not in {
         field.name for field in fields(ConfigureTrainingCommand)

@@ -43,7 +43,7 @@ Training Settings 提供三種 mutually exclusive mode：
 ## Validation early stopping
 
 Training Settings 提供 `enabled`、positive integer `patience` 與 non-negative finite absolute
-`min_delta`；預設 disabled，預設值為 `patience = 5`、`min_delta = 0.0`。
+`min_delta`；預設 disabled，預設值為 `patience = 3`、`min_delta = 0.0`。
 
 - Monitor 自動跟隨當次 validation checkpoint-selection metric：validation loss 越低越好，
   validation accuracy／AUC 越高越好。使用者不在另一個 control 選第二套 monitor。

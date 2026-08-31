@@ -340,13 +340,34 @@ class TrainingCommandService:
     ) -> None:
         """Require proven validation samples for proposed or active settings."""
         context = self.training_runtime.resource_context()
-        option = option if option is not None else context.training_option
+        proposed_option = option is not None
+        option = option if proposed_option else context.training_option
         if not isinstance(option, TrainingOption) or not option.early_stopping_enabled:
             return
         if option.evaluation_option is TrainingEvaluation.LAST_EPOCH:
             raise PreconditionError(
                 "Early stopping requires a validation evaluation option"
             )
+        if proposed_option:
+            dataset_state = self._get_state().dataset
+            summary = (
+                dataset_state.active_split_summary
+                if dataset_state.split_materialized
+                else dataset_state.split_preview_summary
+            )
+            count_key = (
+                "val_count" if dataset_state.split_materialized else "validation_count"
+            )
+            validation_count = (
+                summary.get(count_key) if isinstance(summary, dict) else None
+            )
+            if (
+                type(validation_count) is int
+                and validation_count > 0
+                and (dataset_state.split_materialized or dataset_state.split_spec_saved)
+            ):
+                return
+            raise PreconditionError("Early stopping requires a validation split")
         if not context.datasets or any(
             not np.any(dataset.val_mask) for dataset in context.datasets
         ):
