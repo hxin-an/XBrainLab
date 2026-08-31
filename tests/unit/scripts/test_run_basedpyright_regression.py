@@ -71,7 +71,7 @@ def test_checked_in_baseline_and_all_handoff_consumers_are_read_only() -> None:
     baseline = load_baseline(BASELINE_PATH)
 
     assert baseline.source_sha == (
-        "2bec837648199df15823d64436d70e362e3fdd33"  # pragma: allowlist secret
+        "dace4e7324eea80d296ebcabd67b8d6fb8c40935"  # pragma: allowlist secret
     )
     assert baseline.basedpyright_version == "1.39.2"
     assert baseline.diagnostics == ()
