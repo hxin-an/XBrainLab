@@ -6,7 +6,7 @@ from pathlib import Path
 
 import tomllib
 
-from XBrainLab import FALLBACK_VERSION
+from XBrainLab import FALLBACK_VERSION, __version__
 from XBrainLab.config import AppConfig
 
 
@@ -28,8 +28,9 @@ class TestAppConfig:
         )
         commitizen = pyproject["tool"]["commitizen"]
 
-        assert AppConfig.VERSION == "0.8.0"
+        assert AppConfig.VERSION == "0.9.0"
         assert FALLBACK_VERSION == AppConfig.VERSION
+        assert __version__ == AppConfig.VERSION
         assert pyproject["tool"]["poetry"]["version"] == AppConfig.VERSION
         assert commitizen["version"] == AppConfig.VERSION
         assert commitizen["changelog_file"] == "CHANGELOG.md"

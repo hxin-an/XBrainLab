@@ -5,7 +5,45 @@ Git and merged pull requests.
 
 ## [Unreleased]
 
-No user-visible changes are queued after the Saliency Refresh baseline.
+No user-visible changes are queued after the Desktop Workflow Stabilization baseline.
+
+## [0.9.0] - 2026-08-31
+
+### Added
+
+- Reviewed EEG/BIDS import now includes Dataset-owned Electrode Layout handling, clearer event/label
+  interpretation, and recipe Save／Reload for repeating an import configuration while its source files
+  remain in place.
+- Training supports fold-local class loss weighting and validation early stopping.
+- The 3D Saliency view has an editable epoch-relative time control: a slider and numeric seconds input
+  stay aligned to the plotted sample time.
+
+### Changed
+
+- Import, review, confirmation, and recipe handling were stabilized around the existing Command API,
+  including clearer import-review decisions and recovery after advisory dataset updates.
+- Epoch setup identifies time anchors by source semantics rather than exposing opaque event codes.
+- The local Granite Assistant remains on the same bounded command workflow while its clarification and
+  no-action behavior received targeted reliability improvements.
+
+### Fixed
+
+- BIDS Electrode Layout selection, replacement, readiness, and dialog presentation are more reliable
+  across reviewed imports.
+- Recipe saving no longer spuriously asks to review and save again when a non-decisive background
+  publication arrives; a saved recipe can be reloaded safely in the same import session.
+- Training settings, warnings, and 3D rendering controls no longer expose several observed overlap,
+  clipping, duplicate-label, or stale-publication failures.
+
+### Release boundary
+
+- This is a manually accepted Desktop Workflow Stabilization source baseline, not a signed installer
+  or a fixed 10-second import-latency SLA.
+- Recipe JSON records source and label paths; it is not portable after those files are moved.
+- The Assistant baseline is bounded at 22/24 product no-action and 6/7 clarification execution cases,
+  not a 24/24 and 7/7 Stable promotion.
+- Scientific model, training, saliency, and attribution validity certification remain outside this
+  release claim.
 
 ## [0.8.0] - 2026-08-24
 

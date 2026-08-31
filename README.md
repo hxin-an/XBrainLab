@@ -12,9 +12,10 @@ Import and review EEG data
 ```
 
 `ApplicationService / Command API` 是 GUI、Assistant 與開發 scripts 共用的產品命令邊界。
-`v0.8.0` 是 Saliency Refresh source baseline：保留 `v0.7.0` 的 bounded local Assistant 與相同
-GUI／Command owners，並整理 exact Fold／Fold Set 計算生命週期、class 檢視、2D／3D presentation 與
-import review recovery。歷史 MCP executable surface 已退役。
+`v0.9.0` 是 **Desktop Workflow Stabilization source baseline**：使用者可完成 reviewed EEG/BIDS
+import、label/event interpretation、Electrode Layout、recipe Save／Reload、preprocess、epoch、dataset
+split、class weighting、early stopping、training、evaluation 與 saliency workflow。3D Plot 提供
+epoch-relative time slider／numeric control；歷史 MCP executable surface 已退役。
 
 ## 啟動
 
@@ -53,6 +54,8 @@ poetry run python run.py
 
 ## 準確的 release claim
 
-`v0.8.0` 代表經真人 workflow 手測與同一 Command spine 保護的 Desktop GUI／Local Assistant／
-Saliency Refresh source baseline。它不代表 signed installer、安全零容忍、任意 EEG dataset 或模型全面
-支援、scientific attribution／model-quality certification 或整體產品 1.0。
+`v0.9.0` 代表經真人 workflow 手測與同一 Command spine 保護的 Desktop Workflow Stabilization
+source baseline。Local Granite Assistant 仍是 bounded baseline：22/24 product no-action、6/7
+clarification execution boundary，不是 Stable promotion。它不代表 signed installer、固定 10 秒 SLA、
+portable Recipe、任意 EEG dataset 或模型全面支援、scientific attribution／model-quality certification 或
+整體產品 1.0。

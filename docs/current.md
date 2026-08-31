@@ -1,25 +1,25 @@
 # XBrainLab 目前狀態
 
-最後更新：`2026-08-30`
+最後更新：`2026-08-31`
 
 ## 一句話
 
-XBrainLab `0.8.0` 是 Desktop GUI／Local Assistant／Saliency Refresh source baseline：使用者可由 Dataset
-import/review 經 Preprocess、Epoch、Split/Training、Evaluation 到 Saliency visualization，也可用固定
-local Granite透過18個核准action進入相同GUI與Command workflow。
+XBrainLab `0.9.0` 是 **Desktop Workflow Stabilization source baseline**：使用者可由 Dataset
+import/review、Electrode Layout、recipe Save／Reload，經 Preprocess、Epoch、Split/Training、Evaluation
+到 Saliency visualization，也可用固定 local Granite透過18個核准action進入相同GUI與Command workflow。
 
 ## Current product truth
 
 | 區域 | 目前能相信 | 邊界 |
 | --- | --- | --- |
 | Command spine | `ApplicationService / Command API` 是 GUI、Assistant 與 scripts 共用的產品命令入口。 | Lower-level domain tests 仍可直接使用 Study/managers；不得把它們接回產品 UI mutation。 |
-| Data import | Formal BIDS subject selection、reviewed import、external/internal label mapping、recipe與多格式 loader存在；loading以穩定 phase/activity 呈現，不把各 command 的局部計數當整體百分比。 | 不是 full BIDS validator，也不能外推到所有資料集與 proprietary formats。 |
+| Data import | Formal BIDS subject selection、reviewed import、external/internal label mapping、Dataset-owned Electrode Layout、recipe Save／Reload與多格式 loader存在；loading以穩定 phase/activity 呈現，不把各 command 的局部計數當整體百分比。 | Recipe JSON保存原始 source／label paths，不是portable relocation format；來源搬移後需未來獨立 relocation flow。不是full BIDS validator，也不能外推到所有資料集與proprietary formats。 |
 | Desktop presentation | Blocking alert／confirmation 使用共用 XBrainLab modal；confirmation 的 Cancel 是 Enter／Escape 安全預設，raw `QMessageBox` 不再是 production UI surface。Detached Evaluation render 不呈現 user-owned Cancel action。 | Inline validation、loading、operation status 與 canvas error 仍留在 workflow context；自動 artifact 不取代 Windows native keyboard、DPI 與 OpenGL 驗收。 |
 | Preprocess / Epoch | Filtering、resample、rereference、normalize、channel selection與reviewed epoch flow存在，長工作有 owned lifecycle。 | Protocol choice與科學正確性仍由使用者負責。 |
-| Split / Training | Split preview、training settings、fold/repeat plans與training history存在。每次 Start Training有獨立 round identity。 | Recommendation不是AutoML或最佳參數保證。 |
+| Split / Training | Split preview、training settings、fold/repeat plans、fold-local class loss weighting、validation early stopping與training history存在。每次 Start Training有獨立 round identity。 | Recommendation不是AutoML或最佳參數保證。 |
 | Model catalog | Pinned Braindecode 1.6.1提供61個可搜尋contracts，其中54個符合目前classification workflow而可選；provider失效時改列distinct `legacy.braindecode.*` recovery IDs。Model Selection使用catalog reviewed defaults。 | 不可選contracts會顯示license、task或resource reason；桌面UI不提供model constructor調參；upstream與legacy禁止silent fallback，catalog execution不代表科學品質。 |
 | Evaluation | Individual fold/run支援Train、Validation、Test；cross-fold Summary只pool同一training round的disjoint Test masks。 | `All Folds`的Split只有Test是刻意的統計邊界。 |
-| Saliency | 明確Compute Saliency、累加method recompute、exact Fold／Evaluation-admitted Fold Set publication存在；尚未計算者顯示Compute要求，舊結果可刻意回看；單一class selector可切all-class比較與single-class細看，3D控制使用epoch-relative time並在重複render維持單一orientation widget。 | 不代表attribution具科學有效性或腦內source localisation，不把epoch time冒充已審查event marker，也不保證所有模型梯度相容。 |
+| Saliency | 明確Compute Saliency、累加method recompute、exact Fold／Evaluation-admitted Fold Set publication存在；尚未計算者顯示Compute要求，舊結果可刻意回看；單一class selector可切all-class比較與single-class細看，3D控制有epoch-relative time slider與numeric control，並在重複render維持單一orientation widget。 | 不代表attribution具科學有效性或腦內source localisation，不把epoch time冒充已審查event marker，也不保證所有模型梯度相容。 |
 | Assistant | Local catalog以Granite 4.0 Micro 3B作recommended primary、Granite 3.3 2B作lower-memory選項；per-user settings保留上次確認的supported model，已退役selection會靜默正規化為recommended model。Strict envelope、18-action stage surface、parameter provenance、typed pending receipt infrastructure、capability、confirmation、GUI handoff與model-free walkthrough存在。 | PR #71 的exact 3B bounded baseline為36/36 positive、10/10 explicit parameter origin、5/5 missing guard、22/24 product no-action與6/7 clarification execution boundary；這是已驗收的improved baseline，不是24/24、7/7 Stable promotion或安全零容忍，任一新source仍須自己的exact report。 |
 | MCP | Executable package、transport、CLI、capture、schema projection與tests已退役；provenance只留在Git history。 | 不是release能力；未來若要恢復，必須另開public contract、security與validation decision。 |
 | Packaging | Windows launcher與source啟動方式存在。 | 沒有signed installer。 |
@@ -49,7 +49,7 @@ seed、cache authority或retired worktree。
 
 ## Release boundary
 
-`v0.8.0`只宣稱經使用者workflow手測、strict host guards與CI保護的Desktop GUI／Local Assistant／
-Saliency Refresh source baseline；Assistant可包含明列且由使用者接受的bounded model limitations，不等於
-Stable promotion。不宣稱signed installer、安全零容忍、scientific quality、任意dataset或模型全面支援
-或產品1.0。
+`v0.9.0`只宣稱經使用者workflow手測、strict host guards與CI保護的Desktop Workflow Stabilization
+source baseline；Assistant可包含明列且由使用者接受的bounded model limitations：22/24 product no-action與
+6/7 clarification execution boundary，不等於24/24、7/7 Stable promotion。不宣稱signed installer、固定
+10秒SLA、portable Recipe、安全零容忍、scientific quality、任意dataset或模型全面支援或產品1.0。
