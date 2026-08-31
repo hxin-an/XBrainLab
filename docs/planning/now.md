@@ -4,9 +4,9 @@
 
 ## Current baseline and release decision
 
-`f37e40e774f17e135416899da6bfb565312ed2e9` 是本次 plan 的 product parent baseline。PR #94 已關閉
-Basedpyright 假綠，PR #96 已建立 Desktop source release profile；PR #97、#99 與 #100 累計清除
-29 項型別 diagnostics，把全案真實基準由 67 降為 38。舊 release candidate PR #91 的
+`76ca41a81ba62cff965cf75991d2e6c53cc13644` 是本次 plan 的 product parent baseline。PR #94 已關閉
+Basedpyright 假綠，PR #96 已建立 Desktop source release profile；PR #97、#99、#100、#102 與 #103
+累計清除 46 項型別 diagnostics，把全案真實基準由 67 降為 21。舊 release candidate PR #91 的
 source、artifact 與 manual acceptance 仍為失效歷史，不得重用。
 Repo-root `settings.json` 的本機修改由使用者擁有，不得 stage、commit、revert、覆寫或隱藏。
 
@@ -18,7 +18,7 @@ Repo-root `settings.json` 的本機修改由使用者擁有，不得 stage、com
 
 ### Evidence and blockers
 
-1. 完整 Poetry 3.12 環境如實分析 416 個 production files；PR #100 後仍有 `38 diagnostics`。
+1. 完整 Poetry 3.12 環境如實分析 416 個 production files；PR #103 後仍有 `21 diagnostics`。
    Fake-green 已關閉，但真實 type debt 尚未清零，Basedpyright 也還未接入現有 full-dependency
    CI job，所以 release gate 仍不可宣稱通過。
 2. PR #96 的 canonical `desktop-source` profile 已進入 main：Desktop 核心 gate 保持完整，bounded
@@ -31,7 +31,7 @@ Repo-root `settings.json` 的本機修改由使用者擁有，不得 stage、com
 ### Outcomes
 
 - Basedpyright runner 在 dependency type information 不可解析時 fail closed；完整依賴環境及 CI 結果一致。
-- 正確環境中剩餘的 38 diagnostics 經分群修正或精確、可審查的第三方 stub boundary 收斂到 zero observed
+- 正確環境中剩餘的 21 diagnostics 經分群修正或精確、可審查的第三方 stub boundary 收斂到 zero observed
   diagnostics；不得擴大 exclude 或把整批 debt 寫入 baseline。
 - 既有 canonical handoff runner 新增唯一命名的 `desktop-source` release profile；無參數 strict 行為維持
   不變，不建立第二套 manifest 或任意 skip list。
@@ -57,59 +57,47 @@ Repo-root `settings.json` 的本機修改由使用者擁有，不得 stage、com
 - 使用者已明確批准計畫中 **type-only、無可見行為變更** 的 `XBrainLab/ui/` 修正；若需要改 layout、文案、
   互動、狀態或流程，立即停止並另取 UI 確認。
 
-### Current slice C — Torch model and loop boundaries
+### Current slice E — UI and plot type boundaries
 
-- **Problem and evidence**：`EEGNet.py`、`SCCNet.py`、`ShallowConvNet.py`、`epoch_runner.py` 與
-  `evaluator.py` 合計 10 項 `reportPrivateImportUsage`。鎖定的 PyTorch `2.11.0+cu130` 中
-  `ones`、`log`、`clamp` 與 `cat` 皆實際存在且列於 `torch.__all__`，因此這是 dynamic export／
-  stub boundary，不是 runtime defect。直接 model、runner、evaluator 與 trainer integration 基準為 248 passed。
-- **Outcome**：兩處 `torch.log(torch.clamp(x, min=1e-7))` 改用等價 `x.clamp(min=1e-7).log()`，
-  消除 4 項；其餘兩處 `ones` 與四處 `cat` 只在原 public call 加診斷專用行級 suppression。
-  五檔 10→0，全案從 38 獨立降為 28。
-- **Scope／non-goals**：只改上述 5 個 production files；現有 characterization 已直接覆蓋行為，不為
-  suppression 新增 source guard。不改 model architecture／shape、device／dtype、batch order、gradient、
-  empty-loader semantics、public API、UI 或 persistence。
-- **Ownership／deletion**：現有三個 model class 與 runner／evaluator owners 不變，delta `0`；方法鏈替換
-  嵌套函式，不新增 wrapper／helper。預期 production net LOC 不超過 +6。
-- **Repair and validation**：保留同一 248-test baseline，驗證四個 runtime public exports，並跑完整外部
-  Basedpyright、五檔 Ruff／diff，frozen-SHA review 與 PR CI。
-- **Stop／UI status**：若 suppression 不是單一 public call，或輸出、gradient、allocation、empty batch、owner
-  有任何變更即停止。這是 non-UI type-only slice，無可見行為與 screenshot。
-
-### Current slice D — Torch training setup boundaries
-
-- **Problem and evidence**：`training/option.py`、`training/record/train.py`、`training/training_plan.py` 與
-  `training/utils.py` 合計 7 項 `reportPrivateImportUsage`，分布在 6 個精確 call sites。鎖定 runtime 已實際
-  驗證 `zeros`、`tensor`、`float32`、`from_numpy` 與 `Generator.manual_seed`；直接基準為 263 passed。
-- **Outcome**：只在六個現有 public call 加行級 `reportPrivateImportUsage` suppression，不替換 API 或
-  建立 wrapper。四檔 7→0，全案從 38 獨立降為 31；與 slice C 合併後預期 21。
-- **Scope／non-goals**：只改上述 4 個 production files，不新增測試／source guard；不改 CUDA probe、
-  class-weight dtype／device、SharedMemoryDataset copy／hot path、DataLoader seed／ordering、optimizer validation、
-  public API、UI 或 persistence。
-- **Ownership／deletion**：TrainingOption、TrainRecord、TrainingPlan 與 optimizer helper 的現有 owners 不變，
-  delta `0`；沒有更正確且不改 runtime 的 deletion／public import。預期 production net LOC 約 +6。
-- **Repair and validation**：保留同一 263-test baseline，跑完整外部 Basedpyright、四檔 Ruff／diff、
-  frozen-SHA review 與 PR CI。`training_plan.py` 的 CRLF 不得因行級修改變成全檔 line-ending diff。
-- **Stop／UI status**：若出現非該單一診斷的 ignore、行為／line-ending／owner 變更或 focused
-  baseline 退步即停止。這是 non-UI type-only slice，無可見行為與 screenshot。
+- **Problem and evidence**：剩餘 21 項中有 20 項集中於
+  `modal_presentation.py`、`single_plot_window.py`、`data_splitting_preview_dialog.py`、
+  `training_setting_dialog.py`、`preprocess/preview_widget.py` 與 `base_saliency_view.py`。分布為
+  optional Qt access 3 項、Matplotlib private re-export 1 項、training numeric narrowing 1 項、
+  PyQtGraph public／private boundary 14 項與 Figure metadata 1 項；直接 UI baseline 為 192 passed。
+- **Outcome**：用 Qt local narrowing、Matplotlib public import、現有 `TrainingOption` 所需的 `float` boundary、
+  PyQtGraph public `PlotItem`／`ViewBox` API 與實際 `QEvent.Leave` event filter，取代 private field 與
+  `leaveEvent` monkey-patch；Figure metadata 僅把 dotted assignment 改成同一 Figure 上的 `setattr`。
+  六檔 20→0，全案 observed count 由 21 降為 1。
+- **Scope／non-goals**：只改上述 6 個 production files與兩個直接 leave-event tests；不改 layout、文案、
+  icon、crosshair outcome、plot bounds、dataset split flow、class-weight validation結果、saliency margin計算、
+  public API 或 backend state。不新增 screenshot、source guard、compatibility path或泛用 UI abstraction。
+- **Ownership／deletion**：六個既有 dialog／view owners 不變，delta `0`；刪除兩組 monkey-patch closures／
+  stored handlers，復用 QObject event filter與既有 plot owners。不建立 `WeakKeyDictionary`、global cache或第二套
+  metadata policy。預期 production net LOC 介於 -10 至 +20。
+- **Repair and validation**：先保留 192-test baseline；把兩個直接呼叫 monkey-patched handler 的弱測試改為
+  發送真實 `QEvent.Leave`，分別確認 time／frequency 的水平線、垂直線與 tooltip label 都隱藏且 event 不被
+  消耗。再跑同一 focused suite、六檔 Ruff、
+  完整外部 Basedpyright 21→1、frozen-SHA review、PR CI與既有 Windows／macOS／Linux UI lifecycle gates。
+- **Stop／UI status**：若 icon／geometry／copy、crosshair ordering或 native `leaveEvent`、invalid class-weight
+  feedback、plot item ownership／teardown、saliency resize recovery有任何可見或互動差異，立即停止並另取 UI
+  確認。使用者已批准本計畫中的 type-only、無可見行為 UI 修改；本 slice 不授權產品 redesign。
 
 ### Deferred behavior bug — artifact key `allow_pickle`
 
 `backend/training/record/artifact_store.py` 的 1 項 diagnostic 對應真實 persistence defect：NumPy 將
-`allow_pickle` 視為 `np.savez_compressed` 的 control argument，而不是 array key。這不能在 type-only slice
-裡用 suppression 消掉；待 Torch 與 UI slices 完成後另開 bug-fix plan，提前拒絕該 reserved name，並要求續寫等
-真實 side-effect test 與使用者手測批准。
+`allow_pickle` 視為 `np.savez_compressed` 的 control argument，而不是 array key；目前 GUI 的固定 key vocabulary
+不會產生此名稱，但 direct internal caller 會得到「寫入成功、讀回 integrity failure」的自相矛盾 artifact。
+這不能用 suppression 消掉；待 slice E 完成後另開 bug-fix plan，只復用現有 key validation 提前拒絕
+`allow_pickle`，不建立 reserved-name registry，並要求原子 side-effect test 與使用者批准。
 
 ## Progression and focused validation
 
-1. **Current plan checkpoint**：合併本 canonical plan，再從同一 fixed main 建立 C／D 兩條互不重疊
-   worktree；兩個 worker 各自實作，同一 independent reviewer 只在 frozen commit 後審查。
-2. **C／D exact validation**：每片保留既有 passing characterization baseline，核對鎖定 PyTorch runtime 的
-   public exports；各自跑 focused tests、external full Basedpyright、Ruff、diff、frozen-SHA review 與 PR CI。
-   兩片依序進 main 後重跑 combined gate，observed count 必須由 38 精確降為 21，不可有新 diagnostic。
-3. **Remaining type debt**：依 8-file 上限完成 UI／plot 的 20 項 type-only diagnostics；最後才獨立判定並
-   修理 artifact 的 1 項 behavior bug。第三方 stub mismatch 只允許已有 runtime evidence 的精確行級
-   suppression，最終 external observed count 必須為 0。
+1. **Current plan checkpoint**：合併本 canonical plan，再從 fixed main 建立單一 slice E worktree；一個 worker
+   實作，root 重跑 focused／external gates，同一 independent reviewer 只在 frozen commit 後審查。
+2. **Slice E exact validation**：保留 192-test baseline並強化兩個真實 Leave events；跑 external full
+   Basedpyright、Ruff、diff、frozen-SHA review與 PR CI。observed count 必須由 21 精確降為 1，不可有 UI delta。
+3. **Final behavior debt**：另開 plan與短 PR，只修 artifact `allow_pickle` 的已證明 silent inconsistency；
+   以 atomic failure test與使用者批准收斂最後 1 項，external observed count 必須為 0。
 4. **CI closure**：diagnostics 清零後，將 deterministic Basedpyright runner 接入現有 full-dependency job；不建立
    第二套 CI truth。
 5. **Fresh candidate**：重建 0.9.0 identity／docs，clean、push、freeze exact SHA，以 D-mounted model／RAG
