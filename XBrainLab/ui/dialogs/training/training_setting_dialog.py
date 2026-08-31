@@ -844,7 +844,7 @@ class TrainingSettingDialog(BaseDialog):
         add_simple_row(8, "Early stopping", early_stopping)
         patience = QLineEdit("3")
         self.early_stopping_patience_entry = patience
-        add_simple_row(9, "Early stopping patience", patience)
+        add_simple_row(9, "Patience", patience)
         min_delta = QLineEdit("0")
         self.early_stopping_min_delta_entry = min_delta
         add_simple_row(10, "Minimum improvement", min_delta)
