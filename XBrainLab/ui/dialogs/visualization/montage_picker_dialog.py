@@ -156,6 +156,7 @@ class PickMontageDialog(BaseDialog):
         self.summary_page = None
         self.mapping_page = None
         self.button_box = None
+        self.apply_button: QPushButton | None = None
 
         super().__init__(parent, title="Electrode Layout")
         self.setMinimumWidth(540)
@@ -539,13 +540,15 @@ class PickMontageDialog(BaseDialog):
             self.table.setCellWidget(row, 1, combo)
 
     def _sync_apply_enabled(self) -> None:
-        apply_button = getattr(self, "apply_button", None)
-        if isinstance(apply_button, QPushButton):
-            apply_button.setEnabled(
-                self.layout_changes_allowed
-                and self.montage_combo is not None
-                and self.montage_combo.currentText() in self.montage_list
-            )
+        apply_button = self.apply_button
+        montage_combo = self.montage_combo
+        if apply_button is None:
+            return
+        apply_button.setEnabled(
+            self.layout_changes_allowed
+            and montage_combo is not None
+            and montage_combo.currentText() in self.montage_list
+        )
 
     def _resize_mapping_table_to_content(self) -> None:
         """Show short mappings without an empty viewport and bound long lists."""

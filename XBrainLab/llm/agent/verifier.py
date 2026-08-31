@@ -111,7 +111,10 @@ def collect_direct_parameter_reply_evidence(
             values = [unassigned_bandpass_cutoff, value]
         if len(values) != 2:
             return None
-        low, high = sorted(values)
+        numeric_values = [value for value in values if value is not None]
+        if len(numeric_values) != len(values):
+            return None
+        low, high = sorted(numeric_values)
         return (
             (
                 (("low_freq", low), ("high_freq", high)),

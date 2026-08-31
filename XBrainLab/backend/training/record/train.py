@@ -590,11 +590,13 @@ class TrainRecord:
         resolved = class_weighting.get("resolved")
         if not isinstance(requested, dict) or not isinstance(resolved, dict):
             raise ValueError("Training class-weighting metadata is malformed.")
-        self.class_weighting = {
+        self.class_weighting: dict[str, object] = {
             "requested": deepcopy(requested),
             "resolved": deepcopy(resolved),
         }
-        self.class_weighting_resolution = self.class_weighting["resolved"]
+        self.class_weighting_resolution = cast(
+            dict[str, object], self.class_weighting["resolved"]
+        )
         self.criterion = _build_class_weighting_criterion(self.class_weighting)
 
     def init_dir(self) -> None:
