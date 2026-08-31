@@ -6,7 +6,7 @@ import math
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 
@@ -24,6 +24,8 @@ from .view_publication import ApplicationViewPublication
 AVAILABLE_EVALUATION_SPLITS = frozenset({"training", "validation", "test"})
 
 if TYPE_CHECKING:
+    from torch import nn
+
     from XBrainLab.backend.training.saliency_provenance import (
         SaliencyProducerIdentity,
     )
@@ -1057,7 +1059,7 @@ def build_prepared_evaluation_model_summary(
             owned_work_checkpoint("Building detailed model summary")
             summary_text = str(
                 summary(
-                    model_instance,
+                    cast("nn.Module", model_instance),
                     input_size=input_shape,
                     mode="eval",
                     verbose=0,
