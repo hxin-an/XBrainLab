@@ -160,8 +160,8 @@ class EpochRunner:
             total_count += batch_count
             running_loss += loss.item() * batch_count
 
-        y_true = torch.cat(y_true_parts) if y_true_parts else None
-        y_pred = torch.cat(y_pred_parts) if y_pred_parts else None
+        y_true = torch.cat(y_true_parts) if y_true_parts else None  # pyright: ignore[reportPrivateImportUsage]
+        y_pred = torch.cat(y_pred_parts) if y_pred_parts else None  # pyright: ignore[reportPrivateImportUsage]
         return running_loss, correct, total_count, y_true, y_pred
 
     @staticmethod

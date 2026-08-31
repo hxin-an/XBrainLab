@@ -3,7 +3,6 @@
 import math
 
 import numpy as np
-import torch
 from torch import nn
 
 from XBrainLab.backend.model_requirements import minimum_samples_for_model
@@ -132,7 +131,7 @@ class SCCNet(nn.Module):
         x = x**2
         x = self.Drop1(x)
         x = self.AvgPool1(x)  # (128,20,1,42)
-        x = torch.log(torch.clamp(x, min=1e-7))
+        x = x.clamp(min=1e-7).log()
         x = x.view(
             -1,
             20

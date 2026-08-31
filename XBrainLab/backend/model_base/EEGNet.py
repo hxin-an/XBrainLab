@@ -192,7 +192,7 @@ class EEGNet(nn.Module):
             Tensor size after flattening, as a ``torch.Size`` object.
 
         """
-        data = torch.ones((2, 1, ch, tsamp))
+        data = torch.ones((2, 1, ch, tsamp))  # pyright: ignore[reportPrivateImportUsage]
         x = self.conv1(data)
         x = self.conv2(x)
         x = self.conv3(x)

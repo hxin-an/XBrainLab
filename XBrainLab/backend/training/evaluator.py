@@ -226,8 +226,8 @@ class Evaluator:
                 y_true_parts.append(batch_labels.detach().cpu())
                 y_pred_parts.append(outputs.detach().cpu())
 
-        y_true = torch.cat(y_true_parts) if y_true_parts else None
-        y_pred = torch.cat(y_pred_parts) if y_pred_parts else None
+        y_true = torch.cat(y_true_parts) if y_true_parts else None  # pyright: ignore[reportPrivateImportUsage]
+        y_pred = torch.cat(y_pred_parts) if y_pred_parts else None  # pyright: ignore[reportPrivateImportUsage]
 
         if total_count == 0:
             return {RecordKey.ACC: 0, RecordKey.AUC: None, RecordKey.LOSS: 0}
