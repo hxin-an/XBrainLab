@@ -393,6 +393,9 @@ def test_training_setting_geometry_is_observed_at_supported_font_scales(
     }
     assert check["set_button_count"] == 3
     assert check["footer"]["passed"] is True
+    assert check["scrollbar"]["right_gap_px"] <= 1
+    assert all(gap >= 18 for gap in check["scrollbar"]["set_horizontal_gaps_px"])
+    assert check["scrollbar"]["passed"] is True
     assert check["resource_preview"]["passed"] is True
     assert check["resource_preview"]["visible"] is True
     assert check["resource_preview"]["contained_in_viewport"] is True
@@ -408,6 +411,44 @@ def test_training_setting_geometry_is_observed_at_supported_font_scales(
     assert all(
         row.get("set_button", {}).get("passed", True) is True for row in check["rows"]
     )
+
+
+@pytest.mark.parametrize("font_scale", capture_script.TRAINING_FONT_SCALES)
+@pytest.mark.parametrize("scrollbar_extent", [None, 28])
+def test_training_setting_scrollbar_clearance_survives_wide_native_scrollbar(
+    qapp,
+    font_scale: float,
+    scrollbar_extent: int | None,
+) -> None:
+    class WideScrollBarStyle(QProxyStyle):
+        def pixelMetric(self, metric, option=None, widget=None):
+            if (
+                scrollbar_extent is not None
+                and metric == QStyle.PixelMetric.PM_ScrollBarExtent
+            ):
+                return scrollbar_extent
+            return super().pixelMetric(metric, option, widget)
+
+    dialog = capture_script._training_setting_dialog()
+    try:
+        assert dialog.content_scroll is not None
+        scroll_bar = dialog.content_scroll.verticalScrollBar()
+        assert scroll_bar is not None
+        style = WideScrollBarStyle()
+        style.setParent(scroll_bar)
+        scroll_bar.setStyle(style)
+        capture_script._apply_training_setting_font_scale(dialog, font_scale)
+        _settle(qapp, dialog)
+
+        check = capture_script._observe_training_setting_geometry(
+            dialog,
+            font_scale=font_scale,
+        )
+    finally:
+        _dispose(qapp, dialog)
+
+    assert check["scrollbar"]["right_gap_px"] <= 1
+    assert all(gap >= 18 for gap in check["scrollbar"]["set_horizontal_gaps_px"])
 
 
 def test_training_setting_bounds_inflated_native_combo_size_hint(qapp) -> None:

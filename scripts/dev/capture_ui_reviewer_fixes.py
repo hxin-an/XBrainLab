@@ -701,6 +701,7 @@ def _observe_training_setting_geometry(
 ) -> dict[str, Any]:
     content_ancestor = dialog.content_widget or dialog
     rows: list[dict[str, Any]] = []
+    set_button_rects: list[QRect] = []
     for section, form_layout in dialog.section_layouts.items():
         for row_index in range(form_layout.rowCount()):
             label_item = form_layout.itemAtPosition(row_index, 0)
@@ -730,6 +731,7 @@ def _observe_training_setting_geometry(
             set_button_evidence: dict[str, Any] = {}
             if isinstance(set_button, QAbstractButton):
                 set_rect = _widget_rect_in(dialog, set_button)
+                set_button_rects.append(set_rect)
                 set_overlap = input_rect.intersects(set_rect)
                 set_gap = set_rect.left() - input_rect.right() - 1
                 set_contained = content_ancestor.rect().contains(
@@ -842,9 +844,28 @@ def _observe_training_setting_geometry(
     content_scroll = dialog.content_scroll
     if resource_preview_note is None or content_scroll is None:
         raise RuntimeError("Training Setting resource preview UI is unavailable.")
-    content_scroll.verticalScrollBar().setValue(
-        content_scroll.verticalScrollBar().maximum()
-    )
+    scroll_bar = content_scroll.verticalScrollBar()
+    if scroll_bar is None:
+        raise RuntimeError("Training Setting vertical scrollbar is unavailable.")
+    scroll_bar_rect = _widget_rect_in(dialog, scroll_bar)
+    scrollbar_right_gap = dialog.rect().right() - scroll_bar_rect.right()
+    set_to_scrollbar_gaps = [
+        scroll_bar_rect.left() - set_rect.right() - 1 for set_rect in set_button_rects
+    ]
+    scrollbar = {
+        "geometry": _rect_payload(scroll_bar_rect),
+        "right_gap_px": int(scrollbar_right_gap),
+        "set_horizontal_gaps_px": [int(gap) for gap in set_to_scrollbar_gaps],
+        "passed": bool(
+            scrollbar_right_gap <= 1
+            and all(gap >= 18 for gap in set_to_scrollbar_gaps)
+            and all(
+                not set_rect.intersects(scroll_bar_rect)
+                for set_rect in set_button_rects
+            )
+        ),
+    }
+    scroll_bar.setValue(scroll_bar.maximum())
     QApplication.processEvents()
     resource_viewport = content_scroll.viewport()
     resource_note_top_left = resource_preview_note.mapTo(
@@ -914,6 +935,11 @@ def _observe_training_setting_geometry(
             "Training Setting resource preview is not fully visible at "
             f"{round(font_scale * 100)}%: {resource_preview}."
         )
+    if not scrollbar["passed"]:
+        raise RuntimeError(
+            "Training Setting scrollbar clearance failed at "
+            f"{round(font_scale * 100)}%: {scrollbar}."
+        )
 
     return {
         "font_scale": float(font_scale),
@@ -931,11 +957,13 @@ def _observe_training_setting_geometry(
         "set_button_count": sum(bool(row["set_button"]) for row in rows),
         "failed_set_button_count": len(failed_set_buttons),
         "footer": footer,
+        "scrollbar": scrollbar,
         "resource_preview": resource_preview,
         "rows": rows,
         "passed": bool(rows)
         and all(bool(row["passed"]) for row in rows)
         and bool(footer["passed"])
+        and bool(scrollbar["passed"])
         and bool(resource_preview["passed"]),
     }
 

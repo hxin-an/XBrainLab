@@ -723,7 +723,7 @@ class TrainingSettingDialog(BaseDialog):
     def init_ui(self):
         """Initialize the dialog UI with training parameter controls."""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 16, 18, 14)
+        layout.setContentsMargins(18, 16, 0, 14)
         layout.setSpacing(12)
 
         content_scroll = QScrollArea(self)
@@ -745,7 +745,7 @@ class TrainingSettingDialog(BaseDialog):
         self.content_widget = content_widget
         content_widget.setObjectName("TrainingSettingContent")
         content_layout = QVBoxLayout(content_widget)
-        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setContentsMargins(0, 0, 18, 0)
         content_layout.setSpacing(12)
 
         page_header = QLabel("Training Settings")
@@ -961,6 +961,7 @@ class TrainingSettingDialog(BaseDialog):
 
         # Buttons
         footer = QHBoxLayout()
+        footer.setContentsMargins(0, 0, 18, 0)
         footer.addStretch(1)
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,

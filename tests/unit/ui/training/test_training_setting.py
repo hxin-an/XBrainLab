@@ -211,8 +211,12 @@ class TestTrainingSetting:
 
         assert buttons.layoutDirection() is Qt.LayoutDirection.LeftToRight
         assert cancel_button.geometry().right() < ok_button.geometry().left()
+        dialog_layout = window.layout()
+        assert dialog_layout is not None
+        footer = dialog_layout.itemAt(dialog_layout.count() - 1).layout()
+        assert footer is not None
         assert buttons.geometry().right() == (
-            window.contentsRect().right() - window.layout().contentsMargins().right()
+            window.contentsRect().right() - footer.contentsMargins().right()
         )
 
     @pytest.mark.parametrize("font_scale", [1.0, 1.25, 1.5])
