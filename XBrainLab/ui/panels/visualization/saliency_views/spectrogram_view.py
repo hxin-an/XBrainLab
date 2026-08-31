@@ -23,6 +23,8 @@ class SaliencySpectrogramWidget(BaseSaliencyView):
     Useful for time-frequency analysis of importance.
     """
 
+    _scrollable_canvas = True
+
     def init_ui(self):
         self._preparation_cache = SaliencySpectrogramPreparationCache()
         super().init_ui()

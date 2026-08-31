@@ -5,7 +5,7 @@ import threading
 from collections import OrderedDict
 from collections.abc import Callable, Hashable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 from matplotlib.colors import Normalize, PowerNorm
@@ -586,6 +586,8 @@ class SaliencySpectrogramMapViz(Visualizer):
         visible_label_number = len(plotted_classes)
         rows = 1 if visible_label_number <= self.MIN_LABEL_NUMBER_FOR_MULTI_ROW else 2
         cols = int(np.ceil(visible_label_number / rows))
+        if display_mode == "all":
+            cast(Any, fig)._xbrainlab_min_canvas_height = max(420, rows * 240)
         for diagnostic in prepared.diagnostics:
             logger.debug("Attribution spectrogram diagnostics: %s", diagnostic)
         logger.info(
@@ -605,11 +607,16 @@ class SaliencySpectrogramMapViz(Visualizer):
             wspace=0.38,
             hspace=0.55,
         )
-        plot_axes = []
+        grid = fig.add_gridspec(
+            rows,
+            cols + 1,
+            width_ratios=[1.0] * cols + [0.075],
+            wspace=0.65,
+            hspace=0.55,
+        )
         image = None
         for plot_index, prepared_class in enumerate(plotted_classes):
-            ax = fig.add_subplot(rows, cols, plot_index + 1)
-            plot_axes.append(ax)
+            ax = fig.add_subplot(grid[plot_index // cols, plot_index % cols])
 
             image = ax.imshow(
                 prepared_class.magnitude,
@@ -643,12 +650,11 @@ class SaliencySpectrogramMapViz(Visualizer):
 
             ax.set_title(prepared_class.label_name)
         if image is not None:
+            colorbar_axis = fig.add_subplot(grid[:, -1])
             colorbar = fig.colorbar(
                 image,
-                ax=plot_axes,
+                cax=colorbar_axis,
                 orientation="vertical",
-                fraction=0.035,
-                pad=0.04,
                 extend=(
                     "max"
                     if int(scale_details.get("over_range_count") or 0) > 0
