@@ -111,6 +111,35 @@ G1 已完成並合併。它只移除 dedicated `assistant-runtime` domain 內重
 `pytest-forked`，保留 owned domain process、16 個案例、teardown assertions、hard timeout、JUnit、
 coverage 與 completion attestation。後續 lane 不再重開這個 scope。
 
+## Gate repair G2 — basedpyright zero baseline (active B5 handoff precondition)
+
+**Problem and evidence.** Exact `main` `f3690e8dd942a6e5080d8de03810d71bf2a2615c` 與 frozen
+B5 head `db8fb7538c4c209d72ec2eee4421b8392c351e0d` 都只觀察到相同四項 Basedpyright error：
+training snapshot 的 enum／string projection、TrainRecord class-weighting nested mapping、Assistant
+direct bandpass value narrowing，以及 Montage Picker optional combo narrowing。B5 已移除自己新增的十項
+diagnostic，沒有造成這四項；但 checked-in baseline 仍記錄舊 source 的 81 項已消失 diagnostics，故
+canonical gate 會 fail closed，也已失去可信的 current debt identity。
+
+**Outcome and scope.** 從上述 exact `main` 建立獨立 pure-quality branch；只在四個既有函式內做局部
+narrowing，維持 runtime、Assistant admission、class-weighting criterion、Montage interaction 與可見 UI
+完全不變。Owners before／after 不變，production scope 最多四個既有 files、預計 net `+20 LOC` 以內，
+不新增 module、class、helper abstraction、fallback 或 suppression。使用者已於 `2026-08-31` 明確允許
+包含 `XBrainLab/ui/dialogs/visualization/montage_picker_dialog.py` 的 type-only 修正；不授權其他 UI layout、
+文案或互動變更。
+
+**Repair and evidence.** 先以目前四項 exact diagnostics 加上既有 training snapshot／class weighting、
+direct-parameter verifier 與 Montage apply-enabled tests 建立 passing characterization baseline；再做最小
+局部修正並重跑相同 tests。第一個 commit 必須讓 Basedpyright observed diagnostics 成為 `0`。第二個
+baseline-only commit 才能以第一個 commit SHA 更新 `source_sha_parts` 並將 diagnostics 清為空，避免
+循環 identity 或把四項錯誤 ratify 成 allowlist。`test_run_basedpyright_regression.py` 必須 exact assert 新
+baseline source、locked `1.39.2` 與 zero diagnostics；Ruff、diff check、canonical Basedpyright gate、
+相關 UI test 及 independent review 都要通過。
+
+**Non-goals and stop.** 不更動 analyzer version／exclude、不卡 B5 以外的 debt cleanup、不更新 B5 source，
+也不順手重構四個 owner。若任一修正需要可見 UI／runtime 語意改變、新 abstraction，或 production net
+超過 `+20 LOC`，立即停止重新規劃。G2 經 PR 合併後清理 worktree，再將 B5 rebase 到新 `main` 並使所有
+exact-SHA approval／evidence 失效後重跑；G2 本身不得 merge B5 或代替 Windows manual acceptance。
+
 ## Lane B — product correctness and training
 
 Lane B 的 B1–B4 已完成。B5 必須從 PR #83 merge 後且包含本次 plan calibration 的 exact `main`
