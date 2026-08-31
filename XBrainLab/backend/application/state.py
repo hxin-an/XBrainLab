@@ -210,6 +210,7 @@ class InterpretationStateSnapshot:
     has_preview: bool = False
     has_validation_decision: bool = False
     has_applied_interpretation: bool = False
+    has_pending_candidate: bool = False
     has_recipe: bool = False
     latest_scan_id: str | None = None
     latest_candidate_id: str | None = None

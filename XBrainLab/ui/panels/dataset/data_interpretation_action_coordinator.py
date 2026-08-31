@@ -1993,7 +1993,21 @@ class DataInterpretationActionCoordinator:
                 del recipe_message
 
             if bool(dialog_result.get("save_recipe", False)):
-                if not self._save_interpretation_recipe(on_complete=_finish):
+                if not self._save_interpretation_recipe(
+                    on_complete=_finish,
+                    expected_scan_id=self._optional_payload_id(
+                        review_state.scan,
+                        "scan_id",
+                    ),
+                    expected_candidate_id=review_state.candidate_id,
+                    expected_interpretation_id=self._optional_payload_id(
+                        self._diagnostic_payload(
+                            apply_result,
+                            "applied_interpretation",
+                        ),
+                        "interpretation_id",
+                    ),
+                ):
                     _finish()
                 return InteractionOutcome.completed(apply_result.message)
             _finish()
@@ -2225,6 +2239,9 @@ class DataInterpretationActionCoordinator:
         on_complete: Callable[[str], None] | None = None,
         review_context: CommandReviewContext | None = None,
         review_context_resolved: bool = False,
+        expected_scan_id: str | None = None,
+        expected_candidate_id: str | None = None,
+        expected_interpretation_id: str | None = None,
     ) -> bool:
         """Persist the current recipe and report completion asynchronously."""
         complete = on_complete or (lambda _message: None)
@@ -2282,30 +2299,72 @@ class DataInterpretationActionCoordinator:
             "JSON (*.json)",
         )
 
-        def _handle_result(result) -> None:
-            if result.failed:
-                title = (
-                    "Review Recipe Save Again"
-                    if self._bindings.is_stale_publication_result(result)
-                    else "Recipe not saved"
-                )
-                self._bindings.show_warning(self.panel, title, result.message)
-                complete("")
-                return
-            complete("Recipe saved." if recipe_path else "Recipe kept in this session.")
+        retry_attempted = False
 
-        outcome = self._execute_interpretation_command_async(
-            SaveInterpretationRecipeCommand(recipe_path=recipe_path or None),
-            on_result=_handle_result,
-            error_title="Recipe save failed",
-            expected_publication_generation=(
-                review_context.publication_generation
-                if review_context is not None
-                else None
-            ),
-            unexpected_error_context=UnexpectedErrorContext.DATA_IMPORT_RECIPE_SAVE,
-        )
-        return outcome is not None
+        def _retry_context_after_stale() -> CommandReviewContext | None:
+            if not all(
+                (expected_scan_id, expected_candidate_id, expected_interpretation_id)
+            ):
+                return None
+            publication = self._bindings.get_application_view_publication(self.panel)
+            if not isinstance(publication, ApplicationViewPublication):
+                return None
+            interpretation = publication.state.interpretation
+            if not (
+                publication.usable
+                and interpretation.latest_scan_id == expected_scan_id
+                and interpretation.latest_candidate_id == expected_candidate_id
+                and interpretation.latest_interpretation_id
+                == expected_interpretation_id
+            ):
+                return None
+            return CommandReviewContext(
+                capability=publication.effective_capabilities.get(
+                    CommandName.SAVE_INTERPRETATION_RECIPE,
+                ),
+                publication_generation=publication.generation,
+            )
+
+        def _dispatch_save(context: CommandReviewContext | None) -> bool:
+            def _handle_result(result) -> InteractionOutcome | None:
+                nonlocal retry_attempted
+                if result.failed:
+                    if (
+                        not retry_attempted
+                        and self._bindings.is_stale_publication_result(result)
+                    ):
+                        retry_context = _retry_context_after_stale()
+                        if retry_context is not None:
+                            retry_attempted = True
+                            if _dispatch_save(retry_context):
+                                # Keep the shared interaction session open for retry.
+                                return InteractionOutcome.accepted()
+                    title = (
+                        "Review Recipe Save Again"
+                        if self._bindings.is_stale_publication_result(result)
+                        else "Recipe not saved"
+                    )
+                    self._bindings.show_warning(self.panel, title, result.message)
+                    complete("")
+                    return
+                complete(
+                    "Recipe saved." if recipe_path else "Recipe kept in this session."
+                )
+
+            outcome = self._execute_interpretation_command_async(
+                SaveInterpretationRecipeCommand(recipe_path=recipe_path or None),
+                on_result=_handle_result,
+                error_title="Recipe save failed",
+                expected_publication_generation=(
+                    context.publication_generation if context is not None else None
+                ),
+                unexpected_error_context=(
+                    UnexpectedErrorContext.DATA_IMPORT_RECIPE_SAVE
+                ),
+            )
+            return outcome is not None
+
+        return _dispatch_save(review_context)
 
     def _recipe_save_block_reason(self) -> str | None:
         save_capability = self._bindings.get_command_capability(

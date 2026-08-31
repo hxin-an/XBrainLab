@@ -107,7 +107,10 @@ def _command_selection(
 
 def _interpretation_next_step(state: ApplicationStateSnapshot) -> str | None:
     interpretation = state.interpretation
-    if interpretation.has_applied_interpretation:
+    if (
+        interpretation.has_applied_interpretation
+        and not interpretation.has_pending_candidate
+    ):
         return None
     if interpretation.has_validation_decision:
         return CommandName.APPLY_INTERPRETATION.value
