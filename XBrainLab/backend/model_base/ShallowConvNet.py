@@ -114,7 +114,7 @@ class ShallowConvNet(nn.Module):
         x = self.Bn1(x)
         x = x**2
         x = self.AvgPool1(x)
-        x = torch.log(torch.clamp(x, min=1e-7))
+        x = x.clamp(min=1e-7).log()
         x = self.Drop1(x)
         x = x.view(x.size()[0], -1)
         x = self.classifier(x)
@@ -133,7 +133,7 @@ class ShallowConvNet(nn.Module):
             Tensor size after flattening, as a ``torch.Size`` object.
 
         """
-        data = torch.ones((1, 1, ch, tsamp))
+        data = torch.ones((1, 1, ch, tsamp))  # pyright: ignore[reportPrivateImportUsage]
         x = self.conv1(data)
         x = self.conv2(x)
         x = self.AvgPool1(x)
