@@ -23,6 +23,7 @@ from XBrainLab.backend.application import (
     ApplyInterpretationCommand,
     ApplySmartParseCommand,
     ChangedState,
+    CommandName,
     CommandResult,
     ErrorType,
     LabelImportPlan,
@@ -42,6 +43,7 @@ from XBrainLab.backend.application.owned_work import OwnedWorkKind, OwnedWorkReg
 from XBrainLab.backend.application.state import (
     ApplicationStateSnapshot,
     InterpretationStateSnapshot,
+    VisualizationStateSnapshot,
 )
 from XBrainLab.backend.application.view_publication import (
     ApplicationViewPublication,
@@ -477,6 +479,8 @@ def _review_publication(
     generation: int = 9,
     scan_id: str = "scan-1",
     candidate_id: str = "candidate-2",
+    interpretation_id: str | None = None,
+    montage_preparation_state: str = "not_applicable",
 ) -> ApplicationViewPublication:
     state = replace(
         ApplicationStateSnapshot.empty(),
@@ -485,8 +489,13 @@ def _review_publication(
             has_candidate=True,
             has_preview=True,
             has_validation_decision=True,
+            has_applied_interpretation=interpretation_id is not None,
             latest_scan_id=scan_id,
             latest_candidate_id=candidate_id,
+            latest_interpretation_id=interpretation_id,
+        ),
+        visualization=VisualizationStateSnapshot(
+            montage_preparation_state=montage_preparation_state,
         ),
     )
     return ApplicationViewPublication(
@@ -2295,6 +2304,225 @@ def test_apply_uses_the_generation_reviewed_by_the_user(qtbot, monkeypatch):
 
     assert outcome.status is InteractionStatus.ACCEPTED
     qtbot.waitUntil(lambda: observed_generations == [17], timeout=1000)
+
+
+@pytest.mark.parametrize(
+    (
+        "completion_point",
+        "identity_changes",
+        "retry_stales",
+        "expected_generations",
+    ),
+    [
+        pytest.param("chooser", False, False, [5, 6], id="completion-during-chooser"),
+        pytest.param(
+            "admission", False, False, [5, 6], id="completion-before-admission"
+        ),
+        pytest.param("admission", True, False, [5], id="interpretation-change-blocks"),
+        pytest.param("admission", False, True, [5, 6], id="second-stale-stops"),
+    ],
+)
+def test_chained_recipe_save_retries_only_same_interpretation_after_stale(
+    monkeypatch,
+    completion_point: str,
+    identity_changes: bool,
+    retry_stales: bool,
+    expected_generations: list[int],
+) -> None:
+    """Only advisory BIDS publication drift may retry the chained recipe save."""
+    handler = DatasetActionHandler(MagicMock())
+    coordinator = handler._data_interpretation
+    current = {
+        "publication": _review_publication(
+            generation=5,
+            scan_id="scan-1",
+            candidate_id="candidate-1",
+            interpretation_id="interpretation-1",
+            montage_preparation_state="pending",
+        )
+    }
+    save_generations: list[int | None] = []
+    saved_paths: list[str | None] = []
+    warning = MagicMock()
+
+    def _settle_montage() -> None:
+        current["publication"] = _review_publication(
+            generation=6,
+            scan_id="scan-2" if identity_changes else "scan-1",
+            candidate_id="candidate-2" if identity_changes else "candidate-1",
+            interpretation_id=(
+                "interpretation-2" if identity_changes else "interpretation-1"
+            ),
+            montage_preparation_state="ready",
+        )
+
+    def _review_context(*_args, **_kwargs) -> CommandReviewContext:
+        publication = current["publication"]
+        return CommandReviewContext(
+            capability=publication.effective_capabilities.get(
+                CommandName.SAVE_INTERPRETATION_RECIPE,
+            ),
+            publication_generation=publication.generation,
+        )
+
+    def _choose_recipe_path(*_args, **_kwargs) -> tuple[str, str]:
+        if completion_point == "chooser":
+            _settle_montage()
+        return "/tmp/import_recipe.json", ""
+
+    def _execute(
+        command, *, on_result, expected_publication_generation=None, **_kwargs
+    ):
+        if isinstance(command, ApplyInterpretationCommand):
+            on_result(
+                _success_result(
+                    "apply_interpretation",
+                    applied_interpretation={"interpretation_id": "interpretation-1"},
+                )
+            )
+        else:
+            save_generations.append(expected_publication_generation)
+            if completion_point == "admission" and len(save_generations) == 1:
+                _settle_montage()
+            if expected_publication_generation != current["publication"].generation or (
+                retry_stales and len(save_generations) == 2
+            ):
+                on_result(
+                    SimpleNamespace(
+                        failed=True,
+                        message="Workflow state changed while this confirmed action was pending.",
+                        diagnostics={"stale_publication": True},
+                    )
+                )
+            else:
+                saved_paths.append(command.recipe_path)
+                on_result(_success_result("save_interpretation_recipe"))
+        return InteractionOutcome.accepted("scheduled")
+
+    coordinator._bindings = replace(
+        coordinator._bindings,
+        get_command_review_context=_review_context,
+        get_application_view_publication=lambda _panel: current["publication"],
+        file_dialog=lambda: SimpleNamespace(getSaveFileName=_choose_recipe_path),
+        show_warning=warning,
+    )
+    monkeypatch.setattr(coordinator, "_execute_interpretation_command_async", _execute)
+
+    outcome = coordinator._apply_interpretation_async(
+        _review_state(publication_generation=5),
+        {"confirmed": True, "save_recipe": True},
+    )
+
+    assert outcome.status is InteractionStatus.ACCEPTED
+    assert save_generations == expected_generations
+    assert saved_paths == (
+        ["/tmp/import_recipe.json"] if not identity_changes and not retry_stales else []
+    )
+    assert warning.call_count == int(identity_changes or retry_stales)
+    if identity_changes or retry_stales:
+        assert warning.call_args.args[1] == "Review Recipe Save Again"
+
+
+def test_chained_recipe_save_stale_retry_keeps_interaction_session_open(
+    qtbot,
+    monkeypatch,
+) -> None:
+    """The first stale callback hands off to the retry instead of failing UI handoff."""
+    panel = QWidget()
+    qtbot.addWidget(panel)
+    cast(Any, panel).study = Study()
+    cast(Any, panel).set_busy = lambda _busy: None
+    handler = DatasetActionHandler(panel)
+    coordinator = handler._data_interpretation
+    current = {
+        "publication": _review_publication(
+            generation=5,
+            scan_id="scan-1",
+            candidate_id="candidate-1",
+            interpretation_id="interpretation-1",
+            montage_preparation_state="pending",
+        )
+    }
+    save_generations: list[int | None] = []
+    terminal = []
+    warning = MagicMock()
+
+    class _Service:
+        def execute(
+            self,
+            command,
+            *,
+            expected_publication_generation=None,
+        ):
+            if isinstance(command, ApplyInterpretationCommand):
+                return _success_result(
+                    "apply_interpretation",
+                    applied_interpretation={"interpretation_id": "interpretation-1"},
+                )
+            assert isinstance(command, SaveInterpretationRecipeCommand)
+            save_generations.append(expected_publication_generation)
+            if len(save_generations) == 1:
+                current["publication"] = _review_publication(
+                    generation=6,
+                    scan_id="scan-1",
+                    candidate_id="candidate-1",
+                    interpretation_id="interpretation-1",
+                    montage_preparation_state="ready",
+                )
+                return CommandResult.failure_result(
+                    command_name="save_interpretation_recipe",
+                    message=(
+                        "Workflow state changed while this confirmed action was "
+                        "pending."
+                    ),
+                    state=ApplicationStateSnapshot.empty(),
+                    changed_state=ChangedState(),
+                    error_type=ErrorType.PRECONDITION,
+                    recoverable=True,
+                    diagnostics={"stale_publication": True},
+                )
+            return _success_result("save_interpretation_recipe")
+
+    def _review_context(*_args, **_kwargs) -> CommandReviewContext:
+        publication = current["publication"]
+        return CommandReviewContext(
+            capability=publication.effective_capabilities.get(
+                CommandName.SAVE_INTERPRETATION_RECIPE,
+            ),
+            publication_generation=publication.generation,
+        )
+
+    coordinator._bindings = replace(
+        coordinator._bindings,
+        get_command_review_context=_review_context,
+        get_application_view_publication=lambda _panel: current["publication"],
+        file_dialog=lambda: SimpleNamespace(
+            getSaveFileName=lambda *_args, **_kwargs: ("/tmp/import_recipe.json", "")
+        ),
+        show_warning=warning,
+    )
+    monkeypatch.setattr(
+        application_capabilities,
+        "application_ui_runtime",
+        lambda _study: _Service(),
+    )
+    completion = InteractionCompletionSession(
+        request_id="bids-recipe-save-retry",
+        command_name="apply_interpretation",
+        on_terminal=terminal.append,
+    )
+
+    with bind_interaction_completion(completion):
+        outcome = coordinator._apply_interpretation_async(
+            _review_state(publication_generation=5),
+            {"confirmed": True, "save_recipe": True},
+        )
+
+    assert outcome.status is InteractionStatus.ACCEPTED
+    qtbot.waitUntil(lambda: len(terminal) == 1, timeout=2_000)
+    assert save_generations == [5, 6]
+    assert terminal[0].status is InteractionCompletionStatus.COMPLETED
+    assert warning.call_count == 0
 
 
 def test_apply_leaves_in_flight_status_to_owned_operation_presenter(monkeypatch):

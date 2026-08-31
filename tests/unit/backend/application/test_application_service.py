@@ -110,6 +110,7 @@ from XBrainLab.backend.application.training_submission import (
     attach_training_submission_provenance,
 )
 from XBrainLab.backend.application.view_publication import ApplicationViewStore
+from XBrainLab.backend.application.workflow_projection import build_workflow_projection
 from XBrainLab.backend.dataset import (
     Dataset,
     DataSplittingConfig,
@@ -5065,13 +5066,21 @@ def test_failed_replacement_restores_raw_interpretation_and_recipe(
     )
     service.execute(ValidateInterpretationCommand())
     interpretation = service.interpretation._service()
-    interpretation.apply_service.apply_candidate_metadata_to_loaded_data = MagicMock(
-        side_effect=RuntimeError("replacement metadata failed"),
-    )
+    original_detached_copy = interpretation.apply_service.detached_copy
+
+    def _failing_detached_copy(*args, **kwargs):
+        detached = original_detached_copy(*args, **kwargs)
+        detached.apply_candidate_metadata_to_loaded_data = MagicMock(
+            side_effect=RuntimeError("replacement metadata failed"),
+        )
+        return detached
+
+    interpretation.apply_service.detached_copy = _failing_detached_copy
 
     failed = service.execute(ApplyInterpretationCommand(confirmed=True))
 
     assert failed.failed is True
+    assert "replacement metadata failed" in failed.message
     assert manager.loaded_data_list == [old_raw]
     assert failed.state.interpretation.latest_interpretation_id == (
         old_interpretation_id
@@ -6037,6 +6046,71 @@ def test_safe_data_interpretation_cannot_be_applied_twice(tmp_path):
     assert second_apply.failed is True
     assert second_apply.error_type == ErrorType.PRECONDITION
     assert load_raw.call_count == 1
+
+
+def test_safe_recipe_reload_replaces_the_applied_candidate_in_same_service(tmp_path):
+    source_dir = tmp_path / "safe_reload_source"
+    source_dir.mkdir()
+    eeg_path = source_dir / "subject01_run1.fif"
+    eeg_path.write_bytes(b"not loaded during scan")
+    recipe_path = tmp_path / "safe_reload_recipe.json"
+    service = ApplicationService(Study())
+    load_raw = _use_test_raw_factory(service)
+
+    assert service.execute(ScanSourceCommand(source_path=str(source_dir))).ok
+    assert service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "metadata_overrides": {
+                    eeg_path.name: {
+                        "subject": "subject01",
+                        "session": "session-01",
+                        "task": "rest",
+                        "run": "1",
+                    }
+                }
+            }
+        )
+    ).ok
+    assert service.execute(ValidateInterpretationCommand()).ok
+    first_apply = service.execute(ApplyInterpretationCommand(confirmed=True))
+    assert first_apply.ok
+    assert service.execute(
+        SaveInterpretationRecipeCommand(recipe_path=str(recipe_path))
+    ).ok
+
+    reload_result = service.execute(
+        ReloadInterpretationRecipeCommand(recipe_path=str(recipe_path)),
+    )
+    reloaded_state = reload_result.state
+    reloaded_capabilities = service.get_capabilities()
+    reloaded_projection = build_workflow_projection(
+        reloaded_state,
+        reloaded_capabilities,
+    )
+    retry_without_confirmation = service.execute(ApplyInterpretationCommand())
+    replacement_apply = service.execute(ApplyInterpretationCommand(confirmed=True))
+    duplicate_apply = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+    assert reload_result.ok
+    assert reloaded_state.interpretation.validation_decision == "safe"
+    assert reloaded_state.interpretation.has_applied_interpretation is True
+    assert reloaded_state.interpretation.has_pending_candidate is True
+    assert reloaded_capabilities.get(CommandName.APPLY_INTERPRETATION).available is True
+    assert (
+        reloaded_capabilities.get(
+            CommandName.APPLY_INTERPRETATION
+        ).confirmation_required
+        is True
+    )
+    assert reloaded_projection.recommended_command == CommandName.APPLY_INTERPRETATION
+    assert retry_without_confirmation.failed
+    assert retry_without_confirmation.error_type is ErrorType.CONFIRMATION_REQUIRED
+    assert replacement_apply.ok
+    assert replacement_apply.state.interpretation.has_pending_candidate is False
+    assert duplicate_apply.failed
+    assert duplicate_apply.error_type is ErrorType.PRECONDITION
+    assert load_raw.call_count == 2
 
 
 def test_data_interpretation_preview_exposes_internal_event_evidence(

@@ -1377,6 +1377,108 @@ def test_product_smoke_bids_import_apply_create_epoch(tmp_path):
     assert set(epoch_result.state.epoch.event_ids) == {"Left hand", "Right hand"}
 
 
+def test_bids_montage_publication_stales_only_the_old_generation(tmp_path, monkeypatch):
+    """The real advisory BIDS worker changes generation, not import identity."""
+    service = ApplicationService()
+    bids_root, eeg_path, events_path, _channels_path = (
+        _write_bids_eeg_motor_imagery_fixture(tmp_path)
+    )
+    preparation_started = Event()
+    release_preparation = Event()
+    original_prepare = service.bids_montage_preparation._prepare
+
+    def _blocked_prepare(*args, **kwargs):
+        preparation_started.set()
+        assert release_preparation.wait(timeout=2.0)
+        return original_prepare(*args, **kwargs)
+
+    monkeypatch.setattr(
+        service.bids_montage_preparation,
+        "_prepare",
+        _blocked_prepare,
+    )
+    try:
+        assert service.execute(
+            ScanSourceCommand(source_path=str(bids_root), source_hint="bids"),
+        ).ok
+        assert service.execute(
+            PreviewInterpretationCommand(
+                choices={
+                    "selected_eeg_files": [str(eeg_path)],
+                    "label_carrier_choices": {
+                        str(events_path): {
+                            "label_field": "trial_type",
+                            "anchor": "onset",
+                            "duration_field": "duration",
+                            "time_model": "seconds",
+                            "placement_method": "interval",
+                            "value_decisions": _class_value_decisions(
+                                {"left": "Left hand", "right": "Right hand"}
+                            ),
+                        }
+                    },
+                },
+            )
+        ).ok
+        assert service.execute(ValidateInterpretationCommand()).ok
+        applied = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+        assert applied.ok
+        assert preparation_started.wait(timeout=2.0)
+        pending = service.get_view_publication()
+        applied_identity = applied.diagnostics["applied_interpretation"]
+        assert pending.state.visualization.montage_preparation_state == "pending"
+        assert (
+            pending.state.interpretation.latest_scan_id
+            == applied.state.interpretation.latest_scan_id
+        )
+        assert (
+            pending.state.interpretation.latest_candidate_id
+            == applied.state.interpretation.latest_candidate_id
+        )
+        assert (
+            pending.state.interpretation.latest_interpretation_id
+            == applied_identity["interpretation_id"]
+        )
+
+        release_preparation.set()
+        assert service.bids_montage_preparation.wait_for_idle(timeout=2.0)
+        settled = service.get_view_publication()
+        stale_save = service.execute(
+            SaveInterpretationRecipeCommand(recipe_path=str(tmp_path / "stale.json")),
+            expected_publication_generation=pending.generation,
+        )
+        fresh_save = service.execute(
+            SaveInterpretationRecipeCommand(recipe_path=str(tmp_path / "fresh.json")),
+            expected_publication_generation=settled.generation,
+        )
+
+        assert settled.generation > pending.generation
+        assert (
+            settled.state.visualization.montage_preparation_state
+            != pending.state.visualization.montage_preparation_state
+        )
+        assert (
+            settled.state.interpretation.latest_scan_id
+            == pending.state.interpretation.latest_scan_id
+        )
+        assert (
+            settled.state.interpretation.latest_candidate_id
+            == pending.state.interpretation.latest_candidate_id
+        )
+        assert (
+            settled.state.interpretation.latest_interpretation_id
+            == pending.state.interpretation.latest_interpretation_id
+        )
+        assert stale_save.failed
+        assert stale_save.diagnostics["stale_publication"] is True
+        assert fresh_save.ok
+    finally:
+        release_preparation.set()
+        service.bids_montage_preparation.wait_for_idle(timeout=2.0)
+        service.close()
+
+
 def test_reload_recipe_blocks_missing_saved_eeg_file(tmp_path):
     service = ApplicationService()
     fif_path = _write_synthetic_raw_fif(tmp_path)

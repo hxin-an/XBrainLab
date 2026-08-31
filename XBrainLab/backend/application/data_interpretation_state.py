@@ -528,6 +528,7 @@ class DataInterpretationSessionState:
             has_preview=preview is not None,
             has_validation_decision=decision is not None,
             has_applied_interpretation=applied is not None,
+            has_pending_candidate=candidate_review is not None,
             has_recipe=self._latest_recipe_id is not None,
             latest_scan_id=self._latest_scan_id,
             latest_candidate_id=self._latest_candidate_id,
