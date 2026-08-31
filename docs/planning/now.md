@@ -4,140 +4,77 @@
 
 ## Current baseline
 
-PR #87 已由使用者對 exact head
-`b4fde30e25364f9ed42c25149129ca4010300629` 完成人工驗收並同意 merge，現已以 merge
-commit `8329316e6f0f1ae7196b2e8865b4debbfb349e20` 進入 `main`。B5 training early
-stopping、第一次設定 admission、分類式 Training Settings layout 與 full-edge scrollbar 均視為已完成；
-B6 不屬於本輪。開始本 plan 前，root worktree 只剩使用者擁有的 `settings.json` 修改，已合併的 B5
-worktree 已移除。
+PR #89 的 3D Epoch time control 與 PR #90 的 Recipe Save／Reload lifecycle 已由使用者對各自
+exact head 完成人工驗收並同意 merge。兩者合併後的 `main` 已通過 exact-source push CI：完整
+Linux suite、Windows／macOS lifecycle、Windows 100／125／150% DPI、default visual regression、
+human-like walkthrough 與 required public multi-dataset gate 均為 `completed/success`。
 
-本輪是穩定版收斂前最後兩個已知 product issue。完成後停止新增 feature，只接受可重現的 release blocker、
-資料正確性或 lifecycle defect。
+開始本 slice 前已清理所有舊 task worktree 與 `/tmp/xbrainlab*` 驗證殘留；唯一產品基線是同步
+`origin/main` 的 `main`。Repo-root `settings.json` 的本機修改仍由使用者擁有。本輪不再增加功能，而是
+將這個已驗證基線收斂成 `v0.9.0` Desktop Workflow Stabilization source release。
 
-## Roles and branch control
+## Audit conclusion
 
-- **Root coordinator**：唯一修改本 plan、管理 base／worktree、檢查 scope／owner／LOC、整合 reviewer
-  finding、執行 final gates、建立 PR、記錄 exact SHA／manual acceptance 與 merge。Root 不以作者自評取代
-  reviewer。
-- **Recipe implementer**：只修改 recipe save／reload lifecycle 及直接測試；不碰 3D UI、montage policy
-  或其他 Import 設計。
-- **3D time implementer**：只修改既有 Saliency 3D time controls 及直接測試／capture；不碰 backend
-  saliency engine、Recipe 或模型推論。
-- **Independent reviewer**：在各 lane freeze exact SHA 後審 observable contract、lifecycle、test quality
-  與 scope。Reviewer 不在受審 branch 直接實作 finding。
+Architecture、code、test/release、UI/data/performance 四個面向的唯讀審核沒有發現需要在 release 前
+進行大型重構的 source blocker：
 
-允許 `main + recipe worktree + 3D time worktree`，兩個作者互不重疊。兩條線可並行施工，但 handoff、PR
-merge 與 base reconciliation 由 root 串行；若實際觸及同一 production owner，立即停止並改為串行。
+- UI、Assistant 與 scripts 仍共用 `ApplicationService / Command API`；沒有第二套產品 workflow state。
+- Data Interpretation 維持 scan → review → validate → confirm → apply → optional recipe 的單一 owner chain。
+- 大型 coordinator 與 compatibility helpers 是維護債，不是目前可重現的 release defect；release 前拆分
+  反而會擴大 lifecycle regression 風險。
+- Import 的代表性產品路徑沒有量到 UI freeze，但較重三-run BIDS profile 仍可能超過 10 秒；本 release
+  不宣稱固定 latency SLA。
 
-## R1 — Recipe save and reload lifecycle correctness
+## Release claim
 
-### Problem and evidence
+候選版本為 `v0.9.0`，定位為 **Desktop Workflow Stabilization source baseline**：
 
-使用者在 BIDS import review 勾選 `Save recipe` 後按 `Confirm and Import`，產品顯示
-`Review Recipe Save Again`／`Workflow state changed while this confirmed action was pending`。Import
-可能已成功，但 recipe 沒有寫出。Source trace 顯示 Apply 會啟動非阻塞 BIDS electrode-layout preparation；
-該 advisory publication 可在 chained Save 的 review generation 建立後完成，讓 global publication gate
-把「interpretation 未變、只有 layout publication 改變」誤判為 stale。第一個紅測必須以受控 background
-montage completion 重現此 race；若不能重現，停止此子修正並回報，不以猜測放寬 gate。
+- reviewed EEG/BIDS import、label/event interpretation、recipe Save／Reload 與 Electrode Layout；
+- preprocess、epoch、dataset split、class weighting、early stopping、training、evaluation 與 saliency；
+- 3D epoch-relative time slider／numeric control；
+- local Granite Assistant 透過既有 18-action command surface 操作相同 workflow。
 
-另有一個已獨立重現的 reload defect：同一 ApplicationService 先 apply／save 一個 `safe` recipe，再 reload
-同一 recipe 時，rescan／preview／validation 都成功，但新的 candidate 因
-`has_applied_interpretation and not pending_confirmation` 被誤判為已套用，Apply 回
-`Interpretation has already been applied.`。`pending_confirmation` 是語意確認狀態，不是 candidate
-identity，不能繼續拿它判斷是否為新 review。
+下列內容明確不在 claim 內：
 
-### Outcome
+- Assistant Stable promotion：目前 bounded baseline 是 `22/24` product no-action、`6/7` clarification
+  execution boundary，不是 `24/24`、`7/7`；
+- signed Windows installer、一般使用者安裝／升級／移除流程；
+- 大型 BIDS 固定 10 秒內、任意資料集／模型全面支援；
+- portable Recipe：目前 JSON 依賴原始 source／label paths，資料搬移後需要未來獨立的 relocation flow；
+- scientific model、training、saliency 或 attribution validity certification。
 
-1. `Save recipe → Confirm and Import` 在 BIDS background electrode-layout publication 完成前後都保存
-   使用者剛套用的同一 interpretation，不出現假的 workflow-state-changed；真正的 interpretation／source
-   identity 改變仍 fail closed，不能靜默保存另一份資料。
-2. Reload 產生的新 `safe` candidate 可經既有 replacement confirmation 再 Apply；同一 candidate 的第二次
-   Apply 仍被阻止。
-3. Reload replacement 仍保留 raw-edit blockers、resource admission、content digest、SourceFileBoundary、
-   confirmation、transaction 與 rollback；BIDS montage 仍保持 advisory background lifecycle。
+## Scope and non-goals
 
-### Scope, deletion preference, and non-goals
+本 slice 只允許：
 
-- 重用既有 `DataInterpretationSessionState` candidate/applied identity、ApplicationService command spine、
-  capability policy、workflow projection 與 async coordinator；不建立第二套 state、owner、receipt 或
-  compatibility path。
-- Save race 優先採 scoped interpretation identity／重新綁定既有 authority，不移除真正的 stale-state
-  防護，不等待或取消 BIDS montage，也不把 recipe 與 electrode layout 綁成同一資料語意。
-- Reload 使用一個 derived `has_pending_candidate`（或同等既有 identity projection）；不修改
-  `pending_confirmation` 的語意、不清除已套用 state、不改 recipe JSON schema。
-- 不改可見 layout／文案、Assistant tool membership／model-facing schema、Import source scope、label／event
-  semantics、montage matching 或效能策略。
-- 預計最多 6 個既有 production files、owner delta `0`、net production `+80 LOC` 內；若需新增 public
-  command parameter／class、state machine、receipt，或淨增超標，root 必須先做 complexity／public-contract
-  review，不自動擴張。
+1. 將 package、runtime fallback 與 Commitizen version 單一同步為 `0.9.0`；
+2. 更新 version contract test；
+3. 將 README、CHANGELOG、`docs/current.md` 與本 plan 對齊同一 release claim；
+4. 產生 exact-candidate validation、bounded Assistant report、PR 與 manual-acceptance record。
 
-### TDD and focused validation
+不修改任何 workflow logic、UI layout/copy、Assistant prompt/tool contract、data semantics、performance path、
+owner、state machine、receipt 或 compatibility layer。Production 變更只限既有版本常數，owner delta `0`。
 
-先建立會對目前 source 失敗的 observable tests：
+## Roles
 
-1. BIDS Apply 完成後，在 Save admission 前只完成 background montage publication；applied interpretation
-   identity 不變時 recipe 必須寫出，且保存的是該 exact applied candidate。
-2. 在同一 decision window 真正替換／清除 applied interpretation 時，Save 必須維持 stale rejection且不寫檔。
-3. `apply → save → same-service reload(safe) → confirmed apply` 成功；capability 與 workflow next step 都是
-   Apply。
-4. 原 candidate 重複 Apply、未確認 replacement、downstream raw-edit blockers 與 forced replacement failure
-   rollback 維持原行為。
+- **Root coordinator**：維護本 plan、鎖 scope、核對 exact source／CI／artifacts、建立 PR，並在 manual
+  acceptance 後執行 merge、tag 與 release identity verification。
+- **Release implementer**：只改版本檔、version test 與四份 canonical release 文件；不碰產品行為。
+- **Independent reviewer**：核對所有版本字串、release claim、歷史 tag、tests 與 diff scope；不在作者
+  branch 補功能。
 
-實作後重跑相同紅測、既有 recipe round-trip／missing source／remap／resource preflight／Qt async tests，再跑
-canonical source-diverse Data gate。Handoff 手測至少涵蓋 BIDS Save recipe 實際產檔、fresh-session reload，
-以及 same-session safe reload replacement。
+## Validation and stop condition
 
-## V1 — Epoch 3D visible time control
+1. 版本一致性：`pyproject.toml` Poetry／Commitizen、`XBrainLab/config.py`、
+   `XBrainLab/__init__.py`、version contract test 全部是 `0.9.0`，且舊 `v0.8.0` history 不被覆寫。
+2. Focused gates：version test、Ruff、Basedpyright、architecture compliance、diff check、MkDocs strict 與
+   canonical docs/source audit。
+3. Exact candidate：PR head/upstream一致，所有 non-skipped GitHub checks `completed/success`；Assistant 保存
+   同一 exact source 的完整 bounded report，不把 known limitation 灌成 Stable PASS。
+4. Manual acceptance：使用者在 exact candidate 完成 source launch 與核心 workflow smoke，明確同意 merge。
+   Source 再改即失效。
+5. Merge 後重新核對 `main` merge commit；只有 user approval、version identity、CI 與 tag target 全部對應
+   時才建立 annotated `v0.9.0` tag／GitHub source release。
 
-### Problem and approved UI outcome
-
-3D Plot 已能用 slider 改變 selected epoch 的 saliency sample，但目前只顯示 `Epoch time (s):` 與無刻度
-slider，看不到或不能精確輸入當前時間。使用者已於 `2026-08-31` 明確批准下列可見 UI：
-
-```text
-Epoch time    [────────●────────]  [ -0.125 s ]
-```
-
-保留既有 slider，右側增加小型 `QDoubleSpinBox`。它顯示 selected epoch 的 epoch-relative seconds，可輸入、
-以箭頭調整，並回寫實際 nearest sample time；負 `tmin` 必須正確顯示。Slider 維持即時更新，spin box 使用
-`keyboardTracking=False`，只在完成輸入後 render。兩者使用 sample interval 作 step，換 scene 時重設為新
-engine range／initial time。
-
-### Scope and non-goals
-
-- 唯一 production owner 是既有 `Saliency3DPlotWidget`；預計只修改
-  `XBrainLab/ui/panels/visualization/saliency_views/plot_3d_view.py`，owner delta `0`、net production
-  `+60 LOC` 內。
-- 重用 engine 的 epoch-relative range、nearest-sample selection 與 scene scalar-update path；用既有
-  `QSignalBlocker` 防止 slider／spin 遞迴。
-- 不重新跑模型、不重建 PyVista interactor／mesh、不 reset camera，不修改 backend engine、ApplicationService、
-  Assistant tool、3D tab structure、色彩或其他 Visualization controls。
-- 不新增 card、toolbar、獨立時間 state 或共用 control framework。
-
-### TDD, visual evidence, and validation
-
-先在既有 `tests/unit/ui/visualization/test_saliency_3d_time_slider.py` 建立紅測，證明 scene ready 後 numeric
-control 必須可見且 range／step 正確；slider 更新 spin；spin 更新既有 scene time route並顯示 nearest
-sample；single-sample epoch 鎖定；scene replacement 重設；不重建 engine／interactor。既有 800／1180px
-geometry contract 更新為 label、slider、spin box 都可見、不重疊並保留邊界。
-
-實作後重跑相同測試與直接相鄰 3D engine／widget tests。Handoff 時擴充既有 Visualization native capture，
-由 root 肉眼檢查 normal／narrow、100／125／150% DPI 的 hierarchy、spacing、suffix、負值、focus 與 clipping；
-offscreen 不取代 Windows native 人工驗收。
-
-## Progression and stop condition
-
-1. Root 先提交本 plan，再由該共同 plan commit 建立 R1／V1 worktree；兩位作者各自完成 red→green 與
-   focused evidence。
-2. 每條 lane freeze exact clean/explained SHA 後由非作者 reviewer 審查。Finding 只有可重現的本 scope
-   contract、資料／lifecycle regression 或證據失真才能 blocker；其他列為後續，不擴大 diff。
-3. Root 依 `scripts/dev/handoff_gate_spec.py` 執行 applicable gates。若一條先合併，另一條 handoff 前必須
-   reconcile 最新 `main` 並重跑 source-sensitive evidence。
-4. R1 與 V1 分別建立 PR；所有 non-skipped checks 必須在 exact head `completed/success`。產品行為仍需使用者
-   對 exact SHA 手測通過並明確同意 merge，任何 source 變更使舊手測失效。
-5. 兩個 PR 合併後移除 task／plan worktree與已合併 local branches，確認唯一 `main` 最新且只保留使用者
-   `settings.json` 修改。此時本 plan 移除兩個 active slice，轉入 stable convergence：不啟動 B6 或新 feature，
-   只處理可重現 release blocker。
-
-任一 lane 若需要新 public tool contract、owner、state machine、receipt、超過 scope／LOC ceiling，或無法以
-紅測重現使用者 defect，標記 checkpoint 並停止該擴張方向；另一條獨立 lane 繼續，不因單線問題全部停工。
+若實作需要改產品邏輯、放寬 validation gate、隱藏 Assistant／performance limitation、建立 installer 或處理
+Recipe relocation，立即停止並另開獨立 plan／PR；不得把它們塞入 release metadata diff。
