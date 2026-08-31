@@ -226,7 +226,7 @@ class Raw:
         validate_type(event_id, dict, "event_id")
         if not (len(events.shape) == 2 and events.shape[1] == 3):
             raise ValueError("Events must be a 2D array with 3 columns (MNE format)")
-        if not self.is_raw():
+        if isinstance(self.mne_data, mne.BaseEpochs):
             if self.get_epochs_length() != len(events):
                 raise ValueError(
                     f"Number of events ({len(events)}) does not match "
@@ -287,9 +287,10 @@ class Raw:
 
     def get_tmin(self) -> float:
         """Return the tmin of :attr:`mne_data`."""
-        if self.is_raw():
+        mne_data = self.mne_data
+        if isinstance(mne_data, mne.io.BaseRaw):
             return 0.0
-        return self.mne_data.tmin
+        return mne_data.tmin
 
     def get_nchan(self) -> int:
         """Return the number of channels of :attr:`mne_data`."""
@@ -305,13 +306,17 @@ class Raw:
 
     def get_epochs_length(self) -> int:
         """Return the number of epochs."""
-        if self.is_raw():
+        mne_data = self.mne_data
+        if isinstance(mne_data, mne.io.BaseRaw):
             return 1
-        return len(self.mne_data.events)
+        return len(mne_data.events)
 
     def get_epoch_duration(self) -> int:
         """Return the duration of each epoch in samples."""
-        return self.mne_data.get_data().shape[-1]
+        mne_data = self.mne_data
+        if isinstance(mne_data, mne.io.BaseRaw):
+            return mne_data.n_times
+        return mne_data.get_data().shape[-1]
 
     def is_raw(self) -> bool:
         """Return whether the data is unsegmented raw data."""
@@ -326,10 +331,11 @@ class Raw:
             (events, event_id)
 
         """
+        mne_data = self.mne_data
         # epoch data
         try:
-            if self.mne_data.event_id:
-                return self.mne_data.events, self.mne_data.event_id
+            if isinstance(mne_data, mne.BaseEpochs) and mne_data.event_id:
+                return mne_data.events, mne_data.event_id
         except Exception:
             logger.debug(
                 "No epoch events available, trying stim channel",
@@ -337,13 +343,13 @@ class Raw:
             )
         # stim channel
         try:
-            events = mne.find_events(self.mne_data, verbose=False)
+            events = mne.find_events(mne_data, verbose=False)
             if len(events) == 0:
                 raise ValueError("No events found on stim channel")  # noqa: TRY301
             event_ids = {str(e): e for e in np.unique(events[:, -1])}
         except Exception:
             try:
-                return mne.events_from_annotations(self.mne_data, verbose=False)
+                return mne.events_from_annotations(mne_data, verbose=False)
             except Exception:
                 logger.debug(
                     "No events found via stim channel or annotations",

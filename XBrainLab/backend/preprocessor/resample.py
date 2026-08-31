@@ -1,5 +1,6 @@
 """Preprocessor for resampling EEG data to a new sampling frequency."""
 
+import mne
 import numpy as np
 
 from ..load_data import Raw
@@ -34,20 +35,15 @@ class Resample(PreprocessBase):
             sfreq: Target sampling frequency in Hz.
 
         """
-        preprocessed_data.get_mne().load_data()
+        mne_data = preprocessed_data.get_mne()
+        mne_data.load_data()
         self._require_finite_input(preprocessed_data)
-        if preprocessed_data.is_raw():
+        if isinstance(mne_data, mne.io.BaseRaw):
             events, event_id = preprocessed_data.get_event_list()
             old_sfreq = preprocessed_data.get_sfreq()
 
-            # MNE resample modifies in-place and returns the instance (usually)
-            # It does NOT reliably return (inst, events) tuple across versions/methods
-            # So we manually resample events if they exist
-
-            # So we manually resample events if they exist
-
-            new_mne = preprocessed_data.get_mne().resample(sfreq=sfreq, events=None)
-            preprocessed_data.set_mne(new_mne)
+            mne_data.resample(sfreq=sfreq)
+            preprocessed_data.set_mne(mne_data)
 
             if len(events) > 0:
                 ratio = sfreq / old_sfreq
@@ -56,14 +52,14 @@ class Resample(PreprocessBase):
                 new_events[:, 0] = np.round(new_events[:, 0] * ratio).astype(int)
                 preprocessed_data.set_event(new_events, event_id)
         else:
-            new_mne = preprocessed_data.get_mne().resample(sfreq=sfreq)
-            preprocessed_data.set_mne_and_wipe_events(new_mne)
+            mne_data.resample(sfreq=sfreq)
+            preprocessed_data.set_mne_and_wipe_events(mne_data)
 
     @staticmethod
     def _require_finite_input(preprocessed_data: Raw) -> None:
         """Reject non-finite input before FFT resampling contaminates all samples."""
         mne_data = preprocessed_data.get_mne()
-        if preprocessed_data.is_raw():
+        if isinstance(mne_data, mne.io.BaseRaw):
             channel_count = max(1, len(mne_data.ch_names))
             sample_chunk_size = max(1, 1_048_576 // channel_count)
             finite = all(
