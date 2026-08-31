@@ -776,6 +776,15 @@ def fit_figure_subplots_to_canvas(
     figure size. The embedded Qt canvas can be narrower, which otherwise clips
     axis labels or colorbar ticks even though the plot itself still renders.
     """
+    authored_margins = getattr(figure, "_xbrainlab_authored_subplot_margins", None)
+    if authored_margins is None:
+        params = figure.subplotpars
+        authored_margins = (params.left, params.right, params.bottom, params.top)
+        figure._xbrainlab_authored_subplot_margins = authored_margins
+    else:
+        left, right, bottom, top = authored_margins
+        figure.subplots_adjust(left=left, right=right, bottom=bottom, top=top)
+
     changed = False
     for _ in range(max_iterations):
         canvas.draw()
