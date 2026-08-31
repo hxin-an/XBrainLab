@@ -348,7 +348,7 @@ class TrainingSidebar(QWidget):
         self.btn_model.clicked.connect(self.select_model)
         config_layout.addWidget(self.btn_model)
 
-        self.btn_setting = QPushButton("Training Setting")
+        self.btn_setting = QPushButton("Training Settings")
         self.btn_setting.setStyleSheet(Stylesheets.SIDEBAR_BTN)
         self.btn_setting.clicked.connect(self.training_setting)
         config_layout.addWidget(self.btn_setting)
@@ -1216,6 +1216,30 @@ class TrainingSidebar(QWidget):
             return snapshot
         initial_option: dict[str, Any] = dict(snapshot)
         publication = get_application_view_publication(self)
+        dataset_state = getattr(getattr(publication, "state", None), "dataset", None)
+        materialized = getattr(dataset_state, "split_materialized", None) is True
+        preview_saved = getattr(dataset_state, "split_spec_saved", None) is True
+        split_authoritative = materialized or preview_saved
+        split_summary = (
+            getattr(
+                dataset_state,
+                "active_split_summary" if materialized else "split_preview_summary",
+                {},
+            )
+            if split_authoritative
+            else {}
+        )
+        validation_count = (
+            split_summary.get("val_count" if materialized else "validation_count")
+            if isinstance(split_summary, dict)
+            else None
+        )
+        if type(validation_count) is int and validation_count >= 0:
+            initial_option["validation_samples_available"] = validation_count > 0
+            initial_option["validation_sample_count"] = validation_count
+        elif dataset_state is not None:
+            initial_option["validation_samples_available"] = False
+            initial_option["validation_sample_count"] = 0
         epoch = getattr(getattr(publication, "state", None), "epoch", None)
         event_ids = getattr(epoch, "event_ids", None)
         if isinstance(event_ids, dict):
@@ -1630,6 +1654,13 @@ class TrainingSidebar(QWidget):
                 ),
                 custom_class_weights=dict(
                     getattr(option, "custom_class_weights", {}) or {}
+                ),
+                early_stopping_enabled=bool(
+                    getattr(option, "early_stopping_enabled", False)
+                ),
+                early_stopping_patience=getattr(option, "early_stopping_patience", 3),
+                early_stopping_min_delta=getattr(
+                    option, "early_stopping_min_delta", 0.0
                 ),
             )
         return attach_training_submission_provenance(

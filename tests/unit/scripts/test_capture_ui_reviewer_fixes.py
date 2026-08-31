@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QProxyStyle,
     QStyle,
+    QWidget,
 )
 
 import scripts.dev.capture_ui_reviewer_fixes as capture_script
@@ -71,17 +72,43 @@ def test_dispose_widget_tolerates_an_already_deleted_qt_wrapper(qapp) -> None:
     capture_script._dispose_widget(qapp, DeletedWidget())  # type: ignore[arg-type]
 
 
+def test_surface_capture_can_skip_scroll_clipped_child_references(
+    qapp,
+    tmp_path,
+) -> None:
+    surface = QWidget()
+    surface.resize(200, 100)
+    QLabel("Training Settings", surface).move(12, 12)
+    clipped_child = QLabel("Patience", surface)
+    clipped_child.setGeometry(12, 90, 100, 24)
+    screenshot = tmp_path / "surface.png"
+    try:
+        _settle(qapp, surface)
+        capture_script._save_capture(surface, screenshot)
+
+        with pytest.raises(RuntimeError, match="clipped outside"):
+            capture_script._assert_reviewer_surface_pixels(surface, screenshot)
+
+        capture_script._assert_reviewer_surface_pixels(
+            surface,
+            screenshot,
+            compare_child_references=False,
+        )
+    finally:
+        _dispose(qapp, surface)
+
+
 def test_surface_inventory_preserves_existing_artifacts_and_adds_review_states() -> (
     None
 ):
-    assert len(capture_script.LEGACY_REVIEWER_FIX_SURFACES) == 26
+    assert len(capture_script.LEGACY_REVIEWER_FIX_SURFACES) == 29
     assert "preprocess-filtering-toggled.png" in (
         capture_script.LEGACY_REVIEWER_FIX_SURFACES
     )
-    assert capture_script.REVIEWER_FIX_SURFACES[:26] == (
+    assert capture_script.REVIEWER_FIX_SURFACES[:29] == (
         capture_script.LEGACY_REVIEWER_FIX_SURFACES
     )
-    assert capture_script.REVIEWER_FIX_SURFACES[26:] == (
+    assert capture_script.REVIEWER_FIX_SURFACES[29:] == (
         "saliency-setting-empty.png",
         "saliency-setting-single-method.png",
         "saliency-setting-multi-method.png",
@@ -193,6 +220,21 @@ def test_extended_review_capture_writes_all_full_content_frames(qapp, tmp_path) 
             assert image.width >= 400
             assert image.height >= 200
             assert image.getbbox() is not None
+
+
+def test_training_setting_capture_writes_top_and_resource_preview_frames(
+    qapp,
+    tmp_path,
+) -> None:
+    checks = capture_script._capture_training_setting_surfaces(qapp, tmp_path)
+
+    assert len(checks) == len(capture_script.TRAINING_FONT_SCALES)
+    assert all(check["passed"] is True for check in checks)
+    for filename in (
+        *capture_script.TRAINING_SETTING_SURFACES.values(),
+        *capture_script.TRAINING_SETTING_RESOURCE_PREVIEW_SURFACES.values(),
+    ):
+        assert (tmp_path / filename).is_file()
 
 
 def test_real_fixture_preview_populates_time_and_psd_curves(qapp) -> None:
@@ -342,10 +384,18 @@ def test_training_setting_geometry_is_observed_at_supported_font_scales(
     assert check["passed"] is True
     assert check["overlap_count"] == 0
     assert check["clipped_text_count"] == 0
-    assert len(check["rows"]) == 10
+    assert len(check["rows"]) == 13
     assert any(row["label"] == "Class loss weighting" for row in check["rows"])
+    assert {row["label"] for row in check["rows"]} >= {
+        "Early stopping",
+        "Patience",
+        "Minimum improvement",
+    }
     assert check["set_button_count"] == 3
     assert check["footer"]["passed"] is True
+    assert check["scrollbar"]["right_gap_px"] <= 1
+    assert all(gap >= 18 for gap in check["scrollbar"]["set_horizontal_gaps_px"])
+    assert check["scrollbar"]["passed"] is True
     assert check["resource_preview"]["passed"] is True
     assert check["resource_preview"]["visible"] is True
     assert check["resource_preview"]["contained_in_viewport"] is True
@@ -363,6 +413,50 @@ def test_training_setting_geometry_is_observed_at_supported_font_scales(
     )
 
 
+@pytest.mark.parametrize("font_scale", capture_script.TRAINING_FONT_SCALES)
+@pytest.mark.parametrize("scrollbar_width", [None, 28])
+def test_training_setting_scrollbar_clearance_survives_wide_native_scrollbar(
+    qapp,
+    font_scale: float,
+    scrollbar_width: int | None,
+) -> None:
+    dialog = capture_script._training_setting_dialog()
+    try:
+        assert dialog.content_scroll is not None
+        scroll_bar = dialog.content_scroll.verticalScrollBar()
+        assert scroll_bar is not None
+        if scrollbar_width is not None:
+            scroll_bar.setFixedWidth(scrollbar_width)
+        capture_script._apply_training_setting_font_scale(dialog, font_scale)
+        _settle(qapp, dialog)
+        if scrollbar_width is not None:
+            assert scroll_bar.width() == scrollbar_width
+
+        check = capture_script._observe_training_setting_geometry(
+            dialog,
+            font_scale=font_scale,
+        )
+
+        if scrollbar_width is None:
+            dialog_layout = dialog.layout()
+            assert dialog_layout is not None
+            dialog_layout.setContentsMargins(18, 16, 18, 14)
+            dialog._fit_dialog_to_content()
+            _settle(qapp, dialog)
+            with pytest.raises(RuntimeError, match="scrollbar clearance"):
+                capture_script._observe_training_setting_geometry(
+                    dialog,
+                    font_scale=font_scale,
+                )
+    finally:
+        _dispose(qapp, dialog)
+
+    assert check["scrollbar"]["right_gap_px"] <= 1
+    assert all(gap >= 18 for gap in check["scrollbar"]["set_horizontal_gaps_px"])
+    if scrollbar_width is not None:
+        assert check["scrollbar"]["geometry"][2] == scrollbar_width
+
+
 def test_training_setting_bounds_inflated_native_combo_size_hint(qapp) -> None:
     dialog = capture_script._training_setting_dialog()
     try:
@@ -370,6 +464,8 @@ def test_training_setting_bounds_inflated_native_combo_size_hint(qapp) -> None:
         dialog.evaluation_combo.sizeHint = lambda: QSize(1200, 36)
         dialog._fit_dialog_to_content()
         _settle(qapp, dialog)
+        dialog.resize(dialog.width() + 32, dialog.height())
+        qapp.processEvents()
 
         check = capture_script._observe_training_setting_geometry(
             dialog,

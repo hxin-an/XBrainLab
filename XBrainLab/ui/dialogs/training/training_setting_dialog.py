@@ -10,6 +10,7 @@ from typing import Any, ClassVar
 
 from PyQt6.QtCore import QEvent, QRect, QSize, Qt, QTimer
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialogButtonBox,
     QFileDialog,
@@ -155,6 +156,12 @@ class TrainingSettingDialog(BaseDialog):
         self.lr_entry: QLineEdit | None = None
         self.checkpoint_entry: QLineEdit | None = None
         self.repeat_entry: QLineEdit | None = None
+        self.early_stopping_check: QCheckBox | None = None
+        self.early_stopping_patience_entry: QLineEdit | None = None
+        self.early_stopping_min_delta_entry: QLineEdit | None = None
+        self._validation_samples_available: bool | None = None
+        self._validation_sample_count: int | None = None
+        self.validation_status_label: QLabel | None = None
         self.opt_label: QLabel | None = None
         self.dev_label: QLabel | None = None
         self.output_dir_label: QLabel | None = None
@@ -166,8 +173,9 @@ class TrainingSettingDialog(BaseDialog):
         self.resource_preview_note: QLabel | None = None
         self.content_scroll: QScrollArea | None = None
         self.content_widget: QWidget | None = None
+        self.section_layouts: dict[str, QGridLayout] = {}
 
-        super().__init__(parent, title="Training Setting", controller=controller)
+        super().__init__(parent, title="Training Settings", controller=controller)
         self.setStyleSheet(dark_dialog_stylesheet())
         self._fit_dialog_to_content()
 
@@ -224,7 +232,6 @@ class TrainingSettingDialog(BaseDialog):
                     label.heightForWidth(label_column_width) + 4,
                 )
             )
-        form_layout = getattr(self, "form_layout", None)
         input_column_width = 240
         if self.evaluation_combo is not None:
             self.evaluation_combo.ensurePolished()
@@ -289,9 +296,9 @@ class TrainingSettingDialog(BaseDialog):
                 input_width_ceiling,
             )
             self.evaluation_combo.setMinimumWidth(input_column_width)
-        if form_layout is not None:
-            form_layout.setColumnMinimumWidth(0, label_column_width)
-            form_layout.setColumnMinimumWidth(1, input_column_width)
+        for section_layout in self.section_layouts.values():
+            section_layout.setColumnMinimumWidth(0, label_column_width)
+            section_layout.setColumnMinimumWidth(1, input_column_width)
         target_width = max(
             520,
             36 + label_column_width + 12 + input_column_width + 12 + 72,
@@ -318,6 +325,12 @@ class TrainingSettingDialog(BaseDialog):
             else self.sizeHint().height()
         )
         target_height = max(390, min(content_hint + 92, 620))
+        needs_vertical_scroll = content_hint + 92 > target_height
+        content_scroll = self.content_scroll
+        if needs_vertical_scroll and content_scroll is not None:
+            scroll_bar = content_scroll.verticalScrollBar()
+            if scroll_bar is not None:
+                target_width += scroll_bar.sizeHint().width()
         self.setMinimumSize(target_width, 390)
         self.resize(max(self.width(), target_width), max(self.height(), target_height))
 
@@ -355,6 +368,18 @@ class TrainingSettingDialog(BaseDialog):
                 self.checkpoint_entry.setText(str(opt.checkpoint_epoch))
             if self.repeat_entry:
                 self.repeat_entry.setText(str(opt.repeat_num))
+            if self.early_stopping_check:
+                self.early_stopping_check.setChecked(
+                    bool(getattr(opt, "early_stopping_enabled", False))
+                )
+            if self.early_stopping_patience_entry:
+                self.early_stopping_patience_entry.setText(
+                    str(getattr(opt, "early_stopping_patience", 3))
+                )
+            if self.early_stopping_min_delta_entry:
+                self.early_stopping_min_delta_entry.setText(
+                    str(getattr(opt, "early_stopping_min_delta", 0.0))
+                )
 
             # Restore optimizer
             self.optim = opt.optim
@@ -401,6 +426,16 @@ class TrainingSettingDialog(BaseDialog):
 
     def _load_settings_snapshot(self, option: dict[str, Any]) -> None:
         """Load saved settings from an ApplicationService state snapshot."""
+        validation_available = option.get("validation_samples_available")
+        self._validation_samples_available = (
+            validation_available if isinstance(validation_available, bool) else None
+        )
+        validation_count = option.get("validation_sample_count")
+        self._validation_sample_count = (
+            validation_count
+            if type(validation_count) is int and validation_count >= 0
+            else None
+        )
         if self.epoch_entry and option.get("epoch") is not None:
             self.epoch_entry.setText(str(option["epoch"]))
         if self.bs_entry and option.get("batch_size") is not None:
@@ -411,6 +446,19 @@ class TrainingSettingDialog(BaseDialog):
             self.checkpoint_entry.setText(str(option["checkpoint_epoch"]))
         if self.repeat_entry and option.get("repeat") is not None:
             self.repeat_entry.setText(str(option["repeat"]))
+        if self.early_stopping_check is not None:
+            self.early_stopping_check.setChecked(
+                bool(option.get("early_stopping_enabled", False))
+            )
+            self._sync_early_stopping_inputs()
+        if self.early_stopping_patience_entry is not None:
+            self.early_stopping_patience_entry.setText(
+                str(option.get("early_stopping_patience", 3))
+            )
+        if self.early_stopping_min_delta_entry is not None:
+            self.early_stopping_min_delta_entry.setText(
+                str(option.get("early_stopping_min_delta", 0.0))
+            )
 
         optimizer_name = option.get("optimizer")
         if optimizer_name:
@@ -675,7 +723,7 @@ class TrainingSettingDialog(BaseDialog):
     def init_ui(self):
         """Initialize the dialog UI with training parameter controls."""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 16, 18, 14)
+        layout.setContentsMargins(18, 16, 0, 14)
         layout.setSpacing(12)
 
         content_scroll = QScrollArea(self)
@@ -697,27 +745,62 @@ class TrainingSettingDialog(BaseDialog):
         self.content_widget = content_widget
         content_widget.setObjectName("TrainingSettingContent")
         content_layout = QVBoxLayout(content_widget)
-        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setContentsMargins(0, 0, 18, 0)
         content_layout.setSpacing(12)
 
-        form_layout = QGridLayout()
-        form_layout.setContentsMargins(0, 0, 0, 0)
-        form_layout.setHorizontalSpacing(12)
-        form_layout.setVerticalSpacing(9)
-        form_layout.setColumnMinimumWidth(0, 128)
-        form_layout.setColumnStretch(1, 1)
-        self.form_layout = form_layout
+        page_header = QLabel("Training Settings")
+        page_header.setObjectName("TrainingSettingPageHeader")
+        page_header.setStyleSheet("font-size: 18px; font-weight: 600; color: #eef1f4;")
+        content_layout.addWidget(page_header)
+        page_subtitle = QLabel(
+            "Configure training, validation, runtime, and output preferences."
+        )
+        page_subtitle.setObjectName("TrainingSettingPageSubtitle")
+        page_subtitle.setWordWrap(True)
+        page_subtitle.setStyleSheet("color: #b9c6d4; background: transparent;")
+        content_layout.addWidget(page_subtitle)
 
-        def add_simple_row(row: int, label: str, widget) -> QLabel:
+        def add_section(title: str) -> QGridLayout:
+            section = QFrame()
+            section.setObjectName("TrainingSettingSectionCard")
+            section.setStyleSheet(
+                "QFrame#TrainingSettingSectionCard { background: #222426; "
+                "border: 1px solid #3b3f45; border-radius: 6px; }"
+            )
+            section_box = QVBoxLayout(section)
+            section_box.setContentsMargins(12, 9, 12, 10)
+            section_box.setSpacing(8)
+            header = QLabel(title)
+            header.setObjectName("TrainingSettingSectionHeader")
+            header.setStyleSheet("font-weight: 600; color: #eef1f4;")
+            section_box.addWidget(header)
+            section_layout = QGridLayout()
+            section_layout.setContentsMargins(0, 0, 0, 0)
+            section_layout.setHorizontalSpacing(12)
+            section_layout.setVerticalSpacing(9)
+            section_layout.setColumnMinimumWidth(0, 128)
+            section_layout.setColumnStretch(1, 1)
+            section_box.addLayout(section_layout)
+            content_layout.addWidget(section)
+            self.section_layouts[title] = section_layout
+            return section_layout
+
+        training_run_layout = add_section("Training Run")
+        optimization_layout = add_section("Optimization")
+        validation_layout = add_section("Validation & Checkpoints")
+        runtime_layout = add_section("Runtime & Output")
+
+        def add_simple_row(layout: QGridLayout, row: int, label: str, widget) -> QLabel:
             lbl = QLabel(label)
             lbl.setObjectName("TrainingSettingLabel")
             lbl.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-            form_layout.addWidget(lbl, row, 0)
+            layout.addWidget(lbl, row, 0)
             widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-            form_layout.addWidget(widget, row, 1)
+            layout.addWidget(widget, row, 1)
             return lbl
 
         def add_set_row(
+            layout: QGridLayout,
             row: int,
             label: str,
             value_label: QLabel,
@@ -735,25 +818,25 @@ class TrainingSettingDialog(BaseDialog):
             button.setText("Set")
             button.setFixedWidth(72)
             button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-            form_layout.addWidget(lbl, row, 0)
-            form_layout.addWidget(value_label, row, 1)
-            form_layout.addWidget(button, row, 2)
+            layout.addWidget(lbl, row, 0)
+            layout.addWidget(value_label, row, 1)
+            layout.addWidget(button, row, 2)
 
         # Entries with default values for easier testing
         epoch_entry = QLineEdit("10")
         self.epoch_entry = epoch_entry
         epoch_entry.setObjectName("TrainingEpochsInput")
-        add_simple_row(0, "Training epochs", epoch_entry)
+        add_simple_row(training_run_layout, 0, "Training epochs", epoch_entry)
 
         bs_entry = QLineEdit("32")
         self.bs_entry = bs_entry
         bs_entry.setObjectName("TrainingBatchSizeInput")
-        add_simple_row(1, "Batch size", bs_entry)
+        add_simple_row(runtime_layout, 0, "Batch size", bs_entry)
 
         lr_entry = QLineEdit("0.001")
         self.lr_entry = lr_entry
         lr_entry.setObjectName("TrainingLearningRateInput")
-        add_simple_row(2, "Learning rate", lr_entry)
+        add_simple_row(optimization_layout, 0, "Learning rate", lr_entry)
 
         # Optimizer
         opt_label = QLabel("")
@@ -761,7 +844,7 @@ class TrainingSettingDialog(BaseDialog):
         opt_label.setObjectName("TrainingOptimizerValue")
         self.opt_btn = QPushButton("Set")
         self.opt_btn.clicked.connect(self.set_optimizer)
-        add_set_row(3, "Optimizer", opt_label, self.opt_btn)
+        add_set_row(optimization_layout, 1, "Optimizer", opt_label, self.opt_btn)
 
         # Device
         dev_label = QLabel("")
@@ -769,7 +852,7 @@ class TrainingSettingDialog(BaseDialog):
         dev_label.setObjectName("TrainingDeviceValue")
         self.dev_btn = QPushButton("Set")
         self.dev_btn.clicked.connect(self.set_device)
-        add_set_row(4, "Device", dev_label, self.dev_btn)
+        add_set_row(runtime_layout, 1, "Device", dev_label, self.dev_btn)
 
         # Output Directory
         output_dir_label = QLabel("")
@@ -779,11 +862,14 @@ class TrainingSettingDialog(BaseDialog):
         )
         self.out_btn = QPushButton("Set")
         self.out_btn.clicked.connect(self.set_output_dir)
-        add_set_row(5, "Output directory", output_dir_label, self.out_btn)
+        add_set_row(
+            runtime_layout, 2, "Output directory", output_dir_label, self.out_btn
+        )
 
         self.checkpoint_entry = QLineEdit("0")
         add_simple_row(
-            6,
+            validation_layout,
+            4,
             "Checkpoint interval (training epochs)",
             self.checkpoint_entry,
         )
@@ -801,7 +887,25 @@ class TrainingSettingDialog(BaseDialog):
                 option,
             )
         self._set_evaluation_option(TrainingEvaluation.VAL_LOSS)
-        add_simple_row(7, "Evaluation", evaluation_combo)
+        evaluation_combo.currentIndexChanged.connect(self._sync_early_stopping_inputs)
+        add_simple_row(validation_layout, 0, "Evaluation", evaluation_combo)
+
+        early_stopping = QCheckBox("Enabled")
+        self.early_stopping_check = early_stopping
+        early_stopping.toggled.connect(self._sync_early_stopping_inputs)
+        add_simple_row(validation_layout, 1, "Early stopping", early_stopping)
+        patience = QLineEdit("3")
+        self.early_stopping_patience_entry = patience
+        add_simple_row(validation_layout, 2, "Patience", patience)
+        min_delta = QLineEdit("0")
+        self.early_stopping_min_delta_entry = min_delta
+        add_simple_row(validation_layout, 3, "Minimum improvement", min_delta)
+        validation_status = QLabel("")
+        validation_status.setObjectName("TrainingValidationStatus")
+        validation_status.setWordWrap(True)
+        validation_status.setStyleSheet("color: #b9c6d4; background: transparent;")
+        self.validation_status_label = validation_status
+        validation_layout.addWidget(validation_status, 5, 0, 1, 3)
 
         class_weight_combo = QComboBox()
         self.class_weight_combo = class_weight_combo
@@ -811,14 +915,16 @@ class TrainingSettingDialog(BaseDialog):
             (ClassWeightMode.CUSTOM, "Custom"),
         ):
             class_weight_combo.addItem(label, mode.value)
-        add_simple_row(8, "Class loss weighting", class_weight_combo)
+        add_simple_row(
+            optimization_layout, 2, "Class loss weighting", class_weight_combo
+        )
         class_weight_combo.currentIndexChanged.connect(self._sync_class_weight_rows)
         class_map = (
             self.initial_option.get("class_map", {})
             if isinstance(self.initial_option, dict)
             else {}
         )
-        row = 9
+        row = 3
         if isinstance(class_map, dict):
             for _, name in sorted(class_map.items()):
                 if not isinstance(name, str) or not name.strip():
@@ -826,14 +932,16 @@ class TrainingSettingDialog(BaseDialog):
                 entry = QLineEdit("1.0")
                 entry.setObjectName(f"TrainingClassWeightInput_{name}")
                 self.class_weight_entries[name] = entry
-                multiplier_label = add_simple_row(row, f"{name} multiplier", entry)
+                multiplier_label = add_simple_row(
+                    optimization_layout, row, f"{name} multiplier", entry
+                )
                 self._class_weight_row_widgets.extend((multiplier_label, entry))
                 row += 1
 
         repeat_entry = QLineEdit("1")
         self.repeat_entry = repeat_entry
         repeat_entry.setObjectName("TrainingRepeatsInput")
-        add_simple_row(row, "Repeat number", repeat_entry)
+        add_simple_row(training_run_layout, 1, "Repeat number", repeat_entry)
 
         resource_preview_note = QLabel("")
         self.resource_preview_note = resource_preview_note
@@ -845,9 +953,7 @@ class TrainingSettingDialog(BaseDialog):
             "}"
         )
         resource_preview_note.hide()
-        content_layout.addWidget(resource_preview_note)
-
-        content_layout.addLayout(form_layout)
+        runtime_layout.addWidget(resource_preview_note, 3, 0, 1, 3)
 
         content_layout.addStretch(1)
         content_scroll.setWidget(content_widget)
@@ -855,16 +961,21 @@ class TrainingSettingDialog(BaseDialog):
 
         # Buttons
         footer = QHBoxLayout()
+        footer.setContentsMargins(0, 0, 18, 0)
         footer.addStretch(1)
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
         normalize_dialog_button_box(buttons)
+        save_button = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        if save_button is not None:
+            save_button.setText("Save Settings")
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         footer.addWidget(buttons)
         layout.addLayout(footer)
         self._sync_class_weight_rows()
+        self._sync_early_stopping_inputs()
 
     def _sync_class_weight_rows(self, _index: int | None = None) -> None:
         """Show class multipliers only when their Custom policy uses them."""
@@ -874,6 +985,54 @@ class TrainingSettingDialog(BaseDialog):
         )
         for widget in self._class_weight_row_widgets:
             widget.setVisible(custom)
+
+    def _sync_early_stopping_inputs(self, _value: object = None) -> None:
+        """Keep an invalid Last epoch combination out of the visible form."""
+        validation_available = self._validation_samples_available is True
+        valid_evaluation = bool(
+            self.evaluation_combo is not None
+            and self.evaluation_combo.currentData() is not TrainingEvaluation.LAST_EPOCH
+        )
+        enabled = bool(
+            self.early_stopping_check is not None
+            and self.early_stopping_check.isChecked()
+            and validation_available
+            and valid_evaluation
+        )
+        unavailable = not validation_available
+        if (
+            self.evaluation_combo is not None
+            and self.evaluation_combo.currentData() is TrainingEvaluation.LAST_EPOCH
+            and self.early_stopping_check is not None
+        ):
+            self.early_stopping_check.setChecked(False)
+        if unavailable and self.early_stopping_check is not None:
+            self.early_stopping_check.setChecked(False)
+        if self.early_stopping_check is not None:
+            self.early_stopping_check.setEnabled(valid_evaluation and not unavailable)
+        if self.validation_status_label is not None:
+            if not valid_evaluation:
+                self.validation_status_label.setText(
+                    "Select a validation-based Evaluation option to enable early "
+                    "stopping."
+                )
+            elif validation_available:
+                count = self._validation_sample_count
+                suffix = f" · {count} samples" if count is not None else ""
+                self.validation_status_label.setText(
+                    f"Validation split configured{suffix}"
+                )
+            else:
+                self.validation_status_label.setText(
+                    "Close this dialog and configure a validation split in Data "
+                    "Splitting to enable early stopping."
+                )
+        for entry in (
+            self.early_stopping_patience_entry,
+            self.early_stopping_min_delta_entry,
+        ):
+            if entry is not None:
+                entry.setEnabled(enabled)
 
     def set_optimizer(self):
         """Open the optimizer setting dialog and apply the result."""
@@ -1025,23 +1184,7 @@ class TrainingSettingDialog(BaseDialog):
             self.resource_preview_note.show()
             self.resource_preview_note.updateGeometry()
             self._fit_dialog_to_content()
-            self._reveal_resource_preview_note()
-            QTimer.singleShot(0, self._reveal_resource_preview_note)
         return True
-
-    def _reveal_resource_preview_note(self) -> None:
-        """Keep an automatic draft change and its explanation visible together."""
-        note = self.resource_preview_note
-        scroll = self.content_scroll
-        if note is None or scroll is None or note.isHidden():
-            return
-        layout = self.layout()
-        if layout is not None:
-            layout.activate()
-        content_layout = self.content_widget.layout() if self.content_widget else None
-        if content_layout is not None:
-            content_layout.activate()
-        scroll.ensureWidgetVisible(note, 0, 8)
 
     def set_output_dir(self):
         """Open a directory picker for the training output path."""
@@ -1074,6 +1217,9 @@ class TrainingSettingDialog(BaseDialog):
             or not self.lr_entry
             or not self.checkpoint_entry
             or not self.repeat_entry
+            or not self.early_stopping_check
+            or not self.early_stopping_patience_entry
+            or not self.early_stopping_min_delta_entry
         ):
             return
 
@@ -1091,7 +1237,9 @@ class TrainingSettingDialog(BaseDialog):
                 bs = int(self.bs_entry.text())
                 ckpt = int(self.checkpoint_entry.text())
                 repeat = int(self.repeat_entry.text())
+                early_patience = int(self.early_stopping_patience_entry.text())
                 lr = float(self.lr_entry.text())
+                early_min_delta = float(self.early_stopping_min_delta_entry.text())
             except ValueError as e:
                 msg = (
                     "Training epochs, Batch Size, Checkpoint, Repeat must be "
@@ -1131,6 +1279,9 @@ class TrainingSettingDialog(BaseDialog):
                     if isinstance(self.initial_option, dict)
                     else None
                 ),
+                early_stopping_enabled=self.early_stopping_check.isChecked(),
+                early_stopping_patience=early_patience,
+                early_stopping_min_delta=early_min_delta,
             )
             super().accept()
         except ValueError:

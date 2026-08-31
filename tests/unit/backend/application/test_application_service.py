@@ -69,7 +69,7 @@ from XBrainLab.backend.application.bids_montage_preparation import (
     RecordingMontagePreparation,
 )
 from XBrainLab.backend.application.capabilities import build_capability_policy
-from XBrainLab.backend.application.errors import ApplicationError
+from XBrainLab.backend.application.errors import ApplicationError, PreconditionError
 from XBrainLab.backend.application.evaluation_render import (
     EvaluationCrossFoldIdentity,
     EvaluationPlanIdentity,
@@ -772,6 +772,42 @@ def test_lazy_training_service_import_configures_after_epoch_preparation() -> No
     assert configured.state.training.training_option is not None
     assert configured.state.training.training_option["batch_size"] == 2
     assert service.training_commands._service_instance is not None
+    service.close()
+
+
+def test_configure_training_rejects_early_stopping_without_proven_validation() -> None:
+    service = ApplicationService(Study())
+
+    result = service.execute(
+        ConfigureTrainingCommand(
+            model_name="EEGNet",
+            model_params={"f1": 2, "f2": 4, "d": 1},
+            epoch=2,
+            batch_size=2,
+            learning_rate=0.001,
+            optimizer="Adam",
+            device="cpu",
+            evaluation_option="Best validation loss",
+            early_stopping_enabled=True,
+        )
+    )
+
+    assert result.failed is True
+    assert "Early stopping requires a validation split" in result.message
+    assert service.study.training_manager.training_option is None
+    service.close()
+
+
+def test_start_admission_rejects_stale_early_stopping_without_validation() -> None:
+    service = ApplicationService(Study())
+    option = _valid_training_option()
+    option.evaluation_option = TrainingEvaluation.VAL_LOSS
+    option.early_stopping_enabled = True
+    service.study.set_training_option(option)
+    service.study.datasets = []
+
+    with pytest.raises(PreconditionError, match="validation split"):
+        service.training_commands._service()._validate_early_stopping_admission()
     service.close()
 
 

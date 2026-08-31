@@ -111,34 +111,14 @@ G1 已完成並合併。它只移除 dedicated `assistant-runtime` domain 內重
 `pytest-forked`，保留 owned domain process、16 個案例、teardown assertions、hard timeout、JUnit、
 coverage 與 completion attestation。後續 lane 不再重開這個 scope。
 
-## Gate repair G2 — basedpyright zero baseline (active B5 handoff precondition)
+## Gate repair G2 — completed in PR #88
 
-**Problem and evidence.** Exact `main` `f3690e8dd942a6e5080d8de03810d71bf2a2615c` 與 frozen
-B5 head `db8fb7538c4c209d72ec2eee4421b8392c351e0d` 都只觀察到相同四項 Basedpyright error：
-training snapshot 的 enum／string projection、TrainRecord class-weighting nested mapping、Assistant
-direct bandpass value narrowing，以及 Montage Picker optional combo narrowing。B5 已移除自己新增的十項
-diagnostic，沒有造成這四項；但 checked-in baseline 仍記錄舊 source 的 81 項已消失 diagnostics，故
-canonical gate 會 fail closed，也已失去可信的 current debt identity。
-
-**Outcome and scope.** 從上述 exact `main` 建立獨立 pure-quality branch；只在四個既有函式內做局部
-narrowing，維持 runtime、Assistant admission、class-weighting criterion、Montage interaction 與可見 UI
-完全不變。Owners before／after 不變，production scope 最多四個既有 files、預計 net `+20 LOC` 以內，
-不新增 module、class、helper abstraction、fallback 或 suppression。使用者已於 `2026-08-31` 明確允許
-包含 `XBrainLab/ui/dialogs/visualization/montage_picker_dialog.py` 的 type-only 修正；不授權其他 UI layout、
-文案或互動變更。
-
-**Repair and evidence.** 先以目前四項 exact diagnostics 加上既有 training snapshot／class weighting、
-direct-parameter verifier 與 Montage apply-enabled tests 建立 passing characterization baseline；再做最小
-局部修正並重跑相同 tests。第一個 commit 必須讓 Basedpyright observed diagnostics 成為 `0`。第二個
-baseline-only commit 才能以第一個 commit SHA 更新 `source_sha_parts` 並將 diagnostics 清為空，避免
-循環 identity 或把四項錯誤 ratify 成 allowlist。`test_run_basedpyright_regression.py` 必須 exact assert 新
-baseline source、locked `1.39.2` 與 zero diagnostics；Ruff、diff check、canonical Basedpyright gate、
-相關 UI test 及 independent review 都要通過。
-
-**Non-goals and stop.** 不更動 analyzer version／exclude、不卡 B5 以外的 debt cleanup、不更新 B5 source，
-也不順手重構四個 owner。若任一修正需要可見 UI／runtime 語意改變、新 abstraction，或 production net
-超過 `+20 LOC`，立即停止重新規劃。G2 經 PR 合併後清理 worktree，再將 B5 rebase 到新 `main` 並使所有
-exact-SHA approval／evidence 失效後重跑；G2 本身不得 merge B5 或代替 Windows manual acceptance。
+G2 已在 exact head `e61a0c6452e4e084b7049cc9724298827f7bdf3b` 完成，並以 merge commit
+`b1d84e096e1374125a358f1cd75f24c9deaba450` 進入 `main`。Basedpyright 維持鎖定 `1.39.2`，
+zero-debt baseline 的 source origin 是 `dace4e7324eea80d296ebcabd67b8d6fb8c40935`；canonical gate
+必須同時維持 baseline `0`、observed `0`，且不以 suppression、exclude 或 config 放寬換取通過。
+後續 clean PR 只需維持 zero gate，不因 source SHA 改變而重寫這個歷史 baseline origin。B5 已 rebase
+到上述 merge commit，仍須以自己的 exact final SHA 通過 gates 與 Windows manual acceptance。
 
 ## Lane B — product correctness and training
 
@@ -254,6 +234,71 @@ Focused evidence 要覆蓋三種 metric direction、strict threshold／tie disti
 undefined AUC、per-repeat reset／continuation、cancel priority、best-checkpoint reload、successful terminal、
 v1／v2→v3、snapshot reopen、History presentation、disabled equivalence 與 B4 validation isolation；再跑
 Training Settings capture、training source-diverse gate 與 exact-SHA Windows 手測。
+
+本輪 CI blocker repair 已完成：兩個既有 backend snapshot assertion 納入三個 default；Training Settings 在
+150% 且內容超過高度上限時，必須以 native vertical scrollbar 寬度預留 dialog 寬度，避免 viewport 吃掉
+input column。focused validation 包含 13-row capture（明確三個 new labels）及既有 inflated-native-combo
+strict guard。後續 G2 已合併全域零診斷 gate；B5 rebase 後必須維持 Basedpyright baseline `0`、
+observed `0`。
+
+#### B5 manual-blocker repair (active)
+
+Exact candidate `0e1af06f492b05a0cea6820e62b09de6ab5bfc56` 的自動證據已完成，但首次設定仍有一個
+可重現的手測 blocker：`SaveDatasetSplitCommand` 已保存 receipt-validated split preview，實際 dataset
+materialization 則延後到 Start Training；Training Settings projection 與 Configure admission 卻只讀尚未
+存在的 active validation mask。結果是使用者已儲存含 validation samples 的 split，第一次開啟設定仍無法
+勾選 Early stopping，形成 Configure 必須等 Start、Start 又必須等 Configure 的循環。這是產品 defect，
+不是缺少使用者操作；上述 exact source 的舊手測／handoff 證據在後續 product source 改動後失效。
+
+本 repair 的 observable outcome 是：尚未 materialize、但已保存且驗證成功的 split，以既有
+`split_preview_summary.validation_count` 支撐 Configure draft；已 materialize 時只讀 authoritative active
+`val_count`。真正 Start boundary 在 candidate commit 後仍逐一驗證實際 dataset `val_mask`，不得以 preview
+fallback、舊 active dataset 或 UI boolean 取代。missing、invalid 或 zero validation count 一律 fail closed，
+Configure 不為此提前 materialize dataset。
+
+同一 repair 將既有 Training Settings 由單一長表單原地重排為一個可捲動頁面的四個常駐 neutral section：
+`Training Run`、`Optimization`、`Validation & Checkpoints`、`Runtime & Output`。不使用 tabs、accordion、
+stage switching、藍色 category fill 或 nested card；固定 footer 顯示 `Cancel` 與 `Save Settings`。Early stopping
+可用時顯示 validation sample count；無 split／zero samples 或 Last Epoch 時，在同一 section 以 muted inline
+文字說明，沒有 warning modal、直接導頁或第二套 admission policy。Patience 與 Minimum improvement 保持
+可見，只在 toggle 開啟時 enabled；預設仍為 disabled、`3`、`0`。Custom class multiplier 與 resource preview
+保留在各自 section。使用者已於 `2026-08-31` 明確確認上述分類、單頁互動、文案方向及實作，UI authorization
+有效。`docs/target/training.md` 仍寫 patience `5` 的舊值，本 slice 校準為既有已批准且已實作的 `3`。
+
+Scope ceiling 是三個既有 production files：Training Settings dialog、Training sidebar projection、training
+application service；tests、既有 capture owner 與上述 target truth 可直接配套更新。Owners before／after 均為
+既有 dialog／sidebar projection／`TrainingCommandService`，owner delta `0`；不新增 production module、public
+class、command、tool、schema、state machine、receipt 或 shared card framework。優先刪除／替換 flat form
+layout 與只讀 active mask 的 admission 分支，不保留平行 UI／compatibility path。Production net delta 上限
+`+200 LOC`，超過或觸及第四個 production file 即停止做 complexity review；rollback 是 revert 本 repair
+commits，回到 `0e1af06f` 的既有 B5 behavior。
+
+先以最小紅測證明：(1) saved verified preview、尚無 runtime dataset 時 Configure 可接受 early stopping；
+(2) sidebar 能從同一 preview 呈現可用狀態；(3) 現有 flat dialog 尚未提供四個 section 與 inline blocked state。
+實作後重跑同一組測試，並覆蓋 materialized active split、pending new preview 不誤讀 old masks、missing／zero／
+invalid preview、Last Epoch、Start 的 stale／empty actual mask fail-closed、toggle round-trip、Custom multiplier
+及 resource preview。完成 focused Ruff／Basedpyright／architecture／docs，更新既有 Training Settings capture
+在 normal、narrow 與 100／125／150% 的 exact-source artifacts，主 agent 肉眼檢查 hierarchy、spacing、scroll、
+disabled／available copy；handoff 前再跑 canonical source-diverse training gate與所有 applicable exact-head CI。
+
+第二次 native 手測在 exact `19d8d6bdf34f477c9cebc293e1c3a3b396225f35` 發現同一 dialog 的可見
+layout blocker：vertical scrollbar 右界固定比 dialog 右界內縮 `18px`，三個 `Set` 到 scrollbar 只有
+`13px`，使用者觀察到滑桿未貼最右側且會與 `Set` 重疊。Root 以 WSLg／XCB 與 geometry probe 重現
+相同 `18px`／`13px` 量測；既有 capture 只檢查 `Set` 與 value label，沒有保護 scrollbar boundary。
+使用者已於 `2026-08-31` 確認採用 full-edge scrollbar：只把既有右側 `18px` 從 scroll area 外 margin
+搬到 scroll content，footer 自有 `18px` right margin；卡片、欄位、`Set` 與 footer 保持原位，scrollbar
+移到 dialog 最右界，`Set` 到 scrollbar 預期約 `31px`。本 repair 只修改既有 Training Settings dialog，
+不擴張至其他 dialog，也不改 training／resource-preview 行為、owner、state 或 public contract。
+
+先以 observable geometry red test 鎖定 scrollbar right gap 必須不超過 `1px`、所有 `Set` 不得相交且
+最小水平間距至少 `18px`；再覆蓋 100／125／150% 與較寬 native scrollbar。既有 initial-top、bottom
+resource preview、fixed footer 與 Early stopping tests 必須維持。新 source 使 `19d8d6bd` 的 UI／CI／
+manual evidence 失效；完成後須重生 exact-source offscreen／XCB artifacts、獨立 review、push、全部
+non-skipped CI，再交使用者以新 exact SHA 重測。
+
+Stop condition：上述 authority 與 UI observable tests 都綠、production scope／LOC 沒超標、獨立 reviewer 沒有
+in-scope blocker、同一 clean/explained pushed SHA 的 applicable gates 完成，才交付使用者以 native product source
+手測。未取得該 exact SHA 的手測通過與 merge 同意前，PR #87 保持 open，不開始 B6、不 merge。
 
 ### B6 candidate. Bounded training search (not active)
 

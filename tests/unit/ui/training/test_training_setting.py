@@ -1,3 +1,4 @@
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -7,6 +8,7 @@ from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QApplication,
     QDialogButtonBox,
+    QFrame,
     QLabel,
     QScrollArea,
     QWidget,
@@ -75,6 +77,79 @@ def _recommendation(
 
 
 class TestTrainingSetting:
+    def test_uses_four_category_sections_and_inline_validation_state(self, qtbot):
+        dialog = TrainingSettingDialog(
+            None,
+            None,
+            initial_option={"validation_samples_available": False},
+        )
+        qtbot.addWidget(dialog)
+
+        section_titles = {
+            label.text()
+            for label in dialog.findChildren(QLabel, "TrainingSettingSectionHeader")
+        }
+        text = {label.text() for label in dialog.findChildren(QLabel)}
+
+        assert "Training Settings" in text
+        assert (
+            "Configure training, validation, runtime, and output preferences."
+        ) in text
+        assert {
+            "Training Run",
+            "Optimization",
+            "Validation & Checkpoints",
+            "Runtime & Output",
+        } <= section_titles
+        assert (
+            "Close this dialog and configure a validation split in Data Splitting "
+            "to enable early stopping."
+        ) in text
+
+        validation_layout = dialog.section_layouts["Validation & Checkpoints"]
+        validation_labels = [
+            cast(QLabel, validation_layout.itemAtPosition(row, 0).widget()).text()
+            for row in range(5)
+        ]
+        assert validation_labels == [
+            "Evaluation",
+            "Early stopping",
+            "Patience",
+            "Minimum improvement",
+            "Checkpoint interval (training epochs)",
+        ]
+
+        runtime_layout = dialog.section_layouts["Runtime & Output"]
+        runtime_labels = [
+            cast(QLabel, runtime_layout.itemAtPosition(row, 0).widget()).text()
+            for row in range(3)
+        ]
+        assert runtime_labels == ["Batch size", "Device", "Output directory"]
+        assert dialog.resource_preview_note is not None
+        assert (
+            runtime_layout.itemAtPosition(3, 0).widget() is dialog.resource_preview_note
+        )
+        section_cards = dialog.findChildren(QFrame, "TrainingSettingSectionCard")
+        assert len(section_cards) == 4
+        assert all(
+            "QFrame#TrainingSettingSectionCard" in card.styleSheet()
+            and "QFrame {" not in card.styleSheet()
+            for card in section_cards
+        )
+
+    def test_early_stopping_is_disabled_without_validation_samples(self, qtbot):
+        dialog = TrainingSettingDialog(
+            None,
+            None,
+            initial_option={"validation_samples_available": False},
+        )
+        qtbot.addWidget(dialog)
+
+        assert dialog.early_stopping_check is not None
+        assert dialog.early_stopping_check.isEnabled() is False
+        assert dialog.early_stopping_patience_entry is not None
+        assert dialog.early_stopping_patience_entry.isEnabled() is False
+
     @pytest.fixture
     def window(self, qtbot):
         mock_controller = MagicMock()
@@ -92,7 +167,7 @@ class TestTrainingSetting:
             yield window
 
     def test_init(self, window):
-        assert window.windowTitle() == "Training Setting"
+        assert window.windowTitle() == "Training Settings"
         # Verify default values are set
         assert window.epoch_entry.text() == "10"
         assert window.bs_entry.text() == "32"
@@ -136,8 +211,12 @@ class TestTrainingSetting:
 
         assert buttons.layoutDirection() is Qt.LayoutDirection.LeftToRight
         assert cancel_button.geometry().right() < ok_button.geometry().left()
+        dialog_layout = window.layout()
+        assert dialog_layout is not None
+        footer = dialog_layout.itemAt(dialog_layout.count() - 1).layout()
+        assert footer is not None
         assert buttons.geometry().right() == (
-            window.contentsRect().right() - window.layout().contentsMargins().right()
+            window.contentsRect().right() - footer.contentsMargins().right()
         )
 
     @pytest.mark.parametrize("font_scale", [1.0, 1.25, 1.5])
@@ -219,9 +298,13 @@ class TestTrainingSetting:
             assert checkpoint_label.geometry().right() < (
                 dialog.checkpoint_entry.geometry().left()
             )
+            assert dialog.content_scroll is not None
+            viewport = dialog.content_scroll.viewport()
             for button in (dialog.opt_btn, dialog.dev_btn, dialog.out_btn):
-                bounds = QRect(button.mapTo(dialog, QPoint(0, 0)), button.size())
-                assert dialog.rect().contains(bounds)
+                dialog.content_scroll.ensureWidgetVisible(button)
+                qtbot.wait(0)
+                bounds = QRect(button.mapTo(viewport, QPoint(0, 0)), button.size())
+                assert viewport.rect().contains(bounds)
                 assert button.visibleRegion().contains(button.rect())
         finally:
             app.setFont(original_font)
@@ -803,7 +886,7 @@ class TestTrainingSetting:
         viewport = dialog.content_scroll.viewport()
         note_top_left = dialog.resource_preview_note.mapTo(viewport, QPoint(0, 0))
         note_rect = QRect(note_top_left, dialog.resource_preview_note.size())
-        assert viewport.rect().contains(note_rect)
+        assert viewport.rect().contains(note_rect) is False
         assert TrainingRecommendationField.BATCH_SIZE not in (
             dialog.get_edited_recommendation_fields()
         )
@@ -814,7 +897,7 @@ class TestTrainingSetting:
         assert dialog.get_applied_resource_preview_receipt() is None
 
     @pytest.mark.parametrize("font_scale", [1.0, 1.25, 1.5])
-    def test_async_resource_preview_reveals_adjustment_in_current_viewport(
+    def test_async_resource_preview_preserves_current_scroll_position(
         self,
         qtbot,
         font_scale,
@@ -865,8 +948,7 @@ class TestTrainingSetting:
 
             scroll_bar = dialog.content_scroll.verticalScrollBar()
             assert scroll_bar.maximum() > 0
-            # Native style/focus settling can leave a legal non-zero initial offset.
-            scroll_bar.setValue(scroll_bar.maximum())
+            scroll_bar.setValue(0)
             request, callback = dispatched[0]
             result = TrainingResourcePreviewResult(
                 request_generation=request.request_generation,
@@ -886,14 +968,16 @@ class TestTrainingSetting:
                 dialog.resource_preview_note.mapTo(viewport, QPoint(0, 0)),
                 dialog.resource_preview_note.size(),
             )
-            batch_rect = QRect(
-                dialog.bs_entry.mapTo(viewport, QPoint(0, 0)),
-                dialog.bs_entry.size(),
-            )
             assert dialog.bs_entry.text() == "8"
             assert "adjusted to 8" in dialog.resource_preview_note.text()
-            assert viewport.rect().contains(note_rect)
-            assert viewport.rect().contains(batch_rect)
+            assert scroll_bar.value() == 0
+            assert viewport.rect().contains(
+                dialog.findChild(QLabel, "TrainingSettingPageHeader").mapTo(
+                    viewport,
+                    QPoint(0, 0),
+                )
+            )
+            assert viewport.rect().contains(note_rect) is False
         finally:
             app.setFont(original_font)
 

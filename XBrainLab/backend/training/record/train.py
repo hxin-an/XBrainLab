@@ -28,6 +28,7 @@ from ...utils.filesystem_identity import (
 from ...utils.logger import logger
 from ..option import (
     ClassWeightMode,
+    TrainingEvaluation,
     class_map_fingerprint,
     class_weighting_request,
     is_canonical_class_map_fingerprint,
@@ -48,7 +49,7 @@ from .key import RecordKey, TrainRecordKey
 if TYPE_CHECKING:
     from ..state_tracker import TrainingStateTracker
 
-TRAIN_RECORD_SCHEMA_VERSION = 2
+TRAIN_RECORD_SCHEMA_VERSION = 3
 EVALUATION_SPLITS = ("training", "validation", "test")
 _MODEL_IDENTITY_FIELDS = {"model_id", "provider", "source_revision"}
 _CLASS_WEIGHTING_FIELDS = {"requested", "resolved"}
@@ -63,6 +64,83 @@ _CLASS_WEIGHTING_RESOLUTION_FIELDS = {
     "class_counts",
     "weights",
 }
+_EARLY_STOPPING_FIELDS = {
+    "enabled",
+    "patience",
+    "min_delta",
+    "stopped_early",
+    "best_value",
+    "best_epoch",
+    "consecutive_non_improvements",
+    "stop_epoch",
+}
+
+
+def _disabled_early_stopping() -> dict[str, object]:
+    return {
+        "enabled": False,
+        "patience": 3,
+        "min_delta": 0.0,
+        "stopped_early": False,
+        "best_value": None,
+        "best_epoch": None,
+        "consecutive_non_improvements": 0,
+        "stop_epoch": None,
+    }
+
+
+def _normalize_early_stopping(value: object) -> dict[str, object]:
+    if type(value) is not dict or set(value) != _EARLY_STOPPING_FIELDS:
+        raise ArtifactStoreError("Training early-stopping metadata is malformed.")
+    enabled = value["enabled"]
+    patience = value["patience"]
+    min_delta = value["min_delta"]
+    stopped = value["stopped_early"]
+    best_value = value["best_value"]
+    best_epoch = value["best_epoch"]
+    count = value["consecutive_non_improvements"]
+    stop_epoch = value["stop_epoch"]
+    if (
+        type(enabled) is not bool
+        or type(patience) is not int
+        or patience <= 0
+        or isinstance(min_delta, bool)
+        or not isinstance(min_delta, (int, float))
+        or not isfinite(float(min_delta))
+        or float(min_delta) < 0
+        or type(stopped) is not bool
+        or (
+            best_value is not None
+            and (
+                isinstance(best_value, bool)
+                or not isinstance(best_value, (int, float))
+                or not isfinite(float(best_value))
+            )
+        )
+        or (best_epoch is not None and (type(best_epoch) is not int or best_epoch <= 0))
+        or type(count) is not int
+        or count < 0
+        or (stop_epoch is not None and (type(stop_epoch) is not int or stop_epoch <= 0))
+    ):
+        raise ArtifactStoreError("Training early-stopping metadata is malformed.")
+    if not enabled and value != _disabled_early_stopping():
+        raise ArtifactStoreError("Training early-stopping metadata is malformed.")
+    if enabled and (
+        (best_value is None) != (best_epoch is None)
+        or (stopped and (stop_epoch is None or best_epoch is None or count < patience))
+        or (not stopped and stop_epoch is not None)
+    ):
+        raise ArtifactStoreError("Training early-stopping metadata is malformed.")
+    return {
+        "enabled": enabled,
+        "patience": patience,
+        "min_delta": float(min_delta),
+        "stopped_early": stopped,
+        "best_value": None if best_value is None else float(best_value),
+        "best_epoch": best_epoch,
+        "consecutive_non_improvements": count,
+        "stop_epoch": stop_epoch,
+    }
 
 
 def _off_class_weighting() -> dict[str, object]:
@@ -373,10 +451,12 @@ def _decode_training_artifact(
     int,
     dict[str, str] | None,
     dict[str, object],
+    dict[str, object],
 ]:
     record_schema_version = data.get("record_schema_version")
     if type(record_schema_version) is not int or record_schema_version not in {
         1,
+        2,
         TRAIN_RECORD_SCHEMA_VERSION,
     }:
         raise UnsupportedArtifactError(
@@ -450,8 +530,13 @@ def _decode_training_artifact(
                 "unsafe schema downgrade is not supported."
             )
         class_weighting = _migrate_v1_class_weighting()
+        early_stopping = _disabled_early_stopping()
+    elif record_schema_version == 2:
+        class_weighting = _normalize_v2_class_weighting(data.get("class_weighting"))
+        early_stopping = _disabled_early_stopping()
     else:
         class_weighting = _normalize_v2_class_weighting(data.get("class_weighting"))
+        early_stopping = _normalize_early_stopping(data.get("early_stopping"))
     return (
         train,
         val,
@@ -461,6 +546,7 @@ def _decode_training_artifact(
         epoch,
         model_identity,
         class_weighting,
+        early_stopping,
     )
 
 
@@ -565,6 +651,12 @@ class TrainRecord:
         for key in RecordKey():
             self.best_record[f"best_val_{key}"] = None
             self.best_record[f"best_val_{key}_epoch"] = None
+        self.early_stopping = {
+            **_disabled_early_stopping(),
+            "enabled": getattr(self.option, "early_stopping_enabled", False),
+            "patience": getattr(self.option, "early_stopping_patience", 3),
+            "min_delta": getattr(self.option, "early_stopping_min_delta", 0.0),
+        }
 
         self.epoch = 0
         self.target_path: str | None = None
@@ -704,7 +796,14 @@ class TrainRecord:
             an evaluation record exists.
 
         """
-        return self.get_epoch() >= self.option.epoch and self.eval_record is not None
+        return (
+            self.get_epoch() >= self.option.epoch
+            or bool(
+                getattr(self, "early_stopping", _disabled_early_stopping()).get(
+                    "stopped_early", False
+                )
+            )
+        ) and self.eval_record is not None
 
     def append_record(self, val: Any, arr: list) -> None:
         """Internal function for appending a value to a statistic array
@@ -771,6 +870,48 @@ class TrainRecord:
         """
         with self._state_mutation():
             self._update_validation_metrics(result)
+
+    def observe_early_stopping(self) -> bool:
+        """Update this repeat's stopping state from its latest validation value."""
+        enabled = cast(bool, self.early_stopping["enabled"])
+        if not enabled:
+            return False
+        metric = {
+            TrainingEvaluation.VAL_LOSS: RecordKey.LOSS,
+            TrainingEvaluation.VAL_ACC: RecordKey.ACC,
+            TrainingEvaluation.VAL_AUC: RecordKey.AUC,
+        }.get(self.option.evaluation_option)
+        if metric is None or not self.val[metric]:
+            return False
+        value = self.val[metric][-1]
+        if value is None:
+            return False
+        best = cast(float | None, self.early_stopping["best_value"])
+        min_delta = cast(float, self.early_stopping["min_delta"])
+        improves = best is None or (
+            value < float(best) - min_delta
+            if metric == RecordKey.LOSS
+            else value > float(best) + min_delta
+        )
+        with self._state_mutation():
+            if improves:
+                self.early_stopping["best_value"] = float(value)
+                self.early_stopping["best_epoch"] = self.get_epoch()
+                self.early_stopping["consecutive_non_improvements"] = 0
+                return False
+            consecutive_non_improvements = (
+                cast(int, self.early_stopping["consecutive_non_improvements"]) + 1
+            )
+            self.early_stopping["consecutive_non_improvements"] = (
+                consecutive_non_improvements
+            )
+            if consecutive_non_improvements >= cast(
+                int, self.early_stopping["patience"]
+            ):
+                self.early_stopping["stopped_early"] = True
+                self.early_stopping["stop_epoch"] = self.get_epoch()
+                return True
+        return False
 
     def update_train(self, test_result: dict[str, float | None]) -> None:
         """Append training statistics for the current epoch.
@@ -934,6 +1075,7 @@ class TrainRecord:
                 "best_record": self.best_record,
                 "seed": self.seed,
                 "class_weighting": deepcopy(self.class_weighting),
+                "early_stopping": deepcopy(self.early_stopping),
             }
             if self.model_identity is not None:
                 payload["model_identity"] = dict(self.model_identity)
@@ -980,6 +1122,7 @@ class TrainRecord:
                             epoch,
                             loaded_model_identity,
                             class_weighting,
+                            early_stopping,
                         ) = _decode_training_artifact(
                             data,
                             arrays,
@@ -998,6 +1141,7 @@ class TrainRecord:
                         if loaded_model_identity is not None:
                             self.model_identity = loaded_model_identity
                         self._set_class_weighting(class_weighting)
+                        self.early_stopping = early_stopping
                     except (FilesystemIdentityError, UnsupportedArtifactError):
                         raise
                     except Exception as e:

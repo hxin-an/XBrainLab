@@ -348,6 +348,10 @@ class TrainingPlanHolder:
         self.saliency_params: dict = dict(saliency_params or {})
 
         self.check_data()
+        if getattr(self.option, "early_stopping_enabled", False) and not np.any(
+            self.dataset.val_mask
+        ):
+            raise ValueError("Early stopping requires a validation split")
         self._weighting_resolution = self._resolve_class_weighting()
 
         # Human-readable time plus random identity prevents concurrent collisions.
@@ -801,8 +805,15 @@ class TrainingPlanHolder:
                 criterion,
                 train_record,
             )
+            if self._interrupt.is_set():
+                break
+            if train_record.observe_early_stopping():
+                break
 
-        if train_record.epoch == self.option.epoch:
+        if (
+            train_record.epoch == self.option.epoch
+            or train_record.early_stopping["stopped_early"]
+        ):
             with self._state_mutation():
                 self.status = Status.EVAL.value.format(train_record.get_name())
             try:
@@ -1008,6 +1019,11 @@ class TrainingPlanHolder:
                     f"{evaluation_option.name}"
                 ),
                 "class_weighting": train_record.class_weighting,
+                "early_stopping": {
+                    "enabled": bool(option.early_stopping_enabled),
+                    "patience": int(option.early_stopping_patience),
+                    "min_delta": float(option.early_stopping_min_delta),
+                },
             },
         }
         model_component = {

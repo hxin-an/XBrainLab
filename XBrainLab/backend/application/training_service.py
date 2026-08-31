@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from typing import Any
 
+import numpy as np
 import torch
 
 from XBrainLab.backend.model_base.model_catalog import get_model_spec
@@ -155,7 +156,11 @@ class TrainingCommandService:
                 class_weight_mode=weight_mode,
                 custom_class_weights=custom_weights,
                 class_map_fingerprint_value=class_identity,
+                early_stopping_enabled=command.early_stopping_enabled,
+                early_stopping_patience=command.early_stopping_patience,
+                early_stopping_min_delta=command.early_stopping_min_delta,
             )
+            self._validate_early_stopping_admission(option)
 
         holder: ModelHolder | None = None
         if command.model_name:
@@ -259,6 +264,7 @@ class TrainingCommandService:
         if not isinstance(preflight, ResourcePreflightResult):
             raise TypeError("preflight must be a ResourcePreflightResult")
         self._validate_class_weighting_start_admission()
+        self._validate_early_stopping_admission()
         handoff_generation = self.training.start_training(
             append=command.append,
             interactive=command.interactive or defer_synchronous_completion,
@@ -327,6 +333,45 @@ class TrainingCommandService:
                 )
         except (AttributeError, TypeError, ValueError) as exc:
             raise PreconditionError(str(exc)) from exc
+
+    def _validate_early_stopping_admission(
+        self,
+        option: TrainingOption | None = None,
+    ) -> None:
+        """Require proven validation samples for proposed or active settings."""
+        context = self.training_runtime.resource_context()
+        proposed_option = option is not None
+        option = option if proposed_option else context.training_option
+        if not isinstance(option, TrainingOption) or not option.early_stopping_enabled:
+            return
+        if option.evaluation_option is TrainingEvaluation.LAST_EPOCH:
+            raise PreconditionError(
+                "Early stopping requires a validation evaluation option"
+            )
+        if proposed_option:
+            dataset_state = self._get_state().dataset
+            summary = (
+                dataset_state.active_split_summary
+                if dataset_state.split_materialized
+                else dataset_state.split_preview_summary
+            )
+            count_key = (
+                "val_count" if dataset_state.split_materialized else "validation_count"
+            )
+            validation_count = (
+                summary.get(count_key) if isinstance(summary, dict) else None
+            )
+            if (
+                type(validation_count) is int
+                and validation_count > 0
+                and (dataset_state.split_materialized or dataset_state.split_spec_saved)
+            ):
+                return
+            raise PreconditionError("Early stopping requires a validation split")
+        if not context.datasets or any(
+            not np.any(dataset.val_mask) for dataset in context.datasets
+        ):
+            raise PreconditionError("Early stopping requires a validation split")
 
     def discard_train_preflight(self, token: str | None) -> None:
         """Invalidate a pending training-resource confirmation receipt."""

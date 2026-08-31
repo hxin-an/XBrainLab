@@ -57,6 +57,9 @@ def training_option_snapshot(option: Any) -> dict[str, Any]:
         ),
         "custom_class_weights": dict(getattr(option, "custom_class_weights", {}) or {}),
         "class_map_fingerprint": getattr(option, "class_map_fingerprint", None),
+        "early_stopping_enabled": getattr(option, "early_stopping_enabled", False),
+        "early_stopping_patience": getattr(option, "early_stopping_patience", 3),
+        "early_stopping_min_delta": getattr(option, "early_stopping_min_delta", 0.0),
     }
 
 
