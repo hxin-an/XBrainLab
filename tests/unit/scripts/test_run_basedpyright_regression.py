@@ -1,16 +1,23 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
+import pytest
 import tomllib
 
 from scripts.dev.handoff_gate_spec import HANDOFF_GATE_SPECS
 from scripts.dev.run_basedpyright_regression import (
     BASELINE_PATH,
+    BasedpyrightBaseline,
+    BasedpyrightRegressionError,
     DiagnosticKey,
+    _evaluate,
+    _run_analyzer,
     compare_diagnostics,
     load_baseline,
     normalize_diagnostics,
+    validate_dependency_probe,
 )
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -95,4 +102,98 @@ def test_typecheck_excludes_only_reviewed_third_party_model_source() -> None:
     assert config["tool"]["basedpyright"]["exclude"] == [
         "XBrainLab/llm/core/models",
         "XBrainLab/backend/model_base/legacy_braindecode",
+    ]
+
+
+def test_dependency_probe_rejects_analyzer_that_erases_pinned_types() -> None:
+    with pytest.raises(
+        BasedpyrightRegressionError,
+        match="did not resolve the pinned PyQt6 types",
+    ):
+        validate_dependency_probe(
+            {
+                "generalDiagnostics": [],
+                "summary": {"filesAnalyzed": 1, "errorCount": 0},
+            },
+            probe_path=Path("/tmp/xbrainlab-basedpyright-probe.py"),
+        )
+
+
+def test_dependency_probe_accepts_the_expected_pyqt_sentinel_error() -> None:
+    probe_path = Path("/tmp/xbrainlab-basedpyright-probe.py")
+
+    validate_dependency_probe(
+        {
+            "generalDiagnostics": [
+                {
+                    "file": str(probe_path),
+                    "severity": "error",
+                    "rule": "reportAssignmentType",
+                    "range": {
+                        "start": {"line": 1, "character": 17},
+                        "end": {"line": 1, "character": 18},
+                    },
+                }
+            ]
+        },
+        probe_path=probe_path,
+    )
+
+
+def test_gate_runs_sentinel_before_accepting_a_project_result(monkeypatch) -> None:
+    baseline = BasedpyrightBaseline(
+        source_sha="dace4e7324eea80d296ebcabd67b8d6fb8c40935",  # pragma: allowlist secret
+        basedpyright_version="1.39.2",
+        diagnostics=(),
+    )
+    monkeypatch.setattr(
+        "scripts.dev.run_basedpyright_regression.load_baseline", lambda: baseline
+    )
+    monkeypatch.setattr(
+        "scripts.dev.run_basedpyright_regression.shutil.which", lambda _: "basedpyright"
+    )
+    monkeypatch.setattr(
+        "scripts.dev.run_basedpyright_regression._resolve_version", lambda _: "1.39.2"
+    )
+    monkeypatch.setattr(
+        "scripts.dev.run_basedpyright_regression._run_analyzer",
+        lambda _: pytest.fail(
+            "The project result must not be accepted before the probe."
+        ),
+    )
+
+    def fail_probe(_: str) -> None:
+        raise BasedpyrightRegressionError(
+            "Basedpyright did not resolve the pinned PyQt6 types."
+        )
+
+    monkeypatch.setattr(
+        "scripts.dev.run_basedpyright_regression._run_dependency_probe", fail_probe
+    )
+
+    with pytest.raises(BasedpyrightRegressionError, match="pinned PyQt6 types"):
+        _evaluate()
+
+
+def test_analyzer_is_bound_to_the_gate_python_interpreter(monkeypatch) -> None:
+    recorded_argv: list[str] = []
+
+    class Completed:
+        returncode = 0
+        stdout = '{"generalDiagnostics": [], "summary": {"filesAnalyzed": 1}}'
+        stderr = ""
+
+    def capture(argv: list[str]) -> Completed:
+        recorded_argv.extend(argv)
+        return Completed()
+
+    monkeypatch.setattr("scripts.dev.run_basedpyright_regression._run_command", capture)
+
+    _run_analyzer("basedpyright")
+
+    assert recorded_argv == [
+        "basedpyright",
+        "--pythonpath",
+        sys.executable,
+        "--outputjson",
     ]
