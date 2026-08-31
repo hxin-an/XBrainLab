@@ -17,9 +17,9 @@ Repo-root `settings.json` 的本機修改由使用者擁有，不得 stage、com
 
 ### Evidence and blockers
 
-1. Basedpyright `1.39.2` 在受限 sandbox 會對 416 個 production files 回報假綠 `0 diagnostics`；同一
-   `c339884a` 在可解析完整 Poetry dependencies 的外部環境連續兩次回報 `67 diagnostics`。目前 zero
-   baseline 與 runner 都不能證明 type gate 通過。
+1. PR #94 已在 `main` 的 `f456acb7` 讓 Basedpyright runner 於依賴型別不可解析時 fail closed；完整
+   Poetry 3.12 環境仍如實分析 416 個 production files 並回報 `67 diagnostics`。假綠路徑已關閉，但真正
+   type debt 尚未清零，所以 gate 仍不可宣稱通過。
 2. Canonical handoff manifest 目前只表示包含 Assistant strict promotion 的單一 required set；Granite 3B
    已驗收基準仍是 36/36 positive、10/10 explicit parameter origin、5/5 missing guard、22/24 product
    no-action、6/7 clarification。這可支持 bounded preview，不可被改寫為 24/24、7/7 Stable promotion。
@@ -54,6 +54,27 @@ Repo-root `settings.json` 的本機修改由使用者擁有，不得 stage、com
   delta `0`。若任一 pure refactor 淨增超過 100 production LOC 或 owner 增加，停止並做 complexity review。
 - 使用者已明確批准計畫中 **type-only、無可見行為變更** 的 `XBrainLab/ui/` 修正；若需要改 layout、文案、
   互動、狀態或流程，立即停止並另取 UI 確認。
+
+### Current slice — MNE Raw／Epochs type narrowing
+
+- **Problem and evidence**：`backend/load_data/raw.py` 有 9 項、`backend/preprocessor/resample.py` 有 8 項
+  diagnostics；原因是 `is_raw()` 無法替 static analyzer 收窄 `BaseRaw | BaseEpochs`，以及 MNE resample
+  stub 對回傳聯集與 `events=None` 的保守描述。完整依賴環境的 focused count 是 17；直接相關的 Raw、
+  resample、preprocess及controller characterization 共 70 tests passed。
+- **Outcome**：在不改 runtime observable behavior 的前提下，以 concrete `isinstance` branch 與 MNE public
+  in-place resample API 將這兩檔收斂為 0 diagnostics；保留 raw event sample scaling、epoch event wipe、
+  finite-data guard、publication與error semantics。
+- **Scope／non-goals**：只改上述 2 個 production files與直接必要測試；不改 ApplicationService／controller、
+  UI、文案、資料流程、public API、其他 type debt或 baseline。不得使用 `Any`、broad cast／ignore、private MNE
+  API、compatibility path或新 abstraction。
+- **Ownership／deletion**：owner before／after皆為既有 Raw data wrapper與Resample processor，delta `0`；刪除
+  重複 resample comment與不必要的 `events=None`，復用既有 `set_mne`、`set_mne_and_wipe_events`及event setter。
+  預估 production delta約等量替換，遠低於 pure-refactor complexity trigger。
+- **Repair and validation**：先保留同一70-test passing baseline，再做 concrete narrowing；重跑完全相同測試、
+  完整外部 Basedpyright（兩檔 17→0、全案 67→50）、兩檔 Ruff與diff check。MNE／Qt相關測試使用明確 timeout、
+  `prlimit --core=0`、`MNE_DONTWRITE_HOME=true`與暫存config目錄。
+- **Stop／UI status**：若需要型別掩蓋、private API、行為或owner變更即停止；只有17項全消失且70-test baseline
+  不退步才 scope-complete。這是使用者已批准的 non-UI type-only slice，沒有可見 UI 變更；不需新增 screenshot。
 
 ## Progression and focused validation
 
