@@ -873,7 +873,8 @@ class TrainRecord:
 
     def observe_early_stopping(self) -> bool:
         """Update this repeat's stopping state from its latest validation value."""
-        if not self.early_stopping["enabled"]:
+        enabled = cast(bool, self.early_stopping["enabled"])
+        if not enabled:
             return False
         metric = {
             TrainingEvaluation.VAL_LOSS: RecordKey.LOSS,
@@ -885,8 +886,8 @@ class TrainRecord:
         value = self.val[metric][-1]
         if value is None:
             return False
-        best = self.early_stopping["best_value"]
-        min_delta = float(self.early_stopping["min_delta"])
+        best = cast(float | None, self.early_stopping["best_value"])
+        min_delta = cast(float, self.early_stopping["min_delta"])
         improves = best is None or (
             value < float(best) - min_delta
             if metric == RecordKey.LOSS
@@ -898,11 +899,14 @@ class TrainRecord:
                 self.early_stopping["best_epoch"] = self.get_epoch()
                 self.early_stopping["consecutive_non_improvements"] = 0
                 return False
-            self.early_stopping["consecutive_non_improvements"] = (
-                int(self.early_stopping["consecutive_non_improvements"]) + 1
+            consecutive_non_improvements = (
+                cast(int, self.early_stopping["consecutive_non_improvements"]) + 1
             )
-            if self.early_stopping["consecutive_non_improvements"] >= int(
-                self.early_stopping["patience"]
+            self.early_stopping["consecutive_non_improvements"] = (
+                consecutive_non_improvements
+            )
+            if consecutive_non_improvements >= cast(
+                int, self.early_stopping["patience"]
             ):
                 self.early_stopping["stopped_early"] = True
                 self.early_stopping["stop_epoch"] = self.get_epoch()
