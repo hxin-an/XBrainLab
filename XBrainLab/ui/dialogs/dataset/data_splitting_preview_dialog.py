@@ -708,14 +708,15 @@ class DataSplittingPreviewDialog(BaseDialog):
                 else 0
             )
             minimum_dialog_height = chrome_height + content_height
+            screen = self.screen()
             if (
                 self.content_layout is not None
                 and self.content_layout.direction() == QBoxLayout.Direction.TopToBottom
-                and self.screen() is not None
+                and screen is not None
             ):
                 minimum_dialog_height = max(
                     minimum_dialog_height,
-                    self.screen().availableGeometry().height() - 48,
+                    screen.availableGeometry().height() - 48,
                 )
             self.fit_to_content(
                 minimum_width=920,
@@ -998,7 +999,8 @@ class DataSplittingPreviewDialog(BaseDialog):
 
     def update_table(self):
         """Render detached preview rows without touching Dataset objects."""
-        if not self.tree:
+        tree = self.tree
+        if tree is None:
             return
 
         status, error, rows = self._preview_state()
@@ -1011,7 +1013,9 @@ class DataSplittingPreviewDialog(BaseDialog):
             self._set_tree_message("Preview failed")
             self._set_preview_feedback(error or _PREVIEW_FAILURE_MESSAGE, retry=True)
             if error:
-                self.tree.topLevelItem(0).setToolTip(0, error)
+                item0 = tree.topLevelItem(0)
+                if item0 is not None:
+                    item0.setToolTip(0, error)
             if self.btn_confirm is not None:
                 self.btn_confirm.setEnabled(False)
         elif status == PREVIEW_STATUS_CANCELLED:
@@ -1025,20 +1029,20 @@ class DataSplittingPreviewDialog(BaseDialog):
         elif rows:
             self._set_preview_feedback("")
             rows_changed = False
-            item0 = self.tree.topLevelItem(0)
+            item0 = tree.topLevelItem(0)
             if (
-                self.tree.topLevelItemCount() == 1
+                tree.topLevelItemCount() == 1
                 and item0
                 and item0.text(0) == "Calculating"
             ):
-                self.tree.clear()
+                tree.clear()
 
-            current_count = self.tree.topLevelItemCount()
+            current_count = tree.topLevelItemCount()
             if current_count < len(rows):
                 rows_changed = True
                 for i in range(current_count, len(rows)):
                     row = rows[i]
-                    item = QTreeWidgetItem(self.tree)
+                    item = QTreeWidgetItem(tree)
                     item.setSizeHint(0, QSize(0, 28))
                     row_name = str(row.name)
                     fold_suffix = row_name.removeprefix("Fold_")

@@ -9,7 +9,7 @@ from typing import Any
 import numpy as np
 import pyqtgraph as pg
 from PyQt6 import sip
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import QEvent, QObject, Qt, QTimer, pyqtSignal, pyqtSlot
 from PyQt6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
@@ -122,9 +122,10 @@ class PreviewWidget(QWidget):
         # Disable properties menu and Mouse Interaction (Zoom/Pan)
         self.plot_time.setMenuEnabled(False)
         self.plot_time.setMouseEnabled(x=False, y=False)
-        self.plot_time.getPlotItem().vb.setMouseEnabled(x=False, y=False)
-        self.plot_time.getPlotItem().buttonsHidden = True
-        self.plot_time.hideButtons()
+        time_plot_item = self.plot_time.getPlotItem()
+        if time_plot_item is not None:
+            time_plot_item.getViewBox().setMouseEnabled(x=False, y=False)
+            time_plot_item.hideButtons()
         self.time_event_markers = []
         self.time_excluded_regions = []
         self.time_original_curve = self.plot_time.plot(
@@ -147,18 +148,6 @@ class PreviewWidget(QWidget):
             self._on_current_curve_data_changed
         )
 
-        # Monkey-patch leaveEvent to hide crosshair when mouse leaves the widget
-        self._orig_leave_time = self.plot_time.leaveEvent
-
-        def on_leave_time(e):
-            self.v_line_time.hide()
-            self.h_line_time.hide()
-            self.label_time.hide()
-            if self._orig_leave_time:
-                self._orig_leave_time(e)
-
-        self.plot_time.leaveEvent = on_leave_time
-
         # Crosshair Time
         self.v_line_time = pg.InfiniteLine(
             angle=90,
@@ -178,9 +167,10 @@ class PreviewWidget(QWidget):
         self.v_line_time.setZValue(1000)
         self.h_line_time.setZValue(1000)
         self.label_time.setZValue(1000)
-        self.plot_time.addItem(self.v_line_time, ignoreBounds=True)
-        self.plot_time.addItem(self.h_line_time, ignoreBounds=True)
-        self.plot_time.addItem(self.label_time, ignoreBounds=True)
+        if time_plot_item is not None:
+            time_plot_item.addItem(self.v_line_time, ignoreBounds=True)
+            time_plot_item.addItem(self.h_line_time, ignoreBounds=True)
+            time_plot_item.addItem(self.label_time, ignoreBounds=True)
         self.proxy_time = self._create_mouse_proxy(
             self.plot_time,
             self._mouse_moved_time,
@@ -214,9 +204,10 @@ class PreviewWidget(QWidget):
         # Disable properties menu and Mouse Interaction (Zoom/Pan)
         self.plot_freq.setMenuEnabled(False)
         self.plot_freq.setMouseEnabled(x=False, y=False)
-        self.plot_freq.getPlotItem().vb.setMouseEnabled(x=False, y=False)
-        self.plot_freq.getPlotItem().buttonsHidden = True
-        self.plot_freq.hideButtons()
+        freq_plot_item = self.plot_freq.getPlotItem()
+        if freq_plot_item is not None:
+            freq_plot_item.getViewBox().setMouseEnabled(x=False, y=False)
+            freq_plot_item.hideButtons()
         self.freq_original_curve = self.plot_freq.plot(
             [],
             [],
@@ -233,18 +224,6 @@ class PreviewWidget(QWidget):
             pen=pg.mkPen(Theme.CHART_PRIMARY, width=1.5),
             name="Current",
         )
-
-        # Monkey-patch leaveEvent to hide crosshair when mouse leaves the widget
-        self._orig_leave_freq = self.plot_freq.leaveEvent
-
-        def on_leave_freq(e):
-            self.v_line_freq.hide()
-            self.h_line_freq.hide()
-            self.label_freq.hide()
-            if self._orig_leave_freq:
-                self._orig_leave_freq(e)
-
-        self.plot_freq.leaveEvent = on_leave_freq
 
         # Crosshair Freq
         self.v_line_freq = pg.InfiniteLine(
@@ -265,13 +244,16 @@ class PreviewWidget(QWidget):
         self.v_line_freq.setZValue(1000)
         self.h_line_freq.setZValue(1000)
         self.label_freq.setZValue(1000)
-        self.plot_freq.addItem(self.v_line_freq, ignoreBounds=True)
-        self.plot_freq.addItem(self.h_line_freq, ignoreBounds=True)
-        self.plot_freq.addItem(self.label_freq, ignoreBounds=True)
+        if freq_plot_item is not None:
+            freq_plot_item.addItem(self.v_line_freq, ignoreBounds=True)
+            freq_plot_item.addItem(self.h_line_freq, ignoreBounds=True)
+            freq_plot_item.addItem(self.label_freq, ignoreBounds=True)
         self.proxy_freq = self._create_mouse_proxy(
             self.plot_freq,
             self._mouse_moved_freq,
         )
+        self.plot_time.installEventFilter(self)
+        self.plot_freq.installEventFilter(self)
 
         freq_layout.addWidget(self.plot_freq)
         self.plot_tabs.addTab(self.tab_freq, "Frequency (PSD)")
@@ -530,6 +512,19 @@ class PreviewWidget(QWidget):
             rateLimit=60,
             slot=slot,
         )
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        """Hide the matching crosshair before its plot receives a leave event."""
+        if event.type() == QEvent.Type.Leave:
+            if watched is self.plot_time:
+                self.v_line_time.hide()
+                self.h_line_time.hide()
+                self.label_time.hide()
+            elif watched is self.plot_freq:
+                self.v_line_freq.hide()
+                self.h_line_freq.hide()
+                self.label_freq.hide()
+        return super().eventFilter(watched, event)
 
     def prepare_for_shutdown(self) -> None:
         """Quiesce callbacks and detach items before native ViewBox destruction."""
