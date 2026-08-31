@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,6 +19,7 @@ BASELINE_PATH = ROOT / "scripts" / "dev" / "basedpyright_baseline.json"
 SCHEMA_VERSION = 1
 _VERSION_PATTERN = re.compile(r"\bbasedpyright\s+([0-9]+(?:\.[0-9]+){2})\b")
 _SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+_DEPENDENCY_PROBE_SOURCE = "from PyQt6.QtCore import QObject\nprobe: QObject = 1\n"
 
 
 class BasedpyrightRegressionError(RuntimeError):
@@ -219,8 +221,9 @@ def _resolve_version(executable: str) -> str:
     return match.group(1)
 
 
-def _run_analyzer(executable: str) -> dict[str, Any]:
-    completed = _run_command([executable, "--outputjson"])
+def _load_analyzer_payload(
+    completed: subprocess.CompletedProcess[str],
+) -> dict[str, Any]:
     try:
         payload = json.loads(completed.stdout)
     except json.JSONDecodeError as exc:
@@ -235,6 +238,53 @@ def _run_analyzer(executable: str) -> dict[str, Any]:
     return payload
 
 
+def _run_analyzer(executable: str) -> dict[str, Any]:
+    return _load_analyzer_payload(
+        _run_command([executable, "--pythonpath", sys.executable, "--outputjson"])
+    )
+
+
+def validate_dependency_probe(payload: dict[str, Any], *, probe_path: Path) -> None:
+    """Require a diagnostic that only exists when Basedpyright resolves PyQt6 types."""
+    diagnostics = payload.get("generalDiagnostics")
+    if not isinstance(diagnostics, list) or not all(
+        isinstance(item, dict) for item in diagnostics
+    ):
+        raise BasedpyrightRegressionError("Basedpyright JSON diagnostics are invalid.")
+    target = probe_path.resolve()
+    for diagnostic in diagnostics:
+        if diagnostic.get("severity") != "error":
+            continue
+        if diagnostic.get("rule") != "reportAssignmentType":
+            continue
+        path_value = diagnostic.get("file")
+        if isinstance(path_value, str) and Path(path_value).resolve() == target:
+            return
+    raise BasedpyrightRegressionError(
+        "Basedpyright did not resolve the pinned PyQt6 types; refusing a false-green "
+        "project result."
+    )
+
+
+def _run_dependency_probe(executable: str) -> None:
+    """Use the analyzer itself to prove its selected Python exposes pinned GUI types."""
+    with tempfile.TemporaryDirectory(prefix="xbrainlab-basedpyright-") as temporary_dir:
+        probe_path = Path(temporary_dir) / "dependency_probe.py"
+        probe_path.write_text(_DEPENDENCY_PROBE_SOURCE, encoding="utf-8")
+        completed = _run_command(
+            [
+                executable,
+                "--pythonpath",
+                sys.executable,
+                "--outputjson",
+                str(probe_path),
+            ]
+        )
+        validate_dependency_probe(
+            _load_analyzer_payload(completed), probe_path=probe_path
+        )
+
+
 def _evaluate() -> tuple[dict[str, Any], int]:
     baseline = load_baseline()
     executable = shutil.which("basedpyright")
@@ -245,6 +295,7 @@ def _evaluate() -> tuple[dict[str, Any], int]:
         raise BasedpyrightRegressionError(
             "Basedpyright version does not match the checked-in baseline."
         )
+    _run_dependency_probe(executable)
     payload = _run_analyzer(executable)
     raw_diagnostics = payload.get("generalDiagnostics")
     if not isinstance(raw_diagnostics, list) or not all(
