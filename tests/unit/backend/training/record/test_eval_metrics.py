@@ -98,3 +98,58 @@ class TestEvalMetrics(unittest.TestCase):
                 "support": 6,
             },
         )
+
+    def test_missing_classes_keep_fixed_class_metrics_at_zero(self):
+        labels = np.array([0, 0])
+        outputs = np.array(
+            [
+                [1.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+            ]
+        )
+        record = EvalRecord(labels, outputs, {}, {}, {}, {}, {})
+
+        metrics = record.get_per_class_metrics()
+
+        self.assertEqual(
+            metrics[0],
+            {
+                "precision": 1.0,
+                "recall": 1.0,
+                "f1-score": 1.0,
+                "support": 2,
+            },
+        )
+        for class_index in (1, 2):
+            self.assertEqual(
+                metrics[class_index],
+                {
+                    "precision": 0.0,
+                    "recall": 0.0,
+                    "f1-score": 0.0,
+                    "support": 0,
+                },
+            )
+        self.assertEqual(
+            metrics["macro_avg"],
+            {
+                "precision": 1 / 3,
+                "recall": 1 / 3,
+                "f1-score": 1 / 3,
+                "support": 2,
+            },
+        )
+
+    def test_empty_labels_preserve_sklearn_input_precondition(self):
+        record = EvalRecord(
+            np.array([], dtype=int),
+            np.empty((0, 3)),
+            {},
+            {},
+            {},
+            {},
+            {},
+        )
+
+        with self.assertRaisesRegex(ValueError, "Found empty input array"):
+            record.get_per_class_metrics()

@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from typing import Any, cast
 
 import numpy as np
-from sklearn.metrics import precision_recall_fscore_support, roc_auc_score
+from sklearn.metrics import roc_auc_score
 
 from ...utils.filesystem_identity import (
     FilesystemIdentityError,
@@ -888,33 +888,44 @@ class EvalRecord:
             'precision', 'recall', 'f1-score', 'support'
 
         """
-        y_true = self.label
-        y_pred = self.output.argmax(axis=1)
+        if len(self.label) == 0:
+            raise ValueError(
+                "Found empty input array (e.g., `y_true` or `y_pred`) while a "
+                "minimum of 1 sample is required."
+            )
         class_num = self.output.shape[1]
-        labels = np.arange(class_num)
-
-        precision, recall, f1, support = precision_recall_fscore_support(
-            y_true,
-            y_pred,
-            labels=labels,
-            zero_division=0,
-        )
+        confusion = calculate_confusion(self.output, self.label)
 
         metrics: dict[int | str, dict[str, float | int]] = {}
-        for i in labels:
-            metrics[int(i)] = {
-                "precision": precision[i],
-                "recall": recall[i],
-                "f1-score": f1[i],
-                "support": int(support[i]),
+        precision_scores: list[float] = []
+        recall_scores: list[float] = []
+        f1_scores: list[float] = []
+        total_support = 0
+        for class_index in range(class_num):
+            true_positive = int(confusion[class_index, class_index])
+            predicted_count = int(confusion[:, class_index].sum())
+            support = int(confusion[class_index].sum())
+            precision = true_positive / predicted_count if predicted_count else 0.0
+            recall = true_positive / support if support else 0.0
+            f1_denominator = predicted_count + support
+            f1_score = 2.0 * true_positive / f1_denominator if f1_denominator else 0.0
+            metrics[class_index] = {
+                "precision": precision,
+                "recall": recall,
+                "f1-score": f1_score,
+                "support": support,
             }
+            precision_scores.append(precision)
+            recall_scores.append(recall)
+            f1_scores.append(f1_score)
+            total_support += support
 
         # Calculate macro average
         metrics["macro_avg"] = {
-            "precision": np.mean(precision),
-            "recall": np.mean(recall),
-            "f1-score": np.mean(f1),
-            "support": int(np.sum(support)),
+            "precision": float(np.mean(precision_scores)),
+            "recall": float(np.mean(recall_scores)),
+            "f1-score": float(np.mean(f1_scores)),
+            "support": total_support,
         }
 
         return metrics
