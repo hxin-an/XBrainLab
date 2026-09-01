@@ -23,8 +23,6 @@ concurrency:
 
 env:
   POETRY_VERSION: "2.3.4"
-  # Required for the lock's mutually exclusive Windows CPU/CUDA variants.
-  POETRY_INSTALLER_RE_RESOLVE: "true"
   CI_PYTHON_VERSION: "3.11"
 
 jobs:
@@ -201,6 +199,8 @@ jobs:
           key: venv-${{ runner.os }}-${{ runner.arch }}-py${{ env.CI_PYTHON_VERSION }}-poetry-${{ env.POETRY_VERSION }}-${{ hashFiles('poetry.lock') }}
 
       - name: Install dependencies
+        env:
+          POETRY_INSTALLER_RE_RESOLVE: ${{ runner.os == 'Windows' && 'true' || 'false' }}
         run: poetry sync --no-interaction ${{ runner.os == 'Windows' && '-E cpu' || '' }}
 
       - name: Run authoritative Linux shard
@@ -265,6 +265,8 @@ jobs:
           key: venv-${{ runner.os }}-${{ runner.arch }}-py${{ env.CI_PYTHON_VERSION }}-poetry-${{ env.POETRY_VERSION }}-${{ hashFiles('poetry.lock') }}
 
       - name: Install dependencies
+        env:
+          POETRY_INSTALLER_RE_RESOLVE: ${{ runner.os == 'Windows' && 'true' || 'false' }}
         run: poetry sync --no-interaction ${{ runner.os == 'Windows' && '-E cpu' || '' }}
 
       - name: Record aggregate checkout provenance
@@ -355,6 +357,8 @@ jobs:
           key: venv-${{ runner.os }}-${{ runner.arch }}-py${{ env.CI_PYTHON_VERSION }}-poetry-${{ env.POETRY_VERSION }}-${{ hashFiles('poetry.lock') }}
 
       - name: Install dependencies
+        env:
+          POETRY_INSTALLER_RE_RESOLVE: ${{ runner.os == 'Windows' && 'true' || 'false' }}
         run: poetry sync --no-interaction ${{ runner.os == 'Windows' && '-E cpu' || '' }}
 
       - name: Capture human-like product walkthrough
@@ -426,6 +430,8 @@ jobs:
           key: venv-${{ runner.os }}-${{ runner.arch }}-py${{ env.CI_PYTHON_VERSION }}-poetry-${{ env.POETRY_VERSION }}-${{ hashFiles('poetry.lock') }}
 
       - name: Install dependencies
+        env:
+          POETRY_INSTALLER_RE_RESOLVE: ${{ runner.os == 'Windows' && 'true' || 'false' }}
         run: poetry sync --no-interaction ${{ runner.os == 'Windows' && '-E cpu' || '' }}
 
       - name: Run focused platform test gates
@@ -524,6 +530,8 @@ jobs:
           key: venv-${{ runner.os }}-${{ runner.arch }}-py${{ matrix.python }}-poetry-${{ env.POETRY_VERSION }}-${{ hashFiles('poetry.lock') }}
 
       - name: Install dependencies
+        env:
+          POETRY_INSTALLER_RE_RESOLVE: ${{ runner.os == 'Windows' && 'true' || 'false' }}
         run: poetry sync --no-interaction ${{ runner.os == 'Windows' && '-E cpu' || '' }}
 
       - name: Smoke Windows source bootstrap plan
@@ -624,6 +632,8 @@ jobs:
           key: venv-${{ runner.os }}-${{ runner.arch }}-py${{ env.CI_PYTHON_VERSION }}-poetry-${{ env.POETRY_VERSION }}-${{ hashFiles('poetry.lock') }}
 
       - name: Install dependencies
+        env:
+          POETRY_INSTALLER_RE_RESOLVE: ${{ runner.os == 'Windows' && 'true' || 'false' }}
         run: poetry sync --no-interaction ${{ runner.os == 'Windows' && '-E cpu' || '' }}
 
       - name: Capture and compare approved default-scale UI
@@ -689,6 +699,8 @@ jobs:
           key: venv-${{ runner.os }}-${{ runner.arch }}-py${{ env.CI_PYTHON_VERSION }}-poetry-${{ env.POETRY_VERSION }}-${{ hashFiles('poetry.lock') }}
 
       - name: Install dependencies
+        env:
+          POETRY_INSTALLER_RE_RESOLVE: ${{ runner.os == 'Windows' && 'true' || 'false' }}
         run: poetry sync --no-interaction ${{ runner.os == 'Windows' && '-E cpu' || '' }}
 
       - name: Capture Windows 100/125/150 percent UI matrix
@@ -757,6 +769,8 @@ jobs:
           key: public-dataset-venv-${{ runner.os }}-${{ runner.arch }}-py${{ env.CI_PYTHON_VERSION }}-poetry-${{ env.POETRY_VERSION }}-${{ hashFiles('poetry.lock') }}
 
       - name: Install dependencies
+        env:
+          POETRY_INSTALLER_RE_RESOLVE: ${{ runner.os == 'Windows' && 'true' || 'false' }}
         run: poetry sync --no-interaction ${{ runner.os == 'Windows' && '-E cpu' || '' }}
 
       - name: Prepare public gate evidence directory

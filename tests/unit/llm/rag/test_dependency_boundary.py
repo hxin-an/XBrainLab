@@ -124,7 +124,21 @@ def test_windows_pytorch_variants_use_mutually_exclusive_explicit_sources() -> N
     ci_source = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(
         encoding="utf-8"
     )
-    assert 'POETRY_INSTALLER_RE_RESOLVE: "true"' in ci_source
+    assert '\n  POETRY_INSTALLER_RE_RESOLVE: "true"' not in ci_source
+    resolver_lines = [
+        line.strip()
+        for line in ci_source.splitlines()
+        if "POETRY_INSTALLER_RE_RESOLVE:" in line
+    ]
+    assert len(resolver_lines) == 8
+    assert all(
+        line
+        == (
+            "POETRY_INSTALLER_RE_RESOLVE: "
+            "${{ runner.os == 'Windows' && 'true' || 'false' }}"
+        )
+        for line in resolver_lines
+    )
     sync_lines = [
         line.strip()
         for line in ci_source.splitlines()

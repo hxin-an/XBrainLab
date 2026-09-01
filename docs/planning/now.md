@@ -92,17 +92,19 @@ CPU contract；不得把 WSL／offscreen evidence 當成 Windows desktop accepta
    均通過。Windows native `-PlanOnly -Cpu`正確選CPU，`-Yes -NoLaunch`重跑為dependency no-op、CUDA 13.0
    可用且complete model cache未重下載；Windows focused tests為37 passed，native Basedpyright regression亦PASS。
    公開overrides只有`-Cpu`、`-Yes`、`-NoLaunch`、`-PlanOnly`。
-6. **Current**：PR #109 的第一個 exact head `a461c2c8` 已通過本機與 Windows native gates，但 CI 證明
-   對所有 runner 一律傳入 `-E cpu` 會讓 Poetry 2.3.4 在 macOS ARM64 錯選 Windows cu130 lock variant，三個
-   macOS jobs 均在 dependency install fail closed。修理只限 CI admission：Windows runner 明確傳
-   `-E cpu`，Linux／macOS 維持無 extra 的既有 platform wheel contract；不改 lock、bootstrap 或 runtime。
-   修後對新 exact head 重跑全套 automated gate與Windows native launch／真人acceptance。使用者明確手測通過並
-   同意 merge後才合併；最後回到 latest main重驗並刪除 fallback／task worktree／精確暫存項目。
+6. **Current**：PR #109 的前兩個 exact heads 已通過本機與 Windows native gates，但 CI 在 macOS ARM64
+   dependency install fail closed。`a461c2c8` 證明不得對非 Windows 傳入 `-E cpu`；`28643a77` 進一步證明
+   即使不啟用 extra，全域 `POETRY_INSTALLER_RE_RESOLVE=true` 仍會讓 Poetry 2.3.4 錯選 cu130 local-version。
+   修理只限 CI resolver admission：Windows runner 明確使用 `re-resolve=true`與`-E cpu`，Linux／macOS使用
+   `re-resolve=false`且不啟用Windows-only extra，讓 lock markers選既有platform wheel；不改 lock、bootstrap
+   或 runtime。修後對新 exact head 重跑全套 automated gate與Windows native launch／真人acceptance。使用者
+   明確手測通過並同意 merge後才合併；最後回到 latest main重驗並刪除 fallback／task worktree／精確暫存項目。
 
 ### Focused validation
 
 - Dependency contract：focused TOML／lock test、`poetry check --lock`、package build、Ruff；Windows CI明確
-  使用`-E cpu`，Linux／macOS不啟用Windows-only extra，且 CUDA source只能在 Windows `-E cuda` 被選取。
+  使用`re-resolve=true`與`-E cpu`，Linux／macOS固定`re-resolve=false`且不啟用Windows-only extra，CUDA
+  source只能在 Windows `-E cuda` 被選取。
 - Windows clean env：`poetry env info --path` 指向 repo-root `.venv`，Python 3.12，三件套皆為 `+cu130`，
   `torch.version.cuda == "13.0"`、`torch.cuda.is_available() is True`，PyQt6／Transformers／BitsAndBytes可 import；
   同一 sync連跑兩次仍保持 CUDA。
