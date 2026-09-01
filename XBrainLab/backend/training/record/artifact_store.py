@@ -218,7 +218,13 @@ def write_json_npz_artifact(
     arrays_path = target.with_name(array_name)
     normalized_arrays: dict[str, np.ndarray] = {}
     for name, value in arrays.items():
-        if not isinstance(name, str) or not name or "/" in name or "\\" in name:
+        if (
+            not isinstance(name, str)
+            or not name
+            or "/" in name
+            or "\\" in name
+            or name == "allow_pickle"
+        ):
             raise ArtifactStoreError(f"Invalid artifact array name: {name!r}.")
         normalized_arrays[name] = _numeric_array(value, name=name)
 
@@ -233,7 +239,7 @@ def write_json_npz_artifact(
         try:
             identity.assert_matches(target.parent)
             with identity.create_exclusive_binary(arrays_temp) as stream:
-                np.savez_compressed(stream, **normalized_arrays)
+                np.savez_compressed(stream, **normalized_arrays)  # pyright: ignore[reportArgumentType]
             manifest = {
                 "artifact_store_schema_version": ARTIFACT_STORE_SCHEMA_VERSION,
                 "artifact_type": artifact_type,

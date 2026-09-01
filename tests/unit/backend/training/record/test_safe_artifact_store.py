@@ -68,6 +68,26 @@ def test_artifact_write_revalidates_before_opening_replaced_directory(
     assert list(tmp_path.iterdir()) == []
 
 
+def test_artifact_writer_rejects_numpy_allow_pickle_control_key(
+    tmp_path: Path,
+) -> None:
+    manifest = tmp_path / "record"
+
+    with pytest.raises(ArtifactStoreError, match="Invalid artifact array name"):
+        write_json_npz_artifact(
+            manifest,
+            artifact_type="test.artifact",
+            payload={},
+            arrays={
+                "allow_pickle": np.array([1.0]),
+                "values": np.array([2.0]),
+            },
+        )
+
+    assert not manifest.exists()
+    assert not manifest.with_name("record.npz").exists()
+
+
 @pytest.mark.platform_contract
 @pytest.mark.skipif(os.name != "posix", reason="POSIX no-follow artifact contract")
 def test_artifact_manifest_symlink_is_rejected(tmp_path: Path) -> None:
