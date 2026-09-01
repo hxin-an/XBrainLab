@@ -300,13 +300,13 @@ class TrainingSettingDialog(BaseDialog):
             section_layout.setColumnMinimumWidth(0, label_column_width)
             section_layout.setColumnMinimumWidth(1, input_column_width)
         target_width = max(
-            520,
-            36 + label_column_width + 12 + input_column_width + 12 + 72,
+            664,
+            48 + label_column_width + 12 + input_column_width + 12 + 72,
         )
         resource_preview_note = self.resource_preview_note
         if resource_preview_note is not None and not resource_preview_note.isHidden():
             resource_preview_note.ensurePolished()
-            note_width = max(target_width - 36, 1)
+            note_width = max(target_width - 48, 1)
             wrapped_height = resource_preview_note.heightForWidth(note_width)
             resource_preview_note.setMinimumHeight(
                 max(
@@ -745,7 +745,7 @@ class TrainingSettingDialog(BaseDialog):
         self.content_widget = content_widget
         content_widget.setObjectName("TrainingSettingContent")
         content_layout = QVBoxLayout(content_widget)
-        content_layout.setContentsMargins(0, 0, 18, 0)
+        content_layout.setContentsMargins(0, 0, 30, 0)
         content_layout.setSpacing(12)
 
         page_header = QLabel("Training Settings")
