@@ -382,6 +382,7 @@ def test_training_setting_geometry_is_observed_at_supported_font_scales(
 
     assert check["font_scale_percent"] == round(font_scale * 100)
     assert check["passed"] is True
+    assert check["dialog_size"][0] >= 664
     assert check["overlap_count"] == 0
     assert check["clipped_text_count"] == 0
     assert len(check["rows"]) == 13
@@ -394,7 +395,7 @@ def test_training_setting_geometry_is_observed_at_supported_font_scales(
     assert check["set_button_count"] == 3
     assert check["footer"]["passed"] is True
     assert check["scrollbar"]["right_gap_px"] <= 1
-    assert all(gap >= 18 for gap in check["scrollbar"]["set_horizontal_gaps_px"])
+    assert all(gap >= 30 for gap in check["scrollbar"]["set_horizontal_gaps_px"])
     assert check["scrollbar"]["passed"] is True
     assert check["resource_preview"]["passed"] is True
     assert check["resource_preview"]["visible"] is True
@@ -452,7 +453,7 @@ def test_training_setting_scrollbar_clearance_survives_wide_native_scrollbar(
         _dispose(qapp, dialog)
 
     assert check["scrollbar"]["right_gap_px"] <= 1
-    assert all(gap >= 18 for gap in check["scrollbar"]["set_horizontal_gaps_px"])
+    assert all(gap >= 30 for gap in check["scrollbar"]["set_horizontal_gaps_px"])
     if scrollbar_width is not None:
         assert check["scrollbar"]["geometry"][2] == scrollbar_width
 

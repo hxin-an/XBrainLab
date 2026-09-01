@@ -79,6 +79,7 @@ class Saliency3D:
 
         self.channelActor: list[pv.Actor] = []
         self.headActor = None
+        self._orientation_widget: Any | None = None
 
         if self.engine:
             self._setup_scene()
@@ -181,9 +182,6 @@ class Saliency3D:
             # Return empty plotter if init failed?
             return self.plotter
 
-        self.plotter.clear_camera_widgets()
-        self.plotter.add_camera_orientation_widget()
-
         self.channelActor = [self.plotter.add_mesh(ch, color="w") for ch in self.chs]
 
         # Initialize scalars should be done by engine.update_scalars call in __init__?
@@ -208,8 +206,42 @@ class Saliency3D:
         self.plotter.update_scalar_bar_range(self.engine.scalar_bar_range, "saliency")
         self.plotter.add_mesh(self.engine.brain_scaled, color=Theme.BRAIN_MESH)
         self._center_scene_camera()
+        self._install_orientation_widget()
 
         return self.plotter
+
+    def _install_orientation_widget(self) -> None:
+        """Install the full camera widget only after the live scene is ready."""
+        self.plotter.clear_camera_widgets()
+        renderer = getattr(self.plotter, "renderer", None)
+        if renderer is None:
+            self._orientation_widget = None
+            return
+        self._orientation_widget = self.plotter.add_camera_orientation_widget(
+            animate=False,
+        )
+        self.refresh_orientation_widget()
+
+    def refresh_orientation_widget(self) -> None:
+        """Rebuild the VTK-owned corner overlay after the Qt layout settles."""
+        orientation_widget = self._orientation_widget
+        if orientation_widget is None:
+            return
+        renderer = getattr(self.plotter, "renderer", None)
+        if renderer is None:
+            return
+
+        orientation_representation = orientation_widget.GetRepresentation()
+        orientation_representation.AnchorToUpperRight()
+        orientation_representation.SetSize(112, 112)
+        orientation_representation.SetPadding(16, 16)
+        orientation_widget.SquareResize()
+        orientation_representation.BuildRepresentation()
+        orientation_widget.ProcessEventsOff()
+        orientation_widget.KeyPressActivationOff()
+        render = getattr(self.plotter, "render", None)
+        if callable(render):
+            render()
 
     def _set_time_seconds(self, time_seconds: float) -> None:
         """Convert a slider time in seconds to one explicit saliency sample."""

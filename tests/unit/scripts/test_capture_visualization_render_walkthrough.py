@@ -810,6 +810,20 @@ def _interactive_payload_with_screenshots(tmp_path):
                 "actor_count": 4,
                 "last_render_seconds": 0.01,
             },
+            "orientation_bindings": {
+                stage: {
+                    "ok": True,
+                    "reason": "",
+                    "parent_renderer_matches_plotter": True,
+                    "renderer_is_overlay": True,
+                    "renderer_viewport": [0.8, 0.8, 1.0, 1.0],
+                }
+                for stage in (
+                    "initial_render",
+                    "after_resize",
+                    "after_tab_return",
+                )
+            },
             "screenshot_region": {
                 "ok": True,
                 "unique_color_count": 200,
@@ -1171,6 +1185,186 @@ def test_validate_visualization_payload_accepts_xcb_interactive_3d_render(
 
     assert ok is True, reason
     assert reason == ""
+
+
+def test_validate_visualization_payload_requires_orientation_binding_evidence(
+    tmp_path,
+) -> None:
+    payload = _interactive_payload_with_screenshots(tmp_path)
+    del payload["interactive_renders"][0]["orientation_bindings"]
+
+    ok, reason = validate_visualization_render_payload(payload)
+
+    assert ok is False
+    assert "orientation" in reason.lower()
+
+
+def test_interactive_capture_grabs_framebuffer_before_tab_transition(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    calls: list[str] = []
+    plotter = SimpleNamespace(
+        render=lambda: None,
+        update=lambda: None,
+        repaint=lambda: None,
+    )
+    widget = SimpleNamespace(plotter_widget=plotter)
+    panel = SimpleNamespace(
+        tabs=SimpleNamespace(
+            setCurrentIndex=lambda _index: None,
+            currentWidget=lambda: widget,
+        )
+    )
+    window = SimpleNamespace(
+        visualization_panel=panel,
+        width=lambda: 1200,
+        height=lambda: 800,
+    )
+    terminal = {
+        "settled": True,
+        "outcome": "rendered",
+        "render_evidence": {
+            "ok": True,
+            "plotter_geometry": {"ok": True},
+            "plotter_created": True,
+            "plotter_visible": True,
+        },
+    }
+    monkeypatch.setattr(capture_script, "_find_tab_index", lambda *_args: 0)
+    monkeypatch.setattr(capture_script, "_process_events", lambda *_args: None)
+    monkeypatch.setattr(
+        capture_script,
+        "_wait_for_3d_capture_terminal_state",
+        lambda *_args, **_kwargs: terminal,
+    )
+    monkeypatch.setattr(
+        capture_script,
+        "_three_d_runtime_contract",
+        lambda: {"capture_method": "vtk_framebuffer_composite"},
+    )
+    monkeypatch.setattr(
+        capture_script,
+        "_capture_interactive_3d_window",
+        lambda *_args, **_kwargs: calls.append("framebuffer") or 0,
+    )
+    monkeypatch.setattr(
+        capture_script,
+        "_capture_orientation_bindings",
+        lambda *_args, **_kwargs: (
+            calls.append("transitions")
+            or {
+                stage: {"ok": True}
+                for stage in capture_script._ORIENTATION_BINDING_STAGES
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        capture_script,
+        "_content_addressed_screenshot_path",
+        lambda path: (path, "a" * 64),
+    )
+    monkeypatch.setattr(
+        capture_script,
+        "_screenshot_region_evidence",
+        lambda *_args, **_kwargs: {"ok": True},
+    )
+
+    result = capture_script._capture_interactive_tab(
+        cast(Any, object()),
+        window,
+        tmp_path,
+        capture_script.THREE_D_TAB_SPECS[0],
+    )
+
+    assert calls == ["framebuffer", "transitions"]
+    assert result["ok"] is True
+
+
+def test_orientation_binding_evidence_rejects_centered_overlay_viewport() -> None:
+    class RenderWindow:
+        def GetActualSize(self):
+            return (750, 750)
+
+    class Renderer:
+        def __init__(self, viewport):
+            self.viewport = viewport
+
+        def GetViewport(self):
+            return self.viewport
+
+        def GetRenderWindow(self):
+            return RenderWindow()
+
+    parent_renderer = Renderer((0.0, 0.0, 1.0, 1.0))
+    overlay_renderer = Renderer((0.0, 0.0, 1.0, 1.0))
+
+    class Representation:
+        def GetRenderer(self):
+            return overlay_renderer
+
+    class OrientationWidget:
+        def GetRepresentation(self):
+            return Representation()
+
+        def GetParentRenderer(self):
+            return parent_renderer
+
+    widget = SimpleNamespace(
+        _saliency_scene=SimpleNamespace(_orientation_widget=OrientationWidget()),
+        plotter_widget=SimpleNamespace(
+            renderer=parent_renderer,
+        ),
+    )
+
+    evidence = capture_script._orientation_binding_evidence(widget)
+
+    assert evidence["ok"] is False
+    assert evidence["renderer_viewport"] == [0.0, 0.0, 1.0, 1.0]
+    assert "geometry is invalid" in evidence["reason"]
+
+
+def test_orientation_binding_evidence_accepts_750px_top_right_overlay() -> None:
+    class RenderWindow:
+        def GetActualSize(self):
+            return (750, 750)
+
+    class Renderer:
+        def __init__(self, viewport):
+            self.viewport = viewport
+
+        def GetViewport(self):
+            return self.viewport
+
+        def GetRenderWindow(self):
+            return RenderWindow()
+
+    parent_renderer = Renderer((0.0, 0.0, 1.0, 1.0))
+    overlay_renderer = Renderer((622 / 750, 622 / 750, 734 / 750, 734 / 750))
+
+    class Representation:
+        def GetRenderer(self):
+            return overlay_renderer
+
+    class OrientationWidget:
+        def GetRepresentation(self):
+            return Representation()
+
+        def GetParentRenderer(self):
+            return parent_renderer
+
+    widget = SimpleNamespace(
+        _saliency_scene=SimpleNamespace(_orientation_widget=OrientationWidget()),
+        plotter_widget=SimpleNamespace(
+            renderer=parent_renderer,
+        ),
+    )
+
+    evidence = capture_script._orientation_binding_evidence(widget)
+
+    assert evidence["ok"] is True
+    assert evidence["overlay_size_pixels"] == [112.0, 112.0]
+    assert evidence["right_top_gap_pixels"] == [16.0, 16.0]
 
 
 def test_validate_visualization_payload_rejects_plotter_only_xcb_evidence(

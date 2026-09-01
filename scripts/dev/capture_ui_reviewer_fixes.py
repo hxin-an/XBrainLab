@@ -858,7 +858,7 @@ def _observe_training_setting_geometry(
         "set_horizontal_gaps_px": [int(gap) for gap in set_to_scrollbar_gaps],
         "passed": bool(
             scrollbar_right_gap <= 1
-            and all(gap >= 18 for gap in set_to_scrollbar_gaps)
+            and all(gap >= 30 for gap in set_to_scrollbar_gaps)
             and all(
                 not set_rect.intersects(scroll_bar_rect)
                 for set_rect in set_button_rects
