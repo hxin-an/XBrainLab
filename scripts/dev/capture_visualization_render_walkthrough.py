@@ -99,6 +99,7 @@ _UNPAINTED_CAPTURE_SENTINEL = QColor(255, 0, 255)
 SALIENCY_RENDER_TIMEOUT_MS = 15_000
 THREE_D_CAPTURE_TIMEOUT_MS = 12_000
 TOPOGRAPHIC_COLORBAR_MIN_MARGIN_PX = 6.0
+_ORIENTATION_BINDING_STAGES = ("initial_render", "after_resize", "after_tab_return")
 LOGGER = logging.getLogger(__name__)
 
 
@@ -1017,20 +1018,23 @@ def _capture_interactive_tab(
         window_size={"width": int(window.width()), "height": int(window.height())},
         require_chromatic_content=True,
     )
+    orientation_bindings = _capture_orientation_bindings(
+        app, panel, widget, window, tab_index=tab_index
+    )
+    orientation_failure = _orientation_bindings_failure(orientation_bindings)
     ok = bool(
         capture_code == 0
         and terminal["settled"]
         and terminal["outcome"] == "rendered"
         and render_evidence.get("ok")
+        and not orientation_failure
         and screenshot_region.get("ok")
         and not UNCAUGHT_EXCEPTIONS
     )
     failure_reason = ""
     if not ok:
-        failure_reason = _interactive_3d_failure_reason(
-            terminal,
-            screenshot_region,
-            capture_code,
+        failure_reason = orientation_failure or _interactive_3d_failure_reason(
+            terminal, screenshot_region, capture_code
         )
     return {
         "tab": tab_name,
@@ -1044,6 +1048,7 @@ def _capture_interactive_tab(
         "plotter_visible": bool(render_evidence.get("plotter_visible")),
         "plotter_geometry": plotter_geometry,
         "render_evidence": render_evidence,
+        "orientation_bindings": orientation_bindings,
         "screenshot_region": screenshot_region,
         "capture_method": capture_method,
     }
@@ -1069,6 +1074,119 @@ def _interactive_3d_failure_reason(
     if UNCAUGHT_EXCEPTIONS:
         return "3D Plot emitted an uncaught Qt/runtime exception."
     return "3D Plot render validation failed."
+
+
+def _capture_orientation_bindings(
+    app: QApplication,
+    panel: Any,
+    widget: Any,
+    window: Any,
+    *,
+    tab_index: int,
+) -> dict[str, dict[str, Any]]:
+    """Record the live orientation widget binding across layout disruptions."""
+    evidence = {"initial_render": _orientation_binding_evidence(widget)}
+
+    original_width = max(int(window.width()), 1)
+    original_height = max(int(window.height()), 1)
+    resized_width = (
+        original_width - 160 if original_width > 800 else original_width + 160
+    )
+    window.resize(resized_width, original_height)
+    _render_plotter_for_orientation_evidence(widget)
+    _process_events(app, 150)
+    evidence["after_resize"] = _orientation_binding_evidence(widget)
+
+    alternate_index = 0 if tab_index != 0 else 1
+    panel.tabs.setCurrentIndex(alternate_index)
+    _process_events(app, 80)
+    panel.tabs.setCurrentIndex(tab_index)
+    _render_plotter_for_orientation_evidence(widget)
+    _process_events(app, 150)
+    evidence["after_tab_return"] = _orientation_binding_evidence(widget)
+
+    window.resize(original_width, original_height)
+    _render_plotter_for_orientation_evidence(widget)
+    _process_events(app, 80)
+    return evidence
+
+
+def _render_plotter_for_orientation_evidence(widget: Any) -> None:
+    plotter = getattr(widget, "plotter_widget", None)
+    render = getattr(plotter, "render", None)
+    if callable(render):
+        render()
+    update = getattr(plotter, "update", None)
+    if callable(update):
+        update()
+
+
+def _orientation_binding_evidence(widget: Any) -> dict[str, Any]:
+    """Read live overlay binding and top-right viewport geometry from VTK."""
+    scene = getattr(widget, "_saliency_scene", None)
+    orientation_widget = getattr(scene, "_orientation_widget", None)
+    representation = _safe_call(orientation_widget, "GetRepresentation", default=None)
+    renderer = _safe_call(representation, "GetRenderer", default=None)
+    parent_renderer = _safe_call(orientation_widget, "GetParentRenderer", default=None)
+    plotter = getattr(widget, "plotter_widget", None)
+    plotter_renderer = getattr(plotter, "renderer", None)
+    parent_renderer_matches_plotter = (
+        plotter_renderer is not None and parent_renderer is plotter_renderer
+    )
+    renderer_is_overlay = renderer is not None and renderer is not plotter_renderer
+    viewport = _safe_call(renderer, "GetViewport", default=None)
+    render_window = _safe_call(renderer, "GetRenderWindow", default=None)
+    render_size = _safe_call(render_window, "GetActualSize", default=None)
+    try:
+        normalized_viewport = [float(edge) for edge in viewport]
+    except (TypeError, ValueError):
+        normalized_viewport = []
+    try:
+        render_width, render_height = (int(edge) for edge in render_size)
+    except (TypeError, ValueError):
+        render_width, render_height = 0, 0
+    left, bottom, right, top = (normalized_viewport + [0.0] * 4)[:4]
+    overlay_width = (right - left) * render_width
+    overlay_height = (top - bottom) * render_height
+    right_gap = (1.0 - right) * render_width
+    top_gap = (1.0 - top) * render_height
+    geometry_ok = (
+        len(normalized_viewport) == 4
+        and render_width > 0
+        and render_height > 0
+        and left > 0.5
+        and bottom > 0.5
+        and abs(overlay_width - 112.0) <= 2.0
+        and abs(overlay_height - 112.0) <= 2.0
+        and abs(right_gap - 16.0) <= 2.0
+        and abs(top_gap - 16.0) <= 2.0
+    )
+    ok = bool(
+        orientation_widget
+        and representation
+        and parent_renderer_matches_plotter
+        and renderer_is_overlay
+        and geometry_ok
+    )
+    return {
+        "ok": ok,
+        "reason": "" if ok else "orientation overlay binding or geometry is invalid",
+        "parent_renderer_matches_plotter": parent_renderer_matches_plotter,
+        "renderer_is_overlay": renderer_is_overlay,
+        "renderer_viewport": normalized_viewport,
+        "renderer_size": [render_width, render_height],
+        "overlay_size_pixels": [round(overlay_width, 2), round(overlay_height, 2)],
+        "right_top_gap_pixels": [round(right_gap, 2), round(top_gap, 2)],
+    }
+
+
+def _orientation_bindings_failure(evidence: object) -> str:
+    for stage in _ORIENTATION_BINDING_STAGES:
+        state = evidence.get(stage) if isinstance(evidence, dict) else None
+        if not isinstance(state, dict) or state.get("ok") is not True:
+            detail = state.get("reason") if isinstance(state, dict) else "missing"
+            return f"orientation binding failed at {stage}: {detail}"
+    return ""
 
 
 def _render_evidence(widget: Any, window: Any) -> dict[str, Any]:
@@ -1793,6 +1911,11 @@ def _validate_interactive_3d_evidence(
             return False, f"{tab} VTK renderer did not contain visible actors."
         if float(evidence.get("last_render_seconds") or 0.0) <= 0.0:
             return False, f"{tab} did not record VTK render timing evidence."
+        orientation_failure = _orientation_bindings_failure(
+            render.get("orientation_bindings")
+        )
+        if orientation_failure:
+            return False, f"{tab} {orientation_failure}."
         runtime = payload.get("three_d_runtime") or {}
         expected_capture_method = str(runtime.get("capture_method") or "")
         if render.get("capture_method") != expected_capture_method:

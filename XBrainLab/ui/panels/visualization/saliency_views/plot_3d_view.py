@@ -237,6 +237,11 @@ class Saliency3DPlotWidget(QWidget):
         self._post_training_saliency_status = PostTrainingSaliencyStatus.idle()
         self._selector_syncing = False
         self._saliency_scene: Saliency3D | None = None
+        self._orientation_refresh_timer = QTimer(self)
+        self._orientation_refresh_timer.setSingleShot(True)
+        self._orientation_refresh_timer.timeout.connect(
+            self._refresh_orientation_widget_after_layout,
+        )
         self._active_scene_key: tuple[object, ...] | None = None
         self.init_ui()
 
@@ -433,6 +438,7 @@ class Saliency3DPlotWidget(QWidget):
         return True
 
     def _clear_plot_widgets(self) -> bool:
+        self._orientation_refresh_timer.stop()
         self._saliency_scene = None
         self._active_scene_key = None
         self.scene_controls.hide()
@@ -1178,6 +1184,7 @@ class Saliency3DPlotWidget(QWidget):
             self._configure_epoch_time_controls()
             self.scene_controls.show()
             self.scene_controls_changed.emit()
+            self._queue_orientation_refresh()
         except Exception as e:
             logger.error("Error executing 3D plot: %s", e, exc_info=True)
             self._clear_active_scene_key_for_current_render(
@@ -1262,6 +1269,41 @@ class Saliency3DPlotWidget(QWidget):
             reset = getattr(self.plotter_widget, "reset_camera", None)
             if callable(reset):
                 reset()
+
+    def _queue_orientation_refresh(self) -> None:
+        """Refresh the corner widget after Qt has applied its current layout."""
+        if (
+            self._orientation_refresh_timer.isActive()
+            or self._closed
+            or self._shutdown_requested
+            or self._qt_object_deleted(self)
+        ):
+            return
+        scene = self._saliency_scene
+        plotter = self.plotter_widget
+        if scene is None or plotter is None or self._qt_object_deleted(plotter):
+            return
+        self._orientation_refresh_timer.start(0)
+
+    def _refresh_orientation_widget_after_layout(self) -> None:
+        """Refresh only the current, live scene after the queued Qt layout pass."""
+        if self._closed or self._shutdown_requested or self._qt_object_deleted(self):
+            return
+        scene = self._saliency_scene
+        plotter = self.plotter_widget
+        if scene is None or plotter is None or self._qt_object_deleted(plotter):
+            return
+        refresh = getattr(scene, "refresh_orientation_widget", None)
+        if callable(refresh):
+            refresh()
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        super().showEvent(event)
+        self._queue_orientation_refresh()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._queue_orientation_refresh()
 
     @staticmethod
     def _qt_object_deleted(obj) -> bool:

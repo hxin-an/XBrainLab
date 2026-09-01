@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
@@ -1370,26 +1371,113 @@ class TestSaliency3DPlotWidget:
         assert captured_kwargs["method"] == "VarGrad"
         assert captured_kwargs["absolute"] is True
 
-    def test_3d_head_plot_keeps_one_orientation_widget_across_repeated_builds(self):
+    def test_3d_head_plot_keeps_full_pixel_stable_xyz_widget_across_repeated_builds(
+        self,
+    ):
         from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_head import (
             Saliency3D,
         )
+
+        class RepresentationStub:
+            def __init__(self):
+                self.anchor = ""
+                self.size = ()
+                self.padding = ()
+                self.renderer = None
+                self.build_count = 0
+
+            def AnchorToUpperRight(self):
+                self.anchor = "upper-right"
+
+            def SetSize(self, *size):
+                self.size = size
+
+            def SetPadding(self, *padding):
+                self.padding = padding
+
+            def BuildRepresentation(self):
+                self.build_count += 1
+
+        class CameraOrientationWidgetStub:
+            expected_interactor = None
+
+            def __init__(self):
+                self.representation = RepresentationStub()
+                self.process_events = True
+                self.keypress_activation = True
+                self.interactor = None
+                self.parent_renderer = None
+                self.default_renderer = None
+                self.current_renderer = None
+                self.animate = None
+                self.enabled = False
+                self.square_resize_count = 0
+
+            def GetRepresentation(self):
+                return self.representation
+
+            def ProcessEventsOff(self):
+                self.process_events = False
+
+            def KeyPressActivationOff(self):
+                self.keypress_activation = False
+
+            def SetInteractor(self, interactor):
+                self.interactor = interactor
+
+            def SetParentRenderer(self, renderer):
+                self.parent_renderer = renderer
+
+            def SetDefaultRenderer(self, renderer):
+                self.default_renderer = renderer
+
+            def SetCurrentRenderer(self, renderer):
+                self.current_renderer = renderer
+
+            def SetAnimate(self, animate):
+                self.animate = animate
+
+            def On(self):
+                self.enabled = True
+                self.interactor = self.expected_interactor
+                self.default_renderer = object()
+                self.representation.renderer = self.default_renderer
+
+            def GetInteractor(self):
+                return self.interactor
+
+            def GetDefaultRenderer(self):
+                return self.default_renderer
+
+            def SquareResize(self):
+                self.square_resize_count += 1
 
         class PlotterStub:
             def __init__(self):
                 self.slider_ranges = []
                 self.camera = MagicMock()
-                self.orientation_widget_calls = 0
+                self.interactor = object()  # Qt wrapper: must never reach VTK.
+                self.iren = SimpleNamespace(interactor=object())
+                self.renderer = object()
+                self.camera_widgets = []
+                self.camera_widget_calls = []
                 self.clear_camera_widget_calls = 0
-                self.active_orientation_widgets = 0
+                self.render_calls = 0
 
-            def add_camera_orientation_widget(self):
-                self.orientation_widget_calls += 1
-                self.active_orientation_widgets += 1
+            def add_camera_orientation_widget(self, **kwargs):
+                widget = CameraOrientationWidgetStub()
+                widget.SetParentRenderer(self.renderer)
+                widget.SetAnimate(kwargs["animate"])
+                widget.On()
+                self.camera_widget_calls.append(kwargs)
+                self.camera_widgets.append(widget)
+                return widget
 
             def clear_camera_widgets(self):
                 self.clear_camera_widget_calls += 1
-                self.active_orientation_widgets = 0
+
+            def render(self):
+                self.render_calls += 1
 
             def add_slider_widget(self, **kwargs):
                 self.slider_ranges.append(kwargs["rng"])
@@ -1427,14 +1515,97 @@ class TestSaliency3DPlotWidget:
         saliency.showHead = True
         saliency.chs = []
         cast(Any, saliency).cmap = "coolwarm"
+        CameraOrientationWidgetStub.expected_interactor = (
+            saliency.plotter.iren.interactor
+        )
 
         saliency.get_3d_head_plot()
         saliency.get_3d_head_plot()
 
         assert saliency.plotter.slider_ranges == []
-        assert saliency.plotter.orientation_widget_calls == 2
+        assert saliency.plotter.camera_widget_calls == [
+            {"animate": False},
+            {"animate": False},
+        ]
+        assert [
+            (
+                widget.representation.anchor,
+                widget.representation.size,
+                widget.representation.padding,
+                widget.process_events,
+                widget.keypress_activation,
+                widget.GetInteractor(),
+                widget.parent_renderer,
+                widget.GetDefaultRenderer() is not saliency.plotter.renderer,
+                widget.representation.renderer is widget.GetDefaultRenderer(),
+                widget.representation.build_count,
+                widget.animate,
+                widget.enabled,
+                widget.square_resize_count,
+            )
+            for widget in saliency.plotter.camera_widgets
+        ] == [
+            (
+                "upper-right",
+                (112, 112),
+                (16, 16),
+                False,
+                False,
+                saliency.plotter.iren.interactor,
+                saliency.plotter.renderer,
+                True,
+                True,
+                1,
+                False,
+                True,
+                1,
+            ),
+            (
+                "upper-right",
+                (112, 112),
+                (16, 16),
+                False,
+                False,
+                saliency.plotter.iren.interactor,
+                saliency.plotter.renderer,
+                True,
+                True,
+                1,
+                False,
+                True,
+                1,
+            ),
+        ]
         assert saliency.plotter.clear_camera_widget_calls == 2
-        assert saliency.plotter.active_orientation_widgets == 1
+        assert saliency.plotter.render_calls == 4
+
+    def test_3d_widget_coalesces_orientation_refresh_after_resize(self, qtbot):
+        from PyQt6.QtWidgets import QWidget
+
+        from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view import (
+            Saliency3DPlotWidget,
+        )
+
+        class SceneStub:
+            def __init__(self):
+                self.refresh_count = 0
+
+            def refresh_orientation_widget(self):
+                self.refresh_count += 1
+
+        widget = Saliency3DPlotWidget(parent=None)
+        qtbot.addWidget(widget)
+        plotter = QWidget(widget.plot_container)
+        widget.plot_layout.addWidget(plotter)
+        cast(Any, widget).plotter_widget = plotter
+        scene = SceneStub()
+        cast(Any, widget)._saliency_scene = scene
+
+        widget.show()
+        widget.resize(640, 480)
+        widget.resize(660, 480)
+
+        qtbot.waitUntil(lambda: scene.refresh_count == 1, timeout=1000)
 
     def test_3d_head_plot_centers_scene_after_adding_meshes(self):
         from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_head import (
@@ -1463,8 +1634,8 @@ class TestSaliency3DPlotWidget:
                 self._camera_position = value
                 self.calls.append(("camera_position", value))
 
-            def add_camera_orientation_widget(self):
-                pass
+            def add_camera_orientation_widget(self, **_kwargs):
+                return MagicMock()
 
             def clear_camera_widgets(self):
                 pass
