@@ -28,10 +28,11 @@ Repo-root `settings.json` 的本機修改由使用者擁有，不得 stage、com
    deterministic runner 接入 CI，再從新的 fixed main 建立全新 candidate。
 4. Windows native Training Settings 的 `Set` 右框與垂直 scrollbar 視覺間距不足；同 source 的 WSLg
    未呈現相同問題。使用者已明確批准略為加寬對話框與增加平台中性的右側 gutter。
-5. 3D XYZ 首次 render 正常，但使用者在 Windows native 觀察到 VRAM error／warning 後指示器移到中央遮住頭部。
-   現有 `add_camera_orientation_widget()` 沒有 explicit viewport，因此錯誤提示後的 layout／repaint 或 renderer
-   recovery 都沒有固定位置 contract；尚無證據把根因限定為其中一條 lifecycle。使用者已批准改為固定右上角、
-   不可點擊的方向指示器。
+5. 3D XYZ 首次 render 正常，但使用者在 Windows native 觀察到 VRAM warning 後指示器移到中央遮住頭部。
+   第一版修理把完整的 `add_camera_orientation_widget()` 換成細線式 `add_axes()`；使用者手測確認它在 `xy`
+   視角下可能只像一條線，因此該 exact source 驗收失敗。這是本 slice 的直接視覺退化，不是資料或 VRAM
+   計算問題。修正必須恢復完整 camera orientation widget，使用其 pixel-stable representation API 固定右上角、
+   尺寸與邊距，並關閉互動。
 
 ### Outcomes
 
@@ -64,18 +65,21 @@ Repo-root `settings.json` 的本機修改由使用者擁有，不得 stage、com
 ### Current slice G — Windows Training Settings and recovered 3D parity
 
 - **Outcome**：Training Settings 至少 664 logical px，內容右側 gutter 30 px，scrollbar 仍貼齊 window edge，
-  `Set` 到 scrollbar 至少 30 px；3D 使用 `add_axes(interactive=False)` 與 explicit normalized viewport
-  `(0.81, 0.80, 0.97, 0.96)`，初始 render、VRAM 提示後及可重現的 renderer retry 後都固定右上角。
+  `Set` 到 scrollbar 至少 30 px；3D 保留完整 Camera Orientation Widget，以右上角 anchor、固定 square pixel
+  size 與 padding 呈現 XYZ，並停用 widget interaction。初始 render、VRAM 提示關閉後及 resize／切頁後都不得
+  移到中央、被壓成線或遮住頭部。
 - **Scope／non-goals**：只改既有 Training dialog 與 3D head renderer owner及直接測試／capture；不改 VRAM
   warning policy、interactor teardown、camera center、mesh、scalar bar、training behavior、PyVista／VTK版本或 public API。
 - **Ownership／complexity**：兩個既有 UI owner不變；不新增 module、owner、state、receipt、platform branch或
   resize lifecycle。兩個互不重疊 worker各產生一個 focused commit，root整合到單一 PR，frozen後由獨立 reviewer審查。
 - **Repair and validation**：兩條線皆先建立最小 failing observable guard。Training跑100／125／150%與wide
-  scrollbar geometry；3D automated test精確驗證 repeated render皆建立單一固定 viewport marker，Windows native
-  walkthrough另依實際順序驗證首次正常→觸發VRAM提示／錯誤→關閉或恢復後仍在右上角。Ruff、focused Qt suites與
-  exact-source screenshots通過後，Windows native與WSLg同SHA手測；automated mock不取代native錯誤路徑證據。
-- **Stop／manual status**：若需要修改 VRAM admission、建立第二個 renderer owner、升級VTK，或 native recovery後
-  marker仍不固定即停止。這是可見產品行為，使用者對 frozen SHA 明確手測通過並同意 merge 前不得合併。
+  scrollbar geometry；3D automated test驗證 repeated render皆建立完整 camera widget、representation 保持非零
+  square pixel size／padding／右上角 anchor且 widget 不接收互動。Windows native walkthrough另依實際順序驗證
+  首次正常→觸發VRAM提示→關閉後仍在右上角，再 resize／切頁；Ruff與 focused Qt suites通過後重建 exact-source
+  Windows 測試副本。Automated mock 不取代 native modal／DPI 視覺證據。
+- **Stop／manual status**：`a12d7259` Windows 手測因 XYZ 退化為單線而失敗，acceptance 已失效。若需要修改
+  VRAM admission、建立第二個 renderer owner、升級 VTK，或下一版 native modal 後 marker 仍不固定即停止。
+  這是可見產品行為，使用者對新 frozen SHA 明確手測通過並同意 merge 前不得合併。
 
 ## Progression and focused validation
 

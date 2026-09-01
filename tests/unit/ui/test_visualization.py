@@ -1370,21 +1370,56 @@ class TestSaliency3DPlotWidget:
         assert captured_kwargs["method"] == "VarGrad"
         assert captured_kwargs["absolute"] is True
 
-    def test_3d_head_plot_keeps_one_fixed_corner_marker_across_repeated_builds(self):
+    def test_3d_head_plot_keeps_full_pixel_stable_xyz_widget_across_repeated_builds(
+        self,
+    ):
         from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_head import (
             Saliency3D,
         )
-        from XBrainLab.ui.styles.theme import Theme
+
+        class RepresentationStub:
+            def __init__(self):
+                self.anchor = ""
+                self.size = ()
+                self.padding = ()
+
+            def AnchorToUpperRight(self):
+                self.anchor = "upper-right"
+
+            def SetSize(self, *size):
+                self.size = size
+
+            def SetPadding(self, *padding):
+                self.padding = padding
+
+        class CameraOrientationWidgetStub:
+            def __init__(self):
+                self.representation = RepresentationStub()
+                self.process_events = True
+                self.keypress_activation = True
+
+            def GetRepresentation(self):
+                return self.representation
+
+            def ProcessEventsOff(self):
+                self.process_events = False
+
+            def KeyPressActivationOff(self):
+                self.keypress_activation = False
 
         class PlotterStub:
             def __init__(self):
                 self.slider_ranges = []
                 self.camera = MagicMock()
-                self.axes_calls = []
+                self.camera_widget_calls = []
+                self.camera_widgets = []
                 self.clear_camera_widget_calls = 0
 
-            def add_axes(self, **kwargs):
-                self.axes_calls.append(kwargs)
+            def add_camera_orientation_widget(self, **kwargs):
+                widget = CameraOrientationWidgetStub()
+                self.camera_widget_calls.append(kwargs)
+                self.camera_widgets.append(widget)
+                return widget
 
             def clear_camera_widgets(self):
                 self.clear_camera_widget_calls += 1
@@ -1430,19 +1465,22 @@ class TestSaliency3DPlotWidget:
         saliency.get_3d_head_plot()
 
         assert saliency.plotter.slider_ranges == []
-        assert saliency.plotter.axes_calls == [
-            {
-                "interactive": False,
-                "viewport": (0.81, 0.80, 0.97, 0.96),
-                "line_width": 2,
-                "color": Theme.TEXT_PRIMARY,
-            },
-            {
-                "interactive": False,
-                "viewport": (0.81, 0.80, 0.97, 0.96),
-                "line_width": 2,
-                "color": Theme.TEXT_PRIMARY,
-            },
+        assert saliency.plotter.camera_widget_calls == [
+            {"animate": False},
+            {"animate": False},
+        ]
+        assert [
+            (
+                widget.representation.anchor,
+                widget.representation.size,
+                widget.representation.padding,
+                widget.process_events,
+                widget.keypress_activation,
+            )
+            for widget in saliency.plotter.camera_widgets
+        ] == [
+            ("upper-right", (112, 112), (16, 16), False, False),
+            ("upper-right", (112, 112), (16, 16), False, False),
         ]
         assert saliency.plotter.clear_camera_widget_calls == 2
 
@@ -1473,8 +1511,8 @@ class TestSaliency3DPlotWidget:
                 self._camera_position = value
                 self.calls.append(("camera_position", value))
 
-            def add_axes(self, **_kwargs):
-                pass
+            def add_camera_orientation_widget(self, **_kwargs):
+                return MagicMock()
 
             def clear_camera_widgets(self):
                 pass
