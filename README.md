@@ -18,12 +18,27 @@ import review recovery。歷史 MCP executable surface 已退役。
 
 ## 啟動
 
-使用 Poetry 管理的環境：
+Linux／macOS 開發環境使用 Poetry 管理：
 
 ```bash
-poetry install
+poetry sync
 poetry run python run.py
 ```
+
+Windows 不使用上面的無 extra 同步；若要以 NVIDIA CUDA 執行本機 Assistant，首次改用：
+
+```powershell
+poetry config virtualenvs.in-project true --local
+poetry config installer.re-resolve true --local
+$python = py -3.12 -c "import sys; print(sys.executable)"
+poetry env use $python
+poetry sync --with llm -E cuda
+poetry run python run.py --model local
+```
+
+日後同步 CUDA 開發環境仍使用 `poetry sync --with llm -E cuda`；Windows CPU 環境則明確使用
+`poetry sync -E cpu` 取得官方 `+cpu` wheels。Windows 不支援省略或同時選取這兩個 extra。
+詳見[本機開發環境](docs/developer/local-setup.md)。
 
 目前發行物是 source/GUI baseline，不是 signed installer。Windows launcher 只適用於已配置的開發
 機器，不能視為一般使用者安裝程式。

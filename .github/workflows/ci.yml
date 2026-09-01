@@ -23,6 +23,8 @@ concurrency:
 
 env:
   POETRY_VERSION: "2.3.4"
+  # Required for the lock's mutually exclusive Windows CPU/CUDA variants.
+  POETRY_INSTALLER_RE_RESOLVE: "true"
   CI_PYTHON_VERSION: "3.11"
 
 jobs:
@@ -199,7 +201,7 @@ jobs:
           key: venv-${{ runner.os }}-${{ runner.arch }}-py${{ env.CI_PYTHON_VERSION }}-poetry-${{ env.POETRY_VERSION }}-${{ hashFiles('poetry.lock') }}
 
       - name: Install dependencies
-        run: poetry sync --no-interaction
+        run: poetry sync --no-interaction -E cpu
 
       - name: Run authoritative Linux shard
         env:
@@ -263,7 +265,7 @@ jobs:
           key: venv-${{ runner.os }}-${{ runner.arch }}-py${{ env.CI_PYTHON_VERSION }}-poetry-${{ env.POETRY_VERSION }}-${{ hashFiles('poetry.lock') }}
 
       - name: Install dependencies
-        run: poetry sync --no-interaction
+        run: poetry sync --no-interaction -E cpu
 
       - name: Record aggregate checkout provenance
         run: >-
@@ -353,7 +355,7 @@ jobs:
           key: venv-${{ runner.os }}-${{ runner.arch }}-py${{ env.CI_PYTHON_VERSION }}-poetry-${{ env.POETRY_VERSION }}-${{ hashFiles('poetry.lock') }}
 
       - name: Install dependencies
-        run: poetry sync --no-interaction
+        run: poetry sync --no-interaction -E cpu
 
       - name: Capture human-like product walkthrough
         run: |
@@ -424,7 +426,7 @@ jobs:
           key: venv-${{ runner.os }}-${{ runner.arch }}-py${{ env.CI_PYTHON_VERSION }}-poetry-${{ env.POETRY_VERSION }}-${{ hashFiles('poetry.lock') }}
 
       - name: Install dependencies
-        run: poetry sync --no-interaction
+        run: poetry sync --no-interaction -E cpu
 
       - name: Run focused platform test gates
         env:
@@ -522,7 +524,7 @@ jobs:
           key: venv-${{ runner.os }}-${{ runner.arch }}-py${{ matrix.python }}-poetry-${{ env.POETRY_VERSION }}-${{ hashFiles('poetry.lock') }}
 
       - name: Install dependencies
-        run: poetry sync --no-interaction
+        run: poetry sync --no-interaction -E cpu
 
       - name: Prepare isolated native paths
         run: >-
@@ -618,7 +620,7 @@ jobs:
           key: venv-${{ runner.os }}-${{ runner.arch }}-py${{ env.CI_PYTHON_VERSION }}-poetry-${{ env.POETRY_VERSION }}-${{ hashFiles('poetry.lock') }}
 
       - name: Install dependencies
-        run: poetry sync --no-interaction
+        run: poetry sync --no-interaction -E cpu
 
       - name: Capture and compare approved default-scale UI
         run: |
@@ -683,7 +685,7 @@ jobs:
           key: venv-${{ runner.os }}-${{ runner.arch }}-py${{ env.CI_PYTHON_VERSION }}-poetry-${{ env.POETRY_VERSION }}-${{ hashFiles('poetry.lock') }}
 
       - name: Install dependencies
-        run: poetry sync --no-interaction
+        run: poetry sync --no-interaction -E cpu
 
       - name: Capture Windows 100/125/150 percent UI matrix
         run: |
@@ -751,7 +753,7 @@ jobs:
           key: public-dataset-venv-${{ runner.os }}-${{ runner.arch }}-py${{ env.CI_PYTHON_VERSION }}-poetry-${{ env.POETRY_VERSION }}-${{ hashFiles('poetry.lock') }}
 
       - name: Install dependencies
-        run: poetry sync --no-interaction
+        run: poetry sync --no-interaction -E cpu
 
       - name: Prepare public gate evidence directory
         run: mkdir -p test-results

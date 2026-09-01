@@ -18,8 +18,11 @@ import ast
 import contextlib
 import os
 import sys
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path, PurePath
+
+from packaging.requirements import Requirement
 
 _UNRESOLVED_CALLABLE_ORIGIN = "<unresolved-callable-construction>"
 _DYNAMIC_CALLABLE_CONTAINER_KEY = object()
@@ -9944,20 +9947,12 @@ def _study_state_expression(source: str, node: ast.AST) -> str:
 
 
 def _read_poetry_default_dependency_names(pyproject: Path) -> set[str]:
-    """Return dependency keys from ``[tool.poetry.dependencies]`` only."""
-    deps: set[str] = set()
-    in_default_deps = False
-    for raw_line in pyproject.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if line.startswith("["):
-            in_default_deps = line == "[tool.poetry.dependencies]"
-            continue
-        if not in_default_deps or "=" not in line:
-            continue
-        deps.add(line.split("=", 1)[0].strip().strip('"'))
-    return deps
+    """Return PEP 621 default dependency names from ``pyproject.toml``."""
+    metadata = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    return {
+        Requirement(requirement).name
+        for requirement in metadata["project"]["dependencies"]
+    }
 
 
 def check_ui_post_command_local_refreshes(root_dir: Path) -> list[str]:

@@ -3,7 +3,7 @@
 ## 需求
 
 - Python 3.11 或 3.12
-- Poetry
+- Poetry `>=2.3,<3`
 - Git
 - Qt、MNE、PyTorch 與本次要使用的 dataset reader 所需平台函式庫
 
@@ -11,17 +11,73 @@
 
 ## 安裝相依套件
 
-在 repository root 執行：
+Linux／macOS 在 repository root 執行：
 
 ```bash
-poetry install
+poetry sync
 ```
 
 需要本機 LLM 時加入對應 dependency group：
 
 ```bash
-poetry install --with llm
+poetry sync --with llm
 ```
+
+Windows 不執行上述無 extra 的同步，必須明確選擇一套 PyTorch wheel。沒有 NVIDIA CUDA 需求時使用：
+
+```powershell
+poetry config installer.re-resolve true --local
+poetry sync -E cpu
+```
+
+若 CPU 環境也要執行本機 Assistant，改為 `poetry sync --with llm -E cpu`。不要同時選取 `cpu` 與
+`cuda` extras。
+
+### Windows：可重建的 CUDA Assistant 環境
+
+Windows 上的本機 Assistant 若要使用 NVIDIA CUDA，第一次在 repository root 的 PowerShell 執行：
+
+```powershell
+poetry config virtualenvs.in-project true --local
+poetry config installer.re-resolve true --local
+$python = py -3.12 -c "import sys; print(sys.executable)"
+poetry env use $python
+poetry sync --with llm -E cuda
+```
+
+這會在 repository root 建立 Poetry 管理的 `.venv`，並從官方 PyTorch CUDA 13.0 wheel source 安裝
+`torch`、`torchvision`、`torchaudio` 的 `+cu130` 版本。它是 source/developer environment，不是 signed
+installer；第一次下載與展開後的環境通常需要數 GB 空間，目的地就是 repository root 的 `.venv`，且需要
+已安裝可相容的 NVIDIA driver。Project-local `installer.re-resolve=true` 讓 Poetry 依本次選取的 extra
+只安裝一套 PyTorch wheel；產生的 `poetry.toml` 是 ignored machine state，不是第二份 dependency truth。
+這個步驟不會重新下載既有 Granite model cache。可確認 CUDA 是否可用：
+
+```powershell
+poetry run python -c "import torch; print(torch.__version__); print(torch.version.cuda); print(torch.cuda.is_available())"
+```
+
+日常啟動不必再指定 Python executable：
+
+```powershell
+poetry run python run.py --model local
+```
+
+Windows CPU 同步使用 `-E cpu`，CUDA 同步使用 `-E cuda`；之後要保留 CUDA 環境時，仍使用
+`poetry sync --with llm -E cuda`。這兩個 extra 只適用 Windows，Linux/macOS 維持 PyPI 解析，CI 明確
+選取 `cpu`。
+
+同一個 checkout 若同時從 Windows 與 WSL 開發，repo-root `.venv` 是 Windows environment，不能由 WSL
+執行或同步。WSL 應覆寫 machine-local 位置，使用自己的 Poetry cached environment：
+
+```bash
+POETRY_VIRTUALENVS_IN_PROJECT=false poetry sync
+POETRY_VIRTUALENVS_IN_PROJECT=false poetry run python run.py
+```
+
+這不會替換 repo-root 的 Windows `.venv`。不要從 WSL 刪除或修改該目錄；Windows 的同步與啟動仍回到
+PowerShell 執行。
+若要完整重建，先關閉 XBrainLab，以 `poetry env info --path` 確認目標確實是本 repository 的 `.venv`，
+再執行 `poetry env remove --all`；這只刪除 Poetry environment，不刪 dataset、Granite model cache或輸出。
 
 不得隱式下載或替換模型。模型 identity、license、quantization、cache 位置與容量上限都屬於產品
 決策。
