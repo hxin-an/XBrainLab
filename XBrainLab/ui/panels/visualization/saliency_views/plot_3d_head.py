@@ -182,7 +182,12 @@ class Saliency3D:
             return self.plotter
 
         self.plotter.clear_camera_widgets()
-        self.plotter.add_camera_orientation_widget()
+        self.plotter.add_axes(
+            interactive=False,
+            viewport=(0.81, 0.80, 0.97, 0.96),
+            line_width=2,
+            color=Theme.TEXT_PRIMARY,
+        )
 
         self.channelActor = [self.plotter.add_mesh(ch, color="w") for ch in self.chs]
 

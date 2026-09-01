@@ -43,7 +43,7 @@ class _PlotterStub:
         self.scalar_bar_kwargs: dict[str, Any] = {}
         self.camera = MagicMock()
 
-    def add_camera_orientation_widget(self) -> None:
+    def add_axes(self, **_kwargs: Any) -> None:
         pass
 
     def clear_camera_widgets(self) -> None:

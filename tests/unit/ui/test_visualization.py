@@ -1370,26 +1370,24 @@ class TestSaliency3DPlotWidget:
         assert captured_kwargs["method"] == "VarGrad"
         assert captured_kwargs["absolute"] is True
 
-    def test_3d_head_plot_keeps_one_orientation_widget_across_repeated_builds(self):
+    def test_3d_head_plot_keeps_one_fixed_corner_marker_across_repeated_builds(self):
         from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_head import (
             Saliency3D,
         )
+        from XBrainLab.ui.styles.theme import Theme
 
         class PlotterStub:
             def __init__(self):
                 self.slider_ranges = []
                 self.camera = MagicMock()
-                self.orientation_widget_calls = 0
+                self.axes_calls = []
                 self.clear_camera_widget_calls = 0
-                self.active_orientation_widgets = 0
 
-            def add_camera_orientation_widget(self):
-                self.orientation_widget_calls += 1
-                self.active_orientation_widgets += 1
+            def add_axes(self, **kwargs):
+                self.axes_calls.append(kwargs)
 
             def clear_camera_widgets(self):
                 self.clear_camera_widget_calls += 1
-                self.active_orientation_widgets = 0
 
             def add_slider_widget(self, **kwargs):
                 self.slider_ranges.append(kwargs["rng"])
@@ -1432,9 +1430,21 @@ class TestSaliency3DPlotWidget:
         saliency.get_3d_head_plot()
 
         assert saliency.plotter.slider_ranges == []
-        assert saliency.plotter.orientation_widget_calls == 2
+        assert saliency.plotter.axes_calls == [
+            {
+                "interactive": False,
+                "viewport": (0.81, 0.80, 0.97, 0.96),
+                "line_width": 2,
+                "color": Theme.TEXT_PRIMARY,
+            },
+            {
+                "interactive": False,
+                "viewport": (0.81, 0.80, 0.97, 0.96),
+                "line_width": 2,
+                "color": Theme.TEXT_PRIMARY,
+            },
+        ]
         assert saliency.plotter.clear_camera_widget_calls == 2
-        assert saliency.plotter.active_orientation_widgets == 1
 
     def test_3d_head_plot_centers_scene_after_adding_meshes(self):
         from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_head import (
@@ -1463,7 +1473,7 @@ class TestSaliency3DPlotWidget:
                 self._camera_position = value
                 self.calls.append(("camera_position", value))
 
-            def add_camera_orientation_widget(self):
+            def add_axes(self, **_kwargs):
                 pass
 
             def clear_camera_widgets(self):
