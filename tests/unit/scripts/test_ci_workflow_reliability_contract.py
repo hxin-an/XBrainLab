@@ -47,6 +47,7 @@ def test_ci_poetry_bootstrap_and_venv_cache_are_lock_exact() -> None:
     workflow = _workflow(CI_WORKFLOW)
     assert workflow["env"] == {
         "POETRY_VERSION": "2.3.4",
+        "POETRY_INSTALLER_RE_RESOLVE": "true",
         "CI_PYTHON_VERSION": "3.11",
     }
     steps = _steps(workflow)
@@ -63,9 +64,10 @@ def test_ci_poetry_bootstrap_and_venv_cache_are_lock_exact() -> None:
         for step in poetry_installers
     )
     assert len(dependency_installers) == 8
-    assert all(
-        step["run"] == "poetry sync --no-interaction" for step in dependency_installers
+    windows_cpu_sync = (
+        "poetry sync --no-interaction ${{ runner.os == 'Windows' && '-E cpu' || '' }}"
     )
+    assert all(step["run"] == windows_cpu_sync for step in dependency_installers)
 
     venv_cache_steps = [
         step for step in steps if str(step.get("with", {}).get("path", "")) == ".venv"

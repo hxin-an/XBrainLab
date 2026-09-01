@@ -130,8 +130,15 @@ def test_windows_pytorch_variants_use_mutually_exclusive_explicit_sources() -> N
         for line in ci_source.splitlines()
         if "run: poetry sync --no-interaction" in line
     ]
-    assert sync_lines
-    assert all(line.endswith("-E cpu") for line in sync_lines)
+    assert len(sync_lines) == 8
+    assert all(
+        line
+        == (
+            "run: poetry sync --no-interaction "
+            "${{ runner.os == 'Windows' && '-E cpu' || '' }}"
+        )
+        for line in sync_lines
+    )
 
     pre_commit_source = (REPO_ROOT / ".pre-commit-config.yaml").read_text(
         encoding="utf-8"
