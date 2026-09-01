@@ -8,7 +8,7 @@ import shutil
 import ssl
 import urllib.request
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, BinaryIO
 from urllib.parse import urlparse
@@ -27,7 +27,7 @@ CHUNK_SIZE = 1024 * 1024
 
 def utc_now() -> str:
     """Return an RFC 3339 timestamp."""
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def default_plan_path(registry: dict[str, Any]) -> Path:

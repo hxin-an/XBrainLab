@@ -139,7 +139,7 @@ def _drain_queue(q, timeout=2.0, poll=0.05):
     while time.monotonic() < deadline:
         try:
             messages.append(q.get_nowait())
-        except Exception:  # noqa: PERF203
+        except Exception:
             if messages:
                 # Got at least one; try once more after short sleep
                 time.sleep(poll)

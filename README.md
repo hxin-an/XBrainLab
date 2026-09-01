@@ -25,20 +25,16 @@ poetry sync
 poetry run python run.py
 ```
 
-Windows 不使用上面的無 extra 同步；若要以 NVIDIA CUDA 執行本機 Assistant，首次改用：
+Windows 10／11 x64 的已下載 source checkout，主要入口是從 repository root 執行：
 
 ```powershell
-poetry config virtualenvs.in-project true --local
-poetry config installer.re-resolve true --local
-$python = py -3.12 -c "import sys; print(sys.executable)"
-poetry env use $python
-poetry sync --with llm -E cuda
-poetry run python run.py --model local
+.\setup-windows.cmd
 ```
 
-日後同步 CUDA 開發環境仍使用 `poetry sync --with llm -E cuda`；Windows CPU 環境則明確使用
-`poetry sync -E cpu` 取得官方 `+cpu` wheels。Windows 不支援省略或同時選取這兩個 extra。
-詳見[本機開發環境](docs/developer/local-setup.md)。
+這是可重建的 **source bootstrap**，不是 signed installer。若缺少 Python 3.12 x64，會先透過 WinGet 安裝這個小型
+prerequisite；接著只會出現一次確認，才下載 Poetry、相依套件與目前支援的 Granite model。它會在 NVIDIA R580+
+driver 上選 CUDA，其他情況選 CPU。詳見[本機開發環境](docs/developer/local-setup.md)的空間、重跑與 advanced recovery
+說明。
 
 目前發行物是 source/GUI baseline，不是 signed installer。Windows launcher 只適用於已配置的開發
 機器，不能視為一般使用者安裝程式。

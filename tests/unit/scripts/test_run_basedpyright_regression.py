@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
-import tomllib
 
 from scripts.dev.handoff_gate_spec import HANDOFF_GATE_SPECS
 from scripts.dev.run_basedpyright_regression import (
@@ -14,6 +14,7 @@ from scripts.dev.run_basedpyright_regression import (
     DiagnosticKey,
     _evaluate,
     _run_analyzer,
+    _run_command,
     compare_diagnostics,
     load_baseline,
     normalize_diagnostics,
@@ -197,3 +198,21 @@ def test_analyzer_is_bound_to_the_gate_python_interpreter(monkeypatch) -> None:
         sys.executable,
         "--outputjson",
     ]
+
+
+def test_analyzer_output_is_decoded_as_utf8_on_windows_locales(monkeypatch) -> None:
+    recorded: dict[str, object] = {}
+
+    def capture(argv, **kwargs):
+        recorded.update(kwargs)
+        return type(
+            "Completed",
+            (),
+            {"args": argv, "returncode": 0, "stdout": "{}", "stderr": ""},
+        )()
+
+    monkeypatch.setattr("subprocess.run", capture)
+
+    _run_command(["basedpyright", "--version"])
+
+    assert recorded["encoding"] == "utf-8"

@@ -205,7 +205,7 @@ def _run_command(argv: list[str]) -> subprocess.CompletedProcess[str]:
         cwd=ROOT,
         check=False,
         capture_output=True,
-        text=True,
+        encoding="utf-8",
         timeout=3600,
     )
 

@@ -280,7 +280,7 @@ class LabelImportService:
         for target, snapshot in snapshots:
             try:
                 self._replace_raw_label_state(target, snapshot)
-            except Exception as rollback_error:  # noqa: PERF203
+            except Exception as rollback_error:
                 failure = AtomicLabelRollbackFailure(
                     target_path=self._label_target_path(target),
                     exception_type=type(rollback_error).__name__,

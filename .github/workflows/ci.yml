@@ -526,6 +526,10 @@ jobs:
       - name: Install dependencies
         run: poetry sync --no-interaction -E cpu
 
+      - name: Smoke Windows source bootstrap plan
+        if: matrix.key == 'windows-startup-py312'
+        run: cmd.exe /d /c setup-windows.cmd -PlanOnly
+
       - name: Prepare isolated native paths
         run: >-
           poetry run -- python scripts/dev/prepare_native_ci_environment.py

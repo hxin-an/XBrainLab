@@ -209,7 +209,7 @@ def _prewarm_startup_modules(
         try:
             with _LAZY_IMPORT_LOCK:
                 import_module(module_name)
-        except Exception:  # noqa: PERF203
+        except Exception:
             logger.debug("Startup prewarm failed for %s", module_name, exc_info=True)
             failed.append(module_name)
         else:

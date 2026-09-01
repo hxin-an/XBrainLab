@@ -14,7 +14,7 @@ environment**：Poetry 管理 repo-root `.venv`，Windows CUDA 使用者完成�
 `poetry run python run.py --model local`。Windows 必須明確選擇 `cpu` 或 `cuda` extra，Windows CI 選擇
 CPU contract；不得把 WSL／offscreen evidence 當成 Windows desktop acceptance。
 
-## Active program — Windows Poetry/CUDA convergence
+## Active program — Windows Poetry/CUDA convergence and one-command bootstrap
 
 ### Problem and evidence
 
@@ -32,20 +32,35 @@ CPU contract；不得把 WSL／offscreen evidence 當成 Windows desktop accepta
 - Windows repo-root `.venv` 明確使用既有 CPython 3.12。`poetry sync --with llm -E cuda` 安裝
   `torch==2.11.0+cu130`、`torchvision==0.26.0+cu130`、`torchaudio==2.11.0+cu130`；CPU 環境使用
   `poetry sync -E cpu`。兩個 extra 互斥，不支援在 Windows 省略或同時選取。
+- 已下載 source checkout 的 Windows 10／11 x64 使用者只執行 `setup-windows.cmd`。缺少 Python 3.12 x64 時，
+  先由 WinGet 補齊這個小型 stage-0 prerequisite；之後顯示完整計畫並以唯一一次確認 gate Poetry、repo `.venv`、
+  數 GB dependencies／Granite model、runtime驗證與啟動。這是 source bootstrap，不是 signed installer。
 - 新環境與 native app 驗證通過後，移除已吸收的 worktree、舊 manual/dev env 與精確列出的暫存產物；保留
   dataset、Granite model cache、Poetry wheel cache、logs、使用者輸出與有獨立未合併工作的 branch ref。
 
 ### Scope, non-goals, assumptions, and ownership
 
-- Poetry slice 只改 dependency metadata／lock、既有安裝文件與能直接證明 resolver contract 的 focused test；
-  不改 product runtime、Assistant model catalog、UI、launcher behavior、模型 cache 或 `.python-version`。
+- Bootstrap slice 只新增 Windows source setup／launcher、既有模型下載 lifecycle 的 CLI adapter、安裝文件與
+  直接 contract tests；不改 UI、Assistant model catalog、runtime command semantics、EEG workflow、Git checkout
+  或 `.python-version`。Full Ruff gate原有的12個mechanical findings只作直接validation dependency cleanup：
+  移除失效noqa、整理import、改用`datetime.UTC`與固定analyzer UTF-8 decoding，不改product behavior。
 - 官方 package source使用 explicit priority；CPU/CUDA 以 Windows platform 與 `cpu`／`cuda` extras 的互斥 marker解析。
   Poetry contract 為 `>=2.3,<3`，lock 由 Poetry 2.3.4 產生。
 - 同一 checkout 若同時供 Windows 與 WSL 開發，repo-root `.venv` 只屬於 Windows；WSL 以
   `POETRY_VIRTUALENVS_IN_PROJECT=false` 使用自己的 cached environment，不操作 Windows `.venv`。
-- 現有 packaging/runtime owner 不變，production owner delta `0`，產品 runtime LOC delta `0`。若需要 runtime
-  fallback、第二個 installer owner、post-sync pip patch、全平台 CUDA 或 signed installer claim，立即停止另行決策。
-- 本 program 沒有 UI 修改；UI確認狀態為 **not applicable**。Windows native launch仍須真人驗收。
+- Complexity review（new-feature `>800 LOC` threshold triggered）：既有 source 沒有 Windows native install owner；
+  完成後只有一個 bootstrap coordinator負責 prerequisite admission 與 setup sequence（owner delta `+1`），模型下載、
+  cache policy與async cleanup仍由`ModelDownloadLifecycle`擁有。實際 packaging／adapter production為
+  `+1,013 / -1 / net +1,012 LOC`、10 production／tooling files，UI LOC delta `0`。增加來自stage-0 Python discovery、pinned Poetry
+  supply-chain verification、CPU／CUDA env convergence、runtime/model verification與recoverable failure paths；
+  沒有新增第二套download/cache policy。Deletion/reuse已把重複手動setup降為advanced recovery並沿用既有model
+  owner；WSL launcher語意不同，不共用。拆分保持為兩個可審查commit（dependency/lock contract與bootstrap public
+  command）但同一PR一起驗證，避免合併一個尚不能執行的半套入口；若總slice達`1,500 LOC`或再增加owner則拆PR。
+  若需要第二個模型下載owner、silent pip patch、自動安裝NVIDIA driver、remote pipe-to-shell或signed installer
+  claim，立即停止另行決策。
+- 本 program 沒有可見 UI 修改；使用者已於`2026-09-01`明確允許刪除
+  `XBrainLab/ui/main_window.py`的一個失效lint註解。它不改layout、文案、互動或runtime，故screenshot不適用；
+  Windows native launch仍須真人驗收。
 
 ### Implementation sequence
 
@@ -71,7 +86,13 @@ CPU contract；不得把 WSL／offscreen evidence 當成 Windows desktop accepta
    poetry run python run.py --model local
    ```
 
-5. **Current**：新 `.venv` 與 exact branch通過 automated＋Windows native acceptance後建立 PR；source再變即重驗。使用者明確
+5. **完成**：failing contracts已固定單一入口、stage-0 WinGet Python、唯一multi-GB確認、verified Poetry 2.3.4、
+   R580 CPU／CUDA選擇、recoverable invalid `.venv`、model lifecycle delegation、重跑與failure exit；實作後
+   241個directly coupled tests、architecture compliance、Poetry lock、package build、MkDocs strict與full Ruff
+   均通過。Windows native `-PlanOnly -Cpu`正確選CPU，`-Yes -NoLaunch`重跑為dependency no-op、CUDA 13.0
+   可用且complete model cache未重下載；Windows focused tests為37 passed，native Basedpyright regression亦PASS。
+   公開overrides只有`-Cpu`、`-Yes`、`-NoLaunch`、`-PlanOnly`。
+6. **Current**：完成exact source的automated gate與Windows native launch／真人acceptance後建立PR；source再變即重驗。使用者明確
    手測通過並同意 merge後才合併。最後回到 latest main重驗並刪除 fallback／task worktree／精確暫存項目。
 
 ### Focused validation
@@ -81,14 +102,22 @@ CPU contract；不得把 WSL／offscreen evidence 當成 Windows desktop accepta
 - Windows clean env：`poetry env info --path` 指向 repo-root `.venv`，Python 3.12，三件套皆為 `+cu130`，
   `torch.version.cuda == "13.0"`、`torch.cuda.is_available() is True`，PyQt6／Transformers／BitsAndBytes可 import；
   同一 sync連跑兩次仍保持 CUDA。
-- Native walkthrough：以 `poetry run` 啟動，檢查 Assistant、Training Settings、3D Plot、關閉生命週期、第二次啟動、
-  offline既有模型 cache與含空白路徑。自動／WSLg evidence不取代 Windows真人驗收。
+- Bootstrap contract：behavior tests覆蓋driver `<580`／`>=580`、CPU override、唯一確認的取消／零project
+  mutation、invalid `.venv` recoverable rename、Poetry checksum failure不執行、no-launch、async model terminal、
+  cancellation與非零exit；model lifecycle另覆蓋pinned complete-cache skip。缺少CPython時的stage-0只允許exact
+  WinGet package，`-PlanOnly`不得安裝；完整missing-Python路徑仍屬Windows native acceptance，不以source scan冒充。
+- Native walkthrough：在含空白／非 ASCII checkout以 `setup-windows.cmd` 完成一次確認、環境與模型 setup並啟動；
+  第二次執行不重複下載。檢查 Assistant、關閉生命週期及 offline既有 cache。自動／WSLg evidence不取代
+  Windows真人驗收。
 
 ### Stop and completion conditions
 
 - Resolver 若同時安裝 CPU/CUDA variants、非 Windows解析 CUDA、需要 silent fallback、或 clean second sync退回 CPU，
   停止；不以手動 pip掩蓋。
+- Bootstrap 若必須覆寫有效環境／settings、無法把模型下載交給既有 lifecycle、需要自動 driver／reboot、或不能在
+  失敗時保留可重跑狀態，停止而不以廣泛刪除掩蓋。
 - 刪除前若發現真實未提交差異、活動程序、唯一資料／模型／log或未合併工作，保留並回報；不用廣泛 glob刪除。
 - 完成時 `main == origin/main`、Git只剩使用者的 `settings.json`、`git worktree list`只剩主目錄、Poetry指向
-  repo-root `.venv`，且 `poetry run python run.py --model local` 使用 CUDA成功啟動。準確宣稱仍是可重建的
+  repo-root `.venv`；若缺少Python，stage-0只先補CPython 3.12 x64，之後`setup-windows.cmd`的唯一確認才允許
+  Poetry／project env／dependency／model mutation並使用正確variant與完整cache啟動。準確宣稱仍是可重建的
   Windows source/developer environment，不是 signed installer。

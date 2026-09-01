@@ -23,7 +23,8 @@ poetry sync
 poetry sync --with llm
 ```
 
-Windows 不執行上述無 extra 的同步，必須明確選擇一套 PyTorch wheel。沒有 NVIDIA CUDA 需求時使用：
+Windows source checkout 的一般入口是下方的 `setup-windows.cmd`，不是這組手動指令。只有 bootstrap 的
+明確錯誤需要人工恢復時，才手動選擇一套 PyTorch wheel；沒有 NVIDIA CUDA 需求時使用：
 
 ```powershell
 poetry config installer.re-resolve true --local
@@ -33,9 +34,50 @@ poetry sync -E cpu
 若 CPU 環境也要執行本機 Assistant，改為 `poetry sync --with llm -E cpu`。不要同時選取 `cpu` 與
 `cuda` extras。
 
-### Windows：可重建的 CUDA Assistant 環境
+### Windows：一個命令建立 source Assistant 環境
 
-Windows 上的本機 Assistant 若要使用 NVIDIA CUDA，第一次在 repository root 的 PowerShell 執行：
+對已下載的 Windows 10／11 x64 source checkout，從 repository root 的 PowerShell 執行：
+
+```powershell
+.\setup-windows.cmd
+```
+
+這是 source/developer bootstrap，**不是 signed installer**。若電腦沒有 CPython 3.12 x64，bootstrap 會先以
+WinGet 安裝該小型 prerequisite；其後顯示計畫並只詢問一次。回答 `Y` 才會下載 Poetry 2.3.4、建立 repository-root
+`.venv`、同步相依套件及下載 local model。它不會更新 Git、覆寫 `settings.json`、安裝／更新 NVIDIA driver，或在
+確認前建立／替換 project environment。
+
+Bootstrap 以 NVIDIA driver major version 判斷：R580 或更新版本選取 CUDA 13.0 的 `+cu130` PyTorch wheels；沒有
+相容 NVIDIA driver 則選 CPU `+cpu` wheels。它只選取其中一個 Windows extra。預設 Granite 4.0 Micro 3B 模型約
+6.82 GB，cache 目的地是 `%LOCALAPPDATA%\XBrainLab\models`；若使用者現有設定已選另一個支援模型，會保留該模型。
+`.venv` 位於 checkout root，Poetry cache、model cache 與 setup log 不在 checkout 內。首次安裝通常還需要數 GB
+給 `.venv` 和 wheel cache，請先確認磁碟空間。
+
+成功後會啟動 XBrainLab。重跑同一命令會檢查並重用有效 `.venv` 和完整 model cache，而不是重複下載；若 `.venv`
+不完整，會在確認後以可辨識的 `.venv.invalid-<timestamp>` 名稱保留，再重新建立。可用的參數如下：
+
+```powershell
+# 強制 CPU，即使可使用 CUDA
+.\setup-windows.cmd -Cpu
+
+# 已由自動化系統明確授權時才略過唯一確認；不建議日常手動使用
+.\setup-windows.cmd -Yes
+
+# 完成 setup 但不啟動 GUI
+.\setup-windows.cmd -NoLaunch
+
+# 只顯示計畫；不安裝 Python、不下載、不建立 environment 或啟動
+.\setup-windows.cmd -PlanOnly
+```
+
+清理只針對確定不再需要的 local state：關閉 XBrainLab 後可刪除 checkout 的 `.venv` 來重建環境；刪除
+`%LOCALAPPDATA%\XBrainLab\models` 會使下次 setup 重新下載模型；Poetry cache 與 `%LOCALAPPDATA%\XBrainLab\logs`
+可依磁碟需求清理。不要從 WSL 刪除 Windows `.venv`，也不要刪除 dataset、training outputs 或使用者設定。
+
+### Windows advanced recovery：手動 Poetry
+
+若 bootstrap 的明確錯誤訊息需要人工診斷，才改用下列手動恢復步驟。這會在 repository root 建立 Poetry 管理的
+`.venv`，並從官方 PyTorch CUDA 13.0 wheel source 安裝 `torch`、`torchvision`、`torchaudio` 的 `+cu130` 版本：
 
 ```powershell
 poetry config virtualenvs.in-project true --local
@@ -45,12 +87,8 @@ poetry env use $python
 poetry sync --with llm -E cuda
 ```
 
-這會在 repository root 建立 Poetry 管理的 `.venv`，並從官方 PyTorch CUDA 13.0 wheel source 安裝
-`torch`、`torchvision`、`torchaudio` 的 `+cu130` 版本。它是 source/developer environment，不是 signed
-installer；第一次下載與展開後的環境通常需要數 GB 空間，目的地就是 repository root 的 `.venv`，且需要
-已安裝可相容的 NVIDIA driver。Project-local `installer.re-resolve=true` 讓 Poetry 依本次選取的 extra
-只安裝一套 PyTorch wheel；產生的 `poetry.toml` 是 ignored machine state，不是第二份 dependency truth。
-這個步驟不會重新下載既有 Granite model cache。可確認 CUDA 是否可用：
+Project-local `installer.re-resolve=true` 讓 Poetry 依本次選取的 extra 只安裝一套 PyTorch wheel；產生的
+`poetry.toml` 是 ignored machine state，不是第二份 dependency truth。可確認 CUDA 是否可用：
 
 ```powershell
 poetry run python -c "import torch; print(torch.__version__); print(torch.version.cuda); print(torch.cuda.is_available())"
