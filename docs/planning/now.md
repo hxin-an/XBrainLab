@@ -4,10 +4,10 @@
 
 ## Current baseline and release decision
 
-`e9e28d19784231bd73cc18cbc15b9d3b060fb738` 是本次 plan 的 product parent baseline。PR #94 已關閉
-Basedpyright 假綠，PR #96 已建立 Desktop source release profile；PR #97、#99、#100、#102、#103 與 #105
-累計清除 66 項型別 diagnostics，把全案真實基準由 67 降為 1。舊 release candidate PR #91 的
-source、artifact 與 manual acceptance 仍為失效歷史，不得重用。
+`a426ad90e0fb153b5b847042301b7e8d78a65823` 是本次 plan 的 product parent baseline。PR #107 在
+`79708a0eea1bc7b640c6cbd5b3fc10db8f75530b` 已通過 automated CI，但仍等待使用者批准；Windows native
+手測在該 source 發現兩個與 PR #107 diff 無關的可見 blocker，因此這份 candidate 不能作為穩定版驗收來源。
+舊 release candidate PR #91 的 source、artifact 與 manual acceptance 仍為失效歷史，不得重用。
 Repo-root `settings.json` 的本機修改由使用者擁有，不得 stage、commit、revert、覆寫或隱藏。
 
 使用者於 `2026-08-31` 決定下一個版本為 **v0.9.0 Desktop Core Stable source release**：同一 candidate
@@ -18,21 +18,24 @@ Repo-root `settings.json` 的本機修改由使用者擁有，不得 stage、com
 
 ### Evidence and blockers
 
-1. 完整 Poetry 3.12 環境如實分析 416 個 production files；PR #105 後仍有 `1 diagnostic`。
-   Fake-green 已關閉，但真實 type debt 尚未清零，Basedpyright 也還未接入現有 full-dependency
-   CI job，所以 release gate 仍不可宣稱通過。
+1. PR #107 已將最後一項真實 Basedpyright defect 收斂到 observed zero diagnostics；該 PR 仍須獨立批准與
+   merge，且不吸收本次 UI 修正。
 2. PR #96 的 canonical `desktop-source` profile 已進入 main：Desktop 核心 gate 保持完整，bounded
    Assistant 固定 Granite 4.0 Micro 與 81-case inventory，並明示
    `assistant_stable_promotion=false`。目前結果仍只支持 bounded preview，不可宣稱
    Assistant Stable promotion。
 3. PR #91 的 0.9.0 version／release truth 變更尚未進入 main。必須先將真實 diagnostics 清零、將
    deterministic runner 接入 CI，再從新的 fixed main 建立全新 candidate。
+4. Windows native Training Settings 的 `Set` 右框與垂直 scrollbar 視覺間距不足；同 source 的 WSLg
+   未呈現相同問題。使用者已明確批准略為加寬對話框與增加平台中性的右側 gutter。
+5. 3D XYZ 首次 render 正常；VRAM／CUDA failure 會關閉舊 `QtInteractor`，retry 後新 interactor 的
+   `add_camera_orientation_widget()` 沒有 explicit viewport，Windows 首次 layout／paint 後可能落到中央遮住頭部。
+   使用者已批准改為固定右上角、不可點擊的方向指示器。
 
 ### Outcomes
 
 - Basedpyright runner 在 dependency type information 不可解析時 fail closed；完整依賴環境及 CI 結果一致。
-- 正確環境中剩餘的 1 diagnostic 經可觀察的 behavior fix 收斂到 zero observed
-  diagnostics；不得擴大 exclude 或把整批 debt 寫入 baseline。
+- PR #107 維持獨立的 artifact safety change；本次 UI PR 不重寫其 scope 或 evidence。
 - 既有 canonical handoff runner 新增唯一命名的 `desktop-source` release profile；無參數 strict 行為維持
   不變，不建立第二套 manifest 或任意 skip list。
 - Desktop profile 跑全部核心產品 gate，並以 case-level no-regression 的 bounded Assistant gate取代
@@ -54,40 +57,32 @@ Repo-root `settings.json` 的本機修改由使用者擁有，不得 stage、com
   guard、正確 import 或 deletion；不得新增 owner、state machine、receipt 或 compatibility path。
 - Validation／release-profile production delta 預計限於既有 `scripts/dev` commands，product runtime
   delta `0`。若任一 pure refactor 淨增超過 100 production LOC 或 owner 增加，停止並做 complexity review。
-- 使用者已明確批准計畫中 **type-only、無可見行為變更** 的 `XBrainLab/ui/` 修正；若需要改 layout、文案、
-  互動、狀態或流程，立即停止並另取 UI 確認。
+- 使用者已明確批准本 slice 的兩項可見 UI 變更：Training Settings 寬度／右側間距，以及 3D XYZ 固定右上角
+  且不可點擊。除此以外的 layout、文案、互動、狀態或流程不在授權內。
 
-### Current slice F — reject the NumPy `allow_pickle` control key
+### Current slice G — Windows Training Settings and recovered 3D parity
 
-- **Problem and evidence**：`backend/training/record/artifact_store.py` 的最後 1 項 `reportArgumentType` 對應真實
-  persistence defect。鎖定的 NumPy `2.5.2` 將 `allow_pickle` 視為 `np.savez_compressed` control argument；
-  `write_json_npz_artifact(arrays={"allow_pickle": ...})` 目前回報寫入成功，但 NPZ 丟失該 array、manifest仍記錄
-  該 key，第一次讀回即以 `ArtifactIntegrityError` 失敗。現有 GUI／TrainRecord／EvalRecord 使用固定 key
-  vocabulary，不會產生此名稱；缺陷只在 direct internal writer caller 可達。
-- **Outcome**：復用 writer 現有 per-key validation，在任何 directory／temporary／manifest／NPZ mutation 前，
-  以既有 `ArtifactStoreError` 拒絕精確名稱 `allow_pickle`。單檔 1→0，全案 observed count 由 1 降為 0。
-- **Scope／non-goals**：只改 `artifact_store.py` 與 `test_safe_artifact_store.py`；不改 schema、reader、hash、
-  atomic replace、directory identity、production writer key vocabulary、UI 或 public artifact shape。不建立
-  reserved-name registry，不順手處理會立即 TypeError且不發布 artifact的 `file` key，也不新增 compatibility path。
-- **Ownership／deletion**：既有 artifact store仍是唯一 persistence owner，delta `0`；在既有 invalid-name條件
-  增加一個 proven collision，沒有新 helper／class／state。預期 production net LOC 介於 0 至 +2。
-- **Repair and validation**：先新增一個 side-effect test，證明舊版不拒絕且發布自相矛盾檔案；修正後要求
-  `ArtifactStoreError` 且 manifest／NPZ皆不存在。跑完整 safe-artifact focused suite、相關 record exports、Ruff、
-  完整外部 Basedpyright 1→0、frozen-SHA review與 PR CI。
-- **Stop／manual status**：若修正需要新 policy owner、泛用 key framework、schema／normal product writer變更，
-  或不是單一既有 validation condition即停止。這是 non-UI internal behavior fix，沒有有意義的 click-through；
-  frozen SHA 必須以 automated side-effect evidence交使用者明確批准，批准前不 merge。
+- **Outcome**：Training Settings 至少 664 logical px，內容右側 gutter 30 px，scrollbar 仍貼齊 window edge，
+  `Set` 到 scrollbar 至少 30 px；3D 使用 `add_axes(interactive=False)` 與 explicit normalized viewport
+  `(0.81, 0.80, 0.97, 0.96)`，包含 failure→new interactor→retry 後仍固定右上角。
+- **Scope／non-goals**：只改既有 Training dialog 與 3D head renderer owner及直接測試／capture；不改 VRAM
+  warning policy、interactor teardown、camera center、mesh、scalar bar、training behavior、PyVista／VTK版本或 public API。
+- **Ownership／complexity**：兩個既有 UI owner不變；不新增 module、owner、state、receipt、platform branch或
+  resize lifecycle。兩個互不重疊 worker各產生一個 focused commit，root整合到單一 PR，frozen後由獨立 reviewer審查。
+- **Repair and validation**：兩條線皆先建立最小 failing observable guard。Training跑100／125／150%與wide
+  scrollbar geometry；3D跑首次成功及VRAM／CUDA failure→close/delete→new interactor retry，精確驗證單一固定
+  viewport marker。Ruff、focused Qt suites與exact-source screenshots通過後，Windows native與WSLg同SHA手測。
+- **Stop／manual status**：若需要修改 VRAM admission、建立第二個 renderer owner、升級VTK，或 native recovery後
+  marker仍不固定即停止。這是可見產品行為，使用者對 frozen SHA 明確手測通過並同意 merge 前不得合併。
 
 ## Progression and focused validation
 
-1. **Current plan checkpoint**：合併本 canonical plan，再從 fixed main 建立單一 slice F worktree；一個 worker
-   實作，root 重跑 focused／external gates，同一 independent reviewer 只在 frozen commit 後審查。
-2. **Slice F exact validation**：執行 failing characterization → 單一 validation condition → passing artifact／
-   record suites；跑 external full Basedpyright、Ruff、diff、frozen-SHA review與 PR CI，使用者批准後才 merge。
-   observed count 必須由 1 精確降為 0，不可擴張 key policy。
-3. **Zero-debt checkpoint**：slice F 合併後從 clean main重跑 deterministic external analyzer與 dependency probe；
-   zero observed diagnostics只代表 type gate閉合，不自動宣稱產品 release-ready。
-4. **CI closure**：diagnostics 清零後，將 deterministic Basedpyright runner 接入現有 full-dependency job；不建立
+1. **Current slice**：Training與3D worker在獨立worktree完成RED→GREEN；root只整合兩個focused commits，
+   檢查production files／LOC／owner delta並凍結exact SHA。
+2. **Slice G validation**：跑focused Qt suites、Ruff、UI capture與Windows native recovery walkthrough；independent
+   reviewer審行為、測試品質、scope與claim boundary，PR CI及使用者批准後才 merge。
+3. **PR #107 closure**：artifact fix維持獨立PR與批准，不以本次UI手測替代其source evidence。
+4. **CI closure**：PR #107 合併後，將 deterministic Basedpyright runner 接入現有 full-dependency job；不建立
    第二套 CI truth。
 5. **Fresh candidate**：重建 0.9.0 identity／docs，clean、push、freeze exact SHA，以 D-mounted model／RAG
    caches及offline Granite跑 `desktop-source` canonical manifest；所有 non-skipped CI completed/success。
