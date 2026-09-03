@@ -59,6 +59,9 @@ from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
     present_unexpected_error,
 )
+from XBrainLab.ui.dialogs.dataset.review_import_presenter import (
+    adapt_serialized_validation_decision,
+)
 from XBrainLab.ui.interaction_outcome import (
     InteractionOutcome,
     reserve_interaction_continuation,
@@ -1706,13 +1709,15 @@ class DataInterpretationActionCoordinator:
                 return InteractionOutcome.cancelled(
                     "Data interpretation preview was cancelled."
                 )
+            reopen_step = self._repreview_step_for_decision(validated_state.decision)
+            self._show_status(f"Import review updated · Continue in {reopen_step}")
             return self._continue_data_interpretation_import(
                 source_path=source_path,
                 source_hint=source_hint,
                 choices=dict(choices),
                 label_sources=list(label_sources),
                 review_state=validated_state,
-                initial_step=initial_step,
+                initial_step=reopen_step,
                 loading_token=loading_token,
             )
 
@@ -1741,6 +1746,16 @@ class DataInterpretationActionCoordinator:
             retry=_dispatch_preview,
         )
         return _dispatch_preview()
+
+    @staticmethod
+    def _repreview_step_for_decision(decision: dict[str, Any]) -> str:
+        """Choose the next wizard task from the fresh typed decision only."""
+        review = adapt_serialized_validation_decision(decision)
+        if review.is_valid and review.decision == "blocked":
+            blocked_items = review.items_with_severity("blocked")
+            if blocked_items:
+                return blocked_items[0].target_step
+        return "Review and Import"
 
     def _review_interpretation_for_apply_async(
         self,
