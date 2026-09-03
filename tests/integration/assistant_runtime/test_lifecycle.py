@@ -48,7 +48,7 @@ from XBrainLab.llm.agent.tool_attempt_coordinator import (
     ToolAttemptAction,
     ToolAttemptDecision,
 )
-from XBrainLab.llm.agent.turn import AssistantTurnCorrelation
+from XBrainLab.llm.agent.turn import AssistantTurnCorrelation, AssistantTurnTerminal
 from XBrainLab.llm.agent.ui_handoff import WorkflowUiHandoffRequest
 from XBrainLab.llm.agent.worker import (
     ACTIVE_GENERATION_THREADS,
@@ -996,6 +996,7 @@ def test_pending_agent_decision_resolves_through_real_ui_handoff_signal(
         controller._tool_attempt_session.visible_response_sent = True
         controller.is_processing = True
         outcome_spy = QSignalSpy(controller.interaction_resolved)
+        terminal_spy = QSignalSpy(controller.turn_finished)
         harness.manager.on_assistant_activity_changed(
             AssistantTurnActivity(
                 AssistantTurnActivityPhase.WAITING_FOR_DECISION,
@@ -1024,6 +1025,11 @@ def test_pending_agent_decision_resolves_through_real_ui_handoff_signal(
             decision_fields=("target_event", "epoch_window"),
             message="Epoch settings were saved.",
         )
+        qtbot.waitUntil(lambda: len(terminal_spy) == 1, timeout=WATCHDOG_MS)
+        terminal = terminal_spy[0][0]
+        assert isinstance(terminal, AssistantTurnTerminal)
+        assert terminal.correlation == correlation
+        assert terminal.outcome == "completed"
         assert controller.is_processing is False
         qtbot.waitUntil(
             lambda: bool(harness.manager.chat_controller.messages),

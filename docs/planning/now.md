@@ -226,6 +226,24 @@ CPU contract；不得把 WSL／offscreen evidence 當成 Windows desktop accepta
    產生 passed JSON與可讀3D screenshot；terminal為 blocked、message／geometry／region checks皆通過且沒有
    plotter，從 MainWindow 初始化至3D screenshot與關閉約6秒，未耗盡12秒 timeout。獨立 review無 blocker；
    下一步只可 commit/push，然後在新的同一 exact SHA執行一次 canonical `desktop-source` manifest。
+10. **Current — assistant-runtime handoff test terminal-signal race**：在 exact
+    `6b5f5484f00a449b7cc8112ab4059e0f307883f5`，canonical manifest 的
+    `linux-integration-rest` shard 以 15 passed、1 failed fail closed；唯一失敗為
+    `test_pending_agent_decision_resolves_through_real_ui_handoff_signal` 在已收到 typed
+    `AgentInteractionOutcome(COMPLETED_IN_UI)` 後立即斷言 `controller.is_processing is False`，實際仍為
+    `True`。這是 test assertion 與 queued terminal-delivery lifecycle 的 race，不是 workflow UI handoff、
+    interaction outcome、product processing lifecycle 或 UI defect。Scope 僅限 active plan 與該 integration
+    test：在 trigger 前建立 `QSignalSpy(controller.turn_finished)`，保留先驗證 typed interaction outcome，接著等待
+    既有 typed terminal，核對其 `correlation` 與 `outcome == "completed"`，最後才驗證 processing 與 visible
+    messages。不得改 production/UI、signal contract、timeout、sleep、test harness ownership、manifest、gate
+    registry或 `settings.json`；UI confirmation：N/A。先以 exact canonical failure 作 red evidence，再作最小 test-only
+    repair；focused selector需多次穩定，並重跑直接 test file與適用 assistant-runtime gate，所有 Qt/MNE commands使用
+    `prlimit --core=0`與明確 timeout。changed-file Ruff及`git diff --check`必須通過。若 terminal未包含預期
+    correlation/outcome、需要拉長 timeout／sleep、或重現 product defect，停止並回報；完成條件是只改 plan/test、
+    production LOC=0，且不宣稱新的 canonical manifest證據。已完成：focused selector連續3次皆通過、direct
+    lifecycle file為16 passed、required assistant-runtime gate為16/16 passed；target Ruff與`git diff --check`通過，
+    獨立 review無 blocker。下一步只能在 commit/push後的新 exact SHA確認CI，再從頭執行一次 canonical
+    `desktop-source` manifest；本次focused evidence不替代canonical manifest或Windows native acceptance。
 
 ### Focused validation
 
