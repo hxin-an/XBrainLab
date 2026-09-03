@@ -63,7 +63,8 @@ class TestDataSplittingPreviewDialogDeep:
     def dlg(self, qtbot):
         from XBrainLab.backend.dataset import TrainingType
 
-        with patch("threading.Thread"):
+        with patch("threading.Thread") as mock_thread:
+            mock_thread.return_value.is_alive.return_value = False
             from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
                 DataSplittingPreviewDialog,
             )
@@ -144,7 +145,8 @@ class TestDataSplittingPreviewDialogSplitters:
     def dlg(self, qtbot):
         from XBrainLab.backend.dataset import SplitByType, TrainingType, ValSplitByType
 
-        with patch("threading.Thread"):
+        with patch("threading.Thread") as mock_thread:
+            mock_thread.return_value.is_alive.return_value = False
             from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
                 DataSplitterHolder,
                 DataSplittingPreviewDialog,
@@ -227,7 +229,8 @@ class TestDataSplittingPreviewDialogSplitters:
     def test_cross_validation_defaults_testing_to_kfold(self, qtbot):
         from XBrainLab.backend.dataset import SplitByType, TrainingType, ValSplitByType
 
-        with patch("threading.Thread"):
+        with patch("threading.Thread") as mock_thread:
+            mock_thread.return_value.is_alive.return_value = False
             from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
                 DataSplitterHolder,
                 DataSplittingPreviewDialog,

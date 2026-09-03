@@ -106,6 +106,37 @@ CPU contract；不得把 WSL／offscreen evidence 當成 Windows desktop accepta
    `site-packages`、PyQt sentinel未產生`reportAssignmentType`、baseline被改寫、需改 lock／產品／UI、或依賴
    machine-specific env名稱時停止；不要以移除 sentinel、重新開啟／壓掉 missing-import或宣稱CI pass取代 gate。
 
+#### Complete-regression handoff blocker — test-only lifecycle and lock reliability
+
+##### Evidence, scope, and non-goals
+
+- 在 exact `b92eecdeb1bec0b79b584450b0d11bc6761e73d1`，以 WSL cached Poetry environment、
+  `POETRY_VIRTUALENVS_IN_PROJECT=false`、`POETRY_INSTALLER_RE_RESOLVE=false`及`prlimit --core=0`
+  從頭執行 canonical manifest。Section 1（Git、Ruff、Basedpyright、MkDocs）與
+  `architecture-compliance`通過；`complete-regression` fail closed。這與 b92 的 production diff 無關，
+  但使 canonical handoff evidence 不成立。
+- Red evidence 有兩條：`tests/unit/ui/test_data_splitting.py` 的三個
+  `DataSplittingPreviewDialog` construction seams 以未設定`is_alive=False`的 fake `threading.Thread`
+  建立自動 preview；qtbot teardown 將它視為仍存活，5 秒後 deferred retry 呼叫 blocking warning modal，
+  污染後續 UI tests。另一條是
+  `tests/unit/llm/rag/test_security_policy.py::test_embedding_publication_lock_is_bounded_across_processes`：
+  POSIX holder-ready 15 秒在 measured parallel contention 下不足而逾時；Windows already uses 60 秒，
+  product publication-lock deadline仍為 0.2 秒。
+- Scope 只限上述兩個 test files 的 test-harness reliability repair。不得改 product UI、
+  data-splitting preview worker owner、RAG lock owner、publication-lock deadline、local handoff scheduler、
+  shard registry、aggregation policy、Poetry lock或 settings。沒有可見 UI 行為修改；UI confirmation：N/A。
+
+##### Repair sequence and validation
+
+1. 在三個 UI construction seams 使用 source-local preview-thread fake，並明確設定
+   `is_alive=False`；不以 production timeout／warning fallback遮蔽 test ownership。
+2. 只將 POSIX holder-ready test budget與既有 Windows 60 秒對齊；不放寬鎖取得／發布或 product deadline。
+3. Focused green 必須重跑兩個直接 test selectors及直接相鄰 preview lifecycle tests，確認沒有 deferred modal、
+   holder-ready 仍可觀察到跨 process admission；不得將 skip、auto-accept modal或 retry 當成通過。
+4. 之後從頭重跑同一 exact SHA canonical full manifest，讓 eight-group attestations、coverage及 required
+   selector terminal evidence 正常產生。若任一 phase-1 或尚未執行的 phase-2 group失敗，停止於其新的
+   evidence，不改 aggregator 來拼接／隱藏缺失 records。
+
 ### Implementation sequence
 
 1. **完成**：PR #107 已在 exact `c5df65fb` 通過驗證、使用者批准並合併為 `d60e9cac`。
