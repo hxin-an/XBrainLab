@@ -3105,7 +3105,7 @@ def _bounded_baseline_gate(report: object) -> dict[str, Any]:
                 continue
             seen_case_ids.add(case_id)
             actual_inventory[str(suite)].add(case_id)
-            if passed is False:
+            if passed is False and suite in {"precision", "clarification"}:
                 failure_case_ids.add(case_id)
     inventory_matches = bool(
         rows_well_formed

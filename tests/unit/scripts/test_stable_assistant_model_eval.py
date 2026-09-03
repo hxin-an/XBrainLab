@@ -118,7 +118,8 @@ def _bounded_baseline_report() -> dict[str, object]:
             "suite": suite,
             "case": {"case_id": row["id"]},
             "score": {
-                "passed": row["id"]
+                "passed": suite != "challenge"
+                and row["id"]
                 not in {
                     "select_channels_before_data_en",
                     "ambiguous_en",
@@ -2344,7 +2345,36 @@ def test_bounded_baseline_accepts_only_the_approved_failures_and_never_promotes(
 
     assert gate["passed"] is True
     assert gate["assistant_stable_promotion"] is False
+    assert gate["observed_failure_case_ids"] == [
+        "ambiguous_en",
+        "generic_filter_selection",
+        "select_channels_before_data_en",
+    ]
     assert report_bounded_baseline_passed(report) is True
+
+    approved_precision_improved = _bounded_baseline_report()
+    next(
+        row
+        for row in approved_precision_improved["results"]  # type: ignore[index]
+        if row["case"]["case_id"] == "ambiguous_en"
+    )["score"]["passed"] = True
+    assert _bounded_baseline_gate(approved_precision_improved)["passed"] is True
+
+    unapproved_precision = _bounded_baseline_report()
+    next(
+        row
+        for row in unapproved_precision["results"]  # type: ignore[index]
+        if row["case"]["case_id"] == "ambiguous_en_alt"
+    )["score"]["passed"] = False
+    assert _bounded_baseline_gate(unapproved_precision)["passed"] is False
+
+    unapproved_clarification = _bounded_baseline_report()
+    next(
+        row
+        for row in unapproved_clarification["results"]  # type: ignore[index]
+        if row["case"]["case_id"] == "partial_bandpass_accumulation"
+    )["score"]["passed"] = False
+    assert _bounded_baseline_gate(unapproved_clarification)["passed"] is False
 
     report["results"].append(  # type: ignore[index]
         {"suite": "precision", "case": {"case_id": "new"}, "score": {"passed": False}}

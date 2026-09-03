@@ -186,6 +186,23 @@ CPU contract；不得把 WSL／offscreen evidence 當成 Windows desktop accepta
    artifacts或降級分母。完成後的claim仍只能是 bounded checkpoint，絕不稱 Stable、promotion或
    handoff-ready；同一 SHA仍須 Windows 真人 launch／relaunch acceptance與使用者明確 merge approval，
    才可合併。
+8. **Current — bounded evaluator accounting repair**：在 exact
+   `1c87e602f79d59ace5142ad2714854ccdb123478`，固定 corpus 的 12 個 `challenge` diagnostic score failures
+   是 strict report 保留的診斷證據；目前 `_bounded_baseline_gate` 卻把所有 suite 的 `score.passed=false`
+   一起列入 `observed_failure_case_ids`，再與只核准三個 final product-outcome failures
+   （`select_channels_before_data_en`、`ambiguous_en`、`generic_filter_selection`）比較。因此 bounded route
+   錯把 diagnostic challenge rows 當成 baseline failure，無法產出其已批准的 desktop-source checkpoint。
+   Outcome 僅是：維持完整 81-row inventory與 challenge diagnostics 原樣，bounded observed IDs 僅從
+   `precision`／`clarification` final scores收集，且不得超出既有三個核准 IDs（已核准 failure自行改善不構成
+   regression）；正向36/36、frozen hashes、
+   model identity、host explicit-origin 10/10及missing-origin 5/5仍是原樣的 fail-closed gates。
+   Scope僅限 `scripts/dev/run_stable_assistant_model_eval.py`與其直接 unit fixture/test；non-goals為不改 frozen
+   corpus、allowlist、report schema、product/runtime/UI、strict promotion或 manifest，也不重跑模型。UI confirmation：N/A。
+   含12個 challenge diagnostic failures和三個核准 final failures的最小 red test已在現有 gate失敗；修後同一
+   selector與完整 evaluator unit file（69 passed）、changed-file Ruff及`git diff --check`通過。獨立 review
+   無 blocker；下一步是 commit/push，然後只在新的同一 exact SHA執行一次 canonical `desktop-source` manifest。
+   任何未核准的 precision／clarification final failure、inventory/hash/model/host gate失敗，或需擴大 allowlist
+   時停止。
 
 ### Focused validation
 
