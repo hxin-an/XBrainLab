@@ -46,7 +46,7 @@ def _wait_for_spawned_holder_ready(
     holder,
     ready,
     *,
-    timeout: float = 60.0 if os.name == "nt" else 15.0,
+    timeout: float = 60.0,
 ) -> None:
     """Wait for spawn/import overhead without weakening the lock deadline."""
     deadline = time.monotonic() + timeout

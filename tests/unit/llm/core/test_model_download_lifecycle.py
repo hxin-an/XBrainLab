@@ -152,6 +152,42 @@ def test_success_path_forwards_one_target_aware_terminal_outcome(qtbot) -> None:
     assert finished_outcomes[0].model_path == "/cache/model"
 
 
+def test_ensure_download_reuses_complete_pinned_cache_without_worker(
+    tmp_path,
+) -> None:
+    model_root = _write_complete_model_cache(tmp_path)
+    snapshot = model_root / "snapshots" / PRIMARY_MODEL_REVISION
+    downloader = _FakeDownloader()
+    lifecycle = ModelDownloadLifecycle(downloader=downloader)
+    terminal_events: list[tuple[bool, str]] = []
+    finished_outcomes: list[ModelDownloadOutcome] = []
+    lifecycle.terminal.connect(
+        lambda ok, message: terminal_events.append((ok, message))
+    )
+    lifecycle.finished.connect(finished_outcomes.append)
+
+    assert lifecycle.ensure_download(PRIMARY_MODEL_ID, str(tmp_path)) is True
+
+    assert downloader.target is None
+    assert lifecycle.is_idle() is True
+    assert terminal_events == [(True, "Model is already downloaded.")]
+    assert len(finished_outcomes) == 1
+    assert finished_outcomes[0].target.complete_cache_at_start is True
+    assert finished_outcomes[0].model_path == str(snapshot)
+
+
+def test_ensure_download_delegates_incomplete_cache_once(tmp_path) -> None:
+    downloader = _FakeDownloader()
+    lifecycle = ModelDownloadLifecycle(downloader=downloader)
+
+    assert lifecycle.ensure_download(PRIMARY_MODEL_ID, str(tmp_path)) is True
+
+    assert downloader.target is not None
+    assert downloader.target.repo_id == PRIMARY_MODEL_ID
+    assert downloader.target.complete_cache_at_start is False
+    assert lifecycle.is_idle() is False
+
+
 def test_app_shutdown_rejects_new_downloads_after_terminal(tmp_path, qtbot) -> None:
     downloader = _FakeDownloader()
     lifecycle = ModelDownloadLifecycle(downloader=downloader)

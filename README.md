@@ -18,12 +18,23 @@ import review recovery。歷史 MCP executable surface 已退役。
 
 ## 啟動
 
-使用 Poetry 管理的環境：
+Linux／macOS 開發環境使用 Poetry 管理：
 
 ```bash
-poetry install
+poetry sync
 poetry run python run.py
 ```
+
+Windows 10／11 x64 的已下載 source checkout，主要入口是從 repository root 執行：
+
+```powershell
+.\setup-windows.cmd
+```
+
+這是可重建的 **source bootstrap**，不是 signed installer。若缺少 Python 3.12 x64，會先透過 WinGet 安裝這個小型
+prerequisite；接著只會出現一次確認，才下載 Poetry、相依套件與目前支援的 Granite model。它會在 NVIDIA R580+
+driver 上選 CUDA，其他情況選 CPU。詳見[本機開發環境](docs/developer/local-setup.md)的空間、重跑與 advanced recovery
+說明。
 
 目前發行物是 source/GUI baseline，不是 signed installer。Windows launcher 只適用於已配置的開發
 機器，不能視為一般使用者安裝程式。

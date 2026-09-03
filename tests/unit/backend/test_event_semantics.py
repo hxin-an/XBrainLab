@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import mne
@@ -16,7 +16,7 @@ def test_gdf_rejected_trial_normalization_preserves_scoped_annotations() -> None
         onset=[1.25, 4.5, 8.0],
         duration=[0.75, 1.5, 0.0],
         description=["Stimulus/S 1023", "769", "note"],
-        orig_time=datetime(2026, 1, 2, tzinfo=timezone.utc),
+        orig_time=datetime(2026, 1, 2, tzinfo=UTC),
         ch_names=[("C3",), ("C4", "Cz"), ()],
     )
     mne_data = SimpleNamespace(annotations=annotations)

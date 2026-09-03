@@ -63,8 +63,14 @@ def test_ci_poetry_bootstrap_and_venv_cache_are_lock_exact() -> None:
         for step in poetry_installers
     )
     assert len(dependency_installers) == 8
+    windows_cpu_sync = (
+        "poetry sync --no-interaction ${{ runner.os == 'Windows' && '-E cpu' || '' }}"
+    )
+    platform_resolver = "${{ runner.os == 'Windows' && 'true' || 'false' }}"
+    assert all(step["run"] == windows_cpu_sync for step in dependency_installers)
     assert all(
-        step["run"] == "poetry sync --no-interaction" for step in dependency_installers
+        step.get("env") == {"POETRY_INSTALLER_RE_RESOLVE": platform_resolver}
+        for step in dependency_installers
     )
 
     venv_cache_steps = [

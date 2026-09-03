@@ -106,6 +106,9 @@ ipython_config.py
 #   commonly ignored for libraries.
 #   https://python-poetry.org/docs/basic-usage/#commit-your-poetrylock-file-to-version-control
 #poetry.lock
+# Poetry's project-local installer settings are machine state. Setup commands
+# recreate this file; dependency truth remains in pyproject.toml/poetry.lock.
+poetry.toml
 
 # pdm
 #   Similar to Pipfile.lock, it is generally recommended to include pdm.lock in version control.

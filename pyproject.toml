@@ -1,55 +1,87 @@
 [tool.poetry]
+packages = [{include = "XBrainLab"}]
+requires-poetry = ">=2.3,<3"
+
+[project]
+# Poetry 2.3+ uses this root extra to select the mutually exclusive Windows
+# CUDA wheels below. PEP 621 owns install metadata; tool.poetry only enriches
+# the three PyTorch dependencies with explicit source selection.
 name = "xbrainlab"
 version = "0.8.0"
 description = "XBrainLab: EEG Analysis Platform with AI Agent"
-authors = ["XBrainLab Team"]
+authors = [{ name = "XBrainLab Team" }]
 readme = "README.md"
-packages = [{include = "XBrainLab"}]
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "numpy (>=2.0,<3)",
+    "scipy (>=1.10.0,<2.0.0)",
+    "matplotlib (>=3.8.0,<4.0.0)",
+    "scikit-learn (>=1.4.0,<2.0.0)",
+    "pandas (>=2.0.0,<3.0.0)",
+    "h5py (>=3.10.0,<4.0.0)",
+    "mne (>=1.6.0,<2.0.0)",
+    "pymatreader (>=1.2.2,<2)",
+    "braindecode (==1.6.1)",
+    "torch (==2.11.0)",
+    "torchvision (==0.26.0)",
+    "torchaudio (==2.11.0)",
+    "captum (>=0.7.0,<0.8.0)",
+    "tqdm (>=4.66.0,<5.0.0)",
+    "requests (>=2.31.0,<3.0.0)",
+    "pyyaml (>=6.0,<7.0)",
+    "psutil (>=5.9.0,<6.0.0)",
+    "python-dotenv (>=1.2.1,<2.0.0)",
+    "typing-extensions (>=4.6.0)",
+    "torchinfo (>=1.8.0,<2.0.0)",
+    "pyqt6 (>=6.10.2,<7.0.0)",
+    "pyqtgraph (>=0.14.0,<0.15.0)",
+    "qdarkstyle (>=3.2,<4.0)",
+    "vtk (==9.3.1)",
+    "pyvista (>=0.43.0,<0.45.0)",
+    "pyvistaqt (>=0.11.0,<0.12.0)",
+    "langchain-core (==1.3.3)",
+    "langchain-huggingface (==1.1.0)",
+    "langchain-qdrant (==1.1.0)",
+    "qdrant-client (>=1.9.0,<2.0.0)",
+    "sentence-transformers (>=2.6,<3)",
+]
+
+[project.optional-dependencies]
+cpu = [
+    "torch (==2.11.0+cpu) ; sys_platform == 'win32'",
+    "torchvision (==0.26.0+cpu) ; sys_platform == 'win32'",
+    "torchaudio (==2.11.0+cpu) ; sys_platform == 'win32'",
+]
+cuda = [
+    "torch (==2.11.0+cu130) ; sys_platform == 'win32'",
+    "torchvision (==0.26.0+cu130) ; sys_platform == 'win32'",
+    "torchaudio (==2.11.0+cu130) ; sys_platform == 'win32'",
+]
+
+[project.scripts]
+test-backend = "scripts.dev.run_tests:backend"
+test-ui = "scripts.dev.run_tests:ui"
+test-llm = "scripts.dev.run_tests:run_llm_tests"
+test-remote = "scripts.dev.run_tests:run_remote_tests"
 
 [tool.poetry.dependencies]
-python = ">=3.11,<3.13"
-# Core Science Stack
-numpy = ">=2.0,<3"
-scipy = "^1.10.0"
-matplotlib = "^3.8.0"
-scikit-learn = "^1.4.0"
-pandas = "^2.0.0"
-h5py = "^3.10.0"
-
-# EEG Analysis
-mne = "^1.6.0"
-pymatreader = ">=1.2.2,<2"
-braindecode = "==1.6.1"
-
-# Deep Learning Core (Required for Backend & LLM)
-torch = "^2.11.0"
-torchvision = "^0.26.0"
-torchaudio = "^2.11.0"
-captum = "^0.7.0"
-
-# Utilities
-tqdm = "^4.66.0"
-requests = "^2.31.0"
-pyyaml = "^6.0"
-psutil = "^5.9.0"
-python-dotenv = "^1.2.1"
-typing-extensions = ">=4.6.0"
-torchinfo = "^1.8.0"
-
-# GUI (Required)
-pyqt6 = "^6.10.2"
-pyqtgraph = "^0.14.0"
-qdarkstyle = "^3.2"
-vtk = "9.3.1"
-pyvista = ">=0.43.0,<0.45.0"
-pyvistaqt = ">=0.11.0,<0.12.0"
-
-# LLM / Agent
-langchain-core = "1.3.3"
-langchain-huggingface = "1.1.0"
-langchain-qdrant = "1.1.0"
-qdrant-client = "^1.9.0"
-sentence-transformers = ">=2.6,<3"
+# Explicit sources enrich the matching PEP 621 dependencies above. The three
+# markers are mutually exclusive for every supported target.
+torch = [
+    { markers = "sys_platform != 'win32'" },
+    { markers = "sys_platform == 'win32' and extra == 'cpu' and extra != 'cuda'", source = "pytorch-cpu" },
+    { markers = "sys_platform == 'win32' and extra == 'cuda' and extra != 'cpu'", source = "pytorch-cu130" },
+]
+torchvision = [
+    { markers = "sys_platform != 'win32'" },
+    { markers = "sys_platform == 'win32' and extra == 'cpu' and extra != 'cuda'", source = "pytorch-cpu" },
+    { markers = "sys_platform == 'win32' and extra == 'cuda' and extra != 'cpu'", source = "pytorch-cu130" },
+]
+torchaudio = [
+    { markers = "sys_platform != 'win32'" },
+    { markers = "sys_platform == 'win32' and extra == 'cpu' and extra != 'cuda'", source = "pytorch-cpu" },
+    { markers = "sys_platform == 'win32' and extra == 'cuda' and extra != 'cpu'", source = "pytorch-cu130" },
+]
 
 [tool.poetry.group.legacy-remote-llm]
 optional = true
@@ -92,6 +124,16 @@ mkdocs = "^1.6.1"
 mkdocs-material = "^9.6.0"
 mkdocstrings = "^0.29.0"
 mkdocstrings-python = "^1.16.0"
+
+[[tool.poetry.source]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+priority = "explicit"
+
+[[tool.poetry.source]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+priority = "explicit"
 
 [build-system]
 requires = ["poetry-core"]
@@ -219,13 +261,6 @@ exclude_lines = [
     "raise NotImplementedError",
     "@abstractmethod",
 ]
-
-[tool.poetry.scripts]
-test-backend = "scripts.dev.run_tests:backend"
-test-ui = "scripts.dev.run_tests:ui"
-test-llm = "scripts.dev.run_tests:run_llm_tests"
-test-remote = "scripts.dev.run_tests:run_remote_tests"
-# test-all = "scripts.dev.run_tests:all_tests"
 
 [tool.poe.tasks]
 # Development

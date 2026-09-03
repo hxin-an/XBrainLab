@@ -17,9 +17,10 @@ from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.downloader import (
     ModelDownloader,
     ModelDownloadOutcome,
+    ModelDownloadStatus,
     ModelDownloadTarget,
 )
-from XBrainLab.llm.core.model_catalog import plan_model_download
+from XBrainLab.llm.core.model_catalog import model_snapshot_path, plan_model_download
 
 MODEL_STATUS_PROBE_THREAD_NAME = "ModelStatusProbe"
 
@@ -351,6 +352,8 @@ class ModelDownloadLifecycleContract(Protocol):
 
     def start_download(self, repo_id: str, cache_dir: str) -> bool: ...
 
+    def ensure_download(self, repo_id: str, cache_dir: str) -> bool: ...
+
     def request_cancel(self) -> bool: ...
 
     def request_shutdown(self) -> bool: ...
@@ -420,6 +423,27 @@ class ModelDownloadLifecycle(QObject):
                 ModelDownloadTarget.create(repo_id, cache_dir)
             )
         return started
+
+    def ensure_download(self, repo_id: str, cache_dir: str) -> bool:
+        """Reuse a complete pinned snapshot or start the owned download path."""
+        if self._shutdown_requested or not self.is_idle():
+            return False
+        target = ModelDownloadTarget.create(repo_id, cache_dir)
+        if not target.complete_cache_at_start:
+            return self.start_download(repo_id, cache_dir)
+        snapshot = model_snapshot_path(cache_dir, repo_id)
+        if snapshot is None:
+            return False
+        self._active_target = target
+        self._publish_download_outcome(
+            ModelDownloadOutcome(
+                target=target,
+                status=ModelDownloadStatus.SUCCEEDED,
+                message="Model is already downloaded.",
+                model_path=str(snapshot),
+            )
+        )
+        return True
 
     def request_cancel(self) -> bool:
         """Request cancellation while retaining download and cleanup ownership."""

@@ -381,7 +381,7 @@ class PreprocessStateService(Observable):
                 _, event_ids = data.get_event_list()
                 if event_ids:
                     events.update(event_ids.keys())
-            except Exception as exc:  # noqa: PERF203
+            except Exception as exc:
                 logger.warning("Failed to get events from preprocessed data: %s", exc)
         return sorted(events)
 
