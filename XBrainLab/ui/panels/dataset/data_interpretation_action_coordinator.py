@@ -59,9 +59,6 @@ from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
     present_unexpected_error,
 )
-from XBrainLab.ui.dialogs.dataset.review_import_presenter import (
-    adapt_serialized_validation_decision,
-)
 from XBrainLab.ui.interaction_outcome import (
     InteractionOutcome,
     reserve_interaction_continuation,
@@ -1750,6 +1747,10 @@ class DataInterpretationActionCoordinator:
     @staticmethod
     def _repreview_step_for_decision(decision: dict[str, Any]) -> str:
         """Choose the next wizard task from the fresh typed decision only."""
+        from XBrainLab.ui.dialogs.dataset.review_import_presenter import (  # noqa: PLC0415
+            adapt_serialized_validation_decision,
+        )
+
         review = adapt_serialized_validation_decision(decision)
         if review.is_valid and review.decision == "blocked":
             blocked_items = review.items_with_severity("blocked")

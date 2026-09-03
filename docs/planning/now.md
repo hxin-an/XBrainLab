@@ -92,6 +92,38 @@ stage、commit、revert、覆寫或隱藏。
   asynchronous re-preview route or status bar, is dirty-source evidence, and is not Windows human acceptance. The
   exact-source Windows human walkthrough remains required before any merge claim.
 
+### PR #110 direct CI blocker — restore Dataset startup lazy import
+
+- Exact `6b9f1fe09425ea2274333538975a5eeb59bfd330` has four direct Linux CI failures in the Dataset import-latency
+  boundary. Their common root is this slice's new top-level coordinator import of
+  `XBrainLab.ui.dialogs.dataset.review_import_presenter`: importing Dataset actions now imports the Dataset dialog
+  package during first-open, violating its explicit lazy-import contract. This is an eager-import regression, not a
+  routing, validation, raw-SSVEP, or behavior failure.
+- Repair scope is only to restore the existing lazy seam: remove the coordinator top-level presenter import and
+  import the existing adapter only at fresh decision resolution. Do not add a parser, module, owner, cache, schema,
+  dialog/layout change, or fallback policy. The same typed adapter and routing outcome remain authoritative.
+- TDD evidence is the existing four import-latency selectors, run directly in the external Linux environment: they
+  must fail current source because the dialog package is eager. After the smallest lazy import repair, rerun those
+  selectors, the routing triplet, full async-flow file, a relevant MainWindow startup probe if environment permits,
+  changed-file Ruff and `git diff --check`.
+- Stop if lazy resolution changes the typed decision contract, delays/loses routing behavior, causes a new startup
+  import root, or needs a broader dialog/package redesign. This repair restores no user-visible behavior beyond
+  startup import latency and does not change the five stages or SSVEP claim boundary.
+- Red evidence completed in the external Linux environment: the direct import-latency probes found
+  `XBrainLab.ui.dialogs.dataset.review_import_presenter` after Dataset panel/actions import. The selected CI boundary
+  set was `2 failed, 2 passed`; both failures have the stated common eager-import root. The remaining two reported CI
+  failures are the same package-startup boundary on their own CI paths, not an additional routing defect.
+- Minimal repair completed: the adapter import now occurs inside `_repreview_step_for_decision()` only. It preserves
+  the existing adapter, typed decision semantics and routing outcome; no new parser/module/owner/cache was added.
+- Green evidence: the same four direct import-latency selectors plus default MainWindow startup probe and the routing
+  triplet were `8 passed` (5.46s). Full async-flow was `85 passed` (12.26s); changed-file Ruff and `git diff --check`
+  passed. These are dirty-source focused results only and do not replace PR CI or Windows acceptance.
+- Independent review passed: the repair preserves the existing lazy dialog boundary and routes through the same
+  adapter only after a fresh decision exists; it found no lifecycle, policy, owner, or visible-flow blocker. Combined
+  focused evidence is `91 passed` across the import-latency/startup boundary and complete async-flow protection.
+  Next step is commit/push this exact lazy-import repair, then wait for PR CI on that exact head; do not treat this
+  local evidence as CI completion or Windows acceptance.
+
 ### Stop condition
 
 - Stop rather than expand scope if fresh backend output lacks typed action items/target, targets a stage outside the
