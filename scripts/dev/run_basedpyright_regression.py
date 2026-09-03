@@ -238,9 +238,46 @@ def _load_analyzer_payload(
     return payload
 
 
-def _run_analyzer(executable: str) -> dict[str, Any]:
+def _analyzer_argv(
+    executable: str,
+    *,
+    config_path: Path,
+    target_path: Path | None = None,
+) -> list[str]:
+    argv = [
+        executable,
+        "--project",
+        str(config_path),
+        "--pythonpath",
+        sys.executable,
+        "--outputjson",
+    ]
+    if target_path is not None:
+        argv.append(str(target_path))
+    return argv
+
+
+def _write_ephemeral_analyzer_config(directory: Path) -> Path:
+    """Bind Basedpyright to this interpreter without persisting machine paths."""
+    config_path = directory / "pyrightconfig.json"
+    prefix = Path(sys.prefix)
+    config_path.write_text(
+        json.dumps(
+            {
+                "extends": str(ROOT / "pyproject.toml"),
+                "venvPath": str(prefix.parent),
+                "venv": prefix.name,
+                "executionEnvironments": [{"root": str(ROOT)}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return config_path
+
+
+def _run_analyzer(executable: str, *, config_path: Path) -> dict[str, Any]:
     return _load_analyzer_payload(
-        _run_command([executable, "--pythonpath", sys.executable, "--outputjson"])
+        _run_command(_analyzer_argv(executable, config_path=config_path))
     )
 
 
@@ -266,23 +303,18 @@ def validate_dependency_probe(payload: dict[str, Any], *, probe_path: Path) -> N
     )
 
 
-def _run_dependency_probe(executable: str) -> None:
+def _run_dependency_probe(executable: str, *, config_path: Path) -> None:
     """Use the analyzer itself to prove its selected Python exposes pinned GUI types."""
-    with tempfile.TemporaryDirectory(prefix="xbrainlab-basedpyright-") as temporary_dir:
-        probe_path = Path(temporary_dir) / "dependency_probe.py"
-        probe_path.write_text(_DEPENDENCY_PROBE_SOURCE, encoding="utf-8")
-        completed = _run_command(
-            [
-                executable,
-                "--pythonpath",
-                sys.executable,
-                "--outputjson",
-                str(probe_path),
-            ]
+    probe_path = config_path.parent / "dependency_probe.py"
+    probe_path.write_text(_DEPENDENCY_PROBE_SOURCE, encoding="utf-8")
+    completed = _run_command(
+        _analyzer_argv(
+            executable,
+            config_path=config_path,
+            target_path=probe_path,
         )
-        validate_dependency_probe(
-            _load_analyzer_payload(completed), probe_path=probe_path
-        )
+    )
+    validate_dependency_probe(_load_analyzer_payload(completed), probe_path=probe_path)
 
 
 def _evaluate() -> tuple[dict[str, Any], int]:
@@ -295,8 +327,10 @@ def _evaluate() -> tuple[dict[str, Any], int]:
         raise BasedpyrightRegressionError(
             "Basedpyright version does not match the checked-in baseline."
         )
-    _run_dependency_probe(executable)
-    payload = _run_analyzer(executable)
+    with tempfile.TemporaryDirectory(prefix="xbrainlab-basedpyright-") as directory:
+        config_path = _write_ephemeral_analyzer_config(Path(directory))
+        _run_dependency_probe(executable, config_path=config_path)
+        payload = _run_analyzer(executable, config_path=config_path)
     raw_diagnostics = payload.get("generalDiagnostics")
     if not isinstance(raw_diagnostics, list) or not all(
         isinstance(item, dict) for item in raw_diagnostics

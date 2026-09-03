@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import shutil
 import sys
 import tomllib
 from pathlib import Path
@@ -15,6 +17,8 @@ from scripts.dev.run_basedpyright_regression import (
     _evaluate,
     _run_analyzer,
     _run_command,
+    _run_dependency_probe,
+    _write_ephemeral_analyzer_config,
     compare_diagnostics,
     load_baseline,
     normalize_diagnostics,
@@ -141,6 +145,23 @@ def test_dependency_probe_accepts_the_expected_pyqt_sentinel_error() -> None:
     )
 
 
+def test_dependency_probe_resolves_pinned_pyqt6_types_in_the_invoking_poetry_environment(
+    tmp_path: Path,
+) -> None:
+    executable = shutil.which("basedpyright")
+    config_path = _write_ephemeral_analyzer_config(tmp_path)
+
+    assert executable is not None
+    assert json.loads(config_path.read_text(encoding="utf-8")) == {
+        "extends": str(ROOT / "pyproject.toml"),
+        "executionEnvironments": [{"root": str(ROOT)}],
+        "venvPath": str(Path(sys.prefix).parent),
+        "venv": Path(sys.prefix).name,
+    }
+    assert "stubPath" not in json.loads(config_path.read_text(encoding="utf-8"))
+    _run_dependency_probe(executable, config_path=config_path)
+
+
 def test_gate_runs_sentinel_before_accepting_a_project_result(monkeypatch) -> None:
     baseline = BasedpyrightBaseline(
         source_sha="dace4e7324eea80d296ebcabd67b8d6fb8c40935",  # pragma: allowlist secret
@@ -158,12 +179,12 @@ def test_gate_runs_sentinel_before_accepting_a_project_result(monkeypatch) -> No
     )
     monkeypatch.setattr(
         "scripts.dev.run_basedpyright_regression._run_analyzer",
-        lambda _: pytest.fail(
+        lambda _, *, config_path: pytest.fail(
             "The project result must not be accepted before the probe."
         ),
     )
 
-    def fail_probe(_: str) -> None:
+    def fail_probe(_: str, *, config_path: Path) -> None:
         raise BasedpyrightRegressionError(
             "Basedpyright did not resolve the pinned PyQt6 types."
         )
@@ -176,7 +197,9 @@ def test_gate_runs_sentinel_before_accepting_a_project_result(monkeypatch) -> No
         _evaluate()
 
 
-def test_analyzer_is_bound_to_the_gate_python_interpreter(monkeypatch) -> None:
+def test_analyzer_is_bound_to_the_gate_python_interpreter(
+    monkeypatch, tmp_path: Path
+) -> None:
     recorded_argv: list[str] = []
 
     class Completed:
@@ -190,10 +213,13 @@ def test_analyzer_is_bound_to_the_gate_python_interpreter(monkeypatch) -> None:
 
     monkeypatch.setattr("scripts.dev.run_basedpyright_regression._run_command", capture)
 
-    _run_analyzer("basedpyright")
+    config_path = _write_ephemeral_analyzer_config(tmp_path)
+    _run_analyzer("basedpyright", config_path=config_path)
 
     assert recorded_argv == [
         "basedpyright",
+        "--project",
+        str(config_path),
         "--pythonpath",
         sys.executable,
         "--outputjson",

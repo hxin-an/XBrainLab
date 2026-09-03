@@ -1,6 +1,6 @@
 # XBrainLab Now
 
-最後更新：`2026-09-01`
+最後更新：`2026-09-03`
 
 ## Current baseline and release decision
 
@@ -61,6 +61,50 @@ CPU contract；不得把 WSL／offscreen evidence 當成 Windows desktop accepta
 - 本 program 沒有可見 UI 修改；使用者已於`2026-09-01`明確允許刪除
   `XBrainLab/ui/main_window.py`的一個失效lint註解。它不改layout、文案、互動或runtime，故screenshot不適用；
   Windows native launch仍須真人驗收。
+
+### PR #109 handoff blocker — Basedpyright environment discovery
+
+#### Evidence and outcome
+
+- PR #109 exact head `8d30b8524480af6793d83a3982e7ba9b1003f485` 的最新 handoff dossier在
+  `basedpyright` gate記錄：`poetry run -- python scripts/dev/run_basedpyright_regression.py`
+  以 status 2 失敗，訊息是「did not resolve the pinned PyQt6 types」；source snapshot穩定，只有
+  使用者擁有的`settings.json` dirty exception。
+- `scripts/dev/run_basedpyright_regression.py`以`basedpyright --pythonpath sys.executable`
+  執行暫存 `PyQt6.QtCore.QObject` sentinel。唯讀 `/tmp` probe顯示即使選取有 PyQt6 6.10.2、`py.typed`與
+  `QtCore.pyi` 的健康 Poetry cached env，verbose search path仍未含該 env的`site-packages`，並顯示
+  `Could not import 'PyQt6.QtCore'`。repo config將`reportMissingImports`設為`none`，所以 JSON沒有
+  missing-import或期待的`reportAssignmentType` diagnostic，sentinel正確 fail closed。
+- 對照以 Basedpyright 的`venvPath`／`venv` route指向同一健康 env，search path會納入`site-packages`，且
+  `QObject = 1` 產生預期的`reportAssignmentType`。因此不是 PyQt6 lock、stub或 product type defect，而是
+  gate runner的 interpreter-to-site-packages discovery seam。PR #109的CI皆成功但 workflow未執行此
+  `basedpyright` gate；CI的`poetry sync`／runtime成功不能作為此 gate的通過證據。
+
+#### Scope, non-goals, assumptions, and ownership
+
+- Outcome是讓 canonical handoff `basedpyright` gate以實際 gate interpreter解析已 pinned 的 PyQt6 types，
+  同時保留 sentinel 的 false-green 防護。修復只限
+  `scripts/dev/run_basedpyright_regression.py`與其 focused tests；不改 PyQt6／Poetry lock、baseline、
+  product source、UI、CI workflow或 public contract，不新增 module、owner或第二條 command spine。
+- 假設 gate可由現有 Poetry environment取得足以推導其 venv identity的資料；不得把 cached env的機器特定名稱
+  寫入追蹤設定。repo-root `.venv` 是本輪 ignored 的環境殘留：WSL須維持
+  `POETRY_VIRTUALENVS_IN_PROJECT=false` 使用自身 cache，Windows `.venv` 不得被此診斷／修復刪除、重建或修改。
+  `settings.json`仍屬使用者，絕不可碰。沒有可見 UI 變更，UI 確認：N/A。
+
+#### Repair sequence and validation
+
+1. 先以 focused red test刻畫真實 analyzer resolution：健康 temporary venv route必須看見 PyQt6並取得
+   sentinel `reportAssignmentType`；現有 `--pythonpath` route不可再被誤判為足夠。測試不得依賴 machine-specific
+   cached env name，且維持 baseline read-only。
+2. 僅在 runner內以 Basedpyright 可辨識的 venv discovery route取代失效的`--pythonpath` seam，從 gate interpreter
+   推導，不另存 public config truth；保留 version pin、temporary probe、UTF-8 JSON、fail-closed error與 full
+   project analyzer invocation。
+3. Focused green：runner unit tests加上可重現的 CLI/environment-resolution coverage，現有 baseline、version、
+   stale/empty sentinel rejection與 canonical handoff argv contract都通過；在已完整同步的正確 Poetry env重跑
+   `poetry run -- python scripts/dev/run_basedpyright_regression.py`。
+4. 該 exact head 的 focused gate通過後，才重跑 canonical full handoff manifest。任何 probe仍未載入
+   `site-packages`、PyQt sentinel未產生`reportAssignmentType`、baseline被改寫、需改 lock／產品／UI、或依賴
+   machine-specific env名稱時停止；不要以移除 sentinel、重新開啟／壓掉 missing-import或宣稱CI pass取代 gate。
 
 ### Implementation sequence
 
