@@ -203,6 +203,29 @@ CPU contract；不得把 WSL／offscreen evidence 當成 Windows desktop accepta
    無 blocker；下一步是 commit/push，然後只在新的同一 exact SHA執行一次 canonical `desktop-source` manifest。
    任何未核准的 precision／clarification final failure、inventory/hash/model/host gate失敗，或需擴大 allowlist
    時停止。
+9. **Current — visualization capture-harness stale blocked-copy repair**：在 exact
+   `edee154d89d9e9ad22ebf1c8ea1c76786ac06017`，canonical offscreen visualization capture 的四張
+   screenshot 都已生成；3D screenshot 與先前成功 artifact 的像素／版面證據相同，且 product 的 parented
+   blocked label 實際顯示「`3D rendering requires an interactive OpenGL desktop session.`」。但
+   `THREE_D_TAB_SPECS[0]["expected_reason"]`仍是 dataset montage admission 文案「`Configure a 3D
+   Electrode Layout ...`」，因此 harness 無法找到該 label、等到完整 12 秒 timeout，最後以
+   `3D Plot did not settle on an unclipped expected blocked reason.` fail closed。這是 capture 規格的
+   stale copy，不是產品 3D runtime、UI、layout、timeout 或 screenshot geometry defect。
+   Outcome僅為讓 offscreen blocked capture以產品實際、穩定且唯一的 OpenGL-runtime fragment確認 terminal
+   state，避免不必要的12秒等待；scope只限該 script的`expected_reason`與直接 unit fixture／test。不得改
+   timeout、UI source、backend、gate registry、screenshot thresholds、geometry／region checks或 interactive
+   behavior；不新增 owner／module。先以 real parented label並由`THREE_D_TAB_SPECS[0]["expected_reason"]`
+   消費的最小 red test證明當前 stale spec失敗，再將 spec 更新為
+   `3D rendering requires an interactive OpenGL desktop session.`，重跑相同 selector、完整 direct test file、
+   changed-file Ruff與diff check；最後只作一次 bounded canonical offscreen standalone capture，檢查 JSON/
+   screenshot 並量測3D terminal在不再耗盡12秒前 settle。UI confirmation：N/A，因為不改產品可見 UI；offscreen
+   artifact仍不替代 Windows native/human acceptance。若 product runtime沒有該唯一 fragment、capture仍耗盡 timeout、
+   或需要放寬 geometry/region checks，停止而不以改 UI 或弱化 gate掩蓋。
+   已完成：red selector在 stale spec下以`settled=False`失敗；修後同一 selector、完整 direct unit file
+   （70 passed）、changed-file Ruff與`git diff --check`皆通過。bounded canonical offscreen standalone capture
+   產生 passed JSON與可讀3D screenshot；terminal為 blocked、message／geometry／region checks皆通過且沒有
+   plotter，從 MainWindow 初始化至3D screenshot與關閉約6秒，未耗盡12秒 timeout。獨立 review無 blocker；
+   下一步只可 commit/push，然後在新的同一 exact SHA執行一次 canonical `desktop-source` manifest。
 
 ### Focused validation
 

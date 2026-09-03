@@ -207,7 +207,7 @@ def test_wait_for_saliency_render_requires_target_generation_and_visible_canvas(
 
 
 def test_wait_for_3d_capture_observes_runtime_probe_terminal_state(qapp) -> None:
-    expected_reason = "Saliency Map, Spectrogram, or Topographic Map"
+    expected_reason = THREE_D_TAB_SPECS[0]["expected_reason"]
     widget = cast(Any, QWidget())
     label = QLabel("Checking 3D runtime...", widget)
     label.show()
@@ -219,7 +219,8 @@ def test_wait_for_3d_capture_observes_runtime_probe_terminal_state(qapp) -> None
         widget._runtime_probe_worker = None
         label.setText(
             "3D rendering requires an interactive OpenGL desktop session. "
-            f"Use {expected_reason} in this headless environment."
+            "Use the desktop launcher, or switch to Saliency Map, Spectrogram, "
+            "or Topographic Map in this headless environment."
         )
 
     # The product probe may take longer than the former fixed 500 ms delay.
@@ -699,8 +700,7 @@ def _base_payload():
                 "screenshot": "3d-blocked.png",
                 "ok": True,
                 "blocked_reason": (
-                    "Configure a 3D Electrode Layout in Dataset before opening "
-                    "the 3D plot."
+                    "3D rendering requires an interactive OpenGL desktop session."
                 ),
                 "message_evidence": {"ok": True},
                 "screenshot_region": {"ok": True},

@@ -87,7 +87,7 @@ THREE_D_TAB_SPECS: list[dict[str, str]] = [
         "screenshot": "visualization-render-3d-blocked.png",
         "interactive_screenshot": "visualization-render-3d-interactive.png",
         "expected_reason": (
-            "Configure a 3D Electrode Layout in Dataset before opening the 3D plot."
+            "3D rendering requires an interactive OpenGL desktop session."
         ),
     },
 ]
