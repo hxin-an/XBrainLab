@@ -172,8 +172,20 @@ CPU contract；不得把 WSL／offscreen evidence 當成 Windows desktop accepta
    即使不啟用 extra，全域 `POETRY_INSTALLER_RE_RESOLVE=true` 仍會讓 Poetry 2.3.4 錯選 cu130 local-version。
    修理只限 CI resolver admission：Windows runner 明確使用 `re-resolve=true`與`-E cpu`，Linux／macOS使用
    `re-resolve=false`且不啟用Windows-only extra，讓 lock markers選既有platform wheel；不改 lock、bootstrap
-   或 runtime。修後對新 exact head 重跑全套 automated gate與Windows native launch／真人acceptance。使用者
-   明確手測通過並同意 merge後才合併；最後回到 latest main重驗並刪除 fallback／task worktree／精確暫存項目。
+   或 runtime。
+7. **Current — bounded Assistant baseline route**：在 exact
+   `c5429eac243af19be890e438521dc1b73a41c4bd`，host CUDA 的 strict Assistant report完成完整 81/81
+   inventory：raw positive `36/36`、Host safety explicit parameter origin `10/10`、missing-origin guard
+   `5/5`，但 product no-action 為`22/24`、clarification execute-boundary為`6/7`，故
+   `assistant_stable_promotion=false`／candidate false。這與既有 bounded baseline的已知失敗集合相符，
+   但不構成 Stable、promotion 或 handoff-ready 證據。兩個意外同時啟動的 full `handoff` runner已自然
+   結束，沒有產生可用的 terminal deferred dossier；它們不是任何 claim 的 evidence。使用者於
+   `2026-09-03`明確批准這個不改 Assistant 的 Windows source-bootstrap PR使用固定
+   `desktop-source` bounded-baseline route。下一步只能在本次 plan commit push後的同一 exact SHA，以
+   canonical manifest執行一次`--release-profile desktop-source`；不得重試 strict runner、拼接先前
+   artifacts或降級分母。完成後的claim仍只能是 bounded checkpoint，絕不稱 Stable、promotion或
+   handoff-ready；同一 SHA仍須 Windows 真人 launch／relaunch acceptance與使用者明確 merge approval，
+   才可合併。
 
 ### Focused validation
 
@@ -190,6 +202,9 @@ CPU contract；不得把 WSL／offscreen evidence 當成 Windows desktop accepta
 - Native walkthrough：在含空白／非 ASCII checkout以 `setup-windows.cmd` 完成一次確認、環境與模型 setup並啟動；
   第二次執行不重複下載。檢查 Assistant、關閉生命週期及 offline既有 cache。自動／WSLg evidence不取代
   Windows真人驗收。
+- Bounded baseline handoff：僅對 push 後的同一 exact SHA，使用 canonical
+  `--release-profile desktop-source` manifest，保留完整 bounded Assistant report及已知 failures；它不替代
+  strict Stable gate，也不把任何舊 full-run artifact納入 dossier。
 
 ### Stop and completion conditions
 
@@ -198,6 +213,10 @@ CPU contract；不得把 WSL／offscreen evidence 當成 Windows desktop accepta
 - Bootstrap 若必須覆寫有效環境／settings、無法把模型下載交給既有 lifecycle、需要自動 driver／reboot、或不能在
   失敗時保留可重跑狀態，停止而不以廣泛刪除掩蓋。
 - 刪除前若發現真實未提交差異、活動程序、唯一資料／模型／log或未合併工作，保留並回報；不用廣泛 glob刪除。
+- 若 `desktop-source` manifest未在同一 pushed SHA產生完整 bounded artifact、known failures超出 canonical
+  bounded set、CI非全數 applicable non-skipped success、Windows launch／relaunch未由使用者在同一 SHA明確通過，
+  停在 checkpoint；不得以 strict runner、先前失敗或無 terminal dossier的 runner、或自動 evidence宣稱
+  Stable、promotion、handoff-ready或取得 merge。
 - 完成時 `main == origin/main`、Git只剩使用者的 `settings.json`、`git worktree list`只剩主目錄、Poetry指向
   repo-root `.venv`；若缺少Python，stage-0只先補CPython 3.12 x64，之後`setup-windows.cmd`的唯一確認才允許
   Poetry／project env／dependency／model mutation並使用正確variant與完整cache啟動。準確宣稱仍是可重建的
