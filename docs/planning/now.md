@@ -37,6 +37,16 @@ head 的 Windows 手測／merge 批准；本 slice 從 `origin/main` 另開 bran
   trial groups、Test/Validation 各 `0.25`，依批准的 original-scope contract 使用 `6/3/3`；(2) training
   recommendation synthetic `Epochs` fixture 已提供真實 shape 的 verified non-overlap epoch-window provenance。
   production audit 未放寬。
+- Exact-head CI `linux-integration-rest` 的六個失敗同樣都是 stale sequential-ratio expectations，audit 均
+  通過：`application_service_workflow` 的 `7/2/3` 改為 `6/3/3`；checked-in GDF `A01`（total 273）由
+  `176/43/54` 改為 `165/54/54`，`A02/A03`（各 total 270）由 `173/43/54` 改為 `162/54/54`，涵蓋三個
+  training-smoke cases 與一個 CUDA OOM case；`real_data_command_spine` 的 `A01` 亦為
+  `176/43/54` 改為 `165/54/54`。scope 限 tests/docs，不改 production。
+- `application_service_workflow` 同一 integration test 另有 direct stale assertion：顯式空
+  `split_config` 舊期望成功；批准契約只有 `None` 可走 legacy default，顯式空 rules 必須 fail closed 並保留
+  state。scope 限 tests/docs，不得放寬 production。
+- 上述七個 stale expectations/assertions（六個 count 與 explicit-empty assertion）均已修。Aggregate old-head
+  job 未提供額外測試；它因缺 provenance sidecar 而正確 fail closed，不是 Data Split regression。
 - Canonical manifest 在 `origin/main` 已有 direct-script `ModuleNotFoundError`，無法完成；supplemental full
   regression 的 `llm-rag` 缺 `langchain_huggingface` 亦為環境問題。兩者不得混為本 Data Split defect 或
   handoff evidence。
@@ -150,8 +160,13 @@ head 的 Windows 手測／merge 批准；本 slice 從 `origin/main` 另開 bran
 - Integration-UI green evidence: with the correct `PYTHONPATH`, full `tests/integration/ui` reports `119 passed,
   21 skipped`. The first attempt without that path produced three direct-script `ModuleNotFoundError`s; that is an
   existing runner-entrypoint/environment issue, not a Data Split defect.
-- Remaining work: make the tests/docs commit and push, obtain exact-head CI, and complete the specified Windows
-  native manual acceptance. Until those gates close, this remains a checkpoint, not handoff-ready.
+- Stale-test green evidence: ApplicationService integration file `21 passed`; checked-in GDF `15/15` passed;
+  command spine `1/1` passed. The authoritative `linux-integration-rest` result collected `346`, with `311 passed`,
+  `35` optional-public-fixture skipped, and `0 failed`; pipeline reports `121 passed, 6 skipped`. Aggregated evidence
+  is `10438 passed, 21 skipped, 0 failed`.
+- Remaining work: final tests/docs review and commit/push, exact-head CI, and the specified Windows native manual
+  acceptance. The canonical manifest retains its existing runner-entrypoint blocker. Until those gates close, this
+  remains a checkpoint, not handoff-ready.
 - Stop if deterministic allocation cannot satisfy hard train-class/required-split constraints for a given input:
   publish a recoverable infeasible preview with the cause, never silently clamp, split an atomic group, or mutate
   saved truth. Do not expand into arbitrary MOABB support, UI redesign, or a second allocator.

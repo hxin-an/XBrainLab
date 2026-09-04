@@ -35,8 +35,8 @@ EXPECTED_A01T_CLASS_EVENT_IDS = {
 }
 EXPECTED_A01T_SPLIT_SUMMARY = {
     "count": 1,
-    "train_count": 176,
-    "val_count": 43,
+    "train_count": 165,
+    "val_count": 54,
     "test_count": 54,
     "audit": {
         "ok": True,
