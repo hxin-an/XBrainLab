@@ -9,7 +9,7 @@ PR #109 的 Windows source bootstrap；其歷史、exact evidence 與使用者 W
 與 PR 記錄保存，不再作為 active plan。Repo-root `settings.json` 的本機修改由使用者擁有，絕不可
 stage、commit、revert、覆寫或隱藏。
 
-## Active slice — SSVEP import review re-preview routing
+## Active slice — SSVEP import review routing and EEGLAB preflight sampling rate
 
 ### Problem and evidence
 
@@ -25,6 +25,11 @@ stage、commit、revert、覆寫或隱藏。
 - 這是 coordinator routing defect，不是 dataset 名稱、raw SSVEP parser、backend validator 或 Apply defect。
   已有 focused tests coverage re-preview、fresh final review 與 no-apply boundary，但尚未刻畫 fresh blocked
   decision 的 target-step routing。
+- 使用者的 MAMEM1 BIDS 手測揭露另一個直接阻擋：`sub-1` 的 uncompressed embedded MAT v5 `.set` 把
+  `EEG.data` 放在 `EEG.srate` 之前。bounded preflight 一讀到 signal shape 就當作完整 header 回傳，因而
+  得到樣本數卻漏掉真實 header 的 `srate=250 Hz`。BIDS event review 無法由 `n_times / sfreq` 建立 recording
+  bounds，安全地退回 `Match Labels`。這不是頻率 class、SSVEP adapter 或使用者 choices 的問題；同型 embedded
+  EEGLAB `.set` 都可能受影響。
 
 ### Outcome and user-visible contract
 
@@ -35,25 +40,33 @@ stage、commit、revert、覆寫或隱藏。
   必須保留。
 - status bar 顯示 concise backend-truth-aligned recovery outcome（例如 review updated and current task），不以
   前端另造 validation policy。loading、cancel、failed 與 repeat lifecycle 保持現有 owner。
+- EEGLAB bounded preflight 必須在不 materialize signal samples 的前提下，繼續讀完同一 bounded MAT struct 所需
+  scalar metadata；對 data-before-srate 的 embedded MAT v5 source 保留 `sampling_rate_hz=250.0`。這讓 BIDS
+  duration validation 使用真實 recording bounds，而不是為 SSVEP 或 frequency class 增加特殊路徑。
 
 ### Scope, non-goals, assumptions, ownership
 
-- Scope 僅限 coordinator 的 fresh-decision-to-reopen-step routing、直接 focused regression tests、此 plan，和
-  必要的 offscreen walkthrough artifact。production files 預計只有
-  `XBrainLab/ui/panels/dataset/data_interpretation_action_coordinator.py`；tests 預計只有
-  `tests/unit/ui/dataset/test_interpretation_async_flow.py`。
+- Scope 包含 coordinator 的 fresh-decision-to-reopen-step routing、EEGLAB embedded MAT v5 bounded-header completion、
+  直接 focused regressions、此 plan，和必要的 offscreen walkthrough artifact。production files 預計只有
+  `XBrainLab/ui/panels/dataset/data_interpretation_action_coordinator.py` 與
+  `XBrainLab/backend/application/eeglab_set_preflight.py`；tests 預計只有
+  `tests/unit/ui/dataset/test_interpretation_async_flow.py` 與
+  `tests/unit/backend/application/test_eeglab_preflight_gate.py`。
 - 不改五階段、dialog layout、copy hierarchy、backend Data Interpretation policy／payload schema、Apply semantics、
   raw loader、recipe schema、MOABB dependency、dataset download、filter、Assistant fallback 或 data split。
-- 此 slice 不宣稱 MAMEM1／Wang2016 raw MATLAB import、Guttmann raw BDF/sidecar import、target-to-frequency/
-  phase/code recipe semantics或「SSVEP 可用」。這些需要獨立 decision、adapter 與 source-diverse real-data gate。
+- 不新增 frequency adapter、target-to-frequency/phase/code inference、CCA/FBCCA 或 BIDS special case；不宣稱所有
+  MOABB、任意 BIDS/event schema、科學 SSVEP accuracy 或 benchmark quality。MAMEM1 的 accepted contract 僅是使用者可將
+  `trial_type` frequency values 明確選成 supervised classes，且 import 後可進入既有 epoch/split/train workflow。
 - Owner before/after 不變：`DataInterpretationCommandService` owns scan/preview/validate/apply state and decision;
   `DataInterpretationActionCoordinator` only owns async UI command orchestration; preview dialog renders typed
-  result. 不新增 owner、state machine、module或 compatibility path。
+  result; `eeglab_set_preflight` remains the sole bounded `.set` metadata owner. 不新增 owner、state machine、module或
+  compatibility path。
 - Deletion/reuse first：reuse existing `_repreview_interpretation_async` and typed `action_items`; do not add a
-  parallel wizard/router or frontend inference. 預估 production net `+20–45 LOC`（或更少），1 production file。
+  parallel wizard/router, frontend inference, or second EEG reader. Routing repair 預估 production net `+20–45 LOC`；
+  preflight repair actual `+23/-4 LOC`，兩個既有 production owners，owner delta `0`。
 - UI approval 已存在：使用者說「目前 review and import 這五個階段我很滿意不要大改」，並在討論 status bar
   後回覆「我覺得可以」。本 slice 只在該批准下修正 recovery routing/status，仍需 focused screenshot/walkthrough
-  與後續 Windows native human acceptance。
+  與後續 Windows native human acceptance；preflight repair 本身不改可見 UI。
 
 ### TDD repair sequence and validation
 
@@ -70,6 +83,18 @@ stage、commit、revert、覆寫或隱藏。
 5. Produce the existing data-import offscreen capture plus a user-like blocked-to-Match-Labels walkthrough artifact;
    inspect the screenshot for five-step preservation, readable status, no clipping/overlap. Offscreen evidence does
    not replace Windows native acceptance.
+6. 先在 `tests/unit/backend/application/test_eeglab_preflight_gate.py` 新增最小 red reproductions：uncompressed
+   embedded MAT v5 `EEG` struct 的 `data` 在 `srate` 前，以及 top-level `data` 後仍有 ignored metadata、再有
+   `srate` 的 continuation；兩者 assert bounded inspection retains shape/dtype and `sampling_rate_hz == 250.0`
+   while physical reads remain bounded and no signal materializes。另以既有最多 256 個 post-data outer metadata
+   elements 的 cap，證明 255 個 ignored elements 後的 `srate` 仍可讀到、256 個後的 late `srate` 則 fail closed
+   as an embedded bound with `sampling_rate_hz is None`，不得為找 rate 讀取 signal。
+   current code 必須因 early return 令 sampling rate 為 `None` 而失敗；不先修改 production。修理後 rerun exact
+   selectors and the coupled EEGLAB preflight file under `prlimit --core=0` and timeout.
+7. Windows native acceptance on the exact PR head: select MAMEM1 `sub-1` runs 0–2, map `trial_type`
+   `6.66/7.50/8.57/10.00/12.00` to five explicit `Hz` classes, continue to Review and Import without a missing
+   sampling-rate blocker, Apply, epoch `0–3 s`, save `Individual/Trial` split, and complete one CPU EEGNet epoch.
+   Record five imported classes and completed training; this is MAMEM1-specific acceptance, not a broad MOABB claim.
 
 ### Implementation progress and focused evidence
 
@@ -91,6 +116,30 @@ stage、commit、revert、覆寫或隱藏。
   This focused capture proves only the pre-existing five-stage Match Labels surface; it does not exercise the new
   asynchronous re-preview route or status bar, is dirty-source evidence, and is not Windows human acceptance. The
   exact-source Windows human walkthrough remains required before any merge claim.
+
+### PR #110 direct product dependency — EEGLAB embedded sampling-rate preflight
+
+- Exact red evidence: the new uncompressed embedded MAT v5 data-before-srate selector failed on the unmodified
+  parser with `1 failed in 0.56s`; inspection had `bound_known=True`, embedded `(4, 100000)` float32 data and
+  `sampling_rate_hz=None`. This isolates the early header completion defect without loading EEG samples.
+- Minimal parser repair is complete in the existing `eeglab_set_preflight` owner: after embedded data is bounded,
+  uncompressed top-level scalar metadata may continue through the existing cap; compressed, v7.3, payload and
+  unsafe-reference boundaries retain their existing fail-closed behavior. Actual production delta is `+23/-4 LOC`,
+  owner delta `0`; no loader, BIDS policy, frequency adapter, UI, or compatibility path was added.
+- Green regression inventory: one nested data-before-srate regression, one ordinary top-level continuation regression,
+  and two real top-level cap boundaries (255 ignored post-data elements then `srate=250`; 256 then late `srate=None`)
+  are included in the full EEGLAB preflight suite. Independent review found no lifecycle, ownership, payload-read,
+  cap, or class-carrier blocker after the 255/256 boundary correction.
+- Actual MAMEM1 bounded probe on `sub-1/ses-0/eeg/sub-1_ses-0_task-ssvep_run-0_eeg.set` reports `bound_known=True`,
+  `storage_mode=embedded`, `sampling_rate_hz=250.0`, `header_bytes_read=512`, shape `(256, 117917)`, and `float32`.
+  This proves the exact cached run's header admission only; it is not an Apply/epoch/train or scientific claim.
+- Focused Windows evidence on the current dirty source: EEGLAB preflight `19 passed` (0.72s), resource guard
+  `48 passed` (2.37s), interpretation resource reader `14 passed` (1.80s), and async import routing `85 passed`
+  (10.27s), each under `prlimit --core=0`, explicit timeout, `MNE_DONTWRITE_HOME=true`, and offscreen Qt where
+  applicable. Changed production/test/UI Ruff and `git diff --check` passed.
+- Next step: commit and push this exact source, wait for non-skipped CI on that exact PR head, then repeat the full
+  native Windows MAMEM1 acceptance (three sub-1 runs, five `trial_type` frequency classes, Apply, `0–3 s` epoch,
+  Individual/Trial split, CPU EEGNet one epoch) before any merge claim.
 
 ### PR #110 direct CI blocker — restore Dataset startup lazy import
 
@@ -128,7 +177,9 @@ stage、commit、revert、覆寫或隱藏。
 
 - Stop rather than expand scope if fresh backend output lacks typed action items/target, targets a stage outside the
   existing five, requires backend policy/schema changes, makes Apply reachable for blocked input, changes more than
-  the stated one production file, or cannot be observed by the focused test.
-- Do not proceed into raw SSVEP adapters, target-frequency/phase semantics, data download, classifier work, filter,
-  Assistant fallback or splitting cleanup. After this slice, claim only that the existing import wizard routes a
-  fresh blocked review to its backend-provided recovery stage; do not claim SSVEP import/training readiness.
+  the stated two production files, or cannot be observed by the focused test.
+- Stop rather than broaden the preflight fix if a correct scalar requires reading numeric signal payload, compressed
+  header decoding exceeds its existing budget, a MAT v7.3 file is involved, or the repair needs a loader/BIDS policy
+  change. Do not proceed into raw SSVEP adapters, target-frequency/phase semantics, data download, classifier work,
+  filter, Assistant fallback or splitting cleanup. After this slice, claim only typed review routing plus the exact
+  embedded EEGLAB sampling-rate repair; MAMEM1 supervised training remains subject to the listed Windows acceptance.
