@@ -1,6 +1,7 @@
 """Dataset generator module for creating train/val/test splits from epoch data."""
 
 from collections.abc import Callable
+from copy import deepcopy
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -22,7 +23,7 @@ class DatasetGenerator:
     """Generator for creating datasets from epoch data and splitting configuration.
 
     Orchestrates the full dataset generation pipeline including test/validation
-    splitting, cross-validation fold management, and independent/full-data schemes.
+    splitting, cross-validation fold management, and Individual/Full schemes.
 
     Attributes:
         epoch_data: Epoch data to be split.
@@ -68,50 +69,6 @@ class DatasetGenerator:
         self.preview_failed = False
         self.done = False
 
-    """
-    How it works:
-        (Enter generate)
-        Call the handle function for given train_type
-        (Enter handle_XXX)
-        If the train_type (XXX) is IND
-            For each subject
-                Set name with subject as prefix
-                Call the handle function
-        else if the train_type (XXX) is FULL
-            Set name with 'Group' as prefix
-            Call the handle function
-        (Enter handle)
-        While remaining epoch is none (first loop) or not empty (cross validation)
-            Create a new dataset configured with the given epoch_data and config
-            If the train_type is IND
-                Filter out target subject
-            set clean_mask with whole available epochs
-            set mask to remaining_mask if remaining_mask is not none (cross validation)
-            (this is to skip previous selected epochs as test set to
-                make sure all test set are different)
-            split test set and get the remaining_mask for next cross validation
-            split validation set
-            set remaining epochs to train set
-            append the dataset to datasets
-
-    How cross validation works:
-        For each fold
-            If it is the first fold
-                Set mask to whole available epochs
-            else
-                Set mask to remaining_mask that excluded all previous selected epochs
-                    that are set as test set
-            (Enter split_test with mask)
-            For each test_splitter
-                split by condition
-                If it is the first splitter
-                    Keep the remaining_mask for next cross validation
-
-    How independent works:
-        In split_test, the remaining_mask is set to False
-        to discard all epochs that are dependent to the current test set
-    """
-
     def handle_ind(self) -> None:
         """Wrapper for generating datasets for individual scheme.
         Called by :func:`generate`.
@@ -124,6 +81,7 @@ class DatasetGenerator:
             validate_filesystem_metadata(subject_name, field="subject metadata")
 
         for subject_idx, subject_name in enumerate(subject_names):
+            self._raise_if_interrupted()
             name_prefix = f"Subject-{subject_name}"
 
             def hook(dataset, subject_idx=subject_idx):
@@ -152,6 +110,7 @@ class DatasetGenerator:
                 (e.g. restricting to a single subject).
 
         """
+        self._raise_if_interrupted()
         scope = np.ones(self.epoch_data.get_data_length(), dtype=bool)
         if dataset_hook is not None:
             probe = Dataset(self.epoch_data, self.config)
@@ -173,6 +132,7 @@ class DatasetGenerator:
         else:
             test_folds = self._test_folds(test_splitter, scope, fold_count)
         for group_idx, test_mask in enumerate(test_folds):
+            self._raise_if_interrupted()
             dataset = Dataset(self.epoch_data, self.config)
             dataset.set_name(f"{name_prefix}_{group_idx}")
             if cross_validation_cohort_id is not None:
@@ -264,13 +224,26 @@ class DatasetGenerator:
     ) -> list[np.ndarray]:
         keys = self._keys(splitter, scope)
         if fold_count == 1:
-            selected = self._select_non_cv_keys(
-                splitter,
-                scope,
-                None,
-                "test",
-            )
-            return [self._mask_for_keys(splitter, scope, selected)]
+            last_error: ValueError | None = None
+            for (
+                _score,
+                test_count,
+                _validation_count,
+            ) in self._paired_non_cv_count_candidates(scope):
+                try:
+                    selected = self._select_non_cv_keys(
+                        splitter,
+                        scope,
+                        None,
+                        "test",
+                        requested_count=test_count,
+                    )
+                    return [self._mask_for_keys(splitter, scope, selected)]
+                except ValueError as error:
+                    last_error = error
+            raise ValueError(
+                "Test split is infeasible while preserving all training classes"
+            ) from last_error
         # Bounded deterministic balancing: assign each atomic group to the
         # fold where its labels are currently least represented, while holding
         # the exact group capacities fixed.  This is deliberately not a
@@ -281,6 +254,7 @@ class DatasetGenerator:
         label_counts: list[dict[int, int]] = [{} for _ in range(fold_count)]
         labels = self.epoch_data.get_label_list()
         for key in keys:
+            self._raise_if_interrupted()
             group_labels = labels[self._mask_for_keys(splitter, scope, [key])]
             choices = [
                 index
@@ -327,6 +301,7 @@ class DatasetGenerator:
         current_complete = complete_fold_count(partitions)
         attempts = 0
         while current_complete < fold_count and attempts < MAX_CV_LOCAL_REPAIR_ATTEMPTS:
+            self._raise_if_interrupted()
             repaired = False
             incomplete = []
             for index, fold_keys in enumerate(partitions):
@@ -418,11 +393,6 @@ class DatasetGenerator:
         test = self._required_test_splitter()
         validation = self._active_validation_splitter()
         test_requested, test_exact = self._requested_count(test, scope)
-        if validation is None:
-            return [((0, 0, 0, test_requested), test_requested, None)]
-        validation_requested, validation_exact = self._requested_count(
-            validation, scope
-        )
         radius = 16
 
         def bounded_counts(total: int, target: int, exact: bool) -> list[int]:
@@ -438,8 +408,31 @@ class DatasetGenerator:
                 },
             )
 
-        candidates: list[tuple[tuple[int, int, int, int], int, int | None]] = []
         test_total = len(self._keys(test, scope))
+        if validation is None:
+            return sorted(
+                (
+                    (
+                        (
+                            abs(test_count - test_requested),
+                            -(test_total - test_count),
+                            abs(test_count - test_requested),
+                            test_count,
+                        ),
+                        test_count,
+                        None,
+                    )
+                    for test_count in bounded_counts(
+                        test_total,
+                        test_requested,
+                        test_exact,
+                    )
+                ),
+            )
+        validation_requested, validation_exact = self._requested_count(
+            validation, scope
+        )
+        candidates: list[tuple[tuple[int, int, int, int], int, int | None]] = []
         validation_total = len(self._keys(validation, scope))
         same_unit = validation.split_type.value == test.split_type.value
         for test_count in bounded_counts(test_total, test_requested, test_exact):
@@ -497,15 +490,37 @@ class DatasetGenerator:
             selected_mask = self._mask_for_keys(splitter, scope, selected)
             if excluded is not None:
                 test = self._required_test_splitter()
-                residual_session_case = (
-                    test.split_type == SplitByType.TRIAL
-                    and splitter.split_type == ValSplitByType.SESSION
-                )
-                if np.any(selected_mask & excluded) and not residual_session_case:
+                if (
+                    np.any(selected_mask & excluded)
+                    and splitter.split_type.value == test.split_type.value
+                ):
                     raise ValueError(
                         f"{partition.title()} manual split overlaps test isolation",
                     )
-                selected_mask &= ~excluded
+                residual_mask = selected_mask & ~excluded
+                if not residual_mask.any():
+                    raise ValueError(
+                        f"{partition.title()} manual split is empty after "
+                        "test isolation"
+                    )
+                if any(
+                    not np.any(self._mask_for_keys(splitter, scope, [key]) & ~excluded)
+                    for key in selected
+                ):
+                    raise ValueError(
+                        f"{partition.title()} manual selection has no residual "
+                        "after test isolation"
+                    )
+                labels = self.epoch_data.get_label_list()
+                blocked = selected_mask | excluded
+                if set(labels[scope & ~blocked].tolist()) != set(
+                    labels[scope].tolist()
+                ):
+                    raise ValueError(
+                        f"{partition.title()} split is infeasible while preserving "
+                        "all training classes",
+                    )
+                return selected
             if not selected_mask.any():
                 raise ValueError(
                     f"{partition.title()} manual split is empty after test isolation"
@@ -556,6 +571,7 @@ class DatasetGenerator:
                 )
             selected.append(forced)
         while len(selected) < desired:
+            self._raise_if_interrupted()
             choices: list[tuple[tuple[int, int, int], int]] = []
             for key in candidates:
                 if key in selected:
@@ -615,6 +631,7 @@ class DatasetGenerator:
             validation_count,
         ) in self._paired_non_cv_count_candidates(scope):
             for attempt in range(max(1, attempt_count)):
+                self._raise_if_interrupted()
                 test_offset = attempt % test_attempts
                 validation_offset = (attempt // test_attempts) % validation_attempts
                 try:
@@ -652,8 +669,9 @@ class DatasetGenerator:
                     )
                 except ValueError as error:
                     if (
-                        "manual split overlaps test isolation" in str(error)
-                        and test.get_split_unit() == SplitUnit.MANUAL
+                        test.get_split_unit() == SplitUnit.MANUAL
+                        and validation.get_split_unit() == SplitUnit.MANUAL
+                        and "manual" in str(error).lower()
                     ):
                         raise
                     last_error = error
@@ -679,6 +697,7 @@ class DatasetGenerator:
             requested_count, _exact = self._requested_count(splitter, scope)
             last_error: ValueError | None = None
             for candidate_count in range(requested_count, 0, -1):
+                self._raise_if_interrupted()
                 try:
                     selected = self._select_non_cv_keys(
                         splitter,
@@ -736,14 +755,21 @@ class DatasetGenerator:
         committed_datasets = self.datasets
         pending_datasets: list[Dataset] = []
         initial_dataset_sequence = Dataset.SEQ
+        evidence_reference = self.epoch_data.trial_selection_evidence
+        initial_evidence = deepcopy(evidence_reference)
+        initial_evidence_dropped = self.epoch_data.trial_selection_evidence_dropped
         self.datasets = pending_datasets
         try:
             Dataset.SEQ = 0
             self.epoch_data.reset_trial_selection_evidence()
+            self._raise_if_interrupted()
             self._populate_pending_datasets()
         except BaseException:
             self.datasets = committed_datasets
             Dataset.SEQ = initial_dataset_sequence
+            evidence_reference[:] = initial_evidence
+            self.epoch_data.trial_selection_evidence = evidence_reference
+            self.epoch_data.trial_selection_evidence_dropped = initial_evidence_dropped
             self.preview_failed = True
             raise
         else:
@@ -767,6 +793,11 @@ class DatasetGenerator:
         """Set the interrupt flag to break the dataset generation."""
         self.preview_failed = True
         self.interrupted = True
+
+    def _raise_if_interrupted(self) -> None:
+        """Stop at bounded allocation boundaries after an owner cancellation."""
+        if self.interrupted:
+            raise KeyboardInterrupt
 
     def prepare_result(self) -> list:
         """Generate datasets and filter out unselected ones.

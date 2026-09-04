@@ -148,6 +148,23 @@ def split_preview_rows(
     ]
 
 
+def blocking_split_audit_issues(
+    audit: SplitAuditResult,
+    *,
+    required_empty_splits: set[str],
+) -> list[SplitAuditIssue]:
+    """Return the same materialization-blocking issues for preview and Train."""
+    return [
+        issue
+        for issue in audit.issues
+        if issue.severity == "error"
+        or any(
+            f"{split_name} split is empty" in issue.message.lower()
+            for split_name in required_empty_splits
+        )
+    ]
+
+
 def _partition_evidence(
     epoch_data: Any,
     scope_mask: np.ndarray,
@@ -235,6 +252,7 @@ def audit_dataset_splits(
             _epoch_window_leakage_issues(
                 dataset,
                 protocol=protocol,
+                protocols=protocols,
             ),
         )
 
@@ -533,54 +551,59 @@ def _epoch_window_leakage_issues(
     dataset: Dataset,
     *,
     protocol: str,
+    protocols: Mapping[str, str] | None = None,
 ) -> list[SplitAuditIssue]:
     provenance, reported_count = _epoch_window_provenance(dataset)
-    missing_indices = [index for index, item in enumerate(provenance) if item is None]
-    unverified_indices = [
+    partition_indices = _indices_for_partition_pairs(
+        dataset,
+        (("train", "validation"), ("train", "test"), ("validation", "test")),
+    )
+    unavailable_indices = [
         index
-        for index, item in enumerate(provenance)
-        if item is not None and not item.source_coordinates_verified
+        for index in sorted(partition_indices)
+        if provenance[index] is None
+        or not cast(
+            EpochWindowProvenance,
+            provenance[index],
+        ).source_coordinates_verified
     ]
-    unavailable_indices = sorted({*missing_indices, *unverified_indices})
     issues: list[SplitAuditIssue] = []
     if unavailable_indices:
-        displayed_indices = unavailable_indices[:MAX_DIAGNOSTIC_INDICES]
-        trial_wise = protocol.strip().lower() in {
-            "trial",
-            "trial-wise",
-            "trialwise",
-        }
-        issues.append(
-            SplitAuditIssue(
-                dataset_name=dataset.get_name(),
-                severity="error" if trial_wise else "warning",
-                message=(
-                    (
-                        "Trial-wise split is blocked because temporal leakage "
-                        "cannot be ruled out"
-                        if trial_wise
-                        else "Epoch-window leakage audit is incomplete"
-                    )
-                    + "; verified source-recording coordinates are unavailable "
-                    f"for {len(unavailable_indices)} of {len(provenance)} "
-                    "epoch(s)."
-                ),
-                indices=displayed_indices,
-                details={
-                    "kind": "missing_epoch_window_provenance",
-                    "protocol": protocol,
-                    "interval_semantics": EPOCH_WINDOW_INTERVAL_SEMANTICS,
-                    "epoch_count": len(provenance),
-                    "reported_count": reported_count,
-                    "available_count": len(provenance) - len(unavailable_indices),
-                    "missing_count": len(missing_indices),
-                    "unverified_count": len(unverified_indices),
-                    "unavailable_count": len(unavailable_indices),
-                    "indices_truncated": len(displayed_indices)
-                    < len(unavailable_indices),
-                },
-            ),
+        trial_indices, trial_protocol = _trial_protocol_epoch_indices(
+            dataset,
+            protocol=protocol,
+            protocols=protocols,
         )
+        unavailable_trial_indices = [
+            index for index in unavailable_indices if index in trial_indices
+        ]
+        unavailable_nontrial_indices = [
+            index for index in unavailable_indices if index not in trial_indices
+        ]
+        if unavailable_trial_indices:
+            issues.append(
+                _missing_epoch_window_issue(
+                    dataset,
+                    indices=unavailable_trial_indices,
+                    scope_indices=trial_indices,
+                    provenance=provenance,
+                    reported_count=reported_count,
+                    protocol=trial_protocol or "trial-wise",
+                    severity="error",
+                )
+            )
+        if unavailable_nontrial_indices:
+            issues.append(
+                _missing_epoch_window_issue(
+                    dataset,
+                    indices=unavailable_nontrial_indices,
+                    scope_indices=partition_indices - trial_indices,
+                    provenance=provenance,
+                    reported_count=reported_count,
+                    protocol=protocol,
+                    severity="warning",
+                )
+            )
 
     split_windows = _split_epoch_windows(dataset, provenance)
     for left_name, right_name in (
@@ -656,6 +679,98 @@ def _epoch_window_leakage_issues(
                 ),
             )
     return issues
+
+
+def _trial_protocol_epoch_indices(
+    dataset: Dataset,
+    *,
+    protocol: str,
+    protocols: Mapping[str, str] | None,
+) -> tuple[set[int], str | None]:
+    """Return only partitions whose pair is constrained by a Trial protocol."""
+    if protocols is None:
+        if protocol.strip().lower() not in {"trial", "trial-wise", "trialwise"}:
+            return set(), None
+        pairs = (("train", "validation"), ("train", "test"), ("validation", "test"))
+        return _indices_for_partition_pairs(dataset, pairs), protocol
+
+    trial_pairs: list[tuple[str, str]] = []
+    trial_protocol: str | None = None
+    for selected_protocol, pairs in (
+        (protocols.get("test"), (("train", "test"), ("validation", "test"))),
+        (protocols.get("validation"), (("train", "validation"),)),
+    ):
+        if selected_protocol is None or selected_protocol.strip().lower() not in {
+            "trial",
+            "trial-wise",
+            "trialwise",
+        }:
+            continue
+        trial_pairs.extend(pairs)
+        trial_protocol = selected_protocol
+    return _indices_for_partition_pairs(dataset, trial_pairs), trial_protocol
+
+
+def _indices_for_partition_pairs(
+    dataset: Dataset,
+    pairs: Iterable[tuple[str, str]],
+) -> set[int]:
+    masks = {
+        "train": dataset.train_mask,
+        "validation": dataset.val_mask,
+        "test": dataset.test_mask,
+    }
+    return {
+        index
+        for left_name, right_name in pairs
+        for mask in (masks[left_name], masks[right_name])
+        for index in _mask_indices(mask)
+    }
+
+
+def _missing_epoch_window_issue(
+    dataset: Dataset,
+    *,
+    indices: list[int],
+    scope_indices: set[int],
+    provenance: list[EpochWindowProvenance | None],
+    reported_count: int,
+    protocol: str,
+    severity: str,
+) -> SplitAuditIssue:
+    displayed_indices = indices[:MAX_DIAGNOSTIC_INDICES]
+    missing_count = sum(provenance[index] is None for index in indices)
+    unverified_count = len(indices) - missing_count
+    trial_wise = severity == "error"
+    return SplitAuditIssue(
+        dataset_name=dataset.get_name(),
+        severity=severity,
+        message=(
+            (
+                "Trial-wise split is blocked because temporal leakage "
+                "cannot be ruled out"
+                if trial_wise
+                else "Epoch-window leakage audit is incomplete"
+            )
+            + "; verified source-recording coordinates are unavailable "
+            f"for {len(indices)} of {len(scope_indices)} epoch(s) in the "
+            "audited partition pair(s)."
+        ),
+        indices=displayed_indices,
+        details={
+            "kind": "missing_epoch_window_provenance",
+            "protocol": protocol,
+            "interval_semantics": EPOCH_WINDOW_INTERVAL_SEMANTICS,
+            "epoch_count": len(scope_indices),
+            "total_epoch_count": len(provenance),
+            "reported_count": reported_count,
+            "available_count": len(scope_indices) - len(indices),
+            "missing_count": missing_count,
+            "unverified_count": unverified_count,
+            "unavailable_count": len(indices),
+            "indices_truncated": len(displayed_indices) < len(indices),
+        },
+    )
 
 
 def _split_epoch_windows(

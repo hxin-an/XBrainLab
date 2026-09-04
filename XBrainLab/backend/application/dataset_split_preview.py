@@ -13,6 +13,8 @@ from typing import Any
 import numpy as np
 
 from XBrainLab.backend.dataset.split_audit import (
+    audit_dataset_splits,
+    blocking_split_audit_issues,
     materialization_digest,
     split_preview_rows,
 )
@@ -220,10 +222,14 @@ class DatasetSplitSpecification:
         """Copy an external split payload into immutable value objects."""
         if not isinstance(payload, Mapping):
             raise TypeError("Dataset split configuration must be an object")
+        if "train_type" not in payload or not str(payload["train_type"] or "").strip():
+            raise ValueError("train_type is required")
+        if "is_cross_validation" not in payload:
+            raise ValueError("is_cross_validation is required")
         return cls(
-            train_type=str(payload.get("train_type") or "Individual"),
+            train_type=str(payload["train_type"]),
             is_cross_validation=_strict_bool(
-                payload.get("is_cross_validation", False),
+                payload["is_cross_validation"],
                 "is_cross_validation",
             ),
             val_splitters=_rules_from_payload(payload.get("val_splitters")),
@@ -552,6 +558,37 @@ class DatasetSplitPreviewPublisher:
                         if isinstance(generated, Sequence)
                         else list(getattr(generator, "datasets", []) or [])
                     )
+                    if active.cancelled:
+                        raise PreconditionError(
+                            "Dataset split preview was cancelled.",
+                            diagnostics={"request_id": request.request_id},
+                        )
+                    from .dataset_generation_service import (  # noqa: PLC0415
+                        DatasetGenerationCommandService,
+                    )
+
+                    protocols = (
+                        DatasetGenerationCommandService._split_protocols_for_config(
+                            config
+                        )
+                    )
+                    audit = audit_dataset_splits(
+                        datasets,
+                        protocol=protocols["test"],
+                        protocols=protocols,
+                    )
+                    required_empty_splits = {"train", "test"}
+                    if request.specification.val_splitters:
+                        required_empty_splits.add("validation")
+                    blocking_issues = blocking_split_audit_issues(
+                        audit,
+                        required_empty_splits=required_empty_splits,
+                    )
+                    if blocking_issues:
+                        raise PreconditionError(
+                            "Dataset split preview is infeasible: "
+                            + blocking_issues[0].message,
+                        )
                     row_payloads = split_preview_rows(
                         datasets,
                         test_rule=request.specification.test_splitters[0],
@@ -583,8 +620,36 @@ class DatasetSplitPreviewPublisher:
                     )
                     test_count = sum(row.test_count for row in detached_rows)
                     digest = materialization_digest(datasets)
+                    if active.cancelled:
+                        raise PreconditionError(
+                            "Dataset split preview was cancelled.",
+                            diagnostics={"request_id": request.request_id},
+                        )
                 finally:
                     _restore_preview_state(epoch_data, snapshot)
+            after = self._get_publication()
+            self._validate_stable_generation(
+                request.publication_generation,
+                before,
+                after,
+            )
+            if not self._claim_preview_completion(request.request_id, active):
+                raise PreconditionError(
+                    "Dataset split preview was cancelled.",
+                    diagnostics={"request_id": request.request_id},
+                )
+            return DatasetSplitPreviewPublication(
+                request=request,
+                generation=after.generation,
+                epoch_token=id(epoch_data),
+                rows=rows,
+                total_count=total_count,
+                truncated_count=total_count - len(rows),
+                train_count=train_count,
+                validation_count=validation_count,
+                test_count=test_count,
+                materialization_digest=digest,
+            )
         except KeyboardInterrupt as exc:
             if active.cancelled:
                 raise PreconditionError(
@@ -594,25 +659,6 @@ class DatasetSplitPreviewPublisher:
             raise
         finally:
             self._unregister(request.request_id, active)
-
-        after = self._get_publication()
-        self._validate_stable_generation(
-            request.publication_generation,
-            before,
-            after,
-        )
-        return DatasetSplitPreviewPublication(
-            request=request,
-            generation=after.generation,
-            epoch_token=id(epoch_data),
-            rows=rows,
-            total_count=total_count,
-            truncated_count=total_count - len(rows),
-            train_count=train_count,
-            validation_count=validation_count,
-            test_count=test_count,
-            materialization_digest=digest,
-        )
 
     def cancel_preview(self, request_id: str) -> bool:
         """Interrupt one active application-owned generator."""
@@ -655,6 +701,18 @@ class DatasetSplitPreviewPublisher:
         with self._active_lock:
             if self._active.get(request_id) is active:
                 del self._active[request_id]
+
+    def _claim_preview_completion(
+        self,
+        request_id: str,
+        active: _ActivePreview,
+    ) -> bool:
+        """Atomically retire a successful preview before publishing its receipt."""
+        with self._active_lock:
+            if self._active.get(request_id) is not active or active.cancelled:
+                return False
+            del self._active[request_id]
+            return True
 
     @staticmethod
     def _copy_context(epoch_data: Any | None) -> DatasetSplitContext:

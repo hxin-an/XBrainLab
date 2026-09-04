@@ -63,6 +63,8 @@ class _EpochData:
         self.subject_names = (
             [subject_name] if isinstance(subject_name, str) else list(subject_name)
         )
+        self.trial_selection_evidence: list[dict[str, Any]] = []
+        self.trial_selection_evidence_dropped = 0
 
     def get_subject_index_list(self) -> list[int]:
         return list(range(len(self.subject_names)))
@@ -71,7 +73,8 @@ class _EpochData:
         return self.subject_names[subject_idx]
 
     def reset_trial_selection_evidence(self) -> None:
-        pass
+        self.trial_selection_evidence = []
+        self.trial_selection_evidence_dropped = 0
 
 
 def _record(
@@ -212,6 +215,7 @@ def test_individual_dataset_name_preserves_unicode_display_metadata() -> None:
     generator = DatasetGenerator.__new__(DatasetGenerator)
     mutable_generator = cast(Any, generator)
     mutable_generator.epoch_data = _EpochData(subject_name)
+    mutable_generator.interrupted = False
     captured: list[str] = []
     mutable_generator.handle = lambda name, _hook=None: captured.append(name)
 

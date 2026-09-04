@@ -19,6 +19,7 @@ from XBrainLab.backend.dataset import (
     audit_dataset_splits,
 )
 from XBrainLab.backend.dataset.split_audit import (
+    blocking_split_audit_issues,
     materialization_digest,
     split_preview_rows,
 )
@@ -260,15 +261,10 @@ class DatasetGenerationCommandService:
             required_empty_splits = {"train", "test"}
             if saved.specification.val_splitters:
                 required_empty_splits.add("validation")
-            blocking_issues = [
-                issue
-                for issue in audit.issues
-                if issue.severity == "error"
-                or any(
-                    f"{split_name} split is empty" in issue.message.lower()
-                    for split_name in required_empty_splits
-                )
-            ]
+            blocking_issues = blocking_split_audit_issues(
+                audit,
+                required_empty_splits=required_empty_splits,
+            )
             candidate_publication = replace(
                 self._pipeline_transaction.capture_dataset_publication(),
                 datasets=tuple(datasets),
@@ -732,6 +728,13 @@ class DatasetGenerationCommandService:
     @staticmethod
     def _validate_split_contract(config: DataSplittingConfig) -> None:
         """Reject configurations the supported workflow cannot materialize."""
+        if any(
+            not bool(rule.is_option)
+            for rule in (*config.test_splitter_list, *config.val_splitter_list)
+        ):
+            raise ValueError(
+                "Inactive split rules are not supported; reconfigure data splitting."
+            )
         test_rules = [
             rule for rule in config.test_splitter_list if bool(rule.is_option)
         ]
@@ -999,10 +1002,13 @@ class DatasetGenerationCommandService:
     @staticmethod
     def config_from_payload(payload: dict[str, Any]) -> DataSplittingConfig:
         """Build the canonical domain config from a detached UI payload."""
+        if "train_type" not in payload or not str(payload["train_type"] or "").strip():
+            raise ValueError("split_config train_type is required.")
+        if "is_cross_validation" not in payload:
+            raise ValueError("split_config is_cross_validation is required.")
         train_type = DatasetGenerationCommandService._enum_from_value(
             TrainingType,
             payload.get("train_type"),
-            default=TrainingType.IND,
         )
         is_cross_validation = payload.get("is_cross_validation", False)
         if type(is_cross_validation) is not bool:

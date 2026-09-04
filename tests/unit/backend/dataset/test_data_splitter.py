@@ -19,7 +19,15 @@ from XBrainLab.backend.dataset import (
         (SplitUnit.MANUAL, "0 2", [0, 2]),
     ],
 )
-@pytest.mark.parametrize("split_type", [*SplitByType, *ValSplitByType])
+@pytest.mark.parametrize(
+    "split_type",
+    [
+        *SplitByType,
+        ValSplitByType.TRIAL,
+        ValSplitByType.SESSION,
+        ValSplitByType.SUBJECT,
+    ],
+)
 def test_splitter_accepts_interior_values_for_every_enum_and_unit(
     split_type, split_unit, value_var, expected_value
 ):
@@ -42,7 +50,6 @@ def test_splitter_accepts_interior_values_for_every_enum_and_unit(
     [
         SplitByType.TRIAL,
         ValSplitByType.TRIAL,
-        ValSplitByType.DISABLE,
     ],
 )
 @pytest.mark.parametrize(

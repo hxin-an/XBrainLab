@@ -64,6 +64,48 @@ def test_split_specification_rejects_non_boolean_rule_enabled_flag() -> None:
 
 
 @pytest.mark.parametrize(
+    "field,value,expected",
+    [
+        ("train_type", None, "train_type"),
+        ("train_type", "", "train_type"),
+        ("is_cross_validation", None, "is_cross_validation"),
+    ],
+)
+def test_structured_split_payload_requires_explicit_train_type_and_cross_validation(
+    field: str, value: object | None, expected: str
+) -> None:
+    payload = _payload()
+    if value is None:
+        payload.pop(field)
+    else:
+        payload[field] = value
+    with pytest.raises((TypeError, ValueError), match=expected):
+        DatasetSplitSpecification.from_payload(payload)
+
+
+def test_structured_split_payload_rejects_inactive_rules() -> None:
+    payload = _payload(
+        test_splitters=[
+            {
+                "split_type": "By Trial",
+                "split_unit": "Ratio",
+                "value": "0.2",
+                "is_option": True,
+            },
+            {
+                "split_type": "By Session",
+                "split_unit": "Ratio",
+                "value": "0.2",
+                "is_option": False,
+            },
+        ]
+    )
+
+    with pytest.raises(ValueError, match=r"(?i)inactive"):
+        DatasetGenerationCommandService.config_from_payload(payload)
+
+
+@pytest.mark.parametrize(
     "split_type",
     ["Disable", "By Trial (Independent)", "By Session (Independent)"],
 )
@@ -145,7 +187,7 @@ def test_legacy_none_uses_a_usable_full_trial_default_but_empty_payload_is_not_l
     assert legacy.test_splitter_list[0].split_type.value == "By Trial"
     DatasetGenerationCommandService._validate_split_config(legacy)
 
-    with pytest.raises(ValueError, match="exactly one"):
+    with pytest.raises(ValueError, match="train_type is required"):
         DatasetGenerationCommandService._build_data_splitting_config(
             SaveDatasetSplitCommand(split_config={}),
         )

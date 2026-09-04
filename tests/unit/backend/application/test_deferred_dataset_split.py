@@ -46,7 +46,10 @@ from XBrainLab.backend.dataset import (
     DataSplittingConfig,
     Epochs,
     EpochWindowProvenance,
+    SplitByType,
+    SplitUnit,
     TrainingType,
+    ValSplitByType,
 )
 from XBrainLab.backend.dataset.split_audit import split_preview_rows
 from XBrainLab.backend.study import Study
@@ -335,6 +338,60 @@ def test_real_preview_receipt_round_trips_to_deferred_materialization(
     assert len(preview.rows) == 2
     assert materialized_counts == preview_counts
     assert trained.state.dataset.split_lifecycle.value == "verified"
+
+
+def test_mixed_trial_provenance_is_rejected_by_preview_and_unreviewed_prepare() -> None:
+    """Preview and Train share the same blocking audit for a mixed split."""
+    service, epoch = _service_with_epoch(_epoch_data())
+    epoch.session = np.repeat([0, 1], 6)
+    epoch.session_map = {0: "ses-0", 1: "ses-1"}
+    epoch.epoch_window_provenance = tuple(
+        replace(item, source_coordinates_verified=False)
+        for item in epoch.epoch_window_provenance
+    )
+    specification = DatasetSplitSpecification.from_payload(
+        {
+            "train_type": "Full Data",
+            "is_cross_validation": False,
+            "val_splitters": [
+                {
+                    "split_type": ValSplitByType.TRIAL.value,
+                    "split_unit": SplitUnit.RATIO.value,
+                    "value": "0.2",
+                    "is_option": True,
+                }
+            ],
+            "test_splitters": [
+                {
+                    "split_type": SplitByType.SESSION.value,
+                    "split_unit": SplitUnit.RATIO.value,
+                    "value": "0.5",
+                    "is_option": True,
+                }
+            ],
+        }
+    )
+    generation = service.get_view_publication().generation
+
+    with pytest.raises(PreconditionError, match="temporal leakage"):
+        service.get_dataset_split_preview(
+            DatasetSplitPreviewRequest(
+                request_id="mixed-provenance-parity",
+                publication_generation=generation,
+                specification=specification,
+            )
+        )
+
+    saved = service.execute(
+        SaveDatasetSplitCommand(
+            split_config=specification.to_payload(), preview_receipt=None
+        ),
+        expected_publication_generation=generation,
+    )
+    assert saved.ok is True
+    with pytest.raises(ApplicationError, match="failed split audit"):
+        service.dataset_generation.prepare_saved_split_candidate()
+    assert service.study.datasets == []
 
 
 def test_training_blocks_same_count_materialization_with_different_membership(

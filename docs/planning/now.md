@@ -25,11 +25,17 @@ head 的 Windows 手測／merge 批准；本 slice 從 `origin/main` 另開 bran
 - SSVEP 的 frequency class 是既有 supervised label，不需要 frequency adapter；MAMEM1 已證明 import/
   epoch/training 路徑可用，但 split contract 必須使 frequency classes 和任何 BIDS/MOABB supervised
   classes 同樣可重現地進入訓練與評估。
+- Exact-head audit 所列的 admission、audit parity、cancellation、Validation Disable Ratio nearest-feasible、
+  mixed Manual residual 與實際 materialization evidence gaps 均已在既有 owner 關閉；回歸測試覆蓋 strict
+  structured payload、pair-scoped provenance、preview/Train 同 audit、cancel linearization、Manual scope/
+  duplicate/atomic constraints，以及 CV Validation Number 的 exact cardinality。這仍是 bounded contract，
+  不是任意資料集的科學品質或 complete-solver 證明。
 
 ### Outcome and exact contract
 
 - 保留 Data Splitting `Step 1 → Step 2 → Save → Train` workflow 與 Data Import 五個階段。Full 支援 Test
-  `Trial|Session|Subject`；Individual 支援 `Trial|Session`。Validation 為 `Disable` 或相同可用 unit；所有
+  `Trial|Session|Subject`；Individual 支援 `Trial|Session`。Validation 為 `Disable` 或該 training mode
+  可用的任一 unit，且可與 Test 混用；所有
   Independent variants 及 Test Disable 移除，Individual Subject 一律拒絕。
 - 非 CV 的 Test/Validation units 支援 `Ratio|Number|Manual`；CV Test 僅 exact `KFold`，CV Validation
   僅 `Disable|Ratio|Number`。Test 一個 rule、Validation 零或一 active rule；舊 invalid payload 必須要求
@@ -68,8 +74,8 @@ head 的 Windows 手測／merge 批准；本 slice 從 `origin/main` 另開 bran
   `DatasetGenerator`/`Epochs` own mask allocation；`SplitAudit` owns partition evidence；`TrainingPlan` owns
   saliency split choice；preview publisher only publishes immutable DTO. Reuse/delete invalid enum dispatch,
   silent clamps, fixed fake split facts, and duplicate admission rather than adding a parallel policy.
-- Complexity checkpoint (2026-09-04): the current combined production diff is 14 files, `+1481/-397`
-  (net `+1084`; recompute before commit). This exceeds the ordinary 8-file/+300-net trigger but remains below the
+- Complexity checkpoint (2026-09-04): the current combined production diff against `origin/main` is 14 files,
+  `+1806/-512` (net `+1294`). This exceeds the ordinary 8-file/+300-net trigger but remains below the
   approved 1,500-net one-PR stop. Owners remain unchanged: `Epochs`/`DatasetGenerator` allocate masks,
   `SplitAudit` owns evidence/digest, `DatasetGenerationService` owns save/materialize admission,
   `DatasetSplitPreviewPublisher` publishes detached truth, and the UI projects it. No module, public class,
@@ -82,6 +88,9 @@ head 的 Windows 手測／merge 批准；本 slice 從 `origin/main` 另開 bran
 - UI approval is explicit: the user approved preserving the five-stage import flow and the existing 5×5-like split
   presentation logic, with real dynamic counts and the stated colors/copy. UI still requires screenshot/walkthrough
   and later native Windows acceptance on exact PR head.
+- Audit repair actual: four existing production files, `+348/-138` (net `+210`). It reused `SplitAudit`, preview
+  publisher, `DatasetGenerationService`, `DatasetGenerator` and
+  config admission code; no module, owner, state machine, solver, receipt, or compatibility path was added.
 
 ### TDD repair and validation sequence
 
@@ -103,6 +112,12 @@ head 的 Windows 手測／merge 批准；本 slice 從 `origin/main` 另開 bran
    exact-head Windows manual materialization for MAMEM1 EEGLAB Trial/KFold with five frequency classes,
    BNCI2014_009 BrainVision Subject/Session, and PhysionetMI EDF Subject/Trial. The local pinned 15 MOABB corpus is
    catalog evidence only, not a 15/15 materialization requirement or arbitrary-MOABB claim.
+6. **Audit-repair TDD (complete):** red/green public-command and real materialization cases closed mixed provenance
+   fail-closed behavior, preview-time audit parity, cooperative cancellation with no successful receipt after a
+   successful cancel, strict structured payload fields while preserving only `split_config=None` legacy behavior,
+   nearest-feasible no-validation Ratio, mixed Manual residual semantics, Manual duplicate/out-of-scope/atomic
+   constraints, and CV Validation Number exact cardinality. The repairs stayed in the existing owners; no parallel
+   allocator or policy path was introduced.
 
 ### Stop condition
 
@@ -115,19 +130,16 @@ head 的 Windows 手測／merge 批准；本 slice 從 `origin/main` 另開 bran
 - Contract/admission, canonical allocation/audit, receipt parity, saliency fallback, saved-spec UI projection and
   obsolete/mock-heavy split-test cleanup are implemented in the existing owners. The five-stage import workflow is
   unchanged.
-- Focused evidence recorded on the pre-commit candidate tree: backend focused `342 passed`; dataset suite `549 passed`;
-  application suite `1827 passed`; UI suite `178 passed`; architecture `256 passed` plus its script check; changed
-  file Ruff/format, `git diff --check`, and Basedpyright regression passed. Canonical public real-data gate reports
-  `4 passed`, and public cross-source training smoke reports `4 passed`.
-- Ignored local materialization checkpoints cover MAMEM1, BNCI2014_009 subject/session and PhysionetMI. They are not
-  a claim that all 15 local MOABB catalog entries materialize; the 15/15 result is catalog-only.
-- Remaining work: rerun applicable focused and handoff checks on the exact committed source, push and obtain
-  exact-head CI, then complete the specified Windows native manual acceptance. Until those gates close, this remains
-  a checkpoint and is not handoff-ready.
+- Focused pre-commit candidate-tree evidence: full Application+Dataset `2388 passed`; selected Training `628 passed`;
+  UI `178 passed`; selected architecture `285 passed`; whole-repo Ruff check and format check passed; Basedpyright
+  regression reported `0` new diagnostics; architecture compliance script passed. These results close the listed
+  audit/admission/cancellation/no-validation-ratio/mixed-Manual/evidence-gap checkpoint; they do not certify an
+  arbitrary dataset, scientific split quality, or a complete solver.
+- Remaining work is limited to the exact committed-source gates, push/PR and exact-head CI, canonical source-diverse
+  gate, and the specified Windows native manual acceptance. Until then this remains a checkpoint, not handoff-ready.
 - Stop if deterministic allocation cannot satisfy hard train-class/required-split constraints for a given input:
   publish a recoverable infeasible preview with the cause, never silently clamp, split an atomic group, or mutate
-  saved truth. Completion requires exact-head focused evidence, CI, source-diverse gate and later user Windows
-  acceptance before merge.
+  saved truth. Do not expand into arbitrary MOABB support, UI redesign, or a second allocator.
 
 ## Historical record — SSVEP import review routing and EEGLAB preflight sampling rate
 

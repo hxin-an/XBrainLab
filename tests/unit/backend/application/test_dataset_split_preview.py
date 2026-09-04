@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import inspect
 import threading
+from collections.abc import Callable
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any
 
@@ -18,6 +21,7 @@ from XBrainLab.backend.application.dataset_split_preview import (
 )
 from XBrainLab.backend.application.errors import PreconditionError
 from XBrainLab.backend.dataset import Dataset, DatasetGenerator, Epochs
+from XBrainLab.backend.dataset.epochs import mark_xbrainlab_raw_event_source_epochs
 from XBrainLab.backend.load_data import Raw
 
 
@@ -130,6 +134,7 @@ def _real_epoch_data() -> Epochs:
     raw = Raw("sub-01_ses-01_task-preview-epo.fif", mne_epochs)
     raw.set_subject_name("01")
     raw.set_session_name("01")
+    mark_xbrainlab_raw_event_source_epochs(raw)
     return Epochs([raw])
 
 
@@ -161,6 +166,17 @@ class _BlockingDatasetGenerator(DatasetGenerator):
         if self.interrupted:
             raise KeyboardInterrupt
         super()._populate_pending_datasets()
+
+
+class _CompletingDatasetGenerator(DatasetGenerator):
+    def __init__(self, *args: Any, on_complete: Callable[[], None]):
+        super().__init__(*args)
+        self._on_complete = on_complete
+
+    def generate(self) -> list[Dataset]:
+        datasets = super().generate()
+        self._on_complete()
+        return datasets
 
 
 def test_context_publication_contains_only_detached_split_choices() -> None:
@@ -397,6 +413,56 @@ def test_real_preview_failure_preserves_live_epoch_evidence_and_dataset_sequence
     )
 
 
+def test_real_preview_rejects_the_same_mixed_trial_provenance_risk_as_train(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A receipt cannot be published for a split Train would audit-block."""
+    epoch_data = _real_epoch_data()
+    epoch_data.session = np.repeat([0, 1], 5)
+    epoch_data.session_map = {0: "ses-0", 1: "ses-1"}
+    epoch_data.epoch_window_provenance = tuple(
+        replace(item, source_coordinates_verified=False)
+        for item in epoch_data.get_epoch_window_provenance()
+    )
+    monkeypatch.setattr(Dataset, "SEQ", 91)
+    publisher = DatasetSplitPreviewPublisher(
+        dataset=_DatasetState(epoch_data),
+        generator_factory=lambda config: DatasetGenerator(epoch_data, config),
+        get_publication=lambda: _view(),
+    )
+    specification = DatasetSplitSpecification.from_payload(
+        {
+            "train_type": "Full Data",
+            "is_cross_validation": False,
+            "val_splitters": [
+                {
+                    "split_type": "By Trial",
+                    "split_unit": "Ratio",
+                    "value": "0.2",
+                    "is_option": True,
+                }
+            ],
+            "test_splitters": [
+                {
+                    "split_type": "By Session",
+                    "split_unit": "Ratio",
+                    "value": "0.5",
+                    "is_option": True,
+                }
+            ],
+        }
+    )
+
+    with pytest.raises(PreconditionError, match="temporal leakage"):
+        publisher.publish_preview(
+            DatasetSplitPreviewRequest(
+                request_id="mixed-provenance-preview",
+                publication_generation=4,
+                specification=specification,
+            )
+        )
+
+
 def test_real_preview_cancel_preserves_live_epoch_evidence_and_dataset_sequence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -451,6 +517,167 @@ def test_real_preview_cancel_preserves_live_epoch_evidence_and_dataset_sequence(
         sequence=109,
         dropped=7,
     )
+
+
+def test_real_preview_cancel_inside_allocator_rolls_back_generator_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cancellation at a real allocator checkpoint rolls its transaction back."""
+    epoch_data = _real_epoch_data()
+    original_evidence = [{"source": "live", "details": {"selected": 3}}]
+    epoch_data.trial_selection_evidence = original_evidence
+    epoch_data.trial_selection_evidence_dropped = 8
+    monkeypatch.setattr(Dataset, "SEQ", 111)
+    entered_allocator = threading.Event()
+    release_allocator = threading.Event()
+    generators: list[DatasetGenerator] = []
+
+    def generator_factory(config: Any) -> DatasetGenerator:
+        generator = DatasetGenerator(epoch_data, config)
+        original_checkpoint = generator._raise_if_interrupted
+
+        def observe_select_checkpoint() -> None:
+            caller = inspect.currentframe()
+            caller_name = (
+                caller.f_back.f_code.co_name
+                if caller is not None and caller.f_back is not None
+                else None
+            )
+            if caller_name == "_select_non_cv_keys" and not entered_allocator.is_set():
+                entered_allocator.set()
+                if not release_allocator.wait(timeout=1.0):
+                    raise TimeoutError("Timed out waiting to resume the allocator")
+            original_checkpoint()
+
+        monkeypatch.setattr(
+            generator, "_raise_if_interrupted", observe_select_checkpoint
+        )
+        generators.append(generator)
+        return generator
+
+    publisher = DatasetSplitPreviewPublisher(
+        dataset=_DatasetState(epoch_data),
+        generator_factory=generator_factory,
+        get_publication=lambda: _view(),
+    )
+    errors: list[BaseException] = []
+
+    def publish() -> None:
+        try:
+            publisher.publish_preview(
+                DatasetSplitPreviewRequest(
+                    request_id="cancel-inside-allocator",
+                    publication_generation=4,
+                    specification=_specification(),
+                )
+            )
+        except BaseException as error:
+            errors.append(error)
+
+    worker = threading.Thread(target=publish)
+    worker.start()
+    assert entered_allocator.wait(timeout=1.0)
+
+    try:
+        assert publisher.cancel_preview("cancel-inside-allocator") is True
+    finally:
+        release_allocator.set()
+        worker.join(timeout=1.0)
+
+    assert worker.is_alive() is False
+    assert len(errors) == 1
+    assert isinstance(errors[0], PreconditionError)
+    assert "cancelled" in str(errors[0]).casefold()
+    assert len(generators) == 1
+    assert generators[0].datasets == []
+    assert generators[0].epoch_data.trial_selection_evidence == original_evidence
+    assert generators[0].epoch_data.trial_selection_evidence_dropped == 8
+    _assert_live_split_state_unchanged(
+        epoch_data,
+        original_evidence,
+        sequence=111,
+        dropped=8,
+    )
+
+
+def test_real_preview_does_not_publish_when_cancelled_just_after_generation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    epoch_data = _real_epoch_data()
+    monkeypatch.setattr(Dataset, "SEQ", 110)
+    publisher: DatasetSplitPreviewPublisher | None = None
+
+    def cancel_after_generate() -> None:
+        assert publisher is not None
+        assert publisher.cancel_preview("cancel-after-generation") is True
+
+    publisher = DatasetSplitPreviewPublisher(
+        dataset=_DatasetState(epoch_data),
+        generator_factory=lambda config: _CompletingDatasetGenerator(
+            epoch_data, config, on_complete=cancel_after_generate
+        ),
+        get_publication=lambda: _view(),
+    )
+
+    with pytest.raises(PreconditionError, match="cancelled"):
+        publisher.publish_preview(
+            DatasetSplitPreviewRequest(
+                request_id="cancel-after-generation",
+                publication_generation=4,
+                specification=_specification(),
+            )
+        )
+
+
+def test_preview_completion_claim_linearizes_late_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    epoch_data = _real_epoch_data()
+    publisher = DatasetSplitPreviewPublisher(
+        dataset=_DatasetState(epoch_data),
+        generator_factory=lambda config: _CompletingDatasetGenerator(
+            epoch_data, config, on_complete=lambda: None
+        ),
+        get_publication=lambda: _view(),
+    )
+    completion_retired = threading.Event()
+    release = threading.Event()
+    original_unregister = publisher._unregister
+
+    def pause_after_completion_claim(request_id: str, active: Any) -> None:
+        completion_retired.set()
+        assert release.wait(timeout=1.0)
+        original_unregister(request_id, active)
+
+    monkeypatch.setattr(publisher, "_unregister", pause_after_completion_claim)
+    outcomes: list[object] = []
+
+    def publish() -> None:
+        try:
+            outcomes.append(
+                publisher.publish_preview(
+                    DatasetSplitPreviewRequest(
+                        request_id="linearized-preview-cancel",
+                        publication_generation=4,
+                        specification=_specification(),
+                    )
+                )
+            )
+        except BaseException as error:
+            outcomes.append(error)
+
+    worker = threading.Thread(target=publish)
+    worker.start()
+    assert completion_retired.wait(timeout=1.0)
+    try:
+        assert publisher.cancel_preview("linearized-preview-cancel") is False
+    finally:
+        release.set()
+        worker.join(timeout=1.0)
+
+    assert worker.is_alive() is False
+    assert len(outcomes) == 1
+    assert not isinstance(outcomes[0], BaseException)
 
 
 def test_stale_context_request_fails_before_reading_epoch_data() -> None:
