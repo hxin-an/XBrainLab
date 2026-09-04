@@ -1368,16 +1368,29 @@ class EvaluationPanel(BasePanel):
         runtime,
         operation_id: str,
         request: EvaluationRenderRequest,
-    ) -> tuple[EvaluationRenderRequest, object]:
-        publication = run_evaluation_render_operation(
-            None,
-            operation_id,
-            request,
-            runtime=runtime,
-        )
+    ) -> tuple[EvaluationRenderRequest, EvaluationRenderPublication | ApplicationError]:
+        try:
+            publication = run_evaluation_render_operation(
+                None,
+                operation_id,
+                request,
+                runtime=runtime,
+            )
+        except ApplicationError as error:
+            if EvaluationPanel._is_retryable_evaluation_stale(error):
+                return request, error
+            raise
         if publication is None:
             raise RuntimeError("Evaluation render publication is unavailable")
         return request, publication
+
+    @staticmethod
+    def _is_retryable_evaluation_stale(value: object) -> bool:
+        return (
+            isinstance(value, ApplicationError)
+            and value.diagnostics.get("evaluation_render_stale") is True
+            and value.diagnostics.get("retryable") is True
+        )
 
     def _on_evaluation_render_ready(
         self,
@@ -1398,6 +1411,18 @@ class EvaluationPanel(BasePanel):
         if self._evaluation_render_shutdown_requested or request is None:
             return
         self._evaluation_render_result_seen = True
+        if (
+            isinstance(result, tuple)
+            and len(result) == 2
+            and result[0] == request
+            and self._is_retryable_evaluation_stale(result[1])
+        ):
+            if request != self._current_evaluation_render_request():
+                return
+            self._evaluation_render = None
+            self.mark_refresh_dirty()
+            self._schedule_evaluation_render_retry(request)
+            return
         if (
             not isinstance(result, tuple)
             or len(result) != 2
@@ -1455,10 +1480,7 @@ class EvaluationPanel(BasePanel):
                 self._clear_evaluation_render_retry()
                 self._show_evaluation_render_unavailable(str(value))
                 return
-            if (
-                diagnostics.get("evaluation_render_stale") is True
-                and diagnostics.get("retryable") is True
-            ):
+            if self._is_retryable_evaluation_stale(application_error):
                 self._evaluation_render = None
                 self.mark_refresh_dirty()
                 self._schedule_evaluation_render_retry(request)
