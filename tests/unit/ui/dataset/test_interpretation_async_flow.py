@@ -2047,7 +2047,7 @@ def test_choice_repreview_uses_existing_scan_without_rescanning(monkeypatch) -> 
     assert execute.call_args.kwargs["expected_publication_generation"] == 17
 
 
-def test_repreview_hands_loading_ownership_to_the_visible_preview(
+def test_repreview_safe_result_hands_loading_ownership_to_final_review(
     monkeypatch,
 ) -> None:
     handler = DatasetActionHandler(MagicMock())
@@ -2088,6 +2088,153 @@ def test_repreview_hands_loading_ownership_to_the_visible_preview(
     loading.accept.assert_not_called()
     loading_token = continue_flow.call_args.kwargs["loading_token"]
     assert loading_token is handler._data_interpretation._loading_session.token
+    assert continue_flow.call_args.kwargs["initial_step"] == "Review and Import"
+
+
+def test_repreview_needs_confirmation_reopens_final_review(monkeypatch) -> None:
+    handler = DatasetActionHandler(MagicMock())
+    coordinator = handler._data_interpretation
+    loading = MagicMock()
+    loading.cancelled_by_user = False
+    coordinator._loading_dialog_class = lambda: lambda *_args, **_kwargs: loading
+    fresh_state = replace(
+        _review_state(publication_generation=17),
+        decision={
+            "candidate_id": "candidate-1",
+            "decision": "needs_confirmation",
+            "action_items": [
+                {
+                    "target_step": "Match Labels",
+                    "issue": "Confirm the selected class events.",
+                    "impact": "Training labels remain ambiguous.",
+                    "next_action": "Review Match Labels.",
+                    "severity": "needs_confirmation",
+                }
+            ],
+        },
+    )
+    continue_flow = MagicMock(return_value=InteractionOutcome.cancelled("closed"))
+    monkeypatch.setattr(
+        coordinator, "_continue_data_interpretation_import", continue_flow
+    )
+    monkeypatch.setattr(
+        coordinator,
+        "_preview_and_validate_interpretation_async",
+        lambda *, on_validated, **_kwargs: on_validated(fresh_state),
+    )
+
+    outcome = coordinator._repreview_interpretation_async(
+        source_path="/data/source",
+        source_hint="file",
+        choices={"class_map": {"1": "10 Hz"}},
+        label_sources=[],
+        review_state=_review_state(publication_generation=17),
+        initial_step="Match Labels",
+    )
+
+    assert outcome is not None
+    assert outcome.status is InteractionStatus.CANCELLED
+    assert continue_flow.call_args.kwargs["initial_step"] == "Review and Import"
+
+
+def test_repreview_fresh_blocked_target_reopens_match_labels_without_apply(
+    monkeypatch,
+) -> None:
+    """Fresh blocked validation must route recovery from backend action items."""
+    handler = DatasetActionHandler(MagicMock())
+    coordinator = handler._data_interpretation
+    loading = MagicMock()
+    loading.cancelled_by_user = False
+    coordinator._loading_dialog_class = lambda: lambda *_args, **_kwargs: loading
+    previous_state = _review_state(publication_generation=17)
+    preview_state = replace(previous_state, publication_generation=18)
+    blocked_state = replace(
+        preview_state,
+        decision={
+            "candidate_id": "candidate-1",
+            "decision": "blocked",
+            "action_items": [
+                {
+                    "target_step": "Match Labels",
+                    "issue": "Confirm the selected SSVEP class events.",
+                    "impact": "Training labels remain ambiguous.",
+                    "next_action": "Review Match Labels.",
+                    "severity": "blocked",
+                }
+            ],
+        },
+    )
+    execute = MagicMock(return_value=InteractionOutcome.accepted("scheduled"))
+    reopened = MagicMock(return_value=InteractionOutcome.accepted("review ready"))
+    apply = MagicMock()
+    statuses: list[tuple[str, int]] = []
+    monkeypatch.setattr(
+        coordinator,
+        "_review_state_from_parts",
+        MagicMock(side_effect=[preview_state, blocked_state]),
+    )
+    monkeypatch.setattr(coordinator, "_continue_data_interpretation_import", reopened)
+    monkeypatch.setattr(coordinator, "_apply_interpretation_async", apply)
+    monkeypatch.setattr(
+        coordinator,
+        "_show_status",
+        lambda message, timeout_ms=7000: statuses.append((message, timeout_ms)),
+    )
+    coordinator._bindings = replace(
+        coordinator._bindings,
+        execute_application_command_async=execute,
+        show_warning=MagicMock(),
+        show_error=MagicMock(),
+    )
+
+    outcome = coordinator._repreview_interpretation_async(
+        source_path="/data/ssvep.bdf",
+        source_hint="file",
+        choices={"class_map": {"1": "10 Hz"}},
+        label_sources=[],
+        review_state=previous_state,
+        initial_step="Review and Import",
+    )
+
+    assert outcome is not None
+    assert outcome.status is InteractionStatus.ACCEPTED
+    assert isinstance(execute.call_args_list[0].args[1], PreviewInterpretationCommand)
+    preview_terminal = execute.call_args_list[0].kwargs["on_result"](
+        _success_result(
+            "preview_interpretation",
+            preview={"summary": "updated"},
+            candidate={"candidate_id": "candidate-1"},
+        )
+    )
+    assert preview_terminal.status is InteractionStatus.ACCEPTED
+    assert [type(item.args[1]) for item in execute.call_args_list] == [
+        PreviewInterpretationCommand,
+        ValidateInterpretationCommand,
+    ]
+
+    validation_terminal = execute.call_args_list[1].kwargs["on_result"](
+        _success_result(
+            "validate_interpretation",
+            validation_decision=blocked_state.decision,
+        )
+    )
+
+    assert validation_terminal.status is InteractionStatus.ACCEPTED
+    reopened.assert_called_once_with(
+        source_path="/data/ssvep.bdf",
+        source_hint="file",
+        choices={"class_map": {"1": "10 Hz"}},
+        label_sources=[],
+        review_state=blocked_state,
+        initial_step="Match Labels",
+        loading_token=coordinator._loading_session.token,
+    )
+    assert (
+        reopened.call_args.kwargs["review_state"].decision["action_items"]
+        == (blocked_state.decision["action_items"])
+    )
+    assert statuses == [("Import review updated · Continue in Match Labels", 7000)]
+    apply.assert_not_called()
 
 
 def test_repreview_cancel_reopens_the_exact_preserved_match_labels_draft(

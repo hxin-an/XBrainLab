@@ -20,6 +20,7 @@ from .bids_dataset_index import current_bids_dataset_index_for_path
 
 MAT_FILE_HEADER_BYTES = 128
 MAT_COMPRESSED_HEADER_BUDGET_BYTES = 1_048_576
+MAT_UNCOMPRESSED_METADATA_ELEMENTS_LIMIT = 256
 MAT_REFERENCE_MAX_BYTES = 4_096
 MAT_STREAM_CHUNK_BYTES = 65_536
 EEGLAB_EXTERNAL_DTYPE = "float32"
@@ -304,6 +305,9 @@ def inspect_eeglab_set_header(path: str | Path) -> EeglabSetHeaderInspection:
             accumulator = _HeaderAccumulator()
             compressed_header = False
             decoded_header_bytes = 0
+            remaining_embedded_metadata_elements = (
+                MAT_UNCOMPRESSED_METADATA_ELEMENTS_LIMIT
+            )
             while True:
                 outer_start = file_reader.tell()
                 if outer_start >= set_path.stat().st_size:
@@ -348,6 +352,7 @@ def inspect_eeglab_set_header(path: str | Path) -> EeglabSetHeaderInspection:
                     file_reader.seek(payload_end + _padding(tag.nbytes))
                     continue
 
+                had_source_shape = accumulator.source_shape is not None
                 _apply_matrix_value(accumulator, value)
                 inspection = _inspection_if_complete(
                     set_path,
@@ -356,7 +361,19 @@ def inspect_eeglab_set_header(path: str | Path) -> EeglabSetHeaderInspection:
                     header_bytes_read=file_reader.bytes_read,
                     decoded_header_bytes=decoded_header_bytes,
                 )
-                if inspection is not None:
+                if inspection is None:
+                    continue
+                needs_embedded_sampling_rate = (
+                    not compressed_header
+                    and accumulator.source_shape is not None
+                    and accumulator.sampling_rate_hz is None
+                )
+                if not needs_embedded_sampling_rate:
+                    return inspection
+                if not had_source_shape:
+                    continue
+                remaining_embedded_metadata_elements -= 1
+                if remaining_embedded_metadata_elements <= 0:
                     return inspection
 
             inspection = _inspection_if_complete(
@@ -453,6 +470,8 @@ def _parse_matrix(
         )
     reader.require_payload_extent(data_tag.nbytes)
     if name == "data":
+        if isinstance(reader, _FileReader):
+            _skip_to(reader, matrix_end)
         return _MatrixValue(
             name=name,
             kind="numeric_data",
@@ -520,9 +539,9 @@ def _parse_eeg_struct(
             field_name=field_name,
         )
         _apply_matrix_value(accumulator, value)
-        if accumulator.source_shape is not None or (
-            accumulator.reference and accumulator.external_shape_complete
-        ):
+        if (
+            isinstance(reader, _ZlibReader) and accumulator.source_shape is not None
+        ) or (accumulator.reference and accumulator.external_shape_complete):
             return _MatrixValue(name="EEG", kind="complete", shape=dimensions)
     _skip_to(reader, matrix_end)
     return _MatrixValue(name="EEG", kind="struct", shape=dimensions)

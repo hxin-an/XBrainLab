@@ -13,6 +13,7 @@ from scipy.io import savemat
 
 from XBrainLab.backend.application.eeglab_set_preflight import (
     MAT_STREAM_CHUNK_BYTES,
+    MAT_UNCOMPRESSED_METADATA_ELEMENTS_LIMIT,
     inspect_eeglab_set_header,
 )
 from XBrainLab.backend.application.resource_guard import (
@@ -105,6 +106,142 @@ def test_mat_v5_embedded_inspector_reads_only_bounded_header_bytes(
     assert inspection.source_dtype == "float32"
     assert len(tracked) == 1
     assert sum(tracked[0].read_sizes) <= 128 + 8 + MAT_STREAM_CHUNK_BYTES
+    assert sum(tracked[0].read_sizes) < set_path.stat().st_size // 4
+
+
+def test_uncompressed_embedded_data_before_srate_retains_sampling_rate_bounded(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A data-first EEGLAB struct must not hide its later scalar ``srate``."""
+    set_path = tmp_path / "data-before-srate.set"
+    signal = np.random.default_rng(20260904).standard_normal(
+        (4, 100_000),
+        dtype=np.float32,
+    )
+    _write_embedded_set(set_path, data=signal, compressed=False)
+    del signal
+
+    original_open = Path.open
+    tracked: list[_TrackingBinaryFile] = []
+
+    def _tracking_open(path: Path, *args: Any, **kwargs: Any) -> Any:
+        handle = original_open(path, *args, **kwargs)
+        if path == set_path:
+            wrapper = _TrackingBinaryFile(handle)
+            tracked.append(wrapper)
+            return wrapper
+        return handle
+
+    monkeypatch.setattr(Path, "open", _tracking_open)
+
+    inspection = inspect_eeglab_set_header(set_path)
+
+    assert inspection.bound_known is True
+    assert inspection.storage_mode == "embedded"
+    assert inspection.source_shape == (4, 100_000)
+    assert inspection.source_dtype == "float32"
+    assert inspection.sampling_rate_hz == 250.0
+    assert len(tracked) == 1
+    assert sum(tracked[0].read_sizes) <= 128 + 8 + MAT_STREAM_CHUNK_BYTES
+    assert sum(tracked[0].read_sizes) < set_path.stat().st_size // 4
+
+
+def test_uncompressed_top_level_data_before_srate_continues_bounded(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Top-level MAT elements after ``data`` remain reachable without payload reads."""
+    set_path = tmp_path / "top-level-data-before-srate.set"
+    signal = np.random.default_rng(20260904).standard_normal(
+        (4, 100_000),
+        dtype=np.float32,
+    )
+    savemat(
+        set_path,
+        {
+            "data": signal,
+            "setname": "ignored metadata",
+            "nbchan": 4.0,
+            "pnts": 100_000.0,
+            "trials": 1.0,
+            "srate": 250.0,
+        },
+        do_compression=False,
+    )
+    del signal
+
+    original_open = Path.open
+    tracked: list[_TrackingBinaryFile] = []
+
+    def _tracking_open(path: Path, *args: Any, **kwargs: Any) -> Any:
+        handle = original_open(path, *args, **kwargs)
+        if path == set_path:
+            wrapper = _TrackingBinaryFile(handle)
+            tracked.append(wrapper)
+            return wrapper
+        return handle
+
+    monkeypatch.setattr(Path, "open", _tracking_open)
+
+    inspection = inspect_eeglab_set_header(set_path)
+
+    assert inspection.bound_known is True
+    assert inspection.storage_mode == "embedded"
+    assert inspection.source_shape == (4, 100_000)
+    assert inspection.source_dtype == "float32"
+    assert inspection.sampling_rate_hz == 250.0
+    assert len(tracked) == 1
+    assert sum(tracked[0].read_sizes) < set_path.stat().st_size // 4
+
+
+@pytest.mark.parametrize(
+    ("ignored_post_data_elements", "expected_sampling_rate_hz"),
+    [
+        (MAT_UNCOMPRESSED_METADATA_ELEMENTS_LIMIT - 1, 250.0),
+        (MAT_UNCOMPRESSED_METADATA_ELEMENTS_LIMIT, None),
+    ],
+)
+def test_uncompressed_top_level_metadata_continuation_cap_is_bounded(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    ignored_post_data_elements: int,
+    expected_sampling_rate_hz: float | None,
+) -> None:
+    """The outer continuation admits 255 ignored elements and caps at 256."""
+    set_path = tmp_path / f"top-level-metadata-{ignored_post_data_elements}.set"
+    signal = np.random.default_rng(20260904).standard_normal(
+        (4, 100_000),
+        dtype=np.float32,
+    )
+    payload: dict[str, Any] = {"data": signal}
+    for index in range(ignored_post_data_elements):
+        payload[f"ignored_scalar_{index:03d}"] = float(index)
+    payload["srate"] = 250.0
+    savemat(set_path, payload, do_compression=False)
+    del signal
+
+    original_open = Path.open
+    tracked: list[_TrackingBinaryFile] = []
+
+    def _tracking_open(path: Path, *args: Any, **kwargs: Any) -> Any:
+        handle = original_open(path, *args, **kwargs)
+        if path == set_path:
+            wrapper = _TrackingBinaryFile(handle)
+            tracked.append(wrapper)
+            return wrapper
+        return handle
+
+    monkeypatch.setattr(Path, "open", _tracking_open)
+
+    inspection = inspect_eeglab_set_header(set_path)
+
+    assert inspection.bound_known is True
+    assert inspection.storage_mode == "embedded"
+    assert inspection.source_shape == (4, 100_000)
+    assert inspection.source_dtype == "float32"
+    assert inspection.sampling_rate_hz == expected_sampling_rate_hz
+    assert len(tracked) == 1
     assert sum(tracked[0].read_sizes) < set_path.stat().st_size // 4
 
 
