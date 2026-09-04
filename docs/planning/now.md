@@ -1,185 +1,103 @@
 # XBrainLab Now
 
-最後更新：`2026-09-03`
+最後更新：`2026-09-04`
 
 ## Current baseline
 
-`77d125ef3b94648337c8cfb6df0e3bf614b6a435` 是目前 `main`／`origin/main` 的產品基線，已合併
-PR #109 的 Windows source bootstrap；其歷史、exact evidence 與使用者 Windows 手測／merge 批准由 Git
-與 PR 記錄保存，不再作為 active plan。Repo-root `settings.json` 的本機修改由使用者擁有，絕不可
-stage、commit、revert、覆寫或隱藏。
+`2315c8ac08c1cc2683e6526eec9b368add809bff` 是目前 `main`／`origin/main` 的產品基線，已合併 PR #110：
+SSVEP import review routing、lazy Dataset startup repair，以及 EEGLAB embedded `.set` sampling-rate preflight。
+使用者已在該 exact source 的 Windows 手測 MAMEM1 `sub-1` 三個 run，以 `trial_type` 的五個頻率 class
+完成 supervised training，接受目前 CV split class coverage 的已知限制並同意 merge。歷史、CI 與完整
+manual acceptance 由 Git 與 PR 記錄保存，不再作為 active plan。Repo-root `settings.json` 的本機修改由使用者
+擁有，絕不可 stage、commit、revert、覆寫或隱藏。
 
-## Active slice — SSVEP import review routing and EEGLAB preflight sampling rate
+## Active slice — Evaluation retryable stale worker reporting
 
 ### Problem and evidence
 
-- Data Import 的既有五個使用者階段是：`Choose EEG Data`、`Load Labels`、`Review Metadata`、`Match Labels`、
-  `Review and Import`。使用者明確滿意這五段，要求不要大改。
-- 真實 command lifecycle 是 `scan -> preview -> validate -> confirm -> apply -> recipe`；只有
-  `AppliedInterpretation` 才能成為下游 truth。
-- 在 `DataInterpretationActionCoordinator._repreview_interpretation_async()`，Match Labels 或 final review
-  的 edit 會正確重跑 `PreviewInterpretationCommand` 與 `ValidateInterpretationCommand`，但 validated callback
-  無條件以舊 `initial_step` reopen dialog。它沒有使用 fresh `ValidationDecision.action_items` 的
-  `target_step`。因此新的 `blocked` class/event mapping candidate 可能回到 `Review and Import`，而不是回到
-  backend 指定的 `Match Labels`；使用者看不到清楚的 recovery path。
-- 這是 coordinator routing defect，不是 dataset 名稱、raw SSVEP parser、backend validator 或 Apply defect。
-  已有 focused tests coverage re-preview、fresh final review 與 no-apply boundary，但尚未刻畫 fresh blocked
-  decision 的 target-step routing。
-- 使用者的 MAMEM1 BIDS 手測揭露另一個直接阻擋：`sub-1` 的 uncompressed embedded MAT v5 `.set` 把
-  `EEG.data` 放在 `EEG.srate` 之前。bounded preflight 一讀到 signal shape 就當作完整 header 回傳，因而
-  得到樣本數卻漏掉真實 header 的 `srate=250 Hz`。BIDS event review 無法由 `n_times / sfreq` 建立 recording
-  bounds，安全地退回 `Match Labels`。這不是頻率 class、SSVEP adapter 或使用者 choices 的問題；同型 embedded
-  EEGLAB `.set` 都可能受影響。
+- Windows 2026-09-04 13:03 在 Evaluation detached render 中記錄
+  `XBrainLab.ui.core.worker - ERROR - Worker task failed`；根因是
+  `Evaluation results changed while render data was being read. Refresh Evaluation and try again.`。使用者確認
+  畫面最後正常，故此問題是可恢復狀態被記成 ERROR，不是 training 或 evaluation 結果遺失。
+- `EvaluationRenderPublisher` 在 materialize 前後比對 application publication 與 training read boundary，資料
+  變動時 fail closed 並以 `evaluation_render_stale=True`、`retryable=True` 拒絕 publication；這個 backend guard
+  正確，不能移除或放寬。
+- `EvaluationPanel._on_evaluation_render_error()` 已辨識上述 diagnostics，清除舊 render 並經既有 75 ms、最多
+  8 次 retry lifecycle 重試。但 `ui.core.worker._run_worker_task()` 在 queued UI callback 取得 exception 前無條件
+  `logger.error("Worker task failed", exc_info=True)`，所以每個預期 stale retry 先留下 misleading ERROR。
+- 既有 backend `test_training_boundary_change_discards_copied_render_data` 強力保護 fail-closed guard；既有
+  `test_evaluation_stale_render_retries_without_error_log` 使用 real Evaluation work lifecycle 證明 retry，但只排除
+  panel-specific log，沒有 assert generic worker ERROR，因而漏掉本次 defect。
 
-### Outcome and user-visible contract
+### Outcome and contract
 
-- Re-preview 後只信任 fresh backend `ValidationDecision`：`blocked` 時以 typed actionable target reopen；本
-  slice 的 class/event blocker 必須 reopen `Match Labels`，並保留該 decision/action cards。`safe` 和
-  `needs_confirmation` reopen `Review and Import`，讓使用者對新 candidate 作 final confirmation。
-- `ApplyInterpretationCommand` 不得對 blocked candidate 執行；既有 fresh-final-review confirmation boundary
-  必須保留。
-- status bar 顯示 concise backend-truth-aligned recovery outcome（例如 review updated and current task），不以
-  前端另造 validation policy。loading、cancel、failed 與 repeat lifecycle 保持現有 owner。
-- EEGLAB bounded preflight 必須在不 materialize signal samples 的前提下，繼續讀完同一 bounded MAT struct 所需
-  scalar metadata；對 data-before-srate 的 embedded MAT v5 source 保留 `sampling_rate_hz=250.0`。這讓 BIDS
-  duration validation 使用真實 recording bounds，而不是為 SSVEP 或 frequency class 增加特殊路徑。
+- 相同 Evaluation target 的 retryable stale result 必須自動沿用既有 retry lifecycle，最終成功時不產生
+  `Worker task failed` ERROR，也不顯示 unavailable product error。
+- 非 retryable exception 仍必須經既有 worker error signal、ERROR log 與 Evaluation unavailable handling；不把
+  真正失敗靜默化。
+- stale guard、75 ms×8 retry budget、selection/generation identity、loading/cancel/cleanup lifecycle 都維持既有
+  contract。使用者已授權這個 narrow UI code fix；不進行 copy、layout 或 interaction redesign，但 exact-head
+  Windows manual acceptance 仍必要。
 
-### Scope, non-goals, assumptions, ownership
+### Scope, ownership, and non-goals
 
-- Scope 包含 coordinator 的 fresh-decision-to-reopen-step routing、EEGLAB embedded MAT v5 bounded-header completion、
-  直接 focused regressions、此 plan，和必要的 offscreen walkthrough artifact。production files 預計只有
-  `XBrainLab/ui/panels/dataset/data_interpretation_action_coordinator.py` 與
-  `XBrainLab/backend/application/eeglab_set_preflight.py`；tests 預計只有
-  `tests/unit/ui/dataset/test_interpretation_async_flow.py` 與
-  `tests/unit/backend/application/test_eeglab_preflight_gate.py`。
-- 不改五階段、dialog layout、copy hierarchy、backend Data Interpretation policy／payload schema、Apply semantics、
-  raw loader、recipe schema、MOABB dependency、dataset download、filter、Assistant fallback 或 data split。
-- 不新增 frequency adapter、target-to-frequency/phase/code inference、CCA/FBCCA 或 BIDS special case；不宣稱所有
-  MOABB、任意 BIDS/event schema、科學 SSVEP accuracy 或 benchmark quality。MAMEM1 的 accepted contract 僅是使用者可將
-  `trial_type` frequency values 明確選成 supervised classes，且 import 後可進入既有 epoch/split/train workflow。
-- Owner before/after 不變：`DataInterpretationCommandService` owns scan/preview/validate/apply state and decision;
-  `DataInterpretationActionCoordinator` only owns async UI command orchestration; preview dialog renders typed
-  result; `eeglab_set_preflight` remains the sole bounded `.set` metadata owner. 不新增 owner、state machine、module或
-  compatibility path。
-- Deletion/reuse first：reuse existing `_repreview_interpretation_async` and typed `action_items`; do not add a
-  parallel wizard/router, frontend inference, or second EEG reader. Routing repair 預估 production net `+20–45 LOC`；
-  preflight repair actual `+23/-4 LOC`，兩個既有 production owners，owner delta `0`。
-- UI approval 已存在：使用者說「目前 review and import 這五個階段我很滿意不要大改」，並在討論 status bar
-  後回覆「我覺得可以」。本 slice 只在該批准下修正 recovery routing/status，仍需 focused screenshot/walkthrough
-  與後續 Windows native human acceptance；preflight repair 本身不改可見 UI。
+- 只修改 `EvaluationPanel` 的 private async result handling 與 focused UI tests；預計一個既有 production owner、
+  production net `+20–45 LOC`、不新增 owner/module/public API/state machine/compatibility path。
+- 採 deletion/reuse first：重用既有 `ApplicationError` diagnostics、`_on_evaluation_render_ready()` 與 retry scheduler。
+  `_load_evaluation_render()` 只捕捉同時具有 stale 和 retryable diagnostics 的 `ApplicationError`，回傳 panel-private
+  expected-result payload；ready callback 以同一 scheduler 排程 retry。其他 exception 照原本越過 worker boundary。
+- 不改 global `Worker`／`PythonThreadWorker` API 或其通用 logging policy，不改 backend guard、ApplicationService、
+  ownership registry、retry budget、UI copy/layout、saliency、data split 或 CV coverage。
+- retry exhaustion、MAMEM1 CV class coverage、以及 duplicate saliency generation 都是 deferred candidates；本 slice
+  不把它們包進來。三格式 capability gate（EEGLAB／EDF／BrainVision）必須在本 PR 合併後另開，不提前實作或宣稱。
 
-### TDD repair sequence and validation
+### TDD repair and focused validation
 
-1. 在 `tests/unit/ui/dataset/test_interpretation_async_flow.py` 先新增最小 red reproduction：從 changed
-   Match Labels/final draft re-preview，fresh validation returns `blocked` plus typed `target_step="Match Labels"`;
-   assert reopened dialog uses `Match Labels`, preserves fresh review state/action items, shows recovery status, and
-   never calls Apply. 它必須在 current code 因 reopen uses stale `initial_step` 而失敗。
-2. 加 direct adjacent cases: fresh `safe` and `needs_confirmation` reopen `Review and Import` and preserve the
-   required fresh confirmation boundary; cancellation/error remains owned by existing lifecycle.
-3. 只在 coordinator 加最小 resolver using fresh typed decision/action items; unsupported/missing target fails
-   closed to the conservative review path, never guessed from SSVEP names or UI labels. 不改 backend or dialog policy.
-4. Run the red selector, then the same selector green and directly coupled async-flow file under Qt-safe timeout /
-   `prlimit --core=0`; run changed-file Ruff and `git diff --check`.
-5. Produce the existing data-import offscreen capture plus a user-like blocked-to-Match-Labels walkthrough artifact;
-   inspect the screenshot for five-step preservation, readable status, no clipping/overlap. Offscreen evidence does
-   not replace Windows native acceptance.
-6. 先在 `tests/unit/backend/application/test_eeglab_preflight_gate.py` 新增最小 red reproductions：uncompressed
-   embedded MAT v5 `EEG` struct 的 `data` 在 `srate` 前，以及 top-level `data` 後仍有 ignored metadata、再有
-   `srate` 的 continuation；兩者 assert bounded inspection retains shape/dtype and `sampling_rate_hz == 250.0`
-   while physical reads remain bounded and no signal materializes。另以既有最多 256 個 post-data outer metadata
-   elements 的 cap，證明 255 個 ignored elements 後的 `srate` 仍可讀到、256 個後的 late `srate` 則 fail closed
-   as an embedded bound with `sampling_rate_hz is None`，不得為找 rate 讀取 signal。
-   current code 必須因 early return 令 sampling rate 為 `None` 而失敗；不先修改 production。修理後 rerun exact
-   selectors and the coupled EEGLAB preflight file under `prlimit --core=0` and timeout.
-7. Windows native acceptance on the exact PR head: select MAMEM1 `sub-1` runs 0–2, map `trial_type`
-   `6.66/7.50/8.57/10.00/12.00` to five explicit `Hz` classes, continue to Review and Import without a missing
-   sampling-rate blocker, Apply, epoch `0–3 s`, save `Individual/Trial` split, and complete one CPU EEGNet epoch.
-   Record five imported classes and completed training; this is MAMEM1-specific acceptance, not a broad MOABB claim.
+1. 在 `tests/unit/ui/test_evaluation_publication_refresh.py` 先新增最小 red reproduction：以既有 port、
+   `EvaluationWorkController` 和 `PythonThreadWorker` seam 讓第一次 render 拋出帶 stale+retryable diagnostics 的
+   `ApplicationError`，第二次回傳有效 detached publication。assert 可觀察到 final detached publication、retry timer idle、沒有
+   `XBrainLab.ui.core.worker` 的 `Worker task failed` ERROR。current source 必須只因通用 worker 的 eager ERROR 而紅。
+2. 加相鄰 preservation case：non-retryable `RuntimeError` 仍產生 generic worker ERROR 並顯示既有 unavailable state；
+   不以 broad log suppression 偽造 green。既有 cleanup retry cancellation 與 backend boundary-change guard 仍為直接
+   adjacent protection。
+3. 只在 panel private async bridge 實作 expected-result handling；assert stale retry 不把 exception cross generic worker
+   boundary，success 仍必須完全驗證 request/operation identity。不要改 test-only port 或以 mock bypass worker。
+4. 在 Windows locked Poetry environment，先跑 red selector，再跑同一 selector green：
+
+   ```powershell
+   $env:QT_QPA_PLATFORM='offscreen'; $env:MNE_DONTWRITE_HOME='true';
+   poetry run pytest tests/unit/ui/test_evaluation_publication_refresh.py::test_evaluation_retryable_stale_render_does_not_log_worker_failure -q
+   ```
+
+   使用明確 timeout 與 `prlimit --core=0` 的等效 wrapper；完成後跑完整
+   `tests/unit/ui/test_evaluation_publication_refresh.py`、直接 worker suite
+   `tests/unit/ui/core/test_worker.py`、changed-file Ruff 與 `git diff --check`。不將 offscreen evidence 宣稱為
+   Windows native acceptance。
+5. Exact PR head 的 Windows manual check：完成一次 CPU training 後開啟／刷新 Evaluation，確認 transient stale
+   retry 最終恢復 render 且 log 不再出現 `Worker task failed` for this expected condition；非 retryable diagnostic
+   不做人工刻意觸發。PR CI 的所有 non-skipped checks 必須 completed/success，然後才請使用者在 exact head
+   明確批准 merge。
 
 ### Implementation progress and focused evidence
 
-- Red reproduction completed: the new coordinator async seam dispatched `PreviewInterpretationCommand` then
-  `ValidateInterpretationCommand`; a fresh `blocked` decision with typed `target_step="Match Labels"` actually
-  reopened stale `Review and Import`, exactly proving the reported defect. No Apply was invoked.
-- Minimal repair completed: coordinator reuses `adapt_serialized_validation_decision()` from the existing review
-  presenter. A valid fresh blocked decision takes its first typed blocked action target; `safe`,
-  `needs_confirmation`, invalid, or incomplete decisions reopen conservative `Review and Import`. The sole new
-  status copy is `Import review updated · Continue in <task>`.
-- Green focused evidence: red selector then passed; blocked/safe/needs-confirmation routing selectors were `3 passed`
-  (2.32s); full `tests/unit/ui/dataset/test_interpretation_async_flow.py` was `85 passed` (12.42s); directly coupled
-  review presenter/loading Qt tests were `23 passed` (1.25s). Changed-file Ruff and `git diff --check` passed.
-- TCP-only Xvfb focused capture completed with exit `0`: the existing canonical generator wrote
-  `build/dev-artifacts/ssvep-repreview-ui-evidence/04-match-labels-final-loaded-label-files.png` and its root
-  manifest. PNG SHA-256 is `efc535fdd7aaa1479bc72047f8f800bbbd89ccca2141c82d98ffa50644ee7b04`; it is a readable
-  1220×1320 xcb-native-window screenshot. Visual inspection confirms all five named stages remain visible, Match
-  Labels is active, the class-event choices and footer are readable, and there is no observed clipping/overlap.
-  This focused capture proves only the pre-existing five-stage Match Labels surface; it does not exercise the new
-  asynchronous re-preview route or status bar, is dirty-source evidence, and is not Windows human acceptance. The
-  exact-source Windows human walkthrough remains required before any merge claim.
-
-### PR #110 direct product dependency — EEGLAB embedded sampling-rate preflight
-
-- Exact red evidence: the new uncompressed embedded MAT v5 data-before-srate selector failed on the unmodified
-  parser with `1 failed in 0.56s`; inspection had `bound_known=True`, embedded `(4, 100000)` float32 data and
-  `sampling_rate_hz=None`. This isolates the early header completion defect without loading EEG samples.
-- Minimal parser repair is complete in the existing `eeglab_set_preflight` owner: after embedded data is bounded,
-  uncompressed top-level scalar metadata may continue through the existing cap; compressed, v7.3, payload and
-  unsafe-reference boundaries retain their existing fail-closed behavior. Actual production delta is `+23/-4 LOC`,
-  owner delta `0`; no loader, BIDS policy, frequency adapter, UI, or compatibility path was added.
-- Green regression inventory: one nested data-before-srate regression, one ordinary top-level continuation regression,
-  and two real top-level cap boundaries (255 ignored post-data elements then `srate=250`; 256 then late `srate=None`)
-  are included in the full EEGLAB preflight suite. Independent review found no lifecycle, ownership, payload-read,
-  cap, or class-carrier blocker after the 255/256 boundary correction.
-- Actual MAMEM1 bounded probe on `sub-1/ses-0/eeg/sub-1_ses-0_task-ssvep_run-0_eeg.set` reports `bound_known=True`,
-  `storage_mode=embedded`, `sampling_rate_hz=250.0`, `header_bytes_read=512`, shape `(256, 117917)`, and `float32`.
-  This proves the exact cached run's header admission only; it is not an Apply/epoch/train or scientific claim.
-- Focused Windows evidence on the current dirty source: EEGLAB preflight `19 passed` (0.72s), resource guard
-  `48 passed` (2.37s), interpretation resource reader `14 passed` (1.80s), and async import routing `85 passed`
-  (10.27s), each under `prlimit --core=0`, explicit timeout, `MNE_DONTWRITE_HOME=true`, and offscreen Qt where
-  applicable. Changed production/test/UI Ruff and `git diff --check` passed.
-- Next step: commit and push this exact source, wait for non-skipped CI on that exact PR head, then repeat the full
-  native Windows MAMEM1 acceptance (three sub-1 runs, five `trial_type` frequency classes, Apply, `0–3 s` epoch,
-  Individual/Trial split, CPU EEGNet one epoch) before any merge claim.
-
-### PR #110 direct CI blocker — restore Dataset startup lazy import
-
-- Exact `6b9f1fe09425ea2274333538975a5eeb59bfd330` has four direct Linux CI failures in the Dataset import-latency
-  boundary. Their common root is this slice's new top-level coordinator import of
-  `XBrainLab.ui.dialogs.dataset.review_import_presenter`: importing Dataset actions now imports the Dataset dialog
-  package during first-open, violating its explicit lazy-import contract. This is an eager-import regression, not a
-  routing, validation, raw-SSVEP, or behavior failure.
-- Repair scope is only to restore the existing lazy seam: remove the coordinator top-level presenter import and
-  import the existing adapter only at fresh decision resolution. Do not add a parser, module, owner, cache, schema,
-  dialog/layout change, or fallback policy. The same typed adapter and routing outcome remain authoritative.
-- TDD evidence is the existing four import-latency selectors, run directly in the external Linux environment: they
-  must fail current source because the dialog package is eager. After the smallest lazy import repair, rerun those
-  selectors, the routing triplet, full async-flow file, a relevant MainWindow startup probe if environment permits,
-  changed-file Ruff and `git diff --check`.
-- Stop if lazy resolution changes the typed decision contract, delays/loses routing behavior, causes a new startup
-  import root, or needs a broader dialog/package redesign. This repair restores no user-visible behavior beyond
-  startup import latency and does not change the five stages or SSVEP claim boundary.
-- Red evidence completed in the external Linux environment: the direct import-latency probes found
-  `XBrainLab.ui.dialogs.dataset.review_import_presenter` after Dataset panel/actions import. The selected CI boundary
-  set was `2 failed, 2 passed`; both failures have the stated common eager-import root. The remaining two reported CI
-  failures are the same package-startup boundary on their own CI paths, not an additional routing defect.
-- Minimal repair completed: the adapter import now occurs inside `_repreview_step_for_decision()` only. It preserves
-  the existing adapter, typed decision semantics and routing outcome; no new parser/module/owner/cache was added.
-- Green evidence: the same four direct import-latency selectors plus default MainWindow startup probe and the routing
-  triplet were `8 passed` (5.46s). Full async-flow was `85 passed` (12.26s); changed-file Ruff and `git diff --check`
-  passed. These are dirty-source focused results only and do not replace PR CI or Windows acceptance.
-- Independent review passed: the repair preserves the existing lazy dialog boundary and routes through the same
-  adapter only after a fresh decision exists; it found no lifecycle, policy, owner, or visible-flow blocker. Combined
-  focused evidence is `91 passed` across the import-latency/startup boundary and complete async-flow protection.
-  Next step is commit/push this exact lazy-import repair, then wait for PR CI on that exact head; do not treat this
-  local evidence as CI completion or Windows acceptance.
+- Exact red selector reproduced the defect with `1 failed in 3.37s`; its only failure was the generic
+  `XBrainLab.ui.core.worker` `Worker task failed` ERROR for the retryable stale render.
+- Minimal repair is confined to the existing panel private bridge in one production file: only an
+  `ApplicationError` carrying exact `evaluation_render_stale=True` and `retryable=True` diagnostics returns the
+  expected-result payload to the existing retry lifecycle. Production delta is `+33/-11 LOC` (net `+22`), owner
+  delta `0`; no global worker policy, backend guard, retry budget, owner, or abstraction changed.
+- Green exact stale selector passed `1 passed in 3.33s`; the unexpected-failure preservation selector passed
+  `1 passed in 3.20s`. Independent review found `0` blockers.
+- Windows locked-venv focused aggregate passed `83` tests with `0` failures and `2` existing deprecation warnings;
+  changed-file Windows-venv Ruff and `git diff --check` passed.
+- These are dirty-source focused evidence only, not an exact commit, CI, canonical data-gate, or native Windows manual
+  acceptance. Next: commit/push/PR, run the exact-head canonical data gate and CI, then record Windows manual
+  acceptance before merge.
 
 ### Stop condition
 
-- Stop rather than expand scope if fresh backend output lacks typed action items/target, targets a stage outside the
-  existing five, requires backend policy/schema changes, makes Apply reachable for blocked input, changes more than
-  the stated two production files, or cannot be observed by the focused test.
-- Stop rather than broaden the preflight fix if a correct scalar requires reading numeric signal payload, compressed
-  header decoding exceeds its existing budget, a MAT v7.3 file is involved, or the repair needs a loader/BIDS policy
-  change. Do not proceed into raw SSVEP adapters, target-frequency/phase semantics, data download, classifier work,
-  filter, Assistant fallback or splitting cleanup. After this slice, claim only typed review routing plus the exact
-  embedded EEGLAB sampling-rate repair; MAMEM1 supervised training remains subject to the listed Windows acceptance.
+- 若 minimal red test 無法經真 Evaluation work/worker seam 重現、expected-result payload 需要改 global worker semantics、需改
+  backend guard 或 retry budget、或觸及超過一個 production file，停止並重新討論。
+- 若 retry failure 不是 stale+retryable diagnostics，保留 ERROR，不擴張成 arbitrary exception suppression。
+- 完成條件是 expected stale no longer creates generic worker ERROR while it retries and succeeds, unexpected failure
+  remains visible, focused tests/quality checks pass, and exact-head Windows acceptance plus merge approval are recorded.

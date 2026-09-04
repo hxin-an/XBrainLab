@@ -696,7 +696,7 @@ def test_evaluation_render_exception_retries_internally_and_commits_on_success(
     assert panel._application_render_ledger.pending_publication is None
 
 
-def test_evaluation_stale_render_retries_without_error_log(
+def test_evaluation_retryable_stale_render_does_not_log_worker_failure(
     qtbot,
     caplog,
 ) -> None:
@@ -731,16 +731,81 @@ def test_evaluation_stale_render_retries_without_error_log(
 
     port.render = stale_then_available
     caplog.set_level(logging.ERROR)
+    worker_logger = logging.getLogger("XBrainLab.ui.core.worker")
+    worker_logger.addHandler(caplog.handler)
 
-    assert panel._render_for_selection(selection, split="test") is None
-    qtbot.waitUntil(lambda: panel._evaluation_render_retry_attempts == 1)
-    qtbot.waitUntil(lambda: attempts == 2)
+    try:
+        assert panel._render_for_selection(selection, split="test") is None
+        qtbot.waitUntil(lambda: panel._evaluation_render_retry_attempts == 1)
+        qtbot.waitUntil(lambda: attempts == 2)
+        qtbot.waitUntil(panel.evaluation_background_work_idle)
 
-    assert not [
-        record
-        for record in caplog.records
-        if "Evaluation render publication failed" in record.getMessage()
-    ]
+        render = panel._evaluation_render
+        assert render is not None
+        assert render.request.selection == selection
+        assert render.request.split == "test"
+        assert not panel._evaluation_render_retry_timer.isActive()
+        worker_errors = [
+            record
+            for record in caplog.records
+            if (
+                record.name == "XBrainLab.ui.core.worker"
+                and record.levelno == logging.ERROR
+                and "Worker task failed" in record.getMessage()
+            )
+        ]
+    finally:
+        worker_logger.removeHandler(caplog.handler)
+
+    assert not worker_errors
+
+
+def test_evaluation_unexpected_render_failure_logs_worker_error_and_is_unavailable(
+    qtbot,
+    caplog,
+) -> None:
+    port = _EvaluationApplicationPort()
+    panel = _panel(qtbot, port)
+    panel.update_panel()
+    qtbot.waitUntil(panel.evaluation_background_work_idle)
+    selection = EvaluationPlanIdentity(plan_index=0)
+    panel._application_generation = port.publication.generation
+    panel.run_combo.blockSignals(True)
+    panel.run_combo.clear()
+    panel.run_combo.addItem("Average", selection)
+    panel.run_combo.blockSignals(False)
+    panel.split_combo.blockSignals(True)
+    panel.split_combo.clear()
+    panel.split_combo.addItem("Test", "test")
+    panel.split_combo.blockSignals(False)
+
+    def unexpected_failure(_request):
+        raise RuntimeError("unexpected Evaluation render failure")
+
+    port.render = unexpected_failure
+    caplog.set_level(logging.ERROR)
+    worker_logger = logging.getLogger("XBrainLab.ui.core.worker")
+    worker_logger.addHandler(caplog.handler)
+
+    try:
+        assert panel._render_for_selection(selection, split="test") is None
+        qtbot.waitUntil(panel.evaluation_background_work_idle)
+        worker_errors = [
+            record
+            for record in caplog.records
+            if (
+                record.name == "XBrainLab.ui.core.worker"
+                and record.levelno == logging.ERROR
+                and "Worker task failed" in record.getMessage()
+            )
+        ]
+    finally:
+        worker_logger.removeHandler(caplog.handler)
+
+    assert worker_errors
+    assert panel.no_data_label.text() == (
+        "The Evaluation result could not be loaded. Refresh Evaluation and try again."
+    )
 
 
 def test_evaluation_publication_ledger_does_not_wait_for_detached_chart_render(
