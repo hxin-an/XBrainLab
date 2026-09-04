@@ -33,6 +33,10 @@ head 的 Windows 手測／merge 批准；本 slice 從 `origin/main` 另開 bran
 - Exact-head supplemental complete regression 發現的兩個 stale UI root-contract tests 已以 observable
   `DataSplittingDialog` kwargs 更新，現在傳遞已批准的 saved split rehydration
   `initial_specification`；production/UI 均未改動。
+- Exact-head CI 三平台失敗收斂的兩個 stale integration tests 已完成：(1) product walkthrough 的 12 original
+  trial groups、Test/Validation 各 `0.25`，依批准的 original-scope contract 使用 `6/3/3`；(2) training
+  recommendation synthetic `Epochs` fixture 已提供真實 shape 的 verified non-overlap epoch-window provenance。
+  production audit 未放寬。
 - Canonical manifest 在 `origin/main` 已有 direct-script `ModuleNotFoundError`，無法完成；supplemental full
   regression 的 `llm-rag` 缺 `langchain_huggingface` 亦為環境問題。兩者不得混為本 Data Split defect 或
   handoff evidence。
@@ -143,11 +147,11 @@ head 的 Windows 手測／merge 批准；本 slice 從 `origin/main` 另開 bran
   arbitrary dataset, scientific split quality, or a complete solver.
 - Supplemental UI root-contract evidence: `test_sidebars_and_components.py` `102 passed`; the
   `tests/unit/ui/test_*.py` selector `944 passed`, and its root rerun of the single file also `102 passed`.
-- Remaining work: make the new tests/docs-only commit and push, obtain exact-head CI, run the canonical
-  source-diverse gate, and complete the specified Windows native manual acceptance. Supplemental full regression
-  cannot yet complete because of the independent `llm-rag` dependency environment; the canonical manifest remains
-  blocked by its `origin/main` runner entrypoint. Until those gates close, this remains a checkpoint, not
-  handoff-ready.
+- Integration-UI green evidence: with the correct `PYTHONPATH`, full `tests/integration/ui` reports `119 passed,
+  21 skipped`. The first attempt without that path produced three direct-script `ModuleNotFoundError`s; that is an
+  existing runner-entrypoint/environment issue, not a Data Split defect.
+- Remaining work: make the tests/docs commit and push, obtain exact-head CI, and complete the specified Windows
+  native manual acceptance. Until those gates close, this remains a checkpoint, not handoff-ready.
 - Stop if deterministic allocation cannot satisfy hard train-class/required-split constraints for a given input:
   publish a recoverable infeasible preview with the cause, never silently clamp, split an atomic group, or mutate
   saved truth. Do not expand into arbitrary MOABB support, UI redesign, or a second allocator.
