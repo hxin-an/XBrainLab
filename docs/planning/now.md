@@ -30,6 +30,12 @@ head 的 Windows 手測／merge 批准；本 slice 從 `origin/main` 另開 bran
   structured payload、pair-scoped provenance、preview/Train 同 audit、cancel linearization、Manual scope/
   duplicate/atomic constraints，以及 CV Validation Number 的 exact cardinality。這仍是 bounded contract，
   不是任意資料集的科學品質或 complete-solver 證明。
+- Exact-head supplemental complete regression 發現的兩個 stale UI root-contract tests 已以 observable
+  `DataSplittingDialog` kwargs 更新，現在傳遞已批准的 saved split rehydration
+  `initial_specification`；production/UI 均未改動。
+- Canonical manifest 在 `origin/main` 已有 direct-script `ModuleNotFoundError`，無法完成；supplemental full
+  regression 的 `llm-rag` 缺 `langchain_huggingface` 亦為環境問題。兩者不得混為本 Data Split defect 或
+  handoff evidence。
 
 ### Outcome and exact contract
 
@@ -135,8 +141,13 @@ head 的 Windows 手測／merge 批准；本 slice 從 `origin/main` 另開 bran
   regression reported `0` new diagnostics; architecture compliance script passed. These results close the listed
   audit/admission/cancellation/no-validation-ratio/mixed-Manual/evidence-gap checkpoint; they do not certify an
   arbitrary dataset, scientific split quality, or a complete solver.
-- Remaining work is limited to the exact committed-source gates, push/PR and exact-head CI, canonical source-diverse
-  gate, and the specified Windows native manual acceptance. Until then this remains a checkpoint, not handoff-ready.
+- Supplemental UI root-contract evidence: `test_sidebars_and_components.py` `102 passed`; the
+  `tests/unit/ui/test_*.py` selector `944 passed`, and its root rerun of the single file also `102 passed`.
+- Remaining work: make the new tests/docs-only commit and push, obtain exact-head CI, run the canonical
+  source-diverse gate, and complete the specified Windows native manual acceptance. Supplemental full regression
+  cannot yet complete because of the independent `llm-rag` dependency environment; the canonical manifest remains
+  blocked by its `origin/main` runner entrypoint. Until those gates close, this remains a checkpoint, not
+  handoff-ready.
 - Stop if deterministic allocation cannot satisfy hard train-class/required-split constraints for a given input:
   publish a recoverable infeasible preview with the cause, never silently clamp, split an atomic group, or mutate
   saved truth. Do not expand into arbitrary MOABB support, UI redesign, or a second allocator.
