@@ -314,9 +314,9 @@ class SaveDatasetSplitCommand:
 
     test_ratio: float = 0.2
     val_ratio: float = 0.2
-    split_strategy: str = "subject"
-    training_mode: str = "individual"
-    split_config: dict[str, Any] = field(default_factory=dict)
+    split_strategy: str = "trial"
+    training_mode: str = "group"
+    split_config: dict[str, Any] | None = None
     preview_receipt: DatasetSplitPreviewReceipt | None = None
 
     @property

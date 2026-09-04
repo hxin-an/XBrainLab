@@ -10,6 +10,13 @@ from dataclasses import dataclass
 from threading import Lock
 from typing import Any
 
+import numpy as np
+
+from XBrainLab.backend.dataset.split_audit import (
+    materialization_digest,
+    split_preview_rows,
+)
+
 from .errors import PreconditionError
 from .view_publication import ApplicationViewPublication
 
@@ -52,8 +59,33 @@ class DatasetSplitContext:
     session_count: int = 0
     label_count: int = 0
     trial_count: int = 0
+    trial_group_count: int = 0
     subject_choices: tuple[DatasetSplitChoice, ...] = ()
     session_choices: tuple[DatasetSplitChoice, ...] = ()
+    label_choices: tuple[DatasetSplitChoice, ...] = ()
+    full_test_strategies: tuple[str, ...] = (
+        "By Trial",
+        "By Session",
+        "By Subject",
+    )
+    individual_test_strategies: tuple[str, ...] = ("By Trial", "By Session")
+    full_validation_strategies: tuple[str, ...] = (
+        "Disable",
+        "By Trial",
+        "By Session",
+        "By Subject",
+    )
+    individual_validation_strategies: tuple[str, ...] = (
+        "Disable",
+        "By Trial",
+        "By Session",
+    )
+    non_cv_split_units: tuple[str, ...] = ("Ratio", "Number", "Manual")
+    cv_test_split_units: tuple[str, ...] = ("K Fold",)
+    cv_validation_split_units: tuple[str, ...] = ("Ratio", "Number")
+    individual_subject_unavailable_reason: str = (
+        "Individual training cannot hold out whole subjects."
+    )
 
     def __post_init__(self) -> None:
         if type(self.epoch_available) is not bool:
@@ -63,13 +95,18 @@ class DatasetSplitContext:
             "session_count",
             "label_count",
             "trial_count",
+            "trial_group_count",
         ):
             value = getattr(self, field_name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
                 raise ValueError(f"{field_name} must be a non-negative integer")
         if any(
             not isinstance(choice, DatasetSplitChoice)
-            for choice in (*self.subject_choices, *self.session_choices)
+            for choice in (
+                *self.subject_choices,
+                *self.session_choices,
+                *self.label_choices,
+            )
         ):
             raise TypeError("Dataset split choices must be DatasetSplitChoice values")
         if not self.epoch_available and any(
@@ -78,8 +115,10 @@ class DatasetSplitContext:
                 self.session_count,
                 self.label_count,
                 self.trial_count,
+                self.trial_group_count,
                 self.subject_choices,
                 self.session_choices,
+                self.label_choices,
             )
         ):
             raise ValueError("Missing epoch context cannot publish dataset details")
@@ -141,7 +180,7 @@ class DatasetSplitRule:
                 else str(payload.get("split_unit"))
             ),
             value=None if value is None else str(value),
-            is_option=bool(payload.get("is_option", True)),
+            is_option=_strict_bool(payload.get("is_option", True), "is_option"),
         )
 
     def to_payload(self) -> dict[str, Any]:
@@ -183,7 +222,10 @@ class DatasetSplitSpecification:
             raise TypeError("Dataset split configuration must be an object")
         return cls(
             train_type=str(payload.get("train_type") or "Individual"),
-            is_cross_validation=bool(payload.get("is_cross_validation", False)),
+            is_cross_validation=_strict_bool(
+                payload.get("is_cross_validation", False),
+                "is_cross_validation",
+            ),
             val_splitters=_rules_from_payload(payload.get("val_splitters")),
             test_splitters=_rules_from_payload(payload.get("test_splitters")),
         )
@@ -235,6 +277,17 @@ class DatasetSplitPreviewRow:
     train_count: int
     validation_count: int
     test_count: int
+    test_scope_group_count: int = 0
+    test_selected_group_count: int = 0
+    test_requested_unit: str | None = None
+    test_requested_value: str | None = None
+    validation_scope_group_count: int = 0
+    validation_selected_group_count: int = 0
+    validation_requested_unit: str | None = None
+    validation_requested_value: str | None = None
+    test_missing_class_names: tuple[str, ...] = ()
+    validation_missing_class_names: tuple[str, ...] = ()
+    saliency_source: str = "unavailable"
 
     def __post_init__(self) -> None:
         name = str(self.name).strip()
@@ -260,6 +313,7 @@ class DatasetSplitPreviewPublication:
     train_count: int | None = None
     validation_count: int | None = None
     test_count: int | None = None
+    materialization_digest: str = "unbound"
 
     def __post_init__(self) -> None:
         if not isinstance(self.request, DatasetSplitPreviewRequest):
@@ -277,6 +331,7 @@ class DatasetSplitPreviewPublication:
         if len(self.rows) > DATASET_SPLIT_PREVIEW_ROW_LIMIT:
             raise ValueError("Dataset split preview rows exceed the fixed row limit")
         _normalize_preview_totals(self)
+        _validate_materialization_digest(self.materialization_digest)
 
     @property
     def receipt(self) -> DatasetSplitPreviewReceipt:
@@ -293,6 +348,7 @@ class DatasetSplitPreviewPublication:
             train_count=self.train_count,
             validation_count=self.validation_count,
             test_count=self.test_count,
+            materialization_digest=self.materialization_digest,
         )
 
 
@@ -311,6 +367,7 @@ class DatasetSplitPreviewReceipt:
     train_count: int | None = None
     validation_count: int | None = None
     test_count: int | None = None
+    materialization_digest: str = "unbound"
 
     def __post_init__(self) -> None:
         request_id = str(self.request_id).strip()
@@ -332,6 +389,7 @@ class DatasetSplitPreviewReceipt:
         if len(self.rows) > DATASET_SPLIT_PREVIEW_ROW_LIMIT:
             raise ValueError("Dataset split preview rows exceed the fixed row limit")
         _normalize_preview_totals(self)
+        _validate_materialization_digest(self.materialization_digest)
         object.__setattr__(self, "request_id", request_id)
 
     def summary_payload(self) -> dict[str, Any]:
@@ -342,6 +400,19 @@ class DatasetSplitPreviewReceipt:
                 "train_count": row.train_count,
                 "validation_count": row.validation_count,
                 "test_count": row.test_count,
+                "test_scope_group_count": row.test_scope_group_count,
+                "test_selected_group_count": row.test_selected_group_count,
+                "test_requested_unit": row.test_requested_unit,
+                "test_requested_value": row.test_requested_value,
+                "validation_scope_group_count": row.validation_scope_group_count,
+                "validation_selected_group_count": row.validation_selected_group_count,
+                "validation_requested_unit": row.validation_requested_unit,
+                "validation_requested_value": row.validation_requested_value,
+                "test_missing_class_names": list(row.test_missing_class_names),
+                "validation_missing_class_names": list(
+                    row.validation_missing_class_names
+                ),
+                "saliency_source": row.saliency_source,
             }
             for row in self.rows
         ]
@@ -352,6 +423,7 @@ class DatasetSplitPreviewReceipt:
             "train_count": self.train_count,
             "validation_count": self.validation_count,
             "test_count": self.test_count,
+            "materialization_digest": self.materialization_digest,
             "rows": rows,
         }
 
@@ -480,7 +552,29 @@ class DatasetSplitPreviewPublisher:
                         if isinstance(generated, Sequence)
                         else list(getattr(generator, "datasets", []) or [])
                     )
-                    detached_rows = [self._copy_row(dataset) for dataset in datasets]
+                    row_payloads = split_preview_rows(
+                        datasets,
+                        test_rule=request.specification.test_splitters[0],
+                        validation_rule=(
+                            request.specification.val_splitters[0]
+                            if request.specification.val_splitters
+                            else None
+                        ),
+                    )
+                    detached_rows = [
+                        DatasetSplitPreviewRow(
+                            **{
+                                **row,
+                                "test_missing_class_names": tuple(
+                                    row["test_missing_class_names"]
+                                ),
+                                "validation_missing_class_names": tuple(
+                                    row["validation_missing_class_names"]
+                                ),
+                            }
+                        )
+                        for row in row_payloads
+                    ]
                     rows = tuple(detached_rows[:DATASET_SPLIT_PREVIEW_ROW_LIMIT])
                     total_count = len(detached_rows)
                     train_count = sum(row.train_count for row in detached_rows)
@@ -488,6 +582,7 @@ class DatasetSplitPreviewPublisher:
                         row.validation_count for row in detached_rows
                     )
                     test_count = sum(row.test_count for row in detached_rows)
+                    digest = materialization_digest(datasets)
                 finally:
                     _restore_preview_state(epoch_data, snapshot)
         except KeyboardInterrupt as exc:
@@ -516,6 +611,7 @@ class DatasetSplitPreviewPublisher:
             train_count=train_count,
             validation_count=validation_count,
             test_count=test_count,
+            materialization_digest=digest,
         )
 
     def cancel_preview(self, request_id: str) -> bool:
@@ -569,27 +665,17 @@ class DatasetSplitPreviewPublisher:
         label_map = getattr(epoch_data, "label_map", {}) or {}
         label_count = len(label_map) if hasattr(label_map, "__len__") else 0
         trial_count = _safe_trial_count(epoch_data)
+        trial_group_count = _safe_trial_group_count(epoch_data, trial_count)
         return DatasetSplitContext(
             epoch_available=True,
             subject_count=len(subject_map),
             session_count=len(session_map),
             label_count=max(0, int(label_count)),
             trial_count=trial_count,
+            trial_group_count=trial_group_count,
             subject_choices=_choices_from_keys(subject_map),
             session_choices=_choices_from_keys(session_map),
-        )
-
-    @staticmethod
-    def _copy_row(dataset: Any) -> DatasetSplitPreviewRow:
-        row_info = dataset.get_treeview_row_info()
-        if not isinstance(row_info, Sequence) or len(row_info) != 5:
-            raise ValueError("Dataset preview returned an invalid summary row")
-        _selected, name, train, validation, test = row_info
-        return DatasetSplitPreviewRow(
-            name=str(name),
-            train_count=_non_negative_count(train, "train"),
-            validation_count=_non_negative_count(validation, "validation"),
-            test_count=_non_negative_count(test, "test"),
+            label_choices=_choices_from_keys(label_map),
         )
 
     @staticmethod
@@ -709,6 +795,12 @@ def _rules_from_payload(raw: Any) -> tuple[DatasetSplitRule, ...]:
     return tuple(DatasetSplitRule.from_payload(item) for item in raw)
 
 
+def _strict_bool(value: Any, field_name: str) -> bool:
+    if type(value) is not bool:
+        raise TypeError(f"{field_name} must be a bool")
+    return value
+
+
 def _safe_group_map(epoch_data: Any, method_name: str) -> Mapping[Any, Any]:
     method = getattr(epoch_data, method_name, None)
     if not callable(method):
@@ -725,11 +817,17 @@ def _choices_from_keys(mapping: Mapping[Any, Any]) -> tuple[DatasetSplitChoice, 
                 if isinstance(key, (str, int)) and not isinstance(key, bool)
                 else str(key)
             ),
-            label=str(key),
+            label=(
+                str(value)
+                if isinstance(value, (str, int)) and not isinstance(value, bool)
+                else str(key)
+            ),
         )
-        for key in mapping
+        for key, value in mapping.items()
     ]
-    return tuple(sorted(choices, key=lambda item: item.label.casefold()))
+    return tuple(
+        sorted(choices, key=lambda item: (item.label.casefold(), str(item.value)))
+    )
 
 
 def _safe_trial_count(epoch_data: Any) -> int:
@@ -743,6 +841,19 @@ def _safe_trial_count(epoch_data: Any) -> int:
         return 0
 
 
+def _safe_trial_group_count(epoch_data: Any, trial_count: int) -> int:
+    get_groups = getattr(epoch_data, "get_trial_group_list", None)
+    if not callable(get_groups):
+        return trial_count
+    try:
+        groups = np.asarray(get_groups())
+        if groups.ndim != 1:
+            return trial_count
+        return _non_negative_count(len(set(groups.tolist())), "trial group")
+    except (AttributeError, TypeError, ValueError):
+        return trial_count
+
+
 def _non_negative_count(value: Any, field_name: str) -> int:
     if isinstance(value, bool):
         raise ValueError(f"{field_name} count must be a non-negative integer")
@@ -750,3 +861,8 @@ def _non_negative_count(value: Any, field_name: str) -> int:
     if converted < 0:
         raise ValueError(f"{field_name} count must be a non-negative integer")
     return converted
+
+
+def _validate_materialization_digest(value: str) -> None:
+    if not isinstance(value, str) or not value:
+        raise ValueError("materialization_digest must be a non-empty string")

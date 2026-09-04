@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import platform
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass, field
 from hashlib import sha256
 from pathlib import Path
@@ -65,10 +65,122 @@ def split_indices(dataset: Dataset) -> dict[str, list[int]]:
     }
 
 
+def materialization_digest(datasets: Iterable[Dataset]) -> str:
+    """Return a canonical identity for split membership, rows, and coverage."""
+    records: list[dict[str, Any]] = []
+    for dataset in datasets:
+        epoch_data = dataset.get_epoch_data()
+        partitions: dict[str, dict[str, Any]] = {}
+        for name, mask in (
+            ("train", dataset.train_mask),
+            ("validation", dataset.val_mask),
+            ("test", dataset.test_mask),
+        ):
+            indices = [
+                index for index, selected in enumerate(mask.tolist()) if selected
+            ]
+            labels = sorted(
+                int(value)
+                for value in set(epoch_data.get_label_list_by_mask(mask).tolist())
+            )
+            partitions[name] = {"indices": indices, "labels": labels}
+        records.append(
+            {
+                "name": dataset.get_name(),
+                "rows": [int(value) for value in dataset.get_treeview_row_info()[2:]],
+                "partitions": partitions,
+            }
+        )
+    encoded = json.dumps(records, sort_keys=True, separators=(",", ":")).encode()
+    return sha256(encoded).hexdigest()
+
+
+def split_preview_rows(
+    datasets: Iterable[Dataset],
+    *,
+    test_rule: Any,
+    validation_rule: Any | None,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for dataset in datasets:
+        epoch_data = dataset.get_epoch_data()
+        names = _label_names(epoch_data)
+        all_mask = np.asarray(
+            dataset.train_mask | dataset.val_mask | dataset.test_mask,
+            dtype=bool,
+        )
+        all_labels = _unique_ints(epoch_data.get_label_list_by_mask(all_mask))
+        test = _partition_evidence(
+            epoch_data, all_mask, dataset.test_mask, all_labels, names, test_rule
+        )
+        validation = _partition_evidence(
+            epoch_data,
+            all_mask,
+            dataset.val_mask,
+            all_labels,
+            names,
+            validation_rule,
+        )
+        rows.append(
+            {
+                "name": str(dataset.get_name()),
+                "train_count": int(dataset.get_train_len()),
+                "validation_count": int(dataset.get_val_len()),
+                "test_count": int(dataset.get_test_len()),
+                **{f"test_{key}": value for key, value in test.items()},
+                **{f"validation_{key}": value for key, value in validation.items()},
+                "saliency_source": (
+                    "test"
+                    if not test["missing_class_names"]
+                    else "validation"
+                    if validation_rule is not None
+                    and not validation["missing_class_names"]
+                    else "unavailable"
+                ),
+            }
+        )
+    return [
+        {
+            key: list(value) if isinstance(value, tuple) else value
+            for key, value in row.items()
+        }
+        for row in rows
+    ]
+
+
+def _partition_evidence(
+    epoch_data: Any,
+    scope_mask: np.ndarray,
+    partition_mask: np.ndarray,
+    all_labels: list[int],
+    label_names: Mapping[Any, str],
+    rule: Any | None,
+) -> dict[str, Any]:
+    if rule is None:
+        return {
+            "scope_group_count": 0,
+            "selected_group_count": 0,
+            "requested_unit": None,
+            "requested_value": None,
+            "missing_class_names": (),
+        }
+    split_type = _rule_value(rule, "split_type")
+    return {
+        "scope_group_count": _group_count(epoch_data, scope_mask, split_type),
+        "selected_group_count": _group_count(epoch_data, partition_mask, split_type),
+        "requested_unit": _rule_value(rule, "split_unit"),
+        "requested_value": _rule_value(rule, "value"),
+        "missing_class_names": _missing_label_names(
+            epoch_data, partition_mask, all_labels, label_names
+        ),
+    }
+
+
 def audit_dataset_splits(
     datasets: list[Dataset],
     *,
     protocol: str = "trial-wise",
+    protocols: Mapping[str, str] | None = None,
 ) -> SplitAuditResult:
     """Check split mutual exclusivity, leakage, and empty split risks."""
     issues: list[SplitAuditIssue] = []
@@ -112,7 +224,13 @@ def audit_dataset_splits(
                 )
 
         issues.extend(_class_coverage_issues(dataset))
-        issues.extend(_group_leakage_issues(dataset, protocol=protocol))
+        issues.extend(
+            _group_leakage_issues(
+                dataset,
+                protocol=protocol,
+                protocols=protocols,
+            )
+        )
         issues.extend(
             _epoch_window_leakage_issues(
                 dataset,
@@ -680,56 +798,113 @@ def _indices_for_labels(dataset: Dataset, *, labels: list[int]) -> list[int]:
     ]
 
 
+def _missing_label_names(
+    epoch_data: Any,
+    mask: np.ndarray,
+    all_labels: list[int],
+    label_names: Mapping[Any, Any],
+) -> tuple[str, ...]:
+    present = set(_unique_ints(epoch_data.get_label_list_by_mask(mask)))
+    return tuple(
+        str(label_names.get(label, label))
+        for label in all_labels
+        if label not in present
+    )
+
+
+def _label_names(epoch_data: Any) -> dict[Any, str]:
+    label_map = getattr(epoch_data, "label_map", {}) or {}
+    if not isinstance(label_map, Mapping):
+        return {}
+    if all(isinstance(key, int) for key in label_map):
+        return {key: str(value) for key, value in label_map.items()}
+    return {
+        value: str(key)
+        for key, value in label_map.items()
+        if isinstance(value, int) and not isinstance(value, bool)
+    }
+
+
+def _rule_value(rule: Any, field_name: str) -> Any:
+    if isinstance(rule, Mapping):
+        return rule.get(field_name)
+    if field_name == "value":
+        return getattr(rule, "value_var", getattr(rule, "value", None))
+    value = getattr(rule, field_name, None)
+    return getattr(value, "value", value)
+
+
+def _group_count(epoch_data: Any, mask: np.ndarray, split_type: object) -> int:
+    normalized = str(getattr(split_type, "value", split_type) or "").casefold()
+    if "subject" in normalized:
+        values = epoch_data.get_subject_list_by_mask(mask)
+    elif "session" in normalized:
+        values = epoch_data.get_session_list_by_mask(mask)
+    else:
+        values = np.asarray(epoch_data.get_trial_group_list())[mask]
+    return len(set(np.asarray(values).tolist()))
+
+
 def _group_leakage_issues(
     dataset: Dataset,
     *,
     protocol: str,
+    protocols: Mapping[str, str] | None = None,
 ) -> list[SplitAuditIssue]:
-    normalized = protocol.strip().lower()
-    if normalized in {"trial", "trial-wise", "trialwise"}:
-        return []
-
-    if normalized in {"subject", "subject-wise", "subjectwise"}:
-        groups = _split_groups(dataset, key="subject")
-        label = "subject"
-    elif normalized in {"session", "session-wise", "sessionwise"}:
-        groups = _split_groups(dataset, key="session")
-        label = "session"
-    else:
-        return [
-            SplitAuditIssue(
-                dataset_name=dataset.get_name(),
-                severity="warning",
-                message=(
-                    f"Unknown split protocol '{protocol}'; group leakage was not "
-                    "audited."
-                ),
-            )
-        ]
-
+    rules = (
+        (
+            (protocols.get("test"), (("train", "test"), ("validation", "test"))),
+            (protocols.get("validation"), (("train", "validation"),)),
+        )
+        if protocols is not None
+        else (
+            (
+                protocol,
+                (("train", "validation"), ("train", "test"), ("validation", "test")),
+            ),
+        )
+    )
     issues: list[SplitAuditIssue] = []
-    for left_name, right_name in (
-        ("train", "validation"),
-        ("train", "test"),
-        ("validation", "test"),
-    ):
-        overlap = sorted(groups[left_name] & groups[right_name])
-        if overlap:
+    for selected_protocol, pairs in rules:
+        if selected_protocol is None:
+            continue
+        normalized = selected_protocol.strip().lower()
+        if normalized in {"trial", "trial-wise", "trialwise"}:
+            if protocols is None:
+                continue
+            key, label = "trial", "trial"
+        elif normalized in {"subject", "subject-wise", "subjectwise"}:
+            key, label = "subject", "subject"
+        elif normalized in {"session", "session-wise", "sessionwise"}:
+            key, label = "session", "session"
+        else:
             issues.append(
                 SplitAuditIssue(
                     dataset_name=dataset.get_name(),
-                    severity="error",
+                    severity="warning",
                     message=(
-                        f"{label} groups overlap between {left_name} and "
-                        f"{right_name}; this violates {protocol} validation."
-                    ),
-                    indices=_indices_for_groups(
-                        dataset,
-                        groups=overlap,
-                        key=label,
+                        f"Unknown split protocol '{selected_protocol}'; "
+                        "group leakage was not audited."
                     ),
                 )
             )
+            continue
+        groups = _split_groups(dataset, key=key)
+        for left_name, right_name in pairs:
+            overlap = sorted(groups[left_name] & groups[right_name])
+            if overlap:
+                issues.append(
+                    SplitAuditIssue(
+                        dataset_name=dataset.get_name(),
+                        severity="error",
+                        message=(
+                            f"{label} groups overlap between {left_name} and "
+                            f"{right_name}; this violates "
+                            f"{selected_protocol} validation."
+                        ),
+                        indices=_indices_for_groups(dataset, groups=overlap, key=key),
+                    )
+                )
     return issues
 
 
@@ -748,13 +923,17 @@ def _split_groups(dataset: Dataset, *, key: str) -> dict[str, set[Any]]:
                     epoch_data.get_subject_list_by_mask(mask),
                 ).tolist()
             }
-        else:
-            subjects = np.asarray(epoch_data.get_subject_list_by_mask(mask)).tolist()
-            sessions = np.asarray(epoch_data.get_session_list_by_mask(mask)).tolist()
+        elif key == "session":
             result[split_name] = {
-                (int(subject), int(session))
-                for subject, session in zip(subjects, sessions, strict=False)
+                int(value)
+                for value in np.asarray(
+                    epoch_data.get_session_list_by_mask(mask),
+                ).tolist()
             }
+        else:
+            result[split_name] = set(
+                np.asarray(epoch_data.get_trial_group_list())[mask].tolist()
+            )
     return result
 
 
@@ -775,13 +954,17 @@ def _indices_for_groups(
             if int(value) in subject_group_set
         ]
 
-    subjects = np.asarray(epoch_data.get_subject_list_by_mask(all_mask))
+    if key == "trial":
+        values = np.asarray(epoch_data.get_trial_group_list())
+        group_set = set(groups)
+        return [
+            int(idx) for idx, value in enumerate(values.tolist()) if value in group_set
+        ]
+
     sessions = np.asarray(epoch_data.get_session_list_by_mask(all_mask))
-    session_group_set = {(int(subject), int(session)) for subject, session in groups}
+    session_group_set = {int(group) for group in groups}
     return [
         int(idx)
-        for idx, pair in enumerate(
-            zip(subjects.tolist(), sessions.tolist(), strict=False),
-        )
-        if (int(pair[0]), int(pair[1])) in session_group_set
+        for idx, session in enumerate(sessions.tolist())
+        if int(session) in session_group_set
     ]

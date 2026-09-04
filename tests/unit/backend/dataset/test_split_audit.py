@@ -31,6 +31,7 @@ class _EpochData:
     subject = np.array([0, 0, 1, 1, 2, 2])
     session = np.array([0, 0, 0, 1, 0, 1])
     label = np.array([0, 1, 0, 1, 0, 1])
+    trial_group = np.array([0, 0, 1, 2, 3, 4])
 
     def get_subject_list_by_mask(self, mask):
         return self.subject[mask]
@@ -40,6 +41,9 @@ class _EpochData:
 
     def get_label_list_by_mask(self, mask):
         return self.label[mask]
+
+    def get_trial_group_list(self):
+        return self.trial_group
 
 
 def _dataset(train, val, test, name="split_0") -> Dataset:
@@ -572,7 +576,7 @@ def test_audit_dataset_splits_detects_subject_wise_leakage():
     assert any("subject groups overlap" in issue.message for issue in result.issues)
 
 
-def test_audit_dataset_splits_detects_session_wise_leakage_by_subject_session_pair():
+def test_audit_dataset_splits_detects_session_wise_leakage():
     dataset = _dataset(
         [True, False, False, False, False, False],
         [False, False, False, False, False, False],
@@ -583,6 +587,58 @@ def test_audit_dataset_splits_detects_session_wise_leakage_by_subject_session_pa
 
     assert result.ok is False
     assert any("session groups overlap" in issue.message for issue in result.issues)
+
+
+def test_audit_dataset_splits_treats_same_named_session_as_global_across_subjects():
+    dataset = _dataset(
+        [True, False, False, False, False, False],
+        [False, False, False, False, False, False],
+        [False, False, True, False, False, False],
+    )
+
+    result = audit_dataset_splits([dataset], protocol="session-wise")
+
+    assert any("session groups overlap" in issue.message for issue in result.issues)
+
+
+def test_audit_applies_mixed_protocols_to_their_respective_partition_pairs():
+    """Only the validation-trial versus train pair leaks in this fixture."""
+    dataset = _dataset(
+        [True, False, False, False, False, False],
+        [False, True, False, False, False, False],
+        [False, False, False, True, False, False],
+    )
+
+    result = audit_dataset_splits(
+        [dataset],
+        protocols={"test": "session-wise", "validation": "trial-wise"},
+    )
+
+    assert result.ok is False
+    assert any(
+        "trial groups overlap between train and validation" in issue.message
+        for issue in result.issues
+    )
+    assert not any("session groups overlap" in issue.message for issue in result.issues)
+
+
+def test_pair_scoped_trial_protocol_rejects_atomic_group_leakage():
+    dataset = _dataset(
+        [True, False, False, False, False, False],
+        [False, False, False, False, False, False],
+        [False, True, False, False, False, False],
+    )
+
+    result = audit_dataset_splits(
+        [dataset],
+        protocols={"test": "trial-wise", "validation": "trial-wise"},
+    )
+
+    assert result.ok is False
+    assert any(
+        "trial groups overlap between train and test" in issue.message
+        for issue in result.issues
+    )
 
 
 def test_build_and_write_split_artifact(tmp_path):

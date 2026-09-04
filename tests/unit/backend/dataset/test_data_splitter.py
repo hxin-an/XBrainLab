@@ -10,41 +10,19 @@ from XBrainLab.backend.dataset import (
 )
 
 
-@pytest.mark.parametrize("split_type", list(SplitByType) + list(ValSplitByType))
 @pytest.mark.parametrize(
-    "parsed_value, value_var, value_target_unit",
+    "split_unit,value_var,expected_value",
     [
-        (0, "0", (SplitUnit.RATIO, SplitUnit.NUMBER, SplitUnit.MANUAL)),
-        (0.0, "0.0", (SplitUnit.RATIO,)),
-        (0.3, "0.3", (SplitUnit.RATIO,)),
-        (
-            1,
-            "1",
-            (SplitUnit.RATIO, SplitUnit.NUMBER, SplitUnit.KFOLD, SplitUnit.MANUAL),
-        ),
-        (1.0, "1.0", (SplitUnit.RATIO,)),
-        (None, "1.5", ()),
-        (2, "2", (SplitUnit.NUMBER, SplitUnit.KFOLD, SplitUnit.MANUAL)),
-        (None, "2.0", ()),
-        (None, "2.0 ", ()),
-        ([2], "2 ", (SplitUnit.MANUAL,)),
-        (None, "-1", ()),
-        (None, "-1 ", ()),
-        (None, "-1.0", ()),
-        (None, "-1.0 ", ()),
-        (None, "-1.5", ()),
-        (None, "-1.5 ", ()),
-        ([1, 2, 3], "1 2 3", (SplitUnit.MANUAL,)),
-        (None, "1 2 -3", ()),
-        (None, "1 2 0.3", ()),
-        (None, "e", ()),
-        (None, "e ", ()),
-        (None, "1 e", ()),
-        (None, None, ()),
+        (SplitUnit.RATIO, "0.3", 0.3),
+        (SplitUnit.NUMBER, "2", 2.0),
+        (SplitUnit.KFOLD, "2", 2.0),
+        (SplitUnit.MANUAL, "0 2", [0, 2]),
     ],
 )
-@pytest.mark.parametrize("split_unit", [*list(SplitUnit), None])
-def test_splitter(split_type, parsed_value, value_var, value_target_unit, split_unit):
+@pytest.mark.parametrize("split_type", [*SplitByType, *ValSplitByType])
+def test_splitter_accepts_interior_values_for_every_enum_and_unit(
+    split_type, split_unit, value_var, expected_value
+):
     is_option = True
     splitter = DataSplitter(split_type, value_var, split_unit, is_option)
 
@@ -54,28 +32,86 @@ def test_splitter(split_type, parsed_value, value_var, value_target_unit, split_
     assert splitter.value_var == value_var
     assert splitter.split_unit == split_unit
 
-    if split_unit is None:
-        assert not splitter.is_valid()
-    else:
-        assert splitter.is_valid() == (split_unit in value_target_unit)
+    assert splitter.is_valid()
+    assert splitter.get_value() == expected_value
+    assert splitter.get_raw_value() == value_var
 
-    if not splitter.is_valid():
-        with pytest.raises(ValueError):
-            splitter.get_value()
-        with pytest.raises(ValueError):
-            splitter.get_raw_value()
-    else:
-        checker = parsed_value
-        if split_unit == SplitUnit.MANUAL and not isinstance(parsed_value, list):
-            checker = [parsed_value]
-        assert splitter.get_value() == checker
-        assert splitter.get_raw_value() == value_var
+
+@pytest.mark.parametrize(
+    "split_type",
+    [
+        SplitByType.TRIAL,
+        ValSplitByType.TRIAL,
+        ValSplitByType.DISABLE,
+    ],
+)
+@pytest.mark.parametrize(
+    "split_unit,value_var",
+    [
+        (SplitUnit.RATIO, "0"),
+        (SplitUnit.RATIO, "1"),
+        (SplitUnit.RATIO, "-0.1"),
+        (SplitUnit.RATIO, "1.2"),
+        (SplitUnit.RATIO, "not-a-number"),
+        (SplitUnit.NUMBER, "0"),
+        (SplitUnit.NUMBER, "-1"),
+        (SplitUnit.NUMBER, "1.5"),
+        (SplitUnit.KFOLD, "0"),
+        (SplitUnit.KFOLD, "1"),
+        (SplitUnit.KFOLD, "-1"),
+        (SplitUnit.KFOLD, "2.0"),
+        (SplitUnit.MANUAL, ""),
+        (SplitUnit.MANUAL, "   "),
+        (SplitUnit.MANUAL, "-1"),
+        (SplitUnit.MANUAL, "0 1.5"),
+    ],
+)
+def test_splitter_rejects_empty_and_out_of_range_values(
+    split_type, split_unit, value_var
+):
+    splitter = DataSplitter(split_type, value_var, split_unit)
+
+    assert not splitter.is_valid()
+    with pytest.raises(ValueError):
+        splitter.get_value()
+    with pytest.raises(ValueError):
+        splitter.get_raw_value()
+
+
+@pytest.mark.parametrize("split_type", [SplitByType.SESSION, ValSplitByType.SESSION])
+def test_splitter_without_unit_is_invalid(split_type):
+    splitter = DataSplitter(split_type, "0.2")
+
+    assert not splitter.is_valid()
+    with pytest.raises(ValueError):
+        splitter.get_value()
+
+
+@pytest.mark.parametrize("split_type", [SplitByType.TRIAL, ValSplitByType.TRIAL])
+@pytest.mark.parametrize("split_unit", list(SplitUnit))
+def test_splitter_rejects_missing_value_for_every_unit(split_type, split_unit):
+    splitter = DataSplitter(split_type, None, split_unit)
+
+    assert not splitter.is_valid()
+    with pytest.raises(ValueError):
+        splitter.get_value()
+    with pytest.raises(ValueError):
+        splitter.get_raw_value()
+
+
+@pytest.mark.parametrize("split_type", [SplitByType.TRIAL, ValSplitByType.TRIAL])
+def test_manual_splitter_preserves_trailing_whitespace_parse_contract(split_type):
+    splitter = DataSplitter(split_type, "2 ", SplitUnit.MANUAL)
+
+    assert splitter.is_valid()
+    assert splitter.get_value() == [2]
+    assert splitter.get_raw_value() == "2 "
 
 
 @pytest.mark.parametrize("split_unit", [*list(SplitUnit), "test"])
 def test_splitter_not_implemented(split_unit):
     split_type = SplitByType.SESSION
-    value_var = "1"
+    value_var = "2"
     is_option = True
     splitter = DataSplitter(split_type, value_var, SplitUnit.MANUAL, is_option)
     splitter.split_unit = split_unit

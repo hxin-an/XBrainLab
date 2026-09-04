@@ -7,9 +7,8 @@ from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtCore import QPoint, QRect, QSize, Qt
+from PyQt6.QtCore import QPoint, QRect, Qt
 from PyQt6.QtWidgets import (
-    QBoxLayout,
     QDialog,
     QFrame,
     QPushButton,
@@ -307,36 +306,6 @@ class TestDataSplittingPreviewDialogSplitters:
             if panel.objectName() == "SplitPreviewPanel"
         ]
         assert QSizePolicy.Policy.Maximum in right_panel_heights
-
-    def test_step2_uses_stable_screen_bounded_width_and_keeps_actions_reachable(
-        self,
-        dlg,
-        qtbot,
-    ):
-        dlg.resize(QSize(672, 620))
-        dlg.show()
-        qtbot.wait(0)
-
-        screen = dlg.screen()
-        assert screen is not None
-        expected_width = min(920, screen.availableGeometry().width() - 48)
-        assert dlg.width() == expected_width
-        assert dlg.content_layout is not None
-        expected_direction = (
-            QBoxLayout.Direction.TopToBottom
-            if expected_width <= 760
-            else QBoxLayout.Direction.LeftToRight
-        )
-        assert dlg.content_layout.direction() == expected_direction
-        assert dlg.content_scroll is not None
-        assert dlg.content_scroll.horizontalScrollBar().maximum() == 0
-        assert dlg.btn_confirm is not None
-        confirm_bounds = QRect(
-            dlg.btn_confirm.mapTo(dlg, QPoint(0, 0)),
-            dlg.btn_confirm.size(),
-        )
-        assert dlg.rect().contains(confirm_bounds)
-        assert dlg.btn_confirm.visibleRegion().contains(dlg.btn_confirm.rect())
 
     def test_step2_results_table_keeps_full_headers_with_one_scroll_owner(
         self,

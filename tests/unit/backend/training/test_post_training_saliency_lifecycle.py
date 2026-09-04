@@ -67,7 +67,13 @@ class _Holder:
         )
 
     def compute_saliency_update(self, plan, *, should_cancel):
-        return self.compute(plan, should_cancel)
+        result = self.compute(plan, should_cancel)
+        if isinstance(result, SimpleNamespace) and hasattr(result, "eval_records"):
+            return result
+        # Most lifecycle cases only need an opaque successful expensive-compute
+        # sentinel.  Keep the production seam typed: the fixture translates that
+        # sentinel into one non-empty PreparedSaliencyUpdate-like result.
+        return SimpleNamespace(eval_records=(object(),))
 
 
 class _Trainer:
@@ -192,6 +198,27 @@ def test_post_training_saliency_schedule_outcome_is_published_on_target() -> Non
         manager.cancel_saliency_job()
 
     assert manager.wait_for_saliency_job(timeout=2.0)
+
+
+def test_post_training_saliency_reports_expected_class_coverage_unavailability_without_generic_failure() -> (
+    None
+):
+    manager, run = _manager_with_compute(
+        lambda _plan, _should_cancel: SimpleNamespace(eval_records=())
+    )
+    with patch(
+        "XBrainLab.backend.training.training_plan.publish_prepared_saliency_updates"
+    ) as publish:
+        with post_training_saliency_target(_target(run)):
+            schedule = manager.set_saliency_params(_BASELINE_PARAMS)
+        assert schedule.disposition is PostTrainingSaliencyScheduleDisposition.SCHEDULED
+        assert manager.wait_for_saliency_job(timeout=2.0)
+
+    status = manager.get_post_training_saliency_status()
+    assert status.phase is PostTrainingSaliencyPhase.FAILED
+    assert status.error_code == "evaluation_unavailable"
+    assert "unavailable" in (status.message or "")
+    publish.assert_not_called()
 
 
 def test_explicit_target_computes_only_selected_members_in_canonical_order() -> None:

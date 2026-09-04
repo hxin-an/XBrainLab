@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass, replace
@@ -16,6 +17,10 @@ from XBrainLab.backend.dataset import (
     TrainingType,
     ValSplitByType,
     audit_dataset_splits,
+)
+from XBrainLab.backend.dataset.split_audit import (
+    materialization_digest,
+    split_preview_rows,
 )
 from XBrainLab.backend.exceptions import StaleTrainingPipelineMutationError
 from XBrainLab.backend.training_state_contract import TrainingPipelineMutationBoundary
@@ -226,10 +231,31 @@ class DatasetGenerationCommandService:
             config = self.config_from_payload(saved.specification.to_payload())
             generator = self.study.get_datasets_generator(config)
             datasets = self._prepare_datasets(generator)
-            protocol = self._split_protocol_for_config(config, None)
+            expected_digest = str(
+                saved.preview_summary.get("materialization_digest") or ""
+            )
+            actual_digest = materialization_digest(datasets)
+            if expected_digest and expected_digest != actual_digest:
+                raise PreconditionError(  # noqa: TRY301
+                    "Dataset split materialization differs from its reviewed preview. "
+                    "Review the split again before training.",
+                    diagnostics={
+                        "expected_materialization_digest": expected_digest,
+                        "actual_materialization_digest": actual_digest,
+                        "state_preserved": True,
+                    },
+                )
+            protocols = self._split_protocols_for_config(config)
+            protocol = protocols["test"]
+            self._require_preview_evidence_matches(
+                saved.preview_summary,
+                datasets,
+                config,
+            )
             audit = audit_dataset_splits(
                 cast(list[Any], datasets),
                 protocol=protocol,
+                protocols=protocols,
             )
             required_empty_splits = {"train", "test"}
             if saved.specification.val_splitters:
@@ -643,7 +669,7 @@ class DatasetGenerationCommandService:
         self,
         command: SaveDatasetSplitCommand,
     ) -> DatasetSplitSpecification:
-        if command.split_config:
+        if command.split_config is not None:
             return DatasetSplitSpecification.from_payload(command.split_config)
         config = self._build_data_splitting_config(command)
         return DatasetSplitSpecification.from_payload(
@@ -675,6 +701,7 @@ class DatasetGenerationCommandService:
 
     @staticmethod
     def _validate_split_config(config: DataSplittingConfig) -> None:
+        DatasetGenerationCommandService._validate_split_contract(config)
         splitters = [
             *list(config.val_splitter_list or []),
             *list(config.test_splitter_list or []),
@@ -688,6 +715,8 @@ class DatasetGenerationCommandService:
                 raise ValueError(
                     "Enabled dataset split rules require a unit and amount."
                 )
+            if not splitter.is_valid():
+                raise ValueError("Dataset split rule has an invalid unit or amount.")
             if split_unit is SplitUnit.RATIO:
                 try:
                     ratio = float(value)
@@ -699,6 +728,55 @@ class DatasetGenerationCommandService:
                     raise ValueError(
                         "Dataset split ratios must be numeric values between 0 and 1."
                     )
+
+    @staticmethod
+    def _validate_split_contract(config: DataSplittingConfig) -> None:
+        """Reject configurations the supported workflow cannot materialize."""
+        test_rules = [
+            rule for rule in config.test_splitter_list if bool(rule.is_option)
+        ]
+        val_rules = [rule for rule in config.val_splitter_list if bool(rule.is_option)]
+        if len(test_rules) != 1:
+            raise ValueError(
+                "Dataset splitting requires exactly one supported test rule."
+            )
+        if len(val_rules) > 1:
+            raise ValueError("Dataset splitting supports at most one validation rule.")
+
+        test_rule = test_rules[0]
+        allowed_test = {SplitByType.TRIAL, SplitByType.SESSION, SplitByType.SUBJECT}
+        if test_rule.split_type not in allowed_test:
+            raise ValueError("Test split strategy is not supported by this workflow.")
+        allowed_val = {
+            ValSplitByType.TRIAL,
+            ValSplitByType.SESSION,
+            ValSplitByType.SUBJECT,
+        }
+        if val_rules and val_rules[0].split_type not in allowed_val:
+            raise ValueError(
+                "Validation split strategy is not supported by this workflow."
+            )
+
+        if config.train_type is TrainingType.IND and (
+            test_rule.split_type is SplitByType.SUBJECT
+            or (val_rules and val_rules[0].split_type is ValSplitByType.SUBJECT)
+        ):
+            raise ValueError("Individual training does not support By Subject splits.")
+
+        if config.is_cross_validation:
+            if test_rule.split_unit is not SplitUnit.KFOLD:
+                raise ValueError("Cross-validation test split must use K Fold.")
+            if val_rules and val_rules[0].split_unit not in {
+                SplitUnit.RATIO,
+                SplitUnit.NUMBER,
+            }:
+                raise ValueError(
+                    "Cross-validation validation split cannot use Manual or K Fold."
+                )
+        elif test_rule.split_unit is SplitUnit.KFOLD:
+            raise ValueError("K Fold test splits require cross-validation.")
+        if val_rules and val_rules[0].split_unit is SplitUnit.KFOLD:
+            raise ValueError("Validation split cannot use K Fold.")
 
     def _validated_preview_summary(
         self,
@@ -731,6 +809,11 @@ class DatasetGenerationCommandService:
         if receipt.epoch_token != id(current_epoch):
             raise PreconditionError(
                 "Dataset split preview receipt is stale for the current EEG epochs."
+            )
+        if not re.fullmatch(r"[0-9a-f]{64}", receipt.materialization_digest):
+            raise PreconditionError(
+                "Dataset split preview receipt lacks a canonical materialization "
+                "digest. Review the split again."
             )
         return deepcopy(receipt.summary_payload())
 
@@ -867,7 +950,7 @@ class DatasetGenerationCommandService:
     def _build_data_splitting_config(
         command: SaveDatasetSplitCommand,
     ) -> DataSplittingConfig:
-        if command.split_config:
+        if command.split_config is not None:
             return DatasetGenerationCommandService.config_from_payload(
                 command.split_config,
             )
@@ -921,9 +1004,12 @@ class DatasetGenerationCommandService:
             payload.get("train_type"),
             default=TrainingType.IND,
         )
-        return DataSplittingConfig(
+        is_cross_validation = payload.get("is_cross_validation", False)
+        if type(is_cross_validation) is not bool:
+            raise ValueError("split_config is_cross_validation must be a bool.")
+        config = DataSplittingConfig(
             train_type=train_type,
-            is_cross_validation=bool(payload.get("is_cross_validation", False)),
+            is_cross_validation=is_cross_validation,
             val_splitter_list=DatasetGenerationCommandService._splitters_from_payload(
                 payload.get("val_splitters"),
                 ValSplitByType,
@@ -933,6 +1019,8 @@ class DatasetGenerationCommandService:
                 SplitByType,
             ),
         )
+        DatasetGenerationCommandService._validate_split_config(config)
+        return config
 
     @staticmethod
     def _splitters_from_payload(
@@ -949,10 +1037,15 @@ class DatasetGenerationCommandService:
         for raw in raw_splitters:
             if not isinstance(raw, dict):
                 raise ValueError("split_config splitters must be objects.")
-            split_type = DatasetGenerationCommandService._enum_from_value(
-                split_type_enum,
-                raw.get("split_type"),
-            )
+            try:
+                split_type = DatasetGenerationCommandService._enum_from_value(
+                    split_type_enum,
+                    raw.get("split_type"),
+                )
+            except ValueError as error:
+                raise ValueError(
+                    "Unsupported split strategy; reconfigure data splitting."
+                ) from error
             split_unit = DatasetGenerationCommandService._enum_from_value(
                 SplitUnit,
                 raw.get("split_unit"),
@@ -960,11 +1053,14 @@ class DatasetGenerationCommandService:
             value = raw.get("value")
             if value is None:
                 value = raw.get("value_var")
+            is_option = raw.get("is_option", True)
+            if type(is_option) is not bool:
+                raise ValueError("split_config is_option must be a bool.")
             splitter = DataSplitter(
                 split_type=split_type,
                 value_var=str(value) if value is not None else None,
                 split_unit=split_unit,
-                is_option=bool(raw.get("is_option", True)),
+                is_option=is_option,
             )
             splitters.append(splitter)
         return splitters
@@ -985,29 +1081,60 @@ class DatasetGenerationCommandService:
                 return item
         raise ValueError(f"Unknown {enum_type.__name__} value: {value}")
 
+    @classmethod
+    def _split_protocols_for_config(
+        cls,
+        config: DataSplittingConfig,
+    ) -> dict[str, str]:
+        test_rule = next(rule for rule in config.test_splitter_list if rule.is_option)
+        protocols = {"test": cls._split_protocol_for_rule(test_rule)}
+        validation_rule = next(
+            (rule for rule in config.val_splitter_list if rule.is_option), None
+        )
+        if validation_rule is not None:
+            protocols["validation"] = cls._split_protocol_for_rule(validation_rule)
+        return protocols
+
     @staticmethod
-    def _split_protocol(split_strategy: str) -> str:
-        normalized = str(split_strategy or "trial").strip().lower()
-        if normalized in {"subject", "subject-wise", "subjectwise"}:
+    def _split_protocol_for_rule(rule: Any) -> str:
+        split_type = getattr(rule, "split_type", None)
+        if split_type in {SplitByType.SUBJECT, ValSplitByType.SUBJECT}:
             return "subject-wise"
-        if normalized in {"session", "session-wise", "sessionwise"}:
+        if split_type in {SplitByType.SESSION, ValSplitByType.SESSION}:
             return "session-wise"
         return "trial-wise"
 
-    def _split_protocol_for_config(
+    def _require_preview_evidence_matches(
         self,
+        preview_summary: dict[str, Any],
+        datasets: list[Any],
         config: DataSplittingConfig,
-        command: SaveDatasetSplitCommand | None,
-    ) -> str:
-        splitters = list(config.test_splitter_list or [])
-        if splitters:
-            split_type = getattr(splitters[0], "split_type", None)
-            if split_type in {SplitByType.SUBJECT, SplitByType.SUBJECT_IND}:
-                return "subject-wise"
-            if split_type in {SplitByType.SESSION, SplitByType.SESSION_IND}:
-                return "session-wise"
-            if split_type in {SplitByType.TRIAL, SplitByType.TRIAL_IND}:
-                return "trial-wise"
-        return self._split_protocol(
-            command.split_strategy if command is not None else "trial"
+    ) -> None:
+        expected_rows = preview_summary.get("rows")
+        if not expected_rows:
+            return
+        test_rule = next(rule for rule in config.test_splitter_list if rule.is_option)
+        validation_rule = next(
+            (rule for rule in config.val_splitter_list if rule.is_option), None
         )
+        actual_rows = split_preview_rows(
+            datasets,
+            test_rule=test_rule,
+            validation_rule=validation_rule,
+        )
+        actual_summary = {
+            "total_count": len(actual_rows),
+            "truncated_count": len(actual_rows) - len(expected_rows),
+            "train_count": sum(row["train_count"] for row in actual_rows),
+            "validation_count": sum(row["validation_count"] for row in actual_rows),
+            "test_count": sum(row["test_count"] for row in actual_rows),
+            "rows": actual_rows[: len(expected_rows)],
+        }
+        if any(
+            preview_summary.get(key) != value for key, value in actual_summary.items()
+        ):
+            raise PreconditionError(
+                "Dataset split evidence differs from its reviewed preview. "
+                "Review the split again before training.",
+                diagnostics={"state_preserved": True},
+            )

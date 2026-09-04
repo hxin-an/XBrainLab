@@ -36,6 +36,7 @@ if TYPE_CHECKING:
         DatasetSplitContextRequest,
         DatasetSplitPreviewPublication,
         DatasetSplitPreviewRequest,
+        DatasetSplitSpecification,
     )
     from XBrainLab.backend.application.epoch_context import EpochDialogContext
     from XBrainLab.backend.application.evaluation_render import (
@@ -376,6 +377,7 @@ class DatasetSplitDialogBinding:
         DatasetSplitPreviewPublication,
     ]
     preview_canceller: Callable[[str], bool]
+    initial_specification: DatasetSplitSpecification | None = None
 
 
 class ApplicationUiRuntime(
@@ -1354,6 +1356,7 @@ def get_dataset_split_dialog_binding(
     *,
     publication_generation: int,
     runtime: ApplicationUiRuntime | None = None,
+    initial_specification: DatasetSplitSpecification | None = None,
 ) -> DatasetSplitDialogBinding | None:
     """Bind detached split context and preview callbacks to one generation."""
     from XBrainLab.backend.application.dataset_split_preview import (  # noqa: PLC0415
@@ -1382,6 +1385,7 @@ def get_dataset_split_dialog_binding(
         publication_generation=publication.generation,
         preview_provider=application_runtime.get_dataset_split_preview,
         preview_canceller=application_runtime.cancel_dataset_split_preview,
+        initial_specification=initial_specification,
     )
 
 

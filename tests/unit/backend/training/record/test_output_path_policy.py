@@ -22,7 +22,10 @@ from tests.unit.backend.training.test_training_plan import (  # noqa: F401
 )
 from XBrainLab.backend.dataset import (
     DatasetGenerator,
+    DataSplitter,
     DataSplittingConfig,
+    SplitByType,
+    SplitUnit,
     TrainingType,
 )
 from XBrainLab.backend.training.record import TrainRecord
@@ -221,7 +224,12 @@ def test_individual_subject_display_metadata_uses_safe_training_identity(
     tmp_path: Path,
     epochs,  # noqa: F811
 ) -> None:
-    config = DataSplittingConfig(TrainingType.IND, False, [], [])
+    config = DataSplittingConfig(
+        TrainingType.IND,
+        False,
+        [],
+        [DataSplitter(SplitByType.TRIAL, "1", SplitUnit.NUMBER)],
+    )
     generated_dataset = DatasetGenerator(epochs, config).generate()[0]
     record = _record(tmp_path / "authorized", "unused")
     record.dataset = generated_dataset

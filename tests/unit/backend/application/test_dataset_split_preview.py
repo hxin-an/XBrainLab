@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import threading
-import time
 from types import SimpleNamespace
 from typing import Any
 
@@ -35,6 +34,15 @@ class _EpochData:
 
     def get_data_length(self) -> int:
         return len(self.data)
+
+
+class _EpochDataWithTrialGroups(_EpochData):
+    def __init__(self, trial_groups: object) -> None:
+        super().__init__()
+        self._trial_groups = trial_groups
+
+    def get_trial_group_list(self) -> object:
+        return self._trial_groups
 
 
 class _DatasetState:
@@ -92,8 +100,8 @@ def _specification() -> DatasetSplitSpecification:
             "test_splitters": [
                 {
                     "split_type": "By Trial",
-                    "split_unit": "Ratio",
-                    "value": "0.2",
+                    "split_unit": "K Fold",
+                    "value": "2",
                     "is_option": True,
                 }
             ],
@@ -150,6 +158,8 @@ class _BlockingDatasetGenerator(DatasetGenerator):
         self._started.set()
         if not self._release.wait(timeout=1.0):
             raise TimeoutError("Timed out waiting to continue the preview")
+        if self.interrupted:
+            raise KeyboardInterrupt
         super()._populate_pending_datasets()
 
 
@@ -183,6 +193,60 @@ def test_context_publication_contains_only_detached_split_choices() -> None:
     assert not hasattr(publication.context, "epoch_data")
 
 
+@pytest.mark.parametrize(
+    ("trial_groups", "expected_count"),
+    [
+        (["trial-a", "trial-a", "trial-b"], 2),
+        (np.asarray(["trial-a", "trial-a", "trial-b"]), 2),
+        ([["unhashable"]], 12),
+        ("scalar-trial", 12),
+        (b"scalar-trial", 12),
+        (np.asarray("scalar-trial"), 12),
+    ],
+)
+def test_context_trial_group_count_accepts_array_like_groups_and_fails_safe(
+    trial_groups: object,
+    expected_count: int,
+) -> None:
+    publisher = DatasetSplitPreviewPublisher(
+        dataset=_DatasetState(_EpochDataWithTrialGroups(trial_groups)),
+        generator_factory=lambda _config: _Generator(),
+        get_publication=lambda: _view(),
+    )
+
+    context = publisher.publish_context(
+        DatasetSplitContextRequest(publication_generation=4)
+    ).context
+
+    assert context.trial_group_count == expected_count
+
+
+def test_context_choices_keep_internal_keys_but_publish_real_display_names() -> None:
+    epoch_data = _EpochData()
+    epoch_data.get_subject_map = lambda: {7: "sub-A"}  # type: ignore[method-assign]
+    epoch_data.get_session_map = lambda: {3: "session-blue"}  # type: ignore[method-assign]
+    epoch_data.label_map = {2: "12 Hz"}
+    publisher = DatasetSplitPreviewPublisher(
+        dataset=_DatasetState(epoch_data),
+        generator_factory=lambda _config: _Generator(),
+        get_publication=lambda: _view(),
+    )
+
+    context = publisher.publish_context(
+        DatasetSplitContextRequest(publication_generation=4)
+    ).context
+
+    assert [(choice.value, choice.label) for choice in context.subject_choices] == [
+        (7, "sub-A")
+    ]
+    assert [(choice.value, choice.label) for choice in context.session_choices] == [
+        (3, "session-blue")
+    ]
+    assert [(choice.value, choice.label) for choice in context.label_choices] == [
+        (2, "12 Hz")
+    ]
+
+
 def test_context_publication_represents_missing_epochs_without_live_payload() -> None:
     publisher = DatasetSplitPreviewPublisher(
         dataset=_DatasetState(None),
@@ -198,36 +262,6 @@ def test_context_publication_represents_missing_epochs_without_live_payload() ->
     assert publication.context.trial_count == 0
     assert publication.context.subject_choices == ()
     assert publication.context.session_choices == ()
-
-
-def test_preview_publication_returns_detached_rows_and_canonical_config() -> None:
-    captured_configs: list[Any] = []
-
-    def build_generator(config: Any) -> _Generator:
-        captured_configs.append(config)
-        return _Generator()
-
-    publisher = DatasetSplitPreviewPublisher(
-        dataset=_DatasetState(_EpochData()),
-        generator_factory=build_generator,
-        get_publication=lambda: _view(),
-    )
-    request = DatasetSplitPreviewRequest(
-        request_id="preview-1",
-        publication_generation=4,
-        specification=_specification(),
-    )
-
-    publication = publisher.publish_preview(request)
-
-    assert publication.request == request
-    assert publication.generation == 4
-    assert [row.name for row in publication.rows] == ["Fold_0", "Fold_1"]
-    assert publication.rows[0].train_count == 8
-    assert publication.rows[0].validation_count == 2
-    assert publication.rows[0].test_count == 2
-    assert captured_configs
-    assert publisher.cancel_preview("preview-1") is False
 
 
 def test_real_preview_success_preserves_live_epoch_evidence_and_dataset_sequence(
@@ -261,6 +295,62 @@ def test_real_preview_success_preserves_live_epoch_evidence_and_dataset_sequence
     )
 
 
+def test_real_preview_row_exposes_allocation_and_saliency_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The UI receives evidence derived from the real generated masks, not defaults."""
+    epoch_data = _real_epoch_data()
+    monkeypatch.setattr(Dataset, "SEQ", 42)
+    publisher = DatasetSplitPreviewPublisher(
+        dataset=_DatasetState(epoch_data),
+        generator_factory=lambda config: DatasetGenerator(epoch_data, config),
+        get_publication=lambda: _view(),
+    )
+
+    specification = DatasetSplitSpecification.from_payload(
+        {
+            "train_type": "Full Data",
+            "is_cross_validation": True,
+            "val_splitters": [
+                {
+                    "split_type": "By Trial",
+                    "split_unit": "Ratio",
+                    "value": "0.2",
+                    "is_option": True,
+                }
+            ],
+            "test_splitters": [
+                {
+                    "split_type": "By Trial",
+                    "split_unit": "K Fold",
+                    "value": "2",
+                    "is_option": True,
+                }
+            ],
+        }
+    )
+    publication = publisher.publish_preview(
+        DatasetSplitPreviewRequest(
+            request_id="real-preview-allocation-evidence",
+            publication_generation=4,
+            specification=specification,
+        )
+    )
+
+    row = publication.rows[0]
+    assert row.test_scope_group_count > 0
+    assert row.test_selected_group_count > 0
+    assert row.test_requested_unit == "K Fold"
+    assert row.test_requested_value == "2"
+    assert row.validation_scope_group_count > 0
+    assert row.validation_selected_group_count > 0
+    assert row.validation_requested_unit == "Ratio"
+    assert row.validation_requested_value == "0.2"
+    assert row.test_missing_class_names == ()
+    assert row.validation_missing_class_names == ()
+    assert row.saliency_source == "test"
+
+
 def test_real_preview_failure_preserves_live_epoch_evidence_and_dataset_sequence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -290,7 +380,7 @@ def test_real_preview_failure_preserves_live_epoch_evidence_and_dataset_sequence
         }
     )
 
-    with pytest.raises(ValueError, match="Preview failed"):
+    with pytest.raises(ValueError, match="invalid unit or amount"):
         publisher.publish_preview(
             DatasetSplitPreviewRequest(
                 request_id="real-preview-failure",
@@ -379,9 +469,10 @@ def test_stale_context_request_fails_before_reading_epoch_data() -> None:
 
 def test_generation_change_discards_preview_rows() -> None:
     publications = iter((_view(4), _view(5)))
+    epoch_data = _real_epoch_data()
     publisher = DatasetSplitPreviewPublisher(
-        dataset=_DatasetState(_EpochData()),
-        generator_factory=lambda _config: _Generator(),
+        dataset=_DatasetState(epoch_data),
+        generator_factory=lambda config: DatasetGenerator(epoch_data, config),
         get_publication=lambda: next(publications),
     )
 
@@ -395,61 +486,19 @@ def test_generation_change_discards_preview_rows() -> None:
         )
 
 
-def test_cancel_preview_interrupts_application_owned_generator() -> None:
-    started = threading.Event()
-
-    class BlockingGenerator(_Generator):
-        def generate(self) -> None:
-            started.set()
-            while not self.interrupted:
-                time.sleep(0.001)
-            raise KeyboardInterrupt
-
-    publisher = DatasetSplitPreviewPublisher(
-        dataset=_DatasetState(_EpochData()),
-        generator_factory=lambda _config: BlockingGenerator(),
-        get_publication=lambda: _view(),
-    )
-    errors: list[BaseException] = []
-
-    def publish() -> None:
-        try:
-            publisher.publish_preview(
-                DatasetSplitPreviewRequest(
-                    request_id="preview-cancel",
-                    publication_generation=4,
-                    specification=_specification(),
-                )
-            )
-        except BaseException as error:
-            errors.append(error)
-
-    worker = threading.Thread(target=publish)
-    worker.start()
-    assert started.wait(timeout=1.0)
-
-    assert publisher.cancel_preview("preview-cancel") is True
-    worker.join(timeout=1.0)
-
-    assert worker.is_alive() is False
-    assert len(errors) == 1
-    assert isinstance(errors[0], PreconditionError)
-    assert "cancelled" in str(errors[0]).casefold()
-
-
 def test_duplicate_active_preview_request_id_is_rejected() -> None:
     started = threading.Event()
     release = threading.Event()
-
-    class BlockingGenerator(_Generator):
-        def generate(self) -> None:
-            started.set()
-            release.wait(timeout=1.0)
-            super().generate()
+    epoch_data = _real_epoch_data()
 
     publisher = DatasetSplitPreviewPublisher(
-        dataset=_DatasetState(_EpochData()),
-        generator_factory=lambda _config: BlockingGenerator(),
+        dataset=_DatasetState(epoch_data),
+        generator_factory=lambda config: _BlockingDatasetGenerator(
+            epoch_data,
+            config,
+            started=started,
+            release=release,
+        ),
         get_publication=lambda: _view(),
     )
     request = DatasetSplitPreviewRequest(

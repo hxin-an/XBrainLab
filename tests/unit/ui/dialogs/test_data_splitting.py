@@ -8,7 +8,7 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QFrame, QTreeWidgetItem, QWidget
+from PyQt6.QtWidgets import QFrame, QLabel, QTreeWidgetItem, QWidget
 
 from tests.unit.ui.data_split_test_support import (
     dialog_context_kwargs,
@@ -213,6 +213,22 @@ class TestPreviewCanvas:
         assert not image.isNull()
         assert row_colors <= expected_colors
 
+    def test_large_grid_thins_lines_without_changing_exact_dimensions(self, qtbot):
+        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import PreviewCanvas
+
+        canvas = PreviewCanvas(None)
+        qtbot.addWidget(canvas)
+        canvas.subject_num = 40
+        canvas.session_num = 30
+        canvas.show()
+        qtbot.wait(10)
+
+        assert len(canvas._grid_line_indices(canvas.subject_num)) <= 12
+        assert len(canvas._grid_line_indices(canvas.session_num)) <= 12
+        assert canvas.subject_num == 40
+        assert canvas.session_num == 30
+        assert not canvas.grab().toImage().isNull()
+
 
 class TestDataSplittingDialog:
     def test_creates(self, qtbot, controller):
@@ -223,6 +239,229 @@ class TestDataSplittingDialog:
         dlg = DataSplittingDialog(None, **dialog_context_kwargs())
         qtbot.addWidget(dlg)
         assert dlg.windowTitle() == "Data Splitting Setting"
+
+    @pytest.mark.parametrize(
+        ("subject_count", "session_count"),
+        [(1, 1), (3, 2), (5, 3), (15, 4)],
+    )
+    def test_step_one_uses_the_published_grid_dimensions_and_title(
+        self,
+        qtbot,
+        controller,
+        subject_count,
+        session_count,
+    ):
+        """The illustration must not invent a fixed five-by-five cohort."""
+        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
+            DataSplittingDialog,
+        )
+
+        dialog = DataSplittingDialog(
+            None,
+            **dialog_context_kwargs(
+                context=split_context(
+                    subject_count=subject_count,
+                    session_count=session_count,
+                )
+            ),
+        )
+        qtbot.addWidget(dialog)
+
+        assert dialog.subject_num == subject_count
+        assert dialog.session_num == session_count
+        assert dialog.train_region.from_canvas.shape == (session_count, subject_count)
+        assert dialog.canvas is not None
+        assert dialog.canvas.subject_num == subject_count
+        assert dialog.canvas.session_num == session_count
+        dialog.show()
+        qtbot.wait(10)
+        assert not dialog.canvas.grab().toImage().isNull()
+        title = dialog.findChild(QLabel, "DataSplitSectionTitle")
+        assert title is not None
+        assert title.text() == "Split strategy illustration"
+
+    def test_step_one_projects_only_supported_strategies_for_individual_training(
+        self,
+        qtbot,
+        controller,
+    ):
+        """A user cannot select retired Independent/Subject test modes."""
+        from XBrainLab.backend.dataset import TrainingType
+        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
+            DataSplittingDialog,
+        )
+
+        dialog = DataSplittingDialog(None, **dialog_context_kwargs())
+        qtbot.addWidget(dialog)
+        dialog.train_type_combo.setCurrentText(TrainingType.IND.value)
+
+        assert {
+            dialog.test_combo.itemText(index)
+            for index in range(dialog.test_combo.count())
+        } == {"By Trial", "By Session"}
+        assert {
+            dialog.val_combo.itemText(index)
+            for index in range(dialog.val_combo.count())
+        } == {"Disable", "By Trial", "By Session"}
+
+    def test_step_one_projects_backend_strategies_after_training_mode_toggle(
+        self,
+        qtbot,
+        controller,
+    ):
+        from XBrainLab.backend.dataset import TrainingType
+        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
+            DataSplittingDialog,
+        )
+
+        context = split_context()
+        dialog = DataSplittingDialog(
+            None,
+            **dialog_context_kwargs(context=context),
+        )
+        qtbot.addWidget(dialog)
+
+        assert [
+            dialog.test_combo.itemText(index)
+            for index in range(dialog.test_combo.count())
+        ] == list(context.full_test_strategies)
+        assert [
+            dialog.val_combo.itemText(index)
+            for index in range(dialog.val_combo.count())
+        ] == list(context.full_validation_strategies)
+
+        dialog.train_type_combo.setCurrentText(TrainingType.IND.value)
+
+        assert [
+            dialog.test_combo.itemText(index)
+            for index in range(dialog.test_combo.count())
+        ] == list(context.individual_test_strategies)
+        assert [
+            dialog.val_combo.itemText(index)
+            for index in range(dialog.val_combo.count())
+        ] == list(context.individual_validation_strategies)
+        assert dialog.test_combo.currentText() in context.individual_test_strategies
+        assert (
+            dialog.val_combo.currentText() in context.individual_validation_strategies
+        )
+
+    def test_reopen_restores_saved_step_one_strategies_into_step_two_payload(
+        self,
+        qtbot,
+        controller,
+    ):
+        from XBrainLab.backend.application.dataset_split_preview import (
+            DatasetSplitSpecification,
+        )
+        from XBrainLab.backend.dataset import SplitByType, ValSplitByType
+        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
+            DataSplittingDialog,
+        )
+
+        specification = DatasetSplitSpecification.from_payload(
+            {
+                "train_type": "Full Data",
+                "is_cross_validation": False,
+                "val_splitters": [
+                    {
+                        "split_type": "By Subject",
+                        "split_unit": "Ratio",
+                        "value": "0.2",
+                        "is_option": True,
+                    }
+                ],
+                "test_splitters": [
+                    {
+                        "split_type": "By Session",
+                        "split_unit": "Ratio",
+                        "value": "0.3",
+                        "is_option": True,
+                    }
+                ],
+            }
+        )
+        dialog = DataSplittingDialog(
+            None,
+            initial_specification=specification,
+            **dialog_context_kwargs(),
+        )
+        qtbot.addWidget(dialog)
+
+        assert dialog.test_combo.currentText() == "By Session"
+        assert dialog.val_combo.currentText() == "By Subject"
+        with patch(
+            "XBrainLab.ui.dialogs.dataset.data_splitting_dialog."
+            "DataSplittingPreviewDialog"
+        ) as preview_dialog:
+            preview_dialog.return_value.exec.return_value = False
+            dialog.confirm()
+
+        config = preview_dialog.call_args.kwargs["config"]
+        assert config.test_splitter_list[0].split_type == SplitByType.SESSION
+        assert config.val_splitter_list[0].split_type == ValSplitByType.SUBJECT
+
+    def test_reopen_keeps_saved_split_over_conflicting_assistant_hints(
+        self,
+        qtbot,
+        controller,
+    ):
+        """Application-owned state wins when a dialog is reopened from a draft."""
+        from XBrainLab.backend.application.dataset_split_preview import (
+            DatasetSplitSpecification,
+        )
+        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
+            DataSplittingDialog,
+        )
+
+        specification = DatasetSplitSpecification.from_payload(
+            {
+                "train_type": "Full Data",
+                "is_cross_validation": False,
+                "val_splitters": [
+                    {
+                        "split_type": "By Subject",
+                        "split_unit": "Ratio",
+                        "value": "0.2",
+                        "is_option": True,
+                    }
+                ],
+                "test_splitters": [
+                    {
+                        "split_type": "By Session",
+                        "split_unit": "Ratio",
+                        "value": "0.3",
+                        "is_option": True,
+                    }
+                ],
+            }
+        )
+        dialog = DataSplittingDialog(
+            None,
+            initial_specification=specification,
+            initial_values={
+                "training_mode": "individual",
+                "split_strategy": "subject",
+                "test_ratio": "0.9",
+            },
+            **dialog_context_kwargs(),
+        )
+        qtbot.addWidget(dialog)
+
+        assert dialog.train_type_combo.currentText() == "Full Data"
+        assert dialog.test_combo.currentText() == "By Session"
+        assert dialog.val_combo.currentText() == "By Subject"
+
+        with patch(
+            "XBrainLab.ui.dialogs.dataset.data_splitting_dialog."
+            "DataSplittingPreviewDialog"
+        ) as preview_dialog:
+            preview_dialog.return_value.exec.return_value = False
+            dialog.confirm()
+
+        step_two = preview_dialog.call_args.kwargs["initial_specification"]
+        assert step_two is specification
+        assert step_two.test_splitters[0].value == "0.3"
+        assert step_two.val_splitters[0].value == "0.2"
 
     def test_assistant_handoff_prefills_explicit_split_choices(
         self,
@@ -245,8 +484,8 @@ class TestDataSplittingDialog:
         qtbot.addWidget(dialog)
 
         assert dialog.train_type_combo.currentText() == "Individual"
-        assert dialog.test_combo.currentText() == "By Subject"
-        assert dialog.val_combo.currentText() == "By Subject"
+        assert dialog.test_combo.currentText() == "By Trial"
+        assert dialog.val_combo.currentText() == "Disable"
         assert dialog.initial_values["test_ratio"] == "0.3"
 
     @pytest.mark.parametrize("available_width", [752, 760])
@@ -518,12 +757,12 @@ class TestDataSplittingDialog:
             assert not button.isDefault()
             assert button.icon().isNull()
 
-    def test_default_split_config_uses_trainable_trial_splits(
+    def test_default_split_config_uses_trainable_trial_test_and_disabled_validation(
         self,
         qtbot,
         controller,
     ):
-        from XBrainLab.backend.dataset import SplitByType, ValSplitByType
+        from XBrainLab.backend.dataset import SplitByType
         from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
             DataSplittingDialog,
         )
@@ -541,7 +780,32 @@ class TestDataSplittingDialog:
 
         config = MockPreview.call_args.kwargs["config"]
         assert config.test_splitter_list[0].split_type == SplitByType.TRIAL
-        assert config.val_splitter_list[0].split_type == ValSplitByType.TRIAL
+        assert config.val_splitter_list == []
+
+    def test_validation_disable_passes_an_empty_validation_rule_to_step_two(
+        self,
+        qtbot,
+        controller,
+    ):
+        """Disable is canonical absence, not a truthy disabled splitter."""
+        from XBrainLab.backend.dataset import ValSplitByType
+        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
+            DataSplittingDialog,
+        )
+
+        dialog = DataSplittingDialog(None, **dialog_context_kwargs())
+        qtbot.addWidget(dialog)
+        dialog.val_combo.setCurrentText(ValSplitByType.DISABLE.value)
+
+        with patch(
+            "XBrainLab.ui.dialogs.dataset.data_splitting_dialog."
+            "DataSplittingPreviewDialog"
+        ) as preview_dialog:
+            preview_dialog.return_value.exec.return_value = False
+            dialog.confirm()
+
+        config = preview_dialog.call_args.kwargs["config"]
+        assert config.val_splitter_list == []
 
     def test_update_preview(self, qtbot, controller):
         from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
@@ -599,13 +863,6 @@ class TestDataSplittingDialogSplitTypes:
         dlg.train_type_combo.setCurrentText(TrainingType.IND.value)
         dlg.update_preview()
 
-    def test_test_session_ind(self, qtbot, controller):
-        from XBrainLab.backend.dataset import SplitByType
-
-        dlg = self._make_dialog(qtbot, controller)
-        dlg.test_combo.setCurrentText(SplitByType.SESSION_IND.value)
-        dlg.update_preview()
-
     def test_test_trial(self, qtbot, controller):
         from XBrainLab.backend.dataset import SplitByType
 
@@ -613,25 +870,11 @@ class TestDataSplittingDialogSplitTypes:
         dlg.test_combo.setCurrentText(SplitByType.TRIAL.value)
         dlg.update_preview()
 
-    def test_test_trial_ind(self, qtbot, controller):
-        from XBrainLab.backend.dataset import SplitByType
-
-        dlg = self._make_dialog(qtbot, controller)
-        dlg.test_combo.setCurrentText(SplitByType.TRIAL_IND.value)
-        dlg.update_preview()
-
     def test_test_subject(self, qtbot, controller):
         from XBrainLab.backend.dataset import SplitByType
 
         dlg = self._make_dialog(qtbot, controller)
         dlg.test_combo.setCurrentText(SplitByType.SUBJECT.value)
-        dlg.update_preview()
-
-    def test_test_subject_ind(self, qtbot, controller):
-        from XBrainLab.backend.dataset import SplitByType
-
-        dlg = self._make_dialog(qtbot, controller)
-        dlg.test_combo.setCurrentText(SplitByType.SUBJECT_IND.value)
         dlg.update_preview()
 
     def test_val_session(self, qtbot, controller):

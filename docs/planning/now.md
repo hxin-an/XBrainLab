@@ -1,15 +1,135 @@
 # XBrainLab Now
 
-最後更新：`2026-09-03`
+最後更新：`2026-09-04`
 
 ## Current baseline
 
-`77d125ef3b94648337c8cfb6df0e3bf614b6a435` 是目前 `main`／`origin/main` 的產品基線，已合併
-PR #109 的 Windows source bootstrap；其歷史、exact evidence 與使用者 Windows 手測／merge 批准由 Git
-與 PR 記錄保存，不再作為 active plan。Repo-root `settings.json` 的本機修改由使用者擁有，絕不可
-stage、commit、revert、覆寫或隱藏。
+`2315c8ac08c1cc2683e6526eec9b368add809bff` 是目前 `origin/main` 的產品基線。Repo-root
+`settings.json` 的本機修改由使用者擁有，絕不可 stage、commit、revert、覆寫或隱藏。
 
-## Active slice — SSVEP import review routing and EEGLAB preflight sampling rate
+PR #111（Evaluation render expected-stale reporting）仍獨立維持在其原 branch，尚未取得該 exact
+head 的 Windows 手測／merge 批准；本 slice 從 `origin/main` 另開 branch，絕不混入 #111。
+
+## Active slice — Data Splitting contract, materialization parity, and truthful preview
+
+### Problem and evidence
+
+- 現有可選的 `Disable`/`*_IND` 與 Train admission 不一致：Test Disable 和 Individual 的 Subject/
+  Independent 組合能在 preview 出現，卻不能產生有效 train/evaluation partition；Validation Disable
+  也會留下 truthy holder，導致 Train 與 preview 的含義不同。
+- 現有 ratio 在 test 後再對剩餘資料切 validation，且對 epoch rows 而非原子 group 計算；KFold 可接受
+  `K=1` 或對不足群組產生少於 K folds。preview 只顯示計數、save 與 Train 又各自 materialize，沒有可驗證
+  的 allocation identity。
+- Session 現況以 subject-session pair 而非跨 subject 的同名 session label 分組；manual empty、字串 bool
+  及明確 `{}` split config 亦可能被靜默接受或回退 legacy。這些皆會使使用者的 split 選擇無法可靠解釋。
+- SSVEP 的 frequency class 是既有 supervised label，不需要 frequency adapter；MAMEM1 已證明 import/
+  epoch/training 路徑可用，但 split contract 必須使 frequency classes 和任何 BIDS/MOABB supervised
+  classes 同樣可重現地進入訓練與評估。
+
+### Outcome and exact contract
+
+- 保留 Data Splitting `Step 1 → Step 2 → Save → Train` workflow 與 Data Import 五個階段。Full 支援 Test
+  `Trial|Session|Subject`；Individual 支援 `Trial|Session`。Validation 為 `Disable` 或相同可用 unit；所有
+  Independent variants 及 Test Disable 移除，Individual Subject 一律拒絕。
+- 非 CV 的 Test/Validation units 支援 `Ratio|Number|Manual`；CV Test 僅 exact `KFold`，CV Validation
+  僅 `Disable|Ratio|Number`。Test 一個 rule、Validation 零或一 active rule；舊 invalid payload 必須要求
+  reconfigure，不能靜默 rewrite。`None` 才可走 legacy default，明確 `split_config={}` 不是 legacy；JSON
+  boolean 必須是實際 bool。
+- Trial 為 temporal-overlap atomic group；Session 為所有 subject 共用同名 session label；Subject 為整個
+  subject。Test 從 Train+Validation 隔離，Validation 從 Train 隔離；混用策略遵守各自的隔離單位。
+- Ratio 以原始 scope 的 atomic group count 算，Number 是精確正 group 數，Manual 必須非空、無重複且在 scope。
+  Test/Validation capacities jointly computed，最小化 requested test/validation target 的總絕對偏差；同分時
+  優先更多 train、較小 test deviation、stable group key。每個 required split 必須非空，否則 preview 阻擋。
+- K 必須 `2 ≤ K ≤ groups` 且每個 scope 有 exact K folds；test groups 不重複且聯集等於 scope。確定性、
+  bounded 的 allocation 在固定 capacities 下優先完整 evaluation coverage，再 class×partition coverage/
+  imbalance 與 stable ID。train 全 classes 是 hard constraint；不切 atomic group。
+- Preview 與 Train 使用同一 canonical materialization/audit；receipt 保存 allocation materialization digest，
+  Train 重新算 rows/coverage/digest，任一不符 fail closed。Preview row 顯示原始 group、selected group、row
+  counts、missing class display names 與 `saliency_source=test|validation|unavailable`。若 test class 不全但
+  validation 完整，沿用 validation saliency fallback；兩者皆不完整時允許訓練/evaluation，但該 fold 不產生
+  saliency，其他 eligible fold 仍繼續。
+- `preview_receipt=None` 保留既有 unreviewed deterministic command path：Train 仍以同一
+  `DatasetGenerator.generate()` 與 audit materialize，但不宣稱或比較 reviewed-preview parity。提供 receipt
+  時必須有 canonical SHA-256 digest（`unbound`/手工 placeholder 一律拒絕），Train 必重算並 fail closed。
+
+### Scope, non-goals, ownership, and complexity
+
+- Scope：既有 split domain/application owner 內的 enum/config admission、atomic allocation、audit、preview
+  publication、receipt/materialization comparison、training saliency admission，及直接 backend tests。UI worker
+  只消費 backend truth，另行處理已批准的 dynamic grid、Step 2 copy、manual chooser、rehydration 與 lifecycle。
+- 本次直接相關的舊測試也在 scope：盤點並刪除已退役的 Test Disable／Independent expectation，將 mock-heavy、
+  繞過 production command entrypoint 或只複製 helper implementation 的 split tests，以最小且較強的
+  domain/command/materialization replacement 取代；不進行全 repo test cleanup，也絕不以刪測使 suite 變綠。
+- Non-goals：不加 SSVEP/frequency adapter、CCA/FBCCA、dataset-specific split rule、solver、second allocation
+  engine、new owner/state machine/compatibility path；不改 filter、Assistant restart、import wizard 五階段或
+  `settings.json`。不宣稱所有 MOABB；本機 15 corpus 僅用於 catalog/availability 檢查，不把它誤稱為
+  15/15 materialization 證據。
+- Owners before/after 不變：`DatasetGenerationService` owns command admission/save/materialization；
+  `DatasetGenerator`/`Epochs` own mask allocation；`SplitAudit` owns partition evidence；`TrainingPlan` owns
+  saliency split choice；preview publisher only publishes immutable DTO. Reuse/delete invalid enum dispatch,
+  silent clamps, fixed fake split facts, and duplicate admission rather than adding a parallel policy.
+- Complexity checkpoint (2026-09-04): the current combined production diff is 14 files, `+1481/-397`
+  (net `+1084`; recompute before commit). This exceeds the ordinary 8-file/+300-net trigger but remains below the
+  approved 1,500-net one-PR stop. Owners remain unchanged: `Epochs`/`DatasetGenerator` allocate masks,
+  `SplitAudit` owns evidence/digest, `DatasetGenerationService` owns save/materialize admission,
+  `DatasetSplitPreviewPublisher` publishes detached truth, and the UI projects it. No module, public class,
+  authoritative owner, state machine, solver or compatibility path has been introduced. Deletions include retired
+  Test Disable/Independent dispatch, sequential split methods, UI-local duplicate admission policy, mock-only
+  retired tests and weak count/digest echoes; their replacements exercise real allocation or command materialization.
+  The bounded deterministic allocation is deliberately not a complete solver and fails closed when no admissible
+  partition is found. Replan if production net reaches 1,500 or a new owner/state machine/solver/compatibility path
+  becomes necessary.
+- UI approval is explicit: the user approved preserving the five-stage import flow and the existing 5×5-like split
+  presentation logic, with real dynamic counts and the stated colors/copy. UI still requires screenshot/walkthrough
+  and later native Windows acceptance on exact PR head.
+
+### TDD repair and validation sequence
+
+1. Add the smallest red public/domain reproductions before production edits: invalid strategy/mode matrix,
+   Validation Disable/empty semantics, strict boolean and `{}` admission, global Session grouping, ratio/Number
+   group capacity, K bounds/exact folds, and preview receipt mismatch. 同時盤點直接被新 contract 淘汰的
+   Disable/Independent tests；每個刪除必須有涵蓋真實 observable contract 的 stronger replacement。
+2. Implement one canonical allocation/audit path in existing owners; parameterize real `Epochs`/
+   `DatasetGenerator` tests for 1/2/3/5/7 groups, unequal group sizes/classes, mixed protocols and determinism.
+   Assert allocation atomicity, coverage, cardinality and Train/preview identity rather than helper internals.
+3. Add lower-mock preview → receipt → save → materialize → Train admission → evaluation/saliency tests; stub only
+   expensive final trainer. Verify complete-test, validation-fallback, and unavailable saliency outcomes without
+   turning an expected unavailable fold into a generic worker failure.
+4. UI tests cover 1/3/5/15 subject layouts, unavailable choices/reasons, narrow/keyboard/manual cancel, 50+ rows,
+   class notices and saved-spec rehydration. Root visually inspects screenshots; offscreen does not replace Windows
+   native acceptance.
+5. Run focused backend/UI selectors under explicit timeout and `prlimit --core=0` where MNE/Qt/PyTorch is involved,
+   then changed-file Ruff and `git diff --check`. Before handoff, run canonical public source-diverse data gates and
+   exact-head Windows manual materialization for MAMEM1 EEGLAB Trial/KFold with five frequency classes,
+   BNCI2014_009 BrainVision Subject/Session, and PhysionetMI EDF Subject/Trial. The local pinned 15 MOABB corpus is
+   catalog evidence only, not a 15/15 materialization requirement or arbitrary-MOABB claim.
+
+### Stop condition
+
+- Stop rather than expand if valid contract behavior requires a new owner, second state machine/allocation engine,
+  generic solver, compatibility rewrite, dataset-specific frequency semantics, or changes outside split/
+  materialization/saliency and the explicitly approved UI surface.
+
+### Implementation progress and evidence checkpoint
+
+- Contract/admission, canonical allocation/audit, receipt parity, saliency fallback, saved-spec UI projection and
+  obsolete/mock-heavy split-test cleanup are implemented in the existing owners. The five-stage import workflow is
+  unchanged.
+- Focused evidence recorded on the pre-commit candidate tree: backend focused `342 passed`; dataset suite `549 passed`;
+  application suite `1827 passed`; UI suite `178 passed`; architecture `256 passed` plus its script check; changed
+  file Ruff/format, `git diff --check`, and Basedpyright regression passed. Canonical public real-data gate reports
+  `4 passed`, and public cross-source training smoke reports `4 passed`.
+- Ignored local materialization checkpoints cover MAMEM1, BNCI2014_009 subject/session and PhysionetMI. They are not
+  a claim that all 15 local MOABB catalog entries materialize; the 15/15 result is catalog-only.
+- Remaining work: rerun applicable focused and handoff checks on the exact committed source, push and obtain
+  exact-head CI, then complete the specified Windows native manual acceptance. Until those gates close, this remains
+  a checkpoint and is not handoff-ready.
+- Stop if deterministic allocation cannot satisfy hard train-class/required-split constraints for a given input:
+  publish a recoverable infeasible preview with the cause, never silently clamp, split an atomic group, or mutate
+  saved truth. Completion requires exact-head focused evidence, CI, source-diverse gate and later user Windows
+  acceptance before merge.
+
+## Historical record — SSVEP import review routing and EEGLAB preflight sampling rate
 
 ### Problem and evidence
 

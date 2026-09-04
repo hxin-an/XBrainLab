@@ -22,13 +22,9 @@ class TrainingType(Enum):
 class SplitByType(Enum):
     """Utility class for dataset splitting type."""
 
-    DISABLE = "Disable"
     SESSION = "By Session"
-    SESSION_IND = "By Session (Independent)"
     TRIAL = "By Trial"
-    TRIAL_IND = "By Trial (Independent)"
     SUBJECT = "By Subject"
-    SUBJECT_IND = "By Subject (Independent)"
 
 
 class ValSplitByType(Enum):

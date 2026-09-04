@@ -1638,6 +1638,14 @@ class TrainingManager:
                     generation,
                 ):
                     return
+                if not any(update.eval_records for update in updates):
+                    terminal_status = self._transition_post_training_saliency_locked(
+                        sequence,
+                        PostTrainingSaliencyPhase.FAILED,
+                        error_code="evaluation_unavailable",
+                        message="Saliency unavailable: incomplete evaluation coverage.",
+                    )
+                    return
                 publish_prepared_saliency_updates(
                     updates,
                     manager_params=params,
