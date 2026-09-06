@@ -7,9 +7,8 @@ from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtCore import QPoint, QRect, QSize, Qt
+from PyQt6.QtCore import QPoint, QRect, Qt
 from PyQt6.QtWidgets import (
-    QBoxLayout,
     QDialog,
     QFrame,
     QPushButton,
@@ -308,36 +307,6 @@ class TestDataSplittingPreviewDialogSplitters:
         ]
         assert QSizePolicy.Policy.Maximum in right_panel_heights
 
-    def test_step2_uses_stable_screen_bounded_width_and_keeps_actions_reachable(
-        self,
-        dlg,
-        qtbot,
-    ):
-        dlg.resize(QSize(672, 620))
-        dlg.show()
-        qtbot.wait(0)
-
-        screen = dlg.screen()
-        assert screen is not None
-        expected_width = min(920, screen.availableGeometry().width() - 48)
-        assert dlg.width() == expected_width
-        assert dlg.content_layout is not None
-        expected_direction = (
-            QBoxLayout.Direction.TopToBottom
-            if expected_width <= 760
-            else QBoxLayout.Direction.LeftToRight
-        )
-        assert dlg.content_layout.direction() == expected_direction
-        assert dlg.content_scroll is not None
-        assert dlg.content_scroll.horizontalScrollBar().maximum() == 0
-        assert dlg.btn_confirm is not None
-        confirm_bounds = QRect(
-            dlg.btn_confirm.mapTo(dlg, QPoint(0, 0)),
-            dlg.btn_confirm.size(),
-        )
-        assert dlg.rect().contains(confirm_bounds)
-        assert dlg.btn_confirm.visibleRegion().contains(dlg.btn_confirm.rect())
-
     def test_step2_results_table_keeps_full_headers_with_one_scroll_owner(
         self,
         dlg,
@@ -481,7 +450,11 @@ class TestDataSplittingPreviewDialogSplitters:
         assert dlg.preview_debounce_timer.isActive()
         dlg.preview_debounce_timer.stop()
 
-    def test_preview_failure_shows_reason_and_retry_action(self, dlg, qtbot):
+    def test_preview_failure_shows_reason_and_continuously_available_back_action(
+        self,
+        dlg,
+        qtbot,
+    ):
         dlg._set_preview_state(
             dlg._preview_generation_id,
             "failed",
@@ -496,14 +469,15 @@ class TestDataSplittingPreviewDialogSplitters:
         assert dlg.preview_status_label.text() == (
             "The requested validation ratio leaves no training rows."
         )
-        assert dlg.btn_retry is not None
-        assert dlg.btn_retry.isVisibleTo(dlg)
+        assert dlg.btn_back is not None
+        assert dlg.btn_back.text() == "Back"
+        assert dlg.btn_back.isVisibleTo(dlg)
+        assert dlg.btn_back.isEnabled()
+        assert dlg.btn_back.minimumWidth() == dlg.btn_confirm.minimumWidth()
         assert dlg.btn_confirm.isEnabled() is False
 
-        with patch.object(dlg, "preview") as preview:
-            dlg.btn_retry.click()
-
-        preview.assert_called_once_with()
+        dlg.btn_back.click()
+        qtbot.waitUntil(lambda: not dlg.isVisible(), timeout=1000)
 
     def test_obsolete_show_info_action_is_removed(self, dlg):
         assert not hasattr(dlg, "show_info")
@@ -629,6 +603,38 @@ class TestDataSplittingPreviewDialogSplitters:
 
         provider.assert_not_called()
 
+    def test_expected_preview_precondition_is_visible_without_error_traceback(
+        self,
+        dlg,
+    ):
+        from XBrainLab.backend.application.errors import PreconditionError
+
+        dlg.preview_provider = MagicMock(
+            side_effect=PreconditionError(
+                "Dataset split preview is infeasible: one subject cannot be split by subject."
+            )
+        )
+        dlg.preview_worker = None
+
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.threading.Thread",
+                _REAL_THREAD_CLASS,
+            ),
+            patch(
+                "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.logger.exception"
+            ) as logged,
+        ):
+            dlg.preview()
+            worker = dlg.preview_worker
+            assert worker is not None
+            worker.join(timeout=1.0)
+
+        assert worker.is_alive() is False
+        assert dlg._preview_status == "failed"
+        assert "one subject cannot be split" in dlg._preview_error
+        logged.assert_not_called()
+
     def test_close_stops_timer_after_worker_exits(self, dlg):
         from PyQt6.QtGui import QCloseEvent
 
@@ -664,6 +670,19 @@ class TestDataSplittingPreviewDialogSplitters:
         assert dlg.preview_debounce_timer.isActive()
         dlg.preview_debounce_timer.stop()
         old_worker.is_alive.return_value = False
+
+    def test_edit_cancels_running_preview_before_debouncing_replacement(self, dlg):
+        worker = MagicMock()
+        worker.is_alive.return_value = True
+        dlg.preview_worker = worker
+        dlg.preview_canceller = MagicMock(return_value=True)
+        dlg._active_preview_request = (1, "active-preview")
+
+        dlg.schedule_preview()
+
+        dlg.preview_canceller.assert_called_once_with("active-preview")
+        assert dlg.preview_debounce_timer.isActive()
+        dlg.preview_debounce_timer.stop()
 
     def test_preview_restarts_after_previous_worker_exits(self, dlg):
         old_worker = MagicMock()

@@ -31,6 +31,7 @@ class _EpochData:
     subject = np.array([0, 0, 1, 1, 2, 2])
     session = np.array([0, 0, 0, 1, 0, 1])
     label = np.array([0, 1, 0, 1, 0, 1])
+    trial_group = np.array([0, 0, 1, 2, 3, 4])
 
     def get_subject_list_by_mask(self, mask):
         return self.subject[mask]
@@ -40,6 +41,9 @@ class _EpochData:
 
     def get_label_list_by_mask(self, mask):
         return self.label[mask]
+
+    def get_trial_group_list(self):
+        return self.trial_group
 
 
 def _dataset(train, val, test, name="split_0") -> Dataset:
@@ -572,7 +576,7 @@ def test_audit_dataset_splits_detects_subject_wise_leakage():
     assert any("subject groups overlap" in issue.message for issue in result.issues)
 
 
-def test_audit_dataset_splits_detects_session_wise_leakage_by_subject_session_pair():
+def test_audit_dataset_splits_detects_session_wise_leakage():
     dataset = _dataset(
         [True, False, False, False, False, False],
         [False, False, False, False, False, False],
@@ -583,6 +587,135 @@ def test_audit_dataset_splits_detects_session_wise_leakage_by_subject_session_pa
 
     assert result.ok is False
     assert any("session groups overlap" in issue.message for issue in result.issues)
+
+
+def test_audit_dataset_splits_treats_same_named_session_as_global_across_subjects():
+    dataset = _dataset(
+        [True, False, False, False, False, False],
+        [False, False, False, False, False, False],
+        [False, False, True, False, False, False],
+    )
+
+    result = audit_dataset_splits([dataset], protocol="session-wise")
+
+    assert any("session groups overlap" in issue.message for issue in result.issues)
+
+
+def test_audit_applies_mixed_protocols_to_their_respective_partition_pairs():
+    """Only the validation-trial versus train pair leaks in this fixture."""
+    dataset = _dataset(
+        [True, False, False, False, False, False],
+        [False, True, False, False, False, False],
+        [False, False, False, True, False, False],
+    )
+
+    result = audit_dataset_splits(
+        [dataset],
+        protocols={"test": "session-wise", "validation": "trial-wise"},
+    )
+
+    assert result.ok is False
+    assert any(
+        "trial groups overlap between train and validation" in issue.message
+        for issue in result.issues
+    )
+    assert not any("session groups overlap" in issue.message for issue in result.issues)
+
+
+def test_mixed_session_test_and_trial_validation_blocks_unverified_coordinates():
+    """Trial validation needs temporal provenance even when test is session-wise."""
+    dataset = _dataset(
+        [True, True, False, False, False, False],
+        [False, False, True, True, False, False],
+        [False, False, False, False, True, True],
+    )
+
+    result = audit_dataset_splits(
+        [dataset],
+        protocol="session-wise",
+        protocols={"test": "session-wise", "validation": "trial-wise"},
+    )
+
+    issue = next(
+        issue
+        for issue in result.issues
+        if issue.details.get("kind") == "missing_epoch_window_provenance"
+    )
+    assert result.ok is False
+    assert issue.severity == "error"
+    assert issue.details["protocol"] == "trial-wise"
+
+
+def test_mixed_trial_validation_ignores_unavailable_test_only_coordinates():
+    """A Session test partition is outside the Trial validation pair."""
+    dataset = _recording_window_dataset(
+        [100, 250, 400, 550, 700, 850],
+        train=[0, 1],
+        validation=[2, 3],
+        test=[4, 5],
+    )
+    epoch_data = dataset.get_epoch_data()
+    epoch_data.epoch_window_provenance = tuple(
+        item if index < 4 else replace(item, source_coordinates_verified=False)
+        for index, item in enumerate(epoch_data.get_epoch_window_provenance())
+    )
+
+    result = audit_dataset_splits(
+        [dataset],
+        protocol="session-wise",
+        protocols={"test": "session-wise", "validation": "trial-wise"},
+    )
+
+    provenance_issues = [
+        issue
+        for issue in result.issues
+        if issue.details.get("kind") == "missing_epoch_window_provenance"
+    ]
+    assert not any(issue.severity == "error" for issue in provenance_issues)
+    assert provenance_issues[0].indices == [4, 5]
+    assert provenance_issues[0].details["epoch_count"] == 2
+    assert provenance_issues[0].details["available_count"] == 0
+
+
+def test_epoch_window_audit_ignores_unavailable_epochs_outside_dataset_scope():
+    """Individual datasets must not inherit provenance warnings from other rows."""
+    dataset = _recording_window_dataset(
+        [100, 250, 400, 550, 700, 850],
+        train=[0],
+        validation=[1],
+        test=[2],
+    )
+    epoch_data = dataset.get_epoch_data()
+    epoch_data.epoch_window_provenance = tuple(
+        item if index < 3 else replace(item, source_coordinates_verified=False)
+        for index, item in enumerate(epoch_data.get_epoch_window_provenance())
+    )
+
+    result = audit_dataset_splits([dataset], protocol="session-wise")
+
+    assert not any(
+        issue.details.get("kind") == "missing_epoch_window_provenance"
+        for issue in result.issues
+    )
+
+
+def test_pair_scoped_trial_protocol_rejects_atomic_group_leakage():
+    dataset = _dataset(
+        [True, False, False, False, False, False],
+        [False, False, False, False, False, False],
+        [False, True, False, False, False, False],
+    )
+
+    result = audit_dataset_splits(
+        [dataset],
+        protocols={"test": "trial-wise", "validation": "trial-wise"},
+    )
+
+    assert result.ok is False
+    assert any(
+        "trial groups overlap between train and test" in issue.message
+        for issue in result.issues
+    )
 
 
 def test_build_and_write_split_artifact(tmp_path):

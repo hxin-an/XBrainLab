@@ -90,8 +90,8 @@ from XBrainLab.ui.panels.dataset.data_interpretation_action_coordinator import (
 
 EXPECTED_PRODUCT_WALKTHROUGH_SPLIT_SUMMARY = {
     "count": 1,
-    "train_count": 7,
-    "val_count": 2,
+    "train_count": 6,
+    "val_count": 3,
     "test_count": 3,
     "audit": {
         "ok": True,

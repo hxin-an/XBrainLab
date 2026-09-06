@@ -15,11 +15,9 @@ from .commands import LabelImportPlan
 from .errors import PreconditionError
 from .label_import_policy import (
     MAX_LABEL_MAPPING_CARDINALITY,
-    MAX_LABEL_PREVIEW_FILES,
     MAX_LABEL_PREVIEW_PATH_LENGTH,
     MAX_LABEL_PREVIEW_TEXT_LENGTH,
     LabelMaterializationReview,
-    enforce_label_file_count,
     enforce_public_label_mapping_cardinality,
     materialize_reviewed_label_map,
 )
@@ -243,14 +241,12 @@ def _preview_summary(
         "target_count": review.target_count,
         "total_label_count": review.total_label_count,
         "mapping_cardinality_limit": MAX_LABEL_MAPPING_CARDINALITY,
-        "file_count_limit": MAX_LABEL_PREVIEW_FILES,
         "text_length_limit": MAX_LABEL_PREVIEW_TEXT_LENGTH,
         "unique_labels": sorted(review.unique_labels, key=_label_sort_key),
     }
 
 
 def _validate_preview_specs(specs: tuple[LabelResourceSpec, ...]) -> None:
-    _enforce_preview_file_count(len(specs))
     for spec in specs:
         _validate_preview_text(
             spec.path,
@@ -271,7 +267,6 @@ def _validate_preview_request(
     label_paths: list[str],
     label_configs: Mapping[str, Mapping[str, Any]] | None,
 ) -> None:
-    _enforce_preview_file_count(len(label_paths))
     for raw_path in [*label_paths, *(label_configs or {})]:
         _validate_preview_text(
             str(raw_path),
@@ -279,13 +274,6 @@ def _validate_preview_request(
             path=None,
             limit=MAX_LABEL_PREVIEW_PATH_LENGTH,
         )
-
-
-def _enforce_preview_file_count(observed_count: int) -> None:
-    enforce_label_file_count(
-        observed_count,
-        code="label_preview_file_count_exceeded",
-    )
 
 
 def _validate_public_label_value(value: Any, *, path: str) -> None:

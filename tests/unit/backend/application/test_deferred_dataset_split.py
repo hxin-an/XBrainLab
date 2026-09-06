@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
@@ -20,14 +21,16 @@ from XBrainLab.backend.application import (
     TrainCommand,
     execute_automation_payload,
 )
+from XBrainLab.backend.application.dataset_generation_service import (
+    DatasetGenerationCommandService,
+)
 from XBrainLab.backend.application.dataset_split_preview import (
-    DATASET_SPLIT_PREVIEW_ROW_LIMIT,
     DatasetSplitPreviewPublication,
     DatasetSplitPreviewRequest,
     DatasetSplitPreviewRow,
     DatasetSplitSpecification,
 )
-from XBrainLab.backend.application.errors import ApplicationError
+from XBrainLab.backend.application.errors import ApplicationError, PreconditionError
 from XBrainLab.backend.application.resource_guard import ResourcePreflightResult
 from XBrainLab.backend.application.training_recommendation import (
     LAST_EPOCH_STRATEGY,
@@ -42,8 +45,12 @@ from XBrainLab.backend.dataset import (
     DataSplittingConfig,
     Epochs,
     EpochWindowProvenance,
+    SplitByType,
+    SplitUnit,
     TrainingType,
+    ValSplitByType,
 )
+from XBrainLab.backend.dataset.split_audit import split_preview_rows
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training import (
     Trainer,
@@ -225,7 +232,7 @@ def _publish_training_identity(service: ApplicationService) -> int:
 
 
 def test_split_confirmation_saves_typed_summary_without_materializing_masks() -> None:
-    service, epoch = _service_with_epoch()
+    service, _epoch = _service_with_epoch()
     generation = service.get_view_publication().generation
     specification = _specification()
     service.study.get_datasets_generator = MagicMock(
@@ -235,11 +242,7 @@ def test_split_confirmation_saves_typed_summary_without_materializing_masks() ->
     result = service.execute(
         SaveDatasetSplitCommand(
             split_config=specification.to_payload(),
-            preview_receipt=_receipt(
-                specification,
-                generation=generation,
-                epoch=epoch,
-            ),
+            preview_receipt=None,
         ),
         expected_publication_generation=generation,
     )
@@ -250,22 +253,7 @@ def test_split_confirmation_saves_typed_summary_without_materializing_masks() ->
     assert result.state.dataset.generator_exists is False
     assert result.state.dataset.split_spec_saved is True
     assert result.state.dataset.split_materialized is False
-    assert result.state.dataset.split_preview_summary == {
-        "dataset_count": 1,
-        "total_count": 1,
-        "truncated_count": 0,
-        "train_count": 8,
-        "validation_count": 2,
-        "test_count": 2,
-        "rows": [
-            {
-                "name": "S01",
-                "train_count": 8,
-                "validation_count": 2,
-                "test_count": 2,
-            }
-        ],
-    }
+    assert result.state.dataset.split_preview_summary == {}
     assert result.state.dataset.split_lifecycle.value == "saved"
     assert result.state.dataset.active_split_summary == {}
     assert result.state.dataset.last_split_attempt == {}
@@ -275,18 +263,14 @@ def test_split_confirmation_saves_typed_summary_without_materializing_masks() ->
 def test_saved_split_publishes_consistent_training_readiness_before_materialization() -> (
     None
 ):
-    service, epoch = _service_with_epoch()
+    service, _epoch = _service_with_epoch()
     specification = _specification()
     generation = service.get_view_publication().generation
 
     saved = service.execute(
         SaveDatasetSplitCommand(
             split_config=specification.to_payload(),
-            preview_receipt=_receipt(
-                specification,
-                generation=generation,
-                epoch=epoch,
-            ),
+            preview_receipt=None,
         ),
         expected_publication_generation=generation,
     )
@@ -355,6 +339,208 @@ def test_real_preview_receipt_round_trips_to_deferred_materialization(
     assert trained.state.dataset.split_lifecycle.value == "verified"
 
 
+def test_mixed_trial_provenance_is_rejected_by_preview_and_unreviewed_prepare() -> None:
+    """Preview and Train share the same blocking audit for a mixed split."""
+    service, epoch = _service_with_epoch(_epoch_data())
+    epoch.session = np.repeat([0, 1], 6)
+    epoch.session_map = {0: "ses-0", 1: "ses-1"}
+    epoch.epoch_window_provenance = tuple(
+        replace(item, source_coordinates_verified=False)
+        for item in epoch.epoch_window_provenance
+    )
+    specification = DatasetSplitSpecification.from_payload(
+        {
+            "train_type": "Full Data",
+            "is_cross_validation": False,
+            "val_splitters": [
+                {
+                    "split_type": ValSplitByType.TRIAL.value,
+                    "split_unit": SplitUnit.RATIO.value,
+                    "value": "0.2",
+                    "is_option": True,
+                }
+            ],
+            "test_splitters": [
+                {
+                    "split_type": SplitByType.SESSION.value,
+                    "split_unit": SplitUnit.RATIO.value,
+                    "value": "0.5",
+                    "is_option": True,
+                }
+            ],
+        }
+    )
+    generation = service.get_view_publication().generation
+
+    with pytest.raises(PreconditionError, match="temporal leakage"):
+        service.get_dataset_split_preview(
+            DatasetSplitPreviewRequest(
+                request_id="mixed-provenance-parity",
+                publication_generation=generation,
+                specification=specification,
+            )
+        )
+
+    saved = service.execute(
+        SaveDatasetSplitCommand(
+            split_config=specification.to_payload(), preview_receipt=None
+        ),
+        expected_publication_generation=generation,
+    )
+    assert saved.ok is True
+    with pytest.raises(ApplicationError, match="failed split audit"):
+        service.dataset_generation.prepare_saved_split_candidate()
+    assert service.study.datasets == []
+
+
+def test_training_blocks_same_count_materialization_with_different_membership(
+    monkeypatch,
+) -> None:
+    service, _epoch = _service_with_epoch(_two_subject_epoch_data())
+    specification = _specification()
+    generation = service.get_view_publication().generation
+    preview = service.get_dataset_split_preview(
+        DatasetSplitPreviewRequest(
+            request_id="digest-preview",
+            publication_generation=generation,
+            specification=specification,
+        )
+    )
+    saved = service.execute(
+        SaveDatasetSplitCommand(
+            split_config=specification.to_payload(), preview_receipt=preview.receipt
+        ),
+        expected_publication_generation=generation,
+    )
+    assert saved.ok is True
+    _configure_training(service)
+
+    generator = service.study.get_datasets_generator(
+        DatasetGenerationCommandService.config_from_payload(specification.to_payload())
+    )
+    original_generate = generator.generate
+
+    def generate_with_same_counts_different_membership():
+        datasets = original_generate()
+        dataset = datasets[0]
+        train_index = int(np.flatnonzero(dataset.train_mask)[0])
+        test_index = int(np.flatnonzero(dataset.test_mask)[0])
+        dataset.train_mask[train_index] = False
+        dataset.test_mask[test_index] = False
+        dataset.train_mask[test_index] = True
+        dataset.test_mask[train_index] = True
+        return datasets
+
+    monkeypatch.setattr(
+        generator, "generate", generate_with_same_counts_different_membership
+    )
+    monkeypatch.setattr(
+        service.study, "get_datasets_generator", lambda _config: generator
+    )
+
+    trained = service.execute(TrainCommand(confirmed=True))
+
+    assert trained.ok is False
+    assert "differs from its reviewed preview" in trained.message
+    assert service.study.datasets == []
+
+
+def test_training_blocks_tampered_preview_coverage_evidence_even_when_digest_matches(
+    monkeypatch,
+) -> None:
+    """A receipt binds the rendered allocation evidence as well as mask membership."""
+    service, _epoch = _service_with_epoch(_two_subject_epoch_data())
+    specification = _specification()
+    generation = service.get_view_publication().generation
+    preview = service.get_dataset_split_preview(
+        DatasetSplitPreviewRequest(
+            request_id="coverage-evidence-preview",
+            publication_generation=generation,
+            specification=specification,
+        )
+    )
+    tampered_row = replace(
+        preview.receipt.rows[0],
+        test_selected_group_count=preview.receipt.rows[0].test_selected_group_count + 1,
+        test_missing_class_names=("Left",),
+        saliency_source="unavailable",
+    )
+    tampered_receipt = replace(
+        preview.receipt,
+        rows=(tampered_row, *preview.receipt.rows[1:]),
+    )
+    saved = service.execute(
+        SaveDatasetSplitCommand(
+            split_config=specification.to_payload(),
+            preview_receipt=tampered_receipt,
+        ),
+        expected_publication_generation=generation,
+    )
+    assert saved.ok is True
+    _configure_training(service)
+    service.training.start_training = MagicMock(
+        side_effect=lambda **_kwargs: _publish_training_identity(service)
+    )
+    monkeypatch.setattr(
+        "XBrainLab.backend.application.training_service.check_training_resource_preflight",
+        lambda *_args, **_kwargs: ResourcePreflightResult(
+            issues=(), diagnostics={"risk_level": "safe"}
+        ),
+    )
+
+    trained = service.execute(TrainCommand(confirmed=True))
+
+    assert trained.ok is False
+    assert "reviewed preview" in trained.message
+    assert service.study.datasets == []
+
+
+def test_preview_receipt_aggregate_evidence_rejects_tampering_after_many_rows() -> None:
+    """The receipt binds totals as well as every published row detail."""
+    service, epoch = _service_with_epoch()
+    specification = _specification()
+    config = DatasetGenerationCommandService.config_from_payload(
+        specification.to_payload()
+    )
+    datasets = []
+    for index in range(51):
+        dataset = _materialized_dataset(epoch)
+        dataset.name = f"row-{index:02d}"
+        datasets.append(dataset)
+    generation_service = service.dataset_generation._service()
+    rows = split_preview_rows(
+        datasets,
+        test_rule=next(rule for rule in config.test_splitter_list if rule.is_option),
+        validation_rule=next(
+            (rule for rule in config.val_splitter_list if rule.is_option), None
+        ),
+    )
+    summary = {
+        "total_count": len(rows),
+        "truncated_count": 0,
+        "train_count": sum(row["train_count"] for row in rows),
+        "validation_count": sum(row["validation_count"] for row in rows),
+        "test_count": sum(row["test_count"] for row in rows),
+        "rows": rows,
+    }
+
+    for key in (
+        "total_count",
+        "truncated_count",
+        "train_count",
+        "validation_count",
+        "test_count",
+    ):
+        tampered = dict(summary)
+        tampered[key] = int(tampered[key]) + 1
+        with pytest.raises(PreconditionError, match="evidence differs"):
+            generation_service._require_preview_evidence_matches(
+                tampered,
+                datasets,
+                config,
+            )
+
+
 def test_recommendation_preserves_only_manual_fields_across_split_transition(
     monkeypatch,
 ) -> None:
@@ -364,11 +550,7 @@ def test_recommendation_preserves_only_manual_fields_across_split_transition(
     initial_saved = service.execute(
         SaveDatasetSplitCommand(
             split_config=initial_specification.to_payload(),
-            preview_receipt=_receipt(
-                initial_specification,
-                generation=initial_generation,
-                epoch=epoch,
-            ),
+            preview_receipt=None,
         ),
         expected_publication_generation=initial_generation,
     )
@@ -412,27 +594,10 @@ def test_recommendation_preserves_only_manual_fields_across_split_transition(
         }
     )
     next_generation = service.get_view_publication().generation
-    no_validation_receipt = DatasetSplitPreviewPublication(
-        request=DatasetSplitPreviewRequest(
-            request_id="no-validation-preview",
-            publication_generation=next_generation,
-            specification=no_validation_specification,
-        ),
-        generation=next_generation,
-        epoch_token=id(epoch),
-        rows=(
-            DatasetSplitPreviewRow(
-                name="S01",
-                train_count=10,
-                validation_count=0,
-                test_count=2,
-            ),
-        ),
-    ).receipt
     changed = service.execute(
         SaveDatasetSplitCommand(
             split_config=no_validation_specification.to_payload(),
-            preview_receipt=no_validation_receipt,
+            preview_receipt=None,
         ),
         expected_publication_generation=next_generation,
     )
@@ -487,11 +652,7 @@ def test_train_materializes_once_and_state_reads_skip_epoch_payload(
     saved = service.execute(
         SaveDatasetSplitCommand(
             split_config=specification.to_payload(),
-            preview_receipt=_receipt(
-                specification,
-                generation=generation,
-                epoch=epoch,
-            ),
+            preview_receipt=None,
         ),
         expected_publication_generation=generation,
     )
@@ -545,11 +706,7 @@ def test_train_materializes_once_and_state_reads_skip_epoch_payload(
     unchanged = service.execute(
         SaveDatasetSplitCommand(
             split_config=specification.to_payload(),
-            preview_receipt=_receipt(
-                specification,
-                generation=unchanged_generation,
-                epoch=epoch,
-            ),
+            preview_receipt=None,
         ),
         expected_publication_generation=unchanged_generation,
     )
@@ -580,11 +737,7 @@ def test_changed_split_spec_invalidates_materialized_masks_without_regeneration(
     service.execute(
         SaveDatasetSplitCommand(
             split_config=first_spec.to_payload(),
-            preview_receipt=_receipt(
-                first_spec,
-                generation=generation,
-                epoch=epoch,
-            ),
+            preview_receipt=None,
         ),
         expected_publication_generation=generation,
     )
@@ -611,11 +764,7 @@ def test_changed_split_spec_invalidates_materialized_masks_without_regeneration(
     changed = service.execute(
         SaveDatasetSplitCommand(
             split_config=next_spec.to_payload(),
-            preview_receipt=_receipt(
-                next_spec,
-                generation=next_generation,
-                epoch=epoch,
-            ),
+            preview_receipt=None,
         ),
         expected_publication_generation=next_generation,
     )
@@ -656,17 +805,13 @@ def test_train_blocks_existing_datasets_without_saved_split_specification() -> N
 
 
 def test_changed_epoch_invalidates_saved_split_and_train_capability() -> None:
-    service, epoch = _service_with_epoch()
+    service, _epoch = _service_with_epoch()
     specification = _specification()
     generation = service.get_view_publication().generation
     saved = service.execute(
         SaveDatasetSplitCommand(
             split_config=specification.to_payload(),
-            preview_receipt=_receipt(
-                specification,
-                generation=generation,
-                epoch=epoch,
-            ),
+            preview_receipt=None,
         ),
         expected_publication_generation=generation,
     )
@@ -806,11 +951,7 @@ def test_train_failure_result_and_state_share_bounded_audit_and_preserve_old_sta
     saved = service.execute(
         SaveDatasetSplitCommand(
             split_config=specification.to_payload(),
-            preview_receipt=_receipt(
-                specification,
-                generation=generation,
-                epoch=epoch,
-            ),
+            preview_receipt=None,
         ),
         expected_publication_generation=generation,
     )
@@ -899,11 +1040,7 @@ def _save_split_and_configure_training(
     saved = service.execute(
         SaveDatasetSplitCommand(
             split_config=specification.to_payload(),
-            preview_receipt=_receipt(
-                specification,
-                generation=generation,
-                epoch=epoch,
-            ),
+            preview_receipt=None,
         ),
         expected_publication_generation=generation,
     )
@@ -1387,7 +1524,7 @@ def test_confirmed_resource_retry_reuses_candidate_and_commits_once(
     assert confirmed.state.dataset.last_split_attempt == {}
 
 
-def test_preview_receipt_serialization_has_fixed_row_and_truncation_bounds() -> None:
+def test_preview_receipt_serialization_keeps_every_row() -> None:
     specification = _specification()
     rows = tuple(
         DatasetSplitPreviewRow(
@@ -1396,7 +1533,7 @@ def test_preview_receipt_serialization_has_fixed_row_and_truncation_bounds() -> 
             validation_count=2,
             test_count=2,
         )
-        for index in range(DATASET_SPLIT_PREVIEW_ROW_LIMIT)
+        for index in range(1_000)
     )
     publication = DatasetSplitPreviewPublication(
         request=DatasetSplitPreviewRequest(
@@ -1408,7 +1545,7 @@ def test_preview_receipt_serialization_has_fixed_row_and_truncation_bounds() -> 
         epoch_token=1,
         rows=rows,
         total_count=1_000,
-        truncated_count=1_000 - DATASET_SPLIT_PREVIEW_ROW_LIMIT,
+        truncated_count=0,
         train_count=8_000,
         validation_count=2_000,
         test_count=2_000,
@@ -1417,29 +1554,29 @@ def test_preview_receipt_serialization_has_fixed_row_and_truncation_bounds() -> 
     payload = publication.receipt.summary_payload()
     serialized = json.loads(json.dumps(payload))
 
-    assert len(serialized["rows"]) == DATASET_SPLIT_PREVIEW_ROW_LIMIT
+    assert len(serialized["rows"]) == 1_000
     assert serialized["dataset_count"] == 1_000
     assert serialized["total_count"] == 1_000
-    assert serialized["truncated_count"] == 950
+    assert serialized["truncated_count"] == 0
     assert serialized["train_count"] == 8_000
 
-    with pytest.raises(ValueError, match="row limit"):
-        DatasetSplitPreviewPublication(
-            request=publication.request,
-            generation=1,
-            epoch_token=1,
-            rows=(
-                *rows,
-                DatasetSplitPreviewRow(
-                    name="overflow",
-                    train_count=1,
-                    validation_count=0,
-                    test_count=0,
-                ),
+    expanded = DatasetSplitPreviewPublication(
+        request=publication.request,
+        generation=1,
+        epoch_token=1,
+        rows=(
+            *rows,
+            DatasetSplitPreviewRow(
+                name="overflow",
+                train_count=1,
+                validation_count=0,
+                test_count=0,
             ),
-            total_count=1_001,
-            truncated_count=950,
-            train_count=8_001,
-            validation_count=2_000,
-            test_count=2_000,
-        )
+        ),
+        total_count=1_001,
+        truncated_count=0,
+        train_count=8_001,
+        validation_count=2_000,
+        test_count=2_000,
+    )
+    assert len(expanded.rows) == 1_001

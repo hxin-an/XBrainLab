@@ -1,7 +1,7 @@
 """Sidebar widget for the training panel with configuration and execution controls."""
 
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, cast
 
 from PyQt6.QtCore import QEvent, Qt, QTimer
@@ -26,6 +26,12 @@ from XBrainLab.backend.application import (
     SaveDatasetSplitCommand,
     StopTrainingCommand,
     TrainCommand,
+)
+from XBrainLab.backend.application.dataset_generation_service import (
+    DatasetGenerationCommandService,
+)
+from XBrainLab.backend.application.dataset_split_preview import (
+    DatasetSplitSpecification,
 )
 from XBrainLab.backend.application.resource_guard import (
     RISK_BLOCKING,
@@ -757,14 +763,33 @@ class TrainingSidebar(QWidget):
                 "Data splitting prerequisites could not be verified."
             )
 
+        saved_specification, requires_reconfigure = self._saved_split_specification(
+            publication,
+        )
         dialog_binding = self._data_splitting_dialog_context(
             expected_publication_generation=(
                 publication.generation if publication is not None else None
             ),
+            initial_specification=saved_specification,
         )
         if dialog_binding is None:
             return InteractionOutcome.blocked(
                 "EEG epochs are unavailable for data splitting."
+            )
+        if saved_specification is not None and not self._saved_split_is_available(
+            saved_specification,
+        ):
+            saved_specification = None
+            requires_reconfigure = True
+        if requires_reconfigure:
+            dialog_binding = replace(dialog_binding, initial_specification=None)
+            show_warning(
+                self,
+                "Reconfigure Data Splitting",
+                (
+                    "The saved split configuration is no longer supported. "
+                    "Choose a new split configuration."
+                ),
             )
 
         win = DataSplittingDialog(
@@ -774,6 +799,7 @@ class TrainingSidebar(QWidget):
             preview_provider=dialog_binding.preview_provider,
             preview_canceller=dialog_binding.preview_canceller,
             initial_values=dict(suggested_values or {}),
+            initial_specification=dialog_binding.initial_specification,
         )
         if not win.exec():
             return InteractionOutcome.cancelled("Data splitting was cancelled.")
@@ -931,6 +957,7 @@ class TrainingSidebar(QWidget):
         self,
         *,
         expected_publication_generation: int | None = None,
+        initial_specification: DatasetSplitSpecification | None = None,
     ) -> DatasetSplitDialogBinding | None:
         if expected_publication_generation is None:
             show_warning(
@@ -943,16 +970,21 @@ class TrainingSidebar(QWidget):
             query_port = self._panel_port("_query_port")
             if self._has_typed_product_context() and query_port is None:
                 return None
+            binding_kwargs: dict[str, Any] = {
+                "publication_generation": expected_publication_generation,
+            }
+            if initial_specification is not None:
+                binding_kwargs["initial_specification"] = initial_specification
             if query_port is None:
                 binding = get_dataset_split_dialog_binding(
                     self,
-                    publication_generation=expected_publication_generation,
+                    **binding_kwargs,
                 )
             else:
                 binding = get_dataset_split_dialog_binding(
                     self,
-                    publication_generation=expected_publication_generation,
                     runtime=cast(ApplicationUiRuntime, query_port),
+                    **binding_kwargs,
                 )
         except ApplicationError as exc:
             diagnostics = getattr(exc, "diagnostics", {}) or {}
@@ -989,6 +1021,35 @@ class TrainingSidebar(QWidget):
             )
             return None
         return binding
+
+    @staticmethod
+    def _saved_split_specification(
+        publication: Any,
+    ) -> tuple[DatasetSplitSpecification | None, bool]:
+        state = getattr(publication, "state", None)
+        raw_specification = getattr(state, "split_specification", None)
+        if not isinstance(raw_specification, dict) or not raw_specification:
+            return None, False
+        try:
+            return DatasetSplitSpecification.from_payload(raw_specification), False
+        except (TypeError, ValueError):
+            return None, True
+
+    @staticmethod
+    def _saved_split_is_available(
+        specification: DatasetSplitSpecification,
+    ) -> bool:
+        try:
+            # Reuse the command spine's admission rule before projecting a
+            # persisted payload back into controls.  Context membership alone
+            # cannot detect malformed legacy payloads such as two validation
+            # rules or an invalid enabled amount.
+            DatasetGenerationCommandService.config_from_payload(
+                specification.to_payload()
+            )
+        except (TypeError, ValueError):
+            return False
+        return True
 
     def select_model(
         self,

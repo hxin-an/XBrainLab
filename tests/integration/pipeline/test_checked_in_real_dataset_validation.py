@@ -45,8 +45,8 @@ EXPECTED_EPOCH_COUNTS = {
 EXPECTED_SPLIT_SUMMARIES = {
     "A01T": {
         "count": 1,
-        "train_count": 176,
-        "val_count": 43,
+        "train_count": 165,
+        "val_count": 54,
         "test_count": 54,
         "audit": {
             "ok": True,
@@ -57,8 +57,8 @@ EXPECTED_SPLIT_SUMMARIES = {
     },
     "A02T": {
         "count": 1,
-        "train_count": 173,
-        "val_count": 43,
+        "train_count": 162,
+        "val_count": 54,
         "test_count": 54,
         "audit": {
             "ok": True,
@@ -69,8 +69,8 @@ EXPECTED_SPLIT_SUMMARIES = {
     },
     "A03T": {
         "count": 1,
-        "train_count": 173,
-        "val_count": 43,
+        "train_count": 162,
+        "val_count": 54,
         "test_count": 54,
         "audit": {
             "ok": True,

@@ -1656,6 +1656,43 @@ def test_saliency_uses_validation_when_test_split_misses_a_model_class(
     assert record.get_saliency_eval_record() is prepared
 
 
+def test_saliency_marks_a_fold_unavailable_when_every_evaluation_split_lacks_class_coverage(
+    base_holder,
+):
+    """Known incomplete coverage is expected split evidence, not a worker failure."""
+    record = base_holder.get_plans()[0]
+    record.evaluation_records = {
+        "test": EvalRecord(
+            np.array([0, 0]),
+            np.array([[0.8, 0.2], [0.7, 0.3]]),
+            {},
+            {},
+            {},
+            {},
+            {},
+            evaluation_split="test",
+        ),
+        "validation": EvalRecord(
+            np.array([1, 1]),
+            np.array([[0.2, 0.8], [0.3, 0.7]]),
+            {},
+            {},
+            {},
+            {},
+            {},
+            evaluation_split="validation",
+        ),
+    }
+
+    source = base_holder._select_saliency_evaluation_split(
+        record,
+        val_loader=object(),
+        test_loader=object(),
+    )
+
+    assert source is None
+
+
 def test_saliency_update_binds_epoch_identity_before_publication(base_holder):
     record = base_holder.get_plans()[0]
     record.epoch = base_holder.option.epoch

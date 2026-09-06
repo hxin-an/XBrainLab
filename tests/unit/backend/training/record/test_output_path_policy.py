@@ -22,7 +22,10 @@ from tests.unit.backend.training.test_training_plan import (  # noqa: F401
 )
 from XBrainLab.backend.dataset import (
     DatasetGenerator,
+    DataSplitter,
     DataSplittingConfig,
+    SplitByType,
+    SplitUnit,
     TrainingType,
 )
 from XBrainLab.backend.training.record import TrainRecord
@@ -60,6 +63,8 @@ class _EpochData:
         self.subject_names = (
             [subject_name] if isinstance(subject_name, str) else list(subject_name)
         )
+        self.trial_selection_evidence: list[dict[str, Any]] = []
+        self.trial_selection_evidence_dropped = 0
 
     def get_subject_index_list(self) -> list[int]:
         return list(range(len(self.subject_names)))
@@ -68,7 +73,8 @@ class _EpochData:
         return self.subject_names[subject_idx]
 
     def reset_trial_selection_evidence(self) -> None:
-        pass
+        self.trial_selection_evidence = []
+        self.trial_selection_evidence_dropped = 0
 
 
 def _record(
@@ -209,6 +215,7 @@ def test_individual_dataset_name_preserves_unicode_display_metadata() -> None:
     generator = DatasetGenerator.__new__(DatasetGenerator)
     mutable_generator = cast(Any, generator)
     mutable_generator.epoch_data = _EpochData(subject_name)
+    mutable_generator.interrupted = False
     captured: list[str] = []
     mutable_generator.handle = lambda name, _hook=None: captured.append(name)
 
@@ -221,7 +228,12 @@ def test_individual_subject_display_metadata_uses_safe_training_identity(
     tmp_path: Path,
     epochs,  # noqa: F811
 ) -> None:
-    config = DataSplittingConfig(TrainingType.IND, False, [], [])
+    config = DataSplittingConfig(
+        TrainingType.IND,
+        False,
+        [],
+        [DataSplitter(SplitByType.TRIAL, "1", SplitUnit.NUMBER)],
+    )
     generated_dataset = DatasetGenerator(epochs, config).generate()[0]
     record = _record(tmp_path / "authorized", "unused")
     record.dataset = generated_dataset

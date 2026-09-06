@@ -1,15 +1,307 @@
 # XBrainLab Now
 
-最後更新：`2026-09-03`
+最後更新：`2026-09-06`
+
+## Active manual-test repair extension — import capacity and split/epoch feedback
+
+- Evidence: Zhou2020 subjects 1+2 select 85 event files and hit the application-only 64-file
+  mapping limit. Windows manual preview with 1,719 atomic trials, Full Data, Trial validation/test
+  0.2/0.2 stays Calculating; repeated edits are slow. User also reports suspicious 0.2/0.3 counts.
+- Outcome: all selected labels reviewed/importable subject to existing resource admission; responsive,
+  deterministic split preview with original-scope ratios; continuously available gray Back matching
+  Confirm; expected invalid settings recover without ERROR tracebacks; concise epoch and result UI.
+- Explicit UI approval: user requests removing Suggested by, shortening duration-variability warning/
+  checkbox, removing Hover/Showing/totals duplication, and always-available Back (2026-09-06).
+  Preserve five-stage import and existing split table/colors; keep safety acknowledgement semantics.
+  Follow-up approval: remove the 50-row split-result cap entirely; show all rows with the existing
+  scrollbar, no pagination, external summaries, or truncation notice (2026-09-06).
+- Scope: existing label admission/preview, allocator hot path, split preview lifecycle/error projection,
+  epoch presentation, directly related regression tests and UI artifacts. No new owners, solver,
+  dataset adapters, silent partial imports, settings edits, or unrelated cleanup.
+- Assumptions: ratio targets count original atomic groups; unequal group row sizes need not yield exact
+  row percentages. Integer rounding and preview/Train parity must be verified, not inferred from UI.
+- Steps: (1) red tests and timing for 1,719 groups at 0.2/0.2 and 0.2/0.3; (2) preserve selection
+  objective while eliminating repeated row-mask scoring; (3) lift label file-count cap with existing
+  resource checks; (4) simplify UI and route expected validation outcomes without generic failures;
+  (5) focused regression, cancel/repeat checks, screenshot inspection and canonical handoff gates.
+- Validation: real selected label scopes >64, ratio/atomicity/classes/determinism, preview vs materialized
+  counts, repeated edits/cancel/Back, retained true-error diagnostics, epoch acknowledgement, complete
+  table access, source-diverse data and exact-source UI/static/CI evidence for handoff claim.
+- Stop: no new owner/public state machine or broad solver; review complexity before >8 production
+  files or >300 net production LOC. Missing native/exact-source gates remain checkpoint, never handoff.
+- Dispatch: bounded workers own allocator, UI and label capacity; coordinator reviews integration/
+  evidence only. Preserve user's modified settings.json. No merge authorization for new source.
+- Progress: file64 and row50 caps removed; UI uses gray Back, preserves Step2 draft and cancels obsolete
+  work immediately on edits; expected preview preconditions are distinct from unexpected exceptions.
+  Allocator scores fixed group-label counts instead of repeatedly materializing row masks, with no new
+  owner or changed greedy objective. Ten production files after the bounded import dependencies below,
+  currently net deletion overall.
+- Measured checkpoint: baseline 1,719-group .2/.2 timed out after 30 seconds; new sequential .2/.2,
+  .2/.3, .2/.2 core allocations measured 0.085/0.112/0.098 seconds. Uneven/mixed/rotated small cases
+  matched baseline full masks and infeasibility outcomes. This is not yet Windows repeat-UI evidence.
+- Real label checkpoint: Zhou2020 actual 85 TSVs reviewed through resource admission, 3,398 timestamp
+  labels, four classes, safe resource preflight; EEG materialization still being verified separately.
+- Real-service offscreen checkpoint: actual ApplicationService + preview dialog with 1,719 verified
+  nonoverlap atomic trials, one subject/seven sessions/four classes: initial .2/.2 0.097s; QLineEdit
+  validation edit to .3 0.378s; back to .2 0.352s (edits include 250ms debounce). Counts match the
+  original-scope contract; reject leaves no live worker and service closes, no ERROR observed.
+- Focused final-tree checkpoint: Dataset/split application 623 passed; UI/epoch 165 passed; labels
+  61 passed; real-source workflow/duration/training 14 passed. Basedpyright reports zero diagnostics,
+  architecture compliance and production Ruff pass. One initial output-directory sandbox failure
+  passed on the complete 623-test rerun with appropriate test-output permission. These are dirty-tree
+  engineering runs, not an exact-source handoff dossier.
+- Coordinator inspected actual-dialog offscreen captures in `/tmp/xbrainlab-split-epoch-repair/`:
+  Calculating+Back, expected failure+Back, scrolled Fold51 and concise epoch acknowledgement.
+  Captures use synthetic data; Windows native acceptance remains outstanding.
+- Pending full-scope evidence: actual 85 EDFs (1.37 GB) have normal Safe preflight (8.7 GiB estimated
+  RAM, 29.5 GiB available, no confirmation/refusal). The initial composite probe included an extra full
+  Scan before Review and did not complete within 600s; its exact owned session was interrupted. This
+  does not demonstrate the BIDS UI path timing (UI uses catalog-only Scan). Corrected stage-timed
+  probe completes catalog Scan in 9.106s; Review stack samples advance through resource preflight and
+  admitted BIDS resources in Path.resolve on the WSL-mounted dataset. No deadlock/resource refusal
+  established. Keep identity guards; no speculative path caching/extra production scope. Complete the
+  bounded UI-equivalent probe before any full85 EEG materialization claim.
+- User continuation (2026-09-06): proceed through a manual-test candidate, including commit, push and
+  PR #112 update/CI verification; do not merge. Commit only task-owned paths; preserve settings.json.
+- Remaining: read-only/measurement classification of post-import montage-close warning, freeze source,
+  commit/push the scoped repairs, run canonical exact-source handoff and inspect required UI/CI evidence.
+  Coordinator supervises; existing label worker investigates montage, UI worker checks Windows artifact
+  capability, allocator worker reviews split repeat/lifecycle protection. Do not broaden production scope
+  without a reproduced directly coupled defect and plan/complexity update.
+  Canonical full handoff runner correctly rejects dirty source; no exact-source handoff claim yet.
+- Direct dependency repair / complexity review: corrected user-like Apply also exceeded 600s after
+  applying all85 labels, in recipe transaction path identity recording. `_label_import_carrier_plan`
+  previously resolved each mapping's carrier and current carrier inside the 85x85 loop (14,450
+  resolutions before further recipe work). Replace that comparison with one invocation-local carrier
+  index. Keep the same resolver, identity/freshness guards, recipe data and existing session owner;
+  no persistent cache/new owner/public class/module. This adds a ninth production file, triggering
+  explicit review: prior eight-file production diff +142/-179/net-37; allow a <=30-line net local
+  indexing repair, otherwise stop/split before expanding. Deletion candidate is the nested rescan;
+  no resource/preflight optimization elsewhere. Red cost+recipe equivalence test precedes the fix,
+  then existing recipe/symlink/label regressions and one bounded full85 UI-equivalent rerun.
+- Dependency repair implemented: nine production files, total +151/-184/net-33; same recipe resolver
+  indexed locally, no owner/cache/guard change. 85-case actual resolver calls fall from 14,620 to340
+  while exact pairing (including portable path alias) remains equal; many-to-one recipe roundtrip
+  remains protected. Combined state/labels/real-source regression 101 passed, no skips. The one final
+  full85 real Apply run exceeded its 600s bound in BIDS channel matching; all EDF headers were read,
+  but authoritative Apply completion is not proven. No unbounded retries.
+- Second measured dependency / complexity review: `_prepare_channel_apply_plan` repeats canonical
+  loaded-file and reviewed-file resolution inside another 85x85 matching loop. Delete this nested
+  rescan using invocation-local canonical-path and basename indexes in the existing channel apply
+  function. Preserve exact-path preference, ambiguous-match rejection, prepare-all-before-mutation
+  and rollback; no persistent cache, new owner, public class, module, or weakened identity guards.
+  Current nine-file production +151/-184/net-33; tenth existing file is a bounded <=30-net-line
+  exception for the directly blocked 85-file import, not general resource/path optimization.
+  Require red 85-run resolver-cost test plus real channel mutation/equivalence/ambiguity/rollback
+  checks, focused regressions and one final stage-timed 600s UI-equivalent Apply probe.
+  Stop and report a checkpoint if that still cannot complete; do not expand to other I/O owners.
+- Channel dependency implemented: tenth file +12/-12/net0; total production +163/-196/net-33.
+  The 85-run cost test failed at 14,620 resolver calls before repair and passes below500 afterwards,
+  with actual MNE bad-channel mutation. Exact preference, unique/ambiguous basename, duplicate
+  canonical aliases, and rollback are covered. Combined final-tree import/state/channel/source-diverse
+  regression: 114 passed, no skips; architecture compliance, zero-diagnostic Basedpyright and all
+  changed Python Ruff lint/format pass. These remain workspace engineering evidence, not exact-commit
+  handoff gates. No further production edits planned. Final bounded full85 run exits0: Scan10.524s,
+  Review133.196s, Validate3.899s and Apply255.295s all succeed. Authoritative state assertions verify
+  85 raws, subjects1/2, 85 carrier plans, 3,398 labels and feet/left_hand/rest/right_hand classes.
+  Evidence: `/tmp/zhou2020_two_subject_final.log`. Do not infer Windows timings or all-MOABB support.
+  Closing the probe additionally logs a BIDS montage preparation quiescence timeout warning; this is
+  not an Apply rejection but remains a separately disclosed background-close observation. No new
+  montage/lifecycle implementation is included in this bounded slice. No commit/push/merge yet;
+  settings.json remains untouched. Status stays checkpoint pending exact-source PR/CI handoff gates.
+- Handoff continuation: 85-path montage-only measurement completes in53.185s; after a30s warm wait,
+  close fences publication immediately but its2s join expires, then the worker drains18.352s later.
+  Existing cancellation tests protect discarded results/no callback. Optional pending geometry limits
+  automatic electrode/topographic presentation, not import/epoch/supervised training/evaluation or
+  saliency computation. Keep this platform timing limitation disclosed; no montage production edit.
+  Fix the validation environment's stale editable-install path using `poetry install --only-root`;
+  dependencies and product source remain unchanged. Freeze and commit the task-owned repair paths,
+  then fast-forward PR #112 head and run same-SHA local/CI evidence. Windows DPI automated evidence
+  will come from its native CI job because this WSL session cannot start Windows executables.
+- Exact-head CI repair: Linux UI integration still asserted the old verbose duration-warning and
+  checkbox strings in `test_dialog_acceptance.py`. User explicitly approved shorter copy; the retained
+  backend requirement/modal/receipt and invalidation assertions remain authoritative. Scope is that
+  integration test plus `tests/unit/ui/test_dialogs_extra.py`, which also asserts the retired long
+  phrase: assert the approved concise visible text while retaining all confirmation safety
+  assertions, reproduce the CI failure locally, then run the whole file and directly coupled UI tests.
+  No production change. Commit/push this test-only correction and refresh final exact-source evidence;
+  fa3e65a2 evidence/CI cannot certify the newer head. Keep settings.json out of hooks/staging.
+- Test-only CI correction validated: the two affected files plus epoch layout tests pass74 cases;
+  backend confirmation message, checkbox-gated admission and receipt invalidation are unchanged.
+  Exact fa3e65a2 real85 Apply also succeeds (Scan9.902s/Review137.054s/Validate4.666s/Apply299.925s),
+  and its native Windows100/125/150 artifacts were validated and visually inspected. These are
+  production-identical predecessor evidence only; final CI/manifest must bind the corrective head.
 
 ## Current baseline
 
-`77d125ef3b94648337c8cfb6df0e3bf614b6a435` 是目前 `main`／`origin/main` 的產品基線，已合併
-PR #109 的 Windows source bootstrap；其歷史、exact evidence 與使用者 Windows 手測／merge 批准由 Git
-與 PR 記錄保存，不再作為 active plan。Repo-root `settings.json` 的本機修改由使用者擁有，絕不可
-stage、commit、revert、覆寫或隱藏。
+`2315c8ac08c1cc2683e6526eec9b368add809bff` 是目前 `origin/main` 的產品基線。Repo-root
+`settings.json` 的本機修改由使用者擁有，絕不可 stage、commit、revert、覆寫或隱藏。
 
-## Active slice — SSVEP import review routing and EEGLAB preflight sampling rate
+PR #111（Evaluation render expected-stale reporting）仍獨立維持在其原 branch，尚未取得該 exact
+head 的 Windows 手測／merge 批准；本 slice 從 `origin/main` 另開 branch，絕不混入 #111。
+
+## Active slice — Data Splitting contract, materialization parity, and truthful preview
+
+### Problem and evidence
+
+- 現有可選的 `Disable`/`*_IND` 與 Train admission 不一致：Test Disable 和 Individual 的 Subject/
+  Independent 組合能在 preview 出現，卻不能產生有效 train/evaluation partition；Validation Disable
+  也會留下 truthy holder，導致 Train 與 preview 的含義不同。
+- 現有 ratio 在 test 後再對剩餘資料切 validation，且對 epoch rows 而非原子 group 計算；KFold 可接受
+  `K=1` 或對不足群組產生少於 K folds。preview 只顯示計數、save 與 Train 又各自 materialize，沒有可驗證
+  的 allocation identity。
+- Session 現況以 subject-session pair 而非跨 subject 的同名 session label 分組；manual empty、字串 bool
+  及明確 `{}` split config 亦可能被靜默接受或回退 legacy。這些皆會使使用者的 split 選擇無法可靠解釋。
+- SSVEP 的 frequency class 是既有 supervised label，不需要 frequency adapter；MAMEM1 已證明 import/
+  epoch/training 路徑可用，但 split contract 必須使 frequency classes 和任何 BIDS/MOABB supervised
+  classes 同樣可重現地進入訓練與評估。
+- Exact-head audit 所列的 admission、audit parity、cancellation、Validation Disable Ratio nearest-feasible、
+  mixed Manual residual 與實際 materialization evidence gaps 均已在既有 owner 關閉；回歸測試覆蓋 strict
+  structured payload、pair-scoped provenance、preview/Train 同 audit、cancel linearization、Manual scope/
+  duplicate/atomic constraints，以及 CV Validation Number 的 exact cardinality。這仍是 bounded contract，
+  不是任意資料集的科學品質或 complete-solver 證明。
+- Exact-head supplemental complete regression 發現的兩個 stale UI root-contract tests 已以 observable
+  `DataSplittingDialog` kwargs 更新，現在傳遞已批准的 saved split rehydration
+  `initial_specification`；production/UI 均未改動。
+- Exact-head CI 三平台失敗收斂的兩個 stale integration tests 已完成：(1) product walkthrough 的 12 original
+  trial groups、Test/Validation 各 `0.25`，依批准的 original-scope contract 使用 `6/3/3`；(2) training
+  recommendation synthetic `Epochs` fixture 已提供真實 shape 的 verified non-overlap epoch-window provenance。
+  production audit 未放寬。
+- Exact-head CI `linux-integration-rest` 的六個失敗同樣都是 stale sequential-ratio expectations，audit 均
+  通過：`application_service_workflow` 的 `7/2/3` 改為 `6/3/3`；checked-in GDF `A01`（total 273）由
+  `176/43/54` 改為 `165/54/54`，`A02/A03`（各 total 270）由 `173/43/54` 改為 `162/54/54`，涵蓋三個
+  training-smoke cases 與一個 CUDA OOM case；`real_data_command_spine` 的 `A01` 亦為
+  `176/43/54` 改為 `165/54/54`。scope 限 tests/docs，不改 production。
+- `application_service_workflow` 同一 integration test 另有 direct stale assertion：顯式空
+  `split_config` 舊期望成功；批准契約只有 `None` 可走 legacy default，顯式空 rules 必須 fail closed 並保留
+  state。scope 限 tests/docs，不得放寬 production。
+- 上述七個 stale expectations/assertions（六個 count 與 explicit-empty assertion）均已修。Aggregate old-head
+  job 未提供額外測試；它因缺 provenance sidecar 而正確 fail closed，不是 Data Split regression。
+- Canonical manifest 在 `origin/main` 已有 direct-script `ModuleNotFoundError`，無法完成；supplemental full
+  regression 的 `llm-rag` 缺 `langchain_huggingface` 亦為環境問題。兩者不得混為本 Data Split defect 或
+  handoff evidence。
+
+### Outcome and exact contract
+
+- 保留 Data Splitting `Step 1 → Step 2 → Save → Train` workflow 與 Data Import 五個階段。Full 支援 Test
+  `Trial|Session|Subject`；Individual 支援 `Trial|Session`。Validation 為 `Disable` 或該 training mode
+  可用的任一 unit，且可與 Test 混用；所有
+  Independent variants 及 Test Disable 移除，Individual Subject 一律拒絕。
+- 非 CV 的 Test/Validation units 支援 `Ratio|Number|Manual`；CV Test 僅 exact `KFold`，CV Validation
+  僅 `Disable|Ratio|Number`。Test 一個 rule、Validation 零或一 active rule；舊 invalid payload 必須要求
+  reconfigure，不能靜默 rewrite。`None` 才可走 legacy default，明確 `split_config={}` 不是 legacy；JSON
+  boolean 必須是實際 bool。
+- Trial 為 temporal-overlap atomic group；Session 為所有 subject 共用同名 session label；Subject 為整個
+  subject。Test 從 Train+Validation 隔離，Validation 從 Train 隔離；混用策略遵守各自的隔離單位。
+- Ratio 以原始 scope 的 atomic group count 算，Number 是精確正 group 數，Manual 必須非空、無重複且在 scope。
+  Test/Validation capacities jointly computed，最小化 requested test/validation target 的總絕對偏差；同分時
+  優先更多 train、較小 test deviation、stable group key。每個 required split 必須非空，否則 preview 阻擋。
+- K 必須 `2 ≤ K ≤ groups` 且每個 scope 有 exact K folds；test groups 不重複且聯集等於 scope。確定性、
+  bounded 的 allocation 在固定 capacities 下優先完整 evaluation coverage，再 class×partition coverage/
+  imbalance 與 stable ID。train 全 classes 是 hard constraint；不切 atomic group。
+- Preview 與 Train 使用同一 canonical materialization/audit；receipt 保存 allocation materialization digest，
+  Train 重新算 rows/coverage/digest，任一不符 fail closed。Preview row 顯示原始 group、selected group、row
+  counts、missing class display names 與 `saliency_source=test|validation|unavailable`。若 test class 不全但
+  validation 完整，沿用 validation saliency fallback；兩者皆不完整時允許訓練/evaluation，但該 fold 不產生
+  saliency，其他 eligible fold 仍繼續。
+- `preview_receipt=None` 保留既有 unreviewed deterministic command path：Train 仍以同一
+  `DatasetGenerator.generate()` 與 audit materialize，但不宣稱或比較 reviewed-preview parity。提供 receipt
+  時必須有 canonical SHA-256 digest（`unbound`/手工 placeholder 一律拒絕），Train 必重算並 fail closed。
+
+### Scope, non-goals, ownership, and complexity
+
+- Scope：既有 split domain/application owner 內的 enum/config admission、atomic allocation、audit、preview
+  publication、receipt/materialization comparison、training saliency admission，及直接 backend tests。UI worker
+  只消費 backend truth，另行處理已批准的 dynamic grid、Step 2 copy、manual chooser、rehydration 與 lifecycle。
+- 本次直接相關的舊測試也在 scope：盤點並刪除已退役的 Test Disable／Independent expectation，將 mock-heavy、
+  繞過 production command entrypoint 或只複製 helper implementation 的 split tests，以最小且較強的
+  domain/command/materialization replacement 取代；不進行全 repo test cleanup，也絕不以刪測使 suite 變綠。
+- Non-goals：不加 SSVEP/frequency adapter、CCA/FBCCA、dataset-specific split rule、solver、second allocation
+  engine、new owner/state machine/compatibility path；不改 filter、Assistant restart、import wizard 五階段或
+  `settings.json`。不宣稱所有 MOABB；本機 15 corpus 僅用於 catalog/availability 檢查，不把它誤稱為
+  15/15 materialization 證據。
+- Owners before/after 不變：`DatasetGenerationService` owns command admission/save/materialization；
+  `DatasetGenerator`/`Epochs` own mask allocation；`SplitAudit` owns partition evidence；`TrainingPlan` owns
+  saliency split choice；preview publisher only publishes immutable DTO. Reuse/delete invalid enum dispatch,
+  silent clamps, fixed fake split facts, and duplicate admission rather than adding a parallel policy.
+- Complexity checkpoint (2026-09-04): the current combined production diff against `origin/main` is 14 files,
+  `+1806/-512` (net `+1294`). This exceeds the ordinary 8-file/+300-net trigger but remains below the
+  approved 1,500-net one-PR stop. Owners remain unchanged: `Epochs`/`DatasetGenerator` allocate masks,
+  `SplitAudit` owns evidence/digest, `DatasetGenerationService` owns save/materialize admission,
+  `DatasetSplitPreviewPublisher` publishes detached truth, and the UI projects it. No module, public class,
+  authoritative owner, state machine, solver or compatibility path has been introduced. Deletions include retired
+  Test Disable/Independent dispatch, sequential split methods, UI-local duplicate admission policy, mock-only
+  retired tests and weak count/digest echoes; their replacements exercise real allocation or command materialization.
+  The bounded deterministic allocation is deliberately not a complete solver and fails closed when no admissible
+  partition is found. Replan if production net reaches 1,500 or a new owner/state machine/solver/compatibility path
+  becomes necessary.
+- UI approval is explicit: the user approved preserving the five-stage import flow and the existing 5×5-like split
+  presentation logic, with real dynamic counts and the stated colors/copy. UI still requires screenshot/walkthrough
+  and later native Windows acceptance on exact PR head.
+- Audit repair actual: four existing production files, `+348/-138` (net `+210`). It reused `SplitAudit`, preview
+  publisher, `DatasetGenerationService`, `DatasetGenerator` and
+  config admission code; no module, owner, state machine, solver, receipt, or compatibility path was added.
+
+### TDD repair and validation sequence
+
+1. Add the smallest red public/domain reproductions before production edits: invalid strategy/mode matrix,
+   Validation Disable/empty semantics, strict boolean and `{}` admission, global Session grouping, ratio/Number
+   group capacity, K bounds/exact folds, and preview receipt mismatch. 同時盤點直接被新 contract 淘汰的
+   Disable/Independent tests；每個刪除必須有涵蓋真實 observable contract 的 stronger replacement。
+2. Implement one canonical allocation/audit path in existing owners; parameterize real `Epochs`/
+   `DatasetGenerator` tests for 1/2/3/5/7 groups, unequal group sizes/classes, mixed protocols and determinism.
+   Assert allocation atomicity, coverage, cardinality and Train/preview identity rather than helper internals.
+3. Add lower-mock preview → receipt → save → materialize → Train admission → evaluation/saliency tests; stub only
+   expensive final trainer. Verify complete-test, validation-fallback, and unavailable saliency outcomes without
+   turning an expected unavailable fold into a generic worker failure.
+4. UI tests cover 1/3/5/15 subject layouts, unavailable choices/reasons, narrow/keyboard/manual cancel, 50+ rows,
+   class notices and saved-spec rehydration. Root visually inspects screenshots; offscreen does not replace Windows
+   native acceptance.
+5. Run focused backend/UI selectors under explicit timeout and `prlimit --core=0` where MNE/Qt/PyTorch is involved,
+   then changed-file Ruff and `git diff --check`. Before handoff, run canonical public source-diverse data gates and
+   exact-head Windows manual materialization for MAMEM1 EEGLAB Trial/KFold with five frequency classes,
+   BNCI2014_009 BrainVision Subject/Session, and PhysionetMI EDF Subject/Trial. The local pinned 15 MOABB corpus is
+   catalog evidence only, not a 15/15 materialization requirement or arbitrary-MOABB claim.
+6. **Audit-repair TDD (complete):** red/green public-command and real materialization cases closed mixed provenance
+   fail-closed behavior, preview-time audit parity, cooperative cancellation with no successful receipt after a
+   successful cancel, strict structured payload fields while preserving only `split_config=None` legacy behavior,
+   nearest-feasible no-validation Ratio, mixed Manual residual semantics, Manual duplicate/out-of-scope/atomic
+   constraints, and CV Validation Number exact cardinality. The repairs stayed in the existing owners; no parallel
+   allocator or policy path was introduced.
+
+### Stop condition
+
+- Stop rather than expand if valid contract behavior requires a new owner, second state machine/allocation engine,
+  generic solver, compatibility rewrite, dataset-specific frequency semantics, or changes outside split/
+  materialization/saliency and the explicitly approved UI surface.
+
+### Implementation progress and evidence checkpoint
+
+- Contract/admission, canonical allocation/audit, receipt parity, saliency fallback, saved-spec UI projection and
+  obsolete/mock-heavy split-test cleanup are implemented in the existing owners. The five-stage import workflow is
+  unchanged.
+- Focused pre-commit candidate-tree evidence: full Application+Dataset `2388 passed`; selected Training `628 passed`;
+  UI `178 passed`; selected architecture `285 passed`; whole-repo Ruff check and format check passed; Basedpyright
+  regression reported `0` new diagnostics; architecture compliance script passed. These results close the listed
+  audit/admission/cancellation/no-validation-ratio/mixed-Manual/evidence-gap checkpoint; they do not certify an
+  arbitrary dataset, scientific split quality, or a complete solver.
+- Supplemental UI root-contract evidence: `test_sidebars_and_components.py` `102 passed`; the
+  `tests/unit/ui/test_*.py` selector `944 passed`, and its root rerun of the single file also `102 passed`.
+- Integration-UI green evidence: with the correct `PYTHONPATH`, full `tests/integration/ui` reports `119 passed,
+  21 skipped`. The first attempt without that path produced three direct-script `ModuleNotFoundError`s; that is an
+  existing runner-entrypoint/environment issue, not a Data Split defect.
+- Stale-test green evidence: ApplicationService integration file `21 passed`; checked-in GDF `15/15` passed;
+  command spine `1/1` passed. The authoritative `linux-integration-rest` result collected `346`, with `311 passed`,
+  `35` optional-public-fixture skipped, and `0 failed`; pipeline reports `121 passed, 6 skipped`. Aggregated evidence
+  is `10438 passed, 21 skipped, 0 failed`.
+- Remaining work: final tests/docs review and commit/push, exact-head CI, and the specified Windows native manual
+  acceptance. The canonical manifest retains its existing runner-entrypoint blocker. Until those gates close, this
+  remains a checkpoint, not handoff-ready.
+- Stop if deterministic allocation cannot satisfy hard train-class/required-split constraints for a given input:
+  publish a recoverable infeasible preview with the cause, never silently clamp, split an atomic group, or mutate
+  saved truth. Do not expand into arbitrary MOABB support, UI redesign, or a second allocator.
+
+## Historical record — SSVEP import review routing and EEGLAB preflight sampling rate
 
 ### Problem and evidence
 

@@ -2139,7 +2139,10 @@ def test_split_data_passes_typed_detached_binding_to_dialog(
 ):
     from PyQt6.QtWidgets import QDialog
 
-    from XBrainLab.backend.application.dataset_split_preview import DatasetSplitContext
+    from XBrainLab.backend.application.dataset_split_preview import (
+        DatasetSplitContext,
+        DatasetSplitSpecification,
+    )
     from XBrainLab.ui.application_capabilities import DatasetSplitDialogBinding
     from XBrainLab.ui.interaction_outcome import InteractionStatus
 
@@ -2161,11 +2164,30 @@ def test_split_data_passes_typed_detached_binding_to_dialog(
     )
     preview_provider = MagicMock()
     preview_canceller = MagicMock()
+    saved_specification = DatasetSplitSpecification.from_payload(
+        {
+            "train_type": "Full Data",
+            "is_cross_validation": False,
+            "val_splitters": [],
+            "test_splitters": [
+                {
+                    "split_type": "By Trial",
+                    "split_unit": "Ratio",
+                    "value": "0.3",
+                    "is_option": True,
+                }
+            ],
+        }
+    )
+    publication.state = SimpleNamespace(
+        split_specification=saved_specification.to_payload(),
+    )
     binding = DatasetSplitDialogBinding(
         split_context=split_context,
         publication_generation=generation,
         preview_provider=preview_provider,
         preview_canceller=preview_canceller,
+        initial_specification=saved_specification,
     )
     initial_values = {
         "training_mode": "individual",
@@ -2192,6 +2214,7 @@ def test_split_data_passes_typed_detached_binding_to_dialog(
     get_binding.assert_called_once_with(
         sidebar,
         publication_generation=generation,
+        initial_specification=saved_specification,
     )
     dialog.assert_called_once_with(
         sidebar,
@@ -2200,7 +2223,98 @@ def test_split_data_passes_typed_detached_binding_to_dialog(
         preview_provider=preview_provider,
         preview_canceller=preview_canceller,
         initial_values=initial_values,
+        initial_specification=saved_specification,
     )
+
+
+@pytest.mark.parametrize(
+    "saved_payload",
+    [
+        {
+            "train_type": "Individual",
+            "is_cross_validation": False,
+            "val_splitters": [],
+            "test_splitters": [
+                {
+                    "split_type": "By Trial (Independent)",
+                    "split_unit": "Ratio",
+                    "value": "0.2",
+                    "is_option": True,
+                }
+            ],
+        },
+        {
+            "train_type": "Full Data",
+            "is_cross_validation": False,
+            "val_splitters": [
+                {
+                    "split_type": "By Trial",
+                    "split_unit": "Ratio",
+                    "value": "0.2",
+                    "is_option": True,
+                },
+                {
+                    "split_type": "By Session",
+                    "split_unit": "Ratio",
+                    "value": "0.2",
+                    "is_option": True,
+                },
+            ],
+            "test_splitters": [
+                {
+                    "split_type": "By Trial",
+                    "split_unit": "Ratio",
+                    "value": "0.2",
+                    "is_option": True,
+                }
+            ],
+        },
+    ],
+    ids=("retired-strategy", "multiple-validation-rules"),
+)
+def test_split_data_warns_and_allows_reconfigure_for_invalid_saved_specification(
+    sidebar,
+    saved_payload,
+):
+    from PyQt6.QtWidgets import QDialog
+
+    from XBrainLab.backend.application.dataset_split_preview import DatasetSplitContext
+    from XBrainLab.ui.application_capabilities import DatasetSplitDialogBinding
+    from XBrainLab.ui.interaction_outcome import InteractionStatus
+
+    generation = 94
+    capability = CommandCapability(
+        command_name=CommandName.CONFIGURE_DATASET_SPLIT.value,
+        enabled=True,
+    )
+    publication = SimpleNamespace(
+        generation=generation,
+        effective_capabilities={CommandName.CONFIGURE_DATASET_SPLIT: capability},
+        state=SimpleNamespace(split_specification=saved_payload),
+    )
+    binding = DatasetSplitDialogBinding(
+        split_context=DatasetSplitContext(epoch_available=True, trial_count=12),
+        publication_generation=generation,
+        preview_provider=MagicMock(),
+        preview_canceller=MagicMock(),
+    )
+
+    with (
+        patch.object(sidebar, "_application_publication", return_value=publication),
+        patch.object(sidebar, "_data_splitting_dialog_context", return_value=binding),
+        patch("XBrainLab.ui.panels.training.sidebar.DataSplittingDialog") as dialog,
+        patch("XBrainLab.ui.panels.training.sidebar.show_warning") as warning,
+    ):
+        dialog.return_value.exec.return_value = QDialog.DialogCode.Rejected
+        outcome = sidebar.split_data()
+
+    assert outcome.status is InteractionStatus.CANCELLED
+    warning.assert_called_once_with(
+        sidebar,
+        "Reconfigure Data Splitting",
+        "The saved split configuration is no longer supported. Choose a new split configuration.",
+    )
+    assert dialog.call_args.kwargs["initial_specification"] is None
 
 
 def test_split_confirmation_keeps_model_and_training_settings_responsive(sidebar):

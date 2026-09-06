@@ -16,7 +16,6 @@ from .data_interpretation_path_identity import (
 )
 from .data_interpretation_resource_reader import AdmittedResourceReader
 from .errors import PreconditionError
-from .label_import_policy import enforce_label_file_count
 from .label_resource_reader import AdmittedLabelResourceReader
 from .label_resource_receipt import LabelResourceReceiptAuthority
 from .owned_work import owned_work_checkpoint
@@ -275,10 +274,6 @@ def _normalized_specs(
             result.append(spec)
     if not result:
         raise PreconditionError("At least one label path is required.")
-    enforce_label_file_count(
-        len(result),
-        code="label_resource_file_count_exceeded",
-    )
     return tuple(result)
 
 
