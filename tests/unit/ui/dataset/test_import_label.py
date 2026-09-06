@@ -367,18 +367,13 @@ def test_event_filter_dialog(qtbot):
     dialog = EventFilterDialog(None, events)
     qtbot.addWidget(dialog)
 
-    # Check initial state (all checked by default if no settings)
-    # We mocked QSettings in the class? No, it uses real QSettings.
-    # Assume default behavior or check items.
-
     # Select only Event1
     dialog.set_all_checked(False)
     dialog.list_widget.item(0).setCheckState(Qt.CheckState.Checked)
 
-    with patch.object(QDialog, "accept") as mock_accept:
-        dialog.accept()
-        mock_accept.assert_called_once()
+    dialog.accept()
 
+    assert dialog.result() == QDialog.DialogCode.Accepted
     assert dialog.get_selected_ids() == ["Event1"]
 
 
@@ -408,8 +403,13 @@ def test_event_filter_dialog_rejects_empty_selection(mock_warning, qtbot):
     dialog.set_all_checked(False)
     dialog.accept()
 
-    mock_warning.assert_called_once()
-    assert dialog.result() != QDialog.DialogCode.Accepted
+    mock_warning.assert_called_once_with(
+        dialog,
+        "No Events Selected",
+        "Select at least one event to keep for synchronization.",
+    )
+    assert dialog.result() == QDialog.DialogCode.Rejected
+    assert dialog.get_selected_ids() == []
 
 
 def test_label_mapping_dialog(qtbot):

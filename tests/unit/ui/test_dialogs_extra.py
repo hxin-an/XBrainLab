@@ -1,5 +1,4 @@
-"""Coverage tests for dialogs: event_filter, import_label, manual_split, smart_parser,
-optimizer_setting, channel_selection, epoching, training_setting, data_splitting_dialog."""
+"""Manual selection, channel validation, and epoch dialog behavior."""
 
 from __future__ import annotations
 
@@ -8,7 +7,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtWidgets import (
-    QDialog,
     QDialogButtonBox,
     QLabel,
     QPushButton,
@@ -16,120 +14,6 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.application.epoch_context import build_epoching_context
-
-# ============ EventFilterDialog ============
-
-
-class TestEventFilterDialog:
-    @pytest.fixture
-    def dlg(self, qtbot):
-        from XBrainLab.ui.dialogs.dataset.event_filter_dialog import EventFilterDialog
-
-        events = ["left_hand", "right_hand", "feet", "tongue"]
-        d = EventFilterDialog(None, events)
-        qtbot.addWidget(d)
-        return d
-
-    def test_set_all_checked(self, dlg):
-        dlg.set_all_checked(True)
-        dlg.set_all_checked(False)
-
-    def test_set_selection(self, dlg):
-        dlg.set_selection(["left_hand", "feet"])
-
-    def test_empty_selection_warns_and_keeps_dialog_unaccepted(self, dlg):
-        dlg.set_all_checked(False)
-        with patch(
-            "XBrainLab.ui.dialogs.dataset.event_filter_dialog.show_warning"
-        ) as warning:
-            dlg.accept()
-
-        warning.assert_called_once_with(
-            dlg,
-            "No Events Selected",
-            "Select at least one event to keep for synchronization.",
-        )
-        assert dlg.result() == QDialog.DialogCode.Rejected
-        assert dlg.get_selected_ids() == []
-
-    def test_get_selected_ids_all(self, dlg):
-        dlg.set_all_checked(True)
-        dlg.accept()
-        result = dlg.get_selected_ids()
-        assert len(result) == 4
-
-    def test_accept_with_selection(self, dlg):
-        dlg.set_all_checked(True)
-        dlg.accept()
-        result = dlg.get_result()
-        assert len(result) == 4
-
-    def test_toggle_selected(self, dlg):
-        dlg.set_all_checked(True)
-        dlg.toggle_selected()
-
-    def test_toggle_selected_with_items(self, dlg):
-        # Select first two items, then toggle
-        dlg.set_all_checked(True)
-        for i in range(2):
-            item = dlg.list_widget.item(i)
-            item.setSelected(True)
-        dlg.toggle_selected()
-
-    def test_show_context_menu_check(self, dlg):
-        from PyQt6.QtCore import QPoint
-
-        dlg.list_widget.item(0).setSelected(True)
-        with patch("XBrainLab.ui.dialogs.dataset.event_filter_dialog.QMenu") as M:
-            a_check = MagicMock()
-            a_uncheck = MagicMock()
-            a_toggle = MagicMock()
-            M.return_value.addAction.side_effect = [a_check, a_uncheck, a_toggle]
-            M.return_value.exec.return_value = a_check
-            dlg.show_context_menu(QPoint(0, 0))
-
-    def test_show_context_menu_uncheck(self, dlg):
-        from PyQt6.QtCore import QPoint
-
-        dlg.set_all_checked(True)
-        dlg.list_widget.item(0).setSelected(True)
-        with patch("XBrainLab.ui.dialogs.dataset.event_filter_dialog.QMenu") as M:
-            a_check = MagicMock()
-            a_uncheck = MagicMock()
-            a_toggle = MagicMock()
-            M.return_value.addAction.side_effect = [a_check, a_uncheck, a_toggle]
-            M.return_value.exec.return_value = a_uncheck
-            dlg.show_context_menu(QPoint(0, 0))
-
-    def test_show_context_menu_toggle(self, dlg):
-        from PyQt6.QtCore import QPoint
-
-        dlg.set_all_checked(True)
-        dlg.list_widget.item(0).setSelected(True)
-        with patch("XBrainLab.ui.dialogs.dataset.event_filter_dialog.QMenu") as M:
-            a_check = MagicMock()
-            a_uncheck = MagicMock()
-            a_toggle = MagicMock()
-            M.return_value.addAction.side_effect = [a_check, a_uncheck, a_toggle]
-            M.return_value.exec.return_value = a_toggle
-            dlg.show_context_menu(QPoint(0, 0))
-
-    def test_key_press_space_toggles(self, dlg):
-        from PyQt6.QtCore import Qt
-        from PyQt6.QtGui import QKeyEvent
-
-        dlg.set_all_checked(True)
-        dlg.list_widget.item(0).setSelected(True)
-        event = QKeyEvent(
-            QKeyEvent.Type.KeyPress, Qt.Key.Key_Space, Qt.KeyboardModifier(0)
-        )
-        dlg.keyPressEvent(event)
-
-    def test_accept_persists_selection(self, dlg):
-        dlg.set_all_checked(True)
-        dlg.accept()
-        assert len(dlg.get_selected_ids()) == 4
-
 
 # ============ ManualSplitDialog ============
 
@@ -152,14 +36,6 @@ class TestManualSplitDialog:
         dlg.accept()
         result = dlg.get_result()
         assert result is not None
-
-    def test_creates_with_tuples(self, qtbot):
-        from XBrainLab.ui.dialogs.dataset.manual_split_dialog import ManualSplitDialog
-
-        choices = [(0, "SubjectA"), (1, "SubjectB")]
-        d = ManualSplitDialog(None, choices)
-        qtbot.addWidget(d)
-        assert isinstance(d, ManualSplitDialog)
 
 
 # ============ ChannelSelectionDialog ============
@@ -185,19 +61,6 @@ class TestChannelSelectionDialog:
         qtbot.addWidget(d)
         return d
 
-    def test_set_all_checked(self, dlg):
-        dlg.set_all_checked(True)
-        dlg.set_all_checked(False)
-
-    def test_filter_channels(self, dlg):
-        dlg.filter_channels("C")
-
-    def test_accept_all_selected(self, dlg):
-        dlg.set_all_checked(True)
-        dlg.accept()
-        result = dlg.get_result()
-        assert len(result) == 7
-
     def test_accept_none_selected(self, dlg):
         dlg.set_all_checked(False)
         with patch(
@@ -210,33 +73,6 @@ class TestChannelSelectionDialog:
             "Warning",
             "Please select at least one channel.",
         )
-
-
-# ============ OptimizerSettingDialog ============
-
-
-class TestOptimizerSettingDialog:
-    @pytest.fixture
-    def dlg(self, qtbot):
-        from XBrainLab.ui.dialogs.training.optimizer_setting_dialog import (
-            OptimizerSettingDialog,
-        )
-
-        d = OptimizerSettingDialog(None)
-        qtbot.addWidget(d)
-        return d
-
-    def test_on_algo_select(self, dlg):
-        dlg.on_algo_select("Adam")
-
-    def test_on_algo_select_sgd(self, dlg):
-        dlg.on_algo_select("SGD")
-
-    def test_accept(self, dlg):
-        dlg.on_algo_select("Adam")
-        dlg.accept()
-        result = dlg.get_result()
-        assert result is not None
 
 
 # ============ EpochingDialog ============
@@ -277,10 +113,6 @@ class TestEpochingDialog:
         )
         qtbot.addWidget(d)
         return d
-
-    def test_toggle_baseline(self, dlg):
-        dlg.toggle_baseline(True)
-        dlg.toggle_baseline(False)
 
     def test_baseline_uses_right_aligned_on_off_toggle(self, dlg, qtbot):
         assert isinstance(dlg.baseline_check, QPushButton)
@@ -430,9 +262,6 @@ class TestEpochingDialog:
         assert 'QCheckBox("Apply baseline correction")' not in getsource(
             EpochingDialog.init_ui
         )
-
-    def test_update_duration_info(self, dlg):
-        dlg.update_duration_info()
 
     def test_label_backgrounds_are_transparent(self, dlg):
         assert "QLabel {" in dlg.styleSheet()

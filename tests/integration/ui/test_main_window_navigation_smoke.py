@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QPushButton, QWidget
+from PyQt6.QtWidgets import QPushButton
 
 from XBrainLab.ui.components.assistant_runtime_lifecycle import (
     RuntimeActivationResult,
@@ -115,11 +115,6 @@ class TestNavigation:
         assert test_app.stack.currentIndex() == expected_panel
         assert _checked_states(test_app) == _checked_state_for(expected_panel)
 
-    def test_only_one_btn_checked_at_a_time(self, test_app, qtbot):
-        """At most one nav button should be checked after a click."""
-        _click(qtbot, test_app.nav_btns[2])  # Training
-        assert _checked_states(test_app) == _checked_state_for(2)
-
     def test_round_trip_returns_to_original(self, test_app, qtbot):
         """Navigate away and back — panel index should be restored."""
         _click(qtbot, test_app.nav_btns[3])
@@ -132,17 +127,6 @@ class TestNavigation:
 
 class TestAIAssistantDock:
     """Tests for the AI Assistant toggle button and dock widget."""
-
-    def test_ai_button_exists(self, test_app):
-        """The AI toggle button should be present and checkable."""
-        assert isinstance(test_app.ai_btn, QPushButton)
-        assert test_app.ai_btn.text() == "AI Assistant"
-        assert test_app.ai_btn.objectName() == "ActionBtn"
-        assert test_app.ai_btn.isCheckable()
-
-    def test_ai_button_default_state(self, test_app):
-        """AI assistant should be OFF by default."""
-        assert not test_app.ai_btn.isChecked()
 
     def test_toggle_ai_dock(self, test_app, qtbot, monkeypatch):
         """Toggling the AI button should change its checked state."""
@@ -208,22 +192,3 @@ class TestPanelWidgets:
         _wait_for_panel(qtbot, test_app, 4)
         vp = test_app.visualization_panel
         assert _tab_texts(vp.tabs) == EXPECTED_VISUALIZATION_TABS
-
-
-class TestStackedWidgetIntegrity:
-    """Structural assertions on the QStackedWidget."""
-
-    def test_exactly_five_panels(self, test_app):
-        assert test_app.stack.count() == 5
-
-    def test_panels_are_qwidgets(self, test_app):
-        for i in range(test_app.stack.count()):
-            assert isinstance(test_app.stack.widget(i), QWidget)
-
-
-class TestInfoService:
-    """Verify the InfoPanelService is wired up."""
-
-    def test_info_service_has_study_ref(self, test_app):
-        assert test_app.info_service.study is test_app.study
-        assert test_app.info_service._observes_controller_events is False

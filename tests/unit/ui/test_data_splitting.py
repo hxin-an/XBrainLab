@@ -84,14 +84,6 @@ class TestDataSplittingPreviewDialogDeep:
                 d.timer.stop()
             return d
 
-    def test_creates(self, dlg):
-        assert isinstance(dlg, QDialog)
-
-    def test_get_result(self, dlg):
-        result = dlg.get_result()
-        # Before preview runs, result should be the generator (or None)
-        assert result is None or hasattr(result, "__iter__")
-
     def test_full_data_result_after_successful_preview(self, dlg):
         dlg._set_preview_state(
             dlg._preview_generation_id,
@@ -206,14 +198,6 @@ class TestDataSplittingPreviewDialogSplitters:
         assert dlg.tree.topLevelItem(0).text(2) == "10"
         assert dlg.tree.topLevelItem(0).text(3) == "10"
         assert dlg.tree.columnCount() == 4
-
-    def test_on_split_type_change(self, dlg):
-        splitter = dlg.val_splitter_list[0]
-        dlg.on_split_type_change(splitter, "By Ratio")
-
-    def test_on_entry_change(self, dlg):
-        splitter = dlg.val_splitter_list[0]
-        dlg.on_entry_change(splitter, "0.3")
 
     def test_on_entry_change_debounces_preview_worker_restart(self, dlg):
         splitter = dlg.val_splitter_list[0]
@@ -370,33 +354,6 @@ class TestDataSplittingPreviewDialogSplitters:
             or "divider" in frame.objectName().lower()
         ]
         assert separators == []
-
-    def test_on_split_type_manual(self, dlg):
-        splitter = dlg.val_splitter_list[0]
-        with patch(
-            "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.ManualSplitDialog"
-        ) as MockDlg:
-            MockDlg.return_value.exec.return_value = True
-            MockDlg.return_value.get_result.return_value = [0, 1]
-            dlg.on_split_type_change(splitter, "Manual")
-
-    def test_handle_manual_split_session(self, dlg):
-        splitter = dlg.val_splitter_list[0]
-        with patch(
-            "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.ManualSplitDialog"
-        ) as MockDlg:
-            MockDlg.return_value.exec.return_value = True
-            MockDlg.return_value.get_result.return_value = ["sess1"]
-            dlg.handle_manual_split(splitter)
-
-    def test_handle_manual_split_subject(self, dlg):
-        splitter = dlg.test_splitter_list[0]
-        with patch(
-            "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.ManualSplitDialog"
-        ) as MockDlg:
-            MockDlg.return_value.exec.return_value = True
-            MockDlg.return_value.get_result.return_value = ["S01"]
-            dlg.handle_manual_split(splitter)
 
     def test_update_table_with_detached_rows(self, dlg):
         dlg._set_preview_state(

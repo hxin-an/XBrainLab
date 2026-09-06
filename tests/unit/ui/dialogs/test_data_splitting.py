@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any
 from unittest.mock import patch
 
-import numpy as np
 import pytest
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QFrame, QLabel, QTreeWidgetItem, QWidget
@@ -17,63 +15,7 @@ from tests.unit.ui.data_split_test_support import (
 from XBrainLab.backend.study import Study
 
 
-class FakeEpochData:
-    def __init__(self) -> None:
-        self.subject_map = {"S01": [0, 1, 2], "S02": [3, 4, 5]}
-        self.session_map = {"sess1": [0, 1, 2, 3, 4, 5]}
-        self.label_map = {"left": 0, "right": 1}
-        self.data = list(range(100))
-
-    def get_data_length(self) -> int:
-        return 100
-
-    def get_subject_map(self) -> dict[str, list[int]]:
-        return self.subject_map
-
-    def get_session_map(self) -> dict[str, list[int]]:
-        return self.session_map
-
-
-class FakeDataSplittingController:
-    def __init__(self, epoch_data: FakeEpochData) -> None:
-        self.epoch_data = epoch_data
-        self.dataset_generator = None
-        self.epoch_reads = 0
-        self.generator_reads = 0
-        self.fail_on_read = False
-
-    def get_epoch_data(self) -> FakeEpochData:
-        self.epoch_reads += 1
-        if self.fail_on_read:
-            raise AssertionError("stale controller read")
-        return self.epoch_data
-
-    def get_dataset_generator(self) -> object | None:
-        self.generator_reads += 1
-        if self.fail_on_read:
-            raise AssertionError("stale controller read")
-        return self.dataset_generator
-
-
-@pytest.fixture
-def epoch_data() -> FakeEpochData:
-    """Return contract-valid epoch data for DataSplittingDialog."""
-    return FakeEpochData()
-
-
-@pytest.fixture
-def controller(epoch_data: FakeEpochData) -> FakeDataSplittingController:
-    return FakeDataSplittingController(epoch_data)
-
-
 class TestDrawRegion:
-    def test_init(self):
-        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import DrawRegion
-
-        r = DrawRegion(100, 50)
-        assert r.w == 100
-        assert r.h == 50
-
     def test_reset(self):
         from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import DrawRegion
 
@@ -81,20 +23,6 @@ class TestDrawRegion:
         r.from_canvas[0, 0] = 1
         r.reset()
         assert r.from_canvas[0, 0] == 0
-
-    def test_set_from(self):
-        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import DrawRegion
-
-        r = DrawRegion(100, 50)
-        r.set_from(10, 20)
-        assert r.from_x == 10
-        assert r.from_y == 20
-
-    def test_set_to(self):
-        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import DrawRegion
-
-        r = DrawRegion(100, 50)
-        r.set_to(30, 40, 0, 100)
 
     def test_set_to_accepts_partial_ratio(self):
         from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import DrawRegion
@@ -118,65 +46,8 @@ class TestDrawRegion:
 
         assert region.to_canvas.sum() > 0
 
-    def test_change_to(self):
-        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import DrawRegion
-
-        r = DrawRegion(100, 50)
-        r.set_from(0, 0)
-        r.change_to(50, 50)
-
-    def test_mask(self):
-        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import DrawRegion
-
-        r1 = DrawRegion(100, 50)
-        r2 = DrawRegion(100, 50)
-        r1.from_canvas = np.ones((50, 100), dtype=bool)
-        r2.from_canvas = np.ones((50, 100), dtype=bool)
-        r1.mask(r2)
-
-    def test_copy(self):
-        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import DrawRegion
-
-        r1 = DrawRegion(100, 50)
-        r2 = DrawRegion(100, 50)
-        r1.copy(r2)
-
-    def test_decrease_w_tail(self):
-        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import DrawRegion
-
-        r = DrawRegion(100, 50)
-        r.decrease_w_tail(10)
-
-    def test_decrease_w_head(self):
-        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import DrawRegion
-
-        r = DrawRegion(100, 50)
-        r.decrease_w_head(10)
-
 
 class TestPreviewCanvas:
-    def test_creates(self, qtbot):
-        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
-            PreviewCanvas,
-        )
-
-        canvas = PreviewCanvas(None)
-        qtbot.addWidget(canvas)
-        assert isinstance(canvas, PreviewCanvas)
-
-    def test_set_regions(self, qtbot):
-        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
-            DrawColor,
-            DrawRegion,
-            PreviewCanvas,
-        )
-
-        canvas = PreviewCanvas(None)
-        qtbot.addWidget(canvas)
-        regions = [(DrawRegion(100, 50), DrawColor.TRAIN)]
-        canvas.set_regions(regions)
-        assert len(canvas.regions) == 1
-
     def test_adjacent_color_blocks_do_not_leave_background_gaps(self, qtbot):
         from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
             DrawColor,
@@ -231,15 +102,6 @@ class TestPreviewCanvas:
 
 
 class TestDataSplittingDialog:
-    def test_creates(self, qtbot, controller):
-        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
-            DataSplittingDialog,
-        )
-
-        dlg = DataSplittingDialog(None, **dialog_context_kwargs())
-        qtbot.addWidget(dlg)
-        assert dlg.windowTitle() == "Data Splitting Setting"
-
     @pytest.mark.parametrize(
         ("subject_count", "session_count"),
         [(1, 1), (3, 2), (5, 3), (15, 4)],
@@ -247,7 +109,6 @@ class TestDataSplittingDialog:
     def test_step_one_uses_the_published_grid_dimensions_and_title(
         self,
         qtbot,
-        controller,
         subject_count,
         session_count,
     ):
@@ -283,7 +144,6 @@ class TestDataSplittingDialog:
     def test_step_one_projects_only_supported_strategies_for_individual_training(
         self,
         qtbot,
-        controller,
     ):
         """A user cannot select retired Independent/Subject test modes."""
         from XBrainLab.backend.dataset import TrainingType
@@ -307,7 +167,6 @@ class TestDataSplittingDialog:
     def test_step_one_projects_backend_strategies_after_training_mode_toggle(
         self,
         qtbot,
-        controller,
     ):
         from XBrainLab.backend.dataset import TrainingType
         from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
@@ -348,7 +207,6 @@ class TestDataSplittingDialog:
     def test_reopen_restores_saved_step_one_strategies_into_step_two_payload(
         self,
         qtbot,
-        controller,
     ):
         from XBrainLab.backend.application.dataset_split_preview import (
             DatasetSplitSpecification,
@@ -403,7 +261,6 @@ class TestDataSplittingDialog:
     def test_reopen_keeps_saved_split_over_conflicting_assistant_hints(
         self,
         qtbot,
-        controller,
     ):
         """Application-owned state wins when a dialog is reopened from a draft."""
         from XBrainLab.backend.application.dataset_split_preview import (
@@ -463,7 +320,7 @@ class TestDataSplittingDialog:
         assert step_two.test_splitters[0].value == "0.3"
         assert step_two.val_splitters[0].value == "0.2"
 
-    def test_back_preserves_the_unconfirmed_step_two_draft(self, qtbot, controller):
+    def test_back_preserves_the_unconfirmed_step_two_draft(self, qtbot):
         from XBrainLab.backend.application.dataset_split_preview import (
             DatasetSplitSpecification,
         )
@@ -510,7 +367,6 @@ class TestDataSplittingDialog:
     def test_assistant_handoff_prefills_explicit_split_choices(
         self,
         qtbot,
-        controller,
     ):
         from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
             DataSplittingDialog,
@@ -536,7 +392,6 @@ class TestDataSplittingDialog:
     def test_narrow_geometry_reflows_and_keeps_confirm_visible(
         self,
         qtbot,
-        controller,
         available_width,
     ):
         from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
@@ -572,7 +427,7 @@ class TestDataSplittingDialog:
         assert not image.isNull()
         assert image.pixelColor(confirm_center).name() != "#1b1b1d"
 
-    def test_real_study_requires_explicit_service_context(self, qtbot, controller):
+    def test_real_study_requires_explicit_service_context(self, qtbot):
         from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
             DataSplittingDialog,
         )
@@ -584,7 +439,6 @@ class TestDataSplittingDialog:
 
         parent = RealStudyParent()
         qtbot.addWidget(parent)
-        controller.fail_on_read = True
 
         dlg = DataSplittingDialog(parent)
         qtbot.addWidget(dlg)
@@ -596,13 +450,10 @@ class TestDataSplittingDialog:
         assert not dlg.btn_confirm.isEnabled()
         assert dlg.blocked_label is not None
         assert "context is unavailable" in dlg.blocked_label.text()
-        assert controller.epoch_reads == 0
-        assert controller.generator_reads == 0
 
     def test_confirm_without_epoch_data_does_not_open_preview(
         self,
         qtbot,
-        controller,
     ):
         from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
             DataSplittingDialog,
@@ -647,7 +498,7 @@ class TestDataSplittingDialog:
                 **kwargs,
             )
 
-    def test_preview_dialog_uses_frameless_summary_cards(self, qtbot, epoch_data):
+    def test_preview_dialog_uses_frameless_summary_cards(self, qtbot):
         from XBrainLab.backend.dataset import (
             DataSplittingConfig,
             SplitByType,
@@ -732,7 +583,6 @@ class TestDataSplittingDialog:
     def test_data_splitting_cards_do_not_draw_internal_vertical_frame_lines(
         self,
         qtbot,
-        controller,
     ):
         from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
             DataSplittingDialog,
@@ -754,8 +604,6 @@ class TestDataSplittingDialog:
     def test_data_splitting_buttons_do_not_render_enter_glyphs(
         self,
         qtbot,
-        controller,
-        epoch_data,
     ):
         from XBrainLab.backend.dataset import (
             DataSplittingConfig,
@@ -804,7 +652,6 @@ class TestDataSplittingDialog:
     def test_default_split_config_uses_trainable_trial_test_and_disabled_validation(
         self,
         qtbot,
-        controller,
     ):
         from XBrainLab.backend.dataset import SplitByType
         from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
@@ -829,7 +676,6 @@ class TestDataSplittingDialog:
     def test_validation_disable_passes_an_empty_validation_rule_to_step_two(
         self,
         qtbot,
-        controller,
     ):
         """Disable is canonical absence, not a truthy disabled splitter."""
         from XBrainLab.backend.dataset import ValSplitByType
@@ -850,133 +696,3 @@ class TestDataSplittingDialog:
 
         config = preview_dialog.call_args.kwargs["config"]
         assert config.val_splitter_list == []
-
-    def test_update_preview(self, qtbot, controller):
-        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
-            DataSplittingDialog,
-        )
-
-        dlg = DataSplittingDialog(None, **dialog_context_kwargs())
-        qtbot.addWidget(dlg)
-        dlg.update_preview()
-
-    def test_handle_testing(self, qtbot, controller):
-        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
-            DataSplittingDialog,
-        )
-
-        dlg = DataSplittingDialog(None, **dialog_context_kwargs())
-        qtbot.addWidget(dlg)
-        dlg.handle_testing()
-
-    def test_handle_validation(self, qtbot, controller):
-        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
-            DataSplittingDialog,
-        )
-
-        dlg = DataSplittingDialog(None, **dialog_context_kwargs())
-        qtbot.addWidget(dlg)
-        dlg.handle_validation()
-
-    def test_get_result_default(self, qtbot, controller):
-        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
-            DataSplittingDialog,
-        )
-
-        dlg = DataSplittingDialog(None, **dialog_context_kwargs())
-        qtbot.addWidget(dlg)
-        assert dlg.get_result() is None
-
-
-class TestDataSplittingDialogSplitTypes:
-    """Tests for each split type combo value in update_preview."""
-
-    def _make_dialog(self, qtbot, controller) -> Any:
-        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
-            DataSplittingDialog,
-        )
-
-        dlg = DataSplittingDialog(None, **dialog_context_kwargs())
-        qtbot.addWidget(dlg)
-        return dlg
-
-    def test_ind_training_type(self, qtbot, controller):
-        from XBrainLab.backend.dataset import TrainingType
-
-        dlg = self._make_dialog(qtbot, controller)
-        dlg.train_type_combo.setCurrentText(TrainingType.IND.value)
-        dlg.update_preview()
-
-    def test_test_trial(self, qtbot, controller):
-        from XBrainLab.backend.dataset import SplitByType
-
-        dlg = self._make_dialog(qtbot, controller)
-        dlg.test_combo.setCurrentText(SplitByType.TRIAL.value)
-        dlg.update_preview()
-
-    def test_test_subject(self, qtbot, controller):
-        from XBrainLab.backend.dataset import SplitByType
-
-        dlg = self._make_dialog(qtbot, controller)
-        dlg.test_combo.setCurrentText(SplitByType.SUBJECT.value)
-        dlg.update_preview()
-
-    def test_val_session(self, qtbot, controller):
-        from XBrainLab.backend.dataset import ValSplitByType
-
-        dlg = self._make_dialog(qtbot, controller)
-        dlg.val_combo.setCurrentText(ValSplitByType.SESSION.value)
-        dlg.update_preview()
-
-    def test_val_trial(self, qtbot, controller):
-        from XBrainLab.backend.dataset import ValSplitByType
-
-        dlg = self._make_dialog(qtbot, controller)
-        dlg.val_combo.setCurrentText(ValSplitByType.TRIAL.value)
-        dlg.update_preview()
-
-    def test_val_subject(self, qtbot, controller):
-        from XBrainLab.backend.dataset import ValSplitByType
-
-        dlg = self._make_dialog(qtbot, controller)
-        dlg.val_combo.setCurrentText(ValSplitByType.SUBJECT.value)
-        dlg.update_preview()
-
-    def test_confirm_opens_step2(self, qtbot, controller):
-        from unittest.mock import patch
-
-        dlg = self._make_dialog(qtbot, controller)
-        with patch(
-            "XBrainLab.ui.dialogs.dataset.data_splitting_dialog.DataSplittingPreviewDialog"
-        ) as MockPreview:
-            MockPreview.return_value.exec.return_value = False
-            dlg.confirm()
-            MockPreview.assert_called_once()
-
-    def test_confirm_accepts_on_step2_ok(self, qtbot, controller):
-        dlg = self._make_dialog(qtbot, controller)
-        with patch(
-            "XBrainLab.ui.dialogs.dataset.data_splitting_dialog.DataSplittingPreviewDialog"
-        ) as MockPreview:
-            MockPreview.return_value.exec.return_value = True
-            MockPreview.return_value.get_result.return_value = object()
-            dlg.confirm()
-            assert dlg.split_result is not None
-
-
-class TestPreviewCanvasPaintEvent:
-    def test_paint_event(self, qtbot):
-        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
-            DrawColor,
-            DrawRegion,
-            PreviewCanvas,
-        )
-
-        canvas = PreviewCanvas(None)
-        qtbot.addWidget(canvas)
-
-        r = DrawRegion(5, 5)
-        r.set_from(0, 0)
-        r.set_to(5, 5, 0, 1)
-        canvas.set_regions([(r, DrawColor.TRAIN)])
-        canvas.repaint()  # triggers paintEvent

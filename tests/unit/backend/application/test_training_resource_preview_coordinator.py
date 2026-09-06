@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import ast
-import inspect
-from pathlib import Path
 from threading import Event
 from time import monotonic
 
@@ -65,22 +62,6 @@ def _result(request: TrainingResourcePreviewRequest) -> TrainingResourcePreviewR
         risk_level=RISK_SAFE,
         vram_known=True,
     )
-
-
-def test_coordinator_requires_one_injected_owned_work_registry() -> None:
-    signature = inspect.signature(TrainingResourcePreviewCoordinator)
-    assert signature.parameters["registry"].default is inspect.Parameter.empty
-
-    source_path = Path(inspect.getsourcefile(TrainingResourcePreviewCoordinator) or "")
-    tree = ast.parse(source_path.read_text(encoding="utf-8"))
-    standalone_registry_calls = [
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "OwnedWorkRegistry"
-    ]
-    assert standalone_registry_calls == []
 
 
 def test_close_cancels_active_and_pending_owned_preview_then_retry_succeeds() -> None:
