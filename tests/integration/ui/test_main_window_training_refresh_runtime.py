@@ -201,8 +201,13 @@ def _open_runtime_panels(
 
     assert window.training_panel.sidebar.btn_start.isEnabled()
     assert window.evaluation_panel._application_generation is not None
-    assert window.visualization_panel.last_application_query is not None
-    assert window.visualization_panel.last_saliency_query is not None
+    qtbot.waitUntil(
+        lambda: (
+            window.visualization_panel.last_application_query is not None
+            and window.visualization_panel.last_saliency_query is not None
+        ),
+        timeout=5_000,
+    )
     return window
 
 
@@ -556,10 +561,13 @@ def test_training_refreshes_metrics_before_explicit_saliency_click(
         PostTrainingSaliencyPhase.SUCCEEDED,
     ]
     assert analysis_update_counts["evaluation"] == 2
+    # Visualization first dispatches its background summary then renders the
+    # accepted coherent result. This remains one saliency publication.
     assert visualization_rendered_saliency_phases == [
-        PostTrainingSaliencyPhase.SUCCEEDED
+        PostTrainingSaliencyPhase.SUCCEEDED,
+        PostTrainingSaliencyPhase.SUCCEEDED,
     ]
-    assert analysis_update_counts["visualization"] == 1
+    assert analysis_update_counts["visualization"] == 2
     assert evaluation._application_generation != terminal_evaluation_query
     assert visualization.last_application_query is not terminal_visualization_query
     assert len(terminal_publications) == 1
@@ -700,14 +708,14 @@ def test_explicit_saliency_publishes_once_during_unrelated_nested_commands(
         qtbot.waitUntil(saliency_published.is_set, timeout=5_000)
         qtbot.waitUntil(
             lambda: (
-                update_counts["evaluation"] == 1 and update_counts["visualization"] == 1
+                update_counts["evaluation"] == 1 and update_counts["visualization"] == 2
             ),
             timeout=5_000,
         )
         assert update_counts == {
             "training": 0,
             "evaluation": 1,
-            "visualization": 1,
+            "visualization": 2,
         }
         assert visualization.last_application_query is not pending_visualization_query
 
@@ -721,7 +729,7 @@ def test_explicit_saliency_publishes_once_during_unrelated_nested_commands(
         assert update_counts == {
             "training": 0,
             "evaluation": 1,
-            "visualization": 1,
+            "visualization": 2,
         }
 
         release_outer.set()
@@ -735,7 +743,7 @@ def test_explicit_saliency_publishes_once_during_unrelated_nested_commands(
     assert update_counts == {
         "training": 0,
         "evaluation": 1,
-        "visualization": 1,
+        "visualization": 2,
     }
     assert evaluation._application_generation != pending_evaluation_query
     assert visualization.last_application_query is not pending_visualization_query
@@ -917,10 +925,12 @@ def test_delayed_oom_refreshes_every_running_panel_once_at_terminal(
     assert window.visualization_panel.last_application_query is not (
         running_visualization_query
     )
+    # One terminal publication causes an async summary dispatch and its accepted
+    # render; the terminal publication itself remains exactly once below.
     assert update_counts == {
         "training": 1,
         "evaluation": 1,
-        "visualization": 1,
+        "visualization": 2,
     }
     qtbot.waitUntil(lambda: len(terminal_publications) == 1, timeout=5_000)
     assert len(terminal_publications) == 1
@@ -1011,10 +1021,11 @@ def test_delayed_cancellation_refreshes_every_preterminal_panel_once(
     assert window.visualization_panel.last_application_query is not (
         stop_requested_visualization_query
     )
+    # As above, one terminal publication has two VisualizationPanel phases.
     assert update_counts == {
         "training": 1,
         "evaluation": 1,
-        "visualization": 1,
+        "visualization": 2,
     }
     qtbot.waitUntil(lambda: len(terminal_publications) == 1, timeout=5_000)
     assert len(terminal_publications) == 1

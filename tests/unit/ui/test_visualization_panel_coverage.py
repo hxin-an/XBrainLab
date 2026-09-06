@@ -790,6 +790,7 @@ def test_saliency_worker_ownership_lasts_until_finished_callback(
             method="Gradient",
         ),
         needs_normalized_variant=False,
+        operation_id="owned-render",
     )
     stale_pending = replace(
         active,
@@ -805,7 +806,7 @@ def test_saliency_worker_ownership_lasts_until_finished_callback(
 
     # Returning A while A's Qt callbacks are queued must clear stale B rather
     # than replace the still-owned worker or launch B after A finishes.
-    panel._request_saliency_render(active)
+    panel._request_saliency_render(replace(active, operation_id=""))
 
     assert panel._saliency_render_worker is worker
     assert panel._saliency_render_pending_task is None
@@ -815,6 +816,43 @@ def test_saliency_worker_ownership_lasts_until_finished_callback(
 
     assert panel._saliency_render_worker is None
     assert panel.native_render_work_idle() is True
+
+
+def test_saliency_worker_error_for_fresh_task_finishes_owned_operation(
+    panel_and_controller,
+):
+    """A current task without its owner ID is still the failed active render."""
+    from XBrainLab.ui.panels.visualization.panel import _SaliencyRenderTask
+
+    panel, _controller = panel_and_controller
+    active = _SaliencyRenderTask(
+        request=SaliencyRenderRequest(
+            publication_generation=1,
+            run=SaliencyRunIdentity(
+                plan=SaliencyPlanIdentity(plan_index=0),
+                run_index=0,
+            ),
+            method="Gradient",
+        ),
+        needs_normalized_variant=False,
+        operation_id="owned-render",
+    )
+    worker = MagicMock()
+    panel._saliency_render_worker = worker
+    panel._saliency_render_active_task = active
+
+    with (
+        patch.object(
+            panel,
+            "_current_saliency_render_task",
+            return_value=replace(active, operation_id=""),
+        ),
+        patch.object(panel, "_finish_render_operation") as finish_operation,
+    ):
+        panel._on_saliency_render_error(worker, ("RuntimeError", "boom"))
+
+    finish_operation.assert_called_once_with("owned-render", "failed", "boom")
+    _current_widget(panel).show_error.assert_called_once()
 
 
 def test_saliency_worker_requeues_active_task_after_its_result_was_discarded(

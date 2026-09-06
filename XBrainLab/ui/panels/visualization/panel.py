@@ -1,6 +1,6 @@
 """Visualization panel: saliency maps, topomaps, spectrograms, and 3-D views."""
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
@@ -244,7 +244,7 @@ class _SaliencyRenderTask:
 
     request: SaliencyRenderRequest
     needs_normalized_variant: bool
-    operation_id: str = ""
+    operation_id: str = field(default="", compare=False)
 
 
 class VisualizationPanel(BasePanel):

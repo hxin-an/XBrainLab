@@ -149,6 +149,13 @@ def test_visualization_page_empty_state_uses_command_blocked_reason(qtbot, study
         "opening visualization views."
     ]
     blocked_reason = capability.reasons[0]
+    qtbot.waitUntil(
+        lambda: (
+            viz_panel.last_application_query is not None
+            and not cast(Any, viz_panel.tabs.currentWidget()).error_label.isHidden()
+        ),
+        timeout=5_000,
+    )
     query_result = viz_panel.last_application_query
     assert query_result is not None
     assert query_result.failed

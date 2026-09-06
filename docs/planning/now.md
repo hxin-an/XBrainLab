@@ -127,6 +127,16 @@
   `test_training_result_presentation`: `update_panel()` now dispatches a background summary read,
   so the test must wait for the accepted Qt callback before asserting the same blocked Command API
   result. Migrate that direct test only; do not add a synchronous fallback or alter product/UI copy.
+- Follow-up validation on the exact PR head must similarly distinguish one published saliency
+  revision from the two internal UI phases (summary dispatch, then accepted render). Preserve the
+  exact one-publication/event assertions while waiting for the accepted result in stale synchronous
+  integration tests. The native-render stress runtime must return the same generation diagnostic
+  required of the real `VisualizeCommand`; this is fixture-contract parity, not a render timeout
+  increase or production behavior change.
+- Direct slow-open defect: `_SaliencyRenderTask` currently compares its owner-only `operation_id`,
+  so a fresh UI task for the active request is falsely different after the owner assigns its ID.
+  Coalesce that exact request, retain different normalized variants and discarded-result requeue,
+  and verify both duplicate-request and current-error behavior with a nonempty operation ID.
 
 ## Active manual-test repair extension — import capacity and split/epoch feedback
 
