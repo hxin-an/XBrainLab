@@ -554,57 +554,89 @@ class DatasetGenerator:
                 )
             desired = len(candidates)
         labels = self.epoch_data.get_label_list()
-        all_labels = set(labels[scope].tolist())
+        all_labels = sorted(set(labels[scope].tolist()))
+        label_positions = {label: index for index, label in enumerate(all_labels)}
+        candidate_positions = {key: index for index, key in enumerate(candidates)}
+        group_label_counts = np.zeros((len(candidates), len(all_labels)), dtype=int)
+        effective_group_label_counts = np.zeros_like(group_label_counts)
+        group_sizes = np.zeros(len(candidates), dtype=int)
+        remaining_label_counts = np.zeros(len(all_labels), dtype=int)
+        excluded_scope = np.zeros_like(scope) if excluded is None else excluded
+        # The former implementation re-materialized a full row mask for every
+        # proposed group at every greedy step.  Summarize the fixed scope once
+        # instead: target values are disjoint, so subtracting one group's
+        # non-excluded label counts is exactly the same class-coverage check.
+        for value, label, is_excluded in zip(
+            values[scope], labels[scope], excluded_scope[scope], strict=True
+        ):
+            label_position = label_positions[label]
+            if not is_excluded:
+                remaining_label_counts[label_position] += 1
+            candidate_position = candidate_positions.get(int(value))
+            if candidate_position is None:
+                continue
+            group_sizes[candidate_position] += 1
+            group_label_counts[candidate_position, label_position] += 1
+            if not is_excluded:
+                effective_group_label_counts[candidate_position, label_position] += 1
         selected: list[int] = []
+        selected_positions: set[int] = set()
+        selected_label_counts = np.zeros(len(all_labels), dtype=int)
+        candidate_ranks = np.asarray(
+            [candidate_rank[key] for key in candidates], dtype=int
+        )
+
+        def select_if_class_complete(candidate_position: int) -> bool:
+            nonlocal remaining_label_counts
+            proposed_remaining = (
+                remaining_label_counts
+                - effective_group_label_counts[candidate_position]
+            )
+            if np.any(proposed_remaining <= 0):
+                return False
+            remaining_label_counts = proposed_remaining
+            selected_label_counts[:] += group_label_counts[candidate_position]
+            selected_positions.add(candidate_position)
+            selected.append(candidates[candidate_position])
+            return True
+
         # A paired retry must explore a different first admissible atomic
         # group, rather than merely use the rotated order as a final tie-break.
         # Normal materialization keeps the existing class-balanced selection.
-        if candidate_offset:
-            forced = candidates[0]
-            blocked = self._mask_for_keys(splitter, scope, [forced])
-            if excluded is not None:
-                blocked |= excluded
-            if set(labels[scope & ~blocked].tolist()) != all_labels:
-                raise ValueError(
-                    f"{partition.title()} split is infeasible while preserving "
-                    "all training classes",
-                )
-            selected.append(forced)
+        if candidate_offset and not select_if_class_complete(0):
+            raise ValueError(
+                f"{partition.title()} split is infeasible while preserving "
+                "all training classes",
+            )
         while len(selected) < desired:
             self._raise_if_interrupted()
-            choices: list[tuple[tuple[int, int, int], int]] = []
-            for key in candidates:
-                if key in selected:
-                    continue
-                proposed = [*selected, key]
-                blocked = self._mask_for_keys(splitter, scope, proposed)
-                if excluded is not None:
-                    blocked |= excluded
-                remaining = scope & ~blocked
-                # Train class coverage is a hard admission constraint.
-                if set(labels[remaining].tolist()) != all_labels:
-                    continue
-                selected_counts = [
-                    int(
-                        np.sum(
-                            labels[self._mask_for_keys(splitter, scope, proposed)]
-                            == label
-                        )
-                    )
-                    for label in sorted(all_labels)
-                ]
-                score = (
-                    max(selected_counts, default=0) - min(selected_counts, default=0),
-                    int(np.sum(scope & (values == key))),
-                    candidate_rank[key],
-                )
-                choices.append((score, key))
-            if not choices:
+            # Train class coverage is a hard admission constraint.  Vectorized
+            # scoring keeps the exact greedy score tuple while making one
+            # allocation boundary inexpensive enough for prompt cancellation.
+            class_complete = np.all(
+                remaining_label_counts - effective_group_label_counts > 0,
+                axis=1,
+            )
+            if selected_positions:
+                class_complete[list(selected_positions)] = False
+            if not np.any(class_complete):
                 raise ValueError(
                     f"{partition.title()} split is infeasible while preserving "
                     "all training classes",
                 )
-            selected.append(min(choices)[1])
+            proposed_label_counts = selected_label_counts + group_label_counts
+            class_imbalance = np.ptp(proposed_label_counts, axis=1)
+            admissible_positions = np.flatnonzero(class_complete)
+            position = admissible_positions[
+                np.lexsort(
+                    (
+                        candidate_ranks[admissible_positions],
+                        group_sizes[admissible_positions],
+                        class_imbalance[admissible_positions],
+                    )
+                )[0]
+            ]
+            select_if_class_complete(int(position))
         return selected
 
     def _paired_masks(self, scope: np.ndarray) -> tuple[np.ndarray, np.ndarray]:

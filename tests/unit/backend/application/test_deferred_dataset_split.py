@@ -25,7 +25,6 @@ from XBrainLab.backend.application.dataset_generation_service import (
     DatasetGenerationCommandService,
 )
 from XBrainLab.backend.application.dataset_split_preview import (
-    DATASET_SPLIT_PREVIEW_ROW_LIMIT,
     DatasetSplitPreviewPublication,
     DatasetSplitPreviewRequest,
     DatasetSplitPreviewRow,
@@ -496,15 +495,15 @@ def test_training_blocks_tampered_preview_coverage_evidence_even_when_digest_mat
     assert service.study.datasets == []
 
 
-def test_preview_receipt_aggregate_evidence_rejects_tampering_after_50_rows() -> None:
-    """The receipt binds totals beyond the bounded row table as well as row details."""
+def test_preview_receipt_aggregate_evidence_rejects_tampering_after_many_rows() -> None:
+    """The receipt binds totals as well as every published row detail."""
     service, epoch = _service_with_epoch()
     specification = _specification()
     config = DatasetGenerationCommandService.config_from_payload(
         specification.to_payload()
     )
     datasets = []
-    for index in range(DATASET_SPLIT_PREVIEW_ROW_LIMIT + 1):
+    for index in range(51):
         dataset = _materialized_dataset(epoch)
         dataset.name = f"row-{index:02d}"
         datasets.append(dataset)
@@ -518,11 +517,11 @@ def test_preview_receipt_aggregate_evidence_rejects_tampering_after_50_rows() ->
     )
     summary = {
         "total_count": len(rows),
-        "truncated_count": len(rows) - DATASET_SPLIT_PREVIEW_ROW_LIMIT,
+        "truncated_count": 0,
         "train_count": sum(row["train_count"] for row in rows),
         "validation_count": sum(row["validation_count"] for row in rows),
         "test_count": sum(row["test_count"] for row in rows),
-        "rows": rows[:DATASET_SPLIT_PREVIEW_ROW_LIMIT],
+        "rows": rows,
     }
 
     for key in (
@@ -1525,7 +1524,7 @@ def test_confirmed_resource_retry_reuses_candidate_and_commits_once(
     assert confirmed.state.dataset.last_split_attempt == {}
 
 
-def test_preview_receipt_serialization_has_fixed_row_and_truncation_bounds() -> None:
+def test_preview_receipt_serialization_keeps_every_row() -> None:
     specification = _specification()
     rows = tuple(
         DatasetSplitPreviewRow(
@@ -1534,7 +1533,7 @@ def test_preview_receipt_serialization_has_fixed_row_and_truncation_bounds() -> 
             validation_count=2,
             test_count=2,
         )
-        for index in range(DATASET_SPLIT_PREVIEW_ROW_LIMIT)
+        for index in range(1_000)
     )
     publication = DatasetSplitPreviewPublication(
         request=DatasetSplitPreviewRequest(
@@ -1546,7 +1545,7 @@ def test_preview_receipt_serialization_has_fixed_row_and_truncation_bounds() -> 
         epoch_token=1,
         rows=rows,
         total_count=1_000,
-        truncated_count=1_000 - DATASET_SPLIT_PREVIEW_ROW_LIMIT,
+        truncated_count=0,
         train_count=8_000,
         validation_count=2_000,
         test_count=2_000,
@@ -1555,29 +1554,29 @@ def test_preview_receipt_serialization_has_fixed_row_and_truncation_bounds() -> 
     payload = publication.receipt.summary_payload()
     serialized = json.loads(json.dumps(payload))
 
-    assert len(serialized["rows"]) == DATASET_SPLIT_PREVIEW_ROW_LIMIT
+    assert len(serialized["rows"]) == 1_000
     assert serialized["dataset_count"] == 1_000
     assert serialized["total_count"] == 1_000
-    assert serialized["truncated_count"] == 950
+    assert serialized["truncated_count"] == 0
     assert serialized["train_count"] == 8_000
 
-    with pytest.raises(ValueError, match="row limit"):
-        DatasetSplitPreviewPublication(
-            request=publication.request,
-            generation=1,
-            epoch_token=1,
-            rows=(
-                *rows,
-                DatasetSplitPreviewRow(
-                    name="overflow",
-                    train_count=1,
-                    validation_count=0,
-                    test_count=0,
-                ),
+    expanded = DatasetSplitPreviewPublication(
+        request=publication.request,
+        generation=1,
+        epoch_token=1,
+        rows=(
+            *rows,
+            DatasetSplitPreviewRow(
+                name="overflow",
+                train_count=1,
+                validation_count=0,
+                test_count=0,
             ),
-            total_count=1_001,
-            truncated_count=950,
-            train_count=8_001,
-            validation_count=2_000,
-            test_count=2_000,
-        )
+        ),
+        total_count=1_001,
+        truncated_count=0,
+        train_count=8_001,
+        validation_count=2_000,
+        test_count=2_000,
+    )
+    assert len(expanded.rows) == 1_001

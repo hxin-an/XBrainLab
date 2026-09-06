@@ -22,7 +22,6 @@ from XBrainLab.backend.dataset.split_audit import (
 from .errors import PreconditionError
 from .view_publication import ApplicationViewPublication
 
-DATASET_SPLIT_PREVIEW_ROW_LIMIT = 50
 _MISSING = object()
 
 
@@ -334,8 +333,6 @@ class DatasetSplitPreviewPublication:
             raise ValueError("A dataset split preview must contain at least one row")
         if any(not isinstance(row, DatasetSplitPreviewRow) for row in self.rows):
             raise TypeError("rows must contain DatasetSplitPreviewRow values")
-        if len(self.rows) > DATASET_SPLIT_PREVIEW_ROW_LIMIT:
-            raise ValueError("Dataset split preview rows exceed the fixed row limit")
         _normalize_preview_totals(self)
         _validate_materialization_digest(self.materialization_digest)
 
@@ -392,8 +389,6 @@ class DatasetSplitPreviewReceipt:
             not isinstance(row, DatasetSplitPreviewRow) for row in self.rows
         ):
             raise TypeError("rows must contain DatasetSplitPreviewRow values")
-        if len(self.rows) > DATASET_SPLIT_PREVIEW_ROW_LIMIT:
-            raise ValueError("Dataset split preview rows exceed the fixed row limit")
         _normalize_preview_totals(self)
         _validate_materialization_digest(self.materialization_digest)
         object.__setattr__(self, "request_id", request_id)
@@ -538,7 +533,12 @@ class DatasetSplitPreviewPublisher:
                 "Create EEG epochs before previewing training-data splits."
             )
 
-        config = self._config_factory(request.specification.to_payload())
+        try:
+            config = self._config_factory(request.specification.to_payload())
+        except ValueError as exc:
+            raise PreconditionError(
+                f"Dataset split preview is infeasible: {exc}"
+            ) from exc
         generator = self._generator_factory(config)
         active = _ActivePreview(generator=generator)
         self._register(request.request_id, active)
@@ -552,7 +552,17 @@ class DatasetSplitPreviewPublisher:
                 snapshot = _capture_preview_state(epoch_data)
                 try:
                     _detach_generator_epoch_evidence(generator, epoch_data)
-                    generated = generator.generate()
+                    try:
+                        generated = generator.generate()
+                    except ValueError as exc:
+                        if active.cancelled:
+                            raise PreconditionError(
+                                "Dataset split preview was cancelled.",
+                                diagnostics={"request_id": request.request_id},
+                            ) from exc
+                        raise PreconditionError(
+                            f"Dataset split preview is infeasible: {exc}"
+                        ) from exc
                     datasets = (
                         list(generated)
                         if isinstance(generated, Sequence)
@@ -612,7 +622,7 @@ class DatasetSplitPreviewPublisher:
                         )
                         for row in row_payloads
                     ]
-                    rows = tuple(detached_rows[:DATASET_SPLIT_PREVIEW_ROW_LIMIT])
+                    rows = tuple(detached_rows)
                     total_count = len(detached_rows)
                     train_count = sum(row.train_count for row in detached_rows)
                     validation_count = sum(

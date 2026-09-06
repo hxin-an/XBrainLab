@@ -1,6 +1,123 @@
 # XBrainLab Now
 
-最後更新：`2026-09-04`
+最後更新：`2026-09-06`
+
+## Active manual-test repair extension — import capacity and split/epoch feedback
+
+- Evidence: Zhou2020 subjects 1+2 select 85 event files and hit the application-only 64-file
+  mapping limit. Windows manual preview with 1,719 atomic trials, Full Data, Trial validation/test
+  0.2/0.2 stays Calculating; repeated edits are slow. User also reports suspicious 0.2/0.3 counts.
+- Outcome: all selected labels reviewed/importable subject to existing resource admission; responsive,
+  deterministic split preview with original-scope ratios; continuously available gray Back matching
+  Confirm; expected invalid settings recover without ERROR tracebacks; concise epoch and result UI.
+- Explicit UI approval: user requests removing Suggested by, shortening duration-variability warning/
+  checkbox, removing Hover/Showing/totals duplication, and always-available Back (2026-09-06).
+  Preserve five-stage import and existing split table/colors; keep safety acknowledgement semantics.
+  Follow-up approval: remove the 50-row split-result cap entirely; show all rows with the existing
+  scrollbar, no pagination, external summaries, or truncation notice (2026-09-06).
+- Scope: existing label admission/preview, allocator hot path, split preview lifecycle/error projection,
+  epoch presentation, directly related regression tests and UI artifacts. No new owners, solver,
+  dataset adapters, silent partial imports, settings edits, or unrelated cleanup.
+- Assumptions: ratio targets count original atomic groups; unequal group row sizes need not yield exact
+  row percentages. Integer rounding and preview/Train parity must be verified, not inferred from UI.
+- Steps: (1) red tests and timing for 1,719 groups at 0.2/0.2 and 0.2/0.3; (2) preserve selection
+  objective while eliminating repeated row-mask scoring; (3) lift label file-count cap with existing
+  resource checks; (4) simplify UI and route expected validation outcomes without generic failures;
+  (5) focused regression, cancel/repeat checks, screenshot inspection and canonical handoff gates.
+- Validation: real selected label scopes >64, ratio/atomicity/classes/determinism, preview vs materialized
+  counts, repeated edits/cancel/Back, retained true-error diagnostics, epoch acknowledgement, complete
+  table access, source-diverse data and exact-source UI/static/CI evidence for handoff claim.
+- Stop: no new owner/public state machine or broad solver; review complexity before >8 production
+  files or >300 net production LOC. Missing native/exact-source gates remain checkpoint, never handoff.
+- Dispatch: bounded workers own allocator, UI and label capacity; coordinator reviews integration/
+  evidence only. Preserve user's modified settings.json. No merge authorization for new source.
+- Progress: file64 and row50 caps removed; UI uses gray Back, preserves Step2 draft and cancels obsolete
+  work immediately on edits; expected preview preconditions are distinct from unexpected exceptions.
+  Allocator scores fixed group-label counts instead of repeatedly materializing row masks, with no new
+  owner or changed greedy objective. Ten production files after the bounded import dependencies below,
+  currently net deletion overall.
+- Measured checkpoint: baseline 1,719-group .2/.2 timed out after 30 seconds; new sequential .2/.2,
+  .2/.3, .2/.2 core allocations measured 0.085/0.112/0.098 seconds. Uneven/mixed/rotated small cases
+  matched baseline full masks and infeasibility outcomes. This is not yet Windows repeat-UI evidence.
+- Real label checkpoint: Zhou2020 actual 85 TSVs reviewed through resource admission, 3,398 timestamp
+  labels, four classes, safe resource preflight; EEG materialization still being verified separately.
+- Real-service offscreen checkpoint: actual ApplicationService + preview dialog with 1,719 verified
+  nonoverlap atomic trials, one subject/seven sessions/four classes: initial .2/.2 0.097s; QLineEdit
+  validation edit to .3 0.378s; back to .2 0.352s (edits include 250ms debounce). Counts match the
+  original-scope contract; reject leaves no live worker and service closes, no ERROR observed.
+- Focused final-tree checkpoint: Dataset/split application 623 passed; UI/epoch 165 passed; labels
+  61 passed; real-source workflow/duration/training 14 passed. Basedpyright reports zero diagnostics,
+  architecture compliance and production Ruff pass. One initial output-directory sandbox failure
+  passed on the complete 623-test rerun with appropriate test-output permission. These are dirty-tree
+  engineering runs, not an exact-source handoff dossier.
+- Coordinator inspected actual-dialog offscreen captures in `/tmp/xbrainlab-split-epoch-repair/`:
+  Calculating+Back, expected failure+Back, scrolled Fold51 and concise epoch acknowledgement.
+  Captures use synthetic data; Windows native acceptance remains outstanding.
+- Pending full-scope evidence: actual 85 EDFs (1.37 GB) have normal Safe preflight (8.7 GiB estimated
+  RAM, 29.5 GiB available, no confirmation/refusal). The initial composite probe included an extra full
+  Scan before Review and did not complete within 600s; its exact owned session was interrupted. This
+  does not demonstrate the BIDS UI path timing (UI uses catalog-only Scan). Corrected stage-timed
+  probe completes catalog Scan in 9.106s; Review stack samples advance through resource preflight and
+  admitted BIDS resources in Path.resolve on the WSL-mounted dataset. No deadlock/resource refusal
+  established. Keep identity guards; no speculative path caching/extra production scope. Complete the
+  bounded UI-equivalent probe before any full85 EEG materialization claim.
+- User continuation (2026-09-06): proceed through a manual-test candidate, including commit, push and
+  PR #112 update/CI verification; do not merge. Commit only task-owned paths; preserve settings.json.
+- Remaining: read-only/measurement classification of post-import montage-close warning, freeze source,
+  commit/push the scoped repairs, run canonical exact-source handoff and inspect required UI/CI evidence.
+  Coordinator supervises; existing label worker investigates montage, UI worker checks Windows artifact
+  capability, allocator worker reviews split repeat/lifecycle protection. Do not broaden production scope
+  without a reproduced directly coupled defect and plan/complexity update.
+  Canonical full handoff runner correctly rejects dirty source; no exact-source handoff claim yet.
+- Direct dependency repair / complexity review: corrected user-like Apply also exceeded 600s after
+  applying all85 labels, in recipe transaction path identity recording. `_label_import_carrier_plan`
+  previously resolved each mapping's carrier and current carrier inside the 85x85 loop (14,450
+  resolutions before further recipe work). Replace that comparison with one invocation-local carrier
+  index. Keep the same resolver, identity/freshness guards, recipe data and existing session owner;
+  no persistent cache/new owner/public class/module. This adds a ninth production file, triggering
+  explicit review: prior eight-file production diff +142/-179/net-37; allow a <=30-line net local
+  indexing repair, otherwise stop/split before expanding. Deletion candidate is the nested rescan;
+  no resource/preflight optimization elsewhere. Red cost+recipe equivalence test precedes the fix,
+  then existing recipe/symlink/label regressions and one bounded full85 UI-equivalent rerun.
+- Dependency repair implemented: nine production files, total +151/-184/net-33; same recipe resolver
+  indexed locally, no owner/cache/guard change. 85-case actual resolver calls fall from 14,620 to340
+  while exact pairing (including portable path alias) remains equal; many-to-one recipe roundtrip
+  remains protected. Combined state/labels/real-source regression 101 passed, no skips. The one final
+  full85 real Apply run exceeded its 600s bound in BIDS channel matching; all EDF headers were read,
+  but authoritative Apply completion is not proven. No unbounded retries.
+- Second measured dependency / complexity review: `_prepare_channel_apply_plan` repeats canonical
+  loaded-file and reviewed-file resolution inside another 85x85 matching loop. Delete this nested
+  rescan using invocation-local canonical-path and basename indexes in the existing channel apply
+  function. Preserve exact-path preference, ambiguous-match rejection, prepare-all-before-mutation
+  and rollback; no persistent cache, new owner, public class, module, or weakened identity guards.
+  Current nine-file production +151/-184/net-33; tenth existing file is a bounded <=30-net-line
+  exception for the directly blocked 85-file import, not general resource/path optimization.
+  Require red 85-run resolver-cost test plus real channel mutation/equivalence/ambiguity/rollback
+  checks, focused regressions and one final stage-timed 600s UI-equivalent Apply probe.
+  Stop and report a checkpoint if that still cannot complete; do not expand to other I/O owners.
+- Channel dependency implemented: tenth file +12/-12/net0; total production +163/-196/net-33.
+  The 85-run cost test failed at 14,620 resolver calls before repair and passes below500 afterwards,
+  with actual MNE bad-channel mutation. Exact preference, unique/ambiguous basename, duplicate
+  canonical aliases, and rollback are covered. Combined final-tree import/state/channel/source-diverse
+  regression: 114 passed, no skips; architecture compliance, zero-diagnostic Basedpyright and all
+  changed Python Ruff lint/format pass. These remain workspace engineering evidence, not exact-commit
+  handoff gates. No further production edits planned. Final bounded full85 run exits0: Scan10.524s,
+  Review133.196s, Validate3.899s and Apply255.295s all succeed. Authoritative state assertions verify
+  85 raws, subjects1/2, 85 carrier plans, 3,398 labels and feet/left_hand/rest/right_hand classes.
+  Evidence: `/tmp/zhou2020_two_subject_final.log`. Do not infer Windows timings or all-MOABB support.
+  Closing the probe additionally logs a BIDS montage preparation quiescence timeout warning; this is
+  not an Apply rejection but remains a separately disclosed background-close observation. No new
+  montage/lifecycle implementation is included in this bounded slice. No commit/push/merge yet;
+  settings.json remains untouched. Status stays checkpoint pending exact-source PR/CI handoff gates.
+- Handoff continuation: 85-path montage-only measurement completes in53.185s; after a30s warm wait,
+  close fences publication immediately but its2s join expires, then the worker drains18.352s later.
+  Existing cancellation tests protect discarded results/no callback. Optional pending geometry limits
+  automatic electrode/topographic presentation, not import/epoch/supervised training/evaluation or
+  saliency computation. Keep this platform timing limitation disclosed; no montage production edit.
+  Fix the validation environment's stale editable-install path using `poetry install --only-root`;
+  dependencies and product source remain unchanged. Freeze and commit the task-owned repair paths,
+  then fast-forward PR #112 head and run same-SHA local/CI evidence. Windows DPI automated evidence
+  will come from its native CI job because this WSL session cannot start Windows executables.
 
 ## Current baseline
 

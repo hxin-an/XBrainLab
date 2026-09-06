@@ -291,10 +291,10 @@ def test_step_two_projects_split_units_from_backend_context(
     )
 
 
-def test_data_splitting_window_limits_long_preview_and_reports_exact_total(
+def test_data_splitting_window_keeps_long_preview_complete_without_summary_noise(
     qtbot,
 ) -> None:
-    """Long results must disclose that only the first fifty rows are visible."""
+    """Long results stay available through the table's own scroll affordance."""
     rows = tuple(
         DatasetSplitPreviewRow(
             name=f"Fold_{index}",
@@ -302,7 +302,7 @@ def test_data_splitting_window_limits_long_preview_and_reports_exact_total(
             validation_count=10,
             test_count=10,
         )
-        for index in range(50)
+        for index in range(51)
     )
 
     def preview(request):
@@ -318,7 +318,7 @@ def test_data_splitting_window_limits_long_preview_and_reports_exact_total(
             validation_count=500,
             test_count=500,
             total_count=51,
-            truncated_count=1,
+            truncated_count=0,
         )
 
     window = DataSplittingPreviewDialog(
@@ -332,10 +332,10 @@ def test_data_splitting_window_limits_long_preview_and_reports_exact_total(
         window.preview_worker.join(timeout=1)
     window.update_table()
 
-    assert window.tree.topLevelItemCount() == 50
+    assert window.tree.topLevelItemCount() == 51
     labels = [label.text() for label in window.findChildren(QLabel)]
-    assert "Showing first 50 of 51" in labels
-    assert "Train 4000 · Validation 500 · Test 500" in labels
+    assert not any("Showing" in label for label in labels)
+    assert not any(label.startswith("Train ") for label in labels)
 
 
 def test_data_splitting_window_update_table_replaces_calculating_row(qtbot) -> None:

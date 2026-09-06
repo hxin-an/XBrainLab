@@ -463,6 +463,50 @@ class TestDataSplittingDialog:
         assert step_two.test_splitters[0].value == "0.3"
         assert step_two.val_splitters[0].value == "0.2"
 
+    def test_back_preserves_the_unconfirmed_step_two_draft(self, qtbot, controller):
+        from XBrainLab.backend.application.dataset_split_preview import (
+            DatasetSplitSpecification,
+        )
+        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
+            DataSplittingDialog,
+        )
+
+        original = DatasetSplitSpecification.from_payload(
+            {
+                "train_type": "Full Data",
+                "is_cross_validation": False,
+                "val_splitters": [
+                    {"split_type": "By Trial", "split_unit": "Ratio", "value": "0.2"}
+                ],
+                "test_splitters": [
+                    {"split_type": "By Trial", "split_unit": "Ratio", "value": "0.2"}
+                ],
+            }
+        )
+        revised = DatasetSplitSpecification.from_payload(
+            {
+                **original.to_payload(),
+                "test_splitters": [
+                    {"split_type": "By Trial", "split_unit": "Ratio", "value": "0.3"}
+                ],
+            }
+        )
+        dialog = DataSplittingDialog(
+            None,
+            initial_specification=original,
+            **dialog_context_kwargs(),
+        )
+        qtbot.addWidget(dialog)
+
+        with patch(
+            "XBrainLab.ui.dialogs.dataset.data_splitting_dialog.DataSplittingPreviewDialog"
+        ) as preview_dialog:
+            preview_dialog.return_value.exec.return_value = False
+            preview_dialog.return_value.get_current_specification.return_value = revised
+            dialog.confirm()
+
+        assert dialog.initial_specification is revised
+
     def test_assistant_handoff_prefills_explicit_split_choices(
         self,
         qtbot,

@@ -10,7 +10,6 @@ from PyQt6.QtWidgets import QBoxLayout, QLabel
 
 from tests.unit.ui.data_split_test_support import dialog_context_kwargs
 from XBrainLab.backend.application.dataset_split_preview import (
-    DATASET_SPLIT_PREVIEW_ROW_LIMIT,
     DatasetSplitPreviewPublication,
     DatasetSplitPreviewRequest,
     DatasetSplitPreviewRow,
@@ -78,13 +77,12 @@ def _async_preview_provider(
     ) -> DatasetSplitPreviewPublication:
         if not release.wait(timeout=2):
             raise TimeoutError("Test did not release the split preview provider")
-        visible_rows = rows[:DATASET_SPLIT_PREVIEW_ROW_LIMIT]
         return DatasetSplitPreviewPublication(
             request=request,
             generation=request.publication_generation,
-            rows=visible_rows,
+            rows=rows,
             total_count=len(rows),
-            truncated_count=max(0, len(rows) - len(visible_rows)),
+            truncated_count=0,
             train_count=sum(row.train_count for row in rows),
             validation_count=sum(row.validation_count for row in rows),
             test_count=sum(row.test_count for row in rows),
@@ -118,8 +116,7 @@ def _make_dialog(qtbot, *, row_count: int):
     dialog.update_table()
     qtbot.waitUntil(
         lambda: dialog.tree is not None
-        and dialog.tree.topLevelItemCount()
-        == min(row_count, DATASET_SPLIT_PREVIEW_ROW_LIMIT),
+        and dialog.tree.topLevelItemCount() == row_count,
         timeout=1000,
     )
     qtbot.wait(10)
@@ -200,13 +197,15 @@ def test_more_than_eight_rows_keeps_dialog_bounded_and_scrolls_tree(qtbot):
     assert confirm_bottom_right.y() < dialog.height()
 
 
-def test_more_than_fifty_rows_is_truthfully_capped_with_a_total_label(qtbot):
+def test_more_than_fifty_rows_remains_complete_and_scrollable(qtbot):
     dialog, _center_before = _make_dialog(qtbot, row_count=51)
 
     assert dialog.tree is not None
-    assert dialog.tree.topLevelItemCount() == 50
+    assert dialog.tree.topLevelItemCount() == 51
     labels = [label.text() for label in dialog.findChildren(QLabel)]
-    assert "Showing first 50 of 51" in labels
+    assert not any("Showing" in text for text in labels)
+    assert not any(text.startswith("Train ") for text in labels)
+    assert dialog.tree.topLevelItem(50).text(0) == "Fold 51"
 
 
 def test_each_preview_row_exposes_split_evidence_without_changing_count_columns(qtbot):
@@ -249,11 +248,7 @@ def test_each_preview_row_exposes_split_evidence_without_changing_count_columns(
     item = dialog.tree.topLevelItem(0)
     assert [item.text(column) for column in range(4)] == ["Fold 1", "80", "10", "10"]
     titles = dialog.findChildren(QLabel, "SplitPreviewSectionTitle")
-    assert any(
-        "Hover a split row for allocation and class details." in label.text()
-        and label.isVisible()
-        for label in titles
-    )
+    assert all("Hover a split row" not in label.text() for label in titles)
     evidence = item.toolTip(0)
     assert "Test: Ratio 0.2 · groups 5 → 1 · missing class: 12 Hz" in evidence
     assert "Validation: Number 1 · groups 4 → 1 · all classes covered" in evidence

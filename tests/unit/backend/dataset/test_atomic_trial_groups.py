@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 import mne
 import numpy as np
 import pytest
@@ -489,6 +491,78 @@ def test_generator_split_masks_and_materialization_digest_are_deterministic():
         assert np.array_equal(left.train_mask, right.train_mask)
         assert np.array_equal(left.val_mask, right.val_mask)
         assert np.array_equal(left.test_mask, right.test_mask)
+
+
+def _many_balanced_atomic_trial_epochs(group_count: int = 1719) -> Epochs:
+    """Build the Zhou2020-scale trial scope without loading EEG payloads."""
+    epoch_data = Epochs([])
+    epoch_data.data = np.zeros((group_count, 1, 8), dtype=np.float32)
+    epoch_data.subject = np.zeros(group_count, dtype=int)
+    epoch_data.session = np.arange(group_count, dtype=int) % 7
+    epoch_data.label = np.arange(group_count, dtype=int) % 4
+    epoch_data.idx = np.arange(group_count)
+    epoch_data.trial_group = np.arange(group_count)
+    epoch_data.subject_map = {0: "S01"}
+    epoch_data.session_map = {session: f"ses-{session}" for session in range(7)}
+    epoch_data.label_map = {label: f"class-{label}" for label in range(4)}
+    return epoch_data
+
+
+@pytest.mark.parametrize(
+    (
+        "test_ratio",
+        "validation_ratio",
+        "expected_train_groups",
+        "expected_validation_groups",
+        "expected_test_groups",
+    ),
+    [
+        ("0.2", "0.2", 1033, 343, 343),
+        ("0.2", "0.3", 861, 515, 343),
+        ("0.3", "0.2", 861, 343, 515),
+    ],
+)
+def test_large_non_cv_trial_ratio_preview_is_fast_and_uses_original_scope_targets(
+    test_ratio: str,
+    validation_ratio: str,
+    expected_train_groups: int,
+    expected_validation_groups: int,
+    expected_test_groups: int,
+) -> None:
+    """Changing ratio must promptly recompute the original 1,719-group scope."""
+    epoch_data = _many_balanced_atomic_trial_epochs()
+    config = DataSplittingConfig(
+        TrainingType.FULL,
+        False,
+        [DataSplitter(ValSplitByType.TRIAL, validation_ratio, SplitUnit.RATIO)],
+        [DataSplitter(SplitByType.TRIAL, test_ratio, SplitUnit.RATIO)],
+    )
+
+    started = time.monotonic()
+    dataset = DatasetGenerator(epoch_data, config).generate()[0]
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 8.0
+    assert (
+        len(np.unique(epoch_data.trial_group[dataset.test_mask]))
+        == expected_test_groups
+    )
+    assert (
+        len(np.unique(epoch_data.trial_group[dataset.val_mask]))
+        == expected_validation_groups
+    )
+    assert (
+        len(np.unique(epoch_data.trial_group[dataset.train_mask]))
+        == expected_train_groups
+    )
+    assert set(epoch_data.label[dataset.train_mask].tolist()) == {0, 1, 2, 3}
+    assert not np.any(dataset.train_mask & dataset.val_mask)
+    assert not np.any(dataset.train_mask & dataset.test_mask)
+    assert not np.any(dataset.val_mask & dataset.test_mask)
+    assert np.array_equal(
+        dataset.train_mask | dataset.val_mask | dataset.test_mask,
+        np.ones(epoch_data.get_data_length(), dtype=bool),
+    )
 
 
 @pytest.mark.parametrize(

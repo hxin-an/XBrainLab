@@ -911,7 +911,10 @@ class DataSplittingDialog(BaseDialog):
             self.split_preview_receipt = preview_receipt
             super().accept()
         else:
-            return  # Allow user to retry instead of rejecting
+            draft = self.step2_window.get_current_specification()
+            if draft is not None:
+                self.initial_specification = draft
+            return
 
     def get_result(self):
         """Return the split configuration payload from the preview dialog.

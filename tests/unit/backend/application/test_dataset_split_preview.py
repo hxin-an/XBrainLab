@@ -396,7 +396,7 @@ def test_real_preview_failure_preserves_live_epoch_evidence_and_dataset_sequence
         }
     )
 
-    with pytest.raises(ValueError, match="invalid unit or amount"):
+    with pytest.raises(PreconditionError, match="invalid unit or amount"):
         publisher.publish_preview(
             DatasetSplitPreviewRequest(
                 request_id="real-preview-failure",

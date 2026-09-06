@@ -40,6 +40,7 @@ from XBrainLab.backend.application.dataset_split_preview import (
     DatasetSplitPreviewRow,
     DatasetSplitSpecification,
 )
+from XBrainLab.backend.application.errors import PreconditionError
 from XBrainLab.backend.dataset import (
     DataSplitter,
     SplitByType,
@@ -78,6 +79,8 @@ _CHEVRON_DOWN_ICON = (
 
 
 def _public_split_failure(error: BaseException, *, fallback: str) -> str:
+    if isinstance(error, PreconditionError):
+        return str(error) or fallback
     return public_exception_message(error, fallback=fallback)
 
 
@@ -186,14 +189,15 @@ _PREVIEW_DIALOG_STYLE = f"""
         color: #87909b;
         border-color: #3d454d;
     }}
-    QPushButton#SplitPreviewRetryButton {{
+    QPushButton#SecondaryBackButton {{
         background-color: {Theme.BACKGROUND_MID};
         color: {Theme.TEXT_PRIMARY};
         border: 1px solid {Theme.BACKGROUND_LIGHT};
         border-radius: 4px;
         padding: 7px 12px;
+        font-weight: bold;
     }}
-    QPushButton#SplitPreviewRetryButton:hover {{
+    QPushButton#SecondaryBackButton:hover {{
         border-color: #0a7fc7;
     }}
     {checkbox_stylesheet()}
@@ -366,11 +370,9 @@ class DataSplittingPreviewDialog(BaseDialog):
         self._content_refit_pending = False
 
         self.tree: QTreeWidget | None = None
-        self.preview_count_label: QLabel | None = None
-        self.preview_totals_label: QLabel | None = None
         self.btn_info: QLabel | None = None
         self.btn_confirm: QPushButton | None = None
-        self.btn_retry: QPushButton | None = None
+        self.btn_back: QPushButton | None = None
         self.preview_status_label: QLabel | None = None
         self.content_scroll: QScrollArea | None = None
         self.content_layout: QBoxLayout | None = None
@@ -440,23 +442,9 @@ class DataSplittingPreviewDialog(BaseDialog):
         results_layout.setContentsMargins(12, 12, 12, 12)
         results_layout.setSpacing(10)
         results_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        results_title = QLabel(
-            "Split results  <span style='font-weight: normal; "
-            f"color: {Theme.TEXT_SECONDARY};'>"
-            "Hover a split row for allocation and class details.</span>"
-        )
+        results_title = QLabel("Split results")
         results_title.setObjectName("SplitPreviewSectionTitle")
         results_layout.addWidget(results_title)
-        preview_count_label = QLabel("")
-        self.preview_count_label = preview_count_label
-        preview_count_label.setObjectName("SplitPreviewRowCount")
-        preview_count_label.setVisible(False)
-        results_layout.addWidget(preview_count_label)
-        preview_totals_label = QLabel("")
-        self.preview_totals_label = preview_totals_label
-        preview_totals_label.setObjectName("SplitPreviewAggregateTotals")
-        preview_totals_label.setVisible(False)
-        results_layout.addWidget(preview_totals_label)
         tree = QTreeWidget()
         self.tree = tree
         tree.setFrameShape(QFrame.Shape.NoFrame)
@@ -660,14 +648,14 @@ class DataSplittingPreviewDialog(BaseDialog):
         )
         footer.addWidget(preview_status_label, stretch=1)
 
-        btn_retry = QPushButton("Retry")
-        self.btn_retry = btn_retry
-        btn_retry.setObjectName("SplitPreviewRetryButton")
-        btn_retry.setAutoDefault(False)
-        btn_retry.setDefault(False)
-        btn_retry.clicked.connect(self._retry_preview)
-        btn_retry.hide()
-        footer.addWidget(btn_retry)
+        btn_back = QPushButton("Back")
+        self.btn_back = btn_back
+        btn_back.setObjectName("SecondaryBackButton")
+        btn_back.setAutoDefault(False)
+        btn_back.setDefault(False)
+        btn_back.setMinimumWidth(128)
+        btn_back.clicked.connect(self.reject)
+        footer.addWidget(btn_back)
 
         btn_confirm = QPushButton("Confirm")
         self.btn_confirm = btn_confirm
@@ -988,6 +976,18 @@ class DataSplittingPreviewDialog(BaseDialog):
                 generation_id,
                 PREVIEW_STATUS_CANCELLED,
             )
+        except PreconditionError as exc:
+            if self._cancel_was_requested(generation_id):
+                self._set_preview_state(
+                    generation_id,
+                    PREVIEW_STATUS_CANCELLED,
+                )
+            else:
+                self._set_preview_state(
+                    generation_id,
+                    PREVIEW_STATUS_FAILED,
+                    _public_split_failure(exc, fallback=_PREVIEW_FAILURE_MESSAGE),
+                )
         except Exception as exc:
             if self._cancel_was_requested(generation_id):
                 self._set_preview_state(
@@ -1068,15 +1068,13 @@ class DataSplittingPreviewDialog(BaseDialog):
 
         status, error, rows = self._preview_state()
         if status == PREVIEW_STATUS_IDLE:
-            self._clear_preview_summary()
             self._set_tree_message("Updating preview")
             self._set_preview_feedback("")
             if self.btn_confirm is not None:
                 self.btn_confirm.setEnabled(False)
         elif status == PREVIEW_STATUS_FAILED:
-            self._clear_preview_summary()
             self._set_tree_message("Preview failed")
-            self._set_preview_feedback(error or _PREVIEW_FAILURE_MESSAGE, retry=True)
+            self._set_preview_feedback(error or _PREVIEW_FAILURE_MESSAGE)
             if error:
                 item0 = tree.topLevelItem(0)
                 if item0 is not None:
@@ -1084,16 +1082,13 @@ class DataSplittingPreviewDialog(BaseDialog):
             if self.btn_confirm is not None:
                 self.btn_confirm.setEnabled(False)
         elif status == PREVIEW_STATUS_CANCELLED:
-            self._clear_preview_summary()
             self._set_tree_message("Preview cancelled")
             self._set_preview_feedback(
-                "The split preview was cancelled. Retry when you are ready.",
-                retry=True,
+                "The split preview was cancelled. Adjust the settings and try again.",
             )
             if self.btn_confirm is not None:
                 self.btn_confirm.setEnabled(False)
         elif rows:
-            self._render_preview_summary(self.get_preview_receipt(), len(rows))
             self._set_preview_feedback("")
             rows_changed = False
             item0 = tree.topLevelItem(0)
@@ -1162,49 +1157,9 @@ class DataSplittingPreviewDialog(BaseDialog):
         item.setText(0, message)
         self._resize_tree_to_rows()
 
-    def _clear_preview_summary(self) -> None:
-        for label in (self.preview_count_label, self.preview_totals_label):
-            if label is not None:
-                label.clear()
-                label.setVisible(False)
-
-    def _render_preview_summary(
-        self,
-        receipt: DatasetSplitPreviewReceipt | None,
-        visible_count: int,
-    ) -> None:
-        if receipt is None:
-            self._clear_preview_summary()
-            return
-        total_count = receipt.total_count or visible_count
-        if self.preview_count_label is not None:
-            self.preview_count_label.setText(
-                f"Showing first {visible_count} of {total_count}"
-                if receipt.truncated_count
-                else f"Showing {visible_count} of {total_count}"
-            )
-            self.preview_count_label.setVisible(True)
-        if (
-            self.preview_totals_label is not None
-            and receipt.train_count is not None
-            and receipt.validation_count is not None
-            and receipt.test_count is not None
-        ):
-            self.preview_totals_label.setText(
-                "Train "
-                f"{receipt.train_count} · Validation {receipt.validation_count} "
-                f"· Test {receipt.test_count}"
-            )
-            self.preview_totals_label.setVisible(True)
-
-    def _set_preview_feedback(self, message: str, *, retry: bool = False) -> None:
+    def _set_preview_feedback(self, message: str) -> None:
         if self.preview_status_label is not None:
             self.preview_status_label.setText(message)
-        if self.btn_retry is not None:
-            self.btn_retry.setVisible(retry)
-
-    def _retry_preview(self) -> None:
-        self.preview()
 
     def _clear_tree_current_item(self) -> None:
         if self.tree is None:
@@ -1377,6 +1332,10 @@ class DataSplittingPreviewDialog(BaseDialog):
     def schedule_preview(self) -> None:
         """Debounce expensive dataset preview regeneration while editing fields."""
         self._preview_generation_id += 1
+        # Cancel promptly on the first edit.  The debounce is only for starting
+        # the replacement request; delaying cancellation leaves an obsolete
+        # generator holding the shared preview resources while the user types.
+        self._request_preview_worker_stop()
         self._set_preview_state(
             self._preview_generation_id,
             PREVIEW_STATUS_IDLE,
@@ -1522,6 +1481,13 @@ class DataSplittingPreviewDialog(BaseDialog):
                 self._splitter_payload(splitter) for splitter in self.test_splitter_list
             ],
         }
+
+    def get_current_specification(self) -> DatasetSplitSpecification | None:
+        """Return the editable Step 2 draft without accepting its preview."""
+        try:
+            return DatasetSplitSpecification.from_payload(self._split_config_payload())
+        except (TypeError, ValueError):
+            return None
 
     @staticmethod
     def _splitter_payload(splitter: DataSplitter) -> dict[str, Any]:
