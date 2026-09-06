@@ -123,6 +123,10 @@
 - Next evidence state: exact-commit PR CI, source-diverse handoff evidence and Windows native
   acceptance remain outstanding. Preserve the user's settings and earlier Atomic trial groups
   removal; do not merge.
+- Regression follow-up: the full canonical UI shard exposed one existing synchronous assertion in
+  `test_training_result_presentation`: `update_panel()` now dispatches a background summary read,
+  so the test must wait for the accepted Qt callback before asserting the same blocked Command API
+  result. Migrate that direct test only; do not add a synchronous fallback or alter product/UI copy.
 
 ## Active manual-test repair extension — import capacity and split/epoch feedback
 
