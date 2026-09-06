@@ -32,10 +32,6 @@ from XBrainLab.backend.application.resource_guard import (
     ResourcePreflightResult,
 )
 from XBrainLab.backend.application.resource_preflight import ResourcePreflightView
-from XBrainLab.backend.application.saliency_render import (
-    SaliencyPlanIdentity,
-    SaliencyRunIdentity,
-)
 from XBrainLab.backend.application.state import (
     ActiveDatasetSnapshot,
     ActiveTrainingSnapshot,
@@ -912,7 +908,7 @@ def test_explicit_saliency_accumulates_verified_complete_methods_before_prefligh
     assert visualization.params == admitted_params[0]
 
 
-def test_explicit_saliency_accumulates_methods_only_from_selected_members(
+def test_explicit_saliency_accumulates_methods_from_all_finished_records(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     smoothgrad_params = {
@@ -990,7 +986,6 @@ def test_explicit_saliency_accumulates_methods_only_from_selected_members(
         finished_runs_after=2,
         append=False,
         explicit=True,
-        selected_members=((0, 0),),
     )
 
     with post_training_saliency_target(target):
@@ -1007,7 +1002,12 @@ def test_explicit_saliency_accumulates_methods_only_from_selected_members(
             )
         )
 
-    assert admitted_params[0]["_methods"] == ["Gradient", "SmoothGrad", "VarGrad"]
+    assert admitted_params[0]["_methods"] == [
+        "Gradient",
+        "Gradient * Input",
+        "SmoothGrad",
+        "VarGrad",
+    ]
     assert admitted_params[0]["SmoothGrad"] == smoothgrad_params
     assert diagnostics["params"] == admitted_params[0]
 
@@ -1491,46 +1491,6 @@ def test_analysis_service_rejects_mismatched_saliency_receipt(
             SaliencyCommand(
                 method="SmoothGrad",
                 params={"nt_samples": 2},
-                resource_preflight_confirmed=True,
-                resource_preflight_token=first.challenge_id,
-            )
-        )
-
-    replacement = _resource_challenge(mismatched.value)
-    assert replacement.challenge_id != first.challenge_id
-    assert replacement.scope_fingerprint != first.scope_fingerprint
-    assert visualization.params is None
-
-
-def test_analysis_service_rejects_saliency_receipt_for_different_target(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    service, visualization = _service(
-        state=_state(has_trainer=True, finished_runs=1),
-    )
-    monkeypatch.setattr(
-        "XBrainLab.backend.application.analysis_service."
-        "check_saliency_resource_preflight",
-        lambda *_args, **_kwargs: _saliency_preflight("warning"),
-    )
-    first_target = SaliencyRunIdentity(
-        plan=SaliencyPlanIdentity(plan_index=0),
-        run_index=0,
-    )
-    second_target = SaliencyRunIdentity(
-        plan=SaliencyPlanIdentity(plan_index=1),
-        run_index=0,
-    )
-
-    with pytest.raises(ResourceConfirmationRequiredError) as raised:
-        service.handle_saliency(SaliencyCommand(method="Gradient", target=first_target))
-    first = _resource_challenge(raised.value)
-
-    with pytest.raises(ResourceConfirmationRequiredError) as mismatched:
-        service.handle_saliency(
-            SaliencyCommand(
-                method="Gradient",
-                target=second_target,
                 resource_preflight_confirmed=True,
                 resource_preflight_token=first.challenge_id,
             )

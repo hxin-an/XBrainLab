@@ -311,7 +311,7 @@ def _wait_for_manager_phase(service: ApplicationService, phase) -> bool:
     return False
 
 
-def test_real_mne_eegnet_explicit_subject_compute_republishes_coverage(
+def test_real_mne_eegnet_all_finished_compute_republishes_coverage(
     tmp_path: Path,
 ) -> None:
     """Interrupted history then two real five-fold cohorts remain renderable."""
@@ -406,6 +406,22 @@ def test_real_mne_eegnet_explicit_subject_compute_republishes_coverage(
     study.training_manager.trainer = trainer
     service = ApplicationService(study)
 
+    # A command without a target is the user-facing "all finished runs"
+    # operation. It includes the completed record retained from the
+    # interrupted history but never admits its unfinished peers.
+    finished_records = {
+        (plan_index, run_index): record
+        for plan_index, holder in enumerate(trainer.get_training_plan_holders())
+        for run_index, record in enumerate(holder.get_plans())
+        if record.is_finished()
+    }
+    assert old_subject_a[0].get_plans()[0] in finished_records.values()
+    assert any(
+        not record.is_finished()
+        for holder in (*old_subject_a, *old_subject_b)
+        for record in holder.get_plans()
+    )
+
     def cross_fold_target(start_index: int) -> SaliencyCrossFoldIdentity:
         return SaliencyCrossFoldIdentity(
             tuple(
@@ -414,13 +430,11 @@ def test_real_mne_eegnet_explicit_subject_compute_republishes_coverage(
             )
         )
 
-    def compute_subject(start_index: int):
-        target = cross_fold_target(start_index)
+    def compute_all_finished():
         result = service.execute(
             SaliencyCommand(
                 method="Gradient",
                 params={"profile": "recommended", "methods": list(_BASELINE_METHODS)},
-                target=target,
             )
         )
         assert result.ok, result.message
@@ -431,32 +445,26 @@ def test_real_mne_eegnet_explicit_subject_compute_republishes_coverage(
             timeout=_THREAD_WATCHDOG_SECONDS
         )
         publication = service.get_view_publication()
-        for plan_index in range(start_index, start_index + fold_count):
-            selected = next(
-                coverage
-                for coverage in publication.state.visualization.saliency_coverage
-                if coverage.plan_index == plan_index
-            )
-            methods = {method.method: method for method in selected.methods}
+        coverages = {
+            (coverage.plan_index, coverage.run_index): coverage
+            for coverage in publication.state.visualization.saliency_coverage
+        }
+        assert set(coverages) == set(finished_records)
+        for coverage in coverages.values():
+            methods = {method.method: method for method in coverage.methods}
             assert methods["Gradient"].complete is True
             assert methods["Gradient * Input"].complete is True
-        return publication, target
+        return publication
 
-    after_subject_b, subject_b_target = compute_subject(3 * fold_count)
-    published_indexes = [
-        coverage.plan_index
-        for coverage in after_subject_b.state.visualization.saliency_coverage
-    ]
-    assert set(range(2 * fold_count, 4 * fold_count)).issubset(published_indexes)
-    after_subject_a, subject_a_target = compute_subject(2 * fold_count)
-    subject_a_records = tuple(
-        holder.get_plans()[0].get_saliency_eval_record() for holder in subject_a
-    )
-    subject_b_records = tuple(
-        holder.get_plans()[0].get_saliency_eval_record() for holder in subject_b
-    )
-    assert all(record is not None for record in subject_a_records)
-    for holder, record in zip(subject_a, subject_a_records, strict=True):
+    after_all_finished = compute_all_finished()
+    before_all_recompute = {
+        identity: record.get_saliency_eval_record()
+        for identity, record in finished_records.items()
+    }
+    assert all(record is not None for record in before_all_recompute.values())
+    for holder in subject_a:
+        record = holder.get_plans()[0].get_saliency_eval_record()
+        assert record is not None
         record.mark_saliency_context_incompatible("Test stale saliency context.")
         holder.get_plans()[0].set_eval_record(record)
     service.get_state()
@@ -468,28 +476,25 @@ def test_real_mne_eegnet_explicit_subject_compute_republishes_coverage(
     for plan_index in range(2 * fold_count, 3 * fold_count):
         assert invalid_coverages[plan_index]["Gradient"].available is False
         assert invalid_coverages[plan_index]["Gradient * Input"].available is False
-    after_subject_a_recompute, _ = compute_subject(2 * fold_count)
+    after_all_recompute = compute_all_finished()
 
-    assert after_subject_a_recompute.generation > after_subject_a.generation
-    assert after_subject_a.generation > after_subject_b.generation
+    assert after_all_recompute.generation > after_all_finished.generation
     assert all(
-        holder.get_plans()[0].get_saliency_eval_record() is not prior
-        for holder, prior in zip(subject_a, subject_a_records, strict=True)
+        finished_records[identity].get_saliency_eval_record() is not prior
+        for identity, prior in before_all_recompute.items()
     )
-    assert all(
-        holder.get_plans()[0].get_saliency_eval_record() is prior
-        for holder, prior in zip(subject_b, subject_b_records, strict=True)
-    )
+    subject_a_target = cross_fold_target(2 * fold_count)
+    subject_b_target = cross_fold_target(3 * fold_count)
     pooled = service.get_saliency_render(
         SaliencyRenderRequest(
-            publication_generation=after_subject_a_recompute.generation,
+            publication_generation=after_all_recompute.generation,
             run=subject_a_target,
             method="Gradient",
         )
     )
     member = service.get_saliency_render(
         SaliencyRenderRequest(
-            publication_generation=after_subject_a_recompute.generation,
+            publication_generation=after_all_recompute.generation,
             run=subject_b_target.members[0],
             method="Gradient",
         )

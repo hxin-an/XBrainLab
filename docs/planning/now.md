@@ -1,8 +1,124 @@
 # XBrainLab Now
 
-最後更新：`2026-09-06`
+最後更新：`2026-09-07`
 
 ## Active repair — sealed saliency reads and completed-result presentation (#113)
+
+- USER-APPROVED RESUME (2026-09-07): finish #113 handoff, then immediately implement the approved
+  test cleanup, Filter section-state clarity and Astra-only harness streams without waiting for
+  saliency manual acceptance. Keep separate worktrees/PRs; no product merge without acceptance.
+  Root branch
+  fix/saliency-result-refresh and isolated /tmp/xbrainlab-sealed-results-handoff remain at d9e59dd9
+  with scoped uncommitted changes. All delegated workers and coordinator test/capture processes have
+  finished. Preserve the open native Windows d9 process and its in-memory results; do not restart it.
+  Implemented: all-finished Compute/Recompute, selected-compute plumbing deletion, atomic complete
+  batch validation and busy-until-matching-render handling. Integrated focused suite in the isolated
+  worktree: 552 passed, exit 0. Its real train/compute/render walkthrough: passed, exit 0, artifacts
+  under build/dev-artifacts/global-saliency-render. These are dirty-source development evidence only.
+  Root's final integration-test rename to all_finished is not yet synced to the isolated worktree;
+  root's plan note is also newer. Resume by comparing scoped file contents, reviewing final busy/render
+  artifacts and syncing these deltas; then freeze an exact commit and run the canonical desktop-source
+  manifest/CI before updating PR #113/manual instructions. No new-source handoff or Windows acceptance
+  claimed. Protected settings.json and unrelated split dialog/test edits remain excluded.
+
+- Queued approved streams after #113 candidate delivery: two Astra workers own tests-only cleanup
+  and Filter UI respectively; coordinator owns harness/validation workflow redesign and integration.
+  Tests: remove obsolete/duplicate/mock-only assertions, preserve real behavior and failure protection,
+  remove unused fixtures/references, report counts and measured time without a deletion quota.
+  Filter: separate bordered Band-pass/Notch sections, Epoch-like off dimming with operative On/Off
+  toggles, preserve entered values/backend semantics; four combinations/keyboard/screenshots.
+  Harness: revise #114 to Astra-only development agents, not the product Assistant; remove mixed-model
+  routing, contradictory instructions and duplicate local/CI checks; deterministic checks own
+  machine-verifiable evidence, model review handles meaning/design/anomalies. Retain exact-source,
+  failed-check and manual-merge boundaries, no new control plane. Each stream updates this active plan
+  in its isolated branch before editing, validates the changed contract and opens/updates its own PR.
+
+- Approved scope correction (2026-09-07): user explicitly expects Recompute to calculate everything
+  together. Compute/Recompute must cover all finished runs/folds across every subject in current
+  training history; current Fold/Run selection controls display only. Interrupted/unfinished runs
+  remain excluded. Reuse existing all-finished command/job path if present; do not create another
+  batch owner. Pin/admit the existing current training result origin, preserve visible selection, and
+  keep busy from acceptance through all-member publication and selected-view settlement. New regression
+  must invoke the actual panel action while one subject/fold is selected and observe complete coverage
+  for other subjects/folds, including cancelled history and repeated computation. This replaces the
+  previous selected-only action expectation, not training outcome eligibility or saliency integrity.
+- User additionally requests deletion of now-redundant backend code. Before deleting, trace real
+  production callers of selected-compute command/target plumbing separately from indispensable
+  selected-read identities. Remove dead single-fold compute branches if no real caller remains,
+  together with obsolete tests; preserve all-finished admission, atomic publication, cancellation,
+  resource preflight and renderer identity. Characterize existing global path before deletion.
+  No broad unrelated backend cleanup or new compatibility path. Complexity review before crossing
+  file/owner thresholds; root reviews exact API/caller delta and keeps existing owner count.
+- Cleanup review before implementation: actual production callers now all omit selected compute
+  target (UI passes None; Assistant and scripts omit it). Approved deletion spans commands, service,
+  training_manager, analysis_service and saliency_resource: remove command target, selected member
+  plumbing, target-only admission/filter and resource fingerprint metadata (estimated backend net
+  -115 to -150 LOC). UI removes its now-dead forwarding; render selection identities remain.
+  Owners before/after unchanged: ApplicationService / TrainingManager / existing UI presenter.
+  Extend the existing prepared-versus-expected comparison to the global scheduled finished set;
+  first reproduce a missing prepared member being wrongly accepted, then require atomic all-member
+  publication. Retain prior output on failure, cancellation, resource checks and append lifecycle.
+  This is the direct global-compute contract, not a new owner/state machine/receipt. Cumulative
+  PR already exceeds eight production files; this continuation is deletion-first in six existing
+  files, no new production module/class. Direct call-site sweep also removes the now-unused
+  SaliencySelectionIdentity schema import in automation (seventh existing production file).
+  Recheck exact +/- and stop/split if total crosses 1500 LOC.
+  Reviewed continuation is currently seven existing production files, +96/-254 (net -158);
+  against actual PR base a963405a, cumulative fifteen files, +811/-577 (1388 changed lines).
+  These figures exclude the user's unrelated split UI edit; existing owners remain unchanged.
+
+- Current native evidence: on verified d9e59dd9, one explicitly requested Compute on selected
+  Subject-1-5 produces the actual four-class plot. This establishes that this selected record can
+  compute; it does not compute Fold 1–4 and therefore does not meet the newly clarified global
+  contract. Preserve the open native process and in-memory results; it remains old candidate source.
+  The observed busy-to-render gap is about 0.4 seconds after an approximately 18-second compute/read.
+- Current test-first evidence: the existing global job accepted a prepared batch missing one finished
+  record and reported SUCCEEDED. A two-record regression fails on that exact result. Extend the
+  existing expected/prepared identity comparison to global jobs, preserving previous output until
+  the complete batch can publish. Independent workers remove selected-only backend plumbing and
+  keep the button busy through the matching selected render; coordinator reviews integration,
+  obsolete-test deletion and exact-source handoff. No new retry or publication owner.
+
+- Confirmed-current native failure after coordinator switched and launched d9e59dd9: subject 1
+  Individual still says not computed yet while subject 2 renders; Compute becomes blue/enabled
+  before the result appears and invites duplicate activation. The earlier old-checkout explanation
+  does not resolve this confirmed-current report. Preserve the live Windows process and its state.
+- Current slice: inspect visible selection and non-mutating diagnostics; trace selected subject/run
+  from UI command construction through member computation and coverage publication. Independently
+  trace busy state from command acceptance through computation, publication, summary and render.
+  Add real UI/public-command regressions for subject 1 vs 2 and the premature button-ready interval
+  before minimal fixes. Reuse existing owners/presenters; no generic state machine or automatic retry.
+  User requests correction of busy-button interaction; preserve layout/colors and use existing busy
+  presentation. Two bounded workers own backend selected-target coverage and UI lifecycle respectively;
+  coordinator owns native evidence, test-fidelity integration and exact-source delivery. Do not merge.
+
+- Reopened after reported native failure on 2026-09-07 00:04: completed Evaluation sets repeatedly
+  reject at publisher line 574 and subject-1 Individual saliency remains unavailable. Read-only
+  provenance checks then establish the folder named xbrainlab-pr113-d9e59dd9 was created at
+  cac5736c (worktree HEAD/reflog); Evaluation publisher and both result panels exactly match old
+  cac5736c blobs. Its editable environment also points to that same old-source directory. Thus
+  this report cannot yet establish a regression of d9e59dd9; it reproduces the old global guard.
+  No merge. Verify the current production ports and deliver fail-closed source-checked launch steps,
+  without manufacturing product patches or blaming the user for a version-identification gap.
+- Immediate plan: trace exact selected-target identity and runtime adapters (including repeated
+  reads without any mutation), then all individual/cohort saliency compute-to-read ports. Two
+  nonoverlapping workers investigate Evaluation and saliency; coordinator audits actual Windows
+  checkout evidence and test fidelity. Reproduce through real projection ports/ApplicationService,
+  not only stable object-returning mocks. Fix only proven causes using existing owners; no retry,
+  swallowed failure, guessed electrode mapping, or new compatibility state. Preserve UI presentation
+  under existing authorization and all three unrelated local edits. Update progress with red/green
+  evidence; run full exact-source delivery only after both reported read paths are explained and
+  protected. Missing real-session state must remain explicit, not replaced by claims from toy data.
+- Current audit outcome: no new product defect demonstrated on d9e59dd9. Current-source real
+  ApplicationService import/epoch/saved-split/train followed by three Evaluation renders passes;
+  actual Zhou EDF plus safe subject-1 checkpoint yields complete four-class Gradient and successful
+  selected-member manager publication. This is not the lost native GUI state or active-other-fold
+  end-to-end evidence. Native saved test/validation cover all four classes with finite outputs;
+  saliency compute state was memory-only. Next: close old native process, switch its existing checkout
+  to exact d9e59dd9 without force, verify HEAD and relevant source cleanliness, then launch its local
+  interpreter. Keep d9e59dd9 as the unchanged PR candidate; retain failed native report as old-source
+  evidence, not new-source acceptance or proof that every saliency failure is solved. No speculative
+  product patch, test-count inflation, or rerun of the full unchanged manifest for this diagnosis.
 
 - Reopened after failed Windows acceptance (2026-09-06 22:00, Zhou2020): selecting an already completed
   Evaluation fold while other training continues repeatedly raises the global training-boundary stale

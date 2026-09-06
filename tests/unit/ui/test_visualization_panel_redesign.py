@@ -20,6 +20,7 @@ from XBrainLab.backend.application import (
     SaliencyPlanIdentity,
     SaliencyRenderData,
     SaliencyRenderPublication,
+    SaliencyRenderRequest,
     SaliencyRunIdentity,
     VisualizeCommand,
 )
@@ -51,6 +52,7 @@ from XBrainLab.ui.interaction_outcome import (
 
 class _SaliencyWidgetStub(QWidget):
     class_selected = pyqtSignal(object)
+    render_terminal = pyqtSignal(int, int, str)
 
 
 def _widget_factory(parent=None):
@@ -2563,8 +2565,7 @@ def test_staged_uncomputed_method_stays_out_of_render_combo_through_real_lifecyc
 
     assert len(async_calls) == 1
     command, on_result, on_error = async_calls[0]
-    assert command.method == "VarGrad"
-    assert command.params == params
+    assert command == SaliencyCommand(method="VarGrad", params=params)
     assert panel.compute_saliency_btn.property("operationPhase") == "pending"
     assert rendered_methods() == ["Gradient"]
 
@@ -2660,11 +2661,9 @@ def test_staged_saliency_settings_dispatch_with_reviewed_generation(
     assert staged is True
     assert len(starts) == 1
     assert starts[0]["expected_publication_generation"] == publication.generation
-    assert starts[0]["run_identity"] == run_identity
-    assert starts[0]["model_name"] == "EEGNet"
 
 
-def test_staged_saliency_settings_reject_changed_run_selection(
+def test_staged_saliency_settings_survive_changed_run_selection(
     qtbot,
     monkeypatch,
 ):
@@ -2710,9 +2709,8 @@ def test_staged_saliency_settings_reject_changed_run_selection(
 
     panel._compute_saliency_from_action_bar()
 
-    assert starts == []
-    assert panel.saliency_action_title.text() == "Review Saliency Settings Again"
-    assert "selected run changed" in panel.saliency_action_detail.text().lower()
+    assert len(starts) == 1
+    assert starts[0]["expected_publication_generation"] == publication.generation
 
 
 def test_staged_saliency_settings_reject_changed_publication(
@@ -2913,26 +2911,192 @@ def test_scheduled_saliency_handoff_waits_for_matching_terminal_publication(qtbo
     assert terminal[0].status is InteractionCompletionStatus.COMPLETED
 
 
-def test_terminal_saliency_publication_releases_visible_compute_state(qtbot):
+def test_terminal_saliency_publication_keeps_compute_busy_until_native_render_commits(
+    qtbot,
+):
     panel, _ctrl = _make_panel(qtbot)
+    _publish_panel_state(
+        panel,
+        _application_query_with_saliency_state(
+            PostTrainingSaliencyStatus.idle(),
+            _complete_coverage(),
+        ),
+    )
     panel._saliency_compute_in_progress = True
     panel._active_saliency_operation_id = "saliency-operation-1"
     panel._active_saliency_generation = 3
-    result = _application_query_with_saliency_state(
-        _post_training_saliency_status(PostTrainingSaliencyPhase.SUCCEEDED),
-        _complete_coverage(),
+    publication = panel._application_view_publication
+    assert publication is not None
+    terminal_publication = replace(
+        publication,
+        state=replace(
+            publication.state,
+            visualization=replace(
+                publication.state.visualization,
+                post_training_saliency=_post_training_saliency_status(
+                    PostTrainingSaliencyPhase.SUCCEEDED,
+                ),
+            ),
+        ),
     )
-    assert isinstance(result.state, ApplicationStateSnapshot)
-    publication = ApplicationViewStore(
-        result.state,
-        TrainingReadBoundary.no_trainer(),
-    ).read()
 
-    assert panel._accept_application_publication(publication)
+    assert panel._accept_application_publication(terminal_publication)
+    assert panel._saliency_compute_in_progress is True
+    assert panel.compute_saliency_btn.text() == "Computing..."
+    assert panel.compute_saliency_btn.isEnabled() is False
+
+    run_identity = panel.run_combo.currentData()
+    assert isinstance(run_identity, SaliencyRunIdentity)
+    request = SaliencyRenderRequest(
+        publication_generation=terminal_publication.generation,
+        run=run_identity,
+        method="Gradient",
+        normalize=False,
+        view="channel_time",
+    )
+    native_generation = 1
+    panel.tab_map.active_render_generation = native_generation
+    panel.tab_map.active_render_publication_generation = terminal_publication.generation
+    panel._bind_native_render_terminal(
+        panel.tab_map,
+        replace(
+            _render_publication_for_request(None, request),
+            operation_id="render-operation-1",
+        ),
+        display_key=(False, False, "all", None),
+    )
+    panel.tab_map.render_terminal.emit(
+        native_generation,
+        terminal_publication.generation,
+        "completed",
+    )
 
     assert panel._saliency_compute_in_progress is False
     assert panel._active_saliency_operation_id is None
     assert panel.compute_saliency_btn.text() == "Compute Saliency"
+
+
+def test_stale_native_render_terminal_does_not_release_new_saliency_compute(qtbot):
+    panel, _ctrl = _make_panel(qtbot)
+    _publish_panel_state(
+        panel,
+        _application_query_with_saliency_state(
+            _post_training_saliency_status(PostTrainingSaliencyPhase.SUCCEEDED),
+            _complete_coverage(),
+        ),
+    )
+    publication = panel._application_view_publication
+    assert publication is not None
+    run_identity = panel.run_combo.currentData()
+    assert isinstance(run_identity, SaliencyRunIdentity)
+    panel._saliency_compute_in_progress = True
+    panel._active_saliency_operation_id = "new-compute-operation"
+    request = SaliencyRenderRequest(
+        publication_generation=publication.generation,
+        run=run_identity,
+        method="Gradient",
+        normalize=False,
+        view="channel_time",
+    )
+    panel.tab_map.active_render_generation = 1
+    panel.tab_map.active_render_publication_generation = publication.generation
+    panel._bind_native_render_terminal(
+        panel.tab_map,
+        replace(
+            _render_publication_for_request(None, request),
+            operation_id="older-render-operation",
+        ),
+        display_key=(False, False, "all", None),
+    )
+
+    panel.tab_map.render_terminal.emit(1, publication.generation, "completed")
+
+    assert panel._saliency_compute_in_progress is True
+    assert panel._active_saliency_operation_id == "new-compute-operation"
+
+
+def test_on_update_binds_post_compute_render_before_releasing_action(qtbot):
+    panel, _ctrl = _make_panel(qtbot)
+    _publish_panel_state(
+        panel,
+        _application_query_with_saliency_state(
+            _post_training_saliency_status(PostTrainingSaliencyPhase.SUCCEEDED),
+            _complete_coverage(),
+        ),
+    )
+    publication = panel._application_view_publication
+    assert publication is not None
+    panel._saliency_compute_in_progress = True
+    panel._active_saliency_operation_id = None
+    panel._set_saliency_action_busy(True)
+    native_generation = 1
+
+    def install_native_render(*_args, **_kwargs) -> None:
+        panel.tab_map.active_render_generation = native_generation
+        panel.tab_map.active_render_publication_generation = publication.generation
+
+    panel.tab_map.update_plot.side_effect = install_native_render
+    request = SaliencyRenderRequest(
+        publication_generation=publication.generation,
+        run=panel.run_combo.currentData(),
+        method="Gradient",
+        normalize=False,
+        view="channel_time",
+    )
+    render_publication = replace(
+        _render_publication_for_request(None, request),
+        operation_id="post-compute-render",
+    )
+
+    with (
+        patch.object(panel, "_saliency_render_is_cached", return_value=True),
+        patch.object(
+            panel,
+            "_saliency_render_publication",
+            return_value=render_publication,
+        ),
+    ):
+        panel.on_update()
+
+    assert panel.tab_map in panel._native_render_bindings
+    assert panel.compute_saliency_btn.isEnabled() is False
+    panel.tab_map.render_terminal.emit(
+        native_generation,
+        publication.generation,
+        "completed",
+    )
+    assert panel._saliency_compute_in_progress is False
+    assert panel.compute_saliency_btn.isEnabled() is True
+
+
+def test_summary_failure_releases_post_compute_action_from_on_update(qtbot):
+    panel, _ctrl = _make_panel(qtbot)
+    _publish_panel_state(
+        panel,
+        _application_query_with_saliency_state(
+            _post_training_saliency_status(PostTrainingSaliencyPhase.SUCCEEDED),
+            _complete_coverage(),
+        ),
+    )
+    publication = panel._application_view_publication
+    assert publication is not None
+    panel._saliency_compute_in_progress = True
+    panel._active_saliency_operation_id = None
+    panel._set_saliency_action_busy(True)
+    panel.last_application_query = CommandResult.failure_result(
+        command_name="visualize",
+        message="Visualization is unavailable.",
+        state=publication.state,
+        changed_state=ChangedState(),
+        error_type=ErrorType.PRECONDITION,
+        recoverable=True,
+    )
+    panel._application_summary_dirty = False
+
+    panel.on_update()
+
+    assert panel._saliency_compute_in_progress is False
+    assert panel.compute_saliency_btn.isEnabled() is True
 
 
 def test_terminal_saliency_success_settles_staged_settings_before_retraining(
@@ -3059,7 +3223,7 @@ def test_old_terminal_does_not_release_new_saliency_operation(qtbot):
     ).read()
 
     assert panel._accept_application_publication(new_publication)
-    assert panel._saliency_compute_in_progress is False
+    assert panel._saliency_compute_in_progress is True
     assert panel._active_saliency_operation_id is None
     assert panel.compute_saliency_btn.property("operationPhase") == "completed"
 
@@ -3090,9 +3254,9 @@ def test_terminal_saliency_publication_wins_over_late_schedule_receipt(qtbot):
     outcome = panel._on_lazy_saliency_configured(scheduled)
 
     assert outcome.status is InteractionStatus.COMPLETED
-    assert panel._saliency_compute_in_progress is False
+    assert panel._saliency_compute_in_progress is True
     assert panel._active_saliency_operation_id is None
-    assert panel.compute_saliency_btn.text() == "Compute Saliency"
+    assert panel.compute_saliency_btn.text() == "Computing..."
 
 
 def test_visualization_panel_unconfigured_saliency_requires_explicit_action(
