@@ -184,21 +184,6 @@ UI_CONTROLLER_DIRECT_CALL_ALLOWLIST = {
             frozenset({"add_agent_message"}),
         ),
         ControllerDirectCallAllowance(
-            "_clear_active_response_actions",
-            "self.chat_controller",
-            frozenset({"consume_all_response_actions"}),
-        ),
-        ControllerDirectCallAllowance(
-            "_handle_response_action_selection",
-            "self.chat_controller",
-            frozenset({"resolve_and_consume_response_action"}),
-        ),
-        ControllerDirectCallAllowance(
-            "_restore_rejected_response_action",
-            "self.chat_controller",
-            frozenset({"active_response_record"}),
-        ),
-        ControllerDirectCallAllowance(
             "_clear_conversation_presentation",
             "self.chat_controller",
             frozenset({"clear_conversation"}),
@@ -276,25 +261,6 @@ UI_CONTROLLER_DIRECT_CALL_ALLOWLIST = {
             "close",
             "self._controller",
             frozenset({"close"}),
-        ),
-    ),
-    Path("XBrainLab/ui/components/info_panel_service.py"): (
-        ControllerDirectCallAllowance(
-            "_query_data_lists",
-            "compatibility_controller:dataset",
-            frozenset({"get_loaded_data_list"}),
-        ),
-        ControllerDirectCallAllowance(
-            "_query_data_lists",
-            "compatibility_controller:preprocess",
-            frozenset({"get_preprocessed_data_list"}),
-        ),
-    ),
-    Path("XBrainLab/ui/panels/dataset/sidebar.py"): (
-        ControllerDirectCallAllowance(
-            "_compatibility_has_epoch_data",
-            "self.controller",
-            frozenset({"is_epoched"}),
         ),
     ),
 }
