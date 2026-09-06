@@ -5,7 +5,9 @@
 ## Active repair — sealed saliency reads and completed-result presentation (#113)
 
 - Approval: user approved the complete cleanup plan and requested implementation on 2026-09-06.
-  This section supersedes the earlier saliency investigation steps below. No merge authorization.
+  This section supersedes the earlier saliency investigation steps below. User subsequently confirmed
+  #112 data-split manual acceptance and explicitly approved merging its f7ff0658 candidate. Complete
+  #113 as a Desktop manual-test candidate; no #113 merge authorization. Leave #114 untouched.
 - Evidence: synthetic real-owner 2x5-fold summary takes 1.102s cold / 1.141s warm, including 20 full
   EEG fingerprints (~95% hashing). Windows completed results now work but remain slow. Read-only
   review also found summary dispatch returning False can overwrite its settled failure dirty state;
@@ -39,13 +41,17 @@
   (2) backend sealing/read changes and independent UI correction; (3) focused regression, alias/tamper,
   stale/cancel/repeat and mixed completion coverage; (4) measure same-size cold/warm/A-B-A/Fold Set
   timings, hash calls and sealing memory; (5) exact-source UI/source-diverse/static/canonical gates,
-  focused commit/push and update existing draft PR. No retarget/merge of its open #112 dependency.
+  focused commit/push and update existing draft PR. The approved handoff continuation now permits
+  merging #112 after exact-source CI/acceptance checks, then retargeting #113 to main without mixing
+  either #114 or local settings/split edits into the candidate.
 - Validation floor: zero full EEG/payload hashes after sealing in summary/single/cross-fold reads;
   disk tampering and model/mask changes reject; shape/dtype/source-alias/metadata mutation cannot
   corrupt sealed results; values/shapes/classes unchanged; public worker failure settles once.
   Keep P1/P2 recovery, cleanup/heartbeat and interrupted/retrained cohort tests. Replace private-only
   failure tests and live-payload-mutation expectations, not artifact tamper coverage.
-- Stop condition: missing exact-source/canonical/CI/native evidence remains checkpoint, not handoff-ready.
+- Stop condition: use the existing desktop-source profile and its accepted bounded Assistant baseline,
+  not the stricter Stable promotion profile. Missing exact-source/canonical/CI evidence remains a
+  checkpoint; Windows manual acceptance for #113 remains a later user gate.
   Prior four-file Assistant shard timeout must be investigated without reducing the denominator.
   Preserve settings.json and unrelated Atomic trial groups UI/test edits. Rollback only this slice's
   focused commits through a PR; do not revert user changes or rewrite persisted results.
@@ -92,10 +98,30 @@
   characterization test, preserving nonempty dataset/run and positive fold identity checks. No product
   rendering change is needed. Xvfb and strict model gates also need a native-environment retry:
   the existing Xvfb helper and a CUDA allocation probe both pass outside the restricted sandbox.
-- Next: commit/push the focused test correction, rerun the complete canonical manifest and final
-  performance/UI/source-diverse evidence in the clean exact-commit worktree, then update draft PR #113.
-  Its open #112/main dependency
-  and absent PR CI still prevent handoff-ready/merge claims; preserve the user's unrelated dirty files.
+- Final candidate checkpoint: pushed 143aace647e35052600414511391fe66da968936. The native-environment
+  full manifest passes complete regression (10,829 passed, eight declared optional-fixture skips),
+  static/type/docs/architecture, wizard capture/validation, baseline/startup, three 2D visualization
+  tabs plus expected headless 3D blocking, lifecycle/stress and required data/import/training checks.
+  Source-diverse evidence covers class-grounded PhysioNet EDF/BBCI GDF training plus SCCN EEGLAB/MNE
+  CNT import and missing-label admission boundaries. The exact five-fold MNE/EEGNet probe renders
+  Fold Set 3 after incomplete historical cohorts. Display hash calls remain zero in the measured
+  summary/member/pooled paths; timings are backend synthetic evidence, not Windows latency acceptance.
+- Correction: selecting the default strict promotion gate was an execution error. The complete 143aace6
+  report matches the already accepted baseline: 36/36 positive, 10/10 explicit-origin and 5/5 missing-origin
+  guards, 22/24 precision and 6/7 clarification. Exact model revision, frozen case files and 81-case
+  inventory match; observed failure IDs are precisely the three approved baseline cases. The existing
+  bounded-baseline checker returns passed. Do not open a new Assistant repair or raise the threshold.
+- Next: record the user's #112 manual acceptance and merge approval, recheck exact head/base/CI and merge
+  with a merge commit. Retarget #113 to main, correct PR evidence claims, freeze scoped docs/source and
+  run the complete canonical desktop-source manifest in the clean handoff worktree. Use native Xvfb/GPU
+  access, local copied fixtures and PATH including WSL NVIDIA utilities; keep all registered gates,
+  including RAG, resource calibration and the desktop-source dashboard. Require exact-head CI success,
+  coordinator artifact inspection and final narrow review before delivering SHA, Windows commands and
+  the interrupted/retrained Fold Set 3 checklist. Keep #113 unmerged and #114 unchanged.
+- Dispatch for handoff continuation: coordinator owns Git/PR/CI and inspects final artifacts; one worker
+  runs the canonical manifest, another performs bounded read-only diff review. No production changes
+  are planned, no new UI/API behavior, no new owner/cache/compatibility layer. Preserve settings.json
+  and unrelated Atomic trial groups UI/test edits. Rollback, if needed, is a focused PR, never a reset.
 
 ## Prior saliency investigation evidence — interrupted retraining and warm-view latency
 
