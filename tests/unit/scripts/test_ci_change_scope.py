@@ -33,6 +33,12 @@ def test_deleted_guidance_test_path_fails_closed_to_product_ci() -> None:
     )
 
 
+def test_guidance_with_documentation_uses_focused_guidance_and_docs_lanes() -> None:
+    assert classify_changed_paths(
+        (".agents/README.md", "docs/validation/README.md", "docs/decisions/README.md")
+    ) == ChangeScope(product=False, ui_visual=False, agent_guidance=True)
+
+
 def test_planning_document_without_guidance_change_stays_docs_only() -> None:
     assert classify_changed_paths(("docs/planning/now.md",)) == ChangeScope(
         product=False,
@@ -52,12 +58,18 @@ def test_general_scripts_tests_and_unknown_paths_fail_closed_to_product_ci() -> 
 
 
 def test_mixed_guidance_and_product_paths_run_product_ci() -> None:
-    scope = classify_changed_paths(
-        (".agents/README.md", "XBrainLab/backend/application_service.py")
-    )
+    for product_path in (
+        "XBrainLab/backend/application_service.py",
+        "tests/unit/test_architecture.py",
+        "scripts/dev/ci_change_scope.py",
+        "unknown.file",
+    ):
+        scope = classify_changed_paths(
+            (".agents/README.md", "docs/validation/README.md", product_path)
+        )
 
-    assert scope.product is True
-    assert scope.agent_guidance is False
+        assert scope.product is True
+        assert scope.agent_guidance is False
 
 
 def test_empty_change_set_fails_closed_to_product_and_ui_ci() -> None:
