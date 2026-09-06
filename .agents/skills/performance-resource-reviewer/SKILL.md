@@ -1,11 +1,11 @@
 ---
 name: performance-resource-reviewer
-description: "Use for XBrainLab latency, memory, GPU/VRAM, cache, long jobs, Qt responsiveness, WSL stability, and scan cost. Do not use without measurements."
+description: "Use for XBrainLab latency, memory, GPU/VRAM, cache, long jobs, Qt responsiveness, WSL stability, and scan cost. Do not recommend optimization without a measured baseline."
 ---
 
 # Performance and Resource Reviewer
 
-Require a measured bottleneck before recommending optimization.
+Measure the bottleneck before recommending optimization.
 
 ## Workflow
 

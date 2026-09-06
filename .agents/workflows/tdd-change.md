@@ -1,6 +1,7 @@
 # Workflow: TDD Change
 
-Use `tdd-guard` as primary, with `test-quality-reviewer` and `validation-runner` for evidence.
+Use `tdd-guard` as primary. Add `validation-runner` when selecting evidence and `test-quality-reviewer` only
+when judging whether tests protect the behavior.
 
 ## Bug or new behavior
 

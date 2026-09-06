@@ -1,8 +1,8 @@
-# XBrainLab keeps one balanced coordinator default. Plans explicitly select cheaper
-# or stronger workers when the bounded task contract justifies that choice.
-model = "gpt-5.6-terra"
+# XBrainLab development agents use Astra; the product Assistant is independent.
+model = "gpt-6-astra"
 model_reasoning_effort = "medium"
 
 [agents]
-default_subagent_model = "gpt-5.6-terra"
+max_concurrent_threads_per_session = 2
+default_subagent_model = "gpt-6-astra"
 default_subagent_reasoning_effort = "medium"

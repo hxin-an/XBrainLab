@@ -9,17 +9,17 @@ Select evidence proportional to the declared scope and claim.
 
 ## Authority
 
-Read the relevant section of `docs/validation/README.md`. Executable handoff gate IDs, order, argv,
-timeouts, cache injection, and attestation come only from `scripts/dev/handoff_gate_spec.py`; run
-them through the canonical manifest runner. Do not copy or weaken commands in this skill.
+Read `docs/validation/README.md` for applicable evidence. Reuse same-head CI checks/artifacts before
+running equivalent local work. Explicit full dossiers use `scripts/dev/handoff_gate_spec.py` through
+the canonical manifest runner; do not invent a reduced full-dossier profile.
 
 ## Workflow
 
 1. Define changed areas, expected behavior, environment, and intended claim.
 2. Select the smallest focused test that directly protects the change.
 3. Add a source guard or adjacent regression only when it directly protects the declared contract.
-4. Run UI artifacts, source-diverse data gates, exact-source dossiers, and full manifests only when
-   the claim or handoff workflow requires them.
+4. Use deterministic tools for source identity, check conclusions, counts and artifact state. Review
+   changed UI design/anomalies visually; unchanged screenshots do not require another model pass.
 5. Distinguish scope-complete work from checkpoint and handoff-ready; do not escalate one into the
    next evidence tier automatically.
 

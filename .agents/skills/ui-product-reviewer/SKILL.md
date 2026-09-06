@@ -7,17 +7,17 @@ description: "Use for XBrainLab desktop workflow clarity, visual polish, states,
 
 Review the workflow as a desktop user sees it.
 
-Read-only review may proceed directly. Before editing any UI file or user-visible layout, copy,
-interaction, state, or workflow, verify that the explicit confirmation required by root
-`AGENTS.md` already exists; otherwise stop at findings.
+Read-only review may proceed directly. Before changing user-visible layout, copy, interaction, state, or
+workflow, verify that the explicit confirmation required by root `AGENTS.md` already exists; otherwise
+stop at findings. Internal UI changes that preserve presentation follow the authorized task scope.
 
 ## Workflow
 
 1. Define the user goal, starting state, primary action, completion state, and recovery paths.
 2. Read the relevant UI route and product contract; do not redesign unrelated screens.
 3. Exercise loading, empty, blocked, error, cancellation, success, repeat, and narrow-window states.
-4. Inspect screenshots at relevant DPI/widths for hierarchy, contrast, wrapping, clipping, overlap,
-   scroll, focus, keyboard reachability, and dialog geometry.
+4. Use widget visibility/enabled state, geometry and pixel checks first. Visually inspect changed
+   design and unexplained differences; reuse same-source captures instead of reviewing unchanged UI.
 5. Verify visible readiness/error text reflects backend truth and does not create a second policy.
 6. Check that debug metadata, raw exceptions, internal command names, and developer controls are not
    primary product UI.

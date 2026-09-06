@@ -1,6 +1,6 @@
 # XBrainLab Agent Operations
 
-最後更新：`2026-08-14`
+最後更新：`2026-09-07`
 
 `.agents/` 只保存 repo-local capability 與可重用流程。Repo 授權、scope、safety、complexity 與
 handoff 不變量以 `AGENTS.md` 為唯一權威；這裡不複製清單或 current product truth。
@@ -8,8 +8,9 @@ handoff 不變量以 `AGENTS.md` 為唯一權威；這裡不複製清單或 curr
 ## Progressive loading
 
 1. 先讀 `AGENTS.md` 與任務直接涉及的 canonical source。
-2. 只載入一個 primary skill；跨領域真有必要時最多一個 secondary。
-3. 只有三步以上、需要 rollback 或 handoff 的任務才載入 workflow。
+2. 使用者點名的 skill 必須載入；否則先載入處理目前 phase 所需的 primary skill，只有實際跨領域
+   時才加入其他 skill。
+3. 當某個 workflow 的程序治理目前工作時才載入它；不要以步數、skill 數或 routine task 強制載入。
 4. Thesis/tool-call claim 才讀 `.agents/context/thesis.md`；已退役的MCP surface不再dispatch。
 
 ## Skills
@@ -32,9 +33,6 @@ handoff 不變量以 `AGENTS.md` 為唯一權威；這裡不複製清單或 curr
 | Desktop UI review | `ui-product-reviewer` |
 | Validation selection | `validation-runner` |
 
-Skill frontmatter 是 routing authority；body 只定義專業方法與邊界。Reviewer finding 不授權實作，
-也不會自動擴大 root scope ceiling。
-
 ## Workflows
 
 | Workflow | Use |
@@ -46,30 +44,23 @@ Skill frontmatter 是 routing authority；body 只定義專業方法與邊界。
 | `tdd-change.md` | Bug/core behavior 的 red-green loop。 |
 | `test-audit.md` | 評估測試是否能抓到真實 defect。 |
 | `agent-toolcall-scoring.md` | 產品穩定後的 tool-call experiment。 |
-| `handoff-candidate.md` | 宣稱可手測／handoff-ready 前的完整 gate。 |
+| `handoff-candidate.md` | Focused evidence 與同版本 CI 的交付判定。 |
 
 ## Model dispatch
 
-`gpt-5.6-terra` / `medium` is coordinator and worker fallback. Delegated plans emit:
-`Dispatch: coordinator; workers; Sol trigger; Fast; escalation`.
+`gpt-6-astra` / `medium` is the coordinator and worker default. All development agents use Astra;
+do not route simple work to another model or silently fall back. Explicit session reasoning choices
+remain effective; a difficult task does not itself authorize changing them. This configuration does
+not change the product Assistant model/revision or grant API/download authority.
 
-- `gpt-5.6-luna` / `medium` / Standard：repeatable single-owner work with an exact oracle.
-  Tiny work stays with Terra when delegation would duplicate more context than it saves.
-- Terra：bounded work using an existing owner/contract; use `high` for a difficult trace below Sol.
-- `gpt-5.6-sol` / `high` only for: `S1` authority/contract conflict; `S2` owner/state-truth migration;
-  `S3` novel safety/state/rollback/cancel protocol; `S4` inseparable coupled risks; `S5` valid designs with
-  different public/failure semantics; `S6` scientific/thesis/tool-call evidence protocol design.
-- LOC/files, keywords, unfamiliarity, red CI or deadline are not Sol triggers. Split broad work; return
-  implementation to Terra/Luna after a Sol decision.
-- Fast is foreground Luna only when the user waits on model generation. Background stays Standard; repo
-  config never persists Fast or changes a host model.
-- A cheaper model gets one complete attempt. Escalate for a demonstrated capability/understanding gap;
-  diagnose tool, test, CI, download or environment failures without changing model.
+Delegate when the user requests coordination or two independent useful streams save time or improve evidence.
+A single workflow of at most 8 production files normally stays with its owner. Cap concurrent subagent
+threads at 2 (coordinator excluded); isolate writes and return concise evidence, not duplicate reviews.
+Pending CI or manual acceptance does not pause independent authorized work.
 
-`xhigh` requires explicit direction or measured benefit. No bulk A/B is a merge gate;
-model choice never changes authorization, scope or completion semantics.
+Use deterministic commands for Git/CI identity, counts, schemas, widget visibility/enabled state,
+geometry and pixel differences. Read summaries and failure details, not whole successful logs.
+Use model review for meaning, design and unexplained differences; no routine VLM pass over unchanged
+screenshots. See the validation contract for evidence selection and reuse.
 
-## Retired surfaces
-
-舊 stack/runbooks、superseded goals/branches、`Prep Gate`、`Repair Loop`、`AQ-*`、retired skills 和
-`.agents/legacy/*` 只能作 historical token，不得 dispatch。
+These are repo choices, not an official universal architecture. See the official [Astra model guidance](https://developers.openai.com/api/docs/guides/latest-model/gpt-6-astra.md#prompting-best-practices), [skills guidance](https://developers.openai.com/codex/skills), [subagent configuration](https://developers.openai.com/codex/multi-agent), and [config basics](https://learn.chatgpt.com/docs/config-file/config-basic).

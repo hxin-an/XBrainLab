@@ -1,10 +1,34 @@
 # XBrainLab Validation Contract
 
-最後更新：`2026-08-18`
+最後更新：`2026-09-07`
 
 驗證回答「哪個exact source，在什麼環境，觀察到什麼」，不能把單一PASS放大成產品、科學或真人
-驗收結論。Executable handoff gate的ID、順序、argv、timeout與artifact contract只以
-`scripts/dev/handoff_gate_spec.py`為準，並由canonical runner執行。
+驗收結論。日常與PR交付按下表選證據；CI routing由既有workflow擁有。明確要求完整dossier時，
+gate的ID、順序、argv、timeout與artifact contract仍只以`scripts/dev/handoff_gate_spec.py`為準。
+
+## Daily checks and PR delivery
+
+本機focused checks用於修理回饋；CI負責同一PR head的完整回歸、跨平台與既有artifact gates。
+同一證據只執行一次：已有成功的同版本CI artifact時，不在本機重跑等價全套，也不因新增一筆
+不相關修改反覆讀取全部圖片。CI未涵蓋的必要證據才補本機執行，命令沿用既有runner。
+
+| 變更 | 本機最小證據 | 交付時必要證據 |
+| --- | --- | --- |
+| Docs／guidance／config | 結構／設定audit、相關測試，受影響docs build | 同head guidance／docs CI；不跑產品模型評測。 |
+| 一般bug／重構 | 可重現defect或passing baseline、相關行為測試與static checks | 同head全部non-skipped CI成功；不另跑本機full regression。 |
+| 可見UI | 操作與state測試、changed-surface screenshot／walkthrough | 同head視覺比較；layout／theme／font／dialog變更需Windows DPI gate。 |
+| Data／import／label／epoch／training／evaluation／visualization | 對應資料語意與直接lifecycle測試 | 同head canonical source-diverse gate；CI artifact可直接滿足。 |
+| Async／native | 完成、取消、stale callback與cleanup的直接保護 | 對應平台CI／stress evidence；未覆蓋的必要native seam才補本機。 |
+| Assistant模型／prompt／tool契約／推論流程 | 直接command／policy／trajectory保護 | 適用的真model baseline與GUI journey；其他產品變更不重跑模型評測。 |
+
+大型測試清理保留行為保障的對照，揭露刪除前後數量，不以任意減少denominator冒充品質提升。
+Focused檢查通過後，只有新變更、失敗或未解風險才擴大／重跑。同版本CI失敗時先判讀原因；
+不以增加timeout、無上限重跑、隱藏skip或忽略失敗來交付。一次重跑通過也保留原失敗的限制。
+
+Git／CI identity、exit code、counts、widget可見／enabled、geometry與pixel差异由deterministic
+工具判定。模型審查保留給語意、產品設計與異常原因；不得只看模型敘述就宣稱artifact存在或PASS。
+同head CI／artifact連結加focused結果就是一般PR交付證據，不強制另建本機完整dossier。
+新source需新CI；不同SHA、環境、模型revision或已知限制的證據不可冒充本次執行。
 
 ## Evidence levels
 
@@ -13,13 +37,13 @@
 | Unit/source guard | Bounded behavior或穩定靜態規則。 | 完整workflow、native UI、real dataset diversity。 |
 | Integration | ApplicationService/domain/UI元件間的state transition。 | Windows真人操作或科學品質。 |
 | Source-diverse data gate | 代表性來源的import/label/epoch/training contract。 | 所有格式、所有dataset或full BIDS compliance。 |
-| Automated UI artifact | Exact-source layout、visible state與interaction。 | Native Windows DPI、多螢幕與真人usability。 |
+| Automated UI artifact | Exact-source layout、visible state與interaction；原生Windows capture可證明該DPI的自動geometry檢查。 | 真人DPI／多螢幕操作與usability；offscreen不能代表Windows。 |
 | Handoff dossier | 同一clean/explained pushed SHA的完整工程證據。 | 使用者manual acceptance、signed installer或scientific certification。 |
 | Manual acceptance | 使用者在指定產品source上完成實際操作並同意merge。 | 未測平台、未測資料集或後續改動的source。 |
 
 ## Exact-source requirements
 
-Final evidence至少記錄branch、full commit SHA、HEAD tree、dirty state、protected local paths、source
+完整dossier至少記錄branch、full commit SHA、HEAD tree、dirty state、protected local paths、source
 fingerprint、command、return status、duration、timeout、skips與artifact hashes。只有repo-root
 `settings.json`可作為未stage的protected local例外。
 
@@ -33,15 +57,19 @@ checkpoint。Dashboard是summary，不是dossier。
 - Approved visual regression references：`tests/baselines/ui/`。
 - `artifacts/`：只保留policy/ignore，不保存current evidence。
 
-UI evidence必須檢查hierarchy、contrast、text fit、primary action、overlap、nested scroll、dialog
-geometry、empty/loading/error/blocked state，以及相關width/DPI。主agent必須實際查看畫面。
+UI evidence涵蓋變更涉及的hierarchy、contrast、text fit、primary action、overlap、scroll、geometry與
+empty/loading/error/blocked state。主agent實際查看changed surfaces與非預期差異；機械狀態先用
+widget／geometry／pixel assertions，同版本未改的畫面不逐張重做模型審查。
 
 Visible UI變更的default-scale candidate必須由`capture_ui_baseline.py`產生exact-source manifest並和
 approved references比較；CI不得自行更新reference。Layout、theme、font或dialog路徑另跑Windows Qt
 platform的100/125/150% app-polish matrix。Linux/WSL offscreen scale不能冒充Windows結果；automated
 Windows capture也不取代真人native DPI、多螢幕或remote-desktop acceptance。
 
-## Handoff gates
+## Explicit full-release dossiers
+
+只有使用者要求完整release dossier、Stable／科學模型能力宣稱，或適用契約明定完整dossier時，
+才執行本節。一般產品PR可依上節完成交付；不得把focused／CI交付說成完整manifest通過。
 
 完整 dossier 由 `scripts/dev/run_handoff_validation_manifest.py` 執行；命令、timeout 與 artifact
 policy 只讀 `scripts/dev/handoff_gate_spec.py`。Runner 的 `--model-cache-dir` 與
@@ -64,8 +92,8 @@ Evidence root 預設必須是 repo-contained 且 ignored；只有明確傳入
 - Docs：canonical truth、link/source audit、developer與user-site strict build。
 - Branch/CI：focused commits、pushed exact PR head、所有non-skipped checks completed/success。
 
-任何required gate缺失時只能稱`checkpoint`或`blocked`；所有applicable gates對同一clean/explained
-exact commit完成後才可稱`handoff-ready`。
+本節完整dossier宣稱缺任何required gate時只能稱`checkpoint`或`blocked`。一般PR按上節判定
+applicable evidence；同一clean/explained exact commit全部通過才可稱`handoff-ready`。
 
 ## Manual merge approval
 
@@ -76,6 +104,10 @@ exact commit完成後才可稱`handoff-ready`。
 純docs、tests、CI或agent-guidance變更若不可能改變產品行為，可不要求manual acceptance。
 
 ### Bounded Assistant baseline merge
+
+本節的真model報告要求適用於Assistant能力／模型契約變更或首次baseline接受。與Assistant無關的
+產品PR沿用既有已接受限制，不重跑model評測，也不宣稱該舊model報告是在新SHA上重新產生。
+這類無關產品slice可在自身證據完整時稱scoped `handoff-ready`，不代表Assistant promotion。
 
 使用者可明確批准一個尚未達Stable promotion gate、但相對既有main有可驗證進步的bounded Assistant
 baseline。這不是可重用的promotion gate：PR必須保存同一exact source的

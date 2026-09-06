@@ -1,9 +1,8 @@
 # XBrainLab Agent Guide
 
-最後更新：`2026-08-17`
+最後更新：`2026-09-07`
 
-這裡只保留每個 coding agent 都必須遵守的 repo 級不變量；可變的產品現況、計畫與 gate
-命令仍由 canonical source 擁有。
+Repo 級不變量；產品、plan、gate 由 canonical source 擁有。
 
 ## 權威與讀取
 
@@ -16,33 +15,31 @@
 - `.agents/README.md`：repo-local skills、workflows 與 model dispatch。
 - `scripts/dev/handoff_gate_spec.py`：唯一 executable handoff gate registry。
 
-Git identity、branch、dirty state 和 worktree inventory 從 Git 取得。若文件與 source/runtime/Git
-衝突，校準 canonical doc，不建立第二份 current truth。Records 與 artifacts 是歷史，
-不是 active dispatch。
+Git identity、branch、dirty state與worktree inventory從Git取得。文件與source/runtime/Git衝突時校準
+canonical doc；records/artifacts是歷史，不作active dispatch。
 
 ## 授權與 scope ceiling
 
-使用者的要求、明定 acceptance 和直接必要依賴是本 slice 的 **scope ceiling**。高推理強度、
-reviewer finding 或評估深度不會擴大授權。
+使用者要求、明定 acceptance 與直接必要依賴定義 **scope ceiling**；review/評估不擴大授權。
 
 - 回答、解釋、審查、診斷或規劃：唯讀診斷並回報，未被要求時不實作。
 - 修改、建立或修復：實作授權 scope 內的最小 coherent change 與直接驗證。
-- 外部寫入、破壞性操作、付費行為、public contract 決策或實質 scope 擴張：先取得確認。
-- 任何 `XBrainLab/ui/` 修改，或會改變使用者可見 layout、文案、互動、狀態或流程的修改，
-  實作前必須先取得使用者明確確認；即使是 bug fix 也一樣。唯讀診斷與不影響可見行為的
-  backend 修正不受此限。
+- 未授權的外部寫入、破壞性操作、付費行為、public contract 決策或實質 scope 擴張：先取得確認。
+- 改變使用者可見 layout、文案、互動、狀態或流程時，實作前必須先取得使用者明確確認。`XBrainLab/ui/`
+  內維持 presentation 的修正照已授權 scope 實作，不重複確認。
+- 已授權 scope 內完成必要工作、focused validation、commit/push/PR。不重複詢問既有授權；未授權 PR
+  仍須確認，merge 規則不變。
+- 使用者指令優先於 skill；若 skill 導致暫停，指出指令並先完成未受阻的授權工作。
 
-只有會重現本次 defect、破壞本次 contract、導致直接安全／資料損失，或使 focused
-validation 無法判斷的 adjacent finding 才會阻擋本 slice。其他 finding 最多列三項 follow-up，
-不在同一 diff 實作，也不影響 scope-complete。
+只有重現 defect、破壞 contract、造成安全／資料損失或令 focused validation 無法判斷的 adjacent finding
+阻擋本 slice。其他最多三項 follow-up，不實作且不影響 scope-complete。
 
 ## Plan-first repair
 
 Product bug、feature或refactor開始實作前先更新唯一active plan `docs/planning/now.md`，涵蓋問題與證據、
 outcome、scope／non-goals、假設、修理步驟、focused validation、stop condition與UI確認狀態。
 
-聊天plan只是執行鏡像。施工中更新next step、blocker與變更；完成後移除該active slice，只將真正改變
-的current truth、decision或evidence contract留在其canonical authority。Plan不擴大scope ceiling。
+施工中更新 next step/blocker；完成後移除 active slice，只把真實改變留在 canonical authority。
 
 Multi-PR public contracts require approved decisions/target before implementation; current source/tests
 never ratify target. Assistant tool names, membership, side effects, confirmation, and visible results are
@@ -89,8 +86,8 @@ implementation。只在規則穩定、可靜態描述且有重複風險時加 so
 truth、decision、architecture 或 evidence contract 真正改變時更新 canonical docs；不為每個
 focused run 建 receipt 或同時寫 implementation log 與 worklog。
 
-單一 workflow 且不超過 8 個 production files 時預設不派 subagent。一般最多兩個互不重疊 worker；
-使用者明確要求多 agent 時可例外。不派多個 reviewer 對同一維度重複「再找更多 robustness」。
+只在 independent、可平行且能節省時間或提升證據品質的 stream，或使用者明確要求協作時派 subagent。
+單一 workflow 且不超過 8 個 production files 時預設不派；一般最多兩個互不重疊 worker，不重複同維度 review。
 
 ## 驗證與完成語意
 
@@ -100,11 +97,11 @@ focused run 建 receipt 或同時寫 implementation log 與 worklog。
 - `handoff-ready`：只在 `.agents/workflows/handoff-candidate.md` 的所有 applicable gate 對同一
   clean/explained exact commit 通過後使用。
 
-日常任務選能直接證明需求的最小 focused test；不自動升級為 full regression、多資料集、
-UI artifact 或 handoff manifest。要宣稱可交使用者測試時，才執行完整 handoff workflow。
-若已取得 UI 修改授權，可見變更仍必須有 screenshot/walkthrough；offscreen 不取代 Windows
-native acceptance。Data/import/label/epoch/training/evaluation/visualization handoff 仍需 canonical
-source-diverse dataset gate。
+日常只跑直接相關 focused checks；交付依 `docs/validation/README.md` 選 applicable evidence，
+同一 PR head 已成功的 CI 不在本機重跑等價全套。完整 manifest 只供明確的完整版本驗證需求。
+可見變更仍需 changed-surface screenshot/walkthrough；deterministic widget/geometry/pixel checks
+處理可機械判斷的事實，模型只審設計與異常。Offscreen 不取代 Windows native acceptance。
+Data/import/label/epoch/training/evaluation/visualization 仍需同版本 source-diverse gate，可由 CI 提供。
 
 ## 資源與程序安全
 
