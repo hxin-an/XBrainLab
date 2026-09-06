@@ -271,7 +271,11 @@ def test_evaluation_instantiates_without_controller_or_controller_lookup(qtbot) 
 
     parent.study.get_controller.assert_not_called()
     assert panel.controller is None
-    assert panel.model_combo.count() == 1
+    assert port.query_calls == 1
+    assert panel._application_view_publication == port.publication
+    assert panel.model_combo.count() == 0
+    assert panel.model_combo.isEnabled() is False
+    assert panel.run_combo.count() == 0
 
 
 def test_evaluation_fails_closed_without_application_ports(qtbot) -> None:

@@ -308,7 +308,13 @@ def test_export_saliency_selects_requested_method_and_identity(
     artifact = saliency_eval_record.export_saliency(method)
 
     assert artifact["method"] == method
-    assert artifact["saliency"] is getattr(saliency_eval_record, attribute)
+    exported = artifact["saliency"]
+    source = getattr(saliency_eval_record, attribute)
+    assert set(exported) == set(source)
+    for class_index, values in source.items():
+        np.testing.assert_array_equal(exported[class_index], values)
+    exported.clear()
+    assert getattr(saliency_eval_record, attribute)
     assert artifact["saliency_context"] == _complete_saliency_context().to_payload()
     assert artifact["saliency_method_parameters"] == {
         method: saliency_eval_record.saliency_method_parameters[method]

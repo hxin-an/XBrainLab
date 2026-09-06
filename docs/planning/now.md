@@ -74,8 +74,14 @@
 - Complexity outcome before freeze: cumulative #113 production +458/-46 (net412), nine existing files,
   no new owner/module/public class. Additional LOC closes mutable-alias boundaries in the existing
   result API; display no longer repeatedly hashes the data. No global input immutability or new cache.
-- Next: commit/push the scoped source, run the canonical manifest and final performance/UI/source-diverse
-  evidence in a clean exact-commit worktree, then update draft PR #113. Its open #112/main dependency
+- Exact-source checkpoint: source commit 4c08f35 passes static/type/docs/architecture checks. Canonical
+  regression phase 1 found six stale expectations (five exported-container identities and one empty
+  Evaluation catalog); update their observable content/isolation and public-read assertions. No new
+  production repair is needed for these failures. Focused export/artifact tests pass 64; the Evaluation
+  publication module passes 22. Later canonical phases remain unexecuted, not passed.
+- Next: commit/push the focused test correction, rerun the complete canonical manifest and final
+  performance/UI/source-diverse evidence in the clean exact-commit worktree, then update draft PR #113.
+  Its open #112/main dependency
   and absent PR CI still prevent handoff-ready/merge claims; preserve the user's unrelated dirty files.
 
 ## Prior saliency investigation evidence — interrupted retraining and warm-view latency
