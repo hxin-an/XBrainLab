@@ -2,7 +2,83 @@
 
 最後更新：`2026-09-06`
 
-## Active saliency investigation — interrupted retraining and warm-view latency
+## Active repair — sealed saliency reads and completed-result presentation (#113)
+
+- Approval: user approved the complete cleanup plan and requested implementation on 2026-09-06.
+  This section supersedes the earlier saliency investigation steps below. No merge authorization.
+- Evidence: synthetic real-owner 2x5-fold summary takes 1.102s cold / 1.141s warm, including 20 full
+  EEG fingerprints (~95% hashing). Windows completed results now work but remain slow. Read-only
+  review also found summary dispatch returning False can overwrite its settled failure dirty state;
+  current private-helper tests do not cover the public UI update path.
+- Outcome: validate and seal completed saliency once; display without full EEG or payload hashing;
+  keep exact model/mask and semantic metadata checks. Both result pages show completed runs only,
+  count valid Early Stop as completed, preserve original identities, and retain Compute for completed
+  training without saliency. Fold Set admission still requires its complete valid cohort.
+- Scope/non-goals: existing EvalRecord, provenance, TrainingPlan, saliency publisher, two result panels
+  and shared display labels. No global EEG immutability, generic cache/revision owner, artifact schema
+  change, dataset-specific behavior, whole-repo SHA removal, split changes or unrelated cleanup.
+- Snapshot contract: detach arrays into immutable bytes, validate the detached candidate, then seal.
+  Public array access creates lightweight views directly over bytes (not views exposing the canonical
+  ndarray through .base); caller shape/dtype changes cannot alter the snapshot. Keep canonical metadata
+  private, expose defensive copies preserving dict/list/tuple types, and reject sealed field replacement.
+  Recompute creates and atomically publishes new records.
+  Compute/load retain full verification; unsealed/incompatible records cannot take the fast read path.
+  Post-seal unsupported direct numeric EEG mutation is not detected on every display; normal model,
+  split and semantic metadata changes remain checked. Normalization produces separate display arrays.
+- UI approval: hide incomplete runs/folds in Evaluation and Visualization; remove Run's (Finished)
+  suffix; display generated Subject-1_0 as Subject-1-1, one-based, without renaming stored identities.
+  Preserve all other layout/colors/copy. Fix summary failure settlement without automatic retry loops;
+  retain generation fences, cancellation and equivalent-render coalescing.
+- Complexity review: existing #113 production +171/-18 (net153), three files. Estimated cumulative
+  nine files / net360-500 triggers review before implementation. Existing owners unchanged; no new
+  module/class/control plane. Delete hot EEG/payload checks, redundant sealed-store finite scans and
+  misleading async return-value assignments. Keep normalization/pooling checks. Two bounded workers
+  own backend snapshot/read changes and UI lifecycle/labels; coordinator integrates and verifies actual
+  +/-/net before handoff. Split further if >1500 production LOC or ownership must expand.
+- Steps: (1) public failure and snapshot/selection red tests plus passing artifact characterization;
+  (2) backend sealing/read changes and independent UI correction; (3) focused regression, alias/tamper,
+  stale/cancel/repeat and mixed completion coverage; (4) measure same-size cold/warm/A-B-A/Fold Set
+  timings, hash calls and sealing memory; (5) exact-source UI/source-diverse/static/canonical gates,
+  focused commit/push and update existing draft PR. No retarget/merge of its open #112 dependency.
+- Validation floor: zero full EEG/payload hashes after sealing in summary/single/cross-fold reads;
+  disk tampering and model/mask changes reject; shape/dtype/source-alias/metadata mutation cannot
+  corrupt sealed results; values/shapes/classes unchanged; public worker failure settles once.
+  Keep P1/P2 recovery, cleanup/heartbeat and interrupted/retrained cohort tests. Replace private-only
+  failure tests and live-payload-mutation expectations, not artifact tamper coverage.
+- Stop condition: missing exact-source/canonical/CI/native evidence remains checkpoint, not handoff-ready.
+  Prior four-file Assistant shard timeout must be investigated without reducing the denominator.
+  Preserve settings.json and unrelated Atomic trial groups UI/test edits. Rollback only this slice's
+  focused commits through a PR; do not revert user changes or rewrite persisted results.
+- Dispatch: coordinator supervises; two existing-owner workers; no model escalation; Fast off.
+- Progress: snapshot source-alias/header test reproduced corruption; four public summary-failure tests
+  reproduced dirty-state overwrite. Full prior four-file Assistant timeout selector replay passed 23/23
+  with coverage in 8.73s; this does not explain the earlier timeout or replace final canonical evidence.
+  Same exact baseline synthetic benchmark: summary warm 1.173s (20 EEG/40 payload descriptor calls),
+  single warm 0.126s (2/4), pooled warm 0.598s (10/20). Working-tree candidate summary/single/pool
+  warm reads measured 0.004/0.006/0.024s with zero full EEG/payload hashes and equal arrays/shapes;
+  setup peak RSS rose about 22 MiB for ~21 MiB per-record payload detachment. Final SHA rerun pending.
+- Simplification during implementation: recursive metadata freeze/thaw changed tuple/list identity in
+  artifact verification. Replace that conversion with private canonical copies + defensive getters,
+  preserving the existing strict serialized types; no frozen-list type or compatibility adapter.
+- Final bounded implementation: fresh dict/read-only-array views preserve existing coverage admission;
+  no MappingProxy compatibility branch. Exact model/mask/sfreq mutation rejects with the existing
+  SaliencyContextError semantics. Reuse the original context builder with a sealed fingerprint rather
+  than adding a second metadata parser. Private async refresh returns None; both result pages use the
+  same name formatter without an ordinary-name exception.
+- Focused checkpoint: six full related backend files 210 passed; related UI plus training-refresh
+  integration 170 passed; four real lifecycle/UI/workflow integration files 40 passed. Real MNE/EEGNet
+  five-fold probe computes and renders Fold Set 3 after two incomplete historical cohorts, including
+  Early Stop completion. These overlapping working-tree runs are not a summed final dossier.
+  Basedpyright reports zero new diagnostics; architecture and Ruff checks pass. Coordinator inspected
+  populated/empty selector captures; these fixture captures do not prove native Windows rendering.
+- Complexity outcome before freeze: cumulative #113 production +458/-46 (net412), nine existing files,
+  no new owner/module/public class. Additional LOC closes mutable-alias boundaries in the existing
+  result API; display no longer repeatedly hashes the data. No global input immutability or new cache.
+- Next: commit/push the scoped source, run the canonical manifest and final performance/UI/source-diverse
+  evidence in a clean exact-commit worktree, then update draft PR #113. Its open #112/main dependency
+  and absent PR CI still prevent handoff-ready/merge claims; preserve the user's unrelated dirty files.
+
+## Prior saliency investigation evidence — interrupted retraining and warm-view latency
 
 - Evidence: Windows Zhou2020, two subjects/85 recordings, Individual five-fold CV; stop first
   training midway, enable Early Stop and finish a second training. Compute Saliency appears to

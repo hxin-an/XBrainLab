@@ -31,9 +31,13 @@ from XBrainLab.backend.training import (
     TrainingEvaluation,
     TrainingOption,
     TrainingPlanHolder,
+    saliency_provenance,
 )
+from XBrainLab.backend.training import training_plan as training_plan_module
+from XBrainLab.backend.training.record import eval as eval_module
 from XBrainLab.backend.training.record.eval import EvalRecord
 from XBrainLab.backend.training.record.train import TrainRecord
+from XBrainLab.backend.training.saliency_provenance import SaliencyContextError
 from XBrainLab.backend.training.training_plan import PreparedSaliencyUpdate
 from XBrainLab.backend.training_manager import (
     PostTrainingSaliencyTarget,
@@ -122,8 +126,12 @@ def _training_option() -> TrainingOption:
     )
 
 
-def _eval_record(*, with_saliency: bool) -> EvalRecord:
-    saliency = {0: np.ones((1, 2, 8), dtype=np.float32)} if with_saliency else {}
+def _eval_record(*, with_saliency: bool, saliency_value: float = 1.0) -> EvalRecord:
+    saliency = (
+        {0: np.full((1, 2, 8), saliency_value, dtype=np.float32)}
+        if with_saliency
+        else {}
+    )
     return EvalRecord(
         label=np.array([0], dtype=int),
         output=np.array([[1.0]], dtype=np.float32),
@@ -139,8 +147,10 @@ def _eval_record(*, with_saliency: bool) -> EvalRecord:
 def _bound_saliency_eval_record(
     holder: TrainingPlanHolder,
     record: TrainRecord,
+    *,
+    saliency_value: float = 1.0,
 ) -> EvalRecord:
-    eval_record = _eval_record(with_saliency=True)
+    eval_record = _eval_record(with_saliency=True, saliency_value=saliency_value)
     eval_record.bind_saliency_context(
         holder.dataset.get_epoch_data(),
         producer_identity=holder.build_saliency_producer_identity(
@@ -2163,8 +2173,7 @@ def test_saliency_render_rejects_a_stale_publication_generation() -> None:
     )
     stale_request = _render_request(first_publication)
 
-    replacement = _bound_saliency_eval_record(holder, record)
-    replacement.gradient[0].fill(2.0)
+    replacement = _bound_saliency_eval_record(holder, record, saliency_value=2.0)
     record.set_eval_record(replacement)
     service.get_state()
     current_publication = service.get_view_publication()
@@ -2194,8 +2203,7 @@ def test_saliency_render_rejects_a_commit_that_crosses_the_copy_barrier(
         record,
     )
     request = _render_request(publication)
-    replacement = _bound_saliency_eval_record(holder, record)
-    replacement.gradient[0].fill(3.0)
+    replacement = _bound_saliency_eval_record(holder, record, saliency_value=3.0)
 
     from XBrainLab.backend.application import saliency_render
 
@@ -2237,10 +2245,64 @@ def test_saliency_render_arrays_are_readonly_and_detached() -> None:
     copied = render.data.saliency_by_class[0]
 
     assert copied.flags.writeable is False
-    source_record.gradient[0].fill(9.0)
+    with pytest.raises(ValueError):
+        source_record.gradient[0].fill(9.0)
     assert np.all(copied == 1.0)
     with pytest.raises(ValueError):
         copied[0, 0, 0] = 4.0
+
+
+def test_sealed_single_render_does_not_rehash_eeg_or_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, _trainer, holder, record, _initial = _completed_training_service()
+    _source, publication = _publish_renderable_saliency(service, holder, record)
+
+    def unexpected_hash(*_args: object, **_kwargs: object) -> str:
+        raise AssertionError("sealed display must not hash source or payload")
+
+    monkeypatch.setattr(
+        saliency_provenance, "fingerprint_saliency_epoch_data", unexpected_hash
+    )
+    monkeypatch.setattr(
+        training_plan_module, "fingerprint_saliency_epoch_data", unexpected_hash
+    )
+    monkeypatch.setattr(
+        eval_module, "verify_saliency_artifact_manifest", unexpected_hash
+    )
+
+    render = service.get_saliency_render(_render_request(publication))
+
+    np.testing.assert_array_equal(
+        render.data.saliency_by_class[0], np.ones((1, 2, 8), dtype=np.float32)
+    )
+
+
+@pytest.mark.parametrize("mutation", ("model", "mask", "sampling_frequency"))
+def test_sealed_render_rejects_live_model_mask_and_metadata_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    service, _trainer, holder, record, _initial = _completed_training_service()
+    _source, publication = _publish_renderable_saliency(service, holder, record)
+
+    def unexpected_eeg_hash(*_args: object, **_kwargs: object) -> str:
+        raise AssertionError("sealed display must not hash complete EEG")
+
+    monkeypatch.setattr(
+        training_plan_module, "fingerprint_saliency_epoch_data", unexpected_eeg_hash
+    )
+    if mutation == "model":
+        parameter = next(record.model.parameters())
+        with torch.no_grad():
+            parameter.add_(1.0)
+    elif mutation == "mask":
+        holder.dataset.test_mask[0] = not holder.dataset.test_mask[0]
+    else:
+        holder.dataset.get_epoch_data().sfreq = 64.0
+
+    with pytest.raises(SaliencyContextError, match="Recompute saliency"):
+        service.get_saliency_render(_render_request(publication))
 
 
 def test_saliency_render_reads_training_history_from_runtime_not_study_alias() -> None:
@@ -2281,7 +2343,7 @@ def test_saliency_render_rejects_unverified_class_identity() -> None:
         _completed_training_service()
     )
     eval_record, publication = _publish_renderable_saliency(service, holder, record)
-    cast(Any, eval_record).validate_saliency_context = None
+    cast(Any, eval_record).validate_sealed_saliency_render_snapshot = None
 
     with pytest.raises(PreconditionError, match="identity context"):
         service.get_saliency_render(_render_request(publication))

@@ -915,7 +915,7 @@ def test_visualization_panel_keeps_aggregation_in_tooltip_without_extra_chrome(q
         panel.tabs.setCurrentIndex(0)
 
     assert panel.tabs.toolTip() == (
-        "motor-imagery · Fold 1 · Run 1 · True class · Mean over EEG epochs"
+        "motor-imagery · Fold 1 (motor-imagery) · Run 1 · True class · Mean over EEG epochs"
     )
 
     _publish_panel_state(
@@ -933,7 +933,9 @@ def test_visualization_panel_keeps_aggregation_in_tooltip_without_extra_chrome(q
         ),
     )
 
-    assert panel.tabs.toolTip().startswith("motor-imagery · Fold 1 · Run 1")
+    assert panel.tabs.toolTip().startswith(
+        "motor-imagery · Fold 1 (motor-imagery) · Run 1"
+    )
     assert "new-current-file.edf" not in panel.tabs.toolTip()
 
 
@@ -1419,6 +1421,7 @@ def test_visualization_panel_populates_controls_for_published_runs(qtbot):
             SaliencyRunCoverageSnapshot(
                 plan_index=0,
                 run_index=0,
+                plan_name="Subject-1_0",
                 model_name="EEGNet",
                 run_name="Run 1",
                 methods=[complete],
@@ -1441,7 +1444,7 @@ def test_visualization_panel_populates_controls_for_published_runs(qtbot):
     )
 
     assert panel.plan_combo.count() == 3
-    assert panel.plan_combo.currentText() == "Fold 1"
+    assert panel.plan_combo.currentText() == "Fold 1 (Subject-1-1)"
     assert panel.run_combo.count() == 2
 
     panel.plan_combo.setCurrentIndex(2)
@@ -4313,7 +4316,7 @@ def test_visualization_panel_refuses_real_study_query_none_domain_fallback(
     current_widget.update_plot.reset_mock()
 
     assert panel._refresh_application_publication() is True
-    assert panel._refresh_application_query(view="Saliency Map") is False
+    panel._refresh_application_query(view="Saliency Map")
     assert panel.last_application_query is not None
     assert panel.last_application_query.failed
     assert panel.last_application_query.message == (
@@ -4422,7 +4425,7 @@ def test_visualization_panel_uses_typed_render_publication_without_live_getters(
         plan=plan_identity,
         run_index=0,
     )
-    assert panel.plan_combo.currentText() == "Fold 1"
+    assert panel.plan_combo.currentText() == "Fold 1 (motor-imagery)"
     assert panel.run_combo.count() == 1
     assert panel.run_combo.findText("Average") == -1
     assert render_requests

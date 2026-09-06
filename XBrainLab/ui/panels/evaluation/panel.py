@@ -387,9 +387,14 @@ class EvaluationPanel(BasePanel):
         plans = self._plans_from_application_query()
         if plans:
             self._show_evaluation_controls_available()
-            for i, plan_choice in enumerate(plans):
+            for plan_choice in plans:
+                if not any(run_choice.finished for run_choice in plan_choice.runs):
+                    continue
                 self.model_combo.addItem(
-                    fold_display_label(i, plan_choice.name),
+                    fold_display_label(
+                        plan_choice.identity.plan_index,
+                        plan_choice.name,
+                    ),
                     plan_choice.identity,
                 )
             for group in self._cross_fold_groups():
@@ -418,7 +423,7 @@ class EvaluationPanel(BasePanel):
                     preferred_split=previous_split,
                 )
             else:
-                self.plot_stack.setCurrentIndex(1)
+                self._show_no_data_available()
         else:
             self._show_no_data_available()
 
@@ -998,9 +1003,11 @@ class EvaluationPanel(BasePanel):
         self.run_combo.blockSignals(True)
         self.run_combo.clear()
 
-        for i, run_choice in enumerate(plan_choice.runs):
+        for run_choice in plan_choice.runs:
+            if not run_choice.finished:
+                continue
             self.run_combo.addItem(
-                run_display_label(i, finished=run_choice.finished),
+                run_display_label(run_choice.identity.run_index),
                 run_choice.identity,
             )
         if any(run_choice.finished for run_choice in plan_choice.runs):

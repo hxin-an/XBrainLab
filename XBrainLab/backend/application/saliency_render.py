@@ -482,7 +482,15 @@ def _saliency_producer_identity(
     source_split = _record_source_split(eval_record)
     if not callable(builder) or source_split not in {"test", "validation"}:
         return None
-    return builder(run, evaluation_split=source_split)
+    context = getattr(eval_record, "saliency_context", None)
+    fingerprint = getattr(context, "epoch_data_fingerprint", None)
+    if not isinstance(fingerprint, str):
+        return None
+    return builder(
+        run,
+        evaluation_split=source_split,
+        sealed_epoch_data_fingerprint=fingerprint,
+    )
 
 
 def _context_axis_identity(context: Any) -> tuple[Any, ...]:
@@ -540,7 +548,6 @@ def _validated_method_shape(
                 or values.shape[0] < 1
                 or values.shape[0] != int(np.count_nonzero(labels == class_index))
                 or not np.issubdtype(values.dtype, np.number)
-                or not np.isfinite(values).all()
             ):
                 return None
             shape = (int(values.shape[1]), int(values.shape[2]))
@@ -606,7 +613,7 @@ def _validate_saliency_cross_fold_choice(
             raise ValueError("cross-fold saliency must use test data")
         source_splits.add(source_split)
         producer_identity = _saliency_producer_identity(holder, run, record)
-        validator = getattr(record, "validate_saliency_context", None)
+        validator = getattr(record, "validate_sealed_saliency_render_snapshot", None)
         if producer_identity is None or not callable(validator):
             raise ValueError("saliency provenance is unavailable")
         epoch_data = _epoch_data_for_holder(holder)
@@ -1328,7 +1335,9 @@ class SaliencyRenderPublisher:
         tuple[tuple[object, str], ...],
         tuple[SaliencyProducerIdentity, ...],
     ]:
-        validator = getattr(eval_record, "validate_saliency_context", None)
+        validator = getattr(
+            eval_record, "validate_sealed_saliency_render_snapshot", None
+        )
         if not callable(validator):
             raise PreconditionError(
                 "Saliency identity context is unavailable. Recompute saliency "

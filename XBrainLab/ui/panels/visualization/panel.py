@@ -969,9 +969,7 @@ class VisualizationPanel(BasePanel):
     def refresh_combos(self):
         """Refresh plan/run identities from one immutable view publication."""
         if self._application_summary_dirty or self.last_application_query is None:
-            self._application_summary_dirty = not self._refresh_application_query(
-                view="summary"
-            )
+            self._refresh_application_query(view="summary")
         if self._application_summary_dirty:
             # Keep the current Fold Set while a newer published summary is
             # queued. Rebuilding from an unpaired P1/P2 boundary would reset
@@ -1007,7 +1005,7 @@ class VisualizationPanel(BasePanel):
             grouped_runs.setdefault(plan_identity, []).append((run_identity, run_label))
             plan_labels.setdefault(
                 plan_identity,
-                fold_display_label(run_coverage.plan_index),
+                fold_display_label(run_coverage.plan_index, run_coverage.plan_name),
             )
 
         cross_fold_choices = self._cross_fold_choices_from_query()
@@ -1353,8 +1351,8 @@ class VisualizationPanel(BasePanel):
             return
         self._hide_saliency_action_bar()
         if self._application_summary_dirty or self.last_application_query is None:
-            self._application_summary_dirty = not self._refresh_application_query(
-                view=self.tabs.tabText(self.tabs.currentIndex()),
+            self._refresh_application_query(
+                view=self.tabs.tabText(self.tabs.currentIndex())
             )
         if self._application_summary_dirty:
             return
@@ -3759,7 +3757,7 @@ class VisualizationPanel(BasePanel):
         self,
         *,
         view: str | None = None,
-    ) -> bool:
+    ) -> None:
         """Dispatch one visualization readiness read outside the GUI thread."""
         action_port = self._action_port
         publication = self._application_view_publication
@@ -3767,9 +3765,9 @@ class VisualizationPanel(BasePanel):
             publication = self._application_view_publication
         if action_port is None or publication is None:
             self.last_application_query = None
-            return False
+            return
         if self._active_application_summary_request is not None:
-            return False
+            return
         self._application_summary_request_sequence += 1
         request = (
             self._application_summary_request_sequence,
@@ -3794,6 +3792,7 @@ class VisualizationPanel(BasePanel):
             self._active_application_summary_request = None
             self._settle_application_query_failure(publication)
             logger.error("Visualization background query raised: %s", error)
+            self.update_panel()
 
         started = execute_application_command_async(
             self,
@@ -3808,7 +3807,6 @@ class VisualizationPanel(BasePanel):
         if not started and self._active_application_summary_request == request:
             self._active_application_summary_request = None
             self._settle_application_query_failure(publication)
-        return False
 
     def _settle_application_query_failure(
         self,

@@ -481,6 +481,14 @@ taxonomy 都以這套 Data Interpretation command sequence 作為產品資料入
 - Training terminal path 只發布 metrics。只有 explicit `SaliencyCommand`（由 visible
   `Compute Saliency` action 觸發）才建立 exact completed-run target 並排程 attribution；
   generation 或 producer identity 不符的結果不得發布。
+- 完成的 saliency 由既有 `EvalRecord` 封存：獨立的 immutable bytes 保存結果陣列，公開讀取只
+  建立不暴露內部 ndarray 的輕量檢視；metadata 以 defensive copy 保持原有序列化型別。
+  Compute／artifact load 邊界保留完整內容驗證，磁碟 JSON／NPZ schema 不變。Detached display
+  重用封存的 EEG fingerprint，不重掃 EEG／saliency payload；仍驗證 exact model state、split
+  masks、run/config identity 與 class/channel/window/montage metadata。未封存或不相容的結果
+  不走此讀取路徑。直接私下修改原始 EEG numeric buffer 不屬於 display-time 偵測承諾；重新
+  compute/load 仍驗證完整來源。Recompute 產生新 record，成功後才由原有 publication owner 替換，
+  不另建 cache、revision owner 或全域唯讀 EEG 層。
 - `ModelCatalog`是model identity、provider、factory、license、task與dataset-context availability的唯一
   owner。Pinned Braindecode 1.6.1 metadata discovery不載入`braindecode.models` barrel；checked provider
   正常時投影61個upstream contracts，其中54個符合目前classification workflow。Provider不存在、版本不符或

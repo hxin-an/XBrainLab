@@ -533,7 +533,7 @@ def test_training_refreshes_metrics_before_explicit_saliency_click(
         == 1
     )
     assert evaluation.model_combo.count() == 1
-    assert evaluation.run_combo.currentText() == "Run 1 (Finished)"
+    assert evaluation.run_combo.currentText() == "Run 1"
 
     visualization_query = visualization.last_application_query
     assert visualization_query.diagnostics["trainer_count"] == 1

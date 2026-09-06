@@ -36,6 +36,7 @@ DECISION_FIELD_LABELS: dict[str, str] = {
 }
 
 _INTERNAL_FOLD_NAME = re.compile(r"^fold(?:[_ -]?\d+)?$", re.IGNORECASE)
+_GENERATED_SUBJECT_FOLD_NAME = re.compile(r"^Subject-(?P<subject>.+)_(?P<fold>\d+)$")
 
 
 def command_label(command_name: str | CommandName) -> str:
@@ -96,10 +97,15 @@ def fold_display_label(fold_index: int, source_name: str = "") -> str:
     descriptor = str(source_name or "").strip()
     if not descriptor or _INTERNAL_FOLD_NAME.fullmatch(descriptor):
         return label
+    generated_subject_fold = _GENERATED_SUBJECT_FOLD_NAME.fullmatch(descriptor)
+    if generated_subject_fold is not None:
+        return (
+            f"{label} (Subject-{generated_subject_fold['subject']}-"
+            f"{int(generated_subject_fold['fold']) + 1})"
+        )
     return f"{label} ({descriptor})"
 
 
-def run_display_label(run_index: int, *, finished: bool = False) -> str:
+def run_display_label(run_index: int) -> str:
     """Return the canonical 1-based run label used by result selectors."""
-    status = " (Finished)" if finished else ""
-    return f"Run {run_index + 1}{status}"
+    return f"Run {run_index + 1}"

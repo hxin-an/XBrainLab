@@ -51,6 +51,38 @@ EVAL_ARTIFACT_BASENAMES = frozenset(
 )
 SALIENCY_EXPORT_ARTIFACT_SCHEMA_VERSION = 3
 
+_SEALED_RESULT_FIELDS = frozenset(
+    {
+        "label",
+        "output",
+        *SALIENCY_METHOD_STORE_NAMES.values(),
+        "evaluation_split",
+        "saliency_context",
+        "saliency_method_parameters",
+        "saliency_noise_seeds",
+        "saliency_integrity_manifest",
+    }
+)
+
+
+def _freeze_array(value: object) -> np.ndarray:
+    """Detach an array into bytes that cannot be made writable again."""
+    array = np.asarray(value)
+    if array.dtype.hasobject:
+        raise SaliencyContextError("Saliency snapshots cannot contain object arrays.")
+    return np.ndarray(
+        shape=array.shape, dtype=array.dtype, buffer=array.tobytes(order="C")
+    )
+
+
+def _readonly_array_view(canonical: np.ndarray) -> np.ndarray:
+    """Return an isolated header over immutable bytes, without a payload copy."""
+    return np.ndarray(
+        shape=canonical.shape,
+        dtype=canonical.dtype,
+        buffer=canonical.base,
+    )
+
 
 def _has_items(value: Any) -> bool:
     try:
@@ -166,6 +198,128 @@ class EvalRecord:
 
     """
 
+    _label: np.ndarray
+    _output: np.ndarray
+    _gradient: dict
+    _gradient_input: dict
+    _smoothgrad: dict
+    _smoothgrad_sq: dict
+    _vargrad: dict
+
+    def __setattr__(self, name: str, value: object) -> None:
+        if name in _SEALED_RESULT_FIELDS and getattr(
+            self, "_saliency_result_sealed", False
+        ):
+            raise AttributeError("Completed saliency results are immutable.")
+        object.__setattr__(self, name, value)
+
+    def _set_store(self, name: str, value: object) -> None:
+        if getattr(self, "_saliency_result_sealed", False):
+            raise AttributeError("Completed saliency results are immutable.")
+        object.__setattr__(self, f"_{name}", value)
+
+    def _store_view(self, name: str) -> Mapping[object, np.ndarray] | dict:
+        store = getattr(self, f"_{name}")
+        if not getattr(self, "_saliency_result_sealed", False):
+            return store
+        return {key: _readonly_array_view(value) for key, value in store.items()}
+
+    def _set_metadata(self, name: str, value: object) -> None:
+        if getattr(self, "_saliency_result_sealed", False):
+            raise AttributeError("Completed saliency results are immutable.")
+        object.__setattr__(self, f"_{name}", copy.deepcopy(value))
+
+    def _metadata_view(self, name: str) -> object:
+        value = getattr(self, f"_{name}")
+        return copy.deepcopy(value) if self._saliency_result_sealed else value
+
+    @property
+    def label(self) -> np.ndarray:
+        value = self._label
+        return _readonly_array_view(value) if self._saliency_result_sealed else value
+
+    @label.setter
+    def label(self, value: np.ndarray) -> None:
+        self._set_store("label", value)
+
+    @property
+    def output(self) -> np.ndarray:
+        value = self._output
+        return _readonly_array_view(value) if self._saliency_result_sealed else value
+
+    @output.setter
+    def output(self, value: np.ndarray) -> None:
+        self._set_store("output", value)
+
+    @property
+    def gradient(self) -> Mapping[object, np.ndarray] | dict:
+        return self._store_view("gradient")
+
+    @gradient.setter
+    def gradient(self, value: dict) -> None:
+        self._set_store("gradient", value)
+
+    @property
+    def gradient_input(self) -> Mapping[object, np.ndarray] | dict:
+        return self._store_view("gradient_input")
+
+    @gradient_input.setter
+    def gradient_input(self, value: dict) -> None:
+        self._set_store("gradient_input", value)
+
+    @property
+    def smoothgrad(self) -> Mapping[object, np.ndarray] | dict:
+        return self._store_view("smoothgrad")
+
+    @smoothgrad.setter
+    def smoothgrad(self, value: dict) -> None:
+        self._set_store("smoothgrad", value)
+
+    @property
+    def smoothgrad_sq(self) -> Mapping[object, np.ndarray] | dict:
+        return self._store_view("smoothgrad_sq")
+
+    @smoothgrad_sq.setter
+    def smoothgrad_sq(self, value: dict) -> None:
+        self._set_store("smoothgrad_sq", value)
+
+    @property
+    def vargrad(self) -> Mapping[object, np.ndarray] | dict:
+        return self._store_view("vargrad")
+
+    @vargrad.setter
+    def vargrad(self, value: dict) -> None:
+        self._set_store("vargrad", value)
+
+    @property
+    def saliency_method_parameters(self) -> Mapping[str, object]:
+        return cast(
+            Mapping[str, object], self._metadata_view("saliency_method_parameters")
+        )
+
+    @saliency_method_parameters.setter
+    def saliency_method_parameters(self, value: Mapping[str, object]) -> None:
+        self._set_metadata("saliency_method_parameters", value)
+
+    @property
+    def saliency_noise_seeds(self) -> Mapping[str, object]:
+        return cast(Mapping[str, object], self._metadata_view("saliency_noise_seeds"))
+
+    @saliency_noise_seeds.setter
+    def saliency_noise_seeds(self, value: Mapping[str, object]) -> None:
+        self._set_metadata("saliency_noise_seeds", value)
+
+    @property
+    def saliency_integrity_manifest(self) -> Mapping[str, object] | None:
+        return cast(
+            Mapping[str, object] | None,
+            self._metadata_view("saliency_integrity_manifest"),
+        )
+
+    @saliency_integrity_manifest.setter
+    def saliency_integrity_manifest(self, value: Mapping[str, object] | None) -> None:
+        self._set_metadata("saliency_integrity_manifest", value)
+
     def __init__(
         self,
         label: np.ndarray,
@@ -201,6 +355,7 @@ class EvalRecord:
             saliency_integrity_manifest: Serialized payload integrity manifest.
 
         """
+        self._saliency_result_sealed = False
         self.label = label
         self.output = output
         self.gradient = gradient
@@ -377,7 +532,8 @@ class EvalRecord:
                 "Saliency artifact does not match the current EEG "
                 f"{', '.join(differences)}. Recompute saliency before rendering."
             )
-        self._verify_saliency_integrity()
+        if not self._saliency_result_sealed:
+            self._verify_saliency_integrity()
         return self.saliency_context
 
     def validate_saliency_producer_identity(
@@ -398,8 +554,31 @@ class EvalRecord:
                 "Saliency artifact does not match the current "
                 f"{', '.join(differences)}. Recompute saliency before rendering."
             )
-        self._verify_saliency_integrity()
+        if not self._saliency_result_sealed:
+            self._verify_saliency_integrity()
         return self.saliency_context.producer_identity
+
+    def validate_sealed_saliency_render_snapshot(
+        self,
+        epoch_data: Any,
+        *,
+        producer_identity: SaliencyProducerIdentity,
+    ) -> SaliencyArtifactContext:
+        """Validate live model/split and EEG axes without hashing sealed payloads."""
+        self._raise_saliency_context_error()
+        if not self._saliency_result_sealed or self.saliency_context is None:
+            raise SaliencyContextError(
+                "Saliency result is not sealed. Recompute saliency."
+            )
+        outputs = np.asarray(self.output)
+        class_count = int(outputs.shape[1]) if outputs.ndim == 2 else None
+        current = SaliencyArtifactContext.from_epoch_data(
+            epoch_data,
+            class_count=class_count,
+            producer_identity=producer_identity,
+            sealed_epoch_data_fingerprint=self.saliency_context.epoch_data_fingerprint,
+        )
+        return self._validate_saliency_context(current)
 
     def mark_saliency_context_incompatible(self, reason: str) -> None:
         """Fail closed while preserving non-saliency evaluation metrics."""
@@ -428,9 +607,9 @@ class EvalRecord:
         if self._saliency_context_error is not None:
             raise SaliencyContextError(self._saliency_context_error)
 
-    def _saliency_stores(self) -> dict[str, object]:
+    def _saliency_stores(self) -> dict[str, Mapping[object, object]]:
         return {
-            method: getattr(self, attribute)
+            method: cast(Mapping[object, object], getattr(self, attribute))
             for method, attribute in SALIENCY_METHOD_STORE_NAMES.items()
         }
 
@@ -439,13 +618,16 @@ class EvalRecord:
             raise SaliencyContextError(
                 "Saliency integrity cannot be sealed without identity context."
             )
+        detached_stores = {
+            method: {key: _freeze_array(value) for key, value in store.items()}
+            for method, store in self._saliency_stores().items()
+        }
         manifest = build_saliency_artifact_manifest(
-            self._saliency_stores(),
+            detached_stores,
             context=self.saliency_context,
             method_parameters=self.saliency_method_parameters,
             noise_seeds=self.saliency_noise_seeds,
         )
-        self.saliency_integrity_manifest = manifest
         parameters = manifest["method_parameters"]
         seeds = manifest["noise_seeds"]
         if not isinstance(parameters, dict) or not isinstance(seeds, dict):
@@ -453,10 +635,47 @@ class EvalRecord:
                 SaliencyIntegrityReason.MALFORMED_MANIFEST,
                 "Generated saliency manifest contract is malformed.",
             )
-        self.saliency_method_parameters = copy.deepcopy(parameters)
-        self.saliency_noise_seeds = copy.deepcopy(seeds)
-        self._saliency_integrity_error = None
+        self._freeze_verified_saliency_result(detached_stores, manifest)
         return manifest
+
+    def _freeze_verified_saliency_result(
+        self,
+        detached_stores: Mapping[str, Mapping[object, np.ndarray]] | None = None,
+        manifest: Mapping[str, object] | None = None,
+    ) -> None:
+        """Seal a fully verified result without exposing mutable array headers."""
+        stores = detached_stores or {
+            method: {key: _freeze_array(value) for key, value in store.items()}
+            for method, store in self._saliency_stores().items()
+        }
+        frozen_label = _freeze_array(self._label)
+        frozen_output = _freeze_array(self._output)
+        parameters = (
+            manifest.get("method_parameters")
+            if manifest is not None
+            else self.saliency_method_parameters
+        )
+        seeds = (
+            manifest.get("noise_seeds")
+            if manifest is not None
+            else self.saliency_noise_seeds
+        )
+        frozen_manifest = (
+            manifest if manifest is not None else self.saliency_integrity_manifest
+        )
+        for method, attribute in SALIENCY_METHOD_STORE_NAMES.items():
+            object.__setattr__(self, f"_{attribute}", dict(stores[method]))
+        object.__setattr__(self, "_label", frozen_label)
+        object.__setattr__(self, "_output", frozen_output)
+        object.__setattr__(
+            self, "_saliency_method_parameters", copy.deepcopy(parameters)
+        )
+        object.__setattr__(self, "_saliency_noise_seeds", copy.deepcopy(seeds))
+        object.__setattr__(
+            self, "_saliency_integrity_manifest", copy.deepcopy(frozen_manifest)
+        )
+        object.__setattr__(self, "_saliency_integrity_error", None)
+        object.__setattr__(self, "_saliency_result_sealed", True)
 
     def _verify_saliency_integrity(self) -> dict[str, object] | None:
         if not self.has_saliency_data():
@@ -487,7 +706,7 @@ class EvalRecord:
         if self.has_saliency_data():
             if self.saliency_integrity_manifest is None:
                 self._seal_saliency_integrity()
-            else:
+            elif not self._saliency_result_sealed:
                 self._verify_saliency_integrity()
 
     def export(
@@ -720,6 +939,13 @@ class EvalRecord:
                             f"{', '.join(differences)}.",
                         )
                     )
+            if (
+                has_saliency
+                and context is not None
+                and integrity_error is None
+                and record._saliency_context_error is None
+            ):
+                record._freeze_verified_saliency_result()
             return record
 
     def export_csv(self, target_path: str) -> None:
@@ -773,7 +999,9 @@ class EvalRecord:
         self._require_persistable_saliency_context()
         if self.saliency_context is None:
             raise SaliencyContextError("Saliency identity context is not bound.")
-        method_parameters = {method: self.saliency_method_parameters[method]}
+        method_parameters = {
+            method: copy.deepcopy(self.saliency_method_parameters[method])
+        }
         noise_seeds = (
             {method: self.saliency_noise_seeds[method]}
             if method in self.saliency_noise_seeds
@@ -1019,7 +1247,8 @@ class EvalRecord:
     ) -> np.ndarray:
         """Return one class result without leaking persistence ``KeyError``."""
         self._raise_saliency_context_error()
-        self._verify_saliency_integrity()
+        if not self._saliency_result_sealed:
+            self._verify_saliency_integrity()
         try:
             value = store[label_index]
         except KeyError as exc:

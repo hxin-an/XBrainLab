@@ -929,9 +929,9 @@ def test_evaluation_panel_logic_uses_detached_identity_bound_render(
     assert panel.model_combo.count() == 3
     assert panel.model_combo.itemText(0) == "Fold 1 (Plan A)"
     assert isinstance(panel.model_combo.itemData(0), EvaluationPlanIdentity)
-    assert panel.run_combo.count() == 3
-    assert panel.run_combo.itemText(0) == "Run 1 (Finished)"
-    assert panel.run_combo.itemText(1) == "Run 2"
+    assert panel.run_combo.count() == 2
+    assert panel.run_combo.itemText(0) == "Run 1"
+    assert panel.run_combo.itemText(1) == "Summary (Finished Runs)"
     assert isinstance(panel.run_combo.itemData(0), EvaluationRunIdentity)
     assert panel.metrics_table.rowCount() == 3
     assert panel.metrics_table.item(0, 0).text() == "Left hand"
@@ -965,7 +965,7 @@ def test_evaluation_panel_logic_uses_detached_identity_bound_render(
 
     panel.model_combo.setCurrentIndex(1)
     assert panel.model_combo.currentData() == EvaluationPlanIdentity(plan_index=1)
-    assert panel.run_combo.count() == 3
+    assert panel.run_combo.count() == 2
 
 
 def test_evaluation_panel_exposes_explicit_cross_fold_summary(
@@ -1573,6 +1573,52 @@ def test_aggregate_offers_only_splits_saved_for_every_finished_run(
     assert panel._evaluation_render.data.evaluation_split == "test"
 
 
+def test_evaluation_selectors_hide_incomplete_runs_and_folds(qtbot, monkeypatch):
+    """Only backend-complete results may enter Evaluation selectors."""
+
+    result = _serialized_evaluation_result()
+    plans = result.diagnostics["plans"]
+    incomplete_fold = plans[1]
+    incomplete_fold["finished_run_count"] = 0
+    for run in incomplete_fold["runs"]:
+        run["finished"] = False
+        run["evaluation_split"] = None
+        run["evaluation_splits"] = []
+    result.diagnostics["cross_fold_choices"] = []
+
+    _install_evaluation_read_side(monkeypatch, lambda *_args, **_kwargs: result)
+    panel = EvaluationPanel(parent=MockMainWindow())
+    qtbot.addWidget(panel)
+    panel.update_panel()
+    qtbot.waitUntil(panel.evaluation_background_work_idle, timeout=1_000)
+
+    assert panel.model_combo.count() == 1
+    assert panel.model_combo.currentData() == EvaluationPlanIdentity(plan_index=0)
+    assert [
+        panel.run_combo.itemText(index) for index in range(panel.run_combo.count())
+    ] == [
+        "Run 1",
+        "Summary (Finished Runs)",
+    ]
+    assert all(
+        "Run 2" not in panel.run_combo.itemText(index)
+        for index in range(panel.run_combo.count())
+    )
+
+    panel.mark_refresh_dirty()
+    for plan in result.diagnostics["plans"]:
+        plan["finished_run_count"] = 0
+        for run in plan["runs"]:
+            run["finished"] = False
+            run["evaluation_split"] = None
+            run["evaluation_splits"] = []
+    panel.update_panel()
+
+    assert panel.model_combo.count() == 0
+    assert panel.model_combo.isEnabled() is False
+    assert panel.run_combo.count() == 0
+
+
 def test_invalid_evaluation_selection_clears_cached_split_render(qtbot, monkeypatch):
     def fake_execute(_panel, _command, **_kwargs):
         return _serialized_evaluation_result()
@@ -2161,7 +2207,7 @@ def test_evaluation_panel_preserves_selected_plan_and_average_on_new_revision(
 
     panel.update_panel()
     panel.model_combo.setCurrentIndex(1)
-    panel.run_combo.setCurrentIndex(2)
+    panel.run_combo.setCurrentIndex(1)
 
     assert panel.model_combo.currentText() == "Fold 2 (Plan B)"
     assert panel.run_combo.currentText() == "Summary (Finished Runs)"
@@ -2177,7 +2223,7 @@ def test_evaluation_panel_preserves_selected_plan_and_average_on_new_revision(
     assert panel.run_combo.currentText() == "Summary (Finished Runs)"
 
 
-def test_evaluation_panel_preserves_selected_repeat_when_revision_changes_label(
+def test_evaluation_panel_adds_a_newly_completed_repeat_on_new_revision(
     qtbot,
     monkeypatch,
 ):
@@ -2190,30 +2236,27 @@ def test_evaluation_panel_preserves_selected_repeat_when_revision_changes_label(
             second_run_finished=second_run_finished,
         )
 
-    runtime, publication = _install_evaluation_read_side(monkeypatch, execute)
+    _runtime, _publication = _install_evaluation_read_side(monkeypatch, execute)
     panel = EvaluationPanel(parent=main_window)
     qtbot.addWidget(panel)
 
     panel.update_panel()
-    panel.run_combo.setCurrentIndex(1)
-
-    assert panel.run_combo.currentText() == "Run 2"
+    assert panel.run_combo.findText("Run 2") == -1
     target_identity = EvaluationRunIdentity(
         plan=EvaluationPlanIdentity(plan_index=0),
         run_index=1,
     )
-    assert panel.run_combo.currentData() == target_identity
 
     second_run_finished = True
-    publication["value"] = _application_publication(generation=4, revision=5)
-    runtime.notify(
-        APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
-        publication["value"],
+    panel.mark_refresh_dirty()
+    panel.update_panel()
+    qtbot.waitUntil(lambda: panel.run_combo.count() == 3)
+    run_index = next(
+        index
+        for index in range(panel.run_combo.count())
+        if panel.run_combo.itemData(index) == target_identity
     )
-    qtbot.wait(50)
-
-    assert panel.run_combo.currentData() == target_identity
-    assert panel.run_combo.currentText() == "Run 2 (Finished)"
+    assert panel.run_combo.itemText(run_index) == "Run 2"
 
 
 def test_evaluation_panel_resets_index_only_selection_for_a_new_generation(
@@ -2233,7 +2276,7 @@ def test_evaluation_panel_resets_index_only_selection_for_a_new_generation(
 
     panel.update_panel()
     panel.model_combo.setCurrentIndex(1)
-    panel.run_combo.setCurrentIndex(2)
+    panel.run_combo.setCurrentIndex(1)
     assert panel.model_combo.currentText() == "Fold 2 (Plan B)"
     assert panel.run_combo.currentText() == "Summary (Finished Runs)"
 
@@ -2248,4 +2291,4 @@ def test_evaluation_panel_resets_index_only_selection_for_a_new_generation(
         lambda: panel.model_combo.currentText() == "Fold 1 (Plan A)",
         timeout=2_000,
     )
-    assert panel.run_combo.currentText() == "Run 1 (Finished)"
+    assert panel.run_combo.currentText() == "Run 1"

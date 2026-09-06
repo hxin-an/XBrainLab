@@ -267,7 +267,7 @@ def test_visualization_discards_a_summary_crossed_by_terminal_publication(
     panel = _panel(qtbot, port)
     port.publication_after_visualize = _publication(generation=5, revision=5)
 
-    assert panel._refresh_application_query(view="Saliency Map") is False
+    panel._refresh_application_query(view="Saliency Map")
     assert panel.last_application_query is None
     assert panel._application_summary_dirty is True
     qtbot.waitUntil(
@@ -282,7 +282,7 @@ def test_visualization_discards_a_summary_crossed_by_terminal_publication(
 
     # The next normal panel refresh reads P2, rather than offering P1's stale
     # cross-fold placeholder as an incomplete result that needs recomputation.
-    assert panel._refresh_application_query(view="Saliency Map") is False
+    panel._refresh_application_query(view="Saliency Map")
     qtbot.waitUntil(lambda: panel.last_application_query is not None)
     assert (
         panel.last_application_query.diagnostics["visualization_publication_generation"]
@@ -298,7 +298,7 @@ def test_visualization_summary_query_keeps_qt_and_selectors_responsive(qtbot) ->
     panel = _panel(qtbot, port)
     ticks: list[bool] = []
 
-    assert panel._refresh_application_query(view="Saliency Map") is False
+    panel._refresh_application_query(view="Saliency Map")
     qtbot.waitUntil(port.visualize_entered.is_set, timeout=500)
     QTimer.singleShot(0, lambda: ticks.append(True))
     qtbot.waitUntil(lambda: bool(ticks), timeout=500)
@@ -317,7 +317,7 @@ def test_visualization_cleanup_ignores_a_late_summary_callback(qtbot) -> None:
     port.visualize_entered = Event()
     panel = _panel(qtbot, port)
 
-    assert panel._refresh_application_query(view="Saliency Map") is False
+    panel._refresh_application_query(view="Saliency Map")
     qtbot.waitUntil(port.visualize_entered.is_set, timeout=500)
     panel.cleanup()
     port.visualize_gate.set()
@@ -325,36 +325,71 @@ def test_visualization_cleanup_ignores_a_late_summary_callback(qtbot) -> None:
     assert panel.last_application_query is None
 
 
-def test_visualization_summary_start_refusal_settles_once(qtbot, monkeypatch) -> None:
+@pytest.mark.parametrize("refresh_method", ("on_update", "update_panel"))
+def test_visualization_summary_start_refusal_settles_once_publicly(
+    qtbot,
+    monkeypatch,
+    refresh_method,
+) -> None:
     port = _VisualizationApplicationPort()
     panel = _panel(qtbot, port)
+    attempts = 0
+
+    def refuse(*_args, **_kwargs):
+        nonlocal attempts
+        attempts += 1
+        return False
+
     monkeypatch.setattr(
         "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
-        lambda *_args, **_kwargs: False,
+        refuse,
     )
 
-    assert panel._refresh_application_query(view="Saliency Map") is False
+    getattr(panel, refresh_method)()
     assert panel.last_application_query is not None
     assert panel.last_application_query.failed
     assert panel._application_summary_dirty is False
+    current_widget = panel.tabs.currentWidget()
+    assert current_widget is not None
+    current_widget.show_message.assert_called()
+    qtbot.wait(100)
+    assert attempts == 1
 
 
-def test_visualization_summary_worker_error_settles_once(qtbot, monkeypatch) -> None:
+@pytest.mark.parametrize("refresh_method", ("on_update", "update_panel"))
+def test_visualization_summary_worker_error_settles_once_publicly(
+    qtbot,
+    monkeypatch,
+    refresh_method,
+) -> None:
     port = _VisualizationApplicationPort()
     panel = _panel(qtbot, port)
+    attempts = 0
 
     def fail(_panel, _command, *, on_error, **_kwargs):
-        on_error((RuntimeError, RuntimeError("held read failed"), "trace"))
+        nonlocal attempts
+        attempts += 1
+        QTimer.singleShot(
+            0,
+            lambda: on_error((RuntimeError, RuntimeError("held read failed"), "trace")),
+        )
         return True
 
     monkeypatch.setattr(
         "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
         fail,
     )
-    assert panel._refresh_application_query(view="Saliency Map") is False
-    assert panel.last_application_query is not None
-    assert panel.last_application_query.failed
-    assert panel._application_summary_dirty is False
+    getattr(panel, refresh_method)()
+    qtbot.waitUntil(
+        lambda: panel.last_application_query is not None
+        and panel.last_application_query.failed
+        and panel._application_summary_dirty is False,
+    )
+    current_widget = panel.tabs.currentWidget()
+    assert current_widget is not None
+    current_widget.show_message.assert_called()
+    qtbot.wait(100)
+    assert attempts == 1
 
 
 @pytest.mark.parametrize("refresh_method", ("on_update", "update_panel"))

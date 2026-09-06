@@ -966,6 +966,7 @@ class TrainingPlanHolder:
         train_record: TrainRecord,
         *,
         evaluation_split: str,
+        sealed_epoch_data_fingerprint: str | None = None,
     ) -> SaliencyProducerIdentity:
         """Build exact-content provenance for one dataset split, run, and model."""
         if not any(train_record is item for item in self.train_record_list):
@@ -989,7 +990,11 @@ class TrainingPlanHolder:
 
         dataset_component = {
             "dataset_type": self._qualified_type_name(self.dataset),
-            "epoch_data_fingerprint": fingerprint_saliency_epoch_data(epoch_data),
+            "epoch_data_fingerprint": (
+                sealed_epoch_data_fingerprint
+                if sealed_epoch_data_fingerprint is not None
+                else fingerprint_saliency_epoch_data(epoch_data)
+            ),
         }
         split_component = {
             "evaluation_split": str(evaluation_split or "unknown"),

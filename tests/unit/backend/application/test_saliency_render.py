@@ -80,10 +80,11 @@ class _Record:
         self.smoothgrad = {}
         self.smoothgrad_sq = {}
         self.vargrad = {}
+        self.saliency_context = SimpleNamespace(epoch_data_fingerprint="epoch-data")
         self._expected_producer: object | None = None
         self.validation_calls = 0
 
-    def validate_saliency_context(
+    def validate_sealed_saliency_render_snapshot(
         self,
         _epoch_data: object,
         *,
@@ -154,7 +155,9 @@ class _Holder:
         run: _Run,
         *,
         evaluation_split: str,
+        sealed_epoch_data_fingerprint: str | None = None,
     ) -> tuple[int, int, str]:
+        assert sealed_epoch_data_fingerprint == "epoch-data"
         producer = (self._plan_index, run.repeat, evaluation_split)
         run.record._expected_producer = producer
         return producer
