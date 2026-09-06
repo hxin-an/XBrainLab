@@ -592,39 +592,16 @@ def test_preview_identity_rejects_reloaded_raw_at_the_same_path(
     assert consumed.value.diagnostics == {"code": "label_preview_unavailable"}
 
 
-def test_preview_rejects_more_than_the_public_file_summary_limit(
+def test_preview_reviews_all_selected_bids_event_files_above_legacy_file_limit(
     tmp_path: Path,
 ) -> None:
-    from XBrainLab.backend.application import label_import_preview
-
-    paths = [str(tmp_path / f"labels-{index}.txt") for index in range(65)]
-    service, dataset, interpretation = _service([tmp_path / "sub-01_raw.fif"])
-
-    with pytest.raises(PreconditionError) as raised:
-        service.handle_import_labels(PreviewLabelImportCommand(label_paths=paths))
-
-    assert raised.value.diagnostics == {
-        "code": "label_preview_file_count_exceeded",
-        "observed_count": 65,
-        "limit": label_import_preview.MAX_LABEL_PREVIEW_FILES,
-        "suggestions": [
-            "select label files for a matching EEG subset or smaller batch"
-        ],
-    }
-    assert "matching EEG subset" in str(raised.value)
-    assert dataset.batch_calls == []
-    assert interpretation.recorded == []
-
-
-def test_preview_accepts_exactly_the_public_file_summary_limit(
-    tmp_path: Path,
-) -> None:
-    from XBrainLab.backend.application import label_import_preview
-
     paths: list[str] = []
-    for index in range(label_import_preview.MAX_LABEL_PREVIEW_FILES):
-        path = tmp_path / f"labels-{index}.txt"
-        path.write_text("1\n", encoding="utf-8")
+    for index in range(85):
+        path = tmp_path / f"sub-{index:02d}_task-mi_events.tsv"
+        path.write_text(
+            "onset\tduration\ttrial_type\n0\t1\tleft_hand\n",
+            encoding="utf-8",
+        )
         paths.append(str(path))
     service, dataset, interpretation = _service([tmp_path / "sub-01_raw.fif"])
 
@@ -632,9 +609,9 @@ def test_preview_accepts_exactly_the_public_file_summary_limit(
         service.handle_import_labels(PreviewLabelImportCommand(label_paths=paths))
     )["label_preview"]
 
-    assert len(summary["files"]) == label_import_preview.MAX_LABEL_PREVIEW_FILES
-    assert summary["total_label_count"] == label_import_preview.MAX_LABEL_PREVIEW_FILES
-    assert summary["unique_labels"] == [1]
+    assert len(summary["files"]) == 85
+    assert summary["total_label_count"] == 85
+    assert summary["unique_labels"] == ["left_hand"]
     assert dataset.batch_calls == []
     assert interpretation.recorded == []
 

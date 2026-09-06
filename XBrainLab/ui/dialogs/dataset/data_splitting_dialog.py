@@ -33,6 +33,7 @@ from XBrainLab.backend.application.dataset_split_preview import (
     DatasetSplitPreviewPublication,
     DatasetSplitPreviewReceipt,
     DatasetSplitPreviewRequest,
+    DatasetSplitSpecification,
 )
 from XBrainLab.backend.dataset import (
     DataSplitter,
@@ -279,6 +280,14 @@ class PreviewCanvas(QWidget):
         self.regions = regions
         self.update()
 
+    @staticmethod
+    def _grid_line_indices(count: int, *, maximum: int = 12) -> range:
+        """Return bounded interior grid lines while preserving exact dimensions."""
+        if count <= maximum:
+            return range(1, count)
+        step = max(1, (count - 1 + maximum - 2) // (maximum - 1))
+        return range(step, count, step)
+
     def paintEvent(self, event):  # noqa: N802
         """Render the split preview with colored regions and grid lines.
 
@@ -294,6 +303,15 @@ class PreviewCanvas(QWidget):
         h = self.height() - 50
         left = 50
         top = 20
+
+        if self.subject_num <= 0 or self.session_num <= 0:
+            painter.setPen(QColor("#edf2f7"))
+            painter.drawText(
+                self.rect(),
+                Qt.AlignmentFlag.AlignCenter,
+                "No split groups available",
+            )
+            return
 
         delta_x = w / self.session_num
         delta_y = h / self.subject_num
@@ -333,11 +351,11 @@ class PreviewCanvas(QWidget):
 
         # Grid lines
         painter.setPen(Qt.PenStyle.DashLine)
-        for i in range(1, self.subject_num):
+        for i in self._grid_line_indices(self.subject_num):
             d = top + h / self.subject_num * i
             painter.drawLine(left, int(d), int(left + w), int(d))
 
-        for i in range(1, self.session_num):
+        for i in self._grid_line_indices(self.session_num):
             d = left + w / self.session_num * i
             painter.drawLine(int(d), top, int(d), int(top + h))
 
@@ -346,6 +364,11 @@ class PreviewCanvas(QWidget):
 
         # X-axis Label
         painter.drawText(int(left + w / 2 - 20), int(top + h + 20), "Session")
+        painter.drawText(
+            int(left),
+            int(top + h + 40),
+            f"{self.subject_num} subjects · {self.session_num} sessions",
+        )
 
         # Y-axis Label (Rotated)
         painter.save()
@@ -390,12 +413,19 @@ class DataSplittingDialog(BaseDialog):
         ) = None,
         preview_canceller: Callable[[str], bool] | None = None,
         initial_values: dict[str, str] | None = None,
+        initial_specification: DatasetSplitSpecification | None = None,
     ):
         self.initial_values = {
             str(key): str(value)
             for key, value in (initial_values or {}).items()
             if str(key).strip() and str(value).strip()
         }
+        if initial_specification is not None and not isinstance(
+            initial_specification,
+            DatasetSplitSpecification,
+        ):
+            raise TypeError("initial_specification must be a DatasetSplitSpecification")
+        self.initial_specification = initial_specification
         if split_context is not None and not isinstance(
             split_context,
             DatasetSplitContext,
@@ -412,8 +442,12 @@ class DataSplittingDialog(BaseDialog):
         self.preview_provider = preview_provider
         self.preview_canceller = preview_canceller
 
-        self.subject_num = 5
-        self.session_num = 5
+        self.subject_num = (
+            split_context.subject_count if split_context is not None else 0
+        )
+        self.session_num = (
+            split_context.session_count if split_context is not None else 0
+        )
         self.train_region = DrawRegion(self.session_num, self.subject_num)
         self.val_region = DrawRegion(self.session_num, self.subject_num)
         self.test_region = DrawRegion(self.session_num, self.subject_num)
@@ -476,10 +510,12 @@ class DataSplittingDialog(BaseDialog):
         left_layout = QVBoxLayout(preview_group)
         left_layout.setContentsMargins(12, 12, 12, 12)
         left_layout.setSpacing(12)
-        preview_title = QLabel("Data splitting preview")
+        preview_title = QLabel("Split strategy illustration")
         preview_title.setObjectName("DataSplitSectionTitle")
         left_layout.addWidget(preview_title)
         canvas = PreviewCanvas(self)
+        canvas.subject_num = self.subject_num
+        canvas.session_num = self.session_num
         self.canvas = canvas
         left_layout.addWidget(canvas)
 
@@ -531,7 +567,7 @@ class DataSplittingDialog(BaseDialog):
         train_type_combo.setObjectName("DataSplitTrainingModeInput")
         train_type_combo.addItems([i.value for i in TrainingType])
         self._configure_split_combo(train_type_combo)
-        train_type_combo.currentTextChanged.connect(self.update_preview)
+        train_type_combo.currentTextChanged.connect(self._sync_strategy_options)
         form_layout.addWidget(QLabel("Training"), 0, 0)
         form_layout.addWidget(train_type_combo, 0, 1)
 
@@ -539,9 +575,7 @@ class DataSplittingDialog(BaseDialog):
         test_combo = QComboBox()
         self.test_combo = test_combo
         test_combo.setObjectName("DataSplitTestingStrategyInput")
-        test_combo.addItems([i.value for i in SplitByType])
         self._configure_split_combo(test_combo)
-        test_combo.setCurrentText(SplitByType.TRIAL.value)
         test_combo.currentTextChanged.connect(self.update_preview)
         form_layout.addWidget(QLabel("Testing"), 1, 0)
         form_layout.addWidget(test_combo, 1, 1)
@@ -550,13 +584,10 @@ class DataSplittingDialog(BaseDialog):
         val_combo = QComboBox()
         self.val_combo = val_combo
         val_combo.setObjectName("DataSplitValidationStrategyInput")
-        val_combo.addItems([i.value for i in ValSplitByType])
         self._configure_split_combo(val_combo)
-        val_combo.setCurrentText(ValSplitByType.TRIAL.value)
         val_combo.currentTextChanged.connect(self.update_preview)
         form_layout.addWidget(QLabel("Validation"), 2, 0)
         form_layout.addWidget(val_combo, 2, 1)
-        self._apply_initial_values()
         right_layout.addLayout(form_layout)
 
         cv_check = QCheckBox("Cross validation")
@@ -564,6 +595,12 @@ class DataSplittingDialog(BaseDialog):
         cv_check.setObjectName("DataSplitCrossValidationCheck")
         cv_check.stateChanged.connect(self.update_preview)
         right_layout.addWidget(cv_check)
+        self._sync_strategy_options()
+        self._apply_initial_specification()
+        self._sync_strategy_options()
+        if self.initial_specification is None:
+            self._apply_initial_values()
+        self._sync_strategy_options()
 
         blocked_label = QLabel("")
         self.blocked_label = blocked_label
@@ -659,6 +696,61 @@ class DataSplittingDialog(BaseDialog):
             test_combo.setCurrentText(strategy_text[0])
             val_combo.setCurrentText(strategy_text[1])
 
+    def _apply_initial_specification(self) -> None:
+        """Restore the last application-owned split before assistant draft hints."""
+        specification = self.initial_specification
+        if specification is None:
+            return
+        if self.train_type_combo is not None:
+            self.train_type_combo.setCurrentText(specification.train_type)
+        if self.cv_check is not None:
+            self.cv_check.setChecked(specification.is_cross_validation)
+        if self.test_combo is not None and specification.test_splitters:
+            self.test_combo.setCurrentText(specification.test_splitters[0].split_type)
+        if self.val_combo is not None:
+            if specification.val_splitters:
+                self.val_combo.setCurrentText(specification.val_splitters[0].split_type)
+            else:
+                self.val_combo.setCurrentText(ValSplitByType.DISABLE.value)
+
+    def _sync_strategy_options(self, *_args) -> None:
+        """Render the current application-owned availability projection."""
+        context = self.split_context
+        if (
+            context is None
+            or self.train_type_combo is None
+            or self.test_combo is None
+            or self.val_combo is None
+        ):
+            self.update_preview()
+            return
+        is_individual = self.train_type_combo.currentText() == TrainingType.IND.value
+        test_values = (
+            context.individual_test_strategies
+            if is_individual
+            else context.full_test_strategies
+        )
+        validation_values = (
+            context.individual_validation_strategies
+            if is_individual
+            else context.full_validation_strategies
+        )
+        self._replace_combo_items(self.test_combo, test_values)
+        self._replace_combo_items(self.val_combo, validation_values)
+        reason = context.individual_subject_unavailable_reason if is_individual else ""
+        self.test_combo.setToolTip(reason)
+        self.val_combo.setToolTip(reason)
+        self.update_preview()
+
+    @staticmethod
+    def _replace_combo_items(combo: QComboBox, values: tuple[str, ...]) -> None:
+        selected = combo.currentText()
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItems(values)
+        combo.setCurrentText(selected if selected in values else values[0])
+        combo.blockSignals(False)
+
     def update_preview(self, *args):
         """Recalculate and redraw the split preview based on current settings."""
         if not self.canvas or not self.train_type_combo:
@@ -668,6 +760,10 @@ class DataSplittingDialog(BaseDialog):
         self.train_region = DrawRegion(self.session_num, self.subject_num)
         self.val_region = DrawRegion(self.session_num, self.subject_num)
         self.test_region = DrawRegion(self.session_num, self.subject_num)
+
+        if self.subject_num <= 0 or self.session_num <= 0:
+            self.canvas.set_regions([])
+            return
 
         # Handle Data
         train_type = self.train_type_combo.currentText()
@@ -698,38 +794,17 @@ class DataSplittingDialog(BaseDialog):
         ref = DrawRegion(self.train_region.w, self.train_region.h)
         ref.copy(self.train_region)
 
-        if test_type in [SplitByType.SESSION.value, SplitByType.SESSION_IND.value]:
-            is_ind = test_type == SplitByType.SESSION_IND.value
-            if is_ind:
-                tmp = DrawRegion(self.train_region.w, self.train_region.h)
-                tmp.copy(ref)
-                tmp.change_to(ref.to_x - 1, ref.to_y)
+        if test_type == SplitByType.SESSION.value:
             self.test_region.set_from(ref.to_x - 1, ref.from_y)
             self.test_region.set_to_ref(ref.to_x, ref.to_y, ref)
-            if is_ind:
-                self.train_region.mask(tmp)
 
-        elif test_type in [SplitByType.TRIAL.value, SplitByType.TRIAL_IND.value]:
-            is_ind = test_type == SplitByType.TRIAL_IND.value
-            if is_ind:
-                tmp = DrawRegion(ref.w, ref.h)
-                tmp.copy(ref)
-                tmp.decrease_w_tail(0.8)
+        elif test_type == SplitByType.TRIAL.value:
             self.test_region.copy(ref)
             self.test_region.decrease_w_head(0.8)
-            if is_ind:
-                self.train_region.mask(tmp)
 
-        elif test_type in [SplitByType.SUBJECT.value, SplitByType.SUBJECT_IND.value]:
-            is_ind = test_type == SplitByType.SUBJECT_IND.value
-            if is_ind:
-                tmp = DrawRegion(self.train_region.w, self.train_region.h)
-                tmp.copy(ref)
-                tmp.change_to(ref.to_x, ref.to_y - 1)
+        elif test_type == SplitByType.SUBJECT.value:
             self.test_region.set_from(ref.from_x, ref.to_y - 1)
             self.test_region.set_to_ref(ref.to_x, ref.to_y, ref)
-            if is_ind:
-                self.train_region.mask(tmp)
 
     def handle_validation(self):
         """Calculate the validation region based on the selected split type."""
@@ -789,7 +864,8 @@ class DataSplittingDialog(BaseDialog):
         val_type_list = []
         for v_type in ValSplitByType:
             if v_type.value == self.val_combo.currentText():
-                val_type_list.append(v_type)
+                if v_type != ValSplitByType.DISABLE:
+                    val_type_list.append(v_type)
                 break
 
         # Get Test Types
@@ -824,6 +900,7 @@ class DataSplittingDialog(BaseDialog):
             preview_provider=self.preview_provider,
             preview_canceller=self.preview_canceller,
             initial_values=self.initial_values,
+            initial_specification=self.initial_specification,
         )
         if self.step2_window.exec():
             split_result = self.step2_window.get_result()
@@ -834,7 +911,10 @@ class DataSplittingDialog(BaseDialog):
             self.split_preview_receipt = preview_receipt
             super().accept()
         else:
-            return  # Allow user to retry instead of rejecting
+            draft = self.step2_window.get_current_specification()
+            if draft is not None:
+                self.initial_specification = draft
+            return
 
     def get_result(self):
         """Return the split configuration payload from the preview dialog.

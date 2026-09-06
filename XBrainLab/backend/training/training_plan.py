@@ -1122,6 +1122,8 @@ class TrainingPlanHolder:
                 val_loader=val_loader,
                 test_loader=test_loader,
             )
+            if saliency_split is None:
+                continue
             if saliency_split == "validation":
                 target, target_loader = self.get_eval_pair(
                     train_record,
@@ -1209,7 +1211,7 @@ class TrainingPlanHolder:
         *,
         val_loader: torch_data.DataLoader | None,
         test_loader: torch_data.DataLoader | None,
-    ) -> str:
+    ) -> str | None:
         """Prefer test data, falling back only when class coverage is incomplete."""
         evaluation_records = getattr(train_record, "evaluation_records", {})
         known_incomplete: list[str] = []
@@ -1241,11 +1243,7 @@ class TrainingPlanHolder:
         if unknown_coverage:
             return unknown_coverage[0]
         if known_incomplete:
-            raise FinalEvaluationUnavailableError(
-                "Saliency requires an evaluation split containing every model "
-                "class; the available test and validation results have incomplete "
-                "class coverage."
-            )
+            return None
         raise FinalEvaluationUnavailableError(
             "Saliency unavailable: no validation or test split is configured."
         )

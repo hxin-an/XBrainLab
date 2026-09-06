@@ -63,23 +63,25 @@ class DataSplitter:
         if self.split_unit == SplitUnit.RATIO:
             try:
                 val = float(self.value_var)
-                if 0 <= val <= 1:
+                if 0 < val < 1:
                     return True
             except ValueError:
                 return False
         # number: should be int
         elif self.split_unit == SplitUnit.NUMBER:
-            return str(self.value_var).isdigit()
+            return str(self.value_var).isdigit() and int(str(self.value_var)) > 0
         # kfold: should be int > 0
         elif self.split_unit == SplitUnit.KFOLD:
             val_str = str(self.value_var)
             if val_str.isdigit():
-                return int(val_str) > 0
+                return int(val_str) >= 2
         # manual: should be list of int separated by space
         elif self.split_unit == SplitUnit.MANUAL:
             val_str = str(self.value_var).strip()
             vals = val_str.split(" ")
-            return all(not (len(val.strip()) > 0 and not val.isdigit()) for val in vals)
+            return bool(val_str) and all(
+                not (len(val.strip()) > 0 and not val.isdigit()) for val in vals
+            )
         else:
             raise NotImplementedError
 

@@ -293,13 +293,19 @@ def apply_bids_channel_review(
     if status not in {"ready", "ready_with_warnings"}:
         raise ValueError("BIDS channels.tsv review is not ready to apply.")
     loaded = list(loaded_data)
+    loaded_by_path: dict[str, list[Any]] = {}
+    loaded_by_basename: dict[str, list[Any]] = {}
+    for item in loaded:
+        filepath = data_filepath(item)
+        loaded_by_path.setdefault(_path_key(filepath), []).append(item)
+        loaded_by_basename.setdefault(Path(filepath).name, []).append(item)
     raw_runs = payload.get("runs")
     runs = raw_runs if isinstance(raw_runs, list) else []
     plans = [
         _prepare_channel_apply_plan(
             raw_run=raw_run,
-            loaded=loaded,
-            data_filepath=data_filepath,
+            loaded_by_path=loaded_by_path,
+            loaded_by_basename=loaded_by_basename,
         )
         for raw_run in runs
         if isinstance(raw_run, Mapping)
@@ -321,20 +327,14 @@ def apply_bids_channel_review(
 def _prepare_channel_apply_plan(
     *,
     raw_run: Mapping[str, Any],
-    loaded: list[Any],
-    data_filepath: Callable[[Any], str],
+    loaded_by_path: Mapping[str, list[Any]],
+    loaded_by_basename: Mapping[str, list[Any]],
 ) -> _ChannelApplyPlan:
     run = dict(raw_run)
     eeg_file = str(run.get("eeg_file") or "").strip()
-    matches = [
-        item for item in loaded if _path_key(data_filepath(item)) == _path_key(eeg_file)
-    ]
+    matches = loaded_by_path.get(_path_key(eeg_file), [])
     if not matches:
-        matches = [
-            item
-            for item in loaded
-            if Path(data_filepath(item)).name == Path(eeg_file).name
-        ]
+        matches = loaded_by_basename.get(Path(eeg_file).name, [])
     if len(matches) != 1:
         raise ValueError(
             "BIDS channels.tsv did not resolve to exactly one loaded EEG run: "

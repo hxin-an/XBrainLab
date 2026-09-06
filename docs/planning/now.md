@@ -5,5 +5,6 @@
 ## Current baseline
 
 產品基線與未合併工作從 Git 的 `main`、remote refs 與 PR 取得；不在這裡維護第二份 SHA 清單。
-PR #110 已合併，其 SSVEP import／EEGLAB preflight 施工計畫移出 active dispatch；歷史證據與
-Windows acceptance 留在 Git／PR。其他 worktree 的未完成工作不因本次 harness 調整而完成或取消。
+PR #110 與 #112 已合併；SSVEP import／EEGLAB preflight 與 Data Splitting 的完成計畫移出
+active dispatch，歷史證據與 Windows acceptance 留在 Git／PR。其他 worktree 的未完成工作
+不因本次 harness 調整而完成或取消。

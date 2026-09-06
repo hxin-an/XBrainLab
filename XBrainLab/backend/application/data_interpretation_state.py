@@ -1527,13 +1527,17 @@ class DataInterpretationSessionState:
             for value in (selected_event_names or set())
             if str(value).strip()
         )
+        targets_by_carrier: dict[str, list[str]] = {}
+        for target, mapped_carrier in file_mapping.items():
+            carrier_key = DataInterpretationSessionState._label_path_key(mapped_carrier)
+            targets_by_carrier.setdefault(carrier_key, []).append(str(target))
+        for targets in targets_by_carrier.values():
+            targets.sort()
         for carrier in label_carriers:
             config = label_configs.get(carrier, {})
-            targets = sorted(
-                str(target)
-                for target, mapped_carrier in file_mapping.items()
-                if DataInterpretationSessionState._label_path_key(mapped_carrier)
-                == DataInterpretationSessionState._label_path_key(carrier)
+            targets = targets_by_carrier.get(
+                DataInterpretationSessionState._label_path_key(carrier),
+                [],
             )
             carrier_class_counts = DataInterpretationSessionState._shared_class_counts(
                 targets=targets,

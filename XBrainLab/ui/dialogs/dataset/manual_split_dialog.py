@@ -7,6 +7,7 @@ or trials to include in a particular data split.
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QDialogButtonBox,
+    QLabel,
     QListWidget,
     QVBoxLayout,
 )
@@ -35,6 +36,7 @@ class ManualSplitDialog(BaseDialog):
 
         # UI
         self.list_widget = None
+        self.selection_error_label = None
 
         super().__init__(parent, title="Manual Split Chooser")
         self.resize(300, 400)
@@ -57,6 +59,13 @@ class ManualSplitDialog(BaseDialog):
 
         layout.addWidget(self.list_widget)
 
+        selection_error_label = QLabel("Select at least one item.")
+        self.selection_error_label = selection_error_label
+        selection_error_label.setObjectName("ManualSplitSelectionError")
+        selection_error_label.setStyleSheet("color: #e57373;")
+        selection_error_label.hide()
+        layout.addWidget(selection_error_label)
+
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
@@ -71,9 +80,17 @@ class ManualSplitDialog(BaseDialog):
             super().accept()
             return
 
-        self.selected_indices = [
+        selected_indices = [
             self.list_widget.row(item) for item in self.list_widget.selectedItems()
         ]
+
+        if not selected_indices:
+            if self.selection_error_label is not None:
+                self.selection_error_label.show()
+            self.list_widget.setFocus()
+            return
+
+        self.selected_indices = selected_indices
 
         final_result = []
         for idx in self.selected_indices:

@@ -44,10 +44,10 @@ from XBrainLab.backend.training_state_contract import (
 
 
 class _Epoch:
-    def __init__(self) -> None:
-        self.subjects = np.asarray([1, 1, 2, 3])
-        self.sessions = np.asarray([1, 1, 2, 3])
-        self.labels = np.asarray([1, 2, 1, 2])
+    def __init__(self, epoch_count: int = 4) -> None:
+        self.subjects = np.asarray([1, 1, 2, 3])[:epoch_count]
+        self.sessions = np.asarray([1, 1, 2, 3])[:epoch_count]
+        self.labels = np.asarray([1, 2, 1, 2])[:epoch_count]
 
     def get_subject_list_by_mask(self, mask: np.ndarray) -> np.ndarray:
         return self.subjects[mask]
@@ -57,6 +57,10 @@ class _Epoch:
 
     def get_label_list_by_mask(self, mask: np.ndarray) -> np.ndarray:
         return self.labels[mask]
+
+    def get_trial_group_list(self) -> np.ndarray:
+        """Return one atomic group per focused test epoch."""
+        return np.arange(len(self.labels))
 
     def get_epoch_window_provenance(
         self,
@@ -88,13 +92,23 @@ class _Dataset:
         self.train_mask = np.asarray(train)
         self.val_mask = np.asarray(val)
         self.test_mask = np.asarray(test)
-        self._epoch = _Epoch()
+        self._epoch = _Epoch(len(train))
 
     def get_name(self) -> str:
         return "focused-dataset"
 
     def get_epoch_data(self) -> _Epoch:
         return self._epoch
+
+    def get_treeview_row_info(self) -> tuple[str, str, int, int, int]:
+        """Provide the dataset's public split-row contract for digesting."""
+        return (
+            "O",
+            self.get_name(),
+            int(self.train_mask.sum()),
+            int(self.val_mask.sum()),
+            int(self.test_mask.sum()),
+        )
 
 
 class _DataManager:
@@ -410,38 +424,23 @@ def test_dataset_generation_service_maps_command_training_modes_without_facade(
     assert payload["split_audit"]["ok"] is True
 
 
-def test_dataset_generation_service_empty_split_payload_fails_through_audit() -> None:
-    service, study, training = _service()
-    training.next_datasets = [
-        _Dataset(
-            train=[True, True, True, True],
-            val=[False, False, False, False],
-            test=[False, False, False, False],
-        ),
-    ]
+def test_dataset_generation_service_rejects_empty_split_payload_at_admission() -> None:
+    service, _study, _training = _service()
 
-    service.handle_save_dataset_split(
-        SaveDatasetSplitCommand(
-            split_config={
-                "train_type": "Full Data",
-                "is_cross_validation": False,
-                "val_splitters": [],
-                "test_splitters": [],
-            },
+    with pytest.raises(
+        ValueError,
+        match="requires exactly one supported test rule",
+    ):
+        service.handle_save_dataset_split(
+            SaveDatasetSplitCommand(
+                split_config={
+                    "train_type": "Full Data",
+                    "is_cross_validation": False,
+                    "val_splitters": [],
+                    "test_splitters": [],
+                },
+            )
         )
-    )
-    with pytest.raises(ApplicationError) as exc_info:
-        service.prepare_saved_split_candidate()
-
-    assert study.generated_config is not None
-    assert study.generated_config.val_splitter_list == []
-    assert study.generated_config.test_splitter_list == []
-    error = exc_info.value
-    assert error.error_type == ErrorType.DATA_MISMATCH
-    assert any(
-        "split is empty" in issue["message"]
-        for issue in error.diagnostics["split_audit"]["issues"]
-    )
 
 
 def test_dataset_generation_service_rolls_back_unknown_trial_provenance() -> None:

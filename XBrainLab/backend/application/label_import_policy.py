@@ -11,16 +11,12 @@ import numpy as np
 from .errors import PreconditionError
 
 MAX_LABEL_MAPPING_CARDINALITY = 256
-MAX_LABEL_PREVIEW_FILES = 64
 MAX_LABEL_PREVIEW_TEXT_LENGTH = 512
 MAX_LABEL_PREVIEW_PATH_LENGTH = 4096
 
 _CARDINALITY_SUGGESTIONS = [
     "select the label field that contains class or event codes",
     "convert the source to a bounded class or event column",
-]
-_FILE_COUNT_SUGGESTIONS = [
-    "select label files for a matching EEG subset or smaller batch"
 ]
 
 
@@ -148,27 +144,6 @@ def enforce_public_label_mapping_cardinality(mapping: Any) -> None:
     for observed, _key in enumerate(mapping, start=1):
         if observed > MAX_LABEL_MAPPING_CARDINALITY:
             raise_label_cardinality_error(code="label_mapping_cardinality_exceeded")
-
-
-def enforce_label_file_count(
-    observed_count: int,
-    *,
-    code: str,
-) -> None:
-    """Keep one external-label request aligned to one reviewable EEG subset."""
-    if observed_count <= MAX_LABEL_PREVIEW_FILES:
-        return
-    raise PreconditionError(
-        f"{observed_count} label files were selected, but one mapping review "
-        f"supports at most {MAX_LABEL_PREVIEW_FILES}. Select label files for a "
-        "matching EEG subset or smaller batch, then retry.",
-        diagnostics={
-            "code": code,
-            "observed_count": observed_count,
-            "limit": MAX_LABEL_PREVIEW_FILES,
-            "suggestions": list(_FILE_COUNT_SUGGESTIONS),
-        },
-    )
 
 
 def raise_label_cardinality_error(*, code: str) -> None:
