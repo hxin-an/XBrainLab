@@ -71,7 +71,7 @@ default_subagent_reasoning_effort = "medium"
         in errors
     )
     assert (
-        ".codex/config.toml [agents] must set default_subagent_model='gpt-5.6-terra'"
+        ".codex/config.toml [agents] must set default_subagent_model='gpt-6-astra'"
         in errors
     )
 

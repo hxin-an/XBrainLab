@@ -218,7 +218,7 @@ def _audit_model_dispatch_config(root: Path) -> list[str]:
         return [*errors, ".codex/config.toml must define an [agents] table"]
     expected_agents = {
         "max_concurrent_threads_per_session": 2,
-        "default_subagent_model": "gpt-5.6-terra",
+        "default_subagent_model": "gpt-6-astra",
         "default_subagent_reasoning_effort": "medium",
     }
     for key, expected in expected_agents.items():

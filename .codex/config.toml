@@ -1,8 +1,8 @@
-# XBrainLab uses Astra to coordinate bounded work and Terra for default workers.
+# XBrainLab development agents use Astra; the product Assistant is independent.
 model = "gpt-6-astra"
 model_reasoning_effort = "medium"
 
 [agents]
 max_concurrent_threads_per_session = 2
-default_subagent_model = "gpt-5.6-terra"
+default_subagent_model = "gpt-6-astra"
 default_subagent_reasoning_effort = "medium"

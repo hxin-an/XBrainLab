@@ -1,8 +1,8 @@
 # XBrainLab Agent Guide
 
-最後更新：`2026-09-06`
+最後更新：`2026-09-07`
 
-本檔只保留 repo 級不變量；current product、plan、gate 由 canonical source 擁有。
+Repo 級不變量；產品、plan、gate 由 canonical source 擁有。
 
 ## 權威與讀取
 
@@ -39,8 +39,7 @@ canonical doc；records/artifacts是歷史，不作active dispatch。
 Product bug、feature或refactor開始實作前先更新唯一active plan `docs/planning/now.md`，涵蓋問題與證據、
 outcome、scope／non-goals、假設、修理步驟、focused validation、stop condition與UI確認狀態。
 
-聊天 plan 只是執行鏡像；施工中更新 next step/blocker。完成後移除 active slice，只把真實改變留在其
-canonical authority；plan 不擴大 scope ceiling。
+施工中更新 next step/blocker；完成後移除 active slice，只把真實改變留在 canonical authority。
 
 Multi-PR public contracts require approved decisions/target before implementation; current source/tests
 never ratify target. Assistant tool names, membership, side effects, confirmation, and visible results are
@@ -98,11 +97,11 @@ focused run 建 receipt 或同時寫 implementation log 與 worklog。
 - `handoff-ready`：只在 `.agents/workflows/handoff-candidate.md` 的所有 applicable gate 對同一
   clean/explained exact commit 通過後使用。
 
-日常任務選能直接證明需求的最小 focused test；不自動升級為 full regression、多資料集、
-UI artifact 或 handoff manifest。要宣稱可交使用者測試時，才執行完整 handoff workflow。
-若已取得 UI 修改授權，可見變更仍必須有 screenshot/walkthrough；offscreen 不取代 Windows
-native acceptance。Data/import/label/epoch/training/evaluation/visualization handoff 仍需 canonical
-source-diverse dataset gate。
+日常只跑直接相關 focused checks；交付依 `docs/validation/README.md` 選 applicable evidence，
+同一 PR head 已成功的 CI 不在本機重跑等價全套。完整 manifest 只供明確的完整版本驗證需求。
+可見變更仍需 changed-surface screenshot/walkthrough；deterministic widget/geometry/pixel checks
+處理可機械判斷的事實，模型只審設計與異常。Offscreen 不取代 Windows native acceptance。
+Data/import/label/epoch/training/evaluation/visualization 仍需同版本 source-diverse gate，可由 CI 提供。
 
 ## 資源與程序安全
 

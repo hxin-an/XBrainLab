@@ -1,6 +1,6 @@
 # XBrainLab Agent Operations
 
-最後更新：`2026-09-06`
+最後更新：`2026-09-07`
 
 `.agents/` 只保存 repo-local capability 與可重用流程。Repo 授權、scope、safety、complexity 與
 handoff 不變量以 `AGENTS.md` 為唯一權威；這裡不複製清單或 current product truth。
@@ -33,9 +33,6 @@ handoff 不變量以 `AGENTS.md` 為唯一權威；這裡不複製清單或 curr
 | Desktop UI review | `ui-product-reviewer` |
 | Validation selection | `validation-runner` |
 
-Skill frontmatter 是 routing authority；body 只定義專業方法與邊界。Reviewer finding 不授權實作，
-也不會自動擴大 root scope ceiling。
-
 ## Workflows
 
 | Workflow | Use |
@@ -47,24 +44,23 @@ Skill frontmatter 是 routing authority；body 只定義專業方法與邊界。
 | `tdd-change.md` | Bug/core behavior 的 red-green loop。 |
 | `test-audit.md` | 評估測試是否能抓到真實 defect。 |
 | `agent-toolcall-scoring.md` | 產品穩定後的 tool-call experiment。 |
-| `handoff-candidate.md` | 宣稱可手測／handoff-ready 前的完整 gate。 |
+| `handoff-candidate.md` | Focused evidence 與同版本 CI 的交付判定。 |
 
 ## Model dispatch
 
-`gpt-6-astra` / `medium` coordinates and reviews the task. `gpt-5.6-terra` / `medium` is the default
-bounded worker; `gpt-5.6-luna` / `medium` fits repeatable work with an exact oracle. Use
-`gpt-5.6-sol` only for a bounded deep review whose unresolved reasoning materially affects the current
-scope. Model choice never changes authorization, scope, completion semantics, or the live product
-Assistant model/revision; diagnose environment failures before changing a worker choice.
+`gpt-6-astra` / `medium` is the coordinator and worker default. All development agents use Astra;
+do not route simple work to another model or silently fall back. Explicit session reasoning choices
+remain effective; a difficult task does not itself authorize changing them. This configuration does
+not change the product Assistant model/revision or grant API/download authority.
 
 Delegate when the user requests coordination or two independent useful streams save time or improve evidence.
-A single workflow of at most 8 production files normally stays with its owner. Use no more than the configured
-worker cap and do not duplicate review dimensions. `xhigh` requires explicit
-direction or measured benefit; bulk A/B is not a merge gate.
+A single workflow of at most 8 production files normally stays with its owner. Cap concurrent subagent
+threads at 2 (coordinator excluded); isolate writes and return concise evidence, not duplicate reviews.
+Pending CI or manual acceptance does not pause independent authorized work.
+
+Use deterministic commands for Git/CI identity, counts, schemas, widget visibility/enabled state,
+geometry and pixel differences. Read summaries and failure details, not whole successful logs.
+Use model review for meaning, design and unexplained differences; no routine VLM pass over unchanged
+screenshots. See the validation contract for evidence selection and reuse.
 
 These are repo choices, not an official universal architecture. See the official [Astra model guidance](https://developers.openai.com/api/docs/guides/latest-model/gpt-6-astra.md#prompting-best-practices), [skills guidance](https://developers.openai.com/codex/skills), [subagent configuration](https://developers.openai.com/codex/multi-agent), and [config basics](https://learn.chatgpt.com/docs/config-file/config-basic).
-
-## Retired surfaces
-
-舊 stack/runbooks、superseded goals/branches、`Prep Gate`、`Repair Loop`、`AQ-*`、retired skills 和
-`.agents/legacy/*` 只能作 historical token，不得 dispatch。
