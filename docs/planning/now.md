@@ -59,6 +59,12 @@
   partial and all-invalid stored output. This is not proof of the unavailable Windows in-memory
   failure; no claim that the cross-selection SUCCEEDED bug explains every earlier recompute failure.
   No BIDS production change: this Zhou tree genuinely lacks the coordinate sidecars.
+- Exact-source 0258da69 handoff stopped at complete-regression: the MOABB evidence journey's dynamic
+  EvaluationRenderRequest constructor was missed by the initial call-site search and omits the new
+  origin fields (same failure in CI). Migrate that one script caller and its recording fixture to
+  source trainer/split origin from the actual publication; retain all journey/quality assertions.
+  Scope is the direct API caller, not MOABB product behavior. Re-run its full test module, commit the
+  correction and repeat the complete canonical manifest on the new SHA; no combining failed dossiers.
 - Follow-up complexity outcome: five existing production files, +271/-291 (net -20); cumulative
   against main, twelve existing files, +729/-337 (net +392). Existing owners unchanged; no new module,
   public class, cache, receipt or compatibility path. The additional files remove Evaluation-only
