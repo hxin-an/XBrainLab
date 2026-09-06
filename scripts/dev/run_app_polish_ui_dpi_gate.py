@@ -15,11 +15,12 @@ from pathlib import Path
 from typing import Any
 
 from scripts.dev.app_polish_capture_contract import (
-    MANIFEST_NAME as APP_POLISH_MANIFEST,
-)
-from scripts.dev.app_polish_capture_contract import (
+    FILTERING_SURFACES,
     load_app_polish_evidence,
     validate_app_polish_evidence,
+)
+from scripts.dev.app_polish_capture_contract import (
+    MANIFEST_NAME as APP_POLISH_MANIFEST,
 )
 from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
     collect_source_identity,
@@ -36,6 +37,7 @@ DPI_APP_POLISH_SURFACES = (
     "model-selection-dialog.png",
     "training-setting-dialog.png",
     "preprocess-rereference-dialog.png",
+    *FILTERING_SURFACES,
     "preprocess-epoching-internal-events-dialog.png",
     "preprocess-epoching-bids-interval-duration-dialog.png",
     "data-splitting-dialog.png",

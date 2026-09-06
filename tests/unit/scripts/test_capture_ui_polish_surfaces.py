@@ -27,6 +27,7 @@ from scripts.dev.capture_ui_polish_surfaces import (
     _assistant_recovery_standard,
     _assistant_setup_required_narrow,
     _capture,
+    _capture_factories,
     _control_is_fully_visible_in_capture,
     _crop_logical_reference,
     _data_splitting_preview_dialog,
@@ -53,6 +54,32 @@ from scripts.dev.human_like_walkthrough.readiness import (
     assert_consecutive_complete_frames,
 )
 from XBrainLab.ui.styles.stylesheets import Stylesheets
+
+
+@pytest.mark.parametrize(
+    "filename,bandpass,notch",
+    [
+        ("preprocess-filtering-default.png", True, False),
+        ("preprocess-filtering-notch-only.png", False, True),
+    ],
+)
+@pytest.mark.parametrize("hidden_control", ["bandpass_check", "ok_button"])
+def test_filter_capture_inventory_and_visible_states(
+    qtbot, tmp_path, filename, bandpass, notch, hidden_control
+):
+    assert filename in APP_POLISH_SURFACES
+    dialog = dict(_capture_factories())[filename]()
+    qtbot.addWidget(dialog)
+    dialog.show()
+    _assert_capture_geometry(filename, dialog)
+    assert dialog.bandpass_check.isChecked() is bandpass
+    assert dialog.notch_check.isChecked() is notch
+    frame = _capture(dialog, tmp_path / filename)
+    assert "Filter action OK" in frame["required_regions"]
+    assert "Filter action Cancel" in frame["required_regions"]
+    getattr(dialog, hidden_control).hide()
+    with pytest.raises(RuntimeError, match="Filter"):
+        _assert_capture_geometry(filename, dialog)
 
 
 def test_model_selection_capture_uses_compact_product_geometry(qtbot) -> None:
