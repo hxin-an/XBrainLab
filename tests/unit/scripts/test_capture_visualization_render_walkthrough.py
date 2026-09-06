@@ -133,8 +133,20 @@ def test_visualization_provenance_contract_requires_result_identity() -> None:
         "Fold 1 · Run 1 · " + aggregation,
         aggregation,
     )
+    assert _provenance_context_matches(
+        "A01T.gdf +2 files · Fold 1 (Subject-0-1) · Run 1 · " + aggregation,
+        aggregation,
+    )
     assert not _provenance_context_matches(
-        "A01T.gdf +2 files · Fold 1 (EEGNet) · Run 1 · " + aggregation,
+        "A01T.gdf +2 files · Fold 0 · Run 1 · " + aggregation,
+        aggregation,
+    )
+    assert not _provenance_context_matches(
+        "A01T.gdf +2 files · Fold 1 () · Run 1 · " + aggregation,
+        aggregation,
+    )
+    assert not _provenance_context_matches(
+        "A01T.gdf +2 files · Fold 1 (Subject-0-1) stale · Run 1 · " + aggregation,
         aggregation,
     )
 

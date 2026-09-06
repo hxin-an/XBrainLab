@@ -11,6 +11,7 @@ import logging
 import math
 import os
 import random
+import re
 import shutil
 import sys
 import tempfile
@@ -638,13 +639,8 @@ def _provenance_context_matches(context: str, expected_aggregation: str) -> bool
     if len(identity) != 3:
         return False
     dataset_label, plan_label, run_label = identity
-    fold_number = plan_label.removeprefix("Fold ")
-    return (
-        bool(dataset_label)
-        and fold_number.isdigit()
-        and int(fold_number) > 0
-        and bool(run_label)
-    )
+    fold_match = re.fullmatch(r"Fold (?P<number>[1-9]\d*)(?: \([^)]+\))?", plan_label)
+    return bool(dataset_label) and fold_match is not None and bool(run_label)
 
 
 def _wait_for_saliency_render(

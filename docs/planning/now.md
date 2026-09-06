@@ -85,6 +85,13 @@
   validation checkout's symlink paths; replacing only its fixture links with local copies makes all
   four affected integration modules pass (13 tests). No import behavior/test expectation was weakened.
   Repeat the complete exact-source manifest after these test corrections; do not combine old runs.
+- Third canonical pass: eaab6990 complete regression passes 10,829 tests with eight explicitly optional
+  fixture skips. Source-diverse training also passes. Visualization capture renders a valid settled
+  Saliency Map but its old provenance parser rejects the approved parenthesized fold descriptor;
+  it then misleadingly reports missing Spectrogram evidence. Update only the capture parser and its
+  characterization test, preserving nonempty dataset/run and positive fold identity checks. No product
+  rendering change is needed. Xvfb and strict model gates also need a native-environment retry:
+  the existing Xvfb helper and a CUDA allocation probe both pass outside the restricted sandbox.
 - Next: commit/push the focused test correction, rerun the complete canonical manifest and final
   performance/UI/source-diverse evidence in the clean exact-commit worktree, then update draft PR #113.
   Its open #112/main dependency
