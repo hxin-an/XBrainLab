@@ -34,7 +34,7 @@ from XBrainLab.backend.application.resource_preflight import (
     ResourcePreflightContractError,
     ResourcePreflightView,
 )
-from XBrainLab.backend.application.results import CommandResult
+from XBrainLab.backend.application.results import ChangedState, CommandResult
 from XBrainLab.backend.application.saliency_policy import (
     is_recommended_saliency_method,
     recommended_saliency_params_for_method,
@@ -63,7 +63,7 @@ from XBrainLab.backend.training_state_contract import (
     TrainingTerminalOutcome,
 )
 from XBrainLab.backend.utils.logger import logger
-from XBrainLab.backend.utils.observer import Observable
+from XBrainLab.backend.utils.observer import Observable, ObserverDeliveryStatus
 from XBrainLab.backend.visualization.saliency_semantics import (
     NONNEGATIVE_SALIENCY_METHODS,
 )
@@ -291,6 +291,8 @@ class VisualizationPanel(BasePanel):
             _VisualizationPublicationSignature | None
         ) = None
         self._application_summary_dirty = True
+        self._application_summary_request_sequence = 0
+        self._active_application_summary_request: tuple[int, int] | None = None
         self._saliency_summary_dirty = True
         self._saliency_compute_in_progress = False
         self._saliency_command_busy = False
@@ -396,9 +398,14 @@ class VisualizationPanel(BasePanel):
     def _render_application_publication(
         self,
         publication: ApplicationViewPublication,
-    ) -> None:
+    ) -> bool | ObserverDeliveryStatus:
         self._accept_application_publication(publication)
         self.update_panel()
+        return (
+            ObserverDeliveryStatus.DEFERRED
+            if self._application_summary_dirty and self.last_application_query is None
+            else True
+        )
 
     def init_ui(self):
         """Build the panel layout with control bar, tabbed plots, and sidebar."""
@@ -962,8 +969,14 @@ class VisualizationPanel(BasePanel):
     def refresh_combos(self):
         """Refresh plan/run identities from one immutable view publication."""
         if self._application_summary_dirty or self.last_application_query is None:
-            self._refresh_application_query(view="summary")
-            self._application_summary_dirty = False
+            self._application_summary_dirty = not self._refresh_application_query(
+                view="summary"
+            )
+        if self._application_summary_dirty:
+            # Keep the current Fold Set while a newer published summary is
+            # queued. Rebuilding from an unpaired P1/P2 boundary would reset
+            # the selection before the ledger delivers the coherent retry.
+            return
 
         if self._application_query_blocks_display(self.last_application_query):
             self._clear_plan_controls()
@@ -1340,10 +1353,11 @@ class VisualizationPanel(BasePanel):
             return
         self._hide_saliency_action_bar()
         if self._application_summary_dirty or self.last_application_query is None:
-            self._refresh_application_query(
+            self._application_summary_dirty = not self._refresh_application_query(
                 view=self.tabs.tabText(self.tabs.currentIndex()),
             )
-            self._application_summary_dirty = False
+        if self._application_summary_dirty:
+            return
         self._refresh_explanation_context()
 
         if self._application_query_blocks_display(self.last_application_query):
@@ -2384,7 +2398,9 @@ class VisualizationPanel(BasePanel):
     def update_panel(self):
         """Refresh Visualization and commit a direct render only after success."""
         self._update_panel_content()
-        if self._application_render_ledger.render_in_progress:
+        if self._application_render_ledger.render_in_progress or (
+            self._application_summary_dirty and self.last_application_query is None
+        ):
             return
         publication = self._application_view_publication
         if publication is not None:
@@ -2395,6 +2411,8 @@ class VisualizationPanel(BasePanel):
         if self._application_view_publication is None:
             self._refresh_application_publication()
         self.update_info()
+        if self._application_summary_dirty and self.last_application_query is None:
+            return
         # Explicitly trigger update to ensure plot is shown even if signals were
         # suppressed
         self.on_update()
@@ -2417,6 +2435,7 @@ class VisualizationPanel(BasePanel):
 
     def cleanup(self) -> None:
         """Cancel queued renders and release the publication subscription."""
+        self._active_application_summary_request = None
         self.begin_native_render_shutdown()
         self._clear_saliency_render_cache()
         self._application_render_ledger.cleanup()
@@ -3741,7 +3760,7 @@ class VisualizationPanel(BasePanel):
         *,
         view: str | None = None,
     ) -> bool:
-        """Refresh visualization readiness without eager saliency averaging."""
+        """Dispatch one visualization readiness read outside the GUI thread."""
         action_port = self._action_port
         publication = self._application_view_publication
         if publication is None and self._refresh_application_publication():
@@ -3749,18 +3768,130 @@ class VisualizationPanel(BasePanel):
         if action_port is None or publication is None:
             self.last_application_query = None
             return False
-        result = execute_application_command(
+        if self._active_application_summary_request is not None:
+            return False
+        self._application_summary_request_sequence += 1
+        request = (
+            self._application_summary_request_sequence,
+            publication.generation,
+        )
+        self._active_application_summary_request = request
+
+        def accept_result(result: CommandResult) -> None:
+            if self._active_application_summary_request != request:
+                return
+            self._active_application_summary_request = None
+            self._application_summary_dirty = not self._accept_application_query_result(
+                result,
+                publication,
+            )
+            if not self._application_summary_dirty:
+                self.update_panel()
+
+        def accept_error(error: tuple) -> None:
+            if self._active_application_summary_request != request:
+                return
+            self._active_application_summary_request = None
+            self._settle_application_query_failure(publication)
+            logger.error("Visualization background query raised: %s", error)
+
+        started = execute_application_command_async(
             self,
             VisualizeCommand(view=view),
+            on_result=accept_result,
+            on_error=accept_error,
             refresh=False,
+            busy_target=self.tabs,
             expected_publication_generation=publication.generation,
             runtime=cast("ApplicationUiRuntime", action_port),
         )
-        if result is None:
+        if not started and self._active_application_summary_request == request:
+            self._active_application_summary_request = None
+            self._settle_application_query_failure(publication)
+        return False
+
+    def _settle_application_query_failure(
+        self,
+        publication: ApplicationViewPublication,
+    ) -> None:
+        """Publish one stable failure when a summary worker cannot complete."""
+        message = _SALIENCY_PUBLICATION_UNAVAILABLE_MESSAGE
+        self.last_application_query = CommandResult.failure_result(
+            command_name="visualize",
+            message=message,
+            state=publication.state,
+            changed_state=ChangedState(),
+            error_type=ErrorType.PRECONDITION,
+            recoverable=True,
+            error_message=message,
+        )
+        self._application_summary_dirty = False
+
+    def _accept_application_query_result(
+        self,
+        result: CommandResult,
+        publication: ApplicationViewPublication,
+    ) -> bool:
+        """Accept only a summary coherently paired with its publication."""
+        self._refresh_application_publication()
+        if result.failed:
+            if is_stale_publication_result(result):
+                self.last_application_query = None
+                self._application_summary_dirty = True
+                after_publication = self._application_view_publication
+                if after_publication is not None:
+                    self._application_render_ledger.queue(after_publication)
+                return False
+            # A command rejection already carries an actionable product error.
+            # Keep it instead of misclassifying it as an incoherent summary.
+            self.last_application_query = result
+            return True
+        after_publication = self._application_view_publication
+        diagnostics = getattr(result, "diagnostics", {}) or {}
+        summary_generation = diagnostics.get("visualization_publication_generation")
+        malformed_generation = (
+            isinstance(summary_generation, bool)
+            or not isinstance(summary_generation, int)
+            or summary_generation < 1
+        )
+        if (
+            after_publication is None
+            or not after_publication.usable
+            or after_publication.revision < publication.revision
+            or malformed_generation
+        ):
+            # A successful catalog without its backend-owned generation cannot
+            # be paired safely with the accepted coverage publication. Do not
+            # retry this stable contract failure in a tight UI loop.
+            message = _SALIENCY_PUBLICATION_UNAVAILABLE_MESSAGE
+            self.last_application_query = CommandResult.failure_result(
+                command_name="visualize",
+                message=message,
+                state=(
+                    after_publication.state
+                    if after_publication is not None
+                    else publication.state
+                ),
+                changed_state=ChangedState(),
+                error_type=ErrorType.PRECONDITION,
+                recoverable=True,
+                error_message=message,
+            )
+            self._application_summary_dirty = False
+            return True
+        if after_publication.generation != summary_generation:
+            # The summary can contain Fold Set placeholders from an older
+            # generation. Never combine those with current coverage; retain
+            # dirtiness until the already-published newer revision is rendered.
+            self.last_application_query = None
+            self._application_summary_dirty = True
+            # A nested query can observe P2 before Qt delivers its publication
+            # event. Reuse the panel ledger to schedule the one coherent P2
+            # refresh after this direct render returns.
+            self._application_render_ledger.queue(after_publication)
             return False
         self.last_application_query = result
-        self._refresh_application_publication()
-        return not result.failed
+        return True
 
     def _application_query_message(self) -> str:
         result = self.last_application_query

@@ -8032,6 +8032,9 @@ def test_visualize_and_saliency_commands_return_typed_query_payloads():
     assert visualize.ok is True
     assert visualize.command_name == "visualize"
     assert visualize.diagnostics["payload_type"] == "visualization_summary"
+    assert visualize.diagnostics["visualization_publication_generation"] == (
+        service.get_view_publication().generation
+    )
     assert visualize.diagnostics["available"] is True
     assert "available_views" in visualize.diagnostics
     assert saliency.ok is True
@@ -8039,6 +8042,37 @@ def test_visualize_and_saliency_commands_return_typed_query_payloads():
     assert saliency.diagnostics["payload_type"] == "saliency_summary"
     assert saliency.diagnostics["action"] == "query"
     assert saliency.diagnostics["saliency_configured"] is False
+
+
+def test_visualize_query_fails_when_training_generation_changes_mid_read() -> None:
+    service = ApplicationService(Study())
+    service.study.data_manager.epoch_data = MagicMock()
+    service.study.training_manager.model_holder = ModelHolder(
+        type("EEGNet", (), {}),
+        {},
+    )
+    service.study.training_manager.set_training_option(_valid_training_option())
+    trainer = Trainer([])
+    service.study.training_manager.trainer = trainer
+
+    original_handle_visualize = service.analysis.handle_visualize
+
+    def mutate_training_while_reading(command: Any) -> Any:
+        summary = original_handle_visualize(command)
+        trainer.set_interrupt()
+        trainer.clear_interrupt()
+        return summary
+
+    service._command_handlers[CommandName.VISUALIZE] = MagicMock(
+        side_effect=mutate_training_while_reading
+    )
+
+    result = service.execute(VisualizeCommand(view="summary"))
+
+    assert result.failed is True
+    assert result.error_type is ErrorType.PRECONDITION
+    assert result.recoverable is True
+    assert result.diagnostics["training_state_changed"] is True
 
 
 def test_saliency_command_can_configure_params():

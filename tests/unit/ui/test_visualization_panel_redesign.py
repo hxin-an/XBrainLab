@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QGridLayout,
     QGroupBox,
@@ -678,6 +678,28 @@ def _publish_panel_state(panel, result: CommandResult) -> None:
         panel.refresh_combos()
 
 
+def _publish_empty_panel_state(panel) -> None:
+    """Provide the empty immutable boundary before checking its placeholder."""
+    publication = ApplicationViewStore(
+        ApplicationStateSnapshot.empty(),
+        TrainingReadBoundary.no_trainer(),
+    ).read()
+    assert panel._accept_application_publication(publication) is True
+    panel.last_application_query = CommandResult.success_result(
+        "visualize",
+        "Visualization ready",
+        publication.state,
+        ChangedState(),
+        diagnostics={
+            "payload_type": "visualization_summary",
+            "available": True,
+            "visualization_publication_generation": publication.generation,
+        },
+    )
+    panel._application_summary_dirty = False
+    panel.refresh_combos()
+
+
 def _render_publication_for_request(_panel, request, **_kwargs):
     data = SaliencyRenderData(
         method=request.method,
@@ -810,6 +832,23 @@ def _install_panel_publication_runtime(monkeypatch, result: CommandResult) -> No
         "XBrainLab.ui.panels.visualization.panel.application_ui_runtime",
         lambda _context: runtime,
     )
+
+
+def _schedule_visualize_result(
+    panel,
+    command,
+    *,
+    on_result,
+    result: CommandResult,
+) -> bool:
+    """Deliver a generation-paired Visualize result on the Qt event loop."""
+    assert isinstance(command, VisualizeCommand)
+    publication = panel._application_view_publication
+    assert publication is not None
+    diagnostics = dict(result.diagnostics)
+    diagnostics["visualization_publication_generation"] = publication.generation
+    QTimer.singleShot(0, lambda: on_result(replace(result, diagnostics=diagnostics)))
+    return True
 
 
 def _current_mock_widget(panel) -> Any:
@@ -1322,12 +1361,27 @@ def test_visualization_panel_defers_service_queries_until_opened(
         fake_execute,
     )
 
+    def fake_execute_async(panel, command, *, on_result, **_kwargs):
+        return _schedule_visualize_result(
+            panel,
+            command,
+            on_result=on_result,
+            result=fake_execute(panel, command),
+        )
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
+        fake_execute_async,
+    )
+
     panel, _ctrl = _make_panel(qtbot, parent=RealMainWindow())
 
     assert calls == []
 
     panel.update_panel()
     panel.update_panel()
+    qtbot.waitUntil(lambda: len(calls) == 2)
+    qtbot.waitUntil(lambda: panel.last_application_query is not None)
 
     assert [type(command) for command in calls] == [
         SaliencyCommand,
@@ -1341,6 +1395,7 @@ def test_visualization_panel_defers_service_queries_until_opened(
 
     panel.mark_refresh_dirty()
     panel.update_panel()
+    qtbot.waitUntil(lambda: len(calls) == 4)
 
     assert [type(command) for command in calls] == [
         SaliencyCommand,
@@ -2035,7 +2090,13 @@ def test_visualization_panel_configured_saliency_requires_explicit_action(
         raise AssertionError(f"unexpected command: {command!r}")
 
     def fake_execute_async(_panel, command, *, on_result, **_kwargs):
-        del on_result
+        if isinstance(command, VisualizeCommand):
+            return _schedule_visualize_result(
+                _panel,
+                command,
+                on_result=on_result,
+                result=fake_execute(_panel, command),
+            )
         async_commands.append(command)
         return True
 
@@ -2064,6 +2125,7 @@ def test_visualization_panel_configured_saliency_requires_explicit_action(
 
     panel.update_panel()
 
+    qtbot.waitUntil(lambda: panel.last_application_query is not None)
     assert async_commands == []
     current_widget.update_plot.assert_not_called()
     current_widget.show_message.assert_called_with(
@@ -2991,6 +3053,13 @@ def test_visualization_panel_unconfigured_saliency_requires_explicit_action(
     async_results = []
 
     def fake_execute_async(_panel, command, *, on_result, **_kwargs):
+        if isinstance(command, VisualizeCommand):
+            return _schedule_visualize_result(
+                _panel,
+                command,
+                on_result=on_result,
+                result=fake_execute(_panel, command),
+            )
         async_commands.append(command)
         async_results.append(on_result)
         return True
@@ -3014,6 +3083,7 @@ def test_visualization_panel_unconfigured_saliency_requires_explicit_action(
     current_widget.update_plot.reset_mock()
 
     panel.update_panel()
+    qtbot.waitUntil(lambda: panel.last_application_query is not None)
 
     current_widget.update_plot.assert_not_called()
     current_widget.show_message.assert_called_with(
@@ -3097,7 +3167,13 @@ def test_visualization_panel_compute_button_uses_recommended_profile(
         raise AssertionError(f"unexpected command: {command!r}")
 
     def fake_execute_async(_panel, command, *, on_result, **_kwargs):
-        del on_result
+        if isinstance(command, VisualizeCommand):
+            return _schedule_visualize_result(
+                _panel,
+                command,
+                on_result=on_result,
+                result=fake_execute(_panel, command),
+            )
         async_commands.append(command)
         async_kwargs.append(_kwargs)
         return True
@@ -3121,6 +3197,7 @@ def test_visualization_panel_compute_button_uses_recommended_profile(
     panel, ctrl = _make_panel(qtbot, parent=RealMainWindow())
     ctrl.get_trainers.return_value = [service_trainer]
     panel.update_panel()
+    qtbot.waitUntil(lambda: panel.last_application_query is not None)
 
     panel.compute_saliency_btn.click()
 
@@ -3625,9 +3702,20 @@ def test_visualization_panel_missing_saliency_worker_shows_actionable_message(
         "XBrainLab.ui.panels.visualization.panel.execute_application_command",
         fake_execute,
     )
+
+    def fake_execute_async(panel, command, *, on_result, **_kwargs):
+        if isinstance(command, VisualizeCommand):
+            return _schedule_visualize_result(
+                panel,
+                command,
+                on_result=on_result,
+                result=fake_execute(panel, command),
+            )
+        return False
+
     monkeypatch.setattr(
         "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
-        lambda *_args, **_kwargs: False,
+        fake_execute_async,
     )
     _install_panel_publication_runtime(
         monkeypatch,
@@ -3644,6 +3732,7 @@ def test_visualization_panel_missing_saliency_worker_shows_actionable_message(
     current_widget.update_plot.reset_mock()
 
     panel.update_panel()
+    qtbot.waitUntil(lambda: panel.last_application_query is not None)
 
     current_widget.update_plot.assert_not_called()
     current_widget.show_message.assert_called_with(
@@ -3693,6 +3782,7 @@ def test_visualization_panel_preserves_selection_across_publication_refresh(qtbo
 
 def test_visualization_panel_shows_placeholder_without_valid_selection(qtbot):
     panel, _ctrl = _make_panel(qtbot)
+    _publish_empty_panel_state(panel)
     current_widget = _current_mock_widget(panel)
     current_widget.show_message.reset_mock()
     current_widget.show_error.reset_mock()
@@ -3816,12 +3906,26 @@ def test_visualization_panel_shows_setup_message_without_training_results(
         "XBrainLab.ui.panels.visualization.panel.execute_application_command",
         fake_execute,
     )
+
+    def fake_execute_async(panel, command, *, on_result, **_kwargs):
+        return _schedule_visualize_result(
+            panel,
+            command,
+            on_result=on_result,
+            result=fake_execute(panel, command),
+        )
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
+        fake_execute_async,
+    )
     panel, _ctrl = _make_panel(qtbot, parent=RealMainWindow())
     current_widget = _current_mock_widget(panel)
     current_widget.show_message.reset_mock()
     current_widget.show_error.reset_mock()
 
     panel.update_panel()
+    qtbot.waitUntil(lambda: panel.last_application_query is not None)
 
     current_widget.show_message.assert_called_with(
         "Complete training to view saliency plots. "
@@ -3832,6 +3936,7 @@ def test_visualization_panel_shows_setup_message_without_training_results(
 
 def test_visualization_panel_update_panel_refreshes_combos_and_tab(qtbot):
     panel, _ctrl = _make_panel(qtbot)
+    panel._application_summary_dirty = False
 
     with (
         patch.object(panel, "update_info") as mock_info,
@@ -3910,6 +4015,7 @@ def test_visualization_panel_uses_application_query_before_stale_controller_trai
     current_widget.show_error.reset_mock()
 
     panel.update_panel()
+    qtbot.waitUntil(lambda: panel.last_application_query is not None)
 
     assert panel.last_application_query is not None
     assert panel.last_application_query.failed
@@ -4038,9 +4144,16 @@ def test_visualization_panel_has_no_average_option_without_publication(
     commands = []
 
     def fake_execute(_panel, command, **_kwargs):
+        if isinstance(command, SaliencyCommand):
+            return CommandResult.success_result(
+                command_name="saliency",
+                message="Saliency parameters are not configured yet.",
+                state={},
+                changed_state=ChangedState(),
+                diagnostics={"payload_type": "saliency_summary"},
+            )
+        assert isinstance(command, VisualizeCommand)
         commands.append(command)
-        if not isinstance(command, VisualizeCommand):
-            raise AssertionError(f"unexpected command: {command!r}")
         diagnostics = {
             "payload_type": "visualization_summary",
             "available": True,
@@ -4058,9 +4171,13 @@ def test_visualization_panel_has_no_average_option_without_publication(
         fake_execute,
     )
 
-    def fake_execute_async(_panel, command, *, on_result, **_kwargs):
-        on_result(fake_execute(_panel, command))
-        return True
+    def fake_execute_async(panel, command, *, on_result, **_kwargs):
+        return _schedule_visualize_result(
+            panel,
+            command,
+            on_result=on_result,
+            result=fake_execute(panel, command),
+        )
 
     monkeypatch.setattr(
         "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
@@ -4072,6 +4189,15 @@ def test_visualization_panel_has_no_average_option_without_publication(
     )
 
     panel.refresh_combos()
+    qtbot.waitUntil(
+        lambda: (
+            panel.last_application_query is not None
+            and panel.last_application_query.diagnostics.get(
+                "visualization_publication_generation"
+            )
+            == panel._application_view_publication.generation
+        )
+    )
 
     assert commands
     assert all(set(vars(command)) == {"view"} for command in commands)
@@ -4096,9 +4222,16 @@ def test_visualization_panel_unpublished_state_uses_detached_summary_query(
     commands = []
 
     def fake_execute(_panel, command, **_kwargs):
+        if isinstance(command, SaliencyCommand):
+            return CommandResult.success_result(
+                command_name="saliency",
+                message="Saliency parameters are not configured yet.",
+                state={},
+                changed_state=ChangedState(),
+                diagnostics={"payload_type": "saliency_summary"},
+            )
+        assert isinstance(command, VisualizeCommand)
         commands.append(command)
-        if not isinstance(command, VisualizeCommand):
-            raise AssertionError(f"unexpected command: {command!r}")
         return CommandResult.success_result(
             command_name="visualize",
             message="Visualization summary ready.",
@@ -4114,9 +4247,18 @@ def test_visualization_panel_unpublished_state_uses_detached_summary_query(
         "XBrainLab.ui.panels.visualization.panel.execute_application_command",
         fake_execute,
     )
+
+    def fake_execute_async(panel, command, *, on_result, **_kwargs):
+        return _schedule_visualize_result(
+            panel,
+            command,
+            on_result=on_result,
+            result=fake_execute(panel, command),
+        )
+
     monkeypatch.setattr(
         "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
-        lambda *_args, **_kwargs: False,
+        fake_execute_async,
     )
     panel, ctrl = _make_panel(qtbot, parent=RealMainWindow())
     ctrl.get_averaged_record.side_effect = AssertionError(
@@ -4124,6 +4266,15 @@ def test_visualization_panel_unpublished_state_uses_detached_summary_query(
     )
 
     panel.refresh_combos()
+    qtbot.waitUntil(
+        lambda: (
+            panel.last_application_query is not None
+            and panel.last_application_query.diagnostics.get(
+                "visualization_publication_generation"
+            )
+            == panel._application_view_publication.generation
+        )
+    )
     assert commands
     assert all(set(vars(command)) == {"view"} for command in commands)
     ctrl.get_trainers.assert_not_called()
@@ -4144,6 +4295,10 @@ def test_visualization_panel_refuses_real_study_query_none_domain_fallback(
         "XBrainLab.ui.panels.visualization.panel.execute_application_command",
         lambda *_args, **_kwargs: None,
     )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
+        lambda *_args, **_kwargs: False,
+    )
     panel, ctrl = _make_panel(qtbot, parent=RealMainWindow())
     ctrl.get_trainers.side_effect = AssertionError(
         "stale visualization trainers should not be read",
@@ -4157,6 +4312,15 @@ def test_visualization_panel_refuses_real_study_query_none_domain_fallback(
     current_widget.show_message.reset_mock()
     current_widget.update_plot.reset_mock()
 
+    assert panel._refresh_application_publication() is True
+    assert panel._refresh_application_query(view="Saliency Map") is False
+    assert panel.last_application_query is not None
+    assert panel.last_application_query.failed
+    assert panel.last_application_query.message == (
+        "Saliency coverage is unavailable because application state could not be "
+        "verified."
+    )
+    panel._application_summary_dirty = False
     panel.on_update()
 
     ctrl.get_trainers.assert_not_called()
@@ -4164,7 +4328,8 @@ def test_visualization_panel_refuses_real_study_query_none_domain_fallback(
     current_widget.update_plot.assert_not_called()
     current_widget.show_error.assert_not_called()
     current_widget.show_message.assert_called_once_with(
-        "Select a fold and run to continue."
+        "Saliency coverage is unavailable because application state could not be "
+        "verified."
     )
 
 

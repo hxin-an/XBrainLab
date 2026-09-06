@@ -545,6 +545,12 @@ def test_publication_runtime_composes_through_active_real_map_view(qtbot):
                 message="Native saliency stress fixture ready.",
                 state=result.state,
                 changed_state=ChangedState(),
+                diagnostics={
+                    "payload_type": "visualization_summary",
+                    "available": True,
+                    "plot_views_available": True,
+                    "visualization_publication_generation": publication.generation,
+                },
             )
 
         def get_view_publication(self):
@@ -2198,6 +2204,7 @@ class TestOnUpdate:
 class TestUpdatePanel:
     def test_update_panel_refreshes_info_then_plot(self, panel_and_controller):
         panel, _controller = panel_and_controller
+        panel._application_summary_dirty = False
         with (
             patch.object(panel, "update_info") as update_info,
             patch.object(panel, "on_update") as on_update,

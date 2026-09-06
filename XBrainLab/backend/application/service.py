@@ -4301,11 +4301,16 @@ class ApplicationService(Observable):
                 "training_read_generation": after_boundary.token.generation,
                 "training_read_trainer_identity": after_boundary.trainer_identity,
             }
-        if name is CommandName.EVALUATE:
+        if name in {CommandName.EVALUATE, CommandName.VISUALIZE}:
             publication = self._committed_view_publication()
+            publication_key = (
+                "evaluation_publication_generation"
+                if name is CommandName.EVALUATE
+                else "visualization_publication_generation"
+            )
             diagnostics = {
                 **diagnostics,
-                "evaluation_publication_generation": publication.generation,
+                publication_key: publication.generation,
             }
         if read_only:
             return CommandResult.success_result(

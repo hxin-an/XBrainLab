@@ -1638,7 +1638,24 @@ class TrainingManager:
                     generation,
                 ):
                     return
-                if not any(update.eval_records for update in updates):
+                expected_members = prepared_members = set()
+                if target.explicit and target.selected_members is not None:
+                    expected_members = {
+                        (id(plan.holder), id(record))
+                        for plan in plans
+                        for record, _previous_eval_record in plan.records
+                    }
+                    prepared_members = {
+                        (id(update.holder), id(record))
+                        for update in updates
+                        for record, _previous_eval_record, _eval_record in (
+                            update.eval_records
+                        )
+                    }
+                if (
+                    not any(update.eval_records for update in updates)
+                    or prepared_members != expected_members
+                ):
                     terminal_status = self._transition_post_training_saliency_locked(
                         sequence,
                         PostTrainingSaliencyPhase.FAILED,
