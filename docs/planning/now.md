@@ -7,19 +7,19 @@
 - USER-APPROVED RESUME (2026-09-07): finish #113 handoff, then immediately implement the approved
   test cleanup, Filter section-state clarity and Astra-only harness streams without waiting for
   saliency manual acceptance. Keep separate worktrees/PRs; no product merge without acceptance.
-  Root branch
-  fix/saliency-result-refresh and isolated /tmp/xbrainlab-sealed-results-handoff remain at d9e59dd9
-  with scoped uncommitted changes. All delegated workers and coordinator test/capture processes have
-  finished. Preserve the open native Windows d9 process and its in-memory results; do not restart it.
+  Root branch fix/saliency-result-refresh and isolated /tmp/xbrainlab-sealed-results-handoff are
+  committed/pushed at 7af38512. Preserve the open native Windows d9 process and its in-memory results;
+  do not restart it.
   Implemented: all-finished Compute/Recompute, selected-compute plumbing deletion, atomic complete
   batch validation and busy-until-matching-render handling. Integrated focused suite in the isolated
   worktree: 552 passed, exit 0. Its real train/compute/render walkthrough: passed, exit 0, artifacts
   under build/dev-artifacts/global-saliency-render. These are dirty-source development evidence only.
-  Root's final integration-test rename to all_finished is not yet synced to the isolated worktree;
-  root's plan note is also newer. Resume by comparing scoped file contents, reviewing final busy/render
-  artifacts and syncing these deltas; then freeze an exact commit and run the canonical desktop-source
-  manifest/CI before updating PR #113/manual instructions. No new-source handoff or Windows acceptance
-  claimed. Protected settings.json and unrelated split dialog/test edits remain excluded.
+  Full manifest passes static/type/docs/architecture checks but stops in full regression on one UI
+  coverage test still asserting SaliencyCommand.target for a selected Fold Set. Migrate that direct
+  test to all-finished dispatch while retaining real UI/lifecycle evidence, run its complete module,
+  then commit and restart the exact-source desktop-source manifest/CI. Do not delete meaningful
+  behavior assertions or certify the failed dossier. No handoff/Windows acceptance claimed yet.
+  Protected settings.json and unrelated split dialog/test edits remain excluded.
 
 - Queued approved streams after #113 candidate delivery: two Astra workers own tests-only cleanup
   and Filter UI respectively; coordinator owns harness/validation workflow redesign and integration.

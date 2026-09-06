@@ -1449,12 +1449,12 @@ class TestRefreshCombos:
         assert isinstance(panel.run_combo.currentData(), SaliencyCrossFoldIdentity)
         assert panel._published_coverage_for_selection() == {}
 
-    def test_evaluation_admitted_fold_set_dispatches_one_exact_batch_compute(
+    def test_evaluation_admitted_fold_set_dispatches_global_finished_compute(
         self,
         panel_and_controller,
         monkeypatch,
     ):
-        """All Folds is a legal explicit target, not a settings-review error."""
+        """A Fold Set is display context; Compute covers all finished results."""
         panel, _controller = panel_and_controller
         admitted = {
             "identity": {
@@ -1505,7 +1505,13 @@ class TestRefreshCombos:
 
         assert outcome.status is InteractionStatus.ACCEPTED
         assert len(commands) == 1
-        assert commands[0].target == identity
+        assert commands[0] == SaliencyCommand(
+            method="Gradient",
+            params={
+                "profile": "recommended",
+                "methods": ["Gradient", "Gradient * Input"],
+            },
+        )
         assert panel._saliency_settings_review_required is False
         assert panel.saliency_settings_target() == (
             publication.generation,
