@@ -9,10 +9,12 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QDialogButtonBox,
     QDoubleSpinBox,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
     QVBoxLayout,
+    QWidget,
 )
 
 from XBrainLab.ui.core.base_dialog import BaseDialog
@@ -45,24 +47,65 @@ class FilteringDialog(BaseDialog):
         fit_preprocess_dialog_to_content(self, minimum_width=520)
 
     def init_ui(self) -> None:
+        self.setStyleSheet(
+            self.styleSheet()
+            + """
+            QFrame#FilteringSection {
+                background: #222426;
+                border: 1px solid #3b3f45;
+                border-radius: 6px;
+            }
+            QFrame#FilteringSection[filterEnabled="false"] {
+                background: #202124;
+                border-color: #363a40;
+            }
+            QWidget#FilteringContent, QWidget#FilteringContent:disabled {
+                background: transparent;
+                border: none;
+            }
+            QFrame#FilteringSection QLabel {
+                background: transparent;
+                border: none;
+            }
+            QFrame#FilteringSection QLabel:disabled {
+                color: #7f8791;
+            }
+            QFrame#FilteringSection QDoubleSpinBox:disabled,
+            QFrame#FilteringSection QComboBox:disabled {
+                color: #7f8791;
+                background: #202124;
+            }
+            """
+        )
         layout = QVBoxLayout(self)
         configure_preprocess_dialog_layout(layout)
 
         bandpass_section, self.bandpass_title, bandpass_layout = (
             create_preprocess_section("Band-pass filter", parent=self)
         )
+        self.bandpass_section = bandpass_section
+        bandpass_section.setObjectName("FilteringSection")
+        bandpass_layout.setContentsMargins(12, 10, 12, 12)
         bandpass_header = QHBoxLayout()
         bandpass_header.setContentsMargins(0, 0, 0, 0)
         bandpass_header.addWidget(self.bandpass_title)
         bandpass_header.addStretch()
         self.bandpass_check = self._toggle_button(checked=True)
+        self.bandpass_check.setAccessibleName("Band-pass filter")
         bandpass_header.addWidget(self.bandpass_check)
         bandpass_layout.removeWidget(self.bandpass_title)
         bandpass_layout.insertLayout(0, bandpass_header)
 
+        self.bandpass_content = QWidget()
+        self.bandpass_content.setObjectName("FilteringContent")
+        bandpass_content_layout = QVBoxLayout(self.bandpass_content)
+        bandpass_content_layout.setContentsMargins(0, 0, 0, 0)
+        bandpass_content_layout.setSpacing(6)
+        bandpass_layout.addWidget(self.bandpass_content)
+
         self.frequency_range_label = QLabel("Frequency range")
         self.frequency_range_label.setObjectName("PreprocessFieldLabel")
-        bandpass_layout.addWidget(self.frequency_range_label)
+        bandpass_content_layout.addWidget(self.frequency_range_label)
         frequency_row = QHBoxLayout()
         frequency_row.setContentsMargins(0, 0, 0, 0)
         frequency_row.setSpacing(8)
@@ -75,25 +118,36 @@ class FilteringDialog(BaseDialog):
         frequency_row.addWidget(self.h_freq_spin)
         frequency_row.addWidget(QLabel("Hz"))
         frequency_row.addStretch()
-        bandpass_layout.addLayout(frequency_row)
+        bandpass_content_layout.addLayout(frequency_row)
         layout.addWidget(bandpass_section)
 
         notch_section, self.notch_title, notch_layout = create_preprocess_section(
             "Notch filter",
             parent=self,
         )
+        self.notch_section = notch_section
+        notch_section.setObjectName("FilteringSection")
+        notch_layout.setContentsMargins(12, 10, 12, 12)
         notch_header = QHBoxLayout()
         notch_header.setContentsMargins(0, 0, 0, 0)
         notch_header.addWidget(self.notch_title)
         notch_header.addStretch()
         self.notch_check = self._toggle_button(checked=False)
+        self.notch_check.setAccessibleName("Notch filter")
         notch_header.addWidget(self.notch_check)
         notch_layout.removeWidget(self.notch_title)
         notch_layout.insertLayout(0, notch_header)
 
+        self.notch_content = QWidget()
+        self.notch_content.setObjectName("FilteringContent")
+        notch_content_layout = QVBoxLayout(self.notch_content)
+        notch_content_layout.setContentsMargins(0, 0, 0, 0)
+        notch_content_layout.setSpacing(6)
+        notch_layout.addWidget(self.notch_content)
+
         notch_label = QLabel("Power-line frequency")
         notch_label.setObjectName("PreprocessFieldLabel")
-        notch_layout.addWidget(notch_label)
+        notch_content_layout.addWidget(notch_label)
         notch_row = QHBoxLayout()
         notch_row.setContentsMargins(0, 0, 0, 0)
         notch_row.setSpacing(8)
@@ -108,7 +162,7 @@ class FilteringDialog(BaseDialog):
         notch_row.addWidget(self.notch_mode_combo)
         notch_row.addWidget(self.notch_spin)
         notch_row.addStretch()
-        notch_layout.addLayout(notch_row)
+        notch_content_layout.addLayout(notch_row)
         layout.addWidget(notch_section)
 
         self.validation_label = QLabel()
@@ -179,15 +233,26 @@ class FilteringDialog(BaseDialog):
         return spin
 
     def toggle_notch(self, checked: bool) -> None:
-        self.notch_mode_combo.setEnabled(checked)
+        self.notch_content.setEnabled(checked)
+        self.notch_title.setEnabled(checked)
+        self._set_section_background(self.notch_section, checked)
         self._sync_notch_mode()
         self._update_validation()
 
     def toggle_bandpass(self, checked: bool) -> None:
-        self.frequency_range_label.setEnabled(checked)
-        self.l_freq_spin.setEnabled(checked)
-        self.h_freq_spin.setEnabled(checked)
+        self.bandpass_content.setEnabled(checked)
+        self.bandpass_title.setEnabled(checked)
+        self._set_section_background(self.bandpass_section, checked)
         self._update_validation()
+
+    @staticmethod
+    def _set_section_background(section: QFrame, checked: bool) -> None:
+        section.setProperty("filterEnabled", "true" if checked else "false")
+        style = section.style()
+        if style is not None:
+            style.unpolish(section)
+            style.polish(section)
+        section.update()
 
     def _sync_notch_mode(self, *_args) -> None:
         custom = self.notch_mode_combo.currentText() == "Custom"

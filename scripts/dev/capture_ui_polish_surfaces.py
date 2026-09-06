@@ -43,6 +43,7 @@ from PyQt6.QtWidgets import (
 
 from scripts.dev.app_polish_capture_contract import (
     APP_POLISH_SURFACES,
+    FILTERING_SURFACES,
     build_app_polish_evidence,
     load_app_polish_evidence,
     validate_app_polish_evidence,
@@ -94,6 +95,7 @@ from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
     DataSplittingPreviewDialog,
 )
 from XBrainLab.ui.dialogs.preprocess.epoching_dialog import EpochingDialog
+from XBrainLab.ui.dialogs.preprocess.filtering_dialog import FilteringDialog
 from XBrainLab.ui.dialogs.preprocess.rereference_dialog import RereferenceDialog
 from XBrainLab.ui.dialogs.training.model_selection_dialog import ModelSelectionDialog
 from XBrainLab.ui.dialogs.training.training_setting_dialog import TrainingSettingDialog
@@ -292,6 +294,23 @@ def _model_selection_dialog() -> QWidget:
 def _rereference_dialog() -> QWidget:
     dialog = RereferenceDialog(None, ["Fz", "C3", "Cz", "C4", "Pz"])
     dialog.adjustSize()
+    return dialog
+
+
+def _filtering_default_dialog() -> FilteringDialog:
+    dialog = FilteringDialog(None, sampling_rate_hz=250.0)
+    # Follow normal use: show/polish before any optional-mode interaction.
+    dialog.show()
+    _settle_capture_widget(cast(QApplication, QApplication.instance()), dialog)
+    return dialog
+
+
+def _filtering_notch_only_dialog() -> FilteringDialog:
+    dialog = _filtering_default_dialog()
+    dialog.notch_check.click()
+    dialog.notch_mode_combo.setCurrentText("Custom")
+    dialog.notch_spin.setValue(55.0)
+    dialog.bandpass_check.click()
     return dialog
 
 
@@ -913,6 +932,8 @@ def _capture_factories() -> tuple[tuple[str, Callable[[], QWidget]], ...]:
         ("model-selection-dialog.png", _model_selection_dialog),
         ("training-setting-dialog.png", _training_setting_dialog),
         ("preprocess-rereference-dialog.png", _rereference_dialog),
+        (FILTERING_SURFACES[0], _filtering_default_dialog),
+        (FILTERING_SURFACES[1], _filtering_notch_only_dialog),
         (INTERNAL_EPOCH_SCREENSHOT, _epoching_internal_events_dialog),
         (BIDS_EPOCH_SCREENSHOT, _epoching_bids_interval_duration_dialog),
         ("data-splitting-dialog.png", _data_splitting_dialog),
@@ -947,12 +968,16 @@ def _capture(widget: QWidget, output_path: Path) -> dict[str, object]:
     for _attempt in range(3):
         try:
             _settle_capture_widget(app, widget)
+            if isinstance(widget, FilteringDialog):
+                _assert_capture_geometry(output_path.name, widget)
             _save_widget_grab(widget, first_frame)
             required_regions, _first_matches = _assert_surface_pixels(
                 widget,
                 first_frame,
             )
             _settle_capture_widget(app, widget)
+            if isinstance(widget, FilteringDialog):
+                _assert_capture_geometry(output_path.name, widget)
             _save_widget_grab(widget, output_path)
             required_regions, reference_matches = _assert_surface_pixels(
                 widget,
@@ -1083,6 +1108,25 @@ def _required_reference_controls(widget: QWidget) -> dict[str, QWidget]:
     required: dict[str, QWidget] = {
         f"{type(widget).__name__} complete surface": widget,
     }
+    if isinstance(widget, FilteringDialog):
+        # Compare the complete cards so the one-character range separator is
+        # covered without treating its tiny glyph as an independent image region.
+        required.update(
+            {
+                "Band-pass card": widget.bandpass_section,
+                "Notch card": widget.notch_section,
+                "Band-pass toggle": widget.bandpass_check,
+                "Notch toggle": widget.notch_check,
+                "Lower frequency": widget.l_freq_spin,
+                "Upper frequency": widget.h_freq_spin,
+                "Notch mode": widget.notch_mode_combo,
+            }
+        )
+        if widget.notch_spin.isVisible():
+            required["Custom notch frequency"] = widget.notch_spin
+        for button in widget.findChildren(QAbstractButton):
+            required[f"Filter action {button.text()}"] = button
+        return required
     if isinstance(widget, ChatPanel):
         required.update(
             {
@@ -1423,6 +1467,50 @@ def _render_item_reference(
 
 
 def _assert_capture_geometry(filename: str, widget: QWidget) -> None:
+    if isinstance(widget, FilteringDialog):
+        notch_only = filename == FILTERING_SURFACES[1]
+        for toggle, title, content, card, enabled in (
+            (
+                widget.bandpass_check,
+                widget.bandpass_title,
+                widget.bandpass_content,
+                widget.bandpass_section,
+                not notch_only,
+            ),
+            (
+                widget.notch_check,
+                widget.notch_title,
+                widget.notch_content,
+                widget.notch_section,
+                notch_only,
+            ),
+        ):
+            if (
+                not toggle.isVisible()
+                or not toggle.isEnabled()
+                or toggle.isChecked() is not enabled
+                or content.isEnabled() is not enabled
+                or title.isEnabled() is not enabled
+                or not card.rect().contains(toggle.mapTo(card, toggle.rect().topLeft()))
+                or not card.rect().contains(
+                    toggle.mapTo(card, toggle.rect().bottomRight())
+                )
+            ):
+                raise RuntimeError(f"{filename} has inconsistent Filter card state.")
+        controls = [
+            widget.l_freq_spin,
+            widget.h_freq_spin,
+            widget.notch_mode_combo,
+            *widget.findChildren(QAbstractButton),
+        ]
+        if notch_only:
+            controls.append(widget.notch_spin)
+        for control in controls:
+            if not control.isVisible() or not _control_is_fully_visible_in_capture(
+                widget, control
+            ):
+                raise RuntimeError(f"{filename} clips or hides a Filter input.")
+
     if isinstance(widget, EpochingDialog):
         _assert_epoching_dialog_contract(filename, widget)
 
