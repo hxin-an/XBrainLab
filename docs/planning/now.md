@@ -79,6 +79,12 @@
   Evaluation catalog); update their observable content/isolation and public-read assertions. No new
   production repair is needed for these failures. Focused export/artifact tests pass 64; the Evaluation
   publication module passes 22. Later canonical phases remain unexecuted, not passed.
+- Second canonical pass: all five unit groups pass on e0b8f104. Integration identifies one stale
+  semantic-workflow producer double and the old Run Finished walkthrough assertion; both are corrected
+  without production changes (focused 18 and 10 passed). Six public-fixture failures came from this
+  validation checkout's symlink paths; replacing only its fixture links with local copies makes all
+  four affected integration modules pass (13 tests). No import behavior/test expectation was weakened.
+  Repeat the complete exact-source manifest after these test corrections; do not combine old runs.
 - Next: commit/push the focused test correction, rerun the complete canonical manifest and final
   performance/UI/source-diverse evidence in the clean exact-commit worktree, then update draft PR #113.
   Its open #112/main dependency

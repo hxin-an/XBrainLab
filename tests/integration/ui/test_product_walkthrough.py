@@ -1346,7 +1346,7 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
     _click(qtbot, test_app.nav_btns[3])
     _wait_for_workflow_panel(qtbot, test_app, 3, "evaluation_panel")
     assert test_app.evaluation_panel.model_combo.currentText().startswith("Fold 1")
-    assert "Finished" in test_app.evaluation_panel.run_combo.currentText()
+    assert test_app.evaluation_panel.run_combo.currentText() == "Run 1"
     qtbot.waitUntil(
         lambda: test_app.evaluation_panel._evaluation_render is not None,
         timeout=10_000,

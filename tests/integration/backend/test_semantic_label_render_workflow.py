@@ -73,6 +73,7 @@ class _TrainingHolder:
         record: TrainRecord,
         *,
         evaluation_split: str,
+        sealed_epoch_data_fingerprint: str | None = None,
     ) -> SaliencyProducerIdentity:
         assert record is self._record
         assert evaluation_split == "test"
