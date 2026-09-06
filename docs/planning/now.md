@@ -65,6 +65,20 @@
   source trainer/split origin from the actual publication; retain all journey/quality assertions.
   Scope is the direct API caller, not MOABB product behavior. Re-run its full test module, commit the
   correction and repeat the complete canonical manifest on the new SHA; no combining failed dossiers.
+- Exact-source 73cefebd complete regression passes 10,842 tests (eight declared optional skips) and
+  CI passes all 23 non-skipped checks. The subsequent visualization capture fails with its canvas
+  hidden behind `Loading saliency visualization...`, despite recording render_settled=true and complete
+  backend coverage. The capture wait recognizes only `Rendering saliency...` as nonterminal and can
+  accept backend loading as a terminal error. Add a controlled loading-to-visible-canvas regression,
+  fix only this capture readiness predicate (and recheck after draw/event delivery if necessary), and
+  rerun the real capture without increasing timeouts or weakening geometry/result assertions.
+  Independently audit the panel's queued summary/render callbacks before attributing the entire failure
+  to the script; change production only if a real stale/loading overwrite is demonstrated.
+  Capture-only repair: classify all three existing loading messages as nonterminal. Replaying the old
+  predicate after an initial collection-path failure reproduces both new regressions; the repaired
+  full module passes 72 tests. A real tiny-train/explicit-compute capture then passes all three 2D tabs
+  and expected headless 3D blocking. The independent audit found no demonstrated product overwrite
+  in this artifact. Freeze this script/test correction and repeat the full exact-source dossier.
 - Follow-up complexity outcome: five existing production files, +271/-291 (net -20); cumulative
   against main, twelve existing files, +729/-337 (net +392). Existing owners unchanged; no new module,
   public class, cache, receipt or compatibility path. The additional files remove Evaluation-only

@@ -218,6 +218,44 @@ def test_wait_for_saliency_render_requires_target_generation_and_visible_canvas(
     )
 
 
+@pytest.mark.parametrize(
+    "loading_message",
+    [
+        "Loading saliency visualization...",
+        "Preparing the All Folds saliency summary...",
+    ],
+)
+def test_wait_for_saliency_render_waits_through_backend_loading_label(
+    qapp,
+    loading_message: str,
+) -> None:
+    canvas = QLabel()
+    canvas.hide()
+    error_label = QLabel(loading_message)
+    error_label.show()
+    widget = SimpleNamespace(
+        _plot_generation=3,
+        _render_workers={},
+        error_label=error_label,
+        canvas=canvas,
+    )
+
+    def publish_visible_canvas() -> None:
+        error_label.hide()
+        canvas.show()
+
+    QTimer.singleShot(10, publish_visible_canvas)
+
+    assert _wait_for_saliency_render(
+        qapp,
+        widget,
+        timeout_ms=1000,
+        minimum_generation=3,
+        require_visible_result=True,
+    )
+    assert canvas.isVisible()
+
+
 def test_wait_for_3d_capture_observes_runtime_probe_terminal_state(qapp) -> None:
     expected_reason = THREE_D_TAB_SPECS[0]["expected_reason"]
     widget = cast(Any, QWidget())
