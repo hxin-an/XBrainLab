@@ -118,6 +118,19 @@
   dependencies and product source remain unchanged. Freeze and commit the task-owned repair paths,
   then fast-forward PR #112 head and run same-SHA local/CI evidence. Windows DPI automated evidence
   will come from its native CI job because this WSL session cannot start Windows executables.
+- Exact-head CI repair: Linux UI integration still asserted the old verbose duration-warning and
+  checkbox strings in `test_dialog_acceptance.py`. User explicitly approved shorter copy; the retained
+  backend requirement/modal/receipt and invalidation assertions remain authoritative. Scope is that
+  integration test plus `tests/unit/ui/test_dialogs_extra.py`, which also asserts the retired long
+  phrase: assert the approved concise visible text while retaining all confirmation safety
+  assertions, reproduce the CI failure locally, then run the whole file and directly coupled UI tests.
+  No production change. Commit/push this test-only correction and refresh final exact-source evidence;
+  fa3e65a2 evidence/CI cannot certify the newer head. Keep settings.json out of hooks/staging.
+- Test-only CI correction validated: the two affected files plus epoch layout tests pass74 cases;
+  backend confirmation message, checkbox-gated admission and receipt invalidation are unchanged.
+  Exact fa3e65a2 real85 Apply also succeeds (Scan9.902s/Review137.054s/Validate4.666s/Apply299.925s),
+  and its native Windows100/125/150 artifacts were validated and visually inspected. These are
+  production-identical predecessor evidence only; final CI/manifest must bind the corrective head.
 
 ## Current baseline
 

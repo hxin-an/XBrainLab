@@ -702,9 +702,11 @@ def test_epoching_dialog_displays_and_returns_backend_duration_requirement(
     requirement = dialog.confirmation_requirement
     assert requirement is not None
     assert dialog.warning_label is not None
-    assert requirement["message"] in dialog.warning_label.text()
+    assert (
+        dialog.warning_label.text() == "Review event durations and the selected window."
+    )
     assert dialog.confirmation_check is not None
-    assert dialog.confirmation_check.text() == requirement["confirmation_label"]
+    assert dialog.confirmation_check.text() == "I reviewed this window."
 
     with patch(
         "XBrainLab.ui.dialogs.preprocess.epoching_dialog.show_warning"
