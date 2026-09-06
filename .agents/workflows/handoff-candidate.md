@@ -1,9 +1,10 @@
 # Workflow: Handoff Candidate
 
-最後更新：`2026-08-11`
+最後更新：`2026-09-06`
 
-Use before telling the user a branch is ready for manual testing. The goal is to keep the user from
-being first-line QA, not to replace native human acceptance.
+Use before telling the user a branch is ready for manual testing; the goal is to keep the user from being first-line QA, not to replace native human acceptance.
+
+An authorized ordinary commit, push, or PR does not claim handoff-ready or require this dossier; it still needs focused validation. Merge approval remains separate.
 
 ## Classification
 
@@ -55,8 +56,8 @@ Require a focused commit, pushed exact SHA, PR to the intended `main`, and CI wh
 matches the PR head. CI and every non-skipped reported check must be completed/successful. Missing,
 pending, stale, cancelled, or failed evidence fails closed; do not use auto-merge as a substitute.
 
-Product behavior PRs require the user's explicit manual-test pass and merge approval. Record date,
-scope, and source under `Manual acceptance`; later source changes require retest. Automation does not substitute.
+Manual-test pass and merge approval are merge prerequisites, not engineering handoff-ready prerequisites.
+For product behavior PRs, record date, scope, and source under `Manual acceptance`; later source changes require retest. Automation does not substitute.
 
 ## 7. Final report
 

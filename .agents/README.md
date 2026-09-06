@@ -1,6 +1,6 @@
 # XBrainLab Agent Operations
 
-最後更新：`2026-08-14`
+最後更新：`2026-09-06`
 
 `.agents/` 只保存 repo-local capability 與可重用流程。Repo 授權、scope、safety、complexity 與
 handoff 不變量以 `AGENTS.md` 為唯一權威；這裡不複製清單或 current product truth。
@@ -8,8 +8,9 @@ handoff 不變量以 `AGENTS.md` 為唯一權威；這裡不複製清單或 curr
 ## Progressive loading
 
 1. 先讀 `AGENTS.md` 與任務直接涉及的 canonical source。
-2. 只載入一個 primary skill；跨領域真有必要時最多一個 secondary。
-3. 只有三步以上、需要 rollback 或 handoff 的任務才載入 workflow。
+2. 使用者點名的 skill 必須載入；否則先載入處理目前 phase 所需的 primary skill，只有實際跨領域
+   時才加入其他 skill。
+3. 當某個 workflow 的程序治理目前工作時才載入它；不要以步數、skill 數或 routine task 強制載入。
 4. Thesis/tool-call claim 才讀 `.agents/context/thesis.md`；已退役的MCP surface不再dispatch。
 
 ## Skills
@@ -50,24 +51,18 @@ Skill frontmatter 是 routing authority；body 只定義專業方法與邊界。
 
 ## Model dispatch
 
-`gpt-5.6-terra` / `medium` is coordinator and worker fallback. Delegated plans emit:
-`Dispatch: coordinator; workers; Sol trigger; Fast; escalation`.
+`gpt-6-astra` / `medium` coordinates and reviews the task. `gpt-5.6-terra` / `medium` is the default
+bounded worker; `gpt-5.6-luna` / `medium` fits repeatable work with an exact oracle. Use
+`gpt-5.6-sol` only for a bounded deep review whose unresolved reasoning materially affects the current
+scope. Model choice never changes authorization, scope, completion semantics, or the live product
+Assistant model/revision; diagnose environment failures before changing a worker choice.
 
-- `gpt-5.6-luna` / `medium` / Standard：repeatable single-owner work with an exact oracle.
-  Tiny work stays with Terra when delegation would duplicate more context than it saves.
-- Terra：bounded work using an existing owner/contract; use `high` for a difficult trace below Sol.
-- `gpt-5.6-sol` / `high` only for: `S1` authority/contract conflict; `S2` owner/state-truth migration;
-  `S3` novel safety/state/rollback/cancel protocol; `S4` inseparable coupled risks; `S5` valid designs with
-  different public/failure semantics; `S6` scientific/thesis/tool-call evidence protocol design.
-- LOC/files, keywords, unfamiliarity, red CI or deadline are not Sol triggers. Split broad work; return
-  implementation to Terra/Luna after a Sol decision.
-- Fast is foreground Luna only when the user waits on model generation. Background stays Standard; repo
-  config never persists Fast or changes a host model.
-- A cheaper model gets one complete attempt. Escalate for a demonstrated capability/understanding gap;
-  diagnose tool, test, CI, download or environment failures without changing model.
+Delegate when the user requests coordination or two independent useful streams save time or improve evidence.
+A single workflow of at most 8 production files normally stays with its owner. Use no more than the configured
+worker cap and do not duplicate review dimensions. `xhigh` requires explicit
+direction or measured benefit; bulk A/B is not a merge gate.
 
-`xhigh` requires explicit direction or measured benefit. No bulk A/B is a merge gate;
-model choice never changes authorization, scope or completion semantics.
+These are repo choices, not an official universal architecture. See the official [Astra model guidance](https://developers.openai.com/api/docs/guides/latest-model/gpt-6-astra.md#prompting-best-practices), [skills guidance](https://developers.openai.com/codex/skills), [subagent configuration](https://developers.openai.com/codex/multi-agent), and [config basics](https://learn.chatgpt.com/docs/config-file/config-basic).
 
 ## Retired surfaces
 

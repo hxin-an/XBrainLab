@@ -1,6 +1,6 @@
 # XBrainLab Decisions
 
-最後更新：`2026-08-31`
+最後更新：`2026-09-06`
 
 ## 這份文件的用途
 
@@ -29,7 +29,7 @@
 | Agent guidance 採 lean single-authority contract | active | Root 保存授權、safety、scope ceiling、complexity trigger 與 handoff 不變量；skills 只保存 routing/方法，workflows 保存多步程序。Static audit 只限制上限與 authority integrity，不再要求最低篇幅或大量外部 A/B。 |
 | Declared scope 是 delivery ceiling | active | 使用者要求、明定 acceptance 與直接必要依賴是本 slice 上限。Independent findings 預設只回報，不自動實作或阻擋 scope-complete；完整 closure 只由明確 handoff claim 啟動。 |
 | Product repair 採 plan-first | active | Product bug、feature 與 refactor 在實作前先收斂到 `docs/planning/now.md` 的唯一 active plan，包含證據、邊界、修理步驟、驗證與 stop condition；不以聊天上下文或分散 planning files 承擔 durable truth。 |
-| UI 修改需使用者事前確認 | active | 任何 `XBrainLab/ui/` 修改，或會改變可見 layout、文案、互動、狀態或流程的修改，即使是 bug fix，實作前也必須先取得使用者明確確認。唯讀診斷與無可見行為變化的 backend 修正除外。 |
+| UI 修改需使用者事前確認 | active | 改變可見 layout、文案、互動、狀態或流程時，即使是 bug fix，實作前也必須先取得使用者明確確認。`XBrainLab/ui/` 內維持既有 presentation 的修正依既有 scope 實作，不重複確認。 |
 | product delivery milestone 是最低門檻 | superseded 2026-08-14 | 這個語意會讓 finding 無限重新定義 scope，已由 declared scope ceiling 與獨立 handoff-ready gate 取代。 |
 | tool-call eval 等產品主線穩定後再做 | active | Eval / thesis evidence 應測穩定產品主線，不應太早測半成品 bug。 |
 | Assistant no-action precision | active | Frozen 50-case core保持歷史可比，另以24個雙語precision cases要求產品最終零誤動作；第一次raw generation、最多兩次production format recovery與final Host outcome分開記錄，final gate不得以format retry掩蓋semantic failure。Multi-action一律先詢問第一個action，本回合不部分執行。回覆自然度由同一SHA真人驗收，不以脆弱keyword gate冒充語意品質。 |
