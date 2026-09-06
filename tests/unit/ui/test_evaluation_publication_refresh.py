@@ -30,7 +30,6 @@ from XBrainLab.backend.application.view_publication import (
     ApplicationViewPublication,
     ApplicationViewStore,
 )
-from XBrainLab.backend.training.saliency_provenance import SaliencyProducerIdentity
 from XBrainLab.backend.training_state_contract import (
     PostTrainingSaliencyPhase,
     PostTrainingSaliencyStatus,
@@ -54,7 +53,7 @@ def _publication(
     terminal_outcome: TrainingTerminalOutcome | None = None,
     is_running: bool = False,
     model_params: dict[str, object] | None = None,
-    trainer_identity: str | None = None,
+    trainer_identity: str | None = "evaluation-publication-refresh",
     training_boundary_generation: int = 0,
     post_training_saliency: PostTrainingSaliencyStatus | None = None,
 ) -> ApplicationViewPublication:
@@ -65,6 +64,11 @@ def _publication(
     marker = generation if evaluation_marker is None else evaluation_marker
     state = replace(
         initial.state,
+        dataset=replace(
+            initial.state.dataset,
+            split_specification_fingerprint="split-specification-sha256",
+            split_epoch_revision=3,
+        ),
         training=replace(
             initial.state.training,
             model_params=dict(model_params or {}),
@@ -244,14 +248,6 @@ def _render_publication(
             ),
             evaluation_split=request.split,
         ),
-        producer_identities=(
-            SaliencyProducerIdentity.from_components(
-                dataset={"dataset": "publication-refresh"},
-                split={"split": request.split},
-                run={"selection": request.selection.to_dict()},
-                model={"state": "selected"},
-            ),
-        ),
         split_specification_fingerprint="split-specification-sha256",
         split_epoch_revision=3,
     )
@@ -289,6 +285,16 @@ def test_evaluation_fails_closed_without_application_ports(qtbot) -> None:
         "Evaluation results are temporarily unavailable."
     )
     assert panel.model_combo.count() == 0
+
+
+def test_evaluation_render_request_fails_closed_without_publication(qtbot) -> None:
+    port = _EvaluationApplicationPort()
+    panel = _panel(qtbot, port)
+    panel.update_panel()
+    panel._application_view_publication = None
+    panel._application_generation = port.publication.generation
+
+    assert panel._render_for_selection(EvaluationPlanIdentity(0), split="test") is None
 
 
 def test_evaluation_renders_once_for_one_new_application_revision(qtbot) -> None:
@@ -700,7 +706,7 @@ def test_evaluation_render_exception_retries_internally_and_commits_on_success(
     assert panel._application_render_ledger.pending_publication is None
 
 
-def test_evaluation_stale_render_retries_without_error_log(
+def test_evaluation_stale_render_is_unavailable_without_error_log(
     qtbot,
     caplog,
 ) -> None:
@@ -720,26 +726,27 @@ def test_evaluation_stale_render_retries_without_error_log(
     panel.split_combo.blockSignals(False)
     attempts = 0
 
-    def stale_then_available(request):
+    def stale_render(_request):
         nonlocal attempts
         attempts += 1
-        if attempts == 1:
-            raise ApplicationError(
-                "Evaluation results changed while render data was being read.",
-                diagnostics={
-                    "evaluation_render_stale": True,
-                    "retryable": True,
-                },
-            )
-        return _render_publication(request)
+        raise ApplicationError(
+            "Evaluation results changed while render data was being read.",
+            diagnostics={
+                "evaluation_render_stale": True,
+                "retryable": True,
+            },
+        )
 
-    port.render = stale_then_available
+    port.render = stale_render
     caplog.set_level(logging.ERROR)
 
     assert panel._render_for_selection(selection, split="test") is None
-    qtbot.waitUntil(lambda: panel._evaluation_render_retry_attempts == 1)
-    qtbot.waitUntil(lambda: attempts == 2)
+    qtbot.waitUntil(panel.evaluation_background_work_idle)
 
+    assert attempts == 1
+    assert panel.no_data_label.text() == (
+        "Evaluation results changed while render data was being read."
+    )
     assert not [
         record
         for record in caplog.records
@@ -761,7 +768,7 @@ def test_evaluation_publication_ledger_does_not_wait_for_detached_chart_render(
     assert panel._application_render_ledger.pending_publication is None
 
 
-def test_evaluation_cleanup_cancels_stale_render_retry(
+def test_evaluation_cleanup_does_not_retry_stale_render(
     qtbot,
 ) -> None:
     port = _EvaluationApplicationPort()
@@ -794,12 +801,11 @@ def test_evaluation_cleanup_cancels_stale_render_retry(
     port.render = always_stale
 
     assert panel._render_for_selection(selection, split="test") is None
-    qtbot.waitUntil(lambda: panel._evaluation_render_retry_attempts == 1)
+    qtbot.waitUntil(panel.evaluation_background_work_idle)
     panel.cleanup()
     qtbot.wait(100)
 
     assert attempts == 1
-    assert not panel._evaluation_render_retry_timer.isActive()
 
 
 def test_evaluation_exhausted_revision_recovers_from_newer_publication(qtbot) -> None:

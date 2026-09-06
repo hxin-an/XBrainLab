@@ -752,6 +752,7 @@ def _prepare_render_variants(
 def _result_with_run_coverages(
     *coverages: SaliencyRunCoverageSnapshot,
     raw_files: tuple[str, ...] = (),
+    post_training_saliency: PostTrainingSaliencyStatus | None = None,
 ) -> CommandResult:
     empty_state = ApplicationStateSnapshot.empty()
     state = replace(
@@ -765,6 +766,11 @@ def _result_with_run_coverages(
         visualization=VisualizationStateSnapshot(
             saliency_available=True,
             saliency_coverage=list(coverages),
+            post_training_saliency=(
+                post_training_saliency
+                if post_training_saliency is not None
+                else PostTrainingSaliencyStatus.idle()
+            ),
         ),
     )
     return CommandResult.success_result(
@@ -1412,6 +1418,87 @@ def test_visualization_panel_defers_service_queries_until_opened(
     )
 
 
+def test_visualization_panel_does_not_attribute_other_fold_success_to_missing_run(
+    qtbot,
+):
+    """A global terminal status cannot make another selected run incomplete."""
+    panel, _ = _make_panel(qtbot)
+    missing = SaliencyMethodCoverageSnapshot(method="Gradient")
+    _publish_panel_state(
+        panel,
+        _result_with_run_coverages(
+            SaliencyRunCoverageSnapshot(
+                plan_index=0,
+                run_index=0,
+                model_name="EEGNet",
+                methods=[missing],
+            ),
+            SaliencyRunCoverageSnapshot(
+                plan_index=1,
+                run_index=0,
+                model_name="EEGNet",
+                methods=[_complete_coverage()],
+            ),
+            post_training_saliency=_post_training_saliency_status(
+                PostTrainingSaliencyPhase.SUCCEEDED,
+            ),
+        ),
+    )
+    panel.tabs.setCurrentIndex(0)
+    current_widget = _current_mock_widget(panel)
+    current_widget.show_message.reset_mock()
+
+    panel.on_update()
+
+    current_widget.show_message.assert_called_with(
+        "Gradient saliency has not been computed for this run. "
+        "Use Compute Saliency to continue."
+    )
+    assert panel.saliency_action_title.text() == "Saliency not computed yet"
+    assert panel.compute_saliency_btn.text() == "Compute Saliency"
+
+
+def test_visualization_panel_keeps_invalid_selected_payload_recompute_action(qtbot):
+    """Existing invalid stores differ from a run that has never been computed."""
+    panel, _ = _make_panel(qtbot)
+    invalid = SaliencyMethodCoverageSnapshot(
+        method="Gradient",
+        classes=[
+            SaliencyClassCoverageSnapshot(
+                class_index=0,
+                display_name="left",
+                store_key=0,
+                reason="Saliency context no longer matches this result.",
+            ),
+            SaliencyClassCoverageSnapshot(
+                class_index=1,
+                display_name="right",
+                store_key=1,
+                reason="Saliency context no longer matches this result.",
+            ),
+        ],
+    )
+    _publish_panel_state(
+        panel,
+        _application_query_with_saliency_state(
+            _post_training_saliency_status(PostTrainingSaliencyPhase.SUCCEEDED),
+            invalid,
+        ),
+    )
+    panel.tabs.setCurrentIndex(0)
+    current_widget = _current_mock_widget(panel)
+    current_widget.show_message.reset_mock()
+
+    panel.on_update()
+
+    current_widget.show_message.assert_called_with(
+        "Gradient saliency is missing for: left, right. Recompute saliency for "
+        "this run before opening a multi-class view."
+    )
+    assert panel.saliency_action_title.text() == "Saliency is incomplete"
+    assert panel.compute_saliency_btn.text() == "Recompute Saliency"
+
+
 def test_visualization_panel_populates_controls_for_published_runs(qtbot):
     panel, ctrl = _make_panel(qtbot)
     complete = _complete_coverage()
@@ -1981,14 +2068,16 @@ def test_visualization_panel_partial_multiclass_method_requires_recompute(qtbot)
             SaliencyClassCoverageSnapshot(
                 class_index=1,
                 display_name="right",
+                store_key=1,
                 available=False,
+                reason="Saliency context no longer matches this result.",
             ),
         ],
     )
     _publish_panel_state(
         panel,
         _application_query_with_saliency_state(
-            PostTrainingSaliencyStatus.idle(),
+            _post_training_saliency_status(PostTrainingSaliencyPhase.SUCCEEDED),
             partial,
         ),
     )

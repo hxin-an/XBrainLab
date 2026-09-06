@@ -184,6 +184,7 @@ class _TrainingRuntime:
         *,
         datasets: tuple[_Dataset, ...] | None = None,
         training_option: _TrainingOption | None = None,
+        is_training: bool = False,
     ) -> None:
         self._plans = plans
         self._resource_context = TrainingRuntimeContext(
@@ -191,6 +192,7 @@ class _TrainingRuntime:
             training_option=training_option or _TrainingOption(),
             model_holder=_ModelHolder(),
         )
+        self._is_training = is_training
 
     def training_plan_holders(self) -> tuple[_Plan, ...]:
         return tuple(self._plans)
@@ -199,7 +201,7 @@ class _TrainingRuntime:
         return self._resource_context
 
     def is_training(self) -> bool:
-        return False
+        return self._is_training
 
     def current_training_plan_index(self) -> int | None:
         return None
@@ -663,8 +665,8 @@ def test_analysis_service_reports_training_active_without_facade() -> None:
     plan_a = _Plan("Plan A", [_Run(finished=True)])
     plan_b = _Plan("Plan B", [_Run(finished=True)])
     service, _visualization = _service(
-        state=_state(is_training=True, finished_runs=2),
         plans=[plan_a, plan_b],
+        training_runtime=_TrainingRuntime([plan_a, plan_b], is_training=True),
     )
 
     _message, diagnostics = _expect_payload(
@@ -675,6 +677,23 @@ def test_analysis_service_reports_training_active_without_facade() -> None:
     assert diagnostics["finished_run_count"] == 2
     assert diagnostics["training_active"] is True
     assert [plan["name"] for plan in diagnostics["plans"]] == ["Plan A", "Plan B"]
+
+
+def test_evaluation_catalog_does_not_rebuild_application_state_for_diagnostics() -> (
+    None
+):
+    plan = _Plan("Plan A", [_Run(finished=True)])
+    visualization = _VisualizationController()
+    service = AnalysisCommandService(
+        training_runtime=_TrainingRuntime([plan], is_training=True),
+        visualization=visualization,
+        get_state=lambda: (_ for _ in ()).throw(AssertionError("must not read state")),
+    )
+
+    _message, diagnostics = _expect_payload(service.handle_evaluate(EvaluateCommand()))
+
+    assert diagnostics["finished_run_count"] == 1
+    assert diagnostics["training_active"] is True
 
 
 def test_analysis_service_never_returns_ui_evaluation_objects() -> None:

@@ -23,7 +23,6 @@ from XBrainLab.backend.application.owned_work import (
     current_owned_operation_id,
     owned_work_checkpoint,
 )
-from XBrainLab.backend.training.saliency_provenance import SaliencyProducerIdentity
 from XBrainLab.backend.training_state_contract import (
     TrainingReadBoundary,
     TrainingStateToken,
@@ -34,6 +33,9 @@ def _request(generation: int = 3) -> EvaluationRenderRequest:
     return EvaluationRenderRequest(
         publication_generation=generation,
         selection=EvaluationPlanIdentity(plan_index=0),
+        trainer_identity="evaluation-test",
+        split_specification_fingerprint="split-specification-sha256",
+        split_epoch_revision=5,
     )
 
 
@@ -53,14 +55,6 @@ def _publication(request: EvaluationRenderRequest) -> EvaluationRenderPublicatio
             class_labels={0: "Left", 1: "Right"},
             summary_identity=EvaluationSummaryIdentity(plan=selection),
             evaluation_split=request.split,
-        ),
-        producer_identities=(
-            SaliencyProducerIdentity.from_components(
-                dataset={"dataset": "evaluation-work-test"},
-                split={"split": request.split},
-                run={"selection": request.selection.to_dict()},
-                model={"state": "selected-checkpoint"},
-            ),
         ),
         split_specification_fingerprint="split-specification-sha256",
         split_epoch_revision=5,

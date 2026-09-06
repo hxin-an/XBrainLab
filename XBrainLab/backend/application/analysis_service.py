@@ -233,7 +233,7 @@ class AnalysisCommandService:
             "plan_count": len(plans),
             "finished_run_count": finished_total,
             "evaluation_splits": sorted(evaluation_splits),
-            "training_active": self._get_state().training.is_running,
+            "training_active": self.training_runtime.is_training(),
             "plans": summaries,
             "cross_fold_choices": [
                 choice.to_dict()

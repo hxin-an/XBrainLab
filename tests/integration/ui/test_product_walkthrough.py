@@ -1355,12 +1355,7 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
         lambda: test_app.evaluation_panel._evaluation_render_worker is None,
         timeout=10_000,
     )
-    producer_identities = test_app.evaluation_panel.metrics_table.property(
-        "producerIdentities"
+    assert test_app.evaluation_panel.metrics_table.property(
+        "splitSpecificationFingerprint"
     )
-    assert isinstance(producer_identities, list)
-    assert len(producer_identities) == 1
-    assert producer_identities[0]["dataset_fingerprint"]
-    assert producer_identities[0]["split_fingerprint"]
-    assert producer_identities[0]["run_fingerprint"]
-    assert producer_identities[0]["model_fingerprint"]
+    assert test_app.evaluation_panel.metrics_table.property("splitEpochRevision")

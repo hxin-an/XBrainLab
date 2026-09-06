@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from threading import Event, Thread
 from time import monotonic
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import patch
 
+import mne
 import numpy as np
 import pytest
 import torch
@@ -17,6 +19,7 @@ from XBrainLab.backend.application import (
     QueryStateCommand,
     ResetSessionCommand,
     SaliencyCommand,
+    SaliencyCrossFoldIdentity,
     SaliencyPlanIdentity,
     SaliencyRenderRequest,
     SaliencyRunIdentity,
@@ -24,6 +27,14 @@ from XBrainLab.backend.application import (
 from XBrainLab.backend.application.errors import PreconditionError
 from XBrainLab.backend.application.owned_work import OwnedWorkPhase
 from XBrainLab.backend.application.runtime import get_application_service
+from XBrainLab.backend.dataset import (
+    Dataset,
+    DataSplittingConfig,
+    Epochs,
+    TrainingType,
+)
+from XBrainLab.backend.load_data import Raw
+from XBrainLab.backend.model_base.EEGNet import EEGNet
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training import (
     ModelHolder,
@@ -298,6 +309,194 @@ def _wait_for_manager_phase(service: ApplicationService, phase) -> bool:
             return True
         Event().wait(0.01)
     return False
+
+
+def test_real_mne_eegnet_explicit_subject_compute_republishes_coverage(
+    tmp_path: Path,
+) -> None:
+    """Interrupted history then two real five-fold cohorts remain renderable."""
+    rng = np.random.default_rng(20260906)
+    fold_count = 5
+    labels = np.tile(np.arange(4), fold_count)
+    channel_names = ("C3", "C4", "Cz", "Pz")
+    info = mne.create_info(channel_names, sfreq=64.0, ch_types="eeg")
+    info.set_montage(mne.channels.make_standard_montage("standard_1020"))
+    mne_epochs = mne.EpochsArray(
+        rng.standard_normal((len(labels), len(channel_names), 128), dtype=np.float32),
+        info,
+        events=np.column_stack(
+            (np.arange(len(labels)), np.zeros(len(labels), dtype=int), labels)
+        ),
+        event_id={f"class-{index}": index for index in range(4)},
+        verbose=False,
+    )
+    epoch_data = Epochs([Raw("two-subject-saliency-epo.fif", mne_epochs)])
+    epoch_data.set_channels(
+        list(channel_names),
+        [tuple(channel["loc"][:3]) for channel in info["chs"]],
+    )
+    option = TrainingOption(
+        output_dir=str(tmp_path),
+        optim=torch.optim.Adam,
+        optim_params={},
+        use_cpu=True,
+        gpu_idx=None,
+        epoch=5,
+        bs=4,
+        lr=0.001,
+        checkpoint_epoch=1,
+        evaluation_option=TrainingEvaluation.VAL_LOSS,
+        repeat_num=1,
+        seed=20260906,
+        early_stopping_enabled=True,
+        early_stopping_patience=1,
+        early_stopping_min_delta=1_000_000.0,
+    )
+    model_holder = ModelHolder(EEGNet, {"f1": 2, "f2": 4, "d": 1})
+    config = DataSplittingConfig(TrainingType.IND, True, [], [])
+
+    def make_holder(subject: str, fold: int) -> TrainingPlanHolder:
+        dataset = Dataset(
+            epoch_data,
+            config,
+        )
+        dataset.set_name(f"{subject}-{fold}")
+        dataset.set_cross_validation_cohort_id(subject)
+        sample_indexes = np.arange(len(labels))
+        dataset.set_test((sample_indexes // 4) == fold)
+        dataset.set_val((sample_indexes // 4) == ((fold + 1) % fold_count))
+        dataset.set_remaining_to_train()
+        return TrainingPlanHolder(
+            model_holder,
+            dataset,
+            option,
+            {},
+            training_round_id="retrained-round",
+        )
+
+    old_subject_a = [make_holder("interrupted-a", fold) for fold in range(fold_count)]
+    old_subject_b = [make_holder("interrupted-b", fold) for fold in range(fold_count)]
+    trainer = Trainer([*old_subject_a, *old_subject_b])
+    original_train = old_subject_a[0].train
+
+    def interrupt_first_round() -> None:
+        original_train()
+        trainer.set_interrupt()
+
+    old_subject_a[0].train = interrupt_first_round
+    trainer.run(interact=False)
+    assert trainer.get_terminal_outcome().state is TrainingOutcomeState.CANCELLED
+    assert trainer.get_current_index() == 2 * fold_count
+
+    subject_a = [make_holder("subject-a", fold) for fold in range(fold_count)]
+    subject_b = [make_holder("subject-b", fold) for fold in range(fold_count)]
+    trainer.add_training_plan_holders([*subject_a, *subject_b])
+    trainer.run(interact=False)
+    assert trainer.get_terminal_outcome().state is TrainingOutcomeState.COMPLETED
+    assert all(
+        holder.get_plans()[0].is_finished() for holder in (*subject_a, *subject_b)
+    )
+    assert all(
+        holder.get_plans()[0].early_stopping["stopped_early"] is True
+        for holder in (*subject_a, *subject_b)
+    )
+    study = Study()
+    study.training_manager.set_model_holder(model_holder)
+    study.training_manager.set_training_option(option)
+    study.training_manager.trainer = trainer
+    service = ApplicationService(study)
+
+    def cross_fold_target(start_index: int) -> SaliencyCrossFoldIdentity:
+        return SaliencyCrossFoldIdentity(
+            tuple(
+                SaliencyRunIdentity(SaliencyPlanIdentity(start_index + fold), 0)
+                for fold in range(fold_count)
+            )
+        )
+
+    def compute_subject(start_index: int):
+        target = cross_fold_target(start_index)
+        result = service.execute(
+            SaliencyCommand(
+                method="Gradient",
+                params={"profile": "recommended", "methods": list(_BASELINE_METHODS)},
+                target=target,
+            )
+        )
+        assert result.ok, result.message
+        assert study.training_manager.wait_for_saliency_job(
+            timeout=_THREAD_WATCHDOG_SECONDS
+        )
+        assert service.training_runtime.wait_for_saliency_delivery(
+            timeout=_THREAD_WATCHDOG_SECONDS
+        )
+        publication = service.get_view_publication()
+        for plan_index in range(start_index, start_index + fold_count):
+            selected = next(
+                coverage
+                for coverage in publication.state.visualization.saliency_coverage
+                if coverage.plan_index == plan_index
+            )
+            methods = {method.method: method for method in selected.methods}
+            assert methods["Gradient"].complete is True
+            assert methods["Gradient * Input"].complete is True
+        return publication, target
+
+    after_subject_b, subject_b_target = compute_subject(3 * fold_count)
+    published_indexes = [
+        coverage.plan_index
+        for coverage in after_subject_b.state.visualization.saliency_coverage
+    ]
+    assert set(range(2 * fold_count, 4 * fold_count)).issubset(published_indexes)
+    after_subject_a, subject_a_target = compute_subject(2 * fold_count)
+    subject_a_records = tuple(
+        holder.get_plans()[0].get_saliency_eval_record() for holder in subject_a
+    )
+    subject_b_records = tuple(
+        holder.get_plans()[0].get_saliency_eval_record() for holder in subject_b
+    )
+    assert all(record is not None for record in subject_a_records)
+    for holder, record in zip(subject_a, subject_a_records, strict=True):
+        record.mark_saliency_context_incompatible("Test stale saliency context.")
+        holder.get_plans()[0].set_eval_record(record)
+    service.get_state()
+    invalid_state = service.execute(QueryStateCommand()).state
+    invalid_coverages = {
+        coverage.plan_index: {method.method: method for method in coverage.methods}
+        for coverage in invalid_state.visualization.saliency_coverage
+    }
+    for plan_index in range(2 * fold_count, 3 * fold_count):
+        assert invalid_coverages[plan_index]["Gradient"].available is False
+        assert invalid_coverages[plan_index]["Gradient * Input"].available is False
+    after_subject_a_recompute, _ = compute_subject(2 * fold_count)
+
+    assert after_subject_a_recompute.generation > after_subject_a.generation
+    assert after_subject_a.generation > after_subject_b.generation
+    assert all(
+        holder.get_plans()[0].get_saliency_eval_record() is not prior
+        for holder, prior in zip(subject_a, subject_a_records, strict=True)
+    )
+    assert all(
+        holder.get_plans()[0].get_saliency_eval_record() is prior
+        for holder, prior in zip(subject_b, subject_b_records, strict=True)
+    )
+    pooled = service.get_saliency_render(
+        SaliencyRenderRequest(
+            publication_generation=after_subject_a_recompute.generation,
+            run=subject_a_target,
+            method="Gradient",
+        )
+    )
+    member = service.get_saliency_render(
+        SaliencyRenderRequest(
+            publication_generation=after_subject_a_recompute.generation,
+            run=subject_b_target.members[0],
+            method="Gradient",
+        )
+    )
+    assert pooled.data.fold_count == fold_count
+    assert pooled.data.aggregation == "pooled out-of-fold epochs"
+    assert member.data.fold_count == 1
 
 
 def _lock_available_from_another_thread(lock) -> bool:

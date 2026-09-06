@@ -4,6 +4,87 @@
 
 ## Active repair — sealed saliency reads and completed-result presentation (#113)
 
+- Reopened after failed Windows acceptance (2026-09-06 22:00, Zhou2020): selecting an already completed
+  Evaluation fold while other training continues repeatedly raises the global training-boundary stale
+  error; Evaluation remains slow; every subject-1 saliency view reports incomplete/recompute. The prior
+  cac5736c desktop-source dossier is engineering history, not a passed Windows acceptance. Do not merge.
+- New evidence: Evaluation still ties a completed member to the entire trainer token; an unrelated
+  fold mutation invalidates its read. The panel contains an eight-attempt retry path. A same-source
+  synthetic 2x5-fold profile measures catalog ~0.7 ms but each member materialization repeats one full
+  EEG hash (~46 ms at 1720x16x1000 float32). This proves redundant read cost, not the whole reported stall.
+  The actual local Zhou2020 BIDS tree has no electrodes.tsv/coordsystem.json, and returns settled
+  unavailable before coordinate parsing; cold index ~8.9 s vs warm ~0.2 s. Missing geometry is not proof
+  of a saliency payload failure and must not be silently replaced by a guessed channel mapping.
+- User-authorized cleanup: delete unnecessary overdesign in these result-read paths even when its
+  measured timing impact is small. Scope remains completed-result admission, read/publication,
+  incomplete/recompute classification and directly related latency. No whole-repo SHA cleanup,
+  Assistant/harness work, split changes, model changes or invented montage fallback.
+- Outcome/assumptions: finished Fold A remains readable while unrelated Fold B trains; actual selected
+  result replacement, reset, retraining and cancellation still cannot publish stale output. Diagnose
+  subject-1 incomplete down to concrete coverage/producer/publication evidence; do not declare it fixed
+  from the earlier balanced synthetic probe. Actual latest Windows in-memory payload may be unavailable;
+  saved metrics alone cannot establish what saliency was published.
+- Steps now: (1) two nonoverlapping read-only audits: lifecycle/read correctness and real BIDS/artifact
+  evidence; coordinator measures costs; (2) converge on reproducible defects and deletion candidates;
+  (3) add reachable public regressions before each authorized repair, using existing owners; (4) replay
+  completed-A/active-B, selected replacement/cancel, interrupted/retrained multi-subject incomplete and
+  repeated reads; (5) freeze a new scoped candidate and run the unchanged desktop-source/CI handoff
+  workflow only after these failures are explained. No automatic retry increase or weakened assertions.
+- UI authority: existing explicit permission covers internal UI-file fixes preserving presentation;
+  no new layout/colors/copy or BIDS workflow change is planned. Stop for new visible design decisions.
+  Complexity review precedes new owner/module/class or threshold crossing; prefer deleting global
+  read coupling/redundant work rather than new cache, receipt or state machine. Root settings.json and
+  the two unrelated Atomic trial group UI/test edits remain untouched. Rollback is a focused PR, not reset.
+- Bounded Evaluation cleanup design: existing publisher/work controller/UI remain the owners. Remove
+  Evaluation's saliency producer SHA metadata (only exposed as Qt properties, not used to protect its
+  read), the trainer-wide activity veto and timer retry scaffold. Retain dataset epoch/split and trainer
+  identity, exact selected plan/run/record admission, detached finite predictions, and selected-target
+  replacement/cancel/worker cleanup checks before accepting a result. Unrelated progress must not
+  invalidate an otherwise identical selected result in either publisher or UI callback.
+  Also reuse admitted/committed state for Evaluation's training_active diagnostic instead of another
+  whole get_state call; do not generalize into a new cached-state owner or change other workflows.
+- Complexity review before continuation: cumulative #113 already touched nine production files/net412;
+  this continuation is deletion/reuse-first in existing Evaluation/service/UI owners, with no new
+  production module/class/receipt/state machine. Expected additional production net negative, exact
+  +/- and file count must be checked before freeze. Keep saliency provenance intact until its separate
+  actual incomplete cause is known. Split if >1500 production LOC or ownership must expand.
+- Current next step: freeze the integrated follow-up and run the complete exact-source desktop-source
+  manifest and CI. Focused coordinator rerun passes 320 tests across ten directly related modules.
+  Evaluation now copies captured selected objects, allows unrelated unstable progress, rejects actual
+  origin/target replacement and routes late callbacks by semantic origin. Its producer metadata,
+  data-only wrapper, redundant selection pass and timer retry scaffold are deleted.
+  The real-owner interrupted-round -> two five-fold Early Stop cohorts -> Compute B/A/A integration
+  verifies all ten members and pooled/member reads, including replacing five incompatible A records
+  without changing B. UI regressions distinguish never-computed,
+  partial and all-invalid stored output. This is not proof of the unavailable Windows in-memory
+  failure; no claim that the cross-selection SUCCEEDED bug explains every earlier recompute failure.
+  No BIDS production change: this Zhou tree genuinely lacks the coordinate sidecars.
+- Follow-up complexity outcome: five existing production files, +271/-291 (net -20); cumulative
+  against main, twelve existing files, +729/-337 (net +392). Existing owners unchanged; no new module,
+  public class, cache, receipt or compatibility path. The additional files remove Evaluation-only
+  bookkeeping and reuse the runtime boolean rather than build a second state snapshot.
+- Measured working-tree evidence: the same Evaluation member workload now takes 0.34-0.64 ms with
+  zero EEG/model SHA calls (previously ~46 ms with one each). Full ApplicationService Evaluate takes
+  47-147 ms on that synthetic workload; the catalog helper alone is not the whole command. Actual
+  saved Zhou EEGNet model fingerprints take ~2.2 ms for ten; these retained saliency checks detect
+  changed models and are not deleted merely because Evaluation no longer needs them. Neither timing
+  proves native Windows responsiveness. Full handoff must use the new source, not the old dossier.
+- Latest subject-1 evidence: actual 22:00 manual-checkout test/validation records cover all four
+  classes; safe selected early-stop checkpoint is finite. Replaying that checkpoint with real Zhou EDF
+  event windows (four examples, not the unavailable exact saved heldout masks) produces sealed complete
+  Gradient coverage. Next exercise the manager/terminal/publication/UI seam. Separately, the UI treats
+  any same-method global SUCCEEDED job as evidence an uncomputed selected run is incomplete. Remove
+  this cross-selection inference using existing per-run coverage/current-operation state; no new status
+  owner or receipt. Red: compute Subject B, then choose never-computed Subject A: offer ordinary Compute,
+  not incomplete/Recompute; compute A explicitly and verify its published coverage and member views.
+  This is a correction of existing status semantics, not a layout/color/control redesign. Do not claim it
+  explains all reported recompute failures without the full selected-job path evidence.
+  Dispatch: coordinator owns scope/plan/integration; Evaluation and saliency workers plus a temporary
+  independent two-file catalog-diagnostic cleanup worker under the user's multi-agent authorization;
+  no model escalation/Fast.
+
+### Previous candidate evidence (superseded by failed native acceptance above)
+
 - Approval: user approved the complete cleanup plan and requested implementation on 2026-09-06.
   This section supersedes the earlier saliency investigation steps below. User subsequently confirmed
   #112 data-split manual acceptance and explicitly approved merging its f7ff0658 candidate. Complete
@@ -259,7 +340,9 @@
   Coalesce that exact request, retain different normalized variants and discarded-result requeue,
   and verify both duplicate-request and current-error behavior with a nonempty operation ID.
 
-## Active manual-test repair extension — import capacity and split/epoch feedback
+## Historical #112 repair — import capacity and split/epoch feedback
+
+以下為已合併 #112 的施工紀錄，不是 active dispatch；其舊的 pending／next 不再生效。
 
 - Evidence: Zhou2020 subjects 1+2 select 85 event files and hit the application-only 64-file
   mapping limit. Windows manual preview with 1,719 atomic trials, Full Data, Trial validation/test
@@ -391,13 +474,13 @@
 
 ## Current baseline
 
-`2315c8ac08c1cc2683e6526eec9b368add809bff` 是目前 `origin/main` 的產品基線。Repo-root
+產品基線只由 Git 的 `main` 決定，不在計畫保存第二份 current SHA。#112 已依使用者手測通過與
+merge 批准合併；#113 的新 source 尚待重新手測，#114 不在本次修理範圍。Repo-root
 `settings.json` 的本機修改由使用者擁有，絕不可 stage、commit、revert、覆寫或隱藏。
 
-PR #111（Evaluation render expected-stale reporting）仍獨立維持在其原 branch，尚未取得該 exact
-head 的 Windows 手測／merge 批准；本 slice 從 `origin/main` 另開 branch，絕不混入 #111。
+## Historical #112 contract — Data Splitting materialization and preview
 
-## Active slice — Data Splitting contract, materialization parity, and truthful preview
+以下是已合併實作的歷史計畫，不是第二個 active slice。現行產品語意以 current／architecture 為準。
 
 ### Problem and evidence
 

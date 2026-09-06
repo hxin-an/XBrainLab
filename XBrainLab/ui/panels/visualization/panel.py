@@ -1469,8 +1469,12 @@ class VisualizationPanel(BasePanel):
             self._show_saliency_action_bar(method_name, selected_coverage)
             self._show_widget_message(
                 current_widget,
-                f"{method_name} saliency has not been computed for this run. "
-                "Use Compute Saliency to continue.",
+                (
+                    self._incomplete_saliency_message(selected_coverage)
+                    if self._coverage_requires_recompute(selected_coverage)
+                    else f"{method_name} saliency has not been computed for this run. "
+                    "Use Compute Saliency to continue."
+                ),
             )
             return
         if self.tabs.currentIndex() != 3 and not selected_coverage.complete:
@@ -2272,6 +2276,16 @@ class VisualizationPanel(BasePanel):
         )
         return True
 
+    @staticmethod
+    def _coverage_requires_recompute(
+        coverage: SaliencyMethodCoverageSnapshot,
+    ) -> bool:
+        """Keep invalid stored output distinct from a never-computed method."""
+        return (coverage.available and not coverage.complete) or any(
+            item.store_key is not None and item.reason is not None
+            for item in coverage.classes
+        )
+
     def _show_saliency_action_bar(
         self,
         method_name: str | None = None,
@@ -2301,7 +2315,7 @@ class VisualizationPanel(BasePanel):
             return
         self._saliency_action_requires_recompute = bool(
             self._pending_saliency_params is not None
-            or (coverage is not None and coverage.available and not coverage.complete)
+            or (coverage is not None and self._coverage_requires_recompute(coverage))
         )
         if self._saliency_compute_in_progress:
             self.saliency_action_title.setText("Preparing saliency baseline")
@@ -3373,7 +3387,11 @@ class VisualizationPanel(BasePanel):
         }:
             return True
         return (
-            status.phase is not PostTrainingSaliencyPhase.IDLE
+            status.phase
+            in {
+                PostTrainingSaliencyPhase.FAILED,
+                PostTrainingSaliencyPhase.CANCELLED,
+            }
             and method_name in status.methods
         )
 
