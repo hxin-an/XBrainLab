@@ -374,9 +374,9 @@ class EvalRecord:
             saliency_context = SaliencyArtifactContext.from_payload(saliency_context)
         self.saliency_context = saliency_context
         self._loaded_from_artifact = False
-        self._saliency_context_error: str | None = None
+        self._saliency_context_error = None
         self._saliency_context_missing = False
-        self._saliency_integrity_error: SaliencyArtifactIntegrityError | None = None
+        self._saliency_integrity_error = None
         self.saliency_method_parameters = copy.deepcopy(
             dict(saliency_method_parameters or {})
         )
@@ -674,7 +674,8 @@ class EvalRecord:
         fresh_manifest = self._saliency_integrity_manifest
         if (
             not isinstance(fresh_manifest, dict)
-            or set(fresh_manifest.get("methods", ())) != recomputed_methods
+            or set(cast(list[str], fresh_manifest.get("methods", ())))
+            != recomputed_methods
         ):
             raise SaliencyContextError(
                 "Fresh saliency output does not cover exactly the requested methods."
@@ -694,7 +695,9 @@ class EvalRecord:
             "runtime_contract"
         ) != retained_manifest.get("runtime_contract"):
             return
-        if not set(retained_manifest.get("methods", ())).difference(recomputed_methods):
+        if not set(cast(list[str], retained_manifest.get("methods", ()))).difference(
+            recomputed_methods
+        ):
             return
 
         fresh_stores = {
