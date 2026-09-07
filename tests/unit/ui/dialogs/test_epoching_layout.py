@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from PyQt6.QtCore import QPoint, QRect, QSize, Qt
 from PyQt6.QtGui import QFont
-from PyQt6.QtWidgets import QDialogButtonBox, QPushButton, QScrollArea
+from PyQt6.QtWidgets import QDialogButtonBox, QLabel, QPushButton, QScrollArea
 
 from XBrainLab.backend.application.epoch_context import (
     EpochContextAvailability,
@@ -229,6 +229,30 @@ def test_epoching_initial_confirmation_uses_available_height(qtbot):
     assert dialog.height() > 740
     assert _content_scroll(dialog).verticalScrollBar().maximum() == 0
     _assert_footer_is_fixed_and_visible(dialog)
+
+
+def test_epoching_hides_duplicate_window_evidence_and_uses_concise_confirmation(
+    qtbot,
+):
+    dialog = EpochingDialog(
+        None,
+        epoch_context=_epoch_context(4, confirmation_required=True),
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    qtbot.wait(0)
+
+    text = [label.text() for label in dialog.findChildren(QLabel)]
+    assert "Suggested by" not in text
+    assert not any(
+        "Suggested from the import label matching step" in item for item in text
+    )
+    assert dialog.confirmation_check is not None
+    assert dialog.confirmation_check.text() == "I reviewed this window."
+    assert dialog.warning_label is not None
+    assert (
+        dialog.warning_label.text() == "Review event durations and the selected window."
+    )
 
 
 def test_epoching_caps_to_short_screen_and_keeps_one_scroll_owner(qtbot):

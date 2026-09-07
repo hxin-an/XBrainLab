@@ -476,27 +476,19 @@ class EpochingDialog(BaseDialog):
         window_grid.addWidget(self._field_label("Duration"), 1, 0)
         window_grid.addWidget(duration_label, 1, 1, 1, 3)
 
-        window_evidence = str(self.epoch_context.get("window_evidence") or "").strip()
-        if window_evidence:
-            evidence_label = QLabel(window_evidence)
-            evidence_label.setObjectName("EpochDialogEvidence")
-            evidence_label.setWordWrap(True)
-            window_grid.addWidget(self._field_label("Suggested by"), 2, 0)
-            window_grid.addWidget(evidence_label, 2, 1, 1, 3)
-
         # Warning label (must be created before update_duration_info is called)
         warning_label = QLabel()
         self.warning_label = warning_label
         warning_label.setStyleSheet(Stylesheets.DIALOG_WARNING_LABEL)
         warning_label.setWordWrap(True)
-        window_grid.addWidget(warning_label, 3, 0, 1, 4)
+        window_grid.addWidget(warning_label, 2, 0, 1, 4)
 
         confirmation_check = QCheckBox()
         self.confirmation_check = confirmation_check
         confirmation_check.setObjectName("EpochConfirmationCheck")
         confirmation_check.toggled.connect(self._refresh_submit_validity)
         confirmation_check.hide()
-        window_grid.addWidget(confirmation_check, 4, 0, 1, 4)
+        window_grid.addWidget(confirmation_check, 3, 0, 1, 4)
         window_grid.setColumnStretch(4, 1)
         param_layout.addLayout(window_grid)
 
@@ -1023,7 +1015,7 @@ class EpochingDialog(BaseDialog):
             return
         if current_receipt != previous_receipt:
             self.confirmation_check.setChecked(False)
-        self.confirmation_check.setText(str(requirement["confirmation_label"]))
+        self.confirmation_check.setText("I reviewed this window.")
         self.confirmation_check.show()
         self._refresh_submit_validity()
 
@@ -1318,6 +1310,8 @@ class EpochingDialog(BaseDialog):
         self._refresh_submit_validity()
 
     def _default_window_notice(self) -> str:
+        if self.confirmation_requirement is not None:
+            return "Review event durations and the selected window."
         context_warning = str(self.epoch_context.get("window_warning") or "").strip()
         if context_warning:
             return context_warning

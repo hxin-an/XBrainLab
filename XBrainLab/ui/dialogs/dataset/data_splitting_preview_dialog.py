@@ -40,6 +40,7 @@ from XBrainLab.backend.application.dataset_split_preview import (
     DatasetSplitPreviewRow,
     DatasetSplitSpecification,
 )
+from XBrainLab.backend.application.errors import PreconditionError
 from XBrainLab.backend.dataset import (
     DataSplitter,
     SplitByType,
@@ -68,7 +69,7 @@ PREVIEW_STATUS_RUNNING = "running"
 PREVIEW_STATUS_SUCCEEDED = "succeeded"
 PREVIEW_STATUS_FAILED = "failed"
 PREVIEW_STATUS_CANCELLED = "cancelled"
-_NARROW_FLOW_BREAKPOINT = 760
+_NARROW_FLOW_BREAKPOINT = 720
 _PREVIEW_FAILURE_MESSAGE = (
     "The split preview failed. Adjust the split settings and try again."
 )
@@ -78,7 +79,37 @@ _CHEVRON_DOWN_ICON = (
 
 
 def _public_split_failure(error: BaseException, *, fallback: str) -> str:
+    if isinstance(error, PreconditionError):
+        return str(error) or fallback
     return public_exception_message(error, fallback=fallback)
+
+
+def _preview_evidence_tooltip(row: DatasetSplitPreviewRow) -> str:
+    def partition(label: str, key: str) -> str:
+        unit = getattr(row, f"{key}_requested_unit")
+        if unit is None:
+            return f"{label}: Disabled"
+        missing = getattr(row, f"{key}_missing_class_names")
+        plural = "es" if len(missing) > 1 else ""
+        coverage = (
+            "all classes covered"
+            if not missing
+            else f"missing class{plural}: {', '.join(missing)}"
+        )
+        requested_value = getattr(row, f"{key}_requested_value")
+        requested = " ".join(filter(None, (unit, requested_value)))
+        scope_groups = getattr(row, f"{key}_scope_group_count")
+        selected_groups = getattr(row, f"{key}_selected_group_count")
+        return (
+            f"{label}: {requested} · groups {scope_groups} → {selected_groups} "
+            f"· {coverage}"
+        )
+
+    return (
+        f"{partition('Test', 'test')}\n"
+        f"{partition('Validation', 'validation')}\n"
+        f"Saliency: {row.saliency_source}"
+    )
 
 
 _PREVIEW_DIALOG_STYLE = f"""
@@ -158,14 +189,15 @@ _PREVIEW_DIALOG_STYLE = f"""
         color: #87909b;
         border-color: #3d454d;
     }}
-    QPushButton#SplitPreviewRetryButton {{
+    QPushButton#SecondaryBackButton {{
         background-color: {Theme.BACKGROUND_MID};
         color: {Theme.TEXT_PRIMARY};
         border: 1px solid {Theme.BACKGROUND_LIGHT};
         border-radius: 4px;
         padding: 7px 12px;
+        font-weight: bold;
     }}
-    QPushButton#SplitPreviewRetryButton:hover {{
+    QPushButton#SecondaryBackButton:hover {{
         border-color: #0a7fc7;
     }}
     {checkbox_stylesheet()}
@@ -250,7 +282,6 @@ class DataSplitterHolder(DataSplitter):
             val: String representation of the SplitUnit enum value.
 
         """
-        # val is the string representation from the ComboBox
         self.split_unit = None
         for unit in SplitUnit:
             if unit.value == val:
@@ -268,8 +299,6 @@ class DataSplitterHolder(DataSplitter):
 
     def to_thread(self):
         """Prepare the splitter state for background thread usage."""
-        # State is already updated via setters.
-        # No need to "commit" state or cache validation.
 
 
 class DataSplittingPreviewDialog(BaseDialog):
@@ -300,6 +329,7 @@ class DataSplittingPreviewDialog(BaseDialog):
         preview_provider: Any,
         preview_canceller: Any,
         initial_values: dict[str, str] | None = None,
+        initial_specification: DatasetSplitSpecification | None = None,
     ):
         if split_context is None or not split_context.epoch_available:
             raise ValueError("Create EEG epochs before previewing data splitting.")
@@ -317,6 +347,12 @@ class DataSplittingPreviewDialog(BaseDialog):
         self.preview_provider = preview_provider
         self.preview_canceller = preview_canceller
         self.initial_values = dict(initial_values or {})
+        if initial_specification is not None and not isinstance(
+            initial_specification,
+            DatasetSplitSpecification,
+        ):
+            raise TypeError("initial_specification must be a DatasetSplitSpecification")
+        self.initial_specification = initial_specification
         self._preview_state_lock = threading.Lock()
         self._preview_generation_id = 0
         self._preview_status = PREVIEW_STATUS_IDLE
@@ -333,11 +369,10 @@ class DataSplittingPreviewDialog(BaseDialog):
         self._preview_close_warning_shown = False
         self._content_refit_pending = False
 
-        # UI
         self.tree: QTreeWidget | None = None
         self.btn_info: QLabel | None = None
         self.btn_confirm: QPushButton | None = None
-        self.btn_retry: QPushButton | None = None
+        self.btn_back: QPushButton | None = None
         self.preview_status_label: QLabel | None = None
         self.content_scroll: QScrollArea | None = None
         self.content_layout: QBoxLayout | None = None
@@ -346,10 +381,6 @@ class DataSplittingPreviewDialog(BaseDialog):
         self.test_widgets: list[tuple[QComboBox, QLineEdit]] = []
         self.val_splitter_list: list[DataSplitter] = []
         self.test_splitter_list: list[DataSplitter] = []
-
-        # We need to call super init LAST because init_ui relies on members
-        # But BaseDialog calls init_ui in init.
-        # So we initialize members before super.
 
         super().__init__(parent, title=title, width=920)
         self._update_content_flow(self.width())
@@ -396,7 +427,6 @@ class DataSplittingPreviewDialog(BaseDialog):
         results_column = QWidget(content)
         results_column.setObjectName("SplitPreviewResultsColumn")
 
-        # Left: Tree
         left_layout = QVBoxLayout(results_column)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(10)
@@ -429,7 +459,6 @@ class DataSplittingPreviewDialog(BaseDialog):
         tree.setAlternatingRowColors(True)
         tree.setUniformRowHeights(True)
         tree.setIndentation(0)
-        tree.setRootIsDecorated(False)
         tree.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         tree.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         tree.setHorizontalScrollBarPolicy(
@@ -451,7 +480,6 @@ class DataSplittingPreviewDialog(BaseDialog):
 
         content_layout.addWidget(results_column, stretch=3)
 
-        # Right: Controls
         controls_column = QWidget(content)
         self.controls_column = controls_column
         controls_column.setObjectName("SplitPreviewControlsColumn")
@@ -465,7 +493,6 @@ class DataSplittingPreviewDialog(BaseDialog):
         right_layout.setSpacing(12)
         right_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        # Dataset Info
         info_group, info_layout = self._panel_grid("Split overview")
         info_layout.setHorizontalSpacing(12)
         info_layout.setVerticalSpacing(8)
@@ -474,45 +501,33 @@ class DataSplittingPreviewDialog(BaseDialog):
             ("Sessions", str(self.split_context.session_count)),
             ("Labels", str(self.split_context.label_count)),
             ("Trials", str(self.split_context.trial_count)),
+            ("Atomic trial groups", str(self.split_context.trial_group_count)),
+            (
+                "Classes",
+                ", ".join(choice.label for choice in self.split_context.label_choices)
+                or "Unavailable",
+            ),
             ("Training", self.config.train_type.value),
         ]
         for row, (name, value) in enumerate(summary_rows):
             label = QLabel(name)
             label.setObjectName("SplitPreviewMuted")
             info_layout.addWidget(label, row, 0)
-            info_layout.addWidget(QLabel(value), row, 1)
+            value_label = QLabel(value)
+            if name == "Classes":
+                value_label.setWordWrap(True)
+                value_label.setToolTip(value)
+            info_layout.addWidget(value_label, row, 1)
         info_layout.setColumnStretch(1, 1)
         right_layout.addWidget(info_group)
 
-        # Validation
         val_group, val_layout = self._panel_grid("Validation split")
         val_layout.setHorizontalSpacing(8)
         val_layout.setVerticalSpacing(8)
         val_layout.setColumnStretch(1, 1)
         self.val_widgets = []
 
-        split_unit_list = [
-            i.value for i in SplitUnit if i not in [SplitUnit.KFOLD, SplitUnit.MANUAL]
-        ]
         val_splitter_list, test_splitter_list = self.config.get_splitter_option()
-        # Cast to Holder
-        # Note: config.get_splitter_option creates standard DataSplitters.
-        # We might need to upgrade them to Holders?
-        # Actually in original code, get_splitter_option calls
-        # DataSplitterHolder(True, type).
-        # We need to verify where get_splitter_option comes from.
-        # It's from TrainingConfig.
-        # If TrainingConfig uses DataSplitterHolder, then we import it there?
-        # Or does DataSplittingWindow redefine it?
-        # In original code, DataSplitterHolder inherits DataSplitter.
-        # And TrainingConfig logic is in backend.
-        # It likely returns standard DataSplitters that act as config placeholders.
-        # But wait, original `data_splitting.py` defines `DataSplitterHolder`.
-        # And `get_splitter_option` in `backend/dataset/__init__.py`
-        # (DataSplittingConfig)?
-        # Let's assume for now the pointers are compatible or we need to wrap them if
-        # logic differs. Original code just assigned them. I'll trust it.
-
         self.val_splitter_list = val_splitter_list
         self.test_splitter_list = test_splitter_list
 
@@ -525,16 +540,18 @@ class DataSplittingPreviewDialog(BaseDialog):
                 val_layout.addWidget(lbl, row, 0, 1, 2)
 
                 combo = QComboBox()
-                opts = list(split_unit_list)
-                opts.append(SplitUnit.MANUAL.value)
-                combo.addItems(opts)
-                combo.setCurrentText(SplitUnit.RATIO.value)
+                combo.addItems(self._available_split_units(is_test=False))
+                default_unit = self._restored_split_unit(
+                    splitter,
+                    default=SplitUnit.RATIO,
+                )
+                combo.setCurrentText(default_unit.value)
                 val_layout.addWidget(combo, row + 1, 0)
 
                 entry = QLineEdit(
                     self._default_split_entry_value(
                         splitter,
-                        split_unit=SplitUnit.RATIO,
+                        split_unit=default_unit,
                         initial_key="validation_ratio",
                     )
                 )
@@ -546,7 +563,6 @@ class DataSplittingPreviewDialog(BaseDialog):
                 )
                 val_layout.addWidget(entry, row + 1, 1)
 
-                # Init splitter vars
                 if hasattr(splitter, "set_split_unit_var"):
                     splitter.set_split_unit_var(combo.currentText())
                 if hasattr(splitter, "set_entry_var"):
@@ -559,7 +575,6 @@ class DataSplittingPreviewDialog(BaseDialog):
                 row += 1
         right_layout.addWidget(val_group)
 
-        # Testing
         test_group, test_layout = self._panel_grid("Testing split")
         test_layout.setHorizontalSpacing(8)
         test_layout.setVerticalSpacing(8)
@@ -578,16 +593,14 @@ class DataSplittingPreviewDialog(BaseDialog):
                 test_layout.addWidget(lbl, row, 0, 1, 2)
 
                 combo = QComboBox()
-                opts = list(split_unit_list)
-                if self.config.is_cross_validation and idx == 1:
-                    opts.append(SplitUnit.KFOLD.value)
-                else:
-                    opts.append(SplitUnit.MANUAL.value)
-                combo.addItems(opts)
-                default_unit = (
-                    SplitUnit.KFOLD
-                    if self.config.is_cross_validation and idx == 1
-                    else SplitUnit.RATIO
+                combo.addItems(self._available_split_units(is_test=True))
+                default_unit = self._restored_split_unit(
+                    splitter,
+                    default=(
+                        SplitUnit.KFOLD
+                        if self.config.is_cross_validation and idx == 1
+                        else SplitUnit.RATIO
+                    ),
                 )
                 combo.setCurrentText(default_unit.value)
                 test_layout.addWidget(combo, row + 1, 0)
@@ -635,14 +648,14 @@ class DataSplittingPreviewDialog(BaseDialog):
         )
         footer.addWidget(preview_status_label, stretch=1)
 
-        btn_retry = QPushButton("Retry")
-        self.btn_retry = btn_retry
-        btn_retry.setObjectName("SplitPreviewRetryButton")
-        btn_retry.setAutoDefault(False)
-        btn_retry.setDefault(False)
-        btn_retry.clicked.connect(self._retry_preview)
-        btn_retry.hide()
-        footer.addWidget(btn_retry)
+        btn_back = QPushButton("Back")
+        self.btn_back = btn_back
+        btn_back.setObjectName("SecondaryBackButton")
+        btn_back.setAutoDefault(False)
+        btn_back.setDefault(False)
+        btn_back.setMinimumWidth(128)
+        btn_back.clicked.connect(self.reject)
+        footer.addWidget(btn_back)
 
         btn_confirm = QPushButton("Confirm")
         self.btn_confirm = btn_confirm
@@ -761,12 +774,60 @@ class DataSplittingPreviewDialog(BaseDialog):
         split_unit: SplitUnit,
         initial_key: str,
     ) -> str:
+        restored_rule = self._restored_split_rule(splitter)
+        if (
+            restored_rule is not None
+            and restored_rule.split_unit == split_unit.value
+            and restored_rule.value is not None
+        ):
+            return restored_rule.value
         if split_unit == SplitUnit.KFOLD:
             return str(self._default_kfold_count(splitter))
         explicit_value = str(self.initial_values.get(initial_key) or "").strip()
         if explicit_value:
             return explicit_value
         return DEFAULT_SPLIT_ENTRY_VALUE
+
+    def _available_split_units(self, *, is_test: bool) -> tuple[str, ...]:
+        if not self.config.is_cross_validation:
+            return self.split_context.non_cv_split_units
+        return (
+            self.split_context.cv_test_split_units
+            if is_test
+            else self.split_context.cv_validation_split_units
+        )
+
+    def _restored_split_rule(self, splitter: DataSplitter):
+        specification = self.initial_specification
+        split_type = getattr(getattr(splitter, "split_type", None), "value", None)
+        if specification is None or not isinstance(split_type, str):
+            return None
+        rules = (
+            specification.val_splitters
+            if isinstance(getattr(splitter, "split_type", None), ValSplitByType)
+            else specification.test_splitters
+        )
+        return next((rule for rule in rules if rule.split_type == split_type), None)
+
+    def _restored_split_unit(
+        self,
+        splitter: DataSplitter,
+        *,
+        default: SplitUnit,
+    ) -> SplitUnit:
+        rule = self._restored_split_rule(splitter)
+        if rule is None or rule.split_unit is None:
+            return default
+        try:
+            candidate = SplitUnit(rule.split_unit)
+        except ValueError:
+            return default
+        is_test = not isinstance(getattr(splitter, "split_type", None), ValSplitByType)
+        return (
+            candidate
+            if candidate.value in self._available_split_units(is_test=is_test)
+            else default
+        )
 
     def _default_kfold_count(self, splitter: DataSplitter) -> int:
         target_count = self._split_target_count(splitter)
@@ -775,13 +836,15 @@ class DataSplittingPreviewDialog(BaseDialog):
         return max(2, min(5, target_count))
 
     def _split_target_count(self, splitter: DataSplitter) -> int:
-        split_type = getattr(splitter, "split_type", None)
-        if split_type in {SplitByType.SUBJECT, SplitByType.SUBJECT_IND}:
+        split_type = getattr(getattr(splitter, "split_type", None), "value", "")
+        if split_type == SplitByType.SUBJECT.value:
             return self.split_context.subject_count
-        if split_type in {SplitByType.SESSION, SplitByType.SESSION_IND}:
+        if split_type == SplitByType.SESSION.value:
             return self.split_context.session_count
-        if split_type in {SplitByType.TRIAL, SplitByType.TRIAL_IND}:
-            return self.split_context.trial_count
+        if split_type == SplitByType.TRIAL.value:
+            return (
+                self.split_context.trial_group_count or self.split_context.trial_count
+            )
         return 0
 
     def on_split_type_change(self, splitter, text):
@@ -818,29 +881,18 @@ class DataSplittingPreviewDialog(BaseDialog):
 
         """
         choices = []
-        if splitter.split_type in [
-            SplitByType.SESSION,
-            SplitByType.SESSION_IND,
-            ValSplitByType.SESSION,
-        ]:
+        split_type = getattr(getattr(splitter, "split_type", None), "value", "")
+        if split_type == SplitByType.SESSION.value:
             choices = [
                 (choice.value, choice.label)
                 for choice in self.split_context.session_choices
             ]
-        elif splitter.split_type in [
-            SplitByType.TRIAL,
-            SplitByType.TRIAL_IND,
-            ValSplitByType.TRIAL,
-        ]:
+        elif split_type == SplitByType.TRIAL.value:
             choices = [
                 (trial_index, str(trial_index))
                 for trial_index in range(self.split_context.trial_count)
             ]
-        elif splitter.split_type in [
-            SplitByType.SUBJECT,
-            SplitByType.SUBJECT_IND,
-            ValSplitByType.SUBJECT,
-        ]:
+        elif split_type == SplitByType.SUBJECT.value:
             choices = [
                 (choice.value, choice.label)
                 for choice in self.split_context.subject_choices
@@ -851,7 +903,6 @@ class DataSplittingPreviewDialog(BaseDialog):
             result = dlg.get_result()
             value = " ".join(map(str, result)) + " "
 
-            # Find index in list
             if splitter in self.val_splitter_list:
                 idx = [s for s in self.val_splitter_list if s.is_option].index(splitter)
                 self.val_widgets[idx][1].setText(value)
@@ -925,6 +976,18 @@ class DataSplittingPreviewDialog(BaseDialog):
                 generation_id,
                 PREVIEW_STATUS_CANCELLED,
             )
+        except PreconditionError as exc:
+            if self._cancel_was_requested(generation_id):
+                self._set_preview_state(
+                    generation_id,
+                    PREVIEW_STATUS_CANCELLED,
+                )
+            else:
+                self._set_preview_state(
+                    generation_id,
+                    PREVIEW_STATUS_FAILED,
+                    _public_split_failure(exc, fallback=_PREVIEW_FAILURE_MESSAGE),
+                )
         except Exception as exc:
             if self._cancel_was_requested(generation_id):
                 self._set_preview_state(
@@ -1011,7 +1074,7 @@ class DataSplittingPreviewDialog(BaseDialog):
                 self.btn_confirm.setEnabled(False)
         elif status == PREVIEW_STATUS_FAILED:
             self._set_tree_message("Preview failed")
-            self._set_preview_feedback(error or _PREVIEW_FAILURE_MESSAGE, retry=True)
+            self._set_preview_feedback(error or _PREVIEW_FAILURE_MESSAGE)
             if error:
                 item0 = tree.topLevelItem(0)
                 if item0 is not None:
@@ -1021,8 +1084,7 @@ class DataSplittingPreviewDialog(BaseDialog):
         elif status == PREVIEW_STATUS_CANCELLED:
             self._set_tree_message("Preview cancelled")
             self._set_preview_feedback(
-                "The split preview was cancelled. Retry when you are ready.",
-                retry=True,
+                "The split preview was cancelled. Adjust the settings and try again.",
             )
             if self.btn_confirm is not None:
                 self.btn_confirm.setEnabled(False)
@@ -1057,8 +1119,15 @@ class DataSplittingPreviewDialog(BaseDialog):
                         row.validation_count,
                         row.test_count,
                     )
+                    evidence = _preview_evidence_tooltip(row)
                     for col, val in enumerate(visible_info):
                         item.setText(col, str(val))
+                        item.setToolTip(col, evidence)
+                        for role in (
+                            Qt.ItemDataRole.AccessibleTextRole,
+                            Qt.ItemDataRole.AccessibleDescriptionRole,
+                        ):
+                            item.setData(col, role, evidence)
             self._clear_tree_current_item()
             self._resize_tree_to_rows()
             if rows_changed and status == PREVIEW_STATUS_SUCCEEDED:
@@ -1088,14 +1157,9 @@ class DataSplittingPreviewDialog(BaseDialog):
         item.setText(0, message)
         self._resize_tree_to_rows()
 
-    def _set_preview_feedback(self, message: str, *, retry: bool = False) -> None:
+    def _set_preview_feedback(self, message: str) -> None:
         if self.preview_status_label is not None:
             self.preview_status_label.setText(message)
-        if self.btn_retry is not None:
-            self.btn_retry.setVisible(retry)
-
-    def _retry_preview(self) -> None:
-        self.preview()
 
     def _clear_tree_current_item(self) -> None:
         if self.tree is None:
@@ -1268,6 +1332,10 @@ class DataSplittingPreviewDialog(BaseDialog):
     def schedule_preview(self) -> None:
         """Debounce expensive dataset preview regeneration while editing fields."""
         self._preview_generation_id += 1
+        # Cancel promptly on the first edit.  The debounce is only for starting
+        # the replacement request; delaying cancellation leaves an obsolete
+        # generator holding the shared preview resources while the user types.
+        self._request_preview_worker_stop()
         self._set_preview_state(
             self._preview_generation_id,
             PREVIEW_STATUS_IDLE,
@@ -1413,6 +1481,13 @@ class DataSplittingPreviewDialog(BaseDialog):
                 self._splitter_payload(splitter) for splitter in self.test_splitter_list
             ],
         }
+
+    def get_current_specification(self) -> DatasetSplitSpecification | None:
+        """Return the editable Step 2 draft without accepting its preview."""
+        try:
+            return DatasetSplitSpecification.from_payload(self._split_config_payload())
+        except (TypeError, ValueError):
+            return None
 
     @staticmethod
     def _splitter_payload(splitter: DataSplitter) -> dict[str, Any]:

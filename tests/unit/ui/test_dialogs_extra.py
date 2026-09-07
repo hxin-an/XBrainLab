@@ -688,7 +688,7 @@ class TestEpochingDialog:
         assert "BIDS events from import" in labels_text
         assert "BIDS events confirmed in Match Labels" not in labels_text
         assert "Use one fixed window" in labels_text
-        assert "review the EEG epoch window" in labels_text
+        assert "Review event durations and the selected window." in labels_text
         assert dialog.tmin_spin.value() == 0.0
         assert dialog.tmax_spin.value() == 12.0
         assert not dialog.baseline_check.isChecked()

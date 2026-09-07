@@ -23,7 +23,6 @@ from XBrainLab.backend.application.evaluation_render import (
     build_prepared_evaluation_model_summary,
     prepare_evaluation_model_summary,
 )
-from XBrainLab.backend.training.saliency_provenance import SaliencyProducerIdentity
 from XBrainLab.backend.training_state_contract import (
     TrainingReadBoundary,
     TrainingStateToken,
@@ -152,28 +151,6 @@ class _Plan:
     def get_plans(self) -> list[_Run]:
         return self._runs
 
-    def build_saliency_producer_identity(
-        self,
-        run: _Run,
-        *,
-        evaluation_split: str,
-    ) -> SaliencyProducerIdentity:
-        if run not in self._runs:
-            raise ValueError("run does not belong to plan")
-        run_index = self._runs.index(run)
-        return SaliencyProducerIdentity.from_components(
-            dataset={
-                "epoch_shape": tuple(self.dataset.get_epoch_data().data.shape),
-                "cohort": self.dataset.cross_validation_cohort_id,
-            },
-            split={
-                "name": evaluation_split,
-                "test_mask": self.dataset.test_mask,
-            },
-            run={"index": run_index, "repeat": run.repeat},
-            model={"run_index": run_index, "type": type(run.model).__name__},
-        )
-
 
 class _Runtime:
     def __init__(self, plans: list[_Plan]) -> None:
@@ -234,6 +211,9 @@ def test_run_publication_is_detached_immutable_and_identity_bound() -> None:
     request = EvaluationRenderRequest(
         publication_generation=3,
         selection=run_identity,
+        trainer_identity="trainer-evaluation",
+        split_specification_fingerprint="split-specification-sha256",
+        split_epoch_revision=11,
     )
 
     publication = publisher.publish(request)
@@ -263,14 +243,6 @@ def test_run_publication_is_detached_immutable_and_identity_bound() -> None:
     }
     assert publication.split_specification_fingerprint == ("split-specification-sha256")
     assert publication.split_epoch_revision == 11
-    assert publication.producer_identities == (
-        plan.build_saliency_producer_identity(run, evaluation_split="test"),
-    )
-    producer_payload = publication.producer_identities[0].to_payload()
-    assert producer_payload["dataset_fingerprint"]
-    assert producer_payload["split_fingerprint"]
-    assert producer_payload["run_fingerprint"]
-    assert producer_payload["model_fingerprint"]
 
     source_labels[0] = 1
     source_outputs[0, 0] = 0.0
@@ -293,6 +265,177 @@ def test_run_publication_is_detached_immutable_and_identity_bound() -> None:
         publication.data.class_labels[0] = "Changed"
     with pytest.raises(FrozenInstanceError):
         publication.generation = 4
+
+
+def test_selected_run_read_survives_unselected_training_update() -> None:
+    """A different fold progressing cannot invalidate the chosen result."""
+    run = _Run(
+        np.array([0, 1]),
+        np.array([[0.9, 0.1], [0.2, 0.8]]),
+    )
+    selected_plan = _Plan([run])
+    unselected_plan = _Plan(
+        [_Run(np.array([1]), np.array([[0.1, 0.9]]), finished=False)]
+    )
+    runtime = _Runtime([selected_plan, unselected_plan])
+    publication = SimpleNamespace(
+        generation=3,
+        usable=True,
+        training_boundary=_boundary(7),
+        state=SimpleNamespace(
+            dataset=SimpleNamespace(
+                split_specification_fingerprint="split-specification-sha256",
+                split_epoch_revision=11,
+            )
+        ),
+    )
+    boundaries = iter(
+        (
+            _boundary(7),
+            TrainingReadBoundary(
+                trainer_identity="trainer-evaluation",
+                token=TrainingStateToken(generation=8, stable=False),
+            ),
+        )
+    )
+    publisher = EvaluationRenderPublisher(
+        training_runtime=runtime,  # type: ignore[arg-type]
+        get_publication=lambda: publication,
+        capture_training_boundary=lambda: next(boundaries),
+    )
+    original = publisher._copy_render_data
+
+    def copy_while_other_fold_progresses(*args, **kwargs):
+        value = original(*args, **kwargs)
+        publication.generation = 4
+        unselected_plan._runs[0].finished = True
+        return value
+
+    publisher._copy_render_data = copy_while_other_fold_progresses  # type: ignore[method-assign]
+
+    result = publisher.publish(
+        EvaluationRenderRequest(
+            publication_generation=3,
+            selection=EvaluationRunIdentity(EvaluationPlanIdentity(0), 0),
+            trainer_identity="trainer-evaluation",
+            split_specification_fingerprint="split-specification-sha256",
+            split_epoch_revision=11,
+        )
+    )
+
+    assert result.data.labels.tolist() == [0, 1]
+
+
+@pytest.mark.parametrize(
+    ("trainer_identity", "fingerprint", "revision"),
+    [
+        ("replacement-trainer", "split-specification-sha256", 11),
+        ("trainer-evaluation", "replacement-split-sha256", 12),
+    ],
+)
+def test_queued_request_with_replaced_origin_fails_before_copy(
+    trainer_identity: str,
+    fingerprint: str,
+    revision: int,
+) -> None:
+    runtime = _Runtime([_Plan([_Run(np.array([0]), np.array([[1.0, 0.0]]))])])
+    publication = SimpleNamespace(
+        generation=3,
+        usable=True,
+        training_boundary=TrainingReadBoundary(
+            trainer_identity=trainer_identity,
+            token=TrainingStateToken(generation=8, stable=True),
+        ),
+        state=SimpleNamespace(
+            dataset=SimpleNamespace(
+                split_specification_fingerprint=fingerprint,
+                split_epoch_revision=revision,
+            )
+        ),
+    )
+    publisher = EvaluationRenderPublisher(
+        training_runtime=runtime,  # type: ignore[arg-type]
+        get_publication=lambda: publication,
+        capture_training_boundary=lambda: publication.training_boundary,
+    )
+    copied = False
+
+    def copy_must_not_run(*args: Any, **kwargs: Any) -> Any:
+        nonlocal copied
+        copied = True
+        raise AssertionError("stale origin reached evaluation copy")
+
+    publisher._copy_render_data = copy_must_not_run  # type: ignore[method-assign]
+
+    with pytest.raises(PreconditionError) as exc_info:
+        publisher.publish(
+            EvaluationRenderRequest(
+                publication_generation=3,
+                selection=EvaluationPlanIdentity(0),
+                trainer_identity="trainer-evaluation",
+                split_specification_fingerprint="split-specification-sha256",
+                split_epoch_revision=11,
+            )
+        )
+
+    assert copied is False
+    assert exc_info.value.diagnostics["evaluation_render_stale"] is True
+
+
+def test_selected_target_replacement_during_copy_discards_result() -> None:
+    original_run = _Run(np.array([0]), np.array([[1.0, 0.0]]))
+    runtime = _Runtime([_Plan([original_run])])
+    publisher = _publisher(runtime)
+    original_copy = publisher._copy_render_data
+
+    def copy_then_replace_selected_target(*args: Any, **kwargs: Any) -> Any:
+        value = original_copy(*args, **kwargs)
+        runtime.plans[0] = _Plan([_Run(np.array([1]), np.array([[0.0, 1.0]]))])
+        return value
+
+    publisher._copy_render_data = copy_then_replace_selected_target  # type: ignore[method-assign]
+
+    with pytest.raises(PreconditionError) as exc_info:
+        publisher.publish(
+            EvaluationRenderRequest(
+                publication_generation=3,
+                selection=EvaluationPlanIdentity(0),
+                trainer_identity="trainer-evaluation",
+                split_specification_fingerprint="split-specification-sha256",
+                split_epoch_revision=11,
+            )
+        )
+
+    assert exc_info.value.diagnostics["evaluation_render_stale"] is True
+
+
+def test_selected_target_aba_during_copy_uses_captured_result() -> None:
+    original_plan = _Plan([_Run(np.array([0]), np.array([[1.0, 0.0]]))])
+    runtime = _Runtime([original_plan])
+    publisher = _publisher(runtime)
+    original_copy = publisher._copy_render_data
+
+    def copy_while_target_is_temporarily_replaced(*args: Any, **kwargs: Any) -> Any:
+        replacement = _Plan([_Run(np.array([1]), np.array([[0.0, 1.0]]))])
+        runtime.plans[0] = replacement
+        try:
+            return original_copy(*args, **kwargs)
+        finally:
+            runtime.plans[0] = original_plan
+
+    publisher._copy_render_data = copy_while_target_is_temporarily_replaced  # type: ignore[method-assign]
+
+    result = publisher.publish(
+        EvaluationRenderRequest(
+            publication_generation=3,
+            selection=EvaluationPlanIdentity(0),
+            trainer_identity="trainer-evaluation",
+            split_specification_fingerprint="split-specification-sha256",
+            split_epoch_revision=11,
+        )
+    )
+
+    assert result.data.labels.tolist() == [0]
 
 
 @pytest.mark.parametrize(
@@ -441,6 +584,9 @@ def test_publication_rejects_nonfinite_or_nonnumeric_metrics(
         publisher.publish(
             EvaluationRenderRequest(
                 publication_generation=3,
+                trainer_identity="trainer-evaluation",
+                split_specification_fingerprint="split-specification-sha256",
+                split_epoch_revision=11,
                 selection=EvaluationRunIdentity(
                     plan=EvaluationPlanIdentity(plan_index=0),
                     run_index=0,
@@ -479,6 +625,9 @@ def test_plan_publication_rejects_class_mapping_drift_between_runs() -> None:
         publisher.publish(
             EvaluationRenderRequest(
                 publication_generation=3,
+                trainer_identity="trainer-evaluation",
+                split_specification_fingerprint="split-specification-sha256",
+                split_epoch_revision=11,
                 selection=EvaluationPlanIdentity(plan_index=0),
             )
         )
@@ -493,6 +642,9 @@ def test_plan_publication_pools_only_finished_evaluation_arrays() -> None:
     publication = publisher.publish(
         EvaluationRenderRequest(
             publication_generation=3,
+            trainer_identity="trainer-evaluation",
+            split_specification_fingerprint="split-specification-sha256",
+            split_epoch_revision=11,
             selection=plan_identity,
         )
     )
@@ -544,6 +696,9 @@ def test_cross_fold_publication_pools_predictions_and_recomputes_metrics() -> No
     publication = publisher.publish(
         EvaluationRenderRequest(
             publication_generation=3,
+            trainer_identity="trainer-evaluation",
+            split_specification_fingerprint="split-specification-sha256",
+            split_epoch_revision=11,
             selection=choices[0].identity,
         )
     )
@@ -562,6 +717,9 @@ def test_cross_fold_publication_pools_predictions_and_recomputes_metrics() -> No
         publisher.publish(
             EvaluationRenderRequest(
                 publication_generation=3,
+                trainer_identity="trainer-evaluation",
+                split_specification_fingerprint="split-specification-sha256",
+                split_epoch_revision=11,
                 selection=choices[0].identity,
                 split="training",
             )
@@ -746,6 +904,9 @@ def test_cross_fold_publication_requires_the_split_in_every_finished_run() -> No
         publisher.publish(
             EvaluationRenderRequest(
                 publication_generation=3,
+                trainer_identity="trainer-evaluation",
+                split_specification_fingerprint="split-specification-sha256",
+                split_epoch_revision=11,
                 selection=identity,
             )
         )
@@ -821,6 +982,9 @@ def test_run_publication_selects_the_requested_saved_split() -> None:
     publication = publisher.publish(
         EvaluationRenderRequest(
             publication_generation=3,
+            trainer_identity="trainer-evaluation",
+            split_specification_fingerprint="split-specification-sha256",
+            split_epoch_revision=11,
             selection=identity,
             split="training",
         )
@@ -845,6 +1009,9 @@ def test_plan_publication_never_mixes_splits_when_aggregating() -> None:
         publisher.publish(
             EvaluationRenderRequest(
                 publication_generation=3,
+                trainer_identity="trainer-evaluation",
+                split_specification_fingerprint="split-specification-sha256",
+                split_epoch_revision=11,
                 selection=EvaluationPlanIdentity(plan_index=0),
                 split="validation",
             )
@@ -866,6 +1033,9 @@ def test_render_rejects_metrics_without_held_out_provenance(
         publisher.publish(
             EvaluationRenderRequest(
                 publication_generation=3,
+                trainer_identity="trainer-evaluation",
+                split_specification_fingerprint="split-specification-sha256",
+                split_epoch_revision=11,
                 selection=EvaluationRunIdentity(
                     plan=EvaluationPlanIdentity(plan_index=0),
                     run_index=0,
@@ -884,10 +1054,16 @@ def test_render_rejects_metrics_without_held_out_provenance(
     [
         EvaluationRenderRequest(
             publication_generation=3,
+            trainer_identity="trainer-evaluation",
+            split_specification_fingerprint="split-specification-sha256",
+            split_epoch_revision=11,
             selection=EvaluationPlanIdentity(plan_index=4),
         ),
         EvaluationRenderRequest(
             publication_generation=3,
+            trainer_identity="trainer-evaluation",
+            split_specification_fingerprint="split-specification-sha256",
+            split_epoch_revision=11,
             selection=EvaluationRunIdentity(
                 plan=EvaluationPlanIdentity(plan_index=0),
                 run_index=9,
@@ -915,39 +1091,41 @@ def test_invalid_render_identity_fails_closed(
     assert exc_info.value.diagnostics["retryable"] is True
 
 
-def test_stale_publication_generation_fails_before_domain_read() -> None:
+def test_global_publication_generation_change_does_not_stale_selected_result() -> None:
     runtime = _Runtime([_Plan([_Run(np.array([0]), np.array([[1.0, 0.0]]))])])
     publisher = _publisher(runtime, publication_generation=4)
 
-    with pytest.raises(PreconditionError) as exc_info:
-        publisher.publish(
-            EvaluationRenderRequest(
-                publication_generation=3,
-                selection=EvaluationPlanIdentity(plan_index=0),
-            )
+    result = publisher.publish(
+        EvaluationRenderRequest(
+            publication_generation=3,
+            trainer_identity="trainer-evaluation",
+            split_specification_fingerprint="split-specification-sha256",
+            split_epoch_revision=11,
+            selection=EvaluationPlanIdentity(plan_index=0),
         )
+    )
 
-    assert exc_info.value.diagnostics["evaluation_render_stale"] is True
-    assert exc_info.value.diagnostics["publication_generation_after"] == 4
+    assert result.data.labels.tolist() == [0]
 
 
-def test_training_boundary_change_discards_copied_render_data() -> None:
+def test_global_training_token_change_does_not_stale_selected_result() -> None:
     runtime = _Runtime([_Plan([_Run(np.array([0]), np.array([[1.0, 0.0]]))])])
     publisher = _publisher(
         runtime,
         boundaries=[_boundary(), _boundary(generation=8)],
     )
 
-    with pytest.raises(PreconditionError) as exc_info:
-        publisher.publish(
-            EvaluationRenderRequest(
-                publication_generation=3,
-                selection=EvaluationPlanIdentity(plan_index=0),
-            )
+    result = publisher.publish(
+        EvaluationRenderRequest(
+            publication_generation=3,
+            trainer_identity="trainer-evaluation",
+            split_specification_fingerprint="split-specification-sha256",
+            split_epoch_revision=11,
+            selection=EvaluationPlanIdentity(plan_index=0),
         )
+    )
 
-    assert exc_info.value.diagnostics["evaluation_render_stale"] is True
-    assert exc_info.value.diagnostics["training_state_changed"] is True
+    assert result.data.labels.tolist() == [0]
 
 
 def test_render_fails_closed_without_backend_split_provenance() -> None:
@@ -962,22 +1140,9 @@ def test_render_fails_closed_without_backend_split_provenance() -> None:
         publisher.publish(
             EvaluationRenderRequest(
                 publication_generation=3,
-                selection=EvaluationPlanIdentity(plan_index=0),
-            )
-        )
-
-    assert exc_info.value.diagnostics["evaluation_render_stale"] is True
-
-
-def test_render_fails_closed_without_backend_producer_identity_builder() -> None:
-    plan = _Plan([_Run(np.array([0]), np.array([[1.0, 0.0]]))])
-    plan.build_saliency_producer_identity = None  # type: ignore[method-assign]
-    publisher = _publisher(_Runtime([plan]))
-
-    with pytest.raises(PreconditionError, match="producer identity") as exc_info:
-        publisher.publish(
-            EvaluationRenderRequest(
-                publication_generation=3,
+                trainer_identity="trainer-evaluation",
+                split_specification_fingerprint="split-specification-sha256",
+                split_epoch_revision=11,
                 selection=EvaluationPlanIdentity(plan_index=0),
             )
         )

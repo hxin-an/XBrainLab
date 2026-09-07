@@ -705,6 +705,62 @@ def test_post_load_anchor_preserves_explicit_cue_onset_and_only_defaults_when_om
     assert merged[0]["selected_anchor"] == "cue_onset"
 
 
+def test_label_import_carrier_plan_indexes_85_alias_aware_targets_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    eeg_root = tmp_path / "eeg"
+    label_root = tmp_path / "labels"
+    alias_root = tmp_path / "aliases"
+    eeg_root.mkdir()
+    label_root.mkdir()
+    alias_root.mkdir()
+    target_paths: list[str] = []
+    label_paths: list[str] = []
+    for index in range(85):
+        target_path = eeg_root / f"sub-{index:02d}_eeg.edf"
+        label_path = label_root / f"sub-{index:02d}_events.tsv"
+        target_path.touch()
+        label_path.touch()
+        target_paths.append(str(target_path))
+        label_paths.append(str(label_path))
+    alias_path = alias_root / ".." / "labels" / "sub-00_events.tsv"
+    file_mapping = {
+        target_path: str(alias_path) if index == 0 else label_paths[index]
+        for index, target_path in enumerate(target_paths)
+    }
+    real_label_path_key = DataInterpretationSessionState._label_path_key
+    observed_path_key_calls = 0
+
+    def observed_label_path_key(path: Any) -> str:
+        nonlocal observed_path_key_calls
+        observed_path_key_calls += 1
+        return real_label_path_key(path)
+
+    monkeypatch.setattr(
+        DataInterpretationSessionState,
+        "_label_path_key",
+        staticmethod(observed_label_path_key),
+    )
+
+    carrier_plan = DataInterpretationSessionState._label_import_carrier_plan(
+        label_carriers=label_paths,
+        label_configs={path: {"label_field": "trial_type"} for path in label_paths},
+        file_mapping=file_mapping,
+        class_map={"left": "left"},
+        mode="timestamp",
+        selected_event_names=None,
+        target_files=[_LoadedData(path) for path in target_paths],
+    )
+
+    assert len(carrier_plan) == 85
+    assert [row["selected_target_files"] for row in carrier_plan] == [
+        [target_path] for target_path in target_paths
+    ]
+    assert carrier_plan[0]["selected_target_file"] == target_paths[0]
+    assert observed_path_key_calls < 600
+
+
 def test_external_label_recipe_round_trip_preserves_multi_target_pairing_and_events(
     tmp_path: Path,
 ) -> None:

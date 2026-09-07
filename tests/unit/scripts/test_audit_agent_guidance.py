@@ -19,7 +19,43 @@ def test_current_repository_guidance_passes_the_public_audit() -> None:
     assert audit_guidance(REPO_ROOT) == []
 
 
-def test_public_audit_rejects_invalid_costly_model_dispatch(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "agents", ["", "[agents]\n", "[agents]\nmax_concurrent_threads_per_session = 3\n"]
+)
+def test_dispatch_allows_session_reasoning_and_parent_worker_inheritance(
+    tmp_path, agents
+):
+    config = tmp_path / ".codex" / "config.toml"
+    config.parent.mkdir()
+    config.write_text(
+        'model = "gpt-6-astra"\n' + agents,
+        encoding="utf-8",
+    )
+
+    assert not any("config.toml" in error for error in audit_guidance(tmp_path))
+
+
+def test_dispatch_rejects_repo_defaults_that_override_session_or_parent(tmp_path):
+    config = tmp_path / ".codex" / "config.toml"
+    config.parent.mkdir()
+    config.write_text(
+        'model = "gpt-6-astra"\nmodel_reasoning_effort = "medium"\n'
+        "[agents]\n"
+        'default_subagent_model = "gpt-6-astra"\n'
+        'default_subagent_reasoning_effort = "medium"\n',
+        encoding="utf-8",
+    )
+
+    errors = audit_guidance(tmp_path)
+    for key in (
+        "model_reasoning_effort",
+        "default_subagent_model",
+        "default_subagent_reasoning_effort",
+    ):
+        assert any(key in error and "inherit" in error for error in errors)
+
+
+def test_public_audit_rejects_invalid_model_dispatch_settings(tmp_path: Path) -> None:
     config = tmp_path / ".codex" / "config.toml"
     config.parent.mkdir()
     config.write_text(
@@ -37,11 +73,27 @@ default_subagent_reasoning_effort = "medium"
 
     errors = audit_guidance(tmp_path)
 
-    assert ".codex/config.toml must set model='gpt-5.6-terra'" in errors
+    assert ".codex/config.toml must set model='gpt-6-astra'" in errors
     assert (
         ".codex/config.toml must not persist service_tier; Fast is foreground-only"
         in errors
     )
+
+
+def test_public_audit_rejects_malformed_agents_table(tmp_path: Path) -> None:
+    config = tmp_path / ".codex" / "config.toml"
+    config.parent.mkdir()
+    config.write_text(
+        """\
+model = "gpt-6-astra"
+agents = 3
+""",
+        encoding="utf-8",
+    )
+
+    errors = audit_guidance(tmp_path)
+
+    assert ".codex/config.toml agents must be a table when present" in errors
 
 
 def test_agents_size_contract_has_no_minimum(tmp_path: Path) -> None:
@@ -75,13 +127,19 @@ def test_static_audit_rejects_unbounded_milestone_language(tmp_path: Path) -> No
     assert any("unbounded delivery token" in error for error in errors)
 
 
-def test_skill_inventory_is_derived_from_frontmatter(tmp_path: Path) -> None:
+def test_skill_inventory_accepts_optional_metadata_and_neutral_description(
+    tmp_path: Path,
+) -> None:
     skill = tmp_path / ".agents" / "skills" / "new-reviewer" / "SKILL.md"
     skill.parent.mkdir(parents=True)
     skill.write_text(
         "---\n"
         "name: new-reviewer\n"
-        'description: "Use for a bounded review. Do not use for implementation."\n'
+        'description: "Bounded review of one production concern."\n'
+        "license: Apache-2.0\n"
+        'allowed-tools: "Read, Grep"\n'
+        "metadata:\n"
+        "  display_name: New Reviewer\n"
         "---\n\n"
         "# New Reviewer\n",
         encoding="utf-8",
@@ -89,8 +147,31 @@ def test_skill_inventory_is_derived_from_frontmatter(tmp_path: Path) -> None:
 
     errors = audit_guidance(tmp_path)
 
-    assert not any("skill inventory mismatch" in error for error in errors)
-    assert not any("unknown skill" in error for error in errors)
+    assert not any(str(skill) in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    ("frontmatter", "expected_error"),
+    [
+        ('description: ""\n', "description must be a non-empty string"),
+        ("unknown_metadata: true\n", "unsupported frontmatter keys"),
+    ],
+)
+def test_skill_frontmatter_rejects_invalid_required_or_optional_metadata(
+    tmp_path: Path,
+    frontmatter: str,
+    expected_error: str,
+) -> None:
+    skill = tmp_path / ".agents" / "skills" / "new-reviewer" / "SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_text(
+        f"---\nname: new-reviewer\n{frontmatter}---\n",
+        encoding="utf-8",
+    )
+
+    errors = audit_guidance(tmp_path)
+
+    assert any(expected_error in error and str(skill) in error for error in errors)
 
 
 def test_retired_external_eval_corpus_is_rejected(tmp_path: Path) -> None:

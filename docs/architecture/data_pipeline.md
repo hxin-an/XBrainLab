@@ -242,13 +242,22 @@ epochs 並提供 resampling guidance。已 epoched inputs 仍必須在 loader �
 
 `DatasetGenerator` 以 `DataSplittingConfig` 產生 `Dataset`。
 
-目前支援的核心概念：
+Split 是一個由既有 `DatasetGenerator` materialize、`SplitAudit` 檢查的單一路徑：Full training
+的 Test 可依 `Trial`、跨 subject 的同名 `Session` 或 `Subject` 分組；Individual training 僅可依
+`Trial` 或 `Session`。Validation 是 Disable，或使用該 training mode 允許的任一分組單位，並可與
+Test 使用不同 unit。Trial 永遠以
+temporal-overlap atomic group 分配，不能把同一個原子群切到不同 partition。
 
-- individual training：按 subject 生成 dataset。
-- full/group training：以 group/fold 方式生成 dataset。
-- test split：trial / session / subject。
-- validation split：trial / session / subject。
-- cross-validation：用 remaining mask 逐 fold 推進。
+非 cross-validation 的 Test／Validation 使用 Ratio、Number 或 Manual selection；cross-validation
+的 Test 使用 exact KFold，Validation 僅可 Disable、Ratio 或 Number。每個有效 partition 都必須能
+materialize；不足以滿足 isolation、required non-empty partition 或 train class coverage 的設定會在
+preview／Train 前 fail closed。KFold 的每個 scope 都有 exact K 個 test folds，test groups 不重複且
+聯集為該 scope，而不是以前一 fold 的 remaining mask 逐步推進。
+
+Preview 與 Train 使用同一個 canonical allocation/audit path。Save 的 receipt 帶 allocation digest；
+Train 會重新 materialize 並比對 rows、coverage 與 digest，任何不一致都拒絕啟動。若 Test 不具完整
+class coverage 而 Validation 完整，saliency 可改用 Validation；兩者皆不完整時該 fold 不產生 saliency，
+但不影響其他可用 fold 的 training/evaluation。
 
 `Dataset` 本身主要保存 masks：
 

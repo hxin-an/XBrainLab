@@ -11,7 +11,6 @@ from XBrainLab.backend.training_contract import DEFAULT_TRAINING_OUTPUT_DIR
 if TYPE_CHECKING:
     from .dataset_split_preview import DatasetSplitPreviewReceipt
     from .evaluation_render import EvaluationSummaryIdentity
-    from .saliency_render import SaliencySelectionIdentity
 
 
 class CommandName(str, Enum):
@@ -314,9 +313,9 @@ class SaveDatasetSplitCommand:
 
     test_ratio: float = 0.2
     val_ratio: float = 0.2
-    split_strategy: str = "subject"
-    training_mode: str = "individual"
-    split_config: dict[str, Any] = field(default_factory=dict)
+    split_strategy: str = "trial"
+    training_mode: str = "group"
+    split_config: dict[str, Any] | None = None
     preview_receipt: DatasetSplitPreviewReceipt | None = None
 
     @property
@@ -441,7 +440,6 @@ class SaliencyCommand:
 
     method: str | None = None
     params: dict[str, Any] | None = None
-    target: SaliencySelectionIdentity | None = None
     resource_preflight_confirmed: bool = False
     resource_preflight_token: str | None = None
 

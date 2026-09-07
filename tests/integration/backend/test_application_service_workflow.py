@@ -54,8 +54,8 @@ from XBrainLab.backend.training import Trainer
 
 EXPECTED_SYNTHETIC_SPLIT_25_25_SUMMARY = {
     "count": 1,
-    "train_count": 7,
-    "val_count": 2,
+    "train_count": 6,
+    "val_count": 3,
     "test_count": 3,
     "audit": {
         "ok": True,
@@ -886,7 +886,7 @@ def test_application_service_accepts_dialog_split_specification_and_updates_read
     assert service.get_capabilities().get(CommandName.TRAIN).available is True
 
 
-def test_dataset_replacement_rolls_back_real_split_then_can_commit(tmp_path):
+def test_dataset_replacement_rejects_invalid_split_then_can_commit(tmp_path):
     service = ApplicationService()
     fif_path = _write_synthetic_raw_fif(tmp_path)
 
@@ -941,28 +941,17 @@ def test_dataset_replacement_rolls_back_real_split_then_can_commit(tmp_path):
         ),
     )
 
-    assert invalid_specification.ok is True
+    assert invalid_specification.failed is True
+    assert invalid_specification.error_type is ErrorType.VALIDATION
+    assert invalid_specification.recoverable is True
+    assert "requires exactly one supported test rule" in invalid_specification.message
     assert invalid_specification.state.dataset.split_spec_saved is True
-    assert invalid_specification.state.dataset.split_materialized is False
+    assert invalid_specification.state.dataset.split_materialized is True
     assert invalid_specification.state.dataset.active_split_summary == old_summary
-
-    invalid_replacement = service.execute(
-        TrainCommand(confirmed=True, interactive=False)
-    )
-
-    assert invalid_replacement.failed is True
-    assert invalid_replacement.diagnostics["state_preserved"] is True
-    assert invalid_replacement.diagnostics["split_summary"]["test_count"] == 0
-    assert any(
-        "test split is empty" in issue["message"].casefold()
-        for issue in invalid_replacement.diagnostics["split_audit"]["issues"]
-    )
-    assert invalid_replacement.state.dataset.split_lifecycle.value == "failed"
-    assert invalid_replacement.state.dataset.active_split_summary == old_summary
-    assert invalid_replacement.state.active_dataset == (
+    assert invalid_specification.state.active_dataset == (
         before_replacement.active_dataset
     )
-    assert invalid_replacement.state.active_training == (
+    assert invalid_specification.state.active_training == (
         before_replacement.active_training
     )
     committed_specification = service.execute(

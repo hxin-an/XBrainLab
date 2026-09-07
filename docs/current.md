@@ -1,6 +1,6 @@
 # XBrainLab 目前狀態
 
-最後更新：`2026-08-31`
+最後更新：`2026-09-07`
 
 ## 一句話
 
@@ -16,10 +16,10 @@ local Granite透過18個核准action進入相同GUI與Command workflow。
 | Data import | Formal BIDS subject selection、reviewed import、external/internal label mapping、recipe與多格式 loader存在；loading以穩定 phase/activity 呈現，不把各 command 的局部計數當整體百分比。 | 不是 full BIDS validator，也不能外推到所有資料集與 proprietary formats。 |
 | Desktop presentation | Blocking alert／confirmation 使用共用 XBrainLab modal；confirmation 的 Cancel 是 Enter／Escape 安全預設，raw `QMessageBox` 不再是 production UI surface。Detached Evaluation render 不呈現 user-owned Cancel action。 | Inline validation、loading、operation status 與 canvas error 仍留在 workflow context；自動 artifact 不取代 Windows native keyboard、DPI 與 OpenGL 驗收。 |
 | Preprocess / Epoch | Filtering、resample、rereference、normalize、channel selection與reviewed epoch flow存在，長工作有 owned lifecycle。 | Protocol choice與科學正確性仍由使用者負責。 |
-| Split / Training | Split preview、training settings、fold/repeat plans與training history存在。每次 Start Training有獨立 round identity。 | Recommendation不是AutoML或最佳參數保證。 |
+| Split / Training | Split preview、training settings、fold/repeat plans與training history存在。Full Test 支援 Trial／跨 subject 同名 Session／Subject，Individual Test 支援 Trial／Session；Validation 為 Disable 或該 training mode 可用的任一 unit，且可與 Test 混用。非 CV 用 Ratio／Number／Manual，CV Test 為 exact KFold 並可搭配 Disable／Ratio／Number Validation。Preview receipt 與 Train 以同一 allocation/audit materialize，receipt 不一致或無可行 partition 會拒絕啟動；每次 Start Training有獨立 round identity。 | 分配是確定性且 bounded 的可行性搜尋，不是完整 solver；不保證任意資料集、科學獨立性、class balance 或模型品質。Recommendation不是AutoML或最佳參數保證。 |
 | Model catalog | Pinned Braindecode 1.6.1提供61個可搜尋contracts，其中54個符合目前classification workflow而可選；provider失效時改列distinct `legacy.braindecode.*` recovery IDs。Model Selection使用catalog reviewed defaults。 | 不可選contracts會顯示license、task或resource reason；桌面UI不提供model constructor調參；upstream與legacy禁止silent fallback，catalog execution不代表科學品質。 |
-| Evaluation | Individual fold/run支援Train、Validation、Test；cross-fold Summary只pool同一training round的disjoint Test masks。 | `All Folds`的Split只有Test是刻意的統計邊界。 |
-| Saliency | 明確Compute Saliency、累加method recompute、exact Fold／Evaluation-admitted Fold Set publication存在；尚未計算者顯示Compute要求，舊結果可刻意回看；單一class selector可切all-class比較與single-class細看，3D控制使用epoch-relative time並在重複render維持單一orientation widget。 | 不代表attribution具科學有效性或腦內source localisation，不把epoch time冒充已審查event marker，也不保證所有模型梯度相容。 |
+| Evaluation | Individual fold/run支援Train、Validation、Test；Evaluation／Visualization選單只列完成的run（含正常Early Stop），不列中途停止的run，保留原始編號與歷史；cross-fold Summary只pool同一training round的disjoint Test masks。已完成結果的讀取綁定所選結果與trainer／split來源，不因其他fold的訓練進度失效，也不計算saliency producer SHA。 | 真正的來源或所選結果替換仍拒絕過期讀取；完成訓練但未計算saliency的run仍可選取Compute；`All Folds`的Split只有Test是刻意的統計邊界。 |
+| Saliency | 桌面Compute／Recompute只執行Settings選定的方法，一次涵蓋目前訓練結果中所有subject的已完成fold／run，排除未完成者；Fold／Run／Method選單只控制顯示。未選的相容既有方法直接保留，不加入重算；所選方法僅保留最新成功結果，整批成功才發布。沿用exact Fold／Evaluation-admitted Fold Set publication；尚未計算者顯示Compute要求，舊結果可刻意回看；單一class selector可切all-class比較與single-class細看，3D控制使用epoch-relative time並在重複render維持單一orientation widget。 | 不代表attribution具科學有效性或腦內source localisation，不把epoch time冒充已審查event marker，也不保證所有模型梯度相容。 |
 | Assistant | Local catalog以Granite 4.0 Micro 3B作recommended primary、Granite 3.3 2B作lower-memory選項；per-user settings保留上次確認的supported model，已退役selection會靜默正規化為recommended model。Strict envelope、18-action stage surface、parameter provenance、typed pending receipt infrastructure、capability、confirmation、GUI handoff與model-free walkthrough存在。 | PR #71 的exact 3B bounded baseline為36/36 positive、10/10 explicit parameter origin、5/5 missing guard、22/24 product no-action與6/7 clarification execution boundary；`desktop-source` release profile可重跑其frozen 81-case no-regression evidence，但artifact明示它不是24/24、7/7 Stable promotion或安全零容忍。 |
 | MCP | Executable package、transport、CLI、capture、schema projection與tests已退役；provenance只留在Git history。 | 不是release能力；未來若要恢復，必須另開public contract、security與validation decision。 |
 | Packaging | Windows launcher與source啟動方式存在。 | 沒有signed installer。 |

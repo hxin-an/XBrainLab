@@ -15,7 +15,7 @@ from XBrainLab.backend.application.dataset_split_preview import (
 )
 from XBrainLab.backend.application.epoch_context import build_epoching_context
 from XBrainLab.backend.application.errors import PreconditionError
-from XBrainLab.backend.dataset import Epochs
+from XBrainLab.backend.dataset import Epochs, EpochWindowProvenance
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training import TrainingEvaluation, TrainingOption
 from XBrainLab.ui.dialogs.dataset.event_filter_dialog import EventFilterDialog
@@ -702,9 +702,11 @@ def test_epoching_dialog_displays_and_returns_backend_duration_requirement(
     requirement = dialog.confirmation_requirement
     assert requirement is not None
     assert dialog.warning_label is not None
-    assert requirement["message"] in dialog.warning_label.text()
+    assert (
+        dialog.warning_label.text() == "Review event durations and the selected window."
+    )
     assert dialog.confirmation_check is not None
-    assert dialog.confirmation_check.text() == requirement["confirmation_label"]
+    assert dialog.confirmation_check.text() == "I reviewed this window."
 
     with patch(
         "XBrainLab.ui.dialogs.preprocess.epoching_dialog.show_warning"
@@ -853,6 +855,21 @@ def test_training_setting_dialog_uses_real_saved_split_recommendation(qtbot):
     epoch_data.session_map = {0: "001"}
     epoch_data.ch_names = ["C3", "C4"]
     epoch_data.sfreq = 128.0
+    source_id = f"content-sha256:{'a' * 64}"
+    epoch_data.epoch_window_provenance = tuple(
+        EpochWindowProvenance(
+            source_recording_id=source_id,
+            event_sample=index * 64,
+            window_start_sample=index * 64,
+            window_end_sample_exclusive=(index + 1) * 64,
+            source_sfreq=128.0,
+            epoch_sfreq=128.0,
+            tmin_seconds=0.0,
+            tmax_seconds=63 / 128,
+            source_coordinates_verified=True,
+        )
+        for index in range(sample_count)
+    )
 
     study = Study()
     study.data_manager.epoch_data = epoch_data

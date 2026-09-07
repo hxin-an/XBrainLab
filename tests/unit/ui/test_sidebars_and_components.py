@@ -1634,6 +1634,7 @@ class TestTrainingSidebar:
         get_publication.assert_called_once_with(sidebar, runtime=None)
         dialog_context.assert_called_once_with(
             expected_publication_generation=generation,
+            initial_specification=None,
         )
         message_box.assert_called_once_with(
             AlertSeverity.WARNING,
@@ -2147,6 +2148,7 @@ class TestTrainingSidebar:
             "preview_provider",
             "preview_canceller",
             "initial_values",
+            "initial_specification",
         }
         assert isinstance(dialog_kwargs["split_context"], DatasetSplitContext)
         assert dialog_kwargs["split_context"].epoch_available is True
@@ -2155,6 +2157,7 @@ class TestTrainingSidebar:
         assert callable(dialog_kwargs["preview_provider"])
         assert callable(dialog_kwargs["preview_canceller"])
         assert dialog_kwargs["initial_values"] == {}
+        assert dialog_kwargs["initial_specification"] is None
         mock_execute.assert_not_called()
         assert isinstance(mock_async.call_args.args[1], SaveDatasetSplitCommand)
         sidebar.panel.controller.get_epoch_data.assert_not_called()
