@@ -2,24 +2,21 @@
 
 最後更新：`2026-09-08`
 
-## Active — CI quality wiring and scope correction (PR B)
+## Active — CI runner failure diagnosis (PR C)
 
-- Audit confirmed missing actual Basedpyright/architecture/secrets CI, Ruff scope/version mismatch,
-  and docs-workflow-only changes routed into product tests. Correct these without removing distinct
-  regression/platform/native/data/UI evidence. Product behavior, new security tools and broad lint
-  rewrites are out of scope. UI unchanged, no new manual acceptance required.
-- Test routing/wiring first; add a shared locked-dependency quality job for existing analyzers and
-  existing secrets checks, align Ruff, and document any existing lint debt without suppressing it.
-  Keep baseline read-only and fail closed. Do not rerun full local product regression.
-- Focused evidence: ci_change_scope/reliability tests, affected analyzer checks, YAML/static/docs;
-  then independent review and exact-head applicable CI. User authorizes nonblocking notification,
-  merge and immediate safe worktree/artifact cleanup after success.
-- PR A #117 is merged. Preserve its tier guidance and continuing Assistant plan; parent owns
-  integration/PR/merge. PR C adds bounded runner failure diagnostics without changing product behavior.
-- First exact-head quality CI exposed two existing annotation gaps: NumPy's scalar/array overload
-  in trial averaging and identity-narrowed Evaluation worker delivery. Express the already-enforced
-  contracts with typing.cast only, without runtime/UI changes, ignores or baseline changes; retain
-  existing numerical and callback tests. This uses the user's no-visible-change UI-file authorization.
+- Existing shard runner kills timed-out children but does not explicitly request a pre-timeout stack;
+  pytest/capture failures also skip several CI source-provenance steps. Historical debug timeout and
+  macOS -11 roots remain unproven; this slice improves evidence, not an unsupported root-cause claim.
+- Reuse stdlib/pytest fault diagnosis and current owned process cleanup. Keep exit/attestation checks
+  fail closed. No new process owner/watchdog framework, raised timeout or automatic retry.
+- Test first with real bounded child processes (hang/failure/early exit and successful cleanup), then
+  implement minimal diagnostics and always-on post-execution provenance; preserve formal CI evidence.
+  Limit edits to existing runners, directly related tests and CI diagnostic steps; no product/UI changes.
+- Parent owns PR integration/review/CI/merge and retains PR A's full continuing Assistant plan.
+  Focused tests/static evidence only locally; exact-head CI before nonblocking merge notice and cleanup.
+- PR A #117 and CI wiring/routing PR B #118 (`b30b0eda`) are merged. Preserve B's parallel quality
+  gates when integrating; do not duplicate formal regression locally. Parent owns PR integration,
+  review, CI and merge while retaining the continuing Assistant plan.
 - Review every CI job's trigger, observable protection, duplication and gaps. Remove only demonstrated
   redundancy/unneeded routing while preserving required evidence; add missing meaningful gates, not
   more checks by default. No failure hiding through skips or timeout increases.

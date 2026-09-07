@@ -154,9 +154,12 @@ class RequiredPytestGate:
         return "\n".join(lines)
 
 
-def _parse_args(argv: Sequence[str]) -> tuple[Path | None, list[str], set[str]]:
+def _parse_args(
+    argv: Sequence[str],
+) -> tuple[Path | None, list[str], set[str], float | None]:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--result-json", type=Path)
+    parser.add_argument("--faulthandler-timeout", type=float)
     parser.add_argument(
         "--allow-skip-marker",
         action="append",
@@ -172,12 +175,17 @@ def _parse_args(argv: Sequence[str]) -> tuple[Path | None, list[str], set[str]]:
     pytest_args = list(parsed.pytest_args)
     if pytest_args[:1] == ["--"]:
         pytest_args = pytest_args[1:]
-    return result_path, pytest_args, set(parsed.allow_skip_marker)
+    return (
+        result_path,
+        pytest_args,
+        set(parsed.allow_skip_marker),
+        parsed.faulthandler_timeout,
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Run pytest and fail when any mandatory case was not executed normally."""
-    result_path, args, allowed_skip_markers = _parse_args(
+    result_path, args, allowed_skip_markers, faulthandler_timeout = _parse_args(
         sys.argv[1:] if argv is None else argv
     )
     if result_path is None:
@@ -189,12 +197,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("Pass pytest arguments after --.", file=sys.stderr)
         return 2
     logical_args = tuple(args)
+    pytest_args = list(logical_args)
+    if faulthandler_timeout is not None:
+        pytest_args[:0] = ("-o", f"faulthandler_timeout={faulthandler_timeout}")
     result_path.unlink(missing_ok=True)
     observer = RequiredPytestGate(allowed_skip_markers=allowed_skip_markers)
     outer_argv = sys.argv
     sys.argv = [outer_argv[0], *logical_args]
     try:
-        exit_code = int(pytest.main(list(logical_args), plugins=[observer]))
+        exit_code = int(pytest.main(pytest_args, plugins=[observer]))
     finally:
         sys.argv = outer_argv
     final_exit_code = exit_code
