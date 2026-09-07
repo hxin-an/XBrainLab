@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QSizePolicy,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -600,6 +601,7 @@ class VisualizationPanel(BasePanel):
         """Build the explicit saliency compute prompt shown for metric-only runs."""
         frame = QFrame()
         frame.setObjectName("SaliencyActionBar")
+        frame.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
         frame.setStyleSheet(
             f"""
             QFrame#SaliencyActionBar {{
@@ -628,6 +630,7 @@ class VisualizationPanel(BasePanel):
         text_layout.setSpacing(2)
         self.saliency_action_title = QLabel("Saliency not computed yet")
         self.saliency_action_title.setObjectName("SaliencyActionTitle")
+        self.saliency_action_title.setWordWrap(True)
         self.saliency_action_detail = QLabel(
             "Recommended profile computes Gradient + Gradient * Input."
         )
@@ -640,7 +643,9 @@ class VisualizationPanel(BasePanel):
         self.compute_saliency_btn.setObjectName("ComputeSaliencyButton")
         self.compute_saliency_btn.setProperty("operationId", "")
         self.compute_saliency_btn.setProperty("operationPhase", "idle")
-        self.compute_saliency_btn.setMinimumWidth(140)
+        self.compute_saliency_btn.setSizePolicy(
+            QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed
+        )
         self.compute_saliency_btn.setStyleSheet(
             Stylesheets.BTN_PRIMARY
             + f"""

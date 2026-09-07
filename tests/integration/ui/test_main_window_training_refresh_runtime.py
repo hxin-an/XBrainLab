@@ -610,6 +610,19 @@ def test_settings_recompute_keeps_completed_methods_and_reports_actual_work(
             panel.on_update()
             assert panel.saliency_action_bar.isVisible()
             if interruption is None and method == "SmoothGrad":
+
+                def assert_action_text_fits():
+                    title = panel.saliency_action_title
+                    detail = panel.saliency_action_detail
+                    assert title.wordWrap()
+                    assert title.height() >= title.heightForWidth(title.width())
+                    assert detail.height() >= detail.heightForWidth(detail.width())
+                    assert (
+                        panel.compute_saliency_btn.width()
+                        >= panel.compute_saliency_btn.sizeHint().width()
+                    )
+
+                qtbot.waitUntil(assert_action_text_fits, timeout=2_000)
                 assert panel.grab().save(str(tmp_path / "saliency-settings-staged.png"))
             expected.add(method)
         previous_generation = (
@@ -624,6 +637,7 @@ def test_settings_recompute_keeps_completed_methods_and_reports_actual_work(
             if method is not None:
                 assert method in panel.saliency_action_detail.text()
             if interruption is None and method == "SmoothGrad":
+                qtbot.waitUntil(assert_action_text_fits, timeout=2_000)
                 assert panel.grab().save(
                     str(tmp_path / "saliency-settings-computing.png")
                 )
