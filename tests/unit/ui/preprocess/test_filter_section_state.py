@@ -2,7 +2,7 @@
 
 import pytest
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QLabel
+from PyQt6.QtWidgets import QCheckBox, QLabel
 
 from XBrainLab.ui.dialogs.preprocess.filtering_dialog import FilteringDialog
 
@@ -35,7 +35,11 @@ def test_filter_contents_follow_header_toggles(qtbot, bandpass, notch):
         (dialog.notch_check, notch),
     ):
         assert toggle.isVisible() and toggle.isEnabled()
-        assert toggle.text() == ("On" if enabled else "Off")
+        assert isinstance(toggle, QCheckBox)
+        assert toggle.isChecked() is enabled
+        assert toggle.accessibleName()
+    assert dialog.bandpass_title.isEnabled()
+    assert dialog.notch_title.isEnabled()
     assert dialog.ok_button.isEnabled() is (bandpass or notch)
     if bandpass or notch:
         dialog.accept()

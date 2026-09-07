@@ -6,10 +6,10 @@ import math
 
 from PyQt6.QtWidgets import (
     QAbstractSpinBox,
+    QCheckBox,
     QComboBox,
     QDialogButtonBox,
     QDoubleSpinBox,
-    QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -22,6 +22,7 @@ from XBrainLab.ui.dialogs.common import normalize_dialog_button_box
 from XBrainLab.ui.dialogs.preprocess.common import (
     configure_preprocess_dialog_layout,
     create_preprocess_section,
+    create_preprocess_switch,
     fit_preprocess_dialog_to_content,
 )
 
@@ -32,8 +33,8 @@ class FilteringDialog(BaseDialog):
     def __init__(self, parent, *, sampling_rate_hz: float | None = None):
         self.params: tuple[float | None, float | None, float | None] | None = None
         self.sampling_rate_hz = self._valid_sampling_rate(sampling_rate_hz)
-        self.bandpass_check: QPushButton
-        self.notch_check: QPushButton
+        self.bandpass_check: QCheckBox
+        self.notch_check: QCheckBox
         self.bandpass_title: QLabel
         self.notch_title: QLabel
         self.frequency_range_label: QLabel
@@ -51,13 +52,9 @@ class FilteringDialog(BaseDialog):
             self.styleSheet()
             + """
             QFrame#FilteringSection {
-                background: #222426;
-                border: 1px solid #3b3f45;
+                background: #1e1e1e;
+                border: 1px solid #303236;
                 border-radius: 6px;
-            }
-            QFrame#FilteringSection[filterEnabled="false"] {
-                background: #202124;
-                border-color: #363a40;
             }
             QWidget#FilteringContent, QWidget#FilteringContent:disabled {
                 background: transparent;
@@ -68,12 +65,12 @@ class FilteringDialog(BaseDialog):
                 border: none;
             }
             QFrame#FilteringSection QLabel:disabled {
-                color: #7f8791;
+                color: #858a91;
             }
             QFrame#FilteringSection QDoubleSpinBox:disabled,
             QFrame#FilteringSection QComboBox:disabled {
-                color: #7f8791;
-                background: #202124;
+                color: #858a91;
+                background: #212121;
             }
             """
         )
@@ -85,12 +82,12 @@ class FilteringDialog(BaseDialog):
         )
         self.bandpass_section = bandpass_section
         bandpass_section.setObjectName("FilteringSection")
-        bandpass_layout.setContentsMargins(12, 10, 12, 12)
+        bandpass_layout.setContentsMargins(12, 8, 12, 10)
         bandpass_header = QHBoxLayout()
         bandpass_header.setContentsMargins(0, 0, 0, 0)
         bandpass_header.addWidget(self.bandpass_title)
         bandpass_header.addStretch()
-        self.bandpass_check = self._toggle_button(checked=True)
+        self.bandpass_check = create_preprocess_switch(checked=True)
         self.bandpass_check.setAccessibleName("Band-pass filter")
         bandpass_header.addWidget(self.bandpass_check)
         bandpass_layout.removeWidget(self.bandpass_title)
@@ -127,12 +124,12 @@ class FilteringDialog(BaseDialog):
         )
         self.notch_section = notch_section
         notch_section.setObjectName("FilteringSection")
-        notch_layout.setContentsMargins(12, 10, 12, 12)
+        notch_layout.setContentsMargins(12, 8, 12, 10)
         notch_header = QHBoxLayout()
         notch_header.setContentsMargins(0, 0, 0, 0)
         notch_header.addWidget(self.notch_title)
         notch_header.addStretch()
-        self.notch_check = self._toggle_button(checked=False)
+        self.notch_check = create_preprocess_switch(checked=False)
         self.notch_check.setAccessibleName("Notch filter")
         notch_header.addWidget(self.notch_check)
         notch_layout.removeWidget(self.notch_title)
@@ -188,8 +185,6 @@ class FilteringDialog(BaseDialog):
         self.notch_mode_combo.currentTextChanged.connect(self._sync_notch_mode)
         for spin in (self.l_freq_spin, self.h_freq_spin, self.notch_spin):
             spin.valueChanged.connect(self._update_validation)
-        self._sync_toggle_text(self.bandpass_check)
-        self._sync_toggle_text(self.notch_check)
         self.toggle_bandpass(True)
         self.toggle_notch(False)
         self._sync_notch_mode()
@@ -206,23 +201,6 @@ class FilteringDialog(BaseDialog):
         return result if math.isfinite(result) and result > 0 else None
 
     @staticmethod
-    def _toggle_button(*, checked: bool) -> QPushButton:
-        button = QPushButton()
-        button.setObjectName("PreprocessToggle")
-        button.setCheckable(True)
-        button.setChecked(checked)
-        button.setAutoDefault(False)
-        button.setDefault(False)
-        button.toggled.connect(
-            lambda _checked, owned=button: FilteringDialog._sync_toggle_text(owned)
-        )
-        return button
-
-    @staticmethod
-    def _sync_toggle_text(button: QPushButton) -> None:
-        button.setText("On" if button.isChecked() else "Off")
-
-    @staticmethod
     def _frequency_spin(value: float) -> QDoubleSpinBox:
         spin = QDoubleSpinBox()
         spin.setRange(0.0, 1000.0)
@@ -234,25 +212,12 @@ class FilteringDialog(BaseDialog):
 
     def toggle_notch(self, checked: bool) -> None:
         self.notch_content.setEnabled(checked)
-        self.notch_title.setEnabled(checked)
-        self._set_section_background(self.notch_section, checked)
         self._sync_notch_mode()
         self._update_validation()
 
     def toggle_bandpass(self, checked: bool) -> None:
         self.bandpass_content.setEnabled(checked)
-        self.bandpass_title.setEnabled(checked)
-        self._set_section_background(self.bandpass_section, checked)
         self._update_validation()
-
-    @staticmethod
-    def _set_section_background(section: QFrame, checked: bool) -> None:
-        section.setProperty("filterEnabled", "true" if checked else "false")
-        style = section.style()
-        if style is not None:
-            style.unpolish(section)
-            style.polish(section)
-        section.update()
 
     def _sync_notch_mode(self, *_args) -> None:
         custom = self.notch_mode_combo.currentText() == "Custom"

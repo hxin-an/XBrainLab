@@ -402,7 +402,8 @@ def _epoching_internal_events_dialog() -> EpochingDialog:
             },
         },
     )
-    _fit_dialog_to_native_layout(dialog, QSize(720, 740))
+    dialog.show()
+    _settle_capture_widget(cast(QApplication, QApplication.instance()), dialog)
     return dialog
 
 
@@ -447,7 +448,8 @@ def _epoching_bids_interval_duration_dialog() -> EpochingDialog:
             },
         },
     )
-    _fit_dialog_to_native_layout(dialog, QSize(700, 780))
+    dialog.show()
+    _settle_capture_widget(cast(QApplication, QApplication.instance()), dialog)
     return dialog
 
 
@@ -1490,7 +1492,7 @@ def _assert_capture_geometry(filename: str, widget: QWidget) -> None:
                 or not toggle.isEnabled()
                 or toggle.isChecked() is not enabled
                 or content.isEnabled() is not enabled
-                or title.isEnabled() is not enabled
+                or not title.isEnabled()
                 or not card.rect().contains(toggle.mapTo(card, toggle.rect().topLeft()))
                 or not card.rect().contains(
                     toggle.mapTo(card, toggle.rect().bottomRight())
@@ -1897,9 +1899,8 @@ def _assert_epoching_dialog_contract(
         INTERNAL_EPOCH_SCREENSHOT: "On",
         BIDS_EPOCH_SCREENSHOT: "Off",
     }[filename]
-    if (
-        dialog.baseline_check is None
-        or dialog.baseline_check.text() != expected_baseline_state
+    if dialog.baseline_check is None or dialog.baseline_check.isChecked() != (
+        expected_baseline_state == "On"
     ):
         raise RuntimeError(
             f"{filename} does not show baseline correction as "
@@ -2092,7 +2093,7 @@ def _surface_contract(
                     and widget.create_button.isEnabled()
                 ),
                 "baseline_toggle_state": (
-                    widget.baseline_check.text()
+                    ("On" if widget.baseline_check.isChecked() else "Off")
                     if widget.baseline_check is not None
                     else None
                 ),
