@@ -46,8 +46,8 @@ from XBrainLab.ui.dialogs.common import (
     checkbox_stylesheet,
     configure_dark_table,
     normalize_dialog_button_box,
-    preprocess_toggle_stylesheet,
 )
+from XBrainLab.ui.dialogs.preprocess.common import create_preprocess_switch
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 
@@ -81,7 +81,7 @@ _WINDOW_MODE_REVIEW_MESSAGE = (
     "The epoch window mode needs review before EEG epochs can be created. "
     "Return to Data Import and review the event timing, then reopen this dialog."
 )
-_EPOCH_DIALOG_MINIMUM_SIZE = QSize(700, 740)
+_EPOCH_DIALOG_MINIMUM_WIDTH = 700
 
 
 def validate_epoch_baseline(
@@ -207,7 +207,7 @@ class EpochingDialog(BaseDialog):
         tmax_spin: QDoubleSpinBox for epoch end time.
         duration_label: QLabel showing computed epoch duration.
         warning_label: QLabel showing duration warnings.
-        baseline_check: QPushButton to enable/disable baseline correction.
+        baseline_check: QCheckBox to enable/disable baseline correction.
         b_min_spin: QDoubleSpinBox for baseline start time.
         b_max_spin: QDoubleSpinBox for baseline end time.
 
@@ -250,7 +250,7 @@ class EpochingDialog(BaseDialog):
         self.duration_label: QLabel | None = None
         self.warning_label: QLabel | None = None
         self.confirmation_check: QCheckBox | None = None
-        self.baseline_check: QPushButton | None = None
+        self.baseline_check: QCheckBox | None = None
         self.baseline_group: QFrame | None = None
         self.baseline_content: QWidget | None = None
         self.baseline_title_label: QLabel | None = None
@@ -265,18 +265,18 @@ class EpochingDialog(BaseDialog):
         self._content_fit_ready = False
 
         super().__init__(parent, title="Time Epoching")
-        self.resize(_EPOCH_DIALOG_MINIMUM_SIZE)
+        self.resize(_EPOCH_DIALOG_MINIMUM_WIDTH, self.height())
         self.setStyleSheet(self._dialog_style())
         self._content_fit_ready = True
-        self._grow_to_visible_content()
+        self._fit_to_visible_content()
 
     def showEvent(self, event: QShowEvent | None) -> None:  # noqa: N802
         """Finish native content fitting before the first visible paint."""
-        self._grow_to_visible_content()
+        self._fit_to_visible_content()
         super().showEvent(event)
 
     def changeEvent(self, event: QEvent | None) -> None:  # noqa: N802
-        """Grow again when native font or style metrics change."""
+        """Fit again when native font or style metrics change."""
         super().changeEvent(event)
         if event is not None and event.type() in {
             QEvent.Type.ApplicationFontChange,
@@ -284,7 +284,7 @@ class EpochingDialog(BaseDialog):
             QEvent.Type.FontChange,
             QEvent.Type.StyleChange,
         }:
-            self._grow_to_visible_content()
+            self._fit_to_visible_content()
 
     def init_ui(self):
         """Initialize the dialog UI with event list, parameter controls, and buttons."""
@@ -297,6 +297,7 @@ class EpochingDialog(BaseDialog):
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(8)
+        content_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         scroll = QScrollArea()
         scroll.setObjectName("EpochDialogContentScroll")
@@ -500,7 +501,7 @@ class EpochingDialog(BaseDialog):
 
         # Baseline
         suggested_baseline = self.epoch_context.get("suggested_baseline")
-        baseline_check = self._toggle_button(
+        baseline_check = create_preprocess_switch(
             checked=self._baseline_is_inside_window(suggested_baseline)
         )
         self.baseline_check = baseline_check
@@ -609,8 +610,8 @@ class EpochingDialog(BaseDialog):
         layout.addLayout(footer)
         self._refresh_submit_validity()
 
-    def _grow_to_visible_content(self) -> None:
-        """Use spare screen height before asking users to scroll the content."""
+    def _fit_to_visible_content(self) -> None:
+        """Fit content height, retaining screen-bounded scrolling for long forms."""
         scroll = self.content_scroll
         if not self._content_fit_ready or scroll is None:
             return
@@ -650,12 +651,8 @@ class EpochingDialog(BaseDialog):
                 0,
             )
         target_size = QSize(
-            max(self.width(), _EPOCH_DIALOG_MINIMUM_SIZE.width()),
-            max(
-                self.height(),
-                _EPOCH_DIALOG_MINIMUM_SIZE.height(),
-                content_height + chrome_height,
-            ),
+            max(self.width(), _EPOCH_DIALOG_MINIMUM_WIDTH),
+            content_height + chrome_height,
         )
         if target_size != self.size():
             self.resize_preserving_center(target_size)
@@ -671,7 +668,7 @@ class EpochingDialog(BaseDialog):
         card.setFrameShape(QFrame.Shape.StyledPanel)
         card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(12, 9, 12, 10)
+        card_layout.setContentsMargins(12, 8, 12, 10)
         card_layout.setSpacing(6)
         title_label = QLabel(title)
         title_label.setObjectName("EpochSectionTitle")
@@ -698,24 +695,6 @@ class EpochingDialog(BaseDialog):
         spinbox.setMaximumWidth(150)
         spinbox.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
 
-    @staticmethod
-    def _toggle_button(*, checked: bool) -> QPushButton:
-        button = QPushButton()
-        button.setObjectName("PreprocessToggle")
-        button.setCheckable(True)
-        button.setChecked(checked)
-        button.setAutoDefault(False)
-        button.setDefault(False)
-        button.toggled.connect(
-            lambda _checked, owned=button: EpochingDialog._sync_toggle_text(owned)
-        )
-        EpochingDialog._sync_toggle_text(button)
-        return button
-
-    @staticmethod
-    def _sync_toggle_text(button: QPushButton) -> None:
-        button.setText("On" if button.isChecked() else "Off")
-
     def _build_import_hint_card(self) -> QFrame:
         card = QFrame()
         card.setObjectName("EpochImportHintCard")
@@ -724,8 +703,6 @@ class EpochingDialog(BaseDialog):
         card.setStyleSheet(
             """
             QFrame#EpochImportHintCard {
-                border: 1px solid rgba(120, 130, 145, 0.45);
-                border-radius: 6px;
                 padding: 8px;
             }
             QLabel#EpochImportHintTitle {
@@ -1066,17 +1043,17 @@ class EpochingDialog(BaseDialog):
         }
         QLabel#EpochDialogEvidence:disabled,
         QLabel#EpochFieldLabel:disabled {
-            color: #7f8791;
+            color: #858a91;
         }
         QFrame#EpochSectionCard,
         QFrame#EpochBaselineSection {
-            background: #222426;
-            border: 1px solid #3b3f45;
+            background: #1e1e1e;
+            border: 1px solid #303236;
             border-radius: 6px;
         }
-        QFrame#EpochBaselineSection[baselineEnabled="false"] {
-            background: #202124;
-            border-color: #363a40;
+        QFrame#EpochBaselineSection QDoubleSpinBox:disabled {
+            color: #858a91;
+            background: #212121;
         }
         QWidget#EpochBaselineContent,
         QWidget#EpochBaselineContent:disabled {
@@ -1095,8 +1072,8 @@ class EpochingDialog(BaseDialog):
             font-weight: 600;
         }
         QFrame#EpochImportHintCard {
-            background: #222426;
-            border: 1px solid #3d454d;
+            background: #1e1e1e;
+            border: 1px solid #303236;
             border-radius: 6px;
         }
         QLabel#EpochImportHintKey {
@@ -1169,7 +1146,6 @@ class EpochingDialog(BaseDialog):
             min-width: 84px;
         }
         """
-            + preprocess_toggle_stylesheet()
         )
 
     def toggle_baseline(self, checked):
@@ -1179,20 +1155,8 @@ class EpochingDialog(BaseDialog):
             checked: Whether baseline correction is enabled.
 
         """
-        if self.baseline_check is not None:
-            self._sync_toggle_text(self.baseline_check)
         if self.baseline_content is not None:
             self.baseline_content.setEnabled(checked)
-        if self.baseline_group is not None:
-            self.baseline_group.setProperty(
-                "baselineEnabled",
-                "true" if checked else "false",
-            )
-            style = self.baseline_group.style()
-            if style is not None:
-                style.unpolish(self.baseline_group)
-                style.polish(self.baseline_group)
-            self.baseline_group.update()
         self._refresh_submit_validity()
 
     def _baseline_is_inside_window(self, value: object) -> bool:
@@ -1287,7 +1251,7 @@ class EpochingDialog(BaseDialog):
             self.warning_label.setVisible(bool(notice))
         if self.create_button is not None:
             self.create_button.setEnabled(validation.allowed)
-        self._grow_to_visible_content()
+        self._fit_to_visible_content()
 
     def update_duration_info(self):
         """Update duration information and show warning if duration is too short."""

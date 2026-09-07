@@ -20,10 +20,15 @@ SCHEMA_VERSION = 5
 ARTIFACT_TYPE = "xbrainlab.app_polish_ui_surfaces"
 MANIFEST_NAME = "app-polish-evidence.json"
 GENERATOR = "scripts/dev/capture_ui_polish_surfaces.py"
+FILTERING_SURFACES = (
+    "preprocess-filtering-default.png",
+    "preprocess-filtering-notch-only.png",
+)
 APP_POLISH_SURFACES = (
     "model-selection-dialog.png",
     "training-setting-dialog.png",
     "preprocess-rereference-dialog.png",
+    *FILTERING_SURFACES,
     "preprocess-epoching-internal-events-dialog.png",
     "preprocess-epoching-bids-interval-duration-dialog.png",
     "data-splitting-dialog.png",

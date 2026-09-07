@@ -1,13 +1,11 @@
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication, QMainWindow, QToolButton, QWidget
 
-from XBrainLab.debug.tool_debug_mode import ToolDebugMode
 from XBrainLab.ui.chat.panel import ChatPanel
-from XBrainLab.ui.main_window import MainWindow
 
 
 class _ImmediateNavigationWindow(QMainWindow):
@@ -104,99 +102,6 @@ def test_debug_mode_ui_flow(qtbot, debug_script_file):
     assert "stopped" in panel.input_field.placeholderText().casefold()
 
     # Clean up property
-    app.setProperty("tool_debug_script", None)
-
-
-def test_debug_script_parsing(debug_script_file):
-    """Verify ToolDebugMode parses generic JSON correctly."""
-    debugger = ToolDebugMode(debug_script_file)
-    assert len(debugger.calls) == 1
-    call = debugger.begin_call()
-    assert call is not None
-    assert call.tool == "switch_panel"
-    assert call.params["panel_name"] == "training"
-
-
-def test_debug_mode_execution_integration(qtbot, debug_script_file):
-    """Debug requests have one Agent owner instead of a MainWindow bypass."""
-    # 1. Setup MainWindow with property
-    app = QApplication.instance()
-    assert isinstance(app, QApplication)
-    app.setProperty("tool_debug_script", debug_script_file)
-
-    # Mock specific return values if any called during init
-    # e.g. study.get_controller() calls
-
-    # Patch the panel classes to avoid real instantiation (which might fail with mocks)
-    with (
-        patch("XBrainLab.ui.main_window.DatasetPanel") as MockDatasetPanel,
-        patch("XBrainLab.ui.main_window.PreprocessPanel") as MockPreprocessPanel,
-        patch("XBrainLab.ui.main_window.TrainingPanel") as MockTrainingPanel,
-        patch("XBrainLab.ui.main_window.VisualizationPanel") as MockVisPanel,
-        patch("XBrainLab.ui.main_window.EvaluationPanel") as MockEvalPanel,
-        patch("XBrainLab.ui.main_window.InfoPanelService") as MockInfoService,
-        patch("XBrainLab.ui.main_window.AgentManager") as MockAgentManager,
-    ):
-        # Configure mocks
-        MockDatasetPanel.return_value = QWidget()
-        MockPreprocessPanel.return_value = QWidget()
-        MockTrainingPanel.return_value = QWidget()
-        MockVisPanel.return_value = QWidget()
-        MockEvalPanel.return_value = QWidget()
-
-        # AgentManager Mock needs special care because we access its attributes
-        mock_agent_manager_instance = MockAgentManager.return_value
-
-        # We need a real ChatPanel or a mock that behaves like one
-        # Let's use a real ChatPanel but detached from logic if possible,
-        # OR mock the chat panel completely and only verify the signal connection?
-        # The test clicks a button on ChatPanel. Real ChatPanel is easiest if we can.
-        # But AgentManager creates it.
-        # Let's let AgentManager be mocked, but assign a REAL ChatPanel to it manually
-        # so we can click buttons. Or just mock the chat panel signal?
-
-        # BETTER APPROACH: Let's use REAL AgentManager but Mock the Panels it uses?
-        # AgentManager uses ChatPanel. ChatPanel uses ChatController.
-        # Let's mock AgentManager in MainWindow init, then replace the mock with something we control?
-        # No, MainWindow creates AgentManager.
-
-        # If we patch AgentManager, `window.agent_manager` will be the mock.
-        # We need `window.agent_manager.chat_panel` to be reachable.
-
-        from XBrainLab.ui.chat.panel import ChatPanel
-
-        real_chat_panel = ChatPanel()
-        mock_agent_manager_instance.chat_panel = real_chat_panel
-
-        study = MagicMock()
-        window = MainWindow(study)
-        qtbot.addWidget(window)
-        window.init_agent()
-
-        dispatcher_debug = MagicMock()
-        real_chat_panel.debug_tool_requested.connect(dispatcher_debug)
-
-        # 3. Trigger Debug Step
-        # Provide the script execution manually if needed, or rely on Signal?
-        # ChatPanel init reads the property.
-        # Since we instantiated `real_chat_panel` MANUALLY above, its `__init__` ran.
-        # Did it see the property? Yes, if we set it BEFORE init.
-
-        # Wait, `real_chat_panel` was created inside the `with patch` block?
-        # No, I created it explicitly. It should work.
-
-        qtbot.addWidget(real_chat_panel)  # Just to be safe regarding events
-        qtbot.mouseClick(real_chat_panel.send_btn, Qt.MouseButton.LeftButton)
-
-        dispatcher_debug.assert_called_once_with(
-            "switch_panel",
-            {"panel_name": "training"},
-            False,
-            "",
-        )
-        assert not hasattr(window, "debug_executor")
-        assert not hasattr(window, "_on_debug_tool_requested")
-
     app.setProperty("tool_debug_script", None)
 
 

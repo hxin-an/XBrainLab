@@ -20,6 +20,19 @@ from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
 )
 
 
+def test_default_baseline_covers_both_filter_section_states():
+    from scripts.dev.run_app_polish_ui_dpi_gate import DPI_APP_POLISH_SURFACES
+
+    assert {
+        "preprocess-filtering-default.png",
+        "preprocess-filtering-notch-only.png",
+    } <= set(EXPECTED_UI_ARTIFACTS)
+    assert {
+        "preprocess-filtering-default.png",
+        "preprocess-filtering-notch-only.png",
+    } <= set(DPI_APP_POLISH_SURFACES)
+
+
 def test_is_nearly_black_detects_empty_image(tmp_path):
     image_path = tmp_path / "black.png"
     Image.new("RGB", (20, 20), (0, 0, 0)).save(image_path)

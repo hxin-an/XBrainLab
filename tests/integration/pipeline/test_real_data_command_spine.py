@@ -87,6 +87,22 @@ def test_real_data_command_spine(tmp_path):
     assert load_result.ok is True
     assert load_result.state.raw.count == 1
 
+    targets = service.execute(
+        QueryStateCommand(
+            query="label_import_targets",
+            params={"target_indices": [0], "target_count": 273},
+        ),
+    )
+    assert targets.ok, targets.message
+    assert targets.message == "Label import targets ready."
+    assert targets.diagnostics["payload_type"] == "label_import_targets"
+    assert targets.diagnostics["target_count"] == 1
+    target = targets.diagnostics["targets"][0]
+    assert target["index"] == 0
+    assert target["filename"] == "A01T.gdf"
+    assert set(EXPECTED_A01T_CLASS_EVENT_NAMES) <= set(target["event_names"])
+    assert target["event_read_error"] is None
+
     filter_result = service.execute(
         PreprocessCommand(
             operation=PreprocessOperation.BANDPASS,

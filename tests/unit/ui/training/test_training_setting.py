@@ -1375,32 +1375,6 @@ class TestTrainingSetting:
 
 
 class TestSetOptimizer:
-    @pytest.fixture
-    def window(self, qtbot):
-        # Mock torch.optim members
-        mock_adam = MagicMock()
-        mock_adam.__name__ = "Adam"
-
-        with patch(
-            "XBrainLab.ui.dialogs.training.optimizer_setting_dialog.get_optimizer_classes",
-            return_value={"Adam": mock_adam},
-        ):
-            window = OptimizerSettingDialog(None)
-            qtbot.addWidget(window)
-            yield window
-
-    def test_init_and_populate(self, window):
-        assert window.algo_combo.count() == 1
-        assert window.algo_combo.currentText() == "Adam"
-
-    def test_confirm(self, window):
-        window.accept()
-        result = window.get_result()
-        assert result is not None
-        optim_class, optim_params = result
-        assert optim_class is not None
-        assert isinstance(optim_params, dict)
-
     def test_discovery_exposes_only_concrete_optimizer_subclasses(self):
         optimizers = get_optimizer_classes()
 

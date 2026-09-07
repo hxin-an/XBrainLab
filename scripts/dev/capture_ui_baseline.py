@@ -34,6 +34,7 @@ configure_qt_platform_for_runtime()
 from PyQt6.QtCore import QPoint, QSettings, QSize, Qt, QTimer
 from PyQt6.QtWidgets import QApplication
 
+from scripts.dev.app_polish_capture_contract import FILTERING_SURFACES
 from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
     collect_source_identity,
     inspect_screenshot_artifact,
@@ -73,7 +74,10 @@ CAPTURE_STEPS = [
     ("panel-visualization.png", 4),
     ("ai-assistant-open.png", AI_DOCK_STEP),
 ]
-EXPECTED_UI_ARTIFACTS = tuple(filename for filename, _target in CAPTURE_STEPS)
+EXPECTED_UI_ARTIFACTS = (
+    *(filename for filename, _target in CAPTURE_STEPS),
+    *FILTERING_SURFACES,
+)
 
 
 def compare_ui_images(
@@ -518,6 +522,32 @@ def capture_window(
             return
 
         if step_index + 1 >= len(CAPTURE_STEPS):
+            try:
+                from scripts.dev.capture_ui_polish_surfaces import (
+                    _apply_capture_application_theme,
+                    _assert_capture_geometry,
+                    _capture,
+                    _capture_factories,
+                    _settle_capture_widget,
+                )
+
+                _apply_capture_application_theme(app)
+                for filename, factory in _capture_factories():
+                    if filename not in FILTERING_SURFACES:
+                        continue
+                    dialog = factory()
+                    try:
+                        dialog.show()
+                        _settle_capture_widget(app, dialog)
+                        _assert_capture_geometry(filename, dialog)
+                        _capture(dialog, output_path.parent / filename)
+                    finally:
+                        dialog.close()
+                        dialog.deleteLater()
+            except Exception as error:
+                print(f"Filter baseline capture failed: {error}", file=sys.stderr)
+                _request_shutdown(5)
+                return
             _request_shutdown(0)
             return
 
