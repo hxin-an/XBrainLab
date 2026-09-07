@@ -2,6 +2,28 @@
 
 最後更新：`2026-09-07`
 
+## Active — #113 selected-method handoff evidence gaps
+
+- Exact 4c07e4a5 CI backend shard reports six old unit oracles still requiring completed-method
+  request union, old-parameter backfill/conflict rejection, or union-based resource authorization.
+  These contradict the approved selected-only computation contract and were missed in cleanup.
+- Scope: only those tests and now-unused fixtures in test_analysis_service/test_application_service;
+  no production change or weakened safety/resource boundary. Real train/compute/retain integration
+  remains the retention oracle. Preserve a precise selected-request preflight/receipt check where
+  not already protected; delete redundant mock-only union assertions instead of renaming them.
+- Next: review/delete or replace the six obsolete assertions, run both coupled modules and the
+  same final focused/source-diverse selectors, then push a new exact head and require green CI.
+  Stop after #113 handoff; do not expand to other test cleanup or other PRs.
+- Separate exact-head Windows platform lifecycle failure: native 2D render stress completes 30
+  renders and reports finalized resources, then exits 0xC0000005. Treat this as unresolved native
+  lifecycle evidence, not an obsolete assertion or permission to rerun until green.
+- Diagnose the subprocess close/read lifecycle independently of the six backend oracles; establish
+  whether test teardown or product cleanup owns the failure before a minimal repair. Preserve the
+  running Windows handtest checkout/process. No new owner, shutdown framework, disabled native
+  gate or forced successful process exit. Existing UI authorization covers internal lifecycle fixes
+  preserving presentation. Revalidate the affected native scenario and all exact-head handoff gates;
+  stop only at verified handoff or a necessary external-resource/authority blocker.
+
 ## Next — PR review, then computational cleanup
 
 - #113 的 e8e90b6b 手測發現只選SmoothGrad仍重算舊方法，不能沿用其工程通過作為驗收。
