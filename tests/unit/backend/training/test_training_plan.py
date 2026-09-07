@@ -21,7 +21,6 @@ from XBrainLab.backend.dataset import (
 )
 from XBrainLab.backend.exceptions import (
     SaliencyCancellationTimeoutError,
-    StaleSaliencyUpdateError,
 )
 from XBrainLab.backend.load_data import Raw
 from XBrainLab.backend.training.evaluator import Evaluator
@@ -31,6 +30,9 @@ from XBrainLab.backend.training.option import (
     class_map_fingerprint,
 )
 from XBrainLab.backend.training.record import EvalRecord, RecordKey
+from XBrainLab.backend.training.saliency_provenance import (
+    fingerprint_saliency_epoch_data,
+)
 from XBrainLab.backend.training.trainer import Trainer
 from XBrainLab.backend.training.training_plan import (
     FinalEvaluationUnavailableError,
@@ -2098,9 +2100,14 @@ def test_set_saliency_params_atomically_recomputes_multiple_finished_records(
             "evaluate_with_saliency",
             side_effect=evaluate_with_saliency,
         ) as evaluate,
+        patch(
+            "XBrainLab.backend.training.training_plan.fingerprint_saliency_epoch_data",
+            wraps=fingerprint_saliency_epoch_data,
+        ) as hash_epoch_data,
     ):
         base_holder.set_saliency_params(params)
 
+    assert hash_epoch_data.call_count == 1
     assert all(token.stable for token in observed_tokens)
     assert trainer.get_state_generation() == generation_before + 2
     assert base_holder.saliency_params == params
@@ -2117,49 +2124,6 @@ def test_set_saliency_params_atomically_recomputes_multiple_finished_records(
         assert producer_identity.split_fingerprint
         assert producer_identity.run_fingerprint
         assert producer_identity.model_fingerprint
-
-
-@pytest.mark.parametrize("mutation", ("split", "epoch"))
-def test_saliency_update_rejects_input_change_during_expensive_compute(
-    base_holder, mutation
-):
-    record = base_holder.get_plans()[0]
-    record.epoch = base_holder.option.epoch
-    previous_eval_record = object()
-    record.eval_record = previous_eval_record
-    _bind_selected_evaluation_checkpoint(base_holder, record)
-    original_test_mask = base_holder.dataset.test_mask.copy()
-    epoch_data = base_holder.dataset.get_epoch_data()
-    original_value = epoch_data.data.flat[0]
-
-    def mutate_input_during_compute(*_args, **_kwargs):
-        if mutation == "split":
-            base_holder.dataset.test_mask[0] = not base_holder.dataset.test_mask[0]
-        else:
-            epoch_data.data.flat[0] += 1
-        return _prepared_saliency_record()
-
-    try:
-        with (
-            patch.object(base_holder, "get_loader", return_value=(None, None, "test")),
-            patch.object(
-                base_holder,
-                "get_eval_pair",
-                return_value=("model", "test"),
-            ),
-            patch.object(
-                Evaluator,
-                "evaluate_with_saliency",
-                side_effect=mutate_input_during_compute,
-            ),
-            pytest.raises(StaleSaliencyUpdateError),
-        ):
-            base_holder.set_saliency_params({"Gradient": {}})
-    finally:
-        base_holder.dataset.test_mask = original_test_mask
-        epoch_data.data.flat[0] = original_value
-
-    assert record.eval_record is previous_eval_record
 
 
 def test_set_saliency_params_second_record_failure_preserves_previous_state(

@@ -71,7 +71,9 @@ class _Holder:
             records=tuple((record, record.eval_record) for record in records),
         )
 
-    def compute_saliency_update(self, plan, *, should_cancel):
+    def compute_saliency_update(
+        self, plan, *, should_cancel, epoch_data_fingerprints=None
+    ):
         result = self.compute(plan, should_cancel)
         if isinstance(result, PreparedSaliencyUpdate):
             return result

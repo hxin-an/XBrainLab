@@ -313,6 +313,7 @@ def _wait_for_manager_phase(service: ApplicationService, phase) -> bool:
 
 def test_real_mne_eegnet_all_finished_compute_republishes_coverage(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Interrupted history then two real five-fold cohorts remain renderable."""
     rng = np.random.default_rng(20260906)
@@ -332,6 +333,13 @@ def test_real_mne_eegnet_all_finished_compute_republishes_coverage(
     )
     epoch_data = Epochs([Raw("two-subject-saliency-epo.fif", mne_epochs)])
     epoch_data.set_channels(
+        list(channel_names),
+        [tuple(channel["loc"][:3]) for channel in info["chs"]],
+    )
+    other_epochs = mne_epochs.copy()
+    other_epochs.apply_function(lambda values: values * 2, verbose=False)
+    other_epoch_data = Epochs([Raw("other-subject-saliency-epo.fif", other_epochs)])
+    other_epoch_data.set_channels(
         list(channel_names),
         [tuple(channel["loc"][:3]) for channel in info["chs"]],
     )
@@ -357,7 +365,7 @@ def test_real_mne_eegnet_all_finished_compute_republishes_coverage(
 
     def make_holder(subject: str, fold: int) -> TrainingPlanHolder:
         dataset = Dataset(
-            epoch_data,
+            other_epoch_data if subject.endswith("b") else epoch_data,
             config,
         )
         dataset.set_name(f"{subject}-{fold}")
@@ -405,6 +413,24 @@ def test_real_mne_eegnet_all_finished_compute_republishes_coverage(
     study.training_manager.set_training_option(option)
     study.training_manager.trainer = trainer
     service = ApplicationService(study)
+    real_fingerprint = saliency_provenance.fingerprint_saliency_epoch_data
+    expected_fingerprints = {
+        id(epochs): real_fingerprint(epochs)
+        for epochs in (epoch_data, other_epoch_data)
+    }
+    assert len(set(expected_fingerprints.values())) == 2
+    scanned_epochs = []
+
+    def count_real_fingerprint(epochs):
+        scanned_epochs.append(id(epochs))
+        return real_fingerprint(epochs)
+
+    monkeypatch.setattr(
+        saliency_provenance, "fingerprint_saliency_epoch_data", count_real_fingerprint
+    )
+    monkeypatch.setattr(
+        training_plan_module, "fingerprint_saliency_epoch_data", count_real_fingerprint
+    )
 
     # A command without a target is the user-facing "all finished runs"
     # operation. It includes the completed record retained from the
@@ -431,6 +457,7 @@ def test_real_mne_eegnet_all_finished_compute_republishes_coverage(
         )
 
     def compute_all_finished():
+        scanned_epochs.clear()
         result = service.execute(
             SaliencyCommand(
                 method="Gradient",
@@ -454,6 +481,15 @@ def test_real_mne_eegnet_all_finished_compute_republishes_coverage(
             methods = {method.method: method for method in coverage.methods}
             assert methods["Gradient"].complete is True
             assert methods["Gradient * Input"].complete is True
+        assert sorted(scanned_epochs) == sorted(expected_fingerprints)
+        for holder in trainer.get_training_plan_holders():
+            for record in holder.get_plans():
+                if record.is_finished():
+                    context = record.get_saliency_eval_record().saliency_context
+                    assert (
+                        context.epoch_data_fingerprint
+                        == expected_fingerprints[id(holder.dataset.get_epoch_data())]
+                    )
         return publication
 
     after_all_finished = compute_all_finished()
@@ -485,6 +521,7 @@ def test_real_mne_eegnet_all_finished_compute_republishes_coverage(
     )
     subject_a_target = cross_fold_target(2 * fold_count)
     subject_b_target = cross_fold_target(3 * fold_count)
+    scanned_epochs.clear()
     pooled = service.get_saliency_render(
         SaliencyRenderRequest(
             publication_generation=after_all_recompute.generation,
@@ -502,6 +539,7 @@ def test_real_mne_eegnet_all_finished_compute_republishes_coverage(
     assert pooled.data.fold_count == fold_count
     assert pooled.data.aggregation == "pooled out-of-fold epochs"
     assert member.data.fold_count == 1
+    assert scanned_epochs == []
 
 
 def _lock_available_from_another_thread(lock) -> bool:
@@ -541,7 +579,7 @@ def test_cancelled_close_reconciles_retained_terminal_after_owned_saliency_quies
     release_compute = Event()
     terminal_eval_record = _bound_saliency_eval_record(holder, record)
 
-    def bounded_compute(plan, *, should_cancel):
+    def bounded_compute(plan, *, should_cancel, epoch_data_fingerprints=None):
         compute_started.set()
         assert release_compute.wait(timeout=_THREAD_WATCHDOG_SECONDS)
         assert should_cancel() is True
@@ -630,7 +668,9 @@ def test_real_main_window_close_quiesces_active_owned_saliency_without_livelock(
     compute_finished = Event()
     terminal_eval_record = _bound_saliency_eval_record(holder, record)
 
-    def cancellation_bounded_compute(plan, *, should_cancel):
+    def cancellation_bounded_compute(
+        plan, *, should_cancel, epoch_data_fingerprints=None
+    ):
         compute_started.set()
         deadline = monotonic() + _THREAD_WATCHDOG_SECONDS
         while not should_cancel() and monotonic() < deadline:
@@ -701,7 +741,7 @@ def test_saliency_worker_terminal_state_republishes_query_and_coverage(
     release_compute = Event()
     terminal_eval_record = _bound_saliency_eval_record(holder, record)
 
-    def bounded_compute(plan, *, should_cancel):
+    def bounded_compute(plan, *, should_cancel, epoch_data_fingerprints=None):
         compute_started.set()
         assert release_compute.wait(timeout=_THREAD_WATCHDOG_SECONDS)
         assert should_cancel() is False
@@ -889,7 +929,7 @@ def test_worker_terminal_notification_survives_get_state_prepublish_race(
         manager_notify_completed = Event()
         terminal_eval_record = _bound_saliency_eval_record(holder, record)
 
-        def bounded_compute(plan, *, should_cancel):
+        def bounded_compute(plan, *, should_cancel, epoch_data_fingerprints=None):
             compute_started.set()
             assert release_compute.wait(timeout=_THREAD_WATCHDOG_SECONDS)
             assert should_cancel() is False
@@ -979,7 +1019,7 @@ def test_terminal_refresh_failure_retries_delivery_from_public_state_reads(
         terminal_refresh_failed = Event()
         terminal_eval_record = _bound_saliency_eval_record(holder, record)
 
-        def bounded_compute(plan, *, should_cancel):
+        def bounded_compute(plan, *, should_cancel, epoch_data_fingerprints=None):
             compute_started.set()
             assert release_compute.wait(timeout=_THREAD_WATCHDOG_SECONDS)
             assert should_cancel() is False
@@ -1093,7 +1133,7 @@ def test_terminal_queue_handoff_failure_retries_once_after_shutdown_fence(
     handoff_failed = Event()
     terminal_eval_record = _bound_saliency_eval_record(holder, record)
 
-    def bounded_compute(plan, *, should_cancel):
+    def bounded_compute(plan, *, should_cancel, epoch_data_fingerprints=None):
         compute_started.set()
         assert release_compute.wait(timeout=_THREAD_WATCHDOG_SECONDS)
         assert should_cancel() is False
@@ -1836,7 +1876,7 @@ def test_saliency_worker_failure_republishes_terminal_application_view(
     )
     compute_started = Event()
 
-    def failed_compute(_plan, *, should_cancel):
+    def failed_compute(_plan, *, should_cancel, epoch_data_fingerprints=None):
         compute_started.set()
         assert should_cancel() is False
         raise RuntimeError("bounded saliency failure")
@@ -1877,7 +1917,7 @@ def test_stale_automatic_command_preserves_current_application_publication(
     )
     terminal_eval_record = _bound_saliency_eval_record(holder, record)
 
-    def complete_compute(plan, *, should_cancel):
+    def complete_compute(plan, *, should_cancel, epoch_data_fingerprints=None):
         assert should_cancel() is False
         return PreparedSaliencyUpdate(
             plan=plan,
@@ -1946,7 +1986,7 @@ def test_explicit_saliency_cancellation_republishes_current_application_view(
     compute_started = Event()
     cancellation_seen = Event()
 
-    def cancellable_compute(plan, *, should_cancel):
+    def cancellable_compute(plan, *, should_cancel, epoch_data_fingerprints=None):
         compute_started.set()
         while not should_cancel():
             cancellation_seen.wait(0.01)
@@ -1995,7 +2035,7 @@ def test_reset_cancellation_retires_worker_generation_without_stale_republish(
     cancellation_seen = Event()
     terminal_eval_record = _bound_saliency_eval_record(holder, record)
 
-    def cancellable_compute(plan, *, should_cancel):
+    def cancellable_compute(plan, *, should_cancel, epoch_data_fingerprints=None):
         compute_started.set()
         while not should_cancel():
             cancellation_seen.wait(0.01)
@@ -2039,7 +2079,7 @@ def test_reset_does_not_deadlock_with_terminal_publication_callback(
     release_compute = Event()
     terminal_eval_record = _bound_saliency_eval_record(holder, record)
 
-    def bounded_compute(plan, *, should_cancel):
+    def bounded_compute(plan, *, should_cancel, epoch_data_fingerprints=None):
         compute_started.set()
         assert release_compute.wait(timeout=_THREAD_WATCHDOG_SECONDS)
         return PreparedSaliencyUpdate(
@@ -2081,7 +2121,7 @@ def test_shutdown_fence_blocks_late_worker_terminal_publication(monkeypatch) -> 
     release_compute = Event()
     terminal_eval_record = _bound_saliency_eval_record(holder, record)
 
-    def bounded_compute(plan, *, should_cancel):
+    def bounded_compute(plan, *, should_cancel, epoch_data_fingerprints=None):
         compute_started.set()
         assert release_compute.wait(timeout=_THREAD_WATCHDOG_SECONDS)
         return PreparedSaliencyUpdate(
@@ -2251,7 +2291,7 @@ def test_synchronous_saliency_terminal_observers_run_after_all_outer_locks(
     cancel_events: list[Event] = []
     manager = service.study.training_manager
 
-    def cancellable_compute(_plan, *, should_cancel):
+    def cancellable_compute(_plan, *, should_cancel, epoch_data_fingerprints=None):
         compute_started.set()
         assert cancel_event_ready.wait(timeout=_THREAD_WATCHDOG_SECONDS)
         assert cancel_events[0].wait(timeout=_THREAD_WATCHDOG_SECONDS)

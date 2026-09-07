@@ -25,8 +25,11 @@ from XBrainLab.backend.application import (
     PreprocessOperation,
     PreviewInterpretationCommand,
     QueryStateCommand,
+    ResetPreprocessCommand,
+    SaliencyCommand,
     SaveDatasetSplitCommand,
     ScanSourceCommand,
+    TrainCommand,
     ValidateInterpretationCommand,
 )
 from XBrainLab.backend.application.runtime import get_application_service
@@ -339,6 +342,93 @@ def _emit_lifecycle_events_from_distinct_threads(
     assert errors == []
 
 
+def test_active_saliency_protects_formal_pipeline_and_current_training_inputs(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    study, service = _prepare_training_runtime(tmp_path)
+    started = Event()
+    release = Event()
+    compute = TrainingPlanHolder.compute_saliency_update
+
+    def held_compute(holder, plan, **kwargs):
+        started.set()
+        assert release.wait(timeout=20.0)
+        return compute(holder, plan, **kwargs)
+
+    try:
+        trained = service.execute(TrainCommand(interactive=False, confirmed=True))
+        assert trained.ok, trained.message
+        holder = study.training_manager.trainer.get_training_plan_holders()[0]
+        record = holder.get_plans()[0]
+        epoch_data = holder.dataset.get_epoch_data()
+        original_data = epoch_data.data.copy()
+        original_mask = holder.dataset.test_mask.copy()
+        original_model = holder.model_holder
+        original_option = holder.option
+        evaluation_split = record.get_saliency_eval_record().evaluation_split
+        producer = holder.build_saliency_producer_identity(
+            record, evaluation_split=evaluation_split
+        )
+        monkeypatch.setattr(TrainingPlanHolder, "compute_saliency_update", held_compute)
+        scheduled = service.execute(
+            SaliencyCommand(method="Gradient", params={"profile": "recommended"})
+        )
+        assert scheduled.ok, scheduled.message
+        assert started.wait(timeout=5.0)
+        assert service.training_runtime.wait_for_saliency_delivery(timeout=5.0)
+        assert service.execute(QueryStateCommand()).ok
+        # These commands configure future runs; retained finished records keep
+        # their original model/options/split while the active job reads them.
+        configuration_commands = (
+            ConfigureTrainingCommand(model_name="EEGNet", model_params={"f1": 4}),
+            ConfigureTrainingCommand(
+                epoch=2, batch_size=3, learning_rate=0.002, device="cpu"
+            ),
+            SaveDatasetSplitCommand(test_ratio=0.3, val_ratio=0.2),
+        )
+        for command in configuration_commands:
+            configured = service.execute(command)
+            assert configured.ok, configured.message
+        rejected = service.execute(ResetPreprocessCommand(confirmed=True))
+        assert not rejected.ok
+        assert (
+            rejected.diagnostics.get("code") == "training_pipeline_saliency_active"
+        ), (rejected.message, rejected.diagnostics)
+        assert holder.model_holder is original_model
+        assert holder.option is original_option
+        np.testing.assert_array_equal(holder.dataset.test_mask, original_mask)
+        np.testing.assert_array_equal(epoch_data.data, original_data)
+        assert (
+            holder.build_saliency_producer_identity(
+                record, evaluation_split=evaluation_split
+            )
+            == producer
+        )
+        release.set()
+        assert study.training_manager.wait_for_saliency_job(timeout=10.0)
+        assert service.training_runtime.wait_for_saliency_delivery(timeout=5.0)
+        published = service.get_view_publication()
+        assert published.state.visualization.post_training_saliency.phase is (
+            PostTrainingSaliencyPhase.SUCCEEDED
+        )
+        assert (
+            record.get_saliency_eval_record().saliency_context.producer_identity
+            == producer
+        )
+        methods = {
+            method.method: method.complete
+            for coverage in published.state.visualization.saliency_coverage
+            for method in coverage.methods
+        }
+        assert methods["Gradient"] is True
+        assert methods["Gradient * Input"] is True
+    finally:
+        release.set()
+        service.wait_for_background_tasks(timeout=10.0)
+        service.close()
+
+
 def test_training_refreshes_metrics_before_explicit_saliency_click(
     qtbot,
     tmp_path: Path,
@@ -374,6 +464,7 @@ def test_training_refreshes_metrics_before_explicit_saliency_click(
         plan,
         *,
         should_cancel=None,
+        epoch_data_fingerprints=None,
     ):
         saliency_started.set()
         assert release_saliency.wait(timeout=30.0)
@@ -381,6 +472,7 @@ def test_training_refreshes_metrics_before_explicit_saliency_click(
             holder,
             plan,
             should_cancel=should_cancel,
+            epoch_data_fingerprints=epoch_data_fingerprints,
         )
 
     monkeypatch.setattr(
@@ -620,6 +712,7 @@ def test_explicit_saliency_publishes_once_during_unrelated_nested_commands(
         plan,
         *,
         should_cancel=None,
+        epoch_data_fingerprints=None,
     ):
         saliency_started.set()
         assert release_saliency.wait(timeout=30.0)
@@ -627,6 +720,7 @@ def test_explicit_saliency_publishes_once_during_unrelated_nested_commands(
             holder,
             plan,
             should_cancel=should_cancel,
+            epoch_data_fingerprints=epoch_data_fingerprints,
         )
 
     monkeypatch.setattr(

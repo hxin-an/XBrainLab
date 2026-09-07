@@ -454,7 +454,7 @@ class EvalRecord:
         Persisted legacy records are never rebound because doing so would assign
         old class/channel indices using whichever dataset happens to be active.
         The internal fingerprint is reused only for a fresh result immediately
-        after compute verified its producer; rebinding always reads current data.
+        from its admitted compute batch; rebinding always reads current data.
         """
         if self.saliency_context is None and self._loaded_from_artifact:
             raise SaliencyContextError(

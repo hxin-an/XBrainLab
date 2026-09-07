@@ -1574,10 +1574,12 @@ class TrainingManager:
                     generation,
                 )
 
+            epoch_data_fingerprints: dict[int, str] = {}
             updates = [
                 plan.holder.compute_saliency_update(
                     plan,
                     should_cancel=should_cancel,
+                    epoch_data_fingerprints=epoch_data_fingerprints,
                 )
                 for plan in plans
             ]
