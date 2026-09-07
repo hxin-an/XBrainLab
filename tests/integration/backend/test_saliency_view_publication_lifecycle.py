@@ -2307,6 +2307,20 @@ def test_synchronous_saliency_terminal_observers_run_after_all_outer_locks(
     assert compute_started.wait(timeout=_THREAD_WATCHDOG_SECONDS)
 
     observed: list[tuple[str, PostTrainingSaliencyPhase, tuple[bool, bool, bool]]] = []
+    terminal_delivery_results: list[bool] = []
+    if trigger == "shutdown":
+        original_notify = manager._saliency_lifecycle_events.notify
+
+        def observe_terminal_delivery(event_name, status):
+            delivered = original_notify(event_name, status)
+            terminal_delivery_results.append(delivered)
+            return delivered
+
+        monkeypatch.setattr(
+            manager._saliency_lifecycle_events,
+            "notify",
+            observe_terminal_delivery,
+        )
 
     def observe(event_name: str) -> None:
         publication = service.get_view_publication()
@@ -2363,7 +2377,15 @@ def test_synchronous_saliency_terminal_observers_run_after_all_outer_locks(
     assert manager.wait_for_saliency_job(timeout=_THREAD_WATCHDOG_SECONDS)
     assert cancelled_published.is_set()
     if trigger == "shutdown":
-        service.release_shutdown_fence()
+        release_deadline = monotonic() + _THREAD_WATCHDOG_SECONDS
+        released = service.release_shutdown_fence()
+        while not released and monotonic() < release_deadline:
+            Event().wait(0.01)
+            released = service.release_shutdown_fence()
+        assert released is True
+        assert manager.wait_for_saliency_terminal_delivery(
+            timeout=_THREAD_WATCHDOG_SECONDS
+        )
     final_publication = service.get_view_publication()
     final_status = final_publication.state.visualization.post_training_saliency
     if trigger == "reset":
@@ -2374,15 +2396,23 @@ def test_synchronous_saliency_terminal_observers_run_after_all_outer_locks(
     else:
         assert final_status.phase is PostTrainingSaliencyPhase.CANCELLED
 
-    assert sorted(item[0] for item in observed) == [
-        "manager_terminal",
-        "saliency_changed",
-        "training_analysis_published",
-    ]
-    assert (
-        next(phase for event, phase, _locks in observed if event == "manager_terminal")
-        is PostTrainingSaliencyPhase.CANCELLED
+    manager_observations = [item for item in observed if item[0] == "manager_terminal"]
+    assert manager_observations
+    assert all(
+        phase is PostTrainingSaliencyPhase.CANCELLED
+        for _event, phase, _locks in manager_observations
     )
+    assert [event for event, _phase, _locks in observed].count(
+        "training_analysis_published"
+    ) == 1
+    assert [event for event, _phase, _locks in observed].count("saliency_changed") == 1
+    if trigger == "shutdown":
+        assert len(terminal_delivery_results) >= 2
+        assert terminal_delivery_results[-1] is True
+        assert all(result is False for result in terminal_delivery_results[:-1])
+        assert len(manager_observations) == len(terminal_delivery_results)
+    else:
+        assert len(manager_observations) == 1
     assert all(lock_state == (True, True, True) for _, _, lock_state in observed)
 
 
