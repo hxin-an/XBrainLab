@@ -10,6 +10,13 @@
 - Design iteration is complete. Review the final diff and focused tests, update only the reviewed
   Filter references, and verify all applicable same-head CI including default visual, Windows DPI
   and source-diverse dataset evidence. Capture fixtures must use the real content-fitted Epoch size.
+- CI closure: a deterministic barrier in the real shutdown-fence refresh reproduced a manager
+  retry callback while a different thread legitimately held service locks. Correct the test's
+  overstrong all-locks-idle oracle for manager notifications, retaining all three lock checks on
+  application publications and manager-lock release protection. Product source stays unchanged.
+  Validate red/green at this real concurrent seam, then related lifecycle tests and same-head CI.
+  Separate debug-domain timeout and prior macOS -11 remain unexplained; retain failed evidence,
+  do not raise timeouts, skip tests or claim that a later pass repairs their causes.
 - Deliver the exact-source Windows application with visible live logs after engineering gates pass.
   Native design previews used example labels and are not full workflow/manual merge acceptance.
   User approval to merge #115 is still required; prior-head CI cannot certify the revised source.
