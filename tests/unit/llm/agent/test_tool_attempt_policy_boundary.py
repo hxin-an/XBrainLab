@@ -264,8 +264,6 @@ def test_explicit_continue_request_authorizes_current_backend_candidate() -> Non
     publication = PromptToolPublication(
         tool_names=frozenset({"preview_interpretation"}),
         backend_generation=48,
-        recommended_command="preview_interpretation",
-        authorized_command="preview_interpretation",
     )
 
     decision = coordinator.evaluate(
@@ -784,7 +782,7 @@ def test_clarification_reply_still_passes_schema_verification_first() -> None:
     assert verifier.calls == [(("resample_data", {"rate": 128}), 0.9)]
 
 
-def test_natural_continue_request_only_authorizes_recommended_command() -> None:
+def test_published_command_is_admitted_for_continue_wording() -> None:
     coordinator, source, verifier = _coordinator(
         _context(
             "apply_interpretation",
@@ -795,7 +793,6 @@ def test_natural_continue_request_only_authorizes_recommended_command() -> None:
     publication = PromptToolPublication(
         tool_names=frozenset({"scan_source", "apply_interpretation"}),
         backend_generation=49,
-        recommended_command="apply_interpretation",
     )
 
     decision = coordinator.evaluate(

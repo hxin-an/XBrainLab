@@ -6,10 +6,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from XBrainLab.backend.application.view_publication import (
-    PUBLIC_VIEW_UNAVAILABLE_MESSAGE,
-    ApplicationViewPublication,
-)
+from XBrainLab.backend.application.view_publication import ApplicationViewPublication
 from XBrainLab.chat_contract import (
     MAX_CHAT_MODEL_REQUEST_UTF8_BYTES,
     MODEL_UNTRUSTED_CONTEXT_BOUNDARY_MESSAGE,
@@ -32,11 +29,6 @@ from .context_encoding import (
     decode_untrusted_context,
     encode_untrusted_context,
     sanitize_untrusted_text,
-)
-from .decision_context import (
-    STEP_BY_STEP_MODE,
-    WorkflowDecisionContext,
-    build_workflow_decision_context,
 )
 from .decision_contract import model_response_tool_contract
 from .prompt_policy import (
@@ -64,8 +56,6 @@ class PromptToolPublication:
     workflow_stage: str = "unavailable"
     backend_generation: int | None = None
     blocked_reasons: tuple[tuple[str, str], ...] = ()
-    recommended_command: str | None = None
-    authorized_command: str | None = None
 
     @classmethod
     def empty(cls) -> PromptToolPublication:
@@ -149,8 +139,6 @@ Action Contract Catalog (input definitions, never an output array):
         self._latest_context_items: tuple[UntrustedContextItem, ...] = ()
         self._recovery_feedback: ToolRecoveryFeedback | None = None
         self._latest_tool_publication = PromptToolPublication.empty()
-        self._turn_authorized_command: str | None = None
-        self._turn_authorization_is_continuation = False
         self.max_history_utf8_bytes = _MAX_HISTORY_UTF8_BYTES
 
     def _get_stage_config(
@@ -401,36 +389,11 @@ Action Contract Catalog (input definitions, never an output array):
             workflow_stage=workflow_stage,
             unavailable_actions=unavailable_actions,
         )
-        if workflow_status_unavailable:
-            unavailable_reason = (
-                policy_read.publication_error.message
-                if policy_read.publication_error is not None
-                else None
-            )
-            if unavailable_reason is None and publication is not None:
-                unavailable_reason = PUBLIC_VIEW_UNAVAILABLE_MESSAGE
-            decision_context = WorkflowDecisionContext(
-                mode=STEP_BY_STEP_MODE,
-                workflow_stage="Workflow status unavailable",
-                latest_user_request=latest_user_text.strip(),
-                blocked_reasons=[unavailable_reason or PUBLIC_VIEW_UNAVAILABLE_MESSAGE],
-                stop_reason="status_unavailable",
-            )
-        else:
-            decision_context = build_workflow_decision_context(
-                self.study_state,
-                latest_user_text=latest_user_text,
-                mode=STEP_BY_STEP_MODE,
-                publication=publication,
-            )
-
         self._latest_tool_publication = PromptToolPublication(
             tool_names=frozenset(allowed_tools),
             workflow_stage=workflow_stage,
             backend_generation=policy_read.backend_generation,
             blocked_reasons=tuple(unavailable_actions.items()),
-            recommended_command=decision_context.recommended_next_step,
-            authorized_command=self._turn_authorized_command,
         )
 
         context_items = [
@@ -602,33 +565,6 @@ Action Contract Catalog (input definitions, never an output array):
     ) -> None:
         """Publish one typed runtime failure to the next model generation."""
         self._recovery_feedback = feedback
-
-    def set_turn_authorized_command(
-        self,
-        command_name: str | None,
-        *,
-        continuation: bool = False,
-    ) -> None:
-        """Set the command authorized for the next model proposal in this turn."""
-        if command_name is not None and type(command_name) is not str:
-            raise TypeError("Assistant command name must be an exact string.")
-        normalized = command_name.strip() if command_name is not None else ""
-        next_command = normalized or None
-        if (
-            self._turn_authorized_command is not None
-            and next_command != self._turn_authorized_command
-        ):
-            # Retrieved examples are scoped to the command that authorized the
-            # generation. Reusing them after a command authorization transition can
-            # make a small local model repeat the command that just completed.
-            self.clear_context()
-        self._turn_authorized_command = next_command
-        self._turn_authorization_is_continuation = bool(next_command and continuation)
-
-    def clear_turn_authorization(self) -> None:
-        """Clear request/continuation authorization at a user-turn boundary."""
-        self._turn_authorized_command = None
-        self._turn_authorization_is_continuation = False
 
     def clear_recovery_feedback(self) -> None:
         """Discard failure feedback at a user-turn or success boundary."""

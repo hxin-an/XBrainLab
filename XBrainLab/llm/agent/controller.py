@@ -609,7 +609,6 @@ class LLMController(QObject):
             ("pending interactions", self.pending_interactions.clear),
             ("RAG context", self.assembler.clear_context),
             ("recovery feedback", self.assembler.clear_recovery_feedback),
-            ("turn authorization", self.assembler.clear_turn_authorization),
         )
         for label, cleanup in cleanup_steps:
             self._run_turn_setup_cleanup(label, cleanup)
@@ -746,7 +745,6 @@ class LLMController(QObject):
         self.pending_interactions.clear_workflow_handoff()
         self.pending_interactions.activate_tool_input()
         self.assembler.clear_recovery_feedback()
-        self.assembler.clear_turn_authorization()
 
     def _collect_active_tool_input_reply(self, text: str) -> bool:
         """Resolve one bounded receipt reply before any RAG/model dispatch."""
@@ -2723,7 +2721,6 @@ class LLMController(QObject):
 
         # Clear Assembler context as well
         self.assembler.clear_context()
-        self.assembler.clear_turn_authorization()
 
         self.status_update.emit("Conversation reset.")
         self._publish_activity(AssistantTurnActivityPhase.IDLE)

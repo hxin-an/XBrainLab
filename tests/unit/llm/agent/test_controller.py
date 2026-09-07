@@ -2177,7 +2177,6 @@ class TestProcessToolCalls:
         )
         context_reader.assert_called_once_with("first")
         ctrl._refresh_execution_snapshot.assert_not_called()
-        ctrl.assembler.set_turn_authorized_command.assert_not_called()
         ctrl._generate_response.assert_not_called()
         ctrl._finalize_turn_after_tool.assert_called_once_with()
 
@@ -2316,8 +2315,6 @@ class TestProcessToolCalls:
         ctrl._turn_orchestrator.active_publication = PromptToolPublication(
             tool_names=frozenset({"validate_interpretation"}),
             backend_generation=3,
-            recommended_command="validate_interpretation",
-            authorized_command="validate_interpretation",
         )
         ctrl._generate_response = MagicMock()
         ctrl._handle_tool_attempt_blocked = MagicMock()
@@ -2992,7 +2989,6 @@ class TestResetConversation:
         assert ctrl.pending_interactions.tool_input is None
         assert ctrl.pending_interactions.active_tool_input is None
         ctrl.assembler.clear_context.assert_called()
-        ctrl.assembler.clear_turn_authorization.assert_called()
 
 
 def test_turn_terminal_consumes_active_receipt(ctrl):
