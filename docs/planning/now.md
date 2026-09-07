@@ -2,17 +2,18 @@
 
 最後更新：`2026-09-08`
 
-## Active — #116 final test review and merge
+## Active — CI runner failure diagnosis (PR C)
 
-- User authorized final review and merge of this tests-only slice without another approval prompt.
-  Integrate current main, resolve only test conflicts, and retain the new split viewport, Epoch
-  layout and shutdown concurrency protection. Do not change product source or widen pruning.
-- Review each removed category against surviving observable behavior; independently check backend
-  data/publication and architecture protection. Validate resolved tests, meaningful replacements,
-  retained lifecycle behavior, architecture and static checks, then all same-head non-skipped CI.
-- Notify before exact-head merge only after no blocking review findings and all checks pass.
-  Preserve root settings.json, unrelated edits and the user's running app. No new hand test required
-  unless the actual diff changes product behavior; stop for new scope/resource decisions if needed.
+- Existing shard runner kills timed-out children but does not explicitly request a pre-timeout stack;
+  pytest/capture failures also skip several CI source-provenance steps. Historical debug timeout and
+  macOS -11 roots remain unproven; this slice improves evidence, not an unsupported root-cause claim.
+- Reuse stdlib/pytest fault diagnosis and current owned process cleanup. Keep exit/attestation checks
+  fail closed. No new process owner/watchdog framework, raised timeout or automatic retry.
+- Test first with real bounded child processes (hang/failure/early exit and successful cleanup), then
+  implement minimal diagnostics and always-on post-execution provenance; preserve formal CI evidence.
+  Limit edits to existing runners, directly related tests and CI diagnostic steps; no product/UI changes.
+- Parent owns PR integration/review/CI/merge and will retain PR A's full continuing Assistant plan.
+  Focused tests/static evidence only locally; exact-head CI before nonblocking merge notice and cleanup.
 
 ## Next — CI / validation rules and harness
 

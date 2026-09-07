@@ -142,6 +142,60 @@ def test_generic_runner_explicitly_allows_only_optional_public_fixture_skips() -
     ]
 
 
+def test_shard_timeout_emits_pre_timeout_python_stack(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """A hung shard leaves a useful Python stack before owned termination."""
+    test_file = tmp_path / "test_stalled_shard.py"
+    descendant_pid_path = tmp_path / "descendant.pid"
+    test_file.write_text(
+        "import subprocess\nimport sys\nimport time\nfrom pathlib import Path\n\n\n"
+        "def test_stalls():\n"
+        "    child = subprocess.Popen([sys.executable, '-c', "
+        "'import time; time.sleep(10)'])\n"
+        f"    Path({str(descendant_pid_path)!r}).write_text(str(child.pid))\n"
+        "    time.sleep(10)\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("XBL_TEST_SHARD_TIMEOUT_SECONDS", "1")
+
+    execution = run_tests.run_pytest_attested(("-q", str(test_file)))
+
+    captured = capfd.readouterr()
+    assert execution.return_code == 124
+    assert execution.attestation is None
+    assert "Timeout" in captured.err
+    assert "test_stalled_shard.py" in captured.err
+    if os.name == "posix":
+        descendant_pid = int(descendant_pid_path.read_text(encoding="utf-8"))
+        with pytest.raises(ProcessLookupError):
+            os.kill(descendant_pid, 0)
+
+
+def test_native_shard_exit_reports_signal_and_rejects_completion(
+    tmp_path: Path,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """A native abort cannot look like a completed pytest shard."""
+    test_file = tmp_path / "test_native_abort.py"
+    test_file.write_text(
+        "import os\n\n\ndef test_aborts():\n    os.abort()\n",
+        encoding="utf-8",
+    )
+
+    execution = run_tests.run_pytest_attested(("-q", str(test_file)))
+
+    captured = capfd.readouterr()
+    assert execution.return_code == 2
+    assert execution.attestation is None
+    assert "Test shard exited from" in captured.err
+    if os.name == "posix":
+        assert "SIGABRT" in captured.err
+    assert "completion attestation was not produced" in captured.err
+
+
 def test_run_shards_reports_failures_after_running_remaining_domains(
     monkeypatch,
 ) -> None:
@@ -880,6 +934,7 @@ def test_ci_uses_full_linux_and_focused_cross_platform_runners() -> None:
     linux_shard_steps = {
         step.get("name"): step for step in jobs["linux-shard"]["steps"]
     }
+    assert linux_shard_steps["Record exact source provenance"]["if"] == "always()"
     sidecar_upload = linux_shard_steps["Upload source provenance sidecar"]
     assert sidecar_upload["with"]["name"] == (
         "linux-source-provenance-${{ matrix.command }}"
@@ -888,6 +943,7 @@ def test_ci_uses_full_linux_and_focused_cross_platform_runners() -> None:
         "test-results/ci-source-provenance-${{ matrix.command }}.json"
     )
     linux_test_steps = {step.get("name"): step for step in jobs["linux-test"]["steps"]}
+    assert linux_test_steps["Record aggregate checkout provenance"]["if"] == "always()"
     provenance_download = linux_test_steps["Download source provenance sidecars"]
     assert provenance_download["with"] == {
         "pattern": "linux-source-provenance-*",
@@ -901,6 +957,15 @@ def test_ci_uses_full_linux_and_focused_cross_platform_runners() -> None:
     assert "fetch-depth: 0" not in workflow_text
     assert "coverage combine test-results" in workflow_text
     assert "poetry run pytest tests/" not in workflow_text
+
+    for job_name in (
+        "human-like-product",
+        "ui-default-visual",
+        "ui-windows-dpi",
+        "public-dataset-gate",
+    ):
+        steps = {step.get("name"): step for step in jobs[job_name]["steps"]}
+        assert steps["Record exact source provenance"]["if"] == "always()"
 
 
 def test_main_attests_aggregate_shard_completion(monkeypatch, tmp_path) -> None:

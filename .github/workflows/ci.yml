@@ -213,6 +213,7 @@ jobs:
             --result-json test-results/${{ matrix.command }}.json
 
       - name: Record exact source provenance
+        if: always()
         run: >-
           poetry run -- python scripts/dev/ci_source_provenance.py
           --job-key ${{ matrix.command }}
@@ -270,6 +271,7 @@ jobs:
         run: poetry sync --no-interaction ${{ runner.os == 'Windows' && '-E cpu' || '' }}
 
       - name: Record aggregate checkout provenance
+        if: always()
         run: >-
           poetry run -- python scripts/dev/ci_source_provenance.py
           --job-key linux-test
@@ -367,6 +369,7 @@ jobs:
             --output-dir build/dev-artifacts/human-like-product
 
       - name: Record exact source provenance
+        if: always()
         run: >-
           poetry run -- python scripts/dev/ci_source_provenance.py
           --job-key human-like-product
@@ -653,6 +656,7 @@ jobs:
             --reference-dir tests/baselines/ui
 
       - name: Record exact source provenance
+        if: always()
         run: >-
           poetry run -- python scripts/dev/ci_source_provenance.py
           --job-key ui-default-visual
@@ -720,6 +724,7 @@ jobs:
             --scale 1.0 --scale 1.25 --scale 1.5
 
       - name: Record exact source provenance
+        if: always()
         run: >-
           poetry run -- python scripts/dev/ci_source_provenance.py
           --job-key ui-windows-dpi
@@ -835,6 +840,7 @@ jobs:
           poetry run -- python scripts/dev/run_public_cross_source_training_smoke.py --format json --strict | tee public-cross-source-smoke.json
 
       - name: Record exact source provenance
+        if: always()
         run: >-
           poetry run -- python scripts/dev/ci_source_provenance.py
           --job-key public-dataset-gate

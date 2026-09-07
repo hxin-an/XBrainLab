@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -241,6 +242,7 @@ LINUX_CI_GROUPS: tuple[tuple[str, tuple[tuple[str, tuple[str, ...]], ...]], ...]
 LINUX_CI_COMMANDS = tuple(command for command, _shards in LINUX_CI_GROUPS)
 LINUX_CI_UNCOVERED_COMMANDS = frozenset({"linux-integration-agent-timing"})
 DEFAULT_SHARD_TIMEOUT_SECONDS = 1200
+PRE_TIMEOUT_STACK_RESERVE_SECONDS = 30.0
 ROOT = Path(__file__).resolve().parents[2]
 PYTEST_ALLOWED_SKIP_MARKERS = (OPTIONAL_PUBLIC_FIXTURE_SKIP_MARKER,)
 
@@ -269,7 +271,12 @@ def run_pytest(args: Sequence[str]) -> int:
     return run_pytest_attested(args).return_code
 
 
-def _required_pytest_command(result_path: Path, args: Sequence[str]) -> list[str]:
+def _required_pytest_command(
+    result_path: Path,
+    args: Sequence[str],
+    *,
+    faulthandler_timeout: float | None = None,
+) -> list[str]:
     command = [
         sys.executable,
         "-m",
@@ -279,8 +286,36 @@ def _required_pytest_command(result_path: Path, args: Sequence[str]) -> list[str
     ]
     for marker in PYTEST_ALLOWED_SKIP_MARKERS:
         command.extend(("--allow-skip-marker", marker))
-    command.extend(("--", *args))
+    command.append("--")
+    if faulthandler_timeout is not None:
+        command.extend(("-o", f"faulthandler_timeout={faulthandler_timeout}"))
+    command.extend(args)
     return command
+
+
+def _pre_timeout_stack_seconds(timeout_seconds: int) -> float:
+    """Leave a bounded diagnostic window before the existing shard timeout."""
+    reserve = min(PRE_TIMEOUT_STACK_RESERVE_SECONDS, timeout_seconds / 2)
+    return max(timeout_seconds - reserve, 0.1)
+
+
+def _shard_diagnostic_env() -> dict[str, str]:
+    """Configure fault diagnostics only for the owned pytest process tree."""
+    environment = os.environ.copy()
+    environment["PYTHONFAULTHANDLER"] = "1"
+    return environment
+
+
+def _process_exit_diagnostic(return_code: int) -> str | None:
+    """Describe abnormal child termination without replacing fail-closed evidence."""
+    if return_code >= 0:
+        return None
+    signal_number = -return_code
+    try:
+        signal_name = signal.Signals(signal_number).name
+    except ValueError:
+        signal_name = f"signal {signal_number}"
+    return f"Test shard exited from {signal_name} before completion evidence."
 
 
 def run_pytest_attested(args: Sequence[str]) -> AttestedPytestRun:
@@ -294,19 +329,24 @@ def run_pytest_attested(args: Sequence[str]) -> AttestedPytestRun:
         delete=True,
     ) as handle:
         result_path = Path(handle.name)
-    python_cmd = _required_pytest_command(result_path, args)
-    prlimit = shutil.which("prlimit") if os.name == "posix" else None
-    cmd = [prlimit, "--core=0", "--", *python_cmd] if prlimit else python_cmd
-    print(f"Running: {' '.join(cmd)}")
     timeout_seconds = int(
         os.environ.get(
             "XBL_TEST_SHARD_TIMEOUT_SECONDS",
             str(DEFAULT_SHARD_TIMEOUT_SECONDS),
         )
     )
+    python_cmd = _required_pytest_command(
+        result_path,
+        args,
+        faulthandler_timeout=_pre_timeout_stack_seconds(timeout_seconds),
+    )
+    prlimit = shutil.which("prlimit") if os.name == "posix" else None
+    cmd = [prlimit, "--core=0", "--", *python_cmd] if prlimit else python_cmd
+    print(f"Running: {' '.join(cmd)}")
     process, owner = spawn_owned_process(
         cmd,
         cwd=ROOT,
+        env=_shard_diagnostic_env(),
     )
     timed_out = False
     try:
@@ -323,6 +363,9 @@ def run_pytest_attested(args: Sequence[str]) -> AttestedPytestRun:
         )
         return AttestedPytestRun(return_code=124, attestation=None)
     return_code = int(process.returncode)
+    exit_diagnostic = _process_exit_diagnostic(return_code)
+    if exit_diagnostic is not None:
+        print(exit_diagnostic, file=sys.stderr)
     attestation, failure = validate_attestation(
         result_path,
         expected_runner=REQUIRED_PYTEST_RUNNER_ID,
