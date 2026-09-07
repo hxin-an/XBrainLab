@@ -2,44 +2,32 @@
 
 最後更新：`2026-09-07`
 
-## Active — #114 Astra harness and fresh-session handoff
+## Next — #114 review, then remaining PRs
 
-- User approved implementation of the official-docs-based harness plan. Quality priority is correctness
-  and reliability, clear maintainable responsibilities, then removal of unnecessary complexity; no LOC,
-  file-count, agent-count or reasoning-effort optimization target. No #114 merge authorization.
-- Evidence: the old config inherited medium from Terra and its audit required that exact value. Old
-  planning text retained completed work and conflicting dispatch; static checks did not establish that a
-  fresh agent could load the right context or complete a real repair.
-- Scope: integrate merged #113; reconcile repo instructions/skills/validation; remove forced reasoning
-  defaults; verify native Codex discovery and fresh Astra behavior. No product Assistant/model change,
-  global config/permission change, new control framework, or work on #115/#116.
-- Steps: audit official Astra/Codex guidance and reachable repo instructions; preserve essential task
-  context in its existing authority; update config/audit with focused red-green tests; run no-history
-  takeover and validation-selection sessions plus an isolated replay of the known split-reopen defect.
-  Check actual tool traces, source diffs and test output, not only the agent's summary. No hidden retries.
-- Validation: guidance/schema tests, changed-script checks, strict docs builds, fresh-session evidence
-  with actual model/config provenance, then same-head CI. Actual fresh sessions use existing account
-  access and supported settings; unavailable required access is a blocker, not a simulated pass.
-- UI: no product presentation change. The historical repair replay is authorized only in an isolated
-  disposable checkout; no live app, product branch, external publication, or user settings mutation.
-- Next: resolve the plan conflict, finish bounded instruction/config edits, then run fresh-session cases.
-
-## Next — remaining PR review and computational cleanup
-
-- #113 was manually accepted and merged on 2026-09-07. Exact source, CI and user approval remain in
-  its PR; do not resume its historical repair plans. Earlier Windows native teardown failure had an
-  unproven cause despite later successful gates; do not describe it as a separately diagnosed fix.
-- Review #114 first, then #115 Filter and #116 test pruning; compare #111 with merged #113 before any
-  decision to close it. No further PR merge approval is implied by #113 acceptance.
+- User approved the official-docs-based Astra harness implementation. The instruction/config changes
+  are implemented; review #114 against current main and inspect its current candidate evidence before
+  acceptance. No #114 merge authorization. Exact source, CI and fresh-session traces belong in the PR.
+- Quality priority: correctness/reliability, clear maintainable responsibilities, then removal of
+  unnecessary complexity. Do not optimize toward minimum LOC/files/abstractions or a fixed agent count.
+- Repo no longer fixes reasoning effort or worker model/effort. Check effective session settings and
+  instruction/skill discovery; do not assume a config file proves runtime inheritance.
+- Harness acceptance needs no-history takeover/validation selection and an isolated real-repair replay.
+  Read actual tool events, test exits and diff; static audit or an agent summary alone is insufficient.
+  A replay uses an intentionally modified isolated fixture, not the live product or a new product PR.
+- #113 was manually accepted and merged on 2026-09-07. Its exact source and approval remain in its PR;
+  do not resume its historical repair plans. Earlier Windows native teardown failure had an unproven
+  cause despite later successful gates; do not claim a separately diagnosed fix.
+- Review #115 Filter and #116 test pruning after #114; compare #111 with merged #113 before deciding
+  whether to close it. No subsequent PR merge approval is implied by #113 acceptance.
 - Preserve local settings.json and unrelated split UI/test edits. Do not replace or monitor the user's
-  running test app unless the current task requests it. Resolve worktree/branch/source identity from Git.
+  running test app unless requested. Resolve worktree/branch/source identity from Git.
 - After these PRs, consider repeated SHA/full-data scans/validation/copies using real call paths and
-  measured costs. This is a candidate, not authorization to clean the whole product during #114.
-- Existing bounded product Assistant acceptance remains valid within its documented limits; an
-  unrelated desktop or harness task must not silently become Assistant promotion or model evaluation.
+  measured costs. This candidate is not authorization for whole-product cleanup during harness work.
+- Existing bounded product Assistant acceptance remains valid within its documented limits; unrelated
+  desktop/harness work must not silently become Assistant promotion or model evaluation.
 
 ## Source of truth
 
 Git main, remote refs and PRs own versions and approvals; docs/current.md owns current product claims.
-Keep only pending work, decisions needed to continue and material limitations here. Completed task
-history remains in Git/PR, not active dispatch. A new session must recheck external state before acting.
+Keep pending work, decisions needed to continue and material limitations here. Completed task history
+remains in Git/PR, not active dispatch. New sessions must recheck external state before acting.
