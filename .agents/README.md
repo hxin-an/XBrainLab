@@ -33,15 +33,22 @@ scope. This index does not duplicate that catalog or require a reviewer for ever
 
 ## Model dispatch
 
-The project defaults to `gpt-6-astra`. Leave reasoning effort and worker model/effort unset in repo
-config: the active user/session effort applies, and workers inherit their parent. Do not silently
-change model/effort when delegating. Verify effective settings at launch; repo text is not proof of
-runtime configuration. This does not change the product Assistant or grant API/download authority.
+Default to `gpt-6-astra`; leave repo effort and worker model/effort unset to inherit session/parent
+settings. No silent fallback. Verify effective settings at launch. Product Assistant is unchanged.
 
-Delegate when the user requests coordination or two independent useful streams save time or improve evidence.
-A small coherent task may stay with its owner. Cap concurrent subagent
-threads at 2 (coordinator excluded); isolate writes and return concise evidence, not duplicate reviews.
-Pending CI or manual acceptance does not pause independent authorized work.
+## Delegation and review
+
+Delegate when a bounded task has clear inputs, independently verifiable output and useful work that
+can proceed alongside the main task. Expected time or evidence gains must outweigh coordination,
+resource and conflict costs. Keep write ownership separate; regroup when dependencies or overlap arise.
+Small coherent changes can stay local. No repo headcount/role quota; respect runtime resource limits.
+The main agent may implement and must inspect actual diffs/evidence before integrating results.
+
+Review every change against its requirement, diff and meaningful tests. Use independent review for
+high-risk lifecycle/data/publication boundaries, cross-owner changes or repeatedly failed repairs.
+Give the reviewer a concrete risk question; do not duplicate broad reviews or use review as a substitute
+for real tests. See `skills/code-reviewer/SKILL.md` for findings. Pending CI/manual acceptance does not
+pause independent authorized work.
 
 Use deterministic commands for Git/CI identity, counts, schemas, widget visibility/enabled state,
 geometry and pixel differences. Read summaries and failure details, not whole successful logs.
@@ -50,15 +57,12 @@ screenshots. See the validation contract for evidence selection and reuse.
 
 ## Official basis and fresh sessions
 
-Reviewed 2026-09-07: [Astra prompting](https://developers.openai.com/api/docs/guides/latest-model#prompting-best-practices)
-motivates explicit follow-through, conflict auditing, useful delegation and proportionate testing.
-[AGENTS.md discovery](https://learn.chatgpt.com/docs/agent-configuration/agents-md),
-[skills](https://learn.chatgpt.com/docs/build-skills), [subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents)
-and [config precedence](https://learn.chatgpt.com/docs/config-file/config-basic) define native loading.
-These support the mechanisms, not a universal best architecture or a preferred reasoning effort.
+Reviewed 2026-09-07: [Astra guidance](https://developers.openai.com/api/docs/guides/latest-model),
+[instruction discovery](https://learn.chatgpt.com/docs/agent-configuration/agents-md),
+[skills](https://learn.chatgpt.com/docs/build-skills) and
+[subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents).
+Official mechanisms inform these repo choices, not a universal architecture or preferred effort.
 
-Start a fresh session in the intended trusted checkout. Check its effective model/effort, instruction
-sources and skill discovery; user/global/nested overrides can change behavior. Do not edit global
-config or relax permissions to make a test pass. If required context is absent, report the actual gap.
-Acceptance of harness changes includes no-history task takeover and real behavior evidence as defined
-in the validation contract, not just successful parsing or the model repeating these instructions.
+In a fresh trusted checkout session, verify model/effort and instruction/skill discovery; disclose
+global/nested overrides and missing context without changing global config or permissions.
+Use the validation contract's no-history takeover and real-behavior evidence, not parsing alone.

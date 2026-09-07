@@ -85,9 +85,8 @@ production `+/-/net LOC`、必要性與拆分方案；數量是審查訊號，�
 只保護穩定、可靜態判定且會重複違反的規則。Canonical docs 只因事實／決策／契約變化更新；
 不為每次測試建 receipt 或重複寫 implementation log 與 worklog。
 
-可平行改善效率／品質，或使用者要求協作時才派 subagent。
-小型單一任務可直接完成；一般最多兩個互不重疊 worker，不為固定角色或使用名額而派工。
-主 agent 負責整合及驗收實際 diff／證據；worker 的完成摘要不能取代檢查。
+依 `.agents/README.md` 的獨立性、成本與風險判準分工；不設 repo 人數或角色配額。
+每次修改都 review，高風險採獨立覆核；主 agent 可實作，並驗收實際 diff／證據，不能只信摘要。
 
 ## 驗證與完成語意
 

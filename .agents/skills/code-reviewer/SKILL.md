@@ -6,6 +6,10 @@ description: "Use for XBrainLab diffs with regression, lifecycle, data, test, ma
 # Code Reviewer
 
 Review changed behavior first, then maintainability and evidence.
+This skill can guide self-review or an independent reviewer; it does not require another agent.
+Follow the delegation criteria in `../../README.md`. Independent review needs a bounded risk question,
+the actual diff and evidence, not the implementer's preferred conclusion. Findings need a reachable
+failure path and supporting evidence; label uncertainty instead of demanding speculative safeguards.
 
 ## Review order
 

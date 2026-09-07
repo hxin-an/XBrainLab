@@ -1,6 +1,4 @@
 # XBrainLab development agents use Astra; the product Assistant is independent.
 model = "gpt-6-astra"
 
-[agents]
-max_concurrent_threads_per_session = 2
-# Leave worker model/effort unset so they inherit the active parent settings.
+# Leave concurrency to the environment and worker model/effort to the parent.

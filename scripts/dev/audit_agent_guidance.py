@@ -216,15 +216,9 @@ def _audit_model_dispatch_config(root: Path) -> list[str]:
             ".codex/config.toml must not persist service_tier; Fast is foreground-only"
         )
 
-    agents = config.get("agents")
+    agents = config.get("agents", {})
     if not isinstance(agents, dict):
-        return [*errors, ".codex/config.toml must define an [agents] table"]
-    expected_agents = {
-        "max_concurrent_threads_per_session": 2,
-    }
-    for key, expected in expected_agents.items():
-        if agents.get(key) != expected:
-            errors.append(f".codex/config.toml [agents] must set {key}={expected!r}")
+        return [*errors, ".codex/config.toml agents must be a table when present"]
     for key in ("default_subagent_model", "default_subagent_reasoning_effort"):
         if key in agents:
             errors.append(

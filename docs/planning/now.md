@@ -11,6 +11,12 @@
   unnecessary complexity. Do not optimize toward minimum LOC/files/abstractions or a fixed agent count.
 - Repo no longer fixes reasoning effort or worker model/effort. Check effective session settings and
   instruction/skill discovery; do not assume a config file proves runtime inheritance.
+- User approved adaptive delegation and risk-based independent review, not a fixed worker cap or role
+  quota. Config/audit and guidance now follow that decision; criteria live in `.agents/README.md`.
+- Previous #114 CI timed out in the Linux integration-rest path (exit 124), leaving incomplete shard
+  provenance. Preserve the failed run in the PR; check new-source CI before readiness. This is not an
+  accepted imperfect model score, and its underlying cause is not yet diagnosed. Do not expand this
+  harness slice into product/test repairs or increase timeouts to bypass it.
 - Harness acceptance needs no-history takeover/validation selection and an isolated real-repair replay.
   Read actual tool events, test exits and diff; static audit or an agent summary alone is insufficient.
   A replay uses an intentionally modified isolated fixture, not the live product or a new product PR.

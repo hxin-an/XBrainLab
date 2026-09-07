@@ -19,11 +19,16 @@ def test_current_repository_guidance_passes_the_public_audit() -> None:
     assert audit_guidance(REPO_ROOT) == []
 
 
-def test_dispatch_allows_session_reasoning_and_parent_worker_inheritance(tmp_path):
+@pytest.mark.parametrize(
+    "agents", ["", "[agents]\n", "[agents]\nmax_concurrent_threads_per_session = 3\n"]
+)
+def test_dispatch_allows_session_reasoning_and_parent_worker_inheritance(
+    tmp_path, agents
+):
     config = tmp_path / ".codex" / "config.toml"
     config.parent.mkdir()
     config.write_text(
-        'model = "gpt-6-astra"\n\n[agents]\nmax_concurrent_threads_per_session = 2\n',
+        'model = "gpt-6-astra"\n' + agents,
         encoding="utf-8",
     )
 
@@ -35,7 +40,7 @@ def test_dispatch_rejects_repo_defaults_that_override_session_or_parent(tmp_path
     config.parent.mkdir()
     config.write_text(
         'model = "gpt-6-astra"\nmodel_reasoning_effort = "medium"\n'
-        "[agents]\nmax_concurrent_threads_per_session = 2\n"
+        "[agents]\n"
         'default_subagent_model = "gpt-6-astra"\n'
         'default_subagent_reasoning_effort = "medium"\n',
         encoding="utf-8",
@@ -70,41 +75,25 @@ default_subagent_reasoning_effort = "medium"
 
     assert ".codex/config.toml must set model='gpt-6-astra'" in errors
     assert (
-        ".codex/config.toml [agents] must set "
-        "max_concurrent_threads_per_session=2" in errors
-    )
-    assert (
         ".codex/config.toml must not persist service_tier; Fast is foreground-only"
         in errors
     )
 
 
-def test_public_audit_rejects_worker_and_concurrency_drift(tmp_path: Path) -> None:
+def test_public_audit_rejects_malformed_agents_table(tmp_path: Path) -> None:
     config = tmp_path / ".codex" / "config.toml"
     config.parent.mkdir()
     config.write_text(
         """\
 model = "gpt-6-astra"
-model_reasoning_effort = "medium"
-
-[agents]
-max_concurrent_threads_per_session = 3
-default_subagent_model = "gpt-5.6-luna"
-default_subagent_reasoning_effort = "medium"
+agents = 3
 """,
         encoding="utf-8",
     )
 
     errors = audit_guidance(tmp_path)
 
-    assert (
-        ".codex/config.toml [agents] must set max_concurrent_threads_per_session=2"
-        in errors
-    )
-    assert (
-        ".codex/config.toml [agents] must inherit parent settings; omit default_subagent_model"
-        in errors
-    )
+    assert ".codex/config.toml agents must be a table when present" in errors
 
 
 def test_agents_size_contract_has_no_minimum(tmp_path: Path) -> None:
