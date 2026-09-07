@@ -1179,15 +1179,20 @@ class TrainingPlanHolder:
                         plan,
                         should_cancel=should_cancel,
                     )
+                    verified_epoch_fingerprint = fingerprint_saliency_epoch_data(
+                        self.dataset.get_epoch_data()
+                    )
                     current_producer_identity = self.build_saliency_producer_identity(
                         train_record,
                         evaluation_split=evaluation_split,
+                        sealed_epoch_data_fingerprint=verified_epoch_fingerprint,
                     )
                     if current_producer_identity != producer_identity:
                         raise StaleSaliencyUpdateError
                     eval_record.bind_saliency_context(
                         self.dataset.get_epoch_data(),
                         producer_identity=producer_identity,
+                        _sealed_epoch_data_fingerprint=verified_epoch_fingerprint,
                     )
                 else:
                     eval_record = Evaluator.evaluate(

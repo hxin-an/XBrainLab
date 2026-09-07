@@ -2911,72 +2911,17 @@ def test_scheduled_saliency_handoff_waits_for_matching_terminal_publication(qtbo
     assert terminal[0].status is InteractionCompletionStatus.COMPLETED
 
 
-def test_terminal_saliency_publication_keeps_compute_busy_until_native_render_commits(
-    qtbot,
+@pytest.mark.parametrize(
+    ("phase", "new_compute", "title"),
+    [
+        ("completed", True, "Preparing saliency baseline"),
+        ("cancelled", False, "Saliency compute cancelled"),
+        ("failed", False, "Saliency compute failed"),
+    ],
+)
+def test_native_render_terminal_preserves_active_or_retryable_action(
+    qtbot, phase, new_compute, title
 ):
-    panel, _ctrl = _make_panel(qtbot)
-    _publish_panel_state(
-        panel,
-        _application_query_with_saliency_state(
-            PostTrainingSaliencyStatus.idle(),
-            _complete_coverage(),
-        ),
-    )
-    panel._saliency_compute_in_progress = True
-    panel._active_saliency_operation_id = "saliency-operation-1"
-    panel._active_saliency_generation = 3
-    publication = panel._application_view_publication
-    assert publication is not None
-    terminal_publication = replace(
-        publication,
-        state=replace(
-            publication.state,
-            visualization=replace(
-                publication.state.visualization,
-                post_training_saliency=_post_training_saliency_status(
-                    PostTrainingSaliencyPhase.SUCCEEDED,
-                ),
-            ),
-        ),
-    )
-
-    assert panel._accept_application_publication(terminal_publication)
-    assert panel._saliency_compute_in_progress is True
-    assert panel.compute_saliency_btn.text() == "Computing..."
-    assert panel.compute_saliency_btn.isEnabled() is False
-
-    run_identity = panel.run_combo.currentData()
-    assert isinstance(run_identity, SaliencyRunIdentity)
-    request = SaliencyRenderRequest(
-        publication_generation=terminal_publication.generation,
-        run=run_identity,
-        method="Gradient",
-        normalize=False,
-        view="channel_time",
-    )
-    native_generation = 1
-    panel.tab_map.active_render_generation = native_generation
-    panel.tab_map.active_render_publication_generation = terminal_publication.generation
-    panel._bind_native_render_terminal(
-        panel.tab_map,
-        replace(
-            _render_publication_for_request(None, request),
-            operation_id="render-operation-1",
-        ),
-        display_key=(False, False, "all", None),
-    )
-    panel.tab_map.render_terminal.emit(
-        native_generation,
-        terminal_publication.generation,
-        "completed",
-    )
-
-    assert panel._saliency_compute_in_progress is False
-    assert panel._active_saliency_operation_id is None
-    assert panel.compute_saliency_btn.text() == "Compute Saliency"
-
-
-def test_stale_native_render_terminal_does_not_release_new_saliency_compute(qtbot):
     panel, _ctrl = _make_panel(qtbot)
     _publish_panel_state(
         panel,
@@ -2990,7 +2935,11 @@ def test_stale_native_render_terminal_does_not_release_new_saliency_compute(qtbo
     run_identity = panel.run_combo.currentData()
     assert isinstance(run_identity, SaliencyRunIdentity)
     panel._saliency_compute_in_progress = True
-    panel._active_saliency_operation_id = "new-compute-operation"
+    panel._active_saliency_operation_id = (
+        "new-compute-operation" if new_compute else None
+    )
+    panel.show()
+    panel._show_saliency_action_bar()
     request = SaliencyRenderRequest(
         publication_generation=publication.generation,
         run=run_identity,
@@ -3009,64 +2958,15 @@ def test_stale_native_render_terminal_does_not_release_new_saliency_compute(qtbo
         display_key=(False, False, "all", None),
     )
 
-    panel.tab_map.render_terminal.emit(1, publication.generation, "completed")
+    panel.tab_map.render_terminal.emit(1, publication.generation, phase)
 
-    assert panel._saliency_compute_in_progress is True
-    assert panel._active_saliency_operation_id == "new-compute-operation"
-
-
-def test_on_update_binds_post_compute_render_before_releasing_action(qtbot):
-    panel, _ctrl = _make_panel(qtbot)
-    _publish_panel_state(
-        panel,
-        _application_query_with_saliency_state(
-            _post_training_saliency_status(PostTrainingSaliencyPhase.SUCCEEDED),
-            _complete_coverage(),
-        ),
+    assert panel.saliency_action_bar.isVisible()
+    assert panel.saliency_action_title.text() == title
+    assert panel.compute_saliency_btn.isEnabled() is not new_compute
+    assert panel._saliency_compute_in_progress is new_compute
+    assert panel._active_saliency_operation_id == (
+        "new-compute-operation" if new_compute else None
     )
-    publication = panel._application_view_publication
-    assert publication is not None
-    panel._saliency_compute_in_progress = True
-    panel._active_saliency_operation_id = None
-    panel._set_saliency_action_busy(True)
-    native_generation = 1
-
-    def install_native_render(*_args, **_kwargs) -> None:
-        panel.tab_map.active_render_generation = native_generation
-        panel.tab_map.active_render_publication_generation = publication.generation
-
-    panel.tab_map.update_plot.side_effect = install_native_render
-    request = SaliencyRenderRequest(
-        publication_generation=publication.generation,
-        run=panel.run_combo.currentData(),
-        method="Gradient",
-        normalize=False,
-        view="channel_time",
-    )
-    render_publication = replace(
-        _render_publication_for_request(None, request),
-        operation_id="post-compute-render",
-    )
-
-    with (
-        patch.object(panel, "_saliency_render_is_cached", return_value=True),
-        patch.object(
-            panel,
-            "_saliency_render_publication",
-            return_value=render_publication,
-        ),
-    ):
-        panel.on_update()
-
-    assert panel.tab_map in panel._native_render_bindings
-    assert panel.compute_saliency_btn.isEnabled() is False
-    panel.tab_map.render_terminal.emit(
-        native_generation,
-        publication.generation,
-        "completed",
-    )
-    assert panel._saliency_compute_in_progress is False
-    assert panel.compute_saliency_btn.isEnabled() is True
 
 
 def test_summary_failure_releases_post_compute_action_from_on_update(qtbot):

@@ -2789,6 +2789,7 @@ class VisualizationPanel(BasePanel):
             return
         if phase == "completed":
             self._release_saliency_compute_after_render()
+            self._hide_saliency_action_bar()
             show_status_message(self, "Saliency ready")
         elif phase == "cancelled":
             self._finish_saliency_compute_cancelled(

@@ -2119,16 +2119,24 @@ def test_set_saliency_params_atomically_recomputes_multiple_finished_records(
         assert producer_identity.model_fingerprint
 
 
-def test_saliency_update_rejects_split_change_during_expensive_compute(base_holder):
+@pytest.mark.parametrize("mutation", ("split", "epoch"))
+def test_saliency_update_rejects_input_change_during_expensive_compute(
+    base_holder, mutation
+):
     record = base_holder.get_plans()[0]
     record.epoch = base_holder.option.epoch
     previous_eval_record = object()
     record.eval_record = previous_eval_record
     _bind_selected_evaluation_checkpoint(base_holder, record)
     original_test_mask = base_holder.dataset.test_mask.copy()
+    epoch_data = base_holder.dataset.get_epoch_data()
+    original_value = epoch_data.data.flat[0]
 
-    def mutate_split_during_compute(*_args, **_kwargs):
-        base_holder.dataset.test_mask[0] = not base_holder.dataset.test_mask[0]
+    def mutate_input_during_compute(*_args, **_kwargs):
+        if mutation == "split":
+            base_holder.dataset.test_mask[0] = not base_holder.dataset.test_mask[0]
+        else:
+            epoch_data.data.flat[0] += 1
         return _prepared_saliency_record()
 
     try:
@@ -2142,13 +2150,14 @@ def test_saliency_update_rejects_split_change_during_expensive_compute(base_hold
             patch.object(
                 Evaluator,
                 "evaluate_with_saliency",
-                side_effect=mutate_split_during_compute,
+                side_effect=mutate_input_during_compute,
             ),
             pytest.raises(StaleSaliencyUpdateError),
         ):
             base_holder.set_saliency_params({"Gradient": {}})
     finally:
         base_holder.dataset.test_mask = original_test_mask
+        epoch_data.data.flat[0] = original_value
 
     assert record.eval_record is previous_eval_record
 

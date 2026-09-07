@@ -447,11 +447,14 @@ class EvalRecord:
         epoch_data: Any,
         *,
         producer_identity: SaliencyProducerIdentity | None = None,
+        _sealed_epoch_data_fingerprint: str | None = None,
     ) -> SaliencyArtifactContext:
         """Bind a fresh runtime saliency record to one immutable EEG context.
 
         Persisted legacy records are never rebound because doing so would assign
         old class/channel indices using whichever dataset happens to be active.
+        The internal fingerprint is reused only for a fresh result immediately
+        after compute verified its producer; rebinding always reads current data.
         """
         if self.saliency_context is None and self._loaded_from_artifact:
             raise SaliencyContextError(
@@ -461,6 +464,11 @@ class EvalRecord:
         current = self._build_saliency_context(
             epoch_data,
             producer_identity=producer_identity,
+            sealed_epoch_data_fingerprint=(
+                _sealed_epoch_data_fingerprint
+                if self.saliency_context is None
+                else None
+            ),
         )
         if self.saliency_context is None:
             self.saliency_context = current
@@ -499,6 +507,7 @@ class EvalRecord:
         epoch_data: Any,
         *,
         producer_identity: SaliencyProducerIdentity | None,
+        sealed_epoch_data_fingerprint: str | None = None,
     ) -> SaliencyArtifactContext:
         """Build the current EEG identity using the trained output contract."""
         expected_class_count = None
@@ -516,6 +525,7 @@ class EvalRecord:
             epoch_data,
             class_count=expected_class_count,
             producer_identity=producer_identity,
+            sealed_epoch_data_fingerprint=sealed_epoch_data_fingerprint,
         )
 
     def _validate_saliency_context(

@@ -432,6 +432,22 @@ def test_training_refreshes_metrics_before_explicit_saliency_click(
         and visualization.compute_saliency_btn.text() == "Compute Saliency",
         timeout=5_000,
     )
+    selected_run = visualization.run_combo.currentData()
+    render_commit_states = []
+    admit_render = visualization._admit_native_render_commit
+
+    def observe_render_commit(*args):
+        render_commit_states.append(
+            (
+                visualization.saliency_action_bar.isVisible(),
+                visualization.compute_saliency_btn.isEnabled(),
+            )
+        )
+        return admit_render(*args)
+
+    monkeypatch.setattr(
+        visualization, "_admit_native_render_commit", observe_render_commit
+    )
 
     terminal_evaluation_query = evaluation._application_generation
     terminal_visualization_query = visualization.last_application_query
@@ -500,6 +516,15 @@ def test_training_refreshes_metrics_before_explicit_saliency_click(
         assert visualization.tab_map._saliency_coverage == coverage
 
     qtbot.waitUntil(assert_terminal_ui, timeout=20_000)
+    qtbot.waitUntil(
+        lambda: visualization.tab_map.property("renderStatus") == "completed",
+        timeout=10_000,
+    )
+    assert render_commit_states == [(True, False)]
+    assert visualization.run_combo.currentData() == selected_run
+    assert visualization.compute_saliency_btn.isEnabled()
+    assert visualization.grab().save(str(tmp_path / "completed-saliency.png"))
+    assert not visualization.saliency_action_bar.isVisible()
 
     history = training.history_table
     assert history.item(0, 3).text() == "Completed"

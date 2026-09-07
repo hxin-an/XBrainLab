@@ -2,7 +2,7 @@
 
 最後更新：`2026-09-07`
 
-## Active repair — sealed saliency reads and completed-result presentation (#113)
+## Historical implementation notes — sealed saliency reads and completed-result presentation (#113)
 
 - USER-APPROVED RESUME (2026-09-07): finish #113 handoff, then immediately implement the approved
   test cleanup, Filter section-state clarity and Astra-only harness streams without waiting for
