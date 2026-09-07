@@ -3094,7 +3094,6 @@ def test_terminal_saliency_success_settles_staged_settings_before_retraining(
 
     assert panel._pending_saliency_params is None
     assert panel._pending_saliency_target is None
-    assert panel._pending_saliency_method is None
     assert panel._saliency_settings_review_required is False
 
     retrained_publication = replace(

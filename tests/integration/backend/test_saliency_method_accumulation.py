@@ -26,6 +26,7 @@ from XBrainLab.backend.training import (
     TrainingPlanHolder,
 )
 from XBrainLab.backend.training.evaluator import Evaluator
+from XBrainLab.backend.training.record import EvalRecord
 
 
 @pytest.fixture
@@ -81,7 +82,7 @@ def real_saliency_service(tmp_path):
 
 
 def test_real_commands_accumulate_methods_and_keep_last_success_after_failure(
-    real_saliency_service, monkeypatch
+    real_saliency_service, monkeypatch, tmp_path
 ):
     service, holders = real_saliency_service
     study = service.study
@@ -95,14 +96,53 @@ def test_real_commands_accumulate_methods_and_keep_last_success_after_failure(
 
     expected = {"Gradient", "Gradient * Input"}
     baseline_arrays = []
-    for method, params in (
-        ("Gradient", {"profile": "recommended"}),
-        ("SmoothGrad", {"methods": ["SmoothGrad"], "nt_samples": 2, "stdevs": 0.1}),
-        ("SmoothGrad_Squared", {"methods": ["SmoothGrad_Squared"], "nt_samples": 2}),
-        ("VarGrad", {"methods": ["VarGrad"], "nt_samples": 3, "stdevs": 0.2}),
-        ("SmoothGrad", {"methods": ["SmoothGrad"], "nt_samples": 4, "stdevs": 0.3}),
+    baseline_records = []
+    requested_method_sets: list[set[str]] = []
+    fresh_method_sets: list[set[str]] = []
+    original_evaluate = Evaluator.evaluate_with_saliency
+
+    def observe_requested_methods(*args, **kwargs):
+        saliency_params = (
+            kwargs["saliency_params"] if "saliency_params" in kwargs else args[2]
+        )
+        requested_method_sets.append(set(saliency_params["_methods"]))
+        fresh = original_evaluate(*args, **kwargs)
+        fresh_method_sets.append(set(fresh.saliency_method_parameters))
+        return fresh
+
+    monkeypatch.setattr(
+        Evaluator,
+        "evaluate_with_saliency",
+        observe_requested_methods,
+    )
+
+    for method, params, requested_methods in (
+        ("Gradient", {"profile": "recommended"}, {"Gradient", "Gradient * Input"}),
+        (
+            "SmoothGrad",
+            {"methods": ["SmoothGrad"], "nt_samples": 2, "stdevs": 0.1},
+            {"SmoothGrad"},
+        ),
+        (
+            "SmoothGrad_Squared",
+            {"methods": ["SmoothGrad_Squared"], "nt_samples": 2},
+            {"SmoothGrad_Squared"},
+        ),
+        (
+            "VarGrad",
+            {"methods": ["VarGrad"], "nt_samples": 3, "stdevs": 0.2},
+            {"VarGrad"},
+        ),
+        (
+            "SmoothGrad",
+            {"methods": ["SmoothGrad"], "nt_samples": 4, "stdevs": 0.3},
+            {"SmoothGrad"},
+        ),
     ):
+        call_start = len(requested_method_sets)
         publication = compute(method, params)
+        assert requested_method_sets[call_start:] == [requested_methods] * len(holders)
+        assert fresh_method_sets[call_start:] == [requested_methods] * len(holders)
         assert (
             publication.state.visualization.post_training_saliency.phase.value
             == "succeeded"
@@ -112,12 +152,17 @@ def test_real_commands_accumulate_methods_and_keep_last_success_after_failure(
             record = holder.get_plans()[0].get_saliency_eval_record()
             assert set(record.saliency_method_parameters) == expected
             if method == "Gradient":
+                baseline_records.append(record)
                 baseline_arrays.append(
                     {label: values.copy() for label, values in record.gradient.items()}
                 )
             else:
                 for label, values in record.gradient.items():
                     np.testing.assert_array_equal(values, baseline_arrays[index][label])
+                    assert np.shares_memory(
+                        values,
+                        baseline_records[index].gradient[label],
+                    )
             for retained in expected:
                 rendered = service.get_saliency_render(
                     SaliencyRenderRequest(
@@ -139,7 +184,7 @@ def test_real_commands_accumulate_methods_and_keep_last_success_after_failure(
     ]
     assert prior_records[0].saliency_method_parameters["SmoothGrad"]["nt_samples"] == 4
     assert prior_records[0].saliency_method_parameters["VarGrad"]["nt_samples"] == 3
-    evaluate = Evaluator.evaluate_with_saliency
+    evaluate = original_evaluate
     calls = 0
 
     def fail_second_fold(*args, **kwargs):
@@ -162,6 +207,13 @@ def test_real_commands_accumulate_methods_and_keep_last_success_after_failure(
         record = holder.get_plans()[0].get_saliency_eval_record()
         assert set(record.saliency_method_parameters) == expected
         assert record.saliency_method_parameters["SmoothGrad"]["nt_samples"] == 5
+    export_path = tmp_path / "merged-methods"
+    record.export(str(export_path))
+    loaded = EvalRecord.load(str(export_path))
+    assert loaded is not None
+    assert set(loaded.saliency_method_parameters) == expected
+    assert set(loaded.smoothgrad) == {0, 1, 2, 3}
+    assert set(loaded.vargrad) == {0, 1, 2, 3}
 
 
 @pytest.mark.parametrize("cancel", [False, True])

@@ -1196,6 +1196,13 @@ class TrainingPlanHolder:
                         producer_identity=producer_identity,
                         _sealed_epoch_data_fingerprint=epoch_fingerprint,
                     )
+                    recomputed_methods = Evaluator._selected_saliency_methods(
+                        plan.saliency_params
+                    )
+                    eval_record.retain_compatible_saliency_methods(
+                        previous_eval_record,
+                        recomputed_methods=recomputed_methods,
+                    )
                 else:
                     eval_record = Evaluator.evaluate(
                         target,

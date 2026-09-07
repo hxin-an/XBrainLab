@@ -483,7 +483,13 @@ taxonomy 都以這套 Data Interpretation command sequence 作為產品資料入
   generation 或所捕捉的 result identity 不符時不得發布。資料流程變更由正式 Command API 的
   既有 mutation boundary 阻擋或取消工作；設定未來訓練不修改目前 holder 的 model/options。
   Saliency Settings 只暫存待套用參數，重新開啟仍顯示該草稿；Compute／Recompute 才提交。
-  每批累加新選與已完成方法，同方法僅保存最新成功結果，不建立歷史版本。正在計算時
+  每批只執行草稿／已套用設定指定的方法；初次未設定時使用Gradient與Gradient × Input。
+  所有已完成subject／fold／run共用本次選擇，顯示中的Method不覆蓋設定。
+  每個新EvalRecord在既有publication之前合併相容的未選方法，直接重用其封存陣列與
+  method參數／noise seed／manifest entries，不重算或重掃舊payload；只重建合併manifest的
+  metadata digest。所選方法必須有完整新輸出，不能拿舊結果補缺。跨fold只pool該方法
+  參數一致的結果，不把最近一次job設定當成所有保留方法的參數。
+  同方法僅保存最新成功結果，不建立歷史版本。正在計算時
   新命令由既有 configuration admission 拒絕，不取消原工作或改走同步重算。
   UI 以當次 operation/generation 接受進度與完成，不將自己的 publication 當成設定過期。
   失敗／取消保留先前結果與重試設定；計算完成後的繪圖失敗不改寫計算成功狀態。

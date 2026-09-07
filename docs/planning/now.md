@@ -4,9 +4,12 @@
 
 ## Next — PR review, then computational cleanup
 
-- #113 的 ef399c9f 手測未通過，不能沿用其驗收。設定／重算一致性修正後，先完成候選版
-  同源工程 gates，再手測「baseline → 新增進階方法 → 改參數／重算」，確認所有完成的
-  subject/fold 保留各方法最新成功結果；失敗／取消保留舊結果，繪圖失敗不冒充計算失敗。
+- #113 的 e8e90b6b 手測發現只選SmoothGrad仍重算舊方法，不能沿用其工程通過作為驗收。
+  已移除request-union／參數回填與display-driven設定覆蓋，改由既有EvalRecord保留相容
+  未選結果；current contract見docs/current.md與docs/architecture/backend.md。
+  先完成新候選版同源工程gates，再手測「baseline → 只選SmoothGrad → 改參數／重算」，
+  確認進度只列所選方法、所有完成subject/fold仍可看既有結果；切換顯示方法不改計算設定。
+  失敗／取消保留舊結果，繪圖失敗不冒充計算失敗。
   同時重測訓練其他 fold 時開啟已完成 Evaluation 的模型摘要。沒有新的 merge 批准。
 - 先完成#113同版工程驗證、使用者手測與明確merge批准；等#113關閉後，才開始review既有
   #114 harness、#115 Filter、#116測試清理，並比對#111與#113是否重疊。交付手測不代表可

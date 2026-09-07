@@ -38,8 +38,8 @@ from XBrainLab.backend.application.resource_preflight import (
 )
 from XBrainLab.backend.application.results import ChangedState, CommandResult
 from XBrainLab.backend.application.saliency_policy import (
+    baseline_saliency_params,
     is_recommended_saliency_method,
-    recommended_saliency_params_for_method,
     saliency_command_params_from_configured,
     selected_saliency_methods_from_params,
 )
@@ -298,7 +298,6 @@ class VisualizationPanel(BasePanel):
         self._saliency_compute_attempted: set[tuple[object, ...]] = set()
         self._pending_saliency_params: dict[str, object] | None = None
         self._pending_saliency_target: _SaliencySettingsTarget | None = None
-        self._pending_saliency_method: str | None = None
         self._saliency_settings_review_required = False
         self._saliency_settings_review_detail = ""
         self._active_saliency_operation_id: str | None = None
@@ -2184,8 +2183,8 @@ class VisualizationPanel(BasePanel):
             )
             return InteractionOutcome.blocked(_SALIENCY_SETTINGS_REVIEW_TITLE)
 
+        params = self._effective_saliency_params()
         method_name = self._saliency_compute_method_name()
-        params = self._effective_saliency_params(method_name)
         methods = params.get("methods")
         methods_key = tuple(methods) if isinstance(methods, (list, tuple, set)) else ()
         started = self._start_saliency_compute(
@@ -2295,16 +2294,7 @@ class VisualizationPanel(BasePanel):
         self._saliency_settings_review_required = False
         self._saliency_settings_review_detail = ""
         self._saliency_compute_attempted.clear()
-        selected_methods = selected_saliency_methods_from_params(params)
-        selected_method = next(
-            (method for method in all_saliency_methods if method in selected_methods),
-            (
-                self.method_combo.currentText()
-                if self.method_combo.currentText() in all_saliency_methods
-                else "Gradient"
-            ),
-        )
-        self._pending_saliency_method = selected_method
+        selected_method = self._saliency_compute_method_name()
         self._show_saliency_action_bar(
             selected_method,
             self._current_saliency_coverage.get(selected_method),
@@ -2359,7 +2349,7 @@ class VisualizationPanel(BasePanel):
                 status.methods
                 if self._saliency_status_matches_active_operation(status)
                 else selected_saliency_methods_from_params(
-                    self._effective_saliency_params(method_name)
+                    self._effective_saliency_params()
                 )
             )
             detail = (
@@ -2382,8 +2372,10 @@ class VisualizationPanel(BasePanel):
             self.saliency_action_title.setText("Advanced saliency not computed")
             detail = f"{method_name} uses default noise settings. Adjust in Settings."
         self.saliency_action_detail.setText(detail)
-        params = self._effective_saliency_params(method_name)
-        self.compute_saliency_btn.setProperty("saliencyMethod", method_name)
+        params = self._effective_saliency_params()
+        self.compute_saliency_btn.setProperty(
+            "saliencyMethod", self._saliency_compute_method_name()
+        )
         self.compute_saliency_btn.setProperty("saliencyParameters", params)
         self.compute_saliency_btn.setProperty(
             "saliencyNormalize",
@@ -2619,6 +2611,9 @@ class VisualizationPanel(BasePanel):
             started = execute_application_command_async(
                 self,
                 SaliencyCommand(
+                    # This representative method is derived from params, not
+                    # the visible result selector, so normalization cannot
+                    # receive conflicting compute intent.
                     method=method_name,
                     params=dict(params),
                     resource_preflight_confirmed=resource_preflight_confirmed,
@@ -3256,7 +3251,6 @@ class VisualizationPanel(BasePanel):
         """Release settings after their matching compute succeeds."""
         self._pending_saliency_params = None
         self._pending_saliency_target = None
-        self._pending_saliency_method = None
         self._saliency_settings_review_required = False
         self._saliency_settings_review_detail = ""
 
@@ -3272,7 +3266,6 @@ class VisualizationPanel(BasePanel):
         self._clear_active_saliency_operation()
         self._pending_saliency_params = None
         self._pending_saliency_target = None
-        self._pending_saliency_method = None
         self._saliency_settings_review_required = True
         self._saliency_settings_review_detail = detail
         self._saliency_summary_dirty = True
@@ -3517,41 +3510,20 @@ class VisualizationPanel(BasePanel):
         """Return the staged settings without exposing mutable dialog state."""
         return deepcopy(self._pending_saliency_params)
 
-    def _effective_saliency_params(self, method_name: str) -> dict[str, object]:
-        """Return the exact settings represented by the visible compute action."""
-        params = dict(
-            self.pending_saliency_params or self._configured_saliency_params()
-        )
-        configured_methods = (
-            selected_saliency_methods_from_params(params) if params else set()
-        )
-        if not params or method_name not in configured_methods:
-            return recommended_saliency_params_for_method(method_name)
-        return params
+    def _effective_saliency_params(self) -> dict[str, object]:
+        """Return compute settings independently of the rendered result selector."""
+        if self._pending_saliency_params is not None:
+            return deepcopy(self._pending_saliency_params)
+        configured = self._configured_saliency_params()
+        return deepcopy(configured) if configured else baseline_saliency_params()
 
     def _saliency_compute_method_name(self) -> str:
-        """Resolve compute intent without admitting it to the render selector."""
-        if self._pending_saliency_method in all_saliency_methods:
-            return cast(str, self._pending_saliency_method)
-        visible_method = (
-            self.method_combo.currentText() if hasattr(self, "method_combo") else ""
+        """Return a label for the configured compute selection only."""
+        configured_methods = selected_saliency_methods_from_params(
+            self._effective_saliency_params()
         )
-        if visible_method in all_saliency_methods:
-            return visible_method
-        configured = self._configured_saliency_params()
-        configured_methods = selected_saliency_methods_from_params(configured)
-        configured_method = next(
-            (method for method in all_saliency_methods if method in configured_methods),
-            None,
-        )
-        if configured_method is not None:
-            return configured_method
         return next(
-            (
-                method
-                for method in all_saliency_methods
-                if method in self._current_saliency_coverage
-            ),
+            (method for method in all_saliency_methods if method in configured_methods),
             "Gradient",
         )
 

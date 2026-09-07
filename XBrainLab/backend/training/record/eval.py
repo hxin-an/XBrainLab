@@ -21,6 +21,7 @@ from ..saliency_artifact_integrity import (
     SaliencyIntegrityDiagnostic,
     SaliencyIntegrityReason,
     build_saliency_artifact_manifest,
+    compose_saliency_artifact_manifest,
     verify_saliency_artifact_manifest,
 )
 from ..saliency_provenance import (
@@ -205,6 +206,11 @@ class EvalRecord:
     _smoothgrad: dict
     _smoothgrad_sq: dict
     _vargrad: dict
+    _saliency_result_sealed: bool
+    _saliency_context_error: str | None
+    _saliency_context_missing: bool
+    _saliency_integrity_error: SaliencyArtifactIntegrityError | None
+    _saliency_integrity_manifest: Mapping[str, object] | None
 
     def __setattr__(self, name: str, value: object) -> None:
         if name in _SEALED_RESULT_FIELDS and getattr(
@@ -647,6 +653,72 @@ class EvalRecord:
             )
         self._freeze_verified_saliency_result(detached_stores, manifest)
         return manifest
+
+    def retain_compatible_saliency_methods(
+        self,
+        previous: EvalRecord,
+        *,
+        recomputed_methods: set[str],
+    ) -> None:
+        """Retain compatible sealed methods while replacing requested methods.
+
+        Fresh evaluator output is authoritative for every requested method.  Old
+        immutable buffers are reused only for other methods from the same
+        evaluation identity, so a partial fresh result can never be masked by
+        previous output.
+        """
+        if not recomputed_methods:
+            return
+        if not self._saliency_result_sealed:
+            raise SaliencyContextError("Fresh saliency output is not sealed.")
+        fresh_manifest = self._saliency_integrity_manifest
+        if (
+            not isinstance(fresh_manifest, dict)
+            or set(fresh_manifest.get("methods", ())) != recomputed_methods
+        ):
+            raise SaliencyContextError(
+                "Fresh saliency output does not cover exactly the requested methods."
+            )
+        if not previous._saliency_result_sealed:
+            return
+        if (
+            self.saliency_context is None
+            or previous.saliency_context != self.saliency_context
+            or previous.evaluation_split != self.evaluation_split
+            or previous._saliency_context_error is not None
+            or previous._saliency_integrity_error is not None
+        ):
+            return
+        retained_manifest = previous._saliency_integrity_manifest
+        if not isinstance(retained_manifest, dict) or fresh_manifest.get(
+            "runtime_contract"
+        ) != retained_manifest.get("runtime_contract"):
+            return
+        if not set(retained_manifest.get("methods", ())).difference(recomputed_methods):
+            return
+
+        fresh_stores = {
+            method: cast(Mapping[object, np.ndarray], getattr(self, f"_{attribute}"))
+            for method, attribute in SALIENCY_METHOD_STORE_NAMES.items()
+        }
+        retained_stores = {
+            method: cast(
+                Mapping[object, np.ndarray], getattr(previous, f"_{attribute}")
+            )
+            for method, attribute in SALIENCY_METHOD_STORE_NAMES.items()
+        }
+        stores = {
+            method: dict(fresh_stores[method])
+            if method in recomputed_methods
+            else dict(retained_stores[method])
+            for method in SALIENCY_METHOD_STORE_NAMES
+        }
+        manifest = compose_saliency_artifact_manifest(
+            fresh_manifest,
+            retained_manifest,
+            recomputed_methods=recomputed_methods,
+        )
+        self._freeze_verified_saliency_result(stores, manifest)
 
     def _freeze_verified_saliency_result(
         self,

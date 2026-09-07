@@ -530,7 +530,19 @@ def _validated_method_shape(
     attribute = SALIENCY_METHOD_ATTRIBUTES[method]
     expected_keys: tuple[object, ...] | None = None
     trailing_shape: tuple[int, int] | None = None
+    expected_parameters: object | None = None
     for record in records:
+        method_parameters = getattr(record, "saliency_method_parameters", None)
+        if (
+            not isinstance(method_parameters, Mapping)
+            or method not in method_parameters
+        ):
+            return None
+        parameters = method_parameters[method]
+        if expected_parameters is None:
+            expected_parameters = parameters
+        elif parameters != expected_parameters:
+            return None
         store = getattr(record, attribute, None)
         if not isinstance(store, Mapping) or not store:
             return None
@@ -598,7 +610,6 @@ def _validate_saliency_cross_fold_choice(
     epoch_data_items: list[Any] = []
     source_splits: set[str] = set()
     repeats: set[int] = set()
-    saliency_params: list[dict[str, Any]] = []
     for member in members:
         holder, run = _holder_and_run(indexed_plans, member)
         repeat = getattr(run, "repeat", None)
@@ -624,17 +635,8 @@ def _validate_saliency_cross_fold_choice(
         records.append(record)
         contexts.append(context)
         epoch_data_items.append(epoch_data)
-        params_getter = getattr(holder, "get_saliency_params", None)
-        params = (
-            params_getter()
-            if callable(params_getter)
-            else getattr(holder, "saliency_params", {})
-        )
-        saliency_params.append(dict(params) if isinstance(params, Mapping) else {})
     if len(repeats) != 1 or len(source_splits) != 1:
         raise ValueError("cross-fold run identity differs")
-    if any(params != saliency_params[0] for params in saliency_params[1:]):
-        raise ValueError("cross-fold saliency settings differ")
     axis_identities = {_context_axis_identity(context) for context in contexts}
     if len(axis_identities) != 1:
         raise ValueError("cross-fold EEG axes differ")

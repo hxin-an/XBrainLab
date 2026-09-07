@@ -80,6 +80,7 @@ class _Record:
         self.smoothgrad = {}
         self.smoothgrad_sq = {}
         self.vargrad = {}
+        self.saliency_method_parameters = {"Gradient": {}}
         self.saliency_context = SimpleNamespace(epoch_data_fingerprint="epoch-data")
         self._expected_producer: object | None = None
         self.validation_calls = 0
@@ -259,6 +260,25 @@ def test_cross_fold_choices_require_matching_verified_runs_and_split() -> None:
         == ()
     )
     assert build_saliency_cross_fold_choices(_fold_holders(second_repeat=1)) == ()
+
+
+def test_cross_fold_choices_exclude_only_retained_methods_with_differing_parameters() -> (
+    None
+):
+    holders = _fold_holders()
+    for holder, nt_samples in zip(holders, (2, 3), strict=True):
+        record = holder.get_plans()[0].record
+        record.smoothgrad = dict(record.gradient)
+        record.saliency_method_parameters["SmoothGrad"] = {
+            "nt_samples": nt_samples,
+            "nt_samples_batch_size": None,
+            "stdevs": 0.1,
+        }
+
+    choices = build_saliency_cross_fold_choices(holders)
+
+    assert len(choices) == 1
+    assert choices[0].methods == ("Gradient",)
 
 
 def test_cross_fold_saliency_keeps_appended_training_rounds_separate() -> None:

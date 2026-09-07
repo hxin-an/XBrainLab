@@ -41,6 +41,10 @@ from XBrainLab.backend.application.evaluation_render import (
     EvaluationSummaryIdentity,
 )
 from XBrainLab.backend.application.runtime import get_application_service
+from XBrainLab.backend.application.saliency_policy import (
+    selected_saliency_methods_from_params,
+)
+from XBrainLab.backend.saliency_methods import all_saliency_methods
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training.training_plan import TrainingPlanHolder
 from XBrainLab.backend.training_state_contract import (
@@ -569,18 +573,30 @@ def test_settings_recompute_keeps_completed_methods_and_reports_actual_work(
         return render_figure(render_fn, **kwargs)
 
     monkeypatch.setattr(panel.tab_map, "_render_figure_async", controlled_render)
-    expected = {"Gradient", "Gradient * Input"}
+    expected_results = {"Gradient", "Gradient * Input"}
     selected_run = panel.run_combo.currentData()
-    for method in (None, "SmoothGrad", "SmoothGrad_Squared", "VarGrad"):
+    settings_sequence = (
+        (None, None, None),
+        ("SmoothGrad", 2, 0.1),
+        ("SmoothGrad_Squared", 2, 0.1),
+        ("VarGrad", 2, 0.1),
+        ("SmoothGrad", 3, 0.2),
+    )
+    for method, nt_samples, stdevs in settings_sequence:
+        interruption_case = method == "SmoothGrad" and nt_samples == 2
         if method is not None:
 
-            def accept_settings(method=method):
+            def accept_settings(
+                method=method,
+                nt_samples=nt_samples,
+                stdevs=stdevs,
+            ):
                 dialog = QApplication.activeModalWidget()
                 assert isinstance(dialog, SaliencySettingDialog)
                 for name, checkbox in dialog.method_checks.items():
                     checkbox.setChecked(name == method)
-                dialog.param_editors[method]["nt_samples"].setValue(2)
-                dialog.param_editors[method]["stdevs"].setValue(0.1)
+                dialog.param_editors[method]["nt_samples"].setValue(nt_samples)
+                dialog.param_editors[method]["stdevs"].setValue(stdevs)
                 qtbot.mouseClick(
                     dialog.button_box.button(QDialogButtonBox.StandardButton.Ok),
                     Qt.MouseButton.LeftButton,
@@ -592,15 +608,17 @@ def test_settings_recompute_keeps_completed_methods_and_reports_actual_work(
             assert {
                 panel.method_combo.itemText(i)
                 for i in range(panel.method_combo.count())
-            } == expected
+            } == expected_results
             staged = dict(panel._pending_saliency_params)
 
-            def cancel_settings(method=method):
+            def cancel_settings(method=method, nt_samples=nt_samples):
                 dialog = QApplication.activeModalWidget()
                 assert isinstance(dialog, SaliencySettingDialog)
                 try:
                     assert dialog.method_checks[method].isChecked()
-                    assert dialog.param_editors[method]["nt_samples"].value() == 2
+                    assert (
+                        dialog.param_editors[method]["nt_samples"].value() == nt_samples
+                    )
                 finally:
                     dialog.reject()
 
@@ -609,7 +627,7 @@ def test_settings_recompute_keeps_completed_methods_and_reports_actual_work(
             assert panel._pending_saliency_params == staged
             panel.on_update()
             assert panel.saliency_action_bar.isVisible()
-            if interruption is None and method == "SmoothGrad":
+            if interruption is None and interruption_case:
 
                 def assert_action_text_fits():
                     title = panel.saliency_action_title
@@ -624,7 +642,7 @@ def test_settings_recompute_keeps_completed_methods_and_reports_actual_work(
 
                 qtbot.waitUntil(assert_action_text_fits, timeout=2_000)
                 assert panel.grab().save(str(tmp_path / "saliency-settings-staged.png"))
-            expected.add(method)
+            expected_results.add(method)
         previous_generation = (
             study.training_manager.get_post_training_saliency_status().generation
         )
@@ -634,14 +652,28 @@ def test_settings_recompute_keeps_completed_methods_and_reports_actual_work(
             qtbot.mouseClick(panel.compute_saliency_btn, Qt.MouseButton.LeftButton)
             qtbot.waitUntil(held.is_set, timeout=10_000)
             assert not panel.compute_saliency_btn.isEnabled()
-            if method is not None:
-                assert method in panel.saliency_action_detail.text()
-            if interruption is None and method == "SmoothGrad":
+            expected_job_methods = (
+                {"Gradient", "Gradient * Input"} if method is None else {method}
+            )
+            running_status = study.training_manager.get_post_training_saliency_status()
+            assert set(running_status.methods) == expected_job_methods
+            progress_detail = panel.saliency_action_detail.text()
+            expected_progress = (
+                "Computing "
+                + ", ".join(
+                    selected_method
+                    for selected_method in all_saliency_methods
+                    if selected_method in expected_job_methods
+                )
+                + " in the background."
+            )
+            assert progress_detail == expected_progress
+            if interruption is None and interruption_case:
                 qtbot.waitUntil(assert_action_text_fits, timeout=2_000)
                 assert panel.grab().save(
                     str(tmp_path / "saliency-settings-computing.png")
                 )
-            if method == "SmoothGrad" and interruption:
+            if interruption_case and interruption:
                 if interruption == "failure":
                     fail_compute.set()
                 elif interruption == "cancel":
@@ -653,7 +685,7 @@ def test_settings_recompute_keeps_completed_methods_and_reports_actual_work(
         finally:
             release.set()
 
-        if method == "SmoothGrad" and interruption == "render_failure":
+        if interruption_case and interruption == "render_failure":
             qtbot.waitUntil(
                 lambda: not panel._saliency_compute_in_progress, timeout=10_000
             )
@@ -670,7 +702,7 @@ def test_settings_recompute_keeps_completed_methods_and_reports_actual_work(
                 for holder in study.training_manager.trainer.get_training_plan_holders()
                 for record in holder.get_plans()
             )
-        elif method == "SmoothGrad" and interruption:
+        elif interruption_case and interruption:
             qtbot.waitUntil(
                 lambda: not panel._saliency_compute_in_progress, timeout=10_000
             )
@@ -679,7 +711,7 @@ def test_settings_recompute_keeps_completed_methods_and_reports_actual_work(
             assert {
                 panel.method_combo.itemText(i)
                 for i in range(panel.method_combo.count())
-            } == expected - {method}
+            } == expected_results - {method}
             assert bool(failures) == (interruption == "failure")
             failures.clear()
             fail_compute.clear()
@@ -691,16 +723,23 @@ def test_settings_recompute_keeps_completed_methods_and_reports_actual_work(
             finally:
                 release.set()
 
-        def assert_current_result(previous_generation=previous_generation):
+        expected_job_methods = (
+            {"Gradient", "Gradient * Input"} if method is None else {method}
+        )
+
+        def assert_current_result(
+            previous_generation=previous_generation,
+            expected_job_methods=expected_job_methods,
+        ):
             assert not failures, failures
             status = study.training_manager.get_post_training_saliency_status()
             assert status.generation > previous_generation
             assert status.phase is PostTrainingSaliencyPhase.SUCCEEDED
-            assert set(status.methods) == expected
+            assert set(status.methods) == expected_job_methods
             assert {
                 panel.method_combo.itemText(i)
                 for i in range(panel.method_combo.count())
-            } == expected
+            } == expected_results
             assert panel.tab_map.property("renderStatus") == "completed"
             assert not panel._saliency_compute_in_progress
             assert not panel.saliency_action_bar.isVisible()
@@ -708,6 +747,51 @@ def test_settings_recompute_keeps_completed_methods_and_reports_actual_work(
         qtbot.waitUntil(assert_current_result, timeout=20_000)
         assert panel.method_combo.currentText() == "Gradient"
         assert panel.run_combo.currentData() == selected_run
+        if interruption is None and interruption_case:
+            # Gradient remains the displayed retained result, but a later
+            # Recompute action must still derive compute intent from the
+            # applied SmoothGrad settings.
+            assert panel.pending_saliency_params is None
+            assert panel._saliency_compute_method_name() == "SmoothGrad"
+            assert selected_saliency_methods_from_params(
+                panel._effective_saliency_params()
+            ) == {"SmoothGrad"}
+            repeated_generation = (
+                study.training_manager.get_post_training_saliency_status().generation
+            )
+            held.clear()
+            release.clear()
+            try:
+                outcome = panel.compute_saliency()
+                assert outcome.status.value == "accepted"
+                qtbot.waitUntil(held.is_set, timeout=10_000)
+                running_status = (
+                    study.training_manager.get_post_training_saliency_status()
+                )
+                assert set(running_status.methods) == {"SmoothGrad"}
+                assert "SmoothGrad" in panel.saliency_action_detail.text()
+                assert "Gradient * Input" not in panel.saliency_action_detail.text()
+            finally:
+                release.set()
+
+            def assert_recomputed_applied_settings(
+                repeated_generation=repeated_generation,
+            ):
+                status = study.training_manager.get_post_training_saliency_status()
+                assert status.generation > repeated_generation
+                assert status.phase is PostTrainingSaliencyPhase.SUCCEEDED
+                assert set(status.methods) == {"SmoothGrad"}
+                assert {
+                    panel.method_combo.itemText(i)
+                    for i in range(panel.method_combo.count())
+                } == expected_results
+                assert panel.tab_map.property("renderStatus") == "completed"
+                assert not panel._saliency_compute_in_progress
+
+            qtbot.waitUntil(assert_recomputed_applied_settings, timeout=20_000)
+            assert panel.grab().save(
+                str(tmp_path / "saliency-smoothgrad-recompute.png")
+            )
         assert panel.grab().save(str(tmp_path / f"saliency-{method or 'baseline'}.png"))
 
 
