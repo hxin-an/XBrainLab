@@ -211,9 +211,11 @@ def test_native_shard_exit_reports_signal_and_rejects_completion(
     captured = capfd.readouterr()
     assert execution.return_code == 2
     assert execution.attestation is None
-    assert "Test shard exited from" in captured.err
     if os.name == "posix":
+        assert "Test shard exited from" in captured.err
         assert "SIGABRT" in captured.err
+    else:
+        assert "Fatal Python error: Aborted" in captured.err
     assert "completion attestation was not produced" in captured.err
 
 
