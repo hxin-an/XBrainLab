@@ -286,10 +286,9 @@ def _required_pytest_command(
     ]
     for marker in PYTEST_ALLOWED_SKIP_MARKERS:
         command.extend(("--allow-skip-marker", marker))
-    command.append("--")
     if faulthandler_timeout is not None:
-        command.extend(("-o", f"faulthandler_timeout={faulthandler_timeout}"))
-    command.extend(args)
+        command.extend(("--faulthandler-timeout", str(faulthandler_timeout)))
+    command.extend(("--", *args))
     return command
 
 

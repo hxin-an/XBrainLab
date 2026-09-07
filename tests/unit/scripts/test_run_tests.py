@@ -142,6 +142,24 @@ def test_generic_runner_explicitly_allows_only_optional_public_fixture_skips() -
     ]
 
 
+def test_successful_shard_attests_logical_args_not_diagnostic_options(
+    tmp_path: Path,
+) -> None:
+    """Runner-only pytest diagnostics cannot alter completion identity."""
+    test_file = tmp_path / "test_success.py"
+    test_file.write_text(
+        "def test_passes():\n    assert True\n",
+        encoding="utf-8",
+    )
+    args = ("-q", str(test_file))
+
+    execution = run_tests.run_pytest_attested(args)
+
+    assert execution.return_code == 0
+    assert execution.attestation is not None
+    assert execution.attestation["command_args"] == list(args)
+
+
 def test_shard_timeout_emits_pre_timeout_python_stack(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
