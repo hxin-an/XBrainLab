@@ -1,11 +1,11 @@
 ---
 name: performance-resource-reviewer
-description: "Use for XBrainLab latency, memory, GPU/VRAM, cache, long jobs, Qt responsiveness, WSL stability, and scan cost. Do not use without measurements."
+description: "Use for XBrainLab latency, memory, GPU/VRAM, cache, long jobs, Qt responsiveness, WSL stability, and scan cost. Do not recommend optimization without a measured baseline."
 ---
 
 # Performance and Resource Reviewer
 
-Require a measured bottleneck before recommending optimization.
+Measure the bottleneck before recommending optimization.
 
 ## Workflow
 
@@ -20,8 +20,8 @@ Require a measured bottleneck before recommending optimization.
 
 ## Decision rules
 
-- Prefer batching, bounded caches, lazy loading, cancellation, and lifecycle fixes before native
-  rewrites.
+- Remove measured redundant work in existing owners first; add caches, workers or native rewrites
+  only when the workload and lifecycle justify them.
 - Do not move work off the UI thread without defining publication and shutdown ownership.
 - Include model/dataset cache location and cleanup in resource claims.
 - A faster path that changes EEG semantics or output quality is not an optimization win.

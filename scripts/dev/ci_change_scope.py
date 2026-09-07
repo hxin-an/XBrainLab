@@ -16,7 +16,6 @@ class ChangeScope:
     agent_guidance: bool
 
 
-GUIDANCE_SUPPORT_PATHS = frozenset({"docs/planning/now.md"})
 GUIDANCE_EXACT_PATHS = frozenset(
     {
         "AGENTS.md",
@@ -59,10 +58,6 @@ def _is_guidance_core_path(path: str) -> bool:
     return path in GUIDANCE_EXACT_PATHS or path.startswith(".agents/")
 
 
-def _is_guidance_path(path: str) -> bool:
-    return path in GUIDANCE_SUPPORT_PATHS or _is_guidance_core_path(path)
-
-
 def _is_documentation_path(path: str) -> bool:
     return path in DOCUMENTATION_EXACT_PATHS or _has_prefix(
         path, DOCUMENTATION_PREFIXES
@@ -79,9 +74,10 @@ def classify_changed_paths(paths: Iterable[str]) -> ChangeScope:
     if not changed_paths:
         return ChangeScope(product=True, ui_visual=True, agent_guidance=False)
 
-    if all(_is_guidance_path(path) for path in changed_paths) and any(
-        _is_guidance_core_path(path) for path in changed_paths
-    ):
+    if all(
+        _is_guidance_core_path(path) or _is_documentation_path(path)
+        for path in changed_paths
+    ) and any(_is_guidance_core_path(path) for path in changed_paths):
         return ChangeScope(product=False, ui_visual=False, agent_guidance=True)
 
     if all(_is_documentation_path(path) for path in changed_paths):
