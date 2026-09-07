@@ -573,6 +573,10 @@ def test_assistant_dock_restores_product_width_across_states_and_reopens(
     ):
         _click(qtbot, test_app.ai_btn)
         assert dock.isVisible()
+        qtbot.waitUntil(
+            lambda: dock.width() == 420 and panel.width() == 420,
+            timeout=2_000,
+        )
         assert dock.width() == 420
         assert panel.width() == 420
 
@@ -604,6 +608,10 @@ def test_assistant_dock_restores_product_width_across_states_and_reopens(
             assert dock.isHidden()
             _click(qtbot, test_app.ai_btn)
             assert dock.isVisible()
+            qtbot.waitUntil(
+                lambda: dock.width() == 420 and panel.width() == 420,
+                timeout=2_000,
+            )
             assert dock.width() == 420
             assert panel.width() == 420
 

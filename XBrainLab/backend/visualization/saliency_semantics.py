@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 from matplotlib import colormaps
@@ -24,7 +24,7 @@ def mean_saliency_over_trials(
 ) -> np.ndarray:
     """Aggregate trials with a stable accumulator without copying the tensor."""
     source = np.abs(values) if absolute else values
-    return np.mean(source, axis=0, dtype=np.float64)
+    return cast(np.ndarray, np.mean(source, axis=0, dtype=np.float64))
 
 
 def attribution_colormap(name: str) -> Colormap:

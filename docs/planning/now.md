@@ -4,14 +4,14 @@
 
 ## Active — Assistant production-RAG baseline and prompt cleanup
 
-- Evidence: evaluator/exporter call the product assembler but omit ProcessRAGRetrieverLifecycle;
-  their historical scores do not certify production RAG. Establish a versioned RAG-enabled baseline
-  before changing prompt semantics. Preserve all frozen English case files, expected values and scorer.
+- Original evidence: evaluator/exporter omitted ProcessRAGRetrieverLifecycle, so historical scores
+  did not certify production RAG. A versioned real-RAG baseline now precedes the semantic changes.
+  Preserve all frozen English case files, expected values and scorer.
 - First slice reuses the existing process lifecycle and assembler in evaluator/exporter only. Derive
   allowed tools from backend publication, retain actual encoded context and degraded/empty status,
   then capture LocalBackend's final template and budget decisions. Do not construct a second
   retriever policy, command owner, receipt authority or synthetic successful trajectory.
-- Complexity review: evaluator-only wiring is approximately 400 added script lines across two CLI
+- Complexity review: evaluator-only wiring is approximately 500 added script lines across two CLI
   consumers, justified by shared lifecycle wait/evidence, same-turn recovery reuse and real
   clarification-turn context. It removes duplicate assembler construction, adds no product owner,
   and is committed separately from the deletion slice. Do not split off missing trajectory coverage
@@ -38,8 +38,8 @@
 
 ## CI integration
 
-- #117 guidance and #118 quality/routing are merged. #119 runner diagnostics is in exact-head CI;
-  integrate its successful main result before freezing Assistant candidate evidence. Preserve dirty
+- #117 guidance, #118 quality/routing and #119 runner diagnostics are merged after exact-head CI.
+  Assistant integrates their main result before freezing candidate evidence. Preserve dirty
   root/replay work and shared environments. No product UI change is authorized by the CI slices.
 - Inspect historical debug-domain timeout and macOS native exit -11 evidence; causes remain unproven.
   Later passes are not fixes. Select deterministic, relevant checks and reuse same-source CI evidence;

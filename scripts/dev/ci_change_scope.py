@@ -32,6 +32,7 @@ DOCUMENTATION_EXACT_PATHS = frozenset(
         "artifacts/README.md",
         "mkdocs.yml",
         "mkdocs.user.yml",
+        ".github/workflows/docs-pages.yml",
         "scripts/dev/build_docs_portal.py",
         "tests/unit/scripts/test_build_docs_portal.py",
     }
