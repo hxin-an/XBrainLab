@@ -405,7 +405,7 @@ jobs:
           - platform-core-contracts
           - platform-product-lifecycle
     env:
-      QT_QPA_PLATFORM: ${{ runner.os == 'Windows' && 'windows' || 'offscreen' }}
+      QT_QPA_PLATFORM: ${{ matrix.os == 'windows-latest' && 'windows' || 'offscreen' }}
       XBL_SHARED_CI_RUNNER: "1"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
