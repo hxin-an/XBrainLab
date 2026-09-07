@@ -657,6 +657,7 @@ class SaliencyArtifactContext:
         *,
         class_count: int | None = None,
         producer_identity: SaliencyProducerIdentity,
+        sealed_epoch_data_fingerprint: str | None = None,
     ) -> SaliencyArtifactContext:
         """Capture EEG axes and the exact producer identity of active data."""
         if epoch_data is None:
@@ -724,7 +725,11 @@ class SaliencyArtifactContext:
             epoch_end_seconds=epoch_end,
             epoch_sample_count=sample_count,
             montage_fingerprint=_read_montage_fingerprint(epoch_data, channel_names),
-            epoch_data_fingerprint=fingerprint_saliency_epoch_data(epoch_data),
+            epoch_data_fingerprint=(
+                sealed_epoch_data_fingerprint
+                if sealed_epoch_data_fingerprint is not None
+                else fingerprint_saliency_epoch_data(epoch_data)
+            ),
             producer_identity=producer_identity,
         )
 

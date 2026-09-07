@@ -112,7 +112,6 @@ class PostTrainingSaliencyTarget:
     finished_runs_after: int
     append: bool
     explicit: bool = False
-    selected_members: tuple[tuple[int, int], ...] | None = None
     _command_completed: Event = field(
         default_factory=Event,
         init=False,
@@ -145,32 +144,6 @@ class PostTrainingSaliencyTarget:
             raise TypeError("append must be a boolean")
         if not isinstance(self.explicit, bool):
             raise TypeError("explicit must be a boolean")
-        members = self.selected_members
-        if members is not None:
-            if not self.explicit or self.append:
-                raise ValueError(
-                    "selected saliency members require an explicit replacement target"
-                )
-            if not isinstance(members, tuple) or not members:
-                raise ValueError("selected saliency members must be a non-empty tuple")
-            for member in members:
-                if (
-                    not isinstance(member, tuple)
-                    or len(member) != 2
-                    or any(
-                        isinstance(value, bool)
-                        or not isinstance(value, int)
-                        or value < 0
-                        for value in member
-                    )
-                ):
-                    raise TypeError(
-                        "selected saliency members must contain non-negative indexes"
-                    )
-            if len(set(members)) != len(members):
-                raise ValueError("selected saliency members must be unique")
-            if members != tuple(sorted(members)):
-                raise ValueError("selected saliency members must use canonical order")
 
     def mark_command_completed(self) -> None:
         """Release heavy computation after the command boundary has returned."""
@@ -1079,27 +1052,6 @@ class TrainingManager:
                     training_generation=token.generation,
                 )
             indexed_entries = indexed_entries[-new_count:]
-        elif target.selected_members is not None:
-            entries_by_member = {
-                member: (holder, record) for member, holder, record in indexed_entries
-            }
-            if any(
-                member not in entries_by_member for member in target.selected_members
-            ):
-                return self._terminal_schedule_outcome(
-                    target,
-                    request_generation=request_generation,
-                    methods=methods,
-                    disposition=PostTrainingSaliencyScheduleDisposition.STALE,
-                    reason=(
-                        PostTrainingSaliencyScheduleReason.FINISHED_RUN_COUNT_CHANGED
-                    ),
-                    training_generation=token.generation,
-                )
-            indexed_entries = [
-                (member, *entries_by_member[member])
-                for member in target.selected_members
-            ]
         entries = [(holder, record) for _member, holder, record in indexed_entries]
         if not entries:
             return self._terminal_schedule_outcome(
@@ -1622,10 +1574,12 @@ class TrainingManager:
                     generation,
                 )
 
+            epoch_data_fingerprints: dict[int, str] = {}
             updates = [
                 plan.holder.compute_saliency_update(
                     plan,
                     should_cancel=should_cancel,
+                    epoch_data_fingerprints=epoch_data_fingerprints,
                 )
                 for plan in plans
             ]
@@ -1638,7 +1592,22 @@ class TrainingManager:
                     generation,
                 ):
                     return
-                if not any(update.eval_records for update in updates):
+                expected_members = {
+                    (id(plan.holder), id(record))
+                    for plan in plans
+                    for record, _previous_eval_record in plan.records
+                }
+                prepared_members = {
+                    (id(update.holder), id(record))
+                    for update in updates
+                    for record, _previous_eval_record, _eval_record in (
+                        update.eval_records
+                    )
+                }
+                if (
+                    not any(update.eval_records for update in updates)
+                    or prepared_members != expected_members
+                ):
                     terminal_status = self._transition_post_training_saliency_locked(
                         sequence,
                         PostTrainingSaliencyPhase.FAILED,

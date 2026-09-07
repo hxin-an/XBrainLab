@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import math
 import platform
 from collections.abc import Mapping
@@ -538,6 +539,85 @@ def build_saliency_artifact_manifest(
     return manifest
 
 
+def compose_saliency_artifact_manifest(
+    fresh_manifest: Mapping[str, object],
+    retained_manifest: Mapping[str, object],
+    *,
+    recomputed_methods: set[str],
+) -> dict[str, object]:
+    """Compose sealed fresh and retained method entries without payload re-hashing.
+
+    The caller owns sealed-record compatibility. Fresh entries replace every
+    recomputed method; retained entries are used solely outside that request.
+    """
+    fresh = dict(fresh_manifest)
+    retained = dict(retained_manifest)
+    retained_methods = tuple(
+        method
+        for method in cast(list[str], retained["methods"])
+        if method not in recomputed_methods
+    )
+    methods = tuple(
+        method
+        for method in _SALIENCY_METHOD_ORDER
+        if method in recomputed_methods or method in retained_methods
+    )
+    if not methods:
+        _fail(
+            SaliencyIntegrityReason.PARTIAL_COVERAGE,
+            "Saliency result composition requires at least one method.",
+        )
+
+    fresh_entries = cast(list[dict[str, object]], fresh["entries"])
+    retained_entries = cast(list[dict[str, object]], retained["entries"])
+    parameters: dict[str, object] = {}
+    seeds: dict[str, object] = {}
+    entries: list[dict[str, object]] = []
+    for method in methods:
+        source = fresh if method in recomputed_methods else retained
+        source_entries = (
+            fresh_entries if method in recomputed_methods else retained_entries
+        )
+        source_parameters = cast(dict[str, object], source["method_parameters"])
+        source_seeds = cast(dict[str, object], source["noise_seeds"])
+        parameters[method] = source_parameters[method]
+        if method in source_seeds:
+            seeds[method] = source_seeds[method]
+        method_entries = [
+            copy.deepcopy(entry)
+            for entry in source_entries
+            if entry["method"] == method
+        ]
+        entries.extend(
+            sorted(
+                method_entries,
+                key=lambda entry: cast(
+                    int,
+                    cast(Mapping[str, object], entry["target"])["class_index"],
+                ),
+            )
+        )
+
+    manifest = {
+        key: copy.deepcopy(fresh[key])
+        for key in _MANIFEST_KEYS
+        if key
+        not in {
+            "methods",
+            "method_parameters",
+            "noise_seeds",
+            "entries",
+            "manifest_sha256",
+        }
+    }
+    manifest["methods"] = list(methods)
+    manifest["method_parameters"] = parameters
+    manifest["noise_seeds"] = seeds
+    manifest["entries"] = entries
+    manifest["manifest_sha256"] = fingerprint_saliency_identity(manifest)
+    return manifest
+
+
 def _validate_manifest_envelope(manifest: object) -> dict[str, object]:
     if manifest is None:
         _fail(
@@ -785,6 +865,7 @@ __all__ = [
     "SaliencyIntegrityDiagnostic",
     "SaliencyIntegrityReason",
     "build_saliency_artifact_manifest",
+    "compose_saliency_artifact_manifest",
     "current_saliency_runtime_contract",
     "normalize_saliency_method_parameters",
     "verify_saliency_artifact_manifest",

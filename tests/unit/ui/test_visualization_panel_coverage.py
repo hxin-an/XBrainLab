@@ -545,6 +545,12 @@ def test_publication_runtime_composes_through_active_real_map_view(qtbot):
                 message="Native saliency stress fixture ready.",
                 state=result.state,
                 changed_state=ChangedState(),
+                diagnostics={
+                    "payload_type": "visualization_summary",
+                    "available": True,
+                    "plot_views_available": True,
+                    "visualization_publication_generation": publication.generation,
+                },
             )
 
         def get_view_publication(self):
@@ -784,6 +790,7 @@ def test_saliency_worker_ownership_lasts_until_finished_callback(
             method="Gradient",
         ),
         needs_normalized_variant=False,
+        operation_id="owned-render",
     )
     stale_pending = replace(
         active,
@@ -799,7 +806,7 @@ def test_saliency_worker_ownership_lasts_until_finished_callback(
 
     # Returning A while A's Qt callbacks are queued must clear stale B rather
     # than replace the still-owned worker or launch B after A finishes.
-    panel._request_saliency_render(active)
+    panel._request_saliency_render(replace(active, operation_id=""))
 
     assert panel._saliency_render_worker is worker
     assert panel._saliency_render_pending_task is None
@@ -809,6 +816,43 @@ def test_saliency_worker_ownership_lasts_until_finished_callback(
 
     assert panel._saliency_render_worker is None
     assert panel.native_render_work_idle() is True
+
+
+def test_saliency_worker_error_for_fresh_task_finishes_owned_operation(
+    panel_and_controller,
+):
+    """A current task without its owner ID is still the failed active render."""
+    from XBrainLab.ui.panels.visualization.panel import _SaliencyRenderTask
+
+    panel, _controller = panel_and_controller
+    active = _SaliencyRenderTask(
+        request=SaliencyRenderRequest(
+            publication_generation=1,
+            run=SaliencyRunIdentity(
+                plan=SaliencyPlanIdentity(plan_index=0),
+                run_index=0,
+            ),
+            method="Gradient",
+        ),
+        needs_normalized_variant=False,
+        operation_id="owned-render",
+    )
+    worker = MagicMock()
+    panel._saliency_render_worker = worker
+    panel._saliency_render_active_task = active
+
+    with (
+        patch.object(
+            panel,
+            "_current_saliency_render_task",
+            return_value=replace(active, operation_id=""),
+        ),
+        patch.object(panel, "_finish_render_operation") as finish_operation,
+    ):
+        panel._on_saliency_render_error(worker, ("RuntimeError", "boom"))
+
+    finish_operation.assert_called_once_with("owned-render", "failed", "boom")
+    _current_widget(panel).show_error.assert_called_once()
 
 
 def test_saliency_worker_requeues_active_task_after_its_result_was_discarded(
@@ -1405,12 +1449,12 @@ class TestRefreshCombos:
         assert isinstance(panel.run_combo.currentData(), SaliencyCrossFoldIdentity)
         assert panel._published_coverage_for_selection() == {}
 
-    def test_evaluation_admitted_fold_set_dispatches_one_exact_batch_compute(
+    def test_evaluation_admitted_fold_set_dispatches_global_finished_compute(
         self,
         panel_and_controller,
         monkeypatch,
     ):
-        """All Folds is a legal explicit target, not a settings-review error."""
+        """A Fold Set is display context; Compute covers all finished results."""
         panel, _controller = panel_and_controller
         admitted = {
             "identity": {
@@ -1461,7 +1505,13 @@ class TestRefreshCombos:
 
         assert outcome.status is InteractionStatus.ACCEPTED
         assert len(commands) == 1
-        assert commands[0].target == identity
+        assert commands[0] == SaliencyCommand(
+            method="Gradient",
+            params={
+                "profile": "recommended",
+                "methods": ["Gradient", "Gradient * Input"],
+            },
+        )
         assert panel._saliency_settings_review_required is False
         assert panel.saliency_settings_target() == (
             publication.generation,
@@ -2198,6 +2248,7 @@ class TestOnUpdate:
 class TestUpdatePanel:
     def test_update_panel_refreshes_info_then_plot(self, panel_and_controller):
         panel, _controller = panel_and_controller
+        panel._application_summary_dirty = False
         with (
             patch.object(panel, "update_info") as update_info,
             patch.object(panel, "on_update") as on_update,
