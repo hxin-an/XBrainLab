@@ -22,12 +22,14 @@ from scripts.dev.run_stable_assistant_model_eval import (
     admit_clarification_receipt,
     build_case_messages,
     build_clarification_messages,
+    build_product_rag_case_messages,
     load_challenge_cases,
     load_clarification_cases,
     load_precision_cases,
     load_target_cases,
     target_tool_registry,
 )
+from XBrainLab.llm.agent.rag_process_lifecycle import ProcessRAGRetrieverLifecycle
 from XBrainLab.llm.core.backends.local import LocalBackend
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.generation import GenerationProfile, resolve_generation_options
@@ -160,6 +162,8 @@ def _markdown(dossier: dict[str, Any]) -> str:
         f"- Clean except protected settings: `{dossier['source_identity']['clean_except_protected_settings']}`\n"
         f"- Case: `{dossier['case_id']}`\n"
         f"- Model: `{dossier['model']['id']}@{dossier['model']['revision']}`\n"
+        f"- Prompt context protocol: `{dossier['rag_context']['protocol']}`\n"
+        f"- RAG context status: `{dossier['rag_context']['status']}`\n"
         "- Tokenizer only: no model weights were loaded.\n\n"
         "## Synthetic scenario\n\n```json\n"
         + json.dumps(dossier["case"], ensure_ascii=False, indent=2)
@@ -182,9 +186,38 @@ def _markdown(dossier: dict[str, Any]) -> str:
     )
 
 
-def export_prompt_dossier(case_id: str, out_path: Path) -> dict[str, Any]:
+def export_prompt_dossier(
+    case_id: str,
+    out_path: Path,
+    *,
+    product_rag: bool = False,
+) -> dict[str, Any]:
     """Write one reproducible prompt dossier without constructing a model."""
-    case, raw_messages = _resolve_case_messages(case_id)
+    if product_rag:
+        lifecycle = ProcessRAGRetrieverLifecycle()
+        try:
+            case, raw_messages, rag_evidence = build_product_rag_case_messages(
+                case_id,
+                lifecycle=lifecycle,
+            )
+        finally:
+            lifecycle.close()
+        rag_context = {
+            "protocol": rag_evidence.protocol,
+            "sequence": rag_evidence.sequence,
+            "status": rag_evidence.status,
+            "error": rag_evidence.error,
+            "allowed_tool_names": list(rag_evidence.allowed_tool_names),
+            "context_item_ids": list(rag_evidence.context_item_ids),
+            "assembled_context_item_ids": list(rag_evidence.assembled_context_item_ids),
+            "context_sha256": rag_evidence.context_sha256,
+        }
+    else:
+        case, raw_messages = _resolve_case_messages(case_id)
+        rag_context = {
+            "protocol": "synthetic_no_rag.v1",
+            "status": "not_requested",
+        }
     config = LLMConfig(model_name=LLMConfig.default_local_model_id())
     spec = local_model_spec(config.model_name)
     if spec is None:  # pragma: no cover - catalog is a product invariant
@@ -214,6 +247,7 @@ def export_prompt_dossier(case_id: str, out_path: Path) -> dict[str, Any]:
         "source_identity": _source_identity(),
         "case_id": case_id,
         "case": case,
+        "rag_context": rag_context,
         "model": {"id": spec.repo_id, "revision": spec.revision},
         "raw_messages": raw_messages,
         "raw_message_metrics": _message_metrics(raw_messages),
@@ -240,7 +274,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--case-id", required=True)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
-    export_prompt_dossier(args.case_id, args.out)
+    export_prompt_dossier(args.case_id, args.out, product_rag=True)
     return 0
 
 

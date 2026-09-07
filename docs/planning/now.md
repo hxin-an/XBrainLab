@@ -2,7 +2,41 @@
 
 最後更新：`2026-09-08`
 
-## Active — CI, validation and harness cleanup
+## Active — Assistant production-RAG baseline and prompt cleanup
+
+- Evidence: evaluator/exporter call the product assembler but omit ProcessRAGRetrieverLifecycle;
+  their historical scores do not certify production RAG. Establish a versioned RAG-enabled baseline
+  before changing prompt semantics. Preserve all frozen English case files, expected values and scorer.
+- First slice reuses the existing process lifecycle and assembler in evaluator/exporter only. Derive
+  allowed tools from backend publication, retain actual encoded context and degraded/empty status,
+  then capture LocalBackend's final template and budget decisions. Do not construct a second
+  retriever policy, command owner, receipt authority or synthetic successful trajectory.
+- Complexity review: evaluator-only wiring is approximately 400 added script lines across two CLI
+  consumers, justified by shared lifecycle wait/evidence, same-turn recovery reuse and real
+  clarification-turn context. It removes duplicate assembler construction, adds no product owner,
+  and is committed separately from the deletion slice. Do not split off missing trajectory coverage
+  and then claim all 81 cases used product RAG. Historical synthetic helpers remain explicitly labelled
+  no-RAG for deterministic tests, never substituted for CLI candidate evidence.
+- Inspect actual final short/medium/near-budget English prompts and existing small-model budgets;
+  only then simplify proven duplicate or misleading prompt/context structure. Separate evidence
+  wiring, behavior-preserving cleanup and semantic commits. No UI presentation changes authorized.
+- Approved deletion slice: remove only Assistant decision_context and unused turn-authorization
+  fields/methods; assembler's exact prompts and active tool/generation/blocker publication remain
+  identical before/after. Backend WorkflowProjection has live UI callers and is retained. Three
+  production files, roughly 264 lines removed, no added owner; prune tests of the removed shadow
+  while preserving real admission, untrusted-context, rollback and cancellation evidence. Rollback
+  is the isolated refactor commit, independent of the evaluator and later prompt semantics.
+- Resolve source/target RAG example-selection discrepancy from evidence before any behavior change;
+  do not silently label target prose implemented. Models/revisions, tools, schemas, permissions,
+  confirmations, one-action rule and accepted bounded limitations stay fixed.
+- Focused evidence: real lifecycle callback/error/close and projection tests, prompt export using
+  pinned local tokenizer and embedding resources, pre/post-change frozen model evaluation where
+  resources permit; independent review and exact-head applicable CI. No blanket Chinese deletion.
+- Stop at reviewed product PR and exact-source native Assistant ready for user hand testing, with
+  visible log and no prolonged monitoring. Missing resource/authority is a disclosed blocker, not
+  permission to fabricate evidence; continue unaffected work. Product merge waits for user acceptance.
+
+## CI integration still in progress
 
 - #115 and #116 are merged (verified through GitHub). Next, consolidate CI/validation and the pending
   UI-preview, compaction-continuation and post-merge cleanup guidance. No product UI change is authorized

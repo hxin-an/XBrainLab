@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from scripts.dev.export_assistant_prompt import _source_identity, export_prompt_dossier
+from scripts.dev.run_stable_assistant_model_eval import ProductRAGContextEvidence
 from XBrainLab.llm.core.backends.local import LocalBackend
 
 
@@ -73,3 +74,53 @@ def test_source_identity_marks_uncommitted_prompt_changes_as_dirty() -> None:
             " M scripts/dev/export_assistant_prompt.py"
         ],
     }
+
+
+def test_exporter_marks_product_rag_context_when_requested(tmp_path: Path) -> None:
+    tokenizer = MagicMock()
+    tokenizer.apply_chat_template.side_effect = (
+        lambda _messages, *, tokenize, add_generation_prompt: (
+            [101] if tokenize else "<rendered>"
+        )
+    )
+    tokenizer.encode.return_value = [101]
+    output = tmp_path / "product-rag.md"
+    evidence = ProductRAGContextEvidence(
+        protocol="product_process_rag.v1",
+        sequence=1,
+        query="load data",
+        allowed_tool_names=("import_eeg_data",),
+        status="retrieved",
+        error=None,
+        context_item_ids=("gold-1",),
+        assembled_context_item_ids=("gold-1",),
+        context_sha256="abc",
+    )
+    with (
+        patch(
+            "scripts.dev.export_assistant_prompt.build_product_rag_case_messages",
+            return_value=(
+                {"case_id": "case", "user_input": "load data"},
+                [{"role": "user", "content": "load data"}],
+                evidence,
+            ),
+        ) as build_rag,
+        patch(
+            "scripts.dev.export_assistant_prompt._load_pinned_tokenizer",
+            return_value=tokenizer,
+        ),
+        patch.object(
+            LocalBackend,
+            "_fit_prompt_to_runtime_context",
+            autospec=True,
+            return_value="<fitted>",
+        ),
+    ):
+        dossier = export_prompt_dossier("case", output, product_rag=True)
+
+    assert build_rag.call_count == 1
+    assert dossier["rag_context"]["protocol"] == "product_process_rag.v1"
+    assert dossier["rag_context"]["context_item_ids"] == ["gold-1"]
+    assert "Prompt context protocol: `product_process_rag.v1`" in output.read_text(
+        encoding="utf-8"
+    )

@@ -26,6 +26,7 @@ from scripts.dev.run_stable_assistant_model_eval import (
     _capture_integrity_report,
     _evaluation_generation_policy,
     _experiment_identity,
+    _ProductRAGCaseMessages,
     _stable_eval_config,
     _trajectory_payload,
     admit_clarification_receipt,
@@ -70,6 +71,63 @@ EVALUATOR_POSITIVE_CASES_SHA256 = (
     "5d60662ce3f43e36c346dbda238a23f7"  # pragma: allowlist secret
     "b22377c04043e1833a77296931546577"  # pragma: allowlist secret
 )
+
+
+class _ImmediateProductRAGLifecycle:
+    """Controlled callback double for the product lifecycle boundary."""
+
+    def __init__(self, context: str) -> None:
+        self.context = context
+        self.requests: list[tuple[int, str, frozenset[str] | None]] = []
+
+    def retrieve(self, turn_id, query, callback, *, allowed_tool_names=None):
+        self.requests.append((turn_id, query, allowed_tool_names))
+        callback(turn_id, query, self.context, "")
+        return True
+
+    def cancel_retrieval(self, _turn_id):
+        return True
+
+
+def test_product_rag_case_messages_use_assembler_tool_projection_and_context() -> None:
+    case = load_target_cases(DEFAULT_CASES)[0]
+    lifecycle = _ImmediateProductRAGLifecycle(
+        '{"schema":"xbrainlab.untrusted_context.v1","trust":"untrusted","items":[]}'
+    )
+    builder = _ProductRAGCaseMessages(target_tool_registry(), lifecycle)  # type: ignore[arg-type]
+
+    messages = builder.messages(case)
+    evidence = builder.evidence_for(case)
+
+    assert lifecycle.requests == [
+        (1, case.user_input, frozenset(evidence.allowed_tool_names))
+    ]
+    assert case.expected_tool in evidence.allowed_tool_names
+    assert evidence.protocol == "product_process_rag.v1"
+    assert evidence.status == "retrieved"
+    assert evidence.context_sha256 is not None
+    assert any("xbrainlab.untrusted_context.v1" in row["content"] for row in messages)
+
+
+def test_product_rag_cache_reuses_only_the_same_case_turn_query() -> None:
+    case = load_target_cases(DEFAULT_CASES)[0]
+    follow_up = replace(case, user_input="Please repeat that request.")
+    lifecycle = _ImmediateProductRAGLifecycle("")
+    builder = _ProductRAGCaseMessages(target_tool_registry(), lifecycle)  # type: ignore[arg-type]
+
+    builder.messages(case)
+    builder.messages(case)
+    builder.messages(follow_up)
+
+    assert [(turn_id, query) for turn_id, query, _tools in lifecycle.requests] == [
+        (1, case.user_input),
+        (2, follow_up.user_input),
+    ]
+    assert builder.evidence_for(case).sequence == 1
+    assert builder.evidence_for(follow_up).sequence == 2
+    assert [
+        evidence.sequence for evidence in builder.evidence_for_case(case.case_id)
+    ] == [1, 2]
 
 
 def _complete_v12_case_summaries() -> dict[str, dict[str, object]]:
@@ -1158,6 +1216,51 @@ def test_explicit_clarification_cancellation_skips_generation() -> None:
         outcome = trajectory.final_score.product_outcome
         assert outcome is not None
         assert outcome.tool_executor_permitted is False
+
+
+def test_synthetic_clarification_continuation_passes_messages_to_generator() -> None:
+    registry = target_tool_registry()
+    precision_cases = load_precision_cases(DEFAULT_PRECISION_CASES)
+    case = next(
+        item
+        for item in load_clarification_cases(
+            DEFAULT_CLARIFICATION_CASES,
+            precision_cases=precision_cases,
+        )
+        if item.expected_tool == "resample_data"
+    )
+    source = next(
+        item for item in precision_cases if item.case_id == case.source_case_id
+    )
+    first_response = (
+        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '"parameters":{"message":"What resampling rate should I use?",'
+        '"pending_action":"resample_data","missing_inputs":["rate"]}}'
+    )
+    admission = admit_clarification_receipt(
+        source,
+        first_response,
+        expected_tool=case.expected_tool,
+        registry=registry,
+    )
+    assert admission is not None
+    received: list[list[dict[str, str]]] = []
+
+    trajectory = evaluate_clarification_trajectory(
+        replace(case, reply="I do not know the rate."),
+        source,
+        admission=admission,
+        registry=registry,
+        generate_response=lambda messages: (
+            received.append(messages)
+            or '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+            '"parameters":{"message":"Please provide the resampling rate."}}'
+        ),
+    )
+
+    assert received and isinstance(received[0], list)
+    assert received[0][-1] == {"role": "user", "content": "I do not know the rate."}
+    assert trajectory.attempts
 
 
 def test_discriminated_clarification_trajectories_use_scripted_model_turns() -> None:
