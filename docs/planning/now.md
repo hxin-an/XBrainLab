@@ -16,6 +16,10 @@
   merge and immediate safe worktree/artifact cleanup after success.
 - PR A #117 is merged. Preserve its tier guidance and continuing Assistant plan; parent owns
   integration/PR/merge. PR C adds bounded runner failure diagnostics without changing product behavior.
+- First exact-head quality CI exposed two existing annotation gaps: NumPy's scalar/array overload
+  in trial averaging and identity-narrowed Evaluation worker delivery. Express the already-enforced
+  contracts with typing.cast only, without runtime/UI changes, ignores or baseline changes; retain
+  existing numerical and callback tests. This uses the user's no-visible-change UI-file authorization.
 - Review every CI job's trigger, observable protection, duplication and gaps. Remove only demonstrated
   redundancy/unneeded routing while preserving required evidence; add missing meaningful gates, not
   more checks by default. No failure hiding through skips or timeout increases.

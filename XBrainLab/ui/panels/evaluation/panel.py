@@ -1395,7 +1395,9 @@ class EvaluationPanel(BasePanel):
         ):
             error = result[1]
             self._on_evaluation_render_error(
-                worker, operation_id, (type(error), error, "")
+                cast(PythonThreadWorker | None, worker),
+                operation_id,
+                (type(error), error, ""),
             )
             return
         if (
