@@ -56,7 +56,7 @@ side effects、confirmation、visible results 都是 public contract。
 - 禁止未經要求使用 `git reset --hard`、`git checkout --` 或廣泛清理。
 - 合併一律經 PR；PR base 與 head SHA 必須精確對應，CI 及 non-skipped checks 必須
   `completed/success`。Missing、pending、stale、cancelled 或 failed 都 fail closed。
-- Merge先通知；產品需同source手測及批准，非產品依`docs/validation/README.md`授權，不逐次等批准。
+- Merge先通知；批准依`docs/validation/README.md`，完成即依 handoff workflow 清理 PR worktree／中間產物。
 
 ## 程式碼品質與複雜度
 

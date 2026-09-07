@@ -1,23 +1,27 @@
 # XBrainLab Now
 
-最後更新：`2026-09-07`
+最後更新：`2026-09-08`
 
-## Active — finish #115; preserve the agreed UI; then #116 and CI cleanup
+## Active — CI, validation and harness cleanup
 
-- User accepted Filter/Epoch design and requested completing #115 to manual testing. Freeze the
-  visible design; no new UI features or broad saliency/backend cleanup. #111 is no longer active;
-  verify source and merge state through Git/PR, not historical chat.
-- #115's shutdown test oracle was corrected after a deterministic real-fence concurrency repro;
-  no product lifecycle changed. Final same-head checks passed. Debug-domain timeout and prior
-  macOS native exit -11 remain historical failures with unproven causes; later passes do not fix them.
-- Outcome: focused defect evidence, same-head applicable successful CI, then launch the exact-source
-  Windows app with visible log for manual acceptance. Product merge still needs user approval.
-- Next: deliver the exact-source app and visible log, then await the user's full Filter/Epoch workflow
-  acceptance and merge approval. Preserve unrelated local changes and running apps.
-- Harness UI-preview and compaction-continuation rules are locally committed for the later guidance
-  PR; structure checks passed, not new-agent behavioral proof. No global config or permissions changed.
-- After #115, review #116 test pruning, then reorganize CI/validation around retained useful tests.
-  The latter includes UI preview-first guidance; do not weaken gates to pass #115.
+- #115 and #116 are merged (verified through GitHub). Next, consolidate CI/validation and the pending
+  UI-preview, compaction-continuation and post-merge cleanup guidance. No product UI change is authorized
+  by this guidance slice. Preserve dirty root/replay work and the unmerged guidance branch.
+- Inspect historical debug-domain timeout and macOS native exit -11 evidence; causes remain unproven.
+  Later passes are not fixes. Select deterministic, relevant checks and reuse same-source CI evidence;
+  do not weaken gates, duplicate heavy local runs or claim fresh-agent behavior from parsing alone.
+- Outcome: clear validation ownership, useful gates and a sustainable merge/cleanup workflow.
+  Before CI implementation, bound the observed failures, affected files and focused checks. Stop when
+  the authorized guidance/CI slice has its required evidence and merge/cleanup endpoint, or a genuine blocker.
+
+## Following work — parallel after the first slice
+
+- Product Assistant architecture, golden-set language consistency and code organization.
+- Backend/tests/frontend overdesign and legacy-path review, including noisy logs and preprocess latency.
+  Repeated `Adding metadata with 1 columns` is reported noise, not yet a diagnosed cause of latency.
+- Split work by non-overlapping ownership with concrete outputs; coordinate shared interfaces before edits.
+  Independently review high-risk findings. Scope repairs from evidence, not an unrestricted rewrite.
+- Experimental dataset/evaluator construction follows these two tracks, then Agent experiments.
 
 ## Source of truth
 
