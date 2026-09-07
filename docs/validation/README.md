@@ -1,6 +1,6 @@
 # XBrainLab Validation Contract
 
-最後更新：`2026-09-07`
+最後更新：`2026-09-08`
 
 驗證回答「哪個exact source，在什麼環境，觀察到什麼」，不能把單一PASS放大成產品、科學或真人
 驗收結論。日常與PR交付按下表選證據；CI routing由既有workflow擁有。明確要求完整dossier時，
@@ -11,6 +11,50 @@ gate的ID、順序、argv、timeout與artifact contract仍只以`scripts/dev/han
 本機focused checks用於修理回饋；CI負責同一PR head的完整回歸、跨平台與既有artifact gates。
 同一證據只執行一次：已有成功的同版本CI artifact時，不在本機重跑等價全套，也不因新增一筆
 不相關修改反覆讀取全部圖片。CI未涵蓋的必要證據才補本機執行，命令沿用既有runner。
+
+### Feedback tiers and escalation
+
+| Tier | Trigger | Work |
+| --- | --- | --- |
+| L0: edit feedback | Small edit or bug reproduction | Changed-file lint/format checks and the directly relevant failing test. |
+| L1: coherent change | One behavior/refactor slice is ready | Focused behavior tests and directly affected integration/lifecycle protection. |
+| L2: PR candidate | Formal delivery | Same-head applicable CI: regression, whole-project typing, platform/data/visual gates; local work fills only evidence CI lacks. |
+| L3: full dossier | Explicit full-release request or applicable capability contract | The canonical complete manifest, not an everyday default. |
+
+These are selection points, not four mandatory steps after every edit. Seconds for L0 and minutes
+for L1 are feedback goals, not timeouts or permission to omit necessary protection. Escalate for a
+changed shared contract, data/publication/async risk, a concrete failure or an unresolved evidence gap;
+file count alone does not determine risk. Record why a broader run is needed before starting it.
+Reuse a passing focused result until relevant source/environment changes; final delivery still needs
+the exact-source evidence below. Do not launch equivalent full local work while waiting for CI.
+
+Use existing Ruff/pytest entry points with explicit changed paths or behavior test node IDs for L0/L1.
+The Poe tasks `check` and `check-full` include whole-project analysis and all unit tests; `test-backend`
+includes the entire integration directory; `typecheck-fast` runs whole-project Basedpyright. Their names
+do not make them fast feedback commands. They remain explicit aggregate tools, never per-edit defaults.
+Before widening a slow run, inspect existing JUnit/timing data and separate collection/import, fixture,
+test and teardown cost. Measure only the missing bounded path, not the full suite to obtain a ranking.
+Do not add a second test-selection framework, arbitrary coverage target or duplicated worker runs.
+
+### UI design iteration before formal handoff
+
+已授權的可見 UI 調整先用真實元件做原生預覽，讓使用者直接操作並反覆確認設計。CLI 使用者
+不能只收到圖片路徑；有桌面存取時由 agent 開啟預覽並確認視窗有回應。預覽使用隔離／示例資料，
+明示不是完整 workflow，不更動使用者正在使用的主程式或資料。無法開啟原生視窗時明示限制，
+提供可執行的替代方式，不宣稱已展示或已接受。
+
+設計迭代期間只做直接相關的互動、geometry、截圖與 static checks；等使用者接受設計後才
+更新審查過的 references、送出正式候選並執行重型 regression／跨平台／DPI gates。不為每次
+顏色或間距調整反覆啟動全套 CI。直接安全／資料風險的必要驗證不延後，也不藉此削弱 CI。
+
+設計接受不等於正式手測或 merge 批准。定稿後仍須下表的同版本證據，交付時直接開啟指定來源的
+完整程式與可見即時 log；確認啟動成功後交回使用者，不再無故長時間監控。後续設計改動回到
+預覽迭代，再為新的定稿 source 補齊必要證據。此流程不增加 backend-only 修正的設計批准門檻。
+
+這是本專案的使用者工作流；[OpenAI 的可重用技能文件](https://learn.chatgpt.com/use-cases/reusable-codex-skills)
+支持將實際合作經驗保存為 repo skill，但不替本專案規定驗證時機或批准政策。
+
+### Applicable evidence
 
 | 變更 | 本機最小證據 | 交付時必要證據 |
 | --- | --- | --- |
@@ -112,7 +156,8 @@ applicable evidence；同一clean/explained exact commit全部通過才可稱`ha
 
 已授權工作的純docs、tests、CI或agent-guidance PR，經review確認不改產品行為、且同版本所有
 適用non-skipped checks成功後，可先通知再merge，不必逐次等使用者回覆。通知列明PR/source、
-範圍、驗證與已知限制；只要求review或開PR、明示暫停／禁止merge時不適用此授權。
+範圍、驗證與已知限制；通知後立即接續核對與merge，不把通知當成等待回覆的關卡。
+只要求review或開PR、明示暫停／禁止merge時不適用此授權。
 是否屬非產品變更看實際效果，不只看檔名；CI發布／部署改動仍按其外部影響確認權限。
 產品PR仍須上述手測及批准，所有merge也都先通知；範圍不明、必要檢查未成功或新外部權限
 未取得時不可用通知代替確認。追蹤與停止條件見`.agents/workflows/handoff-candidate.md`。
