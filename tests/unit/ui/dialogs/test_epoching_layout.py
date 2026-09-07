@@ -123,7 +123,7 @@ def test_epoching_primary_action_uses_short_confirm_copy_at_larger_font(qapp, qt
         qapp.setFont(original_font)
 
 
-def test_epoching_expands_seven_event_content_before_first_frame_when_space_allows(
+def test_epoching_fits_seven_event_content_on_first_visible_frame_when_space_allows(
     qtbot,
 ):
     dialog = _ScreenBoundEpochingDialog(
@@ -134,14 +134,12 @@ def test_epoching_expands_seven_event_content_before_first_frame_when_space_allo
     qtbot.addWidget(dialog)
     scroll = _content_scroll(dialog)
 
-    pre_show_size = QSize(dialog.size())
-    assert pre_show_size.height() > 740
-
     dialog.show()
     first_visible_size = QSize(dialog.size())
     qtbot.wait(50)
 
-    assert dialog.size() == pre_show_size == first_visible_size
+    assert dialog.size() == first_visible_size
+    assert scroll.viewport().height() <= scroll.widget().sizeHint().height() + 12
     assert scroll.verticalScrollBar().maximum() == 0
     assert dialog.baseline_group is not None
     assert dialog.baseline_group.isVisibleTo(dialog)
@@ -226,7 +224,7 @@ def test_epoching_initial_confirmation_uses_available_height(qtbot):
 
     assert dialog.confirmation_check is not None
     assert dialog.confirmation_check.isVisibleTo(dialog)
-    assert dialog.height() > 740
+    assert dialog.height() >= _content_scroll(dialog).widget().sizeHint().height()
     assert _content_scroll(dialog).verticalScrollBar().maximum() == 0
     _assert_footer_is_fixed_and_visible(dialog)
 

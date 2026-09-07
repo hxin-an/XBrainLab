@@ -3,7 +3,9 @@ from unittest.mock import MagicMock, patch
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
+    QAbstractButton,
     QAbstractSpinBox,
+    QCheckBox,
     QDialogButtonBox,
     QFrame,
     QLabel,
@@ -24,7 +26,7 @@ from XBrainLab.ui.dialogs.preprocess import (
 from XBrainLab.ui.styles.theme import Theme
 
 
-def _button_contains_color(button: QPushButton, color: str) -> bool:
+def _button_contains_color(button: QAbstractButton, color: str) -> bool:
     image = button.grab().toImage()
     expected = QColor(color)
     matching = 0
@@ -166,11 +168,10 @@ def test_epoching_dialog_baseline_and_primary_button_are_product_styled(qtbot):
     )
     qtbot.addWidget(dialog)
 
-    baseline = dialog.findChild(QPushButton, "PreprocessToggle")
+    baseline = dialog.findChild(QCheckBox, "PreprocessSwitch")
     assert baseline is not None
     assert baseline.isCheckable()
-    assert baseline.text() in {"On", "Off"}
-    assert "QPushButton#PreprocessToggle" in dialog.styleSheet()
+    assert baseline.accessibleName() == "Baseline correction"
 
     create_button = dialog.findChild(QPushButton, "EpochPrimaryButton")
     assert create_button is not None
@@ -241,8 +242,8 @@ def test_filtering_dialog_uses_section_toggles_and_inline_validation(qtbot):
     dialog = FilteringDialog(None, sampling_rate_hz=100.0)
     qtbot.addWidget(dialog)
 
-    assert dialog.bandpass_check.text() == "On"
-    assert dialog.notch_check.text() == "Off"
+    assert dialog.bandpass_check.isChecked()
+    assert not dialog.notch_check.isChecked()
     assert dialog.bandpass_title.text() == "Band-pass filter"
     assert dialog.notch_title.text() == "Notch filter"
     assert dialog.frequency_range_label.text() == "Frequency range"
@@ -256,7 +257,7 @@ def test_filtering_dialog_uses_section_toggles_and_inline_validation(qtbot):
     assert not dialog.validation_label.isVisibleTo(dialog)
 
 
-def test_filtering_toggles_match_epoch_visual_and_interaction_contract(qtbot):
+def test_filtering_switches_show_checked_state_and_preserve_validation(qtbot):
     dialog = FilteringDialog(None, sampling_rate_hz=250.0)
     qtbot.addWidget(dialog)
     dialog.show()
@@ -264,8 +265,8 @@ def test_filtering_toggles_match_epoch_visual_and_interaction_contract(qtbot):
 
     bandpass = dialog.bandpass_check
     notch = dialog.notch_check
-    assert bandpass.text() == "On"
-    assert notch.text() == "Off"
+    assert bandpass.isChecked()
+    assert not notch.isChecked()
     assert abs(bandpass.width() - notch.width()) <= 1
     assert bandpass.height() == notch.height()
     assert bandpass.height() <= 30
@@ -274,7 +275,7 @@ def test_filtering_toggles_match_epoch_visual_and_interaction_contract(qtbot):
 
     bandpass.click()
     qtbot.waitUntil(lambda: not dialog.ok_button.isEnabled())
-    assert bandpass.text() == "Off"
+    assert not bandpass.isChecked()
     assert not dialog.l_freq_spin.isEnabled()
     assert not dialog.h_freq_spin.isEnabled()
     assert not _button_contains_color(bandpass, Theme.BLUE_PRIMARY)
@@ -282,7 +283,7 @@ def test_filtering_toggles_match_epoch_visual_and_interaction_contract(qtbot):
 
     notch.click()
     qtbot.waitUntil(lambda: dialog.ok_button.isEnabled())
-    assert notch.text() == "On"
+    assert notch.isChecked()
     assert dialog.notch_mode_combo.isEnabled()
     assert _button_contains_color(notch, Theme.BLUE_PRIMARY)
 

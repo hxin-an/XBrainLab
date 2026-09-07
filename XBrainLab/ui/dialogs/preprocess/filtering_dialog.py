@@ -6,6 +6,7 @@ import math
 
 from PyQt6.QtWidgets import (
     QAbstractSpinBox,
+    QCheckBox,
     QComboBox,
     QDialogButtonBox,
     QDoubleSpinBox,
@@ -13,6 +14,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QPushButton,
     QVBoxLayout,
+    QWidget,
 )
 
 from XBrainLab.ui.core.base_dialog import BaseDialog
@@ -20,6 +22,7 @@ from XBrainLab.ui.dialogs.common import normalize_dialog_button_box
 from XBrainLab.ui.dialogs.preprocess.common import (
     configure_preprocess_dialog_layout,
     create_preprocess_section,
+    create_preprocess_switch,
     fit_preprocess_dialog_to_content,
 )
 
@@ -30,8 +33,8 @@ class FilteringDialog(BaseDialog):
     def __init__(self, parent, *, sampling_rate_hz: float | None = None):
         self.params: tuple[float | None, float | None, float | None] | None = None
         self.sampling_rate_hz = self._valid_sampling_rate(sampling_rate_hz)
-        self.bandpass_check: QPushButton
-        self.notch_check: QPushButton
+        self.bandpass_check: QCheckBox
+        self.notch_check: QCheckBox
         self.bandpass_title: QLabel
         self.notch_title: QLabel
         self.frequency_range_label: QLabel
@@ -45,24 +48,61 @@ class FilteringDialog(BaseDialog):
         fit_preprocess_dialog_to_content(self, minimum_width=520)
 
     def init_ui(self) -> None:
+        self.setStyleSheet(
+            self.styleSheet()
+            + """
+            QFrame#FilteringSection {
+                background: #1e1e1e;
+                border: 1px solid #303236;
+                border-radius: 6px;
+            }
+            QWidget#FilteringContent, QWidget#FilteringContent:disabled {
+                background: transparent;
+                border: none;
+            }
+            QFrame#FilteringSection QLabel {
+                background: transparent;
+                border: none;
+            }
+            QFrame#FilteringSection QLabel:disabled {
+                color: #858a91;
+            }
+            QFrame#FilteringSection QDoubleSpinBox:disabled,
+            QFrame#FilteringSection QComboBox:disabled {
+                color: #858a91;
+                background: #212121;
+            }
+            """
+        )
         layout = QVBoxLayout(self)
         configure_preprocess_dialog_layout(layout)
 
         bandpass_section, self.bandpass_title, bandpass_layout = (
             create_preprocess_section("Band-pass filter", parent=self)
         )
+        self.bandpass_section = bandpass_section
+        bandpass_section.setObjectName("FilteringSection")
+        bandpass_layout.setContentsMargins(12, 8, 12, 10)
         bandpass_header = QHBoxLayout()
         bandpass_header.setContentsMargins(0, 0, 0, 0)
         bandpass_header.addWidget(self.bandpass_title)
         bandpass_header.addStretch()
-        self.bandpass_check = self._toggle_button(checked=True)
+        self.bandpass_check = create_preprocess_switch(checked=True)
+        self.bandpass_check.setAccessibleName("Band-pass filter")
         bandpass_header.addWidget(self.bandpass_check)
         bandpass_layout.removeWidget(self.bandpass_title)
         bandpass_layout.insertLayout(0, bandpass_header)
 
+        self.bandpass_content = QWidget()
+        self.bandpass_content.setObjectName("FilteringContent")
+        bandpass_content_layout = QVBoxLayout(self.bandpass_content)
+        bandpass_content_layout.setContentsMargins(0, 0, 0, 0)
+        bandpass_content_layout.setSpacing(6)
+        bandpass_layout.addWidget(self.bandpass_content)
+
         self.frequency_range_label = QLabel("Frequency range")
         self.frequency_range_label.setObjectName("PreprocessFieldLabel")
-        bandpass_layout.addWidget(self.frequency_range_label)
+        bandpass_content_layout.addWidget(self.frequency_range_label)
         frequency_row = QHBoxLayout()
         frequency_row.setContentsMargins(0, 0, 0, 0)
         frequency_row.setSpacing(8)
@@ -75,25 +115,36 @@ class FilteringDialog(BaseDialog):
         frequency_row.addWidget(self.h_freq_spin)
         frequency_row.addWidget(QLabel("Hz"))
         frequency_row.addStretch()
-        bandpass_layout.addLayout(frequency_row)
+        bandpass_content_layout.addLayout(frequency_row)
         layout.addWidget(bandpass_section)
 
         notch_section, self.notch_title, notch_layout = create_preprocess_section(
             "Notch filter",
             parent=self,
         )
+        self.notch_section = notch_section
+        notch_section.setObjectName("FilteringSection")
+        notch_layout.setContentsMargins(12, 8, 12, 10)
         notch_header = QHBoxLayout()
         notch_header.setContentsMargins(0, 0, 0, 0)
         notch_header.addWidget(self.notch_title)
         notch_header.addStretch()
-        self.notch_check = self._toggle_button(checked=False)
+        self.notch_check = create_preprocess_switch(checked=False)
+        self.notch_check.setAccessibleName("Notch filter")
         notch_header.addWidget(self.notch_check)
         notch_layout.removeWidget(self.notch_title)
         notch_layout.insertLayout(0, notch_header)
 
+        self.notch_content = QWidget()
+        self.notch_content.setObjectName("FilteringContent")
+        notch_content_layout = QVBoxLayout(self.notch_content)
+        notch_content_layout.setContentsMargins(0, 0, 0, 0)
+        notch_content_layout.setSpacing(6)
+        notch_layout.addWidget(self.notch_content)
+
         notch_label = QLabel("Power-line frequency")
         notch_label.setObjectName("PreprocessFieldLabel")
-        notch_layout.addWidget(notch_label)
+        notch_content_layout.addWidget(notch_label)
         notch_row = QHBoxLayout()
         notch_row.setContentsMargins(0, 0, 0, 0)
         notch_row.setSpacing(8)
@@ -108,7 +159,7 @@ class FilteringDialog(BaseDialog):
         notch_row.addWidget(self.notch_mode_combo)
         notch_row.addWidget(self.notch_spin)
         notch_row.addStretch()
-        notch_layout.addLayout(notch_row)
+        notch_content_layout.addLayout(notch_row)
         layout.addWidget(notch_section)
 
         self.validation_label = QLabel()
@@ -134,8 +185,6 @@ class FilteringDialog(BaseDialog):
         self.notch_mode_combo.currentTextChanged.connect(self._sync_notch_mode)
         for spin in (self.l_freq_spin, self.h_freq_spin, self.notch_spin):
             spin.valueChanged.connect(self._update_validation)
-        self._sync_toggle_text(self.bandpass_check)
-        self._sync_toggle_text(self.notch_check)
         self.toggle_bandpass(True)
         self.toggle_notch(False)
         self._sync_notch_mode()
@@ -152,23 +201,6 @@ class FilteringDialog(BaseDialog):
         return result if math.isfinite(result) and result > 0 else None
 
     @staticmethod
-    def _toggle_button(*, checked: bool) -> QPushButton:
-        button = QPushButton()
-        button.setObjectName("PreprocessToggle")
-        button.setCheckable(True)
-        button.setChecked(checked)
-        button.setAutoDefault(False)
-        button.setDefault(False)
-        button.toggled.connect(
-            lambda _checked, owned=button: FilteringDialog._sync_toggle_text(owned)
-        )
-        return button
-
-    @staticmethod
-    def _sync_toggle_text(button: QPushButton) -> None:
-        button.setText("On" if button.isChecked() else "Off")
-
-    @staticmethod
     def _frequency_spin(value: float) -> QDoubleSpinBox:
         spin = QDoubleSpinBox()
         spin.setRange(0.0, 1000.0)
@@ -179,14 +211,12 @@ class FilteringDialog(BaseDialog):
         return spin
 
     def toggle_notch(self, checked: bool) -> None:
-        self.notch_mode_combo.setEnabled(checked)
+        self.notch_content.setEnabled(checked)
         self._sync_notch_mode()
         self._update_validation()
 
     def toggle_bandpass(self, checked: bool) -> None:
-        self.frequency_range_label.setEnabled(checked)
-        self.l_freq_spin.setEnabled(checked)
-        self.h_freq_spin.setEnabled(checked)
+        self.bandpass_content.setEnabled(checked)
         self._update_validation()
 
     def _sync_notch_mode(self, *_args) -> None:

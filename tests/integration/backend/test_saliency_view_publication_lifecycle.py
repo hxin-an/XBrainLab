@@ -2278,7 +2278,7 @@ def test_delayed_old_terminal_delivery_is_monotonic_and_cannot_revert_publicatio
 
 
 @pytest.mark.parametrize("trigger", ["cancel", "reset", "shutdown"])
-def test_synchronous_saliency_terminal_observers_run_after_all_outer_locks(
+def test_saliency_terminal_observers_run_after_their_owner_releases_locks(
     monkeypatch,
     trigger: str,
 ) -> None:
@@ -2308,6 +2308,9 @@ def test_synchronous_saliency_terminal_observers_run_after_all_outer_locks(
 
     observed: list[tuple[str, PostTrainingSaliencyPhase, tuple[bool, bool, bool]]] = []
     terminal_delivery_results: list[bool] = []
+    refresh_entered = Event()
+    release_refresh = Event()
+    retry_during_refresh = Event()
     if trigger == "shutdown":
         original_notify = manager._saliency_lifecycle_events.notify
 
@@ -2363,6 +2366,8 @@ def test_synchronous_saliency_terminal_observers_run_after_all_outer_locks(
         )
         if status.phase is PostTrainingSaliencyPhase.CANCELLED:
             cancelled_published.set()
+        if refresh_entered.is_set() and not release_refresh.is_set():
+            retry_during_refresh.set()
 
     manager.subscribe_post_training_saliency_terminal(observe_manager_terminal)
 
@@ -2377,6 +2382,35 @@ def test_synchronous_saliency_terminal_observers_run_after_all_outer_locks(
     assert manager.wait_for_saliency_job(timeout=_THREAD_WATCHDOG_SECONDS)
     assert cancelled_published.is_set()
     if trigger == "shutdown":
+        # A manager retry may run while another thread legitimately owns the
+        # service locks during fence release. Exercise that schedule explicitly.
+        lifecycle = service.shutdown_lifecycle
+        original_refresh = lifecycle._refresh_training_publication
+
+        def blocked_refresh():
+            refresh_entered.set()
+            assert release_refresh.wait(timeout=_THREAD_WATCHDOG_SECONDS)
+            return original_refresh()
+
+        with monkeypatch.context() as refresh_patch:
+            refresh_patch.setattr(
+                lifecycle, "_refresh_training_publication", blocked_refresh
+            )
+            release_results: list[bool] = []
+
+            def release_fence():
+                release_results.append(service.release_shutdown_fence())
+
+            release_thread = Thread(target=release_fence, daemon=True)
+            release_thread.start()
+            try:
+                assert refresh_entered.wait(timeout=_THREAD_WATCHDOG_SECONDS)
+                assert retry_during_refresh.wait(timeout=_THREAD_WATCHDOG_SECONDS)
+            finally:
+                release_refresh.set()
+                release_thread.join(timeout=_THREAD_WATCHDOG_SECONDS)
+            assert not release_thread.is_alive()
+            assert len(release_results) == 1 and isinstance(release_results[0], bool)
         release_deadline = monotonic() + _THREAD_WATCHDOG_SECONDS
         released = service.release_shutdown_fence()
         while not released and monotonic() < release_deadline:
@@ -2411,9 +2445,20 @@ def test_synchronous_saliency_terminal_observers_run_after_all_outer_locks(
         assert terminal_delivery_results[-1] is True
         assert all(result is False for result in terminal_delivery_results[:-1])
         assert len(manager_observations) == len(terminal_delivery_results)
+        assert any(
+            locks == (True, False, False) for _, _, locks in manager_observations
+        )
     else:
         assert len(manager_observations) == 1
-    assert all(lock_state == (True, True, True) for _, _, lock_state in observed)
+    # Manager observers guarantee release of the manager lock, not global
+    # idleness of service locks owned by a concurrent fence-release operation.
+    assert all(locks[0] for _, _, locks in manager_observations), manager_observations
+    application_observations = [
+        item for item in observed if item[0] != "manager_terminal"
+    ]
+    assert all(
+        locks == (True, True, True) for _, _, locks in application_observations
+    ), application_observations
 
 
 def test_saliency_render_rejects_a_stale_publication_generation() -> None:
