@@ -18,6 +18,8 @@ Repo 級不變量；產品、plan、gate 由 canonical source 擁有。
 新工作階段先讀 active plan，再按任務查 current/validation 與 Git/PR。Git 擁有版本及
 dirty/worktree 事實；衝突文件須校準。舊聊天與歷史批准不授權新 source；缺少環境／權限時明示。
 
+Context compaction 不構成停止條件；依 `.agents/README.md` 接續未完成工作，不等使用者催促。
+
 ## 授權與 scope ceiling
 
 使用者要求、明定 acceptance 與直接必要依賴定義 **scope ceiling**；review/評估不擴大授權。
@@ -54,7 +56,7 @@ side effects、confirmation、visible results 都是 public contract。
 - 禁止未經要求使用 `git reset --hard`、`git checkout --` 或廣泛清理。
 - 合併一律經 PR；PR base 與 head SHA 必須精確對應，CI 及 non-skipped checks 必須
   `completed/success`。Missing、pending、stale、cancelled 或 failed 都 fail closed。
-- Merge先通知；產品需同source手測及批准，非產品依`docs/validation/README.md`授權，不逐次等批准。
+- Merge先通知；批准依`docs/validation/README.md`，完成即依 handoff workflow 清理 PR worktree／中間產物。
 
 ## 程式碼品質與複雜度
 
