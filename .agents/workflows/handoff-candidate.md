@@ -12,6 +12,10 @@ Record the changed behavior, focused protection and what remains unverified in t
 
 ## 2. Focused local evidence
 
+Visible design work first follows the validation contract's "UI design iteration before formal handoff"
+section. A native design preview is an iteration endpoint, not a handoff-ready claim; enter formal
+candidate validation after the user accepts the design.
+
 For a bug, reproduce the observable failure then rerun the protection after repair. For a refactor,
 use a passing characterization baseline. Trace the directly changed lifecycle and callers.
 Run only the relevant tests/static checks; widen when changed code, failures or unresolved risk justify it.

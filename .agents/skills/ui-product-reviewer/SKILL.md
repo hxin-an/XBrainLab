@@ -11,6 +11,11 @@ Read-only review may proceed directly. Before changing user-visible layout, copy
 workflow, verify that the explicit confirmation required by root `AGENTS.md` already exists; otherwise
 stop at findings. Internal UI changes that preserve presentation follow the authorized task scope.
 
+For visible design changes, read `docs/validation/README.md` (repo root), section
+"UI design iteration before formal handoff", before choosing validation or delivery. Open the actual
+native preview for CLI users, iterate with focused checks, and defer heavy gates until design acceptance.
+Keep preview, design acceptance, exact-source workflow handoff and merge approval distinct.
+
 ## Workflow
 
 1. Define the user goal, starting state, primary action, completion state, and recovery paths.

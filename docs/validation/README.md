@@ -12,6 +12,26 @@ gate的ID、順序、argv、timeout與artifact contract仍只以`scripts/dev/han
 同一證據只執行一次：已有成功的同版本CI artifact時，不在本機重跑等價全套，也不因新增一筆
 不相關修改反覆讀取全部圖片。CI未涵蓋的必要證據才補本機執行，命令沿用既有runner。
 
+### UI design iteration before formal handoff
+
+已授權的可見 UI 調整先用真實元件做原生預覽，讓使用者直接操作並反覆確認設計。CLI 使用者
+不能只收到圖片路徑；有桌面存取時由 agent 開啟預覽並確認視窗有回應。預覽使用隔離／示例資料，
+明示不是完整 workflow，不更動使用者正在使用的主程式或資料。無法開啟原生視窗時明示限制，
+提供可執行的替代方式，不宣稱已展示或已接受。
+
+設計迭代期間只做直接相關的互動、geometry、截圖與 static checks；等使用者接受設計後才
+更新審查過的 references、送出正式候選並執行重型 regression／跨平台／DPI gates。不為每次
+顏色或間距調整反覆啟動全套 CI。直接安全／資料風險的必要驗證不延後，也不藉此削弱 CI。
+
+設計接受不等於正式手測或 merge 批准。定稿後仍須下表的同版本證據，交付時直接開啟指定來源的
+完整程式與可見即時 log；確認啟動成功後交回使用者，不再無故長時間監控。後续設計改動回到
+預覽迭代，再為新的定稿 source 補齊必要證據。此流程不增加 backend-only 修正的設計批准門檻。
+
+這是本專案的使用者工作流；[OpenAI 的可重用技能文件](https://learn.chatgpt.com/use-cases/reusable-codex-skills)
+支持將實際合作經驗保存為 repo skill，但不替本專案規定驗證時機或批准政策。
+
+### Applicable evidence
+
 | 變更 | 本機最小證據 | 交付時必要證據 |
 | --- | --- | --- |
 | Docs／guidance／config | 結構／設定audit、相關測試，受影響docs build | 同head guidance／docs CI；不跑產品模型評測。 |
