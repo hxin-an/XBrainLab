@@ -51,10 +51,17 @@ def test_general_scripts_tests_and_unknown_paths_fail_closed_to_product_ci() -> 
     for path in (
         "scripts/dev/run_tests.py",
         "tests/unit/scripts/test_ci_change_scope_extra.py",
-        ".github/workflows/docs-pages.yml",
         "run.py",
     ):
         assert classify_changed_paths((path,)).product is True
+
+
+def test_docs_workflow_only_change_stays_docs_only() -> None:
+    assert classify_changed_paths((".github/workflows/docs-pages.yml",)) == ChangeScope(
+        product=False,
+        ui_visual=False,
+        agent_guidance=False,
+    )
 
 
 def test_mixed_guidance_and_product_paths_run_product_ci() -> None:

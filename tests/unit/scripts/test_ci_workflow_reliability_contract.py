@@ -57,12 +57,12 @@ def test_ci_poetry_bootstrap_and_venv_cache_are_lock_exact() -> None:
         if step.get("name") == "Install dependencies"
         and str(step.get("run", "")).startswith("poetry ")
     ]
-    assert len(poetry_installers) == 8
+    assert len(poetry_installers) == 9
     assert all(
         'python -m pip install "poetry==${POETRY_VERSION}"' in step["run"]
         for step in poetry_installers
     )
-    assert len(dependency_installers) == 8
+    assert len(dependency_installers) == 9
     windows_cpu_sync = (
         "poetry sync --no-interaction ${{ runner.os == 'Windows' && '-E cpu' || '' }}"
     )
@@ -76,7 +76,7 @@ def test_ci_poetry_bootstrap_and_venv_cache_are_lock_exact() -> None:
     venv_cache_steps = [
         step for step in steps if str(step.get("with", {}).get("path", "")) == ".venv"
     ]
-    assert len(venv_cache_steps) == 8
+    assert len(venv_cache_steps) == 9
     for step in venv_cache_steps:
         cache = step["with"]
         assert "restore-keys" not in cache
@@ -109,6 +109,58 @@ def test_ci_poetry_bootstrap_and_venv_cache_are_lock_exact() -> None:
     workflow_text = CI_WORKFLOW.read_text(encoding="utf-8")
     assert 'pip install "coverage>=7,<8" pytest' not in workflow_text
     assert "poetry run -- coverage combine test-results" in workflow_text
+
+
+def test_product_static_quality_jobs_use_locked_tools_and_parallel_scopes() -> None:
+    workflow = _workflow(CI_WORKFLOW)
+    lint = workflow["jobs"]["lint"]
+    job = workflow["jobs"]["static-quality"]
+
+    assert lint["needs"] == "changes"
+    assert lint["if"] == "needs.changes.outputs.product == 'true'"
+    assert lint["timeout-minutes"] == 10
+    lint_commands = {
+        step["name"]: step["run"]
+        for step in lint["steps"]
+        if "name" in step and "run" in step
+    }
+    assert lint_commands["Install locked Ruff"] == 'pip install "ruff==0.14.14"'
+    assert lint_commands["Ruff check"] == "ruff check ."
+    assert lint_commands["Ruff format check"] == "ruff format --check ."
+
+    assert job["needs"] == "changes"
+    assert job["if"] == "needs.changes.outputs.product == 'true'"
+    assert job["runs-on"] == "ubuntu-latest"
+    assert job["timeout-minutes"] == 45
+    steps = job["steps"]
+    assert any(step.get("name") == "Install Poetry" for step in steps)
+    assert any(step.get("name") == "Install dependencies" for step in steps)
+
+    commands = {
+        step["name"]: step["run"] for step in steps if "name" in step and "run" in step
+    }
+    assert (
+        commands["Basedpyright regression"]
+        == "poetry run python scripts/dev/run_basedpyright_regression.py"
+    )
+    assert (
+        commands["Architecture compliance"]
+        == "poetry run python tests/architecture_compliance.py"
+    )
+    assert (
+        commands["Secret scan"]
+        == "poetry run pre-commit run detect-secrets --all-files"
+    )
+    assert "Ruff check" not in commands
+    assert "Ruff format check" not in commands
+
+
+def test_guidance_ruff_version_matches_the_locked_precommit_revision() -> None:
+    workflow_text = CI_WORKFLOW.read_text(encoding="utf-8")
+    precommit_text = (ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+
+    assert '"ruff==0.14.14"' in workflow_text
+    assert "rev: v0.14.14" in precommit_text
 
 
 def test_public_fixture_cache_does_not_restore_a_stale_manifest() -> None:
