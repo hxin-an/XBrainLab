@@ -31,6 +31,10 @@ scope. This index does not duplicate that catalog or require a reviewer for ever
 | `agent-toolcall-scoring.md` | 產品穩定後的 tool-call experiment。 |
 | `handoff-candidate.md` | Focused evidence 與同版本 CI 的交付判定。 |
 
+## Context recovery
+
+Resume after compaction per `workflows/handoff-candidate.md`.
+
 ## Model dispatch
 
 Default to `gpt-6-astra`; leave repo effort and worker model/effort unset to inherit session/parent

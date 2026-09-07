@@ -2,28 +2,23 @@
 
 最後更新：`2026-09-07`
 
-## Next — #111 manual-test candidate, then #115 / #116
+## Active — finish #115; preserve the agreed UI; then #116 and CI cleanup
 
-- User requested finishing #111 against current main. Keep #113's no-auto-retry behavior: only the
-  expected stale render error bypasses the generic worker ERROR and reuses the panel's existing
-  unavailable/Refresh path. Unexpected errors, backend guards, selection/shutdown checks, UI copy and
-  layout remain unchanged. The original retry-based #111 patch must not be restored.
-- Implementation and independent lifecycle review are complete. Verify current PR/source and all
-  applicable same-head CI before delivering the Windows manual-test candidate; exact tests, results
-  and source belong in #111. Product merge requires new exact-source manual acceptance and approval.
-- Manual focus: while training continues, open completed Evaluation results; refresh and change
-  fold/run selections, close/reopen the panel. Expected stale reads must not emit Worker task failed;
-  genuine failures must still be reported. Ordinary completed results and explicit Refresh must work.
-- After #111, review #115 Filter presentation and #116 test pruning. #116 can use the approved
-  non-product pre-merge notice rule only if review confirms no product behavior change or lost
-  necessary protection. #115 remains a product manual-acceptance path.
-- Preserve local settings.json and unrelated split UI/test edits; do not replace the running app
-  unless requested. Resolve branch/worktree and approvals from Git/PR, not historical chat.
-- Further SHA/full-data scan/copy cleanup remains a later candidate, not authorization to expand this
-  Evaluation reporting slice. Earlier Windows native teardown and CI timeout causes were not proven
-  fixed merely by later passing runs; retained evidence belongs in the relevant PRs.
-- Existing bounded product Assistant acceptance remains valid within its documented limits.
-  Unrelated product repairs do not trigger model promotion or a new model benchmark.
+- User accepted Filter/Epoch design and requested completing #115 to manual testing. Freeze the
+  visible design; no new UI features or broad saliency/backend cleanup. #111 is no longer active;
+  verify source and merge state through Git/PR, not historical chat.
+- #115 same-head CI reported a shutdown callback lock-availability assertion failure and a debug
+  domain timeout. Diagnose actual failures before repair or evidence-backed rerun; a passing local
+  run does not erase them. Prior macOS native exit -11 remains an unproven historical failure.
+- Outcome: focused defect evidence, same-head applicable successful CI, then launch the exact-source
+  Windows app with visible log for manual acceptance. Product merge still needs user approval.
+- Harness: persist context-compaction continuation in root guidance, using existing plan/session
+  mechanisms only. Validate guidance structure; do not claim new-agent behavioral proof from audits.
+- Next: inspect the failing test/lifecycle boundaries, isolate any minimal necessary repair and rerun
+  focused protection. Stop only at manual delivery or a genuine decision/resource gap; preserve all
+  unrelated local changes and running apps.
+- After #115, review #116 test pruning, then reorganize CI/validation around retained useful tests.
+  The latter includes UI preview-first guidance; do not weaken gates to pass #115.
 
 ## Source of truth
 

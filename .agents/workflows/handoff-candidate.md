@@ -39,6 +39,10 @@ When a full release dossier is explicitly needed, run the unmodified canonical m
 
 ## 4. Delivery and continuation
 
+After compaction, check plan, Git/PR and running sessions; execute the next unfinished step, not a
+final recovery summary. Preserve endpoint, source/worktree, remaining work, evidence, session IDs
+and blockers. Use commentary for progress; no duplicate work, new memory layer or expanded authority.
+
 Report exact commit/PR, scoped changes, local checks, CI/artifact evidence and manual steps. Use:
 - `handoff-ready` when all applicable evidence is complete.
 - `checkpoint` when required evidence is missing or the requested Assistant promotion is unsupported.
