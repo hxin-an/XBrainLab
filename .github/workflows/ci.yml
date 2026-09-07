@@ -187,15 +187,15 @@ jobs:
 
       - name: Basedpyright regression
         timeout-minutes: 40
-        run: poetry run python scripts/dev/run_basedpyright_regression.py
+        run: poetry run -- python scripts/dev/run_basedpyright_regression.py
 
       - name: Architecture compliance
         timeout-minutes: 10
-        run: poetry run python tests/architecture_compliance.py
+        run: poetry run -- python tests/architecture_compliance.py
 
       - name: Secret scan
         timeout-minutes: 10
-        run: poetry run pre-commit run detect-secrets --all-files
+        run: poetry run -- pre-commit run detect-secrets --all-files
 
   linux-shard:
     name: Linux Shard (${{ matrix.command }})

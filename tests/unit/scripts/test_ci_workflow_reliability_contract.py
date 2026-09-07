@@ -141,15 +141,15 @@ def test_product_static_quality_jobs_use_locked_tools_and_parallel_scopes() -> N
     }
     assert (
         commands["Basedpyright regression"]
-        == "poetry run python scripts/dev/run_basedpyright_regression.py"
+        == "poetry run -- python scripts/dev/run_basedpyright_regression.py"
     )
     assert (
         commands["Architecture compliance"]
-        == "poetry run python tests/architecture_compliance.py"
+        == "poetry run -- python tests/architecture_compliance.py"
     )
     assert (
         commands["Secret scan"]
-        == "poetry run pre-commit run detect-secrets --all-files"
+        == "poetry run -- pre-commit run detect-secrets --all-files"
     )
     assert "Ruff check" not in commands
     assert "Ruff format check" not in commands
@@ -161,6 +161,12 @@ def test_guidance_ruff_version_matches_the_locked_precommit_revision() -> None:
 
     assert '"ruff==0.14.14"' in workflow_text
     assert "rev: v0.14.14" in precommit_text
+
+
+def test_detect_secrets_excludes_the_generated_source_identity_baseline_only() -> None:
+    precommit_text = (ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+
+    assert "scripts/dev/basedpyright_baseline\\.json" in precommit_text
 
 
 def test_public_fixture_cache_does_not_restore_a_stale_manifest() -> None:
