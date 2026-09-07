@@ -19,6 +19,10 @@
 - User authorized independent-reviewed non-product PRs to merge after a notice without waiting for
   a reply. Clean each merged worktree/output, then continue through Assistant manual-test delivery.
   Commit, pending CI and compaction are not endpoints. Product PRs still require manual acceptance.
+- PR A: guidance audit, 16 focused tests and strict docs build passed; independent reviewer found no
+  blocker. Native fresh-session probe is unverified: local app-server initialization was read-only,
+  and escalation was denied for external transmission of repo guidance. Do not bypass or claim fresh
+  agent readiness; proceed with unaffected work and disclose the specific permission gap at handoff.
 
 ## Execution and validation adequacy
 
