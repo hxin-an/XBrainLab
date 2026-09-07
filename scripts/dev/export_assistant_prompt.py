@@ -205,6 +205,7 @@ def export_prompt_dossier(
         rag_context = {
             "protocol": rag_evidence.protocol,
             "sequence": rag_evidence.sequence,
+            "trajectory_case_id": rag_evidence.trajectory_case_id,
             "status": rag_evidence.status,
             "error": rag_evidence.error,
             "allowed_tool_names": list(rag_evidence.allowed_tool_names),

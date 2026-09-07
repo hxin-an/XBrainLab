@@ -88,6 +88,7 @@ def test_exporter_marks_product_rag_context_when_requested(tmp_path: Path) -> No
     evidence = ProductRAGContextEvidence(
         protocol="product_process_rag.v1",
         sequence=1,
+        trajectory_case_id="case",
         query="load data",
         allowed_tool_names=("import_eeg_data",),
         status="retrieved",

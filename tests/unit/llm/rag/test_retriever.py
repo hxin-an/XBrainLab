@@ -270,7 +270,7 @@ def test_initialize_failure_remains_unavailable_and_closes_created_client(
     client.close.assert_called_once_with()
 
 
-def test_retrieval_failure_returns_empty_and_releases_lifecycle_lease():
+def test_retrieval_failure_propagates_and_releases_lifecycle_lease():
     retriever = RAGRetriever()
     client = MagicMock()
     embeddings = MagicMock()
@@ -279,9 +279,9 @@ def test_retrieval_failure_returns_empty_and_releases_lifecycle_lease():
     retriever.embeddings = embeddings
     retriever.is_initialized = True
 
-    result = retriever.get_similar_examples("inspect the dataset")
+    with pytest.raises(RuntimeError, match="embedding failed"):
+        retriever.get_similar_examples("inspect the dataset")
 
-    assert result == ""
     assert retriever._active_operations == 0
     client.query_points.assert_not_called()
     retriever.close()

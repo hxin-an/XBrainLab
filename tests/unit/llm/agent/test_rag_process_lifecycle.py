@@ -39,6 +39,11 @@ def _initialization_error_worker(command_queue: Any, result_queue: Any) -> None:
     result_queue.put(("initialization_error", "RuntimeError"))
 
 
+def _not_ready_worker(command_queue: Any, result_queue: Any) -> None:
+    del command_queue
+    result_queue.put(("ready", False))
+
+
 def _initialization_stuck_worker(command_queue: Any, result_queue: Any) -> None:
     del command_queue, result_queue
     time.sleep(30.0)
@@ -145,6 +150,29 @@ def test_process_lifecycle_initialization_error_releases_pending_retrieval() -> 
     assert callback_ready.wait(timeout=_CALLBACK_WAIT_SECONDS)
 
     assert callbacks[0][:3] == (7, "query", "")
+    assert "initialization failed" in callbacks[0][3].casefold()
+    assert lifecycle.has_active_process is False
+    assert lifecycle.close() is True
+
+
+def test_process_lifecycle_not_ready_releases_pending_retrieval() -> None:
+    lifecycle = ProcessRAGRetrieverLifecycle(
+        process_target=_not_ready_worker,
+        initialization_timeout_seconds=20.0,
+        shutdown_wait_seconds=0.5,
+    )
+    callback_ready = threading.Event()
+    callbacks: list[tuple[int, str, str, str]] = []
+
+    assert lifecycle.start()
+    assert lifecycle.retrieve(
+        71,
+        "query",
+        lambda *args: (callbacks.append(args), callback_ready.set()),
+    )
+    assert callback_ready.wait(timeout=_CALLBACK_WAIT_SECONDS)
+
+    assert callbacks[0][:3] == (71, "query", "")
     assert "initialization failed" in callbacks[0][3].casefold()
     assert lifecycle.has_active_process is False
     assert lifecycle.close() is True

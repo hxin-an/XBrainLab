@@ -213,6 +213,7 @@ class ProductRAGContextEvidence:
 
     protocol: str
     sequence: int
+    trajectory_case_id: str
     query: str
     allowed_tool_names: tuple[str, ...]
     status: str
@@ -234,7 +235,7 @@ class _ProductRAGCaseMessages:
         self._lifecycle = lifecycle
         self._next_turn_id = 0
         self._contexts: dict[
-            tuple[str, str], tuple[str, ProductRAGContextEvidence]
+            tuple[str, str, str], tuple[str, ProductRAGContextEvidence]
         ] = {}
 
     def messages(
@@ -242,8 +243,9 @@ class _ProductRAGCaseMessages:
         case: TargetEvalCase | TargetChallengeCase | PrecisionCase,
         *,
         recovery_messages: tuple[str, ...] = (),
+        trace_case_id: str | None = None,
     ) -> list[dict[str, str]]:
-        context, evidence = self._context_for(case)
+        context, evidence = self._context_for(case, trace_case_id=trace_case_id)
         messages = _case_projection(
             case,
             self._registry,
@@ -256,8 +258,10 @@ class _ProductRAGCaseMessages:
     def projection(
         self,
         case: TargetEvalCase | TargetChallengeCase | PrecisionCase,
+        *,
+        trace_case_id: str | None = None,
     ) -> tuple[list[dict[str, str]], PromptToolPublication, ApplicationViewPublication]:
-        context, evidence = self._context_for(case)
+        context, evidence = self._context_for(case, trace_case_id=trace_case_id)
         projection = _case_projection(case, self._registry, rag_context=context)
         self._record_assembled_context(case, evidence, projection[0])
         return projection
@@ -269,6 +273,7 @@ class _ProductRAGCaseMessages:
         *,
         receipt: AssistantToolInputReceipt,
         recovery_messages: tuple[str, ...] = (),
+        trace_case_id: str | None = None,
     ) -> list[dict[str, str]]:
         rag_case = PrecisionCase(
             case_id=case.case_id,
@@ -277,7 +282,7 @@ class _ProductRAGCaseMessages:
             category="missing_parameter",
             requested_tool=case.expected_tool,
         )
-        context, evidence = self._context_for(rag_case)
+        context, evidence = self._context_for(rag_case, trace_case_id=trace_case_id)
         publication = _case_application_publication(source)
         assembler = ContextAssembler(
             self._registry,
@@ -300,8 +305,10 @@ class _ProductRAGCaseMessages:
     def evidence_for(
         self,
         case: TargetEvalCase | TargetChallengeCase | PrecisionCase,
+        *,
+        trace_case_id: str | None = None,
     ) -> ProductRAGContextEvidence:
-        _context, evidence = self._context_for(case)
+        _context, evidence = self._context_for(case, trace_case_id=trace_case_id)
         return evidence
 
     def all_evidence(self) -> list[ProductRAGContextEvidence]:
@@ -316,11 +323,11 @@ class _ProductRAGCaseMessages:
         return sorted(
             (
                 evidence
-                for (cached_case_id, _query), (
+                for (_internal_case_id, _query, _trace_case_id), (
                     _context,
                     evidence,
                 ) in self._contexts.items()
-                if cached_case_id == case_id
+                if evidence.trajectory_case_id == case_id
             ),
             key=lambda evidence: evidence.sequence,
         )
@@ -328,8 +335,11 @@ class _ProductRAGCaseMessages:
     def _context_for(
         self,
         case: TargetEvalCase | TargetChallengeCase | PrecisionCase,
+        *,
+        trace_case_id: str | None = None,
     ) -> tuple[str, ProductRAGContextEvidence]:
-        key = (case.case_id, case.user_input)
+        trajectory_case_id = trace_case_id or case.case_id
+        key = (case.case_id, case.user_input, trajectory_case_id)
         cached = self._contexts.get(key)
         if cached is not None:
             return cached
@@ -340,6 +350,7 @@ class _ProductRAGCaseMessages:
             case.user_input,
             lifecycle=self._lifecycle,
             turn_id=self._next_turn_id,
+            trajectory_case_id=trajectory_case_id,
         )
         self._contexts[key] = result
         return result
@@ -357,8 +368,9 @@ class _ProductRAGCaseMessages:
         )
         if assembled_ids == evidence.assembled_context_item_ids:
             return
-        self._contexts[(case.case_id, case.user_input)] = (
-            self._contexts[(case.case_id, case.user_input)][0],
+        key = (case.case_id, case.user_input, evidence.trajectory_case_id)
+        self._contexts[key] = (
+            self._contexts[key][0],
             replace(evidence, assembled_context_item_ids=assembled_ids),
         )
 
@@ -1381,6 +1393,7 @@ def _retrieve_product_rag_context(
     *,
     lifecycle: ProcessRAGRetrieverLifecycle,
     turn_id: int,
+    trajectory_case_id: str,
 ) -> tuple[str, ProductRAGContextEvidence]:
     """Use the product RAG lifecycle once and retain only its returned context.
 
@@ -1414,6 +1427,7 @@ def _retrieve_product_rag_context(
         evidence = ProductRAGContextEvidence(
             protocol="product_process_rag.v1",
             sequence=turn_id,
+            trajectory_case_id=trajectory_case_id,
             query=query,
             allowed_tool_names=allowed_tool_names,
             status="not_queued",
@@ -1432,6 +1446,7 @@ def _retrieve_product_rag_context(
         evidence = ProductRAGContextEvidence(
             protocol="product_process_rag.v1",
             sequence=turn_id,
+            trajectory_case_id=trajectory_case_id,
             query=query,
             allowed_tool_names=allowed_tool_names,
             status="evaluator_wait_timeout",
@@ -1442,22 +1457,13 @@ def _retrieve_product_rag_context(
         )
         return "", evidence
 
-    context = result["context"]
     error = result["error"] or None
-    # RAGRetriever currently suppresses internal retrieval exceptions and returns
-    # an empty string. The lifecycle can distinguish its own error callback, but
-    # cannot prove an empty result was a normal retrieval until that product seam
-    # propagates structured retriever status.
-    status = (
-        "degraded"
-        if error
-        else "retrieved"
-        if context
-        else "empty_or_retriever_suppressed"
-    )
+    context = "" if error else result["context"]
+    status = "degraded" if error else "retrieved" if context else "empty"
     return context, ProductRAGContextEvidence(
         protocol="product_process_rag.v1",
         sequence=turn_id,
+        trajectory_case_id=trajectory_case_id,
         query=query,
         allowed_tool_names=allowed_tool_names,
         status=status,
@@ -2264,12 +2270,14 @@ def evaluate_case_trajectory(
     product_rag_messages: _ProductRAGCaseMessages | None = None,
 ) -> CaseTrajectoryResult:
     """Generate and score one case through the product strict-recovery policy."""
+    trajectory_case_id = trace_case_id or case.case_id
 
     def messages(recovery: tuple[str, ...]) -> list[dict[str, str]]:
         if product_rag_messages is not None:
             return product_rag_messages.messages(
                 case,
                 recovery_messages=recovery,
+                trace_case_id=trajectory_case_id,
             )
         return (
             _build_recovery_case_messages(case, registry, recovery)
@@ -2278,7 +2286,7 @@ def evaluate_case_trajectory(
         )
 
     _messages, prompt_publication, backend_publication = (
-        product_rag_messages.projection(case)
+        product_rag_messages.projection(case, trace_case_id=trajectory_case_id)
         if product_rag_messages is not None
         else _case_projection(case, registry)
     )
@@ -2302,7 +2310,7 @@ def evaluate_case_trajectory(
         ),
         generate_response=generate_response,
         generation_recorder=generation_recorder,
-        trace_case_id=trace_case_id or case.case_id,
+        trace_case_id=trajectory_case_id,
         replay_controller_response=harness.replay_controller_generation,
     )
     host_admission, product_terminal = harness.observed_controller_outcome(
@@ -2379,6 +2387,7 @@ def evaluate_clarification_trajectory(
     product_rag_messages: _ProductRAGCaseMessages | None = None,
 ) -> CaseTrajectoryResult:
     """Generate an admitted receipt-backed second turn through recovery policy."""
+    trajectory_case_id = trace_case_id or case.case_id
     harness = admission.harness
     receipt = harness.begin_turn(case.reply, admission.prompt_publication)
     if receipt is None:
@@ -2542,6 +2551,7 @@ def evaluate_clarification_trajectory(
                 source,
                 receipt=receipt,
                 recovery_messages=recovery,
+                trace_case_id=trajectory_case_id,
             )
 
     else:
@@ -2563,7 +2573,7 @@ def evaluate_clarification_trajectory(
             score_raw_model_response=raw_score,
             generate_response=generate_response,
             generation_recorder=generation_recorder,
-            trace_case_id=trace_case_id or case.case_id,
+            trace_case_id=trajectory_case_id,
             initial_turn_purpose="clarification_proposal",
             replay_controller_response=harness.replay_controller_generation,
         ),
@@ -3670,8 +3680,8 @@ def _product_rag_protocol() -> dict[str, Any]:
         "corpus_sha256": RAGConfig.GOLD_SET_SHA256,
         "index_schema_version": RAGConfig.INDEX_SCHEMA_VERSION,
         "empty_result_note": (
-            "An empty callback may be a normal empty result or an internally "
-            "suppressed retriever error; it is not complete-RAG success evidence."
+            "Empty means the ready product retriever found no eligible context; "
+            "initialization and retrieval errors are reported as degraded."
         ),
     }
 

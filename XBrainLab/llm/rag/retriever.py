@@ -502,10 +502,6 @@ class RAGRetriever:
                         },
                     )
                 )
-        except Exception as e:
-            logger.error("Hybrid retrieval failed: %s", e)
-            return ""
-        else:
             if not context_items:
                 return ""
             return encode_untrusted_context(

@@ -86,6 +86,21 @@
 - Respect the small models' current input/output budgets; assess short/medium/near-limit cases and
   optional-context removal. No context inflation or new summary model. Use focused cases during edits,
   applicable frozen bounded evidence on the final candidate, without requiring unaccepted Stable scores.
+- Pre-semantic baseline at clean fbc7311a completed all 81 cases using product-process RAG: 36/36
+  positive, 10/10 explicit origin, 5/5 missing guard, 22/24 no-action and 6/7 clarification. Failure
+  identities match the accepted bounded set; do not call this Stable. Full local captures preserve
+  raw output and final prompt; multi-turn RAG row attribution needs a reporting-only correction.
+- Bounded semantic slice: correct the clarification rule cross-reference and direct-preprocess
+  value-origin wording, explicitly request English responses. Review each bundled Chinese example:
+  remove only duplicate tool/parameter examples; translate distinct supported parameter/view examples
+  into concise English without copying frozen case answers. Preserve all 18 tool schema coverage.
+  Update corpus identity/index invalidation and directly related tests; do not alter frozen benchmark
+  files/scorer or introduce multilingual gates. Re-run real RAG/prompt/frozen model evidence afterward.
+- RAG error boundary: retrieval currently catches failures and returns the same empty string as a
+  normal no-match, making evaluator evidence ambiguous. Let the existing process lifecycle receive
+  retrieval exceptions and own optional-context degradation, without a new result/state owner or
+  changing tool admission/UI. Keep initialization's existing not-ready handling. Tests must distinguish
+  no-match from retrieval failure and prove leases/child lifecycle cleanup; do not mask errors in reports.
 - Independent review plus same-head applicable CI precedes the Assistant product PR/manual delivery.
   Open exact-source native app with visible log, confirm responsive, then hand over without prolonged
   monitoring. Necessary unavailable resources/new contract decisions are genuine blockers; isolate them

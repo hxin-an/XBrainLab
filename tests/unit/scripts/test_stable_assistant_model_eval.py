@@ -76,13 +76,14 @@ EVALUATOR_POSITIVE_CASES_SHA256 = (
 class _ImmediateProductRAGLifecycle:
     """Controlled callback double for the product lifecycle boundary."""
 
-    def __init__(self, context: str) -> None:
+    def __init__(self, context: str, *, error: str = "") -> None:
         self.context = context
+        self.error = error
         self.requests: list[tuple[int, str, frozenset[str] | None]] = []
 
     def retrieve(self, turn_id, query, callback, *, allowed_tool_names=None):
         self.requests.append((turn_id, query, allowed_tool_names))
-        callback(turn_id, query, self.context, "")
+        callback(turn_id, query, self.context, self.error)
         return True
 
     def cancel_retrieval(self, _turn_id):
@@ -128,6 +129,33 @@ def test_product_rag_cache_reuses_only_the_same_case_turn_query() -> None:
     assert [
         evidence.sequence for evidence in builder.evidence_for_case(case.case_id)
     ] == [1, 2]
+
+
+def test_product_rag_error_discards_context_but_healthy_empty_is_distinct() -> None:
+    case = load_target_cases(DEFAULT_CASES)[0]
+    encoded_context = (
+        '{"schema":"xbrainlab.untrusted_context.v1","trust":"untrusted",'
+        '"items":[{"type":"rag_example","source":{"kind":"test","id":"drop-me"},'
+        '"data":{"input":"do not inject"}}]}'
+    )
+    failed = _ProductRAGCaseMessages(
+        target_tool_registry(),
+        _ImmediateProductRAGLifecycle(encoded_context, error="retrieval failed"),  # type: ignore[arg-type]
+    )
+    healthy_empty = _ProductRAGCaseMessages(
+        target_tool_registry(),
+        _ImmediateProductRAGLifecycle(""),  # type: ignore[arg-type]
+    )
+
+    failed_messages = failed.messages(case)
+    failed_evidence = failed.evidence_for(case)
+    healthy_empty.messages(case)
+
+    assert failed_evidence.status == "degraded"
+    assert failed_evidence.context_item_ids == ()
+    assert failed_evidence.context_sha256 is None
+    assert "drop-me" not in json.dumps(failed_messages)
+    assert healthy_empty.evidence_for(case).status == "empty"
 
 
 def _complete_v12_case_summaries() -> dict[str, dict[str, object]]:
@@ -1300,18 +1328,39 @@ def test_discriminated_clarification_trajectories_use_scripted_model_turns() -> 
             '"parameters":{"high_freq":128}}',
         )
     )
+    lifecycle = _ImmediateProductRAGLifecycle("")
+    product_rag_messages = _ProductRAGCaseMessages(
+        registry,
+        lifecycle,  # type: ignore[arg-type]
+    )
 
     generic_result = evaluate_discriminated_clarification_trajectory(
-        generic, registry, lambda _messages: next(generic_responses)
+        generic,
+        registry,
+        lambda _messages: next(generic_responses),
+        trace_case_id=generic.case_id,
+        product_rag_messages=product_rag_messages,
     )
     partial_result = evaluate_discriminated_clarification_trajectory(
-        partial, registry, lambda _messages: next(partial_responses)
+        partial,
+        registry,
+        lambda _messages: next(partial_responses),
+        trace_case_id=partial.case_id,
+        product_rag_messages=product_rag_messages,
     )
 
     assert generic_result.final_score.passed is True
     assert partial_result.final_score.passed is True
     assert generic_result.final_score.product_outcome is not None
     assert partial_result.final_score.product_outcome is not None
+    assert [
+        evidence.sequence
+        for evidence in product_rag_messages.evidence_for_case(generic.case_id)
+    ] == [1, 2]
+    assert [
+        evidence.sequence
+        for evidence in product_rag_messages.evidence_for_case(partial.case_id)
+    ] == [3]
 
 
 def test_generic_clarification_uses_the_checked_in_second_turn() -> None:

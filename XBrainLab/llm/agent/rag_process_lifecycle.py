@@ -330,6 +330,12 @@ class ProcessRAGRetrieverLifecycle:
     def _handle_message(self, generation: int, message: tuple[Any, ...]) -> bool:
         kind = str(message[0]) if message else ""
         if kind == "ready":
+            if len(message) != 2 or not bool(message[1]):
+                self._abort_generation(
+                    generation,
+                    error="RAG initialization failed; continuing without RAG context.",
+                )
+                return True
             with self._lock:
                 if generation != self._generation or self._closed:
                     return True
