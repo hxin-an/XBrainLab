@@ -609,6 +609,11 @@ def _held_out_evaluations(
         request = symbols["EvaluationRenderRequest"](
             publication_generation=publication.generation,
             selection=symbols["EvaluationPlanIdentity"](plan_index=plan_index),
+            trainer_identity=publication.training_boundary.trainer_identity,
+            split_specification_fingerprint=(
+                publication.state.dataset.split_specification_fingerprint
+            ),
+            split_epoch_revision=publication.state.dataset.split_epoch_revision,
             split="test",
         )
         render = service.get_evaluation_render(request)

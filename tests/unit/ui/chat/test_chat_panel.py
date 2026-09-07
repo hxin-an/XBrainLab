@@ -406,6 +406,18 @@ class TestChatPanelInit:
         qtbot.wait(20)
 
         card = chat_panel.confirmation_card_widget
+        # Constrain the row to one real button, independent of platform fonts.
+        single_action_width = max(
+            button.sizeHint().width()
+            for button in (card.secondary_button, card.primary_button)
+        )
+        chat_panel.resize(
+            chat_panel.width()
+            - card.button_layout.geometry().width()
+            + single_action_width,
+            chat_panel.height(),
+        )
+        qtbot.wait(20)
         assert card.button_layout.direction() == QBoxLayout.Direction.TopToBottom
         for button in (card.secondary_button, card.primary_button):
             text_width = button.fontMetrics().horizontalAdvance(button.text()) + 24

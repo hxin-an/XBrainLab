@@ -176,6 +176,7 @@ class TestDataSplittingPreviewDialogSplitters:
             if hasattr(d, "timer"):
                 d.timer.stop()
             yield d
+            assert d.close(), "Preview test left its worker running during teardown"
 
     def test_creates_with_option_splitters(self, dlg):
         assert isinstance(dlg, QDialog)
@@ -485,10 +486,13 @@ class TestDataSplittingPreviewDialogSplitters:
     def test_confirm_worker_alive(self, dlg):
         dlg.preview_worker = MagicMock()
         dlg.preview_worker.is_alive.return_value = True
-        with patch(
-            "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.show_warning"
-        ):
-            dlg.confirm()
+        try:
+            with patch(
+                "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.show_warning"
+            ):
+                dlg.confirm()
+        finally:
+            dlg.preview_worker.is_alive.return_value = False
 
     def test_confirm_success(self, dlg):
         dlg.preview_worker = MagicMock()
@@ -678,11 +682,14 @@ class TestDataSplittingPreviewDialogSplitters:
         dlg.preview_canceller = MagicMock(return_value=True)
         dlg._active_preview_request = (1, "active-preview")
 
-        dlg.schedule_preview()
+        try:
+            dlg.schedule_preview()
 
-        dlg.preview_canceller.assert_called_once_with("active-preview")
-        assert dlg.preview_debounce_timer.isActive()
-        dlg.preview_debounce_timer.stop()
+            dlg.preview_canceller.assert_called_once_with("active-preview")
+            assert dlg.preview_debounce_timer.isActive()
+            dlg.preview_debounce_timer.stop()
+        finally:
+            worker.is_alive.return_value = False
 
     def test_preview_restarts_after_previous_worker_exits(self, dlg):
         old_worker = MagicMock()

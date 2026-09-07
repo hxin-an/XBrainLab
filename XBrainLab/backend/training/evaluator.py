@@ -351,10 +351,7 @@ class Evaluator:
         smoothgrad_sq_list = []
         vargrad_list = []
 
-        saliency_inst = Saliency(model) if compute_any_saliency else None
-        noise_tunnel_inst = (
-            NoiseTunnel(saliency_inst) if compute_any_noise and saliency_inst else None
-        )
+        noise_tunnel_inst = NoiseTunnel(Saliency(model)) if compute_any_noise else None
 
         for inputs, labels in data_loader:
             batch_inputs, batch_labels = Evaluator._move_batch_to_model_device(
@@ -362,11 +359,20 @@ class Evaluator:
                 inputs,
                 labels,
             )
-            outputs = model(batch_inputs)
-            Evaluator.require_finite_tensor(
-                outputs,
-                context="Saliency evaluation model output",
-            )
+            with torch.set_grad_enabled(compute_any_gradient):
+                if compute_any_gradient:
+                    batch_inputs.requires_grad_(True)
+                outputs = model(batch_inputs)
+                Evaluator.require_finite_tensor(
+                    outputs,
+                    context="Saliency evaluation model output",
+                )
+                if compute_any_gradient:
+                    # Reuse the logits graph for signed true-label attribution.
+                    selected_outputs = outputs.gather(1, batch_labels[:, None]).sum()
+                    batch_gradient = Evaluator._captum_output_to_numpy(
+                        torch.autograd.grad(selected_outputs, batch_inputs)[0]
+                    )
 
             output_list.append(outputs.detach().cpu().numpy())
             label_list.append(batch_labels.detach().cpu().numpy())
@@ -375,14 +381,7 @@ class Evaluator:
                 batch_inputs.requires_grad_(True)
             target_labels = label_list[-1].tolist()
 
-            if compute_any_gradient and saliency_inst is not None:
-                batch_gradient = Evaluator._captum_output_to_numpy(
-                    saliency_inst.attribute(
-                        batch_inputs,
-                        target=target_labels,
-                        abs=False,
-                    )
-                )
+            if compute_any_gradient:
                 if compute_gradient:
                     gradient_list.append(batch_gradient)
                 if compute_gradient_input:

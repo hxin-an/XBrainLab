@@ -1467,6 +1467,12 @@ def _assert_capture_geometry(filename: str, widget: QWidget) -> None:
     if isinstance(widget, DataSplittingDialog):
         if widget.minimumSizeHint().width() > widget.width():
             raise RuntimeError(f"{filename} minimum width exceeds its captured width.")
+        content_scroll = widget.content_scroll
+        if content_scroll is None:
+            raise RuntimeError(f"{filename} has no split-settings viewport.")
+        viewport = content_scroll.viewport()
+        if viewport is None:
+            raise RuntimeError(f"{filename} has no split-settings viewport.")
         button = widget.btn_confirm
         if button is None or not button.isVisible():
             raise RuntimeError(f"{filename} does not show its Confirm button.")
@@ -1478,9 +1484,15 @@ def _assert_capture_geometry(filename: str, widget: QWidget) -> None:
             widget.train_type_combo,
             widget.test_combo,
             widget.val_combo,
+            widget.cv_check,
         ):
             if control is None or not control.isVisibleTo(widget):
                 raise RuntimeError(f"{filename} hides a core split setting.")
+            control_left = control.mapTo(viewport, QPoint(0, 0)).x()
+            if control_left < 0 or control_left + control.width() > viewport.width():
+                raise RuntimeError(
+                    f"{filename} cannot reach a core split setting horizontally."
+                )
 
     if isinstance(widget, DataSplittingPreviewDialog) and widget.tree is not None:
         _data_splitting_preview_semantics(widget)

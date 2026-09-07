@@ -29,6 +29,7 @@ from scripts.dev.capture_ui_polish_surfaces import (
     _capture,
     _control_is_fully_visible_in_capture,
     _crop_logical_reference,
+    _data_splitting_dialog,
     _data_splitting_preview_dialog,
     _data_splitting_preview_semantics,
     _epoching_bids_interval_duration_dialog,
@@ -65,6 +66,29 @@ def test_model_selection_capture_uses_compact_product_geometry(qtbot) -> None:
     assert dialog.findChild(QTableWidget) is None
     assert dialog.width() == 680
     assert 452 <= dialog.height() < 520
+
+
+def test_data_splitting_capture_rejects_core_control_beyond_horizontal_viewport(
+    qtbot,
+) -> None:
+    dialog = _data_splitting_dialog()
+    qtbot.addWidget(dialog)
+    dialog.show()
+    qtbot.wait(20)
+
+    scroll = dialog.content_scroll
+    control = dialog.test_combo
+    assert scroll is not None
+    assert control is not None
+    assert control.isVisibleTo(dialog)
+    _assert_capture_geometry("data-splitting-dialog.png", dialog)
+    control.move(scroll.viewport().width() + 8, control.y())
+    assert control.isVisibleTo(dialog)
+    control_left = control.mapTo(scroll.viewport(), QPoint(0, 0)).x()
+    assert control_left + control.width() > scroll.viewport().width()
+
+    with pytest.raises(RuntimeError, match="horizontally"):
+        _assert_capture_geometry("data-splitting-dialog.png", dialog)
 
 
 def test_data_splitting_preview_capture_uses_current_worker_lifecycle(qtbot) -> None:

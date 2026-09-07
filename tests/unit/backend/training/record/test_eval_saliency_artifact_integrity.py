@@ -21,6 +21,7 @@ from XBrainLab.backend.training.saliency_artifact_integrity import (
 )
 from XBrainLab.backend.training.saliency_provenance import (
     SaliencyArtifactContext,
+    SaliencyContextError,
     SaliencyProducerIdentity,
 )
 
@@ -76,6 +77,31 @@ def _record(
         saliency_context=_context(),
         saliency_method_parameters=saliency_method_parameters,
         saliency_noise_seeds=saliency_noise_seeds,
+    )
+
+
+def _smoothgrad_record(context: SaliencyArtifactContext | None = None) -> EvalRecord:
+    values = {
+        0: np.arange(4, dtype=np.float32).reshape(1, 2, 2),
+        1: np.arange(4, 8, dtype=np.float32).reshape(1, 2, 2),
+    }
+    return EvalRecord(
+        label=np.array([0, 1]),
+        output=np.array([[0.9, 0.1], [0.1, 0.9]]),
+        gradient={},
+        gradient_input={},
+        smoothgrad=values,
+        smoothgrad_sq={},
+        vargrad={},
+        saliency_context=_context() if context is None else context,
+        saliency_method_parameters={
+            "SmoothGrad": {
+                "nt_samples": 2,
+                "nt_samples_batch_size": None,
+                "stdevs": 0.1,
+            }
+        },
+        saliency_noise_seeds={"SmoothGrad": 0},
     )
 
 
@@ -183,6 +209,69 @@ def test_round_trip_verifies_every_method_class_entry(tmp_path: Path) -> None:
     manifest = cast(dict[str, Any], loaded.saliency_integrity_manifest)
     assert len(manifest["entries"]) == 4
     np.testing.assert_array_equal(loaded.get_gradient(1), record.gradient[1])
+
+
+def test_retain_compatible_methods_reuses_sealed_buffers_without_rehashing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    previous = _record()
+    fresh = _smoothgrad_record()
+    monkeypatch.setattr(
+        "XBrainLab.backend.training.saliency_artifact_integrity._describe_payload",
+        lambda *_args, **_kwargs: pytest.fail(
+            "retaining sealed methods must not scan attribution payloads"
+        ),
+    )
+
+    fresh.retain_compatible_saliency_methods(
+        previous,
+        recomputed_methods={"SmoothGrad"},
+    )
+
+    assert set(fresh.saliency_method_parameters) == {
+        "Gradient",
+        "Gradient * Input",
+        "SmoothGrad",
+    }
+    assert np.shares_memory(fresh.gradient[0], previous.gradient[0])
+    assert np.shares_memory(fresh.gradient_input[1], previous.gradient_input[1])
+    assert set(fresh.smoothgrad) == {0, 1}
+
+
+def test_retain_methods_skips_incompatible_old_results_but_requires_fresh_coverage() -> (
+    None
+):
+    previous = _record()
+    producer = SaliencyProducerIdentity.from_components(
+        dataset={"identity": "dataset"},
+        split={"identity": "test"},
+        run={"identity": "run-1"},
+        model={"identity": "model-2"},
+    )
+    incompatible_context = SaliencyArtifactContext(
+        class_map=((0, "left"), (1, "right")),
+        channel_names=("C3", "C4"),
+        sampling_frequency_hz=100.0,
+        epoch_start_seconds=0.0,
+        epoch_end_seconds=0.01,
+        epoch_sample_count=2,
+        montage_fingerprint=None,
+        epoch_data_fingerprint=producer.dataset_fingerprint,
+        producer_identity=producer,
+    )
+    fresh = _smoothgrad_record(incompatible_context)
+
+    fresh.retain_compatible_saliency_methods(
+        previous,
+        recomputed_methods={"SmoothGrad"},
+    )
+    assert set(fresh.saliency_method_parameters) == {"SmoothGrad"}
+
+    with pytest.raises(SaliencyContextError, match="exactly the requested"):
+        fresh.retain_compatible_saliency_methods(
+            previous,
+            recomputed_methods={"SmoothGrad", "VarGrad"},
+        )
 
 
 @pytest.mark.parametrize(

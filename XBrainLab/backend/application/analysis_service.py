@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from typing import Any, TypedDict
 
 import numpy as np
 
 from ..training_manager import current_post_training_saliency_target
+from ..training_state_contract import PostTrainingSaliencyPhase
 from .capabilities import SALIENCY_TRAINING_ACTIVE_REASON
 from .commands import (
     Command,
@@ -29,12 +30,7 @@ from .evaluation_render import (
 )
 from .owned_work import owned_work_checkpoint
 from .resource_guard import ResourcePreflightResult
-from .saliency_policy import (
-    ADVANCED_SALIENCY_METHODS,
-    merge_saliency_recompute_params,
-    normalize_saliency_params,
-    selected_saliency_methods_from_params,
-)
+from .saliency_policy import normalize_saliency_params
 from .saliency_render import build_saliency_cross_fold_choices
 from .saliency_resource import (
     SaliencyResourceAdmission,
@@ -233,7 +229,7 @@ class AnalysisCommandService:
             "plan_count": len(plans),
             "finished_run_count": finished_total,
             "evaluation_splits": sorted(evaluation_splits),
-            "training_active": self._get_state().training.is_running,
+            "training_active": self.training_runtime.is_training(),
             "plans": summaries,
             "cross_fold_choices": [
                 choice.to_dict()
@@ -365,12 +361,6 @@ class AnalysisCommandService:
             if configure_reasons:
                 raise PreconditionError("; ".join(configure_reasons))
             automatic_target = current_post_training_saliency_target()
-            if automatic_target is not None and automatic_target.explicit:
-                params = self._accumulated_saliency_recompute_params(
-                    params,
-                    state,
-                    selected_members=automatic_target.selected_members,
-                )
             resource_preflight = self._saliency_resource_preflight(
                 command,
                 params,
@@ -463,6 +453,13 @@ class AnalysisCommandService:
         state: ApplicationStateSnapshot,
     ) -> list[str]:
         reasons = []
+        if state.visualization.post_training_saliency.phase in {
+            PostTrainingSaliencyPhase.PENDING,
+            PostTrainingSaliencyPhase.RUNNING,
+        }:
+            reasons.append(
+                "Saliency computation is already running. Wait for it to finish."
+            )
         if state.active_training.is_running:
             reasons.append(SALIENCY_TRAINING_ACTIVE_REASON)
         if state.active_training.has_trainer or (
@@ -529,152 +526,6 @@ class AnalysisCommandService:
             params,
             preflight,
         ).to_diagnostics()
-
-    def _accumulated_saliency_recompute_params(
-        self,
-        incoming_params: dict[str, Any],
-        state: ApplicationStateSnapshot,
-        *,
-        selected_members: tuple[tuple[int, int], ...] | None = None,
-    ) -> dict[str, Any]:
-        """Retain completed methods for exactly the records being replaced."""
-        selected = set(selected_members) if selected_members is not None else None
-        coverage = tuple(
-            run
-            for run in state.visualization.saliency_coverage
-            if selected is None or (run.plan_index, run.run_index) in selected
-        )
-        completed_methods = {
-            method.method
-            for run in coverage
-            for method in run.methods
-            if method.available and method.complete
-        }
-        incoming_methods = selected_saliency_methods_from_params(incoming_params)
-        retained_advanced = (
-            completed_methods.intersection(ADVANCED_SALIENCY_METHODS) - incoming_methods
-        )
-        retained_params = self._retained_saliency_method_params(
-            state,
-            retained_advanced,
-            selected_members=selected,
-        )
-        try:
-            return merge_saliency_recompute_params(
-                incoming_params,
-                completed_methods=completed_methods,
-                retained_method_params=retained_params,
-            )
-        except ValueError as exc:
-            raise self._completed_saliency_params_error(str(exc)) from exc
-
-    def _retained_saliency_method_params(
-        self,
-        state: ApplicationStateSnapshot,
-        retained_methods: set[str],
-        *,
-        selected_members: set[tuple[int, int]] | None = None,
-    ) -> dict[str, dict[str, Any]]:
-        if not retained_methods:
-            return {}
-        try:
-            holders = tuple(self.training_runtime.training_plan_holders())
-        except Exception as exc:
-            raise self._completed_saliency_params_error(
-                "Completed saliency records could not be read."
-            ) from exc
-
-        retained: dict[str, dict[str, Any]] = {}
-        for run_coverage in state.visualization.saliency_coverage:
-            if (
-                selected_members is not None
-                and (
-                    run_coverage.plan_index,
-                    run_coverage.run_index,
-                )
-                not in selected_members
-            ):
-                continue
-            covered_methods = {
-                method.method
-                for method in run_coverage.methods
-                if method.available
-                and method.complete
-                and method.method in retained_methods
-            }
-            if not covered_methods:
-                continue
-            try:
-                holder = holders[run_coverage.plan_index]
-                runs = tuple(holder.get_plans())
-                run = runs[run_coverage.run_index]
-                record_getter = getattr(run, "get_saliency_eval_record", None)
-                record = (
-                    record_getter()
-                    if callable(record_getter)
-                    else getattr(run, "eval_record", None)
-                )
-                artifact_params = getattr(record, "saliency_method_parameters", None)
-            except Exception as exc:
-                raise self._completed_saliency_params_error(
-                    "Completed saliency records changed while settings were applied."
-                ) from exc
-            if not isinstance(artifact_params, Mapping):
-                missing = sorted(covered_methods)[0]
-                raise self._completed_saliency_params_error(
-                    f"Completed saliency parameters are unavailable for {missing}."
-                )
-            for method in ADVANCED_SALIENCY_METHODS:
-                if method not in covered_methods:
-                    continue
-                raw_params = artifact_params.get(method)
-                if not isinstance(raw_params, Mapping):
-                    raise self._completed_saliency_params_error(
-                        f"Completed saliency parameters are unavailable for {method}."
-                    )
-                try:
-                    normalized, _requested_method = normalize_saliency_params(
-                        method,
-                        raw_params,
-                    )
-                except (TypeError, ValueError) as exc:
-                    raise self._completed_saliency_params_error(
-                        f"Completed saliency parameters are invalid for {method}."
-                    ) from exc
-                effective = dict(normalized[method])
-                previous = retained.get(method)
-                if previous is not None and not _strict_saliency_params_equal(
-                    previous,
-                    effective,
-                ):
-                    raise self._completed_saliency_params_error(
-                        f"Completed saliency parameters conflict for {method}. "
-                        "Select that method in Saliency Settings to choose one "
-                        "configuration."
-                    )
-                retained[method] = effective
-
-        missing_methods = retained_methods.difference(retained)
-        if missing_methods:
-            missing = next(
-                method
-                for method in ADVANCED_SALIENCY_METHODS
-                if method in missing_methods
-            )
-            raise self._completed_saliency_params_error(
-                f"Completed saliency parameters are unavailable for {missing}."
-            )
-        return retained
-
-    @staticmethod
-    def _completed_saliency_params_error(message: str) -> PreconditionError:
-        return PreconditionError(
-            message,
-            diagnostics={
-                "reason": "completed_saliency_parameters_unavailable",
-                "state_preserved": True,
-            },
-        )
 
     @staticmethod
     def _saliency_holder_datasets(holders: tuple[Any, ...]) -> tuple[Any, ...]:
