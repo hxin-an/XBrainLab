@@ -104,13 +104,18 @@ Evidence root 預設必須是 repo-contained 且 ignored；只有明確傳入
 本節完整dossier宣稱缺任何required gate時只能稱`checkpoint`或`blocked`。一般PR按上節判定
 applicable evidence；同一clean/explained exact commit全部通過才可稱`handoff-ready`。
 
-## Manual merge approval
+## Merge approval and notification
 
 產品runtime、GUI、資料流程或使用者可見行為有變更時，PR必須記錄`Manual acceptance`：日期、
 測試範圍、product source identity與使用者明確的手測通過/merge同意。若product source之後改動，
 批准失效並回到checkpoint。CI、自動journey與offscreen screenshot不能取代此批准。
 
-純docs、tests、CI或agent-guidance變更若不可能改變產品行為，可不要求manual acceptance。
+已授權工作的純docs、tests、CI或agent-guidance PR，經review確認不改產品行為、且同版本所有
+適用non-skipped checks成功後，可先通知再merge，不必逐次等使用者回覆。通知列明PR/source、
+範圍、驗證與已知限制；只要求review或開PR、明示暫停／禁止merge時不適用此授權。
+是否屬非產品變更看實際效果，不只看檔名；CI發布／部署改動仍按其外部影響確認權限。
+產品PR仍須上述手測及批准，所有merge也都先通知；範圍不明、必要檢查未成功或新外部權限
+未取得時不可用通知代替確認。追蹤與停止條件見`.agents/workflows/handoff-candidate.md`。
 
 ### Bounded Assistant baseline merge
 

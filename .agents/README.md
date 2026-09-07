@@ -25,7 +25,7 @@ scope. This index does not duplicate that catalog or require a reviewer for ever
 | `architecture-review.md` | 將 current/target gap 收斂為一個可交付 slice。 |
 | `documentation-review.md` | 合併 conflicting authority 與修復 links。 |
 | `docs-site-redesign.md` | 已取得 UI/docs-site 授權後調整 portal。 |
-| `refactor-slice.md` | 執行一個 behavior-preserving slice 後停止。 |
+| `refactor-slice.md` | 分段重構並完成已授權 outcome。 |
 | `tdd-change.md` | Bug/core behavior 的 red-green loop。 |
 | `test-audit.md` | 評估測試是否能抓到真實 defect。 |
 | `agent-toolcall-scoring.md` | 產品穩定後的 tool-call experiment。 |

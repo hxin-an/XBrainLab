@@ -21,7 +21,8 @@ the canonical manifest runner; do not invent a reduced full-dossier profile.
 4. Use deterministic tools for source identity, check conclusions, counts and artifact state. Review
    changed UI design/anomalies visually; unchanged screenshots do not require another model pass.
 5. Distinguish scope-complete work from checkpoint and handoff-ready; do not escalate one into the
-   next evidence tier automatically.
+   next evidence tier automatically. A checkpoint does not end authorized work; follow
+   `../../workflows/handoff-candidate.md` for CI tracking, real blockers and pre-merge notification.
 
 ## Interpretation
 

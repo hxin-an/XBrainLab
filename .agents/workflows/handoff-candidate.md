@@ -2,7 +2,7 @@
 
 最後更新：`2026-09-07`
 
-Use before delivering a manual-test candidate. Follow the evidence selection in
+Use when delivering or merging an authorized PR. Follow the evidence selection in
 `docs/validation/README.md`; an ordinary PR does not require a duplicate local full manifest.
 
 ## 1. Scope and source
@@ -41,6 +41,20 @@ Report exact commit/PR, scoped changes, local checks, CI/artifact evidence and m
 - `blocked` only when required resources or new authority cannot be obtained.
 
 An unrelated scoped desktop change can be handoff-ready while retaining accepted Assistant limits;
-that does not promote the Assistant to Stable. Product merge still requires exact-source manual pass
-and explicit approval. Continue independent authorized work while CI or manual acceptance is pending.
-Do not close or replace the user's running application to do so.
+that does not promote the Assistant to Stable.
+
+`checkpoint` is a progress report, not a reason to end authorized work. Track the current PR through
+pending CI using available wait/monitor tools with bounded waits and concise updates; do not require
+another user prompt to resume. Continue useful independent authorized work while waiting, without
+closing the user's app. Do not invent work or duplicate full validation just to remain busy.
+
+On failed, cancelled, stale or missing checks, inspect actual evidence and complete safe in-scope
+diagnosis/repair. Retry only when evidence supports it, preserving the original failure; do not increase
+timeouts, weaken gates or expand product scope to get green. If necessary access, a new scope decision
+or a user-only acceptance is genuinely missing, report what is blocked and the exact input needed.
+
+Stop at the requested endpoint, a user pause, or a genuine resource/authority blocker, not simply at
+commit, push or a status label. A request limited to review or opening a PR does not authorize merge.
+For authorized merge, apply `docs/validation/README.md` approval rules: notify immediately beforehand
+with PR/source, scope, checks and known limits; recheck base/head and gates, then use an exact-head
+merge guard. Verify the resulting merge state. A pre-merge notice is not a completion claim.

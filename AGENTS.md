@@ -54,8 +54,7 @@ side effects、confirmation、visible results 都是 public contract。
 - 禁止未經要求使用 `git reset --hard`、`git checkout --` 或廣泛清理。
 - 合併一律經 PR；PR base 與 head SHA 必須精確對應，CI 及 non-skipped checks 必須
   `completed/success`。Missing、pending、stale、cancelled 或 failed 都 fail closed。
-- Product merge 需明確手測通過及批准；PR 的 `Manual acceptance` 記錄日期、範圍、source。
-  Source再改即失效，自動證據不取代批准。純 docs/tests/CI/guidance 可豁免。
+- Merge先通知；產品需同source手測及批准，非產品依`docs/validation/README.md`授權，不逐次等批准。
 
 ## 程式碼品質與複雜度
 
@@ -91,7 +90,7 @@ production `+/-/net LOC`、必要性與拆分方案；數量是審查訊號，�
 ## 驗證與完成語意
 
 - `scope-complete`：使用者要求的 observable outcome 與直接相關驗證已完成。
-- `checkpoint`：明定的 in-scope 行為或必要 evidence 仍缺少。
+- `checkpoint`：in-scope 行為或 evidence 仍缺少；不是停止條件，依handoff workflow繼續追蹤。
 - `blocked`：需要新的使用者決策或本環境無法取得的必要資源。
 - `handoff-ready`：只在 `.agents/workflows/handoff-candidate.md` 的所有 applicable gate 對同一
   clean/explained exact commit 通過後使用。
