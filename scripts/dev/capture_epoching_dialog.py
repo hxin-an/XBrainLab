@@ -522,7 +522,7 @@ def _baseline_surface_evidence(
         raise RuntimeError("Epoch baseline surface capture is empty.")
     dominant_color, dominant_count = Counter(pixels).most_common(1)[0]
     near_black_count = sum(max(pixel) < 16 for pixel in pixels)
-    expected_color = (34, 36, 38) if dialog.baseline_check.isChecked() else (32, 33, 36)
+    expected_color = (30, 30, 30)
     color_distance = max(
         abs(actual - expected)
         for actual, expected in zip(dominant_color, expected_color, strict=True)
