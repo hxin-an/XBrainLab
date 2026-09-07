@@ -405,7 +405,7 @@ jobs:
           - platform-core-contracts
           - platform-product-lifecycle
     env:
-      QT_QPA_PLATFORM: ${{ matrix.os == 'windows-latest' && 'windows' || 'offscreen' }}
+      QT_QPA_PLATFORM: offscreen
       XBL_SHARED_CI_RUNNER: "1"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -433,6 +433,16 @@ jobs:
         env:
           POETRY_INSTALLER_RE_RESOLVE: ${{ runner.os == 'Windows' && 'true' || 'false' }}
         run: poetry sync --no-interaction ${{ runner.os == 'Windows' && '-E cpu' || '' }}
+
+      - name: Use installed Windows fonts for offscreen Qt
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $fontDirectory = Join-Path $env:SystemRoot 'Fonts'
+          if (-not (Test-Path -LiteralPath $fontDirectory -PathType Container)) {
+            throw "Installed Windows font directory is unavailable: $fontDirectory"
+          }
+          "QT_QPA_FONTDIR=$fontDirectory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Run focused platform test gates
         env:
