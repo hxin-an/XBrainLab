@@ -467,6 +467,7 @@ def test_visualization_retries_cross_fold_summary_after_terminal_publication(
     panel = _panel(qtbot, port)
     panel.update_panel()
     qtbot.waitUntil(lambda: panel.run_combo.currentData() is not None)
+    qtbot.waitUntil(lambda: application_command_registry().active_count(panel) == 0)
     selected = panel.run_combo.currentData()
     assert isinstance(selected, SaliencyCrossFoldIdentity)
 
