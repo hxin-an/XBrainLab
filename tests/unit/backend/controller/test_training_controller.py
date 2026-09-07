@@ -28,13 +28,30 @@ class TestTrainingController:
     def controller(self, mock_study):
         return TrainingController(mock_study)
 
-    def test_init(self, controller, mock_study):
-        assert controller._study == mock_study
+    def test_monitor_publishes_update_then_terminal_notification(
+        self, controller, mock_study
+    ):
+        mock_study.is_training.side_effect = [True, False]
+        events = []
+        controller.subscribe("training_updated", lambda: events.append("updated"))
+        controller.subscribe("training_stopped", lambda: events.append("stopped"))
+        handoff = controller._training_state._reserve_terminal_handoff()
 
-    def test_is_training(self, controller, mock_study):
-        mock_study.is_training.return_value = True
-        assert controller.is_training() is True
-        mock_study.is_training.assert_called_once()
+        controller._training_state._monitor_loop(handoff.generation)
+
+        assert events == ["updated", "stopped"]
+        assert controller.wait_for_terminal_notification(handoff.generation, timeout=0)
+
+    def test_rejects_live_previous_monitor(self, controller):
+        existing = MagicMock()
+        existing.is_alive.return_value = True
+        controller._training_state._monitor_thread = existing
+        handoff = controller._training_state._reserve_terminal_handoff()
+
+        with pytest.raises(RuntimeError, match="previous training monitor"):
+            controller._training_state._start_monitoring(handoff.generation)
+
+        assert controller._training_state._monitor_thread is existing
 
     def test_start_training_not_running(self, controller, mock_study):
         mock_study.is_training.return_value = False

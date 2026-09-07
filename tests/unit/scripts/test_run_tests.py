@@ -708,10 +708,6 @@ def test_retired_mcp_gate_is_not_exposed_by_test_runner() -> None:
         parser(["mcp-compatibility"])
 
 
-def test_regression_gate_is_declared() -> None:
-    assert run_tests.REGRESSION_SHARDS == (("regression", ("tests/regression",)),)
-
-
 def test_shard_runtime_args_keep_ci_evidence_isolated(
     monkeypatch,
     tmp_path,

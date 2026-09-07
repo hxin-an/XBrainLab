@@ -6,7 +6,51 @@ import pytest
 
 from XBrainLab.backend.controller.dataset_controller import DatasetController
 from XBrainLab.backend.exceptions import FileCorruptedError, UnsupportedFormatError
-from XBrainLab.backend.services.label_import_service import LabelImportService
+
+
+def test_import_raises_on_inconsistent_dataset(controller, mock_study):
+    mock_study.loaded_data_list = [MagicMock()]
+    with (
+        patch(
+            "XBrainLab.backend.controller.dataset_controller.RawDataLoader",
+            side_effect=ValueError("bad"),
+        ),
+        pytest.raises(ValueError, match="inconsistent"),
+    ):
+        controller.import_files(["a.edf"])
+
+
+def test_remove_noop_no_data(controller, mock_study):
+    mock_study.loaded_data_list = None
+    controller.remove_files([0])
+    mock_study.set_loaded_data_list.assert_not_called()
+
+
+def test_smart_parse_skips_dash(controller, mock_study):
+    d1 = MagicMock()
+    d1.get_filepath.return_value = "/a.edf"
+    mock_study.loaded_data_list = [d1]
+    controller.apply_smart_parse({"/a.edf": ("-", "-")})
+    d1.set_subject_name.assert_not_called()
+    d1.set_session_name.assert_not_called()
+
+
+def test_channel_selection_failure_raises(controller, mock_study):
+    mock_study.loaded_data_list = [MagicMock()]
+    with patch(
+        "XBrainLab.backend.controller.dataset_controller.preprocessor"
+    ) as mock_pp:
+        process = MagicMock()
+        process.data_preprocess.side_effect = RuntimeError("fail")
+        mock_pp.ChannelSelection.return_value = process
+        with pytest.raises(RuntimeError):
+            controller.apply_channel_selection(["Cz"])
+
+
+def test_get_data_at_assignments(controller, mock_study):
+    mock_study.loaded_data_list = ["a", "b", "c"]
+    assert controller.get_data_at_assignments([0, 2]) == ["a", "c"]
+    assert controller.get_data_at_assignments([5]) == []
 
 
 class _MetadataRow:
@@ -67,28 +111,6 @@ def mock_study():
 @pytest.fixture
 def controller(mock_study):
     return DatasetController(mock_study)
-
-
-def test_init(controller, mock_study):
-    assert controller.study == mock_study
-    assert isinstance(controller.label_service, LabelImportService)
-
-
-def test_get_loaded_data_list(controller, mock_study):
-    mock_study.loaded_data_list = ["data1", "data2"]
-    assert controller.get_loaded_data_list() == ["data1", "data2"]
-
-
-def test_is_locked(controller, mock_study):
-    mock_study.is_locked.return_value = True
-    assert controller.is_locked() is True
-
-
-def test_has_data(controller, mock_study):
-    mock_study.loaded_data_list = []
-    assert controller.has_data() is False
-    mock_study.loaded_data_list = ["data"]
-    assert controller.has_data() is True
 
 
 def test_import_files_success(controller, mock_study):
@@ -316,51 +338,6 @@ def test_smart_parse_uses_the_same_atomic_metadata_batch_boundary():
     assert study.preprocessed_data_list is preprocessing_truth
     assert study.reset_count == 0
     assert notifications == []
-
-
-def test_apply_smart_parse(controller, mock_study):
-    d1 = MagicMock()
-    d1.get_filepath.return_value = "/path/sub-01.edf"
-    d2 = MagicMock()
-    d2.get_filepath.return_value = "/path/sub-02.edf"
-
-    mock_study.loaded_data_list = [d1, d2]
-
-    results = {
-        "/path/sub-01.edf": ("01", "01", "mi", "1"),
-        "/path/sub-02.edf": ("02", "-"),  # Session unchanged
-    }
-
-    with patch.object(
-        controller._dataset_state,
-        "apply_smart_parse",
-        return_value=2,
-    ) as update:
-        count = controller.apply_smart_parse(results)
-
-    assert count == 2
-    update.assert_called_once_with(results)
-
-
-def test_apply_channel_selection(controller, mock_study):
-    source = MagicMock()
-    mock_study.loaded_data_list = [source]
-    with patch(
-        "XBrainLab.backend.controller.dataset_controller.preprocessor.ChannelSelection"
-    ) as MockCS:
-        instance = MockCS.return_value
-        selected = MagicMock()
-        instance.data_preprocess.return_value = [selected]
-
-        result = controller.apply_channel_selection(["C3", "C4"])
-
-        assert result is True
-        instance.data_preprocess.assert_called_with(["C3", "C4"])
-        mock_study.backup_loaded_data.assert_called_once_with()
-        mock_study.set_loaded_data_list.assert_called_once_with(
-            [selected],
-            force_update=True,
-        )
 
 
 def test_channel_selection_keeps_compatibility_observer_notifications(

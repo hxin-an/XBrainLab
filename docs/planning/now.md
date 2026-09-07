@@ -1,35 +1,26 @@
 # XBrainLab Now
 
-最後更新：`2026-09-07`
+最後更新：`2026-09-08`
 
-## Active — #115 Filter / Epoch handoff, then #116
+## Active — #116 final test review and merge
 
-- User accepted the revised native Filter and Epoch design: subtle consistent cards, shared native
-  switches, readable disabled-section titles, compact title/subtitle spacing and content-fitted height.
-  Preserve all filtering, event, window, confirmation and baseline-validation behavior.
-- Design iteration is complete. Review the final diff and focused tests, update only the reviewed
-  Filter references, and verify all applicable same-head CI including default visual, Windows DPI
-  and source-diverse dataset evidence. Capture fixtures must use the real content-fitted Epoch size.
-- CI closure: a deterministic barrier in the real shutdown-fence refresh reproduced a manager
-  retry callback while a different thread legitimately held service locks. Correct the test's
-  overstrong all-locks-idle oracle for manager notifications, retaining all three lock checks on
-  application publications and manager-lock release protection. Product source stays unchanged.
-  Validate red/green at this real concurrent seam, then related lifecycle tests and same-head CI.
-  Separate debug-domain timeout and prior macOS -11 remain unexplained; retain failed evidence,
-  do not raise timeouts, skip tests or claim that a later pass repairs their causes.
-- Deliver the exact-source Windows application with visible live logs after engineering gates pass.
-  Native design previews used example labels and are not full workflow/manual merge acceptance.
-  User approval to merge #115 is still required; prior-head CI cannot certify the revised source.
-- UI work uses direct native previews for CLI users, focused interaction checks during iteration,
-  then heavy CI/platform/DPI validation after design acceptance. Do not replace the user's main app
-  while iterating previews; close only identifiable agent-owned preview processes.
-- Manual focus: Filter combinations/custom values/apply; Epoch title spacing, compact height,
-  consistent Import card, baseline toggles/errors and completed epoch creation on familiar data.
-  No unrelated UI redesign, data semantics change or Assistant benchmark/promotion work.
-- Next review #116 test pruning against latest main. Non-product pre-merge notice applies only after
-  confirming no product behavior change or lost necessary protection and all same-head gates pass.
-- Preserve root settings.json and unrelated split UI/test edits. Git/PR own source and approvals.
-  Further SHA/full-data scan/copy cleanup remains a later candidate, outside this slice.
+- User authorized final review and merge of this tests-only slice without another approval prompt.
+  Integrate current main, resolve only test conflicts, and retain the new split viewport, Epoch
+  layout and shutdown concurrency protection. Do not change product source or widen pruning.
+- Review each removed category against surviving observable behavior; independently check backend
+  data/publication and architecture protection. Validate resolved tests, meaningful replacements,
+  retained lifecycle behavior, architecture and static checks, then all same-head non-skipped CI.
+- Notify before exact-head merge only after no blocking review findings and all checks pass.
+  Preserve root settings.json, unrelated edits and the user's running app. No new hand test required
+  unless the actual diff changes product behavior; stop for new scope/resource decisions if needed.
+
+## Next — CI / validation rules and harness
+
+- Reorganize useful retained checks by evidence, cost, duplication and failure diagnosis. Preserve
+  historical debug timeout and macOS -11 failures: later passes did not establish their causes.
+- Integrate the prepared native UI preview-first and context-compaction continuation guidance;
+  audit structure without claiming identical fresh-agent behavior. Do not weaken gates, raise
+  timeouts or silently skip failures to obtain green. Broad product cleanup remains out of scope.
 
 ## Source of truth
 

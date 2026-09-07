@@ -2699,8 +2699,6 @@ def test_agent_coordinators_are_constructor_owned_without_lazy_fallback():
     } <= constructor_attributes
     assert lazy_methods == set()
     assert coordinator_getattrs == []
-    assert "return self._tool_attempt_coordinator.evaluate" in controller_source
-    assert "context=tool_context" in controller_source
     assert "_tool_autonomy" not in controller_source
     assert "_application_state_payload" not in controller_source
     assert "get_tool_availability" not in controller_source
@@ -2734,7 +2732,6 @@ def test_agent_coordinators_are_constructor_owned_without_lazy_fallback():
         if isinstance(method, ast.FunctionDef) and method.name == "evaluate"
     }
     assert context_reads == {"evaluate": 1}
-    assert "result=self._verification_result(" in attempt_source
 
 
 def test_agent_existing_ui_handoff_preserves_typed_terminal_outcomes():
