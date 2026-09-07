@@ -2180,7 +2180,9 @@ def test_split_data_passes_typed_detached_binding_to_dialog(
         }
     )
     publication.state = SimpleNamespace(
-        split_specification=saved_specification.to_payload(),
+        dataset=SimpleNamespace(
+            split_specification=saved_specification.to_payload(),
+        ),
     )
     binding = DatasetSplitDialogBinding(
         split_context=split_context,
@@ -2290,7 +2292,9 @@ def test_split_data_warns_and_allows_reconfigure_for_invalid_saved_specification
     publication = SimpleNamespace(
         generation=generation,
         effective_capabilities={CommandName.CONFIGURE_DATASET_SPLIT: capability},
-        state=SimpleNamespace(split_specification=saved_payload),
+        state=SimpleNamespace(
+            dataset=SimpleNamespace(split_specification=saved_payload),
+        ),
     )
     binding = DatasetSplitDialogBinding(
         split_context=DatasetSplitContext(epoch_available=True, trial_count=12),

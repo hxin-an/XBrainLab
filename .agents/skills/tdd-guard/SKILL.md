@@ -13,6 +13,7 @@ artificial red test. After the change, run the same protection and only directly
 evidence.
 
 Prefer public results, state transitions, recipe traces, UI-observable states, and real side effects.
-Use mocks only to isolate expensive/external dependencies. Stop when a test cannot observe the
-requirement or fails for an unrelated reason; never weaken assertions or expand the scope to
-manufacture green.
+Use mocks only to isolate expensive/external dependencies. If a test cannot observe the requirement or
+fails for an unrelated reason, repair the safe fixture/environment or select another relevant observable
+check; do not treat it as red/green evidence or end the authorized task. Never weaken assertions or expand
+production scope to manufacture green.

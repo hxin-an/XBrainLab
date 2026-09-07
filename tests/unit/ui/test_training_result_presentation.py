@@ -284,6 +284,12 @@ class TestVisualizationPanelIntegration:
 
         panel.update_panel()
 
+        qtbot.waitUntil(
+            lambda: (
+                panel.last_application_query is not None
+                and not cast(Any, panel.tabs.currentWidget()).error_label.isHidden()
+            )
+        )
         assert panel.last_application_query is not None
         assert panel.last_application_query.failed
         assert (

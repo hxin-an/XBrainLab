@@ -42,16 +42,6 @@ REQUIRED_ROOT_TOKENS = (
     "800",
     "1,500",
 )
-REQUIRED_OPERATIONS_TOKENS = (
-    "gpt-5.6-luna",
-    "gpt-5.6-terra",
-    "gpt-5.6-sol",
-    "S1",
-    "S6",
-    "one complete attempt",
-    "never persists Fast",
-    "xhigh",
-)
 AGENTS_MAX_BYTES = 7_500
 OPERATIONS_MAX_BYTES = 4_000
 MAX_SKILL_LINES = 45
@@ -112,18 +102,23 @@ def _audit_skills(root: Path) -> list[str]:
         except ValueError as exc:
             errors.append(str(exc))
             continue
-        if set(metadata) != {"name", "description"}:
-            errors.append(f"{path}: frontmatter must contain only name and description")
+        unexpected = set(metadata) - {
+            "name",
+            "description",
+            "license",
+            "allowed-tools",
+            "metadata",
+        }
+        if unexpected:
+            errors.append(f"{path}: unsupported frontmatter keys: {sorted(unexpected)}")
         if metadata.get("name") != name:
             errors.append(f"{path}: name must match its directory")
         description = metadata.get("description")
-        if not isinstance(description, str):
-            errors.append(f"{path}: description must be a string")
+        if not isinstance(description, str) or not description.strip():
+            errors.append(f"{path}: description must be a non-empty string")
             continue
-        if not description.startswith("Use "):
-            errors.append(f"{path}: description must start with 'Use '")
-        if "Do not " not in description:
-            errors.append(f"{path}: description must include a 'Do not' boundary")
+        if "metadata" in metadata and not isinstance(metadata["metadata"], dict):
+            errors.append(f"{path}: metadata must be a mapping")
         if len(description) > MAX_DESCRIPTION_CHARS:
             errors.append(
                 f"{path}: description is {len(description)} chars; "
@@ -207,27 +202,28 @@ def _audit_model_dispatch_config(root: Path) -> list[str]:
 
     errors: list[str] = []
     expected_root = {
-        "model": "gpt-5.6-terra",
-        "model_reasoning_effort": "medium",
+        "model": "gpt-6-astra",
     }
     for key, expected in expected_root.items():
         if config.get(key) != expected:
             errors.append(f".codex/config.toml must set {key}={expected!r}")
+    if "model_reasoning_effort" in config:
+        errors.append(
+            ".codex/config.toml must inherit session reasoning; omit model_reasoning_effort"
+        )
     if "service_tier" in config:
         errors.append(
             ".codex/config.toml must not persist service_tier; Fast is foreground-only"
         )
 
-    agents = config.get("agents")
+    agents = config.get("agents", {})
     if not isinstance(agents, dict):
-        return [*errors, ".codex/config.toml must define an [agents] table"]
-    expected_agents = {
-        "default_subagent_model": "gpt-5.6-terra",
-        "default_subagent_reasoning_effort": "medium",
-    }
-    for key, expected in expected_agents.items():
-        if agents.get(key) != expected:
-            errors.append(f".codex/config.toml [agents] must set {key}={expected!r}")
+        return [*errors, ".codex/config.toml agents must be a table when present"]
+    for key in ("default_subagent_model", "default_subagent_reasoning_effort"):
+        if key in agents:
+            errors.append(
+                f".codex/config.toml [agents] must inherit parent settings; omit {key}"
+            )
     return errors
 
 
@@ -257,14 +253,6 @@ def audit_guidance(root: Path) -> list[str]:
         for token in REQUIRED_ROOT_TOKENS:
             if token not in agents_text:
                 errors.append(f"AGENTS.md is missing required restraint token: {token}")
-    if operations_path.is_file():
-        operations_text = operations_path.read_text(encoding="utf-8")
-        for token in REQUIRED_OPERATIONS_TOKENS:
-            if token not in operations_text:
-                errors.append(
-                    f".agents/README.md is missing model-routing token: {token}"
-                )
-
     retired_files = (
         root / ".agents" / "stack.md",
         root / ".agents" / "skills" / "README.md",

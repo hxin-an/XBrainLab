@@ -26,10 +26,6 @@ AVAILABLE_EVALUATION_SPLITS = frozenset({"training", "validation", "test"})
 if TYPE_CHECKING:
     from torch import nn
 
-    from XBrainLab.backend.training.saliency_provenance import (
-        SaliencyProducerIdentity,
-    )
-
 
 @dataclass(frozen=True, slots=True)
 class EvaluationPlanIdentity:
@@ -212,6 +208,9 @@ class EvaluationRenderRequest:
 
     publication_generation: int
     selection: EvaluationSelectionIdentity
+    trainer_identity: str
+    split_specification_fingerprint: str
+    split_epoch_revision: int
     split: str = "test"
 
     def __post_init__(self) -> None:
@@ -236,6 +235,22 @@ class EvaluationRenderRequest:
         if normalized_split not in AVAILABLE_EVALUATION_SPLITS:
             raise ValueError("split must be training, validation, or test")
         object.__setattr__(self, "split", normalized_split)
+        if (
+            not isinstance(self.trainer_identity, str)
+            or not self.trainer_identity.strip()
+        ):
+            raise ValueError("trainer_identity must be non-empty")
+        if (
+            not isinstance(self.split_specification_fingerprint, str)
+            or not self.split_specification_fingerprint.strip()
+        ):
+            raise ValueError("split_specification_fingerprint must be non-empty")
+        if (
+            isinstance(self.split_epoch_revision, bool)
+            or not isinstance(self.split_epoch_revision, int)
+            or self.split_epoch_revision < 1
+        ):
+            raise ValueError("split_epoch_revision must be positive")
 
 
 MetricScalar = int | float
@@ -464,12 +479,6 @@ class EvaluationRenderData:
 
 
 @dataclass(frozen=True, slots=True)
-class _EvaluationRenderMaterialization:
-    data: EvaluationRenderData
-    producer_identities: tuple[SaliencyProducerIdentity, ...]
-
-
-@dataclass(frozen=True, slots=True)
 class EvaluationRenderPublication:
     """One detached render payload proven against application and training truth."""
 
@@ -478,7 +487,6 @@ class EvaluationRenderPublication:
     training_boundary: TrainingReadBoundary
     data: EvaluationRenderData
     operation_id: str | None = None
-    producer_identities: tuple[SaliencyProducerIdentity, ...] = ()
     split_specification_fingerprint: str | None = None
     split_epoch_revision: int | None = None
 
@@ -489,28 +497,12 @@ class EvaluationRenderPublication:
             raise ValueError("render generation must match its request")
         if not isinstance(self.training_boundary, TrainingReadBoundary):
             raise TypeError("training_boundary must be a TrainingReadBoundary")
-        if not self.training_boundary.stable:
-            raise ValueError("training_boundary must be stable")
         if not isinstance(self.data, EvaluationRenderData):
             raise TypeError("data must be EvaluationRenderData")
         if self.operation_id is not None and (
             not isinstance(self.operation_id, str) or not self.operation_id.strip()
         ):
             raise TypeError("operation_id must be a non-empty string or None")
-        if not isinstance(self.producer_identities, tuple):
-            raise TypeError("producer_identities must be a tuple")
-        if self.producer_identities:
-            from XBrainLab.backend.training.saliency_provenance import (  # noqa: PLC0415
-                SaliencyProducerIdentity,
-            )
-
-            if any(
-                not isinstance(identity, SaliencyProducerIdentity)
-                for identity in self.producer_identities
-            ):
-                raise TypeError(
-                    "producer_identities must contain SaliencyProducerIdentity values"
-                )
         if self.split_specification_fingerprint is not None and (
             not isinstance(self.split_specification_fingerprint, str)
             or not self.split_specification_fingerprint.strip()
@@ -555,21 +547,29 @@ class EvaluationRenderPublisher:
             publication=before_publication,
             boundary=before_boundary,
         )
+        selected_targets = self._selected_targets(
+            request.selection, split=request.split
+        )
 
         owned_work_checkpoint("Reading evaluation results")
-        materialization = self._copy_render_data(
+        data = self._copy_render_data(
             request.selection,
             split=request.split,
+            selected_targets=selected_targets,
         )
 
         owned_work_checkpoint("Verifying evaluation identity")
         after_boundary = self._capture_training_boundary()
         after_publication = self._get_publication()
         if (
-            after_publication.generation != before_publication.generation
-            or not after_publication.usable
-            or after_boundary != before_boundary
-            or not after_boundary.stable
+            not after_publication.usable
+            or not self._request_origin_matches(
+                request, after_publication, after_boundary
+            )
+            or not _same_selected_targets(
+                self._selected_targets(request.selection, split=request.split),
+                selected_targets,
+            )
         ):
             raise self._stale_error(
                 request,
@@ -586,10 +586,9 @@ class EvaluationRenderPublisher:
         split_fingerprint, split_epoch_revision = _split_provenance(after_publication)
         return EvaluationRenderPublication(
             request=request,
-            generation=after_publication.generation,
+            generation=request.publication_generation,
             training_boundary=after_boundary,
-            data=materialization.data,
-            producer_identities=materialization.producer_identities,
+            data=data,
             split_specification_fingerprint=split_fingerprint,
             split_epoch_revision=split_epoch_revision,
         )
@@ -601,11 +600,8 @@ class EvaluationRenderPublisher:
         publication: ApplicationViewPublication,
         boundary: TrainingReadBoundary,
     ) -> None:
-        if (
-            not publication.usable
-            or publication.generation != request.publication_generation
-            or not boundary.stable
-            or publication.training_boundary != boundary
+        if not publication.usable or not self._request_origin_matches(
+            request, publication, boundary
         ):
             raise self._stale_error(
                 request,
@@ -615,177 +611,173 @@ class EvaluationRenderPublisher:
                 after_boundary=boundary,
             )
 
+    @staticmethod
+    def _request_origin_matches(
+        request: EvaluationRenderRequest,
+        publication: ApplicationViewPublication,
+        boundary: TrainingReadBoundary,
+    ) -> bool:
+        """Bind queued work to semantic origin, not unrelated progress generations."""
+        if boundary.trainer_identity != request.trainer_identity:
+            return False
+        fingerprint, revision = _split_provenance(publication)
+        return (
+            request.split_specification_fingerprint == fingerprint
+            and request.split_epoch_revision == revision
+        )
+
+    def _selected_targets(
+        self,
+        selection: EvaluationSelectionIdentity,
+        *,
+        split: str,
+    ) -> tuple[tuple[Any, Any, Any], ...]:
+        """Capture exact selected plan/run/record objects for stale-read rejection."""
+        plans = _iterable_items(
+            self._training_runtime.training_plan_holders(), "Training plan collection"
+        )
+        if isinstance(selection, EvaluationCrossFoldIdentity):
+            if split != "test":
+                raise self._split_unavailable_error(
+                    "Cross-fold summaries are available only for saved test predictions"
+                )
+            if selection not in {
+                choice.identity for choice in build_evaluation_cross_fold_choices(plans)
+            }:
+                raise self._target_error(
+                    "The selected cross-fold result is no longer available"
+                )
+        if isinstance(
+            selection, EvaluationPlanIdentity
+        ) and selection.plan_index >= len(plans):
+            raise self._target_error(
+                "The selected training plan is no longer available"
+            )
+        members = (
+            selection.members
+            if isinstance(selection, EvaluationCrossFoldIdentity)
+            else (
+                (selection,)
+                if isinstance(selection, EvaluationRunIdentity)
+                else tuple(
+                    EvaluationRunIdentity(selection, index)
+                    for index, run in enumerate(_plan_runs(plans[selection.plan_index]))
+                    if _run_finished(run)
+                )
+            )
+        )
+        result = []
+        for index, member in enumerate(members):
+            owned_work_checkpoint(
+                "Selecting evaluation predictions",
+                completed=index,
+                total=len(members),
+            )
+            if member.plan.plan_index >= len(plans):
+                raise self._target_error(
+                    "The selected training plan is no longer available"
+                )
+            plan = plans[member.plan.plan_index]
+            runs = _plan_runs(plan)
+            if member.run_index >= len(runs) or not _run_finished(
+                runs[member.run_index]
+            ):
+                raise self._target_error("The selected training run is not complete")
+            record = self._record_for_split(runs[member.run_index], split)
+            if record is None:
+                raise self._split_unavailable_error(
+                    f"The selected training run has no saved {split} predictions"
+                )
+            result.append((plan, runs[member.run_index], record))
+        owned_work_checkpoint(
+            "Selecting evaluation predictions",
+            completed=len(members),
+            total=len(members),
+        )
+        return tuple(result)
+
     def _copy_render_data(
         self,
         selection: EvaluationSelectionIdentity,
         *,
         split: str,
-    ) -> _EvaluationRenderMaterialization:
+        selected_targets: tuple[tuple[Any, Any, Any], ...],
+    ) -> EvaluationRenderData:
         owned_work_checkpoint("Reading evaluation plans")
-        plans = _iterable_items(
-            self._training_runtime.training_plan_holders(),
-            "Training plan collection",
-        )
         if isinstance(selection, EvaluationCrossFoldIdentity):
             return self._copy_cross_fold_render_data(
-                plans,
-                selection=selection,
+                selected_targets,
                 split=split,
             )
-        plan_identity = (
-            selection.plan
-            if isinstance(selection, EvaluationRunIdentity)
-            else selection
-        )
-        if plan_identity.plan_index >= len(plans):
-            raise self._target_error(
-                "The selected training plan is no longer available"
-            )
-        selected_plan = plans[plan_identity.plan_index]
-        runs = _plan_runs(selected_plan)
 
         if isinstance(selection, EvaluationRunIdentity):
-            if selection.run_index >= len(runs):
-                raise self._target_error(
-                    "The selected training run is no longer available"
-                )
-            selected_run = runs[selection.run_index]
-            if not _run_finished(selected_run):
-                raise self._target_error("The selected training run is not complete")
-            eval_record = self._record_for_split(selected_run, split)
-            if eval_record is None:
-                raise self._split_unavailable_error(
-                    f"The selected training run has no saved {split} predictions"
-                )
+            selected_plan, selected_run, eval_record = selected_targets[0]
             labels = getattr(eval_record, "label", None)
             outputs = getattr(eval_record, "output", None)
             if labels is None or outputs is None:
                 raise self._target_error(
                     "The selected training run has incomplete evaluation results"
                 )
-            producer_identity = _evaluation_producer_identity(
-                selected_plan,
-                selected_run,
-                split=split,
-            )
-            return _EvaluationRenderMaterialization(
-                data=EvaluationRenderData(
-                    labels=np.asarray(labels),
-                    outputs=np.asarray(outputs),
-                    metrics=_record_metrics(eval_record),
-                    class_labels=_class_labels(selected_run, selected_plan),
-                    summary_identity=EvaluationSummaryIdentity(
-                        plan=selection.plan,
-                        run=selection,
-                    ),
-                    evaluation_split=split,
+            return EvaluationRenderData(
+                labels=np.asarray(labels),
+                outputs=np.asarray(outputs),
+                metrics=_record_metrics(eval_record),
+                class_labels=_class_labels(selected_run, selected_plan),
+                summary_identity=EvaluationSummaryIdentity(
+                    plan=selection.plan,
+                    run=selection,
                 ),
-                producer_identities=(producer_identity,),
+                evaluation_split=split,
             )
 
-        finished: list[Any] = []
-        total_runs = len(runs)
-        for index, run in enumerate(runs):
+        label_sources: list[tuple[Any, Any]] = []
+        selected_records: list[Any] = []
+        total_runs = len(selected_targets)
+        for index, (plan, run, record) in enumerate(selected_targets):
             owned_work_checkpoint(
                 "Checking completed evaluation runs",
                 completed=index,
                 total=total_runs or None,
             )
-            if _run_finished(run):
-                finished.append(run)
+            label_sources.append((run, plan))
+            selected_records.append(record)
         if total_runs:
             owned_work_checkpoint(
                 "Checking completed evaluation runs",
                 completed=total_runs,
                 total=total_runs,
             )
-        if not finished:
+        if not selected_records:
             raise self._target_error(
                 "The selected training plan has no completed evaluation results"
             )
-        eval_records: list[Any | None] = []
-        for index, run in enumerate(finished):
-            owned_work_checkpoint(
-                "Selecting evaluation predictions",
-                completed=index,
-                total=len(finished),
-            )
-            eval_records.append(self._record_for_split(run, split))
-        owned_work_checkpoint(
-            "Selecting evaluation predictions",
-            completed=len(finished),
-            total=len(finished),
-        )
-        if any(record is None for record in eval_records):
-            raise self._split_unavailable_error(
-                f"The selected aggregate is missing saved {split} predictions "
-                "for one or more finished runs"
-            )
-        selected_records = [record for record in eval_records if record is not None]
         labels, outputs, metrics = self._pool_evaluation_records(selected_records)
-        producer_identities = tuple(
-            _evaluation_producer_identity(selected_plan, run, split=split)
-            for run in finished
-        )
-        return _EvaluationRenderMaterialization(
-            data=EvaluationRenderData(
-                labels=labels,
-                outputs=outputs,
-                metrics=metrics,
-                class_labels=self._consistent_class_labels(
-                    [(run, selected_plan) for run in finished]
-                ),
-                summary_identity=EvaluationSummaryIdentity(plan=selection),
-                evaluation_split=split,
-            ),
-            producer_identities=producer_identities,
+        return EvaluationRenderData(
+            labels=labels,
+            outputs=outputs,
+            metrics=metrics,
+            class_labels=self._consistent_class_labels(label_sources),
+            summary_identity=EvaluationSummaryIdentity(plan=selection),
+            evaluation_split=split,
         )
 
     def _copy_cross_fold_render_data(
         self,
-        plans: list[Any],
+        selected_targets: tuple[tuple[Any, Any, Any], ...],
         *,
-        selection: EvaluationCrossFoldIdentity,
         split: str,
-    ) -> _EvaluationRenderMaterialization:
-        if split != "test":
-            raise self._split_unavailable_error(
-                "Cross-fold summaries are available only for saved test predictions"
-            )
-        choices = {
-            choice.identity: choice
-            for choice in build_evaluation_cross_fold_choices(plans)
-        }
-        if selection not in choices:
-            raise self._target_error(
-                "The selected cross-fold result is no longer available"
-            )
+    ) -> EvaluationRenderData:
         selected_records: list[Any] = []
         label_sources: list[tuple[Any, Any]] = []
-        producer_identities: list[SaliencyProducerIdentity] = []
-        total_members = len(selection.members)
-        for index, member in enumerate(selection.members):
+        total_members = len(selected_targets)
+        for index, (plan, run, record) in enumerate(selected_targets):
             owned_work_checkpoint(
                 "Collecting evaluation folds",
                 completed=index,
                 total=total_members,
             )
-            plan = plans[member.plan.plan_index]
-            run = _plan_runs(plan)[member.run_index]
-            record = self._record_for_split(run, split)
-            if record is None:
-                raise self._split_unavailable_error(
-                    "The cross-fold summary is missing saved test predictions"
-                )
             selected_records.append(record)
             label_sources.append((run, plan))
-            producer_identities.append(
-                _evaluation_producer_identity(
-                    plan,
-                    run,
-                    split=split,
-                )
-            )
         owned_work_checkpoint(
             "Collecting evaluation folds",
             completed=total_members,
@@ -793,16 +785,13 @@ class EvaluationRenderPublisher:
         )
 
         labels, outputs, metrics = self._pool_evaluation_records(selected_records)
-        return _EvaluationRenderMaterialization(
-            data=EvaluationRenderData(
-                labels=labels,
-                outputs=outputs,
-                metrics=metrics,
-                class_labels=self._consistent_class_labels(label_sources),
-                summary_identity=None,
-                evaluation_split=split,
-            ),
-            producer_identities=tuple(producer_identities),
+        return EvaluationRenderData(
+            labels=labels,
+            outputs=outputs,
+            metrics=metrics,
+            class_labels=self._consistent_class_labels(label_sources),
+            summary_identity=None,
+            evaluation_split=split,
         )
 
     def _pool_evaluation_records(
@@ -1172,6 +1161,20 @@ def _run_finished(run: Any) -> bool:
     return bool(checker()) if callable(checker) else False
 
 
+def _same_selected_targets(
+    current: tuple[tuple[Any, Any, Any], ...],
+    expected: tuple[tuple[Any, Any, Any], ...],
+) -> bool:
+    """Require object identity; result arrays must never use equality here."""
+    return len(current) == len(expected) and all(
+        all(
+            left is right
+            for left, right in zip(current_item, expected_item, strict=True)
+        )
+        for current_item, expected_item in zip(current, expected, strict=True)
+    )
+
+
 def _record_metrics(eval_record: Any) -> Mapping[Any, Any]:
     getter = getattr(eval_record, "get_per_class_metrics", None)
     if not callable(getter):
@@ -1184,30 +1187,6 @@ def _record_metrics(eval_record: Any) -> Mapping[Any, Any]:
             "The selected evaluation metrics are invalid"
         )
     return metrics
-
-
-def _evaluation_producer_identity(
-    plan: Any,
-    run: Any,
-    *,
-    split: str,
-) -> SaliencyProducerIdentity:
-    """Return the backend-generated dataset/split/run/model identity."""
-    builder = getattr(plan, "build_saliency_producer_identity", None)
-    if not callable(builder):
-        raise EvaluationRenderPublisher._target_error(
-            "Evaluation producer identity is unavailable"
-        )
-    identity = builder(run, evaluation_split=split)
-    from XBrainLab.backend.training.saliency_provenance import (  # noqa: PLC0415
-        SaliencyProducerIdentity,
-    )
-
-    if not isinstance(identity, SaliencyProducerIdentity):
-        raise EvaluationRenderPublisher._target_error(
-            "Evaluation producer identity is invalid"
-        )
-    return identity
 
 
 def _split_provenance(

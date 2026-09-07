@@ -28,6 +28,9 @@ def _request_command_identity(request: EvaluationRenderRequest) -> str:
         "generation": request.publication_generation,
         "selection": selection.to_dict(),
         "selection_type": type(selection).__name__,
+        "trainer_identity": request.trainer_identity,
+        "split_specification_fingerprint": request.split_specification_fingerprint,
+        "split_epoch_revision": request.split_epoch_revision,
         "split": request.split,
     }
     digest = hashlib.sha256(
@@ -125,7 +128,6 @@ class EvaluationWorkController:
             or publication.request != request
             or publication.generation != request.publication_generation
             or publication.operation_id is not None
-            or not publication.producer_identities
             or not publication.split_specification_fingerprint
             or publication.split_epoch_revision is None
         ):

@@ -170,6 +170,13 @@ def test_data_import_label_mapping_renders_saliency_maps(qtbot, tmp_path) -> Non
     qtbot.waitUntil(lambda: len(ready_panels) == 1, timeout=5_000)
 
     panel = cast(Any, ready_panels[0])
+    qtbot.waitUntil(
+        lambda: (
+            panel.last_application_query is not None
+            and panel.plan_combo.currentText().startswith("Fold 1")
+        ),
+        timeout=5_000,
+    )
     assert panel.plan_combo.currentText().startswith("Fold 1")
     assert panel.run_combo.currentText() == "Run 1"
 

@@ -66,6 +66,7 @@ class _RecordingService:
         self.configured_seed: int | None = None
         self.configured_repeat = 0
         self.training_output: Path | None = None
+        self.evaluation_requests: list[Any] = []
 
     def execute(self, command: Any) -> _Result:
         name = command.name.value
@@ -152,14 +153,20 @@ class _RecordingService:
         coverage = [SimpleNamespace(plan_index=0, run_index=0, methods=methods)]
         return SimpleNamespace(
             generation=1,
+            training_boundary=SimpleNamespace(trainer_identity="moabb-journey-trainer"),
             state=SimpleNamespace(
-                visualization=SimpleNamespace(saliency_coverage=coverage)
+                dataset=SimpleNamespace(
+                    split_specification_fingerprint="moabb-journey-split-sha256",
+                    split_epoch_revision=1,
+                ),
+                visualization=SimpleNamespace(saliency_coverage=coverage),
             ),
         )
 
     def get_evaluation_render(self, request: Any) -> SimpleNamespace:
         import numpy as np
 
+        self.evaluation_requests.append(request)
         labels = np.arange(7)
         outputs = np.eye(7) * 4.0
         return SimpleNamespace(
@@ -418,6 +425,11 @@ def test_showcase_journey_records_actual_product_sequence_and_quality_inputs(
     )
 
     assert evidence["failures"] == []
+    assert service.evaluation_requests[0].trainer_identity == "moabb-journey-trainer"
+    assert service.evaluation_requests[0].split_specification_fingerprint == (
+        "moabb-journey-split-sha256"
+    )
+    assert service.evaluation_requests[0].split_epoch_revision == 1
     assert evidence["model"]["epochs"] == 30
     assert evidence["model"]["actual_device"] == "cpu"
     assert evidence["model"]["resolved_training_state"]["training_option"] == {

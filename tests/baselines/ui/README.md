@@ -14,5 +14,6 @@ The candidate directory also contains `ui-baseline-evidence.json`, binding the s
 capture environment, candidate hashes, reference hashes, and per-image comparison result. The
 capture command never updates this directory; reference changes are an explicit reviewed commit.
 
-The approved set covers the main shell, five workflow panels, and the Assistant open-shell state.
+The approved set covers the main shell, five workflow panels, the Assistant open-shell state,
+and the Filter dialog's complementary Band-pass/Notch On/Off states.
 Updates are intentional review decisions, never copies from a mutable `latest` artifact.

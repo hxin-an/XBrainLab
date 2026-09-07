@@ -87,8 +87,9 @@ def test_evaluation_long_work_has_one_owned_python_worker_path() -> None:
     assert "threading" not in work_source
     assert "evaluation_background_work_snapshot" in main_window_source
     assert "begin_evaluation_render_shutdown" in main_window_source
-    assert "build_saliency_producer_identity" in render_source
-    assert "producerModelFingerprints" in panel_source
+    assert "producer_identities" not in render_source
+    assert "producerModelFingerprints" not in panel_source
+    assert "EVALUATION_RENDER_RETRY" not in panel_source
     assert "hashlib" not in panel_source
 
 

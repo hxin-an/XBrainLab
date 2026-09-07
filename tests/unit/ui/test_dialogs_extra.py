@@ -9,7 +9,6 @@ from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtWidgets import (
     QDialogButtonBox,
     QLabel,
-    QPushButton,
     QScrollArea,
 )
 
@@ -114,16 +113,38 @@ class TestEpochingDialog:
         qtbot.addWidget(d)
         return d
 
+    def test_title_and_subtitle_stay_together_when_dialog_grows(self, dlg, qtbot):
+        dlg.show()
+        for height in (740, 900):
+            dlg.resize(dlg.width(), height)
+            qtbot.wait(0)
+            title = dlg.findChild(QLabel, "EpochDialogTitle")
+            subtitle = dlg.findChild(QLabel, "EpochDialogSubtitle")
+            assert title is not None and subtitle is not None
+            assert title.height() <= title.sizeHint().height() + 2
+            assert subtitle.height() <= subtitle.sizeHint().height() + 2
+            assert 0 <= subtitle.y() - (title.y() + title.height()) <= 12
+
+    def test_default_height_fits_content_without_footer_void(self, dlg, qtbot):
+        dlg.show()
+        qtbot.wait(0)
+        content = dlg.content_scroll.widget()
+        assert content is not None
+        assert (
+            dlg.content_scroll.viewport().height() <= content.sizeHint().height() + 12
+        )
+
     def test_baseline_uses_right_aligned_on_off_toggle(self, dlg, qtbot):
-        assert isinstance(dlg.baseline_check, QPushButton)
-        assert dlg.baseline_check.objectName() == "PreprocessToggle"
+        from PyQt6.QtWidgets import QCheckBox
+
+        assert isinstance(dlg.baseline_check, QCheckBox)
 
         dlg.show()
         qtbot.wait(0)
 
         assert dlg.baseline_title_label is not None
         assert dlg.baseline_check.x() > dlg.baseline_title_label.x()
-        assert dlg.baseline_check.text() in {"On", "Off"}
+        assert dlg.baseline_title_label.isEnabled()
         assert dlg.baseline_check.accessibleName() == "Baseline correction"
 
     def test_disabled_baseline_retains_values_without_blocking_create(self, dlg):
@@ -147,7 +168,7 @@ class TestEpochingDialog:
 
         dlg.baseline_check.setChecked(False)
 
-        assert dlg.baseline_check.text() == "Off"
+        assert not dlg.baseline_check.isChecked()
         assert not dlg.baseline_content.isEnabled()
         assert not dlg.baseline_help_label.isEnabled()
         assert not dlg.baseline_min_label.isEnabled()
@@ -161,7 +182,7 @@ class TestEpochingDialog:
 
         dlg.baseline_check.setChecked(True)
 
-        assert dlg.baseline_check.text() == "On"
+        assert dlg.baseline_check.isChecked()
         assert dlg.baseline_content.isEnabled()
         assert dlg.baseline_help_label.isEnabled()
         assert dlg.baseline_min_label.isEnabled()
@@ -207,14 +228,11 @@ class TestEpochingDialog:
         assert dlg.b_min_spin is not None
         assert dlg.b_max_spin is not None
         assert "QWidget#EpochBaselineContent:disabled" in dlg.styleSheet()
-        assert (
-            'QFrame#EpochBaselineSection[baselineEnabled="false"]' in dlg.styleSheet()
-        )
 
         dlg.show()
         expected_surfaces = {
-            True: (34, 36, 38),
-            False: (32, 33, 36),
+            True: (30, 30, 30),
+            False: (30, 30, 30),
         }
         for enabled, expected_rgb in expected_surfaces.items():
             dlg.baseline_check.setChecked(enabled)

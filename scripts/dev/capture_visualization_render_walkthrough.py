@@ -11,6 +11,7 @@ import logging
 import math
 import os
 import random
+import re
 import shutil
 import sys
 import tempfile
@@ -100,6 +101,13 @@ SALIENCY_RENDER_TIMEOUT_MS = 15_000
 THREE_D_CAPTURE_TIMEOUT_MS = 12_000
 TOPOGRAPHIC_COLORBAR_MIN_MARGIN_PX = 6.0
 _ORIENTATION_BINDING_STAGES = ("initial_render", "after_resize", "after_tab_return")
+_SALIENCY_LOADING_MESSAGES = frozenset(
+    {
+        "Rendering saliency...",
+        "Loading saliency visualization...",
+        "Preparing the All Folds saliency summary...",
+    }
+)
 LOGGER = logging.getLogger(__name__)
 
 
@@ -638,13 +646,8 @@ def _provenance_context_matches(context: str, expected_aggregation: str) -> bool
     if len(identity) != 3:
         return False
     dataset_label, plan_label, run_label = identity
-    fold_number = plan_label.removeprefix("Fold ")
-    return (
-        bool(dataset_label)
-        and fold_number.isdigit()
-        and int(fold_number) > 0
-        and bool(run_label)
-    )
+    fold_match = re.fullmatch(r"Fold (?P<number>[1-9]\d*)(?: \([^)]+\))?", plan_label)
+    return bool(dataset_label) and fold_match is not None and bool(run_label)
 
 
 def _wait_for_saliency_render(
@@ -665,7 +668,7 @@ def _wait_for_saliency_render(
         loading_message_visible = bool(
             isinstance(label, QLabel)
             and not label.isHidden()
-            and label_text == "Rendering saliency..."
+            and label_text in _SALIENCY_LOADING_MESSAGES
         )
         generation_ready = (
             minimum_generation is None

@@ -27,8 +27,10 @@ from scripts.dev.capture_ui_polish_surfaces import (
     _assistant_recovery_standard,
     _assistant_setup_required_narrow,
     _capture,
+    _capture_factories,
     _control_is_fully_visible_in_capture,
     _crop_logical_reference,
+    _data_splitting_dialog,
     _data_splitting_preview_dialog,
     _data_splitting_preview_semantics,
     _epoching_bids_interval_duration_dialog,
@@ -55,6 +57,32 @@ from scripts.dev.human_like_walkthrough.readiness import (
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 
+@pytest.mark.parametrize(
+    "filename,bandpass,notch",
+    [
+        ("preprocess-filtering-default.png", True, False),
+        ("preprocess-filtering-notch-only.png", False, True),
+    ],
+)
+@pytest.mark.parametrize("hidden_control", ["bandpass_check", "ok_button"])
+def test_filter_capture_inventory_and_visible_states(
+    qtbot, tmp_path, filename, bandpass, notch, hidden_control
+):
+    assert filename in APP_POLISH_SURFACES
+    dialog = dict(_capture_factories())[filename]()
+    qtbot.addWidget(dialog)
+    dialog.show()
+    _assert_capture_geometry(filename, dialog)
+    assert dialog.bandpass_check.isChecked() is bandpass
+    assert dialog.notch_check.isChecked() is notch
+    frame = _capture(dialog, tmp_path / filename)
+    assert "Filter action OK" in frame["required_regions"]
+    assert "Filter action Cancel" in frame["required_regions"]
+    getattr(dialog, hidden_control).hide()
+    with pytest.raises(RuntimeError, match="Filter"):
+        _assert_capture_geometry(filename, dialog)
+
+
 def test_model_selection_capture_uses_compact_product_geometry(qtbot) -> None:
     dialog = _model_selection_dialog()
     qtbot.addWidget(dialog)
@@ -65,6 +93,29 @@ def test_model_selection_capture_uses_compact_product_geometry(qtbot) -> None:
     assert dialog.findChild(QTableWidget) is None
     assert dialog.width() == 680
     assert 452 <= dialog.height() < 520
+
+
+def test_data_splitting_capture_rejects_core_control_beyond_horizontal_viewport(
+    qtbot,
+) -> None:
+    dialog = _data_splitting_dialog()
+    qtbot.addWidget(dialog)
+    dialog.show()
+    qtbot.wait(20)
+
+    scroll = dialog.content_scroll
+    control = dialog.test_combo
+    assert scroll is not None
+    assert control is not None
+    assert control.isVisibleTo(dialog)
+    _assert_capture_geometry("data-splitting-dialog.png", dialog)
+    control.move(scroll.viewport().width() + 8, control.y())
+    assert control.isVisibleTo(dialog)
+    control_left = control.mapTo(scroll.viewport(), QPoint(0, 0)).x()
+    assert control_left + control.width() > scroll.viewport().width()
+
+    with pytest.raises(RuntimeError, match="horizontally"):
+        _assert_capture_geometry("data-splitting-dialog.png", dialog)
 
 
 def test_data_splitting_preview_capture_uses_current_worker_lifecycle(qtbot) -> None:

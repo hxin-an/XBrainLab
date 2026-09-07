@@ -11,7 +11,6 @@ from XBrainLab.backend.training_contract import DEFAULT_TRAINING_OUTPUT_DIR
 if TYPE_CHECKING:
     from .dataset_split_preview import DatasetSplitPreviewReceipt
     from .evaluation_render import EvaluationSummaryIdentity
-    from .saliency_render import SaliencySelectionIdentity
 
 
 class CommandName(str, Enum):
@@ -441,7 +440,6 @@ class SaliencyCommand:
 
     method: str | None = None
     params: dict[str, Any] | None = None
-    target: SaliencySelectionIdentity | None = None
     resource_preflight_confirmed: bool = False
     resource_preflight_token: str | None = None
 
