@@ -2,28 +2,6 @@
 
 最後更新：`2026-09-07`
 
-## Active — #113 selected-method handoff evidence gaps
-
-- Exact 4c07e4a5 CI backend shard reports six old unit oracles still requiring completed-method
-  request union, old-parameter backfill/conflict rejection, or union-based resource authorization.
-  These contradict the approved selected-only computation contract and were missed in cleanup.
-- Scope: only those tests and now-unused fixtures in test_analysis_service/test_application_service;
-  no production change or weakened safety/resource boundary. Real train/compute/retain integration
-  remains the retention oracle. Preserve a precise selected-request preflight/receipt check where
-  not already protected; delete redundant mock-only union assertions instead of renaming them.
-- Next: review/delete or replace the six obsolete assertions, run both coupled modules and the
-  same final focused/source-diverse selectors, then push a new exact head and require green CI.
-  Stop after #113 handoff; do not expand to other test cleanup or other PRs.
-- Separate exact-head Windows platform lifecycle failure: native 2D render stress completes 30
-  renders and reports finalized resources, then exits 0xC0000005. Treat this as unresolved native
-  lifecycle evidence, not an obsolete assertion or permission to rerun until green.
-- Diagnose the subprocess close/read lifecycle independently of the six backend oracles; establish
-  whether test teardown or product cleanup owns the failure before a minimal repair. Preserve the
-  running Windows handtest checkout/process. No new owner, shutdown framework, disabled native
-  gate or forced successful process exit. Existing UI authorization covers internal lifecycle fixes
-  preserving presentation. Revalidate the affected native scenario and all exact-head handoff gates;
-  stop only at verified handoff or a necessary external-resource/authority blocker.
-
 ## Next — PR review, then computational cleanup
 
 - #113 的 e8e90b6b 手測發現只選SmoothGrad仍重算舊方法，不能沿用其工程通過作為驗收。
@@ -33,6 +11,13 @@
   確認進度只列所選方法、所有完成subject/fold仍可看既有結果；切換顯示方法不改計算設定。
   失敗／取消保留舊結果，繪圖失敗不冒充計算失敗。
   同時重測訓練其他 fold 時開啟已完成 Evaluation 的模型摘要。沒有新的 merge 批准。
+- 舊request-union/backfill的六個mock測試已刪除；selected-request資源確認保護與真實
+  evaluator結果保留測試仍在。最終focused selector包含兩個完整application service測試模組。
+- Native evidence限制：4c07e4a5的Windows/Python 3.11 CI曾在30次繪圖後退出時發生
+  0xC0000005；同source隔離Windows/Python 3.12診斷通過，未證明原因或修復。
+  目前沒有足夠依據加入猜測性產品patch或隱藏取消log；新候選版仍須通過原樣native gate。
+  若再發生，先在matching runtime確認root Qt disposal及worker thread退出，不能把child
+  resource metrics當作interpreter teardown的完整證據，也不能重跑到綠色掩蓋失敗。
 - 先完成#113同版工程驗證、使用者手測與明確merge批准；等#113關閉後，才開始review既有
   #114 harness、#115 Filter、#116測試清理，並比對#111與#113是否重疊。交付手測不代表可
   提前啟動後續PR審查；不自動關閉或合併任何PR。
