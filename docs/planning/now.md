@@ -36,17 +36,17 @@
   visible log and no prolonged monitoring. Missing resource/authority is a disclosed blocker, not
   permission to fabricate evidence; continue unaffected work. Product merge waits for user acceptance.
 
-## CI integration still in progress
+## CI integration
 
-- #115 and #116 are merged (verified through GitHub). Next, consolidate CI/validation and the pending
-  UI-preview, compaction-continuation and post-merge cleanup guidance. No product UI change is authorized
-  by this guidance slice. Preserve dirty root/replay work and the unmerged guidance branch.
+- #117 guidance and #118 quality/routing are merged. #119 runner diagnostics is in exact-head CI;
+  integrate its successful main result before freezing Assistant candidate evidence. Preserve dirty
+  root/replay work and shared environments. No product UI change is authorized by the CI slices.
 - Inspect historical debug-domain timeout and macOS native exit -11 evidence; causes remain unproven.
   Later passes are not fixes. Select deterministic, relevant checks and reuse same-source CI evidence;
   do not weaken gates, duplicate heavy local runs or claim fresh-agent behavior from parsing alone.
 - Outcome: L0/L1 fast local feedback, L2 same-head CI and L3 explicit dossiers; never run aggregates
   per edit. Execute three bounded PRs: A guidance/entrypoint clarity, B Ruff/type/architecture CI wiring,
-  C runner failure diagnostics. Next: finish A review, focused guidance/docs evidence and same-head CI.
+  C runner failure diagnostics. Do not duplicate the same-head formal regression locally.
 - Review every CI job's trigger, observable protection, duplication and gaps. Remove only demonstrated
   redundancy/unneeded routing while preserving required evidence; add missing meaningful gates, not
   more checks by default. No failure hiding through skips or timeout increases.
@@ -72,9 +72,9 @@
 
 ## Following work — agreed order
 
-- Before Assistant changes, repair the existing evaluator/exporter to use production RAG lifecycle,
-  retrieval/tool filtering, assembler and local template/budget path. Current case projection bypasses
-  RAG. Establish a RAG-enabled pre-change baseline; historical no-RAG scores are not directly comparable.
+- Evaluator/exporter now reuse production RAG lifecycle, retrieval/tool filtering, assembler and local
+  template/budget paths. The pre-semantic RAG-enabled baseline is complete; historical no-RAG scores
+  are not directly comparable. Next, freeze integrated candidate source and run the final comparison.
 - Freeze model/revision, cases/scorer/denominator and tool/confirmation/publication contracts. Capture
   retrieval identity/order, inclusion/drop/failure, final prompt, raw/Host/product outcomes and latency.
   No evaluator expected answer may select examples; disclose corpus/case overlap and degraded RAG.
@@ -89,18 +89,18 @@
 - Pre-semantic baseline at clean fbc7311a completed all 81 cases using product-process RAG: 36/36
   positive, 10/10 explicit origin, 5/5 missing guard, 22/24 no-action and 6/7 clarification. Failure
   identities match the accepted bounded set; do not call this Stable. Full local captures preserve
-  raw output and final prompt; multi-turn RAG row attribution needs a reporting-only correction.
+  raw output and final prompt. Multi-turn attribution now uses explicit trajectory identity; do not
+  rewrite the historical baseline artifact to pretend it used the corrected report path.
 - Bounded semantic slice: correct the clarification rule cross-reference and direct-preprocess
   value-origin wording, explicitly request English responses. Review each bundled Chinese example:
   remove only duplicate tool/parameter examples; translate distinct supported parameter/view examples
   into concise English without copying frozen case answers. Preserve all 18 tool schema coverage.
   Update corpus identity/index invalidation and directly related tests; do not alter frozen benchmark
   files/scorer or introduce multilingual gates. Re-run real RAG/prompt/frozen model evidence afterward.
-- RAG error boundary: retrieval currently catches failures and returns the same empty string as a
-  normal no-match, making evaluator evidence ambiguous. Let the existing process lifecycle receive
-  retrieval exceptions and own optional-context degradation, without a new result/state owner or
-  changing tool admission/UI. Keep initialization's existing not-ready handling. Tests must distinguish
-  no-match from retrieval failure and prove leases/child lifecycle cleanup; do not mask errors in reports.
+- RAG error boundary now propagates retrieval errors to its existing lifecycle; a not-ready child
+  fails initialization and cleans up instead of masquerading as a healthy empty retriever. Normal
+  no-match is distinct from degradation. No new owner or admission/UI change. Final evidence must
+  preserve these statuses rather than masking them as successful retrieval.
 - Independent review plus same-head applicable CI precedes the Assistant product PR/manual delivery.
   Open exact-source native app with visible log, confirm responsive, then hand over without prolonged
   monitoring. Necessary unavailable resources/new contract decisions are genuine blockers; isolate them
