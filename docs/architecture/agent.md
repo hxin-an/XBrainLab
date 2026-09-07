@@ -148,13 +148,16 @@ action並顯示trusted terminal。成功、blocked、cancelled或failed都結束
 ### Prompt state projection
 
 目前prompt不使用Host intent narrowing、recommended-next-step或deterministic continuation。
+Assistant 已移除曾經重複保存這些資訊的 `decision_context`／turn-authorization shadow；
 `ContextAssembler`從同一份immutable `ApplicationViewPublication`投影backend-owned stage與最小state
 card，再依`STAGE_CONFIG`發布該stage的approved target schemas。模型只在這個集合中選一個tool，
 或使用`respond_to_user`；Host不替模型選前置步驟或自動接續下一個mutation。
 
 Prompt history只保留最新user訊息與最多一則Assistant-visible訊息，並排除`Tool Output:`、structured
-envelope與內部system payload。RAG example也只能在同一stage的approved tool集合中檢索，不能授予
-capability、confirmation或continuation權限。
+envelope與內部system payload。bundled gold set目前有23個英文examples，維持18個approved tools的
+coverage；RAG example也只能在同一stage的approved tool集合中檢索，不能授予capability、confirmation
+或continuation權限。目前retriever仍以semantic ranking取`TOP_K = 3`；target所述canonical／top-2
+selection尚未實作，不能把兩者混為同一policy。
 
 Data Import對模型是單一零參數`import_eeg_data` GUI completion tool。內部scan、preview、validate、
 apply與recipe lifecycle仍由既有Data Interpretation/ApplicationService owner負責，不作為模型工具，
