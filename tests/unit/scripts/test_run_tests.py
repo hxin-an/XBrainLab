@@ -938,7 +938,7 @@ def test_ci_uses_full_linux_and_focused_cross_platform_runners() -> None:
         if step.get("uses")
         == "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
     ]
-    assert len(checkout_steps) == 11
+    assert len(checkout_steps) == 12
     assert all(
         step.get("with") == {"ref": expected_checkout_ref} for step in checkout_steps
     )

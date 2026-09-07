@@ -130,7 +130,7 @@ def test_windows_pytorch_variants_use_mutually_exclusive_explicit_sources() -> N
         for line in ci_source.splitlines()
         if "POETRY_INSTALLER_RE_RESOLVE:" in line
     ]
-    assert len(resolver_lines) == 8
+    assert len(resolver_lines) == 9
     assert all(
         line
         == (
@@ -144,7 +144,7 @@ def test_windows_pytorch_variants_use_mutually_exclusive_explicit_sources() -> N
         for line in ci_source.splitlines()
         if "run: poetry sync --no-interaction" in line
     ]
-    assert len(sync_lines) == 8
+    assert len(sync_lines) == 9
     assert all(
         line
         == (

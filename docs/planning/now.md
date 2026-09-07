@@ -14,8 +14,9 @@
   Limit edits to existing runners, directly related tests and CI diagnostic steps; no product/UI changes.
 - Parent owns PR integration/review/CI/merge and retains PR A's full continuing Assistant plan.
   Focused tests/static evidence only locally; exact-head CI before nonblocking merge notice and cleanup.
-- PR A #117 is merged; CI wiring/routing PR B #118 is in CI. Preserve its parallel quality gates
-  when integrating; do not duplicate formal regression locally.
+- PR A #117 and CI wiring/routing PR B #118 (`b30b0eda`) are merged. Preserve B's parallel quality
+  gates when integrating; do not duplicate formal regression locally. Parent owns PR integration,
+  review, CI and merge while retaining the continuing Assistant plan.
 - Review every CI job's trigger, observable protection, duplication and gaps. Remove only demonstrated
   redundancy/unneeded routing while preserving required evidence; add missing meaningful gates, not
   more checks by default. No failure hiding through skips or timeout increases.
