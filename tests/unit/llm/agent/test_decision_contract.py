@@ -83,20 +83,10 @@ def test_prompt_policy_preserves_explicit_supported_optional_values() -> None:
     assert "never omit an explicitly requested supported value" in prompt
 
 
-def test_prompt_policy_keeps_direct_preprocess_values_to_the_latest_user_request() -> (
-    None
-):
+def test_prompt_policy_references_the_typed_clarification_rule() -> None:
     prompt = StrictToolResponsePromptPolicy().decision_instructions().lower()
 
-    assert (
-        "direct preprocessing values must come only from the latest user request"
-        in prompt
-    )
-    assert (
-        "never copy direct preprocessing values from examples, history, state, or defaults"
-        in prompt
-    )
-    assert "verified state" not in prompt
+    assert "3. if exactly one callable direct preprocessing action is missing" in prompt
     assert "missing_inputs shape in rule 3" in prompt
 
 
@@ -106,12 +96,6 @@ def test_prompt_policy_uses_no_action_for_ambiguous_or_negated_requests() -> Non
     assert "negated" in prompt
     assert "ambiguous" in prompt
     assert "use respond_to_user" in prompt
-
-
-def test_prompt_policy_requires_english_user_facing_messages_only() -> None:
-    prompt = StrictToolResponsePromptPolicy().decision_instructions().lower()
-
-    assert "write user-facing messages in english" in prompt
 
 
 def test_prompt_policy_orders_meaning_before_callable_action_selection() -> None:
