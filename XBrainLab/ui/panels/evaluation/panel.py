@@ -1349,12 +1349,21 @@ class EvaluationPanel(BasePanel):
         operation_id: str,
         request: EvaluationRenderRequest,
     ) -> tuple[EvaluationRenderRequest, object]:
-        publication = run_evaluation_render_operation(
-            None,
-            operation_id,
-            request,
-            runtime=runtime,
-        )
+        try:
+            publication = run_evaluation_render_operation(
+                None,
+                operation_id,
+                request,
+                runtime=runtime,
+            )
+        except ApplicationError as error:
+            if (
+                error.diagnostics.get("evaluation_render_stale") is True
+                and error.diagnostics.get("retryable") is True
+            ):
+                # Expected unavailability belongs to the panel, not the worker log.
+                return request, error
+            raise
         if publication is None:
             raise RuntimeError("Evaluation render publication is unavailable")
         return request, publication
@@ -1378,6 +1387,17 @@ class EvaluationPanel(BasePanel):
         if self._evaluation_render_shutdown_requested or request is None:
             return
         self._evaluation_render_result_seen = True
+        if (
+            isinstance(result, tuple)
+            and len(result) == 2
+            and result[0] == request
+            and isinstance(result[1], ApplicationError)
+        ):
+            error = result[1]
+            self._on_evaluation_render_error(
+                worker, operation_id, (type(error), error, "")
+            )
+            return
         if (
             not isinstance(result, tuple)
             or len(result) != 2

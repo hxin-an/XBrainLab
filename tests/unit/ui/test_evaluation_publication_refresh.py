@@ -3,10 +3,12 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import replace
+from threading import Event
 from typing import Any, cast
 from unittest.mock import MagicMock
 
 import numpy as np
+import pytest
 from PyQt6.QtWidgets import QWidget
 
 from XBrainLab.backend.application import ApplicationError
@@ -706,9 +708,20 @@ def test_evaluation_render_exception_retries_internally_and_commits_on_success(
     assert panel._application_render_ledger.pending_publication is None
 
 
-def test_evaluation_stale_render_is_unavailable_without_error_log(
+@pytest.mark.parametrize(
+    "diagnostics, worker_failure",
+    [
+        ({"evaluation_render_stale": True, "retryable": True}, False),
+        ({"evaluation_render_stale": True}, True),
+        ({"retryable": True}, True),
+        (None, True),
+    ],
+)
+def test_evaluation_stale_reporting_preserves_real_worker_failure_boundary(
     qtbot,
     caplog,
+    diagnostics,
+    worker_failure,
 ) -> None:
     port = _EvaluationApplicationPort()
     panel = _panel(qtbot, port)
@@ -729,29 +742,100 @@ def test_evaluation_stale_render_is_unavailable_without_error_log(
     def stale_render(_request):
         nonlocal attempts
         attempts += 1
+        if diagnostics is None:
+            raise RuntimeError("unexpected Evaluation render failure")
         raise ApplicationError(
             "Evaluation results changed while render data was being read.",
-            diagnostics={
-                "evaluation_render_stale": True,
-                "retryable": True,
-            },
+            diagnostics=diagnostics,
         )
 
     port.render = stale_render
     caplog.set_level(logging.ERROR)
-
-    assert panel._render_for_selection(selection, split="test") is None
-    qtbot.waitUntil(panel.evaluation_background_work_idle)
+    worker_logger = logging.getLogger("XBrainLab.ui.core.worker")
+    panel_logger = logging.getLogger("XBrainLab.ui.panels.evaluation.panel")
+    worker_logger.addHandler(caplog.handler)
+    panel_logger.addHandler(caplog.handler)
+    try:
+        assert panel._render_for_selection(selection, split="test") is None
+        qtbot.waitUntil(panel.evaluation_background_work_idle)
+    finally:
+        worker_logger.removeHandler(caplog.handler)
+        panel_logger.removeHandler(caplog.handler)
 
     assert attempts == 1
+    worker_errors = [
+        record
+        for record in caplog.records
+        if record.name == "XBrainLab.ui.core.worker"
+        and record.levelno >= logging.ERROR
+        and "Worker task failed" in record.getMessage()
+    ]
+    assert bool(worker_errors) is worker_failure
     assert panel.no_data_label.text() == (
-        "Evaluation results changed while render data was being read."
+        "The Evaluation result could not be loaded. Refresh Evaluation and try again."
+        if worker_failure
+        else "Evaluation results changed while render data was being read."
     )
-    assert not [
+    panel_errors = [
         record
         for record in caplog.records
         if "Evaluation render publication failed" in record.getMessage()
     ]
+    assert bool(panel_errors) is worker_failure
+
+    # A later explicit refresh can load a current result, without an automatic retry.
+    port.render = _render_publication
+    assert panel._render_for_selection(selection, split="test") is None
+    qtbot.waitUntil(panel.evaluation_background_work_idle)
+    assert attempts == 1
+    assert panel._evaluation_render is not None
+    assert panel._evaluation_render.request.selection == selection
+
+
+@pytest.mark.parametrize("invalidate", ["selection", "shutdown"])
+def test_delayed_expected_stale_result_cannot_replace_current_panel(qtbot, invalidate):
+    port = _EvaluationApplicationPort()
+    panel = _panel(qtbot, port)
+    panel.update_panel()
+    qtbot.waitUntil(panel.evaluation_background_work_idle)
+    selection = EvaluationPlanIdentity(plan_index=0)
+    panel.run_combo.blockSignals(True)
+    panel.run_combo.clear()
+    panel.run_combo.addItem("Average", selection)
+    panel.split_combo.blockSignals(True)
+    panel.split_combo.clear()
+    panel.split_combo.addItem("Test", "test")
+    started, release = Event(), Event()
+
+    def delayed_stale(_request):
+        started.set()
+        assert release.wait(5), "Test did not release the owned render worker"
+        raise ApplicationError(
+            "Old render became stale",
+            diagnostics={"evaluation_render_stale": True, "retryable": True},
+        )
+
+    port.render = delayed_stale
+    try:
+        assert panel._render_for_selection(selection, split="test") is None
+        qtbot.waitUntil(started.is_set)
+        if invalidate == "selection":
+            panel.run_combo.clear()
+            panel.run_combo.addItem(
+                "Another result", EvaluationPlanIdentity(plan_index=1)
+            )
+        else:
+            panel.begin_evaluation_render_shutdown()
+        current_message = panel.no_data_label.text()
+        current_render = panel._evaluation_render
+    finally:
+        release.set()
+        qtbot.waitUntil(panel.evaluation_background_work_idle)
+        panel.run_combo.blockSignals(False)
+        panel.split_combo.blockSignals(False)
+
+    assert panel.no_data_label.text() == current_message
+    assert panel._evaluation_render is current_render
 
 
 def test_evaluation_publication_ledger_does_not_wait_for_detached_chart_render(
