@@ -482,6 +482,11 @@ taxonomy 都以這套 Data Interpretation command sequence 作為產品資料入
   `Compute Saliency` action 觸發）才建立 exact completed-run target 並排程 attribution；
   generation 或所捕捉的 result identity 不符時不得發布。資料流程變更由正式 Command API 的
   既有 mutation boundary 阻擋或取消工作；設定未來訓練不修改目前 holder 的 model/options。
+  Saliency Settings 只暫存待套用參數，重新開啟仍顯示該草稿；Compute／Recompute 才提交。
+  每批累加新選與已完成方法，同方法僅保存最新成功結果，不建立歷史版本。正在計算時
+  新命令由既有 configuration admission 拒絕，不取消原工作或改走同步重算。
+  UI 以當次 operation/generation 接受進度與完成，不將自己的 publication 當成設定過期。
+  失敗／取消保留先前結果與重試設定；計算完成後的繪圖失敗不改寫計算成功狀態。
 - 完成的 saliency 由既有 `EvalRecord` 封存：獨立的 immutable bytes 保存結果陣列，公開讀取只
   建立不暴露內部 ndarray 的輕量檢視；metadata 以 defensive copy 保持原有序列化型別。
   每批 Compute／Recompute 對每份共用 EEG 只計算一次完整來源指紋，供原有 artifact context

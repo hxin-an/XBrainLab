@@ -2257,16 +2257,6 @@ class ApplicationService(Observable):
         publication = self._committed_view_publication()
         if not publication.usable:
             return None
-        saliency_status = self.training_runtime.saliency_status()
-        if saliency_status.phase in {
-            PostTrainingSaliencyPhase.PENDING,
-            PostTrainingSaliencyPhase.RUNNING,
-        }:
-            # Reconfiguration while an older job is active owns that job's
-            # cancellation boundary.  Do not silently replace it with a new
-            # scheduled generation; the existing manager path performs the
-            # cancellation and preserves terminal-publication ordering.
-            return None
         outcome = self.training_runtime.terminal_outcome()
         if outcome.state is not TrainingOutcomeState.COMPLETED or outcome.run is None:
             return None
@@ -2872,6 +2862,15 @@ class ApplicationService(Observable):
                             ),
                             read_only=True,
                         )
+                    identity = preparation.identity
+                    selected_plan = self.training_runtime.training_plan_holders()[
+                        identity.plan.plan_index
+                    ]
+                    selected_run = (
+                        selected_plan.get_plans()[identity.run.run_index]
+                        if identity.run is not None
+                        else None
+                    )
                     after_boundary = (
                         self.state_snapshot.capture_training_read_boundary()
                     )
@@ -2937,11 +2936,40 @@ class ApplicationService(Observable):
                     )
                 if (
                     not current_publication.usable
-                    or current_publication.generation != before_publication.generation
-                    or current_publication.revision != before_publication.revision
-                    or current_boundary != training_boundary
+                    or current_boundary.trainer_identity
+                    != training_boundary.trainer_identity
                     or not current_boundary.stable
                 ):
+                    return self._stale_evaluation_summary_result(
+                        before_publication=before_publication,
+                        current_publication=current_publication,
+                        before_boundary=training_boundary,
+                        current_boundary=current_boundary,
+                    )
+                try:
+                    current_plans = self.training_runtime.training_plan_holders()
+                    current_plan = current_plans[identity.plan.plan_index]
+                    current_run = (
+                        current_plan.get_plans()[identity.run.run_index]
+                        if identity.run is not None
+                        else None
+                    )
+                    prepared_result, current_preparation = (
+                        self.analysis.prepare_evaluate(command)
+                    )
+                    target_unchanged = (
+                        current_plan is selected_plan
+                        and current_run is selected_run
+                        and current_preparation is not None
+                        and current_preparation.dataset is preparation.dataset
+                        and current_preparation.model_instance
+                        is preparation.model_instance
+                        and current_preparation.model_holder is preparation.model_holder
+                        and current_preparation.terminal == preparation.terminal
+                    )
+                except (IndexError, PreconditionError):
+                    target_unchanged = False
+                if not target_unchanged:
                     return self._stale_evaluation_summary_result(
                         before_publication=before_publication,
                         current_publication=current_publication,
@@ -2951,16 +2979,16 @@ class ApplicationService(Observable):
                 if summary_error is not None:
                     return self._handler_failure_result(
                         name,
-                        before,
-                        before_publication,
+                        current_publication.state,
+                        current_publication,
                         summary_error,
                         read_only=True,
                     )
                 if summary is None:
                     return self._handler_failure_result(
                         name,
-                        before,
-                        before_publication,
+                        current_publication.state,
+                        current_publication,
                         RuntimeError("Evaluation model summary result was unavailable"),
                         read_only=True,
                     )
@@ -2972,7 +3000,7 @@ class ApplicationService(Observable):
                 return CommandResult.success_result(
                     command_name=name.value,
                     message=message,
-                    state=before,
+                    state=current_publication.state,
                     changed_state=ChangedState(),
                     diagnostics={
                         **diagnostics,

@@ -2277,7 +2277,7 @@ def test_delayed_old_terminal_delivery_is_monotonic_and_cannot_revert_publicatio
     assert application_events[0].publication_generation == publication.generation
 
 
-@pytest.mark.parametrize("trigger", ["cancel", "reset", "configure", "shutdown"])
+@pytest.mark.parametrize("trigger", ["cancel", "reset", "shutdown"])
 def test_synchronous_saliency_terminal_observers_run_after_all_outer_locks(
     monkeypatch,
     trigger: str,
@@ -2356,26 +2356,6 @@ def test_synchronous_saliency_terminal_observers_run_after_all_outer_locks(
         manager.cancel_saliency_job()
     elif trigger == "reset":
         result = service.execute(ResetSessionCommand(confirmed=True))
-        assert result.ok is True, result.message
-    elif trigger == "configure":
-        original_set_saliency_params = manager.set_saliency_params
-
-        def cancel_then_configure(params):
-            manager.cancel_saliency_job()
-            manager.saliency_params = dict(params)
-
-        monkeypatch.setattr(manager, "set_saliency_params", cancel_then_configure)
-        result = service.execute(
-            SaliencyCommand(
-                method="Gradient",
-                params={"methods": list(_BASELINE_METHODS)},
-            )
-        )
-        monkeypatch.setattr(
-            manager,
-            "set_saliency_params",
-            original_set_saliency_params,
-        )
         assert result.ok is True, result.message
     else:
         service.request_shutdown_fence()

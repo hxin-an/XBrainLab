@@ -8,6 +8,7 @@ from typing import Any, TypedDict
 import numpy as np
 
 from ..training_manager import current_post_training_saliency_target
+from ..training_state_contract import PostTrainingSaliencyPhase
 from .capabilities import SALIENCY_TRAINING_ACTIVE_REASON
 from .commands import (
     Command,
@@ -462,6 +463,13 @@ class AnalysisCommandService:
         state: ApplicationStateSnapshot,
     ) -> list[str]:
         reasons = []
+        if state.visualization.post_training_saliency.phase in {
+            PostTrainingSaliencyPhase.PENDING,
+            PostTrainingSaliencyPhase.RUNNING,
+        }:
+            reasons.append(
+                "Saliency computation is already running. Wait for it to finish."
+            )
         if state.active_training.is_running:
             reasons.append(SALIENCY_TRAINING_ACTIVE_REASON)
         if state.active_training.has_trainer or (

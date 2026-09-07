@@ -24,6 +24,7 @@ from XBrainLab.backend.application import (
     SaliencyRunIdentity,
     VisualizeCommand,
 )
+from XBrainLab.backend.application.errors import PreconditionError
 from XBrainLab.backend.application.results import ChangedState, CommandResult, ErrorType
 from XBrainLab.backend.application.state import (
     ApplicationStateSnapshot,
@@ -2835,6 +2836,46 @@ def test_stale_saliency_compute_requests_settings_review(qtbot):
     current_widget.show_error.assert_not_called()
 
 
+@pytest.mark.parametrize("reply", ["error", "failed_result"])
+def test_retired_saliency_reply_cannot_fail_the_next_compute(qtbot, monkeypatch, reply):
+    from XBrainLab.ui.panels.visualization import panel as panel_module
+
+    panel, _ctrl = _make_panel(qtbot)
+    callbacks = []
+
+    def dispatch(_context, _command, **kwargs):
+        callbacks.append(kwargs)
+        kwargs["on_operation_started"](f"job-{len(callbacks)}")
+        return True
+
+    monkeypatch.setattr(panel_module, "execute_application_command_async", dispatch)
+    for index in range(2):
+        panel._saliency_compute_in_progress = True
+        assert panel._dispatch_saliency_compute_command(
+            params={"methods": ["Gradient"]},
+            method_name="Gradient",
+            current_widget=panel.tabs.currentWidget(),
+            attempt_key=(index,),
+            expected_publication_generation=None,
+        )
+    if reply == "error":
+        callbacks[0]["on_error"]((RuntimeError, "late old failure", ""))
+    else:
+        callbacks[0]["on_result"](
+            CommandResult.failure_result(
+                command_name="saliency",
+                message="late old failure",
+                state=ApplicationStateSnapshot.empty(),
+                changed_state=ChangedState(),
+                error_type=ErrorType.INTERNAL,
+                recoverable=True,
+            )
+        )
+    assert panel._active_saliency_operation_id == "job-2"
+    assert panel._saliency_compute_in_progress
+    assert panel.compute_saliency_btn.property("operationPhase") != "failed"
+
+
 def test_scheduled_saliency_result_keeps_visible_compute_state_busy(qtbot):
     panel, _ctrl = _make_panel(qtbot)
     panel._saliency_compute_in_progress = True
@@ -2912,15 +2953,15 @@ def test_scheduled_saliency_handoff_waits_for_matching_terminal_publication(qtbo
 
 
 @pytest.mark.parametrize(
-    ("phase", "new_compute", "title"),
+    ("phase", "new_compute"),
     [
-        ("completed", True, "Preparing saliency baseline"),
-        ("cancelled", False, "Saliency compute cancelled"),
-        ("failed", False, "Saliency compute failed"),
+        ("completed", True),
+        ("cancelled", False),
+        ("failed", False),
     ],
 )
-def test_native_render_terminal_preserves_active_or_retryable_action(
-    qtbot, phase, new_compute, title
+def test_native_render_terminal_does_not_reclassify_successful_compute(
+    qtbot, phase, new_compute
 ):
     panel, _ctrl = _make_panel(qtbot)
     _publish_panel_state(
@@ -2960,8 +3001,13 @@ def test_native_render_terminal_preserves_active_or_retryable_action(
 
     panel.tab_map.render_terminal.emit(1, publication.generation, phase)
 
-    assert panel.saliency_action_bar.isVisible()
-    assert panel.saliency_action_title.text() == title
+    assert panel.saliency_action_bar.isVisible() is new_compute
+    if new_compute:
+        assert panel.saliency_action_title.text() == "Computing saliency"
+    assert (
+        panel._post_training_saliency_status().phase
+        is PostTrainingSaliencyPhase.SUCCEEDED
+    )
     assert panel.compute_saliency_btn.isEnabled() is not new_compute
     assert panel._saliency_compute_in_progress is new_compute
     assert panel._active_saliency_operation_id == (
@@ -3126,6 +3172,32 @@ def test_old_terminal_does_not_release_new_saliency_operation(qtbot):
     assert panel._saliency_compute_in_progress is True
     assert panel._active_saliency_operation_id is None
     assert panel.compute_saliency_btn.property("operationPhase") == "completed"
+
+
+def test_reset_publication_releases_default_compute_without_staged_settings(qtbot):
+    panel, _ctrl = _make_panel(qtbot)
+    running = _application_query_with_saliency_state(
+        _post_training_saliency_status(PostTrainingSaliencyPhase.RUNNING),
+        _complete_coverage(),
+    )
+    publication = ApplicationViewStore(
+        running.state, TrainingReadBoundary.no_trainer()
+    ).read()
+    assert panel._accept_application_publication(publication)
+    panel._saliency_compute_in_progress = True
+    panel._active_saliency_operation_id = "old-compute"
+    panel._active_saliency_generation = 3
+    assert panel._pending_saliency_target is None
+
+    reset = replace(
+        publication,
+        generation=publication.generation + 1,
+        state=ApplicationStateSnapshot.empty(),
+    )
+    assert panel._accept_application_publication(reset)
+    assert not panel._saliency_compute_in_progress
+    assert panel._active_saliency_operation_id is None
+    assert not panel._saliency_settings_review_required
 
 
 def test_terminal_saliency_publication_wins_over_late_schedule_receipt(qtbot):
@@ -4598,3 +4670,107 @@ def test_visualization_panel_uses_typed_render_publication_without_live_getters(
         selected_label_key=None,
         display_mode="all",
     )
+
+
+@pytest.mark.parametrize("expected_stale", [True, False])
+def test_saliency_render_loader_only_returns_expected_stale_errors(
+    monkeypatch, expected_stale
+):
+    from XBrainLab.ui.panels.visualization.panel import (
+        VisualizationPanel,
+        _SaliencyRenderTask,
+    )
+
+    task = _SaliencyRenderTask(
+        SaliencyRenderRequest(
+            publication_generation=1,
+            run=SaliencyRunIdentity(SaliencyPlanIdentity(0), 0),
+            method="Gradient",
+        ),
+        False,
+        "render-owned",
+    )
+    error = PreconditionError(
+        "Results changed", diagnostics={"saliency_render_stale": expected_stale}
+    )
+
+    def prepare(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.prepare_saliency_render_variants_operation",
+        prepare,
+    )
+    if expected_stale:
+        assert VisualizationPanel._load_saliency_render(object(), task) == (
+            task,
+            error,
+            None,
+        )
+    else:
+        with pytest.raises(PreconditionError) as failure:
+            VisualizationPanel._load_saliency_render(object(), task)
+        assert failure.value is error
+
+
+@pytest.mark.parametrize("kind", ["obsolete_stale", "current_stale", "current_failure"])
+def test_saliency_render_errors_follow_current_lineage_and_release_busy(
+    qtbot, monkeypatch, kind
+):
+    from XBrainLab.ui.panels.visualization.panel import _SaliencyRenderTask
+
+    panel, _ctrl = _make_panel(qtbot)
+    request = SaliencyRenderRequest(
+        publication_generation=1,
+        run=SaliencyRunIdentity(SaliencyPlanIdentity(0), 0),
+        method="Gradient",
+    )
+    task = _SaliencyRenderTask(request, False, "render-owned")
+    current = _SaliencyRenderTask(
+        replace(
+            request,
+            publication_generation=2 if kind == "obsolete_stale" else 1,
+            normalize=True,
+        ),
+        True,
+    )
+    worker = object()
+    panel._saliency_render_worker = worker
+    panel._saliency_render_active_task = task
+    panel._saliency_compute_in_progress = True
+    monkeypatch.setattr(panel, "_current_saliency_render_task", lambda: current)
+    monkeypatch.setattr(
+        panel, "_saliency_compute_awaits_current_render", lambda generation: True
+    )
+    terminals = []
+    monkeypatch.setattr(
+        panel, "_finish_render_operation", lambda *args: terminals.append(args)
+    )
+    widget = _current_mock_widget(panel)
+    widget.show_error.reset_mock()
+    widget.show_message.reset_mock()
+    error = (
+        RuntimeError("real rendering failure")
+        if kind == "current_failure"
+        else PreconditionError(
+            "Results changed", diagnostics={"saliency_render_stale": True}
+        )
+    )
+    if kind == "current_failure":
+        panel._on_saliency_render_error(worker, (type(error), error, ""))
+    else:
+        panel._on_saliency_render_ready(worker, (task, error, None))
+    if kind == "obsolete_stale":
+        assert panel._saliency_compute_in_progress
+        widget.show_error.assert_not_called()
+        widget.show_message.assert_not_called()
+        assert terminals[-1][1] == "cancelled"
+    elif kind == "current_stale":
+        assert not panel._saliency_compute_in_progress
+        widget.show_error.assert_not_called()
+        assert "Refresh" in widget.show_message.call_args.args[0]
+    else:
+        assert not panel._saliency_compute_in_progress
+        assert widget.property("renderStatus") == "failed"
+        widget.show_error.assert_called_once()
+        assert terminals[-1][1] == "failed"
