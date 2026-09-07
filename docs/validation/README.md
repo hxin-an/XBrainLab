@@ -32,6 +32,15 @@ Git／CI identity、exit code、counts、widget可見／enabled、geometry與pix
 
 ## Evidence levels
 
+Harness changes that claim fresh-agent readiness need native new-session evidence, without inherited
+chat or a prompt containing the intended answer. Check instruction/config/skill discovery, task takeover
+and validation selection; for substantial workflow changes also replay one bounded real repair in an
+isolated checkout. Preserve actual tool events, test exits and diffs alongside the candidate identity.
+Record loaded global overrides and environment prerequisites; do not present them as repo-owned setup.
+Static audits prove structure, not decision quality. Failed attempts remain reported; refine only from
+observed failures. Reuse the existing CLI and ignored artifacts, not a new evaluator/control framework.
+These cases do not certify identical behavior on every future task or product Assistant capabilities.
+
 | Level | 支撐 | 不支撐 |
 | --- | --- | --- |
 | Unit/source guard | Bounded behavior或穩定靜態規則。 | 完整workflow、native UI、real dataset diversity。 |

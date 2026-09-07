@@ -15,23 +15,8 @@ handoff 不變量以 `AGENTS.md` 為唯一權威；這裡不複製清單或 curr
 
 ## Skills
 
-| Scope | Skill |
-| --- | --- |
-| Assistant tools/contracts | `agent-toolcall-designer` |
-| Architecture boundary | `architecture-reviewer` |
-| Changed-code review | `code-reviewer` |
-| EEG import/labels/BIDS | `data-interpretation-reviewer` |
-| Canonical docs | `docs-curator` |
-| MkDocs product UX | `docs-site-product-designer` |
-| Performance/resources | `performance-resource-reviewer` |
-| Bounded refactor | `refactor-slicer` |
-| Release/packaging | `release-packaging-reviewer` |
-| Security/privacy | `security-privacy-reviewer` |
-| Test-first change | `tdd-guard` |
-| Test evidence quality | `test-quality-reviewer` |
-| Thesis evidence | `thesis-evidence-reviewer` |
-| Desktop UI review | `ui-product-reviewer` |
-| Validation selection | `validation-runner` |
+Skill names/descriptions in the discovered `.agents/skills/` catalog own task routing; select by actual
+scope. This index does not duplicate that catalog or require a reviewer for every domain mentioned.
 
 ## Workflows
 
@@ -48,13 +33,13 @@ handoff 不變量以 `AGENTS.md` 為唯一權威；這裡不複製清單或 curr
 
 ## Model dispatch
 
-`gpt-6-astra` / `medium` is the coordinator and worker default. All development agents use Astra;
-do not route simple work to another model or silently fall back. Explicit session reasoning choices
-remain effective; a difficult task does not itself authorize changing them. This configuration does
-not change the product Assistant model/revision or grant API/download authority.
+The project defaults to `gpt-6-astra`. Leave reasoning effort and worker model/effort unset in repo
+config: the active user/session effort applies, and workers inherit their parent. Do not silently
+change model/effort when delegating. Verify effective settings at launch; repo text is not proof of
+runtime configuration. This does not change the product Assistant or grant API/download authority.
 
 Delegate when the user requests coordination or two independent useful streams save time or improve evidence.
-A single workflow of at most 8 production files normally stays with its owner. Cap concurrent subagent
+A small coherent task may stay with its owner. Cap concurrent subagent
 threads at 2 (coordinator excluded); isolate writes and return concise evidence, not duplicate reviews.
 Pending CI or manual acceptance does not pause independent authorized work.
 
@@ -63,4 +48,17 @@ geometry and pixel differences. Read summaries and failure details, not whole su
 Use model review for meaning, design and unexplained differences; no routine VLM pass over unchanged
 screenshots. See the validation contract for evidence selection and reuse.
 
-These are repo choices, not an official universal architecture. See the official [Astra model guidance](https://developers.openai.com/api/docs/guides/latest-model/gpt-6-astra.md#prompting-best-practices), [skills guidance](https://developers.openai.com/codex/skills), [subagent configuration](https://developers.openai.com/codex/multi-agent), and [config basics](https://learn.chatgpt.com/docs/config-file/config-basic).
+## Official basis and fresh sessions
+
+Reviewed 2026-09-07: [Astra prompting](https://developers.openai.com/api/docs/guides/latest-model#prompting-best-practices)
+motivates explicit follow-through, conflict auditing, useful delegation and proportionate testing.
+[AGENTS.md discovery](https://learn.chatgpt.com/docs/agent-configuration/agents-md),
+[skills](https://learn.chatgpt.com/docs/build-skills), [subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents)
+and [config precedence](https://learn.chatgpt.com/docs/config-file/config-basic) define native loading.
+These support the mechanisms, not a universal best architecture or a preferred reasoning effort.
+
+Start a fresh session in the intended trusted checkout. Check its effective model/effort, instruction
+sources and skill discovery; user/global/nested overrides can change behavior. Do not edit global
+config or relax permissions to make a test pass. If required context is absent, report the actual gap.
+Acceptance of harness changes includes no-history task takeover and real behavior evidence as defined
+in the validation contract, not just successful parsing or the model repeating these instructions.

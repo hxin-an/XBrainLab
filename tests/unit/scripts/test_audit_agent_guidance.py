@@ -19,6 +19,37 @@ def test_current_repository_guidance_passes_the_public_audit() -> None:
     assert audit_guidance(REPO_ROOT) == []
 
 
+def test_dispatch_allows_session_reasoning_and_parent_worker_inheritance(tmp_path):
+    config = tmp_path / ".codex" / "config.toml"
+    config.parent.mkdir()
+    config.write_text(
+        'model = "gpt-6-astra"\n\n[agents]\nmax_concurrent_threads_per_session = 2\n',
+        encoding="utf-8",
+    )
+
+    assert not any("config.toml" in error for error in audit_guidance(tmp_path))
+
+
+def test_dispatch_rejects_repo_defaults_that_override_session_or_parent(tmp_path):
+    config = tmp_path / ".codex" / "config.toml"
+    config.parent.mkdir()
+    config.write_text(
+        'model = "gpt-6-astra"\nmodel_reasoning_effort = "medium"\n'
+        "[agents]\nmax_concurrent_threads_per_session = 2\n"
+        'default_subagent_model = "gpt-6-astra"\n'
+        'default_subagent_reasoning_effort = "medium"\n',
+        encoding="utf-8",
+    )
+
+    errors = audit_guidance(tmp_path)
+    for key in (
+        "model_reasoning_effort",
+        "default_subagent_model",
+        "default_subagent_reasoning_effort",
+    ):
+        assert any(key in error and "inherit" in error for error in errors)
+
+
 def test_public_audit_rejects_invalid_model_dispatch_settings(tmp_path: Path) -> None:
     config = tmp_path / ".codex" / "config.toml"
     config.parent.mkdir()
@@ -71,7 +102,7 @@ default_subagent_reasoning_effort = "medium"
         in errors
     )
     assert (
-        ".codex/config.toml [agents] must set default_subagent_model='gpt-6-astra'"
+        ".codex/config.toml [agents] must inherit parent settings; omit default_subagent_model"
         in errors
     )
 

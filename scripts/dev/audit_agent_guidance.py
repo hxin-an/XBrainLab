@@ -203,11 +203,14 @@ def _audit_model_dispatch_config(root: Path) -> list[str]:
     errors: list[str] = []
     expected_root = {
         "model": "gpt-6-astra",
-        "model_reasoning_effort": "medium",
     }
     for key, expected in expected_root.items():
         if config.get(key) != expected:
             errors.append(f".codex/config.toml must set {key}={expected!r}")
+    if "model_reasoning_effort" in config:
+        errors.append(
+            ".codex/config.toml must inherit session reasoning; omit model_reasoning_effort"
+        )
     if "service_tier" in config:
         errors.append(
             ".codex/config.toml must not persist service_tier; Fast is foreground-only"
@@ -218,12 +221,15 @@ def _audit_model_dispatch_config(root: Path) -> list[str]:
         return [*errors, ".codex/config.toml must define an [agents] table"]
     expected_agents = {
         "max_concurrent_threads_per_session": 2,
-        "default_subagent_model": "gpt-6-astra",
-        "default_subagent_reasoning_effort": "medium",
     }
     for key, expected in expected_agents.items():
         if agents.get(key) != expected:
             errors.append(f".codex/config.toml [agents] must set {key}={expected!r}")
+    for key in ("default_subagent_model", "default_subagent_reasoning_effort"):
+        if key in agents:
+            errors.append(
+                f".codex/config.toml [agents] must inherit parent settings; omit {key}"
+            )
     return errors
 
 

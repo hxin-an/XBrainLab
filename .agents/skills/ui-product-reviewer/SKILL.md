@@ -15,8 +15,8 @@ stop at findings. Internal UI changes that preserve presentation follow the auth
 
 1. Define the user goal, starting state, primary action, completion state, and recovery paths.
 2. Read the relevant UI route and product contract; do not redesign unrelated screens.
-3. Exercise loading, empty, blocked, error, cancellation, success, repeat, and narrow-window states.
-4. Use widget visibility/enabled state, geometry and pixel checks first. Visually inspect changed
+3. Exercise the affected states, including repeat/cancel/narrow cases when the changed flow can reach them.
+4. Check actual viewport reachability, not only widget visibility/enabled flags. Visually inspect changed
    design and unexplained differences; reuse same-source captures instead of reviewing unchanged UI.
 5. Verify visible readiness/error text reflects backend truth and does not create a second policy.
 6. Check that debug metadata, raw exceptions, internal command names, and developer controls are not
