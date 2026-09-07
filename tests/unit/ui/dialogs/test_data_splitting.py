@@ -8,7 +8,7 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QFrame, QLabel, QTreeWidgetItem, QWidget
+from PyQt6.QtWidgets import QBoxLayout, QFrame, QLabel, QTreeWidgetItem, QWidget
 
 from tests.unit.ui.data_split_test_support import (
     dialog_context_kwargs,
@@ -571,6 +571,67 @@ class TestDataSplittingDialog:
         confirm_center = dlg.btn_confirm.mapTo(dlg, dlg.btn_confirm.rect().center())
         assert not image.isNull()
         assert image.pixelColor(confirm_center).name() != "#1b1b1d"
+
+    @pytest.mark.parametrize(
+        ("width", "height", "expected_direction"),
+        (
+            (752, 470, QBoxLayout.Direction.TopToBottom),
+            (920, 700, QBoxLayout.Direction.LeftToRight),
+        ),
+        ids=("short-narrow", "wide"),
+    )
+    def test_split_setting_inputs_are_reachable_in_the_content_viewport(
+        self,
+        qtbot,
+        controller,
+        monkeypatch,
+        width,
+        height,
+        expected_direction,
+    ):
+        """Every editable Step 1 control is reachable in its real viewport."""
+        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
+            DataSplittingDialog,
+        )
+
+        dialog = DataSplittingDialog(None, **dialog_context_kwargs())
+        qtbot.addWidget(dialog)
+        if width >= 920:
+            # Offscreen test displays may be narrower than the normal desktop
+            # geometry. Isolate that BaseDialog clamp so this remains a real
+            # wide-layout viewport assertion rather than another narrow case.
+            monkeypatch.setattr(dialog, "_fit_to_available_screen", lambda: None)
+        dialog.resize(width, height)
+        dialog.show()
+        qtbot.wait(10)
+
+        assert dialog.width() == width
+        assert dialog.height() == height
+        assert dialog.content_layout is not None
+        assert dialog.content_scroll is not None
+        assert dialog.options_group is not None
+        if expected_direction == QBoxLayout.Direction.TopToBottom:
+            dialog.content_scroll.verticalScrollBar().setValue(
+                dialog.content_scroll.verticalScrollBar().maximum()
+            )
+        qtbot.wait(10)
+        viewport = dialog.content_scroll.viewport()
+        assert viewport is not None
+        for control in (
+            dialog.train_type_combo,
+            dialog.test_combo,
+            dialog.val_combo,
+            dialog.cv_check,
+        ):
+            assert control is not None
+            control_rect = control.rect()
+            assert viewport.rect().contains(
+                control.mapTo(viewport, control_rect.topLeft())
+            )
+            assert viewport.rect().contains(
+                control.mapTo(viewport, control_rect.bottomRight())
+            )
+        assert dialog.content_layout.direction() == expected_direction
 
     def test_real_study_requires_explicit_service_context(self, qtbot, controller):
         from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (

@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 import torch
 
+from XBrainLab.backend.training import saliency_provenance
 from XBrainLab.backend.training.record.artifact_store import (
     SALIENCY_EXPORT_ARTIFACT_TYPE,
     read_json_npz_artifact,
@@ -385,3 +386,69 @@ def test_tampered_producer_fingerprint_fails_closed(tmp_path) -> None:
     assert "integrity" in (loaded.saliency_recompute_reason or "").lower()
     with pytest.raises(SaliencyContextError, match=r"integrity.*Recompute saliency"):
         loaded.get_gradient(0)
+
+
+def test_sealed_saliency_detaches_aliases_and_public_array_metadata() -> None:
+    epoch_data = _EpochContext()
+    source = np.ones((1, 2, 51), dtype=np.float32)
+    record = EvalRecord(
+        np.array([0, 1]),
+        np.array([[0.9, 0.1], [0.1, 0.9]]),
+        {0: source, 1: source * 2},
+        {},
+        {},
+        {},
+        {},
+        saliency_context=_context(epoch_data),
+    )
+
+    source.fill(9)
+    public = record.gradient[0]
+    public.shape = (2, 51)
+
+    np.testing.assert_array_equal(record.gradient[0], np.ones((1, 2, 51)))
+    with pytest.raises(ValueError):
+        record.gradient[0].setflags(write=True)
+    with pytest.raises(ValueError):
+        record.gradient[0].fill(3)
+    store = record.gradient
+    store.clear()
+    assert record.gradient
+    parameters = record.saliency_method_parameters
+    parameters["Gradient"]["local"] = "change"
+    assert "local" not in record.saliency_method_parameters["Gradient"]
+    with pytest.raises(AttributeError):
+        record.evaluation_split = "validation"
+
+
+def test_sealed_render_validation_skips_eeg_and_payload_hashes(monkeypatch) -> None:
+    epoch_data = _EpochContext()
+    context = _context(epoch_data)
+    record = _record(context=context)
+    original_fingerprint = saliency_provenance.fingerprint_saliency_epoch_data
+
+    def unexpected_hash(*_args, **_kwargs):
+        raise AssertionError("display must not hash complete EEG")
+
+    monkeypatch.setattr(
+        saliency_provenance, "fingerprint_saliency_epoch_data", unexpected_hash
+    )
+    record.validate_sealed_saliency_render_snapshot(
+        epoch_data,
+        producer_identity=context.producer_identity,
+    )
+    epoch_data.data[0, 0, 0] = 99
+    record.validate_sealed_saliency_render_snapshot(
+        epoch_data,
+        producer_identity=context.producer_identity,
+    )
+    monkeypatch.setattr(
+        saliency_provenance,
+        "fingerprint_saliency_epoch_data",
+        original_fingerprint,
+    )
+    with pytest.raises(SaliencyContextError, match="EEG"):
+        record.validate_saliency_context(
+            epoch_data,
+            producer_identity=context.producer_identity,
+        )

@@ -1,13 +1,11 @@
-from unittest.mock import MagicMock, patch
-
 import numpy as np
 import pytest
 import torch
 from captum.attr import NoiseTunnel, Saliency
 from torch.utils.data import DataLoader, TensorDataset
 
+from XBrainLab.backend.model_base.EEGNet import EEGNet
 from XBrainLab.backend.training.evaluator import Evaluator
-from XBrainLab.backend.training.record import EvalRecord
 from XBrainLab.backend.training.training_plan import to_holder
 
 
@@ -138,131 +136,98 @@ def test_eval_model(dataloader, y, full_y):
         "VarGrad": {"nt_samples": 1, "stdevs": 0.1},
     }
 
-    with (
-        patch(
-            "XBrainLab.backend.training.record.eval.EvalRecord.__init__",
-            return_value=None,
-        ) as eval_record_mock,
-        patch.object(model, "eval") as eval_model_mock,
+    result = Evaluator.evaluate_with_saliency(model, dataloader, saliency_params)
+    assert not model.training
+    np.testing.assert_array_equal(result.label, y)
+    np.testing.assert_array_equal(result.output.argmax(axis=-1), full_y)
+    for store in (
+        result.gradient,
+        result.gradient_input,
+        result.smoothgrad,
+        result.smoothgrad_sq,
+        result.vargrad,
     ):
-        result = Evaluator.evaluate_with_saliency(model, dataloader, saliency_params)
-        eval_model_mock.assert_called()
-
-        assert isinstance(result, EvalRecord)
-        # EvalRecord now takes 7 arguments: label, output, gradient,
-        # gradient_input, smoothgrad, smoothgrad_sq, vargrad
-        args = eval_record_mock.call_args[0]
-        called_y = args[0]
-        called_output = args[1]
-        called_gradient = args[2]
-
-        assert np.array_equal(called_y, y)
-        assert np.array_equal(called_output.argmax(axis=-1), full_y)
-        assert len(called_gradient) == CLASS_NUM
-
-        expected_list = [
-            (REPEAT - ERROR_NUM, CLASS_NUM),
-            (REPEAT + ERROR_NUM, CLASS_NUM),
-            (REPEAT, CLASS_NUM),
-            (REPEAT, CLASS_NUM),
-        ]
-        for g, expected_shape in zip(called_gradient, expected_list, strict=False):
-            assert called_gradient[g].shape == expected_shape
-        constructor_kwargs = eval_record_mock.call_args.kwargs
-        assert constructor_kwargs["saliency_method_parameters"] == {
-            "Gradient": {},
-            "Gradient * Input": {},
-            "SmoothGrad": {
-                "nt_samples": 1,
-                "nt_samples_batch_size": None,
-                "stdevs": 0.1,
-            },
-            "SmoothGrad_Squared": {
-                "nt_samples": 1,
-                "nt_samples_batch_size": None,
-                "stdevs": 0.1,
-            },
-            "VarGrad": {
-                "nt_samples": 1,
-                "nt_samples_batch_size": None,
-                "stdevs": 0.1,
-            },
-        }
-        assert set(constructor_kwargs["saliency_noise_seeds"]) == {
-            "SmoothGrad",
-            "SmoothGrad_Squared",
-            "VarGrad",
-        }
-        assert len(set(constructor_kwargs["saliency_noise_seeds"].values())) == 1
-
-
-def test_eval_model_respects_selected_saliency_methods(dataloader, y, full_y):
-    model = FakeModel()
-    model.eval()
-
-    saliency_params = {
-        "_methods": ["Gradient", "Gradient * Input"],
+        assert set(store) == set(range(CLASS_NUM))
+        for label, values in store.items():
+            assert values.shape == (np.count_nonzero(y == label), CLASS_NUM)
+            assert np.isfinite(values).all()
+    assert result.saliency_method_parameters == {
+        "Gradient": {},
+        "Gradient * Input": {},
+        **{
+            method: {**params, "nt_samples_batch_size": None}
+            for method, params in saliency_params.items()
+        },
     }
+    assert set(result.saliency_noise_seeds) == set(saliency_params)
+    assert len(set(result.saliency_noise_seeds.values())) == 1
 
-    with (
-        patch(
-            "XBrainLab.backend.training.record.eval.EvalRecord.__init__",
-            return_value=None,
-        ) as eval_record_mock,
-        patch.object(model, "eval") as eval_model_mock,
+
+@pytest.mark.parametrize(
+    "methods", [["Gradient"], ["Gradient * Input"], ["Gradient", "Gradient * Input"]]
+)
+def test_saliency_targets_each_sample_ground_truth_label(methods):
+    inputs = torch.tensor([[1.0, 2.0, -3.0], [-2.0, 3.0, 1.0], [4.0, -1.0, 2.0]])
+    labels = torch.tensor([0, 1, 1])
+    model = _SignedLinearModel()
+    loader = DataLoader(TensorDataset(inputs, labels), batch_size=2)
+    record = Evaluator.evaluate_with_saliency(model, loader, {"_methods": methods})
+
+    np.testing.assert_array_equal(record.label, labels.numpy())
+    np.testing.assert_array_equal(record.output, model(inputs).numpy())
+    expected_gradient = np.array(
+        [[1.0, -2.0, 0.5], [-1.0, 2.0, -0.5], [-1.0, 2.0, -0.5]]
+    )
+    for method, store, expected in (
+        ("Gradient", record.gradient, expected_gradient),
+        ("Gradient * Input", record.gradient_input, expected_gradient * inputs.numpy()),
     ):
-        result = Evaluator.evaluate_with_saliency(model, dataloader, saliency_params)
-        eval_model_mock.assert_called()
-
-        assert isinstance(result, EvalRecord)
-        args = eval_record_mock.call_args[0]
-        called_y = args[0]
-        called_output = args[1]
-        called_gradient = args[2]
-        called_gradient_input = args[3]
-        called_smoothgrad = args[4]
-        called_smoothgrad_sq = args[5]
-        called_vargrad = args[6]
-
-        assert np.array_equal(called_y, y)
-        assert np.array_equal(called_output.argmax(axis=-1), full_y)
-        assert len(called_gradient) == CLASS_NUM
-        assert len(called_gradient_input) == CLASS_NUM
-        assert called_smoothgrad == {}
-        assert called_smoothgrad_sq == {}
-        assert called_vargrad == {}
-        constructor_kwargs = eval_record_mock.call_args.kwargs
-        assert constructor_kwargs["saliency_method_parameters"] == {
-            "Gradient": {},
-            "Gradient * Input": {},
-        }
-        assert constructor_kwargs["saliency_noise_seeds"] == {}
+        if method in methods:
+            for label in (0, 1):
+                np.testing.assert_allclose(
+                    store[label], expected[labels.numpy() == label]
+                )
+        else:
+            assert store == {}
+    assert record.smoothgrad == record.smoothgrad_sq == record.vargrad == {}
+    assert record.saliency_method_parameters == {method: {} for method in methods}
+    assert record.saliency_noise_seeds == {}
 
 
-def test_saliency_targets_each_sample_ground_truth_label(dataloader, y):
-    model = FakeModel()
-    saliency = MagicMock()
-    observed_targets: list[list[int]] = []
-
-    def attribute(inputs, *, target, **kwargs):
-        assert kwargs["abs"] is False
-        observed_targets.append(list(target))
-        return torch.ones_like(inputs)
-
-    saliency.attribute.side_effect = attribute
-    with patch(
-        "XBrainLab.backend.training.evaluator.Saliency",
-        return_value=saliency,
-    ):
-        Evaluator.evaluate_with_saliency(
-            model,
-            dataloader,
-            {"_methods": ["Gradient"]},
+def test_eegnet_saliency_matches_captum_with_outer_no_grad():
+    torch.manual_seed(20260907)
+    inputs = torch.randn(5, 4, 128)
+    labels = torch.tensor([0, 1, 2, 0, 1])
+    model = EEGNet(3, 4, 128, 64.0, f1=2, f2=4, d=1).eval()
+    expected = (
+        Saliency(model)
+        .attribute(
+            inputs.clone().requires_grad_(True),
+            target=labels.tolist(),
+            abs=False,
         )
-
-    assert observed_targets == [
-        list(y[start : start + BS]) for start in range(0, len(y), BS)
-    ]
+        .numpy()
+    )
+    with torch.no_grad():
+        outputs = model(inputs).numpy()
+        record = Evaluator.evaluate_with_saliency(
+            model,
+            DataLoader(TensorDataset(inputs, labels), batch_size=2),
+            {"_methods": ["Gradient", "Gradient * Input"]},
+        )
+    np.testing.assert_allclose(record.output, outputs, rtol=1e-5, atol=1e-7)
+    for label in range(3):
+        mask = labels.numpy() == label
+        np.testing.assert_allclose(
+            record.gradient[label], expected[mask], rtol=1e-5, atol=1e-7
+        )
+        np.testing.assert_allclose(
+            record.gradient_input[label],
+            (expected * inputs.numpy())[mask],
+            rtol=1e-5,
+            atol=1e-7,
+        )
+    assert all(parameter.grad is None for parameter in model.parameters())
 
 
 class _SignedLinearModel(torch.nn.Module):

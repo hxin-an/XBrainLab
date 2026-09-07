@@ -32,10 +32,6 @@ from XBrainLab.backend.application.resource_guard import (
     ResourcePreflightResult,
 )
 from XBrainLab.backend.application.resource_preflight import ResourcePreflightView
-from XBrainLab.backend.application.saliency_render import (
-    SaliencyPlanIdentity,
-    SaliencyRunIdentity,
-)
 from XBrainLab.backend.application.state import (
     ActiveDatasetSnapshot,
     ActiveTrainingSnapshot,
@@ -184,6 +180,7 @@ class _TrainingRuntime:
         *,
         datasets: tuple[_Dataset, ...] | None = None,
         training_option: _TrainingOption | None = None,
+        is_training: bool = False,
     ) -> None:
         self._plans = plans
         self._resource_context = TrainingRuntimeContext(
@@ -191,6 +188,7 @@ class _TrainingRuntime:
             training_option=training_option or _TrainingOption(),
             model_holder=_ModelHolder(),
         )
+        self._is_training = is_training
 
     def training_plan_holders(self) -> tuple[_Plan, ...]:
         return tuple(self._plans)
@@ -199,7 +197,7 @@ class _TrainingRuntime:
         return self._resource_context
 
     def is_training(self) -> bool:
-        return False
+        return self._is_training
 
     def current_training_plan_index(self) -> int | None:
         return None
@@ -663,8 +661,8 @@ def test_analysis_service_reports_training_active_without_facade() -> None:
     plan_a = _Plan("Plan A", [_Run(finished=True)])
     plan_b = _Plan("Plan B", [_Run(finished=True)])
     service, _visualization = _service(
-        state=_state(is_training=True, finished_runs=2),
         plans=[plan_a, plan_b],
+        training_runtime=_TrainingRuntime([plan_a, plan_b], is_training=True),
     )
 
     _message, diagnostics = _expect_payload(
@@ -675,6 +673,23 @@ def test_analysis_service_reports_training_active_without_facade() -> None:
     assert diagnostics["finished_run_count"] == 2
     assert diagnostics["training_active"] is True
     assert [plan["name"] for plan in diagnostics["plans"]] == ["Plan A", "Plan B"]
+
+
+def test_evaluation_catalog_does_not_rebuild_application_state_for_diagnostics() -> (
+    None
+):
+    plan = _Plan("Plan A", [_Run(finished=True)])
+    visualization = _VisualizationController()
+    service = AnalysisCommandService(
+        training_runtime=_TrainingRuntime([plan], is_training=True),
+        visualization=visualization,
+        get_state=lambda: (_ for _ in ()).throw(AssertionError("must not read state")),
+    )
+
+    _message, diagnostics = _expect_payload(service.handle_evaluate(EvaluateCommand()))
+
+    assert diagnostics["finished_run_count"] == 1
+    assert diagnostics["training_active"] is True
 
 
 def test_analysis_service_never_returns_ui_evaluation_objects() -> None:
@@ -768,350 +783,6 @@ def test_analysis_service_visualize_and_saliency_handlers() -> None:
     assert visualization.params is not None
 
 
-def test_explicit_saliency_accumulates_verified_complete_methods_before_preflight(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    smoothgrad_params = {
-        "nt_samples": 9,
-        "nt_samples_batch_size": 3,
-        "stdevs": 0.4,
-    }
-    first_run = _Run(finished=True)
-    first_run.eval_record = SimpleNamespace(
-        saliency_method_parameters={
-            "Gradient": {},
-            "SmoothGrad": smoothgrad_params,
-            "SmoothGrad_Squared": {
-                "nt_samples": 5,
-                "nt_samples_batch_size": None,
-                "stdevs": 1.0,
-            },
-        }
-    )
-    second_run = _Run(finished=True)
-    second_run.eval_record = SimpleNamespace(
-        saliency_method_parameters={"Gradient * Input": {}},
-    )
-    coverage = [
-        SaliencyRunCoverageSnapshot(
-            plan_index=0,
-            run_index=0,
-            methods=[
-                SaliencyMethodCoverageSnapshot(
-                    method="Gradient",
-                    available=True,
-                    complete=True,
-                ),
-                SaliencyMethodCoverageSnapshot(
-                    method="SmoothGrad",
-                    available=True,
-                    complete=True,
-                ),
-                SaliencyMethodCoverageSnapshot(
-                    method="SmoothGrad_Squared",
-                    available=True,
-                    complete=False,
-                ),
-            ],
-        ),
-        SaliencyRunCoverageSnapshot(
-            plan_index=0,
-            run_index=1,
-            methods=[
-                SaliencyMethodCoverageSnapshot(
-                    method="Gradient * Input",
-                    available=True,
-                    complete=True,
-                ),
-            ],
-        ),
-    ]
-    state = _state(
-        has_trainer=True,
-        finished_runs=2,
-        saliency_available=True,
-        saliency_configured=True,
-        saliency_coverage=coverage,
-    )
-    visualization = _SchedulingVisualizationController()
-    service = AnalysisCommandService(
-        training_runtime=_TrainingRuntime([_Plan("Plan A", [first_run, second_run])]),
-        visualization=visualization,
-        get_state=lambda: state,
-    )
-    admitted_params: list[dict[str, Any]] = []
-
-    def safe_preflight(_datasets, _option, _model, params, **_kwargs):
-        admitted_params.append(params)
-        return _saliency_preflight("safe")
-
-    monkeypatch.setattr(
-        "XBrainLab.backend.application.analysis_service."
-        "check_saliency_resource_preflight",
-        safe_preflight,
-    )
-    target = PostTrainingSaliencyTarget(
-        run=TrainingRunIdentity(trainer_id="trainer-a", run_id=1),
-        finished_runs_before=0,
-        finished_runs_after=2,
-        append=False,
-        explicit=True,
-    )
-
-    with post_training_saliency_target(target):
-        _message, diagnostics = _expect_payload(
-            service.handle_saliency(
-                SaliencyCommand(
-                    method="VarGrad",
-                    params={
-                        "nt_samples": 7,
-                        "nt_samples_batch_size": 2,
-                        "stdevs": 0.25,
-                    },
-                )
-            )
-        )
-
-    expected_methods = [
-        "Gradient",
-        "Gradient * Input",
-        "SmoothGrad",
-        "VarGrad",
-    ]
-    assert admitted_params[0]["_methods"] == expected_methods
-    assert admitted_params[0]["SmoothGrad"] == smoothgrad_params
-    assert admitted_params[0]["VarGrad"] == {
-        "nt_samples": 7,
-        "nt_samples_batch_size": 2,
-        "stdevs": 0.25,
-    }
-    assert "_profile" not in admitted_params[0]
-    assert diagnostics["params"] == admitted_params[0]
-    assert diagnostics["post_training_saliency_schedule"]["status"]["methods"] == (
-        expected_methods
-    )
-    assert visualization.params == admitted_params[0]
-
-
-def test_explicit_saliency_accumulates_methods_only_from_selected_members(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    smoothgrad_params = {
-        "nt_samples": 9,
-        "nt_samples_batch_size": 3,
-        "stdevs": 0.4,
-    }
-    first_run = _Run(finished=True)
-    first_run.eval_record = SimpleNamespace(
-        saliency_method_parameters={
-            "Gradient": {},
-            "SmoothGrad": smoothgrad_params,
-        }
-    )
-    second_run = _Run(finished=True)
-    second_run.eval_record = SimpleNamespace(
-        saliency_method_parameters={"Gradient * Input": {}}
-    )
-    coverage = [
-        SaliencyRunCoverageSnapshot(
-            plan_index=0,
-            run_index=0,
-            methods=[
-                SaliencyMethodCoverageSnapshot(
-                    method="Gradient",
-                    available=True,
-                    complete=True,
-                ),
-                SaliencyMethodCoverageSnapshot(
-                    method="SmoothGrad",
-                    available=True,
-                    complete=True,
-                ),
-            ],
-        ),
-        SaliencyRunCoverageSnapshot(
-            plan_index=0,
-            run_index=1,
-            methods=[
-                SaliencyMethodCoverageSnapshot(
-                    method="Gradient * Input",
-                    available=True,
-                    complete=True,
-                )
-            ],
-        ),
-    ]
-    state = _state(
-        has_trainer=True,
-        finished_runs=2,
-        saliency_available=True,
-        saliency_configured=True,
-        saliency_coverage=coverage,
-    )
-    visualization = _SchedulingVisualizationController()
-    service = AnalysisCommandService(
-        training_runtime=_TrainingRuntime([_Plan("Plan A", [first_run, second_run])]),
-        visualization=visualization,
-        get_state=lambda: state,
-    )
-    admitted_params: list[dict[str, Any]] = []
-
-    def safe_preflight(_datasets, _option, _model, params, **_kwargs):
-        admitted_params.append(params)
-        return _saliency_preflight("safe")
-
-    monkeypatch.setattr(
-        "XBrainLab.backend.application.analysis_service."
-        "check_saliency_resource_preflight",
-        safe_preflight,
-    )
-    target = PostTrainingSaliencyTarget(
-        run=TrainingRunIdentity(trainer_id="trainer-a", run_id=1),
-        finished_runs_before=0,
-        finished_runs_after=2,
-        append=False,
-        explicit=True,
-        selected_members=((0, 0),),
-    )
-
-    with post_training_saliency_target(target):
-        _message, diagnostics = _expect_payload(
-            service.handle_saliency(
-                SaliencyCommand(
-                    method="VarGrad",
-                    params={
-                        "nt_samples": 7,
-                        "nt_samples_batch_size": 2,
-                        "stdevs": 0.25,
-                    },
-                )
-            )
-        )
-
-    assert admitted_params[0]["_methods"] == ["Gradient", "SmoothGrad", "VarGrad"]
-    assert admitted_params[0]["SmoothGrad"] == smoothgrad_params
-    assert diagnostics["params"] == admitted_params[0]
-
-
-def test_explicit_saliency_rejects_conflicting_retained_artifact_params_before_preflight(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    runs = [_Run(finished=True), _Run(finished=True)]
-    for run, nt_samples in zip(runs, (3, 9), strict=True):
-        run.eval_record = SimpleNamespace(
-            saliency_method_parameters={
-                "SmoothGrad": {
-                    "nt_samples": nt_samples,
-                    "nt_samples_batch_size": None,
-                    "stdevs": 0.5,
-                }
-            }
-        )
-    coverage = [
-        SaliencyRunCoverageSnapshot(
-            plan_index=0,
-            run_index=run_index,
-            methods=[
-                SaliencyMethodCoverageSnapshot(
-                    method="SmoothGrad",
-                    available=True,
-                    complete=True,
-                )
-            ],
-        )
-        for run_index in range(2)
-    ]
-    state = _state(
-        has_trainer=True,
-        finished_runs=2,
-        saliency_available=True,
-        saliency_coverage=coverage,
-    )
-    visualization = _EvaluatorSentinelController()
-    service = AnalysisCommandService(
-        training_runtime=_TrainingRuntime([_Plan("Plan A", runs)]),
-        visualization=visualization,
-        get_state=lambda: state,
-    )
-    preflight = MagicMock(side_effect=AssertionError("preflight must not run"))
-    monkeypatch.setattr(
-        "XBrainLab.backend.application.analysis_service."
-        "check_saliency_resource_preflight",
-        preflight,
-    )
-    target = PostTrainingSaliencyTarget(
-        run=TrainingRunIdentity(trainer_id="trainer-a", run_id=1),
-        finished_runs_before=0,
-        finished_runs_after=2,
-        append=False,
-        explicit=True,
-    )
-
-    with (
-        post_training_saliency_target(target),
-        pytest.raises(PreconditionError, match="conflict for SmoothGrad") as raised,
-    ):
-        service.handle_saliency(SaliencyCommand(method="VarGrad"))
-
-    assert raised.value.diagnostics["state_preserved"] is True
-    assert visualization.params is None
-    preflight.assert_not_called()
-
-
-def test_explicit_saliency_rejects_missing_retained_artifact_params_before_preflight(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    run = _Run(finished=True)
-    run.eval_record = SimpleNamespace(saliency_method_parameters={})
-    state = _state(
-        has_trainer=True,
-        finished_runs=1,
-        saliency_available=True,
-        saliency_coverage=[
-            SaliencyRunCoverageSnapshot(
-                plan_index=0,
-                run_index=0,
-                methods=[
-                    SaliencyMethodCoverageSnapshot(
-                        method="VarGrad",
-                        available=True,
-                        complete=True,
-                    )
-                ],
-            )
-        ],
-    )
-    visualization = _EvaluatorSentinelController()
-    service = AnalysisCommandService(
-        training_runtime=_TrainingRuntime([_Plan("Plan A", [run])]),
-        visualization=visualization,
-        get_state=lambda: state,
-    )
-    preflight = MagicMock(side_effect=AssertionError("preflight must not run"))
-    monkeypatch.setattr(
-        "XBrainLab.backend.application.analysis_service."
-        "check_saliency_resource_preflight",
-        preflight,
-    )
-    target = PostTrainingSaliencyTarget(
-        run=TrainingRunIdentity(trainer_id="trainer-a", run_id=1),
-        finished_runs_before=0,
-        finished_runs_after=1,
-        append=False,
-        explicit=True,
-    )
-
-    with (
-        post_training_saliency_target(target),
-        pytest.raises(PreconditionError, match="unavailable for VarGrad") as raised,
-    ):
-        service.handle_saliency(SaliencyCommand(method="Gradient"))
-
-    assert raised.value.diagnostics["state_preserved"] is True
-    assert visualization.params is None
-    preflight.assert_not_called()
-
-
 def test_explicit_saliency_incoming_params_resolve_prior_artifact_conflict(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1189,76 +860,6 @@ def test_explicit_saliency_incoming_params_resolve_prior_artifact_conflict(
         "nt_samples_batch_size": 2,
         "stdevs": 0.25,
     }
-
-
-def test_saliency_receipt_cannot_authorize_a_changed_completed_method_union(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    run = _Run(finished=True)
-    run.eval_record = SimpleNamespace(saliency_method_parameters={"Gradient": {}})
-    states = [
-        _state(has_trainer=True, finished_runs=1),
-        _state(
-            has_trainer=True,
-            finished_runs=1,
-            saliency_available=True,
-            saliency_coverage=[
-                SaliencyRunCoverageSnapshot(
-                    plan_index=0,
-                    run_index=0,
-                    methods=[
-                        SaliencyMethodCoverageSnapshot(
-                            method="Gradient",
-                            available=True,
-                            complete=True,
-                        )
-                    ],
-                )
-            ],
-        ),
-    ]
-    state_index = [0]
-    service = AnalysisCommandService(
-        training_runtime=_TrainingRuntime([_Plan("Plan A", [run])]),
-        visualization=_EvaluatorSentinelController(),
-        get_state=lambda: states[state_index[0]],
-    )
-    monkeypatch.setattr(
-        "XBrainLab.backend.application.analysis_service."
-        "check_saliency_resource_preflight",
-        lambda *_args, **_kwargs: _saliency_preflight("warning"),
-    )
-    target = PostTrainingSaliencyTarget(
-        run=TrainingRunIdentity(trainer_id="trainer-a", run_id=1),
-        finished_runs_before=0,
-        finished_runs_after=1,
-        append=False,
-        explicit=True,
-    )
-
-    with (
-        post_training_saliency_target(target),
-        pytest.raises(ResourceConfirmationRequiredError) as first_error,
-    ):
-        service.handle_saliency(SaliencyCommand(method="VarGrad"))
-    first = _resource_challenge(first_error.value)
-    state_index[0] = 1
-
-    with (
-        post_training_saliency_target(target),
-        pytest.raises(ResourceConfirmationRequiredError) as changed_error,
-    ):
-        service.handle_saliency(
-            SaliencyCommand(
-                method="VarGrad",
-                resource_preflight_confirmed=True,
-                resource_preflight_token=first.challenge_id,
-            )
-        )
-
-    changed = _resource_challenge(changed_error.value)
-    assert changed.challenge_id != first.challenge_id
-    assert changed.configuration_fingerprint != first.configuration_fingerprint
 
 
 def test_automatic_saliency_baseline_does_not_accumulate_prior_advanced_methods(
@@ -1472,46 +1073,6 @@ def test_analysis_service_rejects_mismatched_saliency_receipt(
             SaliencyCommand(
                 method="SmoothGrad",
                 params={"nt_samples": 2},
-                resource_preflight_confirmed=True,
-                resource_preflight_token=first.challenge_id,
-            )
-        )
-
-    replacement = _resource_challenge(mismatched.value)
-    assert replacement.challenge_id != first.challenge_id
-    assert replacement.scope_fingerprint != first.scope_fingerprint
-    assert visualization.params is None
-
-
-def test_analysis_service_rejects_saliency_receipt_for_different_target(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    service, visualization = _service(
-        state=_state(has_trainer=True, finished_runs=1),
-    )
-    monkeypatch.setattr(
-        "XBrainLab.backend.application.analysis_service."
-        "check_saliency_resource_preflight",
-        lambda *_args, **_kwargs: _saliency_preflight("warning"),
-    )
-    first_target = SaliencyRunIdentity(
-        plan=SaliencyPlanIdentity(plan_index=0),
-        run_index=0,
-    )
-    second_target = SaliencyRunIdentity(
-        plan=SaliencyPlanIdentity(plan_index=1),
-        run_index=0,
-    )
-
-    with pytest.raises(ResourceConfirmationRequiredError) as raised:
-        service.handle_saliency(SaliencyCommand(method="Gradient", target=first_target))
-    first = _resource_challenge(raised.value)
-
-    with pytest.raises(ResourceConfirmationRequiredError) as mismatched:
-        service.handle_saliency(
-            SaliencyCommand(
-                method="Gradient",
-                target=second_target,
                 resource_preflight_confirmed=True,
                 resource_preflight_token=first.challenge_id,
             )

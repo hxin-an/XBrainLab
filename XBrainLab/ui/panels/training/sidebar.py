@@ -1027,7 +1027,8 @@ class TrainingSidebar(QWidget):
         publication: Any,
     ) -> tuple[DatasetSplitSpecification | None, bool]:
         state = getattr(publication, "state", None)
-        raw_specification = getattr(state, "split_specification", None)
+        dataset = getattr(state, "dataset", None)
+        raw_specification = getattr(dataset, "split_specification", None)
         if not isinstance(raw_specification, dict) or not raw_specification:
             return None, False
         try:
