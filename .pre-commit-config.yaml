@@ -8,7 +8,7 @@ repos:
       - id: check-added-large-files
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.13
+    rev: v0.14.14
     hooks:
       - id: ruff
         args: [ --fix ]
@@ -27,4 +27,4 @@ repos:
         # These generated contracts contain only public source revisions and
         # dataset checksums. Python fixtures remain subject to line-level review.
         exclude: >-
-          package-lock\.json|artifacts/user-journeys/moabb-datasets-v1\.json|user_docs/assets/manifests/moabb-datasets-v1\.json|user_docs/case-studies/manifests/moabb-(lee2021mobile-erp|ofner2017|physionetmi)\.yml
+          package-lock\.json|scripts/dev/basedpyright_baseline\.json|artifacts/user-journeys/moabb-datasets-v1\.json|user_docs/assets/manifests/moabb-datasets-v1\.json|user_docs/case-studies/manifests/moabb-(lee2021mobile-erp|ofner2017|physionetmi)\.yml
