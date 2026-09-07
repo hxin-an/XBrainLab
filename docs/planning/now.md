@@ -8,12 +8,13 @@
   ambiguous_en_alt, choosing a specific bandpass action for an unspecified broad goal. Positive
   36/36 and origin 10/10 plus missing guard 5/5 remain intact; no new failure may be folded into the
   accepted bounded set. Preserve that report and diagnose actual generated prompts before repair.
-  Controlled local-model ablations showed extra ambiguity/parameter-origin wording did not resolve
-  this regression; the original policy with only its incorrect rule cross-reference repaired restores
-  the safe response. Withdraw the ineffective instruction expansion and its wording tests, not the
-  Host origin checks. English-only scope is the corpus and acceptance contract, not a claim of new
-  multilingual controls. Next: independent review, a fresh exact-source full comparison and CI before
-  manual delivery. The failed candidate's exported native copy has been removed; preserve its reports.
+  Controlled ablations restored the ambiguous response, but full deb9d67c newly exhausted format
+  recovery for split_before_epochs_en. Both cases had no RAG examples. Withdraw all policy wording
+  changes, including the reference-only change, and their source assertions; retain the exact accepted
+  policy and Host origin checks. The misleading rule cross-reference is a disclosed follow-up, not
+  justification to ship a new regression. English-only scope is the corpus and acceptance contract,
+  not new multilingual controls. Next: focused recovery replay, independent review, fresh exact-source
+  full comparison and CI before manual delivery. Preserve both failed reports; no relaxed scorer.
 - Original evidence: evaluator/exporter omitted ProcessRAGRetrieverLifecycle, so historical scores
   did not certify production RAG. A versioned real-RAG baseline now precedes the semantic changes.
   Preserve all frozen English case files, expected values and scorer.
@@ -101,8 +102,8 @@
   identities match the accepted bounded set; do not call this Stable. Full local captures preserve
   raw output and final prompt. Multi-turn attribution now uses explicit trajectory identity; do not
   rewrite the historical baseline artifact to pretend it used the corrected report path.
-- Bounded semantic slice: correct the clarification rule cross-reference; keep the validated policy
-  wording after the unsuccessful instruction-expansion ablations. Review each bundled Chinese example:
+- Bounded semantic slice: retain the exact validated policy wording after unsuccessful prompt
+  ablations and full recovery checks. Review each bundled Chinese example:
   remove only duplicate tool/parameter examples; translate distinct supported parameter/view examples
   into concise English without copying frozen case answers. Preserve all 18 tool schema coverage.
   Update corpus identity/index invalidation and directly related tests; do not alter frozen benchmark

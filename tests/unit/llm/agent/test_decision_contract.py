@@ -83,13 +83,6 @@ def test_prompt_policy_preserves_explicit_supported_optional_values() -> None:
     assert "never omit an explicitly requested supported value" in prompt
 
 
-def test_prompt_policy_references_the_typed_clarification_rule() -> None:
-    prompt = StrictToolResponsePromptPolicy().decision_instructions().lower()
-
-    assert "3. if exactly one callable direct preprocessing action is missing" in prompt
-    assert "missing_inputs shape in rule 3" in prompt
-
-
 def test_prompt_policy_uses_no_action_for_ambiguous_or_negated_requests() -> None:
     prompt = StrictToolResponsePromptPolicy().decision_instructions().lower()
 

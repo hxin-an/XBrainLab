@@ -94,7 +94,7 @@ class StrictToolResponsePromptPolicy:
             + workflow_stage
             + ". Never wrap it in tool-call, tool_call, action, or function. For "
             "respond_to_user use message only, except the typed pending_action and "
-            "missing_inputs shape in rule 3. workflow_stage acknowledges the backend "
+            "missing_inputs shape in rule 2. workflow_stage acknowledges the backend "
             "publication; it does not grant permission.\n"
             "The first non-whitespace character must be { and the last must be }. "
             "Never use a Markdown code fence or prose outside the object."
