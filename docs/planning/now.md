@@ -2,7 +2,14 @@
 
 最後更新：`2026-09-07`
 
+
 ## Next — PR review, then computational cleanup
+
+- Data Splitting 手測追加項：未按Start Train前，儲存0.25、重開應還原0.25，再改0.4可
+  預覽及儲存；Back／取消不覆寫已儲存值。已修正sidebar從dataset snapshot讀取saved split，
+  不再讀不存在的頂層欄位；真實兩階段視窗測試取代僅信任錯誤mock形狀的證據。
+  原手測的確切阻擋提示已遺失，目前證明的是設定還原缺陷；仍須同源工程gates與Windows手測，
+  不把此修正宣稱為已定位所有可能的鎖定訊息。保留正在訓練及無效preview的既有保護。
 
 - #113 的 e8e90b6b 手測發現只選SmoothGrad仍重算舊方法，不能沿用其工程通過作為驗收。
   已移除request-union／參數回填與display-driven設定覆蓋，改由既有EvalRecord保留相容

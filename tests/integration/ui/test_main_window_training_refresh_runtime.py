@@ -96,6 +96,33 @@ def _write_synthetic_raw_fif(tmp_path: Path) -> Path:
 
 
 def _prepare_training_runtime(tmp_path: Path):
+    study, service = _prepare_epoch_runtime(tmp_path)
+    commands = (
+        SaveDatasetSplitCommand(
+            test_ratio=0.25,
+            val_ratio=0.25,
+            split_strategy="trial",
+            training_mode="individual",
+        ),
+        ConfigureTrainingCommand(model_name="EEGNet"),
+        ConfigureTrainingCommand(
+            epoch=1,
+            batch_size=2,
+            learning_rate=0.001,
+            device="cpu",
+            output_dir=str(tmp_path / "training-output"),
+            save_checkpoints_every=0,
+            evaluation_option="val_acc",
+        ),
+    )
+    for command in commands:
+        result = service.execute(command)
+        assert result.ok is True, result.message
+    return study, service
+
+
+def _prepare_epoch_runtime(tmp_path: Path):
+    """Create real supervised epochs without saving a data split."""
     study = Study()
     service = get_application_service(study)
     assert service is get_application_service(study)
@@ -124,27 +151,202 @@ def _prepare_training_runtime(tmp_path: Path):
             t_max=1.3,
             event_ids=["left", "right"],
         ),
-        SaveDatasetSplitCommand(
-            test_ratio=0.25,
-            val_ratio=0.25,
-            split_strategy="trial",
-            training_mode="individual",
-        ),
-        ConfigureTrainingCommand(model_name="EEGNet"),
-        ConfigureTrainingCommand(
-            epoch=1,
-            batch_size=2,
-            learning_rate=0.001,
-            device="cpu",
-            output_dir=str(tmp_path / "training-output"),
-            save_checkpoints_every=0,
-            evaluation_option="val_acc",
-        ),
     )
     for command in commands:
         result = service.execute(command)
         assert result.ok is True, result.message
     return study, service
+
+
+def test_saved_split_reopens_for_real_preview_and_edit_before_training(
+    qtbot,
+    tmp_path: Path,
+    allow_real_modals,
+) -> None:
+    """A saved split remains editable until training actually starts.
+
+    This drives both modal steps and their real asynchronous preview through the
+    Training sidebar.  It deliberately includes a Step 2 Back path because a
+    cancelled preview must not poison a later reopen.
+    """
+    from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
+        DataSplittingDialog,
+    )
+    from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
+        PREVIEW_STATUS_SUCCEEDED,
+        DataSplittingPreviewDialog,
+    )
+
+    study, service = _prepare_epoch_runtime(tmp_path)
+    window = cast(Any, MainWindow(study))
+    qtbot.addWidget(window)
+    window.resize(1220, 820)
+    window.show()
+    qtbot.waitExposed(window)
+    ready_panels: list[object] = []
+    window.switch_page(2, on_ready=ready_panels.append)
+    qtbot.waitUntil(lambda: len(ready_panels) == 1, timeout=5_000)
+    sidebar = window.training_panel.sidebar
+
+    def _drive_split(
+        *,
+        action: str,
+        edit_value: str | None = None,
+        screenshot_dir: Path | None = None,
+    ) -> dict[str, object]:
+        phase = "open-step-one"
+        changed_entry = False
+        screenshot_written = False
+        observed: dict[str, object] = {}
+        deadline = 0
+
+        def _visible_dialog(dialog_type):
+            return next(
+                (
+                    widget
+                    for widget in QApplication.allWidgets()
+                    if isinstance(widget, dialog_type) and widget.isVisible()
+                ),
+                None,
+            )
+
+        def _advance() -> None:
+            nonlocal changed_entry, deadline, phase, screenshot_written
+            deadline += 1
+            if deadline > 800:
+                raise AssertionError(f"Timed out driving split dialog at {phase}.")
+            step_one = _visible_dialog(DataSplittingDialog)
+            step_two = _visible_dialog(DataSplittingPreviewDialog)
+            if phase == "open-step-one" and step_one is not None:
+                assert (
+                    step_one.btn_confirm is not None
+                    and step_one.btn_confirm.isEnabled()
+                )
+                observed["step_one"] = (
+                    step_one.train_type_combo.currentText(),
+                    step_one.cv_check.isChecked(),
+                    step_one.val_combo.currentText(),
+                    step_one.test_combo.currentText(),
+                )
+                if screenshot_dir is not None:
+                    assert step_one.grab().save(
+                        str(screenshot_dir / "split-reopened-step1.png")
+                    )
+                phase = "wait-step-two"
+                # ``confirm`` opens the second modal synchronously. Queue its
+                # driver before entering that nested Qt event loop.
+                QTimer.singleShot(10, _advance)
+                step_one.btn_confirm.click()
+                return
+            elif phase == "wait-step-two" and step_two is not None:
+                phase = "wait-preview"
+            elif (
+                phase == "wait-preview"
+                and step_two is not None
+                and step_two._preview_status == PREVIEW_STATUS_SUCCEEDED
+                and step_two.btn_confirm is not None
+                and step_two.btn_confirm.isEnabled()
+            ):
+                assert step_two.test_widgets
+                observed.setdefault(
+                    "step_two",
+                    (
+                        step_two.test_widgets[0][0].currentText(),
+                        step_two.test_widgets[0][1].text(),
+                    ),
+                )
+                if screenshot_dir is not None and not screenshot_written:
+                    assert step_two.grab().save(
+                        str(screenshot_dir / "split-reopened-step2.png")
+                    )
+                    screenshot_written = True
+                if action == "back":
+                    assert step_two.btn_back is not None
+                    phase = "close-step-one"
+                    QTimer.singleShot(10, _advance)
+                    step_two.btn_back.click()
+                    return
+                elif action == "save":
+                    phase = "complete"
+                    step_two.btn_confirm.click()
+                elif action == "edit-save" and not changed_entry:
+                    assert edit_value is not None
+                    changed_entry = True
+                    step_two.test_widgets[0][1].setText(edit_value)
+                elif action == "edit-save":
+                    phase = "complete"
+                    step_two.btn_confirm.click()
+                else:  # pragma: no cover - test driver misuse
+                    raise AssertionError(f"Unexpected split action: {action}")
+            elif phase == "close-step-one" and step_one is not None:
+                phase = "complete"
+                step_one.reject()
+            if phase != "complete":
+                QTimer.singleShot(10, _advance)
+
+        QTimer.singleShot(0, _advance)
+        outcome = sidebar.split_data()
+        if action == "back":
+            assert outcome.status.value == "cancelled"
+        else:
+            assert outcome.status.value == "accepted"
+        return observed
+
+    try:
+        _drive_split(action="back")
+        _drive_split(action="edit-save", edit_value="0.25")
+        qtbot.waitUntil(
+            lambda: service.get_view_publication().state.dataset.split_spec_saved,
+            timeout=10_000,
+        )
+        qtbot.waitUntil(
+            lambda: application_command_registry().active_count(sidebar) == 0,
+            timeout=10_000,
+        )
+        saved_before_reopen = (
+            service.get_view_publication().state.dataset.split_specification
+        )
+        reopened_then_cancelled = _drive_split(action="back")
+        expected_step_one = (
+            saved_before_reopen["train_type"],
+            saved_before_reopen["is_cross_validation"],
+            (
+                saved_before_reopen["val_splitters"][0]["split_type"]
+                if saved_before_reopen["val_splitters"]
+                else "Disable"
+            ),
+            saved_before_reopen["test_splitters"][0]["split_type"],
+        )
+        assert reopened_then_cancelled["step_one"] == expected_step_one
+        assert reopened_then_cancelled["step_two"] == (
+            saved_before_reopen["test_splitters"][0]["split_unit"],
+            saved_before_reopen["test_splitters"][0]["value"],
+        )
+        assert (
+            service.get_view_publication().state.dataset.split_specification
+            == saved_before_reopen
+        )
+        reopened_then_edited = _drive_split(
+            action="edit-save",
+            edit_value="0.4",
+            screenshot_dir=tmp_path,
+        )
+        assert reopened_then_edited["step_one"] == expected_step_one
+        assert reopened_then_edited["step_two"] == reopened_then_cancelled["step_two"]
+        qtbot.waitUntil(
+            lambda: application_command_registry().active_count(sidebar) == 0,
+            timeout=10_000,
+        )
+        saved = service.get_view_publication().state.dataset.split_specification
+        assert saved["test_splitters"][0]["value"] == "0.4"
+        training_state = service.get_view_publication().state.training
+        assert training_state.has_trainer is False
+        assert training_state.is_running is False
+    finally:
+        if not sip.isdeleted(window):
+            window.close()
+        service.wait_for_background_tasks(timeout=10.0)
+        service.close()
 
 
 @pytest.fixture
