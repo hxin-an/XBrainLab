@@ -177,7 +177,10 @@ def test_shard_timeout_emits_pre_timeout_python_stack(
         "    time.sleep(10)\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("XBL_TEST_SHARD_TIMEOUT_SECONDS", "1")
+    # A one-second outer bound can expire during pytest startup, before the
+    # runner's intentionally half-time pre-timeout stack window is active.
+    monkeypatch.setenv("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
+    monkeypatch.setenv("XBL_TEST_SHARD_TIMEOUT_SECONDS", "3")
 
     execution = run_tests.run_pytest_attested(("-q", str(test_file)))
 
