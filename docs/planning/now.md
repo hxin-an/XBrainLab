@@ -10,9 +10,15 @@
 - Inspect historical debug-domain timeout and macOS native exit -11 evidence; causes remain unproven.
   Later passes are not fixes. Select deterministic, relevant checks and reuse same-source CI evidence;
   do not weaken gates, duplicate heavy local runs or claim fresh-agent behavior from parsing alone.
-- Outcome: clear validation ownership, useful gates and a sustainable merge/cleanup workflow.
-  Before CI implementation, bound the observed failures, affected files and focused checks. Stop when
-  the authorized guidance/CI slice has its required evidence and merge/cleanup endpoint, or a genuine blocker.
+- Outcome: L0/L1 fast local feedback, L2 same-head CI and L3 explicit dossiers; never run aggregates
+  per edit. Execute three bounded PRs: A guidance/entrypoint clarity, B Ruff/type/architecture CI wiring,
+  C runner failure diagnostics. Next: finish A review, focused guidance/docs evidence and same-head CI.
+- Review every CI job's trigger, observable protection, duplication and gaps. Remove only demonstrated
+  redundancy/unneeded routing while preserving required evidence; add missing meaningful gates, not
+  more checks by default. No failure hiding through skips or timeout increases.
+- User authorized independent-reviewed non-product PRs to merge after a notice without waiting for
+  a reply. Clean each merged worktree/output, then continue through Assistant manual-test delivery.
+  Commit, pending CI and compaction are not endpoints. Product PRs still require manual acceptance.
 
 ## Execution and validation adequacy
 
@@ -28,7 +34,24 @@
 
 ## Following work — agreed order
 
-- Product Assistant architecture, golden-set language consistency and code organization.
+- Before Assistant changes, repair the existing evaluator/exporter to use production RAG lifecycle,
+  retrieval/tool filtering, assembler and local template/budget path. Current case projection bypasses
+  RAG. Establish a RAG-enabled pre-change baseline; historical no-RAG scores are not directly comparable.
+- Freeze model/revision, cases/scorer/denominator and tool/confirmation/publication contracts. Capture
+  retrieval identity/order, inclusion/drop/failure, final prompt, raw/Host/product outcomes and latency.
+  No evaluator expected answer may select examples; disclose corpus/case overlap and degraded RAG.
+- Then clean Assistant architecture and inspect actual assembled and final rendered prompts including
+  real RAG/history/retry/clarification. User authorizes prompt wording/structure/examples improvements,
+  not UI, tool/permission changes or blanket Chinese deletion. Separate refactor and semantic commits.
+- Assistant support and acceptance are English-only. Do not add Chinese capability or multilingual
+  gates; classify existing non-English material by real role/callers before cleanup.
+- Respect the small models' current input/output budgets; assess short/medium/near-limit cases and
+  optional-context removal. No context inflation or new summary model. Use focused cases during edits,
+  applicable frozen bounded evidence on the final candidate, without requiring unaccepted Stable scores.
+- Independent review plus same-head applicable CI precedes the Assistant product PR/manual delivery.
+  Open exact-source native app with visible log, confirm responsive, then hand over without prolonged
+  monitoring. Necessary unavailable resources/new contract decisions are genuine blockers; isolate them
+  and continue independent work. Do not start new research datasets/evaluators in this run.
 - In parallel with Assistant organization, investigate noisy logs and preprocess latency.
   Repeated `Adding metadata with 1 columns` is reported noise, not yet a diagnosed cause of latency.
 - Split work by non-overlapping ownership with concrete outputs; coordinate shared interfaces before edits.

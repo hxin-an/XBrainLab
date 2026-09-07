@@ -14,8 +14,8 @@ Visible design work first follows the validation contract's "UI design iteration
 section. A native design preview is an iteration endpoint, not a handoff-ready claim; enter formal
 candidate validation after the user accepts the design.
 
-Reproduce bugs before repair; characterize refactors with a passing baseline. Trace changed lifecycles
-and callers; widen focused checks only when changed code, failures or unresolved risks justify it.
+Use the validation contract's L0–L3 tiers, not aggregate per-edit checks. Reproduce bugs/characterize
+refactors; trace changed callers and record concrete risk before widening. Reuse equivalent CI evidence.
 
 Visible changes need a changed-surface screenshot/walkthrough. Use widget state/geometry and existing
 pixel comparison for machine-checkable facts. The primary agent reviews changed design and unexpected
@@ -56,7 +56,7 @@ Stop at the requested endpoint, a user pause, or a genuine resource/authority bl
 commit, push or a status label. A request limited to review or opening a PR does not authorize merge.
 For authorized merge, apply `docs/validation/README.md` approval rules: notify immediately beforehand
 with PR/source, scope, checks and known limits; recheck base/head and gates, then use an exact-head
-merge guard. Verify the resulting merge state. A pre-merge notice is not a completion claim.
+merge guard. The notice does not wait for a reply. Verify merge state before claiming completion.
 
 ## 5. Post-merge cleanup
 
