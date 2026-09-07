@@ -7,16 +7,15 @@
 - User accepted Filter/Epoch design and requested completing #115 to manual testing. Freeze the
   visible design; no new UI features or broad saliency/backend cleanup. #111 is no longer active;
   verify source and merge state through Git/PR, not historical chat.
-- #115 same-head CI reported a shutdown callback lock-availability assertion failure and a debug
-  domain timeout. Diagnose actual failures before repair or evidence-backed rerun; a passing local
-  run does not erase them. Prior macOS native exit -11 remains an unproven historical failure.
+- #115's shutdown test oracle was corrected after a deterministic real-fence concurrency repro;
+  no product lifecycle changed. Final same-head checks passed. Debug-domain timeout and prior
+  macOS native exit -11 remain historical failures with unproven causes; later passes do not fix them.
 - Outcome: focused defect evidence, same-head applicable successful CI, then launch the exact-source
   Windows app with visible log for manual acceptance. Product merge still needs user approval.
-- Harness: persist context-compaction continuation in root guidance, using existing plan/session
-  mechanisms only. Validate guidance structure; do not claim new-agent behavioral proof from audits.
-- Next: inspect the failing test/lifecycle boundaries, isolate any minimal necessary repair and rerun
-  focused protection. Stop only at manual delivery or a genuine decision/resource gap; preserve all
-  unrelated local changes and running apps.
+- Next: deliver the exact-source app and visible log, then await the user's full Filter/Epoch workflow
+  acceptance and merge approval. Preserve unrelated local changes and running apps.
+- Harness UI-preview and compaction-continuation rules are locally committed for the later guidance
+  PR; structure checks passed, not new-agent behavioral proof. No global config or permissions changed.
 - After #115, review #116 test pruning, then reorganize CI/validation around retained useful tests.
   The latter includes UI preview-first guidance; do not weaken gates to pass #115.
 
