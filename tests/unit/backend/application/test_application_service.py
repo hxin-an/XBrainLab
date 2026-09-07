@@ -71,9 +71,7 @@ from XBrainLab.backend.application.bids_montage_preparation import (
 from XBrainLab.backend.application.capabilities import build_capability_policy
 from XBrainLab.backend.application.errors import ApplicationError, PreconditionError
 from XBrainLab.backend.application.evaluation_render import (
-    EvaluationCrossFoldIdentity,
     EvaluationPlanIdentity,
-    EvaluationRunIdentity,
     EvaluationSummaryIdentity,
 )
 from XBrainLab.backend.application.montage_preparation_lifecycle import (
@@ -92,11 +90,6 @@ from XBrainLab.backend.application.resource_guard import (
     TrainingResourcePreviewRequest,
     TrainingResourcePreviewResult,
     TrainingResourceRefinement,
-)
-from XBrainLab.backend.application.saliency_render import (
-    SaliencyCrossFoldIdentity,
-    SaliencyPlanIdentity,
-    SaliencyRunIdentity,
 )
 from XBrainLab.backend.application.state import (
     ActiveDatasetSnapshot,
@@ -7822,75 +7815,6 @@ def test_model_summary_model_construction_does_not_hold_command_lock(
     assert results[0].diagnostics["model_summary"]["text"] == "Summary"
 
 
-def test_model_summary_rejects_result_after_training_identity_changes(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    study = Study()
-    epoch_data = SimpleNamespace(
-        get_model_args=dict,
-        get_data=lambda: SimpleNamespace(shape=(8, 2, 16)),
-    )
-    dataset = SimpleNamespace(get_epoch_data=lambda: epoch_data)
-    model = SimpleNamespace(parameters=list)
-    run = MagicMock()
-    run.is_finished.return_value = True
-    run.eval_record.evaluation_split = "test"
-    run.class_weighting = _off_class_weighting()
-    plan = MagicMock()
-    plan.dataset = dataset
-    plan.model_holder = SimpleNamespace(get_model=lambda _args: model)
-    plan.get_name.return_value = "Plan A"
-    plan.get_plans.return_value = [run]
-    trainer = Trainer([])
-    trainer.get_training_plan_holders = MagicMock(return_value=[plan])
-    study.training_manager.trainer = trainer
-    service = ApplicationService(study)
-    service.training_runtime.training_plan_holders = MagicMock(return_value=(plan,))
-    summary_started = Event()
-    release_summary = Event()
-
-    def blocked_summary(*_args: Any, **_kwargs: Any) -> str:
-        summary_started.set()
-        assert release_summary.wait(timeout=THREAD_WATCHDOG_SECONDS)
-        return "Stale summary"
-
-    monkeypatch.setattr("torchinfo.summary", blocked_summary)
-    command = EvaluateCommand(
-        summary_identity=EvaluationSummaryIdentity(
-            plan=EvaluationPlanIdentity(plan_index=0),
-        )
-    )
-    operation = service.begin_owned_operation(command)
-    before = service.get_view_publication()
-    results: list[CommandResult] = []
-    worker = Thread(
-        target=lambda: results.append(
-            service.execute(command, operation_id=operation.operation_id)
-        ),
-        name="model-summary-stale-publication",
-    )
-    worker.start()
-    try:
-        assert summary_started.wait(timeout=THREAD_WATCHDOG_SECONDS)
-        cleared = service.execute(ClearTrainingHistoryCommand(confirmed=True))
-        assert cleared.ok
-        assert service.get_view_publication().generation > before.generation
-    finally:
-        release_summary.set()
-        worker.join(timeout=THREAD_WATCHDOG_SECONDS)
-
-    assert not worker.is_alive()
-    assert len(results) == 1
-    stale = results[0]
-    assert stale.error_type is ErrorType.PRECONDITION
-    assert stale.diagnostics["stale_evaluation_summary"] is True
-    assert stale.diagnostics["state_preserved"] is True
-    assert "model_summary" not in stale.diagnostics
-    assert service.get_owned_operation(operation.operation_id).phase is (
-        OwnedWorkPhase.FAILED
-    )
-
-
 def test_evaluation_query_fails_when_training_generation_changes_mid_read() -> None:
     service = ApplicationService(Study())
     run = MagicMock()
@@ -8032,6 +7956,9 @@ def test_visualize_and_saliency_commands_return_typed_query_payloads():
     assert visualize.ok is True
     assert visualize.command_name == "visualize"
     assert visualize.diagnostics["payload_type"] == "visualization_summary"
+    assert visualize.diagnostics["visualization_publication_generation"] == (
+        service.get_view_publication().generation
+    )
     assert visualize.diagnostics["available"] is True
     assert "available_views" in visualize.diagnostics
     assert saliency.ok is True
@@ -8039,6 +7966,37 @@ def test_visualize_and_saliency_commands_return_typed_query_payloads():
     assert saliency.diagnostics["payload_type"] == "saliency_summary"
     assert saliency.diagnostics["action"] == "query"
     assert saliency.diagnostics["saliency_configured"] is False
+
+
+def test_visualize_query_fails_when_training_generation_changes_mid_read() -> None:
+    service = ApplicationService(Study())
+    service.study.data_manager.epoch_data = MagicMock()
+    service.study.training_manager.model_holder = ModelHolder(
+        type("EEGNet", (), {}),
+        {},
+    )
+    service.study.training_manager.set_training_option(_valid_training_option())
+    trainer = Trainer([])
+    service.study.training_manager.trainer = trainer
+
+    original_handle_visualize = service.analysis.handle_visualize
+
+    def mutate_training_while_reading(command: Any) -> Any:
+        summary = original_handle_visualize(command)
+        trainer.set_interrupt()
+        trainer.clear_interrupt()
+        return summary
+
+    service._command_handlers[CommandName.VISUALIZE] = MagicMock(
+        side_effect=mutate_training_while_reading
+    )
+
+    result = service.execute(VisualizeCommand(view="summary"))
+
+    assert result.failed is True
+    assert result.error_type is ErrorType.PRECONDITION
+    assert result.recoverable is True
+    assert result.diagnostics["training_state_changed"] is True
 
 
 def test_saliency_command_can_configure_params():
@@ -8337,304 +8295,6 @@ def test_explicit_saliency_compute_runs_outside_shared_command_lock() -> None:
     assert service.training_runtime.saliency_status().phase is (
         PostTrainingSaliencyPhase.SUCCEEDED
     )
-
-
-def test_targeted_saliency_rejects_a_second_command_while_work_is_active() -> None:
-    service, trainer, _holder, _record, _old_eval_record = _saliency_recompute_service()
-    trainer._terminal_outcome = TrainingTerminalOutcome(
-        state=TrainingOutcomeState.COMPLETED,
-        run=TrainingRunIdentity(
-            trainer_id=trainer.get_state_snapshot_identity(),
-            run_id=1,
-        ),
-    )
-    selected = SaliencyRunIdentity(
-        plan=SaliencyPlanIdentity(plan_index=0),
-        run_index=0,
-    )
-    compute_started = Event()
-    release_compute = Event()
-
-    def evaluate(*_args, **_kwargs):
-        compute_started.set()
-        assert release_compute.wait(timeout=THREAD_WATCHDOG_SECONDS)
-        return MagicMock()
-
-    command = SaliencyCommand(
-        method="Gradient",
-        params={
-            "profile": "recommended",
-            "methods": ["Gradient", "Gradient * Input"],
-        },
-        target=selected,
-    )
-    with patch.object(
-        Evaluator,
-        "evaluate_with_saliency",
-        side_effect=evaluate,
-    ) as evaluator:
-        first = service.execute(command)
-        assert first.ok is True
-        assert compute_started.wait(timeout=THREAD_WATCHDOG_SECONDS)
-        executor = ThreadPoolExecutor(max_workers=1)
-        try:
-            second_future = executor.submit(service.execute, command)
-            second = second_future.result(timeout=1.0)
-        finally:
-            release_compute.set()
-            executor.shutdown(wait=True)
-        assert service.wait_for_background_tasks(timeout=THREAD_WATCHDOG_SECONDS)
-
-    assert second.failed is True
-    assert second.error_type is ErrorType.PRECONDITION
-    assert second.recoverable is True
-    assert second.diagnostics["saliency_compute_active"] is True
-    assert evaluator.call_count == 1
-    assert service.training_runtime.saliency_status().phase is (
-        PostTrainingSaliencyPhase.SUCCEEDED
-    )
-
-
-def test_explicit_saliency_compute_mutates_only_the_selected_run() -> None:
-    service, trainer, holder, first_record, _old_eval_record = (
-        _saliency_recompute_service()
-    )
-    second_record = object.__new__(TrainRecord)
-    second_record._state_tracker = None
-    second_record.epoch = first_record.epoch
-    second_record.option = first_record.option
-    second_record.eval_record = cast(Any, object())
-    second_record.model = first_record.model
-    second_record.repeat = 1
-    second_record.seed = 8
-    second_record.plan_id = first_record.plan_id
-    second_record.model_identity = first_record.model_identity
-    second_record.class_weighting = _off_class_weighting()
-    holder.train_record_list.append(second_record)
-    run = TrainingRunIdentity(
-        trainer_id=trainer.get_state_snapshot_identity(),
-        run_id=1,
-    )
-    trainer._terminal_outcome = TrainingTerminalOutcome(
-        state=TrainingOutcomeState.COMPLETED,
-        run=run,
-    )
-    selected = SaliencyRunIdentity(
-        plan=SaliencyPlanIdentity(plan_index=0),
-        run_index=0,
-    )
-    replacement = MagicMock()
-    second_before = second_record.eval_record
-
-    with patch.object(
-        Evaluator,
-        "evaluate_with_saliency",
-        return_value=replacement,
-    ) as evaluate:
-        result = service.execute(
-            SaliencyCommand(
-                method="Gradient",
-                params={
-                    "profile": "recommended",
-                    "methods": ["Gradient", "Gradient * Input"],
-                },
-                target=selected,
-            )
-        )
-        assert result.ok is True
-        assert service.wait_for_background_tasks(timeout=THREAD_WATCHDOG_SECONDS)
-
-    assert evaluate.call_count == 1
-    assert first_record.get_saliency_eval_record() is replacement
-    assert second_record.get_saliency_eval_record() is second_before
-
-
-def test_explicit_saliency_compute_rejects_a_stale_selected_run() -> None:
-    service, trainer, _holder, _record, _old_eval_record = _saliency_recompute_service()
-    trainer._terminal_outcome = TrainingTerminalOutcome(
-        state=TrainingOutcomeState.COMPLETED,
-        run=TrainingRunIdentity(
-            trainer_id=trainer.get_state_snapshot_identity(),
-            run_id=1,
-        ),
-    )
-    stale = SaliencyRunIdentity(
-        plan=SaliencyPlanIdentity(plan_index=0),
-        run_index=9,
-    )
-
-    with patch.object(Evaluator, "evaluate_with_saliency") as evaluate:
-        result = service.execute(
-            SaliencyCommand(
-                method="Gradient",
-                params={
-                    "profile": "recommended",
-                    "methods": ["Gradient", "Gradient * Input"],
-                },
-                target=stale,
-            )
-        )
-
-    assert result.failed is True
-    assert result.error_type is ErrorType.PRECONDITION
-    assert result.recoverable is True
-    assert result.diagnostics["stale_saliency_target"] is True
-    evaluate.assert_not_called()
-
-
-def test_explicit_saliency_compute_rejects_a_run_missing_from_current_coverage() -> (
-    None
-):
-    service, trainer, _holder, _record, _old_eval_record = _saliency_recompute_service()
-    trainer._terminal_outcome = TrainingTerminalOutcome(
-        state=TrainingOutcomeState.COMPLETED,
-        run=TrainingRunIdentity(
-            trainer_id=trainer.get_state_snapshot_identity(),
-            run_id=1,
-        ),
-    )
-    selected = SaliencyRunIdentity(
-        plan=SaliencyPlanIdentity(plan_index=0),
-        run_index=0,
-    )
-    current = service.get_state()
-    without_coverage = replace(
-        current,
-        visualization=replace(current.visualization, saliency_coverage=[]),
-    )
-
-    with (
-        patch.object(
-            service,
-            "_state_before_command",
-            return_value=without_coverage,
-        ),
-        patch.object(Evaluator, "evaluate_with_saliency") as evaluate,
-    ):
-        result = service.execute(
-            SaliencyCommand(
-                method="Gradient",
-                params={
-                    "profile": "recommended",
-                    "methods": ["Gradient", "Gradient * Input"],
-                },
-                target=selected,
-            )
-        )
-
-    assert result.failed is True
-    assert result.error_type is ErrorType.PRECONDITION
-    assert result.recoverable is True
-    assert result.diagnostics["stale_saliency_target"] is True
-    evaluate.assert_not_called()
-
-
-def test_explicit_saliency_compute_admits_one_exact_cross_fold_batch() -> None:
-    service, trainer, _first_holder, _first_record, _old_eval_record = (
-        _saliency_recompute_service()
-    )
-    _other_service, _other_trainer, second_holder, _second_record, _other_old = (
-        _saliency_recompute_service()
-    )
-    trainer.add_plan(second_holder)
-    run = TrainingRunIdentity(
-        trainer_id=trainer.get_state_snapshot_identity(),
-        run_id=1,
-    )
-    trainer._terminal_outcome = TrainingTerminalOutcome(
-        state=TrainingOutcomeState.COMPLETED,
-        run=run,
-    )
-    target = SaliencyCrossFoldIdentity(
-        members=(
-            SaliencyRunIdentity(SaliencyPlanIdentity(0), 0),
-            SaliencyRunIdentity(SaliencyPlanIdentity(1), 0),
-        )
-    )
-    admitted = SimpleNamespace(
-        identity=EvaluationCrossFoldIdentity(
-            members=(
-                EvaluationRunIdentity(EvaluationPlanIdentity(0), 0),
-                EvaluationRunIdentity(EvaluationPlanIdentity(1), 0),
-            )
-        )
-    )
-
-    with (
-        patch(
-            "XBrainLab.backend.application.service.build_evaluation_cross_fold_choices",
-            return_value=(admitted,),
-        ),
-        patch.object(
-            Evaluator,
-            "evaluate_with_saliency",
-            side_effect=(MagicMock(), MagicMock()),
-        ) as evaluate,
-    ):
-        result = service.execute(
-            SaliencyCommand(
-                method="Gradient",
-                params={
-                    "profile": "recommended",
-                    "methods": ["Gradient", "Gradient * Input"],
-                },
-                target=target,
-            )
-        )
-        assert result.ok is True
-        assert service.wait_for_background_tasks(timeout=THREAD_WATCHDOG_SECONDS)
-
-    assert evaluate.call_count == 2
-    assert service.training_runtime.saliency_status().phase is (
-        PostTrainingSaliencyPhase.SUCCEEDED
-    )
-
-
-def test_explicit_saliency_compute_rejects_an_unadmitted_cross_fold_batch() -> None:
-    service, trainer, _first_holder, _first_record, _old_eval_record = (
-        _saliency_recompute_service()
-    )
-    _other_service, _other_trainer, second_holder, _second_record, _other_old = (
-        _saliency_recompute_service()
-    )
-    trainer.add_plan(second_holder)
-    trainer._terminal_outcome = TrainingTerminalOutcome(
-        state=TrainingOutcomeState.COMPLETED,
-        run=TrainingRunIdentity(
-            trainer_id=trainer.get_state_snapshot_identity(),
-            run_id=1,
-        ),
-    )
-    target = SaliencyCrossFoldIdentity(
-        members=(
-            SaliencyRunIdentity(SaliencyPlanIdentity(0), 0),
-            SaliencyRunIdentity(SaliencyPlanIdentity(1), 0),
-        )
-    )
-
-    with (
-        patch(
-            "XBrainLab.backend.application.service.build_evaluation_cross_fold_choices",
-            return_value=(),
-        ),
-        patch.object(Evaluator, "evaluate_with_saliency") as evaluate,
-    ):
-        result = service.execute(
-            SaliencyCommand(
-                method="Gradient",
-                params={
-                    "profile": "recommended",
-                    "methods": ["Gradient", "Gradient * Input"],
-                },
-                target=target,
-            )
-        )
-
-    assert result.failed is True
-    assert result.error_type is ErrorType.PRECONDITION
-    assert result.recoverable is True
-    assert result.diagnostics["stale_saliency_target"] is True
-    evaluate.assert_not_called()
 
 
 def test_application_service_explicit_saliency_recompute_accumulates_committed_methods() -> (

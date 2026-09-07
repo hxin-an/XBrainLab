@@ -966,6 +966,7 @@ class TrainingPlanHolder:
         train_record: TrainRecord,
         *,
         evaluation_split: str,
+        sealed_epoch_data_fingerprint: str | None = None,
     ) -> SaliencyProducerIdentity:
         """Build exact-content provenance for one dataset split, run, and model."""
         if not any(train_record is item for item in self.train_record_list):
@@ -989,7 +990,11 @@ class TrainingPlanHolder:
 
         dataset_component = {
             "dataset_type": self._qualified_type_name(self.dataset),
-            "epoch_data_fingerprint": fingerprint_saliency_epoch_data(epoch_data),
+            "epoch_data_fingerprint": (
+                sealed_epoch_data_fingerprint
+                if sealed_epoch_data_fingerprint is not None
+                else fingerprint_saliency_epoch_data(epoch_data)
+            ),
         }
         split_component = {
             "evaluation_split": str(evaluation_split or "unknown"),
@@ -1105,6 +1110,7 @@ class TrainingPlanHolder:
         plan: SaliencyUpdatePlan,
         *,
         should_cancel: Callable[[], bool] | None = None,
+        epoch_data_fingerprints: dict[int, str] | None = None,
     ) -> PreparedSaliencyUpdate:
         """Compute replacement records without mutating shared training state."""
         if plan.holder is not self:
@@ -1113,6 +1119,16 @@ class TrainingPlanHolder:
         if not plan.records:
             return PreparedSaliencyUpdate(plan=plan, eval_records=())
 
+        epoch_data = self.dataset.get_epoch_data()
+        fingerprints = (
+            {} if epoch_data_fingerprints is None else epoch_data_fingerprints
+        )
+        epoch_fingerprint = None
+        if plan.saliency_params:
+            epoch_key = id(epoch_data)
+            if epoch_key not in fingerprints:
+                fingerprints[epoch_key] = fingerprint_saliency_epoch_data(epoch_data)
+            epoch_fingerprint = fingerprints[epoch_key]
         prepared_eval_records: list[tuple[TrainRecord, EvalRecord, EvalRecord]] = []
         for train_record, previous_eval_record in plan.records:
             self._raise_if_saliency_plan_stale(plan, should_cancel=should_cancel)
@@ -1163,6 +1179,7 @@ class TrainingPlanHolder:
                     producer_identity = self.build_saliency_producer_identity(
                         train_record,
                         evaluation_split=evaluation_split,
+                        sealed_epoch_data_fingerprint=epoch_fingerprint,
                     )
                     eval_record = Evaluator.evaluate_with_saliency(
                         target,
@@ -1174,15 +1191,10 @@ class TrainingPlanHolder:
                         plan,
                         should_cancel=should_cancel,
                     )
-                    current_producer_identity = self.build_saliency_producer_identity(
-                        train_record,
-                        evaluation_split=evaluation_split,
-                    )
-                    if current_producer_identity != producer_identity:
-                        raise StaleSaliencyUpdateError
                     eval_record.bind_saliency_context(
-                        self.dataset.get_epoch_data(),
+                        epoch_data,
                         producer_identity=producer_identity,
+                        _sealed_epoch_data_fingerprint=epoch_fingerprint,
                     )
                 else:
                     eval_record = Evaluator.evaluate(

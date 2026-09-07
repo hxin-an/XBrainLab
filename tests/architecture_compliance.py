@@ -725,9 +725,12 @@ MUTABLE_OBJECT_BOUNDARY_DEBT_ALLOWLIST = (
     ),
     MutableObjectBoundaryDebt(
         "XBrainLab/ui/panels/visualization/panel.py",
-        "VisualizationPanel._refresh_application_query",
+        # Async dispatch moved the same detached CommandResult assignment into
+        # the result-acceptance branch; it still stores no backend domain payload.
+        "VisualizationPanel._accept_application_query_result",
         MUTABLE_BOUNDARY_UI_DOMAIN_STORAGE,
         "assignment",
+        2,
     ),
 )
 

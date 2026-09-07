@@ -356,6 +356,9 @@ class ControlSidebar(QWidget):
         )
 
     def _saliency_dialog_params(self, query_result) -> dict | None:
+        pending = self.panel.pending_saliency_params
+        if isinstance(pending, dict):
+            return pending
         if query_result is None:
             return self._compatibility_saliency_dialog_params()
         diagnostics = getattr(query_result, "diagnostics", {}) or {}

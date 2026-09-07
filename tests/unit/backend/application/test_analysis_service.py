@@ -32,10 +32,6 @@ from XBrainLab.backend.application.resource_guard import (
     ResourcePreflightResult,
 )
 from XBrainLab.backend.application.resource_preflight import ResourcePreflightView
-from XBrainLab.backend.application.saliency_render import (
-    SaliencyPlanIdentity,
-    SaliencyRunIdentity,
-)
 from XBrainLab.backend.application.state import (
     ActiveDatasetSnapshot,
     ActiveTrainingSnapshot,
@@ -184,6 +180,7 @@ class _TrainingRuntime:
         *,
         datasets: tuple[_Dataset, ...] | None = None,
         training_option: _TrainingOption | None = None,
+        is_training: bool = False,
     ) -> None:
         self._plans = plans
         self._resource_context = TrainingRuntimeContext(
@@ -191,6 +188,7 @@ class _TrainingRuntime:
             training_option=training_option or _TrainingOption(),
             model_holder=_ModelHolder(),
         )
+        self._is_training = is_training
 
     def training_plan_holders(self) -> tuple[_Plan, ...]:
         return tuple(self._plans)
@@ -199,7 +197,7 @@ class _TrainingRuntime:
         return self._resource_context
 
     def is_training(self) -> bool:
-        return False
+        return self._is_training
 
     def current_training_plan_index(self) -> int | None:
         return None
@@ -663,8 +661,8 @@ def test_analysis_service_reports_training_active_without_facade() -> None:
     plan_a = _Plan("Plan A", [_Run(finished=True)])
     plan_b = _Plan("Plan B", [_Run(finished=True)])
     service, _visualization = _service(
-        state=_state(is_training=True, finished_runs=2),
         plans=[plan_a, plan_b],
+        training_runtime=_TrainingRuntime([plan_a, plan_b], is_training=True),
     )
 
     _message, diagnostics = _expect_payload(
@@ -675,6 +673,23 @@ def test_analysis_service_reports_training_active_without_facade() -> None:
     assert diagnostics["finished_run_count"] == 2
     assert diagnostics["training_active"] is True
     assert [plan["name"] for plan in diagnostics["plans"]] == ["Plan A", "Plan B"]
+
+
+def test_evaluation_catalog_does_not_rebuild_application_state_for_diagnostics() -> (
+    None
+):
+    plan = _Plan("Plan A", [_Run(finished=True)])
+    visualization = _VisualizationController()
+    service = AnalysisCommandService(
+        training_runtime=_TrainingRuntime([plan], is_training=True),
+        visualization=visualization,
+        get_state=lambda: (_ for _ in ()).throw(AssertionError("must not read state")),
+    )
+
+    _message, diagnostics = _expect_payload(service.handle_evaluate(EvaluateCommand()))
+
+    assert diagnostics["finished_run_count"] == 1
+    assert diagnostics["training_active"] is True
 
 
 def test_analysis_service_never_returns_ui_evaluation_objects() -> None:
@@ -893,7 +908,7 @@ def test_explicit_saliency_accumulates_verified_complete_methods_before_prefligh
     assert visualization.params == admitted_params[0]
 
 
-def test_explicit_saliency_accumulates_methods_only_from_selected_members(
+def test_explicit_saliency_accumulates_methods_from_all_finished_records(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     smoothgrad_params = {
@@ -971,7 +986,6 @@ def test_explicit_saliency_accumulates_methods_only_from_selected_members(
         finished_runs_after=2,
         append=False,
         explicit=True,
-        selected_members=((0, 0),),
     )
 
     with post_training_saliency_target(target):
@@ -988,7 +1002,12 @@ def test_explicit_saliency_accumulates_methods_only_from_selected_members(
             )
         )
 
-    assert admitted_params[0]["_methods"] == ["Gradient", "SmoothGrad", "VarGrad"]
+    assert admitted_params[0]["_methods"] == [
+        "Gradient",
+        "Gradient * Input",
+        "SmoothGrad",
+        "VarGrad",
+    ]
     assert admitted_params[0]["SmoothGrad"] == smoothgrad_params
     assert diagnostics["params"] == admitted_params[0]
 
@@ -1472,46 +1491,6 @@ def test_analysis_service_rejects_mismatched_saliency_receipt(
             SaliencyCommand(
                 method="SmoothGrad",
                 params={"nt_samples": 2},
-                resource_preflight_confirmed=True,
-                resource_preflight_token=first.challenge_id,
-            )
-        )
-
-    replacement = _resource_challenge(mismatched.value)
-    assert replacement.challenge_id != first.challenge_id
-    assert replacement.scope_fingerprint != first.scope_fingerprint
-    assert visualization.params is None
-
-
-def test_analysis_service_rejects_saliency_receipt_for_different_target(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    service, visualization = _service(
-        state=_state(has_trainer=True, finished_runs=1),
-    )
-    monkeypatch.setattr(
-        "XBrainLab.backend.application.analysis_service."
-        "check_saliency_resource_preflight",
-        lambda *_args, **_kwargs: _saliency_preflight("warning"),
-    )
-    first_target = SaliencyRunIdentity(
-        plan=SaliencyPlanIdentity(plan_index=0),
-        run_index=0,
-    )
-    second_target = SaliencyRunIdentity(
-        plan=SaliencyPlanIdentity(plan_index=1),
-        run_index=0,
-    )
-
-    with pytest.raises(ResourceConfirmationRequiredError) as raised:
-        service.handle_saliency(SaliencyCommand(method="Gradient", target=first_target))
-    first = _resource_challenge(raised.value)
-
-    with pytest.raises(ResourceConfirmationRequiredError) as mismatched:
-        service.handle_saliency(
-            SaliencyCommand(
-                method="Gradient",
-                target=second_target,
                 resource_preflight_confirmed=True,
                 resource_preflight_token=first.challenge_id,
             )

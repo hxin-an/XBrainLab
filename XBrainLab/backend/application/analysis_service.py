@@ -8,6 +8,7 @@ from typing import Any, TypedDict
 import numpy as np
 
 from ..training_manager import current_post_training_saliency_target
+from ..training_state_contract import PostTrainingSaliencyPhase
 from .capabilities import SALIENCY_TRAINING_ACTIVE_REASON
 from .commands import (
     Command,
@@ -233,7 +234,7 @@ class AnalysisCommandService:
             "plan_count": len(plans),
             "finished_run_count": finished_total,
             "evaluation_splits": sorted(evaluation_splits),
-            "training_active": self._get_state().training.is_running,
+            "training_active": self.training_runtime.is_training(),
             "plans": summaries,
             "cross_fold_choices": [
                 choice.to_dict()
@@ -369,7 +370,6 @@ class AnalysisCommandService:
                 params = self._accumulated_saliency_recompute_params(
                     params,
                     state,
-                    selected_members=automatic_target.selected_members,
                 )
             resource_preflight = self._saliency_resource_preflight(
                 command,
@@ -463,6 +463,13 @@ class AnalysisCommandService:
         state: ApplicationStateSnapshot,
     ) -> list[str]:
         reasons = []
+        if state.visualization.post_training_saliency.phase in {
+            PostTrainingSaliencyPhase.PENDING,
+            PostTrainingSaliencyPhase.RUNNING,
+        }:
+            reasons.append(
+                "Saliency computation is already running. Wait for it to finish."
+            )
         if state.active_training.is_running:
             reasons.append(SALIENCY_TRAINING_ACTIVE_REASON)
         if state.active_training.has_trainer or (
@@ -534,16 +541,9 @@ class AnalysisCommandService:
         self,
         incoming_params: dict[str, Any],
         state: ApplicationStateSnapshot,
-        *,
-        selected_members: tuple[tuple[int, int], ...] | None = None,
     ) -> dict[str, Any]:
-        """Retain completed methods for exactly the records being replaced."""
-        selected = set(selected_members) if selected_members is not None else None
-        coverage = tuple(
-            run
-            for run in state.visualization.saliency_coverage
-            if selected is None or (run.plan_index, run.run_index) in selected
-        )
+        """Retain completed methods for the records being replaced."""
+        coverage = tuple(state.visualization.saliency_coverage)
         completed_methods = {
             method.method
             for run in coverage
@@ -557,7 +557,6 @@ class AnalysisCommandService:
         retained_params = self._retained_saliency_method_params(
             state,
             retained_advanced,
-            selected_members=selected,
         )
         try:
             return merge_saliency_recompute_params(
@@ -572,8 +571,6 @@ class AnalysisCommandService:
         self,
         state: ApplicationStateSnapshot,
         retained_methods: set[str],
-        *,
-        selected_members: set[tuple[int, int]] | None = None,
     ) -> dict[str, dict[str, Any]]:
         if not retained_methods:
             return {}
@@ -586,15 +583,6 @@ class AnalysisCommandService:
 
         retained: dict[str, dict[str, Any]] = {}
         for run_coverage in state.visualization.saliency_coverage:
-            if (
-                selected_members is not None
-                and (
-                    run_coverage.plan_index,
-                    run_coverage.run_index,
-                )
-                not in selected_members
-            ):
-                continue
             covered_methods = {
                 method.method
                 for method in run_coverage.methods

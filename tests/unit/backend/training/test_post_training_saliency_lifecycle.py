@@ -17,6 +17,10 @@ from XBrainLab.backend.exceptions import (
     SaliencyCancellationTimeoutError,
     StaleSaliencyUpdateError,
 )
+from XBrainLab.backend.training.training_plan import (
+    PreparedSaliencyUpdate,
+    SaliencyUpdatePlan,
+)
 from XBrainLab.backend.training_manager import (
     PostTrainingSaliencyTarget,
     TrainingManager,
@@ -60,20 +64,31 @@ class _Holder:
 
     def prepare_saliency_update_plan(self, _params, *, records):
         assert records
-        return SimpleNamespace(
+        return SaliencyUpdatePlan(
             holder=self,
+            saliency_params=dict(_params),
             tracker_generation=self.generation,
-            records=tuple(records),
+            records=tuple((record, record.eval_record) for record in records),
         )
 
-    def compute_saliency_update(self, plan, *, should_cancel):
+    def compute_saliency_update(
+        self, plan, *, should_cancel, epoch_data_fingerprints=None
+    ):
         result = self.compute(plan, should_cancel)
+        if isinstance(result, PreparedSaliencyUpdate):
+            return result
         if isinstance(result, SimpleNamespace) and hasattr(result, "eval_records"):
             return result
         # Most lifecycle cases only need an opaque successful expensive-compute
-        # sentinel.  Keep the production seam typed: the fixture translates that
-        # sentinel into one non-empty PreparedSaliencyUpdate-like result.
-        return SimpleNamespace(eval_records=(object(),))
+        # sentinel. Keep the production seam typed: the fixture translates that
+        # sentinel into one real PreparedSaliencyUpdate.
+        return PreparedSaliencyUpdate(
+            plan=plan,
+            eval_records=tuple(
+                (record, previous_eval_record, object())
+                for record, previous_eval_record in plan.records
+            ),
+        )
 
 
 class _Trainer:
@@ -221,58 +236,7 @@ def test_post_training_saliency_reports_expected_class_coverage_unavailability_w
     publish.assert_not_called()
 
 
-def test_explicit_target_computes_only_selected_members_in_canonical_order() -> None:
-    calls: list[tuple[int, int]] = []
-    published: list[list[object]] = []
-    holders: list[_Holder] = []
-
-    def compute(plan, _should_cancel):
-        holder_index = holders.index(plan.holder)
-        record = plan.records[0]
-        calls.append((holder_index, plan.holder.records.index(record)))
-        return object()
-
-    holders.extend([_Holder(compute), _Holder(compute)])
-    for holder in holders:
-        holder.records.append(_FinishedRecord(eval_record=object()))
-    run = TrainingRunIdentity(trainer_id="selected-saliency-members", run_id=1)
-    trainer = _Trainer(holders[0], run)
-    trainer.get_training_plan_holders = lambda: holders  # type: ignore[method-assign]
-    manager = TrainingManager()
-    manager._saliency_job_lock = Lock()
-    manager.trainer = cast(Any, trainer)
-    target = PostTrainingSaliencyTarget(
-        run=run,
-        finished_runs_before=0,
-        finished_runs_after=4,
-        append=False,
-        explicit=True,
-        selected_members=((0, 1), (1, 1)),
-    )
-
-    def publish(updates, *, manager_params, publish_manager_params):
-        published.append(list(updates))
-        publish_manager_params(manager_params)
-
-    with patch(
-        "XBrainLab.backend.training.training_plan.publish_prepared_saliency_updates",
-        side_effect=publish,
-    ):
-        with post_training_saliency_target(target):
-            schedule = manager.set_saliency_params(_BASELINE_PARAMS)
-        assert manager.wait_for_saliency_job(timeout=2.0)
-
-    assert isinstance(schedule, PostTrainingSaliencyScheduleOutcome)
-    assert schedule.disposition is PostTrainingSaliencyScheduleDisposition.SCHEDULED
-    assert manager.get_post_training_saliency_status().phase is (
-        PostTrainingSaliencyPhase.SUCCEEDED
-    )
-    assert calls == [(0, 1), (1, 1)]
-    assert len(published) == 1
-    assert len(published[0]) == 2
-
-
-def test_explicit_target_failure_never_partially_publishes_members() -> None:
+def test_manual_all_finished_failure_never_partially_publishes_records() -> None:
     compute_count = 0
     holders: list[_Holder] = []
 
@@ -297,7 +261,6 @@ def test_explicit_target_failure_never_partially_publishes_members() -> None:
         finished_runs_after=2,
         append=False,
         explicit=True,
-        selected_members=((0, 0), (1, 0)),
     )
 
     with patch(
@@ -317,10 +280,100 @@ def test_explicit_target_failure_never_partially_publishes_members() -> None:
     assert manager.saliency_params == {"_methods": ["Gradient"]}
 
 
-def test_explicit_selected_members_cancel_then_retry_publishes_one_atomic_batch() -> (
-    None
-):
-    """A cancelled Fold Set keeps prior artifacts and retries the same members."""
+def test_manual_all_finished_compute_never_partially_publishes_records() -> None:
+    """One unavailable finished record fails an all-finished recompute atomically."""
+    holders: list[_Holder] = []
+
+    def compute(plan, _should_cancel):
+        record, previous_eval_record = plan.records[0]
+        if plan.holder is holders[1]:
+            return PreparedSaliencyUpdate(plan=plan, eval_records=())
+        return PreparedSaliencyUpdate(
+            plan=plan,
+            eval_records=((record, previous_eval_record, object()),),
+        )
+
+    holders.extend([_Holder(compute), _Holder(compute)])
+    run = TrainingRunIdentity(trainer_id="all-finished-atomic", run_id=1)
+    trainer = _Trainer(holders[0], run)
+    trainer.get_training_plan_holders = lambda: holders  # type: ignore[method-assign]
+    manager = TrainingManager()
+    manager._saliency_job_lock = Lock()
+    manager.trainer = cast(Any, trainer)
+    original_eval_records = tuple(holder.records[0].eval_record for holder in holders)
+    target = PostTrainingSaliencyTarget(
+        run=run,
+        finished_runs_before=0,
+        finished_runs_after=2,
+        append=False,
+        explicit=True,
+    )
+
+    with patch(
+        "XBrainLab.backend.training.training_plan.publish_prepared_saliency_updates"
+    ) as publish:
+        with post_training_saliency_target(target):
+            schedule = manager.set_saliency_params(_BASELINE_PARAMS)
+        assert manager.wait_for_saliency_job(timeout=2.0)
+
+    assert schedule.disposition is PostTrainingSaliencyScheduleDisposition.SCHEDULED
+    status = manager.get_post_training_saliency_status()
+    assert status.phase is PostTrainingSaliencyPhase.FAILED
+    assert status.error_code == "evaluation_unavailable"
+    publish.assert_not_called()
+    assert (
+        tuple(holder.records[0].eval_record for holder in holders)
+        == original_eval_records
+    )
+
+
+def test_manual_all_finished_rejects_wrong_record_with_same_count() -> None:
+    """A count-matching update cannot substitute a different finished record."""
+    holders: list[_Holder] = []
+
+    def compute(plan, _should_cancel):
+        record, previous_eval_record = plan.records[0]
+        if plan.holder is holders[0]:
+            wrong_record = holders[1].records[0]
+            return PreparedSaliencyUpdate(
+                plan=plan,
+                eval_records=((wrong_record, wrong_record.eval_record, object()),),
+            )
+        return PreparedSaliencyUpdate(
+            plan=plan,
+            eval_records=((record, previous_eval_record, object()),),
+        )
+
+    holders.extend([_Holder(compute), _Holder(compute)])
+    run = TrainingRunIdentity(trainer_id="wrong-finished-record", run_id=1)
+    trainer = _Trainer(holders[0], run)
+    trainer.get_training_plan_holders = lambda: holders  # type: ignore[method-assign]
+    manager = TrainingManager()
+    manager._saliency_job_lock = Lock()
+    manager.trainer = cast(Any, trainer)
+    target = PostTrainingSaliencyTarget(
+        run=run,
+        finished_runs_before=0,
+        finished_runs_after=2,
+        append=False,
+        explicit=True,
+    )
+
+    with patch(
+        "XBrainLab.backend.training.training_plan.publish_prepared_saliency_updates"
+    ) as publish:
+        with post_training_saliency_target(target):
+            manager.set_saliency_params(_BASELINE_PARAMS)
+        assert manager.wait_for_saliency_job(timeout=2.0)
+
+    status = manager.get_post_training_saliency_status()
+    assert status.phase is PostTrainingSaliencyPhase.FAILED
+    assert status.error_code == "evaluation_unavailable"
+    publish.assert_not_called()
+
+
+def test_manual_all_finished_cancel_then_retry_publishes_one_atomic_batch() -> None:
+    """A cancelled all-finished computation keeps artifacts and retries atomically."""
     first_member_started = Event()
     cancellation_poll = Event()
     calls: list[tuple[str, int, int]] = []
@@ -330,7 +383,7 @@ def test_explicit_selected_members_cancel_then_retry_publishes_one_atomic_batch(
 
     def compute(plan, should_cancel):
         holder_index = holders.index(plan.holder)
-        record_index = plan.holder.records.index(plan.records[0])
+        record_index = plan.holder.records.index(plan.records[0][0])
         attempt = "cancelled" if cancelled_attempt else "retry"
         calls.append((attempt, holder_index, record_index))
         if cancelled_attempt:
@@ -348,7 +401,6 @@ def test_explicit_selected_members_cancel_then_retry_publishes_one_atomic_batch(
     manager._saliency_job_lock = Lock()
     manager.trainer = cast(Any, trainer)
     manager.saliency_params = {"_methods": ["Gradient"]}
-    selected_members = ((0, 0), (1, 0))
 
     def target() -> PostTrainingSaliencyTarget:
         return PostTrainingSaliencyTarget(
@@ -357,7 +409,6 @@ def test_explicit_selected_members_cancel_then_retry_publishes_one_atomic_batch(
             finished_runs_after=2,
             append=False,
             explicit=True,
-            selected_members=selected_members,
         )
 
     def publish(updates, *, manager_params, publish_manager_params):
@@ -401,26 +452,6 @@ def test_explicit_selected_members_cancel_then_retry_publishes_one_atomic_batch(
     assert len(published) == 1
     assert len(published[0]) == 2
     assert manager.saliency_params == _BASELINE_PARAMS
-
-
-@pytest.mark.parametrize(
-    "members",
-    [(), ((0, 0), (0, 0)), ((1, 0), (0, 0)), ((0, -1),)],
-)
-def test_explicit_target_rejects_invalid_selected_members(
-    members: tuple[tuple[int, int], ...],
-) -> None:
-    run = TrainingRunIdentity(trainer_id="invalid-saliency-members", run_id=1)
-
-    with pytest.raises((TypeError, ValueError)):
-        PostTrainingSaliencyTarget(
-            run=run,
-            finished_runs_before=0,
-            finished_runs_after=2,
-            append=False,
-            explicit=True,
-            selected_members=members,
-        )
 
 
 @pytest.mark.parametrize(

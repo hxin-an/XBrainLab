@@ -1,8 +1,499 @@
 # XBrainLab Now
 
-最後更新：`2026-09-06`
+最後更新：`2026-09-07`
 
-## Active manual-test repair extension — import capacity and split/epoch feedback
+## Next — PR review, then computational cleanup
+
+- #113 的 ef399c9f 手測未通過，不能沿用其驗收。設定／重算一致性修正後，先完成候選版
+  同源工程 gates，再手測「baseline → 新增進階方法 → 改參數／重算」，確認所有完成的
+  subject/fold 保留各方法最新成功結果；失敗／取消保留舊結果，繪圖失敗不冒充計算失敗。
+  同時重測訓練其他 fold 時開啟已完成 Evaluation 的模型摘要。沒有新的 merge 批准。
+- 先完成#113同版工程驗證、使用者手測與明確merge批准；等#113關閉後，才開始review既有
+  #114 harness、#115 Filter、#116測試清理，並比對#111與#113是否重疊。交付手測不代表可
+  提前啟動後續PR審查；不自動關閉或合併任何PR。
+- 產品merge仍需使用者對exact source明確手測通過與同意。新source不得覆蓋正在執行的手測
+  checkout；保留本機settings與不相關split修改。
+- 上述PR審查完成後，下一輪主要候選是全專案重複SHA、完整資料掃描、重複驗證與無效資料
+  複製。以實際呼叫路徑、必要性與成本選定小slice；不為任意繞過正式入口的記憶體寫入建立
+  普遍性保護，也不先建快取／狀態管理框架。本輪不提前實作這項廣泛清理。
+
+## Historical implementation notes — sealed saliency reads and completed-result presentation (#113)
+
+- USER-APPROVED RESUME (2026-09-07): finish #113 handoff, then immediately implement the approved
+  test cleanup, Filter section-state clarity and Astra-only harness streams without waiting for
+  saliency manual acceptance. Keep separate worktrees/PRs; no product merge without acceptance.
+  Root branch fix/saliency-result-refresh and isolated /tmp/xbrainlab-sealed-results-handoff are
+  committed/pushed at 7af38512. Preserve the open native Windows d9 process and its in-memory results;
+  do not restart it.
+  Implemented: all-finished Compute/Recompute, selected-compute plumbing deletion, atomic complete
+  batch validation and busy-until-matching-render handling. Integrated focused suite in the isolated
+  worktree: 552 passed, exit 0. Its real train/compute/render walkthrough: passed, exit 0, artifacts
+  under build/dev-artifacts/global-saliency-render. These are dirty-source development evidence only.
+  Full manifest passes static/type/docs/architecture checks but stops in full regression on one UI
+  coverage test still asserting SaliencyCommand.target for a selected Fold Set. Migrate that direct
+  test to all-finished dispatch while retaining real UI/lifecycle evidence, run its complete module,
+  then commit and restart the exact-source desktop-source manifest/CI. Do not delete meaningful
+  behavior assertions or certify the failed dossier. No handoff/Windows acceptance claimed yet.
+  Protected settings.json and unrelated split dialog/test edits remain excluded.
+
+- Queued approved streams after #113 candidate delivery: two Astra workers own tests-only cleanup
+  and Filter UI respectively; coordinator owns harness/validation workflow redesign and integration.
+  Tests: remove obsolete/duplicate/mock-only assertions, preserve real behavior and failure protection,
+  remove unused fixtures/references, report counts and measured time without a deletion quota.
+  Filter: separate bordered Band-pass/Notch sections, Epoch-like off dimming with operative On/Off
+  toggles, preserve entered values/backend semantics; four combinations/keyboard/screenshots.
+  Harness: revise #114 to Astra-only development agents, not the product Assistant; remove mixed-model
+  routing, contradictory instructions and duplicate local/CI checks; deterministic checks own
+  machine-verifiable evidence, model review handles meaning/design/anomalies. Retain exact-source,
+  failed-check and manual-merge boundaries, no new control plane. Each stream updates this active plan
+  in its isolated branch before editing, validates the changed contract and opens/updates its own PR.
+
+- Approved scope correction (2026-09-07): user explicitly expects Recompute to calculate everything
+  together. Compute/Recompute must cover all finished runs/folds across every subject in current
+  training history; current Fold/Run selection controls display only. Interrupted/unfinished runs
+  remain excluded. Reuse existing all-finished command/job path if present; do not create another
+  batch owner. Pin/admit the existing current training result origin, preserve visible selection, and
+  keep busy from acceptance through all-member publication and selected-view settlement. New regression
+  must invoke the actual panel action while one subject/fold is selected and observe complete coverage
+  for other subjects/folds, including cancelled history and repeated computation. This replaces the
+  previous selected-only action expectation, not training outcome eligibility or saliency integrity.
+- User additionally requests deletion of now-redundant backend code. Before deleting, trace real
+  production callers of selected-compute command/target plumbing separately from indispensable
+  selected-read identities. Remove dead single-fold compute branches if no real caller remains,
+  together with obsolete tests; preserve all-finished admission, atomic publication, cancellation,
+  resource preflight and renderer identity. Characterize existing global path before deletion.
+  No broad unrelated backend cleanup or new compatibility path. Complexity review before crossing
+  file/owner thresholds; root reviews exact API/caller delta and keeps existing owner count.
+- Cleanup review before implementation: actual production callers now all omit selected compute
+  target (UI passes None; Assistant and scripts omit it). Approved deletion spans commands, service,
+  training_manager, analysis_service and saliency_resource: remove command target, selected member
+  plumbing, target-only admission/filter and resource fingerprint metadata (estimated backend net
+  -115 to -150 LOC). UI removes its now-dead forwarding; render selection identities remain.
+  Owners before/after unchanged: ApplicationService / TrainingManager / existing UI presenter.
+  Extend the existing prepared-versus-expected comparison to the global scheduled finished set;
+  first reproduce a missing prepared member being wrongly accepted, then require atomic all-member
+  publication. Retain prior output on failure, cancellation, resource checks and append lifecycle.
+  This is the direct global-compute contract, not a new owner/state machine/receipt. Cumulative
+  PR already exceeds eight production files; this continuation is deletion-first in six existing
+  files, no new production module/class. Direct call-site sweep also removes the now-unused
+  SaliencySelectionIdentity schema import in automation (seventh existing production file).
+  Recheck exact +/- and stop/split if total crosses 1500 LOC.
+  Reviewed continuation is currently seven existing production files, +96/-254 (net -158);
+  against actual PR base a963405a, cumulative fifteen files, +811/-577 (1388 changed lines).
+  These figures exclude the user's unrelated split UI edit; existing owners remain unchanged.
+
+- Current native evidence: on verified d9e59dd9, one explicitly requested Compute on selected
+  Subject-1-5 produces the actual four-class plot. This establishes that this selected record can
+  compute; it does not compute Fold 1–4 and therefore does not meet the newly clarified global
+  contract. Preserve the open native process and in-memory results; it remains old candidate source.
+  The observed busy-to-render gap is about 0.4 seconds after an approximately 18-second compute/read.
+- Current test-first evidence: the existing global job accepted a prepared batch missing one finished
+  record and reported SUCCEEDED. A two-record regression fails on that exact result. Extend the
+  existing expected/prepared identity comparison to global jobs, preserving previous output until
+  the complete batch can publish. Independent workers remove selected-only backend plumbing and
+  keep the button busy through the matching selected render; coordinator reviews integration,
+  obsolete-test deletion and exact-source handoff. No new retry or publication owner.
+
+- Confirmed-current native failure after coordinator switched and launched d9e59dd9: subject 1
+  Individual still says not computed yet while subject 2 renders; Compute becomes blue/enabled
+  before the result appears and invites duplicate activation. The earlier old-checkout explanation
+  does not resolve this confirmed-current report. Preserve the live Windows process and its state.
+- Current slice: inspect visible selection and non-mutating diagnostics; trace selected subject/run
+  from UI command construction through member computation and coverage publication. Independently
+  trace busy state from command acceptance through computation, publication, summary and render.
+  Add real UI/public-command regressions for subject 1 vs 2 and the premature button-ready interval
+  before minimal fixes. Reuse existing owners/presenters; no generic state machine or automatic retry.
+  User requests correction of busy-button interaction; preserve layout/colors and use existing busy
+  presentation. Two bounded workers own backend selected-target coverage and UI lifecycle respectively;
+  coordinator owns native evidence, test-fidelity integration and exact-source delivery. Do not merge.
+
+- Reopened after reported native failure on 2026-09-07 00:04: completed Evaluation sets repeatedly
+  reject at publisher line 574 and subject-1 Individual saliency remains unavailable. Read-only
+  provenance checks then establish the folder named xbrainlab-pr113-d9e59dd9 was created at
+  cac5736c (worktree HEAD/reflog); Evaluation publisher and both result panels exactly match old
+  cac5736c blobs. Its editable environment also points to that same old-source directory. Thus
+  this report cannot yet establish a regression of d9e59dd9; it reproduces the old global guard.
+  No merge. Verify the current production ports and deliver fail-closed source-checked launch steps,
+  without manufacturing product patches or blaming the user for a version-identification gap.
+- Immediate plan: trace exact selected-target identity and runtime adapters (including repeated
+  reads without any mutation), then all individual/cohort saliency compute-to-read ports. Two
+  nonoverlapping workers investigate Evaluation and saliency; coordinator audits actual Windows
+  checkout evidence and test fidelity. Reproduce through real projection ports/ApplicationService,
+  not only stable object-returning mocks. Fix only proven causes using existing owners; no retry,
+  swallowed failure, guessed electrode mapping, or new compatibility state. Preserve UI presentation
+  under existing authorization and all three unrelated local edits. Update progress with red/green
+  evidence; run full exact-source delivery only after both reported read paths are explained and
+  protected. Missing real-session state must remain explicit, not replaced by claims from toy data.
+- Current audit outcome: no new product defect demonstrated on d9e59dd9. Current-source real
+  ApplicationService import/epoch/saved-split/train followed by three Evaluation renders passes;
+  actual Zhou EDF plus safe subject-1 checkpoint yields complete four-class Gradient and successful
+  selected-member manager publication. This is not the lost native GUI state or active-other-fold
+  end-to-end evidence. Native saved test/validation cover all four classes with finite outputs;
+  saliency compute state was memory-only. Next: close old native process, switch its existing checkout
+  to exact d9e59dd9 without force, verify HEAD and relevant source cleanliness, then launch its local
+  interpreter. Keep d9e59dd9 as the unchanged PR candidate; retain failed native report as old-source
+  evidence, not new-source acceptance or proof that every saliency failure is solved. No speculative
+  product patch, test-count inflation, or rerun of the full unchanged manifest for this diagnosis.
+
+- Reopened after failed Windows acceptance (2026-09-06 22:00, Zhou2020): selecting an already completed
+  Evaluation fold while other training continues repeatedly raises the global training-boundary stale
+  error; Evaluation remains slow; every subject-1 saliency view reports incomplete/recompute. The prior
+  cac5736c desktop-source dossier is engineering history, not a passed Windows acceptance. Do not merge.
+- New evidence: Evaluation still ties a completed member to the entire trainer token; an unrelated
+  fold mutation invalidates its read. The panel contains an eight-attempt retry path. A same-source
+  synthetic 2x5-fold profile measures catalog ~0.7 ms but each member materialization repeats one full
+  EEG hash (~46 ms at 1720x16x1000 float32). This proves redundant read cost, not the whole reported stall.
+  The actual local Zhou2020 BIDS tree has no electrodes.tsv/coordsystem.json, and returns settled
+  unavailable before coordinate parsing; cold index ~8.9 s vs warm ~0.2 s. Missing geometry is not proof
+  of a saliency payload failure and must not be silently replaced by a guessed channel mapping.
+- User-authorized cleanup: delete unnecessary overdesign in these result-read paths even when its
+  measured timing impact is small. Scope remains completed-result admission, read/publication,
+  incomplete/recompute classification and directly related latency. No whole-repo SHA cleanup,
+  Assistant/harness work, split changes, model changes or invented montage fallback.
+- Outcome/assumptions: finished Fold A remains readable while unrelated Fold B trains; actual selected
+  result replacement, reset, retraining and cancellation still cannot publish stale output. Diagnose
+  subject-1 incomplete down to concrete coverage/producer/publication evidence; do not declare it fixed
+  from the earlier balanced synthetic probe. Actual latest Windows in-memory payload may be unavailable;
+  saved metrics alone cannot establish what saliency was published.
+- Steps now: (1) two nonoverlapping read-only audits: lifecycle/read correctness and real BIDS/artifact
+  evidence; coordinator measures costs; (2) converge on reproducible defects and deletion candidates;
+  (3) add reachable public regressions before each authorized repair, using existing owners; (4) replay
+  completed-A/active-B, selected replacement/cancel, interrupted/retrained multi-subject incomplete and
+  repeated reads; (5) freeze a new scoped candidate and run the unchanged desktop-source/CI handoff
+  workflow only after these failures are explained. No automatic retry increase or weakened assertions.
+- UI authority: existing explicit permission covers internal UI-file fixes preserving presentation;
+  no new layout/colors/copy or BIDS workflow change is planned. Stop for new visible design decisions.
+  Complexity review precedes new owner/module/class or threshold crossing; prefer deleting global
+  read coupling/redundant work rather than new cache, receipt or state machine. Root settings.json and
+  the two unrelated Atomic trial group UI/test edits remain untouched. Rollback is a focused PR, not reset.
+- Bounded Evaluation cleanup design: existing publisher/work controller/UI remain the owners. Remove
+  Evaluation's saliency producer SHA metadata (only exposed as Qt properties, not used to protect its
+  read), the trainer-wide activity veto and timer retry scaffold. Retain dataset epoch/split and trainer
+  identity, exact selected plan/run/record admission, detached finite predictions, and selected-target
+  replacement/cancel/worker cleanup checks before accepting a result. Unrelated progress must not
+  invalidate an otherwise identical selected result in either publisher or UI callback.
+  Also reuse admitted/committed state for Evaluation's training_active diagnostic instead of another
+  whole get_state call; do not generalize into a new cached-state owner or change other workflows.
+- Complexity review before continuation: cumulative #113 already touched nine production files/net412;
+  this continuation is deletion/reuse-first in existing Evaluation/service/UI owners, with no new
+  production module/class/receipt/state machine. Expected additional production net negative, exact
+  +/- and file count must be checked before freeze. Keep saliency provenance intact until its separate
+  actual incomplete cause is known. Split if >1500 production LOC or ownership must expand.
+- Current next step: freeze the integrated follow-up and run the complete exact-source desktop-source
+  manifest and CI. Focused coordinator rerun passes 320 tests across ten directly related modules.
+  Evaluation now copies captured selected objects, allows unrelated unstable progress, rejects actual
+  origin/target replacement and routes late callbacks by semantic origin. Its producer metadata,
+  data-only wrapper, redundant selection pass and timer retry scaffold are deleted.
+  The real-owner interrupted-round -> two five-fold Early Stop cohorts -> Compute B/A/A integration
+  verifies all ten members and pooled/member reads, including replacing five incompatible A records
+  without changing B. UI regressions distinguish never-computed,
+  partial and all-invalid stored output. This is not proof of the unavailable Windows in-memory
+  failure; no claim that the cross-selection SUCCEEDED bug explains every earlier recompute failure.
+  No BIDS production change: this Zhou tree genuinely lacks the coordinate sidecars.
+- Exact-source 0258da69 handoff stopped at complete-regression: the MOABB evidence journey's dynamic
+  EvaluationRenderRequest constructor was missed by the initial call-site search and omits the new
+  origin fields (same failure in CI). Migrate that one script caller and its recording fixture to
+  source trainer/split origin from the actual publication; retain all journey/quality assertions.
+  Scope is the direct API caller, not MOABB product behavior. Re-run its full test module, commit the
+  correction and repeat the complete canonical manifest on the new SHA; no combining failed dossiers.
+- Exact-source 73cefebd complete regression passes 10,842 tests (eight declared optional skips) and
+  CI passes all 23 non-skipped checks. The subsequent visualization capture fails with its canvas
+  hidden behind `Loading saliency visualization...`, despite recording render_settled=true and complete
+  backend coverage. The capture wait recognizes only `Rendering saliency...` as nonterminal and can
+  accept backend loading as a terminal error. Add a controlled loading-to-visible-canvas regression,
+  fix only this capture readiness predicate (and recheck after draw/event delivery if necessary), and
+  rerun the real capture without increasing timeouts or weakening geometry/result assertions.
+  Independently audit the panel's queued summary/render callbacks before attributing the entire failure
+  to the script; change production only if a real stale/loading overwrite is demonstrated.
+  Capture-only repair: classify all three existing loading messages as nonterminal. Replaying the old
+  predicate after an initial collection-path failure reproduces both new regressions; the repaired
+  full module passes 72 tests. A real tiny-train/explicit-compute capture then passes all three 2D tabs
+  and expected headless 3D blocking. The independent audit found no demonstrated product overwrite
+  in this artifact. Freeze this script/test correction and repeat the full exact-source dossier.
+- Follow-up complexity outcome: five existing production files, +271/-291 (net -20); cumulative
+  against main, twelve existing files, +729/-337 (net +392). Existing owners unchanged; no new module,
+  public class, cache, receipt or compatibility path. The additional files remove Evaluation-only
+  bookkeeping and reuse the runtime boolean rather than build a second state snapshot.
+- Measured working-tree evidence: the same Evaluation member workload now takes 0.34-0.64 ms with
+  zero EEG/model SHA calls (previously ~46 ms with one each). Full ApplicationService Evaluate takes
+  47-147 ms on that synthetic workload; the catalog helper alone is not the whole command. Actual
+  saved Zhou EEGNet model fingerprints take ~2.2 ms for ten; these retained saliency checks detect
+  changed models and are not deleted merely because Evaluation no longer needs them. Neither timing
+  proves native Windows responsiveness. Full handoff must use the new source, not the old dossier.
+- Latest subject-1 evidence: actual 22:00 manual-checkout test/validation records cover all four
+  classes; safe selected early-stop checkpoint is finite. Replaying that checkpoint with real Zhou EDF
+  event windows (four examples, not the unavailable exact saved heldout masks) produces sealed complete
+  Gradient coverage. Next exercise the manager/terminal/publication/UI seam. Separately, the UI treats
+  any same-method global SUCCEEDED job as evidence an uncomputed selected run is incomplete. Remove
+  this cross-selection inference using existing per-run coverage/current-operation state; no new status
+  owner or receipt. Red: compute Subject B, then choose never-computed Subject A: offer ordinary Compute,
+  not incomplete/Recompute; compute A explicitly and verify its published coverage and member views.
+  This is a correction of existing status semantics, not a layout/color/control redesign. Do not claim it
+  explains all reported recompute failures without the full selected-job path evidence.
+  Dispatch: coordinator owns scope/plan/integration; Evaluation and saliency workers plus a temporary
+  independent two-file catalog-diagnostic cleanup worker under the user's multi-agent authorization;
+  no model escalation/Fast.
+
+### Previous candidate evidence (superseded by failed native acceptance above)
+
+- Approval: user approved the complete cleanup plan and requested implementation on 2026-09-06.
+  This section supersedes the earlier saliency investigation steps below. User subsequently confirmed
+  #112 data-split manual acceptance and explicitly approved merging its f7ff0658 candidate. Complete
+  #113 as a Desktop manual-test candidate; no #113 merge authorization. Leave #114 untouched.
+- Evidence: synthetic real-owner 2x5-fold summary takes 1.102s cold / 1.141s warm, including 20 full
+  EEG fingerprints (~95% hashing). Windows completed results now work but remain slow. Read-only
+  review also found summary dispatch returning False can overwrite its settled failure dirty state;
+  current private-helper tests do not cover the public UI update path.
+- Outcome: validate and seal completed saliency once; display without full EEG or payload hashing;
+  keep exact model/mask and semantic metadata checks. Both result pages show completed runs only,
+  count valid Early Stop as completed, preserve original identities, and retain Compute for completed
+  training without saliency. Fold Set admission still requires its complete valid cohort.
+- Scope/non-goals: existing EvalRecord, provenance, TrainingPlan, saliency publisher, two result panels
+  and shared display labels. No global EEG immutability, generic cache/revision owner, artifact schema
+  change, dataset-specific behavior, whole-repo SHA removal, split changes or unrelated cleanup.
+- Snapshot contract: detach arrays into immutable bytes, validate the detached candidate, then seal.
+  Public array access creates lightweight views directly over bytes (not views exposing the canonical
+  ndarray through .base); caller shape/dtype changes cannot alter the snapshot. Keep canonical metadata
+  private, expose defensive copies preserving dict/list/tuple types, and reject sealed field replacement.
+  Recompute creates and atomically publishes new records.
+  Compute/load retain full verification; unsealed/incompatible records cannot take the fast read path.
+  Post-seal unsupported direct numeric EEG mutation is not detected on every display; normal model,
+  split and semantic metadata changes remain checked. Normalization produces separate display arrays.
+- UI approval: hide incomplete runs/folds in Evaluation and Visualization; remove Run's (Finished)
+  suffix; display generated Subject-1_0 as Subject-1-1, one-based, without renaming stored identities.
+  Preserve all other layout/colors/copy. Fix summary failure settlement without automatic retry loops;
+  retain generation fences, cancellation and equivalent-render coalescing.
+- Complexity review: existing #113 production +171/-18 (net153), three files. Estimated cumulative
+  nine files / net360-500 triggers review before implementation. Existing owners unchanged; no new
+  module/class/control plane. Delete hot EEG/payload checks, redundant sealed-store finite scans and
+  misleading async return-value assignments. Keep normalization/pooling checks. Two bounded workers
+  own backend snapshot/read changes and UI lifecycle/labels; coordinator integrates and verifies actual
+  +/-/net before handoff. Split further if >1500 production LOC or ownership must expand.
+- Steps: (1) public failure and snapshot/selection red tests plus passing artifact characterization;
+  (2) backend sealing/read changes and independent UI correction; (3) focused regression, alias/tamper,
+  stale/cancel/repeat and mixed completion coverage; (4) measure same-size cold/warm/A-B-A/Fold Set
+  timings, hash calls and sealing memory; (5) exact-source UI/source-diverse/static/canonical gates,
+  focused commit/push and update existing draft PR. The approved handoff continuation now permits
+  merging #112 after exact-source CI/acceptance checks, then retargeting #113 to main without mixing
+  either #114 or local settings/split edits into the candidate.
+- Validation floor: zero full EEG/payload hashes after sealing in summary/single/cross-fold reads;
+  disk tampering and model/mask changes reject; shape/dtype/source-alias/metadata mutation cannot
+  corrupt sealed results; values/shapes/classes unchanged; public worker failure settles once.
+  Keep P1/P2 recovery, cleanup/heartbeat and interrupted/retrained cohort tests. Replace private-only
+  failure tests and live-payload-mutation expectations, not artifact tamper coverage.
+- Stop condition: use the existing desktop-source profile and its accepted bounded Assistant baseline,
+  not the stricter Stable promotion profile. Missing exact-source/canonical/CI evidence remains a
+  checkpoint; Windows manual acceptance for #113 remains a later user gate.
+  Prior four-file Assistant shard timeout must be investigated without reducing the denominator.
+  Preserve settings.json and unrelated Atomic trial groups UI/test edits. Rollback only this slice's
+  focused commits through a PR; do not revert user changes or rewrite persisted results.
+- Dispatch: coordinator supervises; two existing-owner workers; no model escalation; Fast off.
+- Progress: snapshot source-alias/header test reproduced corruption; four public summary-failure tests
+  reproduced dirty-state overwrite. Full prior four-file Assistant timeout selector replay passed 23/23
+  with coverage in 8.73s; this does not explain the earlier timeout or replace final canonical evidence.
+  Same exact baseline synthetic benchmark: summary warm 1.173s (20 EEG/40 payload descriptor calls),
+  single warm 0.126s (2/4), pooled warm 0.598s (10/20). Working-tree candidate summary/single/pool
+  warm reads measured 0.004/0.006/0.024s with zero full EEG/payload hashes and equal arrays/shapes;
+  setup peak RSS rose about 22 MiB for ~21 MiB per-record payload detachment. Final SHA rerun pending.
+- Simplification during implementation: recursive metadata freeze/thaw changed tuple/list identity in
+  artifact verification. Replace that conversion with private canonical copies + defensive getters,
+  preserving the existing strict serialized types; no frozen-list type or compatibility adapter.
+- Final bounded implementation: fresh dict/read-only-array views preserve existing coverage admission;
+  no MappingProxy compatibility branch. Exact model/mask/sfreq mutation rejects with the existing
+  SaliencyContextError semantics. Reuse the original context builder with a sealed fingerprint rather
+  than adding a second metadata parser. Private async refresh returns None; both result pages use the
+  same name formatter without an ordinary-name exception.
+- Focused checkpoint: six full related backend files 210 passed; related UI plus training-refresh
+  integration 170 passed; four real lifecycle/UI/workflow integration files 40 passed. Real MNE/EEGNet
+  five-fold probe computes and renders Fold Set 3 after two incomplete historical cohorts, including
+  Early Stop completion. These overlapping working-tree runs are not a summed final dossier.
+  Basedpyright reports zero new diagnostics; architecture and Ruff checks pass. Coordinator inspected
+  populated/empty selector captures; these fixture captures do not prove native Windows rendering.
+- Complexity outcome before freeze: cumulative #113 production +458/-46 (net412), nine existing files,
+  no new owner/module/public class. Additional LOC closes mutable-alias boundaries in the existing
+  result API; display no longer repeatedly hashes the data. No global input immutability or new cache.
+- Exact-source checkpoint: source commit 4c08f35 passes static/type/docs/architecture checks. Canonical
+  regression phase 1 found six stale expectations (five exported-container identities and one empty
+  Evaluation catalog); update their observable content/isolation and public-read assertions. No new
+  production repair is needed for these failures. Focused export/artifact tests pass 64; the Evaluation
+  publication module passes 22. Later canonical phases remain unexecuted, not passed.
+- Second canonical pass: all five unit groups pass on e0b8f104. Integration identifies one stale
+  semantic-workflow producer double and the old Run Finished walkthrough assertion; both are corrected
+  without production changes (focused 18 and 10 passed). Six public-fixture failures came from this
+  validation checkout's symlink paths; replacing only its fixture links with local copies makes all
+  four affected integration modules pass (13 tests). No import behavior/test expectation was weakened.
+  Repeat the complete exact-source manifest after these test corrections; do not combine old runs.
+- Third canonical pass: eaab6990 complete regression passes 10,829 tests with eight explicitly optional
+  fixture skips. Source-diverse training also passes. Visualization capture renders a valid settled
+  Saliency Map but its old provenance parser rejects the approved parenthesized fold descriptor;
+  it then misleadingly reports missing Spectrogram evidence. Update only the capture parser and its
+  characterization test, preserving nonempty dataset/run and positive fold identity checks. No product
+  rendering change is needed. Xvfb and strict model gates also need a native-environment retry:
+  the existing Xvfb helper and a CUDA allocation probe both pass outside the restricted sandbox.
+- Final candidate checkpoint: pushed 143aace647e35052600414511391fe66da968936. The native-environment
+  full manifest passes complete regression (10,829 passed, eight declared optional-fixture skips),
+  static/type/docs/architecture, wizard capture/validation, baseline/startup, three 2D visualization
+  tabs plus expected headless 3D blocking, lifecycle/stress and required data/import/training checks.
+  Source-diverse evidence covers class-grounded PhysioNet EDF/BBCI GDF training plus SCCN EEGLAB/MNE
+  CNT import and missing-label admission boundaries. The exact five-fold MNE/EEGNet probe renders
+  Fold Set 3 after incomplete historical cohorts. Display hash calls remain zero in the measured
+  summary/member/pooled paths; timings are backend synthetic evidence, not Windows latency acceptance.
+- Correction: selecting the default strict promotion gate was an execution error. The complete 143aace6
+  report matches the already accepted baseline: 36/36 positive, 10/10 explicit-origin and 5/5 missing-origin
+  guards, 22/24 precision and 6/7 clarification. Exact model revision, frozen case files and 81-case
+  inventory match; observed failure IDs are precisely the three approved baseline cases. The existing
+  bounded-baseline checker returns passed. Do not open a new Assistant repair or raise the threshold.
+- Next: record the user's #112 manual acceptance and merge approval, recheck exact head/base/CI and merge
+  with a merge commit. Retarget #113 to main, correct PR evidence claims, freeze scoped docs/source and
+  run the complete canonical desktop-source manifest in the clean handoff worktree. Use native Xvfb/GPU
+  access, local copied fixtures and PATH including WSL NVIDIA utilities; keep all registered gates,
+  including RAG, resource calibration and the desktop-source dashboard. Require exact-head CI success,
+  coordinator artifact inspection and final narrow review before delivering SHA, Windows commands and
+  the interrupted/retrained Fold Set 3 checklist. Keep #113 unmerged and #114 unchanged.
+- Dispatch for handoff continuation: coordinator owns Git/PR/CI and inspects final artifacts; one worker
+  runs the canonical manifest, another performs bounded read-only diff review. No production changes
+  are planned, no new UI/API behavior, no new owner/cache/compatibility layer. Preserve settings.json
+  and unrelated Atomic trial groups UI/test edits. Rollback, if needed, is a focused PR, never a reset.
+
+## Prior saliency investigation evidence — interrupted retraining and warm-view latency
+
+- Evidence: Windows Zhou2020, two subjects/85 recordings, Individual five-fold CV; stop first
+  training midway, enable Early Stop and finish a second training. Compute Saliency appears to
+  freeze the GUI; Fold Set 3 (subject 1) and its member results request Recompute while Fold Set 2
+  can render slowly. The application has been closed and no runtime saliency error was logged.
+  Saved second-round Test/Validation evaluations cover all four classes in all ten folds; saved
+  metrics do not preserve the later in-memory saliency update, so they cannot prove compute failure.
+- Outcome: identify and repair demonstrated saliency lifecycle/read-path defects, including repeated
+  opening of already-computed output; preserve mathematical output, exact fold/run/model provenance,
+  integrity rejection and the current visual design. Separate genuine missing output from an
+  unrelated completed job's UI status. Do not attribute the report to split coverage without evidence.
+- Priority clarified by user: Fold Set 3 being unusable is the primary blocking defect; performance
+  is secondary. Acceptance requires interrupted training -> completed retraining -> explicit Compute
+  for the affected cohort -> renderable cohort and member runs. Correct copy or improved latency
+  alone cannot close this slice.
+- Further user evidence: explicitly selecting the affected Fold Set and using Recompute still leaves
+  no viewable output. A never-targeted cohort with misleading global status is not an adequate root
+  cause. Audit non-deterministic read/publication races with controlled interleavings; a passing
+  sequential synthetic run must not be used to rule out the reported defect.
+- Scope/non-goals: audit compute selection, cancellation/retraining, publication, summary validation,
+  render preparation and warm reuse. No split policy, model, import, dataset-specific behavior,
+  new cache owner/control plane, arbitrary performance rewrite, or unrelated cleanup.
+- Assumptions: current runtime artifacts were lost on application close; bounded synthetic scaling
+  and real persisted evaluation metadata supplement, not replace, exact Windows reproduction.
+  Previously measured five context validations on 207 MiB synthetic EEG plus 21 MiB saliency cost
+  0.506–0.519 seconds; this alone does not establish the long freeze's cause.
+- UI confirmation: user explicitly authorizes internal UI file/read/event/async corrections without
+  asking per file (2026-09-06: do not ask for each UI file edit; preserve UI presentation). Existing
+  layout, colors, buttons and copy stay unchanged; no redesign or new visible workflow is authorized.
+- Steps: (1) parallel read-only lifecycle and render audits; (2) measure cold/warm summary and render
+  stages with production objects, including dataset-size scaling; (3) converge on smallest proven
+  repairs in existing owners, with red reproductions before implementation; (4) focused integrity,
+  target identity, cancel/retrain, numerical parity and repeat-load verification.
+- Validation: distinguish empty log, missing runtime artifacts, no output, rejected provenance,
+  expensive validation, and actual compute/render work; record timings and environment. No claim of
+  Windows acceptance or handoff-ready without the canonical applicable handoff gates.
+- Stop: report any required UI/public-contract decision before implementing it. Complexity review
+  before new owner/module/public class, >8 production files or >300 net production LOC. Preserve
+  settings.json and the completed uncommitted Atomic trial groups row removal. No merge.
+- Dispatch: coordinator integrates evidence; two non-overlapping agents audit lifecycle and render
+  performance. Existing-owner investigations need no model escalation; Fast off.
+- Active repair: tag successful `VisualizeCommand` summaries with the exact verified committed
+  publication generation, matching `EvaluateCommand`. This is an internal async-read coherence
+  repair only: no visual change, saliency computation change, new owner, state or public class.
+  First add a red service-level assertion that the tag equals the committed publication and retain
+  the existing crossing-training-read rejection; then make the smallest existing-owner change and
+  run the focused service/race checks. Stop if the tag cannot be bound to the same verified
+  publication without changing the command contract more broadly.
+- Baseline: directly related saliency render, post-training lifecycle and artifact-integrity suites
+  pass unchanged (93 tests, 5.23 seconds). They do not yet reproduce the reported Windows blocker;
+  do not treat existing green tests as evidence that Fold Set 3 works in the reported workflow.
+- Sequential characterization: real MNE epochs/EEGNet, four classes, five new early-stop-enabled
+  folds and two unfinished historical cohorts compute and render exact Fold Set 3 successfully.
+  This narrow backend happy path excludes UI timing and actual Zhou arrays. Investigation now
+  prioritizes replaced records vs accepted publication, stale summary/coverage and late render
+  results around recomputation, including injected callback ordering.
+- Candidate read defect: saliency summary query can retain older cross-fold choices while accepting
+  a newer recompute publication; callers unconditionally clear the dirty flag after the query. Unlike
+  the existing Evaluation query path, the summary has no publication-generation coherence check.
+  Prove the interleaving with a focused regression, then reuse the existing Evaluation boundary
+  pattern without changing presentation or weakening saliency provenance/integrity validation.
+- Bounded repair assignment: backend worker owns VisualizeCommand's verified publication-generation
+  diagnostic in the existing ApplicationService plus public-service red/green coverage. UI worker
+  owns VisualizationPanel summary/result coherence, preserving invalidations during queries and
+  automatically retrying the latest accepted generation, plus controlled-interleaving UI tests.
+  Two existing production files expected; owner count unchanged, no durable cache or weakened hash
+  checks. Keep old copy/layout intact. Partial-success and numeric-summary optimization stay deferred
+  until the primary read defect is tested; do not broaden the diff merely because audit found them.
+- Backend repair evidence: missing Visualize generation tag fails the added assertion before repair;
+  post-repair Evaluate/Visualize generation and crossed-read selectors pass (4 tests). Entire
+  ApplicationService test file passes (282 tests, 17.79 seconds); warnings are existing short-signal
+  filter and upstream NumPy/MNE deprecations, not saliency failures.
+- UI red evidence: a controlled runtime returns P1's successful summary then exposes P2's newer
+  publication before UI acceptance; old code accepts the mismatched pair. Follow-up regression must
+  prove automatic recovery of the selected cohort, not merely rejection or manual second query.
+- Performance baseline: real holder/provenance/EvalRecord types, synthetic 2x5 folds with 16x1000
+  float32 inputs and 344 held-out trials/fold: computed cross-fold summary 1.102s cold / 1.141s warm;
+  approximately 95% is hashing, with 20 full EEG fingerprints per query. No-saliency query 0.100s;
+  pooled render arrays about 0.04s. These are Linux synthetic measurements, not Windows timings.
+  Any responsiveness repair must retain full integrity checks and reuse existing owned async work.
+- Primary controlled-interleaving repair now protects both on_update and whole update_panel entry:
+  retain selected controls while a summary is dirty, queue the accepted newer publication through
+  the existing ledger, and defer recording it as rendered until coherent choices are rebuilt.
+  The whole-panel regression caught an additional lost-recovery path in the initial narrow fix.
+- Next bounded performance step: execute the same VisualizeCommand through the existing owned
+  execute_application_command_async runner. One panel-local active callback token and the existing
+  dirty flag coalesce updates; callback acceptance keeps the new generation check and existing ledger.
+  No synchronous product fallback, new worker owner, state machine or durable validation cache.
+  Preserve controls/selection while loading, use only existing copy, and fence late callbacks on
+  cleanup. Estimated additional production +55/-15 LOC. First red test must prove Qt heartbeat and
+  selector responsiveness during an intentionally blocked summary; then verify stale replacement,
+  successful latest-generation rendering and close/deletion suppression. Total scope remains the
+  same two production owners; review actual size before exceeding the existing complexity limits.
+- Direct same-outcome backend guard: audit also found an explicit multi-member compute can silently
+  skip a member with unavailable evaluation and publish the other updates as SUCCEEDED. This yields
+  an unrenderable cohort despite a successful job, matching the failure class under repair (not
+  established as the exact Zhou cause). Add a red scheduler regression and require every explicitly
+  selected member to produce an update before any publication; otherwise reuse existing
+  evaluation_unavailable failure and preserve previous results. Do not change class/split fallback
+  policy, automatic batch semantics, UI copy or add another owner. One additional existing production
+  file (TrainingManager), expected <=20 net LOC; root reviews exact member identity, not just counts.
+- Current checkpoint: generation-paired async summaries and explicit-member all-or-nothing
+  publication are implemented in three existing production files, without a new owner, visual
+  design change or weakened artifact checks. Controlled P1/P2 tests cover automatic selected-cohort
+  recovery; a held worker leaves Qt responsive and cleanup suppresses its late callback. For the
+  heartbeat case, the old-source failing test was replayed after implementation, not a clean
+  test-first sequence. Do not overstate that ordering or claim exact Windows reproduction.
+- Focused evidence: backend saliency/integrity/context checks (134), related integration checks (38),
+  and Visualization regression checks (198) pass on the working tree. Basedpyright reports zero new
+  diagnostics. Seven offscreen main-window captures match approved references; the coordinator
+  inspected Visualization. This empty-state capture does not establish affected Fold Set usability.
+- Architecture scan passes after migrating only the exact detached CommandResult storage exception
+  to its async acceptance method; no checker rule or domain-object permission was broadened.
+- Authorization/delivery: user explicitly authorized commit, push and a separate PR on 2026-09-06;
+  no merge is authorized. Deliver only the three existing saliency owners, their direct tests and
+  exact architecture exception migration. This branch is stacked on open PR #112; document that
+  dependency and retarget/rebase requirement rather than claiming an intended-main handoff.
+- Next evidence state: exact-commit PR CI, source-diverse handoff evidence and Windows native
+  acceptance remain outstanding. Preserve the user's settings and earlier Atomic trial groups
+  removal; do not merge.
+- Regression follow-up: the full canonical UI shard exposed one existing synchronous assertion in
+  `test_training_result_presentation`: `update_panel()` now dispatches a background summary read,
+  so the test must wait for the accepted Qt callback before asserting the same blocked Command API
+  result. Migrate that direct test only; do not add a synchronous fallback or alter product/UI copy.
+- Follow-up validation on the exact PR head must similarly distinguish one published saliency
+  revision from the two internal UI phases (summary dispatch, then accepted render). Preserve the
+  exact one-publication/event assertions while waiting for the accepted result in stale synchronous
+  integration tests. The native-render stress runtime must return the same generation diagnostic
+  required of the real `VisualizeCommand`; this is fixture-contract parity, not a render timeout
+  increase or production behavior change.
+- Direct slow-open defect: `_SaliencyRenderTask` currently compares its owner-only `operation_id`,
+  so a fresh UI task for the active request is falsely different after the owner assigns its ID.
+  Coalesce that exact request, retain different normalized variants and discarded-result requeue,
+  and verify both duplicate-request and current-error behavior with a nonempty operation ID.
+
+## Historical #112 repair — import capacity and split/epoch feedback
+
+以下為已合併 #112 的施工紀錄，不是 active dispatch；其舊的 pending／next 不再生效。
 
 - Evidence: Zhou2020 subjects 1+2 select 85 event files and hit the application-only 64-file
   mapping limit. Windows manual preview with 1,719 atomic trials, Full Data, Trial validation/test
@@ -134,13 +625,13 @@
 
 ## Current baseline
 
-`2315c8ac08c1cc2683e6526eec9b368add809bff` 是目前 `origin/main` 的產品基線。Repo-root
+產品基線只由 Git 的 `main` 決定，不在計畫保存第二份 current SHA。#112 已依使用者手測通過與
+merge 批准合併；#113 的新 source 尚待重新手測，#114 不在本次修理範圍。Repo-root
 `settings.json` 的本機修改由使用者擁有，絕不可 stage、commit、revert、覆寫或隱藏。
 
-PR #111（Evaluation render expected-stale reporting）仍獨立維持在其原 branch，尚未取得該 exact
-head 的 Windows 手測／merge 批准；本 slice 從 `origin/main` 另開 branch，絕不混入 #111。
+## Historical #112 contract — Data Splitting materialization and preview
 
-## Active slice — Data Splitting contract, materialization parity, and truthful preview
+以下是已合併實作的歷史計畫，不是第二個 active slice。現行產品語意以 current／architecture 為準。
 
 ### Problem and evidence
 

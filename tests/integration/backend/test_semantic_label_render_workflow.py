@@ -73,6 +73,7 @@ class _TrainingHolder:
         record: TrainRecord,
         *,
         evaluation_split: str,
+        sealed_epoch_data_fingerprint: str | None = None,
     ) -> SaliencyProducerIdentity:
         assert record is self._record
         assert evaluation_split == "test"
@@ -177,6 +178,11 @@ def _publish_final_label_maps(
                 plan=EvaluationPlanIdentity(plan_index=0),
                 run_index=0,
             ),
+            trainer_identity=boundary.trainer_identity,
+            split_specification_fingerprint=(
+                publication.state.dataset.split_specification_fingerprint
+            ),
+            split_epoch_revision=publication.state.dataset.split_epoch_revision,
         )
     )
     visualization = SaliencyRenderPublisher(

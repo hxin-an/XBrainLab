@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from threading import Event, Thread
 from time import monotonic
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import patch
 
+import mne
 import numpy as np
 import pytest
 import torch
@@ -17,6 +19,7 @@ from XBrainLab.backend.application import (
     QueryStateCommand,
     ResetSessionCommand,
     SaliencyCommand,
+    SaliencyCrossFoldIdentity,
     SaliencyPlanIdentity,
     SaliencyRenderRequest,
     SaliencyRunIdentity,
@@ -24,6 +27,14 @@ from XBrainLab.backend.application import (
 from XBrainLab.backend.application.errors import PreconditionError
 from XBrainLab.backend.application.owned_work import OwnedWorkPhase
 from XBrainLab.backend.application.runtime import get_application_service
+from XBrainLab.backend.dataset import (
+    Dataset,
+    DataSplittingConfig,
+    Epochs,
+    TrainingType,
+)
+from XBrainLab.backend.load_data import Raw
+from XBrainLab.backend.model_base.EEGNet import EEGNet
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training import (
     ModelHolder,
@@ -31,9 +42,13 @@ from XBrainLab.backend.training import (
     TrainingEvaluation,
     TrainingOption,
     TrainingPlanHolder,
+    saliency_provenance,
 )
+from XBrainLab.backend.training import training_plan as training_plan_module
+from XBrainLab.backend.training.record import eval as eval_module
 from XBrainLab.backend.training.record.eval import EvalRecord
 from XBrainLab.backend.training.record.train import TrainRecord
+from XBrainLab.backend.training.saliency_provenance import SaliencyContextError
 from XBrainLab.backend.training.training_plan import PreparedSaliencyUpdate
 from XBrainLab.backend.training_manager import (
     PostTrainingSaliencyTarget,
@@ -122,8 +137,12 @@ def _training_option() -> TrainingOption:
     )
 
 
-def _eval_record(*, with_saliency: bool) -> EvalRecord:
-    saliency = {0: np.ones((1, 2, 8), dtype=np.float32)} if with_saliency else {}
+def _eval_record(*, with_saliency: bool, saliency_value: float = 1.0) -> EvalRecord:
+    saliency = (
+        {0: np.full((1, 2, 8), saliency_value, dtype=np.float32)}
+        if with_saliency
+        else {}
+    )
     return EvalRecord(
         label=np.array([0], dtype=int),
         output=np.array([[1.0]], dtype=np.float32),
@@ -139,8 +158,10 @@ def _eval_record(*, with_saliency: bool) -> EvalRecord:
 def _bound_saliency_eval_record(
     holder: TrainingPlanHolder,
     record: TrainRecord,
+    *,
+    saliency_value: float = 1.0,
 ) -> EvalRecord:
-    eval_record = _eval_record(with_saliency=True)
+    eval_record = _eval_record(with_saliency=True, saliency_value=saliency_value)
     eval_record.bind_saliency_context(
         holder.dataset.get_epoch_data(),
         producer_identity=holder.build_saliency_producer_identity(
@@ -290,6 +311,237 @@ def _wait_for_manager_phase(service: ApplicationService, phase) -> bool:
     return False
 
 
+def test_real_mne_eegnet_all_finished_compute_republishes_coverage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Interrupted history then two real five-fold cohorts remain renderable."""
+    rng = np.random.default_rng(20260906)
+    fold_count = 5
+    labels = np.tile(np.arange(4), fold_count)
+    channel_names = ("C3", "C4", "Cz", "Pz")
+    info = mne.create_info(channel_names, sfreq=64.0, ch_types="eeg")
+    info.set_montage(mne.channels.make_standard_montage("standard_1020"))
+    mne_epochs = mne.EpochsArray(
+        rng.standard_normal((len(labels), len(channel_names), 128), dtype=np.float32),
+        info,
+        events=np.column_stack(
+            (np.arange(len(labels)), np.zeros(len(labels), dtype=int), labels)
+        ),
+        event_id={f"class-{index}": index for index in range(4)},
+        verbose=False,
+    )
+    epoch_data = Epochs([Raw("two-subject-saliency-epo.fif", mne_epochs)])
+    epoch_data.set_channels(
+        list(channel_names),
+        [tuple(channel["loc"][:3]) for channel in info["chs"]],
+    )
+    other_epochs = mne_epochs.copy()
+    other_epochs.apply_function(lambda values: values * 2, verbose=False)
+    other_epoch_data = Epochs([Raw("other-subject-saliency-epo.fif", other_epochs)])
+    other_epoch_data.set_channels(
+        list(channel_names),
+        [tuple(channel["loc"][:3]) for channel in info["chs"]],
+    )
+    option = TrainingOption(
+        output_dir=str(tmp_path),
+        optim=torch.optim.Adam,
+        optim_params={},
+        use_cpu=True,
+        gpu_idx=None,
+        epoch=5,
+        bs=4,
+        lr=0.001,
+        checkpoint_epoch=1,
+        evaluation_option=TrainingEvaluation.VAL_LOSS,
+        repeat_num=1,
+        seed=20260906,
+        early_stopping_enabled=True,
+        early_stopping_patience=1,
+        early_stopping_min_delta=1_000_000.0,
+    )
+    model_holder = ModelHolder(EEGNet, {"f1": 2, "f2": 4, "d": 1})
+    config = DataSplittingConfig(TrainingType.IND, True, [], [])
+
+    def make_holder(subject: str, fold: int) -> TrainingPlanHolder:
+        dataset = Dataset(
+            other_epoch_data if subject.endswith("b") else epoch_data,
+            config,
+        )
+        dataset.set_name(f"{subject}-{fold}")
+        dataset.set_cross_validation_cohort_id(subject)
+        sample_indexes = np.arange(len(labels))
+        dataset.set_test((sample_indexes // 4) == fold)
+        dataset.set_val((sample_indexes // 4) == ((fold + 1) % fold_count))
+        dataset.set_remaining_to_train()
+        return TrainingPlanHolder(
+            model_holder,
+            dataset,
+            option,
+            {},
+            training_round_id="retrained-round",
+        )
+
+    old_subject_a = [make_holder("interrupted-a", fold) for fold in range(fold_count)]
+    old_subject_b = [make_holder("interrupted-b", fold) for fold in range(fold_count)]
+    trainer = Trainer([*old_subject_a, *old_subject_b])
+    original_train = old_subject_a[0].train
+
+    def interrupt_first_round() -> None:
+        original_train()
+        trainer.set_interrupt()
+
+    old_subject_a[0].train = interrupt_first_round
+    trainer.run(interact=False)
+    assert trainer.get_terminal_outcome().state is TrainingOutcomeState.CANCELLED
+    assert trainer.get_current_index() == 2 * fold_count
+
+    subject_a = [make_holder("subject-a", fold) for fold in range(fold_count)]
+    subject_b = [make_holder("subject-b", fold) for fold in range(fold_count)]
+    trainer.add_training_plan_holders([*subject_a, *subject_b])
+    trainer.run(interact=False)
+    assert trainer.get_terminal_outcome().state is TrainingOutcomeState.COMPLETED
+    assert all(
+        holder.get_plans()[0].is_finished() for holder in (*subject_a, *subject_b)
+    )
+    assert all(
+        holder.get_plans()[0].early_stopping["stopped_early"] is True
+        for holder in (*subject_a, *subject_b)
+    )
+    study = Study()
+    study.training_manager.set_model_holder(model_holder)
+    study.training_manager.set_training_option(option)
+    study.training_manager.trainer = trainer
+    service = ApplicationService(study)
+    real_fingerprint = saliency_provenance.fingerprint_saliency_epoch_data
+    expected_fingerprints = {
+        id(epochs): real_fingerprint(epochs)
+        for epochs in (epoch_data, other_epoch_data)
+    }
+    assert len(set(expected_fingerprints.values())) == 2
+    scanned_epochs = []
+
+    def count_real_fingerprint(epochs):
+        scanned_epochs.append(id(epochs))
+        return real_fingerprint(epochs)
+
+    monkeypatch.setattr(
+        saliency_provenance, "fingerprint_saliency_epoch_data", count_real_fingerprint
+    )
+    monkeypatch.setattr(
+        training_plan_module, "fingerprint_saliency_epoch_data", count_real_fingerprint
+    )
+
+    # A command without a target is the user-facing "all finished runs"
+    # operation. It includes the completed record retained from the
+    # interrupted history but never admits its unfinished peers.
+    finished_records = {
+        (plan_index, run_index): record
+        for plan_index, holder in enumerate(trainer.get_training_plan_holders())
+        for run_index, record in enumerate(holder.get_plans())
+        if record.is_finished()
+    }
+    assert old_subject_a[0].get_plans()[0] in finished_records.values()
+    assert any(
+        not record.is_finished()
+        for holder in (*old_subject_a, *old_subject_b)
+        for record in holder.get_plans()
+    )
+
+    def cross_fold_target(start_index: int) -> SaliencyCrossFoldIdentity:
+        return SaliencyCrossFoldIdentity(
+            tuple(
+                SaliencyRunIdentity(SaliencyPlanIdentity(start_index + fold), 0)
+                for fold in range(fold_count)
+            )
+        )
+
+    def compute_all_finished():
+        scanned_epochs.clear()
+        result = service.execute(
+            SaliencyCommand(
+                method="Gradient",
+                params={"profile": "recommended", "methods": list(_BASELINE_METHODS)},
+            )
+        )
+        assert result.ok, result.message
+        assert study.training_manager.wait_for_saliency_job(
+            timeout=_THREAD_WATCHDOG_SECONDS
+        )
+        assert service.training_runtime.wait_for_saliency_delivery(
+            timeout=_THREAD_WATCHDOG_SECONDS
+        )
+        publication = service.get_view_publication()
+        coverages = {
+            (coverage.plan_index, coverage.run_index): coverage
+            for coverage in publication.state.visualization.saliency_coverage
+        }
+        assert set(coverages) == set(finished_records)
+        for coverage in coverages.values():
+            methods = {method.method: method for method in coverage.methods}
+            assert methods["Gradient"].complete is True
+            assert methods["Gradient * Input"].complete is True
+        assert sorted(scanned_epochs) == sorted(expected_fingerprints)
+        for holder in trainer.get_training_plan_holders():
+            for record in holder.get_plans():
+                if record.is_finished():
+                    context = record.get_saliency_eval_record().saliency_context
+                    assert (
+                        context.epoch_data_fingerprint
+                        == expected_fingerprints[id(holder.dataset.get_epoch_data())]
+                    )
+        return publication
+
+    after_all_finished = compute_all_finished()
+    before_all_recompute = {
+        identity: record.get_saliency_eval_record()
+        for identity, record in finished_records.items()
+    }
+    assert all(record is not None for record in before_all_recompute.values())
+    for holder in subject_a:
+        record = holder.get_plans()[0].get_saliency_eval_record()
+        assert record is not None
+        record.mark_saliency_context_incompatible("Test stale saliency context.")
+        holder.get_plans()[0].set_eval_record(record)
+    service.get_state()
+    invalid_state = service.execute(QueryStateCommand()).state
+    invalid_coverages = {
+        coverage.plan_index: {method.method: method for method in coverage.methods}
+        for coverage in invalid_state.visualization.saliency_coverage
+    }
+    for plan_index in range(2 * fold_count, 3 * fold_count):
+        assert invalid_coverages[plan_index]["Gradient"].available is False
+        assert invalid_coverages[plan_index]["Gradient * Input"].available is False
+    after_all_recompute = compute_all_finished()
+
+    assert after_all_recompute.generation > after_all_finished.generation
+    assert all(
+        finished_records[identity].get_saliency_eval_record() is not prior
+        for identity, prior in before_all_recompute.items()
+    )
+    subject_a_target = cross_fold_target(2 * fold_count)
+    subject_b_target = cross_fold_target(3 * fold_count)
+    scanned_epochs.clear()
+    pooled = service.get_saliency_render(
+        SaliencyRenderRequest(
+            publication_generation=after_all_recompute.generation,
+            run=subject_a_target,
+            method="Gradient",
+        )
+    )
+    member = service.get_saliency_render(
+        SaliencyRenderRequest(
+            publication_generation=after_all_recompute.generation,
+            run=subject_b_target.members[0],
+            method="Gradient",
+        )
+    )
+    assert pooled.data.fold_count == fold_count
+    assert pooled.data.aggregation == "pooled out-of-fold epochs"
+    assert member.data.fold_count == 1
+    assert scanned_epochs == []
+
+
 def _lock_available_from_another_thread(lock) -> bool:
     acquired: list[bool] = []
     completed = Event()
@@ -327,7 +579,7 @@ def test_cancelled_close_reconciles_retained_terminal_after_owned_saliency_quies
     release_compute = Event()
     terminal_eval_record = _bound_saliency_eval_record(holder, record)
 
-    def bounded_compute(plan, *, should_cancel):
+    def bounded_compute(plan, *, should_cancel, epoch_data_fingerprints=None):
         compute_started.set()
         assert release_compute.wait(timeout=_THREAD_WATCHDOG_SECONDS)
         assert should_cancel() is True
@@ -416,7 +668,9 @@ def test_real_main_window_close_quiesces_active_owned_saliency_without_livelock(
     compute_finished = Event()
     terminal_eval_record = _bound_saliency_eval_record(holder, record)
 
-    def cancellation_bounded_compute(plan, *, should_cancel):
+    def cancellation_bounded_compute(
+        plan, *, should_cancel, epoch_data_fingerprints=None
+    ):
         compute_started.set()
         deadline = monotonic() + _THREAD_WATCHDOG_SECONDS
         while not should_cancel() and monotonic() < deadline:
@@ -487,7 +741,7 @@ def test_saliency_worker_terminal_state_republishes_query_and_coverage(
     release_compute = Event()
     terminal_eval_record = _bound_saliency_eval_record(holder, record)
 
-    def bounded_compute(plan, *, should_cancel):
+    def bounded_compute(plan, *, should_cancel, epoch_data_fingerprints=None):
         compute_started.set()
         assert release_compute.wait(timeout=_THREAD_WATCHDOG_SECONDS)
         assert should_cancel() is False
@@ -675,7 +929,7 @@ def test_worker_terminal_notification_survives_get_state_prepublish_race(
         manager_notify_completed = Event()
         terminal_eval_record = _bound_saliency_eval_record(holder, record)
 
-        def bounded_compute(plan, *, should_cancel):
+        def bounded_compute(plan, *, should_cancel, epoch_data_fingerprints=None):
             compute_started.set()
             assert release_compute.wait(timeout=_THREAD_WATCHDOG_SECONDS)
             assert should_cancel() is False
@@ -765,7 +1019,7 @@ def test_terminal_refresh_failure_retries_delivery_from_public_state_reads(
         terminal_refresh_failed = Event()
         terminal_eval_record = _bound_saliency_eval_record(holder, record)
 
-        def bounded_compute(plan, *, should_cancel):
+        def bounded_compute(plan, *, should_cancel, epoch_data_fingerprints=None):
             compute_started.set()
             assert release_compute.wait(timeout=_THREAD_WATCHDOG_SECONDS)
             assert should_cancel() is False
@@ -879,7 +1133,7 @@ def test_terminal_queue_handoff_failure_retries_once_after_shutdown_fence(
     handoff_failed = Event()
     terminal_eval_record = _bound_saliency_eval_record(holder, record)
 
-    def bounded_compute(plan, *, should_cancel):
+    def bounded_compute(plan, *, should_cancel, epoch_data_fingerprints=None):
         compute_started.set()
         assert release_compute.wait(timeout=_THREAD_WATCHDOG_SECONDS)
         assert should_cancel() is False
@@ -1622,7 +1876,7 @@ def test_saliency_worker_failure_republishes_terminal_application_view(
     )
     compute_started = Event()
 
-    def failed_compute(_plan, *, should_cancel):
+    def failed_compute(_plan, *, should_cancel, epoch_data_fingerprints=None):
         compute_started.set()
         assert should_cancel() is False
         raise RuntimeError("bounded saliency failure")
@@ -1663,7 +1917,7 @@ def test_stale_automatic_command_preserves_current_application_publication(
     )
     terminal_eval_record = _bound_saliency_eval_record(holder, record)
 
-    def complete_compute(plan, *, should_cancel):
+    def complete_compute(plan, *, should_cancel, epoch_data_fingerprints=None):
         assert should_cancel() is False
         return PreparedSaliencyUpdate(
             plan=plan,
@@ -1732,7 +1986,7 @@ def test_explicit_saliency_cancellation_republishes_current_application_view(
     compute_started = Event()
     cancellation_seen = Event()
 
-    def cancellable_compute(plan, *, should_cancel):
+    def cancellable_compute(plan, *, should_cancel, epoch_data_fingerprints=None):
         compute_started.set()
         while not should_cancel():
             cancellation_seen.wait(0.01)
@@ -1781,7 +2035,7 @@ def test_reset_cancellation_retires_worker_generation_without_stale_republish(
     cancellation_seen = Event()
     terminal_eval_record = _bound_saliency_eval_record(holder, record)
 
-    def cancellable_compute(plan, *, should_cancel):
+    def cancellable_compute(plan, *, should_cancel, epoch_data_fingerprints=None):
         compute_started.set()
         while not should_cancel():
             cancellation_seen.wait(0.01)
@@ -1825,7 +2079,7 @@ def test_reset_does_not_deadlock_with_terminal_publication_callback(
     release_compute = Event()
     terminal_eval_record = _bound_saliency_eval_record(holder, record)
 
-    def bounded_compute(plan, *, should_cancel):
+    def bounded_compute(plan, *, should_cancel, epoch_data_fingerprints=None):
         compute_started.set()
         assert release_compute.wait(timeout=_THREAD_WATCHDOG_SECONDS)
         return PreparedSaliencyUpdate(
@@ -1867,7 +2121,7 @@ def test_shutdown_fence_blocks_late_worker_terminal_publication(monkeypatch) -> 
     release_compute = Event()
     terminal_eval_record = _bound_saliency_eval_record(holder, record)
 
-    def bounded_compute(plan, *, should_cancel):
+    def bounded_compute(plan, *, should_cancel, epoch_data_fingerprints=None):
         compute_started.set()
         assert release_compute.wait(timeout=_THREAD_WATCHDOG_SECONDS)
         return PreparedSaliencyUpdate(
@@ -2023,7 +2277,7 @@ def test_delayed_old_terminal_delivery_is_monotonic_and_cannot_revert_publicatio
     assert application_events[0].publication_generation == publication.generation
 
 
-@pytest.mark.parametrize("trigger", ["cancel", "reset", "configure", "shutdown"])
+@pytest.mark.parametrize("trigger", ["cancel", "reset", "shutdown"])
 def test_synchronous_saliency_terminal_observers_run_after_all_outer_locks(
     monkeypatch,
     trigger: str,
@@ -2037,7 +2291,7 @@ def test_synchronous_saliency_terminal_observers_run_after_all_outer_locks(
     cancel_events: list[Event] = []
     manager = service.study.training_manager
 
-    def cancellable_compute(_plan, *, should_cancel):
+    def cancellable_compute(_plan, *, should_cancel, epoch_data_fingerprints=None):
         compute_started.set()
         assert cancel_event_ready.wait(timeout=_THREAD_WATCHDOG_SECONDS)
         assert cancel_events[0].wait(timeout=_THREAD_WATCHDOG_SECONDS)
@@ -2103,26 +2357,6 @@ def test_synchronous_saliency_terminal_observers_run_after_all_outer_locks(
     elif trigger == "reset":
         result = service.execute(ResetSessionCommand(confirmed=True))
         assert result.ok is True, result.message
-    elif trigger == "configure":
-        original_set_saliency_params = manager.set_saliency_params
-
-        def cancel_then_configure(params):
-            manager.cancel_saliency_job()
-            manager.saliency_params = dict(params)
-
-        monkeypatch.setattr(manager, "set_saliency_params", cancel_then_configure)
-        result = service.execute(
-            SaliencyCommand(
-                method="Gradient",
-                params={"methods": list(_BASELINE_METHODS)},
-            )
-        )
-        monkeypatch.setattr(
-            manager,
-            "set_saliency_params",
-            original_set_saliency_params,
-        )
-        assert result.ok is True, result.message
     else:
         service.request_shutdown_fence()
 
@@ -2163,8 +2397,7 @@ def test_saliency_render_rejects_a_stale_publication_generation() -> None:
     )
     stale_request = _render_request(first_publication)
 
-    replacement = _bound_saliency_eval_record(holder, record)
-    replacement.gradient[0].fill(2.0)
+    replacement = _bound_saliency_eval_record(holder, record, saliency_value=2.0)
     record.set_eval_record(replacement)
     service.get_state()
     current_publication = service.get_view_publication()
@@ -2194,8 +2427,7 @@ def test_saliency_render_rejects_a_commit_that_crosses_the_copy_barrier(
         record,
     )
     request = _render_request(publication)
-    replacement = _bound_saliency_eval_record(holder, record)
-    replacement.gradient[0].fill(3.0)
+    replacement = _bound_saliency_eval_record(holder, record, saliency_value=3.0)
 
     from XBrainLab.backend.application import saliency_render
 
@@ -2237,10 +2469,64 @@ def test_saliency_render_arrays_are_readonly_and_detached() -> None:
     copied = render.data.saliency_by_class[0]
 
     assert copied.flags.writeable is False
-    source_record.gradient[0].fill(9.0)
+    with pytest.raises(ValueError):
+        source_record.gradient[0].fill(9.0)
     assert np.all(copied == 1.0)
     with pytest.raises(ValueError):
         copied[0, 0, 0] = 4.0
+
+
+def test_sealed_single_render_does_not_rehash_eeg_or_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, _trainer, holder, record, _initial = _completed_training_service()
+    _source, publication = _publish_renderable_saliency(service, holder, record)
+
+    def unexpected_hash(*_args: object, **_kwargs: object) -> str:
+        raise AssertionError("sealed display must not hash source or payload")
+
+    monkeypatch.setattr(
+        saliency_provenance, "fingerprint_saliency_epoch_data", unexpected_hash
+    )
+    monkeypatch.setattr(
+        training_plan_module, "fingerprint_saliency_epoch_data", unexpected_hash
+    )
+    monkeypatch.setattr(
+        eval_module, "verify_saliency_artifact_manifest", unexpected_hash
+    )
+
+    render = service.get_saliency_render(_render_request(publication))
+
+    np.testing.assert_array_equal(
+        render.data.saliency_by_class[0], np.ones((1, 2, 8), dtype=np.float32)
+    )
+
+
+@pytest.mark.parametrize("mutation", ("model", "mask", "sampling_frequency"))
+def test_sealed_render_rejects_live_model_mask_and_metadata_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    service, _trainer, holder, record, _initial = _completed_training_service()
+    _source, publication = _publish_renderable_saliency(service, holder, record)
+
+    def unexpected_eeg_hash(*_args: object, **_kwargs: object) -> str:
+        raise AssertionError("sealed display must not hash complete EEG")
+
+    monkeypatch.setattr(
+        training_plan_module, "fingerprint_saliency_epoch_data", unexpected_eeg_hash
+    )
+    if mutation == "model":
+        parameter = next(record.model.parameters())
+        with torch.no_grad():
+            parameter.add_(1.0)
+    elif mutation == "mask":
+        holder.dataset.test_mask[0] = not holder.dataset.test_mask[0]
+    else:
+        holder.dataset.get_epoch_data().sfreq = 64.0
+
+    with pytest.raises(SaliencyContextError, match="Recompute saliency"):
+        service.get_saliency_render(_render_request(publication))
 
 
 def test_saliency_render_reads_training_history_from_runtime_not_study_alias() -> None:
@@ -2281,7 +2567,7 @@ def test_saliency_render_rejects_unverified_class_identity() -> None:
         _completed_training_service()
     )
     eval_record, publication = _publish_renderable_saliency(service, holder, record)
-    cast(Any, eval_record).validate_saliency_context = None
+    cast(Any, eval_record).validate_sealed_saliency_render_snapshot = None
 
     with pytest.raises(PreconditionError, match="identity context"):
         service.get_saliency_render(_render_request(publication))

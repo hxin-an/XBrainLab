@@ -276,6 +276,11 @@ class _NativeStressApplicationRuntime(Observable):
             message="Native saliency publication fixture ready.",
             state=self._state,
             changed_state=ChangedState(),
+            diagnostics={
+                "visualization_publication_generation": (
+                    self._current_publication().generation
+                ),
+            },
         )
 
     def get_interpretation_review(
@@ -604,7 +609,10 @@ def _exercise_product_saliency_tabs(
     _pump_until(
         app,
         lambda: (
-            panel.tab_map.native_render_work_idle()
+            panel.last_application_query is not None
+            and not panel._application_summary_dirty
+            and runtime.render_operations_started == 1
+            and panel.native_render_work_idle()
             and panel.tab_map.fig is not None
             and panel.tab_map.canvas is not None
             and panel.tab_map.error_label.isHidden()

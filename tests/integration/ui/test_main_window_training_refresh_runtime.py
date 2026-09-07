@@ -11,23 +11,34 @@ import mne
 import numpy as np
 import pytest
 import torch
+import torchinfo
 from PyQt6 import sip
-from PyQt6.QtCore import QCoreApplication, QEvent, Qt
-from PyQt6.QtWidgets import QWidget
+from PyQt6.QtCore import QCoreApplication, QEvent, Qt, QTimer
+from PyQt6.QtWidgets import QApplication, QDialogButtonBox, QWidget
 
 from XBrainLab.backend.application import (
     ApplyInterpretationCommand,
     ChangedState,
+    ClearTrainingHistoryCommand,
     CommandResult,
     ConfigureTrainingCommand,
     CreateEpochCommand,
+    EvaluateCommand,
     PreprocessCommand,
     PreprocessOperation,
     PreviewInterpretationCommand,
     QueryStateCommand,
+    ResetPreprocessCommand,
+    SaliencyCommand,
     SaveDatasetSplitCommand,
     ScanSourceCommand,
+    TrainCommand,
     ValidateInterpretationCommand,
+)
+from XBrainLab.backend.application.evaluation_render import (
+    EvaluationPlanIdentity,
+    EvaluationRunIdentity,
+    EvaluationSummaryIdentity,
 )
 from XBrainLab.backend.application.runtime import get_application_service
 from XBrainLab.backend.study import Study
@@ -46,6 +57,7 @@ from XBrainLab.ui.async_command_runner import (
     QtApplicationCommandRunner,
     application_command_registry,
 )
+from XBrainLab.ui.dialogs.visualization import SaliencySettingDialog
 from XBrainLab.ui.main_window import MainWindow
 
 
@@ -201,8 +213,13 @@ def _open_runtime_panels(
 
     assert window.training_panel.sidebar.btn_start.isEnabled()
     assert window.evaluation_panel._application_generation is not None
-    assert window.visualization_panel.last_application_query is not None
-    assert window.visualization_panel.last_saliency_query is not None
+    qtbot.waitUntil(
+        lambda: (
+            window.visualization_panel.last_application_query is not None
+            and window.visualization_panel.last_saliency_query is not None
+        ),
+        timeout=5_000,
+    )
     return window
 
 
@@ -334,6 +351,366 @@ def _emit_lifecycle_events_from_distinct_threads(
     assert errors == []
 
 
+@pytest.mark.parametrize("select_run", [False, True], ids=["plan", "run"])
+@pytest.mark.parametrize("replace_training", [False, True], ids=["other-fold", "clear"])
+def test_completed_model_summary_tracks_selected_result_during_training(
+    tmp_path: Path,
+    monkeypatch,
+    select_run,
+    replace_training,
+) -> None:
+    study, service = _prepare_training_runtime(tmp_path)
+    summary_started = Event()
+    release_summary = Event()
+    real_summary = torchinfo.summary
+    results = []
+    worker = None
+
+    def held_summary(*args, **kwargs):
+        summary_started.set()
+        assert release_summary.wait(timeout=15.0)
+        return real_summary(*args, **kwargs)
+
+    try:
+        assert service.execute(TrainCommand(interactive=False, confirmed=True)).ok
+        plan_identity = EvaluationPlanIdentity(plan_index=0)
+        command = EvaluateCommand(
+            summary_identity=EvaluationSummaryIdentity(
+                plan=plan_identity,
+                run=EvaluationRunIdentity(plan=plan_identity, run_index=0)
+                if select_run
+                else None,
+            )
+        )
+        before = service.get_view_publication()
+        monkeypatch.setattr(torchinfo, "summary", held_summary)
+        worker = Thread(target=lambda: results.append(service.execute(command)))
+        worker.start()
+        assert summary_started.wait(timeout=5.0)
+        changed = service.execute(
+            ClearTrainingHistoryCommand(confirmed=True)
+            if replace_training
+            else TrainCommand(append=True, interactive=False, confirmed=True)
+        )
+        assert changed.ok, changed.message
+        current = service.get_view_publication()
+        assert current.generation > before.generation
+        if not replace_training:
+            holders = study.training_manager.trainer.get_training_plan_holders()
+            assert len(holders) == 2
+            assert all(holder.get_plans()[0].is_finished() for holder in holders)
+        release_summary.set()
+        worker.join(timeout=10.0)
+        assert not worker.is_alive()
+        assert len(results) == 1
+        result = results[0]
+        if replace_training:
+            assert not result.ok
+            assert result.diagnostics["stale_evaluation_summary"] is True
+            assert "model_summary" not in result.diagnostics
+        else:
+            assert result.ok, result.message
+            assert result.diagnostics["model_summary"]["status"] == "ready"
+            assert "EEGNet" in result.diagnostics["model_summary"]["text"]
+            assert result.state == current.state
+            assert (
+                result.diagnostics["evaluation_publication_generation"]
+                == current.generation
+            )
+    finally:
+        release_summary.set()
+        if worker is not None:
+            worker.join(timeout=10.0)
+        service.wait_for_background_tasks(timeout=10.0)
+        service.close()
+
+
+def test_active_saliency_protects_formal_pipeline_and_current_training_inputs(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    study, service = _prepare_training_runtime(tmp_path)
+    started = Event()
+    release = Event()
+    compute = TrainingPlanHolder.compute_saliency_update
+
+    def held_compute(holder, plan, **kwargs):
+        started.set()
+        assert release.wait(timeout=20.0)
+        return compute(holder, plan, **kwargs)
+
+    try:
+        trained = service.execute(TrainCommand(interactive=False, confirmed=True))
+        assert trained.ok, trained.message
+        holder = study.training_manager.trainer.get_training_plan_holders()[0]
+        record = holder.get_plans()[0]
+        epoch_data = holder.dataset.get_epoch_data()
+        original_data = epoch_data.data.copy()
+        original_mask = holder.dataset.test_mask.copy()
+        original_model = holder.model_holder
+        original_option = holder.option
+        evaluation_split = record.get_saliency_eval_record().evaluation_split
+        producer = holder.build_saliency_producer_identity(
+            record, evaluation_split=evaluation_split
+        )
+        monkeypatch.setattr(TrainingPlanHolder, "compute_saliency_update", held_compute)
+        scheduled = service.execute(
+            SaliencyCommand(method="Gradient", params={"profile": "recommended"})
+        )
+        assert scheduled.ok, scheduled.message
+        assert started.wait(timeout=5.0)
+        assert service.training_runtime.wait_for_saliency_delivery(timeout=5.0)
+        assert service.execute(QueryStateCommand()).ok
+        # These commands configure future runs; retained finished records keep
+        # their original model/options/split while the active job reads them.
+        configuration_commands = (
+            ConfigureTrainingCommand(model_name="EEGNet", model_params={"f1": 4}),
+            ConfigureTrainingCommand(
+                epoch=2, batch_size=3, learning_rate=0.002, device="cpu"
+            ),
+            SaveDatasetSplitCommand(test_ratio=0.3, val_ratio=0.2),
+        )
+        for command in configuration_commands:
+            configured = service.execute(command)
+            assert configured.ok, configured.message
+        rejected = service.execute(ResetPreprocessCommand(confirmed=True))
+        assert not rejected.ok
+        assert (
+            rejected.diagnostics.get("code") == "training_pipeline_saliency_active"
+        ), (rejected.message, rejected.diagnostics)
+        assert holder.model_holder is original_model
+        assert holder.option is original_option
+        np.testing.assert_array_equal(holder.dataset.test_mask, original_mask)
+        np.testing.assert_array_equal(epoch_data.data, original_data)
+        assert (
+            holder.build_saliency_producer_identity(
+                record, evaluation_split=evaluation_split
+            )
+            == producer
+        )
+        release.set()
+        assert study.training_manager.wait_for_saliency_job(timeout=10.0)
+        assert service.training_runtime.wait_for_saliency_delivery(timeout=5.0)
+        published = service.get_view_publication()
+        assert published.state.visualization.post_training_saliency.phase is (
+            PostTrainingSaliencyPhase.SUCCEEDED
+        )
+        assert (
+            record.get_saliency_eval_record().saliency_context.producer_identity
+            == producer
+        )
+        methods = {
+            method.method: method.complete
+            for coverage in published.state.visualization.saliency_coverage
+            for method in coverage.methods
+        }
+        assert methods["Gradient"] is True
+        assert methods["Gradient * Input"] is True
+    finally:
+        release.set()
+        service.wait_for_background_tasks(timeout=10.0)
+        service.close()
+
+
+@pytest.mark.parametrize("interruption", [None, "failure", "cancel", "render_failure"])
+def test_settings_recompute_keeps_completed_methods_and_reports_actual_work(
+    qtbot,
+    tmp_path: Path,
+    monkeypatch,
+    runtime_lifecycle,
+    allow_real_modals,
+    interruption,
+) -> None:
+    """Exercise real Settings, commands, attribution and rendering across repeats."""
+    study, service = _prepare_training_runtime(tmp_path)
+    trained = service.execute(TrainCommand(interactive=False, confirmed=True))
+    assert trained.ok, trained.message
+    window = _open_runtime_panels(qtbot, study, service, runtime_lifecycle)
+    window.switch_page(4)
+    panel = window.visualization_panel
+    qtbot.waitUntil(
+        lambda: panel.compute_saliency_btn.isVisible()
+        and panel.compute_saliency_btn.isEnabled(),
+        timeout=10_000,
+    )
+    failures = []
+    finish_failure = panel._finish_saliency_compute_failure
+
+    def record_failure(**kwargs):
+        failures.append(kwargs["message"])
+        return finish_failure(**kwargs)
+
+    monkeypatch.setattr(panel, "_finish_saliency_compute_failure", record_failure)
+    held = Event()
+    release = Event()
+    fail_compute = Event()
+    fail_render = Event()
+    original_compute = TrainingPlanHolder.compute_saliency_update
+
+    def controlled_compute(holder, plan, **kwargs):
+        held.set()
+        assert release.wait(timeout=15.0)
+        if fail_compute.is_set():
+            raise RuntimeError("test attribution failure")
+        return original_compute(holder, plan, **kwargs)
+
+    monkeypatch.setattr(
+        TrainingPlanHolder, "compute_saliency_update", controlled_compute
+    )
+    render_figure = panel.tab_map._render_figure_async
+
+    def controlled_render(render_fn, **kwargs):
+        if fail_render.is_set():
+            fail_render.clear()
+
+            def render_fn():
+                raise RuntimeError("test canvas failure")
+
+        return render_figure(render_fn, **kwargs)
+
+    monkeypatch.setattr(panel.tab_map, "_render_figure_async", controlled_render)
+    expected = {"Gradient", "Gradient * Input"}
+    selected_run = panel.run_combo.currentData()
+    for method in (None, "SmoothGrad", "SmoothGrad_Squared", "VarGrad"):
+        if method is not None:
+
+            def accept_settings(method=method):
+                dialog = QApplication.activeModalWidget()
+                assert isinstance(dialog, SaliencySettingDialog)
+                for name, checkbox in dialog.method_checks.items():
+                    checkbox.setChecked(name == method)
+                dialog.param_editors[method]["nt_samples"].setValue(2)
+                dialog.param_editors[method]["stdevs"].setValue(0.1)
+                qtbot.mouseClick(
+                    dialog.button_box.button(QDialogButtonBox.StandardButton.Ok),
+                    Qt.MouseButton.LeftButton,
+                )
+
+            QTimer.singleShot(0, accept_settings)
+            panel.sidebar.set_saliency()
+            assert panel.compute_saliency_btn.text() == "Recompute Saliency"
+            assert {
+                panel.method_combo.itemText(i)
+                for i in range(panel.method_combo.count())
+            } == expected
+            staged = dict(panel._pending_saliency_params)
+
+            def cancel_settings(method=method):
+                dialog = QApplication.activeModalWidget()
+                assert isinstance(dialog, SaliencySettingDialog)
+                try:
+                    assert dialog.method_checks[method].isChecked()
+                    assert dialog.param_editors[method]["nt_samples"].value() == 2
+                finally:
+                    dialog.reject()
+
+            QTimer.singleShot(0, cancel_settings)
+            panel.sidebar.set_saliency()
+            assert panel._pending_saliency_params == staged
+            panel.on_update()
+            assert panel.saliency_action_bar.isVisible()
+            if interruption is None and method == "SmoothGrad":
+
+                def assert_action_text_fits():
+                    title = panel.saliency_action_title
+                    detail = panel.saliency_action_detail
+                    assert title.wordWrap()
+                    assert title.height() >= title.heightForWidth(title.width())
+                    assert detail.height() >= detail.heightForWidth(detail.width())
+                    assert (
+                        panel.compute_saliency_btn.width()
+                        >= panel.compute_saliency_btn.sizeHint().width()
+                    )
+
+                qtbot.waitUntil(assert_action_text_fits, timeout=2_000)
+                assert panel.grab().save(str(tmp_path / "saliency-settings-staged.png"))
+            expected.add(method)
+        previous_generation = (
+            study.training_manager.get_post_training_saliency_status().generation
+        )
+        held.clear()
+        release.clear()
+        try:
+            qtbot.mouseClick(panel.compute_saliency_btn, Qt.MouseButton.LeftButton)
+            qtbot.waitUntil(held.is_set, timeout=10_000)
+            assert not panel.compute_saliency_btn.isEnabled()
+            if method is not None:
+                assert method in panel.saliency_action_detail.text()
+            if interruption is None and method == "SmoothGrad":
+                qtbot.waitUntil(assert_action_text_fits, timeout=2_000)
+                assert panel.grab().save(
+                    str(tmp_path / "saliency-settings-computing.png")
+                )
+            if method == "SmoothGrad" and interruption:
+                if interruption == "failure":
+                    fail_compute.set()
+                elif interruption == "cancel":
+                    qtbot.mouseClick(
+                        panel.cancel_saliency_btn, Qt.MouseButton.LeftButton
+                    )
+                else:
+                    fail_render.set()
+        finally:
+            release.set()
+
+        if method == "SmoothGrad" and interruption == "render_failure":
+            qtbot.waitUntil(
+                lambda: not panel._saliency_compute_in_progress, timeout=10_000
+            )
+            assert not failures, failures
+            assert "could not be rendered" in panel.tab_map.error_label.text()
+            records = tuple(
+                record.get_saliency_eval_record()
+                for holder in study.training_manager.trainer.get_training_plan_holders()
+                for record in holder.get_plans()
+            )
+            panel.on_update()
+            assert records == tuple(
+                record.get_saliency_eval_record()
+                for holder in study.training_manager.trainer.get_training_plan_holders()
+                for record in holder.get_plans()
+            )
+        elif method == "SmoothGrad" and interruption:
+            qtbot.waitUntil(
+                lambda: not panel._saliency_compute_in_progress, timeout=10_000
+            )
+            assert panel._pending_saliency_params["methods"] == [method]
+            assert panel.saliency_action_bar.isVisible()
+            assert {
+                panel.method_combo.itemText(i)
+                for i in range(panel.method_combo.count())
+            } == expected - {method}
+            assert bool(failures) == (interruption == "failure")
+            failures.clear()
+            fail_compute.clear()
+            held.clear()
+            release.clear()
+            try:
+                qtbot.mouseClick(panel.compute_saliency_btn, Qt.MouseButton.LeftButton)
+                qtbot.waitUntil(held.is_set, timeout=10_000)
+            finally:
+                release.set()
+
+        def assert_current_result(previous_generation=previous_generation):
+            assert not failures, failures
+            status = study.training_manager.get_post_training_saliency_status()
+            assert status.generation > previous_generation
+            assert status.phase is PostTrainingSaliencyPhase.SUCCEEDED
+            assert set(status.methods) == expected
+            assert {
+                panel.method_combo.itemText(i)
+                for i in range(panel.method_combo.count())
+            } == expected
+            assert panel.tab_map.property("renderStatus") == "completed"
+            assert not panel._saliency_compute_in_progress
+            assert not panel.saliency_action_bar.isVisible()
+
+        qtbot.waitUntil(assert_current_result, timeout=20_000)
+        assert panel.method_combo.currentText() == "Gradient"
+        assert panel.run_combo.currentData() == selected_run
+        assert panel.grab().save(str(tmp_path / f"saliency-{method or 'baseline'}.png"))
+
+
 def test_training_refreshes_metrics_before_explicit_saliency_click(
     qtbot,
     tmp_path: Path,
@@ -369,6 +746,7 @@ def test_training_refreshes_metrics_before_explicit_saliency_click(
         plan,
         *,
         should_cancel=None,
+        epoch_data_fingerprints=None,
     ):
         saliency_started.set()
         assert release_saliency.wait(timeout=30.0)
@@ -376,6 +754,7 @@ def test_training_refreshes_metrics_before_explicit_saliency_click(
             holder,
             plan,
             should_cancel=should_cancel,
+            epoch_data_fingerprints=epoch_data_fingerprints,
         )
 
     monkeypatch.setattr(
@@ -426,6 +805,22 @@ def test_training_refreshes_metrics_before_explicit_saliency_click(
         and visualization.compute_saliency_btn.isEnabled()
         and visualization.compute_saliency_btn.text() == "Compute Saliency",
         timeout=5_000,
+    )
+    selected_run = visualization.run_combo.currentData()
+    render_commit_states = []
+    admit_render = visualization._admit_native_render_commit
+
+    def observe_render_commit(*args):
+        render_commit_states.append(
+            (
+                visualization.saliency_action_bar.isVisible(),
+                visualization.compute_saliency_btn.isEnabled(),
+            )
+        )
+        return admit_render(*args)
+
+    monkeypatch.setattr(
+        visualization, "_admit_native_render_commit", observe_render_commit
     )
 
     terminal_evaluation_query = evaluation._application_generation
@@ -495,6 +890,15 @@ def test_training_refreshes_metrics_before_explicit_saliency_click(
         assert visualization.tab_map._saliency_coverage == coverage
 
     qtbot.waitUntil(assert_terminal_ui, timeout=20_000)
+    qtbot.waitUntil(
+        lambda: visualization.tab_map.property("renderStatus") == "completed",
+        timeout=10_000,
+    )
+    assert render_commit_states == [(True, False)]
+    assert visualization.run_combo.currentData() == selected_run
+    assert visualization.compute_saliency_btn.isEnabled()
+    assert visualization.grab().save(str(tmp_path / "completed-saliency.png"))
+    assert not visualization.saliency_action_bar.isVisible()
 
     history = training.history_table
     assert history.item(0, 3).text() == "Completed"
@@ -528,7 +932,7 @@ def test_training_refreshes_metrics_before_explicit_saliency_click(
         == 1
     )
     assert evaluation.model_combo.count() == 1
-    assert evaluation.run_combo.currentText() == "Run 1 (Finished)"
+    assert evaluation.run_combo.currentText() == "Run 1"
 
     visualization_query = visualization.last_application_query
     assert visualization_query.diagnostics["trainer_count"] == 1
@@ -556,10 +960,13 @@ def test_training_refreshes_metrics_before_explicit_saliency_click(
         PostTrainingSaliencyPhase.SUCCEEDED,
     ]
     assert analysis_update_counts["evaluation"] == 2
+    # Visualization first dispatches its background summary then renders the
+    # accepted coherent result. This remains one saliency publication.
     assert visualization_rendered_saliency_phases == [
-        PostTrainingSaliencyPhase.SUCCEEDED
+        PostTrainingSaliencyPhase.SUCCEEDED,
+        PostTrainingSaliencyPhase.SUCCEEDED,
     ]
-    assert analysis_update_counts["visualization"] == 1
+    assert analysis_update_counts["visualization"] == 2
     assert evaluation._application_generation != terminal_evaluation_query
     assert visualization.last_application_query is not terminal_visualization_query
     assert len(terminal_publications) == 1
@@ -587,6 +994,7 @@ def test_explicit_saliency_publishes_once_during_unrelated_nested_commands(
         plan,
         *,
         should_cancel=None,
+        epoch_data_fingerprints=None,
     ):
         saliency_started.set()
         assert release_saliency.wait(timeout=30.0)
@@ -594,6 +1002,7 @@ def test_explicit_saliency_publishes_once_during_unrelated_nested_commands(
             holder,
             plan,
             should_cancel=should_cancel,
+            epoch_data_fingerprints=epoch_data_fingerprints,
         )
 
     monkeypatch.setattr(
@@ -700,14 +1109,14 @@ def test_explicit_saliency_publishes_once_during_unrelated_nested_commands(
         qtbot.waitUntil(saliency_published.is_set, timeout=5_000)
         qtbot.waitUntil(
             lambda: (
-                update_counts["evaluation"] == 1 and update_counts["visualization"] == 1
+                update_counts["evaluation"] == 1 and update_counts["visualization"] == 2
             ),
             timeout=5_000,
         )
         assert update_counts == {
             "training": 0,
             "evaluation": 1,
-            "visualization": 1,
+            "visualization": 2,
         }
         assert visualization.last_application_query is not pending_visualization_query
 
@@ -721,7 +1130,7 @@ def test_explicit_saliency_publishes_once_during_unrelated_nested_commands(
         assert update_counts == {
             "training": 0,
             "evaluation": 1,
-            "visualization": 1,
+            "visualization": 2,
         }
 
         release_outer.set()
@@ -735,7 +1144,7 @@ def test_explicit_saliency_publishes_once_during_unrelated_nested_commands(
     assert update_counts == {
         "training": 0,
         "evaluation": 1,
-        "visualization": 1,
+        "visualization": 2,
     }
     assert evaluation._application_generation != pending_evaluation_query
     assert visualization.last_application_query is not pending_visualization_query
@@ -917,10 +1326,12 @@ def test_delayed_oom_refreshes_every_running_panel_once_at_terminal(
     assert window.visualization_panel.last_application_query is not (
         running_visualization_query
     )
+    # One terminal publication causes an async summary dispatch and its accepted
+    # render; the terminal publication itself remains exactly once below.
     assert update_counts == {
         "training": 1,
         "evaluation": 1,
-        "visualization": 1,
+        "visualization": 2,
     }
     qtbot.waitUntil(lambda: len(terminal_publications) == 1, timeout=5_000)
     assert len(terminal_publications) == 1
@@ -1011,10 +1422,11 @@ def test_delayed_cancellation_refreshes_every_preterminal_panel_once(
     assert window.visualization_panel.last_application_query is not (
         stop_requested_visualization_query
     )
+    # As above, one terminal publication has two VisualizationPanel phases.
     assert update_counts == {
         "training": 1,
         "evaluation": 1,
-        "visualization": 1,
+        "visualization": 2,
     }
     qtbot.waitUntil(lambda: len(terminal_publications) == 1, timeout=5_000)
     assert len(terminal_publications) == 1

@@ -4,6 +4,7 @@ from dataclasses import replace
 from unittest.mock import MagicMock
 
 import numpy as np
+import pytest
 from matplotlib.figure import Figure
 from PyQt6.QtCore import QPoint, QRect, Qt, QTimer
 from PyQt6.QtGui import QColor, QPalette
@@ -37,7 +38,6 @@ from XBrainLab.backend.application.results import ChangedState, CommandResult
 from XBrainLab.backend.application.state import ApplicationStateSnapshot
 from XBrainLab.backend.application.view_publication import ApplicationViewStore
 from XBrainLab.backend.study import Study
-from XBrainLab.backend.training.saliency_provenance import SaliencyProducerIdentity
 from XBrainLab.backend.training_state_contract import (
     TrainingReadBoundary,
     TrainingStateToken,
@@ -772,12 +772,6 @@ def _detached_render(request: EvaluationRenderRequest):
     metrics = MockEvalRecord().get_per_class_metrics()
     metrics[0]["support"] = support
     metrics["macro_avg"]["support"] = support * 2
-    producer_identity = SaliencyProducerIdentity.from_components(
-        dataset={"epoch": "exact-eeg-content"},
-        split={"name": request.split, "masks": "exact-split-masks"},
-        run={"selection": request.selection.to_dict()},
-        model={"selected_state": "exact-model-state"},
-    )
     return EvaluationRenderPublication(
         request=request,
         generation=request.publication_generation,
@@ -793,7 +787,6 @@ def _detached_render(request: EvaluationRenderRequest):
             summary_identity=summary_identity,
             evaluation_split=request.split,
         ),
-        producer_identities=(producer_identity,),
         split_specification_fingerprint="split-specification-sha256",
         split_epoch_revision=12,
     )
@@ -848,7 +841,7 @@ def _application_publication(
     *,
     generation: int = 4,
     revision: int | None = None,
-    trainer_identity: str | None = None,
+    trainer_identity: str | None = "evaluation-panel-test",
 ) -> ApplicationViewPublication:
     initial = ApplicationViewStore(
         ApplicationStateSnapshot.empty(),
@@ -857,6 +850,11 @@ def _application_publication(
     effective_revision = generation if revision is None else revision
     state = replace(
         initial.state,
+        dataset=replace(
+            initial.state.dataset,
+            split_specification_fingerprint="split-specification-sha256",
+            split_epoch_revision=12,
+        ),
         evaluation=replace(
             initial.state.evaluation,
             available=True,
@@ -929,9 +927,9 @@ def test_evaluation_panel_logic_uses_detached_identity_bound_render(
     assert panel.model_combo.count() == 3
     assert panel.model_combo.itemText(0) == "Fold 1 (Plan A)"
     assert isinstance(panel.model_combo.itemData(0), EvaluationPlanIdentity)
-    assert panel.run_combo.count() == 3
-    assert panel.run_combo.itemText(0) == "Run 1 (Finished)"
-    assert panel.run_combo.itemText(1) == "Run 2"
+    assert panel.run_combo.count() == 2
+    assert panel.run_combo.itemText(0) == "Run 1"
+    assert panel.run_combo.itemText(1) == "Summary (Finished Runs)"
     assert isinstance(panel.run_combo.itemData(0), EvaluationRunIdentity)
     assert panel.metrics_table.rowCount() == 3
     assert panel.metrics_table.item(0, 0).text() == "Left hand"
@@ -965,7 +963,7 @@ def test_evaluation_panel_logic_uses_detached_identity_bound_render(
 
     panel.model_combo.setCurrentIndex(1)
     assert panel.model_combo.currentData() == EvaluationPlanIdentity(plan_index=1)
-    assert panel.run_combo.count() == 3
+    assert panel.run_combo.count() == 2
 
 
 def test_evaluation_panel_exposes_explicit_cross_fold_summary(
@@ -1255,20 +1253,6 @@ def test_all_folds_internal_cancel_releases_owned_worker_and_retry_publishes_new
         "minimum": 0.1,
         "maximum": 0.9,
     }
-    expected_producer = panel._evaluation_render.producer_identities[0].to_payload()
-    assert panel.metrics_table.property("producerIdentities") == [expected_producer]
-    assert panel.metrics_table.property("producerDatasetFingerprints") == [
-        expected_producer["dataset_fingerprint"]
-    ]
-    assert panel.metrics_table.property("producerSplitFingerprints") == [
-        expected_producer["split_fingerprint"]
-    ]
-    assert panel.metrics_table.property("producerRunFingerprints") == [
-        expected_producer["run_fingerprint"]
-    ]
-    assert panel.metrics_table.property("producerModelFingerprints") == [
-        expected_producer["model_fingerprint"]
-    ]
     assert runtime._evaluation_registry.active_snapshots() == ()
 
 
@@ -1421,6 +1405,9 @@ def test_all_folds_worker_requeues_active_request_after_discarded_result(
                 ),
             ),
         ),
+        trainer_identity="trainer-1",
+        split_specification_fingerprint="split-specification-sha256",
+        split_epoch_revision=12,
         split="test",
     )
     different_request = replace(request, split="validation")
@@ -1453,6 +1440,86 @@ def test_all_folds_worker_requeues_active_request_after_discarded_result(
     panel._on_evaluation_render_finished()
 
     request_render.assert_called_once_with(request)
+
+
+def test_evaluation_render_accepts_same_target_after_global_generation_advance(
+    qtbot,
+    monkeypatch,
+) -> None:
+    _install_evaluation_read_side(
+        monkeypatch,
+        lambda *_args, **_kwargs: _serialized_evaluation_result(),
+    )
+    panel = EvaluationPanel(parent=MockMainWindow())
+    qtbot.addWidget(panel)
+    request = EvaluationRenderRequest(
+        publication_generation=4,
+        selection=EvaluationPlanIdentity(0),
+        trainer_identity="trainer-1",
+        split_specification_fingerprint="split-specification-sha256",
+        split_epoch_revision=12,
+    )
+    worker = MagicMock()
+    panel._evaluation_render_worker = worker
+    panel._evaluation_render_active_request = request
+
+    monkeypatch.setattr(
+        panel,
+        "_current_evaluation_render_request",
+        lambda: replace(request, publication_generation=5),
+    )
+    monkeypatch.setattr(panel, "update_views", MagicMock())
+    panel._on_evaluation_render_ready((request, _detached_render(request)))
+
+    assert panel._evaluation_render is not None
+    panel._on_evaluation_render_finished()
+    assert panel._evaluation_render_worker is None
+
+
+@pytest.mark.parametrize(
+    "current_request",
+    [
+        lambda request: replace(request, trainer_identity="replacement-trainer"),
+        lambda request: replace(
+            request,
+            split_specification_fingerprint="replacement-split-sha256",
+            split_epoch_revision=13,
+        ),
+        lambda request: replace(request, selection=EvaluationPlanIdentity(1)),
+    ],
+)
+def test_evaluation_render_ignores_changed_semantic_target_callback(
+    qtbot,
+    monkeypatch,
+    current_request,
+) -> None:
+    _install_evaluation_read_side(
+        monkeypatch,
+        lambda *_args, **_kwargs: _serialized_evaluation_result(),
+    )
+    panel = EvaluationPanel(parent=MockMainWindow())
+    qtbot.addWidget(panel)
+    request = EvaluationRenderRequest(
+        publication_generation=4,
+        selection=EvaluationPlanIdentity(0),
+        trainer_identity="trainer-1",
+        split_specification_fingerprint="split-specification-sha256",
+        split_epoch_revision=12,
+    )
+    worker = MagicMock()
+    panel._evaluation_render_worker = worker
+    panel._evaluation_render_active_request = request
+    monkeypatch.setattr(
+        panel,
+        "_current_evaluation_render_request",
+        lambda: current_request(request),
+    )
+
+    panel._on_evaluation_render_ready((request, _detached_render(request)))
+    panel._on_evaluation_render_finished()
+
+    assert panel._evaluation_render is None
+    assert panel._evaluation_render_worker is None
 
 
 def test_cross_fold_run_selector_keeps_repeats_separate(qtbot, monkeypatch) -> None:
@@ -1571,6 +1638,52 @@ def test_aggregate_offers_only_splits_saved_for_every_finished_run(
     ] == ["test"]
     assert panel.split_combo.currentData() == "test"
     assert panel._evaluation_render.data.evaluation_split == "test"
+
+
+def test_evaluation_selectors_hide_incomplete_runs_and_folds(qtbot, monkeypatch):
+    """Only backend-complete results may enter Evaluation selectors."""
+
+    result = _serialized_evaluation_result()
+    plans = result.diagnostics["plans"]
+    incomplete_fold = plans[1]
+    incomplete_fold["finished_run_count"] = 0
+    for run in incomplete_fold["runs"]:
+        run["finished"] = False
+        run["evaluation_split"] = None
+        run["evaluation_splits"] = []
+    result.diagnostics["cross_fold_choices"] = []
+
+    _install_evaluation_read_side(monkeypatch, lambda *_args, **_kwargs: result)
+    panel = EvaluationPanel(parent=MockMainWindow())
+    qtbot.addWidget(panel)
+    panel.update_panel()
+    qtbot.waitUntil(panel.evaluation_background_work_idle, timeout=1_000)
+
+    assert panel.model_combo.count() == 1
+    assert panel.model_combo.currentData() == EvaluationPlanIdentity(plan_index=0)
+    assert [
+        panel.run_combo.itemText(index) for index in range(panel.run_combo.count())
+    ] == [
+        "Run 1",
+        "Summary (Finished Runs)",
+    ]
+    assert all(
+        "Run 2" not in panel.run_combo.itemText(index)
+        for index in range(panel.run_combo.count())
+    )
+
+    panel.mark_refresh_dirty()
+    for plan in result.diagnostics["plans"]:
+        plan["finished_run_count"] = 0
+        for run in plan["runs"]:
+            run["finished"] = False
+            run["evaluation_split"] = None
+            run["evaluation_splits"] = []
+    panel.update_panel()
+
+    assert panel.model_combo.count() == 0
+    assert panel.model_combo.isEnabled() is False
+    assert panel.run_combo.count() == 0
 
 
 def test_invalid_evaluation_selection_clears_cached_split_render(qtbot, monkeypatch):
@@ -2161,7 +2274,7 @@ def test_evaluation_panel_preserves_selected_plan_and_average_on_new_revision(
 
     panel.update_panel()
     panel.model_combo.setCurrentIndex(1)
-    panel.run_combo.setCurrentIndex(2)
+    panel.run_combo.setCurrentIndex(1)
 
     assert panel.model_combo.currentText() == "Fold 2 (Plan B)"
     assert panel.run_combo.currentText() == "Summary (Finished Runs)"
@@ -2177,7 +2290,7 @@ def test_evaluation_panel_preserves_selected_plan_and_average_on_new_revision(
     assert panel.run_combo.currentText() == "Summary (Finished Runs)"
 
 
-def test_evaluation_panel_preserves_selected_repeat_when_revision_changes_label(
+def test_evaluation_panel_adds_a_newly_completed_repeat_on_new_revision(
     qtbot,
     monkeypatch,
 ):
@@ -2190,30 +2303,27 @@ def test_evaluation_panel_preserves_selected_repeat_when_revision_changes_label(
             second_run_finished=second_run_finished,
         )
 
-    runtime, publication = _install_evaluation_read_side(monkeypatch, execute)
+    _runtime, _publication = _install_evaluation_read_side(monkeypatch, execute)
     panel = EvaluationPanel(parent=main_window)
     qtbot.addWidget(panel)
 
     panel.update_panel()
-    panel.run_combo.setCurrentIndex(1)
-
-    assert panel.run_combo.currentText() == "Run 2"
+    assert panel.run_combo.findText("Run 2") == -1
     target_identity = EvaluationRunIdentity(
         plan=EvaluationPlanIdentity(plan_index=0),
         run_index=1,
     )
-    assert panel.run_combo.currentData() == target_identity
 
     second_run_finished = True
-    publication["value"] = _application_publication(generation=4, revision=5)
-    runtime.notify(
-        APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
-        publication["value"],
+    panel.mark_refresh_dirty()
+    panel.update_panel()
+    qtbot.waitUntil(lambda: panel.run_combo.count() == 3)
+    run_index = next(
+        index
+        for index in range(panel.run_combo.count())
+        if panel.run_combo.itemData(index) == target_identity
     )
-    qtbot.wait(50)
-
-    assert panel.run_combo.currentData() == target_identity
-    assert panel.run_combo.currentText() == "Run 2 (Finished)"
+    assert panel.run_combo.itemText(run_index) == "Run 2"
 
 
 def test_evaluation_panel_resets_index_only_selection_for_a_new_generation(
@@ -2233,7 +2343,7 @@ def test_evaluation_panel_resets_index_only_selection_for_a_new_generation(
 
     panel.update_panel()
     panel.model_combo.setCurrentIndex(1)
-    panel.run_combo.setCurrentIndex(2)
+    panel.run_combo.setCurrentIndex(1)
     assert panel.model_combo.currentText() == "Fold 2 (Plan B)"
     assert panel.run_combo.currentText() == "Summary (Finished Runs)"
 
@@ -2248,4 +2358,4 @@ def test_evaluation_panel_resets_index_only_selection_for_a_new_generation(
         lambda: panel.model_combo.currentText() == "Fold 1 (Plan A)",
         timeout=2_000,
     )
-    assert panel.run_combo.currentText() == "Run 1 (Finished)"
+    assert panel.run_combo.currentText() == "Run 1"

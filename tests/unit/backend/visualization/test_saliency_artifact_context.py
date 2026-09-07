@@ -111,6 +111,20 @@ def test_visualizer_rejects_context_drift_instead_of_rebinding_indices(
         visualizer.iter_saliency_by_label("Gradient")
 
 
+def test_rebind_rejects_mutated_eeg_even_with_original_sealed_fingerprint() -> None:
+    epoch_data = _EpochContext()
+    record = _record(epoch_data)
+    original_context = record.saliency_context
+    assert original_context is not None
+    epoch_data.data.flat[0] += 1
+    with pytest.raises(SaliencyContextError, match="dataset content"):
+        record.bind_saliency_context(
+            epoch_data,
+            producer_identity=original_context.producer_identity,
+            _sealed_epoch_data_fingerprint=original_context.epoch_data_fingerprint,
+        )
+
+
 def test_visualizer_rejects_safe_artifact_without_identity_context(tmp_path) -> None:
     epoch_data = _EpochContext()
     _record(epoch_data).export(str(tmp_path))

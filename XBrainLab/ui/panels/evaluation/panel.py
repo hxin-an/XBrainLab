@@ -97,8 +97,6 @@ CHART_TABS_BREAKPOINT = 720
 COMPACT_HEIGHT_BREAKPOINT = 600
 INFO_SIDEBAR_WIDTH = 260
 COMPACT_INFO_SIDEBAR_BREAKPOINT = 540
-EVALUATION_RENDER_RETRY_INTERVAL_MS = 75
-EVALUATION_RENDER_RETRY_MAX_ATTEMPTS = 8
 logger = logging.getLogger(__name__)
 EVALUATION_SPLIT_OPTIONS = (
     ("training", "Train"),
@@ -226,8 +224,6 @@ class EvaluationPanel(BasePanel):
         self._model_summary_request_sequence = 0
         self._active_model_summary_request: _ModelSummaryRequest | None = None
         self._application_summary_dirty = True
-        self._evaluation_render_retry_request: EvaluationRenderRequest | None = None
-        self._evaluation_render_retry_attempts = 0
         self._evaluation_render_worker: PythonThreadWorker | None = None
         self._evaluation_render_active_request: EvaluationRenderRequest | None = None
         self._evaluation_render_active_operation_id: str | None = None
@@ -238,12 +234,6 @@ class EvaluationPanel(BasePanel):
         self._info_in_chart_tabs = False
 
         super().__init__(parent=parent, controller=None)
-
-        self._evaluation_render_retry_timer = QTimer(self)
-        self._evaluation_render_retry_timer.setSingleShot(True)
-        self._evaluation_render_retry_timer.timeout.connect(
-            self._retry_evaluation_render
-        )
 
         self._application_render_ledger = ApplicationPublicationRenderLedger(
             panel_name="Evaluation",
@@ -387,9 +377,14 @@ class EvaluationPanel(BasePanel):
         plans = self._plans_from_application_query()
         if plans:
             self._show_evaluation_controls_available()
-            for i, plan_choice in enumerate(plans):
+            for plan_choice in plans:
+                if not any(run_choice.finished for run_choice in plan_choice.runs):
+                    continue
                 self.model_combo.addItem(
-                    fold_display_label(i, plan_choice.name),
+                    fold_display_label(
+                        plan_choice.identity.plan_index,
+                        plan_choice.name,
+                    ),
                     plan_choice.identity,
                 )
             for group in self._cross_fold_groups():
@@ -418,7 +413,7 @@ class EvaluationPanel(BasePanel):
                     preferred_split=previous_split,
                 )
             else:
-                self.plot_stack.setCurrentIndex(1)
+                self._show_no_data_available()
         else:
             self._show_no_data_available()
 
@@ -998,9 +993,11 @@ class EvaluationPanel(BasePanel):
         self.run_combo.blockSignals(True)
         self.run_combo.clear()
 
-        for i, run_choice in enumerate(plan_choice.runs):
+        for run_choice in plan_choice.runs:
+            if not run_choice.finished:
+                continue
             self.run_combo.addItem(
-                run_display_label(i, finished=run_choice.finished),
+                run_display_label(run_choice.identity.run_index),
                 run_choice.identity,
             )
         if any(run_choice.finished for run_choice in plan_choice.runs):
@@ -1218,24 +1215,6 @@ class EvaluationPanel(BasePanel):
             "evaluationOutputNumericSummary",
             render_data.output_numeric_summary.to_dict(),
         )
-        producer_payloads = [
-            identity.to_payload() for identity in render.producer_identities
-        ]
-        self.metrics_table.setProperty("producerIdentities", producer_payloads)
-        self.metrics_table.setProperty(
-            "producerFingerprints",
-            [str(payload["fingerprint"]) for payload in producer_payloads],
-        )
-        for property_name, payload_key in (
-            ("producerDatasetFingerprints", "dataset_fingerprint"),
-            ("producerSplitFingerprints", "split_fingerprint"),
-            ("producerRunFingerprints", "run_fingerprint"),
-            ("producerModelFingerprints", "model_fingerprint"),
-        ):
-            self.metrics_table.setProperty(
-                property_name,
-                [str(payload[payload_key]) for payload in producer_payloads],
-            )
         plan_indexes: list[int] = []
         run_indexes: list[int] = []
         selection_type = ""
@@ -1274,16 +1253,14 @@ class EvaluationPanel(BasePanel):
         *,
         split: str,
     ) -> EvaluationRenderPublication | None:
-        generation = self._application_generation
-        if generation is None:
+        request = self._build_evaluation_render_request(selection, split=split)
+        if request is None:
             return None
-        request = EvaluationRenderRequest(
-            publication_generation=generation,
-            selection=selection,
-            split=split,
-        )
         cached = self._evaluation_render
-        if cached is not None and cached.request == request:
+        if cached is not None and self._same_evaluation_render_target(
+            cached.request,
+            request,
+        ):
             return cached
         if self._request_evaluation_render(request):
             self._show_evaluation_render_loading()
@@ -1299,7 +1276,10 @@ class EvaluationPanel(BasePanel):
         if self._evaluation_render_shutdown_requested:
             return False
         if self._evaluation_render_worker is not None:
-            if request == self._evaluation_render_active_request:
+            if self._same_evaluation_render_target(
+                request,
+                self._evaluation_render_active_request,
+            ):
                 self._evaluation_render_pending_request = (
                     request if self._evaluation_render_result_seen else None
                 )
@@ -1404,13 +1384,19 @@ class EvaluationPanel(BasePanel):
             or result[0] != request
             or getattr(result[1], "request", None) != request
         ):
-            if request == self._current_evaluation_render_request():
+            if self._same_evaluation_render_target(
+                request,
+                self._current_evaluation_render_request(),
+            ):
                 self._show_evaluation_render_unavailable(
                     "The Evaluation result could not be loaded. "
                     "Refresh Evaluation and try again."
                 )
             return
-        if request != self._current_evaluation_render_request():
+        if not self._same_evaluation_render_target(
+            request,
+            self._current_evaluation_render_request(),
+        ):
             return
         self._evaluation_render = cast(EvaluationRenderPublication, result[1])
         self.update_views()
@@ -1443,7 +1429,10 @@ class EvaluationPanel(BasePanel):
         )
         if isinstance(value, OwnedOperationCancelledError):
             return
-        if request != self._current_evaluation_render_request():
+        if not self._same_evaluation_render_target(
+            request,
+            self._current_evaluation_render_request(),
+        ):
             return
         if isinstance(value, ApplicationError):
             application_error = cast(ApplicationError, value)
@@ -1452,16 +1441,14 @@ class EvaluationPanel(BasePanel):
                 diagnostics.get("evaluation_final_unavailable") is True
                 or diagnostics.get("evaluation_split_unavailable") is True
             ):
-                self._clear_evaluation_render_retry()
                 self._show_evaluation_render_unavailable(str(value))
                 return
             if (
                 diagnostics.get("evaluation_render_stale") is True
                 and diagnostics.get("retryable") is True
             ):
-                self._evaluation_render = None
                 self.mark_refresh_dirty()
-                self._schedule_evaluation_render_retry(request)
+                self._show_evaluation_render_unavailable(str(value))
                 return
         logger.error("Evaluation render publication failed: %s", value)
         self.mark_refresh_dirty()
@@ -1491,12 +1478,14 @@ class EvaluationPanel(BasePanel):
         if (
             not self._evaluation_render_shutdown_requested
             and pending is not None
-            and pending == self._current_evaluation_render_request()
+            and self._same_evaluation_render_target(
+                pending,
+                self._current_evaluation_render_request(),
+            )
         ):
             self._request_evaluation_render(pending)
 
     def _current_evaluation_render_request(self) -> EvaluationRenderRequest | None:
-        generation = self._application_generation
         try:
             selection = self.run_combo.currentData()
             split = self.split_combo.currentData()
@@ -1504,61 +1493,62 @@ class EvaluationPanel(BasePanel):
             # A terminal worker callback can arrive after Qt has deleted the
             # panel during close; it is no longer eligible to publish.
             return None
-        if (
-            generation is None
-            or not isinstance(
-                selection,
-                (
-                    EvaluationPlanIdentity,
-                    EvaluationRunIdentity,
-                    EvaluationCrossFoldIdentity,
-                ),
-            )
-            or not isinstance(split, str)
-        ):
+        if not isinstance(
+            selection,
+            (
+                EvaluationPlanIdentity,
+                EvaluationRunIdentity,
+                EvaluationCrossFoldIdentity,
+            ),
+        ) or not isinstance(split, str):
+            return None
+        return self._build_evaluation_render_request(selection, split=split)
+
+    def _build_evaluation_render_request(
+        self,
+        selection: (
+            EvaluationPlanIdentity | EvaluationRunIdentity | EvaluationCrossFoldIdentity
+        ),
+        *,
+        split: str,
+    ) -> EvaluationRenderRequest | None:
+        generation = self._application_generation
+        publication = self._application_view_publication
+        if generation is None or publication is None or not publication.usable:
+            return None
+        trainer_identity = publication.training_boundary.trainer_identity
+        dataset = publication.state.dataset
+        fingerprint = dataset.split_specification_fingerprint
+        revision = dataset.split_epoch_revision
+        if trainer_identity is None or fingerprint is None or revision is None:
             return None
         return EvaluationRenderRequest(
             publication_generation=generation,
             selection=selection,
+            trainer_identity=trainer_identity,
+            split_specification_fingerprint=fingerprint,
+            split_epoch_revision=revision,
             split=split,
         )
 
-    def _schedule_evaluation_render_retry(
-        self,
-        request: EvaluationRenderRequest,
-    ) -> None:
-        """Retry one transient stale read without surfacing a product error."""
-        if request != self._evaluation_render_retry_request:
-            self._evaluation_render_retry_request = request
-            self._evaluation_render_retry_attempts = 0
-        if (
-            self._evaluation_render_retry_attempts
-            >= EVALUATION_RENDER_RETRY_MAX_ATTEMPTS
-        ):
-            return
-        self._evaluation_render_retry_attempts += 1
-        self._evaluation_render_retry_timer.start(EVALUATION_RENDER_RETRY_INTERVAL_MS)
-
-    def _retry_evaluation_render(self) -> None:
-        """Retry only while the user is still viewing the same render target."""
-        request = self._evaluation_render_retry_request
-        if request is None:
-            return
-        selection = self.run_combo.currentData()
-        split = self.split_combo.currentData()
-        if (
-            request.publication_generation != self._application_generation
-            or request.selection != selection
-            or request.split != split
-        ):
-            self._clear_evaluation_render_retry()
-            return
-        self.update_views()
-
-    def _clear_evaluation_render_retry(self) -> None:
-        self._evaluation_render_retry_timer.stop()
-        self._evaluation_render_retry_request = None
-        self._evaluation_render_retry_attempts = 0
+    @staticmethod
+    def _same_evaluation_render_target(
+        left: EvaluationRenderRequest | None,
+        right: EvaluationRenderRequest | None,
+    ) -> bool:
+        """Compare render freshness by its selected semantic origin."""
+        return (
+            left is not None
+            and right is not None
+            and (
+                left.selection == right.selection
+                and left.split == right.split
+                and left.trainer_identity == right.trainer_identity
+                and left.split_specification_fingerprint
+                == right.split_specification_fingerprint
+                and left.split_epoch_revision == right.split_epoch_revision
+            )
+        )
 
     def _show_evaluation_render_unavailable(self, message: str) -> None:
         """Show one stable, user-facing reason for inadmissible final metrics."""
@@ -1591,7 +1581,6 @@ class EvaluationPanel(BasePanel):
         self._evaluation_render_cleaned_up = True
         self.begin_evaluation_render_shutdown()
         self._invalidate_model_summary_request()
-        self._clear_evaluation_render_retry()
         self._application_render_ledger.cleanup()
         if hasattr(self, "matrix_widget"):
             self.matrix_widget.cleanup()
@@ -1603,7 +1592,6 @@ class EvaluationPanel(BasePanel):
         """Reject new renders and request cancellation without blocking Qt."""
         self._evaluation_render_shutdown_requested = True
         self._evaluation_render_pending_request = None
-        self._clear_evaluation_render_retry()
         self.cancel_evaluation_render()
 
     def cancel_evaluation_render_shutdown(self) -> None:
