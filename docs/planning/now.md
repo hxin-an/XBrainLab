@@ -4,8 +4,9 @@
 
 ## Next — PR review, then computational cleanup
 
-- Saliency cleanup先完成同版工程驗證與手測交付，再依序review既有#114 harness、#115 Filter、
-  #116測試清理；比對#111與#113是否重疊，再提出處置建議，不自動關閉或合併。
+- 先完成#113同版工程驗證、使用者手測與明確merge批准；等#113關閉後，才開始review既有
+  #114 harness、#115 Filter、#116測試清理，並比對#111與#113是否重疊。交付手測不代表可
+  提前啟動後續PR審查；不自動關閉或合併任何PR。
 - 產品merge仍需使用者對exact source明確手測通過與同意。新source不得覆蓋正在執行的手測
   checkout；保留本機settings與不相關split修改。
 - 上述PR審查完成後，下一輪主要候選是全專案重複SHA、完整資料掃描、重複驗證與無效資料
