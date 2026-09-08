@@ -4849,7 +4849,10 @@ def test_apply_reuses_safe_review_preflight_and_hashes_reviewed_content_once(
     )
 
     assert applied.ok
-    assert preflight_calls == 1
+    expected_preflight_calls = (
+        1 if data_interpretation_service._stat_change_time_is_reliable() else 2
+    )
+    assert preflight_calls == expected_preflight_calls
     assert identity_calls == 1
 
 

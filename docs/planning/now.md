@@ -72,6 +72,12 @@
   is removed after repository/CI/handoff/docs/configuration/test sweep found no caller or artifact
   consumer.  It was not a canonical manual-acceptance or visual regression gate; `ModalAlertDialog`,
   its component tests and all required UI evidence remain.  Reference sweep and compilation pass.
+- Active validation-repair slice: make the reviewed-import preflight count assertion platform-aware.
+  Exact main and the candidate both fail on Windows because unreliable `ctime` intentionally disables
+  safe-admission reuse; Linux safely reuses it.  Scope: test assertion only, keyed to the same
+  reliability predicate; retain double preflight on Windows, content identity check, receipt and
+  TOCTOU behavior.  No production safety/caching change.  Validate this regression on D-drive
+  Windows and resume the full backend shard.
 - Parallel read-only work covers broader shared/backend/UI structure and Assistant/startup/settings/
   log/cleanup boundaries. Coordinator integrates overlap and stages later bounded source changes.
   UI authorization permits internal behavior-preserving cleanup only, not visual redesign.
