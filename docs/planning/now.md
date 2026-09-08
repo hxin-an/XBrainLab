@@ -157,11 +157,10 @@ every file, dataset scale or native lifecycle is defect-free. No new must-fix pr
    `get_saliency_render_publication` and `get_evaluation_render_publication` wrappers are already
    absent. The current typed ports and `ApplicationUiRuntime` delegates have real panel callers;
    they are not deletion candidates. No source change is required.
-3. **Inspect redundant command registry bindings before deletion.** Two-phase interception in
-   `ApplicationService._execute_command_boundary` precedes the generic handler registry.
-   CREATE_EPOCH and interpretation entries may be redundant; PREPROCESS still includes a live
-   SET_MONTAGE confirmation route. Prove reachability per binding before removing anything.
-   Direct focused-service methods have standalone/test consumers and are not automatically dead.
+3. **Command registry candidate closed as historical.** Two-phase interception owns discovery,
+   apply, query, and prepared preprocess/epoch routing before the generic handler map. The
+   redundant CREATE_EPOCH and interpretation bindings are already absent; remaining generic
+   handlers have live focused-service ownership. No source change is required.
 
 Each candidate needs its own approved bounded active plan before product implementation.
 Reviewer findings do not expand that slice. Use focused local evidence and exact-head applicable CI;
