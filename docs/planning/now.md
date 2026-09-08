@@ -63,15 +63,11 @@
   exclusive unit test are removed.  Their two helper names have no capture workflow, CI, handoff,
   documentation, configuration, product, or other test caller; the reference sweep and changed-tree
   compilation pass.  Product-level Assistant confirmation and cancellation protection remains.
-- Active implementation sub-slice: retire unreachable `EvaluationController` and
-  `VisualizationController`, their `Study.get_controller()` lazy registry branches, exclusive
-  controller tests and exact current-architecture registry references.  Repository caller review
-  finds no product/scripts/Assistant/config/dynamic caller for either controller key; current
-  evaluation/visualization uses `ApplicationService` and `AnalysisCommandService`.  Scope: these
-  legacy controller surfaces only, with no result-read, saliency, montage, command or UI workflow
-  rewrite.  Owners before/after remain ApplicationService/AnalysisCommandService/TrainingRuntime;
-  no new owner/module/compatibility path.  Validate a full reference sweep, focused analysis/result
-  read protections and Ruff; stop for a real caller or a public-contract authority.
+- Integrated legacy-result-controller retirement: unreachable Evaluation/Visualization controllers,
+  their Study lazy branches, exclusive tests and stale architecture/import-boundary entries are
+  removed.  Product evaluation/visualization continues through ApplicationService and
+  AnalysisCommandService; owner count is unchanged.  Focused import-boundary/analysis protection:
+  40 passed.  No result-read, saliency, montage, command or UI workflow rewrite was introduced.
 - Parallel read-only work covers broader shared/backend/UI structure and Assistant/startup/settings/
   log/cleanup boundaries. Coordinator integrates overlap and stages later bounded source changes.
   UI authorization permits internal behavior-preserving cleanup only, not visual redesign.

@@ -195,18 +195,6 @@ class Study:
                     )
 
                     controller = TrainingController(self)
-                elif controller_type == "evaluation":
-                    from .controller.evaluation_controller import (  # noqa: PLC0415
-                        EvaluationController,
-                    )
-
-                    controller = EvaluationController(self)
-                elif controller_type == "visualization":
-                    from .controller.visualization_controller import (  # noqa: PLC0415
-                        VisualizationController,
-                    )
-
-                    controller = VisualizationController(self)
                 else:
                     raise ValueError(f"Unknown controller type: {controller_type}")
                 self._controllers[controller_type] = controller

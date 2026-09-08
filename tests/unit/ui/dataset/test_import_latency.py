@@ -193,8 +193,6 @@ def test_main_window_dataset_first_open_does_not_load_training_or_dialog_stack()
             "XBrainLab.backend.model_base",
             "XBrainLab.backend.visualization",
             "XBrainLab.backend.dataset",
-            "XBrainLab.backend.controller.evaluation_controller",
-            "XBrainLab.backend.controller.visualization_controller",
             "XBrainLab.ui.dialogs.dataset",
         )
 
@@ -271,8 +269,6 @@ def test_main_window_default_startup_prepares_dataset_without_heavy_stacks() -> 
             "XBrainLab.backend.model_base",
             "XBrainLab.backend.visualization",
             "XBrainLab.backend.dataset",
-            "XBrainLab.backend.controller.evaluation_controller",
-            "XBrainLab.backend.controller.visualization_controller",
             "XBrainLab.ui.dialogs.dataset",
         )
 
