@@ -153,12 +153,10 @@ every file, dataset scale or native lifecycle is defect-free. No new must-fix pr
    saved configuration and preview/materialization agreement where a preview receipt is supplied.
    Replace only demonstrably redundant mock cases after stronger coverage passes; do not change
    ratio semantics or require interactive preview for all headless callers.
-2. **Remove unused UI render wrappers (separate product-source slice).**
-   `XBrainLab/ui/application_capabilities.py` still defines
-   `get_saliency_render_publication` and `get_evaluation_render_publication` without runtime callers.
-   Panels use the owned begin/run/commit helpers instead. Delete only these unused wrappers after
-   final caller recheck; retain service getters used by headless MOABB scripts and integration.
-   No visible change, no owner delta. Validate affected UI capability/panel paths and source guards.
+2. **UI render-wrapper candidate closed as historical.** The named
+   `get_saliency_render_publication` and `get_evaluation_render_publication` wrappers are already
+   absent. The current typed ports and `ApplicationUiRuntime` delegates have real panel callers;
+   they are not deletion candidates. No source change is required.
 3. **Inspect redundant command registry bindings before deletion.** Two-phase interception in
    `ApplicationService._execute_command_boundary` precedes the generic handler registry.
    CREATE_EPOCH and interpretation entries may be redundant; PREPROCESS still includes a live
