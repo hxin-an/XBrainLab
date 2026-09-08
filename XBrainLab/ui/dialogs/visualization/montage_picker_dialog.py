@@ -513,8 +513,6 @@ class PickMontageDialog(BaseDialog):
                 completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
                 completer.setFilterMode(Qt.MatchFlag.MatchContains)
                 combo.setCompleter(completer)
-                combo.currentTextChanged.connect(self._sync_apply_enabled)
-
                 self.table.setCellWidget(row, 1, combo)
 
                 if dataset_ch in saved_mapping:
@@ -525,6 +523,13 @@ class PickMontageDialog(BaseDialog):
                 suggested = safe_mapping.get(dataset_ch)
                 if suggested:
                     combo.setCurrentIndex(combo.findText(suggested))
+
+            # Default/saved selections are one batch, not individual user edits.
+            # Connect after population so each row cannot restyle the whole table.
+            for row in range(self.table.rowCount()):
+                combo = self.table.cellWidget(row, 1)
+                if isinstance(combo, QComboBox):
+                    combo.currentTextChanged.connect(self._sync_apply_enabled)
 
             self._resize_mapping_table_to_content()
             self._sync_apply_enabled()
@@ -618,7 +623,9 @@ class PickMontageDialog(BaseDialog):
                 item.setBackground(QColor(row_color))
                 item.setToolTip(issue or "")
             if isinstance(combo, QComboBox):
-                combo.setStyleSheet(_mapping_combo_stylesheet(row_color))
+                style = _mapping_combo_stylesheet(row_color)
+                if combo.styleSheet() != style:
+                    combo.setStyleSheet(style)
                 combo.setToolTip(issue or "")
         if status is not None:
             self.mapping_status.setText(status)

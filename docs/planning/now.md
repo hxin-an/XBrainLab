@@ -43,14 +43,22 @@
    approval remain required; after merge clean task artifacts while preserving durable evidence.
 - UI authorization: user approved this plan on 2026-09-08 with “Implement the plan.” Only montage
   confirmation readiness and concise mapping feedback may change; retain layout/theme/button names.
-- Next: complete formal candidate validation, PR and exact-head CI, then open the complete Windows
-  application with visible logs for manual acceptance. User accepted the native mapping preview on
-  2026-09-08 (“我測試過了覺得可以”); this is design approval, not merge approval. Combined independent
-  review found no blocker. Preview used the current dirty-source copy, not a final PR candidate.
-  Windows window response and its initial screenshot were checked; no prolonged monitoring.
-  Real EEGNet train/Gradient → complete montage → channel/topographic/3D publication passes;
-  restoring the old producer-context policy in an isolated test process reproduces model-identity
-  rejection. Focused mapping/restore tests pass. CI and final exact-source handoff remain pending.
+- Manual-test follow-up: PR #123 introduced a dialog initialization regression. With real
+  standard_1005 positions, three-run median construction times were main/current 0.179/3.681 s
+  for 66 channels and 0.339/13.362 s for 128 channels. Per-row default selection triggers
+  full-table validation and repeated stylesheet application before the dialog becomes visible.
+  User approved the bounded repair on 2026-09-08: defer edit-signal connections until batch
+  population finishes, synchronize once, and avoid unchanged stylesheet writes. No new cache,
+  worker, owner, public API or visual change. Add real-Qt/MNE large-mapping regression coverage
+  before fixing; preserve invalid/duplicate/geometry rejection and immediate user-edit feedback.
+  Compare the same 66/128-channel workloads (target >=80% reduction), then check native direct
+  and Assistant opening stages. If other delays remain, measure them before claiming resolution.
+- Next: finish native validation of the repaired regression in PR #123, complete exact-head CI, then open Windows
+  with visible logs for renewed manual acceptance. Prior CI passed on the previous candidate;
+  it cannot certify the upcoming source. Stop only at handoff or a genuine resource/authority block.
+- Acceptance: user accepted the native mapping preview on 2026-09-08
+  (“我測試過了覺得可以”); this is design approval, not merge approval. Final repaired-source
+  Windows manual acceptance remains pending. Prior validation and source identities remain in PR #123.
 - Complexity review: explicit BIDS restore also needs pre-mutation validation through its existing
   lifecycle/coordinator, bringing production file count to ten. Reviewed implementation totals
   +288/-112/net +176 production lines before preview-driven refinements.

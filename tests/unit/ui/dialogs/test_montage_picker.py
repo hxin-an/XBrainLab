@@ -69,6 +69,77 @@ def dialog(qtbot, channel_names, montage_positions, monkeypatch, tmp_path):
         yield dlg
 
 
+@pytest.mark.parametrize("channel_count", [66, 128])
+def test_large_mapping_batches_style_updates_and_keeps_live_feedback(
+    qtbot, monkeypatch, tmp_path, channel_count
+):
+    from mne.channels import make_standard_montage
+
+    from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+        PickMontageDialog,
+    )
+
+    QSettings.setPath(
+        QSettings.Format.NativeFormat,
+        QSettings.Scope.UserScope,
+        str(tmp_path / "large-mapping-settings"),
+    )
+    channels = make_standard_montage("standard_1005").ch_names[:channel_count]
+    style_writes = []
+    original_set_style = QComboBox.setStyleSheet
+
+    def observe_style_write(combo, style):
+        if combo.objectName() == "MontageChannelCombo":
+            style_writes.append(style)
+        return original_set_style(combo, style)
+
+    monkeypatch.setattr(QComboBox, "setStyleSheet", observe_style_write)
+    picker = PickMontageDialog(
+        None, channels, default_montage="standard_1005", is_bids_source=True
+    )
+    qtbot.addWidget(picker)
+    # Bound real Qt styling work, not wall time or a private helper call count.
+    # Populating N rows must not repeatedly restyle every previously created row.
+    assert len(style_writes) <= channel_count * 3
+    assert picker.apply_button.isEnabled()
+
+    style_writes.clear()
+    picker.montage_combo.setCurrentText("biosemi128")
+    assert len(style_writes) <= channel_count * 3
+    assert not picker.apply_button.isEnabled()
+    style_writes.clear()
+    picker.montage_combo.setCurrentText("standard_1005")
+    assert len(style_writes) <= channel_count * 3
+    assert picker.apply_button.isEnabled()
+
+    first = picker.table.cellWidget(0, 1)
+    second = picker.table.cellWidget(1, 1)
+    original_electrode = first.currentText()
+    style_writes.clear()
+    first.setCurrentText(second.currentText())
+    assert not picker.apply_button.isEnabled()
+    assert first.toolTip()
+    assert second.toolTip()
+    assert len(style_writes) <= 2
+    first.setCurrentText(original_electrode)
+    assert picker.apply_button.isEnabled()
+    assert not first.toolTip()
+    assert not second.toolTip()
+
+    picker.clear_selections()
+    assert not picker.apply_button.isEnabled()
+    assert "mapping" in picker.mapping_status.text()
+    picker.on_montage_select("standard_1005")
+    assert picker.apply_button.isEnabled()
+    picker.accept()
+    reopened = PickMontageDialog(
+        None, channels, default_montage="standard_1005", is_bids_source=True
+    )
+    qtbot.addWidget(reopened)
+    assert reopened.apply_button.isEnabled()
+    assert reopened.table.cellWidget(0, 1).currentText() == original_electrode
+
+
 class TestPickMontageInit:
     def test_creates_dialog(self, dialog):
         assert dialog.windowTitle() == "Electrode Layout"
