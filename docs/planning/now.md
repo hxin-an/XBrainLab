@@ -41,6 +41,13 @@
   integration protection passed 9 tests plus changed-file Ruff; the full selected module has a
   separately reproduced `main` baseline failure when Windows pytest writes BIDS fixtures through a
   WSL UNC worktree, so it is not attributed to this candidate or counted as a pass.
+- Active implementation sub-slice: remove the uncalled public convenience wrapper
+  `ApplicationService.preprocess_data()`.  It only delegates `PreprocessCommand` to `execute()`;
+  the caller sweep covers production, tests, scripts, dynamic registration, configuration and docs
+  and finds no use.  The user explicitly permits removal of old Python convenience APIs with no
+  project use.  Scope: delete this wrapper only; retain `PreprocessCommand`, `execute()`, capability
+  policy, Assistant mapping and UI workflow.  Validate no references remain, the command-envelope
+  protection and service compilation; stop if a caller or public-contract authority appears.
 - Parallel read-only work covers broader shared/backend/UI structure and Assistant/startup/settings/
   log/cleanup boundaries. Coordinator integrates overlap and stages later bounded source changes.
   UI authorization permits internal behavior-preserving cleanup only, not visual redesign.
