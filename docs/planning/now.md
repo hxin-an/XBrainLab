@@ -52,7 +52,7 @@ existing artifact-path and recipe-source failures on direct command routes; it
 does not exercise a removed wrapper and remains an inventory follow-up rather
 than evidence of this deletion.
 
-Active bounded slice — retire uncalled split/lifecycle convenience wrappers:
+Completed bounded slice — retired uncalled split/lifecycle convenience wrappers:
 `ApplicationService.configure_dataset_split()`, `clear_datasets()`,
 `clear_training_history()`, `reset_preprocess()`, `reset_session()`, and
 `new_session()` only construct typed command envelopes and delegate to
@@ -61,9 +61,9 @@ the matching names that remain belong to domain/UI owners, not this service.
 Scope is deletion of those six methods only. Retain command classes, lifecycle
 service, UI actions, Assistant/automation commands, split preview and its
 cancellation path. No visible UI or public command contract changes. Owner delta
-is zero and production LOC is negative. Validate caller sweep, lifecycle/split
-focused tests, Ruff and later exact-head CI; stop for a real service caller or a
-public-contract decision.
+is zero and production LOC was -33. Direct caller sweep, pre-commit Ruff, and
+focused split-preview/lifecycle service protection pass (37 tests). Exact-head
+CI remains final integration evidence.
 
 Import-to-epoch first-pass retention: Data Interpretation lifecycle exports remain
 consumed by apply, state, and command-service production paths; preprocessing render
