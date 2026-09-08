@@ -4,6 +4,38 @@
 
 ## Active — Comprehensive architecture, implementation and test cleanup
 
+### Delivery protocol — one Draft, one final manual acceptance
+
+- `#130` is the single long-lived **Draft** integration PR.  Small commits and
+  focused CI are construction evidence only: they never request review, manual
+  testing, merge, or a completion claim.
+- A checkpoint advances directly to the next unclosed inventory row.  Failed CI,
+  platform-specific assertions, or direct adjacent regressions are repaired and
+  revalidated by the implementation work; they are not handed to the user as an
+  interim acceptance task.
+- The only manual-test handoff is permitted after every row below is closed,
+  every actionable authorized deletion/consolidation is integrated on one clean
+  exact SHA, and the applicable final validation is complete.  Only explicit
+  user acceptance of that final SHA permits a single merge.
+- “Closed” means each area records its owner, real entry/caller evidence,
+  relevant test evidence, and one of: removed/consolidated, retained with a
+  concrete reason, or an explicit blocking evidence gap.  “Partial” and
+  “unreviewed” never qualify for handoff.
+
+| Inventory area | Status | Closure requirement |
+| --- | --- | --- |
+| Import, interpretation, event/class/channel/montage, preprocess and epoch | Partial | Complete caller/owner/test sweep, then remove or retain each proven candidate. |
+| Split configuration, training, stop, retry and result reopen | Partial | Close command-boundary and lifecycle/test audit; retain real allocation and cancellation protections. |
+| Evaluation, Saliency and Visualization | Partial | Close result-read/render/notification ownership and test audit after retired controllers. |
+| Shared state, publication, async lifecycle, SHA/cache/copy and dependency direction | Partial | Close owner/consumer evidence; no redesign from static suspicion alone. |
+| Assistant parameters, confirmation, execution and UI handoff | Partial | Close tool-to-command and lifecycle ownership sweep without prompt/model experiments. |
+| Startup, settings, logs and shutdown | Partial | Close launch/config/log/resource-cleanup caller and retention evidence. |
+| Scripts, CI, hooks, dependencies, docs and fixtures | Partial | Close registrations, artifact consumers, redundant tests and canonical-document references. |
+
+Current phase: inventory closure and bounded implementation continue in the table
+order.  Do not launch a candidate or ask for manual acceptance while any row is
+partial.
+
 ### Approved outcome and execution
 
 - Preserve current effective features, UI, EEG semantics and Assistant public contracts. Audit
