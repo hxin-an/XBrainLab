@@ -340,12 +340,6 @@ class _LazyDataInterpretationCommandService:
             return False
         return bool(self._service_instance.invalidate_for_legacy_raw_mutation())
 
-    def handle_scan_source(self, command: Command) -> HandlerResult:
-        return self._service().handle_scan_source(command)
-
-    def handle_review_interpretation(self, command: Command) -> HandlerResult:
-        return self._service().handle_review_interpretation(command)
-
     def begin_interpretation_discovery(
         self,
         command: (
@@ -379,15 +373,6 @@ class _LazyDataInterpretationCommandService:
         plan: InterpretationDiscoveryPlan,
     ) -> bool:
         return self._service().discovery_plan_is_current(plan)
-
-    def handle_preview_interpretation(self, command: Command) -> HandlerResult:
-        return self._service().handle_preview_interpretation(command)
-
-    def handle_validate_interpretation(self, command: Command) -> HandlerResult:
-        return self._service().handle_validate_interpretation(command)
-
-    def handle_apply_interpretation(self, command: Command) -> HandlerResult:
-        return self._service().handle_apply_interpretation(command)
 
     def begin_apply_interpretation(
         self,
@@ -4476,14 +4461,6 @@ class ApplicationService(Observable):
             },
         }
 
-    def _handle_create_epoch_with_layout_projection(
-        self, command: Command
-    ) -> HandlerResult:
-        """Create epochs, then deterministically attach existing layout metadata."""
-        result = self.preprocess_commands.handle_create_epoch(command)
-        self._project_effective_montage_to_epoch()
-        return result
-
     def _validate_electrode_layout_command(
         self, command: ApplyMontageCommand
     ) -> tuple[
@@ -4884,21 +4861,8 @@ class ApplicationService(Observable):
     def _build_command_handlers(
         self,
     ) -> dict[CommandName, Callable[[Command], HandlerResult]]:
-        """Bind the complete command registry while service contracts are visible."""
+        """Bind serialized command handlers not handled by a detached route."""
         handlers: dict[CommandName, Callable[[Command], HandlerResult]] = {
-            CommandName.SCAN_SOURCE: self.interpretation.handle_scan_source,
-            CommandName.REVIEW_INTERPRETATION: (
-                self.interpretation.handle_review_interpretation
-            ),
-            CommandName.PREVIEW_INTERPRETATION: (
-                self.interpretation.handle_preview_interpretation
-            ),
-            CommandName.VALIDATE_INTERPRETATION: (
-                self.interpretation.handle_validate_interpretation
-            ),
-            CommandName.APPLY_INTERPRETATION: (
-                self.interpretation.handle_apply_interpretation
-            ),
             CommandName.SAVE_INTERPRETATION_RECIPE: (
                 self.interpretation.handle_save_interpretation_recipe
             ),
@@ -4912,7 +4876,6 @@ class ApplicationService(Observable):
             CommandName.APPLY_SMART_PARSE: self.data_table.handle_apply_smart_parse,
             CommandName.REMOVE_FILES: self.data_table.handle_remove_files,
             CommandName.PREPROCESS: self.preprocess_commands.handle_preprocess,
-            CommandName.CREATE_EPOCH: self._handle_create_epoch_with_layout_projection,
             CommandName.CONFIGURE_DATASET_SPLIT: (
                 self.dataset_generation.handle_save_dataset_split
             ),
@@ -4932,15 +4895,10 @@ class ApplicationService(Observable):
             CommandName.VISUALIZE: self.analysis.handle_visualize,
             CommandName.SALIENCY: self.analysis.handle_saliency,
             CommandName.APPLY_MONTAGE: self._handle_apply_montage,
-            CommandName.QUERY_STATE: self.query_state_commands.handle_query_state,
             CommandName.RESET_PREPROCESS: self.lifecycle.handle_reset_preprocess,
             CommandName.RESET_SESSION: self.lifecycle.handle_reset_session,
             CommandName.NEW_SESSION: self.lifecycle.handle_new_session,
         }
-        missing = set(CommandName).difference(handlers)
-        if missing:
-            names = ", ".join(sorted(item.value for item in missing))
-            raise RuntimeError(f"Application command handlers missing: {names}")
         return handlers
 
     def load_data(self, paths: list[str]) -> CommandResult:
