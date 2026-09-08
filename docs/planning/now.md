@@ -82,6 +82,11 @@
   corrected tests use real detached processing and assert signal/history isolation. All three
   reproduced red then passed; independent review confirmed no production in-place provider.
   Next: final exact-head CI and Windows handoff; product source is unchanged from the measured candidate.
+- The next CI run passed preprocessing and Windows checks but exposed a macOS saliency test
+  racing a queued refresh: the compute/render flag alone does not identify the displayed error state.
+  Correct only the test to wait for both the released flag and the actual render-error text within
+  its existing timeout. Preserve compute-success and result-identity assertions and the failed artifact;
+  review and focused validation precede another exact-head CI run. No saliency product change.
 
 ## Following work — agreed order
 
