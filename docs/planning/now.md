@@ -75,6 +75,19 @@ visible UI, data, result-read or public command contract changes; production LOC
 was -20. Direct caller sweep, pre-commit Ruff, and focused analysis/state-query
 protection pass (106 tests). Exact-head CI remains final integration evidence.
 
+Active bounded slice — retire data/interpretation/epoch convenience wrappers:
+`ApplicationService` methods for legacy load/labels/table mutation, scan/review/
+preview/validate/apply interpretation, and epoch creation merely construct typed
+commands and call `execute()`. The caller sweep found one real test use of
+`review_interpretation()`; move that test to `execute(ReviewInterpretationCommand)`
+so it protects the actual public command/receipt contract, then delete all of
+these wrappers. Retain all command types, Data Interpretation two-phase routes,
+resource receipt semantics, UI/Assistant entry points and EEG behavior. This is
+one production file plus its direct test, no owner/UI/public-command change and
+negative production LOC. Validate direct caller sweep, resource-receipt/import
+boundary/epoch focused tests, Ruff and later exact-head CI; stop for a real caller
+or public-contract decision.
+
 Import-to-epoch first-pass retention: Data Interpretation lifecycle exports remain
 consumed by apply, state, and command-service production paths; preprocessing render
 DTO/query boundaries remain consumed by the Preprocess panel and native-stress
