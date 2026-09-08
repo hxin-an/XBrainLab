@@ -889,7 +889,9 @@ def test_settings_recompute_keeps_completed_methods_and_reports_actual_work(
 
         if interruption_case and interruption == "render_failure":
             qtbot.waitUntil(
-                lambda: not panel._saliency_compute_in_progress, timeout=10_000
+                lambda: not panel._saliency_compute_in_progress
+                and "could not be rendered" in panel.tab_map.error_label.text(),
+                timeout=10_000,
             )
             assert not failures, failures
             assert "could not be rendered" in panel.tab_map.error_label.text()

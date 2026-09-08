@@ -16,6 +16,8 @@ class Filtering(PreprocessBase):
     using the underlying MNE filtering routines.
     """
 
+    max_parallel_recordings = 2
+
     def get_preprocess_desc(self, l_freq: float, h_freq: float, notch_freqs=None):
         """Returns a description of the filtering step.
 

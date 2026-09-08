@@ -2,96 +2,70 @@
 
 最後更新：`2026-09-08`
 
-## Active — Logging clarity and preprocess latency investigation
+## Active — Finish accepted logging/preprocess merges
 
-### Problem and evidence
+- User confirmed Windows manual tests passed for both PR #121 and #122 and explicitly authorized
+  both merges on 2026-09-08. The partial-montage saliency defect is a separate follow-up, not a
+  claim of either PR. Git/PR comments own exact source identities, checks and acceptance evidence.
+- PR #121 is merged. Integrate its already-approved changes into #122, resolving only this shared
+  planning document; verify no product edits beyond the two accepted diffs, then require all
+  applicable exact-head CI checks before merging #122. No duplicate local full suite.
+- After verified merge, remove clean merged worktrees and disposable handoff copies/probes after
+  retaining necessary failure/acceptance evidence and checking active processes. Preserve original
+  data, durable results, shared environments/caches, root dirty work and settings.json.
+- Endpoint: both approved merges and safe cleanup, then proceed to the bounded defect below.
 
-- User reports repeated `Adding metadata with 1 columns` messages and slow preprocessing.
-  Message frequency alone does not establish the latency cause; no measured bottleneck is claimed yet.
-- Assistant cleanup #120 is merged after the user's complete walkthrough acceptance. Its bounded
-  model limits remain unchanged; no prompt/RAG tuning or Stable promotion belongs to this slice.
+## Next — Partial montage after training blocks saliency rendering
 
-### Outcome and scope
+### Evidence and outcome
 
-- Identify noisy message producers and propose appropriate normal/debug/warning/error behavior.
-  Preserve actionable failures, native-crash evidence and diagnostic redaction.
-- Trace user operation → shared command service → preprocessing → result publication/UI refresh.
-  Measure first and repeated operations separately; distinguish compute, copy/validation, queue,
-  publication and rendering costs before choosing a repair.
-- Non-goals: UI layout/interaction changes, global log suppression, a new logging/control framework,
-  broad SHA/cache removal, scientific algorithm changes, model experiments or unrelated legacy cleanup.
-- UI approval: user explicitly authorizes internal UI threading/callback/progress-frequency repairs,
-  preserving layout, copy, controls and workflow. No new visible presentation is authorized.
-- Approved implementation: independent logging and preprocess workers, integrated by coordinator
-  and independently reviewed. Logging covers all workflows with bounded repairs. Preprocess focuses
-  on Apply waiting across recordings; compare safe thread parallelism (at most two workers) against
-  serial after removing demonstrated redundant work. Keep only measured wins, preserve atomic
-  publication/cancel/order and avoid nested parallelism or new public settings.
+- Windows manual test: import BIDS without montage, complete training, then select montage;
+  saliency rendering raises an inhomogeneous-array ValueError in `_read_montage_fingerprint`.
+- Read-only reproduction: `Epochs.set_channel_positions` preserves unmatched channels as `None`,
+  while the saliency context reader assumes a complete numeric N-by-3 array. A mixed 66-entry
+  layout reproduces the reported exception without changing EEG samples or channel order.
+- Restore this supported partial-layout boundary without inventing coordinates, dropping channels,
+  discarding valid results or weakening model/data/channel identity validation.
 
-### Investigation and bounded repair sequence
+### Scope and steps
 
-1. Logging track: inspect existing logger/handlers and MNE integration; capture a representative
-   operation's output, attribute repeated messages to their actual producer, and distinguish
-   duplicates from useful progress. Do not assume every repeated message is an error.
-2. Preprocess track: use existing native lifecycle/scenario tooling where applicable. Freeze data,
-   parameters, source and environment; measure first operation and repeated/reset/reapply cases.
-   Include a small baseline and a representative larger dataset already available locally.
-   Do not download data/models or introduce permanent per-call instrumentation by default.
-3. Compare numerical preprocessing time with surrounding copies, hashes, validation and UI work.
-   Inspect code alongside measurements, including async completion/cancel/repeat and resource release.
-   Classify findings as must-fix, worthwhile simplification or justified retention.
-4. Keep the two investigations independent when ownership permits. Shared logger/preprocess seams
-   must have one editing owner; integrate only after tracing their interaction.
-5. Before product edits, narrow the active plan to an evidenced repair with affected callers,
-   deletion candidates and focused tests. Separate log and performance PRs unless one root cause
-   directly requires both. No broad rewrite to satisfy an audit.
+1. From merged main, add a focused failing test covering completed saliency → partial layout apply
+   → actual render preparation. Include absent, partial and complete coordinates and unchanged
+   sample/channel identity; distinguish spatial-view eligibility from non-spatial results.
+2. Trace the existing montage/context owners and remove or reconcile the conflicting assumption.
+   Prefer reuse/deletion; no new cache, receipt, owner, generic validator or broad SHA cleanup.
+3. Validate focused real-data/context/render boundaries and have an independent risk reviewer
+   check result preservation and spatial semantics. Use exact-head CI for formal handoff gates.
+4. Deliver a separate small PR and exact-source Windows manual-test build. Product merge requires
+   fresh explicit user acceptance; previous PR approvals do not authorize this repair's merge.
+- UI status: no visible layout/copy/interaction change is approved for this new slice. Keep fixes
+  in the backend if possible; request confirmation before any UI-file or visible behavior change.
+- Stop/escalate if the repair requires a new public policy for replacing already-used spatial
+  coordinates or changing channel/model input identity. Do not silently broaden the contract.
 
-### Validation and endpoint
+### BIDS audit boundary
 
-- Logging repair: test actual emitted records/output and meaningful failures, preserving redaction
-  and warning/error visibility; do not only mock logger calls.
-- Performance repair: compare identical inputs/results before/after, including repeat/cancel and
-  relevant metadata/event invariants; report measured distributions and environment, not a
-  universal speedup from one timing.
-- Native checks use bounded timeout and `prlimit --core=0`. Use focused L0/L1 locally; reuse exact-head
-  CI for formal regression and add only missing applicable native/data evidence.
-- Current endpoint: implement evidenced repairs, reviewed PRs and Windows manual-test delivery. Product handoff after
-  implementation requires independent risk review, applicable same-head CI and exact-source native
-  manual testing. Product merge still requires explicit user acceptance.
-- Current evidence: metadata lines originate from MNE's metadata property setter during per-source
-  provenance assignment. Logging candidate sets normal desktop MNE verbosity once at startup to
-  WARNING while preserving explicit MNE_LOGGING_LEVEL configuration; no message blacklist.
-- Whole-flow audit also found expected owned-work cancellation logged as Worker ERROR before
-  consumers handle it, and Raw-to-Epochs probing logged WARNING even when fallback succeeds.
-  Repair only their log levels, retaining signal delivery, loader selection and real failure
-  diagnostics. Suspected service/worker duplication needs runtime proof before any removal.
-- Apply baseline (three recordings, three reset-equivalent cycles): Zhou2020 0.618–0.753 s and
-  GDF fixtures 1.849–2.095 s, dominated by MNE work. Service copy plus processor deepcopy is
-  redundant, but its measured milliseconds do not explain the user's long wait. No SHA hotspot
-  was found in this command path. Keep this distinction in the eventual performance claim.
-- Next: validate single-copy isolation with faithful processor tests, compare bounded two-thread
-  execution and larger Zhou batches, then independently review focused evidence before PR creation.
+- Separately distinguish missing coordinate sidecars, unreadable/unmatched existing metadata and
+  legitimately partial geometry. Local inventory found four of fifteen exports without electrodes
+  or coordsystem sidecars; the other eleven use supported CapTrak/metre metadata. File presence is
+  not successful parsing, and the inventory does not establish whether original data or conversion
+  omitted coordinates. No broad BIDS compliance or dataset-family claim.
 
 ## Following work — agreed order
 
-- After logging/preprocess, audit frontend → backend → tests by user workflow: data preparation,
-  training and results. Inspect repeated calculations/validation, SHA, caches, state ownership,
-  compatibility branches, async lifecycle and high-mock tests. Use small justified PRs.
-- Then establish experimental datasets and an evaluator that represents actual product RAG,
-  first-generation model decisions, Host intervention and final product outcomes separately.
-  Keep held-out English cases and small-model context budgets explicit.
+- Audit frontend → backend → tests by user workflow: data preparation, training and results.
+  Inspect repeated calculations/validation, SHA, caches, state ownership, compatibility branches,
+  async lifecycle and high-mock tests. Use small justified PRs.
+- Then establish experimental datasets and an evaluator representing actual product RAG,
+  first-generation decisions, Host intervention and final outcomes separately. Keep held-out English
+  cases and small-model context budgets explicit.
 - Only afterward conduct prompt/RAG/architecture improvement experiments. The existing frozen
-  81-case suite remains bounded regression evidence, not a complete capability evaluation.
+  81-case suite is bounded regression evidence, not a complete capability evaluation or Stable claim.
 
 ## Retained evidence limits
 
-- Historical native -11/debug timeout causes remain unproven; added diagnostics are not root-cause fixes.
+- Historical native -11/debug timeout causes remain unproven; diagnostics are not root-cause fixes.
 - Fresh contextless Codex takeover remains unverified after environment/permission restrictions;
   guidance audits do not establish identical fresh-agent behavior.
-- Protect root dirty work/settings, original datasets, shared model/runtime caches and durable evidence.
-  Remove merged task worktrees/disposable outputs only after checking identity and active use.
-
-## Source of truth
-
-Git/PRs own versions and approvals; docs/current.md owns product claims. Completed implementation
-history belongs in Git, not active dispatch.
+- Git/PRs own versions and approvals; docs/current.md owns product claims. Completed implementation
+  history belongs in Git, not active dispatch.

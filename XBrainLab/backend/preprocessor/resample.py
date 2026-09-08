@@ -15,6 +15,8 @@ class Resample(PreprocessBase):
     epoch resampling is used.
     """
 
+    max_parallel_recordings = 2
+
     def get_preprocess_desc(self, sfreq: float):
         """Returns a description of the resampling step.
 
