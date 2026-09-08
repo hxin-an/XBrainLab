@@ -16,10 +16,26 @@
   async lifecycles, SHA/cache/copies, dependency direction and test evidence.
 - Each reviewed area must produce callable/ownership evidence, justified deletion/consolidation,
   necessary retention or an explicit evidence gap. Static inspection is not performance proof.
-- Current slice: test-only real split command-boundary coverage, replacing only demonstrably
-  redundant fake-generator mapping cases after characterization. Use real domain allocation and
-  ApplicationService results; no product/API/ratio/preview-policy change, no heavyweight training.
-  Scope: existing split integration/unit tests and this plan. Owners and product LOC unchanged.
+- Current slice: consolidate the verified non-UI cleanup commits from #126 and #128 onto the
+  current `main` baseline, then independently recheck their caller evidence and focused
+  protections.  #126 removes `Study`'s unused deferred controller-subscription state; #128
+  removes unreachable generic command dispatch bindings now shadowed by the explicit boundary.
+  Scope: the two existing backend owners and their directly affected tests only; no API, data,
+  Assistant, cancellation, or visible-UI behavior change and no new owner/module/compatibility
+  path.  The retained explicit command boundary remains authoritative.
+- UI confirmation status: pending.  #127 and #129 contain `XBrainLab/ui/` changes.  They are
+  staged for caller/behavior review but must not be integrated or edited until the user explicitly
+  confirms that internal UI-file cleanup preserving the current presentation is authorized.
+- Repair steps: cherry-pick the two isolated source commits, compare the merged caller graph to
+  `main`, run their focused backend tests plus Ruff, then commit the exact consolidation.  Rebase
+  or resolve only direct integration conflicts; stop for a changed public contract, a real caller,
+  or a UI decision.  After this slice, resume the whole-project inventory by workflow and persist
+  each later bounded slice here before editing.
+- Focused validation: the directly affected application-publication lifecycle and application
+  service tests, plus changed-file Ruff.  Stop condition: both removed paths have no production,
+  dynamic-registration, configuration, script, or documentation caller and the retained command
+  spine is protected by passing focused tests.  This establishes only the two-slice cleanup, not
+  the whole-stage handoff or product manual acceptance.
 - Parallel read-only work covers broader shared/backend/UI structure and Assistant/startup/settings/
   log/cleanup boundaries. Coordinator integrates overlap and stages later bounded source changes.
   UI authorization permits internal behavior-preserving cleanup only, not visual redesign.
