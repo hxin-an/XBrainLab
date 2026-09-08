@@ -95,6 +95,32 @@ DTO/query boundaries remain consumed by the Preprocess panel and native-stress
 evidence.  They are retained, not compatibility-only deletion candidates.  The row
 remains partial pending its complete workflow and test/fixture sweep.
 
+Split/training first-pass retention: `ApplicationService` owns split context/preview
+and training resource-preview lifecycle; the UI capability port and training panel
+consume its model signal, preview, cancellation, shutdown and recommendation reads.
+Assistant tool builders, public cross-source smoke and product walkthroughs construct
+the typed split/training/stop commands directly. Integration tests cover the command
+boundary, split preview and resource confirmation. These are real allocation,
+cancellation and result-reopen seams, not the retired convenience API; the row remains
+partial pending the remaining fixture/test quality sweep.
+
+Evaluation/Saliency/Visualization first-pass retention: the ApplicationService owns
+publication-fenced render operations; the UI capability port and the two panels consume
+the render begin/prepare/commit APIs. Product walkthroughs and source-diverse journeys
+exercise command execution, while publication-lifecycle integration tests cover stale,
+cancelled and reopen behavior. The retired controllers have no replacement owner; the
+remaining render APIs are retained. The row remains partial pending test/fixture quality
+and result-notification closure.
+
+Assistant/lifecycle first-pass retention: Assistant tools resolve one
+`ApplicationToolRuntime` and execute typed commands through ApplicationService; they
+fail closed without that runtime. UI `AgentManager` owns presentation, while
+`AssistantRuntimeLifecycle` and its dispatcher own asynchronous controller shutdown.
+Application shutdown fences, owned-operation cancellation and background waits have
+real UI/integration consumers. No second product command spine or unowned shutdown
+delegate was found in this pass; the rows remain partial pending settings/log/startup and
+test/fixture sweep.
+
 ### Approved outcome and execution
 
 - Preserve current effective features, UI, EEG semantics and Assistant public contracts. Audit
