@@ -44,7 +44,6 @@ from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import PickMontage
 from XBrainLab.ui.dialogs.visualization.saliency_setting_dialog import (
     SaliencySettingDialog,
 )
-from XBrainLab.ui.panels.training.test_only_setting import TestOnlySettingWindow
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT_DIR = (
@@ -147,7 +146,6 @@ def _dialog_factories() -> list[tuple[str, Callable[[], QWidget]]]:
         ("Manual Split", lambda: ManualSplitDialog(None, ["subject-01"])),
         ("BIDS Subject Selection", _bids_dialog),
         ("Channel Selection", lambda: ChannelSelectionDialog(None, ["C3", "C4"])),
-        ("Test Only Setting (unrouted)", lambda: TestOnlySettingWindow(None)),
     ]
 
 

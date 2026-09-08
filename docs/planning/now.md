@@ -2,7 +2,26 @@
 
 最後更新：`2026-09-08`
 
-## Next — Bounded workflow cleanup after obsolete-tool retirement
+## Active — Remove unreachable desktop surfaces
+
+- Approved comprehensive cleanup slice: physically remove UI code that no product entry point calls;
+  preserve all routed UI, Assistant/command contracts and headless service APIs. No visual redesign.
+- Evidence: repository callers of `TestOnlySettingWindow` are its exclusive unit test and an explicitly
+  unrouted developer contact-sheet tile. The two free render-publication wrappers in
+  `ui/application_capabilities.py` have no callers; current panels use owned async operations.
+- Scope: delete that dialog and its exclusive test/capture references, remove the two unused UI
+  wrappers and any directly orphaned imports/error-copy entries. Do not remove backend TestOnlyOption,
+  service render getters, lifecycle guards, or active capture tooling. Existing owners remain unchanged.
+- Steps: recheck references; establish affected UI/capture baseline; delete unreachable paths; rerun
+  focused tests, lint and same-head applicable CI; independently review caller/deletion mapping.
+- Stop condition: routed UI and service consumers remain protected, deleted paths leave no dangling
+  imports, checks pass. Product-source handoff remains subject to manual acceptance; no automatic merge.
+- UI authorization: approved internal cleanup only; no visible product layout/text/interaction change.
+- Rollback: revert this bounded PR, not a compatibility wrapper. No additional owner or state is added.
+- Broader plan: test-only split evidence is isolated on its own branch; shared backend/state and
+  Assistant/startup audits continue independently. Findings are not authority for unrelated changes.
+
+### Starting candidates and retained findings
 
 Montage/saliency #123 has merged. The first script-cleanup slice removes orphaned/retired tooling
 without changing product behavior or gate coverage; Git/PR owns its review, checks and merge status.

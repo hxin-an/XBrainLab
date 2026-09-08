@@ -1143,29 +1143,6 @@ def get_training_resource_preflight(
     return result if isinstance(result, ResourcePreflightResult) else None
 
 
-def get_saliency_render_publication(
-    context: Any,
-    request: SaliencyRenderRequest,
-    *,
-    runtime: ApplicationUiRuntime | None = None,
-) -> SaliencyRenderPublication | None:
-    """Read one detached visualization payload through ApplicationService."""
-    from XBrainLab.backend.application.saliency_render import (  # noqa: PLC0415
-        SaliencyRenderPublication,
-        SaliencyRenderRequest,
-    )
-
-    if not isinstance(request, SaliencyRenderRequest):
-        raise TypeError("request must be a SaliencyRenderRequest")
-    application_runtime = _resolve_application_ui_runtime(context, runtime)
-    if application_runtime is None:
-        return None
-    publication = application_runtime.get_saliency_render(request)
-    if not isinstance(publication, SaliencyRenderPublication):
-        raise TypeError("Application runtime returned an invalid saliency render")
-    return publication
-
-
 def begin_saliency_render_operation(
     context: Any,
     request: SaliencyRenderRequest,
@@ -1247,29 +1224,6 @@ def enter_saliency_render_commit_operation(
     if application_runtime is None:
         return False
     return bool(application_runtime.enter_saliency_render_commit(operation_id))
-
-
-def get_evaluation_render_publication(
-    context: Any,
-    request: EvaluationRenderRequest,
-    *,
-    runtime: ApplicationUiRuntime | None = None,
-) -> EvaluationRenderPublication | None:
-    """Read one detached Evaluation payload through ApplicationService."""
-    from XBrainLab.backend.application.evaluation_render import (  # noqa: PLC0415
-        EvaluationRenderPublication,
-        EvaluationRenderRequest,
-    )
-
-    if not isinstance(request, EvaluationRenderRequest):
-        raise TypeError("request must be an EvaluationRenderRequest")
-    application_runtime = _resolve_application_ui_runtime(context, runtime)
-    if application_runtime is None:
-        return None
-    publication = application_runtime.get_evaluation_render(request)
-    if not isinstance(publication, EvaluationRenderPublication):
-        raise TypeError("Application runtime returned an invalid Evaluation render")
-    return publication
 
 
 def begin_evaluation_render_operation(
