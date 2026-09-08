@@ -85,11 +85,9 @@ removed (-141 production LOC in `service.py`; net -155 lines in the commit).
 All command types, Data Interpretation two-phase routes, resource receipts,
 UI/Assistant entry points and EEG behavior remain. This has no owner, UI, or
 public-command change. Ruff passed through the commit hook. The specified
-resource-receipt/import-boundary/epoch focused pytest run is an evidence gap:
-the available Windows interpreter cannot start because WSL interop currently
-fails with `UtilBindVsockAnyPort`, while the local Poetry environment lacks the
-test dependency. Re-run it on the final exact SHA before closing this row; do
-not treat this checkpoint as validation-complete.
+resource-receipt/import-boundary/epoch focused pytest protection now passes on
+the Windows environment (6 tests; one expected MNE all-epochs-dropped warning).
+Exact-head CI still remains final integration evidence.
 
 Import-to-epoch first-pass retention: Data Interpretation lifecycle exports remain
 consumed by apply, state, and command-service production paths; preprocessing render
