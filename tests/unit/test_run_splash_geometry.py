@@ -216,6 +216,7 @@ def test_startup_smoke_close_delay_is_explicit_and_bounded() -> None:
 def test_main_drains_qt_runtime_after_event_loop_before_exiting():
     source = inspect.getsource(main)
 
+    assert "configure_mne_product_logging()" in source
     assert "_configure_product_window_lifetime(window)" in source
     assert "raise SystemExit(run_qt_event_loop(app))" in source
     assert "sys.exit(app.exec())" not in source
