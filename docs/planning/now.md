@@ -68,6 +68,12 @@
   removed.  Product evaluation/visualization continues through ApplicationService and
   AnalysisCommandService; owner count is unchanged.  Focused import-boundary/analysis protection:
   40 passed.  No result-read, saliency, montage, command or UI workflow rewrite was introduced.
+- Active implementation sub-slice: retire `capture_modal_alert_presentation.py`, an unconsumed
+  development-only alert screenshot generator.  Repository/CI/handoff/docs/configuration/test
+  sweep finds no caller or artifact consumer; it is not a canonical manual-acceptance or visual
+  regression gate.  Scope: delete the script only, retaining `ModalAlertDialog`, its component
+  tests, and all required UI evidence.  Validate reference sweep and compilation; stop for a real
+  evidence-contract consumer.
 - Parallel read-only work covers broader shared/backend/UI structure and Assistant/startup/settings/
   log/cleanup boundaries. Coordinator integrates overlap and stages later bounded source changes.
   UI authorization permits internal behavior-preserving cleanup only, not visual redesign.
