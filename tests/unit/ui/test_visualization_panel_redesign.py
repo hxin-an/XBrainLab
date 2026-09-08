@@ -442,15 +442,6 @@ def test_spectrogram_does_not_reserve_absolute_control_hole(qtbot) -> None:
     assert panel.ctrl_layout.indexOf(panel.normalize_check) >= 0
 
 
-def test_legacy_saliency_projection_selectors_remain_hidden(qtbot) -> None:
-    panel, _ = _make_panel(qtbot)
-
-    assert panel.saliency_view_mode.isHidden()
-    assert panel.saliency_class_combo.isHidden()
-    assert panel.ctrl_layout.indexOf(panel.saliency_view_mode) == -1
-    assert panel.ctrl_layout.indexOf(panel.saliency_class_combo) == -1
-
-
 def test_visualization_shutdown_cancels_active_explicit_saliency(qtbot, monkeypatch):
     panel, _ = _make_panel(qtbot)
     panel._active_saliency_operation_id = "saliency-operation-1"

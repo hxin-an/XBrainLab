@@ -439,12 +439,16 @@ def test_overview_class_activation_invalidates_existing_native_binding(qtbot):
     ):
         panel.on_update()
         first_publication = panel.tab_map.update_plot.call_args.args[0]
+        assert panel.tab_map.update_plot.call_args.kwargs == {
+            "selected_label_key": None,
+            "display_mode": "all",
+        }
         panel._native_render_bindings[panel.tab_map] = (
             1,
             publication.generation,
             "render-overview",
             first_publication,
-            (False, False, "all", "left-key"),
+            (False, False, "all", None),
         )
 
         panel._open_saliency_class_detail("right-key")
@@ -455,8 +459,7 @@ def test_overview_class_activation_invalidates_existing_native_binding(qtbot):
         "selected_label_key": "right-key",
         "display_mode": "single",
     }
-    assert panel.saliency_view_mode.currentData() == "single"
-    assert panel.saliency_class_combo.currentData() == "right-key"
+    assert panel.saliency_combo.currentData() == "right-key"
 
 
 @pytest.mark.parametrize(
