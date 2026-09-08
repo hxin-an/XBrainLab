@@ -8,6 +8,9 @@ import uuid
 from collections.abc import Mapping
 from pathlib import Path
 
+import mne
+import numpy as np
+import pandas as pd
 import pytest
 
 from XBrainLab.backend.utils import logger as logger_module
@@ -18,9 +21,89 @@ from XBrainLab.backend.utils.logger import (
     LOG_SANITIZER_INPUT_BYTES,
     DiagnosticRedactionFilter,
     SafeRotatingFileHandler,
+    configure_mne_product_logging,
     setup_logger,
 )
 from XBrainLab.backend.utils.public_diagnostics import DiagnosticDisclosure
+
+
+class _LogRecordCollector(logging.Handler):
+    """Collect records without formatting or writing diagnostic output."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.records: list[logging.LogRecord] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.records.append(record)
+
+
+def test_default_mne_product_logging_hides_routine_metadata_but_keeps_warnings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The startup policy quiets actual MNE metadata records, not diagnostics."""
+    mne_logger = logging.getLogger("mne")
+    collector = _LogRecordCollector()
+    old_level = mne_logger.level
+    monkeypatch.setattr(mne, "get_config", lambda *_args, **_kwargs: None)
+    mne_logger.addHandler(collector)
+
+    try:
+        configure_mne_product_logging()
+        info = mne.create_info(["Cz"], sfreq=100.0, ch_types="eeg")
+        raw = mne.io.RawArray(np.zeros((1, 500)), info, verbose=False)
+        epochs = mne.Epochs(
+            raw,
+            np.array([[100, 0, 1], [250, 0, 1]]),
+            event_id={"event": 1},
+            tmin=0.0,
+            tmax=0.5,
+            baseline=None,
+            preload=True,
+            verbose=False,
+        )
+
+        epochs.metadata = pd.DataFrame({"source_recording": ["a", "a"]})
+        mne_logger.warning("MNE warning must remain visible")
+        mne_logger.error("MNE error must remain visible")
+    finally:
+        mne_logger.setLevel(old_level)
+        mne_logger.removeHandler(collector)
+        collector.close()
+
+    messages = [record.getMessage() for record in collector.records]
+    assert not any(message.startswith("Adding metadata with ") for message in messages)
+    assert "MNE warning must remain visible" in messages
+    assert "MNE error must remain visible" in messages
+
+
+@pytest.mark.parametrize("configured_level", ["INFO", "DEBUG"])
+def test_mne_product_logging_preserves_explicit_user_verbosity(
+    monkeypatch: pytest.MonkeyPatch,
+    configured_level: str,
+) -> None:
+    mne_logger = logging.getLogger("mne")
+    collector = _LogRecordCollector()
+    old_level = mne_logger.level
+    monkeypatch.setenv("MNE_LOGGING_LEVEL", configured_level)
+    mne.set_log_level(configured_level)
+    mne_logger.addHandler(collector)
+
+    try:
+        configure_mne_product_logging()
+        assert mne_logger.level == getattr(logging, configured_level)
+        mne_logger.log(
+            logging.INFO if configured_level == "INFO" else logging.DEBUG,
+            "Explicit MNE verbosity remains visible",
+        )
+    finally:
+        mne_logger.setLevel(old_level)
+        mne_logger.removeHandler(collector)
+        collector.close()
+
+    assert [record.getMessage() for record in collector.records] == [
+        "Explicit MNE verbosity remains visible",
+    ]
 
 
 @pytest.fixture

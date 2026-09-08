@@ -8,6 +8,7 @@ import re
 import sys
 import traceback
 from contextlib import suppress
+from importlib import import_module
 from io import TextIOWrapper
 from logging.handlers import RotatingFileHandler
 from pathlib import PosixPath, PurePosixPath, PureWindowsPath, WindowsPath
@@ -781,6 +782,21 @@ def setup_logger(
     logger.propagate = False
 
     return logger
+
+
+def configure_mne_product_logging() -> None:
+    """Use concise MNE logging unless the user explicitly configured it.
+
+    MNE writes routine per-recording progress at INFO. XBrainLab presents its
+    own operation summaries, so the desktop startup keeps third-party output
+    to actionable warnings and errors by default. ``get_config`` honors both
+    MNE's environment setting and its user configuration; either one remains
+    authoritative when present.
+    """
+    mne = cast(Any, import_module("mne"))
+
+    if mne.get_config("MNE_LOGGING_LEVEL", default=None) is None:
+        mne.set_log_level("WARNING")
 
 
 def _existing_logger_configuration_is_valid(
