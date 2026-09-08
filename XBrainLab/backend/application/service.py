@@ -53,8 +53,6 @@ from .commands import (
     ApplyMontageCommand,
     ApplySmartParseCommand,
     AttachLabelsCommand,
-    ClearDatasetsCommand,
-    ClearTrainingHistoryCommand,
     Command,
     CommandName,
     ConfigureTrainingCommand,
@@ -64,18 +62,14 @@ from .commands import (
     ImportLabelsCommand,
     LabelImportPlan,
     LoadDataCommand,
-    NewSessionCommand,
     PreprocessCommand,
     PreprocessOperation,
     PreviewInterpretationCommand,
     PreviewLabelImportCommand,
     QueryStateCommand,
     RemoveFilesCommand,
-    ResetPreprocessCommand,
-    ResetSessionCommand,
     ReviewInterpretationCommand,
     SaliencyCommand,
-    SaveDatasetSplitCommand,
     ScanSourceCommand,
     StopTrainingCommand,
     TrainCommand,
@@ -5024,33 +5018,6 @@ class ApplicationService(Observable):
                 event_ids=event_ids,
             ),
         )
-
-    def configure_dataset_split(
-        self,
-        command: SaveDatasetSplitCommand,
-    ) -> CommandResult:
-        """Save one data splitting specification."""
-        return self.execute(command)
-
-    def clear_datasets(self, confirmed: bool = False) -> CommandResult:
-        """Execute a dataset cleanup command."""
-        return self.execute(ClearDatasetsCommand(confirmed=confirmed))
-
-    def clear_training_history(self, confirmed: bool = False) -> CommandResult:
-        """Execute a training-history cleanup command."""
-        return self.execute(ClearTrainingHistoryCommand(confirmed=confirmed))
-
-    def reset_preprocess(self, confirmed: bool = False) -> CommandResult:
-        """Execute a preprocessing reset command."""
-        return self.execute(ResetPreprocessCommand(confirmed=confirmed))
-
-    def reset_session(self, confirmed: bool = False) -> CommandResult:
-        """Execute a session reset command."""
-        return self.execute(ResetSessionCommand(confirmed=confirmed))
-
-    def new_session(self, confirmed: bool = False) -> CommandResult:
-        """Execute a new-session command for the single-session shell."""
-        return self.execute(NewSessionCommand(confirmed=confirmed))
 
     def evaluate(self, command: EvaluateCommand | None = None) -> CommandResult:
         """Execute an evaluation query command."""
