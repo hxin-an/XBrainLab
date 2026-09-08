@@ -194,6 +194,63 @@ def _two_subject_epoch_data() -> Epochs:
     return epoch
 
 
+def _split_matrix_epoch_data() -> Epochs:
+    """Return real balanced epochs across four subjects and two sessions."""
+    epoch = _epoch_data()
+    epoch_count = 32
+    epoch.data = np.zeros((epoch_count, 2, 512), dtype=np.float32)
+    epoch.label = np.tile(np.asarray([0, 1, 0, 1], dtype=int), 8)
+    epoch.subject = np.repeat(np.arange(4, dtype=int), 8)
+    epoch.session = np.tile(np.repeat(np.arange(2, dtype=int), 4), 4)
+    epoch.idx = np.arange(epoch_count, dtype=int)
+    epoch.trial_group = np.arange(epoch_count, dtype=int)
+    epoch.subject_map = {index: f"S{index + 1:02d}" for index in range(4)}
+    epoch.session_map = {0: "001", 1: "002"}
+    epoch.epoch_window_provenance = tuple(
+        EpochWindowProvenance(
+            source_recording_id=f"content-sha256:{index:064x}",
+            event_sample=index * 64,
+            window_start_sample=index * 64,
+            window_end_sample_exclusive=index * 64 + 512,
+            source_sfreq=128.0,
+            epoch_sfreq=128.0,
+            tmin_seconds=0.0,
+            tmax_seconds=511 / 128,
+            source_coordinates_verified=True,
+        )
+        for index in range(epoch_count)
+    )
+    return epoch
+
+
+def _cross_validation_specification(
+    *,
+    train_type: TrainingType,
+    test_type: SplitByType,
+    validation_type: ValSplitByType,
+) -> DatasetSplitSpecification:
+    return DatasetSplitSpecification.from_payload(
+        {
+            "train_type": train_type.value,
+            "is_cross_validation": True,
+            "val_splitters": [
+                {
+                    "split_type": validation_type.value,
+                    "split_unit": SplitUnit.RATIO.value,
+                    "value": "0.25",
+                }
+            ],
+            "test_splitters": [
+                {
+                    "split_type": test_type.value,
+                    "split_unit": SplitUnit.KFOLD.value,
+                    "value": "2",
+                }
+            ],
+        }
+    )
+
+
 def _configure_training(service: ApplicationService) -> None:
     result = service.execute(
         ConfigureTrainingCommand(
@@ -337,6 +394,166 @@ def test_real_preview_receipt_round_trips_to_deferred_materialization(
     assert len(preview.rows) == 2
     assert materialized_counts == preview_counts
     assert trained.state.dataset.split_lifecycle.value == "verified"
+
+
+@pytest.mark.parametrize(
+    ("split_strategy", "test_type", "validation_type", "protocol"),
+    [
+        ("trial", SplitByType.TRIAL, ValSplitByType.TRIAL, "trial-wise"),
+        ("session", SplitByType.SESSION, ValSplitByType.SESSION, "session-wise"),
+        ("subject", SplitByType.SUBJECT, ValSplitByType.SUBJECT, "subject-wise"),
+    ],
+)
+def test_real_shorthand_split_command_saves_canonical_non_cv_specification(
+    split_strategy: str,
+    test_type: SplitByType,
+    validation_type: ValSplitByType,
+    protocol: str,
+) -> None:
+    """Headless shorthand retains its real ApplicationService contract."""
+    service, _epoch = _service_with_epoch(_split_matrix_epoch_data())
+    result = service.execute(
+        SaveDatasetSplitCommand(
+            split_strategy=split_strategy,
+            training_mode="group",
+            test_ratio=0.25,
+            val_ratio=0.25,
+        ),
+        expected_publication_generation=service.get_view_publication().generation,
+    )
+
+    assert result.ok is True, result.message
+    specification = result.state.dataset.split_specification
+    assert specification["is_cross_validation"] is False
+    assert specification["test_splitters"] == [
+        {
+            "split_type": test_type.value,
+            "split_unit": SplitUnit.RATIO.value,
+            "value": "0.25",
+            "is_option": True,
+        }
+    ]
+    assert specification["val_splitters"] == [
+        {
+            "split_type": validation_type.value,
+            "split_unit": SplitUnit.RATIO.value,
+            "value": "0.25",
+            "is_option": True,
+        }
+    ]
+    canonical = DatasetGenerationCommandService.config_from_payload(specification)
+    assert DatasetGenerationCommandService._split_protocols_for_config(canonical) == {
+        "test": protocol,
+        "validation": protocol,
+    }
+
+
+@pytest.mark.parametrize(
+    ("train_type", "test_type", "validation_type", "protected_values"),
+    [
+        (
+            TrainingType.FULL,
+            SplitByType.SESSION,
+            ValSplitByType.TRIAL,
+            "session",
+        ),
+        (
+            TrainingType.FULL,
+            SplitByType.SUBJECT,
+            ValSplitByType.TRIAL,
+            "subject",
+        ),
+        (
+            TrainingType.IND,
+            SplitByType.SESSION,
+            ValSplitByType.TRIAL,
+            "session",
+        ),
+    ],
+)
+def test_real_cross_split_preview_save_and_preparation_preserve_reviewed_membership(
+    train_type: TrainingType,
+    test_type: SplitByType,
+    validation_type: ValSplitByType,
+    protected_values: str,
+) -> None:
+    """Exercise real allocation through preview, save, and deferred preparation."""
+    service, _epoch = _service_with_epoch(_split_matrix_epoch_data())
+    specification = _cross_validation_specification(
+        train_type=train_type,
+        test_type=test_type,
+        validation_type=validation_type,
+    )
+    generation = service.get_view_publication().generation
+    preview = service.get_dataset_split_preview(
+        DatasetSplitPreviewRequest(
+            request_id=f"{train_type.value}-{test_type.value}-preview",
+            publication_generation=generation,
+            specification=specification,
+        )
+    )
+
+    saved = service.execute(
+        SaveDatasetSplitCommand(
+            split_config=specification.to_payload(),
+            preview_receipt=preview.receipt,
+        ),
+        expected_publication_generation=generation,
+    )
+    candidate = service.dataset_generation.prepare_saved_split_candidate()
+
+    assert saved.ok is True, saved.message
+    assert candidate.summary["audit"]["ok"] is True
+    assert service.study.datasets == []
+    assert service.get_state().dataset.split_materialized is False
+    assert {
+        row.name: (row.train_count, row.validation_count, row.test_count)
+        for row in preview.rows
+    } == {
+        str(dataset.get_name()): (
+            int(np.count_nonzero(dataset.train_mask)),
+            int(np.count_nonzero(dataset.val_mask)),
+            int(np.count_nonzero(dataset.test_mask)),
+        )
+        for dataset in candidate.datasets
+    }
+    for dataset in candidate.datasets:
+        epoch_data = dataset.get_epoch_data()
+        assert not np.any(dataset.train_mask & dataset.val_mask)
+        assert not np.any(dataset.train_mask & dataset.test_mask)
+        assert not np.any(dataset.val_mask & dataset.test_mask)
+        assert set(epoch_data.label[dataset.train_mask].tolist()) == {0, 1}
+        values = getattr(epoch_data, protected_values)
+        test_values = set(values[dataset.test_mask].tolist())
+        assert not test_values & set(values[dataset.train_mask].tolist())
+        assert not test_values & set(values[dataset.val_mask].tolist())
+
+
+def test_individual_subject_split_is_rejected_by_preview_without_publication() -> None:
+    """The public preview rejects unsupported Individual subject allocation."""
+    service, _epoch = _service_with_epoch(_split_matrix_epoch_data())
+    specification = _cross_validation_specification(
+        train_type=TrainingType.IND,
+        test_type=SplitByType.SUBJECT,
+        validation_type=ValSplitByType.TRIAL,
+    )
+    generation = service.get_view_publication().generation
+    with pytest.raises(
+        PreconditionError,
+        match="Individual training does not support By Subject splits",
+    ):
+        service.get_dataset_split_preview(
+            DatasetSplitPreviewRequest(
+                request_id="individual-subject-preview",
+                publication_generation=generation,
+                specification=specification,
+            )
+        )
+
+    assert service.study.datasets == []
+    state = service.get_state().dataset
+    assert state.split_spec_saved is False
+    assert state.split_materialized is False
 
 
 def test_mixed_trial_provenance_is_rejected_by_preview_and_unreviewed_prepare() -> None:
