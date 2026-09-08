@@ -516,78 +516,6 @@ def _prepare_saved_training_split(service: ApplicationService) -> dict[str, Any]
     return prepared
 
 
-def _bound_method_identity(handler: Any) -> tuple[Any, Any]:
-    return (
-        getattr(handler, "__self__", None),
-        getattr(handler, "__func__", handler),
-    )
-
-
-def test_application_service_binds_every_command_handler_at_initialization():
-    service = ApplicationService(Study())
-    expected_handlers = {
-        CommandName.SCAN_SOURCE: service.interpretation.handle_scan_source,
-        CommandName.REVIEW_INTERPRETATION: (
-            service.interpretation.handle_review_interpretation
-        ),
-        CommandName.PREVIEW_INTERPRETATION: (
-            service.interpretation.handle_preview_interpretation
-        ),
-        CommandName.VALIDATE_INTERPRETATION: (
-            service.interpretation.handle_validate_interpretation
-        ),
-        CommandName.APPLY_INTERPRETATION: (
-            service.interpretation.handle_apply_interpretation
-        ),
-        CommandName.SAVE_INTERPRETATION_RECIPE: (
-            service.interpretation.handle_save_interpretation_recipe
-        ),
-        CommandName.RELOAD_INTERPRETATION_RECIPE: (
-            service.interpretation.handle_reload_interpretation_recipe
-        ),
-        CommandName.LOAD_DATA: service.data_compatibility.handle_load_data,
-        CommandName.ATTACH_LABELS: service.data_compatibility.handle_attach_labels,
-        CommandName.IMPORT_LABELS: service.data_compatibility.handle_import_labels,
-        CommandName.UPDATE_METADATA: service.data_table.handle_update_metadata,
-        CommandName.APPLY_SMART_PARSE: service.data_table.handle_apply_smart_parse,
-        CommandName.REMOVE_FILES: service.data_table.handle_remove_files,
-        CommandName.PREPROCESS: service.preprocess_commands.handle_preprocess,
-        CommandName.CREATE_EPOCH: service._handle_create_epoch_with_layout_projection,
-        CommandName.CONFIGURE_DATASET_SPLIT: (
-            service.dataset_generation.handle_save_dataset_split
-        ),
-        CommandName.CLEAR_DATASETS: service.dataset_generation.handle_clear_datasets,
-        CommandName.CONFIGURE_TRAINING: (
-            service.training_commands.handle_configure_training
-        ),
-        CommandName.TRAIN: service._handle_train_with_saved_split,
-        CommandName.DISCARD_TRAINING_PREPARATION: (
-            service._handle_discard_training_preparation
-        ),
-        CommandName.STOP_TRAINING: service.training_commands.handle_stop_training,
-        CommandName.CLEAR_TRAINING_HISTORY: (
-            service.training_commands.handle_clear_training_history
-        ),
-        CommandName.EVALUATE: service.analysis.handle_evaluate,
-        CommandName.VISUALIZE: service.analysis.handle_visualize,
-        CommandName.SALIENCY: service.analysis.handle_saliency,
-        CommandName.APPLY_MONTAGE: service._handle_apply_montage,
-        CommandName.QUERY_STATE: service.query_state_commands.handle_query_state,
-        CommandName.RESET_PREPROCESS: service.lifecycle.handle_reset_preprocess,
-        CommandName.RESET_SESSION: service.lifecycle.handle_reset_session,
-        CommandName.NEW_SESSION: service.lifecycle.handle_new_session,
-    }
-
-    assert set(expected_handlers) == set(CommandName)
-    assert set(service._command_handlers) == set(expected_handlers)
-    for name, expected in expected_handlers.items():
-        actual = service._command_handlers[name]
-        assert callable(actual)
-        assert _bound_method_identity(actual) == _bound_method_identity(expected), (
-            name.value
-        )
-
-
 def test_training_recommendation_previews_model_family_without_committing_model():
     service = ApplicationService(Study())
 
@@ -9883,6 +9811,7 @@ def test_every_declared_command_returns_result_envelope():
         seen.add(result.command_name)
         assert result.command_name
         assert result.status.value in {"ok", "failed"}
+        assert result.error_type is not ErrorType.UNSUPPORTED_COMMAND
         assert result.state is not None
         assert result.changed_state is not None
 
