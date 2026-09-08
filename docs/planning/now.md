@@ -23,14 +23,16 @@
   Scope: the two existing backend owners and their directly affected tests only; no API, data,
   Assistant, cancellation, or visible-UI behavior change and no new owner/module/compatibility
   path.  The retained explicit command boundary remains authoritative.
-- UI confirmation status: pending.  #127 and #129 contain `XBrainLab/ui/` changes.  They are
-  staged for caller/behavior review but must not be integrated or edited until the user explicitly
-  confirms that internal UI-file cleanup preserving the current presentation is authorized.
-- Repair steps: cherry-pick the two isolated source commits, compare the merged caller graph to
-  `main`, run their focused backend tests plus Ruff, then commit the exact consolidation.  Rebase
-  or resolve only direct integration conflicts; stop for a changed public contract, a real caller,
-  or a UI decision.  After this slice, resume the whole-project inventory by workflow and persist
-  each later bounded slice here before editing.
+- UI confirmation status: granted 2026-09-08.  The user explicitly authorizes internal
+  `XBrainLab/ui/` deletion/consolidation that preserves visible presentation and behavior.  Integrate
+  #127 and #129 after the same caller/behavior review; stop for any visible design, copy, layout,
+  interaction, state, or workflow change.
+- Repair steps: consolidate #126--#129, compare the merged caller graph to `main`, and run their
+  focused protections plus Ruff.  Then continue the approved whole-project inventory by each user
+  workflow and horizontal owner boundary, persist each later bounded slice here before editing, and
+  accumulate the independently reversible commits on this one candidate branch.  Rebase or resolve
+  only direct integration conflicts; stop for a changed public contract, a real caller, or a visible
+  UI decision.
 - Focused validation: the directly affected application-publication lifecycle and application
   service tests, plus changed-file Ruff.  Stop condition: both removed paths have no production,
   dynamic-registration, configuration, script, or documentation caller and the retained command
