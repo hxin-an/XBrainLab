@@ -357,12 +357,15 @@ def _raw_with_event_codes(filepath: Path, event_codes: list[int]) -> Raw:
     return raw
 
 
-def _write_reviewed_epoch_fixture(path: Path) -> None:
+def _write_reviewed_epoch_fixture(
+    path: Path,
+    channel_names: tuple[str, ...] = ("Cz",),
+) -> None:
     """Write one real FIF recording accepted by the interpretation workflow."""
     sfreq = 100.0
     raw = mne.io.RawArray(
-        np.zeros((1, 600)),
-        mne.create_info(["Cz"], sfreq=sfreq, ch_types="eeg"),
+        np.zeros((len(channel_names), 600)),
+        mne.create_info(list(channel_names), sfreq=sfreq, ch_types="eeg"),
         verbose="ERROR",
     )
     events = np.asarray(
@@ -4633,13 +4636,15 @@ def test_raw_layout_projects_after_prepared_epoch_commit_without_reordering(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "layout-before-epoch_raw.fif"
-    _write_reviewed_epoch_fixture(path)
+    _write_reviewed_epoch_fixture(path, ("C3", "Cz", "C4"))
     service = ApplicationService(Study())
     _apply_reviewed_epoch_fixture(service, path)
 
     layout = service.execute(
         ApplyMontageCommand(
-            channels=["Cz"], positions=[(0.0, 0.0, 0.08)], montage_name="manual"
+            channels=["C3", "Cz", "C4"],
+            positions=[(-0.08, 0.0, 0.0), (0.0, 0.08, 0.0), (0.08, 0.0, 0.0)],
+            montage_name="manual",
         )
     )
     created = service.execute(
@@ -4648,11 +4653,15 @@ def test_raw_layout_projects_after_prepared_epoch_commit_without_reordering(
 
     assert layout.ok is True
     assert created.ok is True
-    assert created.state.epoch.channel_names == ["Cz"]
+    assert created.state.epoch.channel_names == ["C3", "Cz", "C4"]
     epoch = service.study.epoch_data
     assert epoch is not None
-    assert epoch.get_channel_names() == ["Cz"]
-    assert epoch.channel_position == [(0.0, 0.0, 0.08)]
+    assert epoch.get_channel_names() == ["C3", "Cz", "C4"]
+    assert epoch.channel_position == [
+        (-0.08, 0.0, 0.0),
+        (0.0, 0.08, 0.0),
+        (0.08, 0.0, 0.0),
+    ]
 
 
 def test_epoch_rejects_prepare_staled_by_concurrent_mutation(
@@ -10918,13 +10927,18 @@ def test_apply_montage_trainer_allows_first_attach_then_freezes_layout() -> None
 
 def _service_with_retained_bids_layout() -> ApplicationService:
     study = Study()
-    study.data_manager.loaded_data_list = [_raw_mock()]
-    study.data_manager.epoch_data = _positive_epoch_data()
+    raw = _raw_mock()
+    raw.get_mne.return_value.ch_names = ["C3", "Cz", "C4"]
+    study.data_manager.loaded_data_list = [raw]
+    epoch = _positive_epoch_data()
+    epoch.data = np.zeros((len(epoch.label), 3, 16), dtype=np.float32)
+    epoch.ch_names = ["C3", "Cz", "C4"]
+    study.data_manager.epoch_data = epoch
     service = ApplicationService(study)
     request = BidsMontageRecordingRequest(
         recording_path="/tmp/sub-01_task-rest_eeg.fif",
-        channel_names=("C3", "C4"),
-        channel_types=("eeg", "eeg"),
+        channel_names=("C3", "Cz", "C4"),
+        channel_types=("eeg", "eeg", "eeg"),
     )
     work = service.bids_montage_preparation._lifecycle.begin((request,))
     snapshot = MontagePreparationSnapshot(
@@ -10937,7 +10951,7 @@ def _service_with_retained_bids_layout() -> ApplicationService:
                 state="ready",
                 recording_channel_names=request.channel_names,
                 channel_names=request.channel_names,
-                positions_m=((0.1, 0.0, 0.0), (-0.1, 0.0, 0.0)),
+                positions_m=((-0.1, 0.0, 0.0), (0.0, 0.1, 0.0), (0.1, 0.0, 0.0)),
                 coordinate_system="CapTrak",
                 coordinate_frame="head",
                 coordinate_units="m",
@@ -10947,7 +10961,7 @@ def _service_with_retained_bids_layout() -> ApplicationService:
         aggregate=AggregateMontageCompatibility(
             compatible=True,
             channel_names=request.channel_names,
-            positions_m=((0.1, 0.0, 0.0), (-0.1, 0.0, 0.0)),
+            positions_m=((-0.1, 0.0, 0.0), (0.0, 0.1, 0.0), (0.1, 0.0, 0.0)),
             coordinate_frame="head",
             coordinate_units="m",
         ),
@@ -10955,8 +10969,8 @@ def _service_with_retained_bids_layout() -> ApplicationService:
     assert service.bids_montage_preparation._lifecycle.publish(work, snapshot).accepted
     manual = service.execute(
         ApplyMontageCommand(
-            channels=["C3", "C4"],
-            positions=[(0.0, 0.1, 0.0), (0.0, -0.1, 0.0)],
+            channels=["C3", "Cz", "C4"],
+            positions=[(-0.1, 0.0, 0.0), (0.0, -0.1, 0.0), (0.1, 0.0, 0.0)],
             montage_name="manual",
         )
     )
@@ -10983,14 +10997,19 @@ def test_restore_bids_rejects_mixed_manual_payload_without_replacing_manual() ->
 
 def test_restore_bids_without_snapshot_preserves_manual_layout() -> None:
     study = Study()
-    study.data_manager.loaded_data_list = [_raw_mock()]
-    study.data_manager.epoch_data = _positive_epoch_data()
+    raw = _raw_mock()
+    raw.get_mne.return_value.ch_names = ["C3", "Cz", "C4"]
+    study.data_manager.loaded_data_list = [raw]
+    epoch = _positive_epoch_data()
+    epoch.data = np.zeros((len(epoch.label), 3, 16), dtype=np.float32)
+    epoch.ch_names = ["C3", "Cz", "C4"]
+    study.data_manager.epoch_data = epoch
     service = ApplicationService(study)
     try:
         assert service.execute(
             ApplyMontageCommand(
-                channels=["C3"],
-                positions=[(0.0, 0.1, 0.0)],
+                channels=["C3", "Cz", "C4"],
+                positions=[(-0.1, 0.0, 0.0), (0.0, 0.1, 0.0), (0.1, 0.0, 0.0)],
                 montage_name="manual",
             )
         ).ok
@@ -11024,10 +11043,15 @@ def test_restore_bids_publishes_retained_geometry_and_projects_it_to_epoch() -> 
         assert result.state.electrode_layout.source == "bids"
         effective = service.bids_montage_preparation.effective_montage()
         assert effective is not None
-        assert effective.positions_m == ((0.1, 0.0, 0.0), (-0.1, 0.0, 0.0))
-        assert service.study.epoch_data.channel_position == [
-            (0.1, 0.0, 0.0),
+        assert effective.positions_m == (
             (-0.1, 0.0, 0.0),
+            (0.0, 0.1, 0.0),
+            (0.1, 0.0, 0.0),
+        )
+        assert service.study.epoch_data.channel_position == [
+            (-0.1, 0.0, 0.0),
+            (0.0, 0.1, 0.0),
+            (0.1, 0.0, 0.0),
         ]
     finally:
         service.close()

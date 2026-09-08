@@ -295,6 +295,7 @@ def test_replace_layout_accepts_numpy_positions_from_the_real_picker(
     montage_positions = {
         "C3": (0.0, 0.0, 0.08),
         "C4": (0.04, 0.0, 0.08),
+        "Cz": (0.0, 0.04, 0.08),
     }
     with (
         patch(
@@ -312,7 +313,7 @@ def test_replace_layout_accepts_numpy_positions_from_the_real_picker(
     ):
         dialog = PickMontageDialog(
             sidebar,
-            ["C3", "C4"],
+            ["C3", "C4", "Cz"],
             is_bids_source=True,
             current_layout={"source": "bids", "status": "ready"},
         )
@@ -341,7 +342,7 @@ def test_replace_layout_accepts_numpy_positions_from_the_real_picker(
     state = {
         "electrode_layout": {},
         "interpretation": {"source_kind": "bids"},
-        "raw": {"channels": ["C3", "C4"]},
+        "raw": {"channels": ["C3", "C4", "Cz"]},
         "active_training": {"has_trainer": False},
     }
 
@@ -361,8 +362,12 @@ def test_replace_layout_accepts_numpy_positions_from_the_real_picker(
     assert isinstance(dispatched[0], QueryStateCommand)
     applied = dispatched[1]
     assert isinstance(applied, ApplyMontageCommand)
-    assert applied.channels == ["C3", "C4"]
-    assert applied.positions == [(0.0, 0.0, 0.08), (0.04, 0.0, 0.08)]
+    assert applied.channels == ["C3", "C4", "Cz"]
+    assert applied.positions == [
+        (0.0, 0.0, 0.08),
+        (0.04, 0.0, 0.08),
+        (0.0, 0.04, 0.08),
+    ]
 
 
 def test_bids_layout_publication_keeps_tooltip_and_notifies_once(sidebar, monkeypatch):
