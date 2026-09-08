@@ -2,25 +2,7 @@
 
 最後更新：`2026-09-08`
 
-## Active — Remove unused deferred controller subscriptions
-
-- Comprehensive cleanup bounded backend slice. Repository-wide caller search finds no consumers of
-  Study.subscribe_controller_event/unsubscribe_controller_event; only a test inspects the empty private
-  pending dictionary. Current controllers subscribe directly after creation; application publication
-  observes TrainingStateService, not this unused deferred path.
-- Outcome/scope: remove the two methods, pending dictionary, creation-time replay and orphan Callable
-  import from Study. Remove only the obsolete private-dictionary assertion. Keep controller caching,
-  locking, direct subscriptions and application lifecycle ownership unchanged; owners before/after equal.
-- Steps: passing focused lifecycle/Study/controller baseline, deletion, identical tests and Ruff,
-  independent caller/lifecycle review, then same-head applicable CI. No replacement abstraction or API.
-- Non-goals: no controller retirement, state-property migration, command dispatch rewrite, UI change,
-  logger changes or performance claims. Rollback is this isolated diff via Git, not retained dead code.
-- Stop condition: existing service observer ordering and lazy controller behavior remain proven and
-  no dangling callers remain. Product-source manual acceptance/merge rules still apply.
-- UI confirmation: not applicable; this slice changes no UI file or visible behavior.
-- Broader cleanup continues in independent UI and test-only branches; shared findings remain below.
-
-### Starting candidates and retained findings
+## Next — Bounded workflow cleanup after obsolete-tool retirement
 
 Montage/saliency #123 has merged. The first script-cleanup slice removes orphaned/retired tooling
 without changing product behavior or gate coverage; Git/PR owns its review, checks and merge status.
