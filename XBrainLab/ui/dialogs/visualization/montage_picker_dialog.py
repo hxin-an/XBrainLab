@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from XBrainLab.backend.application.montage_capability import montage_layout_issues
 from XBrainLab.backend.utils.mne_helper import (
     get_builtin_montages,
     get_montage_channel_positions,
@@ -145,6 +146,7 @@ class PickMontageDialog(BaseDialog):
         self.electrode_names = None
         self.montage_channels = []
         self.montage_list: list = []
+        self._montage_positions: dict[str, object] = {}
         self._safe_mapping_by_montage: dict[str, dict[str, str]] = {}
 
         # Settings for persistence
@@ -275,6 +277,10 @@ class PickMontageDialog(BaseDialog):
         selector_layout.addWidget(self.btn_clear)
         self.mapping_toolbar = selector_layout
         mapping_layout.addLayout(selector_layout)
+        self.mapping_status = QLabel()
+        self.mapping_status.setObjectName("MontageMappingStatus")
+        self.mapping_status.setWordWrap(True)
+        mapping_layout.addWidget(self.mapping_status)
 
         # Center: Mapping Table
         self.table = QTableWidget()
@@ -478,7 +484,8 @@ class PickMontageDialog(BaseDialog):
 
         try:
             positions = get_montage_positions(montage_name)
-            self.montage_channels = list(positions["ch_pos"].keys())
+            self._montage_positions = dict(positions["ch_pos"])
+            self.montage_channels = list(self._montage_positions)
 
             saved_mapping = self._saved_mapping_for_current_schema(montage_name)
             safe_mapping = self._safe_mapping_for_montage(montage_name)
@@ -506,7 +513,6 @@ class PickMontageDialog(BaseDialog):
                 completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
                 completer.setFilterMode(Qt.MatchFlag.MatchContains)
                 combo.setCompleter(completer)
-
                 self.table.setCellWidget(row, 1, combo)
 
                 if dataset_ch in saved_mapping:
@@ -517,6 +523,13 @@ class PickMontageDialog(BaseDialog):
                 suggested = safe_mapping.get(dataset_ch)
                 if suggested:
                     combo.setCurrentIndex(combo.findText(suggested))
+
+            # Default/saved selections are one batch, not individual user edits.
+            # Connect after population so each row cannot restyle the whole table.
+            for row in range(self.table.rowCount()):
+                combo = self.table.cellWidget(row, 1)
+                if isinstance(combo, QComboBox):
+                    combo.currentTextChanged.connect(self._sync_apply_enabled)
 
             self._resize_mapping_table_to_content()
             self._sync_apply_enabled()
@@ -544,11 +557,95 @@ class PickMontageDialog(BaseDialog):
         montage_combo = self.montage_combo
         if apply_button is None:
             return
-        apply_button.setEnabled(
+        can_apply = (
             self.layout_changes_allowed
             and montage_combo is not None
             and montage_combo.currentText() in self.montage_list
         )
+        if not can_apply:
+            self._render_mapping_issues(
+                (),
+                status=(
+                    "Select a standard layout."
+                    if self.layout_changes_allowed
+                    else "Clear training before replacing this layout."
+                ),
+            )
+            apply_button.setEnabled(False)
+            return
+        issues = self._mapping_issues()
+        self._render_mapping_issues(issues)
+        apply_button.setEnabled(can_apply and not issues)
+
+    def _mapping_issues(self) -> tuple[tuple[str | None, str], ...]:
+        """Return the shared completeness policy for the visible mapping rows."""
+        if self.table is None:
+            return ((None, "Map every selected channel before applying a layout."),)
+        selected = [str(channel) for channel in self.channel_names]
+        mapped: list[str] = []
+        electrodes: list[str] = []
+        positions: list[object] = []
+        for row, channel in enumerate(selected):
+            combo = self.table.cellWidget(row, 1)
+            electrode = combo.currentText() if isinstance(combo, QComboBox) else ""
+            if electrode:
+                mapped.append(channel)
+                electrodes.append(electrode)
+                positions.append(self._montage_positions.get(electrode, ()))
+        return montage_layout_issues(
+            selected,
+            mapped,
+            electrodes,
+            positions,
+            valid_electrodes=self.montage_channels,
+        )
+
+    def _render_mapping_issues(
+        self,
+        issues: tuple[tuple[str | None, str], ...],
+        *,
+        status: str | None = None,
+    ) -> None:
+        """Keep row feedback and the primary action aligned with shared policy."""
+        if self.table is None or self.mapping_status is None:
+            return
+        row_issues = {channel: message for channel, message in issues if channel}
+        global_issue = next(
+            (message for channel, message in issues if channel is None), None
+        )
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 0)
+            combo = self.table.cellWidget(row, 1)
+            channel = item.text() if item is not None else ""
+            issue = row_issues.get(channel)
+            row_color = Theme.BTN_WARNING_BG if issue else self._row_color(row)
+            if item is not None:
+                item.setBackground(QColor(row_color))
+                item.setToolTip(issue or "")
+            if isinstance(combo, QComboBox):
+                style = _mapping_combo_stylesheet(row_color)
+                if combo.styleSheet() != style:
+                    combo.setStyleSheet(style)
+                combo.setToolTip(issue or "")
+        if status is not None:
+            self.mapping_status.setText(status)
+            self.mapping_status.setStyleSheet(
+                f"color: {Theme.TEXT_SECONDARY}; font-size: 11px;"
+            )
+        elif not issues:
+            self.mapping_status.setText("Ready for topographic maps.")
+            self.mapping_status.setStyleSheet(
+                f"color: {Theme.TEXT_SECONDARY}; font-size: 11px;"
+            )
+        elif global_issue is not None:
+            self.mapping_status.setText(global_issue)
+            self.mapping_status.setStyleSheet(Stylesheets.DIALOG_WARNING_LABEL)
+        else:
+            count = len(row_issues)
+            self.mapping_status.setText(
+                f"{count} channel{' needs' if count == 1 else 's need'} mapping."
+            )
+            self.mapping_status.setStyleSheet(Stylesheets.DIALOG_WARNING_LABEL)
 
     def _resize_mapping_table_to_content(self) -> None:
         """Show short mappings without an empty viewport and bound long lists."""
@@ -743,6 +840,7 @@ class PickMontageDialog(BaseDialog):
                 combo.setCurrentIndex(0)
                 combo.setCurrentIndex(0)
                 combo.blockSignals(False)
+        self._sync_apply_enabled()
 
     @staticmethod
     def _row_color(row: int) -> str:
@@ -780,14 +878,12 @@ class PickMontageDialog(BaseDialog):
                 if selected_montage_ch:
                     selected_map[dataset_ch] = selected_montage_ch
 
-        if not selected_map:
-            show_warning(self, "Warning", "No channels mapped.")
-            return
-        if len(selected_map) != len(set(selected_map.values())):
+        issues = self._mapping_issues()
+        if issues:
             show_warning(
                 self,
                 "Review mapping",
-                "Each electrode can be assigned to only one dataset channel.",
+                next(message for _channel, message in issues),
             )
             return
 

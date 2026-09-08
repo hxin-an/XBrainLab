@@ -1,5 +1,6 @@
 from unittest.mock import patch
 
+from XBrainLab.backend.model_base.model_catalog import get_model_spec
 from XBrainLab.backend.training import ModelHolder
 
 
@@ -10,6 +11,10 @@ class FakeModel:
 
     def load_state_dict(self, state_dict):
         self.state_dict = state_dict
+
+
+class SignalContextModel(FakeModel):
+    __xbrainlab_accepts_signal_context__ = True
 
 
 def test_model_holder():
@@ -73,3 +78,37 @@ def test_direct_model_holder_ignores_catalog_only_channel_context():
     model = holder.get_model({"c": 3, "chs_info": [{"ch_name": "Cz"}]})
 
     assert model.kwargs == {"c": 3}
+
+
+def test_effective_model_args_matches_direct_constructor_channel_contract():
+    holder = ModelHolder(FakeModel, {})
+
+    assert holder.effective_model_args({"c": 3, "chs_info": [{"ch_name": "Cz"}]}) == {
+        "c": 3
+    }
+
+
+def test_effective_model_args_keeps_direct_consumed_channel_context():
+    holder = ModelHolder(SignalContextModel, {})
+    context = {"c": 3, "chs_info": [{"ch_name": "Cz"}]}
+
+    assert holder.effective_model_args(context) == context
+
+
+def test_effective_model_args_matches_catalog_constructor_channel_contract():
+    context = {"n_classes": 2, "channels": 2, "samples": 128, "sfreq": 128.0}
+    chs_info = [{"ch_name": "C3"}, {"ch_name": "C4"}]
+
+    non_consuming = ModelHolder(get_model_spec("braindecode.eegnet").factory, {})
+    consuming = ModelHolder(
+        get_model_spec("braindecode.interpolatedeegpt").factory,
+        {},
+    )
+
+    assert (
+        non_consuming.effective_model_args({**context, "chs_info": chs_info}) == context
+    )
+    assert consuming.effective_model_args({**context, "chs_info": chs_info}) == {
+        **context,
+        "chs_info": chs_info,
+    }

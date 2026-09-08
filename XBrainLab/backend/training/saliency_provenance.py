@@ -420,19 +420,36 @@ def _read_montage_fingerprint(
     )
     if positions is None:
         return None
-    position_array = np.asarray(positions, dtype=float)
-    if position_array.size == 0:
+    try:
+        position_rows = tuple(positions)
+    except TypeError as exc:
+        raise SaliencyContextError(
+            "Montage positions must contain one x/y/z coordinate per EEG channel."
+        ) from exc
+    if not position_rows:
         return None
-    if position_array.ndim != 2 or position_array.shape != (len(channel_names), 3):
+    if len(position_rows) != len(channel_names):
         raise SaliencyContextError(
             "Montage positions must contain one x/y/z coordinate per EEG channel."
         )
-    if not np.isfinite(position_array).all():
-        raise SaliencyContextError("Montage positions must contain finite values.")
-    payload = [
-        [name, *[float(coordinate).hex() for coordinate in position]]
-        for name, position in zip(channel_names, position_array, strict=True)
-    ]
+    payload: list[list[object]] = []
+    for name, raw_position in zip(channel_names, position_rows, strict=True):
+        if raw_position is None:
+            payload.append([name, None])
+            continue
+        try:
+            position = tuple(float(coordinate) for coordinate in raw_position)
+        except (TypeError, ValueError) as exc:
+            raise SaliencyContextError(
+                "Montage positions must contain one x/y/z coordinate per EEG channel."
+            ) from exc
+        if len(position) != 3:
+            raise SaliencyContextError(
+                "Montage positions must contain one x/y/z coordinate per EEG channel."
+            )
+        if not all(math.isfinite(coordinate) for coordinate in position):
+            raise SaliencyContextError("Montage positions must contain finite values.")
+        payload.append([name, *[coordinate.hex() for coordinate in position]])
     canonical = json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 

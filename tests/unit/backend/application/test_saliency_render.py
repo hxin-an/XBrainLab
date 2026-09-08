@@ -307,7 +307,7 @@ def test_cross_fold_saliency_keeps_appended_training_rounds_separate() -> None:
     ] == [(0, 1), (2, 3)]
 
 
-def test_bids_geometry_subsets_only_position_dependent_render_views() -> None:
+def test_bids_geometry_requires_full_coverage_without_subsetting() -> None:
     epoch_data = _EpochDataWithPartialBidsGeometry()
     record = _Record(
         (
@@ -331,6 +331,17 @@ def test_bids_geometry_subsets_only_position_dependent_render_views() -> None:
             training_boundary=boundary,
         ),
     )
+    montage = SimpleNamespace(
+        source="bids",
+        channel_names=("C3", "C4", "Cz"),
+        positions_m=(
+            (-0.04, 0.0, 0.08),
+            (0.04, 0.0, 0.08),
+            (0.0, 0.04, 0.09),
+        ),
+        supports_topographic=True,
+        supports_three_dimensional=False,
+    )
     publisher = SaliencyRenderPublisher(
         training_runtime=cast(
             TrainingRuntimePort,
@@ -341,17 +352,7 @@ def test_bids_geometry_subsets_only_position_dependent_render_views() -> None:
         ),
         get_publication=lambda: publication,
         capture_training_boundary=lambda: boundary,
-        effective_montage_provider=lambda: SimpleNamespace(
-            source="bids",
-            channel_names=("C3", "C4", "Cz"),
-            positions_m=(
-                (-0.04, 0.0, 0.08),
-                (0.04, 0.0, 0.08),
-                (0.0, 0.04, 0.09),
-            ),
-            supports_topographic=True,
-            supports_three_dimensional=False,
-        ),
+        effective_montage_provider=lambda: montage,
     )
     identity = SaliencyRunIdentity(SaliencyPlanIdentity(0), 0)
 
@@ -363,6 +364,26 @@ def test_bids_geometry_subsets_only_position_dependent_render_views() -> None:
             view="channel_time",
         )
     )
+    assert map_render.data.channel_names == ("C3", "C4", "Cz", "EOG")
+    assert map_render.data.channel_positions == ()
+    assert map_render.data.saliency_by_class[0].shape == (1, 4, 4)
+    with pytest.raises(PreconditionError, match="compatible electrode positions"):
+        publisher.publish(
+            SaliencyRenderRequest(
+                publication_generation=4,
+                run=identity,
+                method="Gradient",
+                view="topographic_map",
+            )
+        )
+
+    montage.channel_names = ("C3", "C4", "Cz", "EOG")
+    montage.positions_m = (
+        (-0.04, 0.0, 0.08),
+        (0.04, 0.0, 0.08),
+        (0.0, 0.04, 0.09),
+        (0.0, -0.04, 0.1),
+    )
     topographic_render = publisher.publish(
         SaliencyRenderRequest(
             publication_generation=4,
@@ -371,17 +392,9 @@ def test_bids_geometry_subsets_only_position_dependent_render_views() -> None:
             view="topographic_map",
         )
     )
-
-    assert map_render.data.channel_names == ("C3", "C4", "Cz", "EOG")
-    assert map_render.data.channel_positions == ()
-    assert map_render.data.saliency_by_class[0].shape == (1, 4, 4)
-    assert topographic_render.data.channel_names == ("C3", "C4", "Cz")
-    assert topographic_render.data.channel_positions == (
-        (-0.04, 0.0, 0.08),
-        (0.04, 0.0, 0.08),
-        (0.0, 0.04, 0.09),
-    )
-    assert topographic_render.data.saliency_by_class[0].shape == (1, 3, 4)
+    assert topographic_render.data.channel_names == ("C3", "C4", "Cz", "EOG")
+    assert topographic_render.data.channel_positions == montage.positions_m
+    assert topographic_render.data.saliency_by_class[0].shape == (1, 4, 4)
 
 
 @pytest.mark.parametrize(

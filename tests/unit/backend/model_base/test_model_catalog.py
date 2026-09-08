@@ -566,9 +566,16 @@ def test_braindecode_factory_contains_third_party_matplotlib_style_changes(
 
     monkeypatch.setattr(model_catalog.importlib, "import_module", import_module)
 
-    built = spec.factory(n_classes=2, channels=4, samples=128, sfreq=128.0)
+    built = spec.factory(
+        n_classes=2,
+        channels=4,
+        samples=128,
+        sfreq=128.0,
+        chs_info=[{"ch_name": "C3"}],
+    )
 
     assert built["n_outputs"] == 2
+    assert "chs_info" not in built
     assert matplotlib.rcParams["font.size"] == original_font_size
 
 

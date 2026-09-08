@@ -12,6 +12,83 @@ import numpy as np
 MontageCoordinateDimension = Literal[2, 3]
 
 
+def montage_layout_issues(
+    selected_channels: Iterable[str],
+    mapped_channels: Iterable[str],
+    electrode_names: Iterable[str],
+    positions: Iterable[Any],
+    *,
+    valid_electrodes: Iterable[str] | None = None,
+) -> tuple[tuple[str | None, str], ...]:
+    """Return row/global issues for one complete topographic channel layout.
+
+    ``Select Channels`` owns which channels are retained.  A montage therefore
+    has to cover that exact selection; it must not silently turn a partial map
+    into a different dataset geometry.
+    """
+    selected = tuple(str(channel) for channel in selected_channels)
+    mapped = tuple(str(channel) for channel in mapped_channels)
+    electrodes = tuple(str(electrode) for electrode in electrode_names)
+    coordinate_rows = tuple(positions)
+    issues: dict[str | None, str] = {}
+
+    if (
+        not selected
+        or len(set(selected)) != len(selected)
+        or any(not channel for channel in selected)
+    ):
+        return ((None, "Selected channels must be non-empty and unique."),)
+    if len(mapped) != len(electrodes) or len(mapped) != len(coordinate_rows):
+        return ((None, "Each selected channel needs one electrode position."),)
+
+    selected_set = set(selected)
+    mapped_indices: dict[str, int] = {}
+    for index, channel in enumerate(mapped):
+        if channel not in selected_set:
+            issues[None] = "Mapped channels must match the selected channels."
+            continue
+        if channel in mapped_indices:
+            issues[channel] = "Each selected channel can be mapped once."
+            continue
+        mapped_indices[channel] = index
+    for channel in selected:
+        if channel not in mapped_indices:
+            issues[channel] = "Choose an electrode."
+
+    allowed = None if valid_electrodes is None else set(valid_electrodes)
+    electrode_rows: dict[str, list[str]] = {}
+    for channel, index in mapped_indices.items():
+        electrode = electrodes[index]
+        if not electrode:
+            issues[channel] = "Choose an electrode."
+        elif allowed is not None and electrode not in allowed:
+            issues[channel] = "Choose an electrode from this layout."
+        else:
+            electrode_rows.setdefault(electrode, []).append(channel)
+    for channels in electrode_rows.values():
+        if len(channels) > 1:
+            for channel in channels:
+                issues[channel] = "Each electrode can be used once."
+
+    if issues:
+        return tuple(issues.items())
+    for channel, index in mapped_indices.items():
+        if not project_montage_geometry(
+            (coordinate_rows[index],),
+            coordinate_dimension=3,
+        ).positions:
+            issues[channel] = "This electrode position is not usable."
+    if issues:
+        return tuple(issues.items())
+    projected = project_montage_geometry(
+        coordinate_rows,
+        coordinate_dimension=3,
+    )
+    if not projected.supports_topographic:
+        return ((None, "Mapped positions do not support a topographic map."),)
+    return ()
+
+
 def montage_geometry_capabilities(
     positions: tuple[tuple[float, float, float], ...],
     *,
@@ -87,5 +164,6 @@ __all__ = [
     "MontageCoordinateDimension",
     "MontageGeometryProjection",
     "montage_geometry_capabilities",
+    "montage_layout_issues",
     "project_montage_geometry",
 ]

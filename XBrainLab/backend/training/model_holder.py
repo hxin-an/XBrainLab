@@ -78,6 +78,23 @@ class ModelHolder:
             return self.display_name
         return f"{self.display_name} ({options})"
 
+    def effective_model_args(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Select channel metadata using the model factory contract."""
+        model_args = dict(args)
+        accepts_signal_context = bool(
+            getattr(self.target_model, "__xbrainlab_accepts_signal_context__", False)
+        )
+        required_inputs = getattr(
+            self.target_model,
+            "__xbrainlab_required_signal_context_inputs__",
+            None,
+        )
+        if not accepts_signal_context or (
+            required_inputs is not None and "chs_info" not in required_inputs
+        ):
+            model_args.pop("chs_info", None)
+        return model_args
+
     def get_model(self, args) -> torch.nn.Module:
         """Instantiate the model with stored and additional parameters.
 
@@ -91,13 +108,7 @@ class ModelHolder:
             A new instance of the target model with weights loaded if applicable.
 
         """
-        model_args = dict(args)
-        if not getattr(
-            self.target_model,
-            "__xbrainlab_accepts_signal_context__",
-            False,
-        ):
-            model_args.pop("chs_info", None)
+        model_args = self.effective_model_args(args)
         model = self.target_model(**self._model_params_map, **model_args)
         if self.pretrained_weight_path:
             model.load_state_dict(

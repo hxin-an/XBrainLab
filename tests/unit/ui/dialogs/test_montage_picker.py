@@ -69,6 +69,77 @@ def dialog(qtbot, channel_names, montage_positions, monkeypatch, tmp_path):
         yield dlg
 
 
+@pytest.mark.parametrize("channel_count", [66, 128])
+def test_large_mapping_batches_style_updates_and_keeps_live_feedback(
+    qtbot, monkeypatch, tmp_path, channel_count
+):
+    from mne.channels import make_standard_montage
+
+    from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+        PickMontageDialog,
+    )
+
+    QSettings.setPath(
+        QSettings.Format.NativeFormat,
+        QSettings.Scope.UserScope,
+        str(tmp_path / "large-mapping-settings"),
+    )
+    channels = make_standard_montage("standard_1005").ch_names[:channel_count]
+    style_writes = []
+    original_set_style = QComboBox.setStyleSheet
+
+    def observe_style_write(combo, style):
+        if combo.objectName() == "MontageChannelCombo":
+            style_writes.append(style)
+        return original_set_style(combo, style)
+
+    monkeypatch.setattr(QComboBox, "setStyleSheet", observe_style_write)
+    picker = PickMontageDialog(
+        None, channels, default_montage="standard_1005", is_bids_source=True
+    )
+    qtbot.addWidget(picker)
+    # Bound real Qt styling work, not wall time or a private helper call count.
+    # Populating N rows must not repeatedly restyle every previously created row.
+    assert len(style_writes) <= channel_count * 3
+    assert picker.apply_button.isEnabled()
+
+    style_writes.clear()
+    picker.montage_combo.setCurrentText("biosemi128")
+    assert len(style_writes) <= channel_count * 3
+    assert not picker.apply_button.isEnabled()
+    style_writes.clear()
+    picker.montage_combo.setCurrentText("standard_1005")
+    assert len(style_writes) <= channel_count * 3
+    assert picker.apply_button.isEnabled()
+
+    first = picker.table.cellWidget(0, 1)
+    second = picker.table.cellWidget(1, 1)
+    original_electrode = first.currentText()
+    style_writes.clear()
+    first.setCurrentText(second.currentText())
+    assert not picker.apply_button.isEnabled()
+    assert first.toolTip()
+    assert second.toolTip()
+    assert len(style_writes) <= 2
+    first.setCurrentText(original_electrode)
+    assert picker.apply_button.isEnabled()
+    assert not first.toolTip()
+    assert not second.toolTip()
+
+    picker.clear_selections()
+    assert not picker.apply_button.isEnabled()
+    assert "mapping" in picker.mapping_status.text()
+    picker.on_montage_select("standard_1005")
+    assert picker.apply_button.isEnabled()
+    picker.accept()
+    reopened = PickMontageDialog(
+        None, channels, default_montage="standard_1005", is_bids_source=True
+    )
+    qtbot.addWidget(reopened)
+    assert reopened.apply_button.isEnabled()
+    assert reopened.table.cellWidget(0, 1).currentText() == original_electrode
+
+
 class TestPickMontageInit:
     def test_creates_dialog(self, dialog):
         assert dialog.windowTitle() == "Electrode Layout"
@@ -864,17 +935,14 @@ class TestMontageSelection:
             side_effect=lambda name: positions[name],
         ):
             picker.montage_combo.setCurrentText("candidate-a")
-        assert apply_button.isEnabled() is True
+        assert apply_button.isEnabled() is False
         combo = picker.table.cellWidget(0, 1)
         assert isinstance(combo, QComboBox)
         assert combo.currentText() == "C3"
-        with patch(
-            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_channel_positions",
-            return_value=[(0.0, 0.0, 0.0)],
-        ):
-            picker.accept()
-        assert picker.get_result() == (["C3"], [(0.0, 0.0, 0.0)])
-        assert picker.settings.value("last_montage", "") == "candidate-a"
+        assert picker.mapping_status.text() == (
+            "Mapped positions do not support a topographic map."
+        )
+        assert picker.settings.value("mapping_v2/candidate-a", {}) == before_mapping
 
     def test_non_bids_no_match_stays_unselected_and_cannot_save(
         self, qtbot, monkeypatch, tmp_path
@@ -931,28 +999,50 @@ class TestMontageSelection:
             ),
             patch(
                 "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_positions",
-                return_value={"ch_pos": {"C3": (0, 0, 0), "C4": (1, 0, 0)}},
+                return_value={
+                    "ch_pos": {
+                        "C3": (-1, 0, 0),
+                        "Cz": (0, 1, 0),
+                        "C4": (1, 0, 0),
+                    }
+                },
             ),
             patch(
                 "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_channel_positions",
-                return_value=[(0, 0, 0), (1, 0, 0)],
+                return_value=[(-1, 0, 0), (0, 1, 0), (1, 0, 0)],
             ),
         ):
-            first = PickMontageDialog(parent=None, channel_names=["C3", "C4"])
+            first = PickMontageDialog(parent=None, channel_names=["C3", "Cz", "C4"])
             qtbot.addWidget(first)
             first.table.cellWidget(0, 1).setCurrentText("C4")
-            first.table.cellWidget(1, 1).setCurrentText("C3")
+            first.table.cellWidget(1, 1).setCurrentText("Cz")
+            first.table.cellWidget(2, 1).setCurrentText("C3")
             first.accept()
-            reordered = PickMontageDialog(parent=None, channel_names=["C4", "C3"])
+            reordered = PickMontageDialog(parent=None, channel_names=["C4", "Cz", "C3"])
         qtbot.addWidget(reordered)
 
         assert reordered.table.cellWidget(0, 1).currentText() == "C4"
-        assert reordered.table.cellWidget(1, 1).currentText() == "C3"
+        assert reordered.table.cellWidget(1, 1).currentText() == "Cz"
+        assert reordered.table.cellWidget(2, 1).currentText() == "C3"
 
 
 class TestTableActions:
     def test_clear_selections(self, dialog):
         dialog.clear_selections()
+
+    def test_apply_requires_a_complete_topographic_mapping(self, dialog):
+        apply_button = dialog.button_box.button(QDialogButtonBox.StandardButton.Ok)
+        missing = dialog.table.cellWidget(0, 1)
+        assert apply_button is not None
+        assert isinstance(missing, QComboBox)
+        assert apply_button.isEnabled() is True
+
+        missing.setCurrentIndex(0)
+
+        assert apply_button.isEnabled() is False
+        assert dialog.mapping_status.text() == ("1 channel needs mapping.")
+        assert missing.toolTip() == "Choose an electrode."
+        assert dialog.table.item(0, 0).toolTip() == "Choose an electrode."
 
 
 class TestAcceptReject:
