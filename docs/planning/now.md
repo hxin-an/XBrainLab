@@ -36,7 +36,7 @@ Current phase: inventory closure and bounded implementation continue in the tabl
 order.  Do not launch a candidate or ask for manual acceptance while any row is
 partial.
 
-Active bounded slice — retire uncalled training convenience wrappers:
+Completed bounded slice — retired uncalled training convenience wrappers:
 `ApplicationService.configure_training()`, `train()`, and `stop_training()` only
 construct typed commands and delegate to `execute()`. Repository caller sweeps
 covering UI, Assistant, scripts and tests found no caller; those consumers use
@@ -45,9 +45,12 @@ convenience methods and only exclusive tests if any exist. Retain the public
 `ConfigureTrainingCommand`, `TrainCommand`, `StopTrainingCommand`, command gate,
 resource confirmation, cancellation and training runtime. Owners before/after:
 ApplicationService remains the command boundary; no owner is added. Expected
-production delta is negative. Validate direct caller sweep, the focused command
-workflow/stop lifecycle protection, Ruff, and the exact-head CI later. Stop for
-a real caller, public-contract decision, or visible UI change.
+production delta was -17 LOC. Direct caller sweep and the focused training
+command/stop-runtime suite pass (82 tests); pre-commit Ruff passes. Exact-head
+CI remains final integration evidence. A wider Windows workflow run exposed
+existing artifact-path and recipe-source failures on direct command routes; it
+does not exercise a removed wrapper and remains an inventory follow-up rather
+than evidence of this deletion.
 
 Import-to-epoch first-pass retention: Data Interpretation lifecycle exports remain
 consumed by apply, state, and command-service production paths; preprocessing render
