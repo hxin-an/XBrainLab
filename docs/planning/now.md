@@ -78,6 +78,11 @@
   reliability predicate; retain double preflight on Windows, content identity check, receipt and
   TOCTOU behavior.  No production safety/caching change.  Validate this regression on D-drive
   Windows and resume the full backend shard.
+- Active validation-repair slice: normalize the BIDS montage lifecycle fixture's retained snapshot
+  to its already-normalized request path.  Exact candidate failure is a Windows-only fixture spelling
+  mismatch (`/tmp` versus `D:\\tmp`), not product admission behavior.  Scope: expected fixture path
+  only; retain request-mismatch rejection and atomic geometry assertions.  Validate the exact test
+  on D-drive Windows before resuming the shard.
 - Parallel read-only work covers broader shared/backend/UI structure and Assistant/startup/settings/
   log/cleanup boundaries. Coordinator integrates overlap and stages later bounded source changes.
   UI authorization permits internal behavior-preserving cleanup only, not visual redesign.

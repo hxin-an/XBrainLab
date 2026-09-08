@@ -10651,13 +10651,14 @@ def test_restore_bids_rejects_partial_retained_geometry_atomically() -> None:
         channel_types=("eeg", "eeg"),
     )
     work = service.bids_montage_preparation._lifecycle.begin((request,))
+    admitted_request = work.recordings[0]
     retained = MontagePreparationSnapshot(
         state="ready",
         generation=work.generation,
-        requested_recording_paths=(request.recording_path,),
+        requested_recording_paths=(admitted_request.recording_path,),
         recordings=(
             RecordingMontagePreparation(
-                recording_path=request.recording_path,
+                recording_path=admitted_request.recording_path,
                 state="ready",
                 recording_channel_names=request.channel_names,
                 channel_names=request.channel_names,
