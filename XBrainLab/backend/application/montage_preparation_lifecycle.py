@@ -17,6 +17,7 @@ from .bids_montage_preparation import (
 from .montage_capability import (
     MontageCoordinateDimension,
     montage_geometry_capabilities,
+    montage_layout_issues,
 )
 
 
@@ -159,12 +160,27 @@ class MontagePreparationLifecycle:
                 and self._bids_restore_snapshot is not None
             )
 
-    def restore_bids(self) -> MontagePreparationSnapshot:
+    def restore_bids(
+        self,
+        selected_channels: Iterable[str],
+    ) -> MontagePreparationSnapshot:
         """Restore the already-reviewed BIDS geometry without reading sidecars again."""
         with self._lock:
             if self._manual_override is None or self._bids_restore_snapshot is None:
                 raise ValueError(
                     "No retained BIDS electrode layout is available to restore."
+                )
+            aggregate = self._bids_restore_snapshot.aggregate
+            issues = montage_layout_issues(
+                selected_channels,
+                aggregate.channel_names,
+                aggregate.channel_names,
+                aggregate.positions_m,
+            )
+            if issues:
+                raise ValueError(
+                    "Restored BIDS electrode layout must cover every selected "
+                    f"channel with unique topographic geometry. {issues[0][1]}"
                 )
             self._generation += 1
             self._manual_override = None

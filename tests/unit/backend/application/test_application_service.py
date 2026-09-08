@@ -8628,8 +8628,8 @@ def test_reconfiguring_saliency_marks_visualization_changed() -> None:
 def test_reapplying_montage_with_new_positions_marks_visualization_changed() -> None:
     class EpochWithMontage:
         def __init__(self) -> None:
-            self.ch_names = ["Cz"]
-            self.channel_position = [(0.0, 0.0, 0.0)]
+            self.ch_names = ["C3", "Cz", "C4"]
+            self.channel_position = [(-1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (1.0, 0.0, 0.0)]
 
         def set_channels(
             self,
@@ -8648,20 +8648,20 @@ def test_reapplying_montage_with_new_positions_marks_visualization_changed() -> 
     service = ApplicationService(Study())
     service.study.data_manager.epoch_data = EpochWithMontage()
     raw = _raw_mock()
-    raw.get_mne.return_value.ch_names = ["Cz"]
+    raw.get_mne.return_value.ch_names = ["C3", "Cz", "C4"]
     service.study.data_manager.loaded_data_list = [raw]
     first = service.execute(
         ApplyMontageCommand(
-            channels=["Cz"],
-            positions=[(0.0, 0.0, 0.0)],
+            channels=["C3", "Cz", "C4"],
+            positions=[(-1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (1.0, 0.0, 0.0)],
             montage_name="custom-a",
         ),
     )
 
     second = service.execute(
         ApplyMontageCommand(
-            channels=["Cz"],
-            positions=[(0.1, 0.2, 0.3)],
+            channels=["C3", "Cz", "C4"],
+            positions=[(-0.9, 0.0, 0.0), (0.0, 1.1, 0.0), (0.9, 0.0, 0.0)],
             montage_name="custom-b",
         ),
     )
@@ -8669,8 +8669,12 @@ def test_reapplying_montage_with_new_positions_marks_visualization_changed() -> 
     assert first.ok is True
     assert second.ok is True
     assert second.changed_state.visualization_changed is True
-    assert second.state.visualization.montage_channels == ["Cz"]
-    assert second.state.visualization.montage_positions == [[0.1, 0.2, 0.3]]
+    assert second.state.visualization.montage_channels == ["C3", "Cz", "C4"]
+    assert second.state.visualization.montage_positions == [
+        [-0.9, 0.0, 0.0],
+        [0.0, 1.1, 0.0],
+        [0.9, 0.0, 0.0],
+    ]
 
 
 def test_saliency_command_applies_exact_requested_params_to_authoritative_state():
@@ -10456,13 +10460,13 @@ def test_import_labels_updates_applied_interpretation_recipe_trace(tmp_path):
 def test_apply_montage_command_routes_confirmed_positions():
     service = ApplicationService(Study())
     raw = _raw_mock()
-    raw.get_mne.return_value.ch_names = ["Cz"]
+    raw.get_mne.return_value.ch_names = ["C3", "Cz", "C4"]
     service.study.data_manager.loaded_data_list = [raw]
 
     result = service.execute(
         ApplyMontageCommand(
-            channels=["Cz"],
-            positions=[(0.0, 0.0, 0.0)],
+            channels=["C3", "Cz", "C4"],
+            positions=[(-1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (1.0, 0.0, 0.0)],
             montage_name="standard_1020",
         ),
     )
@@ -10471,7 +10475,7 @@ def test_apply_montage_command_routes_confirmed_positions():
     assert result.command_name == CommandName.APPLY_MONTAGE.value
     effective = service.bids_montage_preparation.effective_montage()
     assert effective is not None
-    assert effective.channel_names == ("Cz",)
+    assert effective.channel_names == ("C3", "Cz", "C4")
 
 
 @pytest.mark.parametrize(
@@ -10611,7 +10615,7 @@ def test_bids_montage_refresh_failure_retains_candidate_until_view_recovers() ->
     service.close()
 
 
-def test_apply_montage_partial_layout_preserves_epoch_channel_identity():
+def test_apply_montage_rejects_partial_layout_without_changing_epoch_identity():
     class EpochWithChannels:
         def __init__(self) -> None:
             self.channels = ["C3", "C4"]
@@ -10639,9 +10643,174 @@ def test_apply_montage_partial_layout_preserves_epoch_channel_identity():
         ),
     )
 
-    assert result.ok is True
+    assert result.failed is True
     assert epoch.channels == ["C3", "C4"]
-    assert epoch.positions == {"C3": (0.0, 0.0, 1.0)}
+    assert not hasattr(epoch, "positions")
+
+
+def test_apply_montage_rejects_partial_current_channel_mapping_atomically() -> None:
+    study = Study()
+    raw = _raw_mock()
+    raw.get_mne.return_value.ch_names = ["C3", "Cz", "C4"]
+    study.data_manager.loaded_data_list = [raw]
+    service = ApplicationService(study)
+    service.bids_montage_preparation.select_manual(
+        ManualMontageOverride(
+            name="existing",
+            channel_names=("C3",),
+            positions_m=((0.0, 0.0, 1.0),),
+            coordinate_frame="head",
+        )
+    )
+
+    result = service.execute(
+        ApplyMontageCommand(
+            channels=["C3", "Cz"],
+            electrode_names=["C3", "Cz"],
+            positions=[(-1.0, 0.0, 0.0), (0.0, 1.0, 0.0)],
+        )
+    )
+
+    assert result.failed is True
+    effective = service.bids_montage_preparation.effective_montage()
+    assert effective is not None
+    assert effective.name == "existing"
+
+
+def test_apply_montage_accepts_complete_topographic_current_channel_mapping() -> None:
+    study = Study()
+    raw = _raw_mock()
+    raw.get_mne.return_value.ch_names = ["C3", "Cz", "C4"]
+    study.data_manager.loaded_data_list = [raw]
+    service = ApplicationService(study)
+
+    result = service.execute(
+        ApplyMontageCommand(
+            channels=["C3", "Cz", "C4"],
+            electrode_names=["C3", "Cz", "C4"],
+            positions=[(-1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (1.0, 0.0, 0.0)],
+        )
+    )
+
+    assert result.ok is True
+    effective = service.bids_montage_preparation.effective_montage()
+    assert effective is not None
+    assert effective.channel_names == ("C3", "Cz", "C4")
+
+
+def test_restore_bids_rejects_partial_retained_geometry_atomically() -> None:
+    study = Study()
+    raw = _raw_mock()
+    raw.get_mne.return_value.ch_names = ["C3", "Cz", "C4"]
+    study.data_manager.loaded_data_list = [raw]
+    service = ApplicationService(study)
+    request = BidsMontageRecordingRequest(
+        recording_path="/tmp/sub-01_task-rest_eeg.fif",
+        channel_names=("C3", "Cz"),
+        channel_types=("eeg", "eeg"),
+    )
+    work = service.bids_montage_preparation._lifecycle.begin((request,))
+    retained = MontagePreparationSnapshot(
+        state="ready",
+        generation=work.generation,
+        requested_recording_paths=(request.recording_path,),
+        recordings=(
+            RecordingMontagePreparation(
+                recording_path=request.recording_path,
+                state="ready",
+                recording_channel_names=request.channel_names,
+                channel_names=request.channel_names,
+                positions_m=((-1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
+                coordinate_system="CapTrak",
+                coordinate_frame="head",
+                coordinate_units="m",
+                source_coordinate_units="m",
+            ),
+        ),
+        aggregate=AggregateMontageCompatibility(
+            compatible=True,
+            channel_names=request.channel_names,
+            positions_m=((-1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
+            coordinate_frame="head",
+            coordinate_units="m",
+        ),
+    )
+    assert service.bids_montage_preparation._lifecycle.publish(work, retained).accepted
+    assert service.execute(
+        ApplyMontageCommand(
+            channels=["C3", "Cz", "C4"],
+            electrode_names=["C3", "Cz", "C4"],
+            positions=[
+                (-1.0, 0.0, 0.0),
+                (0.0, 1.0, 0.0),
+                (1.0, 0.0, 0.0),
+            ],
+        )
+    ).ok
+    before_snapshot = service.bids_montage_preparation.snapshot()
+    before_effective = service.bids_montage_preparation.effective_montage()
+
+    result = service.execute(ApplyMontageCommand(restore_bids=True))
+
+    assert result.failed is True
+    assert service.bids_montage_preparation.snapshot() == before_snapshot
+    assert service.bids_montage_preparation.effective_montage() == before_effective
+
+
+def test_restore_bids_accepts_complete_retained_topographic_geometry() -> None:
+    study = Study()
+    raw = _raw_mock()
+    raw.get_mne.return_value.ch_names = ["C3", "Cz", "C4"]
+    study.data_manager.loaded_data_list = [raw]
+    service = ApplicationService(study)
+    request = BidsMontageRecordingRequest(
+        recording_path="/tmp/sub-01_task-rest_eeg.fif",
+        channel_names=("C3", "Cz", "C4"),
+        channel_types=("eeg", "eeg", "eeg"),
+    )
+    positions = ((-1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (1.0, 0.0, 0.0))
+    work = service.bids_montage_preparation._lifecycle.begin((request,))
+    retained = MontagePreparationSnapshot(
+        state="ready",
+        generation=work.generation,
+        requested_recording_paths=(request.recording_path,),
+        recordings=(
+            RecordingMontagePreparation(
+                recording_path=request.recording_path,
+                state="ready",
+                recording_channel_names=request.channel_names,
+                channel_names=request.channel_names,
+                positions_m=positions,
+                coordinate_system="CapTrak",
+                coordinate_frame="head",
+                coordinate_units="m",
+                source_coordinate_units="m",
+            ),
+        ),
+        aggregate=AggregateMontageCompatibility(
+            compatible=True,
+            channel_names=request.channel_names,
+            positions_m=positions,
+            coordinate_frame="head",
+            coordinate_units="m",
+        ),
+    )
+    assert service.bids_montage_preparation._lifecycle.publish(work, retained).accepted
+    assert service.execute(
+        ApplyMontageCommand(
+            channels=list(request.channel_names),
+            electrode_names=list(request.channel_names),
+            positions=list(positions),
+        )
+    ).ok
+
+    result = service.execute(ApplyMontageCommand(restore_bids=True))
+
+    assert result.ok is True
+    effective = service.bids_montage_preparation.effective_montage()
+    assert effective is not None
+    assert effective.source == "bids"
+    assert effective.channel_names == request.channel_names
 
 
 def test_apply_montage_malformed_epoch_keeps_existing_layout_atomic() -> None:
@@ -10717,18 +10886,24 @@ def test_invalid_montage_payload_preserves_existing_effective_layout(command) ->
 
 def test_apply_montage_trainer_allows_first_attach_then_freezes_layout() -> None:
     study = Study()
-    study.data_manager.loaded_data_list = [_raw_mock()]
+    raw = _raw_mock()
+    raw.get_mne.return_value.ch_names = ["C3", "Cz", "C4"]
+    study.data_manager.loaded_data_list = [raw]
     study.training_manager.trainer = Trainer([])
     service = ApplicationService(study)
     command = ApplyMontageCommand(
-        channels=["C3"], positions=[(0.0, 0.0, 0.1)], montage_name="first"
+        channels=["C3", "Cz", "C4"],
+        positions=[(-1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (1.0, 0.0, 0.0)],
+        montage_name="first",
     )
 
     first = service.execute(command)
     exact = service.execute(command)
     replacement = service.execute(
         ApplyMontageCommand(
-            channels=["C4"], positions=[(0.1, 0.0, 0.1)], montage_name="other"
+            channels=["C3", "Cz", "C4"],
+            positions=[(-0.9, 0.0, 0.0), (0.0, 1.1, 0.0), (0.9, 0.0, 0.0)],
+            montage_name="other",
         )
     )
 
@@ -10738,7 +10913,7 @@ def test_apply_montage_trainer_allows_first_attach_then_freezes_layout() -> None
     assert replacement.failed is True
     effective = service.bids_montage_preparation.effective_montage()
     assert effective is not None
-    assert effective.channel_names == ("C3",)
+    assert effective.channel_names == ("C3", "Cz", "C4")
 
 
 def _service_with_retained_bids_layout() -> ApplicationService:

@@ -1,6 +1,6 @@
 # Backend 目前架構
 
-最後更新：`2026-08-21`
+最後更新：`2026-09-08`
 
 ## 快速讀法
 
@@ -476,8 +476,9 @@ taxonomy 都以這套 Data Interpretation command sequence 作為產品資料入
   `Epochs`。layout 是 `channel → electrode → position` mapping，不能 slice 或 reorder Epoch
   channel axis。同一 import 已發布的 ready BIDS snapshot 可跨 manual override 保留並由 explicit
   restore command 回復，不重新讀 source；new import／reset 與 generation fence 會使舊 snapshot
-  失效。partial mapping 維持原 channel identity，state 標示為 `limited`；只有需要位置的 consumer
-  要求完整 coverage。
+  失效。manual apply／explicit BIDS restore 必須完整覆蓋 Select Channels 保留的 channel，
+  使用唯一有效電極且符合頭皮圖幾何條件；驗證在 mutation 前完成。匯入來源的 partial metadata
+  仍可保留，但不開放空間圖，也不在 render 時偷偷裁切 channel；3D 另須符合三維幾何條件。
 - Training terminal path 只發布 metrics。只有 explicit `SaliencyCommand`（由 visible
   `Compute Saliency` action 觸發）才建立 exact completed-run target 並排程 attribution；
   generation 或所捕捉的 result identity 不符時不得發布。資料流程變更由正式 Command API 的
@@ -502,6 +503,10 @@ taxonomy 都以這套 Data Interpretation command sequence 作為產品資料入
   masks、run/config identity 與 class/channel/window/montage metadata。未封存或不相容的結果
   不走此讀取路徑。繞過正式入口直接修改原始 EEG numeric buffer，不屬於 compute/display
   執行期間的變更偵測承諾；每次新 compute 仍建立當批來源指紋，load 仍比對完整來源。
+  ModelHolder 的有效 channel-context 選擇由 model construction 與 producer identity 共用：
+  只有實際接收 `chs_info` 的 direct／catalog factory 保留該 metadata，避免未使用座標的模型
+  在訓練後首次補上完整 montage 時被誤判為不同模型。不放寬既有 layout replacement 或
+  真正使用 channel context 的模型身分限制，也不重新背書不相容的舊 artifacts。
   Recompute 產生新 record，成功後才由原有 publication owner 替換，
   不另建 cache、revision owner 或全域唯讀 EEG 層。
 - `ModelCatalog`是model identity、provider、factory、license、task與dataset-context availability的唯一

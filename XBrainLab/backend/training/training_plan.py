@@ -245,7 +245,10 @@ def to_holder(
     return dataloader
 
 
-def _read_model_args_for_identity(epoch_data: object) -> dict:
+def _read_model_args_for_identity(
+    epoch_data: object,
+    model_holder: ModelHolder,
+) -> dict:
     """Return one isolated model input contract for artifact provenance."""
     getter = getattr(epoch_data, "get_model_args", None)
     value = getter() if callable(getter) else None
@@ -253,7 +256,7 @@ def _read_model_args_for_identity(epoch_data: object) -> dict:
         raise SaliencyContextError(
             "EEG model input contract is unavailable for saliency provenance."
         )
-    return dict(value)
+    return model_holder.effective_model_args(value)
 
 
 class Status(Enum):
@@ -1035,7 +1038,10 @@ class TrainingPlanHolder:
             **record_model_identity,
             "model_type": self._qualified_type_name(self.model_holder.target_model),
             "model_params": self.model_holder.model_params_map,
-            "input_contract": _read_model_args_for_identity(epoch_data),
+            "input_contract": _read_model_args_for_identity(
+                epoch_data,
+                self.model_holder,
+            ),
             "selected_state_fingerprint": fingerprint_saliency_model_state(
                 self._selected_evaluation_state(train_record)
             ),

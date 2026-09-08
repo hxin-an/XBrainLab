@@ -4,10 +4,13 @@ import json
 from pathlib import Path
 from typing import Any
 
+import mne
 import numpy as np
 import pytest
 import torch
 
+from XBrainLab.backend.dataset.epochs import Epochs
+from XBrainLab.backend.load_data import Raw
 from XBrainLab.backend.training import saliency_provenance
 from XBrainLab.backend.training.record.artifact_store import (
     SALIENCY_EXPORT_ARTIFACT_TYPE,
@@ -73,6 +76,24 @@ def _context(
     )
 
 
+def _real_epochs_with_channels() -> Epochs:
+    info = mne.create_info(["C3", "Cz", "EOG"], sfreq=100.0, ch_types="eeg")
+    events = np.asarray([[0, 0, 1], [60, 0, 2]], dtype=int)
+    wrapped = Raw(
+        "partial-montage-epochs.fif",
+        mne.EpochsArray(
+            np.zeros((2, 3, 51), dtype=np.float32),
+            info,
+            events=events,
+            event_id={"left": 1, "right": 2},
+            tmin=-0.2,
+            verbose="ERROR",
+        ),
+    )
+    wrapped.set_event(events, {"left": 1, "right": 2})
+    return Epochs([wrapped])
+
+
 def _record(*, context: SaliencyArtifactContext | None) -> EvalRecord:
     saliency = {
         0: np.ones((1, 2, 51), dtype=np.float32),
@@ -124,6 +145,63 @@ def test_eval_record_round_trip_preserves_saliency_identity_context(tmp_path) ->
     assert loaded_context.epoch_data_fingerprint
     assert loaded_context.producer_identity == _producer_identity()
     assert loaded_context.context_fingerprint
+
+
+def test_real_epochs_partial_montage_keeps_sealed_identity_and_validates_geometry() -> (
+    None
+):
+    epoch_data = _real_epochs_with_channels()
+    original_samples = epoch_data.get_data().copy()
+    original_channels = tuple(epoch_data.get_channel_names())
+
+    absent_context = SaliencyArtifactContext.from_epoch_data(
+        epoch_data,
+        class_count=2,
+        producer_identity=_producer_identity(),
+    )
+    assert absent_context.montage_fingerprint is None
+
+    epoch_data.set_channel_positions({"Cz": (0.0, 0.04, 0.08)})
+    partial_context = SaliencyArtifactContext.from_epoch_data(
+        epoch_data,
+        class_count=2,
+        producer_identity=_producer_identity(),
+        sealed_epoch_data_fingerprint=absent_context.epoch_data_fingerprint,
+    )
+
+    assert partial_context.montage_fingerprint
+    assert absent_context.mismatch_details(partial_context) == ()
+    np.testing.assert_array_equal(epoch_data.get_data(), original_samples)
+    assert tuple(epoch_data.get_channel_names()) == original_channels
+
+    epoch_data.set_channel_positions(
+        {
+            "C3": (-0.04, 0.0, 0.08),
+            "Cz": (0.0, 0.04, 0.08),
+            "EOG": (0.04, 0.0, 0.08),
+        }
+    )
+    full_context = SaliencyArtifactContext.from_epoch_data(
+        epoch_data,
+        class_count=2,
+        producer_identity=_producer_identity(),
+        sealed_epoch_data_fingerprint=absent_context.epoch_data_fingerprint,
+    )
+    assert (
+        full_context.montage_fingerprint
+        == (
+            "14ae71fd3143c9e7ba9ee12b20d99337b9ac2d8c9577ec5bee4eafd38577c4a6"  # pragma: allowlist secret
+        )
+    )
+    assert full_context.mismatch_details(partial_context) == ("montage",)
+
+    epoch_data.channel_position = [(-0.04, 0.0, 0.08), None, (float("nan"), 0, 0)]
+    with pytest.raises(SaliencyContextError, match="finite values"):
+        SaliencyArtifactContext.from_epoch_data(
+            epoch_data,
+            class_count=2,
+            producer_identity=_producer_identity(),
+        )
 
 
 def test_legacy_saliency_artifact_is_rejected_as_unsafe(

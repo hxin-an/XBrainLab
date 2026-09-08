@@ -692,6 +692,7 @@ def _braindecode_factory(entry: BraindecodeCatalogEntry) -> ModelFactory:
 
     build_model.__name__ = f"Braindecode{entry.class_name}"
     build_model.__xbrainlab_accepts_signal_context__ = True  # type: ignore[attr-defined]
+    build_model.__xbrainlab_required_signal_context_inputs__ = entry.required_inputs  # type: ignore[attr-defined]
     return build_model
 
 
@@ -710,6 +711,7 @@ def _legacy_braindecode_factory(entry: BraindecodeCatalogEntry) -> ModelFactory:
 
     build_model.__name__ = f"LegacyBraindecode{entry.class_name}"
     build_model.__xbrainlab_accepts_signal_context__ = True  # type: ignore[attr-defined]
+    build_model.__xbrainlab_required_signal_context_inputs__ = entry.required_inputs  # type: ignore[attr-defined]
     return build_model
 
 

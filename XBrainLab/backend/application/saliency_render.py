@@ -1174,6 +1174,13 @@ class SaliencyRenderPublisher:
         )
         if len(positions) != len(channel_names):
             positions = []
+        elif any(position is None for position in positions) and (
+            request.view not in _POSITION_DEPENDENT_VIEWS
+        ):
+            # Partial layouts retain the complete EEG channel axis.  Their
+            # geometry is not used by channel-time rendering, so do not carry
+            # incomplete coordinates into the detached render DTO.
+            positions = []
         if positions and request.view in _POSITION_DEPENDENT_VIEWS:
             geometry = project_montage_geometry(
                 positions,
@@ -1183,19 +1190,10 @@ class SaliencyRenderPublisher:
                 raise self._position_precondition_error(request.view)
             positions = list(geometry.positions)
         if not positions and request.view in _POSITION_DEPENDENT_VIEWS:
-            projection = self._automatic_montage_projection(
+            positions = self._automatic_montage_projection(
                 channel_names,
                 view=request.view,
             )
-            if projection is not None:
-                projected_names, positions, channel_indexes = projection
-                if channel_indexes != tuple(range(len(channel_names))):
-                    saliency_store = self._select_saliency_channels(
-                        saliency_store,
-                        channel_indexes,
-                        expected_channel_count=len(channel_names),
-                    )
-                    channel_names = list(projected_names)
             if not positions:
                 raise self._position_precondition_error(request.view)
         model_args = self._required_call(epoch_data, "get_model_args")
@@ -1231,14 +1229,7 @@ class SaliencyRenderPublisher:
         channel_names: list[Any],
         *,
         view: str,
-    ) -> (
-        tuple[
-            tuple[str, ...],
-            list[tuple[float, float, float]],
-            tuple[int, ...],
-        ]
-        | None
-    ):
+    ) -> list[tuple[float, float, float]] | None:
         provider = self._effective_montage_provider
         if provider is None:
             return None
@@ -1253,19 +1244,13 @@ class SaliencyRenderPublisher:
         if len(names) != len(positions) or len(set(names)) != len(names):
             return None
         by_name = dict(zip(names, positions, strict=True))
-        selected_names: list[str] = []
         ordered: list[object] = []
-        channel_indexes: list[int] = []
-        for index, channel_name in enumerate(channel_names):
+        for channel_name in channel_names:
             normalized_name = str(channel_name)
             source_position = by_name.get(normalized_name)
             if source_position is None:
-                continue
-            selected_names.append(normalized_name)
+                return None
             ordered.append(source_position)
-            channel_indexes.append(index)
-        if not selected_names:
-            return None
         raw_coordinate_dimension = getattr(montage, "coordinate_dimension", 3)
         coordinate_dimension: MontageCoordinateDimension | None
         if raw_coordinate_dimension == 2:
@@ -1296,11 +1281,7 @@ class SaliencyRenderPublisher:
             return None
         if view == "three_dimensional" and not supports_three_dimensional:
             return None
-        return (
-            tuple(selected_names),
-            list(geometry.positions),
-            tuple(channel_indexes),
-        )
+        return list(geometry.positions)
 
     @staticmethod
     def _position_precondition_error(view: str) -> PreconditionError:
@@ -1308,24 +1289,6 @@ class SaliencyRenderPublisher:
             "The selected visualization requires compatible electrode positions.",
             diagnostics={"retryable": True, "view": view},
         )
-
-    @staticmethod
-    def _select_saliency_channels(
-        saliency_store: Mapping[object, Any],
-        channel_indexes: tuple[int, ...],
-        *,
-        expected_channel_count: int,
-    ) -> dict[object, np.ndarray]:
-        selected: dict[object, np.ndarray] = {}
-        for key, raw_values in saliency_store.items():
-            values = np.asarray(raw_values)
-            if values.ndim < 2 or values.shape[1] != expected_channel_count:
-                raise PreconditionError(
-                    "Saliency channel metadata does not match the prepared montage",
-                    diagnostics={"retryable": False},
-                )
-            selected[key] = np.take(values, channel_indexes, axis=1)
-        return selected
 
     @staticmethod
     def _validated_class_map(

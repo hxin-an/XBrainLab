@@ -124,10 +124,13 @@ class BidsMontagePreparationCoordinator:
         with self._idle:
             return self._lifecycle.can_restore_bids()
 
-    def restore_bids(self) -> MontagePreparationSnapshot:
+    def restore_bids(
+        self,
+        selected_channels: Iterable[str],
+    ) -> MontagePreparationSnapshot:
         """Restore retained BIDS geometry without scheduling another sidecar read."""
         with self._idle:
-            snapshot = self._lifecycle.restore_bids()
+            snapshot = self._lifecycle.restore_bids(selected_channels)
             self._pending_work = None
             self._validation_candidate = None
             self._retry_candidate = None

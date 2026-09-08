@@ -2,20 +2,7 @@
 
 最後更新：`2026-09-08`
 
-## Active — Finish accepted logging/preprocess merges
-
-- User confirmed Windows manual tests passed for both PR #121 and #122 and explicitly authorized
-  both merges on 2026-09-08. The partial-montage saliency defect is a separate follow-up, not a
-  claim of either PR. Git/PR comments own exact source identities, checks and acceptance evidence.
-- PR #121 is merged. Integrate its already-approved changes into #122, resolving only this shared
-  planning document; verify no product edits beyond the two accepted diffs, then require all
-  applicable exact-head CI checks before merging #122. No duplicate local full suite.
-- After verified merge, remove clean merged worktrees and disposable handoff copies/probes after
-  retaining necessary failure/acceptance evidence and checking active processes. Preserve original
-  data, durable results, shared environments/caches, root dirty work and settings.json.
-- Endpoint: both approved merges and safe cleanup, then proceed to the bounded defect below.
-
-## Next — Partial montage after training blocks saliency rendering
+## Active — Complete montage mapping and post-training saliency
 
 ### Evidence and outcome
 
@@ -24,24 +11,54 @@
 - Read-only reproduction: `Epochs.set_channel_positions` preserves unmatched channels as `None`,
   while the saliency context reader assumes a complete numeric N-by-3 array. A mixed 66-entry
   layout reproduces the reported exception without changing EEG samples or channel order.
-- Restore this supported partial-layout boundary without inventing coordinates, dropping channels,
-  discarding valid results or weakening model/data/channel identity validation.
+- User approved the revised plan: Select Channels owns channel removal; manual montage must map
+  every retained channel with valid unique electrodes and support at least a topographic map.
+  Three-dimensional rendering remains subject to its stronger existing geometry requirements.
+- The directly coupled render DTO also assumes every position is iterable. Both assumptions must
+  be covered by the real sealed-result publication path, not only a context-reader unit test.
+- Start from merged main after the accepted logging/preprocess PRs and their cleanup. Their
+  acceptance does not cover this new product repair; Git/PRs retain those historical approvals.
 
 ### Scope and steps
 
-1. From merged main, add a focused failing test covering completed saliency → partial layout apply
-   → actual render preparation. Include absent, partial and complete coordinates and unchanged
-   sample/channel identity; distinguish spatial-view eligibility from non-spatial results.
-2. Trace the existing montage/context owners and remove or reconcile the conflicting assumption.
-   Prefer reuse/deletion; no new cache, receipt, owner, generic validator or broad SHA cleanup.
-3. Validate focused real-data/context/render boundaries and have an independent risk reviewer
-   check result preservation and spatial semantics. Use exact-head CI for formal handoff gates.
-4. Deliver a separate small PR and exact-source Windows manual-test build. Product merge requires
-   fresh explicit user acceptance; previous PR approvals do not authorize this repair's merge.
-- UI status: no visible layout/copy/interaction change is approved for this new slice. Keep fixes
-  in the backend if possible; request confirmation before any UI-file or visible behavior change.
-- Stop/escalate if the repair requires a new public policy for replacing already-used spatial
-  coordinates or changing channel/model input identity. Do not silently broaden the contract.
+1. Mapping worker: share validation between the existing dialog and command admission. Disable
+   Apply/Replace Layout for missing, invalid, duplicate or geometrically unsuitable mappings;
+   mark problem rows and show one concise English summary. Validate before any mutation or saved
+   settings. Apply/restore BIDS must satisfy the current selected-channel contract as well.
+2. Results worker: reconcile producer input identity with actual model constructor input selection.
+   Omit chs_info only where the existing direct/catalog construction already omits it; retain it
+   for consuming models. Preserve weight/data/class/channel/split/run checks and existing policy
+   against replacing a layout already used during training. No new compatibility layer or cache.
+3. Replace the incomplete-manual-apply happy-path regression with atomic rejection. Exercise real
+   epochs/model/sealed results: train and compute without montage, apply complete montage, then
+   render topography and eligible 3D without recomputation or data/channel changes. Remove silent
+   render-time channel subset selection. Retain missing-coordinate handling only for reachable
+   imported-data paths. Cover direct and catalog consuming/non-consuming model contracts.
+4. Independent review checks data axis, geometry and real test evidence. Reuse existing owners;
+   review complexity thresholds before expanding. Update canonical current/architecture claims
+   only where behavior changes. No broad BIDS or SHA cleanup.
+5. Open a native UI preview first for design acceptance; then focused evidence and same-head CI
+   including source-diverse/visual/platform gates. Deliver one separate PR and exact-source Windows
+   app with visible logs. Stop launch monitoring once responsive. New manual pass and explicit merge
+   approval remain required; after merge clean task artifacts while preserving durable evidence.
+- UI authorization: user approved this plan on 2026-09-08 with “Implement the plan.” Only montage
+  confirmation readiness and concise mapping feedback may change; retain layout/theme/button names.
+- Next: complete formal candidate validation, PR and exact-head CI, then open the complete Windows
+  application with visible logs for manual acceptance. User accepted the native mapping preview on
+  2026-09-08 (“我測試過了覺得可以”); this is design approval, not merge approval. Combined independent
+  review found no blocker. Preview used the current dirty-source copy, not a final PR candidate.
+  Windows window response and its initial screenshot were checked; no prolonged monitoring.
+  Real EEGNet train/Gradient → complete montage → channel/topographic/3D publication passes;
+  restoring the old producer-context policy in an isolated test process reproduces model-identity
+  rejection. Focused mapping/restore tests pass. CI and final exact-source handoff remain pending.
+- Complexity review: explicit BIDS restore also needs pre-mutation validation through its existing
+  lifecycle/coordinator, bringing production file count to ten. Reviewed implementation totals
+  +288/-112/net +176 production lines before preview-driven refinements.
+  No owner is added: command admission, montage lifecycle and model construction retain ownership.
+  Delete duplicated command validation/partial acceptance and render-time subset selection; share
+  effective constructor context. Keep one coherent montage PR because splitting these admissions
+  would leave a bypass. Prefer validation inside existing restore mutation over a new peek/rollback
+  API; pause again for scope growth or a new owner, not merely for this bounded file-count trigger.
 
 ### BIDS audit boundary
 

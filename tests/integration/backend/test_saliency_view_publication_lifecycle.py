@@ -16,6 +16,7 @@ import torch
 
 from XBrainLab.backend.application import (
     ApplicationService,
+    ApplyMontageCommand,
     QueryStateCommand,
     ResetSessionCommand,
     SaliencyCommand,
@@ -2488,6 +2489,130 @@ def test_saliency_render_rejects_a_stale_publication_generation() -> None:
     assert error.value.diagnostics["publication_generation_after"] == (
         current_publication.generation
     )
+
+
+def test_sealed_saliency_renders_after_complete_montage_apply(tmp_path: Path) -> None:
+    """A complete post-training layout enables spatial results without mutation."""
+    channel_names = ["C3", "Cz", "Pz", "Oz"]
+    info = mne.create_info(channel_names, sfreq=128.0, ch_types="eeg")
+    labels = np.tile([1, 2], 6)
+    events = np.column_stack(
+        (np.arange(len(labels)) * 200, np.zeros(len(labels), dtype=int), labels)
+    )
+    samples = np.linspace(
+        -0.2,
+        0.2,
+        num=len(labels) * len(channel_names) * 160,
+        dtype=np.float32,
+    ).reshape(len(labels), len(channel_names), 160)
+    source = Raw(
+        "complete-montage-epochs.fif",
+        mne.EpochsArray(
+            samples,
+            info,
+            events=events,
+            event_id={"left": 1, "right": 2},
+            verbose="ERROR",
+        ),
+    )
+    source.set_event(events, {"left": 1, "right": 2})
+    epoch_data = Epochs([source])
+    original_samples = epoch_data.get_data().copy()
+    dataset = Dataset(
+        epoch_data,
+        DataSplittingConfig(TrainingType.FULL, False, [], []),
+    )
+    dataset.set_name("complete-montage-saliency")
+    dataset.train_mask[:8] = True
+    dataset.val_mask[8:10] = True
+    dataset.test_mask[10:] = True
+    dataset.remaining_mask[:] = False
+    model_holder = ModelHolder(EEGNet, {"f1": 2, "f2": 4, "d": 1})
+    option = _training_option()
+    option.output_dir = str(tmp_path)
+    holder = TrainingPlanHolder(model_holder, dataset, option, {})
+    trainer = Trainer([holder])
+    trainer.job()
+    assert holder.error is None
+    record = holder.get_plans()[0]
+    assert record.is_finished()
+    holder.set_saliency_params({"_methods": ["Gradient"]})
+    sealed = record.get_saliency_eval_record()
+    assert sealed is not None
+    assert sealed.has_saliency_data()
+    assert sealed.saliency_context is not None
+    assert sealed.saliency_context.montage_fingerprint is None
+    assert set(sealed.gradient) == {0, 1}
+    assert all(
+        np.isfinite(attribution).all() and np.any(attribution)
+        for attribution in sealed.gradient.values()
+    )
+
+    study = Study()
+    study.epoch_data = epoch_data
+    study.data_manager.loaded_data_list = [source]
+    study.data_manager.preprocessed_data_list = [source]
+    study.training_manager.set_model_holder(model_holder)
+    study.training_manager.set_training_option(option)
+    study.training_manager.trainer = trainer
+    service = ApplicationService(study)
+
+    applied = service.execute(
+        ApplyMontageCommand(
+            channels=channel_names,
+            electrode_names=channel_names,
+            positions=[
+                (-0.04, 0.0, 0.08),
+                (0.0, 0.04, 0.08),
+                (0.04, 0.0, 0.04),
+                (0.0, -0.04, 0.12),
+            ],
+        )
+    )
+    assert applied.ok is True, applied.message
+    assert epoch_data.get_montage_position() == [
+        (-0.04, 0.0, 0.08),
+        (0.0, 0.04, 0.08),
+        (0.04, 0.0, 0.04),
+        (0.0, -0.04, 0.12),
+    ]
+
+    publication = service.get_view_publication()
+    render = service.get_saliency_render(_render_request(publication))
+
+    assert render.data.channel_names == tuple(channel_names)
+    assert render.data.channel_positions == tuple(epoch_data.get_montage_position())
+    np.testing.assert_array_equal(
+        render.data.saliency_by_class[0],
+        sealed.gradient[0],
+    )
+    np.testing.assert_array_equal(epoch_data.get_data(), original_samples)
+    assert tuple(epoch_data.get_channel_names()) == tuple(channel_names)
+
+    topographic = service.get_saliency_render(
+        SaliencyRenderRequest(
+            publication_generation=publication.generation,
+            run=SaliencyRunIdentity(
+                plan=SaliencyPlanIdentity(plan_index=0),
+                run_index=0,
+            ),
+            method="Gradient",
+            view="topographic_map",
+        )
+    )
+    three_dimensional = service.get_saliency_render(
+        SaliencyRenderRequest(
+            publication_generation=publication.generation,
+            run=SaliencyRunIdentity(
+                plan=SaliencyPlanIdentity(plan_index=0),
+                run_index=0,
+            ),
+            method="Gradient",
+            view="three_dimensional",
+        )
+    )
+    assert topographic.data.channel_positions == render.data.channel_positions
+    assert three_dimensional.data.channel_positions == render.data.channel_positions
 
 
 def test_saliency_render_rejects_a_commit_that_crosses_the_copy_barrier(

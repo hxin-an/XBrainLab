@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import replace
@@ -124,6 +123,7 @@ from .evaluation_render import (
 )
 from .evaluation_work import EvaluationWorkController
 from .lifecycle_service import LifecycleCommandService
+from .montage_capability import montage_layout_issues
 from .montage_preparation_lifecycle import MontagePreparationWork
 from .owned_work import (
     OwnedOperationCancelledError,
@@ -4388,6 +4388,11 @@ class ApplicationService(Observable):
                 )
             if len(set(epoch_names)) != len(epoch_names) or not channel_axis_matches:
                 raise RuntimeError("Epoch channel identity is inconsistent.")
+        current_channels = (
+            tuple(epoch_data.get_channel_names())
+            if epoch_data is not None
+            else tuple(self.get_state().raw.channels)
+        )
         if command.restore_bids:
             if (
                 command.channels
@@ -4403,7 +4408,7 @@ class ApplicationService(Observable):
                     "Clear training before replacing an electrode layout used "
                     "by model inputs."
                 )
-            snapshot = self.bids_montage_preparation.restore_bids()
+            snapshot = self.bids_montage_preparation.restore_bids(current_channels)
             self._project_effective_montage_to_epoch()
             effective = self.bids_montage_preparation.effective_montage()
             if effective is None:
@@ -4500,37 +4505,30 @@ class ApplicationService(Observable):
             )
         channels = raw_channels
         electrodes = raw_electrodes
-        if not channels or len(channels) != len(command.positions):
-            raise ValueError("Electrode layout channels and positions must align.")
-        if len(set(channels)) != len(channels) or any(not name for name in channels):
-            raise ValueError(
-                "Electrode layout channel names must be non-empty and unique."
-            )
-        if len(electrodes) != len(channels) or any(not name for name in electrodes):
-            raise ValueError("Electrode layout electrode names must be non-empty.")
-        if len(set(electrodes)) != len(electrodes):
-            raise ValueError("Electrode layout electrode names must be unique.")
-        positions: list[tuple[float, float, float]] = []
-        for position in command.positions:
-            if len(position) != 3 or not all(
-                math.isfinite(float(value)) for value in position
-            ):
-                raise ValueError(
-                    "Each electrode position must contain finite x, y, z values."
-                )
-            positions.append(
-                (float(position[0]), float(position[1]), float(position[2]))
-            )
         current = (
             tuple(self.study.epoch_data.get_channel_names())
             if self.study.epoch_data is not None
             else tuple(self.get_state().raw.channels)
         )
-        if not current or any(channel not in current for channel in channels):
+        issues = montage_layout_issues(
+            current,
+            channels,
+            electrodes,
+            command.positions,
+        )
+        if issues:
             raise ValueError(
-                "Electrode layout channels must match the current dataset."
+                "Electrode layout must cover every selected channel with unique "
+                f"topographic geometry. {issues[0][1]}"
             )
-        return channels, electrodes, tuple(positions)
+        return (
+            channels,
+            electrodes,
+            tuple(
+                (float(row[0]), float(row[1]), float(row[2]))
+                for row in command.positions
+            ),
+        )
 
     def _project_effective_montage_to_epoch(self) -> None:
         """Project coordinator geometry without modifying Epoch identity."""
