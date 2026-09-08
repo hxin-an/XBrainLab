@@ -217,21 +217,11 @@ Windows Ruff and changed-tree compilation pass. Exact-head CI remains final inte
   is removed after repository/CI/handoff/docs/configuration/test sweep found no caller or artifact
   consumer.  It was not a canonical manual-acceptance or visual regression gate; `ModalAlertDialog`,
   its component tests and all required UI evidence remain.  Reference sweep and compilation pass.
-- Active validation-repair slice: make the reviewed-import preflight count assertion platform-aware.
-  Exact main and the candidate both fail on Windows because unreliable `ctime` intentionally disables
-  safe-admission reuse; Linux safely reuses it.  Scope: test assertion only, keyed to the same
-  reliability predicate; retain double preflight on Windows, content identity check, receipt and
-  TOCTOU behavior.  No production safety/caching change.  Validate this regression on D-drive
-  Windows and resume the full backend shard.
-- Active validation-repair slice: normalize the BIDS montage lifecycle fixture's retained snapshot
-  to its already-normalized request path.  Exact candidate failure is a Windows-only fixture spelling
-  mismatch (`/tmp` versus `D:\\tmp`), not product admission behavior.  Scope: expected fixture path
-  only; retain request-mismatch rejection and atomic geometry assertions.  Validate the exact test
-  on D-drive Windows before resuming the shard.
-- Active validation-repair slice: make BIDS preview freshness fingerprint expectation respect the
-  timestamp reliability boundary.  Windows must re-fingerprint admitted content; reliable platforms
-  may reuse cached identity without a fingerprint.  Scope: assertion only; preserve bounded call
-  counts and require the Windows freshness probe rather than hiding it.
+- Completed platform-fixture repairs: reviewed-import preflight expectations now respect the
+  `ctime` reliability boundary; BIDS montage snapshots use the normalized request path; and BIDS
+  preview freshness expectations preserve the Windows re-fingerprint requirement. These test-only
+  fixes retain content identity, receipts, TOCTOU and atomic geometry protections; they do not change
+  production safety or caching policy.
 - Parallel read-only work covers broader shared/backend/UI structure and Assistant/startup/settings/
   log/cleanup boundaries. Coordinator integrates overlap and stages later bounded source changes.
   UI authorization permits internal behavior-preserving cleanup only, not visual redesign.
@@ -244,10 +234,8 @@ Windows Ruff and changed-tree compilation pass. Exact-head CI remains final inte
 - Completion: coverage assessed or explicitly limited, actionable authorized cleanup implemented,
   superseded paths physically removed, current behavior credibly protected, unused artifacts cleaned,
   remaining ownership burdens and decisions reported. Git/PR retain implementation/validation history.
-- Next: independent review and CI for the real split test slice; isolated source slices remove unrouted
-  desktop surfaces, unused Study deferred subscriptions, and unreachable generic command bindings.
-  The split tests retain real shorthand trial/session/subject coverage because Assistant/scripts still
-  use that adapter; CV split_config coverage alone is not an equivalent replacement.
+- Current next step: continue the remaining split/training, test/fixture, shared-state and dependency
+  sweeps; no manual acceptance is allowed while the inventory table has a partial row.
 
 ### Starting candidates and retained findings
 
