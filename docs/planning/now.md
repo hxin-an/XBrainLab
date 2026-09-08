@@ -59,6 +59,12 @@
   new module/owner/receipt/compatibility path.  Wizard correctness tests, public fixture/matrix and
   source-diverse data gates remain; no profiler or gate replacement was added.  The reference sweep,
   changed-tree compilation and retained test-runner routing pass.
+- Active implementation sub-slice: delete `scripts/dev/chatpanel_confirmation_driver.py` and its
+  exclusive unit test.  `describe_visible_confirmation_card` and
+  `resolve_visible_confirmation_card` have no capture workflow, CI, handoff, documentation,
+  configuration, product, or other test caller.  Scope: this isolated driver/test pair only;
+  retain product-level Assistant confirmation and cancellation coverage.  Validate reference sweep,
+  compilation and test-runner routing; stop for a non-exclusive consumer.
 - Parallel read-only work covers broader shared/backend/UI structure and Assistant/startup/settings/
   log/cleanup boundaries. Coordinator integrates overlap and stages later bounded source changes.
   UI authorization permits internal behavior-preserving cleanup only, not visual redesign.
