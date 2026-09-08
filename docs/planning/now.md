@@ -83,6 +83,10 @@
   mismatch (`/tmp` versus `D:\\tmp`), not product admission behavior.  Scope: expected fixture path
   only; retain request-mismatch rejection and atomic geometry assertions.  Validate the exact test
   on D-drive Windows before resuming the shard.
+- Active validation-repair slice: make BIDS preview freshness fingerprint expectation respect the
+  timestamp reliability boundary.  Windows must re-fingerprint admitted content; reliable platforms
+  may reuse cached identity without a fingerprint.  Scope: assertion only; preserve bounded call
+  counts and require the Windows freshness probe rather than hiding it.
 - Parallel read-only work covers broader shared/backend/UI structure and Assistant/startup/settings/
   log/cleanup boundaries. Coordinator integrates overlap and stages later bounded source changes.
   UI authorization permits internal behavior-preserving cleanup only, not visual redesign.
