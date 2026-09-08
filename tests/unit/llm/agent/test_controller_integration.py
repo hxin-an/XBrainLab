@@ -248,7 +248,6 @@ def test_delivery_setup_fault_unwinds_all_controller_turn_state(
             controller.metrics.start_turn()
             controller._begin_rag_turn()
             controller.assembler.add_context("stale RAG context")
-            controller.assembler.set_turn_authorized_command("load_data")
             controller._turn_orchestrator.admitted_command_name = "load_data"
             controller._turn_orchestrator.admitted_publication_generation = 12
             controller._turn_orchestrator.active_generation_id = 91
@@ -275,7 +274,6 @@ def test_delivery_setup_fault_unwinds_all_controller_turn_state(
     assert controller._turn_orchestrator.waiting_for_rag is False
     assert controller._turn_orchestrator.active_rag_turn_id is None
     assert controller.assembler.context_notes == []
-    assert controller.assembler._turn_authorized_command is None
     assert controller._turn_orchestrator.admitted_command_name is None
     assert controller._turn_orchestrator.admitted_publication_generation is None
     assert controller._turn_orchestrator.active_generation_id is None
@@ -330,7 +328,6 @@ def test_internal_setup_fault_unwinds_pending_metrics_and_rag_context(
     assert controller._turn_orchestrator.waiting_for_rag is False
     assert controller._turn_orchestrator.active_rag_turn_id is None
     assert controller.assembler.context_notes == []
-    assert controller.assembler._turn_authorized_command is None
     assert controller._turn_orchestrator.host_turn_id is None
     assert controller._turn_orchestrator.host_turn_generation is None
     assert controller.is_processing is False

@@ -10,6 +10,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import asdict, dataclass, field, replace
@@ -26,6 +27,7 @@ from XBrainLab.backend.application.view_publication import ApplicationViewPublic
 from XBrainLab.backend.study import Study
 from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 from XBrainLab.llm.agent.assembler import ContextAssembler, PromptToolPublication
+from XBrainLab.llm.agent.context_encoding import decode_untrusted_context
 from XBrainLab.llm.agent.controller import LLMController
 from XBrainLab.llm.agent.parser import (
     CommandParser,
@@ -33,6 +35,11 @@ from XBrainLab.llm.agent.parser import (
     ToolEnvelopeStatus,
 )
 from XBrainLab.llm.agent.pending_interaction import PendingInteractionCoordinator
+from XBrainLab.llm.agent.rag_process_lifecycle import (
+    RAG_INITIALIZATION_TIMEOUT_SECONDS,
+    RAG_RETRIEVAL_TIMEOUT_SECONDS,
+    ProcessRAGRetrieverLifecycle,
+)
 from XBrainLab.llm.agent.strict_envelope_recovery import (
     DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY,
     STRICT_ENVELOPE_EXHAUSTED_MESSAGE,
@@ -65,6 +72,7 @@ from XBrainLab.llm.core.generation import (
 )
 from XBrainLab.llm.core.model_catalog import local_model_spec
 from XBrainLab.llm.pipeline_state import STAGE_CONFIG
+from XBrainLab.llm.rag.config import RAGConfig
 from XBrainLab.llm.tools import get_all_tools
 from XBrainLab.llm.tools.application_surface import (
     ToolAvailability,
@@ -197,6 +205,174 @@ class TargetEvalScore:
     parsed_parameters: dict[str, Any] | None
     detail: str
     product_outcome: PrecisionProductOutcome | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ProductRAGContextEvidence:
+    """One evaluator retrieval observed through the product process lifecycle."""
+
+    protocol: str
+    sequence: int
+    trajectory_case_id: str
+    query: str
+    allowed_tool_names: tuple[str, ...]
+    status: str
+    error: str | None
+    context_item_ids: tuple[str, ...]
+    assembled_context_item_ids: tuple[str, ...]
+    context_sha256: str | None
+
+
+class _ProductRAGCaseMessages:
+    """Build evaluator prompts through the same bounded RAG lifecycle as product turns."""
+
+    def __init__(
+        self,
+        registry: ToolRegistry,
+        lifecycle: ProcessRAGRetrieverLifecycle,
+    ) -> None:
+        self._registry = registry
+        self._lifecycle = lifecycle
+        self._next_turn_id = 0
+        self._contexts: dict[
+            tuple[str, str, str], tuple[str, ProductRAGContextEvidence]
+        ] = {}
+
+    def messages(
+        self,
+        case: TargetEvalCase | TargetChallengeCase | PrecisionCase,
+        *,
+        recovery_messages: tuple[str, ...] = (),
+        trace_case_id: str | None = None,
+    ) -> list[dict[str, str]]:
+        context, evidence = self._context_for(case, trace_case_id=trace_case_id)
+        messages = _case_projection(
+            case,
+            self._registry,
+            recovery_messages=recovery_messages,
+            rag_context=context,
+        )[0]
+        self._record_assembled_context(case, evidence, messages)
+        return messages
+
+    def projection(
+        self,
+        case: TargetEvalCase | TargetChallengeCase | PrecisionCase,
+        *,
+        trace_case_id: str | None = None,
+    ) -> tuple[list[dict[str, str]], PromptToolPublication, ApplicationViewPublication]:
+        context, evidence = self._context_for(case, trace_case_id=trace_case_id)
+        projection = _case_projection(case, self._registry, rag_context=context)
+        self._record_assembled_context(case, evidence, projection[0])
+        return projection
+
+    def clarification_messages(
+        self,
+        case: ClarificationCase,
+        source: PrecisionCase,
+        *,
+        receipt: AssistantToolInputReceipt,
+        recovery_messages: tuple[str, ...] = (),
+        trace_case_id: str | None = None,
+    ) -> list[dict[str, str]]:
+        rag_case = PrecisionCase(
+            case_id=case.case_id,
+            user_input=case.reply,
+            workflow_stage=source.workflow_stage,
+            category="missing_parameter",
+            requested_tool=case.expected_tool,
+        )
+        context, evidence = self._context_for(rag_case, trace_case_id=trace_case_id)
+        publication = _case_application_publication(source)
+        assembler = ContextAssembler(
+            self._registry,
+            _PublicationBackedEvaluatorStudy(),
+            application_runtime=_EvaluatorApplicationRuntime(publication),
+        )
+        if context:
+            assembler.add_context(context)
+        for message in recovery_messages:
+            assembler.add_context(message)
+        messages = assembler.get_messages(
+            [
+                {"role": "assistant", "content": receipt.question},
+                {"role": "user", "content": case.reply},
+            ]
+        )
+        self._record_assembled_context(rag_case, evidence, messages)
+        return messages
+
+    def evidence_for(
+        self,
+        case: TargetEvalCase | TargetChallengeCase | PrecisionCase,
+        *,
+        trace_case_id: str | None = None,
+    ) -> ProductRAGContextEvidence:
+        _context, evidence = self._context_for(case, trace_case_id=trace_case_id)
+        return evidence
+
+    def all_evidence(self) -> list[ProductRAGContextEvidence]:
+        """Return every observed retrieval in product turn order for the report."""
+        return sorted(
+            (evidence for _context, evidence in self._contexts.values()),
+            key=lambda evidence: evidence.sequence,
+        )
+
+    def evidence_for_case(self, case_id: str) -> list[ProductRAGContextEvidence]:
+        """Return all retrievals observed for a multi-turn evaluator trajectory."""
+        return sorted(
+            (
+                evidence
+                for (_internal_case_id, _query, _trace_case_id), (
+                    _context,
+                    evidence,
+                ) in self._contexts.items()
+                if evidence.trajectory_case_id == case_id
+            ),
+            key=lambda evidence: evidence.sequence,
+        )
+
+    def _context_for(
+        self,
+        case: TargetEvalCase | TargetChallengeCase | PrecisionCase,
+        *,
+        trace_case_id: str | None = None,
+    ) -> tuple[str, ProductRAGContextEvidence]:
+        trajectory_case_id = trace_case_id or case.case_id
+        key = (case.case_id, case.user_input, trajectory_case_id)
+        cached = self._contexts.get(key)
+        if cached is not None:
+            return cached
+        assembler, _publication = _case_assembler(case, self._registry)
+        self._next_turn_id += 1
+        result = _retrieve_product_rag_context(
+            assembler,
+            case.user_input,
+            lifecycle=self._lifecycle,
+            turn_id=self._next_turn_id,
+            trajectory_case_id=trajectory_case_id,
+        )
+        self._contexts[key] = result
+        return result
+
+    def _record_assembled_context(
+        self,
+        case: TargetEvalCase | TargetChallengeCase | PrecisionCase,
+        evidence: ProductRAGContextEvidence,
+        messages: list[dict[str, str]],
+    ) -> None:
+        assembled_ids = tuple(
+            item_id
+            for message in messages
+            for item_id in _rag_item_ids(message.get("content", ""))
+        )
+        if assembled_ids == evidence.assembled_context_item_ids:
+            return
+        key = (case.case_id, case.user_input, evidence.trajectory_case_id)
+        self._contexts[key] = (
+            self._contexts[key][0],
+            replace(evidence, assembled_context_item_ids=assembled_ids),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1187,17 +1363,11 @@ def _case_application_publication(
     )
 
 
-def _case_projection(
+def _case_assembler(
     case: TargetEvalCase | TargetChallengeCase | PrecisionCase,
     registry: ToolRegistry,
-    *,
-    recovery_messages: tuple[str, ...] = (),
-) -> tuple[
-    list[dict[str, str]],
-    PromptToolPublication,
-    ApplicationViewPublication,
-]:
-    """Build one first-turn request from the product publication boundary."""
+) -> tuple[ContextAssembler, ApplicationViewPublication]:
+    """Create the production assembler against one evaluator publication fixture."""
     publication = _case_application_publication(case)
     runtime = _EvaluatorApplicationRuntime(publication)
     assembler = ContextAssembler(
@@ -1205,6 +1375,122 @@ def _case_projection(
         _PublicationBackedEvaluatorStudy(),
         application_runtime=runtime,
     )
+    return assembler, publication
+
+
+def _rag_item_ids(context: str) -> tuple[str, ...]:
+    items = decode_untrusted_context(context) or ()
+    return tuple(
+        str(item.source.id)
+        for item in items
+        if item.item_type == "rag_example" and item.source.id
+    )
+
+
+def _retrieve_product_rag_context(
+    assembler: ContextAssembler,
+    query: str,
+    *,
+    lifecycle: ProcessRAGRetrieverLifecycle,
+    turn_id: int,
+    trajectory_case_id: str,
+) -> tuple[str, ProductRAGContextEvidence]:
+    """Use the product RAG lifecycle once and retain only its returned context.
+
+    The evaluator deliberately owns no retrieval policy: allowed tools are derived
+    from the same assembler projection and the process lifecycle owns startup,
+    timeout, child termination, and retriever cleanup.
+    """
+    allowed_tool_names = tuple(sorted(assembler.rag_allowed_tool_names(query)))
+    completed = threading.Event()
+    result: dict[str, str] = {"context": "", "error": ""}
+
+    def receive(
+        callback_turn_id: int,
+        _query: str,
+        context: str,
+        error: str,
+    ) -> None:
+        if callback_turn_id != turn_id:
+            return
+        result["context"] = str(context or "")
+        result["error"] = str(error or "")
+        completed.set()
+
+    queued = lifecycle.retrieve(
+        turn_id,
+        query,
+        receive,
+        allowed_tool_names=frozenset(allowed_tool_names),
+    )
+    if not queued:
+        evidence = ProductRAGContextEvidence(
+            protocol="product_process_rag.v1",
+            sequence=turn_id,
+            trajectory_case_id=trajectory_case_id,
+            query=query,
+            allowed_tool_names=allowed_tool_names,
+            status="not_queued",
+            error="Product RAG lifecycle did not accept the request.",
+            context_item_ids=(),
+            assembled_context_item_ids=(),
+            context_sha256=None,
+        )
+        return "", evidence
+
+    wait_seconds = (
+        RAG_INITIALIZATION_TIMEOUT_SECONDS + RAG_RETRIEVAL_TIMEOUT_SECONDS + 1.0
+    )
+    if not completed.wait(wait_seconds):
+        lifecycle.cancel_retrieval(turn_id)
+        evidence = ProductRAGContextEvidence(
+            protocol="product_process_rag.v1",
+            sequence=turn_id,
+            trajectory_case_id=trajectory_case_id,
+            query=query,
+            allowed_tool_names=allowed_tool_names,
+            status="evaluator_wait_timeout",
+            error="Evaluator did not receive the bounded product RAG callback.",
+            context_item_ids=(),
+            assembled_context_item_ids=(),
+            context_sha256=None,
+        )
+        return "", evidence
+
+    error = result["error"] or None
+    context = "" if error else result["context"]
+    status = "degraded" if error else "retrieved" if context else "empty"
+    return context, ProductRAGContextEvidence(
+        protocol="product_process_rag.v1",
+        sequence=turn_id,
+        trajectory_case_id=trajectory_case_id,
+        query=query,
+        allowed_tool_names=allowed_tool_names,
+        status=status,
+        error=error,
+        context_item_ids=_rag_item_ids(context),
+        assembled_context_item_ids=(),
+        context_sha256=(
+            hashlib.sha256(context.encode("utf-8")).hexdigest() if context else None
+        ),
+    )
+
+
+def _case_projection(
+    case: TargetEvalCase | TargetChallengeCase | PrecisionCase,
+    registry: ToolRegistry,
+    *,
+    recovery_messages: tuple[str, ...] = (),
+    rag_context: str = "",
+) -> tuple[
+    list[dict[str, str]],
+    PromptToolPublication,
+    ApplicationViewPublication,
+]:
+    """Build one first-turn request from the product publication boundary."""
+    assembler, publication = _case_assembler(case, registry)
+    if rag_context:
+        assembler.add_context(rag_context)
     for message in recovery_messages:
         assembler.add_context(message)
     messages = assembler.get_messages([{"role": "user", "content": case.user_input}])
@@ -1262,6 +1548,32 @@ def build_case_messages(
         registry,
     )
     return messages
+
+
+def build_product_rag_case_messages(
+    case_id: str,
+    *,
+    lifecycle: ProcessRAGRetrieverLifecycle,
+) -> tuple[dict[str, Any], list[dict[str, str]], ProductRAGContextEvidence]:
+    """Build one first-turn evaluator/export prompt through product RAG.
+
+    Receipt continuations intentionally have no entry here: a completed receipt
+    executes at the Host boundary without another retrieval or model generation.
+    """
+    registry = target_tool_registry()
+    for case in (
+        *load_target_cases(DEFAULT_CASES),
+        *load_challenge_cases(DEFAULT_CHALLENGES),
+        *load_precision_cases(DEFAULT_PRECISION_CASES),
+    ):
+        if case.case_id != case_id:
+            continue
+        builder = _ProductRAGCaseMessages(registry, lifecycle)
+        return asdict(case), builder.messages(case), builder.evidence_for(case)
+    raise ValueError(
+        "Product-RAG prompt export supports first-turn evaluator cases only; "
+        "receipt continuations do not generate or retrieve again."
+    )
 
 
 def _build_recovery_case_messages(
@@ -1955,19 +2267,28 @@ def evaluate_case_trajectory(
     *,
     generation_recorder: GenerationTraceRecorder | None = None,
     trace_case_id: str | None = None,
+    product_rag_messages: _ProductRAGCaseMessages | None = None,
 ) -> CaseTrajectoryResult:
     """Generate and score one case through the product strict-recovery policy."""
+    trajectory_case_id = trace_case_id or case.case_id
 
     def messages(recovery: tuple[str, ...]) -> list[dict[str, str]]:
+        if product_rag_messages is not None:
+            return product_rag_messages.messages(
+                case,
+                recovery_messages=recovery,
+                trace_case_id=trajectory_case_id,
+            )
         return (
             _build_recovery_case_messages(case, registry, recovery)
             if recovery
             else build_case_messages(case, registry)
         )
 
-    _messages, prompt_publication, backend_publication = _case_projection(
-        case,
-        registry,
+    _messages, prompt_publication, backend_publication = (
+        product_rag_messages.projection(case, trace_case_id=trajectory_case_id)
+        if product_rag_messages is not None
+        else _case_projection(case, registry)
     )
     harness = _EvaluatorControllerHarness(
         registry=registry,
@@ -1989,7 +2310,7 @@ def evaluate_case_trajectory(
         ),
         generate_response=generate_response,
         generation_recorder=generation_recorder,
-        trace_case_id=trace_case_id or case.case_id,
+        trace_case_id=trajectory_case_id,
         replay_controller_response=harness.replay_controller_generation,
     )
     host_admission, product_terminal = harness.observed_controller_outcome(
@@ -2063,8 +2384,10 @@ def evaluate_clarification_trajectory(
     generate_response: Callable[[list[dict[str, str]]], str],
     generation_recorder: GenerationTraceRecorder | None = None,
     trace_case_id: str | None = None,
+    product_rag_messages: _ProductRAGCaseMessages | None = None,
 ) -> CaseTrajectoryResult:
     """Generate an admitted receipt-backed second turn through recovery policy."""
+    trajectory_case_id = trace_case_id or case.case_id
     harness = admission.harness
     receipt = harness.begin_turn(case.reply, admission.prompt_publication)
     if receipt is None:
@@ -2220,21 +2543,37 @@ def evaluate_clarification_trajectory(
             ),
         )
 
-    return replace(
-        _evaluate_trajectory(
-            workflow_stage=source.workflow_stage,
-            build_messages=lambda recovery: build_clarification_messages(
+    if product_rag_messages is not None:
+
+        def build_messages(recovery: tuple[str, ...]) -> list[dict[str, str]]:
+            return product_rag_messages.clarification_messages(
+                case,
+                source,
+                receipt=receipt,
+                recovery_messages=recovery,
+                trace_case_id=trajectory_case_id,
+            )
+
+    else:
+
+        def build_messages(recovery: tuple[str, ...]) -> list[dict[str, str]]:
+            return build_clarification_messages(
                 case,
                 source,
                 receipt=receipt,
                 registry=registry,
                 recovery_messages=recovery,
-            )[0],
+            )[0]
+
+    return replace(
+        _evaluate_trajectory(
+            workflow_stage=source.workflow_stage,
+            build_messages=build_messages,
             score_response=score,
             score_raw_model_response=raw_score,
             generate_response=generate_response,
             generation_recorder=generation_recorder,
-            trace_case_id=trace_case_id or case.case_id,
+            trace_case_id=trajectory_case_id,
             initial_turn_purpose="clarification_proposal",
             replay_controller_response=harness.replay_controller_generation,
         ),
@@ -2250,6 +2589,7 @@ def evaluate_discriminated_clarification_trajectory(
     *,
     generation_recorder: GenerationTraceRecorder | None = None,
     trace_case_id: str | None = None,
+    product_rag_messages: _ProductRAGCaseMessages | None = None,
 ) -> CaseTrajectoryResult:
     """Run the two approved multi-turn clarification trajectories."""
     if (
@@ -2281,6 +2621,7 @@ def evaluate_discriminated_clarification_trajectory(
         generate_response,
         generation_recorder=generation_recorder,
         trace_case_id=trace_case_id,
+        product_rag_messages=product_rag_messages,
     )
     first_envelope = CommandParser.parse_product(first_trajectory.final_response)
     if case.trajectory_kind == "generic_filter_selection":
@@ -2316,6 +2657,7 @@ def evaluate_discriminated_clarification_trajectory(
             generate_response,
             generation_recorder=generation_recorder,
             trace_case_id=trace_case_id,
+            product_rag_messages=product_rag_messages,
         )
         admission = admit_clarification_receipt(
             source,
@@ -2381,6 +2723,7 @@ def evaluate_discriminated_clarification_trajectory(
         generate_response=generate_response,
         generation_recorder=generation_recorder,
         trace_case_id=trace_case_id,
+        product_rag_messages=product_rag_messages,
     )
     return CaseTrajectoryResult(
         raw_score=first_trajectory.raw_score,
@@ -2708,6 +3051,8 @@ def _build_report(
     generation_trace: tuple[GenerationTraceEntry, ...]
     | list[GenerationTraceEntry] = (),
     capture_integrity: dict[str, Any] | None = None,
+    rag_protocol: dict[str, Any] | None = None,
+    rag_retrievals: list[ProductRAGContextEvidence] | None = None,
 ) -> dict[str, Any]:
     core_rows = [
         row for row in results if row.get("suite") in {"positive", "challenge"}
@@ -2941,6 +3286,8 @@ def _build_report(
             "deterministic": True,
         },
         "generation_policy": generation_policy,
+        "rag_protocol": rag_protocol,
+        "rag_retrievals": [asdict(evidence) for evidence in (rag_retrievals or [])],
         "generation_attempt_count": len(generation_trace),
         "generation_trace": [asdict(entry) for entry in generation_trace],
         "target_surface": sorted(AGENT_ACTION_CONTRACTS.model_tool_names()),
@@ -3322,6 +3669,49 @@ def _evaluation_generation_policy(config: LLMConfig) -> dict[str, Any]:
     }
 
 
+def _product_rag_protocol() -> dict[str, Any]:
+    """Identify the current product retrieval path without claiming empty is healthy."""
+    return {
+        "name": "product_process_rag.v1",
+        "lifecycle": "ProcessRAGRetrieverLifecycle",
+        "retriever": "RAGRetriever.get_similar_examples",
+        "embedding_model": RAGConfig.EMBEDDING_MODEL,
+        "embedding_revision": RAGConfig.EMBEDDING_REVISION,
+        "corpus_sha256": RAGConfig.GOLD_SET_SHA256,
+        "index_schema_version": RAGConfig.INDEX_SCHEMA_VERSION,
+        "empty_result_note": (
+            "Empty means the ready product retriever found no eligible context; "
+            "initialization and retrieval errors are reported as degraded."
+        ),
+    }
+
+
+def _clarification_rag_context(
+    *,
+    case: ClarificationCase,
+    attempts: tuple[ModelGenerationAttempt, ...],
+    product_rag_messages: _ProductRAGCaseMessages | None,
+) -> dict[str, Any]:
+    """Report all retrievals for one clarification trajectory without guessing."""
+    if product_rag_messages is None:
+        return {"protocol": "synthetic_no_rag.v1", "status": "not_requested"}
+    evidence = product_rag_messages.evidence_for_case(case.case_id)
+    if evidence:
+        return {
+            "protocol": "product_process_rag.v1",
+            "status": "observed",
+            "retrievals": [asdict(item) for item in evidence],
+        }
+    return {
+        "protocol": "product_process_rag.v1",
+        "status": (
+            "not_generated_receipt_completion"
+            if not attempts
+            else "no_retrieval_evidence"
+        ),
+    }
+
+
 def _trajectory_payload(
     attempts: tuple[ModelGenerationAttempt, ...],
     generation_recorder: GenerationTraceRecorder,
@@ -3353,6 +3743,7 @@ def run_eval(
     precision_cases: tuple[PrecisionCase, ...],
     clarification_cases: tuple[ClarificationCase, ...],
     checkpoint_path: Path | None = None,
+    product_rag: bool = False,
 ) -> dict[str, Any]:
     """Load one exact local engine and score every frozen target case."""
     selection = config.assistant_runtime_selection()
@@ -3372,6 +3763,17 @@ def run_eval(
     generation_policy = _evaluation_generation_policy(config)
     registry = target_tool_registry()
     engine = LLMEngine(config)
+    rag_lifecycle = ProcessRAGRetrieverLifecycle() if product_rag else None
+    product_rag_messages = (
+        _ProductRAGCaseMessages(registry, rag_lifecycle)
+        if rag_lifecycle is not None
+        else None
+    )
+    rag_protocol = (
+        _product_rag_protocol()
+        if product_rag_messages is not None
+        else {"name": "synthetic_no_rag.v1", "status": "historical_comparison_only"}
+    )
     capture_request = _capture_audit_request()
     checkpoint_capture_integrity = (
         {
@@ -3423,6 +3825,7 @@ def run_eval(
                 generate_from_engine,
                 generation_recorder=generation_recorder,
                 trace_case_id=case.case_id,
+                product_rag_messages=product_rag_messages,
             )
             response = trajectory.final_response
             final_responses_by_case[case.case_id] = response
@@ -3456,6 +3859,14 @@ def run_eval(
                 ),
                 "host_admission": trajectory.host_admission,
                 "product_terminal": trajectory.product_terminal,
+                "rag_context": (
+                    asdict(product_rag_messages.evidence_for(case))
+                    if product_rag_messages is not None
+                    else {
+                        "protocol": "synthetic_no_rag.v1",
+                        "status": "not_requested",
+                    }
+                ),
             }
             results.append(row)
             if checkpoint_path is not None:
@@ -3469,6 +3880,12 @@ def run_eval(
                         generation_policy=generation_policy,
                         generation_trace=generation_recorder.entries,
                         capture_integrity=checkpoint_capture_integrity,
+                        rag_protocol=rag_protocol,
+                        rag_retrievals=(
+                            product_rag_messages.all_evidence()
+                            if product_rag_messages is not None
+                            else []
+                        ),
                     ),
                 )
         precision_by_id = {case.case_id: case for case in precision_cases}
@@ -3487,6 +3904,7 @@ def run_eval(
                     generate_from_engine,
                     generation_recorder=generation_recorder,
                     trace_case_id=case.case_id,
+                    product_rag_messages=product_rag_messages,
                 )
                 score_payload = asdict(trajectory.final_score)
                 first_generation_score_payload = asdict(trajectory.raw_score)
@@ -3523,6 +3941,7 @@ def run_eval(
                         generate_response=generate_from_engine,
                         generation_recorder=generation_recorder,
                         trace_case_id=case.case_id,
+                        product_rag_messages=product_rag_messages,
                     )
                     score_payload = asdict(trajectory.final_score)
                     first_generation_score_payload = (
@@ -3580,6 +3999,11 @@ def run_eval(
                         generation_recorder,
                         case_id=case.case_id,
                     ),
+                    "rag_context": _clarification_rag_context(
+                        case=case,
+                        attempts=trajectory_attempts,
+                        product_rag_messages=product_rag_messages,
+                    ),
                 }
             )
             if checkpoint_path is not None:
@@ -3593,11 +4017,20 @@ def run_eval(
                         generation_policy=generation_policy,
                         generation_trace=generation_recorder.entries,
                         capture_integrity=checkpoint_capture_integrity,
+                        rag_protocol=rag_protocol,
+                        rag_retrievals=(
+                            product_rag_messages.all_evidence()
+                            if product_rag_messages is not None
+                            else []
+                        ),
                     ),
                 )
     finally:
         with suppress(Exception):
             engine.close()
+        if rag_lifecycle is not None:
+            with suppress(Exception):
+                rag_lifecycle.close()
 
     return _build_report(
         model_id=selection.model_id,
@@ -3611,6 +4044,12 @@ def run_eval(
             generation_recorder.entries,
             model_id=selection.model_id,
             generation_policy=generation_policy,
+        ),
+        rag_protocol=rag_protocol,
+        rag_retrievals=(
+            product_rag_messages.all_evidence()
+            if product_rag_messages is not None
+            else []
         ),
     )
 
@@ -3649,6 +4088,7 @@ def main(argv: list[str] | None = None) -> int:
                 precision_cases=precision_cases,
             ),
             checkpoint_path=args.json_out,
+            product_rag=True,
         )
         report["experiment_identity"] = _experiment_identity(
             cases_path=args.cases,

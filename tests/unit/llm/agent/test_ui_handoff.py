@@ -637,6 +637,6 @@ def test_ui_host_does_not_classify_backend_decision_boundary_strings() -> None:
 
 
 def test_prompt_context_does_not_publish_a_fake_ui_surface_action() -> None:
-    source = Path("XBrainLab/llm/agent/decision_context.py").read_text(encoding="utf-8")
+    source = Path("XBrainLab/llm/agent/assembler.py").read_text(encoding="utf-8")
 
     assert "open_existing_ui_surface" not in source

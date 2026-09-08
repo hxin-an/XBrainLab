@@ -26,8 +26,8 @@ class RAGConfig:
     EMBEDDING_ESTIMATED_DOWNLOAD_GB = 0.10
 
     GOLD_SET_SHA256 = (
-        "a4311b63165c2f4fb1c68d88c1ed8c"  # pragma: allowlist secret
-        "81ecb9ae3beb1760bf1c2e52cda57f31bc"  # pragma: allowlist secret
+        "d438791dce06ab9a5b3e60b2e8ede5"  # pragma: allowlist secret
+        "dd1ccbdbe17458ba366ce9aba6085408ab"  # pragma: allowlist secret
     )
     INDEX_SCHEMA_VERSION = 1
     VECTOR_SIZE = 384

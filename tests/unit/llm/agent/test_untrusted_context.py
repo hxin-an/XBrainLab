@@ -5,7 +5,6 @@ import tracemalloc
 import unicodedata
 from collections.abc import Mapping, Sequence
 from enum import Enum
-from unittest.mock import patch
 
 import pytest
 
@@ -18,7 +17,6 @@ from XBrainLab.llm.agent.context_encoding import (
     encode_untrusted_context,
     sanitize_untrusted_text,
 )
-from XBrainLab.llm.agent.decision_context import WorkflowDecisionContext
 from XBrainLab.llm.agent.tool_feedback import ToolRecoveryFeedback
 from XBrainLab.llm.tools.tool_registry import ToolRegistry
 
@@ -646,38 +644,20 @@ def test_context_data_is_separate_structured_source_labelled_and_sanitized() -> 
 
 
 def test_system_policy_is_invariant_to_state_and_retrieved_data() -> None:
-    first = WorkflowDecisionContext(
-        mode="step_by_step",
-        workflow_stage="No data loaded",
-        latest_user_request="Show dataset information.",
-        evidence=["first-state"],
-    )
-    second = WorkflowDecisionContext(
-        mode="step_by_step",
-        workflow_stage="Results available",
-        latest_user_request="Show dataset information.",
-        evidence=["second-state"],
-    )
     first_assembler = ContextAssembler(ToolRegistry(), Study())
     first_assembler.add_context(_rag_context(text="first-rag", example_id="gold-1"))
     second_assembler = ContextAssembler(ToolRegistry(), Study())
     second_assembler.add_context(_rag_context(text="second-rag", example_id="gold-2"))
 
-    with patch(
-        "XBrainLab.llm.agent.assembler.build_workflow_decision_context",
-        side_effect=[first, second],
-    ):
-        first_messages = first_assembler.get_messages(
-            [{"role": "user", "content": "Show dataset information."}]
-        )
-        second_messages = second_assembler.get_messages(
-            [{"role": "user", "content": "Show dataset information."}]
-        )
+    first_messages = first_assembler.get_messages(
+        [{"role": "user", "content": "Show dataset information."}]
+    )
+    second_messages = second_assembler.get_messages(
+        [{"role": "user", "content": "Show dataset information."}]
+    )
 
     assert first_messages[0] == second_messages[0]
     assert first_messages[1] != second_messages[1]
-    assert "first-state" not in first_messages[0]["content"]
-    assert "second-state" not in second_messages[0]["content"]
     assert "first-rag" not in first_messages[0]["content"]
     assert "second-rag" not in second_messages[0]["content"]
 

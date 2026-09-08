@@ -95,6 +95,27 @@ def test_gold_set_exactly_covers_every_approved_action_with_live_schemas() -> No
     assert covered == AGENT_ACTION_CONTRACTS.model_tool_names()
 
 
+def test_gold_set_has_no_cjk_or_duplicate_input_action_pairs() -> None:
+    items = json.loads(_GOLD_SET_PATH.read_text(encoding="utf-8"))
+    pairs = [
+        (
+            item["input"],
+            json.dumps(
+                item["expected_tool_calls"],
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+        )
+        for item in items
+    ]
+
+    assert all(
+        not any("\u3400" <= char <= "\u9fff" for char in item["input"])
+        for item in items
+    )
+    assert len(pairs) == len(set(pairs))
+
+
 def test_bm25_indexes_only_target_examples() -> None:
     index = BM25Index()
 

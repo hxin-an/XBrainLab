@@ -2,21 +2,62 @@
 
 最後更新：`2026-09-08`
 
-## Active — CI runner failure diagnosis (PR C)
+## Active — Assistant production-RAG baseline and prompt cleanup
 
-- Existing shard runner kills timed-out children but does not explicitly request a pre-timeout stack;
-  pytest/capture failures also skip several CI source-provenance steps. Historical debug timeout and
-  macOS -11 roots remain unproven; this slice improves evidence, not an unsupported root-cause claim.
-- Reuse stdlib/pytest fault diagnosis and current owned process cleanup. Keep exit/attestation checks
-  fail closed. No new process owner/watchdog framework, raised timeout or automatic retry.
-- Test first with real bounded child processes (hang/failure/early exit and successful cleanup), then
-  implement minimal diagnostics and always-on post-execution provenance; preserve formal CI evidence.
-  Limit edits to existing runners, directly related tests and CI diagnostic steps; no product/UI changes.
-- Parent owns PR integration/review/CI/merge and retains PR A's full continuing Assistant plan.
-  Focused tests/static evidence only locally; exact-head CI before nonblocking merge notice and cleanup.
-- PR A #117 and CI wiring/routing PR B #118 (`b30b0eda`) are merged. Preserve B's parallel quality
-  gates when integrating; do not duplicate formal regression locally. Parent owns PR integration,
-  review, CI and merge while retaining the continuing Assistant plan.
+- Candidate 9b74c9fe completed the frozen 81-case run but is not acceptable: it newly fails
+  ambiguous_en_alt, choosing a specific bandpass action for an unspecified broad goal. Positive
+  36/36 and origin 10/10 plus missing guard 5/5 remain intact; no new failure may be folded into the
+  accepted bounded set. Preserve that report and diagnose actual generated prompts before repair.
+  Controlled ablations restored the ambiguous response, but full deb9d67c newly exhausted format
+  recovery for split_before_epochs_en. Both cases had no RAG examples. Withdraw all policy wording
+  changes, including the reference-only change, and their source assertions; retain the exact accepted
+  policy and Host origin checks. The misleading rule cross-reference is a disclosed follow-up, not
+  justification to ship a new regression. English-only scope is the corpus and acceptance contract,
+  not new multilingual controls. Next: focused recovery replay, independent review, fresh exact-source
+  full comparison and CI before manual delivery. Preserve both failed reports; no relaxed scorer.
+- Original evidence: evaluator/exporter omitted ProcessRAGRetrieverLifecycle, so historical scores
+  did not certify production RAG. A versioned real-RAG baseline now precedes the semantic changes.
+  Preserve all frozen English case files, expected values and scorer.
+- First slice reuses the existing process lifecycle and assembler in evaluator/exporter only. Derive
+  allowed tools from backend publication, retain actual encoded context and degraded/empty status,
+  then capture LocalBackend's final template and budget decisions. Do not construct a second
+  retriever policy, command owner, receipt authority or synthetic successful trajectory.
+- Complexity review: evaluator-only wiring is approximately 500 added script lines across two CLI
+  consumers, justified by shared lifecycle wait/evidence, same-turn recovery reuse and real
+  clarification-turn context. It removes duplicate assembler construction, adds no product owner,
+  and is committed separately from the deletion slice. Do not split off missing trajectory coverage
+  and then claim all 81 cases used product RAG. Historical synthetic helpers remain explicitly labelled
+  no-RAG for deterministic tests, never substituted for CLI candidate evidence.
+- Inspect actual final short/medium/near-budget English prompts and existing small-model budgets;
+  only then simplify proven duplicate or misleading prompt/context structure. Separate evidence
+  wiring, behavior-preserving cleanup and semantic commits. No UI presentation changes authorized.
+- Approved deletion slice: remove only Assistant decision_context and unused turn-authorization
+  fields/methods; assembler's exact prompts and active tool/generation/blocker publication remain
+  identical before/after. Backend WorkflowProjection has live UI callers and is retained. Three
+  production files, roughly 264 lines removed, no added owner; prune tests of the removed shadow
+  while preserving real admission, untrusted-context, rollback and cancellation evidence. Rollback
+  is the isolated refactor commit, independent of the evaluator and later prompt semantics.
+- Resolve source/target RAG example-selection discrepancy from evidence before any behavior change;
+  do not silently label target prose implemented. Models/revisions, tools, schemas, permissions,
+  confirmations, one-action rule and accepted bounded limitations stay fixed.
+- Focused evidence: real lifecycle callback/error/close and projection tests, prompt export using
+  pinned local tokenizer and embedding resources, pre/post-change frozen model evaluation where
+  resources permit; independent review and exact-head applicable CI. No blanket Chinese deletion.
+- Stop at reviewed product PR and exact-source native Assistant ready for user hand testing, with
+  visible log and no prolonged monitoring. Missing resource/authority is a disclosed blocker, not
+  permission to fabricate evidence; continue unaffected work. Product merge waits for user acceptance.
+
+## CI integration
+
+- #117 guidance, #118 quality/routing and #119 runner diagnostics are merged after exact-head CI.
+  Assistant integrates their main result before freezing candidate evidence. Preserve dirty
+  root/replay work and shared environments. No product UI change is authorized by the CI slices.
+- Inspect historical debug-domain timeout and macOS native exit -11 evidence; causes remain unproven.
+  Later passes are not fixes. Select deterministic, relevant checks and reuse same-source CI evidence;
+  do not weaken gates, duplicate heavy local runs or claim fresh-agent behavior from parsing alone.
+- Outcome: L0/L1 fast local feedback, L2 same-head CI and L3 explicit dossiers; never run aggregates
+  per edit. Execute three bounded PRs: A guidance/entrypoint clarity, B Ruff/type/architecture CI wiring,
+  C runner failure diagnostics. Do not duplicate the same-head formal regression locally.
 - Review every CI job's trigger, observable protection, duplication and gaps. Remove only demonstrated
   redundancy/unneeded routing while preserving required evidence; add missing meaningful gates, not
   more checks by default. No failure hiding through skips or timeout increases.
@@ -42,9 +83,9 @@
 
 ## Following work — agreed order
 
-- Before Assistant changes, repair the existing evaluator/exporter to use production RAG lifecycle,
-  retrieval/tool filtering, assembler and local template/budget path. Current case projection bypasses
-  RAG. Establish a RAG-enabled pre-change baseline; historical no-RAG scores are not directly comparable.
+- Evaluator/exporter now reuse production RAG lifecycle, retrieval/tool filtering, assembler and local
+  template/budget paths. The pre-semantic RAG-enabled baseline is complete; historical no-RAG scores
+  are not directly comparable. Next, freeze integrated candidate source and run the final comparison.
 - Freeze model/revision, cases/scorer/denominator and tool/confirmation/publication contracts. Capture
   retrieval identity/order, inclusion/drop/failure, final prompt, raw/Host/product outcomes and latency.
   No evaluator expected answer may select examples; disclose corpus/case overlap and degraded RAG.
@@ -56,6 +97,21 @@
 - Respect the small models' current input/output budgets; assess short/medium/near-limit cases and
   optional-context removal. No context inflation or new summary model. Use focused cases during edits,
   applicable frozen bounded evidence on the final candidate, without requiring unaccepted Stable scores.
+- Pre-semantic baseline at clean fbc7311a completed all 81 cases using product-process RAG: 36/36
+  positive, 10/10 explicit origin, 5/5 missing guard, 22/24 no-action and 6/7 clarification. Failure
+  identities match the accepted bounded set; do not call this Stable. Full local captures preserve
+  raw output and final prompt. Multi-turn attribution now uses explicit trajectory identity; do not
+  rewrite the historical baseline artifact to pretend it used the corrected report path.
+- Bounded semantic slice: retain the exact validated policy wording after unsuccessful prompt
+  ablations and full recovery checks. Review each bundled Chinese example:
+  remove only duplicate tool/parameter examples; translate distinct supported parameter/view examples
+  into concise English without copying frozen case answers. Preserve all 18 tool schema coverage.
+  Update corpus identity/index invalidation and directly related tests; do not alter frozen benchmark
+  files/scorer or introduce multilingual gates. Re-run real RAG/prompt/frozen model evidence afterward.
+- RAG error boundary now propagates retrieval errors to its existing lifecycle; a not-ready child
+  fails initialization and cleans up instead of masquerading as a healthy empty retriever. Normal
+  no-match is distinct from degradation. No new owner or admission/UI change. Final evidence must
+  preserve these statuses rather than masking them as successful retrieval.
 - Independent review plus same-head applicable CI precedes the Assistant product PR/manual delivery.
   Open exact-source native app with visible log, confirm responsive, then hand over without prolonged
   monitoring. Necessary unavailable resources/new contract decisions are genuine blockers; isolate them

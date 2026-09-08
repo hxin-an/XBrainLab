@@ -220,6 +220,13 @@ Assistant candidate必須在同一clean/explained exact source依序閉合下列
    pending lifecycle。所有trajectory仍須經相同parser、schema、publication、capability與attempt policy得到
    7/7 final verified execute-boundary；receipt 收齊後必須零額外 LLM/RAG generation。raw第一發與最多兩次format recovery分開保存。這個gate不取代24/24
    precision，也不等於ToolExecutor已產生真side effect。
+   真model run使用product RAG時，evaluator必須經`ProcessRAGRetrieverLifecycle`與同一個
+   `ContextAssembler`取得allowed tools；每次retrieval記錄protocol、sequence、query、allowed tools、
+   returned／assembled item IDs、context hash與status。`empty`只表示ready product retriever沒有eligible
+   context；初始化或retrieval error必須標為`degraded`，不可把它當成empty或成功RAG。沒有product RAG的
+   歷史synthetic path一律標`synthetic_no_rag.v1`，只能作比較，不能支持product-RAG claim。developer prompt
+   dossier則以pinned tokenizer與production `LocalBackend` template／structured-decision budget輸出最終rendered
+   prompt、token count、input budget與optional-context drop；它不載入model weights，也不取代真model evidence。
 3. 真model safe E2E依normal ChatPanel路徑完成Switch Dataset → Import GUI → Select Channels →
    direct Resample；不得用debug transport或fake generator替代。
 4. 使用者在同一candidate source完成Complete Workflow、Lifecycle／Navigation、Contract Failures三份

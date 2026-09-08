@@ -28,9 +28,6 @@ from XBrainLab.llm.agent.context_encoding import (
     UntrustedContextSource,
     encode_untrusted_context,
 )
-from XBrainLab.llm.agent.decision_context import (
-    build_workflow_decision_context,
-)
 from XBrainLab.llm.agent.turn import (
     AssistantResponseContract,
 )
@@ -497,7 +494,6 @@ def test_state_card_never_projects_private_directory_path(
     assert assembler.latest_tool_publication.tool_names == frozenset(
         {"select_channels"}
     )
-    assert assembler.latest_tool_publication.authorized_command is None
 
 
 # Mock Tools
@@ -561,18 +557,6 @@ class _NamedTool(BaseTool):
         return ""
 
 
-class _ApplicationServiceStub:
-    def __init__(self, state: ApplicationStateSnapshot) -> None:
-        self._state = state
-
-    def get_view_publication(self) -> ApplicationViewPublication:
-        return ApplicationViewPublication(
-            generation=1,
-            state=self._state,
-            capabilities=build_capability_policy(self._state),
-        )
-
-
 class _ApplicationRuntimeFake:
     def __init__(self, publication: ApplicationViewPublication) -> None:
         self._publication = publication
@@ -587,28 +571,6 @@ class _ApplicationRuntimeFake:
     def execute(self, command: Command) -> CommandResult:
         del command
         raise AssertionError("prompt assembly must not execute commands")
-
-
-def test_workflow_decision_context_reads_one_atomic_publication():
-    state = _state()
-    publication = ApplicationViewPublication(
-        generation=7,
-        state=state,
-        capabilities=build_capability_policy(state),
-    )
-    service = MagicMock()
-    service.get_view_publication.return_value = publication
-
-    with patch(
-        "XBrainLab.llm.agent.decision_context.get_application_service",
-        return_value=service,
-    ):
-        context = build_workflow_decision_context(object())
-
-    service.get_view_publication.assert_called_once_with()
-    service.get_state.assert_not_called()
-    service.get_capabilities.assert_not_called()
-    assert context.workflow_stage == "No data loaded"
 
 
 def test_system_prompt_uses_exactly_one_publication_for_all_workflow_sections():
@@ -1231,23 +1193,6 @@ def test_total_model_request_is_utf8_bounded_without_truncating_policy_or_reques
     assert json.loads(messages[1]["content"])["truncated"] is True
 
 
-def test_turn_authorization_rejects_hostile_string_subclass_without_protocols() -> None:
-    class HostileCommandName(str):
-        def __bool__(self) -> bool:
-            raise AssertionError("hostile command_name.__bool__ executed")
-
-        def __str__(self) -> str:
-            raise AssertionError("hostile command_name.__str__ executed")
-
-        def strip(self, _chars=None) -> str:
-            raise AssertionError("hostile command_name.strip executed")
-
-    assembler = ContextAssembler(ToolRegistry(), Study())
-
-    with pytest.raises(TypeError, match="exact string"):
-        assembler.set_turn_authorized_command(HostileCommandName("scan_source"))
-
-
 def test_history_rejects_hostile_outer_and_message_container_protocols() -> None:
     class HostileHistory(list):
         def __iter__(self):
@@ -1530,289 +1475,6 @@ def test_assembler_context_and_history():
     assert messages[2] == {"role": "user", "content": "Hello"}
 
 
-def test_workflow_decision_context_uses_backend_state_for_next_step():
-    """The LLM should receive a compact workflow decision, not infer from chat."""
-    context = build_workflow_decision_context(
-        Study(),
-        latest_user_text="Help me prepare this dataset for training",
-        mode="continue_until_decision",
-    )
-
-    assert context.workflow_stage == "No data loaded"
-    assert context.recommended_next_step == "scan_source"
-    assert context.recommended_label == "Scan data source"
-    assert context.mode == "continue_until_decision"
-    assert "scan_source" in context.allowed_actions
-    assert context.decision_needed == ["source_path"]
-    assert "open_existing_ui_surface" not in context.allowed_actions
-
-
-@pytest.mark.parametrize(
-    (
-        "stage",
-        "active_dataset",
-        "epoch",
-        "active_training",
-        "training",
-        "evaluation",
-        "expected_label",
-        "expected_next_step",
-    ),
-    [
-        (
-            "empty",
-            ActiveDatasetSnapshot(),
-            EpochStateSnapshot(),
-            ActiveTrainingSnapshot(),
-            TrainingStateSnapshot(),
-            EvaluationStateSnapshot(),
-            "No data loaded",
-            "scan_source",
-        ),
-        (
-            "data_loaded",
-            ActiveDatasetSnapshot(has_raw_data=True),
-            EpochStateSnapshot(),
-            ActiveTrainingSnapshot(),
-            TrainingStateSnapshot(),
-            EvaluationStateSnapshot(),
-            "EEG data loaded · Ready for preprocessing or epoching",
-            None,
-        ),
-        (
-            "preprocessed",
-            ActiveDatasetSnapshot(
-                has_raw_data=True,
-                has_preprocessed_data=True,
-            ),
-            EpochStateSnapshot(),
-            ActiveTrainingSnapshot(),
-            TrainingStateSnapshot(),
-            EvaluationStateSnapshot(),
-            "Ready for EEG epoching",
-            "create_epoch",
-        ),
-        (
-            "epoch_ready",
-            ActiveDatasetSnapshot(
-                has_raw_data=True,
-                has_preprocessed_data=True,
-                has_epoch_data=True,
-            ),
-            _usable_epoch_state(),
-            ActiveTrainingSnapshot(),
-            TrainingStateSnapshot(),
-            EvaluationStateSnapshot(),
-            "Ready to configure split",
-            "configure_dataset_split",
-        ),
-        (
-            "dataset_ready",
-            ActiveDatasetSnapshot(
-                has_raw_data=True,
-                has_preprocessed_data=True,
-                has_epoch_data=True,
-                has_datasets=True,
-            ),
-            _usable_epoch_state(),
-            ActiveTrainingSnapshot(),
-            TrainingStateSnapshot(),
-            EvaluationStateSnapshot(),
-            "Dataset ready",
-            "configure_training",
-        ),
-        (
-            "training",
-            ActiveDatasetSnapshot(
-                has_raw_data=True,
-                has_preprocessed_data=True,
-                has_epoch_data=True,
-                has_datasets=True,
-            ),
-            _usable_epoch_state(),
-            ActiveTrainingSnapshot(has_trainer=True, is_running=True),
-            TrainingStateSnapshot(has_trainer=True, is_running=True),
-            EvaluationStateSnapshot(total_plans=1),
-            "Training running",
-            None,
-        ),
-        (
-            "trained",
-            ActiveDatasetSnapshot(
-                has_raw_data=True,
-                has_preprocessed_data=True,
-                has_epoch_data=True,
-                has_datasets=True,
-            ),
-            _usable_epoch_state(),
-            ActiveTrainingSnapshot(has_trainer=True),
-            TrainingStateSnapshot(has_trainer=True),
-            EvaluationStateSnapshot(
-                available=True,
-                total_plans=1,
-                total_runs=1,
-                finished_runs=1,
-                metrics_available=True,
-            ),
-            "Results available",
-            "evaluate",
-        ),
-    ],
-)
-def test_workflow_decision_context_uses_published_stage_contract(
-    stage: str,
-    active_dataset: ActiveDatasetSnapshot,
-    epoch: EpochStateSnapshot,
-    active_training: ActiveTrainingSnapshot,
-    training: TrainingStateSnapshot,
-    evaluation: EvaluationStateSnapshot,
-    expected_label: str,
-    expected_next_step: str | None,
-) -> None:
-    state = _state(
-        pipeline_stage=stage,
-        active_dataset=active_dataset,
-        epoch=epoch,
-        active_training=active_training,
-        training=training,
-        evaluation=evaluation,
-    )
-    publication = ApplicationViewPublication(
-        generation=3,
-        state=state,
-        capabilities=build_capability_policy(state),
-    )
-
-    context = build_workflow_decision_context(
-        object(),
-        publication=publication,
-    )
-
-    assert context.workflow_stage == expected_label
-    assert context.recommended_next_step == expected_next_step
-
-
-def test_workflow_decision_context_follows_data_import_lifecycle():
-    """Data Import scan/preview/validate/apply state drives the next step."""
-    state = _state(
-        interpretation=InterpretationStateSnapshot(
-            has_scan_result=True,
-            latest_scan_id="scan-001",
-            source_path="/data/sub01.gdf",
-        ),
-    )
-
-    with patch(
-        "XBrainLab.llm.agent.decision_context.get_application_service",
-        return_value=_ApplicationServiceStub(state),
-    ):
-        context = build_workflow_decision_context(
-            object(),
-            latest_user_text="continue importing",
-        )
-
-    assert context.recommended_next_step == "preview_interpretation"
-    assert context.evidence[0] == "A data source scan is ready for import preview."
-    assert context.decision_needed == []
-    assert any("scan is ready" in item for item in context.evidence)
-
-
-def test_workflow_decision_context_routes_validated_import_to_apply_boundary():
-    """Validated import candidates should stop at the apply confirmation boundary."""
-    state = _state(
-        interpretation=InterpretationStateSnapshot(
-            has_scan_result=True,
-            has_candidate=True,
-            has_validation_decision=True,
-            latest_candidate_id="candidate-001",
-            validation_decision="ready",
-        ),
-        active_dataset=ActiveDatasetSnapshot(has_raw_data=True),
-    )
-
-    with patch(
-        "XBrainLab.llm.agent.decision_context.get_application_service",
-        return_value=_ApplicationServiceStub(state),
-    ):
-        context = build_workflow_decision_context(
-            object(),
-            latest_user_text="apply it",
-            mode="continue_until_decision",
-        )
-
-    assert context.recommended_next_step == "apply_interpretation"
-    assert context.blocked_command is None
-    assert context.can_auto_continue is False
-    assert context.stop_reason == "semantic_apply"
-    assert "apply_interpretation" in context.allowed_actions
-
-
-def test_workflow_decision_context_routes_blocked_import_to_resolution_ui():
-    """A blocked import must open its editor without authorizing apply."""
-    state = _state(
-        interpretation=InterpretationStateSnapshot(
-            has_scan_result=True,
-            has_candidate=True,
-            has_validation_decision=True,
-            validation_decision="blocked",
-            blocked_reasons=["Target EEG events are required."],
-            action_items=[
-                {
-                    "issue": "Target EEG events are required.",
-                    "impact": "Labels cannot be placed safely.",
-                    "next_action": "Select target EEG events.",
-                    "target_step": "Match Labels",
-                    "severity": "blocked",
-                }
-            ],
-        ),
-    )
-    publication = ApplicationViewPublication(
-        generation=4,
-        state=state,
-        capabilities=build_capability_policy(state),
-    )
-
-    context = build_workflow_decision_context(
-        object(),
-        latest_user_text="continue importing",
-        mode="continue_until_decision",
-        publication=publication,
-    )
-
-    assert context.recommended_next_step is None
-    assert context.blocked_command == "apply_interpretation"
-    assert context.decision_needed == ["label_matching"]
-    assert context.can_auto_continue is False
-    assert context.stop_reason == "user_decision_required"
-    assert context.allowed_actions == []
-
-
-def test_applied_import_context_does_not_choose_between_preprocess_and_epoch():
-    """Raw data leaves preprocessing versus epoching as the user's next choice."""
-    state = _state(
-        pipeline_stage="data_loaded",
-        raw=RawStateSnapshot(loaded=True, count=1),
-        interpretation=InterpretationStateSnapshot(
-            has_applied_interpretation=True,
-            latest_interpretation_id="interpretation-001",
-        ),
-        active_dataset=ActiveDatasetSnapshot(has_raw_data=True),
-    )
-
-    with patch(
-        "XBrainLab.llm.agent.decision_context.get_application_service",
-        return_value=_ApplicationServiceStub(state),
-    ):
-        context = build_workflow_decision_context(object())
-
-    assert context.workflow_stage == (
-        "EEG data loaded · Ready for preprocessing or epoching"
-    )
-    assert context.recommended_next_step is None
-    assert context.recommended_label is None
-
-
 def test_assembler_sends_state_card_and_one_clean_assistant_message():
     """Prompt context stays minimal and excludes prior tool payloads."""
     registry = ToolRegistry()
@@ -1919,58 +1581,6 @@ def test_retired_file_listing_is_not_reintroduced_by_prompt_text() -> None:
     )
     assert "unique description for list_files" not in prompt
     assert "unique description for import_eeg_data" in prompt
-
-
-def test_continuation_authorization_does_not_narrow_backend_stage() -> None:
-    state = _state(
-        interpretation=InterpretationStateSnapshot(
-            has_scan_result=True,
-            latest_scan_id="scan-001",
-            source_path="/data/S04.edf",
-        ),
-    )
-    publication = ApplicationViewPublication(
-        generation=22,
-        state=state,
-        capabilities=build_capability_policy(state),
-    )
-    registry = ToolRegistry()
-    for name in ("import_eeg_data", "switch_panel", "preview_interpretation"):
-        registry.register(_NamedTool(name))
-    assembler = ContextAssembler(
-        registry,
-        Study(),
-        application_runtime=_ApplicationRuntimeFake(publication),
-    )
-    assembler.set_turn_authorized_command(
-        "preview_interpretation",
-        continuation=True,
-    )
-
-    prompt = assembler.build_system_prompt(
-        "Load /data/S04.edf and continue until a decision is needed."
-    )
-
-    assert assembler.latest_tool_publication.tool_names == frozenset(
-        {"import_eeg_data", "switch_panel"}
-    )
-    assert "unique description for preview_interpretation" not in prompt
-    assert "unique description for import_eeg_data" in prompt
-
-
-def test_changing_continuation_authorization_discards_stale_rag_context() -> None:
-    assembler = ContextAssembler(ToolRegistry(), Study())
-    assembler.set_turn_authorized_command("scan_source")
-    assembler.add_context(
-        'Example response: {"tool_name": "scan_source", "parameters": {}}'
-    )
-
-    assembler.set_turn_authorized_command(
-        "preview_interpretation",
-        continuation=True,
-    )
-
-    assert assembler.context_notes == []
 
 
 def test_recoverable_tool_feedback_is_structured_untrusted_data_not_history() -> None:
