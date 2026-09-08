@@ -26,6 +26,7 @@ from XBrainLab.backend.application.owned_work import (
 )
 from XBrainLab.backend.controller.preprocess_controller import PreprocessController
 from XBrainLab.backend.load_data import Raw
+from XBrainLab.backend.preprocessor.base import PreprocessBase
 from XBrainLab.backend.services.dataset_state_service import DatasetStateService
 from XBrainLab.backend.services.preprocess_state_service import PreprocessStateService
 from XBrainLab.backend.study import Study
@@ -42,7 +43,10 @@ class _Row:
 def _processor(label: str, *, fail: bool = False) -> type[Any]:
     class _Processor:
         def __init__(self, rows: list[_Row]) -> None:
-            self.rows = rows
+            # Product processors inherit PreprocessBase, which owns a detached
+            # copy before mutating.  Keep this test seam faithful to that
+            # production contract.
+            self.rows = [row.copy() for row in rows]
 
         def data_preprocess(self, *_args: Any, **_kwargs: Any) -> list[_Row]:
             for row in self.rows:
@@ -110,6 +114,69 @@ def test_preprocess_state_service_preserves_atomic_standard_pipeline() -> None:
     assert study.preprocessed_data_list is original
     assert original[0].history == ["loaded"]
     assert study.commits == []
+    assert notifications == []
+
+
+def test_standard_pipeline_late_failure_preserves_live_raw_data() -> None:
+    """Processor-owned copies keep a failed detached recipe from publishing."""
+    study = Study()
+    raw = Raw(
+        "recording.fif",
+        mne.io.RawArray(
+            np.zeros((1, 100)),
+            mne.create_info(["Cz"], sfreq=100.0, ch_types="eeg"),
+            verbose="ERROR",
+        ),
+    )
+    raw.add_preprocess("loaded")
+    study.set_loaded_data_list([raw], force_update=True)
+    original = study.preprocessed_data_list
+    original_samples = raw.get_mne().get_data().copy()
+    notifications: list[str] = []
+
+    class _FirstProcessor(PreprocessBase):
+        def get_preprocess_desc(self, *_args: Any, **_kwargs: Any) -> str:
+            return "first"
+
+        def _data_preprocess(
+            self,
+            preprocessed_data: Raw,
+            *_args: Any,
+            **_kwargs: Any,
+        ) -> None:
+            preprocessed_data.get_mne().apply_function(lambda samples: samples + 1)
+            preprocessed_data.add_runtime_signal("first prepared")
+
+    class _FailingProcessor(PreprocessBase):
+        def get_preprocess_desc(self, *_args: Any, **_kwargs: Any) -> str:
+            return "failing"
+
+        def _data_preprocess(
+            self,
+            preprocessed_data: Raw,
+            *_args: Any,
+            **_kwargs: Any,
+        ) -> None:
+            preprocessed_data.add_runtime_signal("failure prepared")
+            raise RuntimeError("late preprocessing failure")
+
+    service = PreprocessStateService(
+        study,
+        processor_provider={
+            "Filtering": _FirstProcessor,
+            "Resample": _FailingProcessor,
+        }.__getitem__,
+    )
+    service.subscribe("preprocess_changed", lambda: notifications.append("changed"))
+
+    with pytest.raises(RuntimeError, match="late preprocessing failure"):
+        service.apply_standard_pipeline(l_freq=4.0, h_freq=40.0, rate=128.0)
+
+    assert study.preprocessed_data_list is original
+    assert original[0] is raw
+    assert np.array_equal(raw.get_mne().get_data(), original_samples)
+    assert raw.get_preprocess_history() == ["loaded"]
+    assert raw.runtime_signals == []
     assert notifications == []
 
 
@@ -301,7 +368,7 @@ def test_cancellation_before_commit_preserves_state_and_can_retry(
 
     class _CancellableProcessor:
         def __init__(self, rows: list[Raw]) -> None:
-            self.rows = rows
+            self.rows = [row.copy() for row in rows]
 
         def data_preprocess(self, *_args: Any, **_kwargs: Any) -> list[Raw]:
             for row in self.rows:

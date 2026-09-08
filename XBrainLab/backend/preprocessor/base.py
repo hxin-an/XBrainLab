@@ -1,9 +1,14 @@
 """Base class for all EEG preprocessors."""
 
+from concurrent.futures import Future, ThreadPoolExecutor, wait
 from copy import deepcopy
 from typing import Any
 
-from ..application.owned_work import owned_work_checkpoint
+from ..application.owned_work import (
+    bind_captured_owned_work,
+    capture_owned_work,
+    owned_work_checkpoint,
+)
 from ..load_data import Raw
 from ..utils import validate_list_type
 
@@ -19,6 +24,8 @@ class PreprocessBase:
             instances to be preprocessed.
 
     """
+
+    max_parallel_recordings = 1
 
     def __init__(self, preprocessed_data_list: list[Raw]):
         """Initializes the preprocessor with a deep copy of the data.
@@ -101,6 +108,15 @@ class PreprocessBase:
             :class:`~XBrainLab.backend.load_data.Raw` instances.
 
         """
+        if (
+            len(self.preprocessed_data_list) <= 1
+            or self.max_parallel_recordings == 1
+            or not self._has_distinct_mne_instances()
+        ):
+            return self._data_preprocess_serial(*args, **kwargs)
+        return self._data_preprocess_parallel(*args, **kwargs)
+
+    def _data_preprocess_serial(self, *args, **kwargs) -> list[Raw]:
         total = len(self.preprocessed_data_list)
         for index, preprocessed_data in enumerate(self.preprocessed_data_list):
             owned_work_checkpoint(
@@ -116,6 +132,63 @@ class PreprocessBase:
                 total=total,
             )
         return self.preprocessed_data_list
+
+    def _data_preprocess_parallel(self, *args, **kwargs) -> list[Raw]:
+        """Run independent recording transforms with bounded worker ownership."""
+        total = len(self.preprocessed_data_list)
+        worker_count = min(2, self.max_parallel_recordings)
+        captured_work = capture_owned_work()
+        completed = 0
+
+        def process_one(preprocessed_data: Raw) -> None:
+            with bind_captured_owned_work(captured_work):
+                owned_work_checkpoint(
+                    "Preprocessing EEG recordings",
+                    completed=completed,
+                    total=total,
+                )
+                self._data_preprocess(preprocessed_data, *args, **kwargs)
+                preprocessed_data.add_preprocess(
+                    self.get_preprocess_desc(*args, **kwargs)
+                )
+
+        pending = iter(self.preprocessed_data_list)
+        with ThreadPoolExecutor(
+            max_workers=worker_count,
+            thread_name_prefix="XBrainLab-preprocess-recording",
+        ) as executor:
+            active: set[Future[None]] = set()
+            for _ in range(min(worker_count, total)):
+                active.add(executor.submit(process_one, next(pending)))
+            while active:
+                finished, _ = wait(active)
+                for future in finished:
+                    active.remove(future)
+                    try:
+                        future.result()
+                    except BaseException:
+                        for remaining in active:
+                            remaining.cancel()
+                        raise
+                completed += len(finished)
+                owned_work_checkpoint(
+                    "Preprocessing EEG recordings",
+                    completed=completed,
+                    total=total,
+                )
+                for _ in finished:
+                    try:
+                        preprocessed_data = next(pending)
+                    except StopIteration:
+                        break
+                    active.add(executor.submit(process_one, preprocessed_data))
+        return self.preprocessed_data_list
+
+    def _has_distinct_mne_instances(self) -> bool:
+        """Reject a duplicate source retained by the deepcopy memo."""
+        return len({id(row.get_mne()) for row in self.preprocessed_data_list}) == len(
+            self.preprocessed_data_list
+        )
 
     def _data_preprocess(self, preprocessed_data: Raw, *args, **kwargs) -> None:
         """Applies a single preprocessing step to one data instance.

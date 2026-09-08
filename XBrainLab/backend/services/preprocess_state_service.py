@@ -323,9 +323,13 @@ class PreprocessStateService(Observable):
         data_list = self.study.preprocessed_data_list
         if not data_list:
             raise ValueError("No data to preprocess.")
+        source_identity = self._data_identity(data_list)
 
         try:
-            working_list = self._copy_working_list(data_list)
+            # Shipped processors inherit ``PreprocessBase`` and make the one
+            # detached copy that protects live study state.  A second full
+            # copy here only duplicates memory traffic before that boundary.
+            working_list = list(data_list)
             working_list = self._process_working_list(
                 working_list,
                 self._processor("Filtering"),
@@ -370,7 +374,7 @@ class PreprocessStateService(Observable):
             logger.error("Standard preprocessing pipeline failed: %s", exc)
             raise
         return PreparedPreprocessData(
-            source_identity=self._data_identity(data_list),
+            source_identity=source_identity,
             data=tuple(working_list),
         )
 
@@ -482,9 +486,12 @@ class PreprocessStateService(Observable):
         data_list = self.study.preprocessed_data_list
         if not data_list:
             raise ValueError("No data to preprocess.")
+        source_identity = self._data_identity(data_list)
 
         try:
-            working_list = self._copy_working_list(data_list)
+            # See ``prepare_standard_pipeline``: processor construction owns
+            # the detached data copy used for speculative preprocessing.
+            working_list = list(data_list)
             owned_work_checkpoint(
                 progress_stage,
                 completed=0,
@@ -498,7 +505,7 @@ class PreprocessStateService(Observable):
             logger.error("Preprocessing failed: %s", exc)
             raise
         return PreparedPreprocessData(
-            source_identity=self._data_identity(data_list),
+            source_identity=source_identity,
             data=tuple(result),
         )
 
@@ -520,24 +527,6 @@ class PreprocessStateService(Observable):
         )
         processor = processor_class(working_list)
         return list(processor.data_preprocess(*args, **kwargs))
-
-    @staticmethod
-    def _copy_working_list(data_list: list[Any]) -> list[Any]:
-        working_list: list[Any] = []
-        total = len(data_list)
-        for index, data in enumerate(data_list):
-            owned_work_checkpoint(
-                "Copying EEG recordings for preprocessing",
-                completed=index,
-                total=total,
-            )
-            working_list.append(data.copy())
-            owned_work_checkpoint(
-                "Copying EEG recordings for preprocessing",
-                completed=index + 1,
-                total=total,
-            )
-        return working_list
 
     @staticmethod
     def _data_identity(data_list: Sequence[Any]) -> tuple[int, ...]:
