@@ -2,104 +2,70 @@
 
 最後更新：`2026-09-08`
 
-## Active — Comprehensive architecture, implementation and test cleanup
+## Active — Comprehensive cleanup, bounded product handoff
 
-### Approved outcome and execution
+### Outcome and claim boundary
 
-- Preserve current effective features, UI, EEG semantics and Assistant public contracts. Audit
-  vertical user workflows and horizontal ownership together; old tests do not ratify old business
-  paths. Delete unused implementation/tests/references, or consolidate necessary behavior into
-  existing owners and delete superseded paths. No legacy archive, wrapper or permanent double path.
-- Cover import/event/class/channel/montage/preprocess/epoch; split/config/train/stop/retry;
-  evaluation/saliency/visualization; Assistant parameters/confirmation/execution/UI handoff;
-  startup/settings/logging/shutdown, and scripts/CI/docs. Include shared service/state/events,
-  async lifecycles, SHA/cache/copies, dependency direction and test evidence.
-- Each reviewed area must produce callable/ownership evidence, justified deletion/consolidation,
-  necessary retention or an explicit evidence gap. Static inspection is not performance proof.
-- Current slice: test-only real split command-boundary coverage, replacing only demonstrably
-  redundant fake-generator mapping cases after characterization. Use real domain allocation and
-  ApplicationService results; no product/API/ratio/preview-policy change, no heavyweight training.
-  Scope: existing split integration/unit tests and this plan. Owners and product LOC unchanged.
-- Parallel read-only work covers broader shared/backend/UI structure and Assistant/startup/settings/
-  log/cleanup boundaries. Coordinator integrates overlap and stages later bounded source changes.
-  UI authorization permits internal behavior-preserving cleanup only, not visual redesign.
-- Validation: focused tests/Ruff per slice; exact-head applicable CI and independent deletion review
-  before merge. Test/tool-only slices follow approved reviewer/CI merge; product-source slices retain
-  required native/hand-test approval. No gate weakening, model downloads or prompt experiments.
-- Persist a new bounded slice record before each next implementation. Continue through independent
-  authorized slices, not stopping at compaction, first PR or pending CI. If a product decision/manual
-  acceptance is required, isolate it and continue independent work; never claim the whole stage done.
-- Completion: coverage assessed or explicitly limited, actionable authorized cleanup implemented,
-  superseded paths physically removed, current behavior credibly protected, unused artifacts cleaned,
-  remaining ownership burdens and decisions reported. Git/PR retain implementation/validation history.
-- Next: independent review and CI for the real split test slice; isolated source slices remove unrouted
-  desktop surfaces, unused Study deferred subscriptions, and unreachable generic command bindings.
-  The split tests retain real shorthand trial/session/subject coverage because Assistant/scripts still
-  use that adapter; CV split_config coverage alone is not an equivalent replacement.
+- Preserve current effective features, UI, EEG semantics and Assistant public contracts. Remove unused
+  implementation with its exclusive tests/references; consolidate redundant state into existing owners.
+  Do not create legacy archives, replacement wrappers, new control planes or arbitrary deletion quotas.
+- Workflow review covered import/event/class/channel/montage/preprocess/epoch; split/train/stop/retry;
+  evaluation/saliency/visualization; Assistant execution and UI handoff; startup/config/log/shutdown,
+  shared publication/async ownership and developer tooling. This is a traced risk assessment, not a
+  claim that every file, dataset size or native timing path is proven defect-free.
+- The real split test slice now protects both public shorthand and reviewed CV configuration paths.
+  Shorthand trial/session/subject remains live in Assistant/scripts; CV split_config tests alone must
+  not replace its adapter protection. Mock generator cases were replaced by real service assertions.
 
-### Starting candidates and retained findings
+### Current bounded source slices
 
-Montage/saliency #123 has merged. The first script-cleanup slice removes orphaned/retired tooling
-without changing product behavior or gate coverage; Git/PR owns its review, checks and merge status.
-The following candidates come from a bounded UI → command → backend → test audit, not proof that
-every file, dataset scale or native lifecycle is defect-free. No new must-fix product defect was proven.
+1. Remove unused Study deferred-controller subscriptions: no repository caller; retain lazy controller
+   caching, direct subscriptions, locking and application/TrainingStateService observer order.
+2. Delete unrouted TestOnlySettingWindow, exclusive tests/capture tile/error copy, and two uncalled UI
+   render wrappers. Keep backend TestOnlyOption, headless service getters and owned render operations.
+3. Remove unreachable generic command bindings/lazy proxies already owned by detached discovery/apply,
+   epoch and query routes. Keep SET_MONTAGE's live serialized route and focused-service APIs. Preserve
+   positive workflow tests; envelope checks alone do not establish successful execution.
+4. Remove hidden Saliency scope/class widget projections. The visible selector supplies renderer
+   mode/key and display identity; preserve All, exact-key single class, 3D first-available fallback,
+   repeat selection and native binding invalidation. No layout/text/interaction redesign.
 
-### Candidate order and acceptance
+Each slice has a separate branch/PR and independent review. No authoritative owner is added.
+The source edits are complete with focused characterization; Git/PR owns exact commits and CI evidence.
+Next: finish same-head applicable CI, then hand-test/approve product candidates in order. Do not merge
+product source without required acceptance. Test/tool-only approved slices may notify and merge after
+review and successful checks. Remove merged worktrees/artifacts only after checking ownership and use.
 
-1. **Strengthen split/training command-boundary evidence (test-only).** Cover real Full session/subject
-   cross-validation, Individual session success and Individual subject rejection through
-   ApplicationService. Existing `test_dataset_generation_service.py` strategy tests use fake
-   generators/datasets; `test_dataset_generator.py` and atomic-trial tests protect real allocation
-   below the command boundary. Assert subject/session membership, leakage exclusion, class rules,
-   saved configuration and preview/materialization agreement where a preview receipt is supplied.
-   Replace only demonstrably redundant mock cases after stronger coverage passes; do not change
-   ratio semantics or require interactive preview for all headless callers.
-2. **Remove unused UI render wrappers (separate product-source slice).**
-   `XBrainLab/ui/application_capabilities.py` still defines
-   `get_saliency_render_publication` and `get_evaluation_render_publication` without runtime callers.
-   Panels use the owned begin/run/commit helpers instead. Delete only these unused wrappers after
-   final caller recheck; retain service getters used by headless MOABB scripts and integration.
-   No visible change, no owner delta. Validate affected UI capability/panel paths and source guards.
-3. **Inspect redundant command registry bindings before deletion.** Two-phase interception in
-   `ApplicationService._execute_command_boundary` precedes the generic handler registry.
-   CREATE_EPOCH and interpretation entries may be redundant; PREPROCESS still includes a live
-   SET_MONTAGE confirmation route. Prove reachability per binding before removing anything.
-   Direct focused-service methods have standalone/test consumers and are not automatically dead.
+### Validation and stop condition
 
-Each candidate needs its own approved bounded active plan before product implementation.
-Reviewer findings do not expand that slice. Use focused local evidence and exact-head applicable CI;
-product behavior changes still need Windows manual acceptance and merge approval.
+- Focused tests and lint are the local feedback loop; reuse exact-head CI for regression, platform,
+  source-diverse data and applicable visual evidence. No duplicate full local run or gate weakening.
+- Hidden-state deletion replaces private-widget assertions with visible selection -> renderer arguments.
+  Removed private handler-map assertions do not justify accepting UNSUPPORTED_COMMAND for live routes.
+- UI authorization covers internal behavior-preserving cleanup, not visible redesign. Windows human
+  acceptance remains distinct from automated native/default/DPI evidence.
+- This wave reaches its endpoint when product candidates are ready for the required hand test, or a
+  necessary resource/decision is genuinely missing. Do not stop merely at compaction, push or pending CI.
+  Report remaining architecture debt honestly; do not label the entire project clean.
 
-### Retain with explicit reasons
+### Retain and next decisions
 
-- Shared architecture review traced view projection/revision acknowledgement, Qt observer delivery,
-  backend owned-work cancellation, UI worker cleanup and Assistant runtime projection. These have
-  distinct consumers/responsibilities; no duplicate authoritative owner was demonstrated. Large
-  ApplicationService/UI runtime files remain maintenance burdens, not justification for a new layer.
-- Startup/config/log/shutdown review retains one-time per-user config migration, sanitized secure log
-  storage, native resource cleanup and separate backend/Qt/Assistant lifecycle fences. They protect
-  live boundaries; mocked model seams do not establish real model quality.
-- Public ApplicationService convenience methods need an explicit compatibility decision before
-  removal: repository caller scarcity alone cannot settle use of this exported interface.
-
-- Import Apply content checks guard reviewed files before/after loading; the detached preprocess
-  Raw copy isolates MNE mutation. Small render request hashes bind owned-operation claims, not EEG
-  content. BIDS caches, cancellation ownership and publication guards have real consumers.
-- Split preview serialization protects shared generator/trial-selection state. Re-materialization
-  and its digest protect the reviewed allocation at later training. Ratios are allocated using
-  atomic group counts and rounding; they do not promise exact percentages of displayed epoch rows.
-- Headless split-save calls may intentionally omit interactive preview receipts. The desktop
-  enforces reviewed preview; do not call headless behavior a bypass without an approved contract
-  or a concrete bad allocation.
-- Preview Back/Escape requests cancellation and waits asynchronously for worker ownership to end.
-  Existing source proves deliberate cleanup, not an event-loop freeze. Measure real cancellation
-  delay before changing lifecycle or claiming a defect.
-- Large mock-heavy Evaluation/Visualization tests remain presentation/dispatch evidence, not native
-  rendering evidence. Map cases to real lifecycle tests before pruning; raw mock counts prove nothing.
-- Unreferenced standalone `cov_report.py` and modal capture remain pending stronger retirement
-  evidence. Registered legacy-named capture runners and `verify_rag.py` are active, not dead scripts.
-- Performance hypotheses requiring measurement: very large result-summary queries and third-party
-  MNE cancellation latency. No cache/thread redesign is authorized from static inspection alone.
+- Retain content checks guarding reviewed import files before/after loading, the detached MNE mutation
+  copy, split preview serialization/re-materialization identity, and small owned-render request hashes.
+  Their current trust/mutation boundaries are not equivalent to gratuitous EEG content hashing.
+- View projection/revision acknowledgement, Qt event delivery, backend cancellation identity, UI worker
+  cleanup and Assistant lifecycle projection have distinct responsibilities and real consumers.
+  Per-user config migration, secure sanitized logs and backend/Qt/Assistant shutdown fences remain live.
+- Three follow-ups after handoff: (a) decide the public compatibility policy before removing exported
+  ApplicationService convenience methods; (b) remove ignored UI refresh compatibility arguments in a
+  separate mechanical slice; (c) inspect full-environment restore cost in CI aggregation from observed
+  timing before changing its dependency/provenance contract.
+- High-mock presentation tests are not native/scientific proof, but mock counts alone do not authorize
+  deleting them. Preserve cases with distinct reachable behavior and stronger real-lifecycle complements.
+  Large service/runtime files remain maintenance burdens; size alone does not justify new layers.
+- Native third-party cancellation and very large result-history latency remain measurement gaps, not
+  proven defects. Standalone coverage/modal utilities lack enough retirement evidence; active capture,
+  handoff and RAG tools stay in place.
 
 ## Following stages — agreed order
 
