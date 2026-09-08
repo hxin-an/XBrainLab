@@ -322,9 +322,13 @@ def main() -> None:
 
     # --- Heavy imports deferred until after splash is visible ---
     from XBrainLab.backend.study import Study
-    from XBrainLab.backend.utils.logger import logger
+    from XBrainLab.backend.utils.logger import (
+        configure_mne_product_logging,
+        logger,
+    )
     from XBrainLab.ui.main_window import MainWindow
 
+    configure_mne_product_logging()
     logger.info("Starting XBrainLab (PyQt6)...")
     if startup_geometry_diagnostics_enabled():
         logger.info(

@@ -1,3 +1,4 @@
+import logging
 import warnings
 from unittest.mock import MagicMock, call, patch
 
@@ -34,6 +35,68 @@ def test_real_fif_loader_retains_lazy_source_dependency(tmp_path) -> None:
     assert isinstance(loaded, Raw)
     assert loaded.get_mne().preload is False
     assert str(path) in {str(item) for item in loaded.get_mne().filenames}
+
+
+def test_real_epochs_fif_fallback_is_debug_not_warning(
+    tmp_path,
+    capture_product_logs,
+) -> None:
+    """MNE-native epoched FIF support must not warn while probing Raw first."""
+    path = tmp_path / "subject01_epo.fif"
+    epochs = mne.EpochsArray(
+        np.zeros((2, 1, 20)),
+        mne.create_info(["Cz"], sfreq=100.0, ch_types="eeg"),
+        events=np.array([[0, 0, 1], [30, 0, 1]]),
+        event_id={"event": 1},
+        verbose="ERROR",
+    )
+    epochs.save(path, overwrite=True, verbose="ERROR")
+
+    with warnings.catch_warnings(record=True) as caught_warnings:
+        warnings.simplefilter("always")
+        with capture_product_logs(level=logging.DEBUG) as caplog:
+            loaded = load_fif_file(str(path))
+
+    assert isinstance(loaded, Raw)
+    assert isinstance(loaded.get_mne(), mne.BaseEpochs)
+    assert any(
+        "does not conform to MNE naming conventions" in str(item.message)
+        for item in caught_warnings
+    )
+    messages = [record.getMessage() for record in caplog.records]
+    assert any("Failed to load FIF as Raw" in message for message in messages)
+    assert not any(record.levelno >= logging.WARNING for record in caplog.records)
+
+
+def test_set_epochs_probe_is_debug_not_warning(capture_product_logs) -> None:
+    """An expected EEGLAB raw-reader rejection must stay diagnostic-only."""
+    epochs = mne.EpochsArray(
+        np.zeros((2, 1, 20)),
+        mne.create_info(["Cz"], sfreq=100.0, ch_types="eeg"),
+        events=np.array([[0, 0, 1], [30, 0, 1]]),
+        event_id={"event": 1},
+        verbose="ERROR",
+    )
+    with (
+        patch(
+            "XBrainLab.backend.load_data.raw_data_loader.mne.io.read_raw_eeglab",
+            side_effect=ValueError("not continuous raw"),
+        ),
+        patch(
+            "XBrainLab.backend.load_data.raw_data_loader.mne.io.read_epochs_eeglab",
+            return_value=epochs,
+        ),
+        capture_product_logs(level=logging.DEBUG) as caplog,
+    ):
+        loaded = load_set_file("epoched.set")
+
+    assert isinstance(loaded, Raw)
+    assert loaded.get_mne() is epochs
+    messages = [record.getMessage() for record in caplog.records]
+    assert any(
+        "Failed to load as Raw; trying epochs" in message for message in messages
+    )
+    assert not any(record.levelno >= logging.WARNING for record in caplog.records)
 
 
 class TestRawDataLoaderUnit:

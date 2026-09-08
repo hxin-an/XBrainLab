@@ -2,131 +2,96 @@
 
 最後更新：`2026-09-08`
 
-## Active — Assistant production-RAG baseline and prompt cleanup
+## Active — Logging clarity and preprocess latency investigation
 
-- Candidate 9b74c9fe completed the frozen 81-case run but is not acceptable: it newly fails
-  ambiguous_en_alt, choosing a specific bandpass action for an unspecified broad goal. Positive
-  36/36 and origin 10/10 plus missing guard 5/5 remain intact; no new failure may be folded into the
-  accepted bounded set. Preserve that report and diagnose actual generated prompts before repair.
-  Controlled ablations restored the ambiguous response, but full deb9d67c newly exhausted format
-  recovery for split_before_epochs_en. Both cases had no RAG examples. Withdraw all policy wording
-  changes, including the reference-only change, and their source assertions; retain the exact accepted
-  policy and Host origin checks. The misleading rule cross-reference is a disclosed follow-up, not
-  justification to ship a new regression. English-only scope is the corpus and acceptance contract,
-  not new multilingual controls. Next: focused recovery replay, independent review, fresh exact-source
-  full comparison and CI before manual delivery. Preserve both failed reports; no relaxed scorer.
-- Original evidence: evaluator/exporter omitted ProcessRAGRetrieverLifecycle, so historical scores
-  did not certify production RAG. A versioned real-RAG baseline now precedes the semantic changes.
-  Preserve all frozen English case files, expected values and scorer.
-- First slice reuses the existing process lifecycle and assembler in evaluator/exporter only. Derive
-  allowed tools from backend publication, retain actual encoded context and degraded/empty status,
-  then capture LocalBackend's final template and budget decisions. Do not construct a second
-  retriever policy, command owner, receipt authority or synthetic successful trajectory.
-- Complexity review: evaluator-only wiring is approximately 500 added script lines across two CLI
-  consumers, justified by shared lifecycle wait/evidence, same-turn recovery reuse and real
-  clarification-turn context. It removes duplicate assembler construction, adds no product owner,
-  and is committed separately from the deletion slice. Do not split off missing trajectory coverage
-  and then claim all 81 cases used product RAG. Historical synthetic helpers remain explicitly labelled
-  no-RAG for deterministic tests, never substituted for CLI candidate evidence.
-- Inspect actual final short/medium/near-budget English prompts and existing small-model budgets;
-  only then simplify proven duplicate or misleading prompt/context structure. Separate evidence
-  wiring, behavior-preserving cleanup and semantic commits. No UI presentation changes authorized.
-- Approved deletion slice: remove only Assistant decision_context and unused turn-authorization
-  fields/methods; assembler's exact prompts and active tool/generation/blocker publication remain
-  identical before/after. Backend WorkflowProjection has live UI callers and is retained. Three
-  production files, roughly 264 lines removed, no added owner; prune tests of the removed shadow
-  while preserving real admission, untrusted-context, rollback and cancellation evidence. Rollback
-  is the isolated refactor commit, independent of the evaluator and later prompt semantics.
-- Resolve source/target RAG example-selection discrepancy from evidence before any behavior change;
-  do not silently label target prose implemented. Models/revisions, tools, schemas, permissions,
-  confirmations, one-action rule and accepted bounded limitations stay fixed.
-- Focused evidence: real lifecycle callback/error/close and projection tests, prompt export using
-  pinned local tokenizer and embedding resources, pre/post-change frozen model evaluation where
-  resources permit; independent review and exact-head applicable CI. No blanket Chinese deletion.
-- Stop at reviewed product PR and exact-source native Assistant ready for user hand testing, with
-  visible log and no prolonged monitoring. Missing resource/authority is a disclosed blocker, not
-  permission to fabricate evidence; continue unaffected work. Product merge waits for user acceptance.
+### Problem and evidence
 
-## CI integration
+- User reports repeated `Adding metadata with 1 columns` messages and slow preprocessing.
+  Message frequency alone does not establish the latency cause; no measured bottleneck is claimed yet.
+- Assistant cleanup #120 is merged after the user's complete walkthrough acceptance. Its bounded
+  model limits remain unchanged; no prompt/RAG tuning or Stable promotion belongs to this slice.
 
-- #117 guidance, #118 quality/routing and #119 runner diagnostics are merged after exact-head CI.
-  Assistant integrates their main result before freezing candidate evidence. Preserve dirty
-  root/replay work and shared environments. No product UI change is authorized by the CI slices.
-- Inspect historical debug-domain timeout and macOS native exit -11 evidence; causes remain unproven.
-  Later passes are not fixes. Select deterministic, relevant checks and reuse same-source CI evidence;
-  do not weaken gates, duplicate heavy local runs or claim fresh-agent behavior from parsing alone.
-- Outcome: L0/L1 fast local feedback, L2 same-head CI and L3 explicit dossiers; never run aggregates
-  per edit. Execute three bounded PRs: A guidance/entrypoint clarity, B Ruff/type/architecture CI wiring,
-  C runner failure diagnostics. Do not duplicate the same-head formal regression locally.
-- Review every CI job's trigger, observable protection, duplication and gaps. Remove only demonstrated
-  redundancy/unneeded routing while preserving required evidence; add missing meaningful gates, not
-  more checks by default. No failure hiding through skips or timeout increases.
-- User authorized independent-reviewed non-product PRs to merge after a notice without waiting for
-  a reply. Clean each merged worktree/output, then continue through Assistant manual-test delivery.
-  Commit, pending CI and compaction are not endpoints. Product PRs still require manual acceptance.
-- PR A: guidance audit, 16 focused tests and strict docs build passed; independent reviewer found no
-  blocker. Native fresh-session probe is unverified: local app-server initialization was read-only,
-  and escalation was denied for external transmission of repo guidance. Do not bypass or claim fresh
-  agent readiness; proceed with unaffected work and disclose the specific permission gap at handoff.
+### Outcome and scope
 
-## Execution and validation adequacy
+- Identify noisy message producers and propose appropriate normal/debug/warning/error behavior.
+  Preserve actionable failures, native-crash evidence and diagnostic redaction.
+- Trace user operation → shared command service → preprocessing → result publication/UI refresh.
+  Measure first and repeated operations separately; distinguish compute, copy/validation, queue,
+  publication and rendering costs before choosing a repair.
+- Non-goals: UI layout/interaction changes, global log suppression, a new logging/control framework,
+  broad SHA/cache removal, scientific algorithm changes, model experiments or unrelated legacy cleanup.
+- UI approval: user explicitly authorizes internal UI threading/callback/progress-frequency repairs,
+  preserving layout, copy, controls and workflow. No new visible presentation is authorized.
+- Approved implementation: independent logging and preprocess workers, integrated by coordinator
+  and independently reviewed. Logging covers all workflows with bounded repairs. Preprocess focuses
+  on Apply waiting across recordings; compare safe thread parallelism (at most two workers) against
+  serial after removing demonstrated redundant work. Keep only measured wins, preserve atomic
+  publication/cancel/order and avoid nested parallelism or new public settings.
 
-- Inspect CI routing, runner timeout/crash evidence and representative low-mock lifecycle tests before
-  changing gates. Map claims to actual production entry points, transitions and observable side effects.
-- Classify protection as demonstrated, weak/duplicated, or missing; passing totals and static checks
-  alone do not establish workflow readiness. Add only directly justified protection in this slice;
-  wider product/test repairs belong to the following workflow audit.
-- Focused validation: guidance/reference audit and strict docs build; changed CI/runner contract tests,
-  including real subprocess failure/timeout behavior if that boundary changes; same-head applicable CI.
-- Non-goals: product UI/runtime changes, model/evaluator redesign, broader test deletion, new control
-  frameworks, timeout increases or automatic retries that hide failures. No UI approval needed here.
+### Investigation and bounded repair sequence
+
+1. Logging track: inspect existing logger/handlers and MNE integration; capture a representative
+   operation's output, attribute repeated messages to their actual producer, and distinguish
+   duplicates from useful progress. Do not assume every repeated message is an error.
+2. Preprocess track: use existing native lifecycle/scenario tooling where applicable. Freeze data,
+   parameters, source and environment; measure first operation and repeated/reset/reapply cases.
+   Include a small baseline and a representative larger dataset already available locally.
+   Do not download data/models or introduce permanent per-call instrumentation by default.
+3. Compare numerical preprocessing time with surrounding copies, hashes, validation and UI work.
+   Inspect code alongside measurements, including async completion/cancel/repeat and resource release.
+   Classify findings as must-fix, worthwhile simplification or justified retention.
+4. Keep the two investigations independent when ownership permits. Shared logger/preprocess seams
+   must have one editing owner; integrate only after tracing their interaction.
+5. Before product edits, narrow the active plan to an evidenced repair with affected callers,
+   deletion candidates and focused tests. Separate log and performance PRs unless one root cause
+   directly requires both. No broad rewrite to satisfy an audit.
+
+### Validation and endpoint
+
+- Logging repair: test actual emitted records/output and meaningful failures, preserving redaction
+  and warning/error visibility; do not only mock logger calls.
+- Performance repair: compare identical inputs/results before/after, including repeat/cancel and
+  relevant metadata/event invariants; report measured distributions and environment, not a
+  universal speedup from one timing.
+- Native checks use bounded timeout and `prlimit --core=0`. Use focused L0/L1 locally; reuse exact-head
+  CI for formal regression and add only missing applicable native/data evidence.
+- Current endpoint: implement evidenced repairs, reviewed PRs and Windows manual-test delivery. Product handoff after
+  implementation requires independent risk review, applicable same-head CI and exact-source native
+  manual testing. Product merge still requires explicit user acceptance.
+- Current evidence: metadata lines originate from MNE's metadata property setter during per-source
+  provenance assignment. Logging candidate sets normal desktop MNE verbosity once at startup to
+  WARNING while preserving explicit MNE_LOGGING_LEVEL configuration; no message blacklist.
+- Whole-flow audit also found expected owned-work cancellation logged as Worker ERROR before
+  consumers handle it, and Raw-to-Epochs probing logged WARNING even when fallback succeeds.
+  Repair only their log levels, retaining signal delivery, loader selection and real failure
+  diagnostics. Suspected service/worker duplication needs runtime proof before any removal.
+- Apply baseline (three recordings, three reset-equivalent cycles): Zhou2020 0.618–0.753 s and
+  GDF fixtures 1.849–2.095 s, dominated by MNE work. Service copy plus processor deepcopy is
+  redundant, but its measured milliseconds do not explain the user's long wait. No SHA hotspot
+  was found in this command path. Keep this distinction in the eventual performance claim.
+- Next: validate single-copy isolation with faithful processor tests, compare bounded two-thread
+  execution and larger Zhou batches, then independently review focused evidence before PR creation.
 
 ## Following work — agreed order
 
-- Evaluator/exporter now reuse production RAG lifecycle, retrieval/tool filtering, assembler and local
-  template/budget paths. The pre-semantic RAG-enabled baseline is complete; historical no-RAG scores
-  are not directly comparable. Next, freeze integrated candidate source and run the final comparison.
-- Freeze model/revision, cases/scorer/denominator and tool/confirmation/publication contracts. Capture
-  retrieval identity/order, inclusion/drop/failure, final prompt, raw/Host/product outcomes and latency.
-  No evaluator expected answer may select examples; disclose corpus/case overlap and degraded RAG.
-- Then clean Assistant architecture and inspect actual assembled and final rendered prompts including
-  real RAG/history/retry/clarification. User authorizes prompt wording/structure/examples improvements,
-  not UI, tool/permission changes or blanket Chinese deletion. Separate refactor and semantic commits.
-- Assistant support and acceptance are English-only. Do not add Chinese capability or multilingual
-  gates; classify existing non-English material by real role/callers before cleanup.
-- Respect the small models' current input/output budgets; assess short/medium/near-limit cases and
-  optional-context removal. No context inflation or new summary model. Use focused cases during edits,
-  applicable frozen bounded evidence on the final candidate, without requiring unaccepted Stable scores.
-- Pre-semantic baseline at clean fbc7311a completed all 81 cases using product-process RAG: 36/36
-  positive, 10/10 explicit origin, 5/5 missing guard, 22/24 no-action and 6/7 clarification. Failure
-  identities match the accepted bounded set; do not call this Stable. Full local captures preserve
-  raw output and final prompt. Multi-turn attribution now uses explicit trajectory identity; do not
-  rewrite the historical baseline artifact to pretend it used the corrected report path.
-- Bounded semantic slice: retain the exact validated policy wording after unsuccessful prompt
-  ablations and full recovery checks. Review each bundled Chinese example:
-  remove only duplicate tool/parameter examples; translate distinct supported parameter/view examples
-  into concise English without copying frozen case answers. Preserve all 18 tool schema coverage.
-  Update corpus identity/index invalidation and directly related tests; do not alter frozen benchmark
-  files/scorer or introduce multilingual gates. Re-run real RAG/prompt/frozen model evidence afterward.
-- RAG error boundary now propagates retrieval errors to its existing lifecycle; a not-ready child
-  fails initialization and cleans up instead of masquerading as a healthy empty retriever. Normal
-  no-match is distinct from degradation. No new owner or admission/UI change. Final evidence must
-  preserve these statuses rather than masking them as successful retrieval.
-- Independent review plus same-head applicable CI precedes the Assistant product PR/manual delivery.
-  Open exact-source native app with visible log, confirm responsive, then hand over without prolonged
-  monitoring. Necessary unavailable resources/new contract decisions are genuine blockers; isolate them
-  and continue independent work. Do not start new research datasets/evaluators in this run.
-- In parallel with Assistant organization, investigate noisy logs and preprocess latency.
-  Repeated `Adding metadata with 1 columns` is reported noise, not yet a diagnosed cause of latency.
-- Split work by non-overlapping ownership with concrete outputs; coordinate shared interfaces before edits.
-  Independently review high-risk findings. Scope repairs from evidence, not an unrestricted rewrite.
-- After those tracks, audit frontend → backend → tests in parallel by user workflow: data preparation,
-  training, and result presentation. Inspect repeated calculation/validation, SHA, caches, state owners,
-  compatibility branches, async lifecycle and high-mock protection. Classify findings as must-fix,
-  worthwhile simplification or justified retention; implement bounded PRs, not a wholesale rewrite.
-- Experimental dataset/evaluator construction follows the workflow audit, then Agent experiments.
+- After logging/preprocess, audit frontend → backend → tests by user workflow: data preparation,
+  training and results. Inspect repeated calculations/validation, SHA, caches, state ownership,
+  compatibility branches, async lifecycle and high-mock tests. Use small justified PRs.
+- Then establish experimental datasets and an evaluator that represents actual product RAG,
+  first-generation model decisions, Host intervention and final product outcomes separately.
+  Keep held-out English cases and small-model context budgets explicit.
+- Only afterward conduct prompt/RAG/architecture improvement experiments. The existing frozen
+  81-case suite remains bounded regression evidence, not a complete capability evaluation.
+
+## Retained evidence limits
+
+- Historical native -11/debug timeout causes remain unproven; added diagnostics are not root-cause fixes.
+- Fresh contextless Codex takeover remains unverified after environment/permission restrictions;
+  guidance audits do not establish identical fresh-agent behavior.
+- Protect root dirty work/settings, original datasets, shared model/runtime caches and durable evidence.
+  Remove merged task worktrees/disposable outputs only after checking identity and active use.
 
 ## Source of truth
 
-Git main and PRs own versions and approvals; docs/current.md owns product claims.
-Keep pending work and actual decision/resource gaps here, not completed implementation history.
+Git/PRs own versions and approvals; docs/current.md owns product claims. Completed implementation
+history belongs in Git, not active dispatch.

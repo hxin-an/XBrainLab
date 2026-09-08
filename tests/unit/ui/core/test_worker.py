@@ -1,5 +1,8 @@
 """Unit tests for Worker and WorkerSignals."""
 
+import logging
+
+from XBrainLab.backend.application.owned_work import OwnedOperationCancelledError
 from XBrainLab.ui.core.worker import PythonThreadWorker, Worker, WorkerSignals
 
 
@@ -83,6 +86,54 @@ class TestWorker:
         assert "boom" in tb_str
         # finished should still fire
         assert finished == [True]
+
+    def test_run_reports_expected_cancellation_without_error_log(
+        self,
+        qtbot,
+        capture_product_logs,
+    ):
+        errors = []
+        finished = []
+
+        def cancel():
+            raise OwnedOperationCancelledError("operation-1", "Preparing result")
+
+        worker = Worker(cancel)
+        worker.signals.error.connect(errors.append)
+        worker.signals.finished.connect(lambda: finished.append(True))
+
+        with capture_product_logs(level=logging.DEBUG) as caplog:
+            worker.run()
+
+        assert len(errors) == 1
+        assert errors[0][0] is OwnedOperationCancelledError
+        assert finished == [True]
+        worker_records = [
+            record
+            for record in caplog.records
+            if record.name == "XBrainLab.ui.core.worker"
+        ]
+        assert [record.levelno for record in worker_records] == [logging.DEBUG]
+        assert all(
+            "Worker task failed" not in record.getMessage() for record in worker_records
+        )
+
+    def test_run_logs_unexpected_failure_at_error(self, qtbot, capture_product_logs):
+        def fail():
+            raise ValueError("boom")
+
+        worker = Worker(fail)
+        with capture_product_logs(level=logging.DEBUG) as caplog:
+            worker.run()
+
+        worker_records = [
+            record
+            for record in caplog.records
+            if record.name == "XBrainLab.ui.core.worker"
+        ]
+        assert len(worker_records) == 1
+        assert worker_records[0].levelno == logging.ERROR
+        assert worker_records[0].getMessage().startswith("Worker task failed")
 
     def test_no_result_on_error(self, qtbot):
         results = []
