@@ -16,13 +16,11 @@
   async lifecycles, SHA/cache/copies, dependency direction and test evidence.
 - Each reviewed area must produce callable/ownership evidence, justified deletion/consolidation,
   necessary retention or an explicit evidence gap. Static inspection is not performance proof.
-- Current slice: consolidate the verified non-UI cleanup commits from #126 and #128 onto the
-  current `main` baseline, then independently recheck their caller evidence and focused
-  protections.  #126 removes `Study`'s unused deferred controller-subscription state; #128
-  removes unreachable generic command dispatch bindings now shadowed by the explicit boundary.
-  Scope: the two existing backend owners and their directly affected tests only; no API, data,
-  Assistant, cancellation, or visible-UI behavior change and no new owner/module/compatibility
-  path.  The retained explicit command boundary remains authoritative.
+- Integrated cleanup: #126--#129 are consolidated on current `main`: unused Study deferred
+  subscriptions, unreachable generic command dispatch bindings, unrouted desktop surfaces, and
+  hidden saliency selector projections are physically removed.  The four existing owners remain;
+  no API, data, Assistant, cancellation, or visible-UI behavior change was introduced.  Direct
+  caller sweep and focused candidate tests protect the retained command spine and visible selector.
 - UI confirmation status: granted 2026-09-08.  The user explicitly authorizes internal
   `XBrainLab/ui/` deletion/consolidation that preserves visible presentation and behavior.  Integrate
   #127 and #129 after the same caller/behavior review; stop for any visible design, copy, layout,
@@ -33,19 +31,16 @@
   accumulate the independently reversible commits on this one candidate branch.  Rebase or resolve
   only direct integration conflicts; stop for a changed public contract, a real caller, or a visible
   UI decision.
-- Focused validation: the directly affected application-publication lifecycle and application
-  service tests, plus changed-file Ruff.  Stop condition: both removed paths have no production,
-  dynamic-registration, configuration, script, or documentation caller and the retained command
-  spine is protected by passing focused tests.  This establishes only the two-slice cleanup, not
-  the whole-stage handoff or product manual acceptance.
-- Active implementation sub-slice: remove `scripts/dev/cov_report.py` after characterizing its
-  standalone JSON-only output and rechecking every repository/CI/documentation caller.  It has one
-  historical origin, no current invocation, test, package entry, CI/handoff registration, or docs
-  link; its hard-coded 90% target and omissions are not part of the current validation contract.
-  Scope/non-goals: delete this orphan script only; retain current coverage/CI evidence and do not
-  introduce a replacement report, coverage target, or test framework.  Validate the pre-deletion
-  sample invocation, post-deletion reference sweep, and changed-tree compilation.  Stop if a real
-  caller or evidence contract dependency appears.
+- Integrated orphan-tool cleanup: `scripts/dev/cov_report.py` is removed after a sample invocation
+  and full repository/CI/documentation sweep found no current caller, registration, test, or evidence
+  contract dependency.  Its hard-coded 90% target and exclusions were not current policy; no
+  replacement report or test framework was added.
+- Current activity: continue read-only inventory across import/data/preprocess/epoch, split/training,
+  result rendering, Assistant, startup/config/log/shutdown, scripts, CI and docs.  A new bounded
+  implementation record is required before each further deletion or consolidation.  The focused
+  integration protection passed 9 tests plus changed-file Ruff; the full selected module has a
+  separately reproduced `main` baseline failure when Windows pytest writes BIDS fixtures through a
+  WSL UNC worktree, so it is not attributed to this candidate or counted as a pass.
 - Parallel read-only work covers broader shared/backend/UI structure and Assistant/startup/settings/
   log/cleanup boundaries. Coordinator integrates overlap and stages later bounded source changes.
   UI authorization permits internal behavior-preserving cleanup only, not visual redesign.
