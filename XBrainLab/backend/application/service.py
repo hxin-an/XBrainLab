@@ -5036,23 +5036,6 @@ class ApplicationService(Observable):
         """Execute a dataset cleanup command."""
         return self.execute(ClearDatasetsCommand(confirmed=confirmed))
 
-    def configure_training(self, command: ConfigureTrainingCommand) -> CommandResult:
-        """Execute a training-configuration command."""
-        return self.execute(command)
-
-    def train(
-        self,
-        command: TrainCommand | None = None,
-        *,
-        confirmed: bool = False,
-    ) -> CommandResult:
-        """Execute a train command."""
-        return self.execute(command or TrainCommand(confirmed=confirmed))
-
-    def stop_training(self) -> CommandResult:
-        """Execute a stop-training command."""
-        return self.execute(StopTrainingCommand())
-
     def clear_training_history(self, confirmed: bool = False) -> CommandResult:
         """Execute a training-history cleanup command."""
         return self.execute(ClearTrainingHistoryCommand(confirmed=confirmed))

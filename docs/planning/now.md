@@ -36,6 +36,19 @@ Current phase: inventory closure and bounded implementation continue in the tabl
 order.  Do not launch a candidate or ask for manual acceptance while any row is
 partial.
 
+Active bounded slice — retire uncalled training convenience wrappers:
+`ApplicationService.configure_training()`, `train()`, and `stop_training()` only
+construct typed commands and delegate to `execute()`. Repository caller sweeps
+covering UI, Assistant, scripts and tests found no caller; those consumers use
+the Command API directly. Scope is deletion of these three private-project
+convenience methods and only exclusive tests if any exist. Retain the public
+`ConfigureTrainingCommand`, `TrainCommand`, `StopTrainingCommand`, command gate,
+resource confirmation, cancellation and training runtime. Owners before/after:
+ApplicationService remains the command boundary; no owner is added. Expected
+production delta is negative. Validate direct caller sweep, the focused command
+workflow/stop lifecycle protection, Ruff, and the exact-head CI later. Stop for
+a real caller, public-contract decision, or visible UI change.
+
 Import-to-epoch first-pass retention: Data Interpretation lifecycle exports remain
 consumed by apply, state, and command-service production paths; preprocessing render
 DTO/query boundaries remain consumed by the Preprocess panel and native-stress
