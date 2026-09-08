@@ -51,6 +51,17 @@
   and package exports import canonical saliency names directly.  The caller sweep is clean and the
   focused lifecycle/UI-owner suite passes 8 tests with Ruff.  `close()`, `PublicationLifecycle`,
   package-level visualization exports and all saliency method values remain unchanged.
+- Active implementation sub-slice — development profiling retirement (complexity review): delete
+  `scripts/dev/profile_data_import_e2e.py` (1,509 lines) and its 446-line exclusive unit module.
+  The caller audit finds only the test importing the script; no CI, handoff registry, docs,
+  configuration, product import, artifact consumer, or validation contract invokes its ignored
+  timing artifact.  This is development/test code only, production owners before/after: none,
+  production LOC delta: 0, no new module/owner/receipt/compatibility path.  The direct deletion
+  delta is -1,955 development/test LOC; splitting is unnecessary because the script and test are
+  one inseparable orphan pair and rollback is one commit.  Retain wizard correctness tests, public
+  fixture/matrix and source-diverse data gates; do not replace them with another profiler or weaken
+  any gate.  Validate full reference/registration sweep, changed-tree compile, and the retained
+  `run_tests.py` routing.  Stop for an artifact consumer or evidence-contract reference.
 - Parallel read-only work covers broader shared/backend/UI structure and Assistant/startup/settings/
   log/cleanup boundaries. Coordinator integrates overlap and stages later bounded source changes.
   UI authorization permits internal behavior-preserving cleanup only, not visual redesign.
