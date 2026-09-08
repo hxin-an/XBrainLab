@@ -130,6 +130,14 @@ ApplicationService fences its command/publication work and Assistant runtime own
 controller/dispatcher/download cleanup. These are distinct resources, not duplicate
 control planes. The row remains partial pending full launch/teardown fixture review.
 
+Shared-state/publication first-pass retention: `ApplicationViewPublication` is the verified,
+immutable UI/Assistant read model; `OwnedWorkRegistry` is cancellation truth for individual
+operations; training publication lifecycle delivers terminal events; and the shutdown fence
+is the mutation-admission barrier. UI capability ports, the application renderer, Assistant
+tool runtime and integration lifecycle tests each consume these distinct seams. They are not
+duplicate mutable state and cannot be collapsed without changing async ownership. The row
+remains partial pending cache/SHA/copy and dependency-direction closure.
+
 Scripts/CI/docs/fixtures first-pass retention: CI, Poe, developer docs and the handoff
 registry explicitly reference the test runner, source provenance, native smoke, UI capture,
 public dataset, data-interpretation, cross-source training, documentation, and dashboard
