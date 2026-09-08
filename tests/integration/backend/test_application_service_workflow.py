@@ -761,8 +761,13 @@ def test_montage_preserves_real_epoch_channels_and_locks_replacement_afterward(
 
     montage_result = service.execute(
         ApplyMontageCommand(
-            channels=["EEG2", "EEG0"],
-            positions=[(0.0, 0.1, 0.2), (0.3, 0.4, 0.5)],
+            channels=["EEG2", "EEG0", "EEG3", "EEG1"],
+            positions=[
+                (0.0, 0.04, 0.08),
+                (-0.04, 0.0, 0.08),
+                (0.04, 0.0, 0.04),
+                (0.0, -0.04, 0.12),
+            ],
             montage_name="integration-order",
         )
     )
@@ -770,8 +775,10 @@ def test_montage_preserves_real_epoch_channels_and_locks_replacement_afterward(
     assert montage_result.ok is True
     assert montage_result.state.epoch.channel_names == ["EEG0", "EEG1", "EEG2", "EEG3"]
     assert montage_result.state.visualization.montage_positions == [
-        [0.3, 0.4, 0.5],
-        [0.0, 0.1, 0.2],
+        [-0.04, 0.0, 0.08],
+        [0.0, -0.04, 0.12],
+        [0.0, 0.04, 0.08],
+        [0.04, 0.0, 0.04],
     ]
     generated = service.execute(
         SaveDatasetSplitCommand(
@@ -795,10 +802,16 @@ def test_montage_preserves_real_epoch_channels_and_locks_replacement_afterward(
     trained = service.execute(TrainCommand(confirmed=True, interactive=False))
     assert trained.ok is True
     assert trained.diagnostics["split_preparation"]["materialized"] is True
+    samples_before_replacement = service.study.epoch_data.get_data().copy()
     blocked = service.execute(
         ApplyMontageCommand(
-            channels=["EEG0", "EEG2"],
-            positions=[(0.3, 0.4, 0.5), (0.0, 0.1, 0.2)],
+            channels=["EEG0", "EEG2", "EEG1", "EEG3"],
+            positions=[
+                (-0.03, 0.0, 0.08),
+                (0.0, 0.04, 0.08),
+                (0.0, -0.04, 0.12),
+                (0.04, 0.0, 0.04),
+            ],
             montage_name="too-late",
         )
     )
@@ -807,9 +820,15 @@ def test_montage_preserves_real_epoch_channels_and_locks_replacement_afterward(
     assert "Clear training" in blocked.message
     assert blocked.state.epoch.channel_names == ["EEG0", "EEG1", "EEG2", "EEG3"]
     assert blocked.state.visualization.montage_positions == [
-        [0.3, 0.4, 0.5],
-        [0.0, 0.1, 0.2],
+        [-0.04, 0.0, 0.08],
+        [0.0, -0.04, 0.12],
+        [0.0, 0.04, 0.08],
+        [0.04, 0.0, 0.04],
     ]
+    np.testing.assert_array_equal(
+        service.study.epoch_data.get_data(),
+        samples_before_replacement,
+    )
     assert blocked.state.dataset == trained.state.dataset
 
 
