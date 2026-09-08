@@ -36,6 +36,12 @@ Current phase: inventory closure and bounded implementation continue in the tabl
 order.  Do not launch a candidate or ask for manual acceptance while any row is
 partial.
 
+Import-to-epoch first-pass retention: Data Interpretation lifecycle exports remain
+consumed by apply, state, and command-service production paths; preprocessing render
+DTO/query boundaries remain consumed by the Preprocess panel and native-stress
+evidence.  They are retained, not compatibility-only deletion candidates.  The row
+remains partial pending its complete workflow and test/fixture sweep.
+
 ### Approved outcome and execution
 
 - Preserve current effective features, UI, EEG semantics and Assistant public contracts. Audit
