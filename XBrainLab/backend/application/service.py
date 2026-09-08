@@ -5023,10 +5023,6 @@ class ApplicationService(Observable):
         """Execute a remove-files command."""
         return self.execute(RemoveFilesCommand(indices=indices))
 
-    def preprocess_data(self, command: PreprocessCommand) -> CommandResult:
-        """Execute a preprocessing command."""
-        return self.execute(command)
-
     def create_epoch(
         self,
         t_min: float,
