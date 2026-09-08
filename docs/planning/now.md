@@ -138,6 +138,14 @@ tool runtime and integration lifecycle tests each consume these distinct seams. 
 duplicate mutable state and cannot be collapsed without changing async ownership. The row
 remains partial pending cache/SHA/copy and dependency-direction closure.
 
+SHA/cache/copy first-pass retention: resource SHA-256 and scope fingerprints bind reviewed
+imports and receipt confirmation against TOCTOU; BIDS resource admission rechecks content on
+unreliable timestamp platforms; training recommendations cache only detached matching context;
+and detached render/preparation copies keep background work from mutating live product state.
+Resource-identity, cache-invalidation, Windows freshness and rollback tests exercise these
+boundaries. They are retained as unsafe/external seams, not generic caching duplication. The
+shared row remains partial pending dependency-direction and fixture closure.
+
 Scripts/CI/docs/fixtures first-pass retention: CI, Poe, developer docs and the handoff
 registry explicitly reference the test runner, source provenance, native smoke, UI capture,
 public dataset, data-interpretation, cross-source training, documentation, and dashboard
