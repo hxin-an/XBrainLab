@@ -45,6 +45,15 @@
   wrapper is removed.  It only delegated `PreprocessCommand` to `execute()`; the complete caller
   sweep found no use, and the direct command-envelope regression plus Ruff passed.  `PreprocessCommand`,
   `execute()`, capability policy, Assistant mapping and UI workflow remain the contract.
+- Active implementation sub-slice: delete two service compatibility delegates and one visualization
+  re-export shim with no production caller.  `ApplicationService.dispose()` aliases idempotent
+  `close()` and is test-only; `_publish_training_terminal_state()` only forwards to the existing
+  `PublicationLifecycle` owner and is invoked only by tests.  `backend.visualization.saliency_methods`
+  only re-exports canonical `backend.saliency_methods` for its package initializer.  Scope: remove
+  the delegates/shim, make the initializer import the canonical names, and migrate tests to their
+  real owner.  Retain `close()`, `PublicationLifecycle`, package-level visualization exports and all
+  saliency method values.  Validate caller absence, affected lifecycle/UI tests, package import and
+  Ruff; stop for a non-test caller or changed package import contract.
 - Parallel read-only work covers broader shared/backend/UI structure and Assistant/startup/settings/
   log/cleanup boundaries. Coordinator integrates overlap and stages later bounded source changes.
   UI authorization permits internal behavior-preserving cleanup only, not visual redesign.
