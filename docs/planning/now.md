@@ -38,6 +38,14 @@
   dynamic-registration, configuration, script, or documentation caller and the retained command
   spine is protected by passing focused tests.  This establishes only the two-slice cleanup, not
   the whole-stage handoff or product manual acceptance.
+- Active implementation sub-slice: remove `scripts/dev/cov_report.py` after characterizing its
+  standalone JSON-only output and rechecking every repository/CI/documentation caller.  It has one
+  historical origin, no current invocation, test, package entry, CI/handoff registration, or docs
+  link; its hard-coded 90% target and omissions are not part of the current validation contract.
+  Scope/non-goals: delete this orphan script only; retain current coverage/CI evidence and do not
+  introduce a replacement report, coverage target, or test framework.  Validate the pre-deletion
+  sample invocation, post-deletion reference sweep, and changed-tree compilation.  Stop if a real
+  caller or evidence contract dependency appears.
 - Parallel read-only work covers broader shared/backend/UI structure and Assistant/startup/settings/
   log/cleanup boundaries. Coordinator integrates overlap and stages later bounded source changes.
   UI authorization permits internal behavior-preserving cleanup only, not visual redesign.
