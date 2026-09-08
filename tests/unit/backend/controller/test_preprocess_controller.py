@@ -8,44 +8,52 @@ import pytest
 
 from XBrainLab.backend.controller.preprocess_controller import PreprocessController
 from XBrainLab.backend.load_data import Raw
+from XBrainLab.backend.preprocessor.base import PreprocessBase
 from XBrainLab.backend.study import Study
 
 
-class _PreprocessRow:
-    def __init__(self, history: list[str] | None = None) -> None:
-        self.history = list(history or [])
-
-    def copy(self) -> _PreprocessRow:
-        return _PreprocessRow(self.history)
-
-
-class _RecordingProcessor:
-    def __init__(self, data_list: list[_PreprocessRow]) -> None:
-        self.data_list = data_list
-
-    def data_preprocess(self, *_args, **_kwargs) -> list[_PreprocessRow]:
-        self.data_list[0].history.append("filter")
-        return self.data_list
+def _preprocess_raw() -> Raw:
+    raw = Raw(
+        "recording.fif",
+        mne.io.RawArray(
+            np.zeros((1, 100), dtype=np.float64),
+            mne.create_info(["Cz"], sfreq=100.0, ch_types="eeg"),
+            verbose="ERROR",
+        ),
+    )
+    raw.add_preprocess("loaded")
+    return raw
 
 
-class _FailingProcessor:
-    def __init__(self, data_list: list[_PreprocessRow]) -> None:
-        self.data_list = data_list
+class _RecordingProcessor(PreprocessBase):
+    def get_preprocess_desc(self, *_args, **_kwargs) -> str:
+        return "filter"
 
-    def data_preprocess(self, *_args, **_kwargs) -> list[_PreprocessRow]:
-        self.data_list[0].history.append("resample")
+    def _data_preprocess(self, preprocessed_data: Raw, *_args, **_kwargs) -> None:
+        preprocessed_data.get_mne().apply_function(lambda samples: samples + 1)
+
+
+class _FailingProcessor(PreprocessBase):
+    def get_preprocess_desc(self, *_args, **_kwargs) -> str:
+        return "resample"
+
+    def _data_preprocess(self, preprocessed_data: Raw, *_args, **_kwargs) -> None:
+        preprocessed_data.get_mne().apply_function(lambda samples: samples + 1)
         raise RuntimeError("resample failed")
 
 
 def _history_processor(label: str):
-    class _HistoryProcessor:
-        def __init__(self, data_list: list[_PreprocessRow]) -> None:
-            self.data_list = data_list
+    class _HistoryProcessor(PreprocessBase):
+        def get_preprocess_desc(self, *_args, **_kwargs) -> str:
+            return label
 
-        def data_preprocess(self, *_args, **_kwargs) -> list[_PreprocessRow]:
-            for row in self.data_list:
-                row.history.append(label)
-            return self.data_list
+        def _data_preprocess(
+            self,
+            preprocessed_data: Raw,
+            *_args,
+            **_kwargs,
+        ) -> None:
+            preprocessed_data.get_mne().apply_function(lambda samples: samples + 1)
 
     return _HistoryProcessor
 
@@ -101,8 +109,9 @@ def test_standard_pipeline_failure_does_not_commit_or_notify(
     controller,
     mock_study,
 ):
-    original = _PreprocessRow(["loaded"])
+    original = _preprocess_raw()
     original_list = [original]
+    original_samples = original.get_mne().get_data().copy()
     mock_study.preprocessed_data_list = original_list
     notifications: list[str] = []
     controller.subscribe("preprocess_changed", lambda: notifications.append("changed"))
@@ -125,7 +134,8 @@ def test_standard_pipeline_failure_does_not_commit_or_notify(
         )
 
     assert mock_study.preprocessed_data_list is original_list
-    assert original.history == ["loaded"]
+    assert original.get_preprocess_history() == ["loaded"]
+    assert np.array_equal(original.get_mne().get_data(), original_samples)
     mock_study.set_preprocessed_data_list.assert_not_called()
     assert notifications == []
 
@@ -134,7 +144,8 @@ def test_standard_pipeline_swaps_once_and_notifies_after_complete_success(
     controller,
     mock_study,
 ):
-    original = _PreprocessRow(["loaded"])
+    original = _preprocess_raw()
+    original_samples = original.get_mne().get_data().copy()
     mock_study.preprocessed_data_list = [original]
     notifications: list[str] = []
     controller.subscribe("preprocess_changed", lambda: notifications.append("changed"))
@@ -168,7 +179,7 @@ def test_standard_pipeline_swaps_once_and_notifies_after_complete_success(
 
     mock_study.set_preprocessed_data_list.assert_called_once()
     committed = mock_study.set_preprocessed_data_list.call_args.args[0]
-    assert committed[0].history == [
+    assert committed[0].get_preprocess_history() == [
         "loaded",
         "filter",
         "filter",
@@ -176,7 +187,9 @@ def test_standard_pipeline_swaps_once_and_notifies_after_complete_success(
         "rereference",
         "normalize",
     ]
-    assert original.history == ["loaded"]
+    assert np.array_equal(committed[0].get_mne().get_data(), original_samples + 5)
+    assert original.get_preprocess_history() == ["loaded"]
+    assert np.array_equal(original.get_mne().get_data(), original_samples)
     assert notifications == ["changed"]
 
 

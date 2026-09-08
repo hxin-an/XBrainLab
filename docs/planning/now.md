@@ -77,6 +77,11 @@
   alias and native async/render evidence pass. Consecutive Filter → Resample outputs match serial
   data, history and events on twelve recordings. Independent review is complete; next is exact-head
   PR CI and Windows handoff, not a new cache, public setting or scheduler owner.
+- First PR #122 CI exposed three remaining in-place test processors in controller/integration
+  tests that bypass the shipped processor copy boundary. The failed-run evidence is retained;
+  corrected tests use real detached processing and assert signal/history isolation. All three
+  reproduced red then passed; independent review confirmed no production in-place provider.
+  Next: final exact-head CI and Windows handoff; product source is unchanged from the measured candidate.
 
 ## Following work — agreed order
 

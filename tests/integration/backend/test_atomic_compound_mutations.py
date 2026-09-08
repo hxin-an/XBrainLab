@@ -15,26 +15,24 @@ from XBrainLab.backend.application.commands import (
     UpdateMetadataCommand,
 )
 from XBrainLab.backend.load_data import Raw
+from XBrainLab.backend.preprocessor.base import PreprocessBase
 from XBrainLab.backend.study import Study
 
 
-class _RecordingProcessor:
-    def __init__(self, data_list: list[Raw]) -> None:
-        self.data_list = data_list
+class _RecordingProcessor(PreprocessBase):
+    def get_preprocess_desc(self, *_args, **_kwargs) -> str:
+        return "filter"
 
-    def data_preprocess(self, *_args, **_kwargs) -> list[Raw]:
-        for data in self.data_list:
-            data.add_preprocess("filter")
-        return self.data_list
+    def _data_preprocess(self, preprocessed_data: Raw, *_args, **_kwargs) -> None:
+        preprocessed_data.get_mne().apply_function(lambda samples: samples + 1)
 
 
-class _FailingProcessor:
-    def __init__(self, data_list: list[Raw]) -> None:
-        self.data_list = data_list
+class _FailingProcessor(PreprocessBase):
+    def get_preprocess_desc(self, *_args, **_kwargs) -> str:
+        return "resample"
 
-    def data_preprocess(self, *_args, **_kwargs) -> list[Raw]:
-        for data in self.data_list:
-            data.add_preprocess("resample")
+    def _data_preprocess(self, preprocessed_data: Raw, *_args, **_kwargs) -> None:
+        preprocessed_data.get_mne().apply_function(lambda samples: samples + 1)
         raise RuntimeError("resample failed")
 
 
@@ -61,6 +59,7 @@ def test_standard_pipeline_failure_is_atomic_through_application_service() -> No
     raw = _raw("/data/sub-01_raw.fif")
     study.set_loaded_data_list([raw], force_update=True)
     original_preprocessed = study.preprocessed_data_list
+    original_samples = raw.get_mne().get_data().copy()
     notifications: list[str] = []
     preprocess = study.get_controller("preprocess")
     preprocess.subscribe(
@@ -90,6 +89,7 @@ def test_standard_pipeline_failure_is_atomic_through_application_service() -> No
     assert result.failed is True
     assert study.preprocessed_data_list is original_preprocessed
     assert raw.get_preprocess_history() == []
+    assert np.array_equal(raw.get_mne().get_data(), original_samples)
     assert notifications == []
 
 
