@@ -121,6 +121,22 @@ real UI/integration consumers. No second product command spine or unowned shutdo
 delegate was found in this pass; the rows remain partial pending settings/log/startup and
 test/fixture sweep.
 
+Startup/settings/log/shutdown first-pass retention: Application runtime construction is
+centralized in `backend/application/runtime.py`; per-user Assistant settings and legacy
+migration are covered by config tests, while repository `settings.json` remains excluded
+local state. Secure log storage has dedicated permission/regular-file tests. Startup smoke
+is registered in CI and the handoff registry. Product shutdown remains split by ownership:
+ApplicationService fences its command/publication work and Assistant runtime owns its
+controller/dispatcher/download cleanup. These are distinct resources, not duplicate
+control planes. The row remains partial pending full launch/teardown fixture review.
+
+Scripts/CI/docs/fixtures first-pass retention: CI, Poe, developer docs and the handoff
+registry explicitly reference the test runner, source provenance, native smoke, UI capture,
+public dataset, data-interpretation, cross-source training, documentation, and dashboard
+tools. Retained scripts have a registered artifact or test/document consumer; no candidate
+is deleted from filename-only absence. The row remains partial pending the non-registered
+development-script and exclusive-fixture sweep.
+
 ### Approved outcome and execution
 
 - Preserve current effective features, UI, EEG semantics and Assistant public contracts. Audit
