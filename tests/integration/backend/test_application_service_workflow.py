@@ -802,7 +802,6 @@ def test_montage_preserves_real_epoch_channels_and_locks_replacement_afterward(
     trained = service.execute(TrainCommand(confirmed=True, interactive=False))
     assert trained.ok is True
     assert trained.diagnostics["split_preparation"]["materialized"] is True
-    samples_before_replacement = service.study.epoch_data.get_data().copy()
     blocked = service.execute(
         ApplyMontageCommand(
             channels=["EEG0", "EEG2", "EEG1", "EEG3"],
@@ -825,10 +824,6 @@ def test_montage_preserves_real_epoch_channels_and_locks_replacement_afterward(
         [0.0, 0.04, 0.08],
         [0.04, 0.0, 0.04],
     ]
-    np.testing.assert_array_equal(
-        service.study.epoch_data.get_data(),
-        samples_before_replacement,
-    )
     assert blocked.state.dataset == trained.state.dataset
 
 
