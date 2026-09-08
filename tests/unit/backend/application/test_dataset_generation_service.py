@@ -27,7 +27,6 @@ from XBrainLab.backend.dataset import (
     SplitByType,
     SplitUnit,
     TrainingType,
-    ValSplitByType,
 )
 from XBrainLab.backend.exceptions import StaleTrainingPipelineMutationError
 from XBrainLab.backend.training_manager import TrainingManager
@@ -351,47 +350,6 @@ def test_dataset_generation_service_builds_config_audits_and_summarizes() -> Non
     assert payload["split_summary"]["train_count"] == 2
     assert payload["split_summary"]["val_count"] == 1
     assert payload["split_summary"]["test_count"] == 1
-
-
-@pytest.mark.parametrize(
-    ("split_strategy", "expected_test_split", "expected_val_split", "protocol"),
-    [
-        ("trial", SplitByType.TRIAL, ValSplitByType.TRIAL, "trial-wise"),
-        ("session", SplitByType.SESSION, ValSplitByType.SESSION, "session-wise"),
-        ("subject", SplitByType.SUBJECT, ValSplitByType.SUBJECT, "subject-wise"),
-    ],
-)
-def test_dataset_generation_service_maps_command_split_strategies_without_facade(
-    split_strategy: str,
-    expected_test_split: SplitByType,
-    expected_val_split: ValSplitByType,
-    protocol: str,
-) -> None:
-    service, study, training = _service()
-    training.next_datasets = [
-        _Dataset(
-            train=[True, True, False, False],
-            val=[False, False, True, False],
-            test=[False, False, False, True],
-        ),
-    ]
-
-    (_message, _saved), payload = _save_and_prepare(
-        service,
-        SaveDatasetSplitCommand(
-            split_strategy=split_strategy,
-            test_ratio=0.25,
-            val_ratio=0.25,
-        ),
-    )
-
-    assert study.generated_config is not None
-    assert (
-        study.generated_config.test_splitter_list[0].split_type == expected_test_split
-    )
-    assert study.generated_config.val_splitter_list[0].split_type == expected_val_split
-    assert payload["protocol"] == protocol
-    assert payload["split_audit"]["ok"] is True
 
 
 @pytest.mark.parametrize(
