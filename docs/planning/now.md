@@ -137,7 +137,7 @@ tools. Retained scripts have a registered artifact or test/document consumer; no
 is deleted from filename-only absence. The row remains partial pending the non-registered
 development-script and exclusive-fixture sweep.
 
-Active bounded slice — retire unregistered standalone development runners: repository-wide
+Completed bounded slice — retired unregistered standalone development runners: repository-wide
 consumer sweep found no CI, handoff registry, Poe, documentation, configuration, product,
 or other-script consumer for `capture_dialog_button_order.py`,
 `consolidate_dataset_storage.py`, `plan_local_model_download.py`,
@@ -145,9 +145,9 @@ or other-script consumer for `capture_dialog_button_order.py`,
 `run_real_data_handoff_gate.py`. Their only consumers are their six exclusive unit test
 modules. Delete each script/manifest with its exclusive tests. Retain the registered
 artifact-integrity helper, model-download safety policy, handoff gate registry, public-data
-and native/UI gates, and every product workflow. This removes development/test-only code,
-adds no owner or contract, and makes no UI change. Validate a final reference sweep,
-changed-tree compilation, Ruff, and exact-head CI; stop if a non-exclusive consumer appears.
+and native/UI gates, and every product workflow. This removes 4,765 development/test-only
+lines, adds no owner or contract, and makes no UI change. Final reference sweep, whole-tree
+Windows Ruff and changed-tree compilation pass. Exact-head CI remains final integration evidence.
 
 ### Approved outcome and execution
 
