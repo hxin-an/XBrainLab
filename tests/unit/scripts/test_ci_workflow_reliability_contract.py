@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import shlex
+import tomllib
 from pathlib import Path
 
 import yaml
@@ -27,6 +29,22 @@ def _workflow(path: Path) -> dict:
 
 def _steps(workflow: dict) -> list[dict]:
     return [step for job in workflow["jobs"].values() for step in job.get("steps", ())]
+
+
+def test_poe_python_file_tasks_reference_existing_entrypoints() -> None:
+    """Advertised direct Python tasks must not point to retired scripts."""
+    config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    for name, task in config["tool"]["poe"]["tasks"].items():
+        command = task.get("cmd") if isinstance(task, dict) else task
+        if not isinstance(command, str):
+            continue
+        argv = shlex.split(command)
+        if (
+            len(argv) >= 2
+            and argv[0] in {"python", "python3"}
+            and argv[1].endswith(".py")
+        ):
+            assert (ROOT / argv[1]).is_file(), f"Poe task {name}: missing {argv[1]}"
 
 
 def test_all_official_actions_are_pinned_to_reviewed_immutable_shas() -> None:
