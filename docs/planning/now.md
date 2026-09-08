@@ -2,7 +2,42 @@
 
 最後更新：`2026-09-08`
 
-## Next — Bounded workflow cleanup after obsolete-tool retirement
+## Active — Comprehensive architecture, implementation and test cleanup
+
+### Approved outcome and execution
+
+- Preserve current effective features, UI, EEG semantics and Assistant public contracts. Audit
+  vertical user workflows and horizontal ownership together; old tests do not ratify old business
+  paths. Delete unused implementation/tests/references, or consolidate necessary behavior into
+  existing owners and delete superseded paths. No legacy archive, wrapper or permanent double path.
+- Cover import/event/class/channel/montage/preprocess/epoch; split/config/train/stop/retry;
+  evaluation/saliency/visualization; Assistant parameters/confirmation/execution/UI handoff;
+  startup/settings/logging/shutdown, and scripts/CI/docs. Include shared service/state/events,
+  async lifecycles, SHA/cache/copies, dependency direction and test evidence.
+- Each reviewed area must produce callable/ownership evidence, justified deletion/consolidation,
+  necessary retention or an explicit evidence gap. Static inspection is not performance proof.
+- Current slice: test-only real split command-boundary coverage, replacing only demonstrably
+  redundant fake-generator mapping cases after characterization. Use real domain allocation and
+  ApplicationService results; no product/API/ratio/preview-policy change, no heavyweight training.
+  Scope: existing split integration/unit tests and this plan. Owners and product LOC unchanged.
+- Parallel read-only work covers broader shared/backend/UI structure and Assistant/startup/settings/
+  log/cleanup boundaries. Coordinator integrates overlap and stages later bounded source changes.
+  UI authorization permits internal behavior-preserving cleanup only, not visual redesign.
+- Validation: focused tests/Ruff per slice; exact-head applicable CI and independent deletion review
+  before merge. Test/tool-only slices follow approved reviewer/CI merge; product-source slices retain
+  required native/hand-test approval. No gate weakening, model downloads or prompt experiments.
+- Persist a new bounded slice record before each next implementation. Continue through independent
+  authorized slices, not stopping at compaction, first PR or pending CI. If a product decision/manual
+  acceptance is required, isolate it and continue independent work; never claim the whole stage done.
+- Completion: coverage assessed or explicitly limited, actionable authorized cleanup implemented,
+  superseded paths physically removed, current behavior credibly protected, unused artifacts cleaned,
+  remaining ownership burdens and decisions reported. Git/PR retain implementation/validation history.
+- Next: independent review and CI for the real split test slice; isolated source slices remove unrouted
+  desktop surfaces, unused Study deferred subscriptions, and unreachable generic command bindings.
+  The split tests retain real shorthand trial/session/subject coverage because Assistant/scripts still
+  use that adapter; CV split_config coverage alone is not an equivalent replacement.
+
+### Starting candidates and retained findings
 
 Montage/saliency #123 has merged. The first script-cleanup slice removes orphaned/retired tooling
 without changing product behavior or gate coverage; Git/PR owns its review, checks and merge status.
@@ -36,6 +71,16 @@ Reviewer findings do not expand that slice. Use focused local evidence and exact
 product behavior changes still need Windows manual acceptance and merge approval.
 
 ### Retain with explicit reasons
+
+- Shared architecture review traced view projection/revision acknowledgement, Qt observer delivery,
+  backend owned-work cancellation, UI worker cleanup and Assistant runtime projection. These have
+  distinct consumers/responsibilities; no duplicate authoritative owner was demonstrated. Large
+  ApplicationService/UI runtime files remain maintenance burdens, not justification for a new layer.
+- Startup/config/log/shutdown review retains one-time per-user config migration, sanitized secure log
+  storage, native resource cleanup and separate backend/Qt/Assistant lifecycle fences. They protect
+  live boundaries; mocked model seams do not establish real model quality.
+- Public ApplicationService convenience methods need an explicit compatibility decision before
+  removal: repository caller scarcity alone cannot settle use of this exported interface.
 
 - Import Apply content checks guard reviewed files before/after loading; the detached preprocess
   Raw copy isolates MNE mutation. Small render request hashes bind owned-operation claims, not EEG
