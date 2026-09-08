@@ -272,7 +272,9 @@ def test_mainwindow_renderer_delays_terminal_until_qt_render(main_window, qtbot)
     )
     results = []
     worker = Thread(
-        target=lambda: results.append(service._publish_training_terminal_state()),
+        target=lambda: results.append(
+            service.publication_lifecycle.publish_training_terminal_state()
+        ),
     )
 
     worker.start()
@@ -306,7 +308,7 @@ def test_mainwindow_failed_render_keeps_terminal_retryable(main_window, qtbot):
     render = renderer._render_publication
     renderer._render_publication = lambda _publication: False
 
-    assert service._publish_training_terminal_state() is False
+    assert service.publication_lifecycle.publish_training_terminal_state() is False
     publication = service.get_view_publication()
     assert terminal_events == []
     assert (

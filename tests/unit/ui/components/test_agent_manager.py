@@ -3570,7 +3570,7 @@ class TestAgentManagerProductChatFlow:
         publish_results: list[bool] = []
         worker = Thread(
             target=lambda: publish_results.append(
-                service._publish_training_terminal_state()
+                service.publication_lifecycle.publish_training_terminal_state()
             ),
             name="training-terminal-publication-test",
         )

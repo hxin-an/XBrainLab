@@ -36,7 +36,6 @@ def test_direct_services_share_one_lifecycle_observer_owner() -> None:
     first.publication_lifecycle.publish_training_live_state = MagicMock()
     first.close()
     first.close()
-    first.dispose()
     training_events.notify("training_started")
 
     first.publication_lifecycle.publish_training_live_state.assert_not_called()

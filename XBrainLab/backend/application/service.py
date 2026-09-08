@@ -1065,21 +1065,6 @@ class ApplicationService(Observable):
         if self.shutdown_lifecycle.snapshot().closed:
             raise RuntimeError(_CLOSED_SERVICE_MESSAGE)
 
-    def dispose(self) -> None:
-        """Compatibility alias for explicit ApplicationService cleanup."""
-        self.close()
-
-    def _publish_training_terminal_state(
-        self,
-        *_args: Any,
-        **_kwargs: Any,
-    ) -> bool:
-        """Compatibility delegate retained for out-of-scope UI lifecycle callers."""
-        return self.publication_lifecycle.publish_training_terminal_state(
-            *_args,
-            **_kwargs,
-        )
-
     def _configure_post_training_saliency(
         self,
         params: dict[str, object],

@@ -2,7 +2,7 @@
 
 # ruff: noqa: I001 - saliency method names must be available before plot_type
 # imports pull in the training stack.
-from .saliency_methods import (
+from XBrainLab.backend.saliency_methods import (
     all_saliency_methods,
     recommended_saliency_methods,
     supported_saliency_methods,
