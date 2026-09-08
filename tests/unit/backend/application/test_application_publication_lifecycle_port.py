@@ -89,7 +89,6 @@ def test_real_study_service_construction_does_not_resolve_training_controller() 
 
     service.close()
     assert "training" not in study._controllers
-    assert "training" not in study._controller_event_subscriptions
 
 
 def test_product_lifecycle_observer_precedes_later_controller_observers() -> None:

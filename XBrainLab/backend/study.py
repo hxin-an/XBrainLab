@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from threading import Lock, RLock
 from typing import TYPE_CHECKING, Any
 
@@ -64,10 +63,6 @@ class Study:
         # Controller cache for singleton-like access
         self._controllers: dict[str, Any] = {}
         self._controller_lock = RLock()
-        self._controller_event_subscriptions: dict[
-            str,
-            list[tuple[str, Callable[..., Any]]],
-        ] = {}
         self._application_service: Any | None = None
         self._application_service_lock = RLock()
 
@@ -162,46 +157,6 @@ class Study:
         self.training_manager.saliency_params = value
 
     # --- Controller Access ---
-    def subscribe_controller_event(
-        self,
-        controller_type: str,
-        event_name: str,
-        callback: Callable[..., Any],
-    ) -> None:
-        """Subscribe now or bind before a lazily created controller is returned."""
-        with self._controller_lock:
-            controller = self._controllers.get(controller_type)
-            if controller is not None:
-                controller.subscribe(event_name, callback)
-                return
-            subscription = (event_name, callback)
-            pending = self._controller_event_subscriptions.setdefault(
-                controller_type,
-                [],
-            )
-            if subscription not in pending:
-                pending.append(subscription)
-
-    def unsubscribe_controller_event(
-        self,
-        controller_type: str,
-        event_name: str,
-        callback: Callable[..., Any],
-    ) -> None:
-        """Remove a bound or still-pending lazy controller subscription."""
-        with self._controller_lock:
-            controller = self._controllers.get(controller_type)
-            if controller is not None:
-                controller.unsubscribe(event_name, callback)
-                return
-            pending = self._controller_event_subscriptions.get(controller_type)
-            subscription = (event_name, callback)
-            if pending is None or subscription not in pending:
-                return
-            pending.remove(subscription)
-            if not pending:
-                self._controller_event_subscriptions.pop(controller_type, None)
-
     def get_controller(self, controller_type: str):
         """Get or create a cached controller instance.
 
@@ -255,11 +210,6 @@ class Study:
                 else:
                     raise ValueError(f"Unknown controller type: {controller_type}")
                 self._controllers[controller_type] = controller
-                for event_name, callback in self._controller_event_subscriptions.pop(
-                    controller_type,
-                    (),
-                ):
-                    controller.subscribe(event_name, callback)
             return self._controllers[controller_type]
 
     # step 1 - load data
