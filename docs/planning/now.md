@@ -24,17 +24,16 @@
 
 | Inventory area | Status | Closure requirement |
 | --- | --- | --- |
-| Import, interpretation, event/class/channel/montage, preprocess and epoch | Partial | Complete caller/owner/test sweep, then remove or retain each proven candidate. |
-| Split configuration, training, stop, retry and result reopen | Partial | Close command-boundary and lifecycle/test audit; retain real allocation and cancellation protections. |
-| Evaluation, Saliency and Visualization | Partial | Close result-read/render/notification ownership and test audit after retired controllers. |
-| Shared state, publication, async lifecycle, SHA/cache/copy and dependency direction | Partial | Close owner/consumer evidence; no redesign from static suspicion alone. |
-| Assistant parameters, confirmation, execution and UI handoff | Partial | Close tool-to-command and lifecycle ownership sweep without prompt/model experiments. |
-| Startup, settings, logs and shutdown | Partial | Close launch/config/log/resource-cleanup caller and retention evidence. |
-| Scripts, CI, hooks, dependencies, docs and fixtures | Partial | Close registrations, artifact consumers, redundant tests and canonical-document references. |
+| Import, interpretation, event/class/channel/montage, preprocess and epoch | Closed | Command, receipt, UI/Assistant entry and real-data/format fixture sweep recorded below. |
+| Split configuration, training, stop, retry and result reopen | Closed | Command-boundary, allocation, cancellation, preview and reopen lifecycle evidence recorded below. |
+| Evaluation, Saliency and Visualization | Closed | Render/publication owner and consumer/test evidence recorded below. |
+| Shared state, publication, async lifecycle, SHA/cache/copy and dependency direction | Closed | Distinct owner/consumer and unsafe-seam evidence recorded below. |
+| Assistant parameters, confirmation, execution and UI handoff | Closed | One tool-to-command spine and lifecycle/handoff evidence recorded below. |
+| Startup, settings, logs and shutdown | Closed | Runtime/config/log/resource-cleanup ownership evidence recorded below. |
+| Scripts, CI, hooks, dependencies, docs and fixtures | Closed | Registration/consumer/fixture sweep and orphan removals recorded below. |
 
-Current phase: inventory closure and bounded implementation continue in the table
-order.  Do not launch a candidate or ask for manual acceptance while any row is
-partial.
+Current phase: source is frozen for final exact-head validation. Do not request
+manual acceptance until the applicable final checks succeed on that same SHA.
 
 Completed bounded slice — retired uncalled training convenience wrappers:
 `ApplicationService.configure_training()`, `train()`, and `stop_training()` only
@@ -75,7 +74,7 @@ visible UI, data, result-read or public command contract changes; production LOC
 was -20. Direct caller sweep, pre-commit Ruff, and focused analysis/state-query
 protection pass (106 tests). Exact-head CI remains final integration evidence.
 
-Checkpointed bounded slice — retired data/interpretation/epoch convenience wrappers:
+Completed bounded slice — retired data/interpretation/epoch convenience wrappers:
 `ApplicationService` methods for legacy load/labels/table mutation, scan/review/
 preview/validate/apply interpretation, and epoch creation merely construct typed
 commands and call `execute()`. The caller sweep found one real test use of
@@ -88,6 +87,39 @@ public-command change. Ruff passed through the commit hook. The specified
 resource-receipt/import-boundary/epoch focused pytest protection now passes on
 the Windows environment (6 tests; one expected MNE all-epochs-dropped warning).
 Exact-head CI still remains final integration evidence.
+
+Inventory closure — import through epoch: `ApplicationService.execute()` is the sole
+mutation command boundary. Dataset/Preprocess panels, Assistant command builders and
+headless evidence use typed load, interpretation, metadata, montage, preprocess and
+epoch commands; no removed convenience API has a caller. Data Interpretation owns its
+two-phase discovery/apply receipt, preprocessing owns detached preparation, and epoch
+materialization owns event/window validation. Resource-receipt, content-hash cancellation,
+import-boundary, epoch materialization, BIDS duration, format-matrix and checked-in
+GDF/MAT real-data tests retain the workflow and fixtures.
+
+Inventory closure — split through result reopen: dataset-generation owns saved split
+state/materialization, training runtime owns stop and terminal truth, and ApplicationService
+owns command admission plus preview/reopen reads. UI capability ports, Assistant tool
+builders and cross-source/product walkthroughs use typed commands. Real-epoch deferred
+split tests cover Full session/subject, Individual session, Individual-subject rejection,
+preview receipts and materialization; handler-level mock tests retain independent rollback
+and exception isolation rather than duplicating that coverage.
+
+Inventory closure — Evaluation/Saliency/Visualization: AnalysisCommandService owns command
+execution; ApplicationService owns publication-fenced evaluation/saliency rendering; the
+two UI panels consume the capability port. The removed Evaluation/Visualization controllers
+had no remaining consumer. Render walkthroughs, source-diverse journeys and publication-
+lifecycle tests cover selection, stale/reopen, cancellation and terminal notification.
+
+Inventory closure — shared/Assistant/startup/scripts: immutable view publication, owned-work
+registry, training delivery lifecycle and shutdown fence have distinct async owners and
+real UI/Assistant/integration consumers. SHA/receipt fingerprints, cache invalidation and
+detached copies are TOCTOU/external-resource seams. Assistant tools resolve one runtime and
+execute one typed command spine; UI handoff only routes existing workflow surfaces. Runtime
+creation, per-user settings migration, secure logs, startup smoke and Assistant resource
+shutdown have dedicated owners/tests. CI/handoff/Poe/docs/fixtures retain registered gates;
+the unregistered runners and exclusive tests were removed. Architecture compliance guards
+pass on the exact pre-freeze source revision.
 
 Import-to-epoch first-pass retention: Data Interpretation lifecycle exports remain
 consumed by apply, state, and command-service production paths; preprocessing render
