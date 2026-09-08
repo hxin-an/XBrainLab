@@ -65,6 +65,16 @@ is zero and production LOC was -33. Direct caller sweep, pre-commit Ruff, and
 focused split-preview/lifecycle service protection pass (37 tests). Exact-head
 CI remains final integration evidence.
 
+Active bounded slice — retire uncalled result/query convenience wrappers:
+`ApplicationService.evaluate()`, `visualize()`, `saliency()`, `apply_montage()`,
+and `query_state()` have no repository caller and only delegate a typed command to
+`execute()`. Scope is their deletion only. Retain `EvaluateCommand`,
+`VisualizeCommand`, `SaliencyCommand`, `ApplyMontageCommand`, `QueryStateCommand`,
+the analysis service, UI ports, headless automation and Assistant tools. No owner,
+visible UI, data, result-read or public command contract changes; production LOC
+is negative. Validate caller sweep, analysis/query focused protection, Ruff and
+later exact-head CI. Stop for a real service caller or public-contract decision.
+
 Import-to-epoch first-pass retention: Data Interpretation lifecycle exports remain
 consumed by apply, state, and command-service production paths; preprocessing render
 DTO/query boundaries remain consumed by the Preprocess panel and native-stress

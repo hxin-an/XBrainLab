@@ -5019,26 +5019,6 @@ class ApplicationService(Observable):
             ),
         )
 
-    def evaluate(self, command: EvaluateCommand | None = None) -> CommandResult:
-        """Execute an evaluation query command."""
-        return self.execute(command or EvaluateCommand())
-
-    def visualize(self, command: VisualizeCommand | None = None) -> CommandResult:
-        """Execute a visualization query command."""
-        return self.execute(command or VisualizeCommand())
-
-    def saliency(self, command: SaliencyCommand | None = None) -> CommandResult:
-        """Execute a saliency setup/query command."""
-        return self.execute(command or SaliencyCommand())
-
-    def apply_montage(self, command: ApplyMontageCommand) -> CommandResult:
-        """Execute a confirmed montage application command."""
-        return self.execute(command)
-
-    def query_state(self, command: QueryStateCommand | None = None) -> CommandResult:
-        """Execute a read-only state query command."""
-        return self.execute(command or QueryStateCommand())
-
     def _ensure_command_allowed(
         self,
         command: Command,
