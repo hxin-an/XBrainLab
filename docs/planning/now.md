@@ -61,6 +61,10 @@
 - Current evidence: metadata lines originate from MNE's metadata property setter during per-source
   provenance assignment. Logging candidate sets normal desktop MNE verbosity once at startup to
   WARNING while preserving explicit MNE_LOGGING_LEVEL configuration; no message blacklist.
+- Whole-flow audit also found expected owned-work cancellation logged as Worker ERROR before
+  consumers handle it, and Raw-to-Epochs probing logged WARNING even when fallback succeeds.
+  Repair only their log levels, retaining signal delivery, loader selection and real failure
+  diagnostics. Suspected service/worker duplication needs runtime proof before any removal.
 - Apply baseline (three recordings, three reset-equivalent cycles): Zhou2020 0.618–0.753 s and
   GDF fixtures 1.849–2.095 s, dominated by MNE work. Service copy plus processor deepcopy is
   redundant, but its measured milliseconds do not explain the user's long wait. No SHA hotspot

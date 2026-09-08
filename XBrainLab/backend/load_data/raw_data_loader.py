@@ -242,7 +242,7 @@ def load_set_file(filepath):
             logger.warning("Failed to load as Epochs: %s", e)
             raise FileCorruptedError(filepath, f"Failed to load as Epochs: {e}") from e
     except Exception as e:
-        logger.warning("Failed to load as Raw: %s", e)
+        logger.debug("Failed to load as Raw; trying epochs: %s", e)
         # Try Epochs if Raw failed due to other reasons (e.g. ValueError)
         try:
             selected_data = mne.io.read_epochs_eeglab(filepath, uint16_codec="latin1")
@@ -355,7 +355,7 @@ def load_fif_file(filepath):
                 f"Failed to load FIF as Epochs: {e}",
             ) from e
     except Exception as e:
-        logger.warning("Failed to load FIF as Raw: %s", e)
+        logger.debug("Failed to load FIF as Raw; trying epochs: %s", e)
         try:
             selected_data = mne.read_epochs(filepath, preload=False)
         except Exception:

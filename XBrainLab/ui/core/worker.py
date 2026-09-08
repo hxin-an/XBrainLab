@@ -8,6 +8,8 @@ from typing import Any
 
 from PyQt6.QtCore import QObject, QRunnable, pyqtSignal
 
+from XBrainLab.backend.application.owned_work import OwnedOperationCancelledError
+
 logger = logging.getLogger(__name__)
 
 
@@ -33,6 +35,10 @@ def _run_worker_task(worker: Any) -> None:
     """Execute one worker callback through the shared signal contract."""
     try:
         result = worker.fn(*worker.args, **worker.kwargs)
+    except OwnedOperationCancelledError:
+        logger.debug("Worker task cancelled")
+        exctype, value = sys.exc_info()[:2]
+        _safe_emit(worker, "error", (exctype, value, traceback.format_exc()))
     except Exception:
         logger.error("Worker task failed", exc_info=True)
         exctype, value = sys.exc_info()[:2]
