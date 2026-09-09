@@ -1378,7 +1378,9 @@ class TestChatPanelInit:
         )
         controller.clear_conversation()
         qtbot.waitUntil(
-            lambda: not chat_panel._layout_message_bubbles(),
+            # Removal and final empty-state publication use separate Qt chunks.
+            lambda: not chat_panel._layout_message_bubbles()
+            and chat_panel.empty_state_widget.isVisibleTo(chat_panel),
             timeout=3_000,
         )
         assert controller.get_typed_history() == ()

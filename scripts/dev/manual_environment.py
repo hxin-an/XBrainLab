@@ -101,11 +101,17 @@ def _assert_idle(source: Path) -> None:
     root = source.resolve()
     # Windows venv's redirector stays alive as our Python-named parent.
     own_chain = {os.getpid(), *(parent.pid for parent in psutil.Process().parents())}
-    for process in psutil.process_iter(["pid", "name"]):
+    current_user = psutil.Process().username()
+    for process in psutil.process_iter(["pid", "name", "username"]):
         if (
             process.pid in own_chain
             or "python" not in (process.info["name"] or "").lower()
         ):
+            continue
+        # This is a single-user manual environment, not a system-wide process
+        # controller. Service accounts cannot make every local launch unusable.
+        owner = process.info["username"]
+        if owner is not None and owner != current_user:
             continue
         try:
             cwd = Path(process.cwd()).resolve()

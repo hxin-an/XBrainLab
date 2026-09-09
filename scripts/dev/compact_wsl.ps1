@@ -170,8 +170,11 @@ function Copy-VerifiedVhd {
     )
     $destination = Join-Path $RunDirectory 'Ubuntu-24.04-ext4.vhdx.bak'
     if (Test-Path -LiteralPath $destination) { throw "Refusing to overwrite existing backup: $destination" }
+    Write-Verbose 'Hashing the locked source VHDX; a large disk can take several minutes.'
     $sourceBefore = Get-Sha256FromStream -Stream $SourceLock
+    Write-Verbose 'Copying the complete VHDX backup. Keep WSL stopped.'
     Copy-VhdFile -Source $Source -Destination $destination
+    Write-Verbose 'Verifying backup and source SHA-256 hashes.'
     $backupHash = Get-FileSha256 -Path $destination
     $sourceAfter = Get-Sha256FromStream -Stream $SourceLock
     if ($sourceBefore -ne $backupHash -or $sourceAfter -ne $backupHash) {
@@ -197,7 +200,7 @@ function Get-DiskPartSuccessMarker {
     # Keep this .ps1 ASCII-only so Windows PowerShell 5.1 parses it correctly
     # when launched from a UTF-8 UNC share without a BOM.
     $bytes = @{
-        attach = [byte[]](68,105,115,107,80,97,114,116,32,229,183,178,230,136,144,229,138,159,233,153,132,229,138,160,232,153,155,230,147,172,231,163,129,231,162,159,230,170,148,230,161,136,227,128,130)
+        attach = [byte[]](68,105,115,107,80,97,114,116,32,229,183,178,230,136,144,229,138,159,233,128,163,231,181,144,232,153,155,230,147,172,231,163,129,231,162,159,230,170,148,230,161,136,227,128,130)
         detach = [byte[]](68,105,115,107,80,97,114,116,32,229,183,178,230,136,144,229,138,159,228,184,173,230,150,183,233,128,163,231,181,144,232,153,155,230,147,172,231,163,129,231,162,159,230,170,148,230,161,136,227,128,130)
         compact = [byte[]](68,105,115,107,80,97,114,116,32,229,183,178,230,136,144,229,138,159,229,163,147,231,184,174,232,153,155,230,147,172,231,163,129,231,162,159,230,170,148,230,161,136,227,128,130)
     }
@@ -222,6 +225,7 @@ function Invoke-DiskPartLine {
         [Parameter(Mandatory)][ValidateSet('attach', 'detach', 'compact')][string]$Name
     )
     $input = Join-Path $RunDirectory "$Name.txt"
+    Write-Verbose "Running DiskPart $Name; do not start WSL until postcheck."
     [IO.File]::WriteAllLines($input, [string[]]$Lines, [System.Text.UTF8Encoding]::new($false))
     $native = Invoke-DiskPartNative -InputPath $input
     $result = [string]$native.Output

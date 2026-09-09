@@ -146,7 +146,8 @@ $entrypoint = '.\scripts\dev\manual_windows.ps1'
 版本；環境不符時拒絕切換，請診斷後明確同步。此檢查不是全部 transitive dependencies 或
 產品 workflow 的驗證。`launch` 另檢查實際 import provenance 與 pinned cache 完整性，強制
 Windows Qt 和 offline model mode。只有一個 PowerShell console 作為即時 log。
-OS lock 與程序檢查阻擋同時 prepare／launch／clean；不要繞過入口手動切換執行中的 source。
+OS lock 與同一使用者的程序檢查阻擋同時 prepare／launch／clean；這不是跨帳號管理工具。
+不要繞過入口手動切換執行中的 source。
 
 每個 SHA 的 settings、Qt settings、logs、一般 data/cache 與工作目錄隔離於
 `build/manual-runs/<SHA>/`，不覆寫主 checkout 的 `settings.json`。預設 training output
@@ -183,11 +184,12 @@ Windows 使用者註冊的 `Ubuntu-24.04`，不搬家、不 unregister、不處�
 # 預設只讀預覽
 & D:\XBrainLabCache\tools\compact_wsl.ps1
 # 保存工作並自行停止 WSL；再以同一使用者的系統管理員 PowerShell 執行
-& D:\XBrainLabCache\tools\compact_wsl.ps1 -Apply
+& D:\XBrainLabCache\tools\compact_wsl.ps1 -Apply -Verbose
 ```
 
 腳本不替你 shutdown／terminate WSL。Apply 要求所有 WSL 已停止、磁碟未被占用，且
-`E:\XBrainLabBackups` 的 NTFS 空間足以容納完整 VHDX。先建立私有、不可覆寫且 hash 驗證
+`E:\XBrainLabBackups` 的 NTFS 空間足以容納完整 VHDX。完整備份及多次 hash 可能耗時數十分鐘，
+`-Verbose` 會在同一 PowerShell 顯示目前階段。先建立私有、不可覆寫且 hash 驗證
 成功的備份，才允許 DiskPart 原地壓縮；失敗時保留備份與診斷，不自動還原或刪除。
 任何占用／身份／備份／壓縮驗證不明確時停止，不回報成功。操作期間不得重開 WSL／Docker。
 原理與限制見 [Microsoft compact vdisk](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/compact-vdisk)。

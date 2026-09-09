@@ -66,7 +66,9 @@ try {
     } elseif ($Scenario -eq 'DiskPartOutput') {
         $runDirectory = Join-Path $TempRoot 'diskpart'
         New-Item -ItemType Directory -Path $runDirectory | Out-Null
-        $script:diskpartOutput = Get-DiskPartSuccessMarker -Operation attach -Language TraditionalChinese
+        # Captured verbatim from Windows 11 zh-TW DiskPart attach output, encoded
+        # as bytes to keep this Windows PowerShell 5.1 source ASCII-only.
+        $script:diskpartOutput = [System.Text.Encoding]::UTF8.GetString([byte[]](68,105,115,107,80,97,114,116,32,229,183,178,230,136,144,229,138,159,233,128,163,231,181,144,232,153,155,230,147,172,231,163,129,231,162,159,230,170,148,230,161,136,227,128,130))
         function Invoke-DiskPartNative { param([string]$InputPath) [pscustomobject]@{ ExitCode = 0; Output = $script:diskpartOutput } }
         Invoke-DiskPartLine -Lines @('select vdisk file="x"', 'attach vdisk readonly') -RunDirectory $runDirectory -Name 'attach' | Out-Null
         $script:diskpartOutput = (Get-DiskPartSuccessMarker -Operation compact -Language English) + "`nDiskPart has encountered an error: access denied."

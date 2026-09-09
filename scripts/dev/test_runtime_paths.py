@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import stat
 import tempfile
 from hashlib import sha256
 from pathlib import Path
@@ -50,7 +51,22 @@ def remove_owned_pytest_temp_root(test_temp_root: Path, owned_root: Path) -> Non
         return
     if not owned_root.name.startswith("pytest-run-") or not owned_root.is_dir():
         return
-    shutil.rmtree(owned_root)
+    if (
+        getattr(owned_root.lstat(), "st_file_attributes", 0)
+        & stat.FILE_ATTRIBUTE_REPARSE_POINT
+    ):
+        return
+
+    def retry_owned_readonly_remove(function, path, _exc_info) -> None:
+        candidate = Path(path)
+        if candidate.is_symlink() or not candidate.resolve().is_relative_to(
+            owned_root.resolve()
+        ):
+            raise PermissionError(f"Refused cleanup outside owned pytest root: {path}")
+        os.chmod(candidate, candidate.stat().st_mode | stat.S_IWRITE)
+        function(path)
+
+    shutil.rmtree(owned_root, onerror=retry_owned_readonly_remove)
 
 
 def matplotlib_cache_root(

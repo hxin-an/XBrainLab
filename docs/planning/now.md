@@ -55,6 +55,14 @@ space fell about 6.5 GiB. Required environments, models and all user/manual outp
 Moving the old manual source was denied by Windows, so a new source-only stable worktree was made;
 the old source is preserved rather than force-closing user consoles. No duplicate env was created.
 
-Next: exact-head infrastructure CI, deployed Windows entrypoints and native startup evidence.
-Local docs build lacks MkDocs in the retained environment; use same-head docs CI instead of creating
-another environment. Offline compaction and post-restart data verification remain user-assisted.
+Windows-local entrypoints are deployed. Exact-head startup, offline RAG and bounded native
+training/GUI+Assistant saliency entrypoints passed; docs CI passed without a new local docs env.
+First CI exposed an oversized guidance edit, unrelated service-account process access, readonly
+Git fixture cleanup and a macOS chat test that asserted during, rather than after, queued empty-state
+publication; fix only those causes (no UI code/timeout change), retain failures and revalidate.
+A real disposable 64 MiB VHDX probe found and corrected a Traditional Chinese DiskPart marker
+mismatch. Actual backup/hash, readonly attach, post-attach hash, compact and verified detach then
+passed on that disposable image. Registered WSL disks remain untouched.
+
+Next: finish bounded native/CI fixes and same-head checks, redeploy identical scripts, then hand off
+the offline step. Actual compaction and post-restart data verification remain user-assisted.

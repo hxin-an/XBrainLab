@@ -3,6 +3,7 @@
 import json
 import subprocess
 import sys
+from typing import ClassVar
 
 import pytest
 
@@ -192,3 +193,27 @@ def test_runtime_paths_isolate_manual_data_and_share_only_models(tmp_path):
     assert environment["XBRAINLAB_RAG_CACHE_DIR"] == str(cache / "rag")
     assert environment["HF_HUB_OFFLINE"] == "1"
     assert not run.exists()  # Preflight path selection creates no dataset/settings.
+
+
+@pytest.mark.parametrize("same_user", [False, True])
+def test_process_inspection_ignores_known_other_users_but_fails_closed_for_own(
+    source, monkeypatch, same_user
+):
+    import psutil
+
+    class InaccessibleProcess:
+        pid = -1
+        info: ClassVar[dict[str, str]] = {
+            "name": "python",
+            "username": psutil.Process().username() if same_user else "other-account",
+        }
+
+        def cwd(self):
+            raise psutil.AccessDenied(self.pid)
+
+    monkeypatch.setattr(psutil, "process_iter", lambda fields: [InaccessibleProcess()])
+    if same_user:
+        with pytest.raises(RuntimeError, match="Cannot verify"):
+            manual._assert_idle(source)
+    else:
+        manual._assert_idle(source)
