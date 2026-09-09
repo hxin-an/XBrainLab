@@ -47,7 +47,6 @@ from XBrainLab.backend.study import Study
 from XBrainLab.ui import (
     application_capabilities,
     async_command_runner,
-    refresh_coordinator,
 )
 from XBrainLab.ui.application_capabilities import (
     application_background_tasks_idle,
@@ -61,7 +60,6 @@ from XBrainLab.ui.application_capabilities import (
     get_training_model_signal_context,
     release_application_shutdown_fence,
     request_application_shutdown_fence,
-    run_controller_compatibility_call,
 )
 from XBrainLab.ui.async_command_runner import application_command_registry
 from XBrainLab.ui.interaction_outcome import (
@@ -69,7 +67,6 @@ from XBrainLab.ui.interaction_outcome import (
     InteractionCompletionStatus,
     bind_interaction_completion,
 )
-from XBrainLab.ui.refresh_coordinator import refresh_after_observer
 
 
 class _ApplicationRuntimeFake:
@@ -500,33 +497,6 @@ def test_epoch_dialog_context_resolves_runtime_before_service_is_cached(
     service.get_epoch_dialog_context.assert_called_once_with()
 
 
-def test_execute_application_command_leaves_refresh_to_publication(qtbot):
-    study = Study()
-    widget = QWidget()
-    cast(Any, widget).main_window = SimpleNamespace(study=study)
-    qtbot.addWidget(widget)
-    result = CommandResult.success_result(
-        command_name="query_state",
-        message="ok",
-        state=None,
-        changed_state=ChangedState(raw_changed=True),
-    )
-
-    class _Service:
-        def execute(self, command):
-            assert isinstance(command, QueryStateCommand)
-            return result
-
-    runtime = _ApplicationRuntimeFake(execute=_Service().execute)
-    command_result = execute_application_command(
-        widget,
-        QueryStateCommand(),
-        runtime=runtime,
-    )
-
-    assert command_result is result
-
-
 def test_execute_application_command_forwards_expected_publication_generation(
     qtbot,
     monkeypatch,
@@ -555,7 +525,6 @@ def test_execute_application_command_forwards_expected_publication_generation(
         widget,
         command,
         expected_publication_generation=37,
-        refresh=False,
     )
 
     assert observed is result
@@ -649,7 +618,6 @@ def test_ui_stale_publication_rejection_does_not_execute_handler(qtbot):
         widget,
         ResetSessionCommand(confirmed=True),
         expected_publication_generation=reviewed_publication.generation,
-        refresh=False,
     )
 
     assert result is not None
@@ -662,167 +630,6 @@ def test_ui_stale_publication_rejection_does_not_execute_handler(qtbot):
         current_publication.generation
     )
     handler.assert_not_called()
-
-
-def test_execute_application_command_does_not_echo_publication_refresh(qtbot):
-    study = Study()
-    widget = QWidget()
-    qtbot.addWidget(widget)
-
-    class _PanelSpy:
-        def __init__(self) -> None:
-            self.update_calls = 0
-
-        def update_panel(self) -> None:
-            self.update_calls += 1
-
-    class _AgentSpy:
-        def __init__(self) -> None:
-            self.refresh_calls = 0
-
-        def refresh_backend_status(self) -> None:
-            self.refresh_calls += 1
-
-    main_window = SimpleNamespace(
-        study=study,
-        dataset_panel=_PanelSpy(),
-        preprocess_panel=_PanelSpy(),
-        training_panel=_PanelSpy(),
-        evaluation_panel=_PanelSpy(),
-        visualization_panel=_PanelSpy(),
-        agent_manager=_AgentSpy(),
-        update_info_calls=0,
-    )
-
-    def update_info_panel() -> None:
-        main_window.update_info_calls += 1
-
-    main_window.update_info_panel = update_info_panel
-    cast(Any, widget).main_window = main_window
-
-    result = CommandResult.success_result(
-        command_name="load_data",
-        message="ok",
-        state=None,
-        changed_state=ChangedState(raw_changed=True),
-    )
-
-    class _Service:
-        def execute(self, command):
-            assert isinstance(command, QueryStateCommand)
-            assert refresh_after_observer(widget, event_name="data_changed") is False
-            return result
-
-    runtime = _ApplicationRuntimeFake(execute=_Service().execute)
-
-    command_result = execute_application_command(
-        widget,
-        QueryStateCommand(),
-        runtime=runtime,
-    )
-
-    assert command_result is result
-    assert main_window.dataset_panel.update_calls == 0
-    assert main_window.preprocess_panel.update_calls == 0
-    assert main_window.training_panel.update_calls == 0
-    assert main_window.evaluation_panel.update_calls == 0
-    assert main_window.visualization_panel.update_calls == 0
-    assert main_window.update_info_calls == 0
-    # AgentManager subscribes to revisioned ApplicationService publications.
-    # A second pull here would reintroduce ordering-dependent refresh truth.
-    assert main_window.agent_manager.refresh_calls == 0
-
-
-def test_sync_product_command_does_not_coalesce_controller_terminal_refresh(qtbot):
-    widget = QWidget()
-    qtbot.addWidget(widget)
-
-    class _TrainingPanelSpy:
-        def __init__(self) -> None:
-            self.main_window: Any | None = None
-            self.terminal_render_calls = 0
-            self.generic_update_calls = 0
-            self.dirty_mark_calls = 0
-
-        def refresh_terminal_publication(self) -> None:
-            self.terminal_render_calls += 1
-
-        def update_panel(self) -> None:
-            self.generic_update_calls += 1
-
-        def mark_refresh_dirty(self) -> None:
-            self.dirty_mark_calls += 1
-
-    training_panel = _TrainingPanelSpy()
-    main_window = SimpleNamespace(
-        study=Study(),
-        training_panel=training_panel,
-        shared_status_refresh_calls=0,
-    )
-
-    def update_info_panel() -> None:
-        main_window.shared_status_refresh_calls += 1
-
-    main_window.update_info_panel = update_info_panel
-    training_panel.main_window = main_window
-    cast(Any, widget).main_window = main_window
-    result = CommandResult.success_result(
-        command_name="query_state",
-        message="training complete",
-        state=None,
-        changed_state=ChangedState(training_changed=True),
-    )
-
-    def execute(command: Command) -> CommandResult:
-        assert isinstance(command, QueryStateCommand)
-        assert (
-            refresh_after_observer(
-                training_panel,
-                event_name="training_terminal_published",
-            )
-            is False
-        )
-        return result
-
-    observed = execute_application_command(
-        widget,
-        QueryStateCommand(),
-        runtime=_ApplicationRuntimeFake(execute=execute),
-    )
-
-    assert observed is result
-    assert training_panel.terminal_render_calls == 0
-    assert training_panel.generic_update_calls == 0
-    assert training_panel.dirty_mark_calls == 0
-    assert main_window.shared_status_refresh_calls == 0
-
-
-def test_execute_application_command_accepts_legacy_refresh_false_parameter(qtbot):
-    study = Study()
-    widget = QWidget()
-    cast(Any, widget).main_window = SimpleNamespace(study=study)
-    qtbot.addWidget(widget)
-    result = CommandResult.success_result(
-        command_name="query_state",
-        message="ok",
-        state=None,
-        changed_state=ChangedState(raw_changed=True),
-    )
-
-    class _Service:
-        def execute(self, command):
-            assert isinstance(command, QueryStateCommand)
-            return result
-
-    runtime = _ApplicationRuntimeFake(execute=_Service().execute)
-    command_result = execute_application_command(
-        widget,
-        QueryStateCommand(),
-        refresh=False,
-        runtime=runtime,
-    )
-
-    assert command_result is result
 
 
 def test_ui_state_query_uses_unified_application_command_surface(
@@ -851,7 +658,6 @@ def test_ui_state_query_uses_unified_application_command_surface(
     command_result = execute_application_command(
         widget,
         QueryStateCommand(query="state"),
-        refresh=False,
         runtime=runtime,
     )
 
@@ -894,13 +700,6 @@ def test_execute_application_command_async_runs_service_off_gui_call_stack(
         async_command_runner.QThreadPool,
         "globalInstance",
         lambda: _ThreadPool(),
-    )
-    monkeypatch.setattr(
-        async_command_runner,
-        "refresh_after_command",
-        lambda context, command_result: refresh_calls.append(
-            (context, command_result),
-        ),
     )
 
     started = execute_application_command_async(
@@ -1243,7 +1042,6 @@ def test_real_worker_command_mismatch_fails_handoff_once(qtbot) -> None:
             widget,
             QueryStateCommand(),
             on_result=screen_callback,
-            refresh=False,
             runtime=runtime,
         )
 
@@ -1305,13 +1103,11 @@ def test_async_worker_ownership_is_released_only_after_finished(qtbot, monkeypat
     assert callbacks == [result]
     assert application_command_registry().active_count(widget) == 1
     assert busy_states == [True]
-    assert owner_id not in refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS
 
     worker.signals.finished.emit()
 
     assert application_command_registry().active_count(widget) == 0
     assert busy_states == [True, False]
-    assert owner_id not in refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS
 
 
 def test_async_command_refuses_non_gui_thread_without_side_effects(
@@ -1399,7 +1195,6 @@ def test_async_terminal_cleanup_survives_busy_callback_failure(qtbot, monkeypatc
 
     assert application_command_registry().active_count(widget) == 0
     assert busy_states == [True, False]
-    assert id(main_window) not in refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS
 
 
 def test_async_pool_lookup_failure_releases_all_ui_ownership(qtbot, monkeypatch):
@@ -1435,7 +1230,6 @@ def test_async_pool_lookup_failure_releases_all_ui_ownership(qtbot, monkeypatch)
     assert runtime.failed_operations == [
         ("operation-1", "The interface worker could not be scheduled."),
     ]
-    assert id(main_window) not in refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS
 
 
 def test_execute_application_command_async_ignores_result_after_widget_deleted(
@@ -1471,13 +1265,6 @@ def test_execute_application_command_async_ignores_result_after_widget_deleted(
         async_command_runner.QThreadPool,
         "globalInstance",
         lambda: _ThreadPool(),
-    )
-    monkeypatch.setattr(
-        async_command_runner,
-        "refresh_after_command",
-        lambda context, command_result: refresh_calls.append(
-            (context, command_result),
-        ),
     )
 
     started = execute_application_command_async(
@@ -1533,7 +1320,6 @@ def test_real_threadpool_cleanup_does_not_dereference_deleted_widget(
     assert worker_started.wait(timeout=1.0)
     owner_id = id(main_window)
     assert application_command_registry().active_count(widget) == 1
-    assert owner_id not in refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS
 
     widget.deleteLater()
     qtbot.waitUntil(lambda: sip.isdeleted(widget), timeout=1_000)
@@ -1544,7 +1330,6 @@ def test_real_threadpool_cleanup_does_not_dereference_deleted_widget(
     )
 
     assert callbacks == []
-    assert owner_id not in refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS
 
 
 @pytest.mark.parametrize("outcome", ["success", "error"])
@@ -1601,7 +1386,6 @@ def test_real_threadpool_delivers_terminal_callback_on_gui_thread(
         QueryStateCommand(),
         on_result=on_result,
         on_error=on_error,
-        refresh=False,
         runtime=runtime,
     )
     assert worker_started.wait(timeout=1.0)
@@ -1617,7 +1401,6 @@ def test_real_threadpool_delivers_terminal_callback_on_gui_thread(
     assert (results == [result]) is (outcome == "success")
     assert (len(errors) == 1) is (outcome == "error")
     assert busy_states == [True, False]
-    assert id(main_window) not in refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS
 
 
 def test_async_result_is_suppressed_after_main_window_starts_closing(
@@ -1647,11 +1430,6 @@ def test_async_result_is_suppressed_after_main_window_starts_closing(
             return result
 
     runtime = _ApplicationRuntimeFake(execute=_Service().execute)
-    monkeypatch.setattr(
-        async_command_runner,
-        "refresh_after_command",
-        lambda *_args: refreshes.append(True),
-    )
 
     assert execute_application_command_async(
         widget,
@@ -1807,60 +1585,26 @@ def test_execute_application_command_async_returns_false_when_worker_start_fails
     assert application_command_registry().active_count(widget) == 0
 
 
-def test_legacy_controller_fallback_refuses_real_study(qtbot):
-    study = Study()
-    widget = QWidget()
-    cast(Any, widget).main_window = SimpleNamespace(study=study)
-    qtbot.addWidget(widget)
-    fallback = MagicMock()
-
-    with pytest.raises(RuntimeError, match="could not safely complete"):
-        run_controller_compatibility_call(widget, fallback)
-
-    fallback.assert_not_called()
-
-
-def test_legacy_controller_fallback_refuses_real_controller_study(qtbot):
-    study = Study()
-    widget = QWidget()
-    cast(Any, widget).controller = SimpleNamespace(study=study)
-    qtbot.addWidget(widget)
-    fallback = MagicMock()
-
-    with pytest.raises(RuntimeError, match="could not safely complete"):
-        run_controller_compatibility_call(widget, fallback)
-
-    fallback.assert_not_called()
-
-
-def test_named_controller_context_uses_application_service(qtbot):
-    study = Study()
-    widget = QWidget()
-    cast(Any, widget).preprocess_controller = SimpleNamespace(study=study)
-    qtbot.addWidget(widget)
+def test_parent_context_uses_application_service(qtbot):
+    parent = QWidget()
+    cast(Any, parent).study = Study()
+    qtbot.addWidget(parent)
+    widget = QWidget(parent)
 
     ui_capability = get_command_capability(widget, CommandName.TRAIN)
 
     assert ui_capability is not None
+    assert ui_capability.enabled is False
 
 
-def test_legacy_controller_fallback_refuses_named_real_controller(qtbot):
+@pytest.mark.parametrize("attribute", ["controller", "preprocess_controller"])
+def test_controller_only_context_cannot_dispatch_commands(qtbot, attribute):
     study = Study()
     widget = QWidget()
-    cast(Any, widget).preprocess_controller = SimpleNamespace(study=study)
+    setattr(widget, attribute, SimpleNamespace(study=study))
     qtbot.addWidget(widget)
-    fallback = MagicMock()
 
-    with pytest.raises(RuntimeError, match="could not safely complete"):
-        run_controller_compatibility_call(widget, fallback)
+    ui_capability = get_command_capability(widget, CommandName.TRAIN)
 
-    fallback.assert_not_called()
-
-
-def test_legacy_controller_fallback_allows_plain_non_study_context():
-    fallback = MagicMock(return_value="legacy-ok")
-
-    result = run_controller_compatibility_call(object(), fallback)
-
-    assert result == "legacy-ok"
-    fallback.assert_called_once_with()
+    assert ui_capability is None
+    assert execute_application_command(widget, QueryStateCommand()) is None

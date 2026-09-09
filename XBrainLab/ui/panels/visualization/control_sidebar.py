@@ -239,7 +239,6 @@ class ControlSidebar(QWidget):
         query_result = execute_application_command(
             self,
             SaliencyCommand(),
-            refresh=False,
             expected_publication_generation=reviewed_generation,
         )
         if query_result is not None and query_result.failed:

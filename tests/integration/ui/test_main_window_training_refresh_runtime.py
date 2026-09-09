@@ -54,7 +54,6 @@ from XBrainLab.backend.training_state_contract import (
     TrainingStateToken,
     TrainingTerminalOutcome,
 )
-from XBrainLab.ui import refresh_coordinator
 from XBrainLab.ui.application_capabilities import get_application_view_publication
 from XBrainLab.ui.async_command_runner import (
     AsyncCommandRegistry,
@@ -1420,7 +1419,6 @@ def test_explicit_saliency_publishes_once_during_unrelated_nested_commands(
         execute=lambda: blocked_query(outer_started, release_outer),
         on_result=command_results.append,
         on_error=command_errors.append,
-        refresh=False,
         busy_target=None,
         allow_during_shutdown=False,
         registry=command_registry,
@@ -1431,7 +1429,6 @@ def test_explicit_saliency_publishes_once_during_unrelated_nested_commands(
         execute=lambda: blocked_query(inner_started, release_inner),
         on_result=command_results.append,
         on_error=command_errors.append,
-        refresh=False,
         busy_target=None,
         allow_during_shutdown=False,
         registry=command_registry,
@@ -1442,7 +1439,6 @@ def test_explicit_saliency_publishes_once_during_unrelated_nested_commands(
         qtbot.waitUntil(outer_started.is_set, timeout=3_000)
         assert inner_runner.start() is True
         qtbot.waitUntil(inner_started.is_set, timeout=3_000)
-        assert id(window) not in refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS
 
         release_saliency.set()
         qtbot.waitUntil(saliency_published.is_set, timeout=5_000)
@@ -1465,7 +1461,6 @@ def test_explicit_saliency_publishes_once_during_unrelated_nested_commands(
             timeout=3_000,
         )
         _deliver_pending_qt_events()
-        assert id(window) not in refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS
         assert update_counts == {
             "training": 0,
             "evaluation": 1,
@@ -1915,7 +1910,6 @@ def test_deleted_async_owner_drops_callbacks_and_releases_runtime_ownership(
         execute=execute,
         on_result=results.append,
         on_error=errors.append,
-        refresh=True,
         busy_target=busy_target,
         allow_during_shutdown=False,
         registry=registry,
@@ -1926,8 +1920,6 @@ def test_deleted_async_owner_drops_callbacks_and_releases_runtime_ownership(
     assert registry.active_count(owner) == 1
     assert busy_target.busy_states == [True]
     assert not busy_target.isEnabled()
-    suppression_key = id(busy_target)
-    assert suppression_key in refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS
 
     owner.deleteLater()
     qtbot.waitUntil(lambda: sip.isdeleted(owner), timeout=1_000)
@@ -1939,5 +1931,4 @@ def test_deleted_async_owner_drops_callbacks_and_releases_runtime_ownership(
     assert errors == []
     assert registry.active_count(owner) == 0
     assert busy_target.busy_states == [True, False]
-    assert suppression_key not in refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS
     assert uncaught == []

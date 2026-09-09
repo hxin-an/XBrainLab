@@ -13,7 +13,7 @@ from PyQt6.QtCore import QCoreApplication, QObject, QRunnable, QThread
 from PyQt6.QtWidgets import QWidget
 
 from XBrainLab.backend.application import ChangedState, CommandResult, QueryStateCommand
-from XBrainLab.ui import async_command_runner, refresh_coordinator
+from XBrainLab.ui import async_command_runner
 from XBrainLab.ui.async_command_runner import (
     AsyncCommandCleanup,
     AsyncCommandDelivery,
@@ -133,7 +133,6 @@ def test_partial_setup_failure_rolls_back_every_acquired_resource(
         execute=lambda: _result(),
         on_result=lambda _result: None,
         on_error=None,
-        refresh=True,
         busy_target=None,
         allow_during_shutdown=False,
         delivery_factory=delivery_factory,
@@ -146,7 +145,6 @@ def test_partial_setup_failure_rolls_back_every_acquired_resource(
     assert started is False
     assert busy_states == [True, False]
     assert registry.active_count(context) == 0
-    assert id(main_window) not in refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS
     if receivers:
         qtbot.waitUntil(
             lambda: all(sip.isdeleted(receiver) for receiver in receivers),
@@ -154,7 +152,7 @@ def test_partial_setup_failure_rolls_back_every_acquired_resource(
         )
 
 
-@pytest.mark.parametrize("failure_stage", ["refresh", "result", "error"])
+@pytest.mark.parametrize("failure_stage", ["result", "error"])
 def test_real_threadpool_contains_callback_exceptions_and_cleans_up(
     qtbot,
     monkeypatch,
@@ -178,23 +176,9 @@ def test_real_threadpool_contains_callback_exceptions_and_cleans_up(
     receivers: list[QObject] = []
     uncaught: list[tuple[Any, ...]] = []
     callback_threads: list[bool] = []
-    refresh_attempts: list[bool] = []
     result_attempts: list[CommandResult] = []
     error_attempts: list[tuple] = []
     monkeypatch.setattr(sys, "excepthook", lambda *args: uncaught.append(args))
-
-    if failure_stage == "refresh":
-
-        def fail_refresh(*_args) -> None:
-            refresh_attempts.append(True)
-            callback_threads.append(_is_gui_thread())
-            raise RuntimeError("refresh failed")
-
-        monkeypatch.setattr(
-            async_command_runner,
-            "refresh_after_command",
-            fail_refresh,
-        )
 
     def execute() -> CommandResult:
         worker_started.set()
@@ -231,7 +215,6 @@ def test_real_threadpool_contains_callback_exceptions_and_cleans_up(
         execute=execute,
         on_result=on_result,
         on_error=on_error,
-        refresh=failure_stage == "refresh",
         busy_target=None,
         allow_during_shutdown=False,
         delivery_factory=delivery_factory,
@@ -253,10 +236,8 @@ def test_real_threadpool_contains_callback_exceptions_and_cleans_up(
     assert busy_threads == [True, True]
     assert uncaught == []
     assert callback_threads and all(callback_threads)
-    assert refresh_attempts == ([True] if failure_stage == "refresh" else [])
     assert result_attempts == ([] if failure_stage == "error" else [_result()])
     assert len(error_attempts) == (1 if failure_stage == "error" else 0)
-    assert id(main_window) not in refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS
 
 
 def _result() -> CommandResult:
@@ -285,7 +266,6 @@ def test_cleanup_defers_finished_during_reentrant_outcome_delivery(qtbot) -> Non
         command=QueryStateCommand(),
         on_result=on_result,
         on_error=None,
-        refresh=False,
         allow_during_shutdown=False,
         parent=context,
     )
@@ -295,45 +275,6 @@ def test_cleanup_defers_finished_during_reentrant_outcome_delivery(qtbot) -> Non
     cleanup.handle_finished()
 
     assert events == ["result-start", "result-end", "finished"]
-
-
-def test_refresh_false_runner_never_enters_observer_suppression(
-    qtbot,
-    monkeypatch,
-) -> None:
-    context = QWidget()
-    cast(Any, context).main_window = SimpleNamespace()
-    qtbot.addWidget(context)
-    cast(Any, context).set_busy = lambda _busy: None
-    registry = AsyncCommandRegistry()
-
-    def fail_suppression(_context):
-        raise AssertionError("refresh=False must not suppress publication delivery")
-
-    monkeypatch.setattr(
-        async_command_runner,
-        "suppress_observer_refresh_during_command",
-        fail_suppression,
-    )
-
-    runner = QtApplicationCommandRunner(
-        context=context,
-        command=QueryStateCommand(),
-        execute=_result,
-        on_result=lambda _result: None,
-        on_error=None,
-        refresh=False,
-        busy_target=context,
-        allow_during_shutdown=False,
-        worker_factory=lambda _execute: _FinishedOnlyWorker(),
-        registry=registry,
-    )
-
-    assert runner.start() is True
-    qtbot.waitUntil(lambda: registry.active_count(context) == 0, timeout=2_000)
-    assert id(cast(Any, context).main_window) not in (
-        refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS
-    )
 
 
 def test_finished_only_worker_fails_interaction_session_and_releases_ownership(
@@ -362,7 +303,6 @@ def test_finished_only_worker_fails_interaction_session_and_releases_ownership(
         on_result=callbacks.on_result,
         on_error=callbacks.on_error,
         on_finished=callbacks.on_finished,
-        refresh=False,
         busy_target=context,
         allow_during_shutdown=False,
         worker_factory=lambda _execute: _FinishedOnlyWorker(),
@@ -405,7 +345,6 @@ def test_chained_commands_keep_shared_busy_target_disabled_until_both_finish(
             execute=lambda index=index: execute(index),
             on_result=lambda _result: None,
             on_error=None,
-            refresh=False,
             busy_target=target,
             allow_during_shutdown=False,
             registry=registry,
@@ -459,7 +398,6 @@ def test_deleted_owner_drops_result_but_releases_async_command_ownership(qtbot) 
         on_result=callbacks.on_result,
         on_error=callbacks.on_error,
         on_finished=callbacks.on_finished,
-        refresh=False,
         busy_target=context,
         allow_during_shutdown=False,
         registry=registry,
@@ -502,7 +440,6 @@ def test_shutdown_drops_result_and_still_clears_busy_state(qtbot) -> None:
         execute=execute,
         on_result=delivered.append,
         on_error=None,
-        refresh=False,
         busy_target=context,
         allow_during_shutdown=False,
         registry=registry,
@@ -554,7 +491,6 @@ def test_shutdown_drops_screen_callback_but_still_settles_interaction_session(
         on_result=callbacks.on_result,
         on_error=callbacks.on_error,
         on_finished=callbacks.on_finished,
-        refresh=False,
         busy_target=context,
         allow_during_shutdown=False,
         registry=registry,

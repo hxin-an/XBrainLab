@@ -89,6 +89,23 @@ atomic rollback, cancellation and state publication evidence. No visible UI or 1
 change, no new authoritative owner; expected owner delta is minus one compatibility service.
 Independent review must examine the actual data/recipe/lifecycle diff before integration.
 
+Direct dependency closure: `EventFilterDialog` and `LabelMappingDialog` have no current production,
+script, or canonical Data Interpretation caller; only their lazy package exports and exclusive dialog
+tests remain. Data Interpretation review/apply retains reviewed carrier mapping and event choices.
+Remove those orphan dialogs, exports, and exclusive tests; retain canonical preview mapping and
+event-choice evidence. Validate focused Data Interpretation/UI suites and import boundaries.
+
+Direct retirement dependency — the old `label_import_preview` cache has no remaining production,
+registration, script or recipe reader caller after those commands are removed. Delete that cache
+and its preview-only `label_import_policy` dependency, plus unused service forwarding methods for post-load
+recipe recording. Keep `DataInterpretationState.record_label_import_for_recipe`, the internal
+`LabelImportPlan` representation. The old mapping-cardinality policy has no canonical caller;
+its only callers were the retired compatibility service and preview cache. Current reviewed
+carrier validation and admitted parser/resource boundaries remain unchanged.
+Validate canonical label apply, resource admission, recipe round-trip and historical JSON replay;
+remove only source guards/tests exclusive to the retired preview cache. This reduces owners and
+does not weaken current resource/atomicity checks or change visible UI.
+
 Current bounded work — Training publication and query boundary: MainWindow constructs Training
 with application publication/query ports; its remaining controller constructors, observer branch,
 history/readiness/preflight fallbacks serve test-only contexts. First remove ModelSelectionDialog's
@@ -100,6 +117,54 @@ result reopening. No new owner or visible UI change. Validate model dialog/catal
 training refresh/runtime tests before/after each coherent change; verify actual event callers
 before deleting callbacks. Finish when the production path and retained tests use only the
 application ports, with equivalent lifecycle/state evidence passing.
+
+Shared UI dependency — after the last Training fallback caller is removed, delete the two
+uncalled controller compatibility lookup/execution helpers in `application_capabilities` and
+their four exclusive tests. Retain the unavailable-context error/message used by current Data
+Interpretation review and all runtime resolution/async lifecycle protections. Confirm no dynamic,
+script or production caller remains; validate application-capability and Data Interpretation UI
+tests. This is deletion of an unused convenience API, not a new UI behavior or owner.
+
+Next bounded shared-UI slice — BasePanel/BaseDialog controller storage and DatasetPanel's ignored
+controller argument have no product reader. Remove these empty constructor slots and the two
+BasePanel observer-refresh convenience methods whose only callers are tests. Migrate callers to
+explicit parent/publication ports; retain `_create_bridge`, publication/transient delivery, busy
+state and native cleanup. The current core/Dataset/context/constructor baseline passes 131 tests.
+Add real Observable delivery/unsubscribe evidence rather than retaining helper-call choreography.
+Validate those same families plus Dataset integration and publication refresh. This reduces unused
+API, adds no owner, and does not alter widget construction order, layout or visible behavior.
+
+Context-resolution dependency — after removing controller constructors/getters, `find_study` still
+searches `controller` and arbitrary `*_controller` attributes only for a standalone test. Remove
+that indirect fallback; keep explicit runtime, context.study, main_window.study and Qt parent-chain
+resolution. Retain a real parent-chain test and prove controller-only contexts cannot execute a
+command. No product caller, registration or script depends on controller-derived context.
+
+Next bounded refresh slice — real-Study command/observer refresh and suppression entry points
+return without action; product commands publish revisioned views and Training progress renders via
+its transient port. Remove the compatibility changed-state router, suppression/deferred replay
+state and their exclusive tests. Retain navigation's guarded refresh of the selected panel and
+native-safe callback containment. Remove the inert `refresh` keyword from UI command helpers and
+their callers (sync already discards it; async always passes False). Async busy/handle ownership,
+result/error delivery, cancellation and shutdown fences remain unchanged. Characterize runner,
+navigation and real Training runtime before edits, then rerun after migration. Review actual
+async cleanup diff independently. Owner delta is minus the compatibility refresh router; no new
+owner, visible behavior or command contract. Separate this deletion from the base-constructor and
+legacy data commits; shared guards must protect publication ownership, not require retired helpers.
+
+Final controller dependency — a complete production/script/reflection sweep now finds no caller
+of `Study.get_controller`; its lazy factory is the sole importer/constructor of DatasetController,
+PreprocessController and TrainingController. ChatController remains active and excluded. The EEG
+adapters delegate to existing Study-owned state services and relay obsolete observer events;
+tests alone do not justify retaining the unknown-external convenience API. Characterize the current
+controller tests, then delete the registry/factory and these three modules. Migrate substantive
+data/metadata/epoch/monitor/cancellation/teardown assertions to their actual state service or command
+owner; delete only forwarding/relay-exclusive tests. Keep command/public query contracts, recipe
+readers, DataManager/TrainingManager and native lifecycle ownership unchanged. Validate matching
+service suites plus real import/preprocess/training workflows and source guards; review the actual
+diff independently. No new owner or visible UI change. Retire documentation claiming the unused
+registry is an active boundary. Stop this slice when no executable registry consumer remains and
+all retained behavioral evidence passes; then finish the already-declared integration gates.
 
 1. Complete the evidence map and set coverage/branch reporting without gaming the denominator.
 2. Migrate the highest-value UI compatibility tests to typed real-service/publication fixtures;

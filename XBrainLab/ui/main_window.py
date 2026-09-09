@@ -948,7 +948,6 @@ class MainWindow(QMainWindow):
         result = execute_application_command(
             self,
             QueryStateCommand(query="state"),
-            refresh=False,
         )
         if result is None or result.failed:
             logger.debug("Failed to read backend status bar hint", exc_info=True)
@@ -2464,7 +2463,6 @@ class MainWindow(QMainWindow):
             StopTrainingCommand(wait_timeout=0.0),
             on_result=_handle_result,
             on_error=_handle_error,
-            refresh=False,
             allow_during_shutdown=True,
         )
         if started:

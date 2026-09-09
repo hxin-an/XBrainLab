@@ -298,14 +298,6 @@ UI_SERVICE_COMMAND_ASYNC_METHODS = (
     "_execute_action_async",
     "execute_application_command_async",
 )
-UI_OBSERVER_HANDLER_LOCAL_RENDER_METHODS = (
-    *UI_POST_COMMAND_LOCAL_REFRESH_METHODS,
-    "update_info",
-    "update_loop",
-)
-UI_OBSERVER_HANDLER_LOCAL_RENDER_ALLOWLIST = {
-    ("training_updated", "update_loop"),
-}
 UI_POST_COMMAND_CONTROLLER_ECHO_METHODS = ("get_model_holder",)
 UI_CAPABILITY_GATED_CONTROLLER_READINESS_METHODS = (
     "get_channel_names",
@@ -393,18 +385,7 @@ ASSISTANT_RUNTIME_SELECTION_POLICY_CALLS = frozenset(
 ASSISTANT_RUNTIME_STARTUP_FUNCTIONS = frozenset(
     {"initialize_agent", "reinitialize_agent"}
 )
-UI_OBSERVER_REFRESH_EVENTS = (
-    "data_changed",
-    "preprocess_changed",
-    "training_started",
-    "training_stopped",
-    "training_updated",
-    "config_changed",
-    "history_cleared",
-    "montage_changed",
-    "saliency_changed",
-)
-UI_REFRESH_FALSE_READ_ONLY_COMMANDS = (
+UI_READ_ONLY_COMMANDS = (
     "EvaluateCommand",
     "QueryStateCommand",
     "VisualizeCommand",
@@ -1197,15 +1178,6 @@ def check_architecture(root_dir: str) -> int:
             print(f" - {violation}")
         return 1
 
-    command_suppression_violations = (
-        check_ui_command_execution_suppresses_observer_refresh(Path(root_dir))
-    )
-    if command_suppression_violations:
-        print("\nUI Command Observer Suppression Violations Found:")
-        for violation in command_suppression_violations:
-            print(f" - {violation}")
-        return 1
-
     loader_apply_violations = check_ui_direct_loader_apply(Path(root_dir))
     if loader_apply_violations:
         print("\nUI Direct Loader Apply Violations Found:")
@@ -1274,15 +1246,6 @@ def check_architecture(root_dir: str) -> int:
     if observer_refresh_violations:
         print("\nUI Observer Direct Refresh Violations Found:")
         for violation in observer_refresh_violations:
-            print(f" - {violation}")
-        return 1
-
-    observer_handler_violations = check_ui_observer_handlers_call_refresh_coordinator(
-        Path(root_dir)
-    )
-    if observer_handler_violations:
-        print("\nUI Observer Handler Refresh Violations Found:")
-        for violation in observer_handler_violations:
             print(f" - {violation}")
         return 1
 
@@ -1871,16 +1834,11 @@ def check_raw_mutation_atomicity_boundaries(root_dir: Path) -> list[str]:
     """Protect centralized interpretation invalidation and label transactions."""
     violations: list[str] = []
     service_path = root_dir / "XBrainLab/backend/application/service.py"
-    compatibility_path = (
-        root_dir / "XBrainLab/backend/application/data_compatibility_service.py"
-    )
     label_service_path = root_dir / "XBrainLab/backend/services/label_import_service.py"
 
     service_tree = _parse_python_file(service_path)
     coordinator = _class_node(service_tree, "_LegacyRawMutationLifecycleCoordinator")
     expected_commands = {
-        "LoadDataCommand",
-        "AttachLabelsCommand",
         "UpdateMetadataCommand",
         "ApplySmartParseCommand",
         "RemoveFilesCommand",
@@ -1905,36 +1863,6 @@ def check_raw_mutation_atomicity_boundaries(root_dir: Path) -> list[str]:
         for required_call in ("commit", "fail_closed")
         if required_call not in execute_calls
     )
-
-    compatibility_tree = _parse_python_file(compatibility_path)
-    for method_name in ("handle_attach_labels", "handle_import_labels"):
-        method = _class_method_node(
-            compatibility_tree,
-            "DataCompatibilityCommandService",
-            method_name,
-        )
-        calls = _function_calls_in_order(method)
-        completion_lines = [
-            line for line, name in calls if name == "_ensure_complete_label_batch"
-        ]
-        if not completion_lines:
-            violations.append(
-                "XBrainLab/backend/application/data_compatibility_service.py "
-                f"{method_name}() must reject incomplete label batches."
-            )
-        if method_name == "handle_import_labels":
-            recipe_lines = [
-                line for line, name in calls if name == "record_label_import_for_recipe"
-            ]
-            if (
-                not recipe_lines
-                or not completion_lines
-                or min(recipe_lines) < max(completion_lines)
-            ):
-                violations.append(
-                    "XBrainLab/backend/application/data_compatibility_service.py "
-                    "must verify the complete label batch before updating recipe truth."
-                )
 
     label_tree = _parse_python_file(label_service_path)
     batch_wrapper = _class_method_node(
@@ -2192,37 +2120,6 @@ def check_label_resource_admission_boundary(root_dir: Path) -> list[str]:
                 "bind reviewed labels to the authorized preflight before apply."
             )
 
-    compatibility_path = (
-        root_dir / "XBrainLab/backend/application/data_compatibility_service.py"
-    )
-    compatibility_tree = _parse_python_file(compatibility_path)
-    if compatibility_tree is not None:
-        for method_name in ("handle_attach_labels", "handle_import_labels"):
-            method = _class_method_node(
-                compatibility_tree,
-                "DataCompatibilityCommandService",
-                method_name,
-            )
-            calls = _function_calls_in_order(method)
-            boundary_call = (
-                "admit" if method_name == "handle_attach_labels" else "materialize"
-            )
-            admission_lines = [line for line, name in calls if name == boundary_call]
-            parser_lines = [
-                line
-                for line, name in calls
-                if name in {"load", "materialize", "materialize_reviewed_label_map"}
-            ]
-            if (
-                not admission_lines
-                or not parser_lines
-                or min(admission_lines) > min(parser_lines)
-            ):
-                violations.append(
-                    "XBrainLab/backend/application/data_compatibility_service.py "
-                    f"{method_name}() must admit paths before session.load()."
-                )
-
     for package_name in ("ui", "llm"):
         package = root_dir / "XBrainLab" / package_name
         if not package.exists():
@@ -2243,19 +2140,6 @@ def check_label_resource_admission_boundary(root_dir: Path) -> list[str]:
                     symbol_aliases=symbol_aliases,
                 )
                 command_name = qualified.rsplit(".", maxsplit=1)[-1]
-                if command_name == "AttachLabelsCommand":
-                    keywords = {keyword.arg for keyword in node.keywords}
-                    required = {
-                        "label_paths",
-                        "resource_preflight_confirmed",
-                        "resource_preflight_token",
-                    }
-                    missing = sorted(required - keywords)
-                    if missing:
-                        violations.append(
-                            f"{relative_posix}:{node.lineno} AttachLabelsCommand is "
-                            f"missing {', '.join(missing)}"
-                        )
                 if command_name == "LabelImportPlan" and any(
                     keyword.arg == "label_map" for keyword in node.keywords
                 ):
@@ -2268,7 +2152,7 @@ def check_label_resource_admission_boundary(root_dir: Path) -> list[str]:
 
 _LABEL_UI_OWNER_MODULES = frozenset(
     {
-        Path("XBrainLab/ui/dialogs/dataset/import_label_dialog.py"),
+        Path("XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py"),
         Path("XBrainLab/ui/panels/dataset/actions.py"),
     }
 )
@@ -2343,36 +2227,6 @@ def _check_public_label_import_schemas(root_dir: Path) -> list[str]:
                         for referenced in classes_by_name.get(referenced_name, ())
                     )
 
-    preview_path = root_dir / "XBrainLab/backend/application/label_import_preview.py"
-    preview_tree = _parse_python_file(preview_path)
-    if preview_tree is None:
-        return violations
-    summary_function = next(
-        (
-            node
-            for node in preview_tree.body
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and node.name == "_preview_summary"
-        ),
-        None,
-    )
-    if summary_function is None:
-        return violations
-    for return_node in (
-        node for node in ast.walk(summary_function) if isinstance(node, ast.Return)
-    ):
-        if not isinstance(return_node.value, ast.Dict):
-            continue
-        for key in return_node.value.keys:
-            if not isinstance(key, ast.Constant) or not isinstance(key.value, str):
-                continue
-            if not _is_forbidden_label_public_field(key.value):
-                continue
-            violations.append(
-                "XBrainLab/backend/application/label_import_preview.py:"
-                f"{key.lineno} public label preview result field {key.value!r} "
-                "cannot expose materialized label maps, arrays, or payloads."
-            )
     return violations
 
 
@@ -5070,131 +4924,6 @@ def check_dataset_detached_read_boundary(root_dir: Path) -> list[str]:
                     "table must store detached row identity, not UserRole objects."
                 )
 
-    label_coordinator_path = (
-        root_dir / "XBrainLab/ui/panels/dataset/external_label_import_coordinator.py"
-    )
-    label_coordinator_tree = (
-        _parse_python_file(label_coordinator_path)
-        if label_coordinator_path.exists()
-        else None
-    )
-    if label_coordinator_tree is not None:
-        circular_host_methods = {
-            "_build_label_import_plan",
-            "_execute_label_import_async",
-            "_filter_events_for_import",
-            "_get_target_files_for_import",
-            "_offer_label_recipe_save",
-            "_smart_filter_suggestions_for_import",
-            "_target_files_from_table_rows",
-            "_target_index_for_filter_suggestion",
-        }
-        for node in ast.walk(label_coordinator_tree):
-            if (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and isinstance(node.func.value, ast.Attribute)
-                and isinstance(node.func.value.value, ast.Name)
-                and node.func.value.value.id == "self"
-                and node.func.value.attr == "_host"
-                and node.func.attr in circular_host_methods
-            ):
-                violations.append(
-                    f"{label_coordinator_path.relative_to(root_dir)}:{node.lineno} "
-                    f"round-trips '{node.func.attr}' through its host; call the "
-                    "coordinator-owned workflow method directly."
-                )
-            if (
-                isinstance(node, ast.Attribute)
-                and isinstance(node.value, ast.Attribute)
-                and isinstance(node.value.value, ast.Name)
-                and node.value.value.id == "self"
-                and node.value.attr == "_host"
-                and node.attr == "_last_target_file_indices"
-            ) or (
-                isinstance(node, ast.Call)
-                and _mutable_boundary_call_name(node.func) == "getattr"
-                and len(node.args) >= 2
-                and isinstance(node.args[1], ast.Constant)
-                and node.args[1].value == "_last_target_file_indices"
-            ):
-                violations.append(
-                    f"{label_coordinator_path.relative_to(root_dir)}:"
-                    f"{getattr(node, 'lineno', 0)} stores label target selection on "
-                    "the host; ExternalLabelImportCoordinator must own it."
-                )
-        target_method = _find_class_method(
-            label_coordinator_tree,
-            "ExternalLabelImportCoordinator",
-            "target_files_from_table_rows",
-        )
-        if target_method is None:
-            violations.append(
-                "ExternalLabelImportCoordinator is missing detached target resolution."
-            )
-        else:
-            for node in ast.walk(target_method):
-                if not isinstance(node, ast.Call):
-                    continue
-                if _mutable_boundary_call_name(node.func) == "item":
-                    violations.append(
-                        "ExternalLabelImportCoordinator must not recover live EEG "
-                        "objects from Dataset table items."
-                    )
-                if _mutable_boundary_call_name(node.func) == "data" and any(
-                    isinstance(child, ast.Attribute) and child.attr == "UserRole"
-                    for child in ast.walk(node)
-                ):
-                    violations.append(
-                        "ExternalLabelImportCoordinator must not read UserRole "
-                        "payloads as label targets."
-                    )
-        query_method = _find_class_method(
-            label_coordinator_tree,
-            "ExternalLabelImportCoordinator",
-            "_query_label_import_targets",
-        )
-        if query_method is None or not any(
-            isinstance(node, ast.Call)
-            and _mutable_boundary_call_name(node.func) == "QueryStateCommand"
-            and _query_state_call_name(node) == "label_import_targets"
-            for node in ast.walk(query_method or ast.Pass())
-        ):
-            violations.append(
-                "ExternalLabelImportCoordinator must resolve label targets through "
-                "the label_import_targets command query."
-            )
-
-    dataset_actions_path = root_dir / "XBrainLab/ui/panels/dataset/actions.py"
-    dataset_actions_tree = (
-        _parse_python_file(dataset_actions_path)
-        if dataset_actions_path.exists()
-        else None
-    )
-    if dataset_actions_tree is not None:
-        handler_class = next(
-            (
-                node
-                for node in dataset_actions_tree.body
-                if isinstance(node, ast.ClassDef)
-                and node.name == "DatasetActionHandler"
-            ),
-            None,
-        )
-        if handler_class is not None:
-            violations.extend(
-                f"{dataset_actions_path.relative_to(root_dir)}:{node.lineno} "
-                "stores external-label target selection on DatasetActionHandler; "
-                "ExternalLabelImportCoordinator must be the single owner."
-                for node in ast.walk(handler_class)
-                if (
-                    isinstance(node, ast.Attribute)
-                    and isinstance(node.value, ast.Name)
-                    and node.value.id == "self"
-                    and node.attr == "_last_target_file_indices"
-                )
-            )
-
     channel_path = root_dir / "XBrainLab/ui/dialogs/dataset/channel_selection_dialog.py"
     channel_tree = _parse_python_file(channel_path) if channel_path.exists() else None
     if channel_tree is not None:
@@ -7128,7 +6857,6 @@ def check_dataset_data_interpretation_action_ownership(
     command_names = frozenset(
         {
             "ApplyInterpretationCommand",
-            "LoadDataCommand",
             "PreviewInterpretationCommand",
             "ReloadInterpretationRecipeCommand",
             "ReviewInterpretationCommand",
@@ -9226,77 +8954,6 @@ class _DirectBackendServiceExecuteVisitor(_ScopedFlowVisitor):
         self.generic_visit(node)
 
 
-def check_ui_command_execution_suppresses_observer_refresh(root_dir: Path) -> list[str]:
-    """Return command helper executions not protected from observer refresh."""
-    helper_file = root_dir / "XBrainLab" / "ui" / "application_capabilities.py"
-    if not helper_file.exists():
-        return []
-
-    source = helper_file.read_text(encoding="utf-8")
-    try:
-        tree = ast.parse(source, filename=str(helper_file))
-    except SyntaxError:
-        return []
-
-    violations: list[str] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        if node.name != "execute_application_command":
-            continue
-        visitor = _CommandExecutionObserverSuppressionVisitor()
-        visitor.visit(node)
-        violations.extend(
-            f"{helper_file.relative_to(root_dir)}:{call.lineno} executes "
-            "ApplicationService without suppress_observer_refresh_during_command(); "
-            "controller observer events fired inside command handlers must wait "
-            "for CommandResult.changed_state refresh."
-            for call in visitor.violations
-        )
-    return violations
-
-
-class _CommandExecutionObserverSuppressionVisitor(ast.NodeVisitor):
-    def __init__(self) -> None:
-        self.violations: list[ast.Call] = []
-        self._suppression_depth = 0
-
-    def visit_With(self, node: ast.With) -> None:
-        suppresses = any(
-            _call_name(item.context_expr.func)
-            == "suppress_observer_refresh_during_command"
-            for item in node.items
-            if isinstance(item.context_expr, ast.Call)
-        )
-        if suppresses:
-            self._suppression_depth += 1
-            for statement in node.body:
-                self.visit(statement)
-            self._suppression_depth -= 1
-            return
-        self.generic_visit(node)
-
-    def visit_Call(self, node: ast.Call) -> None:
-        if (
-            _call_name(node.func) == "execute"
-            and _call_invokes_application_service(node)
-            and self._suppression_depth == 0
-        ):
-            self.violations.append(node)
-            return
-        self.generic_visit(node)
-
-
-def _call_invokes_application_service(node: ast.Call) -> bool:
-    if not isinstance(node.func, ast.Attribute):
-        return False
-    receiver = node.func.value
-    return (
-        isinstance(receiver, ast.Call)
-        and _call_name(receiver.func) == "get_application_service"
-    )
-
-
 def check_ui_direct_loader_apply(root_dir: Path) -> list[str]:
     """Return UI code that applies raw loaders outside a compatibility gate."""
     violations: list[str] = []
@@ -9944,8 +9601,7 @@ def check_ui_post_command_local_refreshes(root_dir: Path) -> list[str]:
                     f"{_post_command_refresh_call_name(call)} after "
                     "execute_application_command(); "
                     "service-backed success refresh must go through "
-                    "refresh_after_command(), with local refresh limited to "
-                    "explicit legacy-result helpers."
+                    "revisioned application publication."
                     for call in _post_command_local_refresh_calls(
                         node.body,
                         source,
@@ -9996,7 +9652,7 @@ def check_ui_post_command_controller_echoes(root_dir: Path) -> list[str]:
 
 
 def check_ui_refresh_false_commands(root_dir: Path) -> list[str]:
-    """Return mutating UI commands that suppress command-driven refresh."""
+    """Return callers of the retired UI refresh keyword."""
     violations: list[str] = []
     ui_dir = root_dir / "XBrainLab" / "ui"
     if not ui_dir.exists():
@@ -10013,18 +9669,19 @@ def check_ui_refresh_false_commands(root_dir: Path) -> list[str]:
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
-            if _call_name(node.func) != "execute_application_command":
+            if _call_name(node.func) not in {
+                "execute_application_command",
+                "execute_application_command_async",
+            }:
                 continue
-            if not _call_has_refresh_false(node):
+            if not any(keyword.arg == "refresh" for keyword in node.keywords):
                 continue
             command_expr = _execute_command_argument(node)
-            command_name = _refresh_false_command_name(command_expr)
-            if _is_read_only_refresh_false_command(command_expr):
-                continue
+            command_name = _ui_command_name(command_expr)
             violations.append(
                 f"{py_file.relative_to(root_dir)}:{node.lineno} calls "
-                f"{command_name or 'unknown command'} with refresh=False; only "
-                "read/query commands may suppress command-driven UI refresh."
+                f"{command_name or 'unknown command'} with retired refresh=False/True; "
+                "application publication owns workflow refresh."
             )
     return violations
 
@@ -10092,9 +9749,8 @@ def check_ui_observer_direct_update_bridges(root_dir: Path) -> list[str]:
             if _observer_bridge_uses_direct_update_panel(node):
                 violations.append(
                     f"{py_file.relative_to(root_dir)}:{node.lineno} wires observer "
-                    "events directly to update_panel(); use _create_refresh_bridge() "
-                    "for simple panel refresh (delegating to refresh_from_observer), "
-                    "or a named callback handler for event-specific behavior."
+                    "events directly to update_panel(); use application publication "
+                    "or a named callback for transient event-specific behavior."
                 )
                 continue
             if (
@@ -10104,111 +9760,9 @@ def check_ui_observer_direct_update_bridges(root_dir: Path) -> list[str]:
                 violations.append(
                     f"{py_file.relative_to(root_dir)}:{node.lineno} wires simple "
                     "observer refresh through _create_bridge(..., "
-                    "refresh_from_observer); use _create_refresh_bridge() instead."
+                    "refresh_from_observer); this compatibility helper is retired."
                 )
     return violations
-
-
-def check_ui_observer_handlers_call_refresh_coordinator(root_dir: Path) -> list[str]:
-    """Return event-specific observer handlers that skip the refresh coordinator."""
-    violations: list[str] = []
-    ui_dir = root_dir / "XBrainLab" / "ui"
-    if not ui_dir.exists():
-        return violations
-
-    for py_file in ui_dir.rglob("*.py"):
-        if py_file.name == "__init__.py":
-            continue
-        source = py_file.read_text(encoding="utf-8")
-        try:
-            tree = ast.parse(source, filename=str(py_file))
-        except SyntaxError:
-            continue
-
-        functions = {
-            node.name: node
-            for node in ast.walk(tree)
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        }
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
-                continue
-            if _call_name(node.func) != "_create_bridge":
-                continue
-            event_name = _observer_bridge_event_name(node)
-            if event_name not in UI_OBSERVER_REFRESH_EVENTS:
-                continue
-            handler_name = _observer_bridge_handler_method_name(node)
-            if not handler_name:
-                continue
-            handler = functions.get(handler_name)
-            if handler is None:
-                continue
-            if not _function_calls_refresh_after_observer(handler):
-                violations.append(
-                    f"{py_file.relative_to(root_dir)}:{node.lineno} wires "
-                    f"{event_name!r} to {handler_name}(), but that handler does "
-                    "not call refresh_after_observer(); event-specific observer "
-                    "handlers may do local side effects, then must delegate shared "
-                    "refresh scope to the coordinator."
-                )
-                continue
-            for local_call in _observer_handler_local_render_calls(event_name, handler):
-                call_name = _call_name(local_call.func)
-                violations.append(
-                    f"{py_file.relative_to(root_dir)}:{local_call.lineno} "
-                    f"{handler_name}() handles {event_name!r} and calls "
-                    f"{call_name}(); local render refresh must stay in "
-                    "refresh_after_observer()/refresh_coordinator scope."
-                )
-    return violations
-
-
-def _observer_bridge_event_name(call: ast.Call) -> str | None:
-    if len(call.args) < 2:
-        return None
-    event_arg = call.args[1]
-    if isinstance(event_arg, ast.Constant) and isinstance(event_arg.value, str):
-        return event_arg.value
-    return None
-
-
-def _observer_bridge_handler_method_name(call: ast.Call) -> str | None:
-    if len(call.args) < 3:
-        return None
-    handler_arg = call.args[2]
-    if not isinstance(handler_arg, ast.Attribute):
-        return None
-    if isinstance(handler_arg.value, ast.Name) and handler_arg.value.id == "self":
-        return handler_arg.attr
-    return None
-
-
-def _function_calls_refresh_after_observer(
-    node: ast.FunctionDef | ast.AsyncFunctionDef,
-) -> bool:
-    return any(
-        isinstance(child, ast.Call)
-        and _call_name(child.func) == "refresh_after_observer"
-        for child in ast.walk(node)
-    )
-
-
-def _observer_handler_local_render_calls(
-    event_name: str,
-    node: ast.FunctionDef | ast.AsyncFunctionDef,
-) -> list[ast.Call]:
-    calls: list[ast.Call] = []
-    for child in ast.walk(node):
-        if not isinstance(child, ast.Call):
-            continue
-        call_name = _call_name(child.func)
-        if call_name not in UI_OBSERVER_HANDLER_LOCAL_RENDER_METHODS:
-            continue
-        if (event_name, call_name) in UI_OBSERVER_HANDLER_LOCAL_RENDER_ALLOWLIST:
-            continue
-        calls.append(child)
-    return calls
 
 
 def _observer_bridge_uses_import_finished_simple_refresh(call: ast.Call) -> bool:
@@ -10311,7 +9865,7 @@ def _format_async_command_callback_refresh_violations(
             continue
         if _call_name(node.func) not in UI_SERVICE_COMMAND_ASYNC_METHODS:
             continue
-        if _call_has_refresh_false(node):
+        if _is_read_only_ui_command(_execute_command_argument(node)):
             continue
         callback_name = _command_async_result_callback_name(node)
         if not callback_name:
@@ -10331,7 +9885,7 @@ def _format_async_command_callback_refresh_violations(
             f"{py_file.relative_to(root_dir)}:{call.lineno} async on_result "
             f"{callback_name}() calls {_post_command_refresh_call_name(call)}; "
             "service-backed "
-            "async success refresh must go through refresh_after_command(), not "
+            "async success refresh must go through application publication, not "
             "callback-local render refresh."
             for call in visitor.violations
         )
@@ -10421,7 +9975,7 @@ def _contains_service_backed_command(node: ast.AST) -> bool:
             continue
         if _call_name(child.func) not in UI_SERVICE_COMMAND_METHODS:
             continue
-        if _call_has_refresh_false(child):
+        if _is_read_only_ui_command(_execute_command_argument(child)):
             continue
         return True
     return False
@@ -10436,7 +9990,7 @@ def _execute_command_argument(node: ast.Call) -> ast.AST | None:
     return None
 
 
-def _refresh_false_command_name(node: ast.AST | None) -> str | None:
+def _ui_command_name(node: ast.AST | None) -> str | None:
     if isinstance(node, ast.Call):
         return _call_name(node.func)
     if isinstance(node, ast.Name):
@@ -10444,11 +9998,11 @@ def _refresh_false_command_name(node: ast.AST | None) -> str | None:
     return None
 
 
-def _is_read_only_refresh_false_command(node: ast.AST | None) -> bool:
+def _is_read_only_ui_command(node: ast.AST | None) -> bool:
     if not isinstance(node, ast.Call):
         return False
     call_name = _call_name(node.func)
-    if call_name in UI_REFRESH_FALSE_READ_ONLY_COMMANDS:
+    if call_name in UI_READ_ONLY_COMMANDS:
         return True
     return call_name == "SaliencyCommand" and not node.args and not node.keywords
 
@@ -10459,15 +10013,6 @@ def _contains_get_command_capability(node: ast.AST) -> bool:
         and _call_name(child.func) == "get_command_capability"
         for child in ast.walk(node)
     )
-
-
-def _call_has_refresh_false(call: ast.Call) -> bool:
-    for keyword in call.keywords:
-        if keyword.arg != "refresh":
-            continue
-        if isinstance(keyword.value, ast.Constant) and keyword.value.value is False:
-            return True
-    return False
 
 
 class _PostCommandLocalRefreshVisitor(ast.NodeVisitor):
@@ -11083,9 +10628,11 @@ def check_primary_ui_publication_refresh_boundary(root_dir: Path) -> list[str]:
                 ),
                 None,
             )
-            if setup is not None
+            if setup is not None and "controller" in parameters
             else None
         )
+        if "controller" not in parameters:
+            publication_branch = setup
         if publication_branch is None:
             violations.append(
                 f"{class_name} has no publication-first compatibility boundary"
@@ -11115,7 +10662,7 @@ def check_primary_ui_publication_refresh_boundary(root_dir: Path) -> list[str]:
                     f"{class_name} product branch subscribes to state observer(s): "
                     + ", ".join(unexpected_events)
                 )
-            if not any(
+            if "controller" in parameters and not any(
                 isinstance(node, ast.Return) for node in publication_branch.body
             ):
                 violations.append(
@@ -11196,12 +10743,7 @@ def check_primary_ui_publication_refresh_boundary(root_dir: Path) -> list[str]:
             else []
         )
         if not runner_calls or any(
-            not any(
-                keyword.arg == "refresh"
-                and isinstance(keyword.value, ast.Constant)
-                and keyword.value.value is False
-                for keyword in call.keywords
-            )
+            any(keyword.arg == "refresh" for keyword in call.keywords)
             for call in runner_calls
         ):
             violations.append(
@@ -11227,14 +10769,9 @@ def check_primary_ui_publication_refresh_boundary(root_dir: Path) -> list[str]:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         }
         for function_name in sorted(guarded_functions):
-            function = functions.get(function_name)
-            if function is None or not any(
-                isinstance(node, ast.Call)
-                and _call_name(node.func) == "_has_revisioned_application_context"
-                for node in ast.walk(function)
-            ):
+            if function_name in functions:
                 violations.append(
-                    f"refresh_coordinator.{function_name} has no real Study guard"
+                    f"refresh_coordinator.{function_name} reintroduces retired refresh truth"
                 )
 
     agent_manager_path = root_dir / "XBrainLab/ui/components/agent_manager.py"
@@ -11657,9 +11194,7 @@ def check_evaluation_publication_refresh_boundary(root_dir: Path) -> list[str]:
         ),
         None,
     )
-    if panel_names_function is None:
-        violations.append("refresh_coordinator has no command-result panel router")
-    else:
+    if panel_names_function is not None:
         appends_evaluation = any(
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Attribute)
@@ -11971,9 +11506,8 @@ def check_visualization_publication_refresh_boundary(root_dir: Path) -> list[str
             ),
             None,
         )
-        changed_state_routes_visualization = (
-            panel_names_function is None
-            or _function_routes_to_panel(
+        changed_state_routes_visualization = panel_names_function is not None and (
+            _function_routes_to_panel(
                 panel_names_function,
                 "visualization_panel",
             )
@@ -11996,9 +11530,8 @@ def check_visualization_publication_refresh_boundary(root_dir: Path) -> list[str
             ),
             None,
         )
-        observer_routes_visualization = (
-            observer_function is None
-            or _function_routes_to_panel(
+        observer_routes_visualization = observer_function is not None and (
+            _function_routes_to_panel(
                 observer_function,
                 "visualization_panel",
             )

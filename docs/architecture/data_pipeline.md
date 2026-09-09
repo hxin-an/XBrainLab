@@ -79,9 +79,9 @@ Training completion 只發布 metrics，Saliency 必須由 visible `Compute Sali
 
 - loader 註冊：程式碼有對應 reader。
 - checked-in fixture import：repo 內小檔案可被測試讀取。
-- command import：`ApplicationService.execute(LoadDataCommand(...))` 可走同一格式。
-- legacy command compatibility：`LoadDataCommand` / `AttachLabelsCommand` /
-  `ImportLabelsCommand` 只保留舊入口相容，不是 product runtime 的主要資料匯入流程。
+- command import：Data Interpretation scan/review/validate/apply 可走同一格式。
+- 舊 direct-load / post-load label commands 已移除；歷史 recipe 的 `label_imports` 仍可
+  reload、重新審查並經 canonical apply 套用。
 - dataset generation：能套 labels / preprocess / epoch / split。
 - training smoke：能跑到一個小訓練閉環。
 - thesis-grade reproducibility：尚未完成。
@@ -131,16 +131,10 @@ Data Import 的 scan / preview / validate / apply recipe。
 | batch mapping | data file path 對 label file path。 |
 | sequence mapping | 已 review 的 per-file label sequence 依目標 EEG event order 套用。 |
 
-`ApplicationService.execute(AttachLabelsCommand(...))` 目前會：
-
-1. 從 dataset controller 取得 loaded data。
-2. 依 filepath、filename、basename 找對應 label path。
-3. 用 `load_label_file()` 讀 label。
-4. 呼叫 `LabelImportService.apply_labels_batch()`。
-5. 成功後 reset preprocess，因為 label/event 變更會讓下游狀態失效。
-
-`AttachLabelsCommand` / `ImportLabelsCommand` 是 legacy command compatibility；product
-runtime 不應把它們當成 Data Import wizard 的替代入口。
+External labels 由 Data Interpretation 審查 carrier、field、class mapping 和 event/time
+placement，經 resource admission 後 materialize；`DataInterpretationApplyService` 以
+`LabelImportService` 的 atomic staging/commit 套用並更新 recipe。失敗不能發布部分 label
+或 recipe truth。已移除的 post-load label dialog / commands 不再是另一條匯入流程。
 
 這裡的風險是：label/event 正確性不是 import 成功就能保證。它需要 event count、event ID mapping、timestamp/sequence mode 都對上。
 

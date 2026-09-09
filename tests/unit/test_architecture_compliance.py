@@ -35,7 +35,6 @@ from tests.architecture_compliance import (
     check_typed_montage_ui_handoff_boundary,
     check_ui_agent_worker_internal_access,
     check_ui_capability_gated_controller_readiness,
-    check_ui_command_execution_suppresses_observer_refresh,
     check_ui_controller_fallbacks,
     check_ui_controller_render_fallbacks,
     check_ui_controller_study_get_controller_fallbacks,
@@ -47,7 +46,6 @@ from tests.architecture_compliance import (
     check_ui_legacy_fallback_helper_scope,
     check_ui_legacy_mutation_helper_calls,
     check_ui_observer_direct_update_bridges,
-    check_ui_observer_handlers_call_refresh_coordinator,
     check_ui_post_command_controller_echoes,
     check_ui_post_command_local_refreshes,
     check_ui_refresh_false_commands,
@@ -226,7 +224,7 @@ class DatasetSidebar:
     )
     assert any("command-result refresh" in item for item in violations)
     assert any("command-result refresh helper" in item for item in violations)
-    assert any("real Study guard" in item for item in violations)
+    assert any("reintroduces retired refresh truth" in item for item in violations)
 
 
 def test_current_primary_ui_publication_refresh_boundary_is_clean() -> None:
@@ -752,23 +750,16 @@ def test_current_training_runtime_port_boundary_is_clean() -> None:
     assert check_training_runtime_port_boundary(root) == []
 
 
-def test_label_resource_guard_rejects_ui_loader_and_pathless_llm_command(
+def test_label_resource_guard_rejects_ui_label_loader(
     tmp_path: Path,
 ) -> None:
     _write_product_file(
         tmp_path,
-        "XBrainLab/ui/dialogs/dataset/import_label_dialog.py",
+        "XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py",
         """from XBrainLab.backend.load_data.label_loader import load_label_file
 
 def preview(path):
     return load_label_file(path)
-""",
-    )
-    _write_product_file(
-        tmp_path,
-        "XBrainLab/llm/tools/application_surface.py",
-        """def command(mapping):
-    return AttachLabelsCommand(mapping=mapping)
 """,
     )
 
@@ -777,11 +768,7 @@ def preview(path):
     )
 
     assert any(
-        "import_label_dialog.py" in item and "label_loader" in item
-        for item in violations
-    )
-    assert any(
-        "application_surface.py" in item and "label_paths" in item
+        "data_interpretation_preview_dialog.py" in item and "label_loader" in item
         for item in violations
     )
 
@@ -791,10 +778,10 @@ def test_label_resource_guard_rejects_ui_admission_session_and_materialized_cach
 ) -> None:
     _write_product_file(
         tmp_path,
-        "XBrainLab/ui/dialogs/dataset/import_label_dialog.py",
+        "XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py",
         """from XBrainLab.backend.application.label_resource_admission import LabelResourceAdmissionService
 
-class ImportLabelDialog:
+class DataInterpretationPreviewDialog:
     def __init__(self):
         self.label_data_map = {}
         self.resources = LabelResourceAdmissionService(command_name="ui")
@@ -818,14 +805,14 @@ def test_label_resource_guard_resolves_aliased_ui_io_parser_and_admission(
 ) -> None:
     _write_product_file(
         tmp_path,
-        "XBrainLab/ui/dialogs/dataset/import_label_dialog.py",
+        "XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py",
         """import builtins as runtime_io
 import pathlib as paths
 from XBrainLab.backend.application.label_resource_admission import LabelResourceAdmissionService as ResourceGate
 from XBrainLab.backend.load_data import label_loader as external_parser
 from XBrainLab.backend.load_data import label_parser as alternate_parser
 
-class ImportLabelDialog:
+class DataInterpretationPreviewDialog:
     def preview(self, selected):
         source = paths.Path(selected)
         with runtime_io.open(selected, "rb") as handle:
@@ -865,17 +852,15 @@ def test_label_resource_guard_allows_qfiledialog_paths_and_public_commands(
 ) -> None:
     _write_product_file(
         tmp_path,
-        "XBrainLab/ui/dialogs/dataset/import_label_dialog.py",
+        "XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py",
         """from pathlib import Path as UserPath
 from PyQt6.QtWidgets import QFileDialog
-from XBrainLab.backend.application.commands import LabelImportPlan, PreviewLabelImportCommand
+from XBrainLab.backend.application.commands import ReviewInterpretationCommand
 
 def choose(parent):
     selected, _ = QFileDialog.getOpenFileNames(parent, "Labels")
     normalized = [str(UserPath(path).expanduser()) for path in selected]
-    preview = PreviewLabelImportCommand(label_paths=normalized)
-    plan = LabelImportPlan(label_paths=normalized, label_configs={})
-    return preview, plan
+    return ReviewInterpretationCommand(source_path="recording.fif", label_sources=normalized)
 """,
     )
 
@@ -897,7 +882,7 @@ class LabelImportPlan:
     label_map: dict
 
 @dataclass
-class PreviewLabelImportCommand:
+class PreviewInterpretationCommand:
     label_array: list
 """,
     )
@@ -911,22 +896,15 @@ class PreviewLabelImportResult:
     payload: bytes
 """,
     )
-    _write_product_file(
-        tmp_path,
-        "XBrainLab/backend/application/label_import_preview.py",
-        """def _preview_summary():
-    return {"materialized_payload": [1, 2]}
-""",
-    )
-
     violations = architecture_compliance.check_label_resource_admission_boundary(
         tmp_path
     )
 
     assert any("LabelImportPlan.label_map" in item for item in violations)
-    assert any("PreviewLabelImportCommand.label_array" in item for item in violations)
+    assert any(
+        "PreviewInterpretationCommand.label_array" in item for item in violations
+    )
     assert any("PreviewLabelImportResult.payload" in item for item in violations)
-    assert any("result field 'materialized_payload'" in item for item in violations)
 
 
 def test_label_resource_guard_catches_attribute_path_reads_in_any_ui_or_llm_module(
@@ -1156,46 +1134,6 @@ class ExternalLabelCommandEnvelope:
     request: ApplicationLabelRows
 """,
     )
-    _write_product_file(
-        tmp_path,
-        "XBrainLab/llm/agent/attach_labels.py",
-        """from XBrainLab.backend.application.commands import AttachLabelsCommand as Attach
-
-def build(mapping, paths):
-    return Attach(mapping=mapping, label_paths=paths)
-""",
-    )
-    _write_product_file(
-        tmp_path,
-        "XBrainLab/ui/components/attach_labels.py",
-        """from XBrainLab.backend.application.commands import AttachLabelsCommand as Attach
-
-def build(mapping, paths):
-    return Attach(mapping=mapping, label_paths=paths)
-""",
-    )
-    _write_product_file(
-        tmp_path,
-        "XBrainLab/llm/agent/assigned_attach_labels.py",
-        """from XBrainLab.backend.application.commands import AttachLabelsCommand
-
-Attach = AttachLabelsCommand
-
-def build(mapping, paths):
-    return Attach(mapping=mapping, label_paths=paths)
-""",
-    )
-    _write_product_file(
-        tmp_path,
-        "XBrainLab/ui/components/module_assigned_attach_labels.py",
-        """from XBrainLab.backend.application import commands
-
-Attach = commands.AttachLabelsCommand
-
-def build(mapping, paths):
-    return Attach(mapping=mapping, label_paths=paths)
-""",
-    )
 
     violations = architecture_compliance.check_label_resource_admission_boundary(
         tmp_path
@@ -1219,30 +1157,6 @@ def build(mapping, paths):
         and "ApplicationLabelRows.label_values" in item
         for item in violations
     )
-    assert any(
-        "attach_labels.py" in item
-        and "resource_preflight_confirmed" in item
-        and "resource_preflight_token" in item
-        for item in violations
-    )
-    assert any(
-        "ui/components/attach_labels.py" in item
-        and "resource_preflight_confirmed" in item
-        and "resource_preflight_token" in item
-        for item in violations
-    )
-    assert any(
-        "assigned_attach_labels.py" in item
-        and "resource_preflight_confirmed" in item
-        and "resource_preflight_token" in item
-        for item in violations
-    )
-    assert any(
-        "module_assigned_attach_labels.py" in item
-        and "resource_preflight_confirmed" in item
-        and "resource_preflight_token" in item
-        for item in violations
-    )
 
 
 def test_label_resource_guard_keeps_qfiledialog_path_selection_clean_in_any_ui_module(
@@ -1253,13 +1167,13 @@ def test_label_resource_guard_keeps_qfiledialog_path_selection_clean_in_any_ui_m
         "XBrainLab/ui/components/external_label_picker.py",
         """from pathlib import Path as UserPath
 from PyQt6.QtWidgets import QFileDialog
-from XBrainLab.backend.application.commands import PreviewLabelImportCommand
+from XBrainLab.backend.application.commands import ReviewInterpretationCommand
 
 class ExternalLabelPicker:
     def choose(self, parent):
         selected, _ = QFileDialog.getOpenFileNames(parent, "Labels")
         paths = [str(UserPath(path).expanduser()) for path in selected]
-        return PreviewLabelImportCommand(label_paths=paths)
+        return ReviewInterpretationCommand(source_path="recording.fif", label_sources=paths)
 """,
     )
 
@@ -2297,9 +2211,9 @@ class ApplicationService:
     )
     _write_product_file(
         tmp_path,
-        "XBrainLab/backend/application/data_compatibility_service.py",
+        "XBrainLab/backend/application/data_interpretation_apply.py",
         """
-class DataCompatibilityCommandService:
+class DataInterpretationApplyService:
     def mutate(self, study):
         dataset = study.get_controller("dataset")
         self.dataset.notify("data_changed")
@@ -3737,42 +3651,6 @@ def execute_application_command(study, command):
     assert check_ui_direct_backend_service_execute(tmp_path) == []
 
 
-def test_command_execution_suppression_guard_flags_missing_scope(tmp_path):
-    path = tmp_path / "XBrainLab" / "ui" / "application_capabilities.py"
-    path.parent.mkdir(parents=True)
-    path.write_text(
-        """
-def execute_application_command(context, command):
-    result = get_application_service(study).execute(command)
-    refresh_after_command(context, result)
-    return result
-""",
-        encoding="utf-8",
-    )
-
-    violations = check_ui_command_execution_suppresses_observer_refresh(tmp_path)
-
-    assert len(violations) == 1
-    assert "suppress_observer_refresh_during_command" in violations[0]
-
-
-def test_command_execution_suppression_guard_allows_scoped_execute(tmp_path):
-    path = tmp_path / "XBrainLab" / "ui" / "application_capabilities.py"
-    path.parent.mkdir(parents=True)
-    path.write_text(
-        """
-def execute_application_command(context, command):
-    with suppress_observer_refresh_during_command(context):
-        result = get_application_service(study).execute(command)
-    refresh_after_command(context, result)
-    return result
-""",
-        encoding="utf-8",
-    )
-
-    assert check_ui_command_execution_suppresses_observer_refresh(tmp_path) == []
-
-
 def test_post_command_refresh_guard_flags_direct_local_refresh(tmp_path):
     _write_ui_file(
         tmp_path,
@@ -3990,15 +3868,15 @@ def run(self):
     violations = check_ui_post_command_local_refreshes(tmp_path)
 
     assert len(violations) == 1
-    assert "legacy-result helper" in violations[0]
+    assert "revisioned application publication" in violations[0]
 
 
-def test_post_command_refresh_guard_allows_refresh_false_query(tmp_path):
+def test_post_command_refresh_guard_allows_read_only_query(tmp_path):
     _write_ui_file(
         tmp_path,
         """
 def run(self):
-    result = execute_application_command(self, SomeCommand(), refresh=False)
+    result = execute_application_command(self, QueryStateCommand())
     if result.failed:
         return
     self.on_update()
@@ -4024,7 +3902,7 @@ def run(self):
     assert "refresh=False" in violations[0]
 
 
-def test_refresh_false_guard_allows_query_commands(tmp_path):
+def test_refresh_false_guard_rejects_retired_keyword_even_for_queries(tmp_path):
     _write_ui_file(
         tmp_path,
         """
@@ -4036,7 +3914,7 @@ def run(self):
 """,
     )
 
-    assert check_ui_refresh_false_commands(tmp_path) == []
+    assert len(check_ui_refresh_false_commands(tmp_path)) == 4
 
 
 def test_refresh_false_guard_flags_saliency_configuration(tmp_path):
@@ -4421,7 +4299,7 @@ def _setup_bridges(self):
 
     assert len(violations) == 1
     assert "update_panel" in violations[0]
-    assert "refresh_from_observer" in violations[0]
+    assert "application publication" in violations[0]
 
 
 def test_observer_bridge_guard_flags_direct_refresh_from_observer(tmp_path):
@@ -4436,7 +4314,7 @@ def _setup_bridges(self):
     violations = check_ui_observer_direct_update_bridges(tmp_path)
 
     assert len(violations) == 1
-    assert "_create_refresh_bridge" in violations[0]
+    assert "compatibility helper is retired" in violations[0]
 
 
 def test_observer_bridge_guard_allows_create_refresh_bridge(tmp_path):
@@ -4497,112 +4375,6 @@ def _setup_bridges(self):
     )
 
     assert check_ui_observer_direct_update_bridges(tmp_path) == []
-
-
-def test_observer_handler_refresh_guard_flags_handler_without_coordinator(tmp_path):
-    _write_ui_file(
-        tmp_path,
-        """
-def _setup_bridges(self):
-    self._create_bridge(
-        self.controller,
-        "training_updated",
-        self._on_training_updated,
-    )
-
-def _on_training_updated(self):
-    self.update_loop()
-""",
-    )
-
-    violations = check_ui_observer_handlers_call_refresh_coordinator(tmp_path)
-
-    assert len(violations) == 1
-    assert "_on_training_updated" in violations[0]
-    assert "refresh_after_observer" in violations[0]
-
-
-def test_observer_handler_refresh_guard_allows_handler_with_coordinator(tmp_path):
-    _write_ui_file(
-        tmp_path,
-        """
-def _setup_bridges(self):
-    self._create_bridge(
-        self.controller,
-        "training_updated",
-        self._on_training_updated,
-    )
-
-def _on_training_updated(self):
-    self.update_loop()
-    refresh_after_observer(self, event_name="training_updated")
-""",
-    )
-
-    assert check_ui_observer_handlers_call_refresh_coordinator(tmp_path) == []
-
-
-def test_observer_handler_refresh_guard_flags_local_render_refresh(tmp_path):
-    _write_ui_file(
-        tmp_path,
-        """
-def _setup_bridges(self):
-    self._create_bridge(
-        self.controller,
-        "training_stopped",
-        self._on_training_stopped,
-    )
-
-def _on_training_stopped(self):
-    self.update_loop()
-    refresh_after_observer(self, event_name="training_stopped")
-""",
-    )
-
-    violations = check_ui_observer_handlers_call_refresh_coordinator(tmp_path)
-
-    assert len(violations) == 1
-    assert "_on_training_stopped" in violations[0]
-    assert "local render refresh" in violations[0]
-
-
-def test_observer_handler_refresh_guard_allows_training_updated_live_tick(tmp_path):
-    _write_ui_file(
-        tmp_path,
-        """
-def _setup_bridges(self):
-    self._create_bridge(
-        self.controller,
-        "training_updated",
-        self._on_training_updated,
-    )
-
-def _on_training_updated(self):
-    self.update_loop()
-    refresh_after_observer(self, event_name="training_updated")
-""",
-    )
-
-    assert check_ui_observer_handlers_call_refresh_coordinator(tmp_path) == []
-
-
-def test_observer_handler_refresh_guard_allows_import_finished_callback(tmp_path):
-    _write_ui_file(
-        tmp_path,
-        """
-def _setup_bridges(self):
-    self._create_bridge(
-        self.controller,
-        "import_finished",
-        self._on_import_finished,
-    )
-
-def _on_import_finished(self):
-    self.show_import_warnings()
-""",
-    )
-
-    assert check_ui_observer_handlers_call_refresh_coordinator(tmp_path) == []
 
 
 def test_direct_loader_apply_guard_flags_product_ui_mutation(tmp_path):
@@ -5757,16 +5529,6 @@ class DatasetPanel:
     )
     _write_product_file(
         tmp_path,
-        "XBrainLab/ui/panels/dataset/external_label_import_coordinator.py",
-        """
-class ExternalLabelImportCoordinator:
-    def target_files_from_table_rows(self, rows):
-        item = self.panel.table.item(rows[0], 0)
-        return [item.data(Qt.ItemDataRole.UserRole)]
-""",
-    )
-    _write_product_file(
-        tmp_path,
         "XBrainLab/ui/dialogs/dataset/channel_selection_dialog.py",
         """
 class ChannelSelectionDialog:
@@ -5813,9 +5575,6 @@ def query_preprocess_render_lists(context):
     assert any(
         "label_import_targets detached projection" in item for item in violations
     )
-    assert any("must not recover live EEG objects" in item for item in violations)
-    assert any("must not read UserRole payloads" in item for item in violations)
-    assert any("label_import_targets command query" in item for item in violations)
     assert any("detached channel names" in item for item in violations)
     assert any("RereferenceDialog" in item for item in violations)
     assert any("immutable PreprocessRenderPublication" in item for item in violations)
@@ -5828,42 +5587,6 @@ def test_repository_dataset_read_boundary_is_detached() -> None:
     root_dir = Path(__file__).resolve().parents[2]
 
     assert architecture_compliance.check_dataset_detached_read_boundary(root_dir) == []
-
-
-def test_external_label_coordinator_guard_rejects_host_round_trip_and_selection(
-    tmp_path: Path,
-) -> None:
-    _write_product_file(
-        tmp_path,
-        "XBrainLab/ui/panels/dataset/external_label_import_coordinator.py",
-        """
-class ExternalLabelImportCoordinator:
-    def import_label(self):
-        return self._host._get_target_files_for_import()
-
-    def target_files_from_table_rows(self, rows):
-        self._host._last_target_file_indices = rows
-        return []
-
-    def _query_label_import_targets(self):
-        return QueryStateCommand(query="label_import_targets")
-""",
-    )
-    _write_product_file(
-        tmp_path,
-        "XBrainLab/ui/panels/dataset/actions.py",
-        """
-class DatasetActionHandler:
-    def __init__(self):
-        self._last_target_file_indices = []
-""",
-    )
-
-    violations = architecture_compliance.check_dataset_detached_read_boundary(tmp_path)
-
-    assert any("round-trips" in item for item in violations)
-    assert any("must own it" in item for item in violations)
-    assert any("single owner" in item for item in violations)
 
 
 def test_visualization_publication_refresh_guard_rejects_broad_runtime_paths(
