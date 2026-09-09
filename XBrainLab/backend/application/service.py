@@ -2444,6 +2444,15 @@ class ApplicationService(Observable):
         """Whether observers must wait for the active command to verify its view."""
         return self._mutation_in_progress or self._publication_delivery_fence_depth > 0
 
+    def _release_publication_delivery_fence(self) -> None:
+        """Release one command-owned publication delivery fence."""
+        self._publication_delivery_fence_depth -= 1
+        if self._publication_delivery_fence_depth < 0:
+            self._publication_delivery_fence_depth = 0
+            raise RuntimeError(
+                "Application publication delivery fence became unbalanced."
+            )
+
     def _publish_view_changed(
         self,
         publication: ApplicationViewPublication,
@@ -2762,12 +2771,7 @@ class ApplicationService(Observable):
                         read_only=True,
                     )
             finally:
-                self._publication_delivery_fence_depth -= 1
-                if self._publication_delivery_fence_depth < 0:
-                    self._publication_delivery_fence_depth = 0
-                    raise RuntimeError(
-                        "Application publication delivery fence became unbalanced."
-                    )
+                self._release_publication_delivery_fence()
 
         summary: EvaluationModelSummary | None = None
         summary_error: Exception | None = None
@@ -2886,12 +2890,7 @@ class ApplicationService(Observable):
                     },
                 )
             finally:
-                self._publication_delivery_fence_depth -= 1
-                if self._publication_delivery_fence_depth < 0:
-                    self._publication_delivery_fence_depth = 0
-                    raise RuntimeError(
-                        "Application publication delivery fence became unbalanced."
-                    )
+                self._release_publication_delivery_fence()
 
     @staticmethod
     def _stale_evaluation_summary_result(
@@ -3121,12 +3120,7 @@ class ApplicationService(Observable):
                 )
             finally:
                 self._mutation_in_progress = False
-                self._publication_delivery_fence_depth -= 1
-                if self._publication_delivery_fence_depth < 0:
-                    self._publication_delivery_fence_depth = 0
-                    raise RuntimeError(
-                        "Application publication delivery fence became unbalanced."
-                    )
+                self._release_publication_delivery_fence()
 
     def _interpretation_discovery_boundary_matches(
         self,
@@ -3380,12 +3374,7 @@ class ApplicationService(Observable):
                 )
             finally:
                 self._mutation_in_progress = False
-                self._publication_delivery_fence_depth -= 1
-                if self._publication_delivery_fence_depth < 0:
-                    self._publication_delivery_fence_depth = 0
-                    raise RuntimeError(
-                        "Application publication delivery fence became unbalanced."
-                    )
+                self._release_publication_delivery_fence()
 
     @staticmethod
     def _uses_prepared_preprocess(command: Command | Any) -> bool:
@@ -3564,12 +3553,7 @@ class ApplicationService(Observable):
                 )
             finally:
                 self._mutation_in_progress = False
-                self._publication_delivery_fence_depth -= 1
-                if self._publication_delivery_fence_depth < 0:
-                    self._publication_delivery_fence_depth = 0
-                    raise RuntimeError(
-                        "Application publication delivery fence became unbalanced."
-                    )
+                self._release_publication_delivery_fence()
 
     @staticmethod
     def _reviewed_channel_selection_boundary_matches(
@@ -3784,12 +3768,7 @@ class ApplicationService(Observable):
                 else:
                     result = self._execute_serialized(command)
             finally:
-                self._publication_delivery_fence_depth -= 1
-                if self._publication_delivery_fence_depth < 0:
-                    self._publication_delivery_fence_depth = 0
-                    raise RuntimeError(
-                        "Application publication delivery fence became unbalanced."
-                    )
+                self._release_publication_delivery_fence()
         return result
 
     def _expected_publication_rejection(
