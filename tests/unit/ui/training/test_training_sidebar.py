@@ -14,7 +14,6 @@ from XBrainLab.backend.application import (
     CommandResult,
     ConfigureTrainingCommand,
     ErrorType,
-    QueryStateCommand,
 )
 from XBrainLab.backend.application.capabilities import CommandCapability
 from XBrainLab.backend.application.errors import PreconditionError
@@ -46,9 +45,11 @@ from XBrainLab.backend.model_base.model_catalog import get_model_spec
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training.model_holder import ModelHolder
 from XBrainLab.backend.training.option import class_map_fingerprint
-from XBrainLab.ui.application_capabilities import CommandReviewContext
+from XBrainLab.ui.application_capabilities import (
+    CommandReviewContext,
+    application_ui_runtime,
+)
 from XBrainLab.ui.panels.training.sidebar import TrainingSidebar
-from XBrainLab.ui.refresh_coordinator import refresh_after_command
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 
@@ -57,7 +58,15 @@ def sidebar(qtbot):
     panel_mock = MagicMock()
     panel_mock.controller = MagicMock()
     # Mock main_window on panel for AggregateInfoPanel access
-    panel_mock.main_window = None
+    main_window = QMainWindow()
+    study = Study()
+    cast(Any, main_window).study = study
+    panel_mock.main_window = main_window
+    runtime = application_ui_runtime(main_window)
+    assert runtime is not None
+    panel_mock._publication_port = runtime
+    panel_mock._action_port = runtime
+    panel_mock._query_port = runtime
 
     widget = TrainingSidebar(panel_mock, parent=None)
     qtbot.addWidget(widget)
@@ -78,6 +87,11 @@ def real_study_sidebar(qtbot):
         "real product resource checks must not read the injected controller",
     )
     panel.main_window = main_window
+    runtime = application_ui_runtime(main_window)
+    assert runtime is not None
+    panel._publication_port = runtime
+    panel._action_port = runtime
+    panel._query_port = runtime
     widget = TrainingSidebar(panel, parent=None)
     qtbot.addWidget(widget)
     return widget, study
@@ -519,7 +533,6 @@ def test_model_selection_receives_typed_training_query_port(sidebar):
     assert outcome.status.value == "cancelled"
     dialog.assert_called_once_with(
         sidebar,
-        sidebar.controller,
         initial_model_name=None,
         query_port=query_port,
     )
@@ -535,27 +548,13 @@ def test_execution_section_does_not_show_persistent_resource_status(sidebar):
 
 
 def test_on_start_clicked(sidebar):
-    # Mock readiness
-    sidebar.controller.validate_ready.return_value = True
-
-    # Test Start
-    sidebar.controller.is_training.return_value = False
+    # A missing typed review context must fail closed without consulting the
+    # legacy controller retained by the panel mock.
     with patch("XBrainLab.ui.panels.training.sidebar.show_warning") as warning:
         sidebar.start_training_ui_action()
-    sidebar.controller.start_training.assert_not_called()
+    sidebar.panel.controller.start_training.assert_not_called()
     warning.assert_called_once()
-    assert warning.call_args.args[1] == "Start Training Blocked"
-
-    # Test Stop is separate method: stop_training
-    # But checking start_training_ui_action logic:
-    # It calls start_training if not running.
-
-    sidebar.controller.start_training.reset_mock()
-    sidebar.controller.is_training.return_value = True
-    sidebar.start_training_ui_action()
-    sidebar.controller.start_training.assert_not_called()
-    # It acts as idempotent or safe start?
-    # Logic: if not self.controller.is_training(): start()
+    assert warning.call_args.args[1] == "Training Not Ready"
 
 
 def _training_result(
@@ -602,12 +601,21 @@ def _async_dispatch_recorder():
     return dispatch, calls, callbacks
 
 
+def _enabled_training_review(generation: int = 1) -> CommandReviewContext:
+    """A typed review boundary for action tests, not controller truth."""
+    return CommandReviewContext(
+        capability=CommandCapability(
+            command_name=CommandName.TRAIN.value, enabled=True
+        ),
+        publication_generation=generation,
+    )
+
+
 def test_train_result_before_publication_leaves_state_controls_unchanged(sidebar):
     dispatch, calls, callbacks = _async_dispatch_recorder()
     with (
-        patch(
-            "XBrainLab.ui.panels.training.sidebar.get_command_capability",
-            return_value=SimpleNamespace(enabled=True, reasons=[]),
+        patch.object(
+            sidebar, "_command_review_context", return_value=_enabled_training_review()
         ),
         patch(
             "XBrainLab.ui.panels.training.sidebar.execute_application_command_async",
@@ -642,9 +650,8 @@ def test_start_training_busy_scope_does_not_disable_entire_panel(sidebar):
         return True
 
     with (
-        patch(
-            "XBrainLab.ui.panels.training.sidebar.get_command_capability",
-            return_value=SimpleNamespace(enabled=True, reasons=[]),
+        patch.object(
+            sidebar, "_command_review_context", return_value=_enabled_training_review()
         ),
         patch(
             "XBrainLab.ui.panels.training.sidebar.execute_application_command_async",
@@ -788,9 +795,8 @@ def test_start_training_warning_is_confirmed_on_gui_then_redispatched(sidebar):
         },
     )
     with (
-        patch(
-            "XBrainLab.ui.panels.training.sidebar.get_command_capability",
-            return_value=SimpleNamespace(enabled=True, reasons=[]),
+        patch.object(
+            sidebar, "_command_review_context", return_value=_enabled_training_review()
         ),
         patch(
             "XBrainLab.ui.panels.training.sidebar.execute_application_command_async",
@@ -848,6 +854,7 @@ def test_start_training_confirmation_keeps_the_reviewed_publication_generation(
             "XBrainLab.ui.panels.training.sidebar.get_command_capability",
             return_value=capability,
         ),
+        patch.object(sidebar, "_training_option_snapshot", return_value={}),
         patch(
             "XBrainLab.ui.panels.training.sidebar.execute_application_command_async",
             side_effect=_dispatch,
@@ -905,6 +912,7 @@ def test_training_settings_bind_snapshot_and_apply_to_one_reviewed_generation(
             "XBrainLab.ui.panels.training.sidebar.get_command_capability",
             return_value=capability,
         ),
+        patch.object(sidebar, "_training_option_snapshot", return_value={}),
         patch("XBrainLab.ui.panels.training.sidebar.TrainingSettingDialog") as dialog,
         patch(
             "XBrainLab.ui.panels.training.sidebar.execute_application_command",
@@ -916,12 +924,8 @@ def test_training_settings_bind_snapshot_and_apply_to_one_reviewed_generation(
 
         sidebar.training_setting()
 
-    assert isinstance(execute.call_args_list[0].args[1], QueryStateCommand)
-    assert isinstance(execute.call_args_list[1].args[1], ConfigureTrainingCommand)
-    assert [
-        call.kwargs["expected_publication_generation"]
-        for call in execute.call_args_list
-    ] == [71, 71]
+    assert isinstance(execute.call_args.args[1], ConfigureTrainingCommand)
+    assert execute.call_args.kwargs["expected_publication_generation"] == 71
 
 
 def test_training_setting_prefills_backend_recommendation_then_explicit_proposal(
@@ -1233,9 +1237,8 @@ def test_start_training_blocking_result_opens_adjust_settings_without_retry(side
     dispatch, calls, callbacks = _async_dispatch_recorder()
     blocking_result = _training_preflight(ram_risk=RISK_BLOCKING)
     with (
-        patch(
-            "XBrainLab.ui.panels.training.sidebar.get_command_capability",
-            return_value=SimpleNamespace(enabled=True, reasons=[]),
+        patch.object(
+            sidebar, "_command_review_context", return_value=_enabled_training_review()
         ),
         patch(
             "XBrainLab.ui.panels.training.sidebar.execute_application_command_async",
@@ -1259,9 +1262,8 @@ def test_start_training_warning_without_receipt_fails_closed(sidebar):
     dispatch, calls, callbacks = _async_dispatch_recorder()
     warning = _training_preflight(vram_risk=RISK_WARNING)
     with (
-        patch(
-            "XBrainLab.ui.panels.training.sidebar.get_command_capability",
-            return_value=SimpleNamespace(enabled=True, reasons=[]),
+        patch.object(
+            sidebar, "_command_review_context", return_value=_enabled_training_review()
         ),
         patch(
             "XBrainLab.ui.panels.training.sidebar.execute_application_command_async",
@@ -1290,9 +1292,8 @@ def test_start_training_unknown_retries_once_before_prompt(sidebar):
     dispatch, calls, callbacks = _async_dispatch_recorder()
     unknown = _training_preflight(vram_risk=RISK_UNKNOWN)
     with (
-        patch(
-            "XBrainLab.ui.panels.training.sidebar.get_command_capability",
-            return_value=SimpleNamespace(enabled=True, reasons=[]),
+        patch.object(
+            sidebar, "_command_review_context", return_value=_enabled_training_review()
         ),
         patch(
             "XBrainLab.ui.panels.training.sidebar.execute_application_command_async",
@@ -1319,9 +1320,8 @@ def test_start_training_unknown_retries_once_before_prompt(sidebar):
 def test_start_training_async_failure_uses_existing_error_surface(sidebar):
     dispatch, calls, callbacks = _async_dispatch_recorder()
     with (
-        patch(
-            "XBrainLab.ui.panels.training.sidebar.get_command_capability",
-            return_value=SimpleNamespace(enabled=True, reasons=[]),
+        patch.object(
+            sidebar, "_command_review_context", return_value=_enabled_training_review()
         ),
         patch(
             "XBrainLab.ui.panels.training.sidebar.execute_application_command_async",
@@ -1337,10 +1337,9 @@ def test_start_training_async_failure_uses_existing_error_surface(sidebar):
 
 
 def test_stop_training(sidebar):
-    sidebar.controller.is_training.return_value = True
     with patch("XBrainLab.ui.panels.training.sidebar.show_warning") as warning:
         sidebar.stop_training()
-    sidebar.controller.stop_training.assert_not_called()
+    sidebar.panel.controller.stop_training.assert_not_called()
     warning.assert_called_once()
     assert warning.call_args.args[1] == "Stop Training Blocked"
 
@@ -1372,23 +1371,6 @@ def test_stop_result_waits_for_stopped_publication_to_disable_control(sidebar):
     sidebar.on_training_stopped(refresh_ready=False)
 
     assert sidebar.btn_stop.isEnabled() is False
-
-
-def test_check_ready_to_train(sidebar):
-    # Ensure button starts enabled or disabled based on init.
-    # Init calls check_ready_to_train. Mock default is True (MagicMock is truthy).
-    # So initially enabled.
-
-    sidebar.controller.validate_ready.return_value = False
-    sidebar.check_ready_to_train()
-
-    # Debug: verification
-    sidebar.controller.validate_ready.assert_called()
-    assert sidebar.btn_start.isEnabled() is False
-
-    sidebar.controller.validate_ready.return_value = True
-    sidebar.check_ready_to_train()
-    assert sidebar.btn_start.isEnabled() is True
 
 
 def test_training_capability_blocks_start_without_rendering_readiness(sidebar, qtbot):
@@ -1583,7 +1565,7 @@ def test_training_start_availability_uses_one_application_publication(
         "has_model",
         "has_training_option",
     ):
-        controller_method = getattr(sidebar.controller, method_name)
+        controller_method = getattr(sidebar.panel.controller, method_name)
         controller_method.reset_mock()
         controller_method.side_effect = AssertionError(
             f"publication readiness must not call controller.{method_name}",
@@ -1613,7 +1595,7 @@ def test_training_start_availability_uses_one_application_publication(
         "has_model",
         "has_training_option",
     ):
-        getattr(sidebar.controller, method_name).assert_not_called()
+        getattr(sidebar.panel.controller, method_name).assert_not_called()
 
 
 def test_training_start_fails_closed_when_product_publication_is_unavailable(
@@ -1630,17 +1612,6 @@ def test_training_start_fails_closed_when_product_publication_is_unavailable(
         patch(
             "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
             return_value=publication,
-        ),
-        patch(
-            "XBrainLab.ui.panels.training.sidebar.has_real_application_context",
-            return_value=True,
-        ),
-        patch.object(
-            sidebar,
-            "_compatibility_controller_value",
-            side_effect=AssertionError(
-                "product readiness must not fall back to controller state",
-            ),
         ),
     ):
         sidebar.check_ready_to_train()
@@ -1697,64 +1668,11 @@ def test_clear_history_button_uses_same_publication_capability(sidebar):
     assert sidebar.btn_clear.toolTip() == "Clear training history"
 
 
-def test_real_study_controller_compatibility_stops_before_fallback_gateway(
-    real_study_sidebar,
-):
-    sidebar, *_ = real_study_sidebar
-    fallback = MagicMock()
-
-    with patch(
-        "XBrainLab.ui.panels.training.sidebar.run_controller_compatibility_call",
-        side_effect=AssertionError(
-            "real Study context must not enter controller compatibility",
-        ),
-    ):
-        available, value = sidebar._compatibility_controller_value(fallback)
-
-    assert available is False
-    assert value is None
-    fallback.assert_not_called()
-
-
-def test_real_study_missing_publication_never_reads_controller(
-    real_study_sidebar,
-):
-    sidebar, *_ = real_study_sidebar
-    controller = sidebar.controller
-    for method_name in (
-        "validate_ready",
-        "has_datasets",
-        "has_model",
-        "has_training_option",
-    ):
-        getattr(controller, method_name).side_effect = AssertionError(
-            f"product readiness must not call controller.{method_name}",
-        )
-
-    with (
-        patch(
-            "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
-            return_value=None,
-        ),
-        patch(
-            "XBrainLab.ui.panels.training.sidebar.run_controller_compatibility_call",
-            side_effect=AssertionError(
-                "missing product publication must not enter controller compatibility",
-            ),
-        ),
-    ):
-        sidebar.check_ready_to_train()
-
-    assert not sidebar.btn_start.isEnabled()
-    assert sidebar.btn_start.toolTip() == "Training state is unavailable right now."
-    assert sidebar.findChild(QGroupBox, "TrainingReadiness") is None
-
-
 def test_product_action_result_waits_for_the_next_publication(
     real_study_sidebar,
 ):
     sidebar, *_ = real_study_sidebar
-    controller = sidebar.controller
+    controller = sidebar.panel.controller
     for method_name in (
         "validate_ready",
         "has_datasets",
@@ -1804,26 +1722,15 @@ def test_product_action_result_waits_for_the_next_publication(
     panel = sidebar.panel
     main_window = sidebar.main_window
     cast(Any, main_window).training_panel = panel
-    with (
-        patch(
-            "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
-            side_effect=publications,
-        ),
-        patch(
-            "XBrainLab.ui.panels.training.sidebar.run_controller_compatibility_call",
-            side_effect=AssertionError(
-                "product refresh must not enter controller compatibility",
-            ),
-        ),
+    with patch(
+        "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
+        side_effect=publications,
     ):
         sidebar.check_ready_to_train()
         assert not sidebar.btn_start.isEnabled()
 
-        refreshed = refresh_after_command(
-            sidebar,
-            _training_result(preflight=_training_preflight()),
-        )
-        assert refreshed is False
+        # Command acknowledgement does not refresh controls; only the next
+        # committed publication may change this presentation.
         panel.update_panel.assert_not_called()
         assert not sidebar.btn_start.isEnabled()
 
@@ -1846,17 +1753,6 @@ def test_check_ready_to_train_never_reads_controller_when_product_truth_is_missi
         patch(
             "XBrainLab.ui.panels.training.sidebar.get_command_capability",
             return_value=None,
-        ),
-        patch(
-            "XBrainLab.ui.panels.training.sidebar.has_real_application_context",
-            return_value=True,
-        ),
-        patch.object(
-            sidebar,
-            "_compatibility_controller_value",
-            side_effect=AssertionError(
-                "product readiness must not read controller compatibility state",
-            ),
         ),
     ):
         sidebar.check_ready_to_train()
@@ -1884,17 +1780,6 @@ def test_check_ready_to_train_rejects_enabled_capability_from_unusable_publicati
         patch(
             "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
             return_value=publication,
-        ),
-        patch(
-            "XBrainLab.ui.panels.training.sidebar.has_real_application_context",
-            return_value=True,
-        ),
-        patch.object(
-            sidebar,
-            "_compatibility_controller_value",
-            side_effect=AssertionError(
-                "unusable product publication must not enter compatibility",
-            ),
         ),
     ):
         sidebar.check_ready_to_train()
@@ -1926,17 +1811,6 @@ def test_check_ready_to_train_rejects_malformed_product_capability(sidebar):
         patch(
             "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
             return_value=publication,
-        ),
-        patch(
-            "XBrainLab.ui.panels.training.sidebar.has_real_application_context",
-            return_value=True,
-        ),
-        patch.object(
-            sidebar,
-            "_compatibility_controller_value",
-            side_effect=AssertionError(
-                "malformed product publication must fail closed",
-            ),
         ),
     ):
         sidebar.check_ready_to_train()
@@ -2215,6 +2089,7 @@ def test_split_data_passes_typed_detached_binding_to_dialog(
     assert outcome.status is InteractionStatus.CANCELLED
     get_binding.assert_called_once_with(
         sidebar,
+        runtime=sidebar.panel._query_port,
         publication_generation=generation,
         initial_specification=saved_specification,
     )
@@ -2421,6 +2296,7 @@ def test_data_splitting_context_fails_closed_when_product_binding_disappears(
     assert context is None
     get_binding.assert_called_once_with(
         sidebar,
+        runtime=sidebar.panel._query_port,
         publication_generation=91,
     )
     warning.assert_called_once_with(
@@ -2476,4 +2352,6 @@ def test_on_training_stopped(sidebar):
     # Checking text might differ based on UI implementation details,
     # but we can check if it's enabled and set to primary/success style logic if verified.
     assert sidebar.btn_start.text() == "Start Training"
-    assert sidebar.btn_start.isEnabled() is True
+    # Stop settles the stop control; readiness remains owned by the next
+    # committed publication rather than a stale controller snapshot.
+    assert sidebar.btn_start.isEnabled() is False

@@ -21,19 +21,14 @@ from XBrainLab.backend.application import (
     ActiveTrainingSnapshot,
     CommandCapability,
     CommandName,
-    QueryStateCommand,
 )
 from XBrainLab.backend.application.results import CommandResult
-from XBrainLab.backend.application.training_history import (
-    project_training_history_rows,
-)
 from XBrainLab.backend.application.view_publication import (
     APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
     ApplicationViewPublication,
 )
 from XBrainLab.backend.training.record.key import RecordKey, TrainRecordKey
 from XBrainLab.backend.training_state_contract import (
-    TrainingLifecycleEvent,
     TrainingOutcomeState,
     TrainingTerminalOutcome,
 )
@@ -41,23 +36,17 @@ from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.utils.observer import Observable
 from XBrainLab.ui.application_capabilities import (
     TRAINING_PROGRESS_UPDATED_EVENT,
-    ControllerCompatibilityUnavailableError,
     TrainingActionPort,
     TrainingPublicationPort,
     TrainingQueryPort,
     TrainingTransientProgressPort,
-    application_runtime_initialized,
     application_ui_runtime,
-    execute_application_command,
-    get_controller_for_compatibility_context,
-    run_controller_compatibility_call,
     training_transient_ui_port,
 )
 from XBrainLab.ui.application_publication_renderer import (
     ApplicationPublicationRenderLedger,
 )
 from XBrainLab.ui.core.base_panel import BasePanel
-from XBrainLab.ui.refresh_coordinator import refresh_after_observer
 from XBrainLab.ui.status import show_status_message
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 from XBrainLab.ui.styles.theme import Theme
@@ -94,13 +83,9 @@ class TrainingPanel(BasePanel):
 
     Provides real-time accuracy/loss plots, a training-history table,
     log output, and a sidebar for configuration and execution controls.
-    Subscribes to controller events for live updates.
+    Subscribes to application publication and transient-progress events.
 
     Attributes:
-        dataset_controller: Injected ``DatasetController`` for data-change
-            events.
-        preprocess_controller: Injected ``PreprocessController`` for
-            preprocess-state change events.
         current_plotting_identity: Stable plan/run identity displayed in
             the metric plots.
         tabs: ``QTabWidget`` holding accuracy, loss, and log tabs.
@@ -116,10 +101,7 @@ class TrainingPanel(BasePanel):
 
     def __init__(
         self,
-        controller=None,
-        dataset_controller=None,
         parent=None,
-        preprocess_controller=None,
         *,
         query_port: TrainingQueryPort | None = None,
         publication_port: TrainingPublicationPort | None = None,
@@ -129,62 +111,16 @@ class TrainingPanel(BasePanel):
         """Initialize the training panel.
 
         Args:
-            controller: Optional ``TrainingController``. Resolved from
-                the parent study if not provided.
-            dataset_controller: Optional ``DatasetController`` for
-                data-change event subscription.
-            preprocess_controller: Optional ``PreprocessController`` for
-                preprocess-state change subscription.
             parent: Parent widget (typically the main window).
 
         """
-        explicit_typed_ports = any(
+        runtime = application_ui_runtime(parent)
+        # 2. Base Init
+        super().__init__(parent=parent)
+        if any(
             port is not None
             for port in (query_port, publication_port, action_port, transient_port)
-        )
-        runtime = application_ui_runtime(parent)
-        self._typed_port_mode = explicit_typed_ports or runtime is not None
-
-        # Controller resolution exists only for zero-port standalone/mock contexts.
-        if self._typed_port_mode:
-            controller = None
-            dataset_controller = None
-            preprocess_controller = None
-        elif controller is None and parent and hasattr(parent, "study"):
-            controller = get_controller_for_compatibility_context(
-                parent,
-                parent.study,
-                "training",
-            )
-        if (
-            not self._typed_port_mode
-            and dataset_controller is None
-            and parent
-            and hasattr(parent, "study")
         ):
-            dataset_controller = get_controller_for_compatibility_context(
-                parent,
-                parent.study,
-                "dataset",
-            )
-        if (
-            not self._typed_port_mode
-            and preprocess_controller is None
-            and parent
-            and hasattr(parent, "study")
-        ):
-            preprocess_controller = get_controller_for_compatibility_context(
-                parent,
-                parent.study,
-                "preprocess",
-            )
-
-        # 2. Base Init
-        super().__init__(parent=parent, controller=controller)
-
-        self.dataset_controller = dataset_controller
-        self.preprocess_controller = preprocess_controller
-        if explicit_typed_ports:
             self._query_port = query_port
             self._publication_port = publication_port
             self._action_port = action_port
@@ -225,11 +161,7 @@ class TrainingPanel(BasePanel):
         self._has_verified_history_render = False
         self._last_verified_history_rows: list[dict] = []
         self._rendered_history_rows: list[dict] = []
-        self._latest_training_generation_by_trainer: dict[str, int] = {}
-        self._terminal_training_generation_by_run: dict[tuple[str, int], int] = {}
-        self._last_training_analysis_publication_generation = 0
         self._latest_terminal_outcome: TrainingTerminalOutcome | None = None
-        self._terminal_event_log_expected = False
         self.plan_items: dict[str, object] = {}
         self.run_items: dict[str, object] = {}
 
@@ -242,76 +174,18 @@ class TrainingPanel(BasePanel):
 
     def _setup_bridges(self):
         """Register Qt observer bridges for training and dataset events."""
-        if self._typed_port_mode:
-            if self._publication_port is not None:
-                self._create_bridge(
-                    cast(Observable, self._publication_port),
-                    APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
-                    self._on_application_view_publication_changed,
-                )
-            if self._transient_port is not None:
-                self._create_bridge(
-                    cast(Observable, self._transient_port),
-                    TRAINING_PROGRESS_UPDATED_EVENT,
-                    self._on_training_updated,
-                )
-            return
-        if not self.controller:
-            return
-
-        # Connect to controller events for automatic UI updates
-        self._create_bridge(
-            self.controller,
-            "training_started",
-            self._on_training_started,
-        )
-        self._create_bridge(
-            self.controller,
-            "training_started_state",
-            self._on_training_started_state,
-        )
-        self._create_bridge(
-            self.controller,
-            "training_stopped",
-            self._on_training_stopped,
-        )
-        self._create_bridge(
-            self.controller,
-            "training_terminal_published",
-            self._on_training_terminal_published,
-        )
-        self._create_bridge(
-            self.controller,
-            "training_analysis_published",
-            self._on_training_analysis_published,
-        )
-        self._create_bridge(
-            self.controller,
-            "config_changed",
-            self._on_config_changed,
-        )
-        self._create_bridge(
-            self.controller,
-            "training_updated",
-            self._on_training_updated,
-        )
-        self._create_bridge(
-            self.controller,
-            "history_cleared",
-            self._on_history_cleared,
-        )
-
-        # Connect to Dataset events (Updates info panel and check readiness)
-        if self.dataset_controller:
-            self._create_refresh_bridge(self.dataset_controller, "data_changed")
-        if self.preprocess_controller:
-            self._create_refresh_bridge(
-                self.preprocess_controller,
-                "preprocess_changed",
+        if self._publication_port is not None:
+            self._create_bridge(
+                cast(Observable, self._publication_port),
+                APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+                self._on_application_view_publication_changed,
             )
-
-        # Event-driven update: 'training_updated' signal triggers update_loop
-        self.training_completed_shown = False
+        if self._transient_port is not None:
+            self._create_bridge(
+                cast(Observable, self._transient_port),
+                TRAINING_PROGRESS_UPDATED_EVENT,
+                self._on_training_updated,
+            )
 
     def _on_application_view_publication_changed(
         self,
@@ -560,165 +434,18 @@ class TrainingPanel(BasePanel):
 
     # Removed action methods (now in Sidebar)
 
-    def _on_config_changed(self):
-        """Re-evaluate the ready-to-train state when configuration changes."""
-        self.log_text.clear()
-        self._logged_epoch_signatures_by_identity.clear()
-        self._suppress_log_render_once = True
-        refresh_after_observer(self, event_name="config_changed")
-
-    def _on_training_started(self):
-        """Event handler: Training has started."""
-        if application_runtime_initialized(self):
-            return
-        self._render_training_started()
-        refresh_after_observer(self, event_name="training_started")
-        self.log_text.append("Training started (event).")
-
-    def _on_training_started_state(self, event: TrainingLifecycleEvent) -> None:
-        """Apply a started edge only while its generation is still current."""
-        if not self._accept_started_event(event):
-            return
-        self._render_training_started()
-        refresh_after_observer(self, event_name="training_started")
-        self.log_text.append("Training started (event).")
-
     def _render_training_started(self) -> None:
         """Render one accepted running generation."""
         self.training_completed_shown = False
         self._training_outcome_unverified_shown = False
         self._latest_terminal_outcome = None
-        self._terminal_event_log_expected = False
         self.show_status_message("Training started")
         if hasattr(self, "sidebar"):
             self.sidebar.on_training_started(refresh_ready=False)
 
-    def _on_training_stopped(self):
-        """Event handler: Training has stopped."""
-        if application_runtime_initialized(self):
-            return
-        self.reconcile_training_terminal_outcome()
-        self.log_text.append("Training stopped (event).")
-        if hasattr(self, "sidebar"):
-            self.sidebar.on_training_stopped(refresh_ready=False)
-        refresh_after_observer(self, event_name="training_stopped")
-
-    def _on_training_terminal_published(
-        self,
-        event: TrainingLifecycleEvent,
-    ) -> None:
-        """Render one authoritative terminal publication on the GUI thread."""
-        if not self._accept_terminal_event(event):
-            return
-        self.training_completed_shown = False
-        self._training_outcome_unverified_shown = False
-        self._latest_terminal_outcome = event.outcome
-        self._terminal_event_log_expected = True
-        self.training_finished(
-            refresh_ready=False,
-            report_unverified=False,
-            outcome=event.outcome,
-        )
-        self.log_text.append("Training stopped (event).")
-        if hasattr(self, "sidebar"):
-            self.sidebar.on_training_stopped(refresh_ready=False)
-        refresh_after_observer(
-            self,
-            event_name="training_terminal_published",
-        )
-
-    def _accept_started_event(self, event: TrainingLifecycleEvent) -> bool:
-        if not isinstance(event, TrainingLifecycleEvent) or not event.token.stable:
-            return False
-        outcome = event.outcome
-        run = outcome.run
-        if outcome.state is not TrainingOutcomeState.RUNNING or run is None:
-            return False
-        trainer_id = run.trainer_id
-        generation = event.token.generation
-        if generation < self._latest_training_generation_by_trainer.get(
-            trainer_id,
-            -1,
-        ):
-            return False
-        terminal_generation = self._terminal_training_generation_by_run.get(
-            (trainer_id, run.run_id),
-        )
-        if terminal_generation is not None and generation <= terminal_generation:
-            return False
-        self._latest_training_generation_by_trainer[trainer_id] = generation
-        return True
-
-    def _on_training_analysis_published(
-        self,
-        event: TrainingLifecycleEvent,
-    ) -> None:
-        """Fan out one final automatic-analysis publication."""
-        if not self._accept_analysis_event(event):
-            return
-        refresh_after_observer(
-            self,
-            event_name="training_analysis_published",
-        )
-
-    def _accept_analysis_event(self, event: TrainingLifecycleEvent) -> bool:
-        if (
-            not isinstance(event, TrainingLifecycleEvent)
-            or not event.token.stable
-            or event.publication_generation is None
-            or event.outcome.state is not TrainingOutcomeState.COMPLETED
-            or event.outcome.run is None
-        ):
-            return False
-        publication_generation = event.publication_generation
-        if (
-            publication_generation
-            <= self._last_training_analysis_publication_generation
-        ):
-            return False
-        run = event.outcome.run
-        training_generation = event.token.generation
-        latest = self._latest_training_generation_by_trainer.get(run.trainer_id, -1)
-        if training_generation < latest:
-            return False
-        self._latest_training_generation_by_trainer[run.trainer_id] = (
-            training_generation
-        )
-        self._last_training_analysis_publication_generation = publication_generation
-        return True
-
-    def _accept_terminal_event(self, event: TrainingLifecycleEvent) -> bool:
-        if (
-            not isinstance(event, TrainingLifecycleEvent)
-            or not event.token.stable
-            or event.publication_generation is None
-            or not event.outcome.is_terminal
-            or event.outcome.run is None
-        ):
-            return False
-        run = event.outcome.run
-        key = (run.trainer_id, run.run_id)
-        generation = event.token.generation
-        if generation <= self._terminal_training_generation_by_run.get(key, -1):
-            return False
-        latest = self._latest_training_generation_by_trainer.get(run.trainer_id, -1)
-        if generation < latest:
-            return False
-        self._latest_training_generation_by_trainer[run.trainer_id] = generation
-        self._terminal_training_generation_by_run[key] = generation
-        return True
-
     def _on_training_updated(self):
-        """Refresh live training progress and shared observer status."""
+        """Render the transient progress tick without republishing workflow state."""
         self.update_loop(log_epochs=True)
-        if self._publication_port is None:
-            refresh_after_observer(self, event_name="training_updated")
-
-    def _on_history_cleared(self):
-        """Event handler: History cleared."""
-        self.log_text.clear()
-        self._clear_training_display()
-        refresh_after_observer(self, event_name="history_cleared")
 
     def _clear_training_display(self):
         """Clear plot selection state when no valid training history remains."""
@@ -941,36 +668,11 @@ class TrainingPanel(BasePanel):
         self,
     ) -> tuple[TrainingOutcomeState | None, str | None]:
         """Read the backend's typed terminal outcome without inferring from copy."""
-        if self._typed_port_mode:
-            publication = self._read_application_publication()
-            if publication is None or not publication.usable:
-                return None, None
-            outcome = publication.state.training.terminal_outcome
-            return outcome.state, outcome.detail
-        result = execute_application_command(
-            self,
-            QueryStateCommand(query="state"),
-            refresh=False,
-        )
-        if result is None:
+        publication = self._read_application_publication()
+        if publication is None or not publication.usable:
             return None, None
-        # A concurrent analysis command can mark the global view stale, but this
-        # query still carries the immutable last-committed training publication.
-        state = result.diagnostics.get("state")
-        if not isinstance(state, dict):
-            return None, None
-        training = state.get("training") if isinstance(state, dict) else None
-        if not isinstance(training, dict):
-            return None, None
-        outcome_data = training.get("terminal_outcome")
-        if not isinstance(outcome_data, dict):
-            return None, None
-        try:
-            terminal_state = TrainingOutcomeState(str(outcome_data.get("state", "")))
-        except ValueError:
-            return None, None
-        detail = outcome_data.get("detail")
-        return terminal_state, str(detail).strip() if detail else None
+        outcome = publication.state.training.terminal_outcome
+        return outcome.state, outcome.detail
 
     def show_status_message(self, message: str, timeout_ms: int = 7000) -> bool:
         """Show a non-modal status message on the application status bar."""
@@ -1013,11 +715,6 @@ class TrainingPanel(BasePanel):
         if not self.training_completed_shown or not hasattr(self, "sidebar"):
             return
         outcome = self._latest_terminal_outcome
-        if (
-            self._terminal_event_log_expected
-            and "Training stopped (event)." not in self.log_text.toPlainText()
-        ):
-            self.log_text.append("Training stopped (event).")
         if outcome is not None:
             self._ensure_terminal_log_visible(outcome.state, outcome.detail)
         else:
@@ -1379,42 +1076,33 @@ class TrainingPanel(BasePanel):
 
     def _history_for_render(self):
         result: CommandResult | None
-        if self._typed_port_mode:
-            publication = self._read_application_publication()
-            if publication is None or not publication.usable:
-                self._has_verified_history_render = False
-                return None
-            if publication.training_history is not None:
-                rows = deepcopy(list(publication.training_history))
-                self._has_verified_history_render = bool(rows)
-                self._last_verified_history_rows = rows
-                return deepcopy(rows)
-            query_port = self._query_port
-            if query_port is None:
-                self._has_verified_history_render = False
-                return None
-            try:
-                result = query_port.query_training_history(
-                    expected_publication_generation=publication.generation,
-                )
-            except Exception:
-                logger.error(
-                    "Training history publication is unavailable.",
-                    exc_info=True,
-                )
-                self._has_verified_history_render = False
-                return None
-        else:
-            result = execute_application_command(
-                self,
-                QueryStateCommand(query="training_history"),
-                refresh=False,
+        publication = self._read_application_publication()
+        if publication is None or not publication.usable:
+            self._has_verified_history_render = False
+            return None
+        if publication.training_history is not None:
+            rows = deepcopy(list(publication.training_history))
+            self._has_verified_history_render = bool(rows)
+            self._last_verified_history_rows = rows
+            return deepcopy(rows)
+        query_port = self._query_port
+        if query_port is None:
+            self._has_verified_history_render = False
+            return None
+        try:
+            result = query_port.query_training_history(
+                expected_publication_generation=publication.generation,
             )
+        except Exception:
+            logger.error(
+                "Training history publication is unavailable.",
+                exc_info=True,
+            )
+            self._has_verified_history_render = False
+            return None
         if result is None:
             self._has_verified_history_render = False
-            if self._typed_port_mode:
-                return None
-            return self._compatibility_history_for_render()
+            return None
         if result.failed:
             return None
         diagnostics = getattr(result, "diagnostics", {}) or {}
@@ -1426,18 +1114,6 @@ class TrainingPanel(BasePanel):
         self._has_verified_history_render = bool(diagnostic_rows)
         self._last_verified_history_rows = list(diagnostic_rows)
         return list(self._last_verified_history_rows)
-
-    def _compatibility_history_for_render(self):
-        if self.controller is None:
-            return []
-        try:
-            rows = run_controller_compatibility_call(
-                self,
-                self.controller.get_formatted_history,
-            )
-        except ControllerCompatibilityUnavailableError:
-            return None
-        return project_training_history_rows(rows)
 
     def _report_history_query_unavailable(self) -> None:
         """Keep the last verified render while a history query is unstable."""

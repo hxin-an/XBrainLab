@@ -283,7 +283,6 @@ def _settle_chat_panel_capture(app: QApplication, panel: ChatPanel) -> None:
 def _model_selection_dialog() -> QWidget:
     dialog = ModelSelectionDialog(
         None,
-        MagicMock(),
         provider_status=BraindecodeProviderStatus(True, "1.6.1", "", True),
     )
     dialog.adjustSize()

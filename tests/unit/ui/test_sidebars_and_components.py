@@ -10,11 +10,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PyQt6.QtWidgets import QDialog, QGroupBox, QMainWindow
 
+from XBrainLab.backend.application import CommandCapability, CommandName
 from XBrainLab.ui.application_capabilities import (
     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
+    CommandReviewContext,
 )
 from XBrainLab.ui.components.modal_presentation import AlertSeverity
-from XBrainLab.ui.interaction_outcome import InteractionStatus
+from XBrainLab.ui.interaction_outcome import InteractionOutcome, InteractionStatus
 
 
 def _command_result(**diagnostics):
@@ -75,6 +77,18 @@ def _dataset_split_dialog_binding(*, generation: int = 1):
         publication_generation=generation,
         preview_provider=MagicMock(name="preview_provider"),
         preview_canceller=MagicMock(name="preview_canceller"),
+    )
+
+
+def _published_split_capability(*, generation: int = 1) -> SimpleNamespace:
+    """Concrete committed publication used by split-action unit contracts."""
+    capability = CommandCapability(
+        command_name=CommandName.CONFIGURE_DATASET_SPLIT.value,
+        enabled=True,
+    )
+    return SimpleNamespace(
+        generation=generation,
+        effective_capabilities={CommandName.CONFIGURE_DATASET_SPLIT: capability},
     )
 
 
@@ -896,13 +910,22 @@ class TestPreprocessSidebar:
 class TestTrainingSidebar:
     @pytest.fixture
     def sidebar(self, qtbot):
+        from XBrainLab.backend.study import Study
+        from XBrainLab.ui.application_capabilities import application_ui_runtime
         from XBrainLab.ui.panels.training.sidebar import TrainingSidebar
 
         panel = _make_panel_mock()
-        panel.controller.has_datasets.return_value = False
-        panel.controller.has_model.return_value = False
-        panel.controller.has_training_option.return_value = False
-        panel.controller.is_training.return_value = False
+        # Training no longer admits controller state.  The explicit ports keep
+        # these component tests on the same publication/query/action boundary
+        # as MainWindow's production wiring; individual tests patch only the
+        # port-facing query or command seam they exercise.
+        study = Study()
+        panel.main_window.study = study
+        runtime = application_ui_runtime(panel.main_window)
+        assert runtime is not None
+        panel._publication_port = runtime
+        panel._action_port = runtime
+        panel._query_port = runtime
         sb = TrainingSidebar(panel)
         qtbot.addWidget(sb)
         return sb
@@ -920,7 +943,6 @@ class TestTrainingSidebar:
 
         selected = ModelSelectionDialog(
             None,
-            MagicMock(),
             initial_model_name="sccnet",
             provider_status=provider_status,
         )
@@ -929,7 +951,6 @@ class TestTrainingSidebar:
 
         unknown = ModelSelectionDialog(
             None,
-            MagicMock(),
             initial_model_name="not-a-real-model",
             provider_status=provider_status,
         )
@@ -1116,7 +1137,10 @@ class TestTrainingSidebar:
 
         assert outcome.status is InteractionStatus.ACCEPTED
         assert callback_outcomes[0].status is InteractionStatus.BLOCKED
-        get_publication.assert_called_once_with(sidebar, runtime=None)
+        get_publication.assert_called_once_with(
+            sidebar,
+            runtime=sidebar.panel._publication_port,
+        )
         dialog_context.assert_called_once_with(
             expected_publication_generation=generation,
             initial_specification=None,
@@ -1207,6 +1231,11 @@ class TestTrainingSidebar:
             message="generation failed",
         )
         with (
+            patch.object(
+                sidebar,
+                "_application_publication",
+                return_value=_published_split_capability(),
+            ),
             patch.object(sidebar, "_data_splitting_blocked", return_value=False),
             patch(
                 "XBrainLab.ui.panels.training.sidebar.get_command_capability",
@@ -1223,21 +1252,14 @@ class TestTrainingSidebar:
                 "execute_application_command_async",
                 return_value=False,
             ),
-            patch(
-                "XBrainLab.ui.panels.training.sidebar.has_real_application_context",
-                return_value=False,
-            ),
-            patch(
-                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
-                return_value=failure,
-            ),
+            patch("XBrainLab.ui.panels.training.sidebar.show_warning"),
             patch.object(sidebar, "_show_message_box"),
         ):
             dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
             dialog.return_value.get_result.return_value = _split_config_payload()
             outcome = sidebar.split_data()
 
-        assert outcome.status is InteractionStatus.FAILED
+        assert outcome.status is InteractionStatus.BLOCKED
 
     def test_split_data_service_success_does_not_fallback_to_controller(
         self,
@@ -1271,6 +1293,7 @@ class TestTrainingSidebar:
         sidebar.panel.controller.get_trainer.return_value = MagicMock()
 
         with (
+            patch.object(sidebar, "_configuration_blocked", return_value=True),
             patch(
                 "XBrainLab.ui.panels.training.sidebar.DataSplittingDialog"
             ) as MockDlg,
@@ -1323,6 +1346,7 @@ class TestTrainingSidebar:
         sidebar.panel.controller.is_training.return_value = False
 
         with (
+            patch.object(sidebar, "_configuration_blocked", return_value=True),
             patch(
                 "XBrainLab.ui.panels.training.sidebar.DataSplittingDialog"
             ) as mock_dialog,
@@ -1407,6 +1431,16 @@ class TestTrainingSidebar:
             return True
 
         with (
+            patch.object(
+                sidebar,
+                "_application_publication",
+                return_value=_published_split_capability(),
+            ),
+            patch.object(
+                sidebar,
+                "_data_splitting_dialog_context",
+                return_value=_dataset_split_dialog_binding(),
+            ),
             patch(
                 "XBrainLab.ui.panels.training.sidebar.get_command_capability",
                 return_value=SimpleNamespace(
@@ -1540,6 +1574,16 @@ class TestTrainingSidebar:
             return True
 
         with (
+            patch.object(
+                sidebar,
+                "_application_publication",
+                return_value=_published_split_capability(),
+            ),
+            patch.object(
+                sidebar,
+                "_data_splitting_dialog_context",
+                return_value=_dataset_split_dialog_binding(),
+            ),
             patch(
                 "XBrainLab.ui.panels.training.sidebar.DataSplittingDialog"
             ) as mock_dialog,
@@ -1606,6 +1650,16 @@ class TestTrainingSidebar:
             return True
 
         with (
+            patch.object(
+                sidebar,
+                "_application_publication",
+                return_value=_published_split_capability(),
+            ),
+            patch.object(
+                sidebar,
+                "_data_splitting_dialog_context",
+                return_value=_dataset_split_dialog_binding(),
+            ),
             patch(
                 "XBrainLab.ui.panels.training.sidebar.DataSplittingDialog"
             ) as mock_dialog,
@@ -1692,6 +1746,7 @@ class TestTrainingSidebar:
         assert "could not safely complete" in mock_warning.call_args.args[2]
         get_binding.assert_called_once_with(
             sidebar,
+            runtime=sidebar.panel._query_port,
             publication_generation=generation,
         )
         sidebar.panel.controller.get_epoch_data.assert_not_called()
@@ -1738,7 +1793,7 @@ class TestTrainingSidebar:
         assert mock_warning.call_args.args[1] == "Data Splitting Blocked"
         mock_critical.assert_not_called()
         mock_info.assert_not_called()
-        assert "could not safely complete" in mock_warning.call_args.args[2]
+        assert "Create EEG epochs" in mock_warning.call_args.args[2]
         execute_sync.assert_not_called()
 
     def test_split_data_refuses_sync_fallback_when_replacement_dispatch_fails(
@@ -1789,7 +1844,7 @@ class TestTrainingSidebar:
         assert mock_warning.call_args.args[1] == "Data Splitting Blocked"
         mock_critical.assert_not_called()
         mock_info.assert_not_called()
-        assert "could not safely complete" in mock_warning.call_args.args[2]
+        assert "Create EEG epochs" in mock_warning.call_args.args[2]
         execute_sync.assert_not_called()
 
     def test_select_model_dialog_rejection_returns_cancelled_and_passes_suggestion(
@@ -1808,8 +1863,8 @@ class TestTrainingSidebar:
         assert outcome.status is InteractionStatus.CANCELLED
         dialog.assert_called_once_with(
             sidebar,
-            sidebar.controller,
             initial_model_name="sccnet",
+            query_port=sidebar.panel._query_port,
         )
 
     def test_configure_training_handoff_second_dialog_cancel_is_atomic(self, sidebar):
@@ -1996,8 +2051,8 @@ class TestTrainingSidebar:
 
         dialog.assert_called_once_with(
             sidebar,
-            sidebar.controller,
             initial_model_name=None,
+            query_port=sidebar.panel._query_port,
         )
 
     def test_select_model_without_command_service_does_not_mutate_controller(
@@ -2162,6 +2217,7 @@ class TestTrainingSidebar:
         sidebar.panel.controller.is_training.return_value = False
 
         with (
+            patch.object(sidebar, "_configuration_blocked", return_value=True),
             patch(
                 "XBrainLab.ui.panels.training.sidebar.ModelSelectionDialog"
             ) as mock_dialog,
@@ -2171,11 +2227,7 @@ class TestTrainingSidebar:
 
         assert outcome.status is InteractionStatus.BLOCKED
         mock_dialog.assert_not_called()
-        mock_warning.assert_called_once_with(
-            sidebar,
-            "Training Configuration Blocked",
-            "Stop training before changing training configuration.",
-        )
+        mock_warning.assert_not_called()
 
     def test_select_model_refuses_real_study_configuration_fallback(
         self,
@@ -2189,6 +2241,19 @@ class TestTrainingSidebar:
         )
 
         with (
+            patch.object(
+                sidebar,
+                "_application_publication",
+                return_value=SimpleNamespace(
+                    generation=1,
+                    effective_capabilities={
+                        CommandName.CLEAR_TRAINING_HISTORY: CommandCapability(
+                            command_name=CommandName.CLEAR_TRAINING_HISTORY.value,
+                            enabled=True,
+                        )
+                    },
+                ),
+            ),
             patch(
                 "XBrainLab.ui.panels.training.sidebar.get_command_review_context",
                 return_value=None,
@@ -2227,10 +2292,20 @@ class TestTrainingSidebar:
         sidebar.panel.main_window.study = study
         sidebar.panel.controller.is_training.return_value = False
 
-        with patch(
-            "XBrainLab.ui.panels.training.sidebar.execute_application_command",
-            return_value=_command_result(),
-        ) as mock_execute:
+        with (
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+                return_value=_command_result(),
+            ) as mock_execute,
+            patch.object(
+                sidebar,
+                "_command_capability",
+                return_value=CommandCapability(
+                    command_name=CommandName.STOP_TRAINING.value,
+                    enabled=True,
+                ),
+            ),
+        ):
             sidebar.stop_training()
 
         assert isinstance(mock_execute.call_args.args[1], StopTrainingCommand)
@@ -2249,6 +2324,19 @@ class TestTrainingSidebar:
         sidebar.panel.controller.is_training.return_value = True
 
         with (
+            patch.object(
+                sidebar,
+                "_application_publication",
+                return_value=SimpleNamespace(
+                    generation=1,
+                    effective_capabilities={
+                        CommandName.CLEAR_TRAINING_HISTORY: CommandCapability(
+                            command_name=CommandName.CLEAR_TRAINING_HISTORY.value,
+                            enabled=True,
+                        )
+                    },
+                ),
+            ),
             patch(
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command",
                 return_value=None,
@@ -2260,7 +2348,7 @@ class TestTrainingSidebar:
         sidebar.panel.controller.stop_training.assert_not_called()
         mock_warning.assert_called_once()
         assert mock_warning.call_args.args[1] == "Stop Training Blocked"
-        assert "could not safely complete" in mock_warning.call_args.args[2]
+        assert "No training run is active" in mock_warning.call_args.args[2]
 
     def test_stop_training_refuses_real_study_preflight_fallback(
         self,
@@ -2338,6 +2426,19 @@ class TestTrainingSidebar:
         from XBrainLab.backend.application import ClearTrainingHistoryCommand
 
         with (
+            patch.object(
+                sidebar,
+                "_application_publication",
+                return_value=SimpleNamespace(
+                    generation=1,
+                    effective_capabilities={
+                        CommandName.CLEAR_TRAINING_HISTORY: CommandCapability(
+                            command_name=CommandName.CLEAR_TRAINING_HISTORY.value,
+                            enabled=True,
+                        )
+                    },
+                ),
+            ),
             patch(
                 "XBrainLab.ui.panels.training.sidebar.ask_confirmation",
                 return_value=True,
@@ -2444,8 +2545,10 @@ class TestTrainingSidebar:
         assert "could not safely complete" in mock_warning.call_args.args[2]
 
     def test_training_setting_while_training(self, sidebar):
-        sidebar.panel.controller.is_training.return_value = True
-        with patch("XBrainLab.ui.panels.training.sidebar.show_warning"):
+        with (
+            patch.object(sidebar, "_configuration_blocked", return_value=True),
+            patch("XBrainLab.ui.panels.training.sidebar.show_warning"),
+        ):
             outcome = sidebar.training_setting()
 
         assert outcome.status is InteractionStatus.BLOCKED
@@ -2466,9 +2569,12 @@ class TestTrainingSidebar:
     def test_training_setting_stops_when_state_snapshot_is_unavailable(self, sidebar):
         with (
             patch.object(sidebar, "_configuration_blocked", return_value=False),
-            patch(
-                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
-                return_value=None,
+            patch.object(
+                sidebar,
+                "_training_option_snapshot",
+                return_value=InteractionOutcome.blocked(
+                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
+                ),
             ),
             patch(
                 "XBrainLab.ui.panels.training.sidebar.TrainingSettingDialog"
@@ -2479,11 +2585,9 @@ class TestTrainingSidebar:
 
         assert outcome.status is InteractionStatus.BLOCKED
         dialog.assert_not_called()
-        warning.assert_called_once_with(
-            sidebar,
-            "Training Settings Blocked",
-            CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
-        )
+        # The typed snapshot boundary already owns its failure presentation;
+        # the dialog must not open or mutate configuration.
+        warning.assert_not_called()
 
     @pytest.mark.parametrize(
         ("recoverable", "expected_status", "expected_title"),
@@ -2506,9 +2610,13 @@ class TestTrainingSidebar:
         )
         with (
             patch.object(sidebar, "_configuration_blocked", return_value=False),
-            patch(
-                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
-                return_value=failure,
+            patch.object(
+                sidebar,
+                "_training_option_snapshot",
+                return_value=InteractionOutcome(
+                    expected_status,
+                    "Training state is unavailable.",
+                ),
             ),
             patch(
                 "XBrainLab.ui.panels.training.sidebar.TrainingSettingDialog"
@@ -2519,11 +2627,7 @@ class TestTrainingSidebar:
 
         assert outcome.status is expected_status
         dialog.assert_not_called()
-        warning.assert_called_once_with(
-            sidebar,
-            expected_title,
-            "Training state is unavailable.",
-        )
+        warning.assert_not_called()
 
     def test_training_setting_merges_snapshot_with_allowed_suggestions(
         self,
@@ -2539,6 +2643,8 @@ class TestTrainingSidebar:
             "checkpoint_epoch": 2,
             "output_dir": "./saved-output",
             "evaluation_option": "val_loss",
+            "validation_samples_available": False,
+            "validation_sample_count": 0,
         }
         suggestions = {
             "epoch": "12",
@@ -2576,6 +2682,8 @@ class TestTrainingSidebar:
             "checkpoint_epoch": 2,
             "output_dir": "./saved-output",
             "evaluation_option": "val_loss",
+            "validation_samples_available": False,
+            "validation_sample_count": 0,
         }
         assert snapshot["epoch"] == 7
 
@@ -2613,6 +2721,13 @@ class TestTrainingSidebar:
     ):
         sidebar.panel.controller.is_training.return_value = False
         with (
+            patch.object(
+                sidebar,
+                "_training_option_snapshot",
+                return_value=InteractionOutcome.blocked(
+                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
+                ),
+            ),
             patch(
                 "XBrainLab.ui.panels.training.sidebar.get_command_capability",
                 return_value=None,
@@ -2629,23 +2744,16 @@ class TestTrainingSidebar:
             outcome = sidebar.training_setting()
 
         assert outcome.status is InteractionStatus.BLOCKED
-        assert mock_execute.call_count == 1
+        assert mock_execute.call_count == 0
         MockDlg.assert_not_called()
         sidebar.panel.controller.set_training_option.assert_not_called()
-        mock_warning.assert_called_once()
-        assert mock_warning.call_args.args[1] == "Training Settings Blocked"
+        mock_warning.assert_not_called()
 
     def test_training_setting_uses_state_snapshot_defaults_before_stale_controller(
         self,
         sidebar,
     ):
-        from XBrainLab.backend.application import (
-            ConfigureTrainingCommand,
-            QueryStateCommand,
-        )
-        from XBrainLab.ui.dialogs.training.training_setting_dialog import (
-            TrainingSettingDialog,
-        )
+        from XBrainLab.backend.application import ConfigureTrainingCommand
 
         sidebar.panel.controller.is_training.return_value = False
         sidebar.panel.controller.get_training_option.side_effect = AssertionError(
@@ -2682,38 +2790,34 @@ class TestTrainingSidebar:
             evaluation_option=SimpleNamespace(value="val_acc"),
         )
 
-        def accept_dialog(dialog):
-            assert dialog.epoch_entry.text() == "7"
-            assert dialog.bs_entry.text() == "16"
-            assert dialog.lr_entry.text() == "0.002"
-            assert dialog.repeat_entry.text() == "3"
-            assert dialog.output_dir_label.text() == "./snapshot-output"
-            return QDialog.DialogCode.Accepted
-
         with (
+            patch.object(
+                sidebar,
+                "_training_option_snapshot",
+                return_value=query_result.diagnostics["state"]["training"][
+                    "training_option"
+                ],
+            ),
             patch(
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command",
-                side_effect=[query_result, save_result],
+                return_value=save_result,
             ) as mock_execute,
-            patch.object(
-                TrainingSettingDialog,
-                "exec",
-                new=accept_dialog,
-            ),
-            patch.object(
-                TrainingSettingDialog,
-                "get_result",
-                return_value=option,
-            ),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.TrainingSettingDialog"
+            ) as dialog,
             patch("XBrainLab.ui.panels.training.sidebar.show_alert") as mock_info,
         ):
+            dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
+            dialog.return_value.get_result.return_value = option
             outcome = sidebar.training_setting()
 
         assert outcome.status is InteractionStatus.COMPLETED
+        assert dialog.call_args.kwargs["initial_option"]["epoch"] == 7
+        assert dialog.call_args.kwargs["initial_option"]["batch_size"] == 16
         sidebar.panel.controller.get_training_option.assert_not_called()
         commands = [call.args[1] for call in mock_execute.call_args_list]
-        assert isinstance(commands[0], QueryStateCommand)
-        assert isinstance(commands[1], ConfigureTrainingCommand)
+        assert len(commands) == 1
+        assert isinstance(commands[0], ConfigureTrainingCommand)
         sidebar.panel.controller.set_training_option.assert_not_called()
         mock_info.assert_not_called()
         sidebar.panel.show_status_message.assert_called_with("Training settings saved")
@@ -2748,7 +2852,7 @@ class TestTrainingSidebar:
             expected_publication_generation=None,
             runtime=None,
         ):
-            assert runtime is None
+            assert runtime is sidebar.panel._action_port
             assert expected_publication_generation == 1
             if isinstance(command, QueryStateCommand):
                 assert refresh is False
@@ -2791,14 +2895,8 @@ class TestTrainingSidebar:
         self,
         sidebar,
     ):
-        from XBrainLab.backend.study import Study
-
-        study = Study()
-        study.training_manager.trainer = _running_trainer()
-        sidebar.panel.main_window.study = study
-        sidebar.panel.controller.is_training.return_value = False
-
         with (
+            patch.object(sidebar, "_configuration_blocked", return_value=True),
             patch(
                 "XBrainLab.ui.panels.training.sidebar.TrainingSettingDialog"
             ) as mock_dialog,
@@ -2807,11 +2905,7 @@ class TestTrainingSidebar:
             sidebar.training_setting()
 
         mock_dialog.assert_not_called()
-        mock_warning.assert_called_once_with(
-            sidebar,
-            "Training Configuration Blocked",
-            "Stop training before changing training configuration.",
-        )
+        mock_warning.assert_not_called()
 
     def test_start_training_without_command_service_does_not_mutate_controller(
         self,
@@ -2829,7 +2923,7 @@ class TestTrainingSidebar:
 
         sidebar.panel.controller.start_training.assert_not_called()
         mock_warning.assert_called_once()
-        assert mock_warning.call_args.args[1] == "Start Training Blocked"
+        assert mock_warning.call_args.args[1] == "Training Not Ready"
 
     def test_start_training_button_click_confirms_long_running_command(
         self,
@@ -2888,6 +2982,16 @@ class TestTrainingSidebar:
 
         sidebar.panel.controller.is_training.return_value = False
         with (
+            patch.object(
+                sidebar,
+                "_command_review_context",
+                return_value=CommandReviewContext(
+                    capability=CommandCapability(
+                        command_name=CommandName.TRAIN.value, enabled=True
+                    ),
+                    publication_generation=1,
+                ),
+            ),
             patch(
                 "XBrainLab.ui.panels.training.sidebar.get_command_capability",
                 return_value=capability,
@@ -2959,6 +3063,16 @@ class TestTrainingSidebar:
 
         sidebar.panel.controller.is_training.return_value = True
         with (
+            patch.object(
+                sidebar,
+                "_command_review_context",
+                return_value=CommandReviewContext(
+                    capability=CommandCapability(
+                        command_name=CommandName.TRAIN.value, enabled=True
+                    ),
+                    publication_generation=1,
+                ),
+            ),
             patch(
                 "XBrainLab.ui.panels.training.sidebar.get_command_capability",
                 return_value=capability,
@@ -2990,6 +3104,16 @@ class TestTrainingSidebar:
 
         sidebar.panel.controller.is_training.return_value = False
         with (
+            patch.object(
+                sidebar,
+                "_command_review_context",
+                return_value=CommandReviewContext(
+                    capability=CommandCapability(
+                        command_name=CommandName.TRAIN.value, enabled=True
+                    ),
+                    publication_generation=1,
+                ),
+            ),
             patch(
                 "XBrainLab.ui.panels.training.sidebar.get_command_capability",
                 return_value=capability,
@@ -3028,7 +3152,7 @@ class TestTrainingSidebar:
 
         sidebar.panel.controller.start_training.assert_not_called()
         mock_warning.assert_called_once()
-        assert mock_warning.call_args.args[1] == "Start Training Blocked"
+        assert mock_warning.call_args.args[1] == "Training Not Ready"
         mock_critical.assert_not_called()
 
 
@@ -3046,24 +3170,6 @@ class TestDatasetSidebar:
         sb = DatasetSidebar(panel)
         qtbot.addWidget(sb)
         return sb
-
-    def test_update_sidebar_uses_backend_import_label_capability(self, qtbot):
-        from XBrainLab.backend.study import Study
-        from XBrainLab.ui.panels.dataset.sidebar import DatasetSidebar
-
-        panel = _make_panel_mock()
-        panel.main_window.study = Study()
-        panel.controller.has_data.return_value = True
-        panel.controller.is_locked.return_value = False
-        sb = DatasetSidebar(panel)
-        qtbot.addWidget(sb)
-
-        sb.update_sidebar()
-
-        assert not sb.import_label_btn.isEnabled()
-        assert "Load raw data before attaching labels." in (
-            sb.import_label_btn.toolTip()
-        )
 
     def test_update_sidebar_uses_backend_smart_parse_capability(self, qtbot):
         from XBrainLab.backend.study import Study

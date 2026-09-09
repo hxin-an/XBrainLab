@@ -61,13 +61,12 @@ class ModelSelectionDialog(BaseDialog):
     def __init__(
         self,
         parent,
-        controller,
         initial_model_name: str | None = None,
         *,
         provider_status: BraindecodeProviderStatus | None = None,
         query_port: TrainingQueryPort | None = None,
     ):
-        self.controller = controller
+        self._context = parent
         self._query_port = query_port
 
         self.pretrained_weight_path: str | None = None
@@ -451,8 +450,7 @@ class ModelSelectionDialog(BaseDialog):
 
     def _read_signal_context(self) -> dict[str, Any] | None:
         return get_training_model_signal_context(
-            self.controller,
-            runtime=self._query_port,
+            self._context, runtime=self._query_port
         )
 
     def _apply_catalog(

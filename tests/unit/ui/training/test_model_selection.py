@@ -59,10 +59,8 @@ class TestModelSelection:
         with patch("inspect.getmembers") as mock_getmembers:
             mock_getmembers.return_value = [("DummyModel", DummyModel)]
 
-            mock_controller = MagicMock()
             dialog = ModelSelectionDialog(
                 None,
-                mock_controller,
                 provider_status=HEALTHY_PROVIDER,
             )
             qtbot.addWidget(dialog)
@@ -77,7 +75,6 @@ class TestModelSelection:
     def test_product_catalog_defaults_to_braindecode_eegnet(self, qtbot):
         dialog = ModelSelectionDialog(
             None,
-            MagicMock(),
             provider_status=HEALTHY_PROVIDER,
         )
         qtbot.addWidget(dialog)
@@ -129,7 +126,6 @@ class TestModelSelection:
         )
         dialog = ModelSelectionDialog(
             None,
-            controller,
             provider_status=HEALTHY_PROVIDER,
         )
         qtbot.addWidget(dialog)
@@ -172,7 +168,6 @@ class TestModelSelection:
     def test_search_matches_name_alias_family_task_and_stable_id(self, qtbot):
         dialog = ModelSelectionDialog(
             None,
-            MagicMock(),
             provider_status=HEALTHY_PROVIDER,
         )
         qtbot.addWidget(dialog)
@@ -192,7 +187,6 @@ class TestModelSelection:
     def test_no_match_preserves_selection_but_disables_confirm(self, qtbot):
         dialog = ModelSelectionDialog(
             None,
-            MagicMock(),
             provider_status=HEALTHY_PROVIDER,
         )
         qtbot.addWidget(dialog)
@@ -214,7 +208,6 @@ class TestModelSelection:
     def test_missing_provider_requires_explicit_recovery_selection(self, qtbot):
         dialog = ModelSelectionDialog(
             None,
-            MagicMock(),
             provider_status=MISSING_PROVIDER,
         )
         qtbot.addWidget(dialog)
@@ -239,7 +232,6 @@ class TestModelSelection:
     def test_persisted_recovery_id_is_not_rebound_when_provider_recovers(self, qtbot):
         dialog = ModelSelectionDialog(
             None,
-            MagicMock(),
             initial_model_name="legacy.braindecode.eegnet",
             provider_status=HEALTHY_PROVIDER,
         )
@@ -252,7 +244,6 @@ class TestModelSelection:
     def test_confirm_binds_exact_catalog_provider_identity(self, qtbot):
         dialog = ModelSelectionDialog(
             None,
-            MagicMock(),
             provider_status=HEALTHY_PROVIDER,
         )
         qtbot.addWidget(dialog)
@@ -273,7 +264,6 @@ class TestModelSelection:
     def test_reject_does_not_create_or_change_model_selection(self, qtbot):
         dialog = ModelSelectionDialog(
             None,
-            MagicMock(),
             provider_status=HEALTHY_PROVIDER,
         )
         qtbot.addWidget(dialog)
@@ -285,7 +275,6 @@ class TestModelSelection:
     def test_keyboard_moves_to_filtered_result_and_confirms(self, qtbot):
         dialog = ModelSelectionDialog(
             None,
-            MagicMock(),
             provider_status=HEALTHY_PROVIDER,
         )
         qtbot.addWidget(dialog)
@@ -303,7 +292,6 @@ class TestModelSelection:
     def test_no_match_enter_cannot_accept_hidden_selection(self, qtbot):
         dialog = ModelSelectionDialog(
             None,
-            MagicMock(),
             provider_status=HEALTHY_PROVIDER,
         )
         qtbot.addWidget(dialog)
@@ -323,7 +311,6 @@ class TestModelSelection:
     ):
         dialog = ModelSelectionDialog(
             None,
-            MagicMock(),
             provider_status=HEALTHY_PROVIDER,
         )
         qtbot.addWidget(dialog)
@@ -355,7 +342,7 @@ class TestModelSelection:
             "braindecode_provider_status",
             side_effect=checked_status_after_release,
         ):
-            dialog = ModelSelectionDialog(None, MagicMock())
+            dialog = ModelSelectionDialog(None)
             qtbot.addWidget(dialog)
             dialog.show()
             qtbot.waitUntil(started.is_set, timeout=1_000)
