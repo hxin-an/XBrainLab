@@ -234,6 +234,7 @@ filterwarnings = [
 
 [tool.coverage.run]
 source = ["XBrainLab"]
+branch = true
 omit = [
     "**/torch/*",
     "**/torchvision/*",
@@ -254,7 +255,7 @@ omit = [
 concurrency = ["multiprocessing"]
 
 [tool.coverage.report]
-fail_under = 50
+fail_under = 85
 exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",
