@@ -148,10 +148,6 @@ class OwnedWorkRegistry:
             self._condition.notify_all()
             return snapshot
 
-    def start(self, operation_id: str) -> OwnedOperationSnapshot:
-        """Claim one operation without a command binding (low-level callers)."""
-        return self.claim_start(operation_id)
-
     def claim_start(
         self,
         operation_id: str,

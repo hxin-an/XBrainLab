@@ -202,7 +202,7 @@ def test_parallel_content_hash_workers_inherit_only_the_owned_operation_and_canc
     failures: list[BaseException] = []
 
     def fingerprint() -> None:
-        registry.start(operation.operation_id)
+        registry.claim_start(operation.operation_id)
         try:
             with registry.bind(operation.operation_id):
                 build_review_content_identity(
@@ -276,7 +276,7 @@ def test_parallel_hash_progress_is_monotonic_and_preserves_exact_content_identit
     )
     registry = _RecordingRegistry()
     operation = registry.begin(OwnedWorkKind.IMPORT_APPLY, cancellable=True)
-    registry.start(operation.operation_id)
+    registry.claim_start(operation.operation_id)
     try:
         with registry.bind(operation.operation_id):
             identity = build_review_content_identity(
@@ -349,7 +349,7 @@ def test_content_hash_leaves_complete_byte_progress_before_finalization_and_seal
     failures: list[BaseException] = []
 
     def fingerprint() -> None:
-        registry.start(operation.operation_id)
+        registry.claim_start(operation.operation_id)
         try:
             with registry.bind(operation.operation_id):
                 build_review_content_identity(

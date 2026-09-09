@@ -50,7 +50,7 @@ def test_owned_work_registry_publishes_identity_progress_and_terminal_state() ->
     registry = OwnedWorkRegistry()
 
     operation = registry.begin(OwnedWorkKind.IMPORT_REVIEW, cancellable=True)
-    running = registry.start(operation.operation_id)
+    running = registry.claim_start(operation.operation_id)
     updated = registry.update(
         operation.operation_id,
         stage="Scanning BIDS recordings",
@@ -197,7 +197,7 @@ def test_cancellation_is_lock_independent_and_reaches_bound_operation() -> None:
 
     def worker() -> None:
         with registry.bind(operation.operation_id):
-            registry.start(operation.operation_id)
+            registry.claim_start(operation.operation_id)
             command_lock_held.set()
             assert release_command_lock.wait(timeout=2.0)
             with pytest.raises(OwnedOperationCancelledError):
@@ -232,7 +232,7 @@ def test_non_cancellable_and_terminal_operations_reject_cancel() -> None:
 def test_commit_boundary_rejects_prior_cancel_and_closes_cancel_admission() -> None:
     registry = OwnedWorkRegistry()
     cancelled = registry.begin(OwnedWorkKind.PREPROCESS, cancellable=True)
-    registry.start(cancelled.operation_id)
+    registry.claim_start(cancelled.operation_id)
     assert registry.cancel(cancelled.operation_id) is True
 
     with (
@@ -243,7 +243,7 @@ def test_commit_boundary_rejects_prior_cancel_and_closes_cancel_admission() -> N
 
     admitted = registry.begin(OwnedWorkKind.PREPROCESS, cancellable=True)
     with registry.bind(admitted.operation_id):
-        registry.start(admitted.operation_id)
+        registry.claim_start(admitted.operation_id)
         snapshot = owned_work_commit_boundary("Publishing preprocessed EEG data")
 
     assert snapshot is not None
@@ -254,7 +254,7 @@ def test_commit_boundary_rejects_prior_cancel_and_closes_cancel_admission() -> N
 def test_complete_terminalizes_late_cancel_request_as_cancelled() -> None:
     registry = OwnedWorkRegistry()
     operation = registry.begin(OwnedWorkKind.EVALUATION, cancellable=True)
-    registry.start(operation.operation_id)
+    registry.claim_start(operation.operation_id)
 
     assert registry.cancel(operation.operation_id) is True
     terminal = registry.complete(operation.operation_id)

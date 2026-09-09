@@ -391,7 +391,7 @@ def test_cancellation_before_commit_preserves_state_and_can_retry(
     def run_cancelled_attempt() -> None:
         try:
             with registry.bind(operation.operation_id):
-                registry.start(operation.operation_id)
+                registry.claim_start(operation.operation_id)
                 invoke(service)
         except OwnedOperationCancelledError as exc:
             cancellation_errors.append(exc)
@@ -421,7 +421,7 @@ def test_cancellation_before_commit_preserves_state_and_can_retry(
     should_block.clear()
     retry = registry.begin(operation_kind, cancellable=True)
     with registry.bind(retry.operation_id):
-        registry.start(retry.operation_id)
+        registry.claim_start(retry.operation_id)
         assert invoke(service) is True
         registry.complete(retry.operation_id)
 
@@ -482,7 +482,7 @@ def test_cancel_after_commit_admission_is_rejected_and_commit_completes(
     def _run() -> None:
         try:
             with registry.bind(operation.operation_id):
-                registry.start(operation.operation_id)
+                registry.claim_start(operation.operation_id)
                 assert service.apply_filter(4.0, 40.0) is True
                 registry.complete(operation.operation_id)
         except BaseException as exc:

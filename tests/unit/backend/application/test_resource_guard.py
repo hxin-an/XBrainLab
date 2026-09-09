@@ -1016,7 +1016,7 @@ def test_import_resource_preflight_publishes_truthful_per_resource_progress(
 
     def _run() -> None:
         with registry.bind(operation.operation_id):
-            registry.start(operation.operation_id)
+            registry.claim_start(operation.operation_id)
             results.append(
                 resource_guard.check_import_resource_preflight(
                     [str(path) for path in paths]
@@ -1092,7 +1092,7 @@ def test_import_resource_preflight_cancellation_stops_before_next_resource(
     def _run() -> None:
         try:
             with registry.bind(operation.operation_id):
-                registry.start(operation.operation_id)
+                registry.claim_start(operation.operation_id)
                 resource_guard.check_import_resource_preflight(
                     [str(path) for path in paths]
                 )
