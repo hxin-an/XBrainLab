@@ -320,6 +320,14 @@ class PreprocessCommandService:
         if operation == PreprocessOperation.BANDPASS:
             low_freq = self._require(command.low_freq, "low_freq")
             high_freq = self._require(command.high_freq, "high_freq")
+            self._require_frequency_below_nyquist(
+                source_data=source_data,
+                operation=operation,
+                frequency=high_freq,
+                message_prefix="Band-pass filtering up to",
+                cutoff_label="high cutoff",
+                diagnostic_code="bandpass_high_frequency_at_or_above_nyquist",
+            )
             notch_freqs = [command.notch_freq] if command.notch_freq else None
             return (
                 target.prepare_filter(low_freq, high_freq, notch_freqs),
@@ -327,30 +335,14 @@ class PreprocessCommandService:
             )
         if operation == PreprocessOperation.NOTCH:
             freq = self._require(command.notch_freq, "notch_freq")
-            sampling_rate = self._lowest_reliable_sampling_rate(source_data)
-            requested_frequency = self._finite_float(freq)
-            if (
-                sampling_rate is not None
-                and requested_frequency is not None
-                and requested_frequency >= sampling_rate / 2
-            ):
-                nyquist = sampling_rate / 2
-                raise PreconditionError(
-                    "Notch filtering at "
-                    f"{requested_frequency:g} Hz cannot run because the lowest "
-                    f"sampling rate is {sampling_rate:g} Hz (Nyquist limit "
-                    f"{nyquist:g} Hz). Use a notch frequency below {nyquist:g} Hz. "
-                    "If this data was resampled, reset preprocessing, apply notch "
-                    "filtering before resampling, then resample again.",
-                    diagnostics={
-                        "code": "notch_frequency_at_or_above_nyquist",
-                        "operation": operation.value,
-                        "requested_frequency": requested_frequency,
-                        "sampling_rate": sampling_rate,
-                        "nyquist": nyquist,
-                        "state_preserved": True,
-                    },
-                )
+            self._require_frequency_below_nyquist(
+                source_data=source_data,
+                operation=operation,
+                frequency=freq,
+                message_prefix="Notch filtering at",
+                cutoff_label="notch frequency",
+                diagnostic_code="notch_frequency_at_or_above_nyquist",
+            )
             return (
                 target.prepare_filter(None, None, [freq]),
                 f"Applied notch filter: {freq} Hz.",
@@ -439,6 +431,43 @@ class PreprocessCommandService:
                 if sampling_rate is not None and sampling_rate > 0:
                     reliable_rates.append(sampling_rate)
         return min(reliable_rates, default=None)
+
+    @classmethod
+    def _require_frequency_below_nyquist(
+        cls,
+        *,
+        source_data: Sequence[Any],
+        operation: PreprocessOperation,
+        frequency: Any,
+        message_prefix: str,
+        cutoff_label: str,
+        diagnostic_code: str,
+    ) -> None:
+        sampling_rate = cls._lowest_reliable_sampling_rate(source_data)
+        requested_frequency = cls._finite_float(frequency)
+        if (
+            sampling_rate is None
+            or requested_frequency is None
+            or requested_frequency < sampling_rate / 2
+        ):
+            return
+        nyquist = sampling_rate / 2
+        raise PreconditionError(
+            f"{message_prefix} {requested_frequency:g} Hz cannot run because the "
+            f"lowest sampling rate is {sampling_rate:g} Hz (Nyquist limit "
+            f"{nyquist:g} Hz). Use a {cutoff_label} below {nyquist:g} Hz. If "
+            "this data was resampled, reset preprocessing, apply "
+            f"{operation.value.replace('_', '-')} filtering before resampling, "
+            "then resample again.",
+            diagnostics={
+                "code": diagnostic_code,
+                "operation": operation.value,
+                "requested_frequency": requested_frequency,
+                "sampling_rate": sampling_rate,
+                "nyquist": nyquist,
+                "state_preserved": True,
+            },
+        )
 
     def _prepare_epoch(
         self,

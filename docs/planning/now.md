@@ -2,174 +2,92 @@
 
 最後更新：`2026-09-09`
 
-## Active — repair manual-test Preprocess re-reference regression in #131
+## Active — repair the Windows manual-test findings in #131
 
-### Problem, outcome and authorization
+### Outcome and authority
 
-The user accepted the prior cleanup (#130), merged at `8306a649`, but requested a further
-comprehensive pass on overdesign, historical residue, weak coverage and mock-heavy tests.
-Draft #131 is the single delivery vehicle; construction commits are not intermediate handoffs.
+The user approved one integrated repair of the manual findings and explicitly authorized the
+necessary visible Filter error messages, Saliency progress/result/failure presentation and Montage
+size-constraint corrections without redesign. Implement on `cleanup/quality-hardening`, starting at
+`c07b3351`, and retain Draft #131 as the only delivery. The previous complete CI is historical
+evidence, not certification of the changed source. No merge before new manual acceptance and approval.
 
-The authorized outcome is a smaller canonical product path with real state/workflow evidence,
-followed by complete exact-head validation and one live manual-test version. The user explicitly
-allows this stage to exceed the normal production-LOC PR limit; each construction slice remains
-independently reviewable and reversible. UI internal cleanup is authorized only while preserving
-visible layout, copy, interactions and behavior. No merge before the user's new acceptance of
-the final product source and explicit merge approval.
+Use existing ApplicationService/Command, publication, operation and rendering owners. Preserve the
+18-tool Assistant contract, user confirmation, supported data/recipe/result semantics and privacy.
+No model/prompt/RAG-strategy experiment, second control layer, blanket refresh or weakened gate.
+The original dirty worktree, root settings.json, raw data, shared environments and prior evidence
+are protected. Never replace source under a running application.
 
-### Construction closure and retained evidence
+### Findings and completion requirements
 
-Production construction and the integration-discovered test/lifecycle repairs are implemented
-for the families below. Head `0b3825d0` passed exact-head CI and was opened for Windows native
-manual testing, which exposed the re-reference regression described below. Those earlier passes
-do not certify its repair or establish that every UI entry point was covered.
-The construction commits hold the detailed history. Inventory counts are not claims that every
-tracked file was deeply read, and passing tests do not establish defect-free architecture.
-
-| Family | Implemented boundary / evidence |
+| Finding | Evidence / required outcome |
 | --- | --- |
-| Import, labels and recipes | Canonical scan/review/apply replaces the retired direct-import/post-load-label commands, opt-in and hidden UI route. Real FIF/BIDS workflows, reviewed mapping, historical JSON label recipe replay and atomic failure tests preserve supported data semantics. |
-| Preprocess and epoch | Unused EEG controller forwarding is removed. Real commands protect filter/resample/epoch/reset, event identity and all-dropped epoch rollback. |
-| Split, training, stop/retry and results | Training uses explicit application query/publication/action/transient ports. Real training and OOM/terminal-delivery tests protect retry, history, cancellation and result/saliency delivery; snapshot tests protect stale publication and selection. |
-| Evaluation, Saliency and Visualization | Existing query/publication owners remain. Settings use snapshots, including pending-option precedence and unavailable-query handling; real workflow and applicable native/public-data gates protect integrated result consumption. |
-| Assistant | Stale retired alias references are removed; the 18-tool registry and command spine remain unchanged. Real product diagnostic/confirmation paths and long-session lifecycle evidence replace alias residue, not model-quality evaluation. |
-| MainWindow and shared UI | Empty controller slots, indirect controller context resolution, observer refresh suppression/router and unused helpers are removed. Explicit runtime/parent resolution, real publication delivery and native QObject deletion protect ownership and unsubscribe behavior. |
-| Dataset UI | Row actions require revisioned selections; rendering consumes published metadata. Test-only synchronous dispatch, unversioned selectors and live metadata reconstruction are removed. Real inline edits, row replacement/reordering and asynchronous review/apply tests protect the current product path. |
-| Scripts, fixtures, docs and CI | Gate selectors and capture fixtures use current boundaries. Training captures own and close their real runtime. Coverage collection keeps the existing denominator, enforces 85% lines and records branches separately; Poe uses the same aggregate verifier. |
+| Re-reference | The retired refresh keyword was repaired in c07b3351. Retain real button/dialog/command cancel, average, selected-reference and stale-review regression. |
+| Filter | Native log at 12:46 and 12:49 records h_freq=100 rejected against Nyquist 80 and 50. The Assistant shows only its generic diagnostics failure. Validate the bandpass upper bound against every input's sampling rate in the shared backend; return a safe actionable precondition before mutation. Valid filters work; invalid input preserves source, working data and history. Original user text is unavailable: do not claim a model interpretation defect without evidence. |
+| RAG | The launcher selects D:\XBrainLabCache\rag, currently empty. The existing WSL MiniLM snapshot at pinned revision 1110a243fdf4706b3f48f1d95db1a4f5529b4d41 passes the product cache check (11 files, 91,578,415 materialized bytes). Materialize and verify those existing files in the dedicated Windows cache; use native initialization/index/retrieval as evidence, not just the main-model check. |
+| Saliency | The user clarified: Compute can be pressed again, but the view remains blank/not computed. Two confirmed Assistant requests at 12:53 logged OK, which does not prove computation or display. Reproduce with real trained results and both GUI/Assistant entrypoints; trace run/model/method identity, admission, computation, publication, render and canvas. Deliver actual selected-result display, or a specific legitimate blocked/failure reason; no silent return to uncomputed. |
+| Montage | Native warnings show contradictory 700 minimum / 560 maximum width during summary/mapping transitions. Correct existing constraint/layout ordering, retaining design and functionality; check native Windows DPI and monitor placement. |
 
-The primary behavioral evidence lives in current tests, including:
-`tests/integration/workflows/`, `tests/integration/`,
-`tests/unit/backend/`, `tests/unit/ui/dataset/`, Training/Saliency/publication test families,
-and `tests/unit/scripts/`. Deleted forwarding/mock choreography is not counted as lost product
-protection where the retained replacement exercises the actual state transition or side effect.
-Mocks remain for external generation, resource failure and nondeterministic/native seams, not
-as proof that mocked product workflows execute.
+### Implementation and review
 
-### Ownership review and retention decisions
+1. Test-first per defect; for Saliency first identify the earliest broken boundary with a real workflow,
+   then repair the existing owner. Investigate fast completion, recompute, result/method/tab changes,
+   stale callbacks and failure/cancellation only where they protect this reported flow.
+2. Filter uses the existing typed precondition/public-safe result path. Do not clamp frequencies,
+   resample automatically, expose raw tracebacks or alter other valid filtering semantics.
+3. RAG keeps the approved embedder, revision and corpus. Stage copied real files and validate their
+   hashes/containment before native publication; do not carry WSL symlinks or copy a live Qdrant store.
+   Build the native index using the existing retriever. Check main-model and RAG readiness separately;
+   do not hide genuine degraded-mode warnings. No new download is needed.
+4. Montage fixes its existing size owner. Characterize visible controls before editing; test summary
+   and mapping transitions and real Windows geometry at 100/125/150%.
+5. Keep bounded commits and non-overlapping worker ownership (Filter and Montage); main owns
+   Saliency, integration and RAG provisioning. Inspect actual worker diffs/tests. Independently review
+   any Saliency lifecycle/publication change against an explicit stale/result/render risk question.
+6. Update current truth or evidence contracts only where actually changed; use Git/PR for construction
+   history, not another inventory platform or duplicate worklog.
 
-- ApplicationService remains the shared admission, publication and owned-work authority.
-  Domain services retain authoritative data/training mutations. Its size alone does not justify
-  another facade, state machine or receipt owner; cancellation, publication and two-phase
-  validation guards are not compatibility residue.
-- Study's unused Dataset/Preprocess/Training controller factory/cache and the three forwarding
-  controllers are removed. ChatController remains an active Assistant boundary.
-- MainWindow owns Qt construction, navigation and shutdown; LLMController owns Assistant
-  turns and leases. Neither gains a second workflow/control layer.
-- The internal raw-mutation lifecycle coordinator still invalidates interpretation state after
-  current metadata, smart-parse and remove-file commands. Its historical name does not make
-  this live consistency protection removable.
-- Lazy imports preserve the measured/import-tested heavy-dependency boundary.
-  Internal label-plan/recipe records remain where canonical replay still consumes them.
-- Supported model catalog, settings, recipes/results, English Assistant behavior and EEG
-  semantics remain in scope for preservation. No visible redesign, prompt/model/RAG experiment,
-  unknown-external API shim, legacy directory or generic inventory platform is introduced.
+### Validation, delivery and stop condition
 
-### Measured CI aggregation change
+Use tdd-guard, test-quality-reviewer and code-reviewer for real observable red/green evidence.
+Use validation-runner for applicable gates; UI, tool-contract, privacy and Windows packaging skills
+apply only to their respective boundaries. Focused checks precede integration, not full CI per edit.
 
-Successful reference run `34250604747` spent 96 seconds in Linux aggregation: Poetry install
-12 seconds, full venv cache restore 50 seconds, sync 1 second and combine/verification 19 seconds.
-Only that aggregation job now installs lock-pinned coverage; provenance and shard verification
-have a tested stdlib-only import closure. Exact-source sidecars, complete shard evidence,
-coverage denominator/85% line floor and artifacts remain mandatory.
-Compare the final run's actual timing with this observation; one sample is not a general
-performance guarantee. Other job environments and gates are unchanged.
+- Filter: valid, equal/above Nyquist, mixed sampling rates, resample-before-filter and preservation;
+  prove safe Assistant feedback and original parameter delivery through the real shared command.
+- Saliency: real finite attribution data and actual canvas content for the selected run/method,
+  initial compute/recompute, stale and failure/cancel neighbors, result reopening and relevant views.
+  No mock command/render or empty "OK" may certify the user outcome.
+- RAG: pinned native snapshot, real load/index/retrieval and repeat launch; normal English Assistant
+  Filter/Saliency operation with the existing approved local model, not debug transport as a substitute.
+- Retain Re-reference checks. Run changed-file Ruff, locked typing and focused regressions.
+- Final exact head: all applicable non-skipped CI completed/success, 85% line coverage with the
+  unchanged exclusion policy, separate branch baseline, source-diverse data, platform, UI and Windows
+  DPI evidence. Reuse equivalent same-head CI; do not duplicate a local full suite.
+- Once all findings have their evidence, open one isolated native Windows candidate and PowerShell
+  stdout/log, verify responsiveness, and provide the reusable launch command plus one targeted manual
+  checklist. Do not add a second log-viewer GUI or monitor the user's subsequent operation.
 
-### Remaining execution plan and validation
+Do not stop at a single repaired finding, commit or pending CI. Stop at the validated live handoff,
+a user pause, or a concrete missing user-only resource/decision after safe alternatives are exhausted.
+If the Saliency defect cannot yet be reproduced, keep it unresolved and identify the exact missing
+evidence; passing generic tests does not close it. Manual retest covers the affected workflows, not
+every already-tested unaffected GUI action. Merge remains a subsequent explicitly approved action.
 
-#### Current manual-test repair
+### Current next step
 
-On 2026-09-09, Windows manual testing reported that Preprocess → Re-reference presents an
-unexpected error. The traceback identifies `_preprocessed_channel_names_for_rereference` passing
-the retired `refresh` keyword through a dictionary to `execute_application_command`. Its existing
-test replaces that adapter with a permissive stale fake, so it does not detect the signature error.
+Filter and Montage focused repairs passed independent bounded review; native integration is pending.
+The existing pinned RAG snapshot was materialized with 11 matching SHA-256 hashes (91,578,415 bytes).
+Native offline initialization indexed the unchanged 23-example corpus; Filter and Saliency retrieval
+passed twice, including reopening/reusing the verified index. No model download or strategy change.
 
-Expected outcome: the real button opens the reference chooser with current channels; cancelling
-leaves data unchanged, and applying runs the existing preprocessing command. Publication-generation
-checks must continue to reject stale review. This is an internal repair under the existing UI
-authorization; no visible layout/copy redesign, restored compatibility keyword or new owner.
+Saliency is still unresolved: real MainWindow-before-training / Braindecode EEGNet / no preconfigured
+saliency / actual button compute renders on both Linux and Windows CPU. Continue narrowing the
+Assistant handoff, training UI and GPU/result-selection differences; generic passes do not close it.
+Persisted evaluation files have no saliency, but this alone cannot prove memory computation failed:
+the existing post-training publication path updates in-memory records, not those artifact files.
 
-1. Add a failing regression through the real UI command adapter and application runtime, with
-   real channel data and dialog interaction; preserve observable apply/cancel/stale protection.
-2. Remove the obsolete caller keyword and inspect directly related adapter calls, including
-   dictionary expansion. Replace or correct the stale fake only after stronger evidence exists.
-3. Run the focused regression, directly adjacent preprocess/state tests and changed-file static
-   checks. Review the actual diff and preserve the failing reproduction.
-4. Push the repair to the existing #131 and require new exact-head applicable CI before a replacement
-   handoff. Ask for re-testing re-reference and adjacent preprocess operations, not the entire
-   previous manual checklist. Do not replace source beneath the live Windows application or discard
-   its loaded data; coordinate replacement after the user can close/save it.
-
-The separate PickMontageDialog Windows geometry warning is diagnostic-only in this repair:
-trace the contradictory size constraints, but do not change visible layout without confirmation.
-Stop at a verified replacement handoff, or an explicit user decision needed to replace the live
-application safely. No merge without updated manual acceptance and approval.
-
-The repair is implemented: explicit generation forwarding replaces the obsolete keyword dictionary,
-with no command contract or owner change (production +1/-6 lines). The real-button regression first
-reproduced the exact `TypeError`; its cancel/average/selected/stale cases now pass, along with the
-autospecced generation contract (5 cases). Directly related UI/adapter/dialog/preprocess checks pass
-203 cases; Ruff and locked Basedpyright pass with zero diagnostics. Inspection of synchronous adapter
-callers, including Training's dictionary forwarding, found no other retired `refresh` argument;
-the similarly named source-identity script options are valid and unchanged.
-
-Next: push this repair and verify its new CI. On 2026-09-09 the user reported that the rest of their GUI
-test found no further issue and requested the repaired Windows GUI plus AI Assistant and a reusable
-launch command. The old native application has exited and its worktree is clean. Reuse that isolated
-worktree only after verifying it remains unused; open a single PowerShell console for application
-stdout/log, not a separate log-viewer GUI. This report is not acceptance of the changed product source
-or merge approval. Assistant stays on the supported existing local model/settings without experiments.
-
-#### Previous integration failures and validation requirements
-
-Integrated run `34304758779` exposed missed test consumers of retired dialog/controller/refresh
-contracts and an outdated CI installer count. These consumers and their same-class Training,
-Dataset, shared-sidebar and Visualization mock residue are now migrated. Focused tests preserve
-current command/publication/confirmation, detached data, error outcome and log-redaction evidence.
-No production fallback or weaker dependency policy was restored. Preserve the failed run and
-shard artifacts; the repaired tests still require replacement-head integrated validation.
-
-The final integration-rest shard timed out in the real no-model contract-failure walkthrough's
-shutdown. Its pre-timeout stack places the command thread inside `_ControllerShutdownBridge._finish`
-at `controller.moveToThread(gui_thread)` while the GUI waits for runtime CLOSED.
-The bounded same-process coverage reproduction also hangs locally. Native debugger evidence
-(`build/assistant-shutdown-native-stack.txt`) shows the command thread holding the Python GIL
-inside `QObject.moveToThread` while waiting for a Qt mutex, and the worker thread holding a Qt
-destruction/connection lock while waiting for the GIL in `sipQThread.disconnectNotify`.
-`QThread.finished` precedes deferred deletion; it is not a completed native-cleanup fence.
-The deterministic native finished-callback barrier test failed on early successful shutdown
-before the repair. The existing controller owner/retry timer now requires a nonblocking
-`QThread.wait(0)` completion probe before terminal publication, including the already-not-running
-entry. The source guard still rejects blocking waits and nested loops; only the literal zero-time
-probe is permitted. Independent lifecycle review found no blocking issue; the focused controller/
-dispatcher tests, repeated real diagnostic walkthrough and adjacent controller/runtime tests pass.
-Do not lengthen timeouts, skip this walkthrough, or infer a model/prompt problem. This is required
-integrated evidence, not a reason to hand off an incomplete candidate.
-
-1. Freeze and push the single integration head to #131. Verify exact base/head and every
-   applicable non-skipped CI check using actual GitHub conclusions and artifacts.
-2. Require the complete Linux test aggregation, at least 85% line coverage, separate branch
-   baseline, source-diverse required public data, platform/native and applicable UI gates.
-   Earlier green heads cannot substitute. Reuse equivalent same-head CI evidence rather than
-   running a duplicate local full manifest.
-3. Diagnose and repair any direct integrated failure, preserve its evidence, and validate the
-   changed final head again. Pending CI is not a stopping point.
-4. Once all applicable gates pass, launch that exact isolated version and a live log, verify
-   responsiveness, and deliver one workflow-oriented manual checklist. Do not monitor the
-   user's subsequent operation or merge without acceptance.
-
-Local focused evidence covers canonical dataset workflows, revisioned Dataset UI and async
-review/apply, preprocessing/epoch rollback, Training state/lifecycle, application boundaries,
-script contracts, Ruff and architecture/type checks. Those passes are construction evidence;
-they do not yet satisfy the final exact-head CI/Windows/source-diverse handoff contract.
-
-### Stop condition and assumptions
-
-Stop only at the single live, validated manual-test handoff, a user pause, or a genuine missing
-authority/resource that cannot be resolved through safe in-scope work. Keep the original dirty
-worktree, user settings, shared environment, original data and existing applications untouched.
-The final candidate uses an isolated runtime and log. New source changes invalidate its prior
-manual acceptance; #130's acceptance does not approve #131.
-
-Do not claim architecture perfection, complete model reliability, native Windows acceptance from
-offscreen captures, or handoff-ready from partial/pending evidence. Merge and post-merge worktree
-cleanup remain subsequent user-approved actions.
+The user additionally reported too many virtual environments and low disk space. Inventory the
+known XBrainLab Windows/WSL environments and their real users read-only; create no new environment.
+Preserve the active shared environments and caches. Present exact obsolete-copy candidates and
+space impact before any deletion; the report does not authorize broad or uncertain cleanup.

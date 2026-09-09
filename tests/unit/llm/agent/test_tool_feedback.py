@@ -201,6 +201,36 @@ def test_notch_nyquist_precondition_preserves_actionable_backend_values() -> Non
     assert "try again" not in summary.lower()
 
 
+def test_bandpass_nyquist_precondition_preserves_actionable_backend_values() -> None:
+    result = ToolCommandResult.failure(
+        "apply_bandpass_filter",
+        (
+            "Band-pass filtering up to 100 Hz cannot run because the lowest "
+            "sampling rate is 160 Hz (Nyquist limit 80 Hz). Use a high cutoff "
+            "below 80 Hz. If this data was resampled, reset preprocessing, apply "
+            "band-pass filtering before resampling, then resample again."
+        ),
+        command_name="preprocess",
+        error_type="precondition",
+        diagnostics={
+            "code": "bandpass_high_frequency_at_or_above_nyquist",
+            "requested_frequency": 100.0,
+            "sampling_rate": 160.0,
+            "nyquist": 80.0,
+            "state_preserved": True,
+        },
+    )
+
+    summary = summarize_tool_result("apply_bandpass_filter", False, result)
+
+    assert "100 Hz" in summary
+    assert "160 Hz" in summary
+    assert "Nyquist limit 80 Hz" in summary
+    assert "reset preprocessing" in summary.lower()
+    assert "status bar" not in summary.lower()
+    assert "try again" not in summary.lower()
+
+
 def test_training_precondition_preserves_already_running_truth() -> None:
     result = ToolCommandResult.failure(
         "start_training",
