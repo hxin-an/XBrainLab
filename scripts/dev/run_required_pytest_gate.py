@@ -9,8 +9,6 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-import pytest
-
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
@@ -185,6 +183,8 @@ def _parse_args(
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Run pytest and fail when any mandatory case was not executed normally."""
+    import pytest
+
     result_path, args, allowed_skip_markers, faulthandler_timeout = _parse_args(
         sys.argv[1:] if argv is None else argv
     )

@@ -30,9 +30,7 @@ from scripts.dev.pytest_completion_attestation import (
     validate_attestation,
     write_attestation,
 )
-from scripts.dev.run_required_pytest_gate import (
-    OPTIONAL_PUBLIC_FIXTURE_SKIP_MARKER,
-)
+from scripts.dev.run_required_pytest_gate import OPTIONAL_PUBLIC_FIXTURE_SKIP_MARKER
 from scripts.dev.test_runtime_paths import (
     configure_test_temp_root,
     matplotlib_cache_root,

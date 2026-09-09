@@ -75,12 +75,12 @@ def test_ci_poetry_bootstrap_and_venv_cache_are_lock_exact() -> None:
         if step.get("name") == "Install dependencies"
         and str(step.get("run", "")).startswith("poetry ")
     ]
-    assert len(poetry_installers) == 9
+    assert len(poetry_installers) == 8
     assert all(
         'python -m pip install "poetry==${POETRY_VERSION}"' in step["run"]
         for step in poetry_installers
     )
-    assert len(dependency_installers) == 9
+    assert len(dependency_installers) == 8
     windows_cpu_sync = (
         "poetry sync --no-interaction ${{ runner.os == 'Windows' && '-E cpu' || '' }}"
     )
@@ -94,7 +94,7 @@ def test_ci_poetry_bootstrap_and_venv_cache_are_lock_exact() -> None:
     venv_cache_steps = [
         step for step in steps if str(step.get("with", {}).get("path", "")) == ".venv"
     ]
-    assert len(venv_cache_steps) == 9
+    assert len(venv_cache_steps) == 8
     for step in venv_cache_steps:
         cache = step["with"]
         assert "restore-keys" not in cache
@@ -126,10 +126,24 @@ def test_ci_poetry_bootstrap_and_venv_cache_are_lock_exact() -> None:
 
     workflow_text = CI_WORKFLOW.read_text(encoding="utf-8")
     assert 'pip install "coverage>=7,<8" pytest' not in workflow_text
-    assert "poetry run -- coverage combine test-results" in workflow_text
-    assert "coverage json -o coverage.json" in workflow_text
-    assert "verify-coverage --coverage-json coverage.json" in workflow_text
-    assert "coverage report --fail-under=0" in workflow_text
+    linux_test_steps = {
+        step.get("name"): step for step in workflow["jobs"]["linux-test"]["steps"]
+    }
+    assert "Install Poetry" not in linux_test_steps
+    assert "Cache Poetry venv" not in linux_test_steps
+    assert "Install dependencies" not in linux_test_steps
+    coverage_install = linux_test_steps["Install locked coverage"]["run"]
+    assert "import tomllib" in coverage_install
+    assert 'Path("poetry.lock")' in coverage_install
+    assert 'package["name"] == "coverage"' in coverage_install
+    assert 'python -m pip install "coverage==${COVERAGE_VERSION}"' in coverage_install
+    assert "python -m coverage combine test-results" in workflow_text
+    assert "python -m coverage json -o coverage.json" in workflow_text
+    assert (
+        "python -m scripts.dev.run_tests verify-coverage --coverage-json coverage.json"
+        in workflow_text
+    )
+    assert "python -m coverage report --fail-under=0" in workflow_text
 
 
 def test_product_static_quality_jobs_use_locked_tools_and_parallel_scopes() -> None:

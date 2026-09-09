@@ -279,7 +279,7 @@ test-ui = "pytest tests/unit/ui -v"
 test-llm = "pytest tests/unit/llm -v"
 test-real = "pytest tests/unit/llm/tools/real"
 test-all = "python scripts/dev/run_tests.py all"
-test-cov = "pytest --cov=XBrainLab --cov-report=html --cov-report=term-missing"
+test-cov = { cmd = "python scripts/dev/run_tests.py all", env = { XBL_TEST_COVERAGE = "1" } }
 
 # Code Quality
 lint = "ruff check ."

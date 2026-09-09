@@ -48,6 +48,33 @@ def test_headless_runner_uses_one_wsl_safe_temp_namespace(monkeypatch) -> None:
     assert Path(tempfile.gettempdir()).resolve() == temp_root
 
 
+def test_aggregate_ci_verifiers_have_stdlib_import_closure() -> None:
+    completed = subprocess.run(  # noqa: S603 - fixed interpreter/import probe, no shell
+        [
+            sys.executable,
+            "-S",
+            "-c",
+            ("import scripts.dev.run_tests; import scripts.dev.ci_source_provenance"),
+        ],
+        cwd=Path(run_tests.__file__).resolve().parents[2],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_poe_coverage_task_uses_the_verified_aggregate_runner() -> None:
+    import tomllib
+
+    root = Path(run_tests.__file__).resolve().parents[2]
+    config = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    task = config["tool"]["poe"]["tasks"]["test-cov"]
+    assert task["cmd"] == "python scripts/dev/run_tests.py all"
+    assert task["env"]["XBL_TEST_COVERAGE"] == "1"
+
+
 def test_run_shards_executes_every_declared_domain(monkeypatch) -> None:
     calls: list[tuple[str, ...]] = []
 
