@@ -112,8 +112,19 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
   publication/consistency checks and serializer behavior unchanged. No new owner/module/public type.
 - Baseline/after: native Windows state-service tests, training-service tests and directly selected real
   application configuration/reset/query tests, plus changed-file lint. Rollback is one slice commit.
-- Next: obtain passing baseline, implement and independently review slice 1A; finish tracked-file
-  inventory and inspect remaining lazy dispatch paths. Script inventory runs read-only alongside this.
+- Slice 1A committed as `0d67870f` after independent approval; persistent stage plan `5346a296`.
+- Slice 1B: remove unused state-service compatibility reexports and their alias-identity-only test,
+  unused optional duplicate training/evaluation read-port constructor aliases, and lazy adapter methods
+  proven absent from dispatch/callers (handle_train and active_split_summary only; handle_evaluate is
+  retained because the handler registry binds it). Keep formal query/coverage behavior and lazy imports.
+  Add serializer model-name fallback/detachment characterization through a real snapshot build.
+  Baseline/after: state-service, saliency coverage, import boundaries, application-state architecture,
+  application lazy configure/reset/empty state tests; compare exact retained behavior denominator.
+  No new owner/type/module; rollback one slice commit. Main owns production/state tests; worker 8A owns
+  CI routing and its tests without overlap. Independent core lifecycle audit is read-only.
+- Inventory: 1,292 tracked files initially routed in ignored
+  `build/dev-artifacts/module-quality-audit/tracked-files.md`; pending means not deeply inspected.
+  Correct path-based initial routing from actual responsibility as each module is read.
 - Blockers: none established. No module is complete and no manual candidate is being offered.
 
 ### Reviewed slices and concurrent work
@@ -131,6 +142,215 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
   precise path-classification regression before the smallest policy fix; preserve non-visual routing,
   gate requirements and CI cost boundaries. Worker owns that script and its existing test file only.
   Baseline/after: focused CI scope tests and changed-file lint; rollback one commit. No public/UI change.
+  Independent main review rejected the first five-path proposal: the current visual CI lanes do not
+  execute those separate handoff captures, so that routing could add irrelevant waits without proving
+  their output. Worker must trace actual visual-lane helper dependencies before proposing a replacement;
+  a red test for an unsupported routing expectation is not evidence of a product defect.
+  Corrected 8A now covers only the three actual visual CI dependencies artifact_integrity.py,
+  human_like_walkthrough/readiness.py and ui_navigation.py; all five unrelated producer additions were
+  withdrawn. Worker evidence: baseline 10 pass, helper regression 1 fail/10 pass, corrected 11 pass,
+  Ruff pass. Main is verifying actual imports and diff before approval/commit.
+- 1C authorized concurrent slice: remove OwnedWorkRegistry.start(), a forwarding convenience with
+  only low-level test callers, in favor of existing claim_start(). Inspect dynamic callers and update
+  tests to exercise the authoritative claim API without changing assertions or Thread.start calls.
+  Preserve binding, replay rejection, cancellation/commit fence and retention. No new owner/type;
+  focused owned-work registry tests before/after plus lint. Independent worker owns owned_work.py and
+  its directly affected tests only, main reviews actual diff/evidence before integration.
+  Worker finished: before/after registry 29 pass; all seven migrated caller files 112 pass. Main
+  verified the full diff: only the four-line alias and 20 exact test-call replacements; no assertions,
+  Thread.start calls, claim/cancel/commit/replay or state semantics changed. Approved for slice commit.
+- 1B evidence: baseline 92 pass; retained behavior after cleanup 94 pass (one alias-identity-only case
+  removed, three snapshot behavior cases added). An obsolete guard initially failed while 93 passed;
+  only its forced compatibility-export requirements were removed, ownership/cold-import checks retained.
+  New detachment cases all fail on the intended live-alias mutation in an isolated in-memory probe;
+  normal source passes. A first probe had only a quoting SyntaxError and was not counted as evidence.
+  Independent scripts_audit reviewer now examines 1B actual diff. No module-level approval yet.
+- 1D next authorized slice: remove unreachable split_runtime_fields/_is_json_contract_value from
+  serialization.py after whole-repo source/config/doc/registry caller checks. Formal results already
+  use detached diagnostics and explicit internal/public serializers, not this retired runtime split.
+  Preserve serialize_json_value behavior; correct its stale runtime-query description. Focused baseline
+  results/automation/import tests before/after, no new owner/type; worker owns serialization.py only.
+- 1B committed `f498e436` after independent approval. Reviewer additionally ran native Windows
+  focused suites: 84 passed; no blocking findings. Correction: -B only prevents bytecode writes,
+  not reads, so that run was not cache-isolated. Subsequent native checks use a fresh unique
+  PYTHONPYCACHEPREFIX plus -B to avoid stale WSL-edited bytecode; recheck 1B using that isolation.
+- 1C committed `25aca4a8`; corrected 8A committed `c0425f43` after main verified actual CI imports.
+- 1D committed `1f0329fd` after main independently inspected the complete diff/callers. Results,
+  automation and import boundaries: 55 passed before and after. Production +2/-34/net -32;
+  no serializer behavior or owner changed.
+- 1E authorized next: pipeline_stage.py contains a second Study-shaped stage derivation used only
+  by compatibility mocks, while the real Assistant consumes an explicit ApplicationViewPublication.
+  Remove the mock discriminator, legacy derivation/run scan and obsolete architecture exemption.
+  Simplify compute_pipeline_stage to accept only the existing publication; migrate its sole real
+  assembler caller and test callers. Preserve all stage labels, stage priority, STAGE_CONFIG prompt
+  bytes/tool membership, fail-closed missing/invalid/unknown publication and unavailable policy.
+  Replace mock-return stage filtering with typed publication inputs; remove obsolete mock-business
+  cases only after all-stage publication characterization passes. Keep real runtime/policy tests.
+  Baseline/after: backend/LLM pipeline tests, assembler stage/context tests, focused training-runtime
+  architecture tests and changed-file lint. Independent review checks publication-only admission
+  and tests that actually detect a wrong stage. No UI/public contract/owner addition; one rollback
+  commit. Worker owns those production/tests plus backend architecture truth paragraph; main retains
+  this plan and inventory. Module 1 capability/confirmation audit proceeds read-only separately.
+- 1F authorized parallel main slice: application/__init__.py duplicates its 114 lazy export names
+  in a manually sorted __all__ list. AST baseline confirms identical membership and sorted order.
+  Derive __all__ from the existing mapping, retaining all public names, lazy resolver and memoization.
+  No new owner/type/module or contract change. Characterize lazy import and unknown-name behavior,
+  run existing import-boundary tests before/after, compare exact baseline export list after rewrite,
+  and lint. Main owns only initializer/import-boundary tests; independent review before one commit.
+- 1G authorized concurrent alias cleanup from capability/confirmation audit: remove the uncalled
+  enabled_tool_names/blocked_tool_reasons convenience functions; replace internal/test imports of
+  CapabilityPolicyUnavailable and ResourcePreflightReceipt with the actual existing error/receipt
+  types, then delete those aliases. Do not change tool membership, confirmation fields, generation/
+  fingerprint checks, receipts, prompts or execution. Keep existing behavioral assertions intact.
+  Worker owns application_surface.py, tool_attempt_coordinator.py and their affected tests only.
+  Focused baseline/after: application surface, attempt policy, selected controller receipt/error cases
+  and real resource-receipt integration. No new owner/public tool contract; one rollback commit.
+  Capability audit retained confirmation metadata despite apparent duplication because both fields
+  are observable contracts. A destructive Assistant confirmation end-to-end coverage gap remains
+  for module 6 closure; alias deletion alone does not certify that workflow.
+- 1B revalidation: fresh isolated bytecode prefix + no bytecode writes, native state-service,
+  saliency coverage and state-read-model suites: 84 passed. This supersedes the ambiguous cache claim,
+  but is still focused evidence, not the full stage gate.
+- 1F characterization: original import suite 4 passed; strengthened cold-import/unknown-name/
+  memoization assertions also 4 passed before deletion. Exact comparison preserves all 114 exports
+  and their order. Existing Ruff rejects sorted()/starred-list __all__ forms; use its supported
+  explicit list constructor and in-place sort, preserving the rule rather than adding a suppression.
+- 1H next main slice after 1F validation: remove unread visualization constructor/member from
+  StateSnapshotService and unread study constructor/member from QueryStateCommandService; collapse
+  the snapshot's duplicate training/training_state references onto training_state. Migrate all
+  constructor callers and the optional progress-failure fixture without weakening its assertions.
+  Full source read confirms visualization has no use; data_filepath is retained because it is
+  injected into interpretation as a callback (absence of direct calls alone would be misleading).
+  Baseline/after: state-service/read-model suites, import/lazy application query/reset tests, lint.
+  No public/UI change, owner or module addition. Main owns these read services/callers/tests only;
+  independent review before one rollback commit.
+- 1F committed `8044302c`, production +2/-116/net -114. 1H committed `f5c7fd77`, production
+  +1/-8/net -7. Both independently approved. Main final command ran state-service, saliency coverage,
+  state-read-model and import-boundary files: 88 passed (reviewer's 84 omitted the 4 read-model cases).
+  Ruff check/format passed; no test-count discrepancy after comparing exact file lists.
+- 1G committed `b5d6dc4b` after main inspected the full diff, dynamic caller sweep and exact canonical
+  error/receipt identity. Production +2/-49/net -47. Identical baseline/after: application surface,
+  attempt policy and real resource-receipt integration 89 passed; selected controller cases 4 passed.
+  No policy/confirmation assertion changed. An attempted Poetry lint lookup could not create an env;
+  it was abandoned and all actual lint ran in the existing Windows environment, with no installation.
+- 1E main review accepts production/guard removal but requests eliminating newly duplicated backend/
+  LLM stage mapper tests and using an applicable typed publication policy in assembler fixtures.
+  Retain all-stage backend mapping and all-stage actual assembler consumer behavior, not two copies
+  of the same reexport test. Exact original/characterized/after counts and a wrong-stage probe remain
+  required before approval. STAGE_CONFIG and real runtime-policy tests remain unchanged.
+- 1I authorized next worker slice: consolidate the three identical detached-prepare failure envelope
+  methods in ApplicationService into one private typed-Command helper. They preserve a concurrent
+  winner's publication after discovery/apply/preprocess preparation fails; keep every diagnostic,
+  cancellation marker, empty ChangedState and current state/error semantics. No new owner/type/module.
+  Whole service source is now read; maintainability issues must be resolved by actual duplication
+  removal, not file movement. Baseline/after include real concurrent apply failure/cancel, discovery
+  failure-after-reset and preprocess stale/cancel tests. Extend the existing preprocess concurrent
+  mutation fixture to characterize failed preparation too before changing production. Worker owns
+  service.py and its application-service test only; main independently reviews. Rollback one commit.
+  Six repeated publication-fence blocks are retained pending separate lifecycle characterization;
+  do not conflate their sequencing refactor with error-envelope reuse.
+- 1J next main read-dependency slice: LifecycleCommandService retains unread study/preprocess/training
+  members and creates a fallback PipelineStateTransaction only for its unit fixture; real composition
+  supplies the existing transaction. Require that injected transaction, remove unused dependencies
+  and the two trivial private clear forwarders; retain reset/rollback/invalidation order and results.
+  Remove fixture-only preprocess/training controller doubles and their identity/no-call assertions
+  once existing rollback/stale trainer/current-state evidence passes. Do not delete real rollback
+  tests. Main owns lifecycle_service.py/test_lifecycle_service.py; update its service.py composition
+  only after worker 1I releases that file. Baseline/after: lifecycle/pipeline-transaction tests and real
+  application reset/new-session/rollback cases, cold-import guard and lint. No new owner/type/module;
+  independent review and one rollback commit. UI unchanged.
+
+- 1E committed `3a8143f0` after main review corrections. Production +4/-107/net -103;
+  original focused baseline 138 passed, final 127 passed after retiring duplicate legacy/reexport
+  cases and retaining typed all-stage mapping plus actual assembler consumer coverage. New typed
+  cases were not run against the old signature before implementation; do not claim otherwise.
+  Both forced-wrong-stage probes were detected. Callable schema assertions now distinguish enabled
+  tools from unavailable reference text. Architecture guard, Ruff and diff checks passed.
+- 1I committed `264ef571`: production +6/-79/net -73, three real callers reuse one failure envelope.
+  Original focused baseline 5 passed; extended concurrent-preprocess failure characterization 6
+  passed before and after production edits. Main approved actual current-publication/cancellation
+  semantics; all six publication fence blocks remain untouched.
+- 1J baseline lifecycle/pipeline-transaction suites: 10 passed in isolated native Windows run.
+  After cleanup, extended real reset/new-session/rollback and cold-import selection: 26 passed,
+  268 deselected. Ruff passed. Independent review remains before commit.
+- Independent test-quality audit fully read results, automation, pipeline-transaction and workflow-
+  projection tests (1,761 lines): retain all four suites. Privacy/public-JSON contracts, real command
+  and subprocess flows, explicit mutation-port isolation and fail-closed policy cases protect distinct
+  observable failures. Mock count alone is not grounds for deletion. No module closure claim.
+- 2A next bounded data-lifecycle repair: DataManager.clean_raw_data clears active lists but retains
+  the channel-selection backup. Confirm real Select Channels -> Reset/New Session retains the old
+  Raw/array with a native test and a bounded byte/weak-reference witness before adding one reset in
+  the existing cleanup owner. Preserve in-session channel undo and transactional rollback; test both
+  session commands plus direct raw replacement so a later reset cannot restore an obsolete backup.
+  Main/reviewer trace confirms formal two-phase apply calls commit_prepared_import -> loader.apply ->
+  set_loaded_data_list; the explicit prepare_raw_replacement safeguard belongs to the older handler,
+  not this prepared path. Reproduce the actual reset retention and replacement/undo invariant rather
+  than assuming the other handler protects it. No UI change/new owner/module; one rollback commit.
+  Main owns data_manager.py, test_data_manager.py and the new real command regression. Independent
+  data/lifecycle review required; focused channel-selection/rollback/session and data-manager suites.
+
+- 1J committed `a5101683` after independent lifecycle approval: production +5/-22/net -17;
+  extended native 26-case selection passed, no rollback/trainer assertion weakened.
+- 2A reproduced three failures before the one-line cleanup fix. After: 59 focused cases passed,
+  including channel cancellation/stale/failed commit and raw/session rollback. Two session cases
+  were then extended through real FIF scan/preview/validate/apply and Reset Preprocess: both passed.
+  An 8,000-byte deterministic backup and its Raw wrapper become unreachable after cleanup; this
+  is object-retention evidence, not an immediate OS RSS or allocator-reclamation promise. Independent
+  reviewer approved invalidation timing and restoration on transactional failure; Ruff passed.
+- Separate authorized storage residual cleanup executed: removed only the abandoned backup
+  `E:\XBrainLabBackups\XBrainLab-WslCompaction-20260909-232646-9134c3e5810d4399b274695a2b546bce\Ubuntu-24.04-ext4.vhdx.bak`
+  and its now-empty run directory, plus the verified empty runs
+  `XBrainLab-WslCompaction-20260910-011228-93f0770cd28e49afb965485b587f3763` and
+  `XBrainLab-WslCompaction-20260910-014659-d5c3910b070c4a3ba2b6877f5734369d`.
+  E free bytes rose from 712835555328 to 927430828032: exact delta 214595272704 (~199.86 GiB).
+  Backup deletion is not recycle-bin recoverable. Both registered C WSL VHDXs, working Windows Python,
+  model/RAG caches and central datasets were verified retained. No compaction/shutdown/WSL deregistration
+  ran, and no C-drive reclamation is claimed. Source withdrawal of compaction-only tools from separate
+  manual-environment branch remains; retain its useful single-environment launcher/config work.
+
+- 2A committed `d1dc62ff`, production +1/-0; no public API/owner addition.
+- 1K next declared spine slice: six command/read-publication paths repeat the same fence decrement,
+  underflow recovery and invariant error. Reuse one private release helper in ApplicationService;
+  keep every increment, lock, mutation flag reset, mark_stale call and finally placement unchanged.
+  This intentionally does not introduce a context manager or alter exception sequencing. Six real
+  callers justify the helper; no new owner/module/type. Characterize current deferred-publication,
+  handler failure/early return and Evaluation-summary behavior before edits; same focused after
+  plus changed-file lint. Reviewer checks exact sequencing and a bounded intentional missing-release
+  mutation is detected. Worker owns service.py and only directly relevant test additions if needed;
+  main reviews actual diff. One rollback commit; module remains open until coverage gaps resolve.
+
+- Module 2 next audit focus: the unused direct handle_apply_interpretation path duplicates normal
+  two-phase apply and is still the target of several source guards and mock-heavy tests. Main confirmed
+  the product lazy adapter/dispatch does not call it. Before deletion, map every protected label,
+  resource receipt, rollback, content-identity and recipe behavior to the actual prepared path; migrate
+  meaningful tests/guards first. Do not keep a second mutation implementation solely for those tests,
+  and do not delete scientific/security evidence without replacement. This is audit scope, not yet an
+  approved code slice; choose the bounded migration after complete caller/test reading.
+
+- 2B first bounded evidence migration: check_label_resource_admission_boundary currently examines
+  only the unused direct apply handler, allowing the real prepare_apply_interpretation ordering to
+  regress without a guard failure. Add a failing fixture with safe legacy code and unsafe actual
+  preparation, then point the existing guard at the actual preparation owner. Keep the rule (resource
+  preflight/admission before label materialization), no new guard framework or production change.
+  Validate both safe and unsafe actual order, existing label-resource guard cases and current source.
+  Main owns tests/architecture_compliance.py and its unit test only; independent review before commit.
+  Remaining legacy runtime/test deletion stays open, this guard correction is not its completion.
+
+- 1K main independently approved exact six finally replacements: production +15/-36/net -21.
+  Baseline 17 passed plus the existing actual NewSession publication-consumer characterization;
+  final 18 passed. Disabling release in memory makes that consumer test fail. No test source or
+  lock/flag/exception sequence changed. Ruff and diff checks passed.
+- 2B red evidence: after fixing a missing pytest import (collection error, not a regression result),
+  actual unsafe preparation with safe legacy handler produced 1 fail/1 pass against the old guard.
+  Corrected guard: 15 label-resource cases pass, including current-source check. Independent reviewer
+  approved unchanged privacy/admission rule and the fixture's false-green detection; Ruff passed.
+- Compaction tooling withdrawal on separate manual-environment branch: 84 retained scripts tests
+  passed using a short existing-cache temp path; first attempt hit native Windows path-length errors,
+  not a product assertion. Main review caught and removed the leftover host-only shard filter,
+  while preserving Linux scripts invocation and manual-environment gate coverage. Deployed
+  `D:\XBrainLabCache\tools\compact_wsl.ps1` matched retired source SHA-256
+  `6675b7debb8f02fc163ba1efed2eaff0d89afa632cd388329bff3935af73d0f5`; that exact deployed copy
+  was removed, with both manual launch tools retained. Source remains recoverable from Git history.
 
 ### Recovery after context compaction
 
