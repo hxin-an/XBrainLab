@@ -505,29 +505,6 @@ class VisualizationPanel(BasePanel):
         self.tab_map.setObjectName("SaliencyMapRenderStatus")
         self.tab_map.setProperty("renderStatus", "idle")
         self.tab_map.setProperty("operationId", "")
-        map_commit_guard = getattr(self.tab_map, "set_render_commit_guard", None)
-        if callable(map_commit_guard):
-            map_commit_guard(
-                lambda generation, publication_generation: (
-                    self._admit_native_render_commit(
-                        self.tab_map,
-                        generation,
-                        publication_generation,
-                    )
-                )
-            )
-        map_terminal = getattr(self.tab_map, "render_terminal", None)
-        if map_terminal is not None:
-            map_terminal.connect(
-                lambda generation, publication_generation, phase: (
-                    self._on_native_render_terminal(
-                        self.tab_map,
-                        generation,
-                        publication_generation,
-                        phase,
-                    )
-                )
-            )
         self.tabs.addTab(self.tab_map, "Saliency Map")
 
         # Tab 2: Spectrogram (Swapped order)
@@ -535,33 +512,6 @@ class VisualizationPanel(BasePanel):
         self.tab_spectro.setObjectName("SpectrogramRenderStatus")
         self.tab_spectro.setProperty("renderStatus", "idle")
         self.tab_spectro.setProperty("operationId", "")
-        spectro_commit_guard = getattr(
-            self.tab_spectro,
-            "set_render_commit_guard",
-            None,
-        )
-        if callable(spectro_commit_guard):
-            spectro_commit_guard(
-                lambda generation, publication_generation: (
-                    self._admit_native_render_commit(
-                        self.tab_spectro,
-                        generation,
-                        publication_generation,
-                    )
-                )
-            )
-        spectro_terminal = getattr(self.tab_spectro, "render_terminal", None)
-        if spectro_terminal is not None:
-            spectro_terminal.connect(
-                lambda generation, publication_generation, phase: (
-                    self._on_native_render_terminal(
-                        self.tab_spectro,
-                        generation,
-                        publication_generation,
-                        phase,
-                    )
-                )
-            )
         self.tabs.addTab(self.tab_spectro, "Spectrogram")
 
         # Tab 3: Topographic Map
@@ -571,6 +521,26 @@ class VisualizationPanel(BasePanel):
         # Tab 4: 3D Plot
         self.tab_3d = Saliency3DPlotWidget(self)
         self.tabs.addTab(self.tab_3d, "3D Plot")
+        for view in (self.tab_map, self.tab_spectro, self.tab_topo, self.tab_3d):
+            commit_guard = getattr(view, "set_render_commit_guard", None)
+            if callable(commit_guard):
+                commit_guard(
+                    lambda generation, publication_generation, owned_view=view: (
+                        self._admit_native_render_commit(
+                            owned_view, generation, publication_generation
+                        )
+                    )
+                )
+            terminal = getattr(view, "render_terminal", None)
+            if terminal is not None:
+                terminal.connect(
+                    lambda generation, publication_generation, phase, owned_view=view: (
+                        self._on_native_render_terminal(
+                            owned_view, generation, publication_generation, phase
+                        )
+                    ),
+                    Qt.ConnectionType.QueuedConnection,
+                )
         self._last_active_saliency_view = self.tab_map
 
         left_layout.addWidget(self.tabs, stretch=1)
@@ -692,9 +662,6 @@ class VisualizationPanel(BasePanel):
         if not hasattr(self, "plan_combo"):
             return
         active = self._saliency_command_busy or self._saliency_compute_in_progress
-        self.setCursor(
-            Qt.CursorShape.WaitCursor if active else Qt.CursorShape.ArrowCursor
-        )
         controls: list[QWidget] = [
             self.plan_combo,
             self.run_combo,
@@ -1350,6 +1317,14 @@ class VisualizationPanel(BasePanel):
                 view=self.tabs.tabText(self.tabs.currentIndex())
             )
         if self._application_summary_dirty:
+            return
+        if (
+            self._saliency_compute_in_progress
+            and self._active_saliency_operation_id is not None
+        ):
+            # Navigation may request the old result again while computation is
+            # still owned. Do not let that render replace Compute's Cancel.
+            self._show_widget_message(current_widget, "Computing saliency...")
             return
         self._refresh_explanation_context()
 
@@ -2670,7 +2645,7 @@ class VisualizationPanel(BasePanel):
         operation_id: str | None = None,
     ) -> None:
         """Expose lifecycle truth on the two required visible result views."""
-        if widget is None or widget not in {self.tab_map, self.tab_spectro}:
+        if widget is None or widget not in self._saliency_views():
             return
         if operation_id is not None:
             widget.setProperty("operationId", operation_id)
@@ -2778,6 +2753,10 @@ class VisualizationPanel(BasePanel):
                     "Native saliency render was not scheduled.",
                 )
             self._set_saliency_render_status(widget, "failed")
+            if self._saliency_compute_awaits_current_render(publication.generation):
+                self._release_saliency_compute_after_render()
+                self._hide_saliency_action_bar()
+                show_status_message(self, _VISUALIZATION_LOAD_FAILED_MESSAGE)
             return
         self._native_render_bindings[widget] = (
             generation,
@@ -2814,6 +2793,8 @@ class VisualizationPanel(BasePanel):
         generation: int,
         publication_generation: int,
         phase: str,
+        *,
+        settle_compute: bool = True,
     ) -> None:
         binding = self._native_render_bindings.get(widget)
         if binding is None or binding[:2] != (generation, publication_generation):
@@ -2826,7 +2807,9 @@ class VisualizationPanel(BasePanel):
             phase,
             operation_id=operation_id,
         )
-        if not self._saliency_compute_awaits_current_render(publication_generation):
+        if not settle_compute or not self._saliency_compute_awaits_current_render(
+            publication_generation
+        ):
             return
         self._release_saliency_compute_after_render()
         self._hide_saliency_action_bar()
@@ -2844,9 +2827,11 @@ class VisualizationPanel(BasePanel):
         if binding is None:
             return True
         operation_id = binding[2]
-        return self._cancel_owned_saliency_operation(operation_id)
+        return self._cancel_owned_saliency_operation(operation_id, settle_compute=False)
 
-    def _cancel_owned_saliency_operation(self, operation_id: str) -> bool:
+    def _cancel_owned_saliency_operation(
+        self, operation_id: str, *, settle_compute: bool = True
+    ) -> bool:
         """Cancel registry ownership and the matching native worker together."""
         accepted = cancel_application_operation(
             self,
@@ -2858,15 +2843,15 @@ class VisualizationPanel(BasePanel):
         for widget, binding in tuple(self._native_render_bindings.items()):
             if binding[2] != operation_id:
                 continue
-            self._native_render_bindings.pop(widget, None)
             invalidate = getattr(widget, "invalidate_render_publication", None)
             if callable(invalidate):
                 invalidate()
-            self._finish_render_operation(operation_id, "cancelled")
-            self._set_saliency_render_status(
+            self._on_native_render_terminal(
                 widget,
+                binding[0],
+                binding[1],
                 "cancelled",
-                operation_id=operation_id,
+                settle_compute=settle_compute,
             )
             break
         return True

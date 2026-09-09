@@ -218,6 +218,41 @@ def test_3d_background_paths_do_not_depend_on_the_global_qthreadpool():
         assert "QThreadPool.globalInstance" not in inspect.getsource(start_method)
 
 
+def test_3d_cancelled_commit_cannot_create_a_scene(widget, monkeypatch):
+    """A real 3D widget obeys parent cancellation before native canvas mutation."""
+    workers, _, _ = _install_manual_workers(widget, monkeypatch)
+    publication = _render_publication()
+    terminal = []
+    widget.render_terminal.connect(lambda *args: terminal.append(args))
+    guard = MagicMock(return_value=False)
+    widget.set_render_commit_guard(guard)
+    request_id = _start_engine_for_publication(widget, publication)
+    create_interactor = MagicMock()
+    monkeypatch.setattr(plot_3d_view.pyvistaqt, "QtInteractor", create_interactor)
+
+    workers[0].signals.result.emit((object(), 1))
+    workers[0].signals.finished.emit()
+
+    guard.assert_called_once_with(request_id, publication.generation)
+    create_interactor.assert_not_called()
+    assert not widget.scene_ready
+    assert terminal == [(request_id, publication.generation, "cancelled")]
+
+
+def test_3d_failed_worker_emits_exact_terminal_for_parent(widget, monkeypatch):
+    workers, _, _ = _install_manual_workers(widget, monkeypatch)
+    publication = _render_publication()
+    terminal = []
+    widget.render_terminal.connect(lambda *args: terminal.append(args))
+    request_id = _start_engine_for_publication(widget, publication)
+
+    workers[0].signals.error.emit((RuntimeError, RuntimeError("engine failed"), ""))
+    workers[0].signals.finished.emit()
+
+    assert terminal == [(request_id, publication.generation, "failed")]
+    assert not widget.scene_ready
+
+
 def _visible_messages(widget: Saliency3DPlotWidget) -> list[str]:
     return [
         label.text()
@@ -834,7 +869,9 @@ def test_runtime_probe_completion_is_isolated_to_its_request_generation(
         assert widget._runtime_probe_worker is second_probe
         second_probe.signals.result.emit((True, ""))
 
-    update_plot.assert_called_once_with(second_publication, True)
+    update_plot.assert_called_once_with(
+        second_publication, True, request_id=second_request_id
+    )
     assert widget._runtime_probe_worker is second_probe
     assert widget._pending_3d_request is None
     assert widget._current_publication_generation == second_publication.generation

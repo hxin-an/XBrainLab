@@ -159,6 +159,7 @@ def _select_class(widget: Saliency3DPlotWidget, name: str) -> None:
 
 
 def test_prepared_engine_cache_reuses_exact_toggle_requests(
+    qtbot,
     widget: Saliency3DPlotWidget,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -178,14 +179,21 @@ def test_prepared_engine_cache_reuses_exact_toggle_requests(
     )
 
     widget.update_plot(raw, False)
+    qtbot.waitUntil(lambda: widget._do_3d_plot_if_alive.call_count == 1)
     widget.update_plot(raw, True)
+    qtbot.waitUntil(lambda: widget._do_3d_plot_if_alive.call_count == 2)
     widget.update_plot(raw, False)
+    qtbot.waitUntil(lambda: widget._do_3d_plot_if_alive.call_count == 3)
     _select_class(widget, "right")
     widget.update_plot(raw, False)
+    qtbot.waitUntil(lambda: widget._do_3d_plot_if_alive.call_count == 4)
     _select_class(widget, "left")
     widget.update_plot(raw, False)
+    qtbot.waitUntil(lambda: widget._do_3d_plot_if_alive.call_count == 5)
     widget.update_plot(normalized, False)
+    qtbot.waitUntil(lambda: widget._do_3d_plot_if_alive.call_count == 6)
     widget.update_plot(raw, False)
+    qtbot.waitUntil(lambda: widget._do_3d_plot_if_alive.call_count == 7)
 
     assert len(prepared) == 4
     assert widget._do_3d_plot_if_alive.call_count == 7
@@ -336,6 +344,7 @@ def test_stale_engine_failure_does_not_clear_a_newer_active_scene(
 
 
 def test_cached_engine_failure_releases_scene_key_for_identical_retry(
+    qtbot,
     widget: Saliency3DPlotWidget,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -359,6 +368,7 @@ def test_cached_engine_failure_releases_scene_key_for_identical_retry(
     )
     widget.update_plot(publication, False)
 
+    qtbot.waitUntil(lambda: widget._do_3d_plot_if_alive.call_count == 1)
     widget._do_3d_plot_if_alive.assert_called_once()
 
 

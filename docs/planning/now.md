@@ -76,6 +76,53 @@ every already-tested unaffected GUI action. Merge remains a subsequent explicitl
 
 ### Current next step
 
+The user's new manual finding supersedes the handoff endpoint below: first Compute can finish,
+but adding only default SmoothGrad in Settings and recomputing remains at Computing without a
+result, and Cancel cannot be operated. The waiting cursor is a separate confirmed presentation
+defect, not an explanation for the stalled recomputation. The user approved the integrated repair
+plan and its necessary UI fixes on 2026-09-09. Start from 34404b7a; retain PR #131 and do not
+replace source underneath the user's running native application.
+
+Reproduce first compute -> Settings/add default SmoothGrad -> Recompute with actual training,
+commands and rendering. Trace selected parameters/run, operation ownership, computation,
+publication and rendering to the first failing boundary; distinguish disabled Cancel from a
+blocked GUI or unobserved cancellation. Measure the relevant responsiveness/workload before
+calling this resource exhaustion. Add a target-reason failing regression, repair the existing
+owner, and remove the Visualization-wide WaitCursor while preserving target fences. No new
+owner, polling, model change, reduced samples, forced thread termination or partial publication.
+If evaluation cancellation granularity proves relevant, pass the existing cancellation signal
+to safe batch/method boundaries. Verify real default SmoothGrad completion with finite rendered
+results, operable cancellation, cancel/retry, terminal control restoration, stale callbacks,
+ordinary cursor and cross-panel responsiveness. Use focused tests first and applicable same-head
+CI/source-diverse/native/UI evidence for final handoff. Stop at one validated Windows candidate
+with PowerShell log and restart command, or a concrete user-only blocker; never close this finding
+on generic green tests or a cursor-only fix. No merge without fresh manual acceptance and approval.
+
+Reproduction now identifies a UI lifecycle defect, not failed SmoothGrad mathematics: on both
+Topographic Map and native Windows 3D, the backend publishes SUCCEEDED with complete noise-method
+coverage, but the UI remains Computing for the 120-second bounded observation. The user's live
+Windows accessibility state confirms 3D selected, Computing, and no operable Cancel. Topographic
+and 3D render jobs lacked the completion/commit binding already used by Map/Spectrogram. The
+existing four-view wiring is now consolidated; 3D exposes its existing request/publication identity
+and reports terminal/commit through that same parent owner. Cached geometry uses queued Qt signal
+delivery, not a timing workaround. The panel-wide WaitCursor is removed while mutation fences stay.
+
+Two cancellation regressions were also reproduced and repaired in the same owner: explicit render
+Cancel removed its binding without releasing Computing; navigation during computation could start
+an old-result render that stole the compute Cancel. User cancellation now uses the normal render
+terminal path; internal tab-change/close cancellation retains the compute fence, and active compute
+defers old-result rendering until its terminal publication. No evaluator, algorithm, sample count,
+backend API or owner was added/changed. The production delta is two UI files, about 25 net lines.
+
+Focused evidence: 271 adjacent Qt/view/lifecycle tests pass; four real GUI/Assistant Map/Topo
+journeys pass default SmoothGrad, heartbeat/cross-panel navigation, compute cancellation with no
+result replacement, native-render cancellation with no late commit, and retry. Native Windows
+Fusion journeys pass both default SmoothGrad and SmoothGrad Squared, including 3D compute/render
+cancel-retry and non-empty OpenGL framebuffers; ordinary QWidget captures alone were insufficient
+for the VTK child, so native screen/framebuffer captures are checked. Independent lifecycle review
+has no remaining blocker. Next: final static/same-head CI and one isolated native Windows handoff;
+prior 34404b7a CI/manual delivery does not certify this changed source.
+
 Filter, Montage and the reproduced Saliency first-entry repair are implemented and independently
 reviewed. The remaining endpoint is exact-head integrated validation and one native Windows launch
 for the user's targeted GUI/Assistant acceptance. Do not request merge or call pending CI green.

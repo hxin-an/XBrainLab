@@ -62,6 +62,7 @@ def _widget_factory(parent=None):
     mock_widget.show_error = MagicMock()
     mock_widget.show_message = MagicMock()
     mock_widget.set_saliency_coverage = MagicMock()
+    mock_widget.set_render_commit_guard = MagicMock()
     mock_widget.update_plot = MagicMock()
     mock_widget.select_class_key = MagicMock()
     mock_widget.repaint = MagicMock()
@@ -2123,6 +2124,8 @@ def test_explicit_saliency_busy_state_keeps_visible_cancel_operable(
     qtbot,
     monkeypatch,
 ) -> None:
+    from PyQt6.QtCore import Qt
+
     class BusyMainWindow(QWidget):
         def __init__(self) -> None:
             super().__init__()
@@ -2171,6 +2174,7 @@ def test_explicit_saliency_busy_state_keeps_visible_cancel_operable(
     assert len(commands) == 1
     assert isinstance(commands[0], SaliencyCommand)
     assert window.isEnabled()
+    assert panel.cursor().shape() == Qt.CursorShape.ArrowCursor
     assert not panel.cancel_saliency_btn.isHidden()
     assert panel.cancel_saliency_btn.isEnabled()
     assert not panel.plan_combo.isEnabled()
@@ -2837,6 +2841,7 @@ def test_scheduled_saliency_handoff_waits_for_matching_terminal_publication(qtbo
         ("completed", True),
         ("cancelled", False),
         ("failed", False),
+        ("user_cancel", False),
     ],
 )
 def test_native_render_terminal_does_not_reclassify_successful_compute(
@@ -2878,7 +2883,12 @@ def test_native_render_terminal_does_not_reclassify_successful_compute(
         display_key=(False, False, "all", None),
     )
 
-    panel.tab_map.render_terminal.emit(1, publication.generation, phase)
+    if phase == "user_cancel":
+        panel._saliency_operation_presenter.bind("older-render-operation")
+        panel.cancel_saliency_btn.click()
+    else:
+        panel.tab_map.render_terminal.emit(1, publication.generation, phase)
+    qtbot.waitUntil(lambda: panel.tab_map not in panel._native_render_bindings)
 
     assert panel.saliency_action_bar.isVisible() is new_compute
     if new_compute:
