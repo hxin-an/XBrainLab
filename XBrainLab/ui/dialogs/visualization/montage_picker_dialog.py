@@ -681,7 +681,6 @@ class PickMontageDialog(BaseDialog):
         # Hidden mapping controls retain a wide size hint. Clamp only the compact
         # summary state so shown geometry, not that hidden hint, owns its width.
         self._set_dialog_width_constraints(showing_summary=showing_summary)
-        self.setMinimumHeight(minimum_height)
         if self.summary_page is not None:
             if showing_summary:
                 dialog_layout = self.layout()
@@ -703,6 +702,16 @@ class PickMontageDialog(BaseDialog):
                 )
             else:
                 self.summary_page.setMaximumHeight(QWIDGETSIZE_MAX)
+                self.summary_page.updateGeometry()
+                dialog_layout = self.layout()
+                if dialog_layout is not None:
+                    dialog_layout.invalidate()
+                    dialog_layout.activate()
+                # The mapping table's visible rows can require more than its
+                # compact 320px floor. Request that real layout minimum first;
+                # otherwise Windows receives an impossible intermediate height.
+                minimum_height = max(minimum_height, self.minimumSizeHint().height())
+        self.setMinimumHeight(minimum_height)
         self.fit_to_content(
             minimum_width=minimum_width,
             maximum_width=560 if showing_summary else None,

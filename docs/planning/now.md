@@ -79,6 +79,13 @@ every already-tested unaffected GUI action. Merge remains a subsequent explicitl
 Filter, Montage and the reproduced Saliency first-entry repair are implemented and independently
 reviewed. The remaining endpoint is exact-head integrated validation and one native Windows launch
 for the user's targeted GUI/Assistant acceptance. Do not request merge or call pending CI green.
+Native multi-monitor validation then exposed a remaining Montage height request defect: on both
+DELL P2314H (0,0) and VA24D (-1920,362), mapping transitions request 700x320 but Windows requires
+700x400 and logs setGeometry warnings. The prior width fix is insufficient to close the reported
+geometry issue. The existing dialog now activates/measures the visible mapping layout before its
+first minimum-height request. A real Qt regression failed against the 320px request; all 43 Montage
+tests pass after repair. The same two-screen native probe now completes both directions twice with
+no setGeometry warnings. No BaseDialog redesign. Validate the resulting final commit before handoff.
 The existing pinned RAG snapshot was materialized with 11 matching SHA-256 hashes (91,578,415 bytes).
 Native offline initialization indexed the unchanged 23-example corpus; Filter and Saliency retrieval
 passed twice, including reopening/reusing the verified index. No model download or strategy change.

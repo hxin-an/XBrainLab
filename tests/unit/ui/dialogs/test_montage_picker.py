@@ -240,7 +240,7 @@ class TestPickMontageInit:
         bids_dialog.show_mapping_page()
         assert bids_dialog.summary_page.isHidden() is True
         assert bids_dialog.mapping_page.isHidden() is False
-        assert bids_dialog.minimumHeight() == 320
+        assert bids_dialog.minimumHeight() >= 320
         assert bids_dialog.width() >= 700
         bids_dialog.show_summary_page()
         qtbot.waitUntil(bids_dialog.summary_page.isVisible)
@@ -296,6 +296,43 @@ class TestPickMontageInit:
 
         assert changes
         assert all(minimum <= maximum for minimum, maximum in changes)
+
+    def test_bids_mapping_switch_never_requests_height_below_visible_layout_minimum(
+        self, dialog, qtbot, channel_names, monkeypatch
+    ):
+        """A native mapping window must not first resize below its visible layout."""
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        requests = []
+        original_set_minimum_height = PickMontageDialog.setMinimumHeight
+
+        def record_minimum_height(widget, height):
+            requests.append((height, widget.minimumSizeHint().height()))
+            original_set_minimum_height(widget, height)
+
+        monkeypatch.setattr(
+            PickMontageDialog, "setMinimumHeight", record_minimum_height
+        )
+        bids_dialog = PickMontageDialog(
+            parent=None,
+            channel_names=channel_names,
+            is_bids_source=True,
+            current_layout={"source": "bids", "status": "ready"},
+        )
+        qtbot.addWidget(bids_dialog)
+        bids_dialog.show()
+        qtbot.waitExposed(bids_dialog)
+
+        requests.clear()
+        bids_dialog.show_mapping_page()
+        qtbot.waitUntil(bids_dialog.mapping_page.isVisible)
+
+        assert requests
+        assert all(
+            requested >= layout_minimum for requested, layout_minimum in requests
+        )
 
     def test_bids_summary_has_one_primary_change_action(
         self, dialog, qtbot, channel_names
