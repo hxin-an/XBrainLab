@@ -82,7 +82,7 @@ class DatasetTableRowIdentity:
 class DatasetTableSelection:
     """Rows selected from one immutable Dataset-table publication."""
 
-    publication_generation: int | None
+    publication_generation: int
     rows: tuple[DatasetTableRowIdentity, ...]
 
 
@@ -174,9 +174,6 @@ class DatasetActionHandler:
                 ),
                 cancel_application_operation=lambda *args, **kwargs: (
                     cancel_application_operation(*args, **kwargs)
-                ),
-                execute_application_command=lambda *args, **kwargs: (
-                    execute_application_command(*args, **kwargs)
                 ),
                 execute_application_command_async=lambda *args, **kwargs: (
                     execute_application_command_async(*args, **kwargs)
@@ -490,23 +487,7 @@ class DatasetActionHandler:
             selection = capture(list(rows))
             if isinstance(selection, DatasetTableSelection):
                 return selection
-        if has_real_application_context(self.panel):
-            return None
-        return DatasetTableSelection(
-            publication_generation=None,
-            rows=tuple(
-                DatasetTableRowIdentity(canonical_filepath="", rendered_row=int(row))
-                for row in rows
-            ),
-        )
-
-    def _coerce_table_selection(
-        self,
-        rows_or_selection: DatasetTableSelection | list[int] | tuple[int, ...],
-    ) -> DatasetTableSelection | None:
-        if isinstance(rows_or_selection, DatasetTableSelection):
-            return rows_or_selection
-        return self._capture_table_selection(rows_or_selection)
+        return None
 
     def _resolve_table_selection(
         self,
@@ -544,7 +525,7 @@ class DatasetActionHandler:
 
     def _batch_set(
         self,
-        rows_or_selection: DatasetTableSelection | list[int] | tuple[int, ...],
+        selection: DatasetTableSelection,
         attr,
     ):
         review_context = get_command_review_context(
@@ -581,14 +562,6 @@ class DatasetActionHandler:
             )
             return
 
-        selection = self._coerce_table_selection(rows_or_selection)
-        if selection is None:
-            self._reject_stale_table_action(
-                "Review Metadata Again",
-                "edit metadata",
-            )
-            return
-
         text, ok = QInputDialog.getText(self.panel, f"Set {attr}", f"Enter {attr}:")
         if ok and text:
             rows = self._resolve_table_selection(
@@ -607,13 +580,7 @@ class DatasetActionHandler:
             result = execute_application_command(
                 self.panel,
                 UpdateMetadataCommand(updates=updates),
-                expected_publication_generation=(
-                    selection.publication_generation
-                    if selection.publication_generation is not None
-                    else review_context.publication_generation
-                    if review_context is not None
-                    else None
-                ),
+                expected_publication_generation=selection.publication_generation,
             )
             if result is None:
                 show_warning(
@@ -635,7 +602,7 @@ class DatasetActionHandler:
 
     def _remove_files(
         self,
-        rows_or_selection: DatasetTableSelection | list[int] | tuple[int, ...],
+        selection: DatasetTableSelection,
     ):
         review_context = get_command_review_context(
             self.panel,
@@ -671,14 +638,6 @@ class DatasetActionHandler:
             )
             return
 
-        selection = self._coerce_table_selection(rows_or_selection)
-        if selection is None:
-            self._reject_stale_table_action(
-                "Review File Removal Again",
-                "remove files",
-            )
-            return
-
         if ask_confirmation(
             self.panel,
             severity=AlertSeverity.WARNING,
@@ -698,13 +657,7 @@ class DatasetActionHandler:
             result = execute_application_command(
                 self.panel,
                 RemoveFilesCommand(indices=list(rows)),
-                expected_publication_generation=(
-                    selection.publication_generation
-                    if selection.publication_generation is not None
-                    else review_context.publication_generation
-                    if review_context is not None
-                    else None
-                ),
+                expected_publication_generation=selection.publication_generation,
             )
             if result is None:
                 show_warning(

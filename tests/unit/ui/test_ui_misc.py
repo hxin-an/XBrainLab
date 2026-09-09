@@ -660,63 +660,6 @@ class TestDatasetActionHandler:
         assert runtime.commands[0].resource_preflight_confirmed is False
         assert runtime.commands[0].resource_preflight_token is None
 
-    def test_interpretation_command_helper_continues_from_compatibility_result(
-        self,
-        handler,
-    ):
-        from XBrainLab.backend.application import ScanSourceCommand
-
-        commands = []
-        expected_result = _command_result(scan_result={"scan_id": "scan-1"})
-
-        def fake_sync(_panel, command):
-            commands.append(command)
-            return expected_result
-
-        results = []
-        with patch(
-            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
-            side_effect=fake_sync,
-        ):
-            started = (
-                handler._data_interpretation._execute_interpretation_command_async(
-                    ScanSourceCommand(source_path="/tmp/eeg"),
-                    on_result=results.append,
-                    error_title="Source scan failed",
-                )
-            )
-
-        assert started.status is InteractionStatus.COMPLETED
-        assert results == [expected_result]
-        assert isinstance(commands[0], ScanSourceCommand)
-
-    def test_interpretation_command_helper_returns_false_when_unavailable(
-        self,
-        qtbot,
-    ):
-        from XBrainLab.backend.application import ScanSourceCommand
-        from XBrainLab.ui.panels.dataset.actions import DatasetActionHandler
-
-        panel = QWidget()
-        panel_with_attrs = cast(Any, panel)
-        panel_with_attrs.table = MagicMock()
-        handler = DatasetActionHandler(panel)
-
-        with patch(
-            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
-            return_value=None,
-        ) as mock_sync:
-            started = (
-                handler._data_interpretation._execute_interpretation_command_async(
-                    ScanSourceCommand(source_path="/tmp/eeg"),
-                    on_result=MagicMock(),
-                    error_title="Source scan failed",
-                )
-            )
-
-        assert started is None
-        mock_sync.assert_called_once()
-
     def test_save_interpretation_recipe_uses_backend_capability_before_file_dialog(
         self,
         handler,
@@ -837,6 +780,10 @@ class TestDatasetActionHandler:
 
     def test_remove_files_refuses_real_study_controller_fallback(self, handler):
         from XBrainLab.backend.study import Study
+        from XBrainLab.ui.panels.dataset.actions import (
+            DatasetTableRowIdentity,
+            DatasetTableSelection,
+        )
 
         study = Study()
         study.data_manager.loaded_data_list = [MagicMock()]
@@ -854,7 +801,17 @@ class TestDatasetActionHandler:
                 return_value=None,
             ),
         ):
-            handler._remove_files([0])
+            handler._remove_files(
+                DatasetTableSelection(
+                    publication_generation=1,
+                    rows=(
+                        DatasetTableRowIdentity(
+                            canonical_filepath="/data/row-0.fif",
+                            rendered_row=0,
+                        ),
+                    ),
+                )
+            )
 
         handler.panel.controller.remove_files.assert_not_called()
         mock_mb.assert_called_once()
@@ -863,6 +820,10 @@ class TestDatasetActionHandler:
 
     def test_remove_files_uses_backend_capability_before_confirm(self, handler):
         from XBrainLab.backend.study import Study
+        from XBrainLab.ui.panels.dataset.actions import (
+            DatasetTableRowIdentity,
+            DatasetTableSelection,
+        )
 
         handler.panel.study = Study()
         handler.panel.controller = MagicMock()
@@ -873,7 +834,15 @@ class TestDatasetActionHandler:
                 "XBrainLab.ui.panels.dataset.actions.ask_confirmation"
             ) as mock_confirmation,
         ):
-            handler._remove_files([0, 1])
+            handler._remove_files(
+                DatasetTableSelection(
+                    publication_generation=1,
+                    rows=(
+                        DatasetTableRowIdentity("/data/row-0.fif", 0),
+                        DatasetTableRowIdentity("/data/row-1.fif", 1),
+                    ),
+                )
+            )
 
         mock_confirmation.assert_not_called()
         mock_mb.assert_called_once()
@@ -882,6 +851,10 @@ class TestDatasetActionHandler:
 
     def test_batch_set_uses_backend_capability_before_prompt(self, handler):
         from XBrainLab.backend.study import Study
+        from XBrainLab.ui.panels.dataset.actions import (
+            DatasetTableRowIdentity,
+            DatasetTableSelection,
+        )
 
         handler.panel.study = Study()
         handler.panel.controller = MagicMock()
@@ -890,7 +863,13 @@ class TestDatasetActionHandler:
             patch("XBrainLab.ui.panels.dataset.actions.QInputDialog") as mock_input,
             patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_mb,
         ):
-            handler._batch_set([0], "Session")
+            handler._batch_set(
+                DatasetTableSelection(
+                    publication_generation=1,
+                    rows=(DatasetTableRowIdentity("/data/row-0.fif", 0),),
+                ),
+                "Session",
+            )
 
         mock_input.getText.assert_not_called()
         mock_mb.assert_called_once()
@@ -899,6 +878,10 @@ class TestDatasetActionHandler:
 
     def test_batch_set_refuses_real_study_controller_fallback(self, handler):
         from XBrainLab.backend.study import Study
+        from XBrainLab.ui.panels.dataset.actions import (
+            DatasetTableRowIdentity,
+            DatasetTableSelection,
+        )
 
         study = Study()
         study.data_manager.loaded_data_list = [MagicMock()]
@@ -918,7 +901,13 @@ class TestDatasetActionHandler:
             ),
         ):
             mock_input.getText.return_value = ("session-01", True)
-            handler._batch_set([0], "Session")
+            handler._batch_set(
+                DatasetTableSelection(
+                    publication_generation=1,
+                    rows=(DatasetTableRowIdentity("/data/row-0.fif", 0),),
+                ),
+                "Session",
+            )
 
         handler.panel.controller.update_metadata.assert_not_called()
         mock_mb.assert_called_once()

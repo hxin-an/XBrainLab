@@ -38,7 +38,6 @@ from XBrainLab.ui.application_capabilities import (
     application_ui_runtime,
     blocked_reason,
     cancel_application_operation,
-    execute_application_command,
     execute_application_command_async,
     get_application_operation,
     get_application_view_publication,
@@ -146,7 +145,6 @@ class DataInterpretationActionBindings:
     application_ui_runtime: Callable[..., Any]
     blocked_reason: Callable[..., str]
     cancel_application_operation: Callable[..., bool]
-    execute_application_command: Callable[..., Any]
     execute_application_command_async: Callable[..., Any]
     get_application_operation: Callable[..., Any]
     get_application_view_publication: Callable[..., Any]
@@ -170,7 +168,6 @@ def default_data_interpretation_action_bindings() -> DataInterpretationActionBin
         application_ui_runtime=application_ui_runtime,
         blocked_reason=blocked_reason,
         cancel_application_operation=cancel_application_operation,
-        execute_application_command=execute_application_command,
         execute_application_command_async=execute_application_command_async,
         get_application_operation=get_application_operation,
         get_application_view_publication=get_application_view_publication,
@@ -1220,34 +1217,12 @@ class DataInterpretationActionCoordinator:
             return InteractionOutcome.accepted(
                 "Data interpretation command was scheduled."
             )
-        if self._bindings.has_real_application_context(self.panel):
-            self._bindings.show_warning(
-                self.panel,
-                blocked_title,
-                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
-            )
-            return InteractionOutcome.blocked(
-                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
-            )
-        if expected_publication_generation is None:
-            result = self._bindings.execute_application_command(
-                self.panel,
-                command,
-            )
-        else:
-            result = self._bindings.execute_application_command(
-                self.panel,
-                command,
-                expected_publication_generation=expected_publication_generation,
-            )
-        if result is None:
-            return None
-        callback_outcome = on_result(result)
-        if callback_outcome is not None:
-            return callback_outcome
-        if result.failed:
-            return self._interaction_failure_outcome(result, result.message)
-        return InteractionOutcome.completed(result.message)
+        self._bindings.show_warning(
+            self.panel,
+            blocked_title,
+            CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
+        )
+        return InteractionOutcome.blocked(CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE)
 
     def _present_loading_operation_snapshot(
         self,

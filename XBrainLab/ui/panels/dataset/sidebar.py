@@ -113,16 +113,13 @@ class DatasetSidebar(QWidget):
     """Sidebar for ``DatasetPanel`` containing information and action controls.
 
     Hosts an aggregate info panel, primary import buttons, and channel selection.
-    Metadata parsing and external labels live in
-    the Data Import wizard; the old post-load label button is retained only as
-    hidden compatibility wiring for tests and compatibility adapters.
+    Metadata parsing and external labels live in the Data Import wizard.
 
     Attributes:
         panel: The parent ``DatasetPanel`` reference.
         info_panel: ``AggregateInfoPanel`` displaying summary statistics.
         import_btn: Button to import EEG data files.
         reload_recipe_btn: Button to reload a saved import recipe.
-        import_label_btn: Hidden compatibility button for old label attachment.
         smart_parse_btn: Hidden compatibility button to auto-extract metadata.
         chan_select_btn: Button to open channel selection dialog.
 
@@ -478,18 +475,6 @@ class DatasetSidebar(QWidget):
 
     def _apply_startup_bootstrap_state(self) -> None:
         """Present the known empty-workspace actions before command runtime startup."""
-        if has_real_application_context(self):
-            unavailable_actions = {
-                self.import_btn: _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
-                self.reload_recipe_btn: _RECIPE_RELOAD_AVAILABILITY_UNAVAILABLE,
-                self.smart_parse_btn: _SMART_PARSE_AVAILABILITY_UNAVAILABLE,
-                self.chan_select_btn: _CHANNEL_SELECTION_AVAILABILITY_UNAVAILABLE,
-            }
-            for button, tooltip in unavailable_actions.items():
-                button.setEnabled(False)
-                button.setToolTip(tooltip)
-            return
-
         unavailable_actions = {
             self.import_btn: _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
             self.reload_recipe_btn: _RECIPE_RELOAD_AVAILABILITY_UNAVAILABLE,

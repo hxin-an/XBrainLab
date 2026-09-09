@@ -41,8 +41,6 @@ from XBrainLab.ui.application_capabilities import (
     blocked_reason,
     execute_application_command,
     get_application_view_publication,
-    get_command_capability,
-    has_real_application_context,
     is_application_runtime_deferred,
     is_stale_publication_result,
 )
@@ -99,14 +97,12 @@ class DatasetPanel(BasePanel):
 
     Provides file import, label import, smart-parse, channel selection,
     and a table view of loaded EEG recordings.  Integrates with
-    ``DatasetController`` via observer bridges.
+    application publications and detached Dataset query rows.
 
     Attributes:
         action_handler: ``DatasetActionHandler`` for complex panel actions.
         table: ``QTableWidget`` displaying loaded file metadata.
         sidebar: ``DatasetSidebar`` with operations and info panel.
-        bridge: Observer bridge for ``data_changed`` events.
-        bridge_import: Observer bridge for ``import_finished`` events.
 
     """
 
@@ -470,10 +466,7 @@ class DatasetPanel(BasePanel):
             self.sidebar.update_sidebar()
 
         publication = self._read_application_publication()
-        product_context = (
-            self._publication_port is not None or has_real_application_context(self)
-        )
-        if product_context and (publication is None or not publication.usable):
+        if publication is None or not publication.usable:
             self._clear_table_render_identity()
             self.table.clearContents()
             self.table.setRowCount(0)
@@ -482,14 +475,12 @@ class DatasetPanel(BasePanel):
             self._schedule_table_column_fit()
             return True
 
-        render_generation = (
-            int(publication.generation) if publication is not None else None
-        )
+        render_generation = int(publication.generation)
         query_outcome = self._query_loaded_data_list_for_render(
             expected_publication_generation=render_generation,
         )
         queried_rows = query_outcome.rows
-        if queried_rows is None and product_context and query_outcome.retryable:
+        if queried_rows is None and query_outcome.retryable:
             logger.debug(
                 "Dataset table publication %s is waiting for a stable application "
                 "snapshot: %s",
@@ -497,7 +488,7 @@ class DatasetPanel(BasePanel):
                 query_outcome.message,
             )
             return False
-        if queried_rows is None and product_context:
+        if queried_rows is None:
             logger.error(
                 "Dataset table rows are unavailable for application generation %s; "
                 "the publication remains pending: %s",
@@ -520,10 +511,7 @@ class DatasetPanel(BasePanel):
         self.table.setRowCount(0)
 
         self._table_publication_generation = render_generation
-        if queried_rows is not None:
-            data_rows: list[dict[str, Any]] = queried_rows
-        else:
-            data_rows = []
+        data_rows = queried_rows
         event_labels = sorted(
             {
                 str(label).strip()
@@ -539,30 +527,16 @@ class DatasetPanel(BasePanel):
         )
         self.table.setProperty("eventLabels", event_labels)
         self.table.setProperty("publicationGeneration", render_generation)
-        if publication is not None:
-            metadata_capability = publication.effective_capabilities.get(
-                CommandName.UPDATE_METADATA
-            )
-        elif product_context:
-            metadata_capability = None
-        else:
-            metadata_capability = get_command_capability(
-                self,
-                CommandName.UPDATE_METADATA,
-            )
+        metadata_capability = publication.effective_capabilities.get(
+            CommandName.UPDATE_METADATA
+        )
         self._table_metadata_capability = metadata_capability
         metadata_editable = (
-            metadata_capability.enabled
-            if metadata_capability is not None
-            else not product_context
+            metadata_capability.enabled if metadata_capability is not None else False
         )
         metadata_block_reason = blocked_reason(
             metadata_capability,
-            (
-                _METADATA_AVAILABILITY_UNAVAILABLE
-                if product_context
-                else "Metadata editing is not available right now."
-            ),
+            _METADATA_AVAILABILITY_UNAVAILABLE,
         )
 
         if data_rows:
@@ -668,55 +642,6 @@ class DatasetPanel(BasePanel):
         self.empty_state_import_btn.setVisible(title == "No EEG data loaded")
         self.data_surface.setCurrentWidget(self.empty_state)
 
-    @staticmethod
-    def _event_summary_for_render(data) -> dict[str, Any]:
-        summary_method = getattr(data, "get_event_summary", None)
-        if callable(summary_method):
-            try:
-                summary = summary_method(allow_scan=False)
-                if isinstance(summary, dict):
-                    return summary
-            except Exception:
-                logger.debug("Failed to read cached event summary", exc_info=True)
-        try:
-            has_event = bool(data.has_event())
-        except Exception:
-            logger.exception("Failed to read event availability")
-            return {
-                "available": False,
-                "count": None,
-                "labels": [],
-                "source": "error",
-                "scanned": True,
-            }
-        if not has_event:
-            return {
-                "available": False,
-                "count": 0,
-                "labels": [],
-                "source": "none",
-                "scanned": True,
-            }
-        try:
-            if data.is_raw():
-                events, event_id = data.get_event_list()
-                count = len(events)
-                labels = sorted(str(label) for label in event_id)
-            else:
-                count = data.get_epochs_length()
-                labels = []
-        except Exception:
-            logger.exception("Failed to get event count")
-            count = None
-            labels = []
-        return {
-            "available": True,
-            "count": count,
-            "labels": labels,
-            "source": "compatibility",
-            "scanned": True,
-        }
-
     def _query_loaded_data_list_for_render(
         self,
         *,
@@ -776,18 +701,6 @@ class DatasetPanel(BasePanel):
         self._metadata_edit_selections.clear()
 
     @staticmethod
-    def _canonical_filepath(data: Any) -> str | None:
-        getter = getattr(data, "get_filepath", None)
-        if not callable(getter):
-            return None
-        try:
-            raw_path = str(getter()).strip()
-        except Exception:
-            logger.debug("Failed to read Dataset row filepath", exc_info=True)
-            return None
-        return DatasetPanel._canonical_path_text(raw_path)
-
-    @staticmethod
     def _canonical_path_text(raw_path: Any) -> str | None:
         raw_path = str(raw_path).strip()
         if not raw_path:
@@ -817,6 +730,8 @@ class DatasetPanel(BasePanel):
         rows: list[int] | tuple[int, ...],
     ) -> DatasetTableSelection | None:
         """Capture stable file identities from the currently rendered table."""
+        if self._table_publication_generation is None:
+            return None
         identities: list[DatasetTableRowIdentity] = []
         for row in rows:
             name_item = self.table.item(int(row), 0)
@@ -824,12 +739,7 @@ class DatasetPanel(BasePanel):
                 return None
             identity = name_item.data(self._ROW_IDENTITY_ROLE)
             if not isinstance(identity, DatasetTableRowIdentity):
-                if self._table_publication_generation is not None:
-                    return None
-                identity = DatasetTableRowIdentity(
-                    canonical_filepath="",
-                    rendered_row=int(row),
-                )
+                return None
             identities.append(identity)
         return DatasetTableSelection(
             publication_generation=self._table_publication_generation,
@@ -851,14 +761,12 @@ class DatasetPanel(BasePanel):
         """Resolve rendered file identities against the same backend publication."""
         generation = selection.publication_generation
         if generation is None:
-            if has_real_application_context(self):
-                self._reject_stale_table_action(
-                    stale_title,
-                    action_description,
-                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
-                )
-                return None
-            return [identity.rendered_row for identity in selection.rows]
+            self._reject_stale_table_action(
+                stale_title,
+                action_description,
+                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
+            )
+            return None
 
         result = execute_application_command(
             self,
@@ -981,6 +889,10 @@ class DatasetPanel(BasePanel):
             return
 
         new_value = item.text()
+        if self._table_publication_generation is None:
+            show_warning(self, "Metadata blocked", _METADATA_AVAILABILITY_UNAVAILABLE)
+            self.update_panel()
+            return
         selection = self._metadata_edit_selections.pop(id(item), None)
         if selection is None:
             selection = self.capture_table_selection([row])
@@ -992,9 +904,7 @@ class DatasetPanel(BasePanel):
             )
             return
 
-        if selection.publication_generation is None and has_real_application_context(
-            self
-        ):
+        if selection.publication_generation is None:
             show_warning(
                 self,
                 "Metadata blocked",
@@ -1002,12 +912,8 @@ class DatasetPanel(BasePanel):
             )
             self.update_panel()
             return
-        metadata_capability = (
-            self._table_metadata_capability
-            if selection.publication_generation is not None
-            else get_command_capability(self, CommandName.UPDATE_METADATA)
-        )
-        if metadata_capability is None and has_real_application_context(self):
+        metadata_capability = self._table_metadata_capability
+        if metadata_capability is None:
             show_warning(
                 self,
                 "Metadata blocked",

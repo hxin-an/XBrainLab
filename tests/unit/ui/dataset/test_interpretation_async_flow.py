@@ -3169,30 +3169,29 @@ def test_real_study_command_returns_immediately_and_continues_on_result(
     assert application_command_registry().active_count(panel) == 0
 
 
-def test_compatibility_context_continues_synchronously(qtbot, monkeypatch):
+def test_async_dispatch_refusal_blocks_without_delivering_a_sync_result(qtbot) -> None:
     panel = QWidget()
     qtbot.addWidget(panel)
     handler = DatasetActionHandler(panel)
-    expected = _success_result("query_state")
-    results = []
-
-    monkeypatch.setattr(
-        actions,
-        "execute_application_command",
-        lambda _panel, command, **_kwargs: expected
-        if isinstance(command, QueryStateCommand)
-        else None,
+    warning = MagicMock()
+    delivered = MagicMock()
+    handler._data_interpretation._bindings = replace(
+        handler._data_interpretation._bindings,
+        execute_application_command_async=lambda *_args, **_kwargs: False,
+        show_warning=warning,
     )
 
-    started = handler._data_interpretation._execute_interpretation_command_async(
+    outcome = handler._data_interpretation._execute_interpretation_command_async(
         QueryStateCommand(),
-        on_result=results.append,
+        on_result=delivered,
         error_title="Review failed",
     )
 
-    assert started is not None
-    assert started.status is InteractionStatus.COMPLETED
-    assert results == [expected]
+    assert outcome is not None
+    assert outcome.status is InteractionStatus.BLOCKED
+    assert delivered.call_count == 0
+    warning.assert_called_once()
+    assert warning.call_args.args[1] == "Interpretation Blocked"
 
 
 def test_worker_exception_cleans_up_and_reports_without_nested_wait(
@@ -4337,7 +4336,6 @@ def test_apply_warning_handoff_ack_completes_without_result_refresh(
     cast(Any, panel).set_busy = lambda _busy: None
     handler = DatasetActionHandler(panel)
     commands: list[ApplyInterpretationCommand] = []
-    command_result_refresh = MagicMock()
     terminal = []
     applied = _success_result("apply_interpretation", applied_interpretation={})
 
@@ -4353,11 +4351,6 @@ def test_apply_warning_handoff_ack_completes_without_result_refresh(
         application_capabilities,
         "application_ui_runtime",
         lambda _study: _Service(),
-    )
-    monkeypatch.setattr(
-        async_command_runner,
-        "refresh_after_command",
-        command_result_refresh,
     )
     monkeypatch.setattr(
         actions,
@@ -4387,7 +4380,6 @@ def test_apply_warning_handoff_ack_completes_without_result_refresh(
     assert len(commands) == 2
     assert terminal[0].status is InteractionCompletionStatus.COMPLETED
     assert terminal[0].message == "ok"
-    command_result_refresh.assert_not_called()
 
 
 def test_apply_warning_handoff_refusal_reports_only_cancelled(
