@@ -57,9 +57,6 @@ from .training_snapshot import (
     model_name as snapshot_model_name,
 )
 from .training_snapshot import (
-    model_params_snapshot as build_model_params_snapshot,
-)
-from .training_snapshot import (
     model_signal_context_snapshot as build_model_signal_context_snapshot,
 )
 from .training_snapshot import (
@@ -194,10 +191,10 @@ class TrainingCommandService:
         if option is None:
             return f"Model configured: {command.model_name}."
         diagnostics: dict[str, Any] = {
-            "training_option": self.training_option_snapshot(option),
+            "training_option": build_training_option_snapshot(option),
         }
         if holder is not None:
-            diagnostics["model_name"] = self.model_name(holder)
+            diagnostics["model_name"] = snapshot_model_name(holder)
         return "Training configured.", diagnostics
 
     def _current_class_map(self) -> dict[int, str]:
@@ -523,7 +520,7 @@ class TrainingCommandService:
         diagnostics = {
             **preflight.diagnostics,
             "payload_type": "training_resource_preflight",
-            "model_name": self.model_name(context.get("model_holder")),
+            "model_name": snapshot_model_name(context.get("model_holder")),
             "training_batch_size": getattr(option, "bs", None),
         }
         return self._resource_receipts.annotate(
@@ -583,18 +580,6 @@ class TrainingCommandService:
                 "finished_run_count_before": before.finished_runs,
             },
         )
-
-    @staticmethod
-    def model_name(model_holder: Any) -> str | None:
-        return snapshot_model_name(model_holder)
-
-    @staticmethod
-    def model_params_snapshot(model_holder: Any) -> dict[str, Any]:
-        return build_model_params_snapshot(model_holder)
-
-    @staticmethod
-    def training_option_snapshot(option: Any) -> dict[str, Any]:
-        return build_training_option_snapshot(option)
 
     @staticmethod
     def build_model_holder(

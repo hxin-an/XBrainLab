@@ -180,16 +180,7 @@ from .training_runtime import (
     TrainingRuntimePort,
 )
 from .training_snapshot import (
-    model_name as snapshot_model_name,
-)
-from .training_snapshot import (
-    model_params_snapshot as build_model_params_snapshot,
-)
-from .training_snapshot import (
     model_signal_context_snapshot as build_model_signal_context_snapshot,
-)
-from .training_snapshot import (
-    training_option_snapshot as build_training_option_snapshot,
 )
 from .view_event_publisher import (
     ApplicationViewEventPublisher,
@@ -520,18 +511,6 @@ class _LazyTrainingCommandService:
         self._configuration_reset.clear()
         self._recommendation.clear()
 
-    @staticmethod
-    def model_name(model_holder: Any) -> str | None:
-        return snapshot_model_name(model_holder)
-
-    @staticmethod
-    def model_params_snapshot(model_holder: Any) -> dict[str, Any]:
-        return build_model_params_snapshot(model_holder)
-
-    @staticmethod
-    def training_option_snapshot(option: Any) -> dict[str, Any]:
-        return build_training_option_snapshot(option)
-
     def get_resource_preflight(self) -> ResourcePreflightResult:
         return self._service().get_resource_preflight()
 
@@ -754,7 +733,6 @@ class ApplicationService(Observable):
             evaluation=self.evaluation_state,
             visualization=self.visualization,
             dataset_generation=self.dataset_generation,
-            training_commands=self.training_commands,
             interpretation=self.interpretation,
             saliency_coverage_projector=self.saliency_coverage_projector,
             training_recommendation=self.training_recommendation,

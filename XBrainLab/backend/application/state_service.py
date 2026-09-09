@@ -62,6 +62,13 @@ from .training_recommendation import (
     TrainingRecommendationService,
 )
 from .training_runtime import TrainingStateReadPort
+from .training_snapshot import (
+    model_name as snapshot_model_name,
+)
+from .training_snapshot import (
+    model_params_snapshot,
+    training_option_snapshot,
+)
 
 __all__ = [
     "HandlerResult",
@@ -89,7 +96,6 @@ class StateSnapshotService:
         evaluation: Any,
         visualization: Any,
         dataset_generation: Any,
-        training_commands: Any,
         interpretation: Any,
         saliency_coverage_projector: SaliencyCoverageProjector,
         training_state: Any | None = None,
@@ -109,7 +115,6 @@ class StateSnapshotService:
         self.evaluation_state = evaluation_state or evaluation
         self.visualization = visualization
         self.dataset_generation = dataset_generation
-        self.training_commands = training_commands
         self.interpretation = interpretation
         self.saliency_coverage_projector = saliency_coverage_projector
         self.training_recommendation = training_recommendation
@@ -319,11 +324,9 @@ class StateSnapshotService:
             active_split_summary=dict(split_state["active_split_summary"]),
             last_split_attempt=dict(split_state["last_split_attempt"]),
         )
-        model_name = self.training_commands.model_name(model_holder)
-        model_params = self.training_commands.model_params_snapshot(model_holder)
-        training_option_values = self.training_commands.training_option_snapshot(
-            training_option,
-        )
+        model_name = snapshot_model_name(model_holder)
+        model_params = model_params_snapshot(model_holder)
+        training_option_values = training_option_snapshot(training_option)
         recommendation = self._training_recommendation(
             epoch=epoch,
             dataset=dataset,
@@ -591,14 +594,14 @@ class StateSnapshotService:
         model_name = (
             prospective_model_name
             if prospective_model_name is not None
-            else self.training_commands.model_name(model_holder)
+            else snapshot_model_name(model_holder)
         )
         model_params = (
             dict(prospective_model_params or {})
             if prospective_model_name is not None
-            else self.training_commands.model_params_snapshot(model_holder)
+            else model_params_snapshot(model_holder)
         )
-        option_values = self.training_commands.training_option_snapshot(training_option)
+        option_values = training_option_snapshot(training_option)
         if prospective_device is not None:
             option_values = {**option_values, "device": prospective_device}
         context = self._training_recommendation_context(

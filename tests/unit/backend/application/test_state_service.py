@@ -48,7 +48,6 @@ from XBrainLab.backend.application.training_runtime import (
     TrainingConfigurationSnapshot,
     TrainingRuntimeContext,
 )
-from XBrainLab.backend.application.training_service import TrainingCommandService
 from XBrainLab.backend.application.training_submission import (
     attach_training_submission_provenance,
 )
@@ -503,11 +502,6 @@ def _snapshot_service(
             study=study,
             training=object(),
             has_trainer=training_runtime.has_trainer,
-        ),
-        training_commands=TrainingCommandService(
-            training=object(),
-            training_runtime=cast(Any, training_runtime),
-            get_state=lambda: cast(ApplicationStateSnapshot, None),
         ),
         saliency_coverage_projector=(
             saliency_coverage_projector or SaliencyCoverageProjector()
