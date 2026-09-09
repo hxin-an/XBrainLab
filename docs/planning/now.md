@@ -2,7 +2,7 @@
 
 最後更新：`2026-09-09`
 
-## Active — integrated quality-hardening validation and one manual handoff
+## Active — repair manual-test Preprocess re-reference regression in #131
 
 ### Problem, outcome and authorization
 
@@ -20,7 +20,9 @@ the final product source and explicit merge approval.
 ### Construction closure and retained evidence
 
 Production construction and the integration-discovered test/lifecycle repairs are implemented
-for the families below; the replacement head's complete integrated gates remain outstanding.
+for the families below. Head `0b3825d0` passed exact-head CI and was opened for Windows native
+manual testing, which exposed the re-reference regression described below. Those earlier passes
+do not certify its repair or establish that every UI entry point was covered.
 The construction commits hold the detailed history. Inventory counts are not claims that every
 tracked file was deeply read, and passing tests do not establish defect-free architecture.
 
@@ -73,6 +75,51 @@ Compare the final run's actual timing with this observation; one sample is not a
 performance guarantee. Other job environments and gates are unchanged.
 
 ### Remaining execution plan and validation
+
+#### Current manual-test repair
+
+On 2026-09-09, Windows manual testing reported that Preprocess → Re-reference presents an
+unexpected error. The traceback identifies `_preprocessed_channel_names_for_rereference` passing
+the retired `refresh` keyword through a dictionary to `execute_application_command`. Its existing
+test replaces that adapter with a permissive stale fake, so it does not detect the signature error.
+
+Expected outcome: the real button opens the reference chooser with current channels; cancelling
+leaves data unchanged, and applying runs the existing preprocessing command. Publication-generation
+checks must continue to reject stale review. This is an internal repair under the existing UI
+authorization; no visible layout/copy redesign, restored compatibility keyword or new owner.
+
+1. Add a failing regression through the real UI command adapter and application runtime, with
+   real channel data and dialog interaction; preserve observable apply/cancel/stale protection.
+2. Remove the obsolete caller keyword and inspect directly related adapter calls, including
+   dictionary expansion. Replace or correct the stale fake only after stronger evidence exists.
+3. Run the focused regression, directly adjacent preprocess/state tests and changed-file static
+   checks. Review the actual diff and preserve the failing reproduction.
+4. Push the repair to the existing #131 and require new exact-head applicable CI before a replacement
+   handoff. Ask for re-testing re-reference and adjacent preprocess operations, not the entire
+   previous manual checklist. Do not replace source beneath the live Windows application or discard
+   its loaded data; coordinate replacement after the user can close/save it.
+
+The separate PickMontageDialog Windows geometry warning is diagnostic-only in this repair:
+trace the contradictory size constraints, but do not change visible layout without confirmation.
+Stop at a verified replacement handoff, or an explicit user decision needed to replace the live
+application safely. No merge without updated manual acceptance and approval.
+
+The repair is implemented: explicit generation forwarding replaces the obsolete keyword dictionary,
+with no command contract or owner change (production +1/-6 lines). The real-button regression first
+reproduced the exact `TypeError`; its cancel/average/selected/stale cases now pass, along with the
+autospecced generation contract (5 cases). Directly related UI/adapter/dialog/preprocess checks pass
+203 cases; Ruff and locked Basedpyright pass with zero diagnostics. Inspection of synchronous adapter
+callers, including Training's dictionary forwarding, found no other retired `refresh` argument;
+the similarly named source-identity script options are valid and unchanged.
+
+Next: push this repair and verify its new CI. On 2026-09-09 the user reported that the rest of their GUI
+test found no further issue and requested the repaired Windows GUI plus AI Assistant and a reusable
+launch command. The old native application has exited and its worktree is clean. Reuse that isolated
+worktree only after verifying it remains unused; open a single PowerShell console for application
+stdout/log, not a separate log-viewer GUI. This report is not acceptance of the changed product source
+or merge approval. Assistant stays on the supported existing local model/settings without experiments.
+
+#### Previous integration failures and validation requirements
 
 Integrated run `34304758779` exposed missed test consumers of retired dialog/controller/refresh
 contracts and an outdated CI installer count. These consumers and their same-class Training,

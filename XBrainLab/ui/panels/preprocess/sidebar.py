@@ -279,15 +279,10 @@ class PreprocessSidebar(QWidget):
         *,
         expected_publication_generation: int | None = None,
     ) -> list[str] | None:
-        command_kwargs: dict[str, Any] = {"refresh": False}
-        if expected_publication_generation is not None:
-            command_kwargs["expected_publication_generation"] = (
-                expected_publication_generation
-            )
         result = execute_application_command(
             self,
             QueryStateCommand(query="data_lists"),
-            **command_kwargs,
+            expected_publication_generation=expected_publication_generation,
         )
         if result is None:
             show_warning(

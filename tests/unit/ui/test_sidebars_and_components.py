@@ -302,10 +302,9 @@ class TestPreprocessSidebar:
             _,
             command,
             *,
-            refresh=True,
             expected_publication_generation=None,
         ):
-            calls.append((command, refresh, expected_publication_generation))
+            calls.append((command, expected_publication_generation))
             if isinstance(command, QueryStateCommand):
                 return _command_result(preprocessed_rows=[{"channels": ["Cz"]}])
             raise AssertionError(f"unexpected command: {command!r}")
@@ -326,6 +325,7 @@ class TestPreprocessSidebar:
             ) as execute_async,
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
+                autospec=True,
                 side_effect=execute_for,
             ),
         ):
@@ -334,8 +334,8 @@ class TestPreprocessSidebar:
 
             sidebar.open_rereference()
 
-        assert [type(command) for command, _, _ in calls] == [QueryStateCommand]
-        assert calls[0][2] == 62
+        assert [type(command) for command, _ in calls] == [QueryStateCommand]
+        assert calls[0][1] == 62
         assert isinstance(execute_async.call_args.args[1], PreprocessCommand)
         assert execute_async.call_args.kwargs["expected_publication_generation"] == 62
 

@@ -4,9 +4,14 @@ from unittest.mock import MagicMock, patch
 import mne
 import numpy as np
 import pytest
+from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QMainWindow
 
-from XBrainLab.backend.application import get_application_service
+from XBrainLab.backend.application import (
+    PreprocessCommand,
+    PreprocessOperation,
+    get_application_service,
+)
 from XBrainLab.backend.application.owned_work import OwnedWorkKind
 from XBrainLab.backend.application.preprocess_render import (
     PreprocessRenderData,
@@ -20,6 +25,8 @@ from XBrainLab.backend.study import Study
 from XBrainLab.ui.application_capabilities import (
     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
 )
+from XBrainLab.ui.async_command_runner import application_command_registry
+from XBrainLab.ui.dialogs.preprocess import RereferenceDialog
 from XBrainLab.ui.panels.preprocess.panel import PreprocessPanel
 
 
@@ -130,6 +137,115 @@ def test_preprocess_sidebar_fails_closed_without_publication(
     monkeypatch.setattr("XBrainLab.ui.panels.preprocess.sidebar.show_warning", warning)
     panel.sidebar.open_filtering()
     assert warning.called
+
+
+@pytest.mark.usefixtures("allow_real_modals")
+@pytest.mark.parametrize("choice", ["cancel", "average", "selected", "stale"])
+def test_rereference_button_uses_real_query_dialog_and_command(
+    qtbot, monkeypatch, choice
+) -> None:
+    """Exercise the UI adapter signature and numerical result, not a command fake."""
+    study = Study()
+    samples = np.arange(300, dtype=float).reshape(3, 100) * 1e-6
+    samples *= np.array([1, 2, 4])[:, None]
+    raw = Raw(
+        "reference.fif",
+        mne.io.RawArray(
+            samples.copy(),
+            mne.create_info(["C3", "Cz", "C4"], 100.0, "eeg"),
+            verbose="ERROR",
+        ),
+    )
+    study.set_loaded_data_list([raw])
+    service = get_application_service(study)
+    window = QMainWindow()
+    window.study = study
+    panel = PreprocessPanel(parent=window)
+    qtbot.addWidget(window)
+    sidebar = panel.sidebar
+    warnings = []
+    errors = []
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.preprocess.sidebar.show_warning",
+        lambda _parent, title, message: warnings.append((title, message)),
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.preprocess.sidebar.show_error",
+        lambda _parent, title, message: errors.append((title, message)),
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.preprocess.sidebar.present_unexpected_error",
+        lambda *_args, **kwargs: errors.append(kwargs),
+    )
+    observed_channels = []
+    concurrent_results = []
+    timer = QTimer(window)
+
+    def choose_reference():
+        dialog = sidebar.findChild(RereferenceDialog)
+        if dialog is None or not dialog.isVisible():
+            return
+        timer.stop()
+        observed_channels.append(
+            [
+                dialog.chan_list.item(index).text()
+                for index in range(dialog.chan_list.count())
+            ]
+        )
+        if choice == "cancel":
+            dialog.reject()
+            return
+        if choice == "stale":
+            # A real intervening command invalidates the open dialog's review.
+            concurrent_results.append(
+                service.execute(
+                    PreprocessCommand(operation=PreprocessOperation.RESAMPLE, rate=50.0)
+                )
+            )
+        if choice == "selected":
+            dialog.selected_channels_radio.click()
+            dialog.chan_list.item(1).setSelected(True)
+        dialog.ok_button.click()
+
+    timer.timeout.connect(choose_reference)
+    try:
+        sidebar.update_sidebar(publication=service.get_view_publication())
+        assert sidebar.btn_rereference.isEnabled()
+        timer.start(10)
+        sidebar.btn_rereference.click()
+        qtbot.waitUntil(
+            lambda: application_command_registry().active_count(sidebar) == 0,
+            timeout=5_000,
+        )
+        assert observed_channels == [["C3", "Cz", "C4"]]
+        assert errors == []
+        actual = study.preprocessed_data_list[0].get_mne().get_data()
+        if choice == "stale":
+            assert len(concurrent_results) == 1 and concurrent_results[0].ok
+            assert [title for title, _ in warnings] == ["Review Re-reference Again"]
+            assert study.preprocessed_data_list[0].get_sfreq() == 50.0
+            expected = raw.get_mne().copy().resample(50.0).get_data()
+        else:
+            assert warnings == []
+            expected = samples
+            if choice == "average":
+                expected = samples - samples.mean(axis=0)
+            elif choice == "selected":
+                expected = samples - samples[1]
+        np.testing.assert_allclose(actual, expected, atol=1e-15)
+        np.testing.assert_array_equal(
+            study.loaded_data_list[0].get_mne().get_data(), samples
+        )
+        assert sidebar.btn_rereference.isEnabled()
+    finally:
+        timer.stop()
+        qtbot.waitUntil(
+            lambda: application_command_registry().active_count(sidebar) == 0,
+            timeout=5_000,
+        )
+        panel.close()
+        window.close()
+        service.close()
 
 
 def test_preprocess_panel_cancels_pending_plot_for_locked_publication(qtbot) -> None:
