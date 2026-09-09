@@ -10257,11 +10257,8 @@ def check_primary_panel_product_bootstrap_boundary(root_dir: Path) -> list[str]:
         if len(specs) != 1:
             violations.append(f"MainWindow must define exactly one {label} panel spec")
             continue
-        controller_names = _panel_spec_controller_names(specs[0])
-        if not isinstance(controller_names, ast.Tuple) or controller_names.elts:
-            violations.append(
-                f"{label} panel spec must have no controller requirements"
-            )
+        if _panel_spec_has_controller_wiring(specs[0]):
+            violations.append(f"{label} panel spec must not retain controller wiring")
 
     if (
         any(
@@ -11112,13 +11109,10 @@ def check_evaluation_publication_refresh_boundary(root_dir: Path) -> list[str]:
     ]
     if len(evaluation_specs) != 1:
         violations.append("MainWindow must define exactly one Evaluation panel spec")
-    else:
-        spec = evaluation_specs[0]
-        controller_names = spec.args[4] if len(spec.args) > 4 else None
-        if not isinstance(controller_names, ast.Tuple) or controller_names.elts:
-            violations.append(
-                "MainWindow Evaluation panel spec must have no controller requirements"
-            )
+    elif _panel_spec_has_controller_wiring(evaluation_specs[0]):
+        violations.append(
+            "MainWindow Evaluation panel spec must not retain controller wiring"
+        )
 
     materialize_method = _find_class_method(
         main_window_tree,
@@ -11418,13 +11412,10 @@ def check_visualization_publication_refresh_boundary(root_dir: Path) -> list[str
             violations.append(
                 "MainWindow must define exactly one Visualization panel spec"
             )
-        else:
-            controller_names = _panel_spec_controller_names(visualization_specs[0])
-            if not isinstance(controller_names, ast.Tuple) or controller_names.elts:
-                violations.append(
-                    "MainWindow Visualization panel spec must have no "
-                    "controller requirements"
-                )
+        elif _panel_spec_has_controller_wiring(visualization_specs[0]):
+            violations.append(
+                "MainWindow Visualization panel spec must not retain controller wiring"
+            )
 
         materialize_method = _find_class_method(
             main_window_tree,
@@ -11568,16 +11559,9 @@ def _panel_spec_attr(call: ast.Call) -> str | None:
     )
 
 
-def _panel_spec_controller_names(call: ast.Call) -> ast.AST | None:
-    if len(call.args) > 4:
-        return call.args[4]
-    return next(
-        (
-            keyword.value
-            for keyword in call.keywords
-            if keyword.arg == "controller_names"
-        ),
-        None,
+def _panel_spec_has_controller_wiring(call: ast.Call) -> bool:
+    return len(call.args) > 4 or any(
+        keyword.arg == "controller_names" for keyword in call.keywords
     )
 
 

@@ -335,7 +335,13 @@ def test_primary_panel_product_bootstrap_guard_rejects_controller_bundle_wiring(
         "XBrainLab/ui/main_window.py",
         """
 _PANEL_SPECS = (
-    _PanelSpec("dataset_panel", "Dataset", "dataset", "DatasetPanel", ("dataset",)),
+_PanelSpec(
+    "dataset_panel",
+    "Dataset",
+    "dataset",
+    "DatasetPanel",
+    controller_names=(),
+),
     _PanelSpec(
         "preprocess_panel",
         "Preprocess",
@@ -396,11 +402,11 @@ class {class_name}:
     )
 
     assert any(
-        "Dataset panel spec must have no controller requirements" in item
+        "Dataset panel spec must not retain controller wiring" in item
         for item in violations
     )
     assert any(
-        "Preprocess panel spec must have no controller requirements" in item
+        "Preprocess panel spec must not retain controller wiring" in item
         for item in violations
     )
     assert any(
@@ -423,7 +429,7 @@ class {class_name}:
         for item in violations
     )
     assert any(
-        "Training panel spec must have no controller requirements" in item
+        "Training panel spec must not retain controller wiring" in item
         for item in violations
     )
     assert any(
@@ -5685,7 +5691,7 @@ def _panel_names_for_observer_event(event_name, changed):
     assert any(
         "no queued application publication refresh" in item for item in violations
     )
-    assert any("must have no controller requirements" in item for item in violations)
+    assert any("must not retain controller wiring" in item for item in violations)
     assert any("must inject query_port" in item for item in violations)
     assert any("must inject publication_port" in item for item in violations)
     assert any("must inject action_port" in item for item in violations)

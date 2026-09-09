@@ -119,7 +119,6 @@ class _PanelSpec:
     label: str
     module: str
     class_name: str
-    controller_names: tuple[str, ...]
     background_import_safe: bool = True
 
 
@@ -129,21 +128,18 @@ _PANEL_SPECS: tuple[_PanelSpec, ...] = (
         "Dataset",
         "XBrainLab.ui.panels.dataset.panel",
         "DatasetPanel",
-        (),
     ),
     _PanelSpec(
         "preprocess_panel",
         "Preprocess",
         "XBrainLab.ui.panels.preprocess.panel",
         "PreprocessPanel",
-        (),
     ),
     _PanelSpec(
         "training_panel",
         "Training",
         "XBrainLab.ui.panels.training.panel",
         "TrainingPanel",
-        (),
         background_import_safe=False,
     ),
     _PanelSpec(
@@ -151,7 +147,6 @@ _PANEL_SPECS: tuple[_PanelSpec, ...] = (
         "Evaluation",
         "XBrainLab.ui.panels.evaluation.panel",
         "EvaluationPanel",
-        (),
         background_import_safe=False,
     ),
     _PanelSpec(
@@ -159,7 +154,6 @@ _PANEL_SPECS: tuple[_PanelSpec, ...] = (
         "Visualization",
         "XBrainLab.ui.panels.visualization.panel",
         "VisualizationPanel",
-        (),
         background_import_safe=False,
     ),
 )

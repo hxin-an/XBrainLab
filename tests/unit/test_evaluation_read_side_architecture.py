@@ -139,7 +139,6 @@ _PANEL_SPECS = (
         "Evaluation",
         "evaluation",
         "EvaluationPanel",
-        (),
     ),
 )
 

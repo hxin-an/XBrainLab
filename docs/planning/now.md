@@ -178,6 +178,12 @@ generation/row identity, cancellation, resource confirmation and recipe reopen b
 owner and no visible UI change. Validate real Dataset wizard/import and row-identity workflows,
 then independently review the async/state diff. This dependency must close before final handoff.
 
+Direct dependency cleanup — `_PanelSpec.controller_names` is an unread empty compatibility slot in
+MainWindow. Remove it and its empty constructor arguments without changing panel construction or
+visible behavior; migrate the existing architecture checks to reject controller wiring/spec fields
+themselves, then run the focused architecture baselines. Stop after MainWindow and its guards no
+longer encode a controller-spec compatibility path; no new guard platform or production owner.
+
 1. Complete the evidence map and set coverage/branch reporting without gaming the denominator.
 2. Migrate the highest-value UI compatibility tests to typed real-service/publication fixtures;
    delete the now-unused fallback path and its exclusive tests. Repeat through the critical
