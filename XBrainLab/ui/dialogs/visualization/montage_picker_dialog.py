@@ -356,6 +356,7 @@ class PickMontageDialog(BaseDialog):
 
     def show_mapping_page(self):
         """Expand the existing picker in-place after the BIDS summary."""
+        self._set_dialog_width_constraints(showing_summary=False)
         if self.summary_page is not None:
             self.summary_page.setVisible(False)
         if self.mapping_page is not None:
@@ -437,6 +438,7 @@ class PickMontageDialog(BaseDialog):
 
     def show_summary_page(self):
         """Return to the compact current-layout view without changing data."""
+        self._set_dialog_width_constraints(showing_summary=True)
         if self.mapping_page is not None:
             self.mapping_page.setVisible(False)
         if self.summary_page is not None:
@@ -658,6 +660,17 @@ class PickMontageDialog(BaseDialog):
             padding=8,
         )
 
+    def _set_dialog_width_constraints(self, *, showing_summary: bool) -> None:
+        """Apply page-specific width bounds without an invalid intermediate state."""
+        if showing_summary:
+            self.setMinimumWidth(540)
+            self.setMaximumWidth(560)
+            return
+        # Widen the maximum before raising the mapping page's minimum. Qt otherwise
+        # receives a transient 700px minimum together with the summary's 560px cap.
+        self.setMaximumWidth(QWIDGETSIZE_MAX)
+        self.setMinimumWidth(700)
+
     def _resize_dialog_to_content(self) -> None:
         """Fit the dialog around the mapping rows without exceeding a useful size."""
         showing_summary = (
@@ -667,8 +680,7 @@ class PickMontageDialog(BaseDialog):
         minimum_width = 540 if showing_summary else 700
         # Hidden mapping controls retain a wide size hint. Clamp only the compact
         # summary state so shown geometry, not that hidden hint, owns its width.
-        self.setMinimumWidth(minimum_width)
-        self.setMaximumWidth(560 if showing_summary else QWIDGETSIZE_MAX)
+        self._set_dialog_width_constraints(showing_summary=showing_summary)
         self.setMinimumHeight(minimum_height)
         if self.summary_page is not None:
             if showing_summary:

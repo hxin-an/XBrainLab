@@ -256,6 +256,47 @@ class TestPickMontageInit:
 
         assert bids_dialog.settings.allKeys() == before
 
+    def test_bids_page_switch_never_applies_conflicting_width_constraints(
+        self, dialog, qtbot, channel_names, monkeypatch
+    ):
+        """Changing pages must not ask a native window for min-width > max-width."""
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        changes = []
+        original_set_minimum_width = PickMontageDialog.setMinimumWidth
+        original_set_maximum_width = PickMontageDialog.setMaximumWidth
+
+        def record_minimum_width(widget, width):
+            original_set_minimum_width(widget, width)
+            changes.append((widget.minimumWidth(), widget.maximumWidth()))
+
+        def record_maximum_width(widget, width):
+            original_set_maximum_width(widget, width)
+            changes.append((widget.minimumWidth(), widget.maximumWidth()))
+
+        monkeypatch.setattr(PickMontageDialog, "setMinimumWidth", record_minimum_width)
+        monkeypatch.setattr(PickMontageDialog, "setMaximumWidth", record_maximum_width)
+        bids_dialog = PickMontageDialog(
+            parent=None,
+            channel_names=channel_names,
+            is_bids_source=True,
+            current_layout={"source": "bids", "status": "ready"},
+        )
+        qtbot.addWidget(bids_dialog)
+        bids_dialog.show()
+        qtbot.waitExposed(bids_dialog)
+
+        changes.clear()
+        bids_dialog.show_mapping_page()
+        qtbot.waitUntil(bids_dialog.mapping_page.isVisible)
+        bids_dialog.show_summary_page()
+        qtbot.waitUntil(bids_dialog.summary_page.isVisible)
+
+        assert changes
+        assert all(minimum <= maximum for minimum, maximum in changes)
+
     def test_bids_summary_has_one_primary_change_action(
         self, dialog, qtbot, channel_names
     ):
