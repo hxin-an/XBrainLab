@@ -13,8 +13,9 @@ from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 from typing import Any, TypeVar, cast
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from PIL import Image, ImageStat
 from PyQt6.QtCore import (
@@ -82,9 +83,14 @@ from XBrainLab.backend.dataset import (
     ValSplitByType,
 )
 from XBrainLab.backend.model_base.model_catalog import BraindecodeProviderStatus
+from XBrainLab.backend.study import Study
 from XBrainLab.llm.agent.assistant_activity import (
     AssistantTurnActivity,
     AssistantTurnActivityPhase,
+)
+from XBrainLab.ui.application_capabilities import (
+    application_ui_runtime,
+    training_transient_ui_port,
 )
 from XBrainLab.ui.chat.message_bubble import MessageBubble
 from XBrainLab.ui.chat.panel import ChatPanel
@@ -841,14 +847,19 @@ def _fit_training_history_capture(panel: TrainingPanel) -> None:
 
 
 def _training_history_panel() -> TrainingPanel:
-    controller = MagicMock()
-    controller.validate_ready.return_value = True
-    controller.has_datasets.return_value = True
-    controller.has_model.return_value = True
-    controller.has_training_option.return_value = True
-    controller.is_training.return_value = False
-    controller.get_trainer.return_value = None
-    panel = TrainingPanel(controller=controller, parent=None)
+    context = SimpleNamespace(study=Study())
+    runtime = application_ui_runtime(context)
+    transient_port = training_transient_ui_port(context)
+    if runtime is None or transient_port is None:
+        raise RuntimeError("Training polish capture requires explicit Study ports.")
+    panel = TrainingPanel(
+        parent=None,
+        query_port=runtime,
+        publication_port=runtime,
+        action_port=runtime,
+        transient_port=transient_port,
+    )
+    panel.destroyed.connect(lambda *_args: runtime.close())
     dataset_row = {
         "filename": "sub-01_task-mi_run-01_eeg.fif",
         "subject": "01",
