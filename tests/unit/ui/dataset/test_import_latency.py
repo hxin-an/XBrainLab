@@ -83,7 +83,7 @@ def test_dataset_panel_import_and_empty_creation_do_not_load_heavy_stacks() -> N
         from XBrainLab.ui.panels.dataset.panel import DatasetPanel
 
         app = QApplication.instance() or QApplication([])
-        panel = DatasetPanel(controller=None, parent=None)
+        panel = DatasetPanel(parent=None)
         panel.show()
         app.processEvents()
         assert not loaded_bad_modules(), ("after creation", loaded_bad_modules())

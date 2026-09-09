@@ -152,7 +152,7 @@ def rendered_dataset(qtbot, monkeypatch):
     monkeypatch.setattr(actions, "get_command_review_context", get_review_context)
     monkeypatch.setattr(actions, "execute_application_command", execute)
 
-    panel = DatasetPanel(controller=controller, parent=window)
+    panel = DatasetPanel(parent=window)
     qtbot.addWidget(panel)
     panel.update_panel()
     return panel, current, mutations

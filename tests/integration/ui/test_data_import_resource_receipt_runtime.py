@@ -90,8 +90,10 @@ class _DatasetRefreshProbe(BasePanel):
     def __init__(self, *, parent: _RuntimeHost, controller: Any) -> None:
         self.refresh_count = 0
         self.dirty_count = 0
-        super().__init__(parent=parent, controller=controller)
-        self._create_refresh_bridge(controller, "data_changed")
+        super().__init__(parent=parent)
+        # Deliberately observe the retired domain event to detect duplicate
+        # publication; the product panel consumes ApplicationViewPublication.
+        self._create_bridge(controller, "data_changed", self.update_panel)
 
     def update_panel(self, *_args: Any, **_kwargs: Any) -> None:
         self.refresh_count += 1

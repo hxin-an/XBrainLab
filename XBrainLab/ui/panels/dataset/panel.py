@@ -119,7 +119,6 @@ class DatasetPanel(BasePanel):
 
     def __init__(
         self,
-        controller=None,
         parent=None,
         *,
         publication_port: ApplicationViewPublicationPort | None = None,
@@ -127,15 +126,10 @@ class DatasetPanel(BasePanel):
         """Initialize the dataset panel.
 
         Args:
-            controller: Optional ``DatasetController``. Resolved from the
-                parent study if not provided.
             parent: Parent widget (typically the main window).
 
         """
-        # Dataset product state is publication/query-owned.  The optional
-        # controller argument remains source-compatible for callers while this
-        # panel intentionally never reads or mutates it.
-        super().__init__(parent=parent, controller=None)
+        super().__init__(parent=parent)
 
         runtime = application_ui_runtime(self)
         self._publication_port = (
@@ -736,7 +730,6 @@ class DatasetPanel(BasePanel):
         result = execute_application_command(
             self,
             QueryStateCommand(query="data_lists"),
-            refresh=False,
             expected_publication_generation=expected_publication_generation,
             runtime=cast(Any, query_runtime),
         )
@@ -870,7 +863,6 @@ class DatasetPanel(BasePanel):
         result = execute_application_command(
             self,
             QueryStateCommand(query="data_lists"),
-            refresh=False,
             expected_publication_generation=generation,
         )
         if result is None:

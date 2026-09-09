@@ -328,7 +328,7 @@ class VisualizationPanel(BasePanel):
             ],
         ] = {}
 
-        super().__init__(parent=parent, controller=None)
+        super().__init__(parent=parent)
 
         self._application_render_ledger = ApplicationPublicationRenderLedger(
             panel_name="Visualization",
@@ -2397,7 +2397,6 @@ class VisualizationPanel(BasePanel):
                 execute_application_command(
                     self,
                     SaliencyCommand(),
-                    refresh=False,
                     expected_publication_generation=(
                         publication.generation if publication is not None else None
                     ),
@@ -2586,7 +2585,6 @@ class VisualizationPanel(BasePanel):
                 ),
                 on_result=handle_result,
                 on_error=handle_error,
-                refresh=False,
                 busy_target=self,
                 runtime=cast("ApplicationUiRuntime", self._action_port),
                 expected_publication_generation=expected_publication_generation,
@@ -3845,7 +3843,6 @@ class VisualizationPanel(BasePanel):
             VisualizeCommand(view=view),
             on_result=accept_result,
             on_error=accept_error,
-            refresh=False,
             busy_target=self.tabs,
             expected_publication_generation=publication.generation,
             runtime=cast("ApplicationUiRuntime", action_port),
