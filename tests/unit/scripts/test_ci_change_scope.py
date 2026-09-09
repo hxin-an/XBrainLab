@@ -95,6 +95,19 @@ def test_ui_paths_continue_to_select_visual_regression() -> None:
     )
 
 
+def test_ui_visual_capture_helpers_select_visual_regression() -> None:
+    for path in (
+        "scripts/dev/chatpanel_guided_boundary/artifact_integrity.py",
+        "scripts/dev/human_like_walkthrough/readiness.py",
+        "scripts/dev/ui_navigation.py",
+    ):
+        assert classify_changed_paths((path,)) == ChangeScope(
+            product=True,
+            ui_visual=True,
+            agent_guidance=False,
+        )
+
+
 def test_cli_emits_github_output_for_empty_stdin(monkeypatch, capsys) -> None:
     monkeypatch.setattr("sys.stdin", StringIO(""))
 

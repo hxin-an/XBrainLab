@@ -44,7 +44,10 @@ UI_VISUAL_EXACT_PATHS = frozenset(
         "scripts/dev/capture_ui_baseline.py",
         "scripts/dev/capture_ui_polish_surfaces.py",
         "scripts/dev/app_polish_capture_contract.py",
+        "scripts/dev/chatpanel_guided_boundary/artifact_integrity.py",
+        "scripts/dev/human_like_walkthrough/readiness.py",
         "scripts/dev/run_app_polish_ui_dpi_gate.py",
+        "scripts/dev/ui_navigation.py",
         "scripts/dev/update_quality_dashboard.py",
         ".github/workflows/ci.yml",
     }
