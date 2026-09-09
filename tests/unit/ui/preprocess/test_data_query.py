@@ -137,7 +137,9 @@ def test_query_preprocess_data_rows_uses_detached_application_query() -> None:
     command = execute.call_args.args[1]
     assert isinstance(command, QueryStateCommand)
     assert command.query == "data_lists"
-    assert execute.call_args.kwargs["refresh"] is False
+    rows[0][0]["sampling_frequency"] = 64.0
+    assert current["sampling_frequency"] == 128.0
+    assert rows[1][0] is not original
 
 
 def test_query_preprocess_data_rows_failed_query_returns_empty_rows() -> None:

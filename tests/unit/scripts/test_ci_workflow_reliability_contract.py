@@ -67,6 +67,8 @@ def test_ci_poetry_bootstrap_and_venv_cache_are_lock_exact() -> None:
         "POETRY_VERSION": "2.3.4",
         "CI_PYTHON_VERSION": "3.11",
     }
+    for job in workflow["jobs"].values():
+        assert "POETRY_INSTALLER_RE_RESOLVE" not in job.get("env", {})
     steps = _steps(workflow)
     poetry_installers = [step for step in steps if step.get("name") == "Install Poetry"]
     dependency_installers = [

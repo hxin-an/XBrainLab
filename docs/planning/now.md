@@ -19,7 +19,8 @@ the final product source and explicit merge approval.
 
 ### Construction closure and retained evidence
 
-Implementation is closed for the declared families below; the integrated gates remain outstanding.
+Production construction is implemented for the families below; integration exposed additional
+test-only retirement residue, so construction closure and integrated gates remain outstanding.
 The construction commits hold the detailed history. Inventory counts are not claims that every
 tracked file was deeply read, and passing tests do not establish defect-free architecture.
 
@@ -72,6 +73,20 @@ Compare the final run's actual timing with this observation; one sample is not a
 performance guarantee. Other job environments and gates are unchanged.
 
 ### Remaining execution plan and validation
+
+Integrated run `34304758779` exposed missed test consumers: the product walkthrough's
+fake model dialog still requires the retired controller parameter, and a dependency test
+hard-codes nine Poetry jobs despite the approved eight-job environment boundary. Repair these
+tests against the current dialog/installer contract, retain their behavior assertions, and run
+the focused families before pushing the replacement head. Do not restore a production fallback
+or weaken the dependency policy. Unit UI also retained controller-slot/refresh-keyword assertions
+and two error-privacy tests based on the removed Preprocess fallback. Migrate them to current
+publication/action paths while preserving detached data, error outcome and log-redaction evidence.
+Preserve the failed run and shard artifacts as evidence.
+The same-class sweep also found inert controller setup/assertions in retained Training/Dataset/
+shared-sidebar tests and ignored controller arguments in Visualization test helpers. Close this
+finite residual caller set, merging genuinely equivalent empty-context cases while preserving
+current command/publication/confirmation and native-error evidence; no production fallback returns.
 
 1. Finish focused tooling tests, lint and review; commit the coherent tooling/doc closure.
    The native capture fixture and all final source changes must be included in the candidate.

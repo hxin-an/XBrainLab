@@ -226,22 +226,19 @@ def _prime_panel(panel: VisualizationPanel, qtbot) -> None:
     qtbot.waitUntil(lambda: panel.last_application_query is not None)
 
 
-def test_visualization_instantiates_without_controller_or_controller_lookup(
+def test_visualization_renders_from_explicit_application_ports(
     qtbot,
 ) -> None:
     port = _VisualizationApplicationPort()
-    parent = cast(Any, QWidget())
-    parent.study = MagicMock()
-    parent.study.get_controller.side_effect = AssertionError(
-        "Visualization must not resolve a broad controller."
-    )
-    qtbot.addWidget(parent)
-
-    panel = _panel(qtbot, port, parent=parent)
+    panel = _panel(qtbot, port)
     _prime_panel(panel, qtbot)
 
-    parent.study.get_controller.assert_not_called()
-    assert panel.controller is None
+    assert panel.last_application_query is not None
+    assert panel.last_application_query.success
+    assert (
+        panel.last_application_query.diagnostics["visualization_publication_generation"]
+        == port.publication.generation
+    )
 
 
 def test_visualization_renders_once_for_one_new_application_revision(qtbot) -> None:

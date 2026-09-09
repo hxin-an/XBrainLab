@@ -1255,7 +1255,7 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
             return self.preview_receipt
 
     class FakeModelDialog:
-        def __init__(self, _parent, _controller, **_dialog_context):
+        def __init__(self, _parent, **_dialog_context):
             pass
 
         def exec(self):
@@ -1265,7 +1265,7 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
             return ModelHolder(EEGNet, {}, None)
 
     class FakeTrainingSettingDialog:
-        def __init__(self, _parent, _controller, **_dialog_context):
+        def __init__(self, _parent, **_dialog_context):
             pass
 
         def exec(self):
