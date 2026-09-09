@@ -8,9 +8,11 @@ from typing import Any
 import numpy as np
 import pytest
 
+from tests.integration.data_interpretation_support import (
+    import_recording_through_interpretation,
+)
 from XBrainLab.backend.application import (
     ApplicationService,
-    LoadDataCommand,
     QueryStateCommand,
 )
 from XBrainLab.backend.controller.preprocess_controller import PreprocessController
@@ -47,7 +49,7 @@ def _assert_signal_data_shape(raw: Raw) -> Any:
 @pytest.fixture
 def study():
     service = ApplicationService()
-    load_result = service.execute(LoadDataCommand(paths=[GDF_FILE]))
+    load_result = import_recording_through_interpretation(service, GDF_FILE)
     assert load_result.ok is True
     state_result = service.execute(QueryStateCommand(query="state"))
     assert state_result.ok is True

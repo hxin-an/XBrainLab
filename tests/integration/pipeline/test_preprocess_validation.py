@@ -8,9 +8,11 @@ import mne
 import numpy as np
 import pytest
 
+from tests.integration.data_interpretation_support import (
+    import_recording_through_interpretation,
+)
 from XBrainLab.backend.application import (
     ApplicationService,
-    LoadDataCommand,
     QueryStateCommand,
 )
 from XBrainLab.backend.controller.preprocess_controller import PreprocessController
@@ -64,7 +66,7 @@ def study_with_synthetic(tmp_path):
     fif_path = str(tmp_path / "test_raw.fif")
     raw.save(fif_path, overwrite=True)
 
-    load_result = service.execute(LoadDataCommand(paths=[fif_path]))
+    load_result = import_recording_through_interpretation(service, fif_path)
     assert load_result.ok is True
     query_result = service.execute(QueryStateCommand(query="state"))
     assert query_result.ok is True

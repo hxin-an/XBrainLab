@@ -22,7 +22,6 @@ from XBrainLab.backend.application import (
     ErrorType,
     EvaluateCommand,
     ImportRecipe,
-    LoadDataCommand,
     PreprocessCommand,
     PreprocessOperation,
     PreviewInterpretationCommand,
@@ -395,7 +394,7 @@ def test_application_service_resource_block_precedes_real_label_loader_and_mutat
         "available_ram_bytes",
         lambda: 1_000_000_000,
     )
-    initial_load = service.execute(LoadDataCommand(paths=[str(eeg_path)]))
+    initial_load = _apply_synthetic_internal_event_interpretation(service, eeg_path)
     assert initial_load.ok is True
     raw_before = initial_load.state.raw
     dataset_before = initial_load.state.dataset
@@ -459,7 +458,10 @@ def test_application_service_resource_block_precedes_real_label_loader_and_mutat
     assert result.state.raw == raw_before
     assert result.state.dataset == dataset_before
     assert result.state.interpretation.has_scan_result is True
-    assert result.state.interpretation.has_applied_interpretation is False
+    assert (
+        result.state.interpretation.latest_interpretation_id
+        == initial_load.state.interpretation.latest_interpretation_id
+    )
 
 
 @pytest.mark.parametrize(
@@ -526,7 +528,7 @@ def test_application_service_load_epoch_saved_split_workflow(tmp_path):
     service = ApplicationService()
     fif_path = _write_synthetic_raw_fif(tmp_path)
 
-    load_result = service.execute(LoadDataCommand(paths=[str(fif_path)]))
+    load_result = _apply_synthetic_internal_event_interpretation(service, fif_path)
 
     assert load_result.ok is True
     assert load_result.diagnostics["success_count"] == 1
@@ -535,7 +537,6 @@ def test_application_service_load_epoch_saved_split_workflow(tmp_path):
     assert load_result.state.raw.loaded is True
     assert load_result.state.preprocessed.available is True
     assert service.get_capabilities().get(CommandName.CREATE_EPOCH).available is True
-    _apply_synthetic_internal_event_interpretation(service, fif_path)
 
     preprocess_result = service.execute(
         PreprocessCommand(
@@ -739,7 +740,6 @@ def test_montage_preserves_real_epoch_channels_and_locks_replacement_afterward(
     service = ApplicationService()
     fif_path = _write_synthetic_raw_fif(tmp_path)
 
-    assert service.execute(LoadDataCommand(paths=[str(fif_path)])).ok is True
     _apply_synthetic_internal_event_interpretation(service, fif_path)
     assert (
         service.execute(
@@ -833,7 +833,6 @@ def test_application_service_accepts_dialog_split_specification_and_updates_read
     service = ApplicationService()
     fif_path = _write_synthetic_raw_fif(tmp_path)
 
-    assert service.execute(LoadDataCommand(paths=[str(fif_path)])).ok is True
     _apply_synthetic_internal_event_interpretation(service, fif_path)
     assert (
         service.execute(
@@ -904,7 +903,6 @@ def test_dataset_replacement_rejects_invalid_split_then_can_commit(tmp_path):
     service = ApplicationService()
     fif_path = _write_synthetic_raw_fif(tmp_path)
 
-    assert service.execute(LoadDataCommand(paths=[str(fif_path)])).ok is True
     _apply_synthetic_internal_event_interpretation(service, fif_path)
     assert service.execute(
         PreprocessCommand(
@@ -1007,7 +1005,6 @@ def test_dataset_replacement_fences_plan_generation_across_real_publication(
     service = ApplicationService()
     fif_path = _write_synthetic_raw_fif(tmp_path)
 
-    assert service.execute(LoadDataCommand(paths=[str(fif_path)])).ok
     _apply_synthetic_internal_event_interpretation(service, fif_path)
     assert service.execute(
         PreprocessCommand(
@@ -1380,6 +1377,93 @@ def test_product_smoke_bids_import_apply_create_epoch(tmp_path):
     assert set(epoch_result.state.epoch.event_ids) == {"Left hand", "Right hand"}
 
 
+def test_data_summary_stays_available_during_optional_montage_commit(tmp_path):
+    """A background montage publication must not hide committed inventory."""
+    bids_root, eeg_path, events_path, _channels = _write_bids_eeg_motor_imagery_fixture(
+        tmp_path
+    )
+
+    service = ApplicationService()
+    commit_entered = Event()
+    release_commit = Event()
+    original_commit = service.bids_montage_preparation._commit_publication
+    assert original_commit is not None
+
+    def block_optional_commit(work, snapshot) -> None:
+        with service._command_lock:
+            commit_entered.set()
+            assert release_commit.wait(timeout=5.0)
+        original_commit(work, snapshot)
+
+    service.bids_montage_preparation._commit_publication = block_optional_commit
+    try:
+        for command in (
+            ScanSourceCommand(source_path=str(bids_root), source_hint="bids"),
+            PreviewInterpretationCommand(
+                choices={
+                    "selected_eeg_files": [str(eeg_path)],
+                    "label_carrier_choices": {
+                        str(events_path): {
+                            "label_field": "trial_type",
+                            "anchor": "onset",
+                            "duration_field": "duration",
+                            "time_model": "seconds",
+                            "placement_method": "interval",
+                            "value_decisions": _class_value_decisions(
+                                {"left": "Left hand", "right": "Right hand"}
+                            ),
+                        }
+                    },
+                }
+            ),
+            ValidateInterpretationCommand(),
+        ):
+            result = service.execute(command)
+            assert result.ok, result.message
+        load_result = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+        assert load_result.ok is True
+        assert commit_entered.wait(timeout=5.0)
+        committed_during_load = service.get_view_publication()
+
+        summary_result = service.execute(QueryStateCommand(query="data_summary"))
+        mutable_result = service.execute(QueryStateCommand(query="data_lists"))
+
+        assert summary_result.ok is True
+        assert summary_result.state == committed_during_load.state
+        assert "application_busy" not in summary_result.diagnostics
+        assert summary_result.diagnostics["count"] == 1
+        assert summary_result.diagnostics["files"] == [eeg_path.name]
+        assert mutable_result.failed is True
+        assert mutable_result.error_type is ErrorType.PRECONDITION
+        assert mutable_result.recoverable is True
+        assert mutable_result.diagnostics["application_busy"] is True
+
+        release_commit.set()
+        assert service.bids_montage_preparation.wait_for_idle(timeout=5.0)
+
+        final_publication = service.get_view_publication()
+        assert final_publication.usable is True
+        assert final_publication.revision > committed_during_load.revision
+        stale_result = service.execute(
+            QueryStateCommand(query="data_summary"),
+            expected_publication_generation=committed_during_load.generation,
+        )
+        current_result = service.execute(
+            QueryStateCommand(query="data_summary"),
+            expected_publication_generation=final_publication.generation,
+        )
+        assert stale_result.failed is True
+        assert stale_result.diagnostics["stale_publication"] is True
+        assert current_result.ok is True
+        assert current_result.diagnostics["count"] == 1
+        assert current_result.diagnostics["files"] == [eeg_path.name]
+    finally:
+        release_commit.set()
+        service.bids_montage_preparation.wait_for_idle(timeout=5.0)
+        service.close()
+
+
 def test_bids_montage_publication_stales_only_the_old_generation(tmp_path, monkeypatch):
     """The real advisory BIDS worker changes generation, not import identity."""
     service = ApplicationService()
@@ -1641,10 +1725,9 @@ def test_application_service_failed_command_sets_and_clears_last_error(tmp_path)
     service = ApplicationService()
     fif_path = _write_synthetic_raw_fif(tmp_path)
 
-    load_result = service.execute(LoadDataCommand(paths=[str(fif_path)]))
+    load_result = _apply_synthetic_internal_event_interpretation(service, fif_path)
     assert load_result.ok is True
     assert load_result.state.last_error is None
-    _apply_synthetic_internal_event_interpretation(service, fif_path)
 
     premature_dataset = service.execute(SaveDatasetSplitCommand())
     assert premature_dataset.failed is True

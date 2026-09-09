@@ -93,6 +93,16 @@ Keep current 18-tool membership, confirmation and visible results unchanged. Est
 focused baselines first; no new owner or protocol. Backend/hidden label-route removal
 is a subsequent slice and must preserve historical `ImportRecipe.label_imports` replay.
 
+Current bounded work — canonical import evidence migration: several real IO, preprocessing,
+training and stress fixtures still begin with `LoadDataCommand`; some immediately re-import
+through an existing canonical helper. Replace those setup calls with explicit
+scan/preview/validate/apply, reusing each workflow's reviewed choices. Raw-only IO/stress uses
+an explicit skip-label review and retains raw signal/event assertions. Keep overlap/provenance
+rejection and optional montage publication tests intact. Validate the same focused workflows
+before/after; retire no command until consumers and generic error/confirmation tests are migrated.
+No production owner is added. Historical recipe replay must be tested from saved JSON without
+depending on a command that is about to be removed.
+
 1. Complete the evidence map and set coverage/branch reporting without gaming the denominator.
 2. Migrate the highest-value UI compatibility tests to typed real-service/publication fixtures;
    delete the now-unused fallback path and its exclusive tests. Repeat through the critical

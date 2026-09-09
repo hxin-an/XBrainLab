@@ -49,12 +49,15 @@ from PyQt6.QtWidgets import QApplication, QLabel
 from scripts.dev.ui_navigation import open_workflow_panel
 from XBrainLab.backend.application import (
     ApplicationViewPublication,
-    LoadDataCommand,
+    ApplyInterpretationCommand,
+    PreviewInterpretationCommand,
     SaliencyPlanIdentity,
     SaliencyRenderData,
     SaliencyRenderPublication,
     SaliencyRenderRequest,
     SaliencyRunIdentity,
+    ScanSourceCommand,
+    ValidateInterpretationCommand,
     get_application_service,
 )
 from XBrainLab.backend.application.owned_work import (
@@ -1654,9 +1657,17 @@ def run_stress(
 
     study = Study()
     service = get_application_service(study)
-    load_result = service.execute(LoadDataCommand(paths=[str(fixture)]))
-    if load_result.failed:
-        raise RuntimeError(load_result.message)
+    for command in (
+        ScanSourceCommand(source_path=str(fixture), source_hint="file"),
+        PreviewInterpretationCommand(
+            choices={"selected_eeg_files": [str(fixture)], "skip_labels": True}
+        ),
+        ValidateInterpretationCommand(),
+        ApplyInterpretationCommand(confirmed=True),
+    ):
+        load_result = service.execute(command)
+        if load_result.failed:
+            raise RuntimeError(load_result.message)
 
     window = MainWindow(study)
     window.resize(1280, 800)

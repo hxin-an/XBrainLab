@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import shutil
 from pathlib import Path
@@ -94,6 +95,71 @@ def _loaded_target(service: ApplicationService, index: int = 0):
 def _event_signature(target) -> tuple[np.ndarray, dict[str, int], bool]:
     events, event_id = target.get_event_list()
     return events.copy(), dict(event_id), bool(target.is_labels_imported())
+
+
+def test_historical_post_load_recipe_replays_without_legacy_commands(tmp_path):
+    """A saved label-import audit remains readable through canonical review/apply."""
+    recipe_path = tmp_path / "historical-label-recipe.json"
+    # Persisted pre-migration shape; do not manufacture it by executing the API
+    # being retired, or changes to that API would silently alter this fixture.
+    recipe_path.write_text(
+        json.dumps(
+            {
+                "recipe_id": "historical-label-recipe",
+                "interpretation_id": "historical-import",
+                "source_path": str(GDF_PATH),
+                "source_kind": "file",
+                "selected_eeg_files": [str(GDF_PATH)],
+                "label_sources": [str(MAT_PATH)],
+                "label_carriers": [str(MAT_PATH)],
+                "label_carrier": "external_files",
+                "skip_labels": False,
+                "class_map": {str(key): value for key, value in CLASS_MAP.items()},
+                "label_imports": [
+                    {
+                        "mode": "sequence",
+                        "label_carriers": [str(MAT_PATH)],
+                        "label_configs": {str(MAT_PATH): {"label_field": "classlabel"}},
+                        "target_files": [str(GDF_PATH)],
+                        "file_mapping": {str(GDF_PATH): str(MAT_PATH)},
+                        "selected_event_names": GRAZ_TARGET_EVENTS,
+                        "class_map": {
+                            str(key): value for key, value in CLASS_MAP.items()
+                        },
+                        "success_count": 1,
+                    }
+                ],
+                "recipe_trace": ["label_import:sequence:1"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    service = ApplicationService()
+    try:
+        reloaded = service.execute(
+            ReloadInterpretationRecipeCommand(recipe_path=str(recipe_path))
+        )
+        assert reloaded.ok, reloaded.message
+        assert reloaded.state.raw.count == 0
+        validated = service.execute(ValidateInterpretationCommand())
+        assert validated.ok, validated.message
+        applied = service.execute(ApplyInterpretationCommand(confirmed=True))
+        assert applied.ok, applied.message
+        events, event_id = _loaded_target(service).get_event_list()
+        assert event_id == EVENT_ID
+        assert events.shape == (288, 3)
+        assert {
+            name: int((events[:, -1] == code).sum()) for name, code in event_id.items()
+        } == {"left": 72, "right": 72, "feet": 72, "tongue": 72}
+        saved = service.execute(
+            SaveInterpretationRecipeCommand(recipe_path=str(tmp_path / "replayed.json"))
+        )
+        assert saved.ok, saved.message
+        assert saved.diagnostics["recipe"]["class_map"] == {
+            str(key): value for key, value in CLASS_MAP.items()
+        }
+    finally:
+        service.close()
 
 
 def test_real_a01t_preview_commit_updates_exact_state_recipe_and_consumes_once(
