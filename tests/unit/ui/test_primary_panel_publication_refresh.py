@@ -41,16 +41,6 @@ class _PublicationPort(Observable):
         return self.publication
 
 
-def _training_controller() -> Observable:
-    controller = Observable()
-    cast(Any, controller).validate_ready = MagicMock(return_value=False)
-    cast(Any, controller).has_datasets = MagicMock(return_value=False)
-    cast(Any, controller).has_model = MagicMock(return_value=False)
-    cast(Any, controller).has_training_option = MagicMock(return_value=False)
-    cast(Any, controller).get_formatted_history = MagicMock(return_value=[])
-    return controller
-
-
 _PRIMARY_PANEL_KINDS = ("dataset", "preprocess", "training")
 
 

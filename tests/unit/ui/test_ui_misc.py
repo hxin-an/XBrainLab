@@ -165,9 +165,7 @@ class TestDatasetActionHandler:
         return h
 
     @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
-    def test_import_data_locked(self, mock_mb, handler):
-        handler.panel.controller = MagicMock()
-        handler.panel.controller.is_locked.return_value = True
+    def test_import_data_without_product_review_is_blocked(self, mock_mb, handler):
         outcome = handler.import_data()
 
         assert outcome.status is InteractionStatus.BLOCKED
@@ -270,23 +268,20 @@ class TestDatasetActionHandler:
 
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
-    def test_import_data_without_command_service_does_not_import_via_controller(
+    def test_import_data_without_command_service_is_blocked(
         self,
         mock_mb,
         mock_fd,
         handler,
     ):
-        handler.panel.controller = MagicMock()
-        handler.panel.controller.is_locked.return_value = False
         mock_fd.getOpenFileNames.return_value = (["/a.set"], "")
         handler.import_data()
-        handler.panel.controller.import_files.assert_not_called()
         mock_mb.assert_called_once()
         assert mock_mb.call_args.args[1] == "Interpretation Blocked"
 
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
-    def test_import_data_refuses_real_study_direct_load_fallback(
+    def test_import_data_real_study_blocks_without_interpretation_service(
         self,
         mock_mb,
         mock_fd,
@@ -295,8 +290,6 @@ class TestDatasetActionHandler:
         from XBrainLab.backend.study import Study
 
         handler.panel.study = Study()
-        handler.panel.controller = MagicMock()
-        handler.panel.controller.is_locked.return_value = False
         mock_fd.getOpenFileNames.return_value = (["/a.set"], "")
 
         with (
@@ -318,7 +311,6 @@ class TestDatasetActionHandler:
             handler.import_data()
 
         mock_execute.assert_not_called()
-        handler.panel.controller.import_files.assert_not_called()
         mock_mb.assert_called_once()
         assert mock_mb.call_args.args[1] == "Interpretation Blocked"
         assert mock_mb.call_args.args[2] == (
@@ -337,8 +329,6 @@ class TestDatasetActionHandler:
         from XBrainLab.backend.application import CommandName
         from XBrainLab.backend.application.capabilities import CommandCapability
 
-        handler.panel.controller = MagicMock()
-        handler.panel.controller.is_locked.return_value = False
         mock_fd.getOpenFileNames.return_value = (["/a.set"], "")
 
         with (
@@ -361,7 +351,6 @@ class TestDatasetActionHandler:
             handler.import_data()
 
         mock_execute.assert_not_called()
-        handler.panel.controller.import_files.assert_not_called()
         mock_mb.assert_called_once_with(
             handler.panel,
             "Interpretation unavailable",
@@ -384,8 +373,6 @@ class TestDatasetActionHandler:
         main_window.study = Study()
         handler.panel.main_window = main_window
         handler.panel.study = main_window.study
-        handler.panel.controller = MagicMock()
-        handler.panel.controller.is_locked.return_value = False
         mock_fd.getOpenFileNames.return_value = (["/tmp/sub-01_task-mi.fif"], "")
 
         with (
@@ -411,15 +398,13 @@ class TestDatasetActionHandler:
         assert mock_mb.call_args.args[1] == "Interpretation Blocked"
         assert "could not safely complete" in mock_mb.call_args.args[2]
 
-    def test_import_data_prefers_backend_scan_capability_over_stale_controller(
+    def test_import_data_uses_interpretation_review_result(
         self,
         handler,
     ):
         from XBrainLab.backend.study import Study
 
         handler.panel.study = Study()
-        handler.panel.controller = MagicMock()
-        handler.panel.controller.is_locked.return_value = True
 
         with (
             patch("XBrainLab.ui.panels.dataset.actions.QFileDialog") as mock_fd,
@@ -453,10 +438,6 @@ class TestDatasetActionHandler:
         from XBrainLab.backend.study import Study
 
         handler.panel.study = Study()
-        handler.panel.controller = MagicMock()
-        handler.panel.controller.is_locked.side_effect = AssertionError(
-            "stale lock state should not be read",
-        )
 
         with (
             patch(
@@ -469,7 +450,6 @@ class TestDatasetActionHandler:
             mock_fd.getOpenFileNames.return_value = ([], "")
             outcome = handler.import_data()
 
-        handler.panel.controller.is_locked.assert_not_called()
         mock_fd.getOpenFileNames.assert_not_called()
         assert outcome.status is InteractionStatus.BLOCKED
         mock_mb.assert_called_once_with(
@@ -478,15 +458,13 @@ class TestDatasetActionHandler:
             "Data interpretation availability is unavailable right now.",
         )
 
-    def test_import_folder_prefers_backend_scan_capability_over_stale_controller(
+    def test_import_folder_uses_interpretation_review_result(
         self,
         handler,
     ):
         from XBrainLab.backend.study import Study
 
         handler.panel.study = Study()
-        handler.panel.controller = MagicMock()
-        handler.panel.controller.is_locked.return_value = True
 
         with (
             patch("XBrainLab.ui.panels.dataset.actions.QFileDialog") as mock_fd,
@@ -513,9 +491,6 @@ class TestDatasetActionHandler:
         handler,
     ):
         from XBrainLab.backend.application import CommandName
-
-        handler.panel.controller = MagicMock()
-        handler.panel.controller.is_locked.return_value = False
 
         def fake_capability(_panel, command_name):
             if command_name == CommandName.RELOAD_INTERPRETATION_RECIPE:
@@ -701,8 +676,6 @@ class TestDatasetActionHandler:
             ReviewInterpretationCommand,
         )
 
-        handler.panel.controller = MagicMock()
-        handler.panel.controller.is_locked.return_value = False
         mock_fd.getOpenFileNames.return_value = (["/tmp/no-labels.txt"], "")
         mock_preview_dialog.return_value.exec.return_value = True
         mock_preview_dialog.return_value.get_result.return_value = {
@@ -738,7 +711,6 @@ class TestDatasetActionHandler:
 
         assert outcome.status is InteractionStatus.BLOCKED
         mock_error.assert_not_called()
-        handler.panel.controller.import_files.assert_not_called()
 
     def test_interpretation_source_avoids_common_root_scan(self, handler):
         source_path, choices = (
@@ -764,21 +736,15 @@ class TestDatasetActionHandler:
         mock_mb.assert_called_once()
 
     @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
-    def test_open_smart_parser_locked(self, mock_mb, handler):
-        handler.panel.controller = MagicMock()
-        handler.panel.controller.is_locked.return_value = True
+    def test_open_smart_parser_without_product_review_is_blocked(
+        self,
+        mock_mb,
+        handler,
+    ):
         handler.open_smart_parser()
         mock_mb.assert_called_once()
 
-    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
-    def test_open_smart_parser_no_data(self, mock_mb, handler):
-        handler.panel.controller = MagicMock()
-        handler.panel.controller.is_locked.return_value = False
-        handler.panel.controller.has_data.return_value = False
-        handler.open_smart_parser()
-        mock_mb.assert_called_once()
-
-    def test_remove_files_refuses_real_study_controller_fallback(self, handler):
+    def test_remove_files_real_study_requires_fresh_review(self, handler):
         from XBrainLab.backend.study import Study
         from XBrainLab.ui.panels.dataset.actions import (
             DatasetTableRowIdentity,
@@ -788,7 +754,6 @@ class TestDatasetActionHandler:
         study = Study()
         study.data_manager.loaded_data_list = [MagicMock()]
         handler.panel.study = study
-        handler.panel.controller = MagicMock()
 
         with (
             patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_mb,
@@ -813,7 +778,6 @@ class TestDatasetActionHandler:
                 )
             )
 
-        handler.panel.controller.remove_files.assert_not_called()
         mock_mb.assert_called_once()
         assert mock_mb.call_args.args[1] == "Review File Removal Again"
         assert "Refresh Dataset" in mock_mb.call_args.args[2]
@@ -826,7 +790,6 @@ class TestDatasetActionHandler:
         )
 
         handler.panel.study = Study()
-        handler.panel.controller = MagicMock()
 
         with (
             patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_mb,
@@ -847,7 +810,6 @@ class TestDatasetActionHandler:
         mock_confirmation.assert_not_called()
         mock_mb.assert_called_once()
         assert "Load raw data before removing files." in mock_mb.call_args.args[2]
-        handler.panel.controller.remove_files.assert_not_called()
 
     def test_batch_set_uses_backend_capability_before_prompt(self, handler):
         from XBrainLab.backend.study import Study
@@ -857,7 +819,6 @@ class TestDatasetActionHandler:
         )
 
         handler.panel.study = Study()
-        handler.panel.controller = MagicMock()
 
         with (
             patch("XBrainLab.ui.panels.dataset.actions.QInputDialog") as mock_input,
@@ -874,9 +835,8 @@ class TestDatasetActionHandler:
         mock_input.getText.assert_not_called()
         mock_mb.assert_called_once()
         assert "Load raw data before updating metadata." in (mock_mb.call_args.args[2])
-        handler.panel.controller.update_metadata.assert_not_called()
 
-    def test_batch_set_refuses_real_study_controller_fallback(self, handler):
+    def test_batch_set_real_study_requires_fresh_review(self, handler):
         from XBrainLab.backend.study import Study
         from XBrainLab.ui.panels.dataset.actions import (
             DatasetTableRowIdentity,
@@ -886,7 +846,6 @@ class TestDatasetActionHandler:
         study = Study()
         study.data_manager.loaded_data_list = [MagicMock()]
         handler.panel.study = study
-        handler.panel.controller = MagicMock()
 
         with (
             patch("XBrainLab.ui.panels.dataset.actions.QInputDialog") as mock_input,
@@ -909,33 +868,14 @@ class TestDatasetActionHandler:
                 "Session",
             )
 
-        handler.panel.controller.update_metadata.assert_not_called()
         mock_mb.assert_called_once()
         assert mock_mb.call_args.args[1] == "Review Metadata Again"
         assert "Refresh Dataset" in mock_mb.call_args.args[2]
-
-    def test_open_smart_parser_success(self, handler):
-        handler.panel.controller.is_locked.return_value = False
-        handler.panel.controller.has_data.return_value = True
-        handler.panel.controller.get_filenames.return_value = ["file1.set"]
-        with patch("XBrainLab.ui.panels.dataset.actions.SmartParserDialog") as MockDlg:
-            from PyQt6.QtWidgets import QDialog
-
-            MockDlg.return_value.exec.return_value = QDialog.DialogCode.Accepted
-            MockDlg.return_value.get_result.return_value = {"rule": "test"}
-            with patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_mb:
-                handler.open_smart_parser()
-                handler.panel.controller.apply_smart_parse.assert_not_called()
-                mock_mb.assert_called_once()
-                assert mock_mb.call_args.args[1] == "Smart Parse Blocked"
 
     def test_open_smart_parser_uses_backend_capability(self, handler):
         from XBrainLab.backend.study import Study
 
         handler.panel.study = Study()
-        handler.panel.controller.is_locked.return_value = False
-        handler.panel.controller.has_data.return_value = True
-        handler.panel.controller.get_filenames.return_value = ["file1.set"]
 
         with (
             patch(
@@ -951,7 +891,7 @@ class TestDatasetActionHandler:
             "Load raw data before applying smart parse." in (mock_mb.call_args.args[2])
         )
 
-    def test_open_smart_parser_prefers_backend_capability_over_stale_controller(
+    def test_open_smart_parser_uses_published_rows(
         self,
         handler,
     ):
@@ -963,9 +903,6 @@ class TestDatasetActionHandler:
         raw.get_filepath.return_value = "/tmp/sub-01_task-mi_raw.fif"
         study.data_manager.loaded_data_list = [raw]
         handler.panel.study = study
-        handler.panel.controller.is_locked.return_value = True
-        handler.panel.controller.has_data.return_value = False
-        handler.panel.controller.get_filenames.return_value = ["sub-01_task-mi_raw.fif"]
 
         query_result = _command_result()
         query_result.diagnostics = {
@@ -994,16 +931,14 @@ class TestDatasetActionHandler:
             }
             handler.open_smart_parser()
 
-        handler.panel.controller.get_filenames.assert_not_called()
         mock_dialog.assert_called_once_with(
             ["/tmp/sub-01_task-mi_raw.fif"],
             handler.panel,
         )
         assert mock_execute.call_count == 2
-        handler.panel.controller.apply_smart_parse.assert_not_called()
         mock_mb.assert_not_called()
 
-    def test_open_smart_parser_refuses_real_study_controller_fallback(
+    def test_open_smart_parser_real_study_blocks_without_command_result(
         self,
         handler,
     ):
@@ -1015,7 +950,6 @@ class TestDatasetActionHandler:
         raw.get_filepath.return_value = "/tmp/sub-01_task-mi_raw.fif"
         study.data_manager.loaded_data_list = [raw]
         handler.panel.study = study
-        handler.panel.controller = MagicMock()
 
         query_result = _command_result()
         query_result.diagnostics = {
@@ -1043,25 +977,17 @@ class TestDatasetActionHandler:
             }
             handler.open_smart_parser()
 
-        handler.panel.controller.apply_smart_parse.assert_not_called()
         mock_mb.assert_called_once()
         assert mock_mb.call_args.args[1] == "Smart Parse Blocked"
         assert "could not safely complete" in mock_mb.call_args.args[2]
 
-    def test_open_smart_parser_refuses_real_study_no_capability_preflight_fallback(
+    def test_open_smart_parser_blocks_when_capability_is_unavailable(
         self,
         handler,
     ):
         from XBrainLab.backend.study import Study
 
         handler.panel.study = Study()
-        handler.panel.controller = MagicMock()
-        handler.panel.controller.is_locked.side_effect = AssertionError(
-            "stale lock state should not be read",
-        )
-        handler.panel.controller.has_data.side_effect = AssertionError(
-            "stale loaded-data state should not be read",
-        )
 
         with (
             patch(
@@ -1075,8 +1001,6 @@ class TestDatasetActionHandler:
         ):
             handler.open_smart_parser()
 
-        handler.panel.controller.is_locked.assert_not_called()
-        handler.panel.controller.has_data.assert_not_called()
         mock_dialog.assert_not_called()
         mock_mb.assert_called_once()
         assert mock_mb.call_args.args[1] == "Smart Parse Blocked"

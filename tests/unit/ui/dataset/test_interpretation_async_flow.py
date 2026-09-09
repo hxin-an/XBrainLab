@@ -2940,7 +2940,6 @@ def test_smart_parse_binds_the_generation_reviewed_before_the_dialog(
     monkeypatch,
 ) -> None:
     panel = MagicMock()
-    panel.controller = None
     handler = DatasetActionHandler(panel)
     capability = CommandCapability(
         command_name="apply_smart_parse",
@@ -2994,7 +2993,6 @@ def test_smart_parse_reads_full_paths_from_generation_bound_data_lists(
     monkeypatch,
 ) -> None:
     panel = MagicMock()
-    panel.controller = None
     handler = DatasetActionHandler(panel)
     observed_commands: list[tuple[object, int | None]] = []
 
@@ -3067,7 +3065,6 @@ def test_smart_parse_distinguishes_same_basename_across_directories_through_appl
     study = MetadataStudy([MetadataRow(path) for path in paths])
     state = DatasetStateService(study)
     panel = MagicMock()
-    panel.controller = None
     handler = DatasetActionHandler(panel)
     capability = CommandCapability(
         command_name="apply_smart_parse",
@@ -4581,7 +4578,6 @@ def _real_study_dataset_handler(qtbot) -> DatasetActionHandler:
     panel = QWidget()
     qtbot.addWidget(panel)
     cast(Any, panel).study = Study()
-    cast(Any, panel).controller = MagicMock()
     cast(Any, panel).set_busy = lambda _busy: None
     return DatasetActionHandler(panel)
 

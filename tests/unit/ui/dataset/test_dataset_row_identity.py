@@ -122,9 +122,6 @@ def rendered_dataset(qtbot, monkeypatch):
     window = QMainWindow()
     qtbot.addWidget(window)
     cast(Any, window).study = MagicMock()
-    controller = MagicMock()
-    controller.is_locked.return_value = False
-    controller.has_data.return_value = True
     first = _loaded_data("/data/sub-01_task-mi_run-01_raw.fif")
     second = _loaded_data("/data/sub-01_task-mi_run-02_raw.fif")
     current = {"generation": 11, "data": [first, second]}
@@ -206,12 +203,11 @@ def test_inline_metadata_edit_rejects_replaced_rendered_row(
     assert warnings[0][1] == "Refresh Dataset and Edit Again"
 
 
-def test_batch_metadata_update_uses_product_runtime_without_controller(
+def test_batch_metadata_update_uses_product_runtime(
     rendered_dataset,
     monkeypatch,
 ) -> None:
     panel, _current, mutations = rendered_dataset
-    panel.controller = None
     selection = panel.capture_table_selection([0])
     assert selection is not None
     monkeypatch.setattr(
@@ -297,7 +293,6 @@ def test_table_mutations_fail_before_prompt_without_product_review(
     panel = QMainWindow()
     qtbot.addWidget(panel)
     cast(Any, panel).study = Study()
-    cast(Any, panel).controller = MagicMock()
     handler = actions.DatasetActionHandler(panel)
     selection = actions.DatasetTableSelection(
         publication_generation=17,

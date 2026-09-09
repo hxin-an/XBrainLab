@@ -56,7 +56,6 @@ from XBrainLab.ui.styles.stylesheets import Stylesheets
 @pytest.fixture
 def sidebar(qtbot):
     panel_mock = MagicMock()
-    panel_mock.controller = MagicMock()
     # Mock main_window on panel for AggregateInfoPanel access
     main_window = QMainWindow()
     study = Study()
@@ -82,10 +81,6 @@ def real_study_sidebar(qtbot):
     qtbot.addWidget(main_window)
 
     panel = MagicMock()
-    panel.controller = MagicMock()
-    panel.controller.get_resource_preflight_context.side_effect = AssertionError(
-        "real product resource checks must not read the injected controller",
-    )
     panel.main_window = main_window
     runtime = application_ui_runtime(main_window)
     assert runtime is not None
@@ -273,7 +268,6 @@ def test_training_resource_preview_is_single_flight_and_delivers_only_latest(
 
 def test_panel_close_abandons_preview_without_waiting_or_late_delivery(qtbot):
     panel = QMainWindow()
-    cast(Any, panel).controller = MagicMock()
     cast(Any, panel).main_window = None
     qtbot.addWidget(panel)
 
@@ -548,11 +542,9 @@ def test_execution_section_does_not_show_persistent_resource_status(sidebar):
 
 
 def test_on_start_clicked(sidebar):
-    # A missing typed review context must fail closed without consulting the
-    # legacy controller retained by the panel mock.
+    # A missing typed review context must fail closed.
     with patch("XBrainLab.ui.panels.training.sidebar.show_warning") as warning:
         sidebar.start_training_ui_action()
-    sidebar.panel.controller.start_training.assert_not_called()
     warning.assert_called_once()
     assert warning.call_args.args[1] == "Training Not Ready"
 
@@ -602,7 +594,7 @@ def _async_dispatch_recorder():
 
 
 def _enabled_training_review(generation: int = 1) -> CommandReviewContext:
-    """A typed review boundary for action tests, not controller truth."""
+    """A typed review boundary for action tests."""
     return CommandReviewContext(
         capability=CommandCapability(
             command_name=CommandName.TRAIN.value, enabled=True
@@ -1339,7 +1331,6 @@ def test_start_training_async_failure_uses_existing_error_surface(sidebar):
 def test_stop_training(sidebar):
     with patch("XBrainLab.ui.panels.training.sidebar.show_warning") as warning:
         sidebar.stop_training()
-    sidebar.panel.controller.stop_training.assert_not_called()
     warning.assert_called_once()
     assert warning.call_args.args[1] == "Stop Training Blocked"
 
@@ -1559,18 +1550,6 @@ def test_training_start_availability_uses_one_application_publication(
         ),
         effective_capabilities={CommandName.TRAIN: capability},
     )
-    for method_name in (
-        "validate_ready",
-        "has_datasets",
-        "has_model",
-        "has_training_option",
-    ):
-        controller_method = getattr(sidebar.panel.controller, method_name)
-        controller_method.reset_mock()
-        controller_method.side_effect = AssertionError(
-            f"publication readiness must not call controller.{method_name}",
-        )
-
     with (
         patch(
             "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
@@ -1589,13 +1568,6 @@ def test_training_start_availability_uses_one_application_publication(
     expected_tooltip = "Start Training" if capability_enabled else capability_reason
     assert expected_tooltip in sidebar.btn_start.toolTip()
     assert sidebar.findChild(QGroupBox, "TrainingReadiness") is None
-    for method_name in (
-        "validate_ready",
-        "has_datasets",
-        "has_model",
-        "has_training_option",
-    ):
-        getattr(sidebar.panel.controller, method_name).assert_not_called()
 
 
 def test_training_start_fails_closed_when_product_publication_is_unavailable(
@@ -1672,17 +1644,6 @@ def test_product_action_result_waits_for_the_next_publication(
     real_study_sidebar,
 ):
     sidebar, *_ = real_study_sidebar
-    controller = sidebar.panel.controller
-    for method_name in (
-        "validate_ready",
-        "has_datasets",
-        "has_model",
-        "has_training_option",
-    ):
-        getattr(controller, method_name).side_effect = AssertionError(
-            f"product refresh must not call controller.{method_name}",
-        )
-
     blocked_capability = CommandCapability(
         command_name="train",
         enabled=False,
@@ -1740,7 +1701,7 @@ def test_product_action_result_waits_for_the_next_publication(
     assert sidebar.btn_start.toolTip() == "Start Training"
 
 
-def test_check_ready_to_train_never_reads_controller_when_product_truth_is_missing(
+def test_check_ready_to_train_fails_closed_when_product_truth_is_missing(
     sidebar,
 ):
     publication = SimpleNamespace(usable=False, state=None)
@@ -2353,5 +2314,5 @@ def test_on_training_stopped(sidebar):
     # but we can check if it's enabled and set to primary/success style logic if verified.
     assert sidebar.btn_start.text() == "Start Training"
     # Stop settles the stop control; readiness remains owned by the next
-    # committed publication rather than a stale controller snapshot.
+    # committed publication rather than a stale local snapshot.
     assert sidebar.btn_start.isEnabled() is False
