@@ -32,9 +32,11 @@ def _powershell() -> str | None:
     ],
 )
 def test_compaction_script_safety_scenarios(tmp_path: Path, scenario: str) -> None:
+    assert os.name == "nt", "This gate requires native Windows"
     powershell = _powershell()
-    if os.name != "nt" or powershell is None:
-        pytest.skip("Windows PowerShell is required for this native script harness")
+    assert powershell is not None, (
+        "Windows PowerShell is required for this native harness"
+    )
 
     completed = subprocess.run(  # noqa: S603 - native harness path is fixed by this test.
         [

@@ -9,6 +9,14 @@ development/test environment, accepted-test checkpoint cleanup, and an offline W
 for **in-place** WSL compaction. Moving/reinstalling/unregistering WSL is explicitly out of scope.
 No product UI, model, Assistant contract or EEG behavior change is authorized/needed.
 
+Latest user scope: no retained old XBrainLab weights/environments are requested; keep a working
+Windows GUI/Assistant installation and its required Granite/embedding assets. Inventory and remove
+confirmed unused project environments and generated training/test weights, preserving original data,
+unrelated research environments, source/settings and diagnostic evidence. Whether to retire the last
+WSL product environment as well is awaiting clarification; it currently owns Git hooks and tests and
+must not be removed before that dependency is resolved. Record measured recovery, not file counts
+as a substitute for free-space measurements.
+
 Measured baseline: C: free about 48.5 GiB; D: free about 261.7 GiB. Ubuntu-24.04 VHDX is about
 200 GiB while Linux reports about 77 GiB used. Two old Windows PR environments are about 4.1 GiB
 each; two large WSL environments total about 12.8 GiB, with the old one still owning Git hooks.
@@ -66,3 +74,13 @@ passed on that disposable image. Registered WSL disks remain untouched.
 
 Next: finish bounded native/CI fixes and same-head checks, redeploy identical scripts, then hand off
 the offline step. Actual compaction and post-restart data verification remain user-assisted.
+The latest Linux scripts shard passed 1,300 tests but correctly rejected nine skipped Windows-only
+PowerShell tests. These now live outside the Linux unit suite and run in a mandatory Windows platform
+shard; full-platform and platform-CI commands share host selection. Manual-environment contracts also
+run in the cross-platform launcher shard. All other checks on that prior head passed. Focused routing
+and manual-environment tests pass (85 cases); same-head CI remains required after this correction.
+
+Additional user-authorized cleanup removed 70 unused WSL environment directories (about 1.11 GiB,
+mostly incomplete shells) and two Windows Poetry environments (C free +2.61 GiB). The Windows primary
+environment and hook-owning WSL environment remain usable; installer-cache and identified historical
+checkpoint cleanup is in progress. No original datasets or required Assistant models are targeted.

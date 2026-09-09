@@ -376,6 +376,7 @@ def test_platform_gate_runs_only_explicit_cross_platform_regressions(
         "run_pytest",
         lambda args: calls.append(tuple(args)) or 0,
     )
+    monkeypatch.setattr(run_tests.sys, "platform", "win32")
 
     run_tests.platform()
 
@@ -430,6 +431,39 @@ def test_platform_core_contracts_include_parsed_cache_contract() -> None:
         "tests/unit/backend/application/test_data_interpretation_parsed_cache.py"
         in (core_shards["portability-contracts"])
     )
+
+
+@pytest.mark.parametrize("host", ["win32", "linux", "darwin"])
+@pytest.mark.parametrize("full_platform", [False, True])
+def test_windows_maintenance_contracts_are_windows_only(
+    monkeypatch, host, full_platform
+) -> None:
+    calls: list[tuple[str, ...]] = []
+    monkeypatch.setattr(run_tests, "configure_headless_ui_env", lambda: None)
+    monkeypatch.setattr(
+        run_tests, "run_pytest", lambda args: calls.append(tuple(args)) or 0
+    )
+    monkeypatch.setattr(run_tests.sys, "platform", host)
+    if full_platform:
+        run_tests.platform()
+    else:
+        run_tests.run_platform_ci_group("platform-product-lifecycle")
+    assert any(
+        "tests/platform/windows/test_compact_wsl.py" in call for call in calls
+    ) is (host == "win32")
+    assert any(
+        "tests/unit/scripts/test_manual_environment.py" in call for call in calls
+    )
+
+
+def test_linux_script_shard_excludes_windows_compaction_contract(monkeypatch) -> None:
+    calls: list[tuple[str, ...]] = []
+    monkeypatch.setattr(run_tests, "configure_headless_ui_env", lambda: None)
+    monkeypatch.setattr(
+        run_tests, "run_pytest", lambda args: calls.append(tuple(args)) or 0
+    )
+    run_tests.run_linux_ci_group("linux-unit-scripts")
+    assert calls == [("--capture=sys", "tests/unit/scripts", "-q")]
 
 
 def test_platform_ci_groups_partition_focused_platform_gate_exactly_once() -> None:

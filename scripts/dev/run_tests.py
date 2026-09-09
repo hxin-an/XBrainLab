@@ -136,6 +136,7 @@ PLATFORM_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "tests/unit/scripts/test_bounded_qt_shutdown.py",
             "tests/unit/scripts/test_capture_windows_launcher_walkthrough.py",
             "tests/unit/scripts/test_handoff_evidence_recorder.py",
+            "tests/unit/scripts/test_manual_environment.py",
             "tests/unit/scripts/test_native_process_safety.py",
             "tests/unit/scripts/test_owned_process_group.py",
             "tests/unit/scripts/test_probe_pyvistaqt_runtime.py",
@@ -146,6 +147,10 @@ PLATFORM_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "tests/unit/scripts/test_test_runtime_paths.py",
             "tests/unit/scripts/test_wsl_launcher_privacy.py",
         ),
+    ),
+    (
+        "windows-maintenance-contracts",
+        ("tests/platform/windows/test_compact_wsl.py",),
     ),
     (
         "qt-layout-contracts",
@@ -509,7 +514,7 @@ def platform(attestation_sink: list[dict[str, Any]] | None = None) -> None:
     configure_headless_ui_env()
     _run_shards(
         gate_name="Platform",
-        shards=PLATFORM_SHARDS,
+        shards=_platform_shards_for_host(PLATFORM_SHARDS),
         attestation_sink=attestation_sink,
     )
 
@@ -542,11 +547,23 @@ def run_platform_ci_group(
         shards = groups[command]
     except KeyError as error:
         raise ValueError(f"Unknown platform CI command: {command}") from error
+    shards = _platform_shards_for_host(shards)
     configure_headless_ui_env()
     _run_shards(
         gate_name=f"Platform CI {command}",
         shards=shards,
         attestation_sink=attestation_sink,
+    )
+
+
+def _platform_shards_for_host(
+    shards: Sequence[tuple[str, tuple[str, ...]]],
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """Keep Windows-native contracts out of non-Windows pytest collection."""
+    return tuple(
+        shard
+        for shard in shards
+        if sys.platform == "win32" or shard[0] != "windows-maintenance-contracts"
     )
 
 
