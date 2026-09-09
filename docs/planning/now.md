@@ -112,15 +112,16 @@ Cancel removed its binding without releasing Computing; navigation during comput
 an old-result render that stole the compute Cancel. User cancellation now uses the normal render
 terminal path; internal tab-change/close cancellation retains the compute fence, and active compute
 defers old-result rendering until its terminal publication. No evaluator, algorithm, sample count,
-backend API or owner was added/changed. The production delta is two UI files, about 25 net lines.
+backend API or owner was added/changed. The production delta is two UI files, 27 net lines.
 
-Focused evidence: 271 adjacent Qt/view/lifecycle tests pass; four real GUI/Assistant Map/Topo
+Focused evidence: 283 adjacent Qt/view/lifecycle tests pass; four real GUI/Assistant Map/Topo
 journeys pass default SmoothGrad, heartbeat/cross-panel navigation, compute cancellation with no
 result replacement, native-render cancellation with no late commit, and retry. Native Windows
 Fusion journeys pass both default SmoothGrad and SmoothGrad Squared, including 3D compute/render
 cancel-retry and non-empty OpenGL framebuffers; ordinary QWidget captures alone were insufficient
 for the VTK child, so native screen/framebuffer captures are checked. Independent lifecycle review
-has no remaining blocker. Next: final static/same-head CI and one isolated native Windows handoff;
+has no remaining blocker. Locked typing reports zero diagnostics, and changed-file Ruff passes.
+Next: final same-head CI and one isolated native Windows handoff;
 prior 34404b7a CI/manual delivery does not certify this changed source.
 
 Filter, Montage and the reproduced Saliency first-entry repair are implemented and independently

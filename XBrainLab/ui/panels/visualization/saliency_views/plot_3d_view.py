@@ -228,7 +228,8 @@ class Saliency3DPlotWidget(QWidget):
         self._consumed_worker_callbacks: set[int] = set()
         self._engine_request_id = 0
         self._render_commit_guard: Callable[[int, int], bool] | None = None
-        self._cached_engine_ready.connect(
+        # PyQt's bundled signal stub omits connect's connection-type argument.
+        cast(Any, self._cached_engine_ready).connect(
             self._show_prepared_engine, Qt.ConnectionType.QueuedConnection
         )
         self._current_publication_generation: int | None = None

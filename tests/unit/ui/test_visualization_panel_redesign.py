@@ -2844,10 +2844,12 @@ def test_scheduled_saliency_handoff_waits_for_matching_terminal_publication(qtbo
         ("user_cancel", False),
     ],
 )
+@pytest.mark.parametrize("view_name", ["tab_map", "tab_spectro", "tab_topo", "tab_3d"])
 def test_native_render_terminal_does_not_reclassify_successful_compute(
-    qtbot, phase, new_compute
+    qtbot, phase, new_compute, view_name
 ):
     panel = _make_panel(qtbot)
+    view = getattr(panel, view_name)
     _publish_panel_state(
         panel,
         _application_query_with_saliency_state(
@@ -2872,10 +2874,10 @@ def test_native_render_terminal_does_not_reclassify_successful_compute(
         normalize=False,
         view="channel_time",
     )
-    panel.tab_map.active_render_generation = 1
-    panel.tab_map.active_render_publication_generation = publication.generation
+    view.active_render_generation = 1
+    view.active_render_publication_generation = publication.generation
     panel._bind_native_render_terminal(
-        panel.tab_map,
+        view,
         replace(
             _render_publication_for_request(None, request),
             operation_id="older-render-operation",
@@ -2887,8 +2889,8 @@ def test_native_render_terminal_does_not_reclassify_successful_compute(
         panel._saliency_operation_presenter.bind("older-render-operation")
         panel.cancel_saliency_btn.click()
     else:
-        panel.tab_map.render_terminal.emit(1, publication.generation, phase)
-    qtbot.waitUntil(lambda: panel.tab_map not in panel._native_render_bindings)
+        view.render_terminal.emit(1, publication.generation, phase)
+    qtbot.waitUntil(lambda: view not in panel._native_render_bindings)
 
     assert panel.saliency_action_bar.isVisible() is new_compute
     if new_compute:
