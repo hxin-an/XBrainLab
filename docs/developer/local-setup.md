@@ -104,8 +104,9 @@ Windows CPU 同步使用 `-E cpu`，CUDA 同步使用 `-E cuda`；之後要保�
 `poetry sync --with llm -E cuda`。這兩個 extra 只適用 Windows，Linux/macOS 維持 PyPI 解析，CI 明確
 選取 `cpu`。
 
-同一個 checkout 若同時從 Windows 與 WSL 開發，repo-root `.venv` 是 Windows environment，不能由 WSL
-執行或同步。WSL 應覆寫 machine-local 位置，使用自己的 Poetry cached environment：
+只有另行決定需要本機 Linux runtime 時，才使用下列雙平台設定；本機固定手測方案不採用它。
+同一個 checkout 若同時從 Windows 與 WSL 執行產品，repo-root `.venv` 是 Windows environment，不能由 WSL
+執行或同步。此時 WSL 須覆寫 machine-local 位置，使用自己的 Poetry cached environment：
 
 ```bash
 POETRY_VIRTUALENVS_IN_PROJECT=false poetry sync
@@ -124,8 +125,10 @@ PowerShell 執行。
 
 ### 多 worktree：固定手測環境
 
-重複手測不在每個 worktree 執行 bootstrap／`poetry sync`。Windows 共用一套已驗證的原生
-`.venv`；WSL 共用另一套 Linux environment，不能交叉使用。新 worktree 只放 source。
+重複手測不在每個 worktree 執行 bootstrap／`poetry sync`。本機只保留一套已驗證的 Windows
+原生 `.venv`，供 GUI、Assistant 與 Windows 測試共用；新 worktree 只放 source。
+WSL 不保留完整 XBrainLab environment，Linux 產品測試由 CI 提供。Windows 與 Linux 的
+Python environment 不能交叉使用；若日後確實需要本機 Linux runtime，須另行確認容量與用途。
 依賴真的改變時，先關閉使用共用環境的程序，再明確同步；日常啟動不安裝、不下載。
 
 Windows 固定手測 checkout 位於 `D:\workspace_v2\projects\lab\xbrainlab-manual`，不放在
@@ -162,16 +165,17 @@ OS lock 與同一使用者的程序檢查阻擋同時 prepare／launch／clean�
 只刪除身份相符 run 的 `work/output/`，不刪 data／cache／logs／settings／evidence，也不掃描 `.pth` 等
 副檔名。刪掉的測試權重需重新訓練；尚未匯出的重要結果不可加入清理。
 
-WSL worktree 直接使用保留的 interpreter；不要因目錄 hash 不同建立另一套 Poetry env：
+WSL 仍可編輯 source／操作 Git，但不要因 worktree hash 不同建立另一套產品 environment。
+Git hook 已改由既有 Poetry 工具環境中的 `pre-commit` 執行，不依賴 Windows `.venv` 或已刪除
+的 WSL 產品環境。這是輕量開發工具，不含 PyTorch／Qt／Assistant 依賴：
 
 ```bash
-export VIRTUAL_ENV=/home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-IiX9BmR2-py3.12
-export PATH="$VIRTUAL_ENV/bin:$PATH"
-python -m pre_commit install
-python -m pytest --capture=sys tests/path/test_file.py -q
+/home/administrator/.local/share/pypoetry/venv/bin/python -m pre_commit run --files path/to/changed.py
 ```
 
-其他機器改用其已驗證環境。Hook 遷移並驗證、確認無程序／設定引用後才能刪舊環境。
+Windows focused tests 使用上述共用 Python，在準備完成的 source checkout 執行既有測試入口；
+完整 Linux／macOS 證據由 CI 提供。不要直接在 WSL 執行 Windows interpreter 跑 Linux 測試。
+其他機器改用其已驗證工具。Hook 遷移並驗證、確認無程序／設定引用後才能刪舊環境。
 Granite／embedding snapshots、原始資料與未知研究結果不屬於可拋棄的安裝 cache。
 
 ### WSL 原地壓縮：離線 Windows 步驟
