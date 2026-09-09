@@ -23,12 +23,10 @@ class QueryStateCommandService:
     def __init__(
         self,
         *,
-        study: Any,
         dataset: DatasetDetachedReadPort,
         state_builder: StateSnapshotService,
         get_state: Callable[[], ApplicationStateSnapshot],
     ) -> None:
-        self.study = study
         self.dataset = dataset
         self.state_builder = state_builder
         self.get_state = get_state

@@ -715,7 +715,6 @@ class ApplicationService(Observable):
             training=self.training_state,
             training_runtime=self.training_runtime,
             evaluation=self.evaluation_state,
-            visualization=self.visualization,
             dataset_generation=self.dataset_generation,
             interpretation=self.interpretation,
             saliency_coverage_projector=self.saliency_coverage_projector,
@@ -827,7 +826,6 @@ class ApplicationService(Observable):
             get_publication=self._committed_view_publication,
         )
         self.query_state_commands = QueryStateCommandService(
-            study=self.study,
             dataset=self.dataset_state,
             state_builder=self.state_snapshot,
             get_state=self.get_state,

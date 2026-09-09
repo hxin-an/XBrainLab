@@ -79,7 +79,6 @@ class StateSnapshotService:
         training: Any,
         training_runtime: TrainingStateReadPort,
         evaluation: Any,
-        visualization: Any,
         dataset_generation: Any,
         interpretation: Any,
         saliency_coverage_projector: SaliencyCoverageProjector,
@@ -91,11 +90,9 @@ class StateSnapshotService:
         self.study = study
         self.dataset = dataset
         self.preprocess = preprocess
-        self.training = training
         self.training_runtime = training_runtime
         self.training_state = training
         self.evaluation_state = evaluation
-        self.visualization = visualization
         self.dataset_generation = dataset_generation
         self.interpretation = interpretation
         self.saliency_coverage_projector = saliency_coverage_projector
@@ -341,7 +338,7 @@ class StateSnapshotService:
             finished_run_count=evaluation.finished_runs,
             read_generation=training_read_generation,
             progress_message=self._read_optional_string(
-                getattr(self.training, "get_progress_text", None),
+                getattr(self.training_state, "get_progress_text", None),
                 label="training.progress",
             ),
             terminal_outcome=self._training_terminal_outcome(),

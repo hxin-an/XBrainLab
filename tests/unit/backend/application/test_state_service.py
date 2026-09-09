@@ -497,7 +497,6 @@ def _snapshot_service(
         training=training,
         training_runtime=cast(Any, training_runtime),
         evaluation=_EvaluationController(),
-        visualization=object(),
         dataset_generation=DatasetGenerationCommandService(
             study=study,
             training=object(),
@@ -1093,7 +1092,6 @@ def test_trainer_without_finished_results_preserves_terminal_outcome_without_tra
     service = _snapshot_service()
     service.study.trainer = _StableTrainer()
     controller = _TerminalTrainingController(terminal_outcome)
-    service.training = controller
     service.training_state = controller
     cast(_TrainingRuntime, service.training_runtime).training = controller
 
@@ -1108,7 +1106,6 @@ def test_prior_finished_result_remains_available_after_later_training_failure() 
     service = _snapshot_service()
     service.study.trainer = _StableTrainer()
     controller = _TerminalTrainingController(TrainingOutcomeState.FAILED)
-    service.training = controller
     service.training_state = controller
     cast(_TrainingRuntime, service.training_runtime).training = controller
     service.evaluation_state = _EvaluationControllerWithPlans(
@@ -1400,7 +1397,7 @@ def test_authoritative_controller_read_failure_fails_state_and_publication_close
 
 def test_training_progress_failure_is_explicitly_optional_diagnostic() -> None:
     state_builder = _snapshot_service()
-    state_builder.training = _BrokenTrainingProgressController()
+    state_builder.training_state = _BrokenTrainingProgressController()
 
     state = state_builder.build()
 
@@ -1933,7 +1930,6 @@ def test_published_data_summary_preserves_live_summary_schema() -> None:
 def test_query_state_service_returns_readonly_summaries() -> None:
     state_builder = _snapshot_service()
     query = QueryStateCommandService(
-        study=state_builder.study,
         dataset=state_builder.dataset,
         state_builder=state_builder,
         get_state=state_builder.build,
@@ -2030,7 +2026,6 @@ def test_query_state_service_returns_readonly_summaries() -> None:
 def test_query_state_service_rejects_duplicate_state_publication_route() -> None:
     state_builder = _snapshot_service()
     query = QueryStateCommandService(
-        study=state_builder.study,
         dataset=state_builder.dataset,
         state_builder=state_builder,
         get_state=state_builder.build,
@@ -2047,7 +2042,6 @@ def test_training_history_query_does_not_build_full_state_snapshot() -> None:
         raise AssertionError("training_history should not build the full state")
 
     query = QueryStateCommandService(
-        study=state_builder.study,
         dataset=state_builder.dataset,
         state_builder=state_builder,
         get_state=fail_get_state,
