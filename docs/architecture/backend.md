@@ -395,10 +395,9 @@ contract／security decision，且仍必須delegate through
 `Study.get_controller(...)` 的 cached registry 仍保留給 outer adapter、standalone/mock compatibility
 與尚未移除的低階入口，但不是 `ApplicationService` product dependency。
 
-Evaluation 是明確例外：product path 不建立 `EvaluationControllerAdapter`，而是由
+Evaluation product path 不建立 `EvaluationControllerAdapter`，而是由
 `TrainingProjectionReadPort` 產生 serializable catalog、generation-bound detached render
-publication 與 model summary。`Study.get_controller("evaluation")` 仍是 legacy controller
-registry 的 compatibility surface，不是 ApplicationService dependency。
+publication 與 model summary。
 
 `XBrainLab/llm/tools/real/dataset_real.py`、`preprocess_real.py`、`training_real.py` 和
 `analysis_real.py` 也已改成 command-backed real tools。Mapped workflow tools 由
@@ -887,8 +886,6 @@ Controllers 不是純薄轉接。它們有一部分 UI 解耦責任，也有一�
 | `DatasetController` | import files、去重、loader dispatch、label import、metadata、channel selection、observer notification。 |
 | `PreprocessController` | 對 preprocessed data 做 copy、套用 processor、atomic swap 回 Study、發出 preprocess event。 |
 | `TrainingController` | training readiness、plan generation trigger、start / stop、monitor thread、history formatting。 |
-| `EvaluationController` | 讀取 training plans、匯總 evaluation result、model summary。 |
-| `VisualizationController` | 讀取訓練結果與 saliency params、montage / channel data 查詢。 |
 
 後端重構時不能假設 controller 只是 UI adapter。現在某些流程邏輯確實在 controller 裡，尤其是 import、preprocess copy/swap、training monitor。
 

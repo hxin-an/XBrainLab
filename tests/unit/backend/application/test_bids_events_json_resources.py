@@ -557,7 +557,10 @@ def test_repeated_bids_preview_bounds_canonicalization_and_freshness_calls(
         "parser_admission"
     ]["admitted_path_count"]
     assert identity_calls <= max(24, admitted_path_count * 16)
-    assert fingerprint_calls == 0
+    if service_module._stat_change_time_is_reliable():
+        assert fingerprint_calls == 0
+    else:
+        assert fingerprint_calls > 0
 
 
 def test_repeated_subset_preview_reuses_materialized_scan_scope(

@@ -181,16 +181,6 @@ class UnexpectedErrorContext(Enum):
         log_message="Unexpected failure while applying training settings",
         severity=_UnexpectedErrorSeverity.WARNING,
     )
-    TRAINING_TEST_SETTINGS = _UnexpectedErrorPresentation(
-        title="Test settings could not be applied",
-        message=(
-            "XBrainLab could not apply the test settings because of an unexpected "
-            "problem. Review the batch size, device, and output location, then try "
-            "again."
-        ),
-        log_message="Unexpected failure while applying test-only settings",
-        severity=_UnexpectedErrorSeverity.WARNING,
-    )
     MONTAGE_MAPPING_PREPARE = _UnexpectedErrorPresentation(
         title="Montage mapping could not be prepared",
         message=(

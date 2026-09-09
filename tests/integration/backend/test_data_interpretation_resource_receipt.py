@@ -8,7 +8,11 @@ import mne
 import numpy as np
 import pytest
 
-from XBrainLab.backend.application import ApplicationService, ErrorType
+from XBrainLab.backend.application import (
+    ApplicationService,
+    ErrorType,
+    ReviewInterpretationCommand,
+)
 from XBrainLab.backend.application import data_interpretation_service as service_module
 from XBrainLab.backend.application.resource_guard import ResourcePreflightResult
 
@@ -39,9 +43,11 @@ def test_review_resource_warning_requires_and_consumes_exact_receipt(
 
     monkeypatch.setattr(service_module, "check_import_resource_preflight", _warning)
     application = ApplicationService()
-    challenged = application.review_interpretation(
-        source_path=str(eeg_path),
-        choices={"skip_labels": True},
+    challenged = application.execute(
+        ReviewInterpretationCommand(
+            source_path=str(eeg_path),
+            choices={"skip_labels": True},
+        ),
     )
 
     assert challenged.failed
@@ -51,11 +57,13 @@ def test_review_resource_warning_requires_and_consumes_exact_receipt(
     assert challenge["configuration_fingerprint"]
     assert challenge["preflight_fingerprint"]
 
-    reviewed = application.review_interpretation(
-        source_path=str(eeg_path),
-        choices={"skip_labels": True},
-        resource_preflight_confirmed=True,
-        resource_preflight_token=challenge["challenge_id"],
+    reviewed = application.execute(
+        ReviewInterpretationCommand(
+            source_path=str(eeg_path),
+            choices={"skip_labels": True},
+            resource_preflight_confirmed=True,
+            resource_preflight_token=challenge["challenge_id"],
+        ),
     )
 
     assert reviewed.ok
@@ -67,11 +75,13 @@ def test_review_resource_warning_requires_and_consumes_exact_receipt(
         str(eeg_path.resolve())
     ]
 
-    replayed = application.review_interpretation(
-        source_path=str(eeg_path),
-        choices={"skip_labels": True},
-        resource_preflight_confirmed=True,
-        resource_preflight_token=challenge["challenge_id"],
+    replayed = application.execute(
+        ReviewInterpretationCommand(
+            source_path=str(eeg_path),
+            choices={"skip_labels": True},
+            resource_preflight_confirmed=True,
+            resource_preflight_token=challenge["challenge_id"],
+        ),
     )
 
     assert replayed.failed

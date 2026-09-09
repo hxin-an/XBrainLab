@@ -471,18 +471,12 @@ class VisualizationPanel(BasePanel):
         self.normalize_check.setStyleSheet(Stylesheets.CHECKBOX_MUTED)
         self.normalize_check.stateChanged.connect(self.on_update)
 
-        # One selector owns the user-visible saliency scope.  The two hidden
-        # widgets below remain only as an internal compatibility projection for
-        # renderers that receive ``display_mode`` plus an exact class key.
+        # This is the sole selector for the user-visible saliency scope.
         self.saliency_combo = QComboBox()
         self.saliency_combo.addItem("All classes", None)
         self.saliency_combo.setMinimumWidth(180)
         self.saliency_combo.setStyleSheet(Stylesheets.COMBO_BOX)
         self.saliency_combo.currentIndexChanged.connect(self._on_saliency_combo_changed)
-        self.saliency_view_mode = QComboBox()
-        self.saliency_view_mode.addItem("All classes", "all")
-        self.saliency_view_mode.addItem("Single class", "single")
-        self.saliency_class_combo = QComboBox()
         self.saliency_view_label = QLabel("Saliency:")
         self._controls_layout_mode: str | None = None
         self._apply_visualization_control_layout("narrow")
@@ -1387,9 +1381,7 @@ class VisualizationPanel(BasePanel):
                 )
                 self._sync_saliency_class_controls(selected_coverage)
                 if hasattr(self, "tab_3d"):
-                    self.tab_3d.select_class_key(
-                        self.saliency_class_combo.currentData()
-                    )
+                    self.tab_3d.select_class_key(self.saliency_combo.currentData())
             self._show_widget_message(current_widget, blocked_view_message)
             publication = self._application_view_publication
             if publication is not None and self._saliency_compute_awaits_current_render(
@@ -1460,7 +1452,7 @@ class VisualizationPanel(BasePanel):
         )
         self._sync_saliency_class_controls(selected_coverage)
         if hasattr(self, "tab_3d"):
-            self.tab_3d.select_class_key(self.saliency_class_combo.currentData())
+            self.tab_3d.select_class_key(self.saliency_combo.currentData())
         self._publish_saliency_view_state(
             current_widget,
             coverage=selected_coverage,
@@ -1522,11 +1514,13 @@ class VisualizationPanel(BasePanel):
             if current_widget is self.tab_spectro
             else request
         )
+        selected_label_key = self.saliency_combo.currentData()
+        display_mode = "all" if selected_label_key is None else "single"
         display_key = (
             bool(absolute),
             bool(normalize),
-            str(self.saliency_view_mode.currentData() or "all"),
-            self.saliency_class_combo.currentData(),
+            display_mode,
+            selected_label_key,
         )
         set_detail_interactions = getattr(
             current_widget,
@@ -1619,8 +1613,8 @@ class VisualizationPanel(BasePanel):
                 typed_render_publication,
                 absolute,
                 display_normalized=normalize,
-                selected_label_key=self.saliency_class_combo.currentData(),
-                display_mode=str(self.saliency_view_mode.currentData() or "all"),
+                selected_label_key=selected_label_key,
+                display_mode=display_mode,
             )
             self._publish_saliency_render_identity(
                 self.tab_spectro,
@@ -1639,8 +1633,8 @@ class VisualizationPanel(BasePanel):
             target_widget.update_plot(
                 typed_render_publication,
                 absolute,
-                selected_label_key=self.saliency_class_combo.currentData(),
-                display_mode=str(self.saliency_view_mode.currentData() or "all"),
+                selected_label_key=selected_label_key,
+                display_mode=display_mode,
             )
             self._publish_saliency_render_identity(
                 current_widget,
@@ -1667,22 +1661,14 @@ class VisualizationPanel(BasePanel):
         self,
         coverage: SaliencyMethodCoverageSnapshot,
     ) -> None:
-        """Project one visible scope selector using backend class keys."""
+        """Refresh the sole visible scope selector using backend class keys."""
         previous = self.saliency_combo.currentData()
-        with (
-            QSignalBlocker(self.saliency_class_combo),
-            QSignalBlocker(self.saliency_combo),
-        ):
-            self.saliency_class_combo.clear()
+        with QSignalBlocker(self.saliency_combo):
             self.saliency_combo.clear()
             self.saliency_combo.addItem("All classes", None)
             for item in coverage.classes:
                 if item.available:
-                    self.saliency_class_combo.addItem(item.display_name, item.store_key)
                     self.saliency_combo.addItem(item.display_name, item.store_key)
-            if self.saliency_class_combo.count() > 0:
-                index = self.saliency_class_combo.findData(previous)
-                self.saliency_class_combo.setCurrentIndex(max(index, 0))
             selected = self.saliency_combo.findData(previous)
             if (
                 selected <= 0
@@ -1698,31 +1684,10 @@ class VisualizationPanel(BasePanel):
                     selected,
                 )
             self.saliency_combo.setCurrentIndex(max(selected, 0))
-        class_key = self.saliency_combo.currentData()
-        with QSignalBlocker(self.saliency_view_mode):
-            self.saliency_view_mode.setCurrentIndex(
-                self.saliency_view_mode.findData(
-                    "all" if class_key is None else "single"
-                )
-            )
         self._refresh_sidebar_view_controls()
 
     def _on_saliency_combo_changed(self, _index: int) -> None:
-        """Project the selected scope once; renderers never own a second selector."""
-        class_key = self.saliency_combo.currentData()
-        with (
-            QSignalBlocker(self.saliency_view_mode),
-            QSignalBlocker(self.saliency_class_combo),
-        ):
-            self.saliency_view_mode.setCurrentIndex(
-                self.saliency_view_mode.findData(
-                    "all" if class_key is None else "single"
-                )
-            )
-            if class_key is not None:
-                index = self.saliency_class_combo.findData(class_key)
-                if index >= 0:
-                    self.saliency_class_combo.setCurrentIndex(index)
+        """Refresh the active view after a visible scope selection changes."""
         self._refresh_sidebar_view_controls()
         self.on_update()
 

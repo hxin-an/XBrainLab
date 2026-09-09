@@ -81,8 +81,6 @@ def test_state_and_capability_queries_do_not_load_training_stack() -> None:
             "XBrainLab.backend.application.dataset_generation_service",
             "XBrainLab.backend.training",
             "XBrainLab.backend.model_base",
-            "XBrainLab.backend.controller.evaluation_controller",
-            "XBrainLab.backend.controller.visualization_controller",
         )
 
         def bad_new_modules(baseline):
