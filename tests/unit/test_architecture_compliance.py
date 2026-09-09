@@ -4105,7 +4105,7 @@ def test_controller_fallback_guard_allows_named_legacy_wrapper(tmp_path):
 def run(self):
     result = execute_application_command(self, SomeCommand())
     if result is None:
-        self._run_preprocess_compatibility_call(
+        self._compatibility_controller_value(
             "Filtering Blocked",
             lambda: self.controller.apply_filter(1.0, 40.0, [50.0]),
         )
@@ -4953,12 +4953,12 @@ def test_direct_controller_mutation_guard_allows_named_legacy_wrapper_call(tmp_p
         tmp_path,
         """
 def run(self):
-    self._run_preprocess_compatibility_call(
+    self._compatibility_controller_value(
         "Filtering Blocked",
         lambda: self.controller.apply_filter(1.0, 40.0, [50.0]),
     )
 
-def _run_preprocess_compatibility_call(self, title, callback):
+def _compatibility_controller_value(self, title, callback):
     return run_controller_compatibility_call(self, callback)
 """,
     )
@@ -4973,12 +4973,12 @@ def test_direct_controller_mutation_guard_rejects_reserved_wrapper_without_real_
         tmp_path,
         """
 def run(self):
-    self._run_preprocess_compatibility_call(
+    self._compatibility_controller_value(
         "Filtering Blocked",
         lambda: self.controller.apply_filter(1.0, 40.0, [50.0]),
     )
 
-def _run_preprocess_compatibility_call(self, title, callback):
+def _compatibility_controller_value(self, title, callback):
     return callback()
 """,
     )

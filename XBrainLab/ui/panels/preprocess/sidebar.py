@@ -25,19 +25,16 @@ from XBrainLab.backend.application import (
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
-    ControllerCompatibilityUnavailableError,
     blocked_reason,
     cancel_application_operation,
     execute_application_command,
     execute_application_command_async,
     get_application_operation,
     get_application_view_publication,
-    get_command_capability,
     get_command_review_context,
     get_epoch_dialog_context,
     has_real_application_context,
     is_stale_publication_result,
-    run_controller_compatibility_call,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel, SidebarScrollArea
 from XBrainLab.ui.components.modal_presentation import (
@@ -108,16 +105,6 @@ class PreprocessSidebar(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         self.init_ui()
-
-    @property
-    def controller(self):
-        """PreprocessController: The preprocessing controller from the parent panel."""
-        return self.panel.controller
-
-    @property
-    def dataset_controller(self):
-        """DatasetController: The dataset controller from the parent panel."""
-        return self.panel.dataset_controller
 
     @property
     def main_window(self):
@@ -236,12 +223,6 @@ class PreprocessSidebar(QWidget):
 
     def update_sidebar(self, *, publication: Any = _APPLICATION_PUBLICATION_UNSET):
         """Update info and controls from one authoritative publication."""
-        if self.controller is None and not has_real_application_context(self):
-            return
-
-        # 1. Update Info Panel
-        # Handled by InfoPanelService
-
         is_epoched = False
         if publication is _APPLICATION_PUBLICATION_UNSET:
             publication = get_application_view_publication(self)
@@ -256,29 +237,6 @@ class PreprocessSidebar(QWidget):
                 None,
             )
             is_epoched = bool(getattr(active_dataset, "has_epoch_data", False))
-        capabilities = (
-            publication.effective_capabilities if publication is not None else None
-        )
-        preprocess_capability = (
-            capabilities.get(CommandName.PREPROCESS)
-            if capabilities is not None
-            else None
-        )
-        epoch_capability = (
-            capabilities.get(CommandName.CREATE_EPOCH)
-            if capabilities is not None
-            else None
-        )
-        if (
-            preprocess_capability is None
-            and epoch_capability is None
-            and not product_context
-        ):
-            data_list = self._compatibility_preprocessed_data_list_for_render()
-            if data_list:
-                first_data = data_list[0]
-                is_epoched = not first_data.is_raw()
-
         self._update_button_states(
             is_epoched,
             publication=publication,
@@ -316,20 +274,8 @@ class PreprocessSidebar(QWidget):
         ):
             control.setEnabled(False)
 
-    def _compatibility_preprocessed_data_list_for_render(self) -> list[Any]:
-        """Return compatibility render data only for mock UI contexts."""
-        try:
-            data_list = run_controller_compatibility_call(
-                self,
-                self.controller.get_preprocessed_data_list,
-            )
-        except ControllerCompatibilityUnavailableError:
-            return []
-        return list(data_list) if isinstance(data_list, list) else []
-
     def _preprocessed_channel_names_for_rereference(
         self,
-        command_capability,
         *,
         expected_publication_generation: int | None = None,
     ) -> list[str] | None:
@@ -344,10 +290,6 @@ class PreprocessSidebar(QWidget):
             **command_kwargs,
         )
         if result is None:
-            if command_capability is None and not has_real_application_context(self):
-                return self._compatibility_preprocessed_channel_names(
-                    "Re-reference Blocked",
-                )
             show_warning(
                 self,
                 "Re-reference Blocked",
@@ -377,50 +319,6 @@ class PreprocessSidebar(QWidget):
             return None
         return list(channels)
 
-    def _compatibility_preprocessed_channel_names(
-        self,
-        failure_title: str,
-    ) -> list[str] | None:
-        data_list = self._compatibility_preprocessed_data_list_for_dialog(
-            failure_title,
-        )
-        if not data_list:
-            show_warning(
-                self,
-                failure_title,
-                "Preprocessed channel information is unavailable.",
-            )
-            return None
-        try:
-            channels = list(data_list[0].get_mne().ch_names)
-        except (AttributeError, TypeError):
-            show_warning(
-                self,
-                failure_title,
-                "Preprocessed channel information is unavailable.",
-            )
-            return None
-        return [str(channel) for channel in channels]
-
-    def _compatibility_preprocessed_data_list_for_dialog(
-        self,
-        failure_title: str,
-    ) -> list[Any] | None:
-        """Return preprocessed data only for mock / compatibility dialog contexts."""
-        try:
-            data_list = run_controller_compatibility_call(
-                self,
-                self.controller.get_preprocessed_data_list,
-            )
-        except ControllerCompatibilityUnavailableError:
-            show_warning(
-                self,
-                failure_title,
-                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
-            )
-            return None
-        return list(data_list) if isinstance(data_list, list) else []
-
     def _update_button_states(self, is_epoched, *, publication=None):
         """Update button tooltips based on the epoched state.
 
@@ -429,21 +327,7 @@ class PreprocessSidebar(QWidget):
                 preprocessing is locked.
 
         """
-        product_context = has_real_application_context(self)
-        if publication is None and not product_context:
-            preprocess_capability = get_command_capability(
-                self,
-                CommandName.PREPROCESS,
-            )
-            epoch_capability = get_command_capability(
-                self,
-                CommandName.CREATE_EPOCH,
-            )
-            reset_capability = get_command_capability(
-                self,
-                CommandName.RESET_PREPROCESS,
-            )
-        elif publication is None:
+        if publication is None:
             preprocess_capability = None
             epoch_capability = None
             reset_capability = None
@@ -455,50 +339,26 @@ class PreprocessSidebar(QWidget):
         preprocess_enabled = (
             preprocess_capability.enabled
             if preprocess_capability is not None
-            else not product_context
+            else False
         )
         epoch_enabled = (
-            epoch_capability.enabled
-            if epoch_capability is not None
-            else not product_context
+            epoch_capability.enabled if epoch_capability is not None else False
         )
         reset_enabled = (
-            reset_capability.enabled
-            if reset_capability is not None
-            else not product_context
+            reset_capability.enabled if reset_capability is not None else False
         )
         preprocess_reason = blocked_reason(
             preprocess_capability,
-            (
-                _PREPROCESS_AVAILABILITY_UNAVAILABLE
-                if product_context
-                else "Preprocessing is not available."
-            ),
+            _PREPROCESS_AVAILABILITY_UNAVAILABLE,
         )
         epoch_reason = blocked_reason(
             epoch_capability,
-            (
-                _EPOCH_AVAILABILITY_UNAVAILABLE
-                if product_context
-                else "Creating EEG epochs is not available."
-            ),
+            _EPOCH_AVAILABILITY_UNAVAILABLE,
         )
         reset_reason = blocked_reason(
             reset_capability,
-            (
-                _RESET_PREPROCESS_AVAILABILITY_UNAVAILABLE
-                if product_context
-                else "Reset preprocessing is not available."
-            ),
+            _RESET_PREPROCESS_AVAILABILITY_UNAVAILABLE,
         )
-        if preprocess_capability is None and is_epoched and not product_context:
-            preprocess_reason = (
-                "Preprocessing is locked (EEG epochs created). Click for details."
-            )
-        if epoch_capability is None and is_epoched and not product_context:
-            epoch_reason = (
-                "Preprocessing is locked (EEG epochs created). Click for details."
-            )
 
         import_finishing = self._import_is_finishing()
         self.import_finishing_label.setVisible(import_finishing)
@@ -515,7 +375,7 @@ class PreprocessSidebar(QWidget):
         )
         self.btn_reset.setToolTip(
             reset_reason
-            if product_context and reset_capability is None
+            if reset_capability is None
             else (
                 "Preprocessing is locked after EEG epochs are created."
                 if is_epoched
@@ -592,105 +452,6 @@ class PreprocessSidebar(QWidget):
 
     # --- Action Logic ---
 
-    def check_lock(self):
-        """Check if preprocessing is locked due to epoched data.
-
-        Shows a warning dialog if locked.
-
-        Returns:
-            bool: ``True`` if the action is blocked, ``False`` otherwise.
-
-        """
-        if self.controller is None and not has_real_application_context(self):
-            return False
-        preprocess_capability = get_command_capability(self, CommandName.PREPROCESS)
-        if preprocess_capability is not None and not preprocess_capability.enabled:
-            show_warning(
-                self,
-                "Action Blocked",
-                blocked_reason(
-                    preprocess_capability,
-                    "Preprocessing is not available.",
-                ),
-            )
-            return True
-        if preprocess_capability is None:
-            if has_real_application_context(self):
-                show_warning(
-                    self,
-                    "Action Blocked",
-                    _PREPROCESS_AVAILABILITY_UNAVAILABLE,
-                )
-                return True
-            controller = self.controller
-            if controller is None:
-                return False
-            fallback_ok, is_epoched = self._run_preprocess_compatibility_call(
-                "Action Blocked",
-                controller.is_epoched,
-            )
-            if not fallback_ok:
-                return True
-            if is_epoched:
-                show_warning(
-                    self,
-                    "Action Blocked",
-                    "Preprocessing is locked because EEG epochs were created.\n"
-                    "Please 'Reset All Preprocessing' to make changes.",
-                )
-                return True
-        return False
-
-    def check_data_loaded(self):
-        """Verify that data is loaded before proceeding.
-
-        Shows a warning dialog if no data is available.
-
-        Returns:
-            bool: ``True`` if data is loaded, ``False`` otherwise.
-
-        """
-        preprocess_capability = get_command_capability(self, CommandName.PREPROCESS)
-        if preprocess_capability is not None and not preprocess_capability.enabled:
-            show_warning(
-                self,
-                "Warning",
-                blocked_reason(
-                    preprocess_capability,
-                    "No data loaded. Please import data first.",
-                ),
-            )
-            return False
-        if preprocess_capability is None:
-            if has_real_application_context(self):
-                show_warning(
-                    self,
-                    "Warning",
-                    _PREPROCESS_AVAILABILITY_UNAVAILABLE,
-                )
-                return False
-            if not self.controller:
-                show_warning(
-                    self,
-                    "Warning",
-                    "No data loaded. Please import data first.",
-                )
-                return False
-            fallback_ok, has_data = self._run_preprocess_compatibility_call(
-                "Warning",
-                self.controller.has_data,
-            )
-            if not fallback_ok:
-                return False
-            if not has_data:
-                show_warning(
-                    self,
-                    "Warning",
-                    "No data loaded. Please import data first.",
-                )
-                return False
-        return True
-
     def _show_status(self, message: str) -> None:
         if show_status_message(self.panel, message):
             return
@@ -710,17 +471,6 @@ class PreprocessSidebar(QWidget):
         del result
         self._show_epoch_success(None)
 
-    def _run_preprocess_compatibility_call(
-        self,
-        blocked_title: str,
-        fallback: Callable[[], Any],
-    ) -> tuple[bool, Any]:
-        try:
-            return True, run_controller_compatibility_call(self, fallback)
-        except ControllerCompatibilityUnavailableError as exc:
-            show_warning(self, blocked_title, str(exc))
-            return False, None
-
     def _begin_preprocess_review(
         self,
         blocked_title: str,
@@ -730,16 +480,12 @@ class PreprocessSidebar(QWidget):
             return None, False
         review_context = get_command_review_context(self, CommandName.PREPROCESS)
         if review_context is None:
-            if has_real_application_context(self):
-                show_warning(
-                    self,
-                    blocked_title,
-                    _PREPROCESS_AVAILABILITY_UNAVAILABLE,
-                )
-                return review_context, False
-            return review_context, not (
-                self.check_lock() or not self.check_data_loaded()
+            show_warning(
+                self,
+                blocked_title,
+                _PREPROCESS_AVAILABILITY_UNAVAILABLE,
             )
+            return review_context, False
 
         capability = getattr(review_context, "capability", None)
         if capability is None:
@@ -815,38 +561,12 @@ class PreprocessSidebar(QWidget):
         ):
             return InteractionOutcome.accepted("Preprocessing command was scheduled.")
 
-        if has_real_application_context(self):
-            show_warning(
-                self,
-                blocked_title,
-                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
-            )
-            return InteractionOutcome.blocked(
-                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
-            )
-
-        try:
-            result = execute_application_command(
-                self,
-                command,
-                expected_publication_generation=expected_publication_generation,
-            )
-            if result is None:
-                show_warning(
-                    self,
-                    blocked_title,
-                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
-                )
-                return InteractionOutcome.blocked(
-                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
-                )
-            return _handle_result(result)
-        except Exception:
-            message = present_unexpected_error(
-                self,
-                UnexpectedErrorContext.PREPROCESS_EXECUTION,
-            )
-            return InteractionOutcome.failed(message)
+        show_warning(
+            self,
+            blocked_title,
+            CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
+        )
+        return InteractionOutcome.blocked(CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE)
 
     def open_filtering(self):
         """Open the filtering dialog and apply bandpass/notch filters."""
@@ -970,13 +690,7 @@ class PreprocessSidebar(QWidget):
             else None
         )
 
-        preprocess_capability = (
-            review_context.capability
-            if review_context is not None
-            else get_command_capability(self, CommandName.PREPROCESS)
-        )
         channel_names = self._preprocessed_channel_names_for_rereference(
-            preprocess_capability,
             expected_publication_generation=expected_generation,
         )
         if channel_names is None:
@@ -1113,25 +827,16 @@ class PreprocessSidebar(QWidget):
         if self._guard_import_finishing():
             return
         publication = get_application_view_publication(self)
-        if publication is None and has_real_application_context(self):
+        if publication is None:
             show_warning(
                 self,
                 "Reset Blocked",
                 _RESET_PREPROCESS_AVAILABILITY_UNAVAILABLE,
             )
             return
-        reset_capability = (
-            publication.effective_capabilities.get(CommandName.RESET_PREPROCESS)
-            if publication is not None
-            else get_command_capability(self, CommandName.RESET_PREPROCESS)
+        reset_capability = publication.effective_capabilities.get(
+            CommandName.RESET_PREPROCESS
         )
-        if reset_capability is None and has_real_application_context(self):
-            show_warning(
-                self,
-                "Reset Blocked",
-                _RESET_PREPROCESS_AVAILABILITY_UNAVAILABLE,
-            )
-            return
         if reset_capability is not None and not reset_capability.enabled:
             show_warning(
                 self,
@@ -1143,7 +848,12 @@ class PreprocessSidebar(QWidget):
             )
             return
 
-        if reset_capability is None and not self.check_data_loaded():
+        if reset_capability is None:
+            show_warning(
+                self,
+                "Reset Blocked",
+                _RESET_PREPROCESS_AVAILABILITY_UNAVAILABLE,
+            )
             return
 
         needs_confirmation = reset_capability is None or (

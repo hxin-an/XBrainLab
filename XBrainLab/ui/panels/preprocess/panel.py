@@ -18,7 +18,6 @@ from XBrainLab.backend.utils.observer import Observable
 from XBrainLab.ui.application_capabilities import (
     ApplicationViewPublicationPort,
     application_ui_runtime,
-    get_controller_for_compatibility_context,
 )
 from XBrainLab.ui.application_publication_renderer import (
     ApplicationPublicationRenderLedger,
@@ -44,8 +43,6 @@ class PreprocessPanel(BasePanel):
 
     def __init__(
         self,
-        controller=None,
-        dataset_controller=None,
         parent=None,
         *,
         publication_port: ApplicationViewPublicationPort | None = None,
@@ -53,40 +50,10 @@ class PreprocessPanel(BasePanel):
         """Initialize the preprocessing panel.
 
         Args:
-            controller: Optional ``PreprocessController``. Resolved from
-                the parent study if not provided.
-            dataset_controller: Optional ``DatasetController`` for
-                data-change event subscription.
             parent: Parent widget (typically the main window).
 
         """
-        # 1. Controller Resolution
-        if (
-            controller is None
-            and publication_port is None
-            and parent
-            and hasattr(parent, "study")
-        ):
-            controller = get_controller_for_compatibility_context(
-                parent,
-                parent.study,
-                "preprocess",
-            )
-        if (
-            dataset_controller is None
-            and publication_port is None
-            and parent
-            and hasattr(parent, "study")
-        ):
-            dataset_controller = get_controller_for_compatibility_context(
-                parent,
-                parent.study,
-                "dataset",
-            )
-
-        # 2. Base Init
-        super().__init__(parent=parent, controller=controller)
-        self.dataset_controller = dataset_controller
+        super().__init__(parent=parent)
         runtime = application_ui_runtime(self)
         self._publication_port = (
             publication_port if publication_port is not None else runtime
@@ -101,35 +68,25 @@ class PreprocessPanel(BasePanel):
         )
         self._application_refresh_timer = self._application_render_ledger.timer
 
-        # 3. Setup Components
         self.preview_widget = PreviewWidget(self)
         self.history_widget = HistoryWidget(self)
         self.sidebar = PreprocessSidebar(self, self)
 
-        # 4. Setup Plotter
         self.plotter = PreprocessPlotter(self.preview_widget)
 
-        # 5. Connect Component Signals
         self.preview_widget.request_plot_update.connect(self.update_plot_only)
 
-        # 6. Setup Bridges & UI
         self._setup_bridges()
         self.init_ui()
 
     def _setup_bridges(self):
-        """Register Qt observer bridges for preprocess and dataset events."""
+        """Register the revisioned application-publication bridge."""
         if self._publication_port is not None:
             self._create_bridge(
                 cast(Observable, self._publication_port),
                 APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
                 self._on_application_view_publication_changed,
             )
-            return
-        if self.controller:
-            self._create_refresh_bridge(self.controller, "preprocess_changed")
-
-            if self.dataset_controller:
-                self._create_refresh_bridge(self.dataset_controller, "data_changed")
 
     def _on_application_view_publication_changed(
         self,

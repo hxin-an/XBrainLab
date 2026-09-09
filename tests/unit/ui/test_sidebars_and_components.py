@@ -225,162 +225,6 @@ class TestPreprocessSidebar:
 
         assert runtime.publication_reads == 1
 
-    def test_check_lock_prefers_backend_capability_over_stale_controller(
-        self,
-        sidebar,
-    ):
-        from XBrainLab.backend.study import Study
-
-        study = Study()
-        raw = MagicMock()
-        raw.get_filename.return_value = "sub-01_task-mi_raw.fif"
-        study.data_manager.loaded_data_list = [raw]
-        sidebar.panel.main_window.study = study
-        sidebar.panel.controller.is_epoched.return_value = True
-
-        with patch(
-            "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
-        ) as mock_warning:
-            assert sidebar.check_lock() is False
-
-        mock_warning.assert_not_called()
-
-    def test_check_lock_refuses_real_study_no_capability_fallback(
-        self,
-        sidebar,
-    ):
-        from XBrainLab.backend.study import Study
-
-        sidebar.panel.main_window.study = Study()
-        sidebar.panel.controller.is_epoched.side_effect = AssertionError(
-            "stale epoched state should not be read",
-        )
-
-        with (
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.get_command_capability",
-                return_value=None,
-            ),
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
-            ) as mock_warning,
-        ):
-            assert sidebar.check_lock() is True
-
-        sidebar.panel.controller.is_epoched.assert_not_called()
-        mock_warning.assert_called_once()
-        assert mock_warning.call_args.args[1] == "Action Blocked"
-        assert mock_warning.call_args.args[2] == (
-            "Preprocessing availability is unavailable right now."
-        )
-
-    def test_check_data_loaded_prefers_backend_capability_over_stale_controller(
-        self,
-        sidebar,
-    ):
-        from XBrainLab.backend.study import Study
-
-        study = Study()
-        raw = MagicMock()
-        raw.get_filename.return_value = "sub-01_task-mi_raw.fif"
-        study.data_manager.loaded_data_list = [raw]
-        sidebar.panel.main_window.study = study
-        sidebar.panel.controller.has_data.return_value = False
-
-        with patch(
-            "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
-        ) as mock_warning:
-            assert sidebar.check_data_loaded() is True
-
-        mock_warning.assert_not_called()
-
-    def test_check_data_loaded_refuses_real_study_no_capability_fallback(
-        self,
-        sidebar,
-    ):
-        from XBrainLab.backend.study import Study
-
-        sidebar.panel.main_window.study = Study()
-        sidebar.panel.controller.has_data.side_effect = AssertionError(
-            "stale loaded-data state should not be read",
-        )
-
-        with (
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.get_command_capability",
-                return_value=None,
-            ),
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
-            ) as mock_warning,
-        ):
-            assert sidebar.check_data_loaded() is False
-
-        sidebar.panel.controller.has_data.assert_not_called()
-        mock_warning.assert_called_once()
-        assert mock_warning.call_args.args[1] == "Warning"
-        assert mock_warning.call_args.args[2] == (
-            "Preprocessing availability is unavailable right now."
-        )
-
-    def test_open_filtering_without_command_service_does_not_mutate_controller(
-        self,
-        sidebar,
-    ):
-        with (
-            patch("XBrainLab.ui.panels.preprocess.sidebar.FilteringDialog") as MockDlg,
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
-                return_value=None,
-            ) as mock_execute,
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
-            ) as mock_warning,
-        ):
-            MockDlg.return_value.exec.return_value = True
-            MockDlg.return_value.get_params.return_value = (1.0, 40.0, [50.0])
-            sidebar.open_filtering()
-
-        mock_execute.assert_called_once()
-        sidebar.panel.controller.apply_filter.assert_not_called()
-        mock_warning.assert_called_once()
-        assert mock_warning.call_args.args[1] == "Filtering Blocked"
-
-    def test_open_filtering_refuses_real_study_controller_fallback(self, sidebar):
-        from XBrainLab.backend.study import Study
-
-        study = Study()
-        raw = MagicMock()
-        raw.get_filename.return_value = "sub-01_task-mi_raw.fif"
-        study.data_manager.loaded_data_list = [raw]
-        sidebar.panel.main_window.study = study
-
-        with (
-            patch("XBrainLab.ui.panels.preprocess.sidebar.FilteringDialog") as MockDlg,
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command_async",
-                return_value=False,
-            ),
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
-                return_value=None,
-            ) as mock_execute,
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
-            ) as mock_warning,
-            patch("XBrainLab.ui.panels.preprocess.sidebar.show_error") as mock_critical,
-        ):
-            MockDlg.return_value.exec.return_value = True
-            MockDlg.return_value.get_params.return_value = (1.0, 40.0, [50.0])
-            sidebar.open_filtering()
-
-        sidebar.panel.controller.apply_filter.assert_not_called()
-        mock_execute.assert_not_called()
-        mock_warning.assert_called_once()
-        assert mock_warning.call_args.args[1] == "Filtering Blocked"
-        assert "could not safely complete" in mock_warning.call_args.args[2]
-        mock_critical.assert_not_called()
-
     def test_open_filtering_uses_async_for_real_study(self, sidebar):
         from XBrainLab.backend.application import PreprocessCommand
         from XBrainLab.backend.study import Study
@@ -434,12 +278,10 @@ class TestPreprocessSidebar:
             patch("XBrainLab.ui.panels.preprocess.sidebar.FilteringDialog") as dialog,
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command_async",
-                return_value=False,
+                side_effect=lambda *_args, **kwargs: (
+                    kwargs["on_result"](_command_result()) or True
+                ),
             ) as execute_async,
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
-                return_value=_command_result(),
-            ) as execute,
         ):
             dialog.return_value.exec.return_value = True
             dialog.return_value.get_params.return_value = (1.0, 40.0, [50.0])
@@ -447,111 +289,6 @@ class TestPreprocessSidebar:
             sidebar.open_filtering()
 
         assert execute_async.call_args.kwargs["expected_publication_generation"] == 61
-        assert execute.call_args.kwargs["expected_publication_generation"] == 61
-
-    def test_open_resample_without_command_service_does_not_mutate_controller(
-        self,
-        sidebar,
-    ):
-        with (
-            patch("XBrainLab.ui.panels.preprocess.sidebar.ResampleDialog") as MockDlg,
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
-                return_value=None,
-            ) as mock_execute,
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
-            ) as mock_warning,
-        ):
-            MockDlg.return_value.exec.return_value = True
-            MockDlg.return_value.get_params.return_value = 256
-            sidebar.open_resample()
-
-        mock_execute.assert_called_once()
-        sidebar.panel.controller.apply_resample.assert_not_called()
-        mock_warning.assert_called_once()
-        assert mock_warning.call_args.args[1] == "Resampling Blocked"
-
-    def test_open_rereference_without_channel_context_blocks_before_mutation(
-        self,
-        sidebar,
-    ):
-        from XBrainLab.backend.application import QueryStateCommand
-
-        with (
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.RereferenceDialog"
-            ) as MockDlg,
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
-                return_value=None,
-            ) as mock_execute,
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
-            ) as mock_warning,
-        ):
-            MockDlg.return_value.exec.return_value = True
-            MockDlg.return_value.get_params.return_value = ["Cz"]
-            sidebar.open_rereference()
-
-        assert isinstance(mock_execute.call_args_list[0].args[1], QueryStateCommand)
-        assert len(mock_execute.call_args_list) == 1
-        MockDlg.assert_not_called()
-        sidebar.panel.controller.apply_rereference.assert_not_called()
-        mock_warning.assert_called_once()
-        assert mock_warning.call_args.args[1] == "Re-reference Blocked"
-
-    def test_open_rereference_uses_detached_channels_before_stale_controller(
-        self,
-        sidebar,
-    ):
-        from XBrainLab.backend.application import (
-            PreprocessCommand,
-            QueryStateCommand,
-        )
-
-        sidebar.panel.controller.get_preprocessed_data_list.side_effect = (
-            AssertionError("stale preprocessed list should not be read")
-        )
-
-        def execute_for(
-            _,
-            command,
-            refresh=True,
-            expected_publication_generation=None,
-        ):
-            if isinstance(command, QueryStateCommand):
-                return _command_result(preprocessed_rows=[{"channels": ["Cz", "Pz"]}])
-            if isinstance(command, PreprocessCommand):
-                return _command_result()
-            raise AssertionError(f"unexpected command: {command!r}")
-
-        with (
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.get_command_capability",
-                return_value=SimpleNamespace(enabled=True, reasons=[]),
-            ),
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.RereferenceDialog"
-            ) as MockDlg,
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
-                side_effect=execute_for,
-            ) as mock_execute,
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
-            ) as mock_warning,
-        ):
-            MockDlg.return_value.exec.return_value = True
-            MockDlg.return_value.get_params.return_value = ["Cz"]
-            sidebar.open_rereference()
-
-        mock_warning.assert_not_called()
-        assert isinstance(mock_execute.call_args_list[0].args[1], QueryStateCommand)
-        assert isinstance(mock_execute.call_args_list[1].args[1], PreprocessCommand)
-        MockDlg.assert_called_once_with(sidebar, ["Cz", "Pz"])
-        sidebar.panel.controller.get_preprocessed_data_list.assert_not_called()
-        sidebar.panel.controller.apply_rereference.assert_not_called()
 
     def test_open_rereference_binds_query_and_apply_to_reviewed_publication(
         self,
@@ -583,8 +320,6 @@ class TestPreprocessSidebar:
             calls.append((command, refresh, expected_publication_generation))
             if isinstance(command, QueryStateCommand):
                 return _command_result(preprocessed_rows=[{"channels": ["Cz"]}])
-            if isinstance(command, PreprocessCommand):
-                return _command_result()
             raise AssertionError(f"unexpected command: {command!r}")
 
         with (
@@ -597,8 +332,10 @@ class TestPreprocessSidebar:
             ) as dialog,
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command_async",
-                return_value=False,
-            ),
+                side_effect=lambda *_args, **kwargs: (
+                    kwargs["on_result"](_command_result()) or True
+                ),
+            ) as execute_async,
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
                 side_effect=execute_for,
@@ -609,52 +346,10 @@ class TestPreprocessSidebar:
 
             sidebar.open_rereference()
 
-        assert [type(command) for command, _, _ in calls] == [
-            QueryStateCommand,
-            PreprocessCommand,
-        ]
-        assert [generation for _, _, generation in calls] == [62, 62]
-
-    def test_open_normalize_without_command_service_does_not_mutate_controller(
-        self,
-        sidebar,
-    ):
-        with (
-            patch("XBrainLab.ui.panels.preprocess.sidebar.NormalizeDialog") as MockDlg,
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
-                return_value=None,
-            ) as mock_execute,
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
-            ) as mock_warning,
-        ):
-            MockDlg.return_value.exec.return_value = True
-            MockDlg.return_value.get_params.return_value = "z-score"
-            sidebar.open_normalize()
-
-        mock_execute.assert_called_once()
-        sidebar.panel.controller.apply_normalization.assert_not_called()
-        mock_warning.assert_called_once()
-        assert mock_warning.call_args.args[1] == "Normalization Blocked"
-
-    def test_open_normalize_service_success_uses_coordinator_refresh(self, sidebar):
-        from XBrainLab.backend.application import PreprocessCommand
-
-        with (
-            patch("XBrainLab.ui.panels.preprocess.sidebar.NormalizeDialog") as MockDlg,
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
-                return_value=_command_result(),
-            ) as mock_execute,
-        ):
-            MockDlg.return_value.exec.return_value = True
-            MockDlg.return_value.get_params.return_value = "z-score"
-            sidebar.open_normalize()
-
-        assert isinstance(mock_execute.call_args.args[1], PreprocessCommand)
-        sidebar.panel.controller.apply_normalization.assert_not_called()
-        sidebar.panel.update_panel.assert_not_called()
+        assert [type(command) for command, _, _ in calls] == [QueryStateCommand]
+        assert calls[0][2] == 62
+        assert isinstance(execute_async.call_args.args[1], PreprocessCommand)
+        assert execute_async.call_args.kwargs["expected_publication_generation"] == 62
 
     def test_open_epoching_without_command_service_does_not_mutate_controller(
         self,
@@ -761,6 +456,12 @@ class TestPreprocessSidebar:
             recoverable=False,
             message="epoch command failed",
         )
+        callbacks = []
+
+        def schedule(*_args, **kwargs):
+            callbacks.append(kwargs["on_result"])
+            return True
+
         with (
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar.get_epoch_dialog_context",
@@ -770,15 +471,7 @@ class TestPreprocessSidebar:
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar."
                 "execute_application_command_async",
-                return_value=False,
-            ),
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.has_real_application_context",
-                return_value=False,
-            ),
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
-                return_value=failure,
+                side_effect=schedule,
             ),
             patch("XBrainLab.ui.panels.preprocess.sidebar.show_error"),
         ):
@@ -790,8 +483,10 @@ class TestPreprocessSidebar:
                 1.0,
             )
             outcome = sidebar.open_epoching()
+            terminal_outcome = callbacks[0](failure)
 
-        assert outcome.status is InteractionStatus.FAILED
+        assert outcome.status is InteractionStatus.ACCEPTED
+        assert terminal_outcome.status is InteractionStatus.FAILED
 
     def test_open_epoching_without_command_service_skips_shared_status(self, sidebar):
         sidebar.panel.main_window.update_info_panel = MagicMock()
@@ -823,56 +518,6 @@ class TestPreprocessSidebar:
             sidebar.panel.main_window.agent_manager.refresh_backend_status.assert_not_called()
         )
 
-    def test_open_epoching_uses_epoch_capability_not_preprocess_block(
-        self,
-        sidebar,
-    ):
-        from XBrainLab.backend.application import CreateEpochCommand
-
-        def execute_for(
-            _,
-            command,
-            refresh=True,
-            expected_publication_generation=None,
-        ):
-            assert expected_publication_generation == 1
-            assert isinstance(command, CreateEpochCommand)
-            return _command_result()
-
-        with (
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.get_epoch_dialog_context",
-                return_value=_usable_epoch_dialog_context(),
-            ),
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.get_command_capability",
-                side_effect=AssertionError(
-                    "epoching performed a second capability read"
-                ),
-            ),
-            patch("XBrainLab.ui.panels.preprocess.sidebar.EpochingDialog") as MockDlg,
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
-                side_effect=execute_for,
-            ) as mock_execute,
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
-            ) as mock_warning,
-        ):
-            MockDlg.return_value.exec.return_value = True
-            MockDlg.return_value.get_params.return_value = (
-                (None, 0),
-                ["left", "right"],
-                -0.5,
-                1.0,
-            )
-            outcome = sidebar.open_epoching()
-
-        assert outcome.status is InteractionStatus.COMPLETED
-        mock_warning.assert_not_called()
-        assert isinstance(mock_execute.call_args.args[1], CreateEpochCommand)
-        sidebar.panel.controller.apply_epoching.assert_not_called()
-
     def test_open_epoching_uses_detached_context_before_stale_controller(
         self,
         sidebar,
@@ -883,17 +528,6 @@ class TestPreprocessSidebar:
             AssertionError("stale preprocessed list should not be read")
         )
 
-        def execute_for(
-            _,
-            command,
-            refresh=True,
-            expected_publication_generation=None,
-        ):
-            assert expected_publication_generation == 1
-            if isinstance(command, CreateEpochCommand):
-                return _command_result()
-            raise AssertionError(f"unexpected command: {command!r}")
-
         with (
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar.get_epoch_dialog_context",
@@ -901,9 +535,11 @@ class TestPreprocessSidebar:
             ),
             patch("XBrainLab.ui.panels.preprocess.sidebar.EpochingDialog") as MockDlg,
             patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
-                side_effect=execute_for,
-            ) as mock_execute,
+                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command_async",
+                side_effect=lambda *_args, **kwargs: (
+                    kwargs["on_result"](_command_result()) or True
+                ),
+            ) as execute_async,
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
             ) as mock_warning,
@@ -918,7 +554,8 @@ class TestPreprocessSidebar:
             sidebar.open_epoching()
 
         mock_warning.assert_not_called()
-        assert isinstance(mock_execute.call_args.args[1], CreateEpochCommand)
+        assert isinstance(execute_async.call_args.args[1], CreateEpochCommand)
+        assert execute_async.call_args.kwargs["expected_publication_generation"] == 1
         MockDlg.assert_called_once_with(
             sidebar,
             epoch_context={
@@ -928,101 +565,6 @@ class TestPreprocessSidebar:
         )
         sidebar.panel.controller.get_preprocessed_data_list.assert_not_called()
         sidebar.panel.controller.apply_epoching.assert_not_called()
-
-    def test_open_epoching_passes_import_handoff_to_dialog(self, sidebar):
-        from XBrainLab.backend.application import (
-            CommandCapability,
-            CreateEpochCommand,
-        )
-        from XBrainLab.backend.application.epoch_context import EpochDialogContext
-
-        epoch_handoff = {
-            "ready": True,
-            "default_epoch_events": ["Left hand", "Right hand"],
-            "label_source": "bids_events",
-        }
-        epoch_setup = {
-            "available_events": [
-                {"name": "Left hand", "count": 2},
-                {"name": "Right hand", "count": 2},
-            ],
-            "recommended_events": ["Left hand", "Right hand"],
-        }
-        assistant_suggestions = {
-            "target_event": "Left hand",
-            "t_min": "-0.5",
-        }
-        dialog_context = EpochDialogContext(
-            capability=CommandCapability(
-                command_name="create_epoch",
-                enabled=True,
-            ),
-            epoch_handoff=epoch_handoff,
-            epoch_setup=epoch_setup,
-            publication_generation=7,
-            usable=True,
-            unavailable_reason=None,
-        )
-        executed_commands = []
-
-        def execute_for(
-            _,
-            command,
-            refresh=True,
-            expected_publication_generation=None,
-        ):
-            executed_commands.append(command)
-            if isinstance(command, CreateEpochCommand):
-                assert expected_publication_generation == 7
-                return _command_result()
-            raise AssertionError(f"unexpected command: {command!r}")
-
-        with (
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.get_command_capability",
-                side_effect=AssertionError(
-                    "epoch dialog must not perform a second capability read"
-                ),
-            ),
-            patch("XBrainLab.ui.panels.preprocess.sidebar.EpochingDialog") as MockDlg,
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
-                side_effect=execute_for,
-            ),
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.get_epoch_dialog_context",
-                return_value=dialog_context,
-            ) as read_dialog_context,
-        ):
-            MockDlg.return_value.exec.return_value = True
-            MockDlg.return_value.get_params.return_value = (
-                (None, 0),
-                ["Left hand", "Right hand"],
-                -0.5,
-                1.0,
-            )
-            MockDlg.return_value.get_confirmation_receipt.return_value = (
-                "backend-epoch-receipt"
-            )
-            sidebar.open_epoching(suggested_values=assistant_suggestions)
-
-        MockDlg.assert_called_once_with(
-            sidebar,
-            epoch_context=epoch_setup,
-            epoch_handoff={
-                "ready": True,
-                "default_epoch_events": ["Left hand", "Right hand"],
-                "label_source": "bids_events",
-            },
-            assistant_suggestions=assistant_suggestions,
-        )
-        read_dialog_context.assert_called_once_with(sidebar)
-        epoch_command = next(
-            command
-            for command in executed_commands
-            if isinstance(command, CreateEpochCommand)
-        )
-        assert epoch_command.confirmation_receipt == "backend-epoch-receipt"
 
     def test_open_epoching_reads_exactly_one_detached_context(self, sidebar):
         from dataclasses import replace
@@ -1223,25 +765,6 @@ class TestPreprocessSidebar:
         mock_warning.assert_called_once()
         assert mock_warning.call_args.args[1] == "Reset Blocked"
 
-    def test_reset_preprocess_service_success_does_not_fallback_to_controller(
-        self,
-        sidebar,
-    ):
-        with (
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.ask_confirmation",
-                return_value=True,
-            ),
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
-                return_value=_command_result(),
-            ),
-        ):
-            sidebar.reset_preprocess()
-
-        sidebar.panel.controller.reset_preprocess.assert_not_called()
-        sidebar.panel.update_panel.assert_not_called()
-
     def test_reset_preprocess_binds_generation_and_stale_result_requires_review(
         self,
         sidebar,
@@ -1365,44 +888,6 @@ class TestPreprocessSidebar:
             "Load raw data before resetting preprocessing.",
         )
         sidebar.panel.controller.reset_preprocess.assert_not_called()
-
-    def test_reset_preprocess_refuses_real_study_controller_fallback(
-        self,
-        sidebar,
-    ):
-        from XBrainLab.backend.study import Study
-
-        study = Study()
-        raw_data = MagicMock()
-        raw_data.is_raw.return_value = True
-        study.loaded_data_list = [raw_data]
-        sidebar.panel.main_window.study = study
-        sidebar.panel.controller.has_data.return_value = True
-
-        with (
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.ask_confirmation",
-                return_value=True,
-            ),
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
-                return_value=None,
-            ),
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
-            ) as mock_warning,
-            patch("XBrainLab.ui.panels.preprocess.sidebar.show_error") as mock_critical,
-        ):
-            sidebar.reset_preprocess()
-
-        sidebar.panel.controller.reset_preprocess.assert_not_called()
-        mock_warning.assert_called_once()
-        assert mock_warning.call_args.args[1] == "Reset Blocked"
-        mock_critical.assert_not_called()
-        visible_message = mock_warning.call_args.args[2]
-        assert "could not safely complete" in visible_message
-        assert "refusing controller fallback" not in visible_message
-        assert "ApplicationService" not in visible_message
 
 
 # ============ TrainingSidebar ============

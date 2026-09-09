@@ -1,20 +1,12 @@
 import contextlib
 from unittest.mock import MagicMock
 
-from PyQt6.QtWidgets import QWidget
-
 from XBrainLab.ui.panels.preprocess.panel import PreprocessPanel
 
 
 def test_slider_debouncing(qtbot):
     """Test that slider changes are debounced via PreviewWidget."""
-    mock_parent = QWidget()
-    mock_parent.study = MagicMock()
-    mock_ctrl = MagicMock()
-    mock_ctrl.get_preprocessed_data_list.return_value = []
-    mock_parent.study.get_controller.return_value = mock_ctrl
-
-    panel = PreprocessPanel(parent=mock_parent)
+    panel = PreprocessPanel()
     qtbot.addWidget(panel)
 
     # Access timer via preview_widget
@@ -45,13 +37,7 @@ def test_slider_debouncing(qtbot):
 
 def test_spinbox_debouncing(qtbot):
     """Test that spinbox changes are debounced via PreviewWidget."""
-    mock_parent = QWidget()
-    mock_parent.study = MagicMock()
-    mock_ctrl = MagicMock()
-    mock_ctrl.get_preprocessed_data_list.return_value = []
-    mock_parent.study.get_controller.return_value = mock_ctrl
-
-    panel = PreprocessPanel(parent=mock_parent)
+    panel = PreprocessPanel()
     qtbot.addWidget(panel)
 
     preview = panel.preview_widget

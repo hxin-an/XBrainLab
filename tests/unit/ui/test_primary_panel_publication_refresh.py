@@ -62,11 +62,7 @@ def _make_primary_panel(panel_kind: str, port: _PublicationPort) -> Any:
             publication_port=port,
         )
     if panel_kind == "preprocess":
-        return PreprocessPanel(
-            controller=Observable(),
-            dataset_controller=Observable(),
-            publication_port=port,
-        )
+        return PreprocessPanel(publication_port=port)
     if panel_kind == "training":
         return TrainingPanel(
             controller=_training_controller(),
@@ -418,20 +414,12 @@ def test_dataset_retryable_query_failure_preserves_visible_rows_without_error_lo
 def test_preprocess_state_render_is_driven_only_by_application_publication(
     qtbot,
 ) -> None:
-    controller = Observable()
-    dataset_controller = Observable()
     port = _PublicationPort()
-    panel = PreprocessPanel(
-        controller=controller,
-        dataset_controller=dataset_controller,
-        publication_port=port,
-    )
+    panel = PreprocessPanel(publication_port=port)
     qtbot.addWidget(panel)
     renders: list[int] = []
     cast(Any, panel).update_panel = lambda: renders.append(port.publication.revision)
 
-    controller.notify("preprocess_changed")
-    dataset_controller.notify("data_changed")
     qtbot.wait(25)
     assert renders == []
 
@@ -447,11 +435,7 @@ def test_preprocess_render_uses_queued_publication_for_filtering_readiness(
 ) -> None:
     """A transient live read cannot override the revision being rendered."""
     port = _PublicationPort()
-    panel = PreprocessPanel(
-        controller=Observable(),
-        dataset_controller=Observable(),
-        publication_port=port,
-    )
+    panel = PreprocessPanel(publication_port=port)
     qtbot.addWidget(panel)
     ready_state = replace(
         port.publication.state,

@@ -75,33 +75,31 @@ its stronger replacement. Persist a new bounded record before changing that fami
 
 ### Sequenced implementation
 
-Current bounded work — Preprocess publication boundary: MainWindow constructs this panel without
-controllers and it resolves the ApplicationUiRuntime. Remove the panel constructor/controller
-resolution, legacy observer bridges, and sidebar controller read/mutation fallbacks after real
-epoch/preprocess/publication baselines pass. Migrate the coupled mock-only tests to the actual
-publication/command path; retain native worker/error/cancel isolation. Scope is the Preprocess panel,
-sidebar and directly coupled tests, with no visible UI changes and no new owner. Command admission,
-mutation and publication remain ApplicationService-owned. Validate epoch runtime, preprocess async
-lifecycle and publication commit/retry, plus affected sidebar tests. Finish this family when no
-product or test caller requires its fallback and the same behavior baselines pass.
+Parallel bounded work — legacy backend data entry retirement: Assistant aliases are absent from
+the approved registry; its stale intent/verifier references and real-workflow import fixtures have
+now migrated. Retire `LoadDataCommand`, `AttachLabelsCommand`, `PreviewLabelImportCommand` and
+`ImportLabelsCommand`, their compatibility service/receipt, headless legacy opt-in and hidden
+Dataset Add labels route. Canonical scan/review/apply owns import semantics; saved historical
+`label_imports` recipes retain reload/review/apply support. The new fixed historical JSON test
+already verifies four-class GDF/MAT replay without any retiring command. `LabelImportPlan` still
+has a canonical apply caller and must not be blindly removed with its public command: trace and
+preserve any required internal record representation. Migrate remaining generic command/error/
+confirmation tests, remove only retired-exclusive tests, and preserve equivalent current resource,
+atomic rollback, cancellation and state publication evidence. No visible UI or 18-tool membership
+change, no new authoritative owner; expected owner delta is minus one compatibility service.
+Independent review must examine the actual data/recipe/lifecycle diff before integration.
 
-Parallel bounded work — Assistant historical alias residue: the authoritative
-`AGENT_ACTION_CONTRACTS` and validated real/mock registry expose none of `load_data`,
-`attach_labels`, or `import_labels`. Remove their unreachable intent/parser/verifier
-special cases and migrate tests that protect general parsing/verification to current tools.
-Keep current 18-tool membership, confirmation and visible results unchanged. Establish
-focused baselines first; no new owner or protocol. Backend/hidden label-route removal
-is a subsequent slice and must preserve historical `ImportRecipe.label_imports` replay.
-
-Current bounded work — canonical import evidence migration: several real IO, preprocessing,
-training and stress fixtures still begin with `LoadDataCommand`; some immediately re-import
-through an existing canonical helper. Replace those setup calls with explicit
-scan/preview/validate/apply, reusing each workflow's reviewed choices. Raw-only IO/stress uses
-an explicit skip-label review and retains raw signal/event assertions. Keep overlap/provenance
-rejection and optional montage publication tests intact. Validate the same focused workflows
-before/after; retire no command until consumers and generic error/confirmation tests are migrated.
-No production owner is added. Historical recipe replay must be tested from saved JSON without
-depending on a command that is about to be removed.
+Current bounded work — Training publication and query boundary: MainWindow constructs Training
+with application publication/query ports; its remaining controller constructors, observer branch,
+history/readiness/preflight fallbacks serve test-only contexts. First remove ModelSelectionDialog's
+controller argument, using its existing explicit TrainingQueryPort and preserving catalog,
+provider loading, recovery, weight loading and current model identity. Then migrate panel/sidebar
+tests to publication/query state and remove the redundant controller branch. Preserve transient
+training progress, terminal publication ordering, stop/retry, confirmation, stale generation and
+result reopening. No new owner or visible UI change. Validate model dialog/catalog tests and real
+training refresh/runtime tests before/after each coherent change; verify actual event callers
+before deleting callbacks. Finish when the production path and retained tests use only the
+application ports, with equivalent lifecycle/state evidence passing.
 
 1. Complete the evidence map and set coverage/branch reporting without gaming the denominator.
 2. Migrate the highest-value UI compatibility tests to typed real-service/publication fixtures;

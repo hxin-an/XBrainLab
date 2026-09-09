@@ -80,8 +80,6 @@ UI_CONTROLLER_FALLBACK_METHODS = (
 UI_CONTROLLER_FALLBACK_WRAPPERS = (
     "run_controller_compatibility_call",
     "_compatibility_controller_value",
-    "_compatibility_preprocessed_data_list_for_render",
-    "_run_preprocess_compatibility_call",
 )
 
 LEGACY_AGENT_CONTROLLER_LIFECYCLE_ATTRIBUTES = frozenset(

@@ -76,8 +76,6 @@ def test_publication_wired_panel_does_not_resolve_compatibility_controllers(
         qtbot.addWidget(panel)
 
     assert panel.controller is None
-    if panel_cls is PreprocessPanel:
-        assert panel.dataset_controller is None
     study.get_controller.assert_not_called()
 
 
