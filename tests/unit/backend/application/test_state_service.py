@@ -559,6 +559,31 @@ def test_state_snapshot_service_builds_workflow_snapshot() -> None:
     assert state.active_dataset.has_epoch_data is True
 
 
+@pytest.mark.parametrize("display_name", [None, "", "Catalog display name"])
+def test_state_snapshot_preserves_model_identity_and_detaches_configuration(
+    display_name: str | None,
+) -> None:
+    service = _snapshot_service()
+    runtime = cast(_TrainingRuntime, service.training_runtime)
+    holder = SimpleNamespace(
+        target_model=type("LegacyModel", (), {}),
+        display_name=display_name,
+        model_params_map={"dropout": 0.25},
+    )
+    runtime._configuration = replace(runtime._configuration, model_holder=holder)
+
+    snapshot = service.build()
+
+    assert snapshot.state_reliable
+    assert snapshot.training.model_name == (display_name or "LegacyModel")
+    assert snapshot.training.model_params == {"dropout": 0.25}
+    holder.model_params_map["dropout"] = 0.5
+    assert snapshot.training.model_params == {"dropout": 0.25}
+    snapshot.training.model_params["dropout"] = 0.75
+    assert holder.model_params_map == {"dropout": 0.5}
+    assert service.build().training.model_params == {"dropout": 0.5}
+
+
 def test_state_snapshot_projects_partial_bids_geometry_without_hiding_channels() -> (
     None
 ):

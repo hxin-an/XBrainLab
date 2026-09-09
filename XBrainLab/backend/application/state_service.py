@@ -1,4 +1,4 @@
-"""State snapshot service and compatibility exports for the command spine."""
+"""State snapshot projection for the application command spine."""
 
 from __future__ import annotations
 
@@ -31,13 +31,7 @@ from .montage_capability import (
     project_montage_geometry,
 )
 from .pipeline_stage import pipeline_stage_from_snapshots
-from .query_state_service import HandlerResult, QueryStateCommandService
-from .saliency_coverage import (
-    SaliencyCoverageProjector,
-    saliency_coverage_for_eval_record,
-    saliency_label_items_from_epoch,
-    saliency_method_coverage,
-)
+from .saliency_coverage import SaliencyCoverageProjector
 from .serialization import serialize_json_value
 from .state import (
     ActiveDatasetSnapshot,
@@ -70,15 +64,6 @@ from .training_snapshot import (
     training_option_snapshot,
 )
 
-__all__ = [
-    "HandlerResult",
-    "QueryStateCommandService",
-    "StateSnapshotService",
-    "saliency_coverage_for_eval_record",
-    "saliency_label_items_from_epoch",
-    "saliency_method_coverage",
-]
-
 _BACKGROUND_SNAPSHOT_ATTEMPTS = 3
 
 
@@ -98,8 +83,6 @@ class StateSnapshotService:
         dataset_generation: Any,
         interpretation: Any,
         saliency_coverage_projector: SaliencyCoverageProjector,
-        training_state: Any | None = None,
-        evaluation_state: Any | None = None,
         training_recommendation: TrainingRecommendationService | None = None,
         montage_snapshot_provider: Callable[[], Any] | None = None,
         effective_montage_provider: Callable[[], Any] | None = None,
@@ -110,9 +93,8 @@ class StateSnapshotService:
         self.preprocess = preprocess
         self.training = training
         self.training_runtime = training_runtime
-        self.training_state = training_state or training
-        self.evaluation = evaluation
-        self.evaluation_state = evaluation_state or evaluation
+        self.training_state = training
+        self.evaluation_state = evaluation
         self.visualization = visualization
         self.dataset_generation = dataset_generation
         self.interpretation = interpretation
@@ -1140,16 +1122,6 @@ class StateSnapshotService:
             return [str(ch) for ch in epoch_data.get_mne().ch_names]
         except Exception:
             return []
-
-    @staticmethod
-    def _montage_available(epoch_data: Any) -> bool:
-        if epoch_data is None:
-            return False
-        return bool(getattr(epoch_data, "channel_position", None))
-
-    @staticmethod
-    def _channel_positions_available(epoch_data: Any) -> bool:
-        return StateSnapshotService._montage_available(epoch_data)
 
     @staticmethod
     def _montage_positions(epoch_data: Any) -> list[list[float]]:

@@ -3341,36 +3341,7 @@ def check_application_state_module_boundaries(root_dir: Path) -> list[str]:
         if "QueryStateCommandService" in state_names:
             violations.append(
                 f"QueryStateCommandService is owned by {QUERY_STATE_SERVICE_OWNER}; "
-                f"{APPLICATION_STATE_SERVICE_MODULE} may only re-export it."
-            )
-
-        saliency_compatibility_exports = {
-            alias.name
-            for node in state_service_tree.body
-            if isinstance(node, ast.ImportFrom)
-            and _application_module_matches(node.module, "saliency_coverage")
-            for alias in node.names
-        }
-        missing_saliency_exports = (
-            SALIENCY_COVERAGE_COMPATIBILITY_NAMES - saliency_compatibility_exports
-        )
-        if missing_saliency_exports:
-            violations.append(
-                f"{APPLICATION_STATE_SERVICE_MODULE} must explicitly re-export "
-                "compatibility names from saliency_coverage: "
-                f"{', '.join(sorted(missing_saliency_exports))}."
-            )
-
-        query_compatibility_exported = any(
-            isinstance(node, ast.ImportFrom)
-            and _application_module_matches(node.module, "query_state_service")
-            and any(alias.name == "QueryStateCommandService" for alias in node.names)
-            for node in state_service_tree.body
-        )
-        if not query_compatibility_exported:
-            violations.append(
-                f"{APPLICATION_STATE_SERVICE_MODULE} must explicitly re-export "
-                "QueryStateCommandService from query_state_service."
+                f"{APPLICATION_STATE_SERVICE_MODULE} must not define it."
             )
 
         for node in ast.walk(state_service_tree):

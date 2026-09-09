@@ -15,15 +15,6 @@ from XBrainLab.backend.application.saliency_coverage import (
     saliency_label_items_from_epoch,
     saliency_method_coverage,
 )
-from XBrainLab.backend.application.state_service import (
-    saliency_coverage_for_eval_record as compatibility_coverage_for_eval_record,
-)
-from XBrainLab.backend.application.state_service import (
-    saliency_label_items_from_epoch as compatibility_label_items_from_epoch,
-)
-from XBrainLab.backend.application.state_service import (
-    saliency_method_coverage as compatibility_method_coverage,
-)
 from XBrainLab.backend.training.record.eval import EvalRecord
 from XBrainLab.backend.training.saliency_provenance import (
     SaliencyArtifactContext,
@@ -155,7 +146,7 @@ def test_projector_matches_partial_explicit_event_code_and_class_name() -> None:
     assert [item.store_key for item in coverage.classes] == [769, "Right hand"]
 
 
-def test_epoch_label_projection_and_compatibility_helpers_preserve_behavior() -> None:
+def test_epoch_label_projection_and_coverage_helpers_preserve_behavior() -> None:
     epoch = SimpleNamespace(event_id={"Left": 7, "Right": 8})
     eval_record = SimpleNamespace(
         saliency_context=SimpleNamespace(
@@ -278,12 +269,6 @@ def test_projector_fails_closed_for_invalid_saliency_payload_contract(
     assert coverage.complete is False
     assert all(item.available is False for item in coverage.classes)
     assert all(reason_fragment in str(item.reason).lower() for item in coverage.classes)
-
-
-def test_state_service_compatibility_exports_point_to_projector_owner() -> None:
-    assert compatibility_coverage_for_eval_record is saliency_coverage_for_eval_record
-    assert compatibility_label_items_from_epoch is saliency_label_items_from_epoch
-    assert compatibility_method_coverage is saliency_method_coverage
 
 
 def test_saliency_coverage_module_has_no_cold_matplotlib_import() -> None:

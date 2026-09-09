@@ -422,11 +422,6 @@ class _LazyDatasetGenerationCommandService:
             )
         return self._service_instance
 
-    def active_split_summary(self, datasets: list[Any]) -> dict[str, Any]:
-        if not datasets:
-            return {}
-        return self._service().active_split_summary(datasets)
-
     def dataset_split_state(self, datasets: list[Any]) -> dict[str, Any]:
         if self._service_instance is None:
             return {
@@ -523,17 +518,6 @@ class _LazyTrainingCommandService:
 
     def handle_configure_training(self, command: Command) -> HandlerResult:
         return self._service().handle_configure_training(command)
-
-    def handle_train(
-        self,
-        command: Command,
-        *,
-        defer_synchronous_completion: bool = False,
-    ) -> HandlerResult:
-        return self._service().handle_train(
-            command,
-            defer_synchronous_completion=defer_synchronous_completion,
-        )
 
     def resolve_train_preflight(
         self,
