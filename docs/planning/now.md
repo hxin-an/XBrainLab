@@ -82,8 +82,14 @@ Native offline initialization indexed the unchanged 23-example corpus; Filter an
 passed twice, including reopening/reusing the verified index. No model download or strategy change.
 
 Saliency is still unresolved: real MainWindow-before-training / Braindecode EEGNet / no preconfigured
-saliency / actual button compute renders on both Linux and Windows CPU. Continue narrowing the
-Assistant handoff, training UI and GPU/result-selection differences; generic passes do not close it.
+saliency / actual button compute renders on Linux and Windows CPU/CUDA. On native c07b3351, the normal
+Granite ChatPanel confirmation also computes and renders finite maps. A separate 30-record/four-class
+synthetic sequence reproduced the two Nyquist errors (80 then 50 Hz), resampling, average reference,
+normalization, group trial split, training and Assistant compute; it still rendered all four maps.
+The new unmocked integration test covers GUI compute, method/tab change, real Assistant handoff,
+new-generation recompute and visible finite canvas. These are characterization evidence, not proof
+the user's unknown blank-view case is fixed. Ask for the actual EEG folder, epoch window and affected
+view/screenshot; do not invent a lifecycle repair without a red reproduction.
 Persisted evaluation files have no saliency, but this alone cannot prove memory computation failed:
 the existing post-training publication path updates in-memory records, not those artifact files.
 
@@ -91,3 +97,8 @@ The user additionally reported too many virtual environments and low disk space.
 known XBrainLab Windows/WSL environments and their real users read-only; create no new environment.
 Preserve the active shared environments and caches. Present exact obsolete-copy candidates and
 space impact before any deletion; the report does not authorize broad or uncertain cleanup.
+Measured: C: 47.67 GiB free / 441.55 GiB total; D: about 262 GiB free. WSL has 69 XBrainLab Poetry
+environments totaling 31.47 GiB (including the active 6.10 GiB shared environment); two historical
+Windows PR-specific environments total about 8 GiB. Preserve the current 4.01 GiB Windows environment.
+No environment was deleted or created for this repair. WSL filesystem free space is not evidence that
+Windows VHDX backing storage has shrunk; shutdown/compaction is outside this running repair.
