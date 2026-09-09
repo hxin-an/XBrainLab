@@ -9,7 +9,7 @@ from time import monotonic
 from typing import Any
 
 from PyQt6 import sip
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import QObject, Qt, pyqtSignal, pyqtSlot
 
 CONTROLLER_SOURCE = Path(__file__).parents[4] / "XBrainLab/llm/agent/controller.py"
 WORKER_SOURCE = Path(__file__).parents[4] / "XBrainLab/llm/agent/worker.py"
@@ -73,8 +73,8 @@ def test_controller_integration_fixture_owns_exception_safe_shutdown() -> None:
     assert teardown_close_calls
 
 
-def test_assistant_shutdown_source_forbids_nested_loops_and_thread_waits() -> None:
-    """Controller and worker teardown must advance from Qt terminal signals."""
+def test_assistant_shutdown_source_forbids_nested_loops_and_blocking_waits() -> None:
+    """Only an immediate native-completion probe may supplement Qt terminals."""
     forbidden: list[tuple[str, int]] = []
 
     for source in (CONTROLLER_SOURCE, WORKER_SOURCE):
@@ -86,6 +86,13 @@ def test_assistant_shutdown_source_forbids_nested_loops_and_thread_waits() -> No
                 isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Attribute)
                 and node.func.attr == "wait"
+                and not (
+                    len(node.args) == 1
+                    and isinstance(node.args[0], ast.Constant)
+                    and type(node.args[0].value) is int
+                    and node.args[0].value == 0
+                    and not node.keywords
+                )
             ):
                 forbidden.append((f"{source.name}:wait", node.lineno))
 
@@ -131,6 +138,42 @@ def test_real_controller_close_completes_from_worker_and_thread_signals(qtbot) -
     assert rag_lifecycle.close_calls == 1
     if worker is not None:
         qtbot.waitUntil(lambda: sip.isdeleted(worker), timeout=2_000)
+
+
+def test_controller_terminal_waits_for_native_cleanup_after_finished(qtbot) -> None:
+    """A finished signal must not release ownership before deferred deletion."""
+    from XBrainLab.backend.study import Study
+    from XBrainLab.llm.agent.controller import LLMController
+
+    controller = LLMController(Study())
+    worker = controller.worker
+    thread = controller.worker_thread
+    entered = Event()
+    release = Event()
+    blocker = _WorkerThreadBlocker(entered, release)
+    thread.finished.connect(blocker._block, Qt.ConnectionType.DirectConnection)
+    terminals: list[tuple[bool, str]] = []
+    controller.shutdown_finished.connect(
+        lambda ok, message: terminals.append((ok, message))
+    )
+
+    try:
+        assert controller.close() is False
+        qtbot.waitUntil(entered.is_set, timeout=1_000)
+        qtbot.wait(25)
+        assert not release.is_set()
+        assert terminals == []
+        assert controller.shutdown_in_progress
+        assert controller.worker is worker
+        assert controller.close() is False
+    finally:
+        release.set()
+        assert thread.wait(2_000)
+        qtbot.waitUntil(lambda: terminals == [(True, "")], timeout=2_000)
+
+    assert controller.worker is None
+    assert worker is not None and sip.isdeleted(worker)
+    assert controller.close() is True
 
 
 def test_shutdown_timeout_stays_pending_until_the_native_thread_exits(

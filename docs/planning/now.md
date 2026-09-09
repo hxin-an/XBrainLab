@@ -19,8 +19,8 @@ the final product source and explicit merge approval.
 
 ### Construction closure and retained evidence
 
-Production construction is implemented for the families below; integration exposed additional
-test-only retirement residue, so construction closure and integrated gates remain outstanding.
+Production construction and the integration-discovered test/lifecycle repairs are implemented
+for the families below; the replacement head's complete integrated gates remain outstanding.
 The construction commits hold the detailed history. Inventory counts are not claims that every
 tracked file was deeply read, and passing tests do not establish defect-free architecture.
 
@@ -74,31 +74,39 @@ performance guarantee. Other job environments and gates are unchanged.
 
 ### Remaining execution plan and validation
 
-Integrated run `34304758779` exposed missed test consumers: the product walkthrough's
-fake model dialog still requires the retired controller parameter, and a dependency test
-hard-codes nine Poetry jobs despite the approved eight-job environment boundary. Repair these
-tests against the current dialog/installer contract, retain their behavior assertions, and run
-the focused families before pushing the replacement head. Do not restore a production fallback
-or weaken the dependency policy. Unit UI also retained controller-slot/refresh-keyword assertions
-and two error-privacy tests based on the removed Preprocess fallback. Migrate them to current
-publication/action paths while preserving detached data, error outcome and log-redaction evidence.
-Preserve the failed run and shard artifacts as evidence.
-The same-class sweep also found inert controller setup/assertions in retained Training/Dataset/
-shared-sidebar tests and ignored controller arguments in Visualization test helpers. Close this
-finite residual caller set, merging genuinely equivalent empty-context cases while preserving
-current command/publication/confirmation and native-error evidence; no production fallback returns.
+Integrated run `34304758779` exposed missed test consumers of retired dialog/controller/refresh
+contracts and an outdated CI installer count. These consumers and their same-class Training,
+Dataset, shared-sidebar and Visualization mock residue are now migrated. Focused tests preserve
+current command/publication/confirmation, detached data, error outcome and log-redaction evidence.
+No production fallback or weaker dependency policy was restored. Preserve the failed run and
+shard artifacts; the repaired tests still require replacement-head integrated validation.
 
-1. Finish focused tooling tests, lint and review; commit the coherent tooling/doc closure.
-   The native capture fixture and all final source changes must be included in the candidate.
-2. Freeze and push the single integration head to #131. Verify exact base/head and every
+The final integration-rest shard timed out in the real no-model contract-failure walkthrough's
+shutdown. Its pre-timeout stack places the command thread inside `_ControllerShutdownBridge._finish`
+at `controller.moveToThread(gui_thread)` while the GUI waits for runtime CLOSED.
+The bounded same-process coverage reproduction also hangs locally. Native debugger evidence
+(`build/assistant-shutdown-native-stack.txt`) shows the command thread holding the Python GIL
+inside `QObject.moveToThread` while waiting for a Qt mutex, and the worker thread holding a Qt
+destruction/connection lock while waiting for the GIL in `sipQThread.disconnectNotify`.
+`QThread.finished` precedes deferred deletion; it is not a completed native-cleanup fence.
+The deterministic native finished-callback barrier test failed on early successful shutdown
+before the repair. The existing controller owner/retry timer now requires a nonblocking
+`QThread.wait(0)` completion probe before terminal publication, including the already-not-running
+entry. The source guard still rejects blocking waits and nested loops; only the literal zero-time
+probe is permitted. Independent lifecycle review found no blocking issue; the focused controller/
+dispatcher tests, repeated real diagnostic walkthrough and adjacent controller/runtime tests pass.
+Do not lengthen timeouts, skip this walkthrough, or infer a model/prompt problem. This is required
+integrated evidence, not a reason to hand off an incomplete candidate.
+
+1. Freeze and push the single integration head to #131. Verify exact base/head and every
    applicable non-skipped CI check using actual GitHub conclusions and artifacts.
-3. Require the complete Linux test aggregation, at least 85% line coverage, separate branch
+2. Require the complete Linux test aggregation, at least 85% line coverage, separate branch
    baseline, source-diverse required public data, platform/native and applicable UI gates.
    Earlier green heads cannot substitute. Reuse equivalent same-head CI evidence rather than
    running a duplicate local full manifest.
-4. Diagnose and repair any direct integrated failure, preserve its evidence, and validate the
+3. Diagnose and repair any direct integrated failure, preserve its evidence, and validate the
    changed final head again. Pending CI is not a stopping point.
-5. Once all applicable gates pass, launch that exact isolated version and a live log, verify
+4. Once all applicable gates pass, launch that exact isolated version and a live log, verify
    responsiveness, and deliver one workflow-oriented manual checklist. Do not monitor the
    user's subsequent operation or merge without acceptance.
 
