@@ -122,6 +122,82 @@ PowerShell 執行。
 
 ## 啟動應用程式
 
+### 多 worktree：固定手測環境
+
+重複手測不在每個 worktree 執行 bootstrap／`poetry sync`。Windows 共用一套已驗證的原生
+`.venv`；WSL 共用另一套 Linux environment，不能交叉使用。新 worktree 只放 source。
+依賴真的改變時，先關閉使用共用環境的程序，再明確同步；日常啟動不安裝、不下載。
+
+Windows 固定手測 checkout 位於 `D:\workspace_v2\projects\lab\xbrainlab-manual`，不放在
+可清理的 `build` 裡。預設 Python 為主 checkout 的 `.venv\Scripts\python.exe`，模型與
+embedding 共用 `D:\XBrainLabCache`；其他機器可用 `-Source`、`-Python`、`-Cache` 指定。
+使用本次交付的完整 SHA，不以 branch 名稱或「最新」代替：
+
+```powershell
+$candidate = '<完整 40 字元 commit SHA>'
+# entrypoint 可由 agent 複製至固定 Windows tools 目錄；兩個檔案須來自同一版本。
+$entrypoint = '.\scripts\dev\manual_windows.ps1'
+& $entrypoint -Sha $candidate -Action prepare
+& $entrypoint -Sha $candidate -Action check
+& $entrypoint -Sha $candidate
+```
+
+`prepare` 不 fetch、不 force checkout，先檢查 source 乾淨與目標的 Python／直接依賴 lock
+版本；環境不符時拒絕切換，請診斷後明確同步。此檢查不是全部 transitive dependencies 或
+產品 workflow 的驗證。`launch` 另檢查實際 import provenance 與 pinned cache 完整性，強制
+Windows Qt 和 offline model mode。只有一個 PowerShell console 作為即時 log。
+OS lock 與程序檢查阻擋同時 prepare／launch／clean；不要繞過入口手動切換執行中的 source。
+
+每個 SHA 的 settings、Qt settings、logs、一般 data/cache 與工作目錄隔離於
+`build/manual-runs/<SHA>/`，不覆寫主 checkout 的 `settings.json`。預設 training output
+位於該 run 的 `work/output/`。重要結果應另存到此目錄之外；自訂 output 路徑不會自動清理。
+失敗保留重現資料；真人明確驗收且應用程式退出後，先預覽再清理：
+
+```powershell
+& $entrypoint -Sha $candidate -Action clean
+& $entrypoint -Sha $candidate -Action clean -Apply -Accepted
+```
+
+只刪除身份相符 run 的 `work/output/`，不刪 data／cache／logs／settings／evidence，也不掃描 `.pth` 等
+副檔名。刪掉的測試權重需重新訓練；尚未匯出的重要結果不可加入清理。
+
+WSL worktree 直接使用保留的 interpreter；不要因目錄 hash 不同建立另一套 Poetry env：
+
+```bash
+export VIRTUAL_ENV=/home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-IiX9BmR2-py3.12
+export PATH="$VIRTUAL_ENV/bin:$PATH"
+python -m pre_commit install
+python -m pytest --capture=sys tests/path/test_file.py -q
+```
+
+其他機器改用其已驗證環境。Hook 遷移並驗證、確認無程序／設定引用後才能刪舊環境。
+Granite／embedding snapshots、原始資料與未知研究結果不屬於可拋棄的安裝 cache。
+
+### WSL 原地壓縮：離線 Windows 步驟
+
+刪 Linux 檔案不代表 Windows 的 VHDX 立即縮小。`scripts/dev/compact_wsl.ps1` 只處理目前
+Windows 使用者註冊的 `Ubuntu-24.04`，不搬家、不 unregister、不處理 `Ubuntu-24.04-clean`。
+將腳本複製到 Windows 磁碟，再從 PowerShell 執行；不能依賴即將停止的 WSL UNC 路徑。
+
+```powershell
+# 預設只讀預覽
+& D:\XBrainLabCache\tools\compact_wsl.ps1
+# 保存工作並自行停止 WSL；再以同一使用者的系統管理員 PowerShell 執行
+& D:\XBrainLabCache\tools\compact_wsl.ps1 -Apply
+```
+
+腳本不替你 shutdown／terminate WSL。Apply 要求所有 WSL 已停止、磁碟未被占用，且
+`E:\XBrainLabBackups` 的 NTFS 空間足以容納完整 VHDX。先建立私有、不可覆寫且 hash 驗證
+成功的備份，才允許 DiskPart 原地壓縮；失敗時保留備份與診斷，不自動還原或刪除。
+任何占用／身份／備份／壓縮驗證不明確時停止，不回報成功。操作期間不得重開 WSL／Docker。
+原理與限制見 [Microsoft compact vdisk](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/compact-vdisk)。
+
+成功後最小啟動檢查不等於資料驗收。仍需核對 WSL 使用者、Git／SSH、共用環境、資料與模型
+存取。備份至少保留 7 天，確認正常並取得明確同意後才清除。只有實際執行前後的磁碟量測
+能代表回收量；腳本測試或預覽不代表已把空間還給 C 槽。
+
+### 一般單 checkout 啟動
+
 ```bash
 poetry run python run.py
 ```

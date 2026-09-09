@@ -33,7 +33,9 @@ from scripts.dev.pytest_completion_attestation import (
 from scripts.dev.run_required_pytest_gate import OPTIONAL_PUBLIC_FIXTURE_SKIP_MARKER
 from scripts.dev.test_runtime_paths import (
     configure_test_temp_root,
+    create_owned_pytest_temp_root,
     matplotlib_cache_root,
+    remove_owned_pytest_temp_root,
 )
 
 LLM_UNIT_ROOT_TESTS = tuple(
@@ -343,10 +345,23 @@ def run_pytest_attested(args: Sequence[str]) -> AttestedPytestRun:
     prlimit = shutil.which("prlimit") if os.name == "posix" else None
     cmd = [prlimit, "--core=0", "--", *python_cmd] if prlimit else python_cmd
     print(f"Running: {' '.join(cmd)}")
+    explicit_basetemp = any(
+        argument == "--basetemp" or argument.startswith("--basetemp=")
+        for argument in args
+    )
+    test_temp_root = configure_test_temp_root(ROOT)
+    owned_temp_root = (
+        None if explicit_basetemp else create_owned_pytest_temp_root(test_temp_root)
+    )
+    environment = _shard_diagnostic_env()
+    if owned_temp_root is not None:
+        for variable in ("XBRAINLAB_TEST_TMPDIR", "TMPDIR", "TEMP", "TMP"):
+            environment[variable] = str(owned_temp_root)
+        environment["MPLCONFIGDIR"] = str(matplotlib_cache_root(owned_temp_root))
     process, owner = spawn_owned_process(
         cmd,
         cwd=ROOT,
-        env=_shard_diagnostic_env(),
+        env=environment,
     )
     timed_out = False
     try:
@@ -376,7 +391,10 @@ def run_pytest_attested(args: Sequence[str]) -> AttestedPytestRun:
     if failure is not None:
         print(f"Test shard evidence failed: {failure}", file=sys.stderr)
         return AttestedPytestRun(return_code=2, attestation=None)
-    return AttestedPytestRun(return_code=return_code, attestation=attestation)
+    execution = AttestedPytestRun(return_code=return_code, attestation=attestation)
+    if execution.return_code == 0 and owned_temp_root is not None:
+        remove_owned_pytest_temp_root(test_temp_root, owned_temp_root)
+    return execution
 
 
 def _run_one_or_exit(

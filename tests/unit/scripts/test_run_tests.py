@@ -48,6 +48,52 @@ def test_headless_runner_uses_one_wsl_safe_temp_namespace(monkeypatch) -> None:
     assert Path(tempfile.gettempdir()).resolve() == temp_root
 
 
+@pytest.mark.parametrize("passes", [True, False])
+def test_attested_runner_cleans_only_successful_owned_fake_weight_temp(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    passes: bool,
+) -> None:
+    test_file = tmp_path / "test_fake_weight.py"
+    test_file.write_text(
+        "from pathlib import Path\n"
+        "def test_fake_weight(tmp_path):\n"
+        "    (tmp_path / 'fake-weight.bin').write_bytes(b'weight')\n"
+        f"    assert {passes!r}\n",
+        encoding="utf-8",
+    )
+    temp_root = tmp_path / "owned-temp"
+    unrelated = temp_root / "unrelated.bin"
+    temp_root.mkdir()
+    unrelated.write_bytes(b"keep")
+    monkeypatch.setenv("XBRAINLAB_TEST_TMPDIR", str(temp_root))
+    execution = run_tests.run_pytest_attested((str(test_file), "-q"))
+    owned = list(temp_root.glob("pytest-run-*"))
+    assert unrelated.read_bytes() == b"keep"
+    assert execution.return_code == (0 if passes else 1)
+    if passes:
+        assert owned == []
+    else:
+        assert len(owned) == 1
+        assert next(iter(owned[0].rglob("fake-weight.bin"))).read_bytes() == b"weight"
+
+
+def test_attested_runner_never_deletes_explicit_basetemp(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    test_file = tmp_path / "test_fake_weight.py"
+    test_file.write_text("def test_ok():\n    assert True\n", encoding="utf-8")
+    explicit = tmp_path / "explicit-basetemp"
+    explicit.mkdir()
+    marker = explicit / "keep"
+    marker.write_text("keep", encoding="utf-8")
+    execution = run_tests.run_pytest_attested(
+        (str(test_file), "-q", f"--basetemp={explicit}")
+    )
+    assert execution.return_code == 0
+    assert marker.read_text(encoding="utf-8") == "keep"
+
+
 def test_aggregate_ci_verifiers_have_stdlib_import_closure() -> None:
     completed = subprocess.run(  # noqa: S603 - fixed interpreter/import probe, no shell
         [

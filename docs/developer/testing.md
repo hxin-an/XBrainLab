@@ -5,6 +5,13 @@
 
 本頁所有命令都要在 repository root 執行。
 
+多 worktree 先啟用[已保留的共用平台環境](local-setup.md#多-worktree固定手測環境)，不要
+在新路徑隱式建立 Poetry env。原生 Windows 手測使用固定入口，PowerShell 本身即 live log。
+既有 `run_tests.py` runner 為每次 pytest 子程序建立獨立暫存目錄，只有正常完成且 attestation
+驗證成功才移除該目錄內的生成物；失敗／timeout 保留。直接呼叫 pytest 不套用這項自動清理，
+明確指定的 `--basetemp` 也不由 runner 清理（pytest 自身的 basetemp 語意不變）。
+永久 evidence 與研究結果不可寫入測試 temp；不按權重副檔名做全機掃描刪除。
+
 ## 我現在該跑哪一個？ { #choose-test }
 
 先找出這次改動屬於哪一種情況：

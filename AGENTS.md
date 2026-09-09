@@ -105,6 +105,10 @@ Data/import/label/epoch/training/evaluation/visualization 仍需同版本 source
 
 ## 資源與程序安全
 
+- 多 worktree 共用一套 Windows 手測環境與一套 WSL 開發環境，不因新路徑重建 env 或複製模型。
+  固定手測入口、source／lock 檢查及產物保留規則見 `docs/developer/local-setup.md`。
+  清理只限可證明 ownership 的生成物；人工結果需明確驗收、匯出保留項且程序退出。
+
 - 產品 local model/revision 從 active decision 取得，不得 silent fallback。下載前確認來源、授權、
   quantization、大小、VRAM、cache 位置與清理方式；單模型原則不超過 10 GB，總 cache 不超過
   20 GB。27B+ 需明確授權，不使用中國公司／來源模型。

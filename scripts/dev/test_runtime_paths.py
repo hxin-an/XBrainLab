@@ -36,6 +36,23 @@ def configure_test_temp_root(repo_root: Path) -> Path:
     return test_temp_root
 
 
+def create_owned_pytest_temp_root(test_temp_root: Path) -> Path:
+    """Create one runner-owned child root safe to remove after a passed shard."""
+    return Path(tempfile.mkdtemp(prefix="pytest-run-", dir=test_temp_root))
+
+
+def remove_owned_pytest_temp_root(test_temp_root: Path, owned_root: Path) -> None:
+    """Remove only a direct, non-symlink child created for this runner."""
+    import shutil
+
+    root = test_temp_root.resolve()
+    if owned_root.is_symlink() or owned_root.parent.resolve() != root:
+        return
+    if not owned_root.name.startswith("pytest-run-") or not owned_root.is_dir():
+        return
+    shutil.rmtree(owned_root)
+
+
 def matplotlib_cache_root(
     test_temp_root: Path,
     *,
