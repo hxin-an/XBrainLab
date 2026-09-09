@@ -13,13 +13,18 @@ from time import monotonic
 from typing import Any, cast
 from unittest.mock import patch
 
+import mne
+import numpy as np
 import pytest
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 from PyQt6.QtWidgets import QMainWindow
 
 from XBrainLab.backend.application import (
-    LoadDataCommand,
+    ApplyInterpretationCommand,
+    PreviewInterpretationCommand,
     ResetSessionCommand,
+    ScanSourceCommand,
+    ValidateInterpretationCommand,
     get_application_service,
 )
 from XBrainLab.backend.controller.chat_controller import (
@@ -113,31 +118,6 @@ def _long_session_timing_policy(
         enforce_turn_average_budget=not (coverage_enabled or shared_ci_runner),
         enforce_absolute_latency_budget=not shared_ci_runner,
     )
-
-
-class _RawState:
-    """Small state object sufficient for the real ApplicationService snapshot."""
-
-    def __init__(self, filepath: str) -> None:
-        self._filepath = filepath
-
-    def get_filepath(self) -> str:
-        return self._filepath
-
-    def get_filename(self) -> str:
-        return "external-session.fif"
-
-    def get_subject_name(self) -> str:
-        return "S01"
-
-    def get_session_name(self) -> str:
-        return "session-01"
-
-    def get_mne(self) -> object:
-        return type("MNE", (), {"ch_names": ["C3", "C4"]})()
-
-    def get_preprocess_history(self) -> list[str]:
-        return []
 
 
 class _DeterministicRagRetriever:
@@ -824,12 +804,12 @@ def test_long_session_uses_real_policy_and_stays_bounded_across_two_prunes(
         controller_history_sizes: list[int] = []
         publication_stages: dict[int, str] = {}
         turn_count = 202
-        external_data_path = tmp_path / "external-session.fif"
-        external_data_path.write_bytes(b"deterministic external GUI load")
-
-        def import_external_data(paths: list[str]) -> tuple[int, list[str]]:
-            study.loaded_data_list = [cast(Any, _RawState(paths[0]))]
-            return len(paths), []
+        external_data_path = tmp_path / "external-session_raw.fif"
+        raw = mne.io.RawArray(
+            np.zeros((2, 512)),
+            mne.create_info(["C3", "C4"], sfreq=256, ch_types="eeg"),
+        )
+        raw.save(external_data_path, overwrite=True, verbose=False)
 
         for turn_index in range(turn_count):
             # Start each measurement from a newly delivered tick. Otherwise the
@@ -857,15 +837,21 @@ def test_long_session_uses_real_policy_and_stays_bounded_across_two_prunes(
                 text = f"Record a bounded session checkpoint for turn {turn_index}."
 
             if turn_index == turn_count // 4:
-                with patch.object(
-                    service.dataset,
-                    "import_files",
-                    side_effect=import_external_data,
+                for command in (
+                    ScanSourceCommand(
+                        source_path=str(external_data_path), source_hint="file"
+                    ),
+                    PreviewInterpretationCommand(
+                        choices={
+                            "selected_eeg_files": [str(external_data_path)],
+                            "skip_labels": True,
+                        }
+                    ),
+                    ValidateInterpretationCommand(),
+                    ApplyInterpretationCommand(confirmed=True),
                 ):
-                    result = service.execute(
-                        LoadDataCommand(paths=[str(external_data_path)])
-                    )
-                assert result.success is True
+                    result = service.execute(command)
+                    assert result.success is True
                 publication = service.get_view_publication()
                 assert publication.state.pipeline_stage == "data_loaded"
                 expected_revision = publication.revision

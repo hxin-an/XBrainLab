@@ -12,8 +12,10 @@ import mne
 import numpy as np
 import pytest
 
+from tests.integration.data_interpretation_support import (
+    import_recording_through_interpretation,
+)
 from XBrainLab.backend.application import (
-    data_compatibility_service,
     data_interpretation_service,
     training_service,
 )
@@ -21,9 +23,9 @@ from XBrainLab.backend.application.commands import (
     ApplyInterpretationCommand,
     Command,
     ConfigureTrainingCommand,
-    LoadDataCommand,
     PreviewInterpretationCommand,
     ReloadInterpretationRecipeCommand,
+    ResetSessionCommand,
     SaveDatasetSplitCommand,
     ScanSourceCommand,
     TrainCommand,
@@ -214,32 +216,13 @@ def _prepare_apply(
     )
 
 
-def _prepare_load(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> _ConfirmationScenario:
-    eeg_path = _write_raw_fif(tmp_path / "load_raw.fif")
-    service = ApplicationService(Study())
-    monkeypatch.setattr(
-        data_compatibility_service,
-        "check_import_resource_preflight",
-        _warning_import_preflight,
-    )
-    return _ConfirmationScenario(
-        service=service,
-        command=LoadDataCommand(paths=[str(eeg_path)]),
-        execution_observed=lambda: service.get_state().raw.loaded,
-    )
-
-
 def _prepare_train(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> _ConfirmationScenario:
     eeg_path = _write_raw_fif(tmp_path / "train_raw.fif")
     service = ApplicationService(Study())
-    loaded = service.execute(LoadDataCommand(paths=[str(eeg_path)]))
-    assert loaded.ok
+    assert import_recording_through_interpretation(service, eeg_path).ok
     _install_minimal_training_epoch(service)
     saved = service.execute(
         SaveDatasetSplitCommand(
@@ -292,7 +275,7 @@ def _prepare_train(
 
 
 @pytest.fixture(
-    params=("preview", "reload", "apply", "load_data", "train"),
+    params=("preview", "reload", "apply", "train"),
 )
 def resource_confirmation_scenario(
     request: pytest.FixtureRequest,
@@ -303,7 +286,6 @@ def resource_confirmation_scenario(
         "preview": _prepare_preview,
         "reload": _prepare_reload,
         "apply": _prepare_apply,
-        "load_data": _prepare_load,
         "train": _prepare_train,
     }[str(request.param)]
     scenario = factory(tmp_path, monkeypatch)
@@ -358,19 +340,13 @@ def test_resource_confirmation_preserves_a_previous_real_error(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    eeg_path = _write_raw_fif(tmp_path / "prior-error_raw.fif")
-    service = ApplicationService(Study())
-    failed = service.execute(LoadDataCommand(paths=[]))
+    scenario = _prepare_apply(tmp_path, monkeypatch)
+    service = scenario.service
+    failed = service.execute(TrainCommand())
     assert failed.error_type is ErrorType.PRECONDITION
     before = service.get_view_publication()
     assert before.state.last_error is not None
-    monkeypatch.setattr(
-        data_compatibility_service,
-        "check_import_resource_preflight",
-        _warning_import_preflight,
-    )
-
-    challenged = service.execute(LoadDataCommand(paths=[str(eeg_path)]))
+    challenged = service.execute(scenario.command)
     after = service.get_view_publication()
 
     assert challenged.error_type is ErrorType.CONFIRMATION_REQUIRED
@@ -394,11 +370,11 @@ def test_confirmation_cannot_hide_an_unexpected_domain_mutation(
             _warning_import_preflight([str(eeg_path)])
         )
 
-    service._command_handlers[LoadDataCommand(paths=[]).name] = (
+    service._command_handlers[ResetSessionCommand().name] = (
         mutate_then_require_confirmation
     )
 
-    result = service.execute(LoadDataCommand(paths=[str(eeg_path)]))
+    result = service.execute(ResetSessionCommand(confirmed=True))
     after = service.get_view_publication()
 
     assert result.error_type is ErrorType.CONFIRMATION_REQUIRED
@@ -414,7 +390,7 @@ def test_real_handler_failure_still_updates_error_and_publication() -> None:
     service = ApplicationService(Study())
     before = service.get_view_publication()
 
-    result = service.execute(LoadDataCommand(paths=[]))
+    result = service.execute(TrainCommand())
     after = service.get_view_publication()
 
     assert result.error_type is ErrorType.PRECONDITION

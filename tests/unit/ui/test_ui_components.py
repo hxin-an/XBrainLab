@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from PyQt6.QtWidgets import QMainWindow, QWidget
+from PyQt6.QtWidgets import QWidget
 
 # ============ SinglePlotWindow ============
 
@@ -408,7 +408,7 @@ class TestDatasetPanel:
 
             ctrl = MagicMock()
             ctrl.get_loaded_data_list.return_value = []
-            p = DatasetPanel(controller=ctrl)
+            p = DatasetPanel()
             qtbot.addWidget(p)
             yield p
 
@@ -417,32 +417,3 @@ class TestDatasetPanel:
 
 
 # ============ TrainingPanel ============
-
-
-class TestTrainingPanel:
-    @pytest.fixture
-    def panel(self, qtbot):
-        with patch("XBrainLab.ui.core.base_panel.QtObserverBridge"):
-            from XBrainLab.ui.panels.training.panel import TrainingPanel
-
-            ctrl = MagicMock()
-            ctrl.has_datasets.return_value = False
-            ctrl.has_model.return_value = False
-            ctrl.has_training_option.return_value = False
-            ctrl.is_training.return_value = False
-            ctrl.get_trainers.return_value = []
-            ds_ctrl = MagicMock()
-            parent = QMainWindow()
-            qtbot.addWidget(parent)
-            p = TrainingPanel(
-                controller=ctrl,
-                dataset_controller=ds_ctrl,
-                parent=parent,
-            )
-            yield p
-
-    def test_update_panel(self, panel):
-        panel.update_panel()
-
-    def test_update_info(self, panel):
-        panel.update_info()

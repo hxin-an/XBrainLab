@@ -4,9 +4,11 @@ import mne
 import numpy as np
 
 import XBrainLab.backend.dataset.epochs as epochs_module
+from tests.integration.data_interpretation_support import (
+    import_recording_through_interpretation,
+)
 from XBrainLab.backend.application.commands import (
     ConfigureTrainingCommand,
-    LoadDataCommand,
     SaveDatasetSplitCommand,
     TrainCommand,
 )
@@ -80,7 +82,7 @@ def test_imported_multiclass_fif_without_provenance_is_backend_blocked(
     imported_epochs.save(fif_path, overwrite=True, verbose=False)
     service = ApplicationService()
 
-    load_result = service.execute(LoadDataCommand(paths=[str(fif_path)]))
+    load_result = import_recording_through_interpretation(service, str(fif_path))
     saved_split = service.execute(
         SaveDatasetSplitCommand(
             split_strategy="trial",

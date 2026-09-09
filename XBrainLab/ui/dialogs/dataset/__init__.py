@@ -15,9 +15,6 @@ _EXPORT_MODULES = {
     "ChannelSelectionDialog": ".channel_selection_dialog",
     "DataInterpretationPreviewDialog": ".data_interpretation_preview_dialog",
     "DataSplittingDialog": ".data_splitting_dialog",
-    "EventFilterDialog": ".event_filter_dialog",
-    "ImportLabelDialog": ".import_label_dialog",
-    "LabelMappingDialog": ".label_mapping_dialog",
     "SmartParserDialog": ".smart_parser_dialog",
 }
 
@@ -25,9 +22,7 @@ __all__ = [
     "ChannelSelectionDialog",
     "DataInterpretationPreviewDialog",
     "DataSplittingDialog",
-    "EventFilterDialog",
     "ImportLabelDialog",
-    "LabelMappingDialog",
     "SmartParserDialog",
 ]
 

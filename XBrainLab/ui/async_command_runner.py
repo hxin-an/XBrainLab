@@ -14,10 +14,6 @@ from XBrainLab.backend.application.commands import Command
 from XBrainLab.backend.application.results import CommandResult
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.core.worker import PythonThreadWorker, Worker
-from XBrainLab.ui.refresh_coordinator import (
-    refresh_after_command,
-    suppress_observer_refresh_during_command,
-)
 
 
 class AsyncCommandDelivery(QObject):
@@ -30,7 +26,6 @@ class AsyncCommandDelivery(QObject):
         command: Command,
         on_result: Callable[[CommandResult], None],
         on_error: Callable[[tuple], None] | None,
-        refresh: bool,
         allow_during_shutdown: bool,
         parent: QObject | None,
     ) -> None:
@@ -39,7 +34,6 @@ class AsyncCommandDelivery(QObject):
         self._command = command
         self._on_result = on_result
         self._on_error = on_error
-        self._refresh = refresh
         self._allow_during_shutdown = allow_during_shutdown
 
     @pyqtSlot(object)
@@ -49,11 +43,6 @@ class AsyncCommandDelivery(QObject):
             not self._allow_during_shutdown and context_is_closing(self._context)
         ):
             return
-        if self._refresh:
-            try:
-                refresh_after_command(self._context, result)
-            except Exception:
-                logger.exception("Async command UI refresh callback failed")
         try:
             self._on_result(result)
         except Exception:
@@ -283,7 +272,6 @@ class QtApplicationCommandRunner:
         on_result: Callable[[CommandResult], None],
         on_error: Callable[[tuple], None] | None,
         on_finished: Callable[[], None] | None = None,
-        refresh: bool,
         busy_target: Any | None,
         allow_during_shutdown: bool,
         delivery_factory: Callable[..., AsyncCommandDelivery] | None = None,
@@ -303,7 +291,6 @@ class QtApplicationCommandRunner:
         self.on_result = on_result
         self.on_error = on_error
         self.on_finished = on_finished
-        self.refresh = refresh
         self.busy_target = busy_target if busy_target is not None else context
         self.allow_during_shutdown = allow_during_shutdown
         self.delivery_factory = delivery_factory or AsyncCommandDelivery
@@ -319,8 +306,6 @@ class QtApplicationCommandRunner:
     def start(self) -> bool:
         """Prepare and start one worker, rolling back all partial ownership."""
         target = self.busy_target
-        suppression = None
-        suppression_entered = False
         busy_acquired = False
         worker: Worker | PythonThreadWorker | None = None
         handle: AsyncCommandHandle | None = None
@@ -331,9 +316,6 @@ class QtApplicationCommandRunner:
             if worker_finished:
                 return
             worker_finished = True
-            if suppression_entered and suppression is not None:
-                with suppress(Exception):
-                    suppression.__exit__(None, None, None)
             if busy_acquired:
                 try:
                     _ASYNC_BUSY_STATE.release(target)
@@ -356,11 +338,6 @@ class QtApplicationCommandRunner:
 
         try:
             busy_acquired = _ASYNC_BUSY_STATE.acquire(target)
-
-            if self.refresh:
-                suppression = suppress_observer_refresh_during_command(self.context)
-                suppression.__enter__()
-                suppression_entered = True
 
             worker = (
                 self.python_worker_factory(self.execute, self.python_thread_name)
@@ -385,7 +362,6 @@ class QtApplicationCommandRunner:
                 command=self.command,
                 on_result=self.on_result,
                 on_error=self.on_error,
-                refresh=self.refresh,
                 allow_during_shutdown=self.allow_during_shutdown,
                 parent=delivery_parent,
             )

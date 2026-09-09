@@ -10,7 +10,6 @@ from PyQt6.QtWidgets import QWidget
 
 from XBrainLab.backend.utils.observer import Observable
 from XBrainLab.ui.core.observer_bridge import QtObserverBridge
-from XBrainLab.ui.refresh_coordinator import refresh_after_observer
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -24,21 +23,18 @@ class BasePanel(QWidget):
     ``_setup_bridges()`` explicitly after their own setup.
 
     Attributes:
-        controller: The backend controller bound to this panel.
         main_window: Reference to the parent ``MainWindow``, or ``None``.
 
     """
 
-    def __init__(self, parent=None, controller=None):
+    def __init__(self, parent=None):
         """Initialize the base panel.
 
         Args:
             parent: Optional parent widget (typically ``MainWindow``).
-            controller: Optional backend controller for data access.
 
         """
         super().__init__(parent)
-        self.controller = controller
         # Attempt to resolve main_window from parent
         self.main_window = parent if getattr(parent, "study", None) else None
 
@@ -77,27 +73,6 @@ class BasePanel(QWidget):
 
         Optional override for subclasses that need reactive updates.
         """
-
-    def refresh_from_observer(
-        self,
-        *args,
-        event_name: str | None = None,
-        **kwargs,
-    ) -> bool:
-        """Refresh this panel from a backend observer event via coordinator."""
-        return refresh_after_observer(self, event_name=event_name)
-
-    def _create_refresh_bridge(
-        self,
-        controller: Observable,
-        event: str,
-    ) -> QtObserverBridge:
-        """Create a bridge for observer events that only refresh this panel."""
-
-        def _refresh_from_event(*args, **kwargs) -> bool:
-            return self.refresh_from_observer(*args, event_name=event, **kwargs)
-
-        return self._create_bridge(controller, event, _refresh_from_event)
 
     def _create_bridge(
         self,

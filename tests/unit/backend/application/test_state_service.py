@@ -1441,7 +1441,6 @@ def test_preprocess_history_failure_fails_capability_driving_state_closed() -> N
         "preprocess.history[0]: preprocess history unavailable",
     ]
     policy = build_capability_policy(state)
-    assert policy.get(CommandName.LOAD_DATA).enabled is False
 
 
 def test_malformed_epoch_model_inputs_fail_capability_state_closed() -> None:

@@ -18,8 +18,6 @@ from XBrainLab.backend.application.errors import PreconditionError
 from XBrainLab.backend.dataset import Epochs, EpochWindowProvenance
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training import TrainingEvaluation, TrainingOption
-from XBrainLab.ui.dialogs.dataset.event_filter_dialog import EventFilterDialog
-from XBrainLab.ui.dialogs.dataset.label_mapping_dialog import LabelMappingDialog
 from XBrainLab.ui.dialogs.preprocess.epoching_dialog import (
     EpochingDialog,
     EpochSubmissionIssue,
@@ -88,51 +86,6 @@ def _admitted_epoch_context(data: MagicMock) -> dict[str, object]:
             "label_source": label_source,
             "placement_modes": [placement],
         },
-    )
-
-
-def test_label_mapping_dialog_accepts_auto_sorted_mapping(qtbot):
-    dialog = LabelMappingDialog(
-        None,
-        ["/tmp/sub01.set", "/tmp/sub02.set"],
-        ["/tmp/sub02_labels.txt", "/tmp/sub01_labels.txt"],
-    )
-
-    _show_dialog(qtbot, dialog)
-    _click_ok(qtbot, dialog)
-
-    assert dialog.result() == QDialog.DialogCode.Accepted
-    assert dialog.get_mapping() == {
-        "/tmp/sub01.set": "/tmp/sub01_labels.txt",
-        "/tmp/sub02.set": "/tmp/sub02_labels.txt",
-    }
-
-
-def test_event_filter_dialog_accepts_checked_selection_via_ok_button(qtbot):
-    fake_settings = MagicMock()
-    fake_settings.value.return_value = []
-
-    with patch(
-        "XBrainLab.ui.dialogs.dataset.event_filter_dialog.QSettings",
-        return_value=fake_settings,
-    ):
-        dialog = EventFilterDialog(None, ["left_hand", "right_hand", "feet"])
-
-    _show_dialog(qtbot, dialog)
-
-    dialog.set_all_checked(False)
-    assert dialog.list_widget is not None
-    item = dialog.list_widget.item(1)
-    assert item is not None
-    item.setCheckState(Qt.CheckState.Checked)
-
-    _click_ok(qtbot, dialog)
-
-    assert dialog.result() == QDialog.DialogCode.Accepted
-    assert dialog.get_selected_ids() == ["right_hand"]
-    fake_settings.setValue.assert_called_once_with(
-        "last_selected_events",
-        ["right_hand"],
     )
 
 
@@ -799,14 +752,7 @@ def test_epoching_dialog_uses_card_sections_not_groupbox_legends(qtbot):
 
 
 def test_training_setting_dialog_accepts_user_edits_via_ok_button(qtbot):
-    controller = MagicMock()
-    controller.get_training_option.return_value = None
-
-    with patch(
-        "XBrainLab.ui.dialogs.training.training_setting_dialog.get_optimizer_classes",
-        return_value={"Adam": torch.optim.Adam},
-    ):
-        dialog = TrainingSettingDialog(None, controller)
+    dialog = TrainingSettingDialog(None)
 
     _show_dialog(qtbot, dialog)
 
@@ -954,7 +900,6 @@ def test_training_setting_dialog_uses_real_saved_split_recommendation(qtbot):
         assert prospective.recommended_values.optimizer == "AdamW"
 
         dialog = TrainingSettingDialog(
-            None,
             None,
             initial_option=saved.state.training.training_option,
             recommendation=prospective,

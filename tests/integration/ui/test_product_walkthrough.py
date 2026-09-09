@@ -22,12 +22,12 @@ import XBrainLab.backend.application.service as application_service_module
 from tests.qt_lifecycle import close_controller_and_wait
 from XBrainLab.backend.application import (
     APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+    ApplyInterpretationCommand,
     CommandName,
     DatasetSplitContextRequest,
     DatasetSplitPreviewReceipt,
     DatasetSplitPreviewRequest,
     DatasetSplitSpecification,
-    LoadDataCommand,
     PreviewInterpretationCommand,
     QueryStateCommand,
     ScanSourceCommand,
@@ -830,9 +830,18 @@ def test_backend_observer_refresh_keeps_fixed_assistant_homepage(
     )
 
     with ThreadPoolExecutor(max_workers=1) as executor:
+        for command in (
+            ScanSourceCommand(source_path=str(fif_path), source_hint="file"),
+            PreviewInterpretationCommand(
+                choices={"selected_eeg_files": [str(fif_path)], "skip_labels": True}
+            ),
+            ValidateInterpretationCommand(),
+        ):
+            reviewed = service.execute(command)
+            assert reviewed.ok, reviewed.message
         load_future = executor.submit(
             service.execute,
-            LoadDataCommand(paths=[str(fif_path)]),
+            ApplyInterpretationCommand(confirmed=True),
         )
         qtbot.waitUntil(load_future.done, timeout=10_000)
         load_result = load_future.result()
@@ -1246,7 +1255,7 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
             return self.preview_receipt
 
     class FakeModelDialog:
-        def __init__(self, _parent, _controller, **_dialog_context):
+        def __init__(self, _parent, **_dialog_context):
             pass
 
         def exec(self):
@@ -1256,7 +1265,7 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
             return ModelHolder(EEGNet, {}, None)
 
     class FakeTrainingSettingDialog:
-        def __init__(self, _parent, _controller, **_dialog_context):
+        def __init__(self, _parent, **_dialog_context):
             pass
 
         def exec(self):

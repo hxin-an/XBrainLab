@@ -17,14 +17,12 @@ from XBrainLab.backend.application import (
 )
 from XBrainLab.ui.application_capabilities import (
     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
-    ControllerCompatibilityUnavailableError,
     blocked_reason,
     execute_application_command,
     get_command_capability,
     get_command_review_context,
     has_real_application_context,
     is_stale_publication_result,
-    run_controller_compatibility_call,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel, SidebarScrollArea
 from XBrainLab.ui.components.modal_presentation import show_warning
@@ -53,11 +51,6 @@ class ControlSidebar(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         self.init_ui()
-
-    @property
-    def controller(self):
-        """VisualizationController: The controller from the parent panel."""
-        return self.panel.controller
 
     @property
     def main_window(self):
@@ -246,7 +239,6 @@ class ControlSidebar(QWidget):
         query_result = execute_application_command(
             self,
             SaliencyCommand(),
-            refresh=False,
             expected_publication_generation=reviewed_generation,
         )
         if query_result is not None and query_result.failed:
@@ -271,13 +263,14 @@ class ControlSidebar(QWidget):
         if configuration_block_reason is not None:
             show_warning(self, "Saliency blocked", configuration_block_reason)
             return InteractionOutcome.blocked(configuration_block_reason)
-        try:
-            dialog_params = self._saliency_dialog_params(query_result)
-        except ControllerCompatibilityUnavailableError:
-            self._show_compatibility_fallback_warning("Saliency blocked")
+        if query_result is None and not isinstance(
+            self.panel.pending_saliency_params, dict
+        ):
+            self._show_unavailable_warning("Saliency blocked")
             return InteractionOutcome.blocked(
                 CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
             )
+        dialog_params = self._saliency_dialog_params(query_result)
 
         reviewed_target: (
             tuple[
@@ -325,7 +318,7 @@ class ControlSidebar(QWidget):
             )
         stage_params = getattr(self.panel, "stage_saliency_params", None)
         if not callable(stage_params):
-            self._show_compatibility_fallback_warning("Saliency blocked")
+            self._show_unavailable_warning("Saliency blocked")
             return InteractionOutcome.blocked(
                 CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
             )
@@ -360,7 +353,7 @@ class ControlSidebar(QWidget):
         if isinstance(pending, dict):
             return pending
         if query_result is None:
-            return self._compatibility_saliency_dialog_params()
+            return None
         diagnostics = getattr(query_result, "diagnostics", {}) or {}
         if diagnostics.get("payload_type") != "saliency_summary":
             return None
@@ -384,12 +377,5 @@ class ControlSidebar(QWidget):
                     return text
         return "Select a model and training settings before configuring saliency."
 
-    def _compatibility_saliency_dialog_params(self) -> dict | None:
-        """Return saliency params only for mock / compatibility UI contexts."""
-        return run_controller_compatibility_call(
-            self,
-            self.controller.get_saliency_params,
-        )
-
-    def _show_compatibility_fallback_warning(self, title: str) -> None:
+    def _show_unavailable_warning(self, title: str) -> None:
         show_warning(self, title, CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE)

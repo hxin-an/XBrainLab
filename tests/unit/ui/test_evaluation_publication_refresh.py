@@ -4,7 +4,6 @@ import logging
 from collections.abc import Callable
 from dataclasses import replace
 from threading import Event
-from typing import Any, cast
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -255,20 +254,11 @@ def _render_publication(
     )
 
 
-def test_evaluation_instantiates_without_controller_or_controller_lookup(qtbot) -> None:
+def test_evaluation_renders_from_explicit_application_ports(qtbot) -> None:
     port = _EvaluationApplicationPort()
-    parent = cast(Any, QWidget())
-    parent.study = MagicMock()
-    parent.study.get_controller.side_effect = AssertionError(
-        "Evaluation must not resolve a broad controller."
-    )
-    qtbot.addWidget(parent)
-
-    panel = _panel(qtbot, port, parent=parent)
+    panel = _panel(qtbot, port)
     panel.update_panel()
 
-    parent.study.get_controller.assert_not_called()
-    assert panel.controller is None
     assert port.query_calls == 1
     assert panel._application_view_publication == port.publication
     assert panel.model_combo.count() == 0

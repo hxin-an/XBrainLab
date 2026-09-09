@@ -215,8 +215,13 @@ def test_mainwindow_typed_dataset_import_does_not_require_legacy_controller(
     with patch.object(MainWindow, "_schedule_startup_prewarm"):
         window = MainWindow(study)
     qtbot.addWidget(window)
-    assert window._ensure_application_publication_renderer() is not None
-    assert window.dataset_panel.controller is None
+    renderer = window._ensure_application_publication_renderer()
+    assert renderer is not None
+    assert window.dataset_panel._publication_port is not None
+    assert (
+        window.dataset_panel._publication_port.get_view_publication()
+        == renderer.service.get_view_publication()
+    )
 
     handler = window.dataset_panel.action_handler
     handler._data_interpretation._source_chooser_dialog_class = lambda: (
@@ -247,12 +252,17 @@ def test_mainwindow_typed_preprocess_sidebar_uses_publication_without_controller
     with patch.object(MainWindow, "_schedule_startup_prewarm"):
         window = MainWindow(study)
     qtbot.addWidget(window)
-    assert window._ensure_application_publication_renderer() is not None
+    renderer = window._ensure_application_publication_renderer()
+    assert renderer is not None
 
     panel = window._materialize_panel(1)
 
     assert panel is window.preprocess_panel
-    assert panel.controller is None
+    assert panel._publication_port is not None
+    assert (
+        panel._publication_port.get_view_publication()
+        == renderer.service.get_view_publication()
+    )
     panel.sidebar.update_sidebar()
     assert panel.sidebar.btn_filter.isEnabled() is False
     assert panel.sidebar.btn_epoch.isEnabled() is False

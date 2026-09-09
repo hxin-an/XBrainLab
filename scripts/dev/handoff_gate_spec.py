@@ -380,7 +380,7 @@ _GATE_SPECS = (
         ),
         pytest_attestation_path="pytest-attestations/complete-regression.json",
         required_pytest_selectors=(
-            "tests/unit/test_architecture.py",
+            "tests/unit/backend/application/test_import_boundaries.py",
             "tests/unit/test_architecture_compliance.py",
             "tests/unit/test_evaluation_read_side_architecture.py",
             "tests/unit/backend/training/record/test_safe_artifact_store.py",

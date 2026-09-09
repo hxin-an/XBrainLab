@@ -2404,6 +2404,9 @@ class LLMController(QObject):
     @pyqtSlot()
     def _request_worker_shutdown(self) -> None:
         """Queue one worker-owned cleanup attempt without entering a nested loop."""
+        if self._shutdown_phase is _ControllerShutdownPhase.THREAD_STOPPING:
+            self._on_worker_thread_finished()
+            return
         if self._shutdown_phase is not _ControllerShutdownPhase.WORKER_STOPPING:
             return
         worker = cast(Any, getattr(self, "worker", None))
@@ -2431,7 +2434,7 @@ class LLMController(QObject):
             self._shutdown_retry_timer.start(WORKER_SHUTDOWN_RETRY_INTERVAL_MS)
 
     def _request_worker_thread_exit(self) -> None:
-        """Request event-loop exit and wait only through ``QThread.finished``."""
+        """Request event-loop exit; terminal signals start the native cleanup probe."""
         if self._closed:
             return
         self._shutdown_phase = _ControllerShutdownPhase.THREAD_STOPPING
@@ -2443,8 +2446,11 @@ class LLMController(QObject):
                 quit_thread()
             self._finalize_shutdown()
             return
-        if sip.isdeleted(thread) or not thread.isRunning():
+        if sip.isdeleted(thread):
             self._finalize_shutdown()
+            return
+        if not thread.isRunning():
+            self._on_worker_thread_finished()
             return
         thread.quit()
 
@@ -2460,6 +2466,13 @@ class LLMController(QObject):
                     False,
                     "Assistant worker stopped before cleanup completed.",
                 )
+            return
+        thread = self.worker_thread
+        # finished precedes deferred QObject deletion. Moving this controller
+        # while that cleanup still holds Qt locks can deadlock against the GIL.
+        # A zero-time join probes completion without blocking the owner thread.
+        if not sip.isdeleted(thread) and not thread.wait(0):
+            self._shutdown_retry_timer.start(WORKER_SHUTDOWN_RETRY_INTERVAL_MS)
             return
         self._finalize_shutdown()
 

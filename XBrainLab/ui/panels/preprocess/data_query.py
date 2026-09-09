@@ -65,7 +65,6 @@ def query_preprocess_data_rows(
     result = execute_application_command(
         context,
         QueryStateCommand(query="data_lists"),
-        refresh=False,
     )
     if result is None:
         return None

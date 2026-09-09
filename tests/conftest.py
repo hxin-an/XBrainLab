@@ -31,17 +31,9 @@ os.environ.setdefault("MPLBACKEND", "Agg")
 os.environ["MPLCONFIGDIR"] = str(matplotlib_cache_dir)
 os.makedirs(matplotlib_cache_dir, exist_ok=True)
 
-# --- KNOWN ISSUE: pytest-cov / PyTorch Conflict ---
-# Coverage.py's trace instrumentation conflicts with PyTorch's C-extension docstring
-# registration. The error "_has_torch_function already has a docstring" occurs because
-# coverage traces the import, causing torch/overrides.py to execute twice.
-#
-# WORKAROUND (tested successfully):
-# Run tests WITHOUT --cov flag: poetry run pytest tests/unit
-# Coverage must be measured using slipcover or alternative tools.
-#
-# STATUS: This is a known upstream issue affecting pytest-cov + torch on Windows.
-# See: https://github.com/pytorch/pytorch/issues/96606
+# Coverage is collected by the canonical Linux aggregate (or an explicitly
+# coverage-enabled local aggregate). Platform/native gates retain their own
+# evidence; their passes do not replace the line/branch coverage artifact.
 
 try:
     import matplotlib

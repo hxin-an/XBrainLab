@@ -23,9 +23,6 @@ class CommandName(str, Enum):
     APPLY_INTERPRETATION = "apply_interpretation"
     SAVE_INTERPRETATION_RECIPE = "save_interpretation_recipe"
     RELOAD_INTERPRETATION_RECIPE = "reload_interpretation_recipe"
-    LOAD_DATA = "load_data"
-    ATTACH_LABELS = "attach_labels"
-    IMPORT_LABELS = "import_labels"
     UPDATE_METADATA = "update_metadata"
     APPLY_SMART_PARSE = "apply_smart_parse"
     REMOVE_FILES = "remove_files"
@@ -60,36 +57,6 @@ class PreprocessOperation(str, Enum):
     CHANNEL_SELECTION = "channel_selection"
     SET_MONTAGE = "set_montage"
     STANDARD = "standard"
-
-
-@dataclass(frozen=True)
-class LoadDataCommand:
-    """Load raw EEG files into the active study."""
-
-    paths: list[str]
-    allow_append: bool = True
-    resource_preflight_confirmed: bool = False
-    resource_preflight_token: str | None = None
-
-    @property
-    def name(self) -> CommandName:
-        return CommandName.LOAD_DATA
-
-
-@dataclass(frozen=True)
-class AttachLabelsCommand:
-    """Attach label files to already-loaded raw files."""
-
-    mapping: dict[str, str]
-    label_paths: list[str] = field(default_factory=list)
-    label_format: str | None = None
-    selected_event_names: list[str] | set[str] | None = None
-    resource_preflight_confirmed: bool = False
-    resource_preflight_token: str | None = None
-
-    @property
-    def name(self) -> CommandName:
-        return CommandName.ATTACH_LABELS
 
 
 @dataclass(frozen=True)
@@ -199,34 +166,6 @@ class LabelImportPlan:
     mode: str = "batch"
     selected_event_names: list[str] | set[str] | None = None
     force_import: bool = False
-
-
-@dataclass(frozen=True)
-class PreviewLabelImportCommand:
-    """Materialize label paths once and publish only a typed UI summary."""
-
-    label_paths: list[str]
-    label_configs: dict[str, dict[str, Any]] = field(default_factory=dict)
-    resource_preflight_confirmed: bool = False
-    resource_preflight_token: str | None = None
-
-    @property
-    def name(self) -> CommandName:
-        # Preview and commit intentionally share one capability and command lock.
-        return CommandName.IMPORT_LABELS
-
-
-@dataclass(frozen=True)
-class ImportLabelsCommand:
-    """Apply an explicit label import plan to loaded raw data."""
-
-    plan: LabelImportPlan
-    resource_preflight_confirmed: bool = False
-    resource_preflight_token: str | None = None
-
-    @property
-    def name(self) -> CommandName:
-        return CommandName.IMPORT_LABELS
 
 
 @dataclass(frozen=True)
@@ -516,10 +455,6 @@ Command = (
     | ApplyInterpretationCommand
     | SaveInterpretationRecipeCommand
     | ReloadInterpretationRecipeCommand
-    | LoadDataCommand
-    | AttachLabelsCommand
-    | PreviewLabelImportCommand
-    | ImportLabelsCommand
     | UpdateMetadataCommand
     | ApplySmartParseCommand
     | RemoveFilesCommand

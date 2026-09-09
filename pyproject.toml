@@ -234,6 +234,7 @@ filterwarnings = [
 
 [tool.coverage.run]
 source = ["XBrainLab"]
+branch = true
 omit = [
     "**/torch/*",
     "**/torchvision/*",
@@ -254,7 +255,9 @@ omit = [
 concurrency = ["multiprocessing"]
 
 [tool.coverage.report]
-fail_under = 50
+# `coverage report` combines lines and branches when branch measurement is enabled.
+# The CI line-only gate is enforced from coverage.json by run_tests.py.
+fail_under = 0
 exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",
@@ -276,7 +279,7 @@ test-ui = "pytest tests/unit/ui -v"
 test-llm = "pytest tests/unit/llm -v"
 test-real = "pytest tests/unit/llm/tools/real"
 test-all = "python scripts/dev/run_tests.py all"
-test-cov = "pytest --cov=XBrainLab --cov-report=html --cov-report=term-missing"
+test-cov = { cmd = "python scripts/dev/run_tests.py all", env = { XBL_TEST_COVERAGE = "1" } }
 
 # Code Quality
 lint = "ruff check ."

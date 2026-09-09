@@ -21,7 +21,6 @@ from XBrainLab.backend.study import Study
 from XBrainLab.backend.utils.observer import Observable
 from XBrainLab.ui.application_capabilities import (
     execute_application_command,
-    execute_application_command_async,
 )
 from XBrainLab.ui.panels.dataset.panel import DatasetPanel
 from XBrainLab.ui.panels.preprocess.panel import PreprocessPanel
@@ -42,37 +41,22 @@ class _PublicationPort(Observable):
         return self.publication
 
 
-def _training_controller() -> Observable:
-    controller = Observable()
-    cast(Any, controller).validate_ready = MagicMock(return_value=False)
-    cast(Any, controller).has_datasets = MagicMock(return_value=False)
-    cast(Any, controller).has_model = MagicMock(return_value=False)
-    cast(Any, controller).has_training_option = MagicMock(return_value=False)
-    cast(Any, controller).get_formatted_history = MagicMock(return_value=[])
-    return controller
-
-
 _PRIMARY_PANEL_KINDS = ("dataset", "preprocess", "training")
 
 
 def _make_primary_panel(panel_kind: str, port: _PublicationPort) -> Any:
     if panel_kind == "dataset":
         return DatasetPanel(
-            controller=Observable(),
             publication_port=port,
         )
     if panel_kind == "preprocess":
-        return PreprocessPanel(
-            controller=Observable(),
-            dataset_controller=Observable(),
-            publication_port=port,
-        )
+        return PreprocessPanel(publication_port=port)
     if panel_kind == "training":
         return TrainingPanel(
-            controller=_training_controller(),
-            dataset_controller=Observable(),
-            preprocess_controller=Observable(),
+            query_port=port,
             publication_port=port,
+            action_port=port,
+            transient_port=port,
         )
     raise AssertionError(f"Unknown primary panel kind: {panel_kind}")
 
@@ -303,7 +287,7 @@ def test_primary_panel_cleanup_cancels_scheduled_render_retry(
 def test_dataset_state_render_is_driven_only_by_application_publication(qtbot) -> None:
     controller = Observable()
     port = _PublicationPort()
-    panel = DatasetPanel(controller=controller, publication_port=port)
+    panel = DatasetPanel(publication_port=port)
     qtbot.addWidget(panel)
     renders: list[int] = []
     cast(Any, panel).update_panel = lambda: renders.append(port.publication.revision)
@@ -324,7 +308,7 @@ def test_dataset_query_failure_stays_pending_until_rows_can_be_rendered(
 ) -> None:
     """A failed read-side query must not masquerade as an empty Dataset."""
     port = _PublicationPort()
-    panel = DatasetPanel(controller=Observable(), publication_port=port)
+    panel = DatasetPanel(publication_port=port)
     qtbot.addWidget(panel)
     panel.sidebar.update_sidebar = MagicMock()
     revision = port.publication.revision + 2
@@ -376,7 +360,7 @@ def test_dataset_retryable_query_failure_preserves_visible_rows_without_error_lo
 ) -> None:
     """A busy application read is normal publication backpressure, not data loss."""
     port = _PublicationPort()
-    panel = DatasetPanel(controller=Observable(), publication_port=port)
+    panel = DatasetPanel(publication_port=port)
     qtbot.addWidget(panel)
     panel.sidebar.update_sidebar = MagicMock()
     panel.table.setRowCount(1)
@@ -418,20 +402,12 @@ def test_dataset_retryable_query_failure_preserves_visible_rows_without_error_lo
 def test_preprocess_state_render_is_driven_only_by_application_publication(
     qtbot,
 ) -> None:
-    controller = Observable()
-    dataset_controller = Observable()
     port = _PublicationPort()
-    panel = PreprocessPanel(
-        controller=controller,
-        dataset_controller=dataset_controller,
-        publication_port=port,
-    )
+    panel = PreprocessPanel(publication_port=port)
     qtbot.addWidget(panel)
     renders: list[int] = []
     cast(Any, panel).update_panel = lambda: renders.append(port.publication.revision)
 
-    controller.notify("preprocess_changed")
-    dataset_controller.notify("data_changed")
     qtbot.wait(25)
     assert renders == []
 
@@ -447,11 +423,7 @@ def test_preprocess_render_uses_queued_publication_for_filtering_readiness(
 ) -> None:
     """A transient live read cannot override the revision being rendered."""
     port = _PublicationPort()
-    panel = PreprocessPanel(
-        controller=Observable(),
-        dataset_controller=Observable(),
-        publication_port=port,
-    )
+    panel = PreprocessPanel(publication_port=port)
     qtbot.addWidget(panel)
     ready_state = replace(
         port.publication.state,
@@ -596,39 +568,3 @@ def test_sync_product_command_result_does_not_refresh_workflow_panels(qtbot) -> 
 
     assert observed is result
     assert updates == SimpleNamespace(dataset=0, preprocess=0, training=0, info=0)
-
-
-def test_async_application_command_disables_command_result_refresh(
-    qtbot,
-    monkeypatch,
-) -> None:
-    context = QWidget()
-    qtbot.addWidget(context)
-    captured_refresh: list[bool] = []
-
-    class _Runner:
-        def __init__(self, **kwargs: Any) -> None:
-            captured_refresh.append(bool(kwargs["refresh"]))
-
-        def start(self) -> bool:
-            return True
-
-    monkeypatch.setattr(
-        "XBrainLab.ui.application_capabilities.QtApplicationCommandRunner",
-        _Runner,
-    )
-
-    runtime = MagicMock()
-    runtime.begin_owned_operation.return_value = SimpleNamespace(
-        operation_id="test-query-state-operation"
-    )
-    started = execute_application_command_async(
-        context,
-        QueryStateCommand(),
-        on_result=lambda _result: None,
-        runtime=runtime,
-        refresh=True,
-    )
-
-    assert started is True
-    assert captured_refresh == [False]

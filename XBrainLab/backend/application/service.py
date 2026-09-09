@@ -52,18 +52,15 @@ from .commands import (
     ApplyInterpretationCommand,
     ApplyMontageCommand,
     ApplySmartParseCommand,
-    AttachLabelsCommand,
     Command,
     CommandName,
     ConfigureTrainingCommand,
     CreateEpochCommand,
     DiscardTrainingPreparationCommand,
     EvaluateCommand,
-    LoadDataCommand,
     PreprocessCommand,
     PreprocessOperation,
     PreviewInterpretationCommand,
-    PreviewLabelImportCommand,
     QueryStateCommand,
     RemoveFilesCommand,
     ReviewInterpretationCommand,
@@ -221,8 +218,6 @@ class _LegacyRawMutationLifecycleCoordinator:
     """Keep legacy raw edits and Data Interpretation truth in one lifecycle."""
 
     COMMAND_TYPES = (
-        LoadDataCommand,
-        AttachLabelsCommand,
         UpdateMetadataCommand,
         ApplySmartParseCommand,
         RemoveFilesCommand,
@@ -400,47 +395,6 @@ class _LazyDataInterpretationCommandService:
 
     def handle_reload_interpretation_recipe(self, command: Command) -> HandlerResult:
         return self._service().handle_reload_interpretation_recipe(command)
-
-    def record_label_import_for_recipe(self, *args: Any, **kwargs: Any) -> Any:
-        return self._service().record_label_import_for_recipe(*args, **kwargs)
-
-
-class _LazyDataCompatibilityCommandService:
-    """Defer label/data compatibility imports until compatibility commands run."""
-
-    def __init__(
-        self,
-        *,
-        dataset: DatasetProductPort,
-        interpretation: Any,
-        pipeline_transaction: PipelineStateTransaction,
-    ) -> None:
-        self.dataset = dataset
-        self.interpretation = interpretation
-        self.pipeline_transaction = pipeline_transaction
-        self._service_instance: Any | None = None
-
-    def _service(self) -> Any:
-        if self._service_instance is None:
-            from .data_compatibility_service import (  # noqa: PLC0415
-                DataCompatibilityCommandService,
-            )
-
-            self._service_instance = DataCompatibilityCommandService(
-                dataset=self.dataset,
-                interpretation=self.interpretation,
-                pipeline_transaction=self.pipeline_transaction,
-            )
-        return self._service_instance
-
-    def handle_load_data(self, command: Command) -> HandlerResult:
-        return self._service().handle_load_data(command)
-
-    def handle_attach_labels(self, command: Command) -> HandlerResult:
-        return self._service().handle_attach_labels(command)
-
-    def handle_import_labels(self, command: Command) -> HandlerResult:
-        return self._service().handle_import_labels(command)
 
 
 class _LazyDatasetGenerationCommandService:
@@ -747,11 +701,6 @@ class ApplicationService(Observable):
         self.interpretation = _LazyDataInterpretationCommandService(
             self.dataset,
             self.pipeline_transaction,
-        )
-        self.data_compatibility = _LazyDataCompatibilityCommandService(
-            dataset=self.dataset,
-            interpretation=self.interpretation,
-            pipeline_transaction=self.pipeline_transaction,
         )
         self.legacy_raw_mutation_lifecycle = _LegacyRawMutationLifecycleCoordinator(
             self.interpretation,
@@ -4276,7 +4225,6 @@ class ApplicationService(Observable):
                     else self.bids_montage_preparation.reset()
                 )
             elif name in {
-                CommandName.LOAD_DATA,
                 CommandName.REMOVE_FILES,
                 CommandName.RESET_PREPROCESS,
             }:
@@ -4846,9 +4794,6 @@ class ApplicationService(Observable):
             CommandName.RELOAD_INTERPRETATION_RECIPE: (
                 self.interpretation.handle_reload_interpretation_recipe
             ),
-            CommandName.LOAD_DATA: self.data_compatibility.handle_load_data,
-            CommandName.ATTACH_LABELS: self.data_compatibility.handle_attach_labels,
-            CommandName.IMPORT_LABELS: self.data_compatibility.handle_import_labels,
             CommandName.UPDATE_METADATA: self.data_table.handle_update_metadata,
             CommandName.APPLY_SMART_PARSE: self.data_table.handle_apply_smart_parse,
             CommandName.REMOVE_FILES: self.data_table.handle_remove_files,
@@ -4938,11 +4883,6 @@ class ApplicationService(Observable):
             # not enter the Data Interpretation lifecycle. Preserve the current
             # publication identity so an open review cannot become stale merely
             # because another catalog was inspected.
-            return True
-        if isinstance(command, PreviewLabelImportCommand):
-            # Preview materialization only populates an opaque, one-shot backend
-            # cache. It does not change published application state, so the
-            # reviewed generation remains valid for the matching commit.
             return True
         if name in {
             CommandName.QUERY_STATE,

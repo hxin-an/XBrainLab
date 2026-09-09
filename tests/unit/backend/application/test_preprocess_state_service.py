@@ -24,7 +24,6 @@ from XBrainLab.backend.application.owned_work import (
     OwnedWorkPhase,
     OwnedWorkRegistry,
 )
-from XBrainLab.backend.controller.preprocess_controller import PreprocessController
 from XBrainLab.backend.load_data import Raw
 from XBrainLab.backend.preprocessor.base import PreprocessBase
 from XBrainLab.backend.services.dataset_state_service import DatasetStateService
@@ -510,21 +509,10 @@ def test_cancel_after_commit_admission_is_rejected_and_commit_completes(
     ]
 
 
-def test_application_preprocess_composition_never_resolves_controller(
+def test_application_preprocess_composition_uses_study_state_service(
     monkeypatch,
 ) -> None:
     study = Study()
-    original_get_controller = study.get_controller
-    resolved_names: list[str] = []
-
-    def reject_preprocess_controller(name: str) -> Any:
-        resolved_names.append(name)
-        if name == "preprocess":
-            raise AssertionError("Application composition resolved a UI controller")
-        return original_get_controller(name)
-
-    monkeypatch.setattr(study, "get_controller", reject_preprocess_controller)
-
     service = ApplicationService(study)
     result = service.execute(
         PreprocessCommand(
@@ -536,15 +524,3 @@ def test_application_preprocess_composition_never_resolves_controller(
 
     assert result.failed is True
     assert service.preprocess is study.preprocess_state_service
-    assert "preprocess" not in resolved_names
-
-
-def test_preprocess_controller_relays_shared_service_publication_once() -> None:
-    study = Study()
-    controller = PreprocessController(study)
-    notifications: list[str] = []
-    controller.subscribe("preprocess_changed", lambda: notifications.append("changed"))
-
-    study.preprocess_state_service.reset_preprocess()
-
-    assert notifications == ["changed"]

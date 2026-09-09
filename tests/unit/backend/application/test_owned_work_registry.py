@@ -11,7 +11,6 @@ import pytest
 from XBrainLab.backend.application.commands import (
     ApplyInterpretationCommand,
     EvaluateCommand,
-    LoadDataCommand,
     PreprocessCommand,
     PreprocessOperation,
     ReviewInterpretationCommand,
@@ -76,12 +75,8 @@ def test_apply_is_the_exact_cancellable_import_materialization_operation() -> No
     apply_operation = service.begin_owned_operation(
         ApplyInterpretationCommand(confirmed=True)
     )
-    compatibility_load = service.begin_owned_operation(LoadDataCommand(paths=[]))
-
     assert apply_operation.kind is OwnedWorkKind.IMPORT_APPLY
     assert apply_operation.cancellable is True
-    assert compatibility_load.kind is OwnedWorkKind.COMMAND
-    assert compatibility_load.cancellable is False
 
 
 def test_apply_materialization_source_keeps_checkpoints_and_final_admission() -> None:

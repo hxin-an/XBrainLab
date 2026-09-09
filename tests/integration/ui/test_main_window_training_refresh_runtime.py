@@ -54,13 +54,13 @@ from XBrainLab.backend.training_state_contract import (
     TrainingStateToken,
     TrainingTerminalOutcome,
 )
-from XBrainLab.ui import refresh_coordinator
 from XBrainLab.ui.application_capabilities import get_application_view_publication
 from XBrainLab.ui.async_command_runner import (
     AsyncCommandRegistry,
     QtApplicationCommandRunner,
     application_command_registry,
 )
+from XBrainLab.ui.dialogs.training import TrainingSettingDialog
 from XBrainLab.ui.dialogs.visualization import SaliencySettingDialog
 from XBrainLab.ui.main_window import MainWindow
 
@@ -156,6 +156,56 @@ def _prepare_epoch_runtime(tmp_path: Path):
         result = service.execute(command)
         assert result.ok is True, result.message
     return study, service
+
+
+def test_training_settings_reopen_and_edit_real_service_snapshot(qtbot, tmp_path):
+    """Editing a settings proposal must not mutate the saved backend snapshot."""
+    _study, service = _prepare_training_runtime(tmp_path)
+    try:
+        result = service.execute(QueryStateCommand())
+        assert result.ok, result.message
+        snapshot = result.state.training.training_option
+        assert snapshot is not None
+        dialog = TrainingSettingDialog(None, initial_option=snapshot)
+        qtbot.addWidget(dialog)
+        assert dialog.epoch_entry is not None
+        assert dialog.bs_entry is not None
+        assert dialog.lr_entry is not None
+        assert dialog.epoch_entry.text() == "1"
+        assert dialog.bs_entry.text() == "2"
+        assert dialog.lr_entry.text() == "0.001"
+        assert dialog.get_device_value() == "cpu"
+        assert dialog.output_dir == str(tmp_path / "training-output")
+        dialog.epoch_entry.setText("7")
+        dialog.bs_entry.setText("4")
+        buttons = dialog.findChild(QDialogButtonBox)
+        assert buttons is not None
+        buttons.button(QDialogButtonBox.StandardButton.Ok).click()
+        proposal = dialog.get_result()
+        assert proposal is not None
+        assert (proposal.epoch, proposal.bs) == (7, 4)
+        assert service.get_state().training.training_option == snapshot
+        saved = service.execute(
+            ConfigureTrainingCommand(
+                epoch=proposal.epoch,
+                batch_size=proposal.bs,
+                learning_rate=proposal.lr,
+                device=dialog.get_device_value(),
+                output_dir=proposal.output_dir,
+            )
+        )
+        assert saved.ok, saved.message
+        reopened = TrainingSettingDialog(
+            None,
+            initial_option=saved.state.training.training_option,
+        )
+        qtbot.addWidget(reopened)
+        assert reopened.epoch_entry is not None
+        assert reopened.bs_entry is not None
+        assert reopened.epoch_entry.text() == "7"
+        assert reopened.bs_entry.text() == "4"
+    finally:
+        service.close()
 
 
 def test_saved_split_reopens_for_real_preview_and_edit_before_training(
@@ -1369,7 +1419,6 @@ def test_explicit_saliency_publishes_once_during_unrelated_nested_commands(
         execute=lambda: blocked_query(outer_started, release_outer),
         on_result=command_results.append,
         on_error=command_errors.append,
-        refresh=False,
         busy_target=None,
         allow_during_shutdown=False,
         registry=command_registry,
@@ -1380,7 +1429,6 @@ def test_explicit_saliency_publishes_once_during_unrelated_nested_commands(
         execute=lambda: blocked_query(inner_started, release_inner),
         on_result=command_results.append,
         on_error=command_errors.append,
-        refresh=False,
         busy_target=None,
         allow_during_shutdown=False,
         registry=command_registry,
@@ -1391,7 +1439,6 @@ def test_explicit_saliency_publishes_once_during_unrelated_nested_commands(
         qtbot.waitUntil(outer_started.is_set, timeout=3_000)
         assert inner_runner.start() is True
         qtbot.waitUntil(inner_started.is_set, timeout=3_000)
-        assert id(window) not in refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS
 
         release_saliency.set()
         qtbot.waitUntil(saliency_published.is_set, timeout=5_000)
@@ -1414,7 +1461,6 @@ def test_explicit_saliency_publishes_once_during_unrelated_nested_commands(
             timeout=3_000,
         )
         _deliver_pending_qt_events()
-        assert id(window) not in refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS
         assert update_counts == {
             "training": 0,
             "evaluation": 1,
@@ -1864,7 +1910,6 @@ def test_deleted_async_owner_drops_callbacks_and_releases_runtime_ownership(
         execute=execute,
         on_result=results.append,
         on_error=errors.append,
-        refresh=True,
         busy_target=busy_target,
         allow_during_shutdown=False,
         registry=registry,
@@ -1875,8 +1920,6 @@ def test_deleted_async_owner_drops_callbacks_and_releases_runtime_ownership(
     assert registry.active_count(owner) == 1
     assert busy_target.busy_states == [True]
     assert not busy_target.isEnabled()
-    suppression_key = id(busy_target)
-    assert suppression_key in refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS
 
     owner.deleteLater()
     qtbot.waitUntil(lambda: sip.isdeleted(owner), timeout=1_000)
@@ -1888,5 +1931,4 @@ def test_deleted_async_owner_drops_callbacks_and_releases_runtime_ownership(
     assert errors == []
     assert registry.active_count(owner) == 0
     assert busy_target.busy_states == [True, False]
-    assert suppression_key not in refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS
     assert uncaught == []

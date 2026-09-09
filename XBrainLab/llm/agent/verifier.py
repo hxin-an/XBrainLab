@@ -815,28 +815,6 @@ _PATH_FIELD_POLICY: dict[str, tuple[_PathFieldPolicy, ...]] = {
             label="recipe path",
         ),
     ),
-    "load_data": (
-        _PathFieldPolicy(
-            ("paths",),
-            value_kind="sequence",
-            check_existence=True,
-            label="file path",
-        ),
-    ),
-    "attach_labels": (
-        _PathFieldPolicy(
-            ("mapping",),
-            value_kind="mapping_keys",
-            check_placeholder=False,
-            provenance_absolute_only=True,
-        ),
-        _PathFieldPolicy(
-            ("mapping",),
-            value_kind="mapping_values",
-            provenance_absolute_only=True,
-            placeholder_error="label_mapping",
-        ),
-    ),
     "configure_training": (
         _PathFieldPolicy(
             ("output_dir",),
@@ -954,10 +932,7 @@ class PathProvenanceVerifier:
             if not requested:
                 continue
             if self._user_text_contains_path(requested, latest_user_text):
-                if name in {
-                    "list_files",
-                    "load_data",
-                } and not self._authorize_input_path(
+                if name == "list_files" and not self._authorize_input_path(
                     name,
                     params,
                     requested,
@@ -972,10 +947,7 @@ class PathProvenanceVerifier:
                 return self._rejection()
             exact_root = exact_paths.get(canonical)
             if exact_root is not None:
-                if name in {
-                    "list_files",
-                    "load_data",
-                } and not self._authorize_input_path(
+                if name == "list_files" and not self._authorize_input_path(
                     name,
                     params,
                     requested,
@@ -1195,17 +1167,7 @@ class PathProvenanceVerifier:
         if name == "list_files":
             params["directory"] = authorized
             return True
-        if name != "load_data":
-            return True
-        paths = params.get("paths")
-        if not isinstance(paths, list):
-            return False
-        replaced = False
-        for index, item in enumerate(paths):
-            if isinstance(item, str) and item.strip() == requested:
-                paths[index] = authorized
-                replaced = True
-        return replaced
+        return True
 
     @staticmethod
     def _is_lexically_within(

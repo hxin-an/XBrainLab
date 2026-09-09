@@ -146,8 +146,8 @@ def test_session_reset_does_not_materialize_training_stack() -> None:
     assert "PASS" in output
 
 
-def test_dataset_controller_import_does_not_load_io_or_preprocessor_stack() -> None:
-    """Controller construction must not load EEG IO until import/preprocess actions."""
+def test_dataset_state_import_does_not_load_io_or_preprocessor_stack() -> None:
+    """The dataset owner defers EEG IO until import/preprocess actions."""
     output = _run_import_probe(
         """
         import sys
@@ -160,7 +160,7 @@ def test_dataset_controller_import_does_not_load_io_or_preprocessor_stack() -> N
             "XBrainLab.backend.preprocessor",
         )
 
-        import XBrainLab.backend.controller.dataset_controller
+        import XBrainLab.backend.services.dataset_state_service
 
         loaded = sorted(
             module

@@ -28,10 +28,13 @@ from PyQt6.QtWidgets import QApplication
 
 from scripts.dev.ui_navigation import open_workflow_panel
 from XBrainLab.backend.application import (
-    LoadDataCommand,
+    ApplyInterpretationCommand,
     PreprocessCommand,
     PreprocessOperation,
+    PreviewInterpretationCommand,
     ResetPreprocessCommand,
+    ScanSourceCommand,
+    ValidateInterpretationCommand,
 )
 from XBrainLab.backend.application.runtime import get_application_service
 from XBrainLab.backend.study import Study
@@ -114,9 +117,17 @@ def run_stress(fixtures: tuple[Path, ...], cycles: int) -> dict[str, Any]:
     study = Study()
     service = get_application_service(study)
     fixture_paths = [str(path) for path in fixtures]
-    load_result = service.execute(LoadDataCommand(paths=fixture_paths))
-    if not load_result.ok:
-        raise RuntimeError(load_result.message)
+    for command in (
+        ScanSourceCommand(source_path=fixture_paths[0], source_hint="file"),
+        PreviewInterpretationCommand(
+            choices={"selected_eeg_files": fixture_paths, "skip_labels": True}
+        ),
+        ValidateInterpretationCommand(),
+        ApplyInterpretationCommand(confirmed=True),
+    ):
+        load_result = service.execute(command)
+        if not load_result.ok:
+            raise RuntimeError(load_result.message)
 
     window = MainWindow(study)
     window.resize(1280, 900)

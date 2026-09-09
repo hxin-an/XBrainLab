@@ -62,6 +62,7 @@ def _widget_factory(parent=None):
     mock_widget.show_error = MagicMock()
     mock_widget.show_message = MagicMock()
     mock_widget.set_saliency_coverage = MagicMock()
+    mock_widget.set_render_commit_guard = MagicMock()
     mock_widget.update_plot = MagicMock()
     mock_widget.select_class_key = MagicMock()
     mock_widget.repaint = MagicMock()
@@ -73,12 +74,7 @@ def _info_panel_factory(*args, **kwargs):
     return QWidget()
 
 
-def _make_panel(qtbot, training_controller=None, parent=None, controller=None):
-    del training_controller
-    mock_ctrl = controller if controller is not None else MagicMock()
-    if controller is None:
-        mock_ctrl.get_trainers.return_value = []
-        mock_ctrl.get_averaged_record.return_value = MagicMock()
+def _make_panel(qtbot, *, parent=None):
     fallback_port = Observable()
     fallback_runtime = cast(Any, fallback_port)
     fallback_runtime.get_view_publication = MagicMock(return_value=None)
@@ -170,29 +166,11 @@ def _make_panel(qtbot, training_controller=None, parent=None, controller=None):
         )
         qtbot.addWidget(panel)
 
-    return panel, mock_ctrl
-
-
-def _make_trainer(name="EEGNet", repeats=2):
-    trainer = MagicMock()
-    trainer.model_holder.target_model.__name__ = name
-    trainer.option.repeat_num = repeats
-    trainer.get_plans.return_value = [MagicMock() for _ in range(repeats)]
-    return trainer
-
-
-def _make_eval_record_with_saliency():
-    record = MagicMock()
-    record.gradient = {0: np.ones((1, 2, 3))}
-    record.gradient_input = {}
-    record.smoothgrad = {}
-    record.smoothgrad_sq = {}
-    record.vargrad = {}
-    return record
+    return panel
 
 
 def test_visualization_selectors_have_visible_dropdown_affordance(qtbot):
-    panel, _ = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
 
     for combo in (panel.plan_combo, panel.run_combo, panel.method_combo):
         style = combo.styleSheet()
@@ -201,7 +179,7 @@ def test_visualization_selectors_have_visible_dropdown_affordance(qtbot):
 
 
 def test_saliency_view_selector_is_inside_the_visible_control_bar(qtbot) -> None:
-    panel, _ = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     panel.resize(800, 800)
     panel.show()
     qtbot.waitExposed(panel)
@@ -220,7 +198,7 @@ def test_visualization_controls_keep_saliency_before_method_and_transforms(
     layout_mode,
 ) -> None:
     """Visible controls read Fold, Run, Saliency, Method, Normalize, Absolute."""
-    panel, _ = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     panel._apply_visualization_control_layout(layout_mode)
 
     layout = panel.ctrl_layout
@@ -260,7 +238,7 @@ def test_visualization_controls_use_responsive_layout_modes(
     control_width,
     expected_mode,
 ) -> None:
-    panel, _ = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     panel.ctrl_bar.resize(control_width, 120)
     panel._refresh_control_layout_for_width()
 
@@ -277,7 +255,7 @@ def test_visualization_controls_use_responsive_layout_modes(
 
 
 def test_visualization_controls_use_rendered_bar_width_without_overlap(qtbot) -> None:
-    panel, _ = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     panel.resize(800, 800)
     panel.show()
     qtbot.waitExposed(panel)
@@ -307,7 +285,7 @@ def test_medium_visualization_controls_do_not_include_reset_action(
     qtbot,
 ) -> None:
     """Reset is contextual in the sidebar, leaving the control bar uncluttered."""
-    panel, _ = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     panel._apply_visualization_control_layout("medium")
 
     controls = (
@@ -330,7 +308,7 @@ def test_medium_visualization_controls_do_not_include_reset_action(
 
 
 def test_sidebar_reset_view_follows_detail_and_3d_scene_context(qtbot) -> None:
-    panel, _ = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
 
     panel.saliency_combo.addItem("left", 0)
     panel.saliency_combo.setCurrentIndex(1)
@@ -361,7 +339,7 @@ def test_sidebar_reset_view_follows_detail_and_3d_scene_context(qtbot) -> None:
 
 
 def test_sidebar_3d_actions_fit_the_fixed_width_sidebar(qtbot) -> None:
-    panel, _ = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     cast(Any, panel.tab_3d).scene_ready = True
     cast(Any, panel.tab_3d)._toggle_electrodes = MagicMock()
     cast(Any, panel.tab_3d)._toggle_head = MagicMock()
@@ -381,7 +359,7 @@ def test_sidebar_3d_actions_fit_the_fixed_width_sidebar(qtbot) -> None:
 def test_switching_to_3d_from_all_classes_selects_the_first_renderable_class(
     qtbot,
 ) -> None:
-    panel, _ = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     coverage = replace(
         _complete_coverage("Gradient", "left", "right"),
         classes=[
@@ -432,7 +410,7 @@ def test_switching_to_3d_from_all_classes_selects_the_first_renderable_class(
 
 
 def test_spectrogram_does_not_reserve_absolute_control_hole(qtbot) -> None:
-    panel, _ = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     panel._apply_visualization_control_layout("medium")
     panel.tabs.setCurrentWidget(panel.tab_spectro)
     panel._refresh_absolute_control()
@@ -443,7 +421,7 @@ def test_spectrogram_does_not_reserve_absolute_control_hole(qtbot) -> None:
 
 
 def test_visualization_shutdown_cancels_active_explicit_saliency(qtbot, monkeypatch):
-    panel, _ = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     panel._active_saliency_operation_id = "saliency-operation-1"
     cancelled: list[tuple[object, str, object]] = []
     monkeypatch.setattr(
@@ -465,7 +443,7 @@ def test_saliency_render_worker_start_failure_terminalizes_and_allows_retry(
     qtbot,
     monkeypatch,
 ) -> None:
-    panel, _ = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     _publish_panel_state(
         panel,
         _application_query_with_saliency_state(
@@ -542,16 +520,6 @@ def test_saliency_render_worker_start_failure_terminalizes_and_allows_retry(
     panel._on_saliency_render_finished(retry_worker)
     assert phases["render-retry"] == "cancelled"
     assert panel.native_render_work_idle()
-
-
-def _make_eval_record_without_saliency():
-    record = MagicMock()
-    record.gradient = {}
-    record.gradient_input = {}
-    record.smoothgrad = {}
-    record.smoothgrad_sq = {}
-    record.vargrad = {}
-    return record
 
 
 def _complete_coverage(
@@ -858,7 +826,7 @@ def _current_mock_widget(panel) -> Any:
 
 
 def test_visualization_panel_layout_and_sidebar(qtbot):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
 
     assert panel.tabs.count() == 4
     assert not any(
@@ -882,7 +850,7 @@ def test_visualization_panel_layout_and_sidebar(qtbot):
 
 
 def test_visualization_panel_keeps_aggregation_in_tooltip_without_extra_chrome(qtbot):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
 
     assert not hasattr(panel, "explanation_context")
     assert not hasattr(panel, "explanation_info_button")
@@ -940,7 +908,7 @@ def test_visualization_panel_keeps_aggregation_in_tooltip_without_extra_chrome(q
 
 
 def test_visualization_panel_clears_result_identity_after_publication_rejection(qtbot):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     _publish_panel_state(
         panel,
         _result_with_run_coverages(
@@ -975,7 +943,7 @@ def test_visualization_panel_clears_result_identity_after_publication_rejection(
 def test_visualization_panel_invalidates_rendered_views_when_runtime_disappears(
     qtbot,
 ):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     _publish_panel_state(
         panel,
         _result_with_run_coverages(
@@ -1011,7 +979,7 @@ def test_visualization_panel_invalidates_rendered_views_when_runtime_disappears(
 def test_visualization_panel_invalidates_rendered_views_when_publication_read_fails(
     qtbot,
 ):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     _publish_panel_state(
         panel,
         _result_with_run_coverages(
@@ -1042,7 +1010,7 @@ def test_visualization_panel_invalidates_rendered_views_when_publication_read_fa
 def test_visualization_panel_hides_absolute_only_for_spectrogram_and_restores_choice(
     qtbot,
 ):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
 
     panel.method_combo.setCurrentText("Gradient")
     panel.abs_check.setChecked(True)
@@ -1063,7 +1031,7 @@ def test_visualization_panel_hides_absolute_only_for_spectrogram_and_restores_ch
 def test_visualization_panel_keeps_nonnegative_method_absolute_visible_but_disabled(
     qtbot,
 ):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     _publish_panel_state(
         panel,
         _result_with_run_coverages(
@@ -1092,7 +1060,7 @@ def test_spectrogram_normalize_uses_raw_publication_and_display_transform(
     qtbot,
     monkeypatch,
 ):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     _publish_panel_state(
         panel,
         _application_query_with_saliency_state(
@@ -1163,7 +1131,7 @@ def test_spectrogram_normalize_uses_raw_publication_and_display_transform(
 
 
 def test_visualization_controls_stay_in_a_compact_narrow_grid(qtbot):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     panel.abs_check.setChecked(True)
     panel.resize(760, 720)
     panel.show()
@@ -1250,7 +1218,7 @@ def test_visualization_controls_stay_in_a_compact_narrow_grid(qtbot):
 
 
 def test_visualization_controls_use_one_row_when_panel_is_wide(qtbot):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     panel.abs_check.setChecked(True)
     panel.resize(1180, 720)
     panel.show()
@@ -1376,7 +1344,7 @@ def test_visualization_panel_defers_service_queries_until_opened(
         fake_execute_async,
     )
 
-    panel, _ctrl = _make_panel(qtbot, parent=RealMainWindow())
+    panel = _make_panel(qtbot, parent=RealMainWindow())
 
     assert calls == []
 
@@ -1416,7 +1384,7 @@ def test_visualization_panel_does_not_attribute_other_fold_success_to_missing_ru
     qtbot,
 ):
     """A global terminal status cannot make another selected run incomplete."""
-    panel, _ = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     missing = SaliencyMethodCoverageSnapshot(method="Gradient")
     _publish_panel_state(
         panel,
@@ -1454,7 +1422,7 @@ def test_visualization_panel_does_not_attribute_other_fold_success_to_missing_ru
 
 def test_visualization_panel_keeps_invalid_selected_payload_recompute_action(qtbot):
     """Existing invalid stores differ from a run that has never been computed."""
-    panel, _ = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     invalid = SaliencyMethodCoverageSnapshot(
         method="Gradient",
         classes=[
@@ -1494,7 +1462,7 @@ def test_visualization_panel_keeps_invalid_selected_payload_recompute_action(qtb
 
 
 def test_visualization_panel_populates_controls_for_published_runs(qtbot):
-    panel, ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     complete = _complete_coverage()
     _publish_panel_state(
         panel,
@@ -1533,11 +1501,10 @@ def test_visualization_panel_populates_controls_for_published_runs(qtbot):
     assert panel.plan_combo.currentText() == "Fold 2"
     assert panel.run_combo.count() == 1
     assert panel.run_combo.findText("Average") == -1
-    ctrl.get_trainers.assert_not_called()
 
 
 def test_visualization_panel_dispatches_default_run_when_fold_changes(qtbot):
-    panel, ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     complete = _complete_coverage()
     _publish_panel_state(
         panel,
@@ -1578,11 +1545,10 @@ def test_visualization_panel_dispatches_default_run_when_fold_changes(qtbot):
         run_index=0,
     )
     assert args[1] is False
-    ctrl.get_trainers.assert_not_called()
 
 
 def test_visualization_panel_dispatches_plot_update_to_active_tab(qtbot):
-    panel, ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     complete = _complete_coverage()
     _publish_panel_state(
         panel,
@@ -1615,34 +1581,10 @@ def test_visualization_panel_dispatches_plot_update_to_active_tab(qtbot):
     assert isinstance(args[0], SaliencyRenderPublication)
     assert args[0].request.run.run_index == 0
     assert args[1] is False
-    ctrl.get_trainers.assert_not_called()
 
 
 def test_visualization_panel_filters_methods_by_selected_run_coverage(qtbot):
-    panel, ctrl = _make_panel(qtbot)
-    trainer = _make_trainer("EEGNet", repeats=1)
-    eval_record = MagicMock()
-    eval_record.saliency_context = cast(
-        Any,
-        type(
-            "Context",
-            (),
-            {"class_map": ((0, "left"), (1, "right"))},
-        )(),
-    )
-    eval_record.gradient = {0: np.ones((1, 2, 3)), 1: []}
-    eval_record.gradient_input = {
-        0: np.ones((1, 2, 3)),
-        1: np.ones((1, 2, 3)),
-    }
-    eval_record.smoothgrad = {}
-    eval_record.smoothgrad_sq = {}
-    eval_record.vargrad = {}
-    trainer.get_plans.return_value[0].get_eval_record.return_value = eval_record
-    epoch = MagicMock()
-    epoch.event_id = {"left": 0, "right": 1}
-    trainer.get_dataset.return_value.get_epoch_data.return_value = epoch
-    ctrl.get_trainers.return_value = [trainer]
+    panel = _make_panel(qtbot)
 
     panel.refresh_combos()
     gradient = SaliencyMethodCoverageSnapshot(
@@ -1709,7 +1651,7 @@ def test_visualization_panel_filters_methods_by_selected_run_coverage(qtbot):
 
 
 def test_visualization_panel_replaces_computed_methods_in_canonical_order(qtbot):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     _publish_panel_state(
         panel,
         _result_with_run_coverages(
@@ -1753,11 +1695,7 @@ def test_visualization_panel_replaces_computed_methods_in_canonical_order(qtbot)
 
 
 def test_visualization_panel_prefers_published_run_coverage(qtbot):
-    panel, ctrl = _make_panel(qtbot)
-    trainer = _make_trainer("EEGNet", repeats=1)
-    eval_record = _make_eval_record_with_saliency()
-    trainer.get_plans.return_value[0].get_eval_record.return_value = eval_record
-    ctrl.get_trainers.return_value = [trainer]
+    panel = _make_panel(qtbot)
 
     panel.refresh_combos()
     published_coverage = SaliencyMethodCoverageSnapshot(
@@ -1810,11 +1748,7 @@ def test_visualization_panel_reports_active_background_saliency_without_recomput
     qtbot,
     phase,
 ):
-    panel, ctrl = _make_panel(qtbot)
-    trainer = _make_trainer("EEGNet", repeats=1)
-    eval_record = _make_eval_record_without_saliency()
-    trainer.get_plans.return_value[0].get_eval_record.return_value = eval_record
-    ctrl.get_trainers.return_value = [trainer]
+    panel = _make_panel(qtbot)
     panel.refresh_combos()
     missing = SaliencyMethodCoverageSnapshot(
         method="Gradient",
@@ -1850,12 +1784,7 @@ def test_visualization_panel_reports_active_background_saliency_without_recomput
 
 
 def test_visualization_panel_hides_compute_saliency_while_training(qtbot):
-    panel, ctrl = _make_panel(qtbot)
-    trainer = _make_trainer("EEGNet", repeats=1)
-    trainer.get_plans.return_value[
-        0
-    ].get_eval_record.return_value = _make_eval_record_without_saliency()
-    ctrl.get_trainers.return_value = [trainer]
+    panel = _make_panel(qtbot)
     panel.refresh_combos()
     missing = SaliencyMethodCoverageSnapshot(
         method="Gradient",
@@ -1894,12 +1823,7 @@ def test_visualization_panel_reports_terminal_background_saliency_action(
     qtbot,
     phase,
 ):
-    panel, ctrl = _make_panel(qtbot)
-    trainer = _make_trainer("EEGNet", repeats=1)
-    trainer.get_plans.return_value[
-        0
-    ].get_eval_record.return_value = _make_eval_record_without_saliency()
-    ctrl.get_trainers.return_value = [trainer]
+    panel = _make_panel(qtbot)
     panel.refresh_combos()
     missing = SaliencyMethodCoverageSnapshot(
         method="Gradient",
@@ -1934,12 +1858,7 @@ def test_visualization_panel_reports_terminal_background_saliency_action(
 
 
 def test_visualization_panel_partial_coverage_reports_running_not_no_data(qtbot):
-    panel, ctrl = _make_panel(qtbot)
-    trainer = _make_trainer("EEGNet", repeats=1)
-    eval_record = MagicMock()
-    eval_record.gradient = {0: np.ones((1, 2, 3)), 1: []}
-    trainer.get_plans.return_value[0].get_eval_record.return_value = eval_record
-    ctrl.get_trainers.return_value = [trainer]
+    panel = _make_panel(qtbot)
     panel.refresh_combos()
     partial = SaliencyMethodCoverageSnapshot(
         method="Gradient",
@@ -1982,11 +1901,7 @@ def test_visualization_panel_partial_coverage_reports_running_not_no_data(qtbot)
 
 
 def test_visualization_panel_renders_complete_coverage_after_background_failure(qtbot):
-    panel, ctrl = _make_panel(qtbot)
-    trainer = _make_trainer("EEGNet", repeats=1)
-    eval_record = _make_eval_record_with_saliency()
-    trainer.get_plans.return_value[0].get_eval_record.return_value = eval_record
-    ctrl.get_trainers.return_value = [trainer]
+    panel = _make_panel(qtbot)
     panel.refresh_combos()
     complete = SaliencyMethodCoverageSnapshot(
         method="Gradient",
@@ -2026,27 +1941,7 @@ def test_visualization_panel_renders_complete_coverage_after_background_failure(
 
 
 def test_visualization_panel_partial_multiclass_method_requires_recompute(qtbot):
-    panel, ctrl = _make_panel(qtbot)
-    trainer = _make_trainer("EEGNet", repeats=1)
-    eval_record = MagicMock()
-    eval_record.saliency_context = cast(
-        Any,
-        type(
-            "Context",
-            (),
-            {"class_map": ((0, "left"), (1, "right"))},
-        )(),
-    )
-    eval_record.gradient = {0: np.ones((1, 2, 3)), 1: []}
-    eval_record.gradient_input = {}
-    eval_record.smoothgrad = {}
-    eval_record.smoothgrad_sq = {}
-    eval_record.vargrad = {}
-    trainer.get_plans.return_value[0].get_eval_record.return_value = eval_record
-    epoch = MagicMock()
-    epoch.event_id = {"left": 0, "right": 1}
-    trainer.get_dataset.return_value.get_epoch_data.return_value = epoch
-    ctrl.get_trainers.return_value = [trainer]
+    panel = _make_panel(qtbot)
 
     panel.refresh_combos()
     partial = SaliencyMethodCoverageSnapshot(
@@ -2092,7 +1987,7 @@ def test_visualization_panel_partial_multiclass_method_requires_recompute(qtbot)
 
 
 def test_visualization_panel_missing_publication_does_not_rebuild_eval_policy(qtbot):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
 
     coverage = panel._published_coverage_for_selection()
 
@@ -2100,7 +1995,7 @@ def test_visualization_panel_missing_publication_does_not_rebuild_eval_policy(qt
 
 
 def test_visualization_panel_empty_publication_clears_run_selection(qtbot):
-    panel, ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     publication = ApplicationViewStore(
         ApplicationStateSnapshot.empty(),
         TrainingReadBoundary.no_trainer(),
@@ -2123,7 +2018,6 @@ def test_visualization_panel_empty_publication_clears_run_selection(qtbot):
     current_widget.update_plot.assert_not_called()
     current_widget.show_message.assert_called_with("Select a fold and run to continue.")
     assert panel.run_combo.count() == 0
-    ctrl.get_trainers.assert_not_called()
     assert panel.saliency_action_bar.isHidden()
 
 
@@ -2136,10 +2030,6 @@ def test_visualization_panel_configured_saliency_requires_explicit_action(
             super().__init__()
             self.study = Study()
 
-    service_trainer = _make_trainer("EEGNet", repeats=1)
-    service_trainer.get_plans.return_value[
-        0
-    ].get_eval_record.return_value = _make_eval_record_without_saliency()
     async_commands = []
     configured_params = {
         "SmoothGrad": {"nt_samples": 3},
@@ -2202,8 +2092,7 @@ def test_visualization_panel_configured_saliency_requires_explicit_action(
         ),
     )
 
-    panel, ctrl = _make_panel(qtbot, parent=RealMainWindow())
-    ctrl.get_trainers.return_value = [service_trainer]
+    panel = _make_panel(qtbot, parent=RealMainWindow())
     panel.method_combo.setCurrentText("SmoothGrad")
     current_widget = _current_mock_widget(panel)
     current_widget.show_message.reset_mock()
@@ -2235,6 +2124,8 @@ def test_explicit_saliency_busy_state_keeps_visible_cancel_operable(
     qtbot,
     monkeypatch,
 ) -> None:
+    from PyQt6.QtCore import Qt
+
     class BusyMainWindow(QWidget):
         def __init__(self) -> None:
             super().__init__()
@@ -2245,7 +2136,7 @@ def test_explicit_saliency_busy_state_keeps_visible_cancel_operable(
 
     window = BusyMainWindow()
     qtbot.addWidget(window)
-    panel, _ctrl = _make_panel(qtbot, parent=window)
+    panel = _make_panel(qtbot, parent=window)
     _publish_panel_state(
         panel,
         _result_with_run_coverages(
@@ -2283,6 +2174,7 @@ def test_explicit_saliency_busy_state_keeps_visible_cancel_operable(
     assert len(commands) == 1
     assert isinstance(commands[0], SaliencyCommand)
     assert window.isEnabled()
+    assert panel.cursor().shape() == Qt.CursorShape.ArrowCursor
     assert not panel.cancel_saliency_btn.isHidden()
     assert panel.cancel_saliency_btn.isEnabled()
     assert not panel.plan_combo.isEnabled()
@@ -2308,7 +2200,7 @@ def test_explicit_saliency_busy_state_keeps_visible_cancel_operable(
 
 
 def test_saliency_busy_state_tolerates_minimal_sidebar(qtbot) -> None:
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     full_sidebar = panel.sidebar
     panel.sidebar = SimpleNamespace()
     try:
@@ -2328,7 +2220,7 @@ def test_unowned_saliency_render_terminalization_is_a_noop(
     qtbot,
     monkeypatch,
 ) -> None:
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     finish = MagicMock(return_value=True)
     monkeypatch.setattr(
         "XBrainLab.ui.panels.visualization.panel.finish_saliency_render_operation",
@@ -2343,7 +2235,7 @@ def test_visualization_panel_converts_stored_saliency_params_before_compute(
     qtbot,
     monkeypatch,
 ):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     _publish_panel_state(
         panel,
         _result_with_run_coverages(
@@ -2410,7 +2302,7 @@ def test_staged_saliency_settings_run_only_from_explicit_compute(
     qtbot,
     monkeypatch,
 ):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     committed = _complete_coverage("Gradient")
     _publish_panel_state(
         panel,
@@ -2485,7 +2377,7 @@ def test_staged_uncomputed_method_stays_out_of_render_combo_through_real_lifecyc
     qtbot,
     monkeypatch,
 ):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
 
     def publish(*methods: SaliencyMethodCoverageSnapshot) -> None:
         result = _result_with_run_coverages(
@@ -2614,7 +2506,7 @@ def test_staged_saliency_settings_dispatch_with_reviewed_generation(
     qtbot,
     monkeypatch,
 ):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     _publish_panel_state(
         panel,
         _result_with_run_coverages(
@@ -2659,7 +2551,7 @@ def test_staged_saliency_settings_survive_changed_run_selection(
     qtbot,
     monkeypatch,
 ):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     _publish_panel_state(
         panel,
         _result_with_run_coverages(
@@ -2709,7 +2601,7 @@ def test_staged_saliency_settings_reject_changed_publication(
     qtbot,
     monkeypatch,
 ):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     _publish_panel_state(
         panel,
         _result_with_run_coverages(
@@ -2756,7 +2648,7 @@ def test_staged_saliency_settings_survive_refresh_of_same_publication(
     qtbot,
     monkeypatch,
 ):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     _publish_panel_state(
         panel,
         _result_with_run_coverages(
@@ -2799,7 +2691,7 @@ def test_staged_saliency_settings_survive_refresh_of_same_publication(
 
 
 def test_stale_saliency_compute_requests_settings_review(qtbot):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     current_widget = _current_mock_widget(panel)
     current_widget.show_message.reset_mock()
     current_widget.show_error.reset_mock()
@@ -2831,7 +2723,7 @@ def test_stale_saliency_compute_requests_settings_review(qtbot):
 def test_retired_saliency_reply_cannot_fail_the_next_compute(qtbot, monkeypatch, reply):
     from XBrainLab.ui.panels.visualization import panel as panel_module
 
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     callbacks = []
 
     def dispatch(_context, _command, **kwargs):
@@ -2868,7 +2760,7 @@ def test_retired_saliency_reply_cannot_fail_the_next_compute(qtbot, monkeypatch,
 
 
 def test_scheduled_saliency_result_keeps_visible_compute_state_busy(qtbot):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     panel._saliency_compute_in_progress = True
     panel._active_saliency_operation_id = "saliency-operation-1"
     result = CommandResult.success_result(
@@ -2895,7 +2787,7 @@ def test_scheduled_saliency_result_keeps_visible_compute_state_busy(qtbot):
 
 
 def test_scheduled_saliency_handoff_waits_for_matching_terminal_publication(qtbot):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     panel._saliency_compute_in_progress = True
     panel._active_saliency_operation_id = "saliency-operation-1"
     panel._active_saliency_minimum_generation = 3
@@ -2949,12 +2841,15 @@ def test_scheduled_saliency_handoff_waits_for_matching_terminal_publication(qtbo
         ("completed", True),
         ("cancelled", False),
         ("failed", False),
+        ("user_cancel", False),
     ],
 )
+@pytest.mark.parametrize("view_name", ["tab_map", "tab_spectro", "tab_topo", "tab_3d"])
 def test_native_render_terminal_does_not_reclassify_successful_compute(
-    qtbot, phase, new_compute
+    qtbot, phase, new_compute, view_name
 ):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
+    view = getattr(panel, view_name)
     _publish_panel_state(
         panel,
         _application_query_with_saliency_state(
@@ -2979,10 +2874,10 @@ def test_native_render_terminal_does_not_reclassify_successful_compute(
         normalize=False,
         view="channel_time",
     )
-    panel.tab_map.active_render_generation = 1
-    panel.tab_map.active_render_publication_generation = publication.generation
+    view.active_render_generation = 1
+    view.active_render_publication_generation = publication.generation
     panel._bind_native_render_terminal(
-        panel.tab_map,
+        view,
         replace(
             _render_publication_for_request(None, request),
             operation_id="older-render-operation",
@@ -2990,7 +2885,12 @@ def test_native_render_terminal_does_not_reclassify_successful_compute(
         display_key=(False, False, "all", None),
     )
 
-    panel.tab_map.render_terminal.emit(1, publication.generation, phase)
+    if phase == "user_cancel":
+        panel._saliency_operation_presenter.bind("older-render-operation")
+        panel.cancel_saliency_btn.click()
+    else:
+        view.render_terminal.emit(1, publication.generation, phase)
+    qtbot.waitUntil(lambda: view not in panel._native_render_bindings)
 
     assert panel.saliency_action_bar.isVisible() is new_compute
     if new_compute:
@@ -3007,7 +2907,7 @@ def test_native_render_terminal_does_not_reclassify_successful_compute(
 
 
 def test_summary_failure_releases_post_compute_action_from_on_update(qtbot):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     _publish_panel_state(
         panel,
         _application_query_with_saliency_state(
@@ -3040,7 +2940,7 @@ def test_terminal_saliency_success_settles_staged_settings_before_retraining(
     qtbot,
     monkeypatch,
 ):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     _publish_panel_state(
         panel,
         _result_with_run_coverages(
@@ -3114,7 +3014,7 @@ def test_terminal_saliency_success_settles_staged_settings_before_retraining(
 
 
 def test_old_terminal_does_not_release_new_saliency_operation(qtbot):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     panel._saliency_compute_in_progress = True
     panel._active_saliency_minimum_generation = 4
     panel._bind_saliency_operation("saliency-operation-new")
@@ -3165,7 +3065,7 @@ def test_old_terminal_does_not_release_new_saliency_operation(qtbot):
 
 
 def test_reset_publication_releases_default_compute_without_staged_settings(qtbot):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     running = _application_query_with_saliency_state(
         _post_training_saliency_status(PostTrainingSaliencyPhase.RUNNING),
         _complete_coverage(),
@@ -3191,7 +3091,7 @@ def test_reset_publication_releases_default_compute_without_staged_settings(qtbo
 
 
 def test_terminal_saliency_publication_wins_over_late_schedule_receipt(qtbot):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     panel._saliency_compute_in_progress = True
     panel._active_saliency_operation_id = "saliency-operation-1"
     panel._active_saliency_minimum_generation = 3
@@ -3229,11 +3129,6 @@ def test_visualization_panel_unconfigured_saliency_requires_explicit_action(
         def __init__(self):
             super().__init__()
             self.study = Study()
-
-    service_trainer = _make_trainer("EEGNet", repeats=1)
-    service_trainer.get_plans.return_value[
-        0
-    ].get_eval_record.return_value = _make_eval_record_without_saliency()
 
     def fake_execute(_panel, command, **_kwargs):
         if isinstance(command, SaliencyCommand):
@@ -3294,8 +3189,7 @@ def test_visualization_panel_unconfigured_saliency_requires_explicit_action(
         ),
     )
 
-    panel, ctrl = _make_panel(qtbot, parent=RealMainWindow())
-    ctrl.get_trainers.return_value = [service_trainer]
+    panel = _make_panel(qtbot, parent=RealMainWindow())
     current_widget = _current_mock_widget(panel)
     current_widget.show_message.reset_mock()
     current_widget.update_plot.reset_mock()
@@ -3351,10 +3245,6 @@ def test_visualization_panel_compute_button_uses_recommended_profile(
             super().__init__()
             self.study = Study()
 
-    service_trainer = _make_trainer("EEGNet", repeats=1)
-    service_trainer.get_plans.return_value[
-        0
-    ].get_eval_record.return_value = _make_eval_record_without_saliency()
     async_commands = []
     async_kwargs = []
 
@@ -3412,8 +3302,7 @@ def test_visualization_panel_compute_button_uses_recommended_profile(
         ),
     )
 
-    panel, ctrl = _make_panel(qtbot, parent=RealMainWindow())
-    ctrl.get_trainers.return_value = [service_trainer]
+    panel = _make_panel(qtbot, parent=RealMainWindow())
     panel.update_panel()
     qtbot.waitUntil(lambda: panel.last_application_query is not None)
 
@@ -3439,7 +3328,7 @@ def test_saliency_resource_preflight_safe_dispatches_once_without_confirmation(
     qtbot,
     monkeypatch,
 ):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     current_widget = _current_mock_widget(panel)
     commands: list[SaliencyCommand] = []
     callbacks = []
@@ -3497,7 +3386,7 @@ def test_saliency_resource_preflight_approval_uses_host_receipt_not_param_token(
     monkeypatch,
     risk_level,
 ):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     current_widget = _current_mock_widget(panel)
     commands: list[SaliencyCommand] = []
     callbacks = []
@@ -3568,7 +3457,7 @@ def test_saliency_resource_preflight_cancel_does_not_mutate_evaluator(
     qtbot,
     monkeypatch,
 ):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     current_widget = _current_mock_widget(panel)
     evaluator_state: dict[str, object] = {"params": None}
     commands: list[SaliencyCommand] = []
@@ -3611,7 +3500,7 @@ def test_saliency_resource_preflight_blocking_does_not_dispatch_confirmation(
     qtbot,
     monkeypatch,
 ):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     current_widget = _current_mock_widget(panel)
     commands: list[SaliencyCommand] = []
     callbacks = []
@@ -3658,7 +3547,7 @@ def test_saliency_resource_preflight_rejects_mismatched_host_challenge(
     qtbot,
     monkeypatch,
 ):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     current_widget = _current_mock_widget(panel)
     commands: list[SaliencyCommand] = []
     callbacks = []
@@ -3701,7 +3590,7 @@ def test_saliency_resource_preflight_rejected_receipt_never_retries_twice(
     qtbot,
     monkeypatch,
 ):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     current_widget = _current_mock_widget(panel)
     commands: list[SaliencyCommand] = []
     callbacks = []
@@ -3770,7 +3659,7 @@ def test_visualization_panel_saliency_startup_failure_restores_retryable_action(
         fake_execute_async,
     )
     main_window = RealMainWindow()
-    panel, _ctrl = _make_panel(qtbot, parent=main_window)
+    panel = _make_panel(qtbot, parent=main_window)
     current_widget = _current_mock_widget(panel)
     attempt_key = ("manual", "Fold 1", "Run 1", "Gradient", ())
 
@@ -3833,7 +3722,7 @@ def test_visualization_panel_malformed_saliency_terminal_restores_retryable_acti
         fake_execute_async,
     )
     main_window = RealMainWindow()
-    panel, _ctrl = _make_panel(qtbot, parent=main_window)
+    panel = _make_panel(qtbot, parent=main_window)
     current_widget = _current_mock_widget(panel)
     attempt_key = ("manual", "Fold 1", "Run 1", "Gradient", ())
 
@@ -3878,11 +3767,6 @@ def test_visualization_panel_missing_saliency_worker_shows_actionable_message(
         def __init__(self):
             super().__init__()
             self.study = Study()
-
-    service_trainer = _make_trainer("EEGNet", repeats=1)
-    service_trainer.get_plans.return_value[
-        0
-    ].get_eval_record.return_value = _make_eval_record_without_saliency()
 
     def fake_execute(_panel, command, **_kwargs):
         if isinstance(command, SaliencyCommand):
@@ -3943,8 +3827,7 @@ def test_visualization_panel_missing_saliency_worker_shows_actionable_message(
         ),
     )
 
-    panel, ctrl = _make_panel(qtbot, parent=RealMainWindow())
-    ctrl.get_trainers.return_value = [service_trainer]
+    panel = _make_panel(qtbot, parent=RealMainWindow())
     current_widget = _current_mock_widget(panel)
     current_widget.show_message.reset_mock()
     current_widget.update_plot.reset_mock()
@@ -3961,7 +3844,7 @@ def test_visualization_panel_missing_saliency_worker_shows_actionable_message(
 
 
 def test_visualization_panel_preserves_selection_across_publication_refresh(qtbot):
-    panel, ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     complete = _complete_coverage()
     result = _result_with_run_coverages(
         SaliencyRunCoverageSnapshot(
@@ -3995,11 +3878,10 @@ def test_visualization_panel_preserves_selection_across_publication_refresh(qtbo
 
     assert panel.plan_combo.currentText() == "Fold 2"
     assert panel.run_combo.currentText() == "Run 2"
-    ctrl.get_trainers.assert_not_called()
 
 
 def test_visualization_panel_shows_placeholder_without_valid_selection(qtbot):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     _publish_empty_panel_state(panel)
     current_widget = _current_mock_widget(panel)
     current_widget.show_message.reset_mock()
@@ -4016,7 +3898,7 @@ def test_visualization_panel_shows_placeholder_without_valid_selection(qtbot):
 def test_visualization_panel_shows_pending_montage_on_position_dependent_view(
     qtbot,
 ):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     panel.tabs.setCurrentWidget(panel.tab_topo)
     panel.last_application_query = CommandResult.success_result(
         command_name="visualize",
@@ -4047,7 +3929,7 @@ def test_visualization_panel_normalizes_3d_blocked_key_without_duplicate_status(
     qtbot,
     monkeypatch,
 ):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     panel.tabs.setCurrentWidget(panel.tab_3d)
     panel.last_application_query = CommandResult.success_result(
         command_name="visualize",
@@ -4137,7 +4019,7 @@ def test_visualization_panel_shows_setup_message_without_training_results(
         "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
         fake_execute_async,
     )
-    panel, _ctrl = _make_panel(qtbot, parent=RealMainWindow())
+    panel = _make_panel(qtbot, parent=RealMainWindow())
     current_widget = _current_mock_widget(panel)
     current_widget.show_message.reset_mock()
     current_widget.show_error.reset_mock()
@@ -4153,7 +4035,7 @@ def test_visualization_panel_shows_setup_message_without_training_results(
 
 
 def test_visualization_panel_update_panel_refreshes_combos_and_tab(qtbot):
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     panel._application_summary_dirty = False
 
     with (
@@ -4216,7 +4098,7 @@ def test_visualization_placeholder_wraps_inside_narrow_view(qtbot):
     assert view.error_label.geometry().right() <= view.contentsRect().right()
 
 
-def test_visualization_panel_uses_application_query_before_stale_controller_trainers(
+def test_visualization_panel_shows_empty_application_query_state(
     qtbot,
 ):
     class RealMainWindow(QWidget):
@@ -4225,9 +4107,7 @@ def test_visualization_panel_uses_application_query_before_stale_controller_trai
             self.study = Study()
 
     main_window = RealMainWindow()
-    panel, ctrl = _make_panel(qtbot, parent=main_window)
-    ctrl.get_trainers.return_value = [_make_trainer("StaleNet", repeats=1)]
-    ctrl.get_trainers.reset_mock()
+    panel = _make_panel(qtbot, parent=main_window)
     current_widget = _current_mock_widget(panel)
     current_widget.show_message.reset_mock()
     current_widget.show_error.reset_mock()
@@ -4240,7 +4120,6 @@ def test_visualization_panel_uses_application_query_before_stale_controller_trai
     assert "Create EEG epochs, complete training, or configure saliency" in (
         panel.last_application_query.message
     )
-    ctrl.get_trainers.assert_not_called()
     assert panel.plan_combo.count() == 1
     assert panel.plan_combo.itemText(0) == "Select a fold"
     assert panel.run_combo.count() == 0
@@ -4251,16 +4130,13 @@ def test_visualization_panel_uses_application_query_before_stale_controller_trai
     current_widget.show_error.assert_not_called()
 
 
-def test_visualization_failed_query_does_not_read_live_trainers(qtbot):
+def test_visualization_failed_query_clears_run_choices(qtbot):
     class RealMainWindow(QWidget):
         def __init__(self):
             super().__init__()
             self.study = Study()
 
-    panel, ctrl = _make_panel(qtbot, parent=RealMainWindow())
-    stale_trainer = _make_trainer("StaleNet", repeats=1)
-    ctrl.get_trainers.return_value = [stale_trainer]
-    ctrl.get_trainers.reset_mock()
+    panel = _make_panel(qtbot, parent=RealMainWindow())
     panel.last_application_query = CommandResult.failure_result(
         command_name="visualize",
         message="Visualization is not ready.",
@@ -4271,11 +4147,10 @@ def test_visualization_failed_query_does_not_read_live_trainers(qtbot):
     )
 
     panel.refresh_combos()
-    ctrl.get_trainers.assert_not_called()
     assert panel.run_combo.count() == 0
 
 
-def test_visualization_panel_refuses_real_study_query_none_controller_fallback(
+def test_visualization_panel_unavailable_query_keeps_placeholder(
     qtbot,
     monkeypatch,
 ):
@@ -4288,20 +4163,10 @@ def test_visualization_panel_refuses_real_study_query_none_controller_fallback(
         "XBrainLab.ui.panels.visualization.panel.execute_application_command",
         lambda *_args, **_kwargs: None,
     )
-    panel, ctrl = _make_panel(qtbot, parent=RealMainWindow())
-    ctrl.get_trainers.side_effect = AssertionError(
-        "stale visualization trainers should not be read",
-    )
-    ctrl.get_averaged_record.side_effect = AssertionError(
-        "stale averaged records should not be read",
-    )
-    ctrl.get_trainers.reset_mock()
-    ctrl.get_averaged_record.reset_mock()
+    panel = _make_panel(qtbot, parent=RealMainWindow())
 
     panel.refresh_combos()
 
-    ctrl.get_trainers.assert_not_called()
-    ctrl.get_averaged_record.assert_not_called()
     assert panel.plan_combo.count() == 1
     assert panel.plan_combo.itemText(0) == "Select a fold"
     assert panel.run_combo.count() == 0
@@ -4316,7 +4181,7 @@ def test_visualization_panel_uses_typed_render_boundary(
             super().__init__()
             self.study = Study()
 
-    panel, ctrl = _make_panel(qtbot, parent=RealMainWindow())
+    panel = _make_panel(qtbot, parent=RealMainWindow())
     _publish_panel_state(
         panel,
         _application_query_with_saliency_state(
@@ -4340,8 +4205,6 @@ def test_visualization_panel_uses_typed_render_boundary(
         timeout=3000,
     )
 
-    ctrl.get_trainers.assert_not_called()
-    ctrl.get_averaged_record.assert_not_called()
     current_widget.update_plot.assert_called_once()
     assert isinstance(
         current_widget.update_plot.call_args.args[0], SaliencyRenderPublication
@@ -4401,10 +4264,7 @@ def test_visualization_panel_has_no_average_option_without_publication(
         "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
         fake_execute_async,
     )
-    panel, ctrl = _make_panel(qtbot, parent=RealMainWindow())
-    ctrl.get_averaged_record.side_effect = AssertionError(
-        "stale averaged records should not be read",
-    )
+    panel = _make_panel(qtbot, parent=RealMainWindow())
 
     panel.refresh_combos()
     qtbot.waitUntil(
@@ -4422,8 +4282,6 @@ def test_visualization_panel_has_no_average_option_without_publication(
 
     assert all(set(vars(command)) == {"view"} for command in commands)
     assert panel.run_combo.findText("Average") == -1
-    ctrl.get_trainers.assert_not_called()
-    ctrl.get_averaged_record.assert_not_called()
 
 
 def test_visualization_panel_unpublished_state_uses_detached_summary_query(
@@ -4478,10 +4336,7 @@ def test_visualization_panel_unpublished_state_uses_detached_summary_query(
         "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
         fake_execute_async,
     )
-    panel, ctrl = _make_panel(qtbot, parent=RealMainWindow())
-    ctrl.get_averaged_record.side_effect = AssertionError(
-        "stale averaged records should not be read",
-    )
+    panel = _make_panel(qtbot, parent=RealMainWindow())
 
     panel.refresh_combos()
     qtbot.waitUntil(
@@ -4495,8 +4350,6 @@ def test_visualization_panel_unpublished_state_uses_detached_summary_query(
     )
     assert commands
     assert all(set(vars(command)) == {"view"} for command in commands)
-    ctrl.get_trainers.assert_not_called()
-    ctrl.get_averaged_record.assert_not_called()
     assert panel.run_combo.findText("Average") == -1
 
 
@@ -4517,14 +4370,7 @@ def test_visualization_panel_refuses_real_study_query_none_domain_fallback(
         "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
         lambda *_args, **_kwargs: False,
     )
-    panel, ctrl = _make_panel(qtbot, parent=RealMainWindow())
-    ctrl.get_trainers.side_effect = AssertionError(
-        "stale visualization trainers should not be read",
-    )
-    ctrl.get_averaged_record.side_effect = AssertionError(
-        "stale averaged records should not be read",
-    )
-    ctrl.get_averaged_record.reset_mock()
+    panel = _make_panel(qtbot, parent=RealMainWindow())
     current_widget = _current_mock_widget(panel)
     current_widget.show_error.reset_mock()
     current_widget.show_message.reset_mock()
@@ -4541,8 +4387,6 @@ def test_visualization_panel_refuses_real_study_query_none_domain_fallback(
     panel._application_summary_dirty = False
     panel.on_update()
 
-    ctrl.get_trainers.assert_not_called()
-    ctrl.get_averaged_record.assert_not_called()
     current_widget.update_plot.assert_not_called()
     current_widget.show_error.assert_not_called()
     current_widget.show_message.assert_called_once_with(
@@ -4555,13 +4399,7 @@ def test_visualization_panel_uses_typed_render_publication_without_live_getters(
     qtbot,
     monkeypatch,
 ) -> None:
-    panel, controller = _make_panel(qtbot)
-    controller.get_trainers.side_effect = AssertionError(
-        "visualization must not read live trainers"
-    )
-    controller.get_averaged_record.side_effect = AssertionError(
-        "visualization must not read live evaluation records"
-    )
+    panel = _make_panel(qtbot)
     coverage = _complete_coverage()
     result = _application_query_with_saliency_state(
         PostTrainingSaliencyStatus.idle(),
@@ -4646,8 +4484,6 @@ def test_visualization_panel_uses_typed_render_publication_without_live_getters(
     assert render_requests
     assert render_requests[-1].publication_generation == source_publication.generation
     assert render_requests[-1].run == run_identity
-    controller.get_trainers.assert_not_called()
-    controller.get_averaged_record.assert_not_called()
     current_widget.update_plot.assert_called_with(
         SaliencyRenderPublication(
             request=render_requests[-1],
@@ -4709,7 +4545,7 @@ def test_saliency_render_errors_follow_current_lineage_and_release_busy(
 ):
     from XBrainLab.ui.panels.visualization.panel import _SaliencyRenderTask
 
-    panel, _ctrl = _make_panel(qtbot)
+    panel = _make_panel(qtbot)
     request = SaliencyRenderRequest(
         publication_generation=1,
         run=SaliencyRunIdentity(SaliencyPlanIdentity(0), 0),

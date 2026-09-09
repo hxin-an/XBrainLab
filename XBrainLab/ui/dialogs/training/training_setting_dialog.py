@@ -45,10 +45,6 @@ from XBrainLab.backend.training import (
 from XBrainLab.backend.training.input_contract import DEFAULT_TRAINING_OUTPUT_DIR
 from XBrainLab.backend.training.option import ClassWeightMode
 from XBrainLab.backend.training.utils import get_optimizer_classes
-from XBrainLab.ui.application_capabilities import (
-    ControllerCompatibilityUnavailableError,
-    run_controller_compatibility_call,
-)
 from XBrainLab.ui.components.modal_presentation import show_warning
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
@@ -102,9 +98,8 @@ class TrainingSettingDialog(BaseDialog):
     def __init__(
         self,
         parent,
-        controller,
-        initial_option: Any | None = None,
         *,
+        initial_option: dict[str, Any] | None = None,
         recommendation: TrainingRecommendation | None = None,
         proposed_values: dict[str, Any] | None = None,
         device_recommendation_provider: (
@@ -122,8 +117,6 @@ class TrainingSettingDialog(BaseDialog):
             | None
         ) = None,
     ):
-        # self.controller is handled by BaseDialog
-
         self.training_option: TrainingOption | None = None
         self.initial_option = initial_option
         self.output_dir = DEFAULT_TRAINING_OUTPUT_DIR
@@ -175,7 +168,7 @@ class TrainingSettingDialog(BaseDialog):
         self.content_widget: QWidget | None = None
         self.section_layouts: dict[str, QGridLayout] = {}
 
-        super().__init__(parent, title="Training Settings", controller=controller)
+        super().__init__(parent, title="Training Settings")
         self.setStyleSheet(dark_dialog_stylesheet())
         self._fit_dialog_to_content()
 
@@ -189,7 +182,8 @@ class TrainingSettingDialog(BaseDialog):
         if self.output_dir_label:
             self.output_dir_label.setText(self.output_dir)
 
-        self.load_settings()
+        if initial_option is not None:
+            self._load_settings_snapshot(initial_option)
         if recommendation is not None:
             self.apply_recommendation(recommendation)
         if proposed_values:
@@ -348,81 +342,6 @@ class TrainingSettingDialog(BaseDialog):
         index = self.evaluation_combo.findData(normalized)
         if index >= 0:
             self.evaluation_combo.setCurrentIndex(index)
-
-    def load_settings(self):
-        """Load settings from a snapshot or controller compatibility."""
-        opt = self.initial_option
-        if opt is None:
-            opt = self._compatibility_training_option()
-        if opt:
-            if isinstance(opt, dict):
-                self._load_settings_snapshot(opt)
-                return
-            if self.epoch_entry:
-                self.epoch_entry.setText(str(opt.epoch))
-            if self.bs_entry:
-                self.bs_entry.setText(str(opt.bs))
-            if self.lr_entry:
-                self.lr_entry.setText(str(opt.lr))
-            if self.checkpoint_entry:
-                self.checkpoint_entry.setText(str(opt.checkpoint_epoch))
-            if self.repeat_entry:
-                self.repeat_entry.setText(str(opt.repeat_num))
-            if self.early_stopping_check:
-                self.early_stopping_check.setChecked(
-                    bool(getattr(opt, "early_stopping_enabled", False))
-                )
-            if self.early_stopping_patience_entry:
-                self.early_stopping_patience_entry.setText(
-                    str(getattr(opt, "early_stopping_patience", 3))
-                )
-            if self.early_stopping_min_delta_entry:
-                self.early_stopping_min_delta_entry.setText(
-                    str(getattr(opt, "early_stopping_min_delta", 0.0))
-                )
-
-            # Restore optimizer
-            self.optim = opt.optim
-            self.optim_params = opt.optim_params
-            if self.optim and self.opt_label:
-                self.opt_label.setText(
-                    self._optimizer_summary(self.optim, self.optim_params)
-                )
-
-            # Restore device
-            restored_use_cpu = getattr(opt, "use_cpu", True)
-            self.use_cpu = (
-                restored_use_cpu if isinstance(restored_use_cpu, bool) else True
-            )
-            self.gpu_idx = opt.gpu_idx
-            self.device = (
-                "cpu"
-                if self.use_cpu
-                else f"cuda:{self.gpu_idx if self.gpu_idx is not None else 0}"
-            )
-            if self.dev_label:
-                self.dev_label.setText(self._device_display_name(self.device))
-
-            # Restore output dir
-            self.output_dir = opt.output_dir
-            if self.output_dir and self.output_dir_label:
-                self.output_dir_label.setText(self.output_dir)
-
-            # Restore evaluation
-            if opt.evaluation_option and self.evaluation_combo:
-                self._set_evaluation_option(opt.evaluation_option)
-
-    def _compatibility_training_option(self) -> Any | None:
-        """Read training option only for mock / compatibility dialog contexts."""
-        if not self.controller:
-            return None
-        try:
-            return run_controller_compatibility_call(
-                self,
-                self.controller.get_training_option,
-            )
-        except ControllerCompatibilityUnavailableError:
-            return None
 
     def _load_settings_snapshot(self, option: dict[str, Any]) -> None:
         """Load saved settings from an ApplicationService state snapshot."""

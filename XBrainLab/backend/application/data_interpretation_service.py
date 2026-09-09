@@ -26,7 +26,6 @@ from .bids_subject_catalog import inspect_bids_subject_catalog
 from .commands import (
     ApplyInterpretationCommand,
     Command,
-    LabelImportPlan,
     PreviewInterpretationCommand,
     ReloadInterpretationRecipeCommand,
     ReviewInterpretationCommand,
@@ -2487,23 +2486,3 @@ class DataInterpretationCommandService:
         self._review_preflight_receipts.clear()
         self._reload_preflight_receipts.clear()
         self._safe_preview_admissions.clear()
-
-    def record_label_import_for_recipe(
-        self,
-        *,
-        plan: LabelImportPlan,
-        mode: str,
-        target_files: list[Any],
-        file_mapping: dict[str, str],
-        selected_event_names: set[str] | None,
-        success_count: int,
-    ) -> dict[str, Any] | None:
-        """Record a post-load compatibility label import into recipe state."""
-        return self.state.record_label_import_for_recipe(
-            plan=plan,
-            mode=mode,
-            target_files=target_files,
-            file_mapping=file_mapping,
-            selected_event_names=selected_event_names,
-            success_count=success_count,
-        )

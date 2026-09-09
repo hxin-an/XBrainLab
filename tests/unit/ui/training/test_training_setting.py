@@ -11,7 +11,6 @@ from PyQt6.QtWidgets import (
     QFrame,
     QLabel,
     QScrollArea,
-    QWidget,
 )
 
 from XBrainLab.backend.application.resource_guard import (
@@ -27,7 +26,6 @@ from XBrainLab.backend.application.training_recommendation import (
     TrainingRecommendationValues,
     TrainingSettingProvenance,
 )
-from XBrainLab.backend.study import Study
 from XBrainLab.backend.training import TrainingEvaluation
 from XBrainLab.backend.training.utils import (
     get_optimizer_classes,
@@ -38,10 +36,6 @@ from XBrainLab.ui.dialogs.training import (
     OptimizerSettingDialog,
     TrainingSettingDialog,
 )
-
-
-class _StudyWidget(QWidget):
-    study: Study
 
 
 def _recommendation(
@@ -79,7 +73,6 @@ def _recommendation(
 class TestTrainingSetting:
     def test_uses_four_category_sections_and_inline_validation_state(self, qtbot):
         dialog = TrainingSettingDialog(
-            None,
             None,
             initial_option={"validation_samples_available": False},
         )
@@ -140,7 +133,6 @@ class TestTrainingSetting:
     def test_early_stopping_is_disabled_without_validation_samples(self, qtbot):
         dialog = TrainingSettingDialog(
             None,
-            None,
             initial_option={"validation_samples_available": False},
         )
         qtbot.addWidget(dialog)
@@ -152,19 +144,9 @@ class TestTrainingSetting:
 
     @pytest.fixture
     def window(self, qtbot):
-        mock_controller = MagicMock()
-        # Ensure get_training_option returns None so load_settings is skipped
-        mock_controller.get_training_option.return_value = None
-
-        # Use actual torch.optim.Adam
-        with patch(
-            "XBrainLab.ui.dialogs.training.training_setting_dialog.get_optimizer_classes"
-        ) as mock_get_classes:
-            mock_get_classes.return_value = {"Adam": torch.optim.Adam}
-
-            window = TrainingSettingDialog(None, mock_controller)
-            qtbot.addWidget(window)
-            yield window
+        window = TrainingSettingDialog(None)
+        qtbot.addWidget(window)
+        yield window
 
     def test_init(self, window):
         assert window.windowTitle() == "Training Settings"
@@ -266,18 +248,11 @@ class TestTrainingSetting:
         scaled_font = QFont(original_font)
         scaled_font.setPointSizeF(original_font.pointSizeF() * 1.5)
         app.setFont(scaled_font)
-        controller = MagicMock()
-        controller.get_training_option.return_value = None
         try:
-            with patch(
-                "XBrainLab.ui.dialogs.training.training_setting_dialog."
-                "get_optimizer_classes",
-                return_value={"Adam": torch.optim.Adam},
-            ):
-                dialog = TrainingSettingDialog(None, controller)
-                qtbot.addWidget(dialog)
-                dialog.show()
-                qtbot.wait(0)
+            dialog = TrainingSettingDialog(None)
+            qtbot.addWidget(dialog)
+            dialog.show()
+            qtbot.wait(0)
 
             checkpoint_label = next(
                 label
@@ -319,8 +294,6 @@ class TestTrainingSetting:
         scaled_font = QFont(original_font)
         scaled_font.setPointSizeF(original_font.pointSizeF() * 1.5)
         app.setFont(scaled_font)
-        controller = MagicMock()
-        controller.get_training_option.return_value = None
         recommendation = _recommendation(
             "compact-training-dialog",
             epochs=20,
@@ -328,17 +301,11 @@ class TestTrainingSetting:
             learning_rate=0.0005,
         )
         try:
-            with patch(
-                "XBrainLab.ui.dialogs.training.training_setting_dialog."
-                "get_optimizer_classes",
-                return_value={"Adam": torch.optim.Adam},
-            ):
-                dialog = TrainingSettingDialog(
-                    None,
-                    controller,
-                    recommendation=recommendation,
-                )
-                qtbot.addWidget(dialog)
+            dialog = TrainingSettingDialog(
+                None,
+                recommendation=recommendation,
+            )
+            qtbot.addWidget(dialog)
 
             # 720 physical pixels at 150% scaling leaves about 480 logical pixels.
             dialog.resize(QSize(640, 480))
@@ -397,8 +364,6 @@ class TestTrainingSetting:
         assert option.use_cpu is True
 
     def test_initial_snapshot_restores_evaluation_selection(self, qtbot):
-        controller = MagicMock()
-        controller.get_training_option.return_value = None
         snapshot = {
             "epoch": 10,
             "batch_size": 32,
@@ -411,12 +376,8 @@ class TestTrainingSetting:
             "output_dir": "./output",
             "evaluation_option": "Best validation performance",
         }
-        with patch(
-            "XBrainLab.ui.dialogs.training.training_setting_dialog.get_optimizer_classes",
-            return_value={"Adam": torch.optim.Adam},
-        ):
-            dialog = TrainingSettingDialog(None, controller, initial_option=snapshot)
-            qtbot.addWidget(dialog)
+        dialog = TrainingSettingDialog(None, initial_option=snapshot)
+        qtbot.addWidget(dialog)
 
         assert dialog.evaluation_combo.currentText() == "Validation accuracy"
         assert dialog.evaluation_combo.currentData() is TrainingEvaluation.VAL_ACC
@@ -425,20 +386,14 @@ class TestTrainingSetting:
         self,
         qtbot,
     ):
-        controller = MagicMock()
-        controller.get_training_option.return_value = None
         snapshot = {
             "class_weight_mode": "custom",
             "custom_class_weights": {"left": 2.5, "right": 0.5},
             "class_map": {0: "left", 1: "right"},
             "class_map_fingerprint": "a" * 64,
         }
-        with patch(
-            "XBrainLab.ui.dialogs.training.training_setting_dialog.get_optimizer_classes",
-            return_value={"Adam": torch.optim.Adam},
-        ):
-            dialog = TrainingSettingDialog(None, controller, initial_option=snapshot)
-            qtbot.addWidget(dialog)
+        dialog = TrainingSettingDialog(None, initial_option=snapshot)
+        qtbot.addWidget(dialog)
         dialog.resize(QSize(520, 390))
         dialog.show()
         qtbot.wait(0)
@@ -483,18 +438,12 @@ class TestTrainingSetting:
         qtbot,
         mode,
     ):
-        controller = MagicMock()
-        controller.get_training_option.return_value = None
         snapshot = {
             "class_map": {0: "left", 1: "right"},
             "class_map_fingerprint": "a" * 64,
         }
-        with patch(
-            "XBrainLab.ui.dialogs.training.training_setting_dialog.get_optimizer_classes",
-            return_value={"Adam": torch.optim.Adam},
-        ):
-            dialog = TrainingSettingDialog(None, controller, initial_option=snapshot)
-            qtbot.addWidget(dialog)
+        dialog = TrainingSettingDialog(None, initial_option=snapshot)
+        qtbot.addWidget(dialog)
 
         dialog.class_weight_combo.setCurrentIndex(
             dialog.class_weight_combo.findData(mode)
@@ -512,19 +461,13 @@ class TestTrainingSetting:
         assert result.custom_class_weights == {}
 
     def test_custom_weight_invalid_value_is_blocked_before_accept(self, qtbot):
-        controller = MagicMock()
-        controller.get_training_option.return_value = None
         snapshot = {
             "class_weight_mode": "custom",
             "class_map": {0: "left", 1: "right"},
             "class_map_fingerprint": "a" * 64,
         }
-        with patch(
-            "XBrainLab.ui.dialogs.training.training_setting_dialog.get_optimizer_classes",
-            return_value={"Adam": torch.optim.Adam},
-        ):
-            dialog = TrainingSettingDialog(None, controller, initial_option=snapshot)
-            qtbot.addWidget(dialog)
+        dialog = TrainingSettingDialog(None, initial_option=snapshot)
+        qtbot.addWidget(dialog)
         dialog.class_weight_entries["left"].setText("0")
 
         with patch(
@@ -536,8 +479,6 @@ class TestTrainingSetting:
         assert dialog.get_result() is None
 
     def test_backend_recommendation_prefills_only_recommended_fields(self, qtbot):
-        controller = MagicMock()
-        controller.get_training_option.return_value = None
         snapshot = {
             "repeat": 3,
             "device": "cpu",
@@ -552,21 +493,12 @@ class TestTrainingSetting:
             optimizer="AdamW",
             evaluation_strategy="Best validation performance",
         )
-        with patch(
-            "XBrainLab.ui.dialogs.training.training_setting_dialog."
-            "get_optimizer_classes",
-            return_value={
-                "Adam": torch.optim.Adam,
-                "AdamW": torch.optim.AdamW,
-            },
-        ):
-            dialog = TrainingSettingDialog(
-                None,
-                controller,
-                initial_option=snapshot,
-                recommendation=recommendation,
-            )
-            qtbot.addWidget(dialog)
+        dialog = TrainingSettingDialog(
+            None,
+            initial_option=snapshot,
+            recommendation=recommendation,
+        )
+        qtbot.addWidget(dialog)
 
         assert dialog.epoch_entry.text() == "50"
         assert dialog.bs_entry.text() == "64"
@@ -582,8 +514,6 @@ class TestTrainingSetting:
         self,
         qtbot,
     ):
-        controller = MagicMock()
-        controller.get_training_option.return_value = None
         recommendation = _recommendation(
             "optimizer-context",
             epochs=50,
@@ -596,22 +526,12 @@ class TestTrainingSetting:
             "optimizer_params": {"momentum": 0.9},
         }
 
-        with patch(
-            "XBrainLab.ui.dialogs.training.training_setting_dialog."
-            "get_optimizer_classes",
-            return_value={
-                "Adam": torch.optim.Adam,
-                "AdamW": torch.optim.AdamW,
-                "SGD": torch.optim.SGD,
-            },
-        ):
-            dialog = TrainingSettingDialog(
-                None,
-                controller,
-                initial_option=snapshot,
-                recommendation=recommendation,
-            )
-            qtbot.addWidget(dialog)
+        dialog = TrainingSettingDialog(
+            None,
+            initial_option=snapshot,
+            recommendation=recommendation,
+        )
+        qtbot.addWidget(dialog)
 
         assert dialog.optim is torch.optim.AdamW
         assert dialog.optim_params == {}
@@ -641,8 +561,6 @@ class TestTrainingSetting:
         self,
         qtbot,
     ):
-        controller = MagicMock()
-        controller.get_training_option.return_value = None
         initial = _recommendation(
             "auto-device-context",
             epochs=50,
@@ -657,18 +575,12 @@ class TestTrainingSetting:
         )
         recommendation_provider = MagicMock(return_value=cpu)
 
-        with patch(
-            "XBrainLab.ui.dialogs.training.training_setting_dialog."
-            "get_optimizer_classes",
-            return_value={"Adam": torch.optim.Adam},
-        ):
-            dialog = TrainingSettingDialog(
-                None,
-                controller,
-                recommendation=initial,
-                device_recommendation_provider=recommendation_provider,
-            )
-            qtbot.addWidget(dialog)
+        dialog = TrainingSettingDialog(
+            None,
+            recommendation=initial,
+            device_recommendation_provider=recommendation_provider,
+        )
+        qtbot.addWidget(dialog)
 
         dialog.epoch_entry.setText("61")
         dialog.epoch_entry.textEdited.emit("61")
@@ -718,20 +630,14 @@ class TestTrainingSetting:
         )
         recommendation_provider = MagicMock(return_value=cpu)
 
-        with patch(
-            "XBrainLab.ui.dialogs.training.training_setting_dialog."
-            "get_optimizer_classes",
-            return_value={"Adam": torch.optim.Adam},
-        ):
-            dialog = TrainingSettingDialog(
-                None,
-                None,
-                initial_option={"device": "cpu"},
-                recommendation=initial,
-                proposed_values={"device": "cpu"},
-                device_recommendation_provider=recommendation_provider,
-            )
-            qtbot.addWidget(dialog)
+        dialog = TrainingSettingDialog(
+            None,
+            initial_option={"device": "cpu"},
+            recommendation=initial,
+            proposed_values={"device": "cpu"},
+            device_recommendation_provider=recommendation_provider,
+        )
+        qtbot.addWidget(dialog)
 
         recommendation_provider.assert_called_once_with("cpu")
         assert dialog.bs_entry.text() == "32"
@@ -740,26 +646,18 @@ class TestTrainingSetting:
         )
 
     def test_tracks_only_actual_and_explicit_recommendation_edits(self, qtbot):
-        controller = MagicMock()
-        controller.get_training_option.return_value = None
         recommendation = _recommendation(
             "edited-fields-context",
             epochs=50,
             batch_size=32,
             learning_rate=0.001,
         )
-        with patch(
-            "XBrainLab.ui.dialogs.training.training_setting_dialog."
-            "get_optimizer_classes",
-            return_value={"Adam": torch.optim.Adam},
-        ):
-            dialog = TrainingSettingDialog(
-                None,
-                controller,
-                recommendation=recommendation,
-                proposed_values={"learning_rate": "0.002"},
-            )
-            qtbot.addWidget(dialog)
+        dialog = TrainingSettingDialog(
+            None,
+            recommendation=recommendation,
+            proposed_values={"learning_rate": "0.002"},
+        )
+        qtbot.addWidget(dialog)
 
         dialog.epoch_entry.setText("61")
         assert dialog.get_edited_recommendation_fields() == frozenset(
@@ -778,25 +676,17 @@ class TestTrainingSetting:
         self,
         qtbot,
     ):
-        controller = MagicMock()
-        controller.get_training_option.return_value = None
         initial = _recommendation(
             "compact-context",
             epochs=50,
             batch_size=64,
             learning_rate=0.001,
         )
-        with patch(
-            "XBrainLab.ui.dialogs.training.training_setting_dialog."
-            "get_optimizer_classes",
-            return_value={"Adam": torch.optim.Adam, "AdamW": torch.optim.AdamW},
-        ):
-            dialog = TrainingSettingDialog(
-                None,
-                controller,
-                recommendation=initial,
-            )
-            qtbot.addWidget(dialog)
+        dialog = TrainingSettingDialog(
+            None,
+            recommendation=initial,
+        )
+        qtbot.addWidget(dialog)
 
         dialog.bs_entry.setText("12")
         dialog.bs_entry.textEdited.emit("12")
@@ -838,25 +728,17 @@ class TestTrainingSetting:
         )
 
     def test_recommendation_provenance_remains_without_first_layer_note(self, qtbot):
-        controller = MagicMock()
-        controller.get_training_option.return_value = None
         recommendation = _recommendation(
             "note-context",
             epochs=50,
             batch_size=32,
             learning_rate=0.001,
         )
-        with patch(
-            "XBrainLab.ui.dialogs.training.training_setting_dialog."
-            "get_optimizer_classes",
-            return_value={"Adam": torch.optim.Adam},
-        ):
-            dialog = TrainingSettingDialog(
-                None,
-                controller,
-                recommendation=recommendation,
-            )
-            qtbot.addWidget(dialog)
+        dialog = TrainingSettingDialog(
+            None,
+            recommendation=recommendation,
+        )
+        qtbot.addWidget(dialog)
 
         assert dialog.recommendation_note is None
         assert dialog.findChild(QLabel, "TrainingRecommendationNote") is None
@@ -877,23 +759,17 @@ class TestTrainingSetting:
             batch_size=32,
             optimizer="Adam",
         )
-        with patch(
-            "XBrainLab.ui.dialogs.training.training_setting_dialog."
-            "get_optimizer_classes",
-            return_value={"Adam": torch.optim.Adam},
-        ):
-            dialog = TrainingSettingDialog(
-                None,
-                None,
-                recommendation=_recommendation(
-                    "preview-context",
-                    epochs=40,
-                    batch_size=32,
-                    learning_rate=0.001,
-                ),
-                resource_preview_request=request,
-            )
-            qtbot.addWidget(dialog)
+        dialog = TrainingSettingDialog(
+            None,
+            recommendation=_recommendation(
+                "preview-context",
+                epochs=40,
+                batch_size=32,
+                learning_rate=0.001,
+            ),
+            resource_preview_request=request,
+        )
+        qtbot.addWidget(dialog)
 
         current = dialog.build_training_resource_preview_request()
         assert current is not None
@@ -962,21 +838,15 @@ class TestTrainingSetting:
             optimizer="Adam",
         )
         try:
-            with patch(
-                "XBrainLab.ui.dialogs.training.training_setting_dialog."
-                "get_optimizer_classes",
-                return_value={"Adam": torch.optim.Adam},
-            ):
-                dialog = TrainingSettingDialog(
-                    None,
-                    None,
-                    initial_option={"device": "cuda:0", "batch_size": 32},
-                    resource_preview_request=request_template,
-                    resource_preview_dispatcher=(
-                        lambda request, callback: dispatched.append((request, callback))
-                    ),
-                )
-                qtbot.addWidget(dialog)
+            dialog = TrainingSettingDialog(
+                None,
+                initial_option={"device": "cuda:0", "batch_size": 32},
+                resource_preview_request=request_template,
+                resource_preview_dispatcher=(
+                    lambda request, callback: dispatched.append((request, callback))
+                ),
+            )
+            qtbot.addWidget(dialog)
 
             dialog.setMaximumHeight(480)
             dialog.resize(QSize(640, 480))
@@ -1037,23 +907,17 @@ class TestTrainingSetting:
             batch_size=32,
             optimizer="Adam",
         )
-        with patch(
-            "XBrainLab.ui.dialogs.training.training_setting_dialog."
-            "get_optimizer_classes",
-            return_value={"Adam": torch.optim.Adam},
-        ):
-            dialog = TrainingSettingDialog(
-                None,
-                None,
-                recommendation=_recommendation(
-                    "preview-context",
-                    epochs=40,
-                    batch_size=32,
-                    learning_rate=0.001,
-                ),
-                resource_preview_request=request,
-            )
-            qtbot.addWidget(dialog)
+        dialog = TrainingSettingDialog(
+            None,
+            recommendation=_recommendation(
+                "preview-context",
+                epochs=40,
+                batch_size=32,
+                learning_rate=0.001,
+            ),
+            resource_preview_request=request,
+        )
+        qtbot.addWidget(dialog)
 
         stale = dialog.build_training_resource_preview_request()
         current = dialog.build_training_resource_preview_request()
@@ -1098,18 +962,12 @@ class TestTrainingSetting:
             batch_size=32,
             optimizer="Adam",
         )
-        with patch(
-            "XBrainLab.ui.dialogs.training.training_setting_dialog."
-            "get_optimizer_classes",
-            return_value={"Adam": torch.optim.Adam, "SGD": torch.optim.SGD},
-        ):
-            dialog = TrainingSettingDialog(
-                None,
-                None,
-                initial_option={"optimizer": "Adam", "batch_size": 32},
-                resource_preview_request=request,
-            )
-            qtbot.addWidget(dialog)
+        dialog = TrainingSettingDialog(
+            None,
+            initial_option={"optimizer": "Adam", "batch_size": 32},
+            resource_preview_request=request,
+        )
+        qtbot.addWidget(dialog)
 
         in_flight = dialog.build_training_resource_preview_request()
         assert in_flight is not None
@@ -1154,24 +1012,18 @@ class TestTrainingSetting:
             batch_size=32,
             optimizer="Adam",
         )
-        with patch(
-            "XBrainLab.ui.dialogs.training.training_setting_dialog."
-            "get_optimizer_classes",
-            return_value={"Adam": torch.optim.Adam},
-        ):
-            dialog = TrainingSettingDialog(
-                None,
-                None,
-                initial_option={"device": "cuda:0", "batch_size": 32},
-                resource_preview_request=request,
-                device_recommendation_provider=lambda _device: _recommendation(
-                    "cpu-preview",
-                    epochs=10,
-                    batch_size=32,
-                    learning_rate=0.001,
-                ),
-            )
-            qtbot.addWidget(dialog)
+        dialog = TrainingSettingDialog(
+            None,
+            initial_option={"device": "cuda:0", "batch_size": 32},
+            resource_preview_request=request,
+            device_recommendation_provider=lambda _device: _recommendation(
+                "cpu-preview",
+                epochs=10,
+                batch_size=32,
+                learning_rate=0.001,
+            ),
+        )
+        qtbot.addWidget(dialog)
 
         in_flight = dialog.build_training_resource_preview_request()
         assert in_flight is not None
@@ -1210,18 +1062,12 @@ class TestTrainingSetting:
             batch_size=8,
             optimizer="Adam",
         )
-        with patch(
-            "XBrainLab.ui.dialogs.training.training_setting_dialog."
-            "get_optimizer_classes",
-            return_value={"Adam": torch.optim.Adam},
-        ):
-            dialog = TrainingSettingDialog(
-                None,
-                None,
-                initial_option={"batch_size": 8},
-                resource_preview_request=request,
-            )
-            qtbot.addWidget(dialog)
+        dialog = TrainingSettingDialog(
+            None,
+            initial_option={"batch_size": 8},
+            resource_preview_request=request,
+        )
+        qtbot.addWidget(dialog)
         current = dialog.build_training_resource_preview_request()
         assert current is not None
 
@@ -1256,38 +1102,23 @@ class TestTrainingSetting:
             assert window.output_dir_label.text() == "/mock/test"
 
     def test_load_settings(self, qtbot):
-        # Create mock controller
-        mock_controller = MagicMock()
-        mock_option = MagicMock()
-
-        # Configure option
-        mock_option.epoch = 50
-        mock_option.bs = 64
-        mock_option.lr = 0.005
-        mock_option.checkpoint_epoch = 10
-        mock_option.repeat_num = 3
-        mock_option.output_dir = "/mock/loaded"
-        mock_option.use_cpu = False
-        mock_option.gpu_idx = 0
-        mock_option.optim = torch.optim.Adam  # Use real Adam
-        mock_option.optim_params = {}  # lr is separate parameter
-        mock_option.evaluation_option.value = "Last Epoch"
-
-        mock_controller.get_training_option.return_value = mock_option
-
-        # Use real Adam class in get_optimizer_classes
-        # Use real Adam class in get_optimizer_classes
-        with (
-            patch(
-                "XBrainLab.ui.dialogs.training.training_setting_dialog.get_optimizer_classes",
-                return_value={"Adam": torch.optim.Adam},
-            ),
-            patch(
-                "torch.cuda.get_device_name",
-                side_effect=AssertionError("dialog display queried GPU name"),
-            ),
+        snapshot = {
+            "epoch": 50,
+            "batch_size": 64,
+            "learning_rate": 0.005,
+            "checkpoint_epoch": 10,
+            "repeat": 3,
+            "output_dir": "/mock/loaded",
+            "device": "cuda:0",
+            "optimizer": "Adam",
+            "optimizer_params": {},
+            "evaluation_option": "Last Epoch",
+        }
+        with patch(
+            "torch.cuda.get_device_name",
+            side_effect=AssertionError("dialog display queried GPU name"),
         ):
-            window = TrainingSettingDialog(None, mock_controller)
+            window = TrainingSettingDialog(None, initial_option=snapshot)
             qtbot.addWidget(window)
 
             # Verify fields are populated
@@ -1315,46 +1146,8 @@ class TestTrainingSetting:
         assert window.evaluation_combo.currentText() == "Last epoch"
         assert window.evaluation_combo.currentData() is TrainingEvaluation.LAST_EPOCH
 
-    def test_real_study_without_initial_option_does_not_read_controller_defaults(
-        self,
-        qtbot,
-        monkeypatch,
-    ):
-        study = Study()
-        controller = study.get_controller("training")
-        parent = _StudyWidget()
-        parent.study = study
-        qtbot.addWidget(parent)
-        get_training_option = MagicMock(
-            side_effect=AssertionError(
-                "real Study dialog should not read stale controller defaults",
-            ),
-        )
-        monkeypatch.setattr(controller, "get_training_option", get_training_option)
-
-        with patch(
-            "XBrainLab.ui.dialogs.training.training_setting_dialog.get_optimizer_classes",
-            return_value={"Adam": torch.optim.Adam},
-        ):
-            window = TrainingSettingDialog(parent, controller)
-            qtbot.addWidget(window)
-
-        get_training_option.assert_not_called()
-        assert window.epoch_entry is not None
-        assert window.bs_entry is not None
-        assert window.lr_entry is not None
-        assert window.epoch_entry.text() == "10"
-        assert window.bs_entry.text() == "32"
-        assert window.lr_entry.text() == "0.001"
-
     def test_constructor_uses_auto_without_any_gpu_api(self, qtbot):
-        mock_controller = MagicMock()
-        mock_controller.get_training_option.return_value = None
         with (
-            patch(
-                "XBrainLab.ui.dialogs.training.training_setting_dialog.get_optimizer_classes",
-                return_value={"Adam": torch.optim.Adam},
-            ),
             patch(
                 "torch.cuda.device_count",
                 side_effect=AssertionError("dialog constructor queried GPU count"),
@@ -1364,7 +1157,7 @@ class TestTrainingSetting:
                 side_effect=AssertionError("dialog constructor queried GPU name"),
             ),
         ):
-            window = TrainingSettingDialog(None, mock_controller)
+            window = TrainingSettingDialog(None)
             qtbot.addWidget(window)
 
         assert window.use_cpu is True

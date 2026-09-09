@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from inspect import getattr_static
-from typing import TYPE_CHECKING, Any, Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 from weakref import ReferenceType, ref
 
 from PyQt6.QtCore import QCoreApplication, QThread
@@ -70,7 +70,6 @@ if TYPE_CHECKING:
         InterpretationReviewIdentity,
     )
 
-_FallbackResult = TypeVar("_FallbackResult")
 CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE = (
     "XBrainLab could not safely complete this action from the current window "
     "state. Refresh the workflow and try again."
@@ -83,7 +82,7 @@ _PYTHON_OWNED_COMMAND_THREADS: dict[CommandName, str] = {
 
 
 class ControllerCompatibilityUnavailableError(RuntimeError):
-    """Raised when product runtime attempts a controller compatibility mutation."""
+    """Raised when an application review context cannot be resolved safely."""
 
 
 class DatasetSplitQueryPort(Protocol):
@@ -892,19 +891,6 @@ def find_study(context: Any) -> Any | None:
         if study is not None:
             return study
 
-        controller = _declared_context_attribute(current, "controller")
-        study = _declared_context_attribute(controller, "study")
-        if study is not None:
-            return study
-
-        current_attrs = getattr(current, "__dict__", {})
-        for attr_name, maybe_controller in current_attrs.items():
-            if attr_name == "controller" or not attr_name.endswith("_controller"):
-                continue
-            study = _declared_context_attribute(maybe_controller, "study")
-            if study is not None:
-                return study
-
         current = _declared_parent(current)
 
     return None
@@ -1493,7 +1479,6 @@ def execute_application_command(
     context: Any,
     command: Command,
     *,
-    refresh: bool = True,
     expected_publication_generation: int | None = None,
     reviewed_preprocess_boundary: ApplicationPreprocessBoundary | None = None,
     runtime: ApplicationUiRuntime | None = None,
@@ -1507,10 +1492,6 @@ def execute_application_command(
     application_runtime = _resolve_application_ui_runtime(context, runtime)
     if application_runtime is None:
         return None
-    # State-changing UI render is owned by the revisioned application
-    # publication. Keep ``refresh`` as a compatibility call-site parameter, but
-    # never turn a command result into a second product refresh truth.
-    del refresh
     return _execute_runtime_command(
         application_runtime,
         command,
@@ -1590,7 +1571,6 @@ def execute_application_command_async(
     *,
     on_result: Callable[[CommandResult], InteractionOutcome | None],
     on_error: Callable[[tuple], None] | None = None,
-    refresh: bool = True,
     busy_target: Any | None = None,
     allow_during_shutdown: bool = False,
     expected_publication_generation: int | None = None,
@@ -1660,9 +1640,6 @@ def execute_application_command_async(
         on_result=completion_callbacks.on_result,
         on_error=completion_callbacks.on_error,
         on_finished=completion_callbacks.on_finished,
-        # Application publications own state-changing render. Command results
-        # are still delivered to the interaction callback for user feedback.
-        refresh=False,
         busy_target=busy_target,
         allow_during_shutdown=allow_during_shutdown,
         python_thread_name=_PYTHON_OWNED_COMMAND_THREADS.get(command.name),
@@ -1675,43 +1652,3 @@ def execute_application_command_async(
         )
     completion_callbacks.mark_started(started)
     return started
-
-
-def run_controller_compatibility_call(
-    context: Any,
-    fallback: Callable[[], _FallbackResult],
-    *,
-    runtime: ApplicationUiRuntime | None = None,
-) -> _FallbackResult:
-    """Run controller fallback only when no application runtime is available."""
-    if _resolve_application_ui_runtime(context, runtime) is None:
-        return fallback()
-    raise ControllerCompatibilityUnavailableError(
-        CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
-    )
-
-
-def get_controller_for_compatibility_context(
-    context: Any,
-    study: Any,
-    controller_name: str,
-    *,
-    runtime: ApplicationUiRuntime | None = None,
-) -> Any | None:
-    """Return a controller only for explicit compatibility UI contexts.
-
-    Migrated Product MainWindow wiring injects typed application ports. This
-    helper keeps older tests and standalone contexts working without allowing
-    real Study UI components to walk back through the controller tree.
-    """
-    getter = getattr(study, "get_controller", None)
-    if not callable(getter):
-        return None
-    try:
-        return run_controller_compatibility_call(
-            context,
-            lambda: getter(controller_name),
-            runtime=runtime,
-        )
-    except ControllerCompatibilityUnavailableError:
-        return None

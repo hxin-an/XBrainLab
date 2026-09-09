@@ -662,7 +662,7 @@ class DataInterpretationSessionState:
         selected_event_names: set[str] | None,
         success_count: int,
     ) -> dict[str, Any] | None:
-        """Record a post-load compatibility label import into recipe state."""
+        """Record a complete reviewed label apply into recipe state atomically."""
         if success_count <= 0 or success_count != len(target_files):
             return None
         if not self._latest_interpretation_id:

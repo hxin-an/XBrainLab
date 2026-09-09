@@ -23,7 +23,7 @@ class TestTurnMetrics:
 
     def test_record_tool(self):
         m = TurnMetrics()
-        m.record_tool("load_data", True, 150.0)
+        m.record_tool("import_eeg_data", True, 150.0)
         m.record_tool("preprocess", False, 50.0, "file not found")
         assert m.tool_count == 2
         assert m.tool_success_count == 1

@@ -32,17 +32,12 @@ class FakeDatasetActionHandler:
     def open_smart_parser(self) -> None:
         pass
 
-    def import_label(self) -> None:
-        pass
-
 
 @pytest.fixture
 def sidebar(qtbot):
     panel_mock = MagicMock()
     # Mock action handler on panel
     panel_mock.action_handler = MagicMock()
-    # Mock controller on panel
-    panel_mock.controller = MagicMock()
     # Mock main_window
     panel_mock.main_window = None
 
@@ -57,7 +52,6 @@ def test_init_ui(sidebar):
     assert not hasattr(sidebar, "import_folder_btn")
     assert not hasattr(sidebar, "import_bids_btn")
     assert isinstance(sidebar.reload_recipe_btn, QPushButton)
-    assert isinstance(sidebar.import_label_btn, QPushButton)
     assert isinstance(sidebar.smart_parse_btn, QPushButton)
     assert isinstance(sidebar.chan_select_btn, QPushButton)
     assert isinstance(sidebar.electrode_layout_btn, QPushButton)
@@ -507,12 +501,6 @@ def test_publication_refreshes_only_an_active_pending_electrode_summary(
     assert dialog.mapping_page.isHidden() is False
 
 
-def test_add_labels_compatibility_button_stays_hidden(sidebar):
-    assert sidebar.import_label_btn.isHidden() is True
-    assert sidebar.import_label_btn.text() == "Add labels"
-    assert sidebar.smart_parse_btn.isHidden()
-
-
 def test_channel_selection_uses_neutral_action_style(sidebar):
     style = sidebar.chan_select_btn.styleSheet()
 
@@ -529,7 +517,6 @@ def test_update_sidebar_reads_one_atomic_capability_publication(qtbot):
 
     panel = MagicMock()
     panel.action_handler = MagicMock()
-    panel.controller = MagicMock()
     panel.main_window = QWidget()
     panel.main_window.study = Study()
     publication = get_application_service(
@@ -565,13 +552,6 @@ def test_update_sidebar_refuses_real_study_no_capability_lock_data_fallback(qtbo
 
     panel_mock = MagicMock()
     panel_mock.action_handler = MagicMock()
-    panel_mock.controller = MagicMock()
-    panel_mock.controller.is_locked.side_effect = AssertionError(
-        "stale lock state should not be read",
-    )
-    panel_mock.controller.has_data.side_effect = AssertionError(
-        "stale loaded-data state should not be read",
-    )
     panel_mock.main_window = QWidget()
     panel_mock.main_window.study = Study()
 
@@ -598,12 +578,8 @@ def test_update_sidebar_refuses_real_study_no_capability_lock_data_fallback(qtbo
         )
         widget.update_sidebar()
 
-    panel_mock.controller.is_locked.assert_not_called()
-    panel_mock.controller.has_data.assert_not_called()
     assert widget.import_btn.isEnabled() is False
     assert "unavailable" in widget.import_btn.toolTip()
-    assert widget.import_label_btn.isEnabled() is False
-    assert "unavailable" in widget.import_label_btn.toolTip()
 
 
 def test_update_sidebar_missing_publication_fails_closed(
@@ -613,7 +589,6 @@ def test_update_sidebar_missing_publication_fails_closed(
 
     panel = MagicMock()
     panel.action_handler = MagicMock()
-    panel.controller = MagicMock()
     panel.main_window = QWidget()
     panel.main_window.study = Study()
     widget = DatasetSidebar(panel, parent=None)
@@ -633,9 +608,6 @@ def test_update_sidebar_missing_publication_fails_closed(
             "Channel selection availability is unavailable right now."
         ),
         widget.smart_parse_btn: "Smart parse availability is unavailable right now.",
-        widget.import_label_btn: (
-            "Label import availability is unavailable right now."
-        ),
     }
     for button, tooltip in expected.items():
         assert button.isEnabled() is False
@@ -647,7 +619,6 @@ def test_deferred_startup_real_study_missing_publication_fails_closed(qtbot):
 
     panel = MagicMock()
     panel.action_handler = MagicMock()
-    panel.controller = MagicMock()
     panel.main_window = QWidget()
     panel.main_window.study = Study()
     widget = DatasetSidebar(panel, parent=None)
@@ -665,9 +636,6 @@ def test_deferred_startup_real_study_missing_publication_fails_closed(qtbot):
             "Channel selection availability is unavailable right now."
         ),
         widget.smart_parse_btn: "Smart parse availability is unavailable right now.",
-        widget.import_label_btn: (
-            "Label import availability is unavailable right now."
-        ),
     }
     for button, tooltip in expected.items():
         assert button.isEnabled() is False
@@ -679,13 +647,6 @@ def test_open_channel_selection_refuses_real_study_preflight_fallback(qtbot):
 
     panel_mock = MagicMock()
     panel_mock.action_handler = MagicMock()
-    panel_mock.controller = MagicMock()
-    panel_mock.controller.has_data.side_effect = AssertionError(
-        "stale loaded-data state should not be read",
-    )
-    panel_mock.controller.is_locked.side_effect = AssertionError(
-        "stale lock state should not be read",
-    )
     panel_mock.main_window = QWidget()
     panel_mock.main_window.study = Study()
 
@@ -709,8 +670,6 @@ def test_open_channel_selection_refuses_real_study_preflight_fallback(qtbot):
     ):
         widget.open_channel_selection()
 
-    panel_mock.controller.has_data.assert_not_called()
-    panel_mock.controller.is_locked.assert_not_called()
     assert len(warning_calls) == 1
     assert warning_calls[0][1] == "Channel Selection Blocked"
     assert warning_calls[0][2] == (
@@ -734,7 +693,6 @@ def test_channel_selection_binds_reviewed_publication_without_false_warning(
     study.data_manager.loaded_data_list = [raw]
     panel = MagicMock()
     panel.action_handler = MagicMock()
-    panel.controller = MagicMock()
     panel.main_window = QWidget()
     panel.main_window.study = study
     widget = DatasetSidebar(panel, parent=None)
@@ -802,7 +760,6 @@ def test_channel_selection_uses_captured_channels_when_montage_settles(
     study.set_loaded_data_list([raw], force_update=True)
     panel = MagicMock()
     panel.action_handler = MagicMock()
-    panel.controller = MagicMock()
     panel.main_window = QWidget()
     panel.main_window.study = study
     widget = DatasetSidebar(panel, parent=None)
@@ -869,7 +826,6 @@ def test_channel_selection_metadata_change_uses_dataset_warning(
     study.data_manager.loaded_data_list = [raw]
     panel = MagicMock()
     panel.action_handler = MagicMock()
-    panel.controller = MagicMock()
     panel.main_window = QWidget()
     panel.main_window.study = study
     widget = DatasetSidebar(panel, parent=None)
@@ -939,7 +895,6 @@ def test_channel_selection_raw_change_uses_channels_warning(qtbot, raw_change):
     study.data_manager.loaded_data_list = [raw]
     panel = MagicMock()
     panel.action_handler = MagicMock()
-    panel.controller = MagicMock()
     panel.main_window = QWidget()
     panel.main_window.study = study
     widget = DatasetSidebar(panel, parent=None)

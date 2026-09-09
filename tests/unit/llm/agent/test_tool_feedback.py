@@ -60,9 +60,9 @@ def test_failure_feedback_redacts_paths_and_tokens_from_all_public_fields() -> N
     private_token = "Authorization: Bearer hf_super_secret"  # noqa: S105
     private_message = f"Could not read {private_path}; {private_token}"
     result = ToolCommandResult.failure(
-        "load_data",
+        "import_eeg_data",
         private_message,
-        command_name="load_data",
+        command_name="scan_source",
         state={"last_error": {"message": private_message, "recoverable": True}},
         capability={"reasons": [private_message]},
         raw_result={"status": "failed", "message": private_message},
@@ -70,10 +70,10 @@ def test_failure_feedback_redacts_paths_and_tokens_from_all_public_fields() -> N
         diagnostics={"detail": private_message},
     )
 
-    model_feedback = format_tool_output("load_data", False, result)
-    recovery = build_recovery_feedback("load_data", result)
+    model_feedback = format_tool_output("import_eeg_data", False, result)
+    recovery = build_recovery_feedback("import_eeg_data", result)
     assert recovery is not None
-    user_summary = summarize_tool_result("load_data", False, result)
+    user_summary = summarize_tool_result("import_eeg_data", False, result)
     public_values = "\n".join(
         (
             model_feedback,
@@ -91,16 +91,16 @@ def test_failure_feedback_redacts_paths_and_tokens_from_all_public_fields() -> N
 
 def test_summary_translates_backend_precondition_to_product_language() -> None:
     result = ToolCommandResult.failure(
-        "load_data",
+        "import_eeg_data",
         "ApplicationService requires paths list cannot be empty.",
-        command_name="load_data",
+        command_name="scan_source",
         error_type="precondition",
     )
 
-    summary = summarize_tool_result("load_data", False, result)
+    summary = summarize_tool_result("import_eeg_data", False, result)
 
     assert summary == (
-        "Data import can't run yet.\n\n"
+        "EEG data import can't run yet.\n\n"
         "**Required first:** The workflow requires a file or folder path."
     )
     assert "ApplicationService" not in summary
@@ -196,6 +196,36 @@ def test_notch_nyquist_precondition_preserves_actionable_backend_values() -> Non
     assert "60 Hz" in summary
     assert "100 Hz" in summary
     assert "Nyquist limit 50 Hz" in summary
+    assert "reset preprocessing" in summary.lower()
+    assert "status bar" not in summary.lower()
+    assert "try again" not in summary.lower()
+
+
+def test_bandpass_nyquist_precondition_preserves_actionable_backend_values() -> None:
+    result = ToolCommandResult.failure(
+        "apply_bandpass_filter",
+        (
+            "Band-pass filtering up to 100 Hz cannot run because the lowest "
+            "sampling rate is 160 Hz (Nyquist limit 80 Hz). Use a high cutoff "
+            "below 80 Hz. If this data was resampled, reset preprocessing, apply "
+            "band-pass filtering before resampling, then resample again."
+        ),
+        command_name="preprocess",
+        error_type="precondition",
+        diagnostics={
+            "code": "bandpass_high_frequency_at_or_above_nyquist",
+            "requested_frequency": 100.0,
+            "sampling_rate": 160.0,
+            "nyquist": 80.0,
+            "state_preserved": True,
+        },
+    )
+
+    summary = summarize_tool_result("apply_bandpass_filter", False, result)
+
+    assert "100 Hz" in summary
+    assert "160 Hz" in summary
+    assert "Nyquist limit 80 Hz" in summary
     assert "reset preprocessing" in summary.lower()
     assert "status bar" not in summary.lower()
     assert "try again" not in summary.lower()

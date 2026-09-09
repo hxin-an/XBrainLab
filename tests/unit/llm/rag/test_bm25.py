@@ -61,7 +61,7 @@ def test_build_from_json_indexes_only_primary_workflow_examples(tmp_path: Path) 
                     "input": "load this EEG file",
                     "category": "dataset",
                     "expected_tool_calls": [
-                        {"tool_name": "load_data", "parameters": {"paths": []}}
+                        {"tool_name": "retired_action", "parameters": {}}
                     ],
                 },
                 {"id": "empty", "input": "", "category": "empty"},

@@ -15,11 +15,8 @@ _DIALOG_SCREEN_MARGIN = 24
 class BaseDialog(QDialog):
     """Abstract base class for all application dialogs.
 
-    Standardizes initialization (title, size, controller binding) and
+    Standardizes initialization (title and size) and
     enforces subclass implementation of ``init_ui`` and ``get_result``.
-
-    Attributes:
-        controller: Optional backend controller bound to this dialog.
 
     """
 
@@ -29,23 +26,20 @@ class BaseDialog(QDialog):
         title: str = "",
         width: int | None = None,
         height: int | None = None,
-        controller=None,
     ):
-        """Initialize the dialog with optional size and controller.
+        """Initialize the dialog with optional size.
 
         Args:
             parent: Optional parent widget.
             title: The dialog window title.
             width: Optional initial width in pixels.
             height: Optional initial height in pixels.
-            controller: Optional backend controller for data access.
 
         """
         self._content_anchor_center: QPoint | None = None
         self._setting_stable_geometry = False
         super().__init__(parent)
         self.setWindowTitle(title)
-        self.controller = controller
         self.setStyleSheet(dark_dialog_stylesheet())
 
         if width and height:

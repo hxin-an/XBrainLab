@@ -3211,7 +3211,7 @@ def test_apply_metadata_and_label_import_recipe_state_stay_together(
         file_mapping={str(eeg_path): str(label_path)},
         mode="timestamp",
     )
-    record = service.record_label_import_for_recipe(
+    record = service.state.record_label_import_for_recipe(
         plan=plan,
         mode="timestamp",
         target_files=[loaded],

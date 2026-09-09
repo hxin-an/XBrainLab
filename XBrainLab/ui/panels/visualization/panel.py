@@ -1,5 +1,6 @@
 """Visualization panel: saliency maps, topomaps, spectrograms, and 3-D views."""
 
+from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, cast
@@ -328,7 +329,7 @@ class VisualizationPanel(BasePanel):
             ],
         ] = {}
 
-        super().__init__(parent=parent, controller=None)
+        super().__init__(parent=parent)
 
         self._application_render_ledger = ApplicationPublicationRenderLedger(
             panel_name="Visualization",
@@ -504,29 +505,6 @@ class VisualizationPanel(BasePanel):
         self.tab_map.setObjectName("SaliencyMapRenderStatus")
         self.tab_map.setProperty("renderStatus", "idle")
         self.tab_map.setProperty("operationId", "")
-        map_commit_guard = getattr(self.tab_map, "set_render_commit_guard", None)
-        if callable(map_commit_guard):
-            map_commit_guard(
-                lambda generation, publication_generation: (
-                    self._admit_native_render_commit(
-                        self.tab_map,
-                        generation,
-                        publication_generation,
-                    )
-                )
-            )
-        map_terminal = getattr(self.tab_map, "render_terminal", None)
-        if map_terminal is not None:
-            map_terminal.connect(
-                lambda generation, publication_generation, phase: (
-                    self._on_native_render_terminal(
-                        self.tab_map,
-                        generation,
-                        publication_generation,
-                        phase,
-                    )
-                )
-            )
         self.tabs.addTab(self.tab_map, "Saliency Map")
 
         # Tab 2: Spectrogram (Swapped order)
@@ -534,33 +512,6 @@ class VisualizationPanel(BasePanel):
         self.tab_spectro.setObjectName("SpectrogramRenderStatus")
         self.tab_spectro.setProperty("renderStatus", "idle")
         self.tab_spectro.setProperty("operationId", "")
-        spectro_commit_guard = getattr(
-            self.tab_spectro,
-            "set_render_commit_guard",
-            None,
-        )
-        if callable(spectro_commit_guard):
-            spectro_commit_guard(
-                lambda generation, publication_generation: (
-                    self._admit_native_render_commit(
-                        self.tab_spectro,
-                        generation,
-                        publication_generation,
-                    )
-                )
-            )
-        spectro_terminal = getattr(self.tab_spectro, "render_terminal", None)
-        if spectro_terminal is not None:
-            spectro_terminal.connect(
-                lambda generation, publication_generation, phase: (
-                    self._on_native_render_terminal(
-                        self.tab_spectro,
-                        generation,
-                        publication_generation,
-                        phase,
-                    )
-                )
-            )
         self.tabs.addTab(self.tab_spectro, "Spectrogram")
 
         # Tab 3: Topographic Map
@@ -570,6 +521,26 @@ class VisualizationPanel(BasePanel):
         # Tab 4: 3D Plot
         self.tab_3d = Saliency3DPlotWidget(self)
         self.tabs.addTab(self.tab_3d, "3D Plot")
+        for view in (self.tab_map, self.tab_spectro, self.tab_topo, self.tab_3d):
+            commit_guard = getattr(view, "set_render_commit_guard", None)
+            if callable(commit_guard):
+                commit_guard(
+                    lambda generation, publication_generation, owned_view=view: (
+                        self._admit_native_render_commit(
+                            owned_view, generation, publication_generation
+                        )
+                    )
+                )
+            terminal = getattr(view, "render_terminal", None)
+            if terminal is not None:
+                terminal.connect(
+                    lambda generation, publication_generation, phase, owned_view=view: (
+                        self._on_native_render_terminal(
+                            owned_view, generation, publication_generation, phase
+                        )
+                    ),
+                    Qt.ConnectionType.QueuedConnection,
+                )
         self._last_active_saliency_view = self.tab_map
 
         left_layout.addWidget(self.tabs, stretch=1)
@@ -648,9 +619,7 @@ class VisualizationPanel(BasePanel):
             }}
             """
         )
-        self.compute_saliency_btn.clicked.connect(
-            self._compute_saliency_from_action_bar
-        )
+        self.compute_saliency_btn.clicked.connect(self.compute_saliency)
 
         self.cancel_saliency_btn = QPushButton("Cancel")
         self.cancel_saliency_btn.setObjectName("OwnedOperationCancelButton")
@@ -693,9 +662,6 @@ class VisualizationPanel(BasePanel):
         if not hasattr(self, "plan_combo"):
             return
         active = self._saliency_command_busy or self._saliency_compute_in_progress
-        self.setCursor(
-            Qt.CursorShape.WaitCursor if active else Qt.CursorShape.ArrowCursor
-        )
         controls: list[QWidget] = [
             self.plan_combo,
             self.run_combo,
@@ -1351,6 +1317,14 @@ class VisualizationPanel(BasePanel):
                 view=self.tabs.tabText(self.tabs.currentIndex())
             )
         if self._application_summary_dirty:
+            return
+        if (
+            self._saliency_compute_in_progress
+            and self._active_saliency_operation_id is not None
+        ):
+            # Navigation may request the old result again while computation is
+            # still owned. Do not let that render replace Compute's Cancel.
+            self._show_widget_message(current_widget, "Computing saliency...")
             return
         self._refresh_explanation_context()
 
@@ -2109,6 +2083,20 @@ class VisualizationPanel(BasePanel):
 
     def compute_saliency(self) -> InteractionOutcome:
         """Start Compute Saliency using the current reviewed panel selection."""
+        if (
+            not self._saliency_compute_in_progress
+            and not self._saliency_settings_review_required
+            and self._current_saliency_settings_target() is None
+            and (self._application_summary_dirty or self.last_application_query is None)
+        ):
+            # Panel materialization precedes the asynchronous result catalog.
+            # Own a fresh read in this interaction before interpreting an empty
+            # selection as stale settings; its callback chains the real compute.
+            if self._refresh_application_query(
+                view="summary", on_ready=self._compute_saliency_from_action_bar
+            ):
+                return InteractionOutcome.accepted("Loading saliency results...")
+            return InteractionOutcome.blocked(_SALIENCY_PUBLICATION_UNAVAILABLE_MESSAGE)
         return self._compute_saliency_from_action_bar()
 
     def _compute_saliency_from_action_bar(self) -> InteractionOutcome:
@@ -2397,7 +2385,6 @@ class VisualizationPanel(BasePanel):
                 execute_application_command(
                     self,
                     SaliencyCommand(),
-                    refresh=False,
                     expected_publication_generation=(
                         publication.generation if publication is not None else None
                     ),
@@ -2586,7 +2573,6 @@ class VisualizationPanel(BasePanel):
                 ),
                 on_result=handle_result,
                 on_error=handle_error,
-                refresh=False,
                 busy_target=self,
                 runtime=cast("ApplicationUiRuntime", self._action_port),
                 expected_publication_generation=expected_publication_generation,
@@ -2659,7 +2645,7 @@ class VisualizationPanel(BasePanel):
         operation_id: str | None = None,
     ) -> None:
         """Expose lifecycle truth on the two required visible result views."""
-        if widget is None or widget not in {self.tab_map, self.tab_spectro}:
+        if widget is None or widget not in self._saliency_views():
             return
         if operation_id is not None:
             widget.setProperty("operationId", operation_id)
@@ -2767,6 +2753,10 @@ class VisualizationPanel(BasePanel):
                     "Native saliency render was not scheduled.",
                 )
             self._set_saliency_render_status(widget, "failed")
+            if self._saliency_compute_awaits_current_render(publication.generation):
+                self._release_saliency_compute_after_render()
+                self._hide_saliency_action_bar()
+                show_status_message(self, _VISUALIZATION_LOAD_FAILED_MESSAGE)
             return
         self._native_render_bindings[widget] = (
             generation,
@@ -2803,6 +2793,8 @@ class VisualizationPanel(BasePanel):
         generation: int,
         publication_generation: int,
         phase: str,
+        *,
+        settle_compute: bool = True,
     ) -> None:
         binding = self._native_render_bindings.get(widget)
         if binding is None or binding[:2] != (generation, publication_generation):
@@ -2815,7 +2807,9 @@ class VisualizationPanel(BasePanel):
             phase,
             operation_id=operation_id,
         )
-        if not self._saliency_compute_awaits_current_render(publication_generation):
+        if not settle_compute or not self._saliency_compute_awaits_current_render(
+            publication_generation
+        ):
             return
         self._release_saliency_compute_after_render()
         self._hide_saliency_action_bar()
@@ -2833,9 +2827,11 @@ class VisualizationPanel(BasePanel):
         if binding is None:
             return True
         operation_id = binding[2]
-        return self._cancel_owned_saliency_operation(operation_id)
+        return self._cancel_owned_saliency_operation(operation_id, settle_compute=False)
 
-    def _cancel_owned_saliency_operation(self, operation_id: str) -> bool:
+    def _cancel_owned_saliency_operation(
+        self, operation_id: str, *, settle_compute: bool = True
+    ) -> bool:
         """Cancel registry ownership and the matching native worker together."""
         accepted = cancel_application_operation(
             self,
@@ -2847,15 +2843,15 @@ class VisualizationPanel(BasePanel):
         for widget, binding in tuple(self._native_render_bindings.items()):
             if binding[2] != operation_id:
                 continue
-            self._native_render_bindings.pop(widget, None)
             invalidate = getattr(widget, "invalidate_render_publication", None)
             if callable(invalidate):
                 invalidate()
-            self._finish_render_operation(operation_id, "cancelled")
-            self._set_saliency_render_status(
+            self._on_native_render_terminal(
                 widget,
+                binding[0],
+                binding[1],
                 "cancelled",
-                operation_id=operation_id,
+                settle_compute=settle_compute,
             )
             break
         return True
@@ -3803,7 +3799,8 @@ class VisualizationPanel(BasePanel):
         self,
         *,
         view: str | None = None,
-    ) -> None:
+        on_ready: Callable[[], InteractionOutcome] | None = None,
+    ) -> bool:
         """Dispatch one visualization readiness read outside the GUI thread."""
         action_port = self._action_port
         publication = self._application_view_publication
@@ -3811,9 +3808,11 @@ class VisualizationPanel(BasePanel):
             publication = self._application_view_publication
         if action_port is None or publication is None:
             self.last_application_query = None
-            return
-        if self._active_application_summary_request is not None:
-            return
+            return False
+        if self._active_application_summary_request is not None and on_ready is None:
+            return False
+        # A user action supersedes an uncorrelated background catalog read.
+        # The existing request identity rejects that older callback.
         self._application_summary_request_sequence += 1
         request = (
             self._application_summary_request_sequence,
@@ -3821,8 +3820,12 @@ class VisualizationPanel(BasePanel):
         )
         self._active_application_summary_request = request
 
-        def accept_result(result: CommandResult) -> None:
+        def accept_result(result: CommandResult) -> InteractionOutcome | None:
             if self._active_application_summary_request != request:
+                if on_ready is not None:
+                    return InteractionOutcome.cancelled(
+                        _SALIENCY_RESULTS_CHANGED_DETAIL
+                    )
                 return
             self._active_application_summary_request = None
             self._application_summary_dirty = not self._accept_application_query_result(
@@ -3831,6 +3834,17 @@ class VisualizationPanel(BasePanel):
             )
             if not self._application_summary_dirty:
                 self.update_panel()
+            if on_ready is not None:
+                if (
+                    self._application_summary_dirty
+                    or self._application_query_blocks_display(
+                        self.last_application_query
+                    )
+                    or self._current_saliency_settings_target() is None
+                ):
+                    return InteractionOutcome.blocked(self._application_query_message())
+                return on_ready()
+            return None
 
         def accept_error(error: tuple) -> None:
             if self._active_application_summary_request != request:
@@ -3845,7 +3859,6 @@ class VisualizationPanel(BasePanel):
             VisualizeCommand(view=view),
             on_result=accept_result,
             on_error=accept_error,
-            refresh=False,
             busy_target=self.tabs,
             expected_publication_generation=publication.generation,
             runtime=cast("ApplicationUiRuntime", action_port),
@@ -3853,6 +3866,7 @@ class VisualizationPanel(BasePanel):
         if not started and self._active_application_summary_request == request:
             self._active_application_summary_request = None
             self._settle_application_query_failure(publication)
+        return started
 
     def _settle_application_query_failure(
         self,

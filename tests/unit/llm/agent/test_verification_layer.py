@@ -328,7 +328,7 @@ def test_verification_script_syntax(tmp_path):
     # Valid call
     source = tmp_path / "test.csv"
     source.touch()
-    valid_call = ("load_data", {"paths": [str(source)]})
+    valid_call = ("scan_source", {"source_path": str(source)})
     result = verifier.verify_tool_call(valid_call, confidence=0.9)
     assert result.is_valid
     assert result.error_message is None
@@ -410,7 +410,7 @@ class TestFrequencyRangeValidator:
 
     def test_ignores_unrelated_tools(self):
         v = FrequencyRangeValidator()
-        r = v.validate("load_data", {"path": "/tmp"})
+        r = v.validate("scan_source", {"source_path": "/tmp"})
         assert r.is_valid
 
     def test_partial_params_ok(self):
@@ -567,38 +567,12 @@ class TestToolSchemaValidator:
 
 
 class TestPathExistsValidator:
-    def test_existing_load_data_paths_pass(self, tmp_path):
-        first = tmp_path / "subject-a.edf"
-        second = tmp_path / "subject-b.fif"
-        first.touch()
-        second.touch()
+    def test_existing_scan_source_path_passes(self, tmp_path):
+        source = tmp_path / "subject-a.edf"
+        source.touch()
         v = PathExistsValidator()
-        r = v.validate("load_data", {"paths": [str(first), str(second)]})
+        r = v.validate("scan_source", {"source_path": str(source)})
         assert r.is_valid
-
-    def test_mixed_existing_and_nonexistent_load_data_paths_are_rejected(
-        self,
-        tmp_path,
-    ):
-        existing = tmp_path / "recording.set"
-        missing = tmp_path / "missing.vhdr"
-        existing.touch()
-        v = PathExistsValidator()
-        r = v.validate("load_data", {"paths": [str(existing), str(missing)]})
-        assert not r.is_valid
-        assert "does not exist" in _error_message(r)
-        assert str(missing) in _error_message(r)
-
-    def test_each_nonexistent_load_data_path_is_rejected(self, tmp_path):
-        first = tmp_path / "missing-a.gdf"
-        second = tmp_path / "missing-b.cnt"
-        v = PathExistsValidator()
-
-        for missing in (first, second):
-            r = v.validate("load_data", {"paths": [str(missing)]})
-
-            assert not r.is_valid
-            assert str(missing) in _error_message(r)
 
     @pytest.mark.parametrize(
         ("tool_name", "field_name", "filename"),
@@ -641,7 +615,7 @@ class TestPathExistsValidator:
 
     def test_no_path_param_passes(self):
         v = PathExistsValidator()
-        r = v.validate("load_data", {"other": "value"})
+        r = v.validate("scan_source", {"other": "value"})
         assert r.is_valid
 
 
@@ -791,22 +765,6 @@ class TestPathProvenanceVerifier:
 
         assert not result.is_valid
 
-    def test_mixed_approved_and_unapproved_load_paths_fail_closed(self, tmp_path):
-        approved = tmp_path / "approved.edf"
-        protected = tmp_path / "protected.edf"
-        approved.touch()
-        protected.touch()
-
-        result = PathProvenanceVerifier().validate(
-            "load_data",
-            {"paths": [str(approved), str(protected)]},
-            latest_user_text=f"Load {approved}",
-            state=None,
-        )
-
-        assert not result.is_valid
-        assert "choose a file or folder" in _error_message(result).lower()
-
     @pytest.mark.parametrize(
         ("tool_name", "params"),
         [
@@ -823,11 +781,6 @@ class TestPathProvenanceVerifier:
             (
                 "reload_interpretation_recipe",
                 {"recipe_path": "/protected/input-recipe.json"},
-            ),
-            ("load_data", {"paths": ["/protected/recording.gdf"]}),
-            (
-                "attach_labels",
-                {"mapping": {"recording.gdf": "/protected/labels.tsv"}},
             ),
         ],
     )
@@ -896,7 +849,7 @@ class TestPathProvenanceVerifier:
 
 
 class TestPlaceholderArgumentValidator:
-    def test_rejects_placeholder_scan_source_path(self):
+    def test_rejects_absolute_placeholder_scan_source_path(self):
         v = PlaceholderArgumentValidator()
         r = v.validate("scan_source", {"source_path": "path_to_eeg_dataset"})
         assert not r.is_valid
@@ -908,25 +861,12 @@ class TestPlaceholderArgumentValidator:
         assert not r.is_valid
         assert "actual path" in _error_message(r)
 
-    def test_rejects_placeholder_load_data_path_list(self):
+    def test_rejects_placeholder_scan_source_path(self):
         v = PlaceholderArgumentValidator()
         r = v.validate(
-            "load_data",
-            {"paths": ["/path/to/your/eeg/file.gdf"]},
+            "scan_source",
+            {"source_path": "/path/to/your/eeg/file.gdf"},
         )
-        assert not r.is_valid
-        assert "actual path" in _error_message(r)
-
-    def test_rejects_placeholder_after_real_load_data_path(self, tmp_path):
-        existing = tmp_path / "real.edf"
-        existing.touch()
-        v = PlaceholderArgumentValidator()
-
-        r = v.validate(
-            "load_data",
-            {"paths": [str(existing), "/path/to/your/recording.edf"]},
-        )
-
         assert not r.is_valid
         assert "actual path" in _error_message(r)
 
@@ -1036,11 +976,6 @@ class TestPlaceholderArgumentValidator:
             (
                 "reload_interpretation_recipe",
                 {"recipe_path": "/path/to/input-recipe.json"},
-            ),
-            ("load_data", {"paths": ["/path/to/recording.gdf"]}),
-            (
-                "attach_labels",
-                {"mapping": {"recording.gdf": "/path/to/labels.csv"}},
             ),
         ],
     )

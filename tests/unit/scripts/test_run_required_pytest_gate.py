@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from scripts.dev import run_required_pytest_gate as gate
 
 
@@ -60,7 +62,7 @@ def test_required_gate_main_fails_when_pytest_skips(monkeypatch, tmp_path) -> No
         )
         return 0
 
-    monkeypatch.setattr(gate.pytest, "main", fake_main)
+    monkeypatch.setattr(pytest, "main", fake_main)
 
     result_path = tmp_path / "skip-result.json"
     assert (
@@ -101,7 +103,7 @@ def test_required_gate_allows_explicit_platform_contract_skip(
         )
         return 0
 
-    monkeypatch.setattr(gate.pytest, "main", fake_main)
+    monkeypatch.setattr(pytest, "main", fake_main)
     result_path = tmp_path / "platform-skip-result.json"
 
     assert (
@@ -178,7 +180,7 @@ def test_main_allows_only_explicit_optional_public_fixture_skip(
         )
         return 0
 
-    monkeypatch.setattr(gate.pytest, "main", fake_main)
+    monkeypatch.setattr(pytest, "main", fake_main)
     result_path = tmp_path / "optional-public-skip-result.json"
 
     assert (
@@ -214,7 +216,7 @@ def test_os_specific_skip_contracts_are_explicitly_marked() -> None:
 
 
 def test_required_gate_main_preserves_pytest_failure(monkeypatch, tmp_path) -> None:
-    monkeypatch.setattr(gate.pytest, "main", lambda _args, *, plugins: 3)
+    monkeypatch.setattr(pytest, "main", lambda _args, *, plugins: 3)
 
     result_path = tmp_path / "failure-result.json"
     assert (
@@ -250,7 +252,7 @@ def test_required_gate_writes_clean_completion_attestation(
         )
         return 0
 
-    monkeypatch.setattr(gate.pytest, "main", fake_main)
+    monkeypatch.setattr(pytest, "main", fake_main)
     result_path = tmp_path / "clean-result.json"
 
     assert (
@@ -283,7 +285,7 @@ def test_required_gate_attests_original_args_when_pytest_mutates_its_list(
         args[:0] = ["-ra", "-v"]
         return 3
 
-    monkeypatch.setattr(gate.pytest, "main", fake_main)
+    monkeypatch.setattr(pytest, "main", fake_main)
     result_path = tmp_path / "mutated-args-result.json"
 
     assert (
@@ -314,7 +316,7 @@ def test_required_gate_fails_when_collected_case_has_no_terminal_outcome(
         )
         return 0
 
-    monkeypatch.setattr(gate.pytest, "main", fake_main)
+    monkeypatch.setattr(pytest, "main", fake_main)
     result_path = tmp_path / "incomplete-result.json"
 
     assert (

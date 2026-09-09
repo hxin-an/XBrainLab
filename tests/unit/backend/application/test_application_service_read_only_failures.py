@@ -7,7 +7,6 @@ import pytest
 from XBrainLab.backend.application.commands import (
     Command,
     EvaluateCommand,
-    PreviewLabelImportCommand,
     SaliencyCommand,
     TrainCommand,
     VisualizeCommand,
@@ -99,11 +98,8 @@ def test_empty_saliency_payloads_are_read_only_queries(
 
 @pytest.mark.parametrize(
     "command",
-    [
-        EvaluateCommand(),
-        PreviewLabelImportCommand(label_paths=[]),
-    ],
-    ids=["evaluate", "preview-label-import"],
+    [EvaluateCommand()],
+    ids=["evaluate"],
 )
 def test_other_read_only_failures_preserve_publication_truth(command: Command) -> None:
     service = ApplicationService(Study())

@@ -207,6 +207,8 @@ class Saliency3DPlotWidget(QWidget):
 
     _MAX_PREPARED_ENGINE_CACHE_ENTRIES = 8
     scene_controls_changed = pyqtSignal()
+    render_terminal = pyqtSignal(int, int, str)
+    _cached_engine_ready = pyqtSignal(int, object, object, object, str, bool, int)
 
     def __init__(self, parent):
         super().__init__(parent)
@@ -225,6 +227,11 @@ class Saliency3DPlotWidget(QWidget):
         self._pending_worker_start: Callable[[], None] | None = None
         self._consumed_worker_callbacks: set[int] = set()
         self._engine_request_id = 0
+        self._render_commit_guard: Callable[[int, int], bool] | None = None
+        # PyQt's bundled signal stub omits connect's connection-type argument.
+        cast(Any, self._cached_engine_ready).connect(
+            self._show_prepared_engine, Qt.ConnectionType.QueuedConnection
+        )
         self._current_publication_generation: int | None = None
         self._current_plot_request: tuple[SaliencyRenderPublication, bool] | None = None
         self._prepared_engine_cache: OrderedDict[
@@ -349,7 +356,7 @@ class Saliency3DPlotWidget(QWidget):
         return self._saliency_scene is not None and self.plotter_widget is not None
 
     def show_error(self, msg):
-        self._invalidate_async_requests()
+        self._invalidate_async_requests(phase="failed")
         self._display_error(msg)
 
     def _display_error(self, msg) -> None:
@@ -362,7 +369,7 @@ class Saliency3DPlotWidget(QWidget):
         self.plot_layout.addWidget(lbl, stretch=1)
 
     def show_message(self, msg):
-        self._invalidate_async_requests()
+        self._invalidate_async_requests(phase="failed")
         self._display_message(msg)
 
     def _display_message(self, msg) -> None:
@@ -488,8 +495,27 @@ class Saliency3DPlotWidget(QWidget):
             return False
         return True
 
-    def _invalidate_async_requests(self) -> int:
+    @property
+    def active_render_generation(self) -> int:
+        """Expose the existing request identity to the parent operation binding."""
+        return self._engine_request_id
+
+    @property
+    def active_render_publication_generation(self) -> int | None:
+        return self._current_publication_generation
+
+    def set_render_commit_guard(self, guard: Callable[[int, int], bool] | None) -> None:
+        """Share the parent-owned canvas admission used by the 2D views."""
+        self._render_commit_guard = guard
+
+    def _emit_render_terminal(self, phase: str) -> None:
+        generation = self._current_publication_generation
+        if generation is not None:
+            self.render_terminal.emit(self._engine_request_id, generation, phase)
+
+    def _invalidate_async_requests(self, *, phase: str = "cancelled") -> int:
         """Invalidate callbacks while retaining workers through ``finished``."""
+        self._emit_render_terminal(phase)
         self._engine_request_id += 1
         self._pending_worker_start = None
         self._pending_3d_request = None
@@ -593,6 +619,8 @@ class Saliency3DPlotWidget(QWidget):
         self,
         publication: SaliencyRenderPublication,
         absolute: bool,
+        *,
+        request_id: int | None = None,
     ) -> None:
         if self._closed:
             return
@@ -604,6 +632,12 @@ class Saliency3DPlotWidget(QWidget):
             return
         reserved_scene_key = None
         try:
+            if request_id is None:
+                request_id = self._invalidate_async_requests()
+                self._current_publication_generation = publication.generation
+            elif not self._is_current_request(request_id, publication.generation):
+                return
+            self._current_plot_request = (publication, absolute)
             data = publication.data
             method = data.method
             method_coverage = self._saliency_coverage
@@ -640,11 +674,8 @@ class Saliency3DPlotWidget(QWidget):
                 absolute=absolute,
             )
             if scene_key == getattr(self, "_active_scene_key", None):
+                self._emit_render_terminal("completed")
                 return
-
-            request_id = self._invalidate_async_requests()
-            self._current_publication_generation = publication.generation
-            self._current_plot_request = (publication, absolute)
 
             # Montage Check
             positions = data.channel_positions
@@ -678,14 +709,16 @@ class Saliency3DPlotWidget(QWidget):
             reserved_scene_key = scene_key
             prepared = self._cached_prepared_engine(cache_key, publication)
             if prepared is not None:
-                self._show_prepared_engine(
+                # The panel binds this generation after update_plot returns;
+                # cached geometry must cross the same queued commit boundary.
+                self._cached_engine_ready.emit(
                     request_id,
                     prepared,
                     data,
                     selected_event,
-                    method=method,
-                    absolute=absolute,
-                    publication_generation=publication.generation,
+                    method,
+                    absolute,
+                    publication.generation,
                 )
                 return
 
@@ -1019,16 +1052,24 @@ class Saliency3DPlotWidget(QWidget):
         result: tuple[object, int],
         render_data: SaliencyRenderData,
         selected_event: object,
-        *,
         method: str,
         absolute: bool,
         publication_generation: int | None,
+        *,
         publication: SaliencyRenderPublication | None = None,
         prepared_cache_key: tuple[object, ...] | None = None,
     ) -> None:
         if not self._is_current_request(request_id, publication_generation):
             return
         try:
+            if (
+                self._render_commit_guard is not None
+                and publication_generation is not None
+                and not self._render_commit_guard(request_id, publication_generation)
+            ):
+                self._active_scene_key = None
+                self._emit_render_terminal("cancelled")
+                return
             prepared_engine, prepared_channel_count = result
             if publication is not None and prepared_cache_key is not None:
                 self._cache_prepared_engine(
@@ -1185,6 +1226,7 @@ class Saliency3DPlotWidget(QWidget):
             self.scene_controls.show()
             self.scene_controls_changed.emit()
             self._queue_orientation_refresh()
+            self._emit_render_terminal("completed")
         except Exception as e:
             logger.error("Error executing 3D plot: %s", e, exc_info=True)
             self._clear_active_scene_key_for_current_render(
@@ -1483,7 +1525,7 @@ class Saliency3DPlotWidget(QWidget):
         if not available:
             self.show_message(str(reason))
             return
-        self.update_plot(*pending[1])
+        self.update_plot(*pending[1], request_id=request_id)
 
     def _on_interactive_3d_runtime_probe_error(
         self,

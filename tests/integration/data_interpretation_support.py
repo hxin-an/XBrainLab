@@ -6,14 +6,13 @@ from pathlib import Path
 from typing import Any
 
 from XBrainLab.backend.application import (
+    ApplicationService,
     ApplyInterpretationCommand,
     PreviewInterpretationCommand,
     ScanSourceCommand,
     ValidateInterpretationCommand,
-    get_application_service,
 )
 from XBrainLab.backend.application.results import CommandResult
-from XBrainLab.backend.study import Study
 
 GRAZ_2A_CLASS_MAP = {
     "769": "left hand",
@@ -24,7 +23,7 @@ GRAZ_2A_CLASS_MAP = {
 
 
 def import_recording_through_interpretation(
-    study: Study,
+    service: ApplicationService,
     path: str | Path,
     *,
     class_map: dict[str, str] | None = None,
@@ -42,7 +41,6 @@ def import_recording_through_interpretation(
     else:
         choices["skip_labels"] = True
 
-    service = get_application_service(study)
     commands = (
         ScanSourceCommand(source_path=source_path, source_hint="file"),
         PreviewInterpretationCommand(choices=choices),

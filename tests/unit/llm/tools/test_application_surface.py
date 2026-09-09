@@ -1,7 +1,10 @@
 """Target Assistant application-surface ownership and failure contracts."""
 
 from dataclasses import replace
+from pathlib import Path
 
+import mne
+import numpy as np
 import pytest
 
 from XBrainLab.backend.application import (
@@ -10,11 +13,13 @@ from XBrainLab.backend.application import (
 )
 from XBrainLab.backend.application.state import ApplicationStateSnapshot
 from XBrainLab.backend.application.view_publication import ApplicationViewPublication
+from XBrainLab.backend.load_data.raw import Raw
 from XBrainLab.backend.study import Study
 from XBrainLab.llm.action_contracts import (
     AGENT_ACTION_CONTRACTS,
     AgentExecutionKind,
 )
+from XBrainLab.llm.agent.tool_feedback import summarize_tool_result
 from XBrainLab.llm.tools import get_all_tools
 from XBrainLab.llm.tools.application_surface import (
     APPLICATION_COMMAND_TOOLS,
@@ -162,6 +167,39 @@ def test_direct_preprocess_uses_backend_precondition_on_empty_study() -> None:
     assert result.ok is False
     assert result.error_type == "precondition"
     assert "Load raw data" in result.message
+
+
+def test_assistant_bandpass_nyquist_rejection_explains_the_safe_cutoff() -> None:
+    study = Study()
+    study.set_loaded_data_list(
+        [
+            Raw(
+                str(Path("assistant-low-rate.fif")),
+                mne.io.RawArray(
+                    np.zeros((1, 500)),
+                    mne.create_info(["Cz"], sfreq=100.0, ch_types="eeg"),
+                    verbose="ERROR",
+                ),
+            )
+        ],
+        force_update=True,
+    )
+
+    result = execute_application_tool_command(
+        study,
+        "apply_bandpass_filter",
+        {"low_freq": 1.0, "high_freq": 100.0},
+    )
+
+    assert isinstance(result, ToolCommandResult)
+    assert not result.ok
+    assert result.error_type == "precondition"
+    assert result.diagnostics["code"] == "bandpass_high_frequency_at_or_above_nyquist"
+    summary = summarize_tool_result("apply_bandpass_filter", False, result)
+    assert "100 Hz" in summary
+    assert "Nyquist limit 50 Hz" in summary
+    assert "status bar" not in summary.lower()
+    assert "try again" not in summary.lower()
 
 
 def test_start_training_preserves_backend_confirmation_boundary() -> None:

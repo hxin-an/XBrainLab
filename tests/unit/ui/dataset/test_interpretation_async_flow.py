@@ -26,7 +26,6 @@ from XBrainLab.backend.application import (
     CommandName,
     CommandResult,
     ErrorType,
-    LabelImportPlan,
     PreviewInterpretationCommand,
     QueryStateCommand,
     ReloadInterpretationRecipeCommand,
@@ -2941,7 +2940,6 @@ def test_smart_parse_binds_the_generation_reviewed_before_the_dialog(
     monkeypatch,
 ) -> None:
     panel = MagicMock()
-    panel.controller = None
     handler = DatasetActionHandler(panel)
     capability = CommandCapability(
         command_name="apply_smart_parse",
@@ -2995,7 +2993,6 @@ def test_smart_parse_reads_full_paths_from_generation_bound_data_lists(
     monkeypatch,
 ) -> None:
     panel = MagicMock()
-    panel.controller = None
     handler = DatasetActionHandler(panel)
     observed_commands: list[tuple[object, int | None]] = []
 
@@ -3068,7 +3065,6 @@ def test_smart_parse_distinguishes_same_basename_across_directories_through_appl
     study = MetadataStudy([MetadataRow(path) for path in paths])
     state = DatasetStateService(study)
     panel = MagicMock()
-    panel.controller = None
     handler = DatasetActionHandler(panel)
     capability = CommandCapability(
         command_name="apply_smart_parse",
@@ -3113,175 +3109,6 @@ def test_smart_parse_distinguishes_same_basename_across_directories_through_appl
         ("site-a", "session-a"),
         ("site-b", "session-b"),
     ]
-
-
-def test_label_import_binds_the_generation_reviewed_before_the_dialog(
-    monkeypatch,
-) -> None:
-    panel = MagicMock()
-    panel.controller = MagicMock()
-    handler = DatasetActionHandler(panel)
-    capability = CommandCapability(
-        command_name="import_labels",
-        enabled=True,
-    )
-    review_context = CommandReviewContext(
-        capability=capability,
-        publication_generation=52,
-    )
-    monkeypatch.setattr(
-        actions,
-        "get_command_review_context",
-        lambda *_args, **_kwargs: review_context,
-    )
-    monkeypatch.setattr(
-        actions,
-        "get_command_capability",
-        lambda *_args, **_kwargs: capability,
-    )
-    target = MagicMock()
-    target.get_filepath.return_value = "/data/sub-01_task-mi_eeg.edf"
-    monkeypatch.setattr(
-        handler._external_label_import,
-        "get_target_files_for_import",
-        lambda: [target],
-    )
-    selection = MagicMock()
-    selection.mode = "timestamp"
-    selection.target_count = 2
-    selection.label_paths = ("/labels/sub-01_events.tsv",)
-    dialog = MagicMock()
-    dialog.exec.return_value = True
-    dialog.get_result.return_value = (selection, {"trial_type": "label"})
-    dialog_factory = MagicMock(return_value=dialog)
-    monkeypatch.setattr(actions, "ImportLabelDialog", dialog_factory)
-    plan = LabelImportPlan(
-        target_indices=[0],
-        label_paths=["/labels/sub-01_events.tsv"],
-    )
-    monkeypatch.setattr(
-        handler._external_label_import,
-        "build_label_import_plan",
-        lambda *_a, **_k: plan,
-    )
-    execute = MagicMock()
-    monkeypatch.setattr(
-        handler._external_label_import,
-        "execute_label_import_async",
-        execute,
-    )
-
-    handler.import_label()
-
-    dialog_factory.assert_called_once_with(
-        panel,
-        target_files=[target],
-        expected_publication_generation=52,
-    )
-    execute.assert_called_once_with(
-        plan,
-        expected_publication_generation=52,
-    )
-
-
-def test_label_import_real_runtime_fails_closed_without_second_publication_read(
-    monkeypatch,
-) -> None:
-    panel = MagicMock()
-    handler = DatasetActionHandler(panel)
-    warning = MagicMock()
-    dialog_factory = MagicMock()
-    capability_read = MagicMock(
-        side_effect=AssertionError("must not read a second publication")
-    )
-    monkeypatch.setattr(
-        actions,
-        "get_command_review_context",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(actions, "has_real_application_context", lambda _panel: True)
-    monkeypatch.setattr(actions, "get_command_capability", capability_read)
-    monkeypatch.setattr(actions, "ImportLabelDialog", dialog_factory)
-    monkeypatch.setattr(actions, "show_warning", warning)
-
-    handler.import_label()
-
-    capability_read.assert_not_called()
-    dialog_factory.assert_not_called()
-    warning.assert_called_once()
-    assert warning.call_args.args[1] == "Label Import Blocked"
-
-
-def test_recipe_save_uses_generation_reviewed_before_question(
-    monkeypatch,
-) -> None:
-    panel = MagicMock()
-    handler = DatasetActionHandler(panel)
-    current_generation = {"value": 31}
-    capability = CommandCapability(
-        command_name="save_interpretation_recipe",
-        enabled=True,
-    )
-    observed_generations: list[int | None] = []
-    warnings: list[tuple[Any, ...]] = []
-
-    def review_context(*_args, **_kwargs):
-        return CommandReviewContext(
-            capability=capability,
-            publication_generation=current_generation["value"],
-        )
-
-    def question(*_args, **_kwargs):
-        current_generation["value"] = 32
-        return True
-
-    def execute_async(
-        _command,
-        *,
-        on_result,
-        expected_publication_generation=None,
-        **_kwargs,
-    ):
-        observed_generations.append(expected_publication_generation)
-        on_result(
-            SimpleNamespace(
-                failed=True,
-                recoverable=True,
-                message="The reviewed recipe changed.",
-                diagnostics={"stale_publication": True},
-            )
-        )
-        return InteractionOutcome.accepted("Recipe save scheduled.")
-
-    monkeypatch.setattr(actions, "get_command_review_context", review_context)
-    monkeypatch.setattr(
-        handler._data_interpretation, "_recipe_save_block_reason", lambda: None
-    )
-    monkeypatch.setattr(actions, "ask_confirmation", question)
-    monkeypatch.setattr(
-        actions,
-        "show_warning",
-        lambda *args: warnings.append(args),
-    )
-    monkeypatch.setattr(
-        actions.QFileDialog,
-        "getSaveFileName",
-        lambda *_args, **_kwargs: ("/tmp/import_recipe.json", ""),
-    )
-    monkeypatch.setattr(
-        handler._data_interpretation,
-        "_execute_interpretation_command_async",
-        execute_async,
-    )
-
-    message = handler._offer_label_recipe_save(
-        SimpleNamespace(diagnostics={"recipe_updated": True})
-    )
-
-    assert message is None
-    assert observed_generations == [31]
-    assert warnings
-    assert warnings[0][1] == "Review Recipe Save Again"
 
 
 def test_real_study_command_returns_immediately_and_continues_on_result(
@@ -3339,30 +3166,29 @@ def test_real_study_command_returns_immediately_and_continues_on_result(
     assert application_command_registry().active_count(panel) == 0
 
 
-def test_compatibility_context_continues_synchronously(qtbot, monkeypatch):
+def test_async_dispatch_refusal_blocks_without_delivering_a_sync_result(qtbot) -> None:
     panel = QWidget()
     qtbot.addWidget(panel)
     handler = DatasetActionHandler(panel)
-    expected = _success_result("query_state")
-    results = []
-
-    monkeypatch.setattr(
-        actions,
-        "execute_application_command",
-        lambda _panel, command, **_kwargs: expected
-        if isinstance(command, QueryStateCommand)
-        else None,
+    warning = MagicMock()
+    delivered = MagicMock()
+    handler._data_interpretation._bindings = replace(
+        handler._data_interpretation._bindings,
+        execute_application_command_async=lambda *_args, **_kwargs: False,
+        show_warning=warning,
     )
 
-    started = handler._data_interpretation._execute_interpretation_command_async(
+    outcome = handler._data_interpretation._execute_interpretation_command_async(
         QueryStateCommand(),
-        on_result=results.append,
+        on_result=delivered,
         error_title="Review failed",
     )
 
-    assert started is not None
-    assert started.status is InteractionStatus.COMPLETED
-    assert results == [expected]
+    assert outcome is not None
+    assert outcome.status is InteractionStatus.BLOCKED
+    assert delivered.call_count == 0
+    warning.assert_called_once()
+    assert warning.call_args.args[1] == "Interpretation Blocked"
 
 
 def test_worker_exception_cleans_up_and_reports_without_nested_wait(
@@ -4507,7 +4333,6 @@ def test_apply_warning_handoff_ack_completes_without_result_refresh(
     cast(Any, panel).set_busy = lambda _busy: None
     handler = DatasetActionHandler(panel)
     commands: list[ApplyInterpretationCommand] = []
-    command_result_refresh = MagicMock()
     terminal = []
     applied = _success_result("apply_interpretation", applied_interpretation={})
 
@@ -4523,11 +4348,6 @@ def test_apply_warning_handoff_ack_completes_without_result_refresh(
         application_capabilities,
         "application_ui_runtime",
         lambda _study: _Service(),
-    )
-    monkeypatch.setattr(
-        async_command_runner,
-        "refresh_after_command",
-        command_result_refresh,
     )
     monkeypatch.setattr(
         actions,
@@ -4557,7 +4377,6 @@ def test_apply_warning_handoff_ack_completes_without_result_refresh(
     assert len(commands) == 2
     assert terminal[0].status is InteractionCompletionStatus.COMPLETED
     assert terminal[0].message == "ok"
-    command_result_refresh.assert_not_called()
 
 
 def test_apply_warning_handoff_refusal_reports_only_cancelled(
@@ -4759,7 +4578,6 @@ def _real_study_dataset_handler(qtbot) -> DatasetActionHandler:
     panel = QWidget()
     qtbot.addWidget(panel)
     cast(Any, panel).study = Study()
-    cast(Any, panel).controller = MagicMock()
     cast(Any, panel).set_busy = lambda _busy: None
     return DatasetActionHandler(panel)
 
@@ -4769,34 +4587,6 @@ def _missing_capability_review(generation: int = 31) -> SimpleNamespace:
         capability=None,
         publication_generation=generation,
     )
-
-
-def test_import_label_fails_before_target_or_dialog_when_review_capability_is_missing(
-    qtbot,
-    monkeypatch,
-):
-    handler = _real_study_dataset_handler(qtbot)
-    target_reader = MagicMock(return_value=[object()])
-    dialog = MagicMock()
-    warning = MagicMock()
-    monkeypatch.setattr(
-        actions,
-        "get_command_review_context",
-        lambda *_args: _missing_capability_review(),
-    )
-    monkeypatch.setattr(
-        handler._external_label_import,
-        "get_target_files_for_import",
-        target_reader,
-    )
-    monkeypatch.setattr(actions, "ImportLabelDialog", dialog)
-    monkeypatch.setattr(actions, "show_warning", warning)
-
-    handler.import_label()
-
-    target_reader.assert_not_called()
-    dialog.assert_not_called()
-    warning.assert_called_once()
 
 
 def test_recipe_save_fails_before_chooser_when_review_capability_is_missing(
@@ -4824,27 +4614,6 @@ def test_recipe_save_fails_before_chooser_when_review_capability_is_missing(
     chooser.assert_not_called()
     execute.assert_not_called()
     warning.assert_called_once()
-
-
-def test_recipe_offer_fails_before_confirmation_when_review_capability_is_missing(
-    qtbot,
-    monkeypatch,
-):
-    handler = _real_study_dataset_handler(qtbot)
-    question = MagicMock(return_value=False)
-    monkeypatch.setattr(
-        actions,
-        "get_command_review_context",
-        lambda *_args: _missing_capability_review(),
-    )
-    monkeypatch.setattr(actions, "ask_confirmation", question)
-
-    message = handler._offer_label_recipe_save(
-        SimpleNamespace(diagnostics={"recipe_updated": True}),
-    )
-
-    question.assert_not_called()
-    assert message == "Interpretation recipe trace updated in this session."
 
 
 def test_recipe_reload_fails_before_chooser_when_product_review_disappears(

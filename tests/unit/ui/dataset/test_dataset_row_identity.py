@@ -10,12 +10,18 @@ import pytest
 from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtWidgets import QMainWindow
 
-from XBrainLab.backend.application.capabilities import CommandCapability
+from XBrainLab.backend.application import ApplicationService
+from XBrainLab.backend.application.capabilities import (
+    CapabilityPolicy,
+    CommandCapability,
+)
 from XBrainLab.backend.application.commands import (
     QueryStateCommand,
     RemoveFilesCommand,
     UpdateMetadataCommand,
 )
+from XBrainLab.backend.application.state import ApplicationStateSnapshot
+from XBrainLab.backend.application.view_publication import ApplicationViewPublication
 from XBrainLab.backend.study import Study
 from XBrainLab.ui.application_capabilities import CommandReviewContext
 from XBrainLab.ui.panels.dataset import actions
@@ -95,10 +101,19 @@ class _Capabilities:
         return CommandCapability(command_name=str(value), enabled=True)
 
 
-def _publication(generation: int) -> SimpleNamespace:
-    return SimpleNamespace(
+def _publication(
+    generation: int, state: ApplicationStateSnapshot
+) -> ApplicationViewPublication:
+    return ApplicationViewPublication(
         generation=generation,
-        effective_capabilities=_Capabilities(),
+        revision=generation,
+        state=state,
+        capabilities=CapabilityPolicy(
+            {
+                name: CommandCapability(command_name=name, enabled=True)
+                for name in ("update_metadata", "remove_files")
+            }
+        ),
     )
 
 
@@ -107,16 +122,16 @@ def rendered_dataset(qtbot, monkeypatch):
     window = QMainWindow()
     qtbot.addWidget(window)
     cast(Any, window).study = MagicMock()
-    controller = MagicMock()
-    controller.is_locked.return_value = False
-    controller.has_data.return_value = True
     first = _loaded_data("/data/sub-01_task-mi_run-01_raw.fif")
     second = _loaded_data("/data/sub-01_task-mi_run-02_raw.fif")
     current = {"generation": 11, "data": [first, second]}
+    service = ApplicationService()
+    state = service.get_state()
+    service.close()
     mutations: list[tuple[Any, int | None]] = []
 
     def get_publication(_context):
-        return _publication(current["generation"])
+        return _publication(current["generation"], state)
 
     def get_review_context(_context, command_name):
         capability = _Capabilities().get(command_name)
@@ -142,17 +157,12 @@ def rendered_dataset(qtbot, monkeypatch):
         get_publication,
         raising=False,
     )
-    monkeypatch.setattr(
-        panel_module,
-        "get_command_capability",
-        lambda _context, command_name: _Capabilities().get(command_name),
-    )
     monkeypatch.setattr(panel_module, "execute_application_command", execute)
     monkeypatch.setattr(actions, "get_application_view_publication", get_publication)
     monkeypatch.setattr(actions, "get_command_review_context", get_review_context)
     monkeypatch.setattr(actions, "execute_application_command", execute)
 
-    panel = DatasetPanel(controller=controller, parent=window)
+    panel = DatasetPanel(parent=window)
     qtbot.addWidget(panel)
     panel.update_panel()
     return panel, current, mutations
@@ -193,12 +203,11 @@ def test_inline_metadata_edit_rejects_replaced_rendered_row(
     assert warnings[0][1] == "Refresh Dataset and Edit Again"
 
 
-def test_batch_metadata_update_uses_product_runtime_without_controller(
+def test_batch_metadata_update_uses_product_runtime(
     rendered_dataset,
     monkeypatch,
 ) -> None:
     panel, _current, mutations = rendered_dataset
-    panel.controller = None
     selection = panel.capture_table_selection([0])
     assert selection is not None
     monkeypatch.setattr(
@@ -284,7 +293,6 @@ def test_table_mutations_fail_before_prompt_without_product_review(
     panel = QMainWindow()
     qtbot.addWidget(panel)
     cast(Any, panel).study = Study()
-    cast(Any, panel).controller = MagicMock()
     handler = actions.DatasetActionHandler(panel)
     selection = actions.DatasetTableSelection(
         publication_generation=17,

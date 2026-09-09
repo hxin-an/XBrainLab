@@ -6,7 +6,7 @@ running smart parse, and managing event filtering.
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any
 
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import (
@@ -18,7 +18,6 @@ from PyQt6.QtWidgets import (
 from XBrainLab.backend.application.commands import (
     ApplySmartParseCommand,
     CommandName,
-    LabelImportPlan,
     MetadataUpdate,
     QueryStateCommand,
     RemoveFilesCommand,
@@ -59,18 +58,11 @@ from XBrainLab.ui.panels.dataset.data_interpretation_action_coordinator import (
     DataInterpretationActionBindings,
     DataInterpretationActionCoordinator,
 )
-from XBrainLab.ui.panels.dataset.external_label_import_coordinator import (
-    ExternalLabelImportBindings,
-    ExternalLabelImportCoordinator,
-)
 from XBrainLab.ui.status import show_status_message
 
 DataInterpretationPreviewDialog: Any | None = None
 BidsSubjectSelectionDialog: Any | None = None
 EegSourceChooserDialog: Any | None = None
-EventFilterDialog: Any | None = None
-ImportLabelDialog: Any | None = None
-LabelMappingDialog: Any | None = None
 SmartParserDialog: Any | None = None
 
 _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE = (
@@ -90,7 +82,7 @@ class DatasetTableRowIdentity:
 class DatasetTableSelection:
     """Rows selected from one immutable Dataset-table publication."""
 
-    publication_generation: int | None
+    publication_generation: int
     rows: tuple[DatasetTableRowIdentity, ...]
 
 
@@ -125,39 +117,6 @@ def _eeg_source_chooser_dialog_class():
     )
 
     return EegSourceChooserDialog
-
-
-def _event_filter_dialog_class():
-    patched = globals()["EventFilterDialog"]
-    if patched is not None:
-        return patched
-    from XBrainLab.ui.dialogs.dataset.event_filter_dialog import (  # noqa: PLC0415
-        EventFilterDialog,
-    )
-
-    return EventFilterDialog
-
-
-def _import_label_dialog_class():
-    patched = globals()["ImportLabelDialog"]
-    if patched is not None:
-        return patched
-    from XBrainLab.ui.dialogs.dataset.import_label_dialog import (  # noqa: PLC0415
-        ImportLabelDialog,
-    )
-
-    return ImportLabelDialog
-
-
-def _label_mapping_dialog_class():
-    patched = globals()["LabelMappingDialog"]
-    if patched is not None:
-        return patched
-    from XBrainLab.ui.dialogs.dataset.label_mapping_dialog import (  # noqa: PLC0415
-        LabelMappingDialog,
-    )
-
-    return LabelMappingDialog
 
 
 def _smart_parser_dialog_class():
@@ -216,9 +175,6 @@ class DatasetActionHandler:
                 cancel_application_operation=lambda *args, **kwargs: (
                     cancel_application_operation(*args, **kwargs)
                 ),
-                execute_application_command=lambda *args, **kwargs: (
-                    execute_application_command(*args, **kwargs)
-                ),
                 execute_application_command_async=lambda *args, **kwargs: (
                     execute_application_command_async(*args, **kwargs)
                 ),
@@ -246,41 +202,6 @@ class DatasetActionHandler:
                 qt_object_deleted=lambda obj: qt_object_deleted(obj),
                 reserve_interaction_continuation=lambda: (
                     reserve_interaction_continuation()
-                ),
-            ),
-        )
-        self._external_label_import = ExternalLabelImportCoordinator(
-            self,
-            event_filter_dialog_class=_event_filter_dialog_class,
-            import_label_dialog_class=_import_label_dialog_class,
-            label_mapping_dialog_class=_label_mapping_dialog_class,
-            bindings=ExternalLabelImportBindings(
-                show_warning=lambda *args, **kwargs: show_warning(*args, **kwargs),
-                show_error=lambda *args, **kwargs: show_error(*args, **kwargs),
-                ask_confirmation=lambda *args, **kwargs: ask_confirmation(
-                    *args, **kwargs
-                ),
-                get_command_review_context=lambda *args, **kwargs: (
-                    get_command_review_context(*args, **kwargs)
-                ),
-                get_command_capability=lambda *args, **kwargs: (
-                    get_command_capability(*args, **kwargs)
-                ),
-                has_real_application_context=lambda *args, **kwargs: (
-                    has_real_application_context(*args, **kwargs)
-                ),
-                blocked_reason=lambda *args, **kwargs: blocked_reason(
-                    *args,
-                    **kwargs,
-                ),
-                execute_application_command=lambda *args, **kwargs: (
-                    execute_application_command(*args, **kwargs)
-                ),
-                is_stale_publication_result=lambda result: (
-                    is_stale_publication_result(result)
-                ),
-                present_unexpected_error=lambda *args, **kwargs: (
-                    present_unexpected_error(*args, **kwargs)
                 ),
             ),
         )
@@ -489,13 +410,11 @@ class DatasetActionHandler:
             result = execute_application_command(
                 self.panel,
                 QueryStateCommand(query="data_lists"),
-                refresh=False,
             )
         else:
             result = execute_application_command(
                 self.panel,
                 QueryStateCommand(query="data_lists"),
-                refresh=False,
                 expected_publication_generation=expected_publication_generation,
             )
         if result is None:
@@ -533,89 +452,6 @@ class DatasetActionHandler:
             filepaths.append(filepath)
         return filepaths
 
-    def import_label(self) -> None:
-        """Delegate the external-label workflow to its focused state owner."""
-        self._external_label_import.import_label()
-
-    def _execute_label_import_async(
-        self,
-        plan: LabelImportPlan,
-        *,
-        expected_publication_generation: int | None = None,
-    ) -> None:
-        self._external_label_import.execute_label_import_async(
-            plan,
-            expected_publication_generation=expected_publication_generation,
-        )
-
-    def _offer_label_recipe_save(
-        self,
-        result: Any,
-        *,
-        on_complete: Callable[[str], None] | None = None,
-    ) -> str | None:
-        return self._external_label_import.offer_label_recipe_save(
-            result,
-            on_complete=on_complete,
-        )
-
-    def _get_target_files_for_import(self) -> list[Any]:
-        return self._external_label_import.get_target_files_for_import()
-
-    def _target_files_from_table_rows(
-        self,
-        selected_rows: list[int],
-    ) -> list[Any] | None:
-        return self._external_label_import.target_files_from_table_rows(selected_rows)
-
-    def _build_label_import_plan(
-        self,
-        selection: Any,
-        mapping: Any,
-        mode: str,
-        file_mapping: dict[str, str] | None = None,
-        selected_event_names: set[str] | list[str] | None = None,
-    ) -> LabelImportPlan:
-        return self._external_label_import.build_label_import_plan(
-            selection,
-            mapping,
-            mode,
-            file_mapping=file_mapping,
-            selected_event_names=selected_event_names,
-        )
-
-    def _filter_events_for_import(
-        self,
-        target_files: list[Any],
-        target_count: int,
-    ) -> set[str] | None | Literal[False]:
-        return self._external_label_import.filter_events_for_import(
-            target_files,
-            target_count,
-        )
-
-    def _smart_filter_suggestions_for_import(
-        self,
-        raw_file: Any,
-        target_count: int,
-        target_files: list[Any],
-    ) -> list[int]:
-        return self._external_label_import.smart_filter_suggestions_for_import(
-            raw_file,
-            target_count,
-            target_files,
-        )
-
-    def _target_index_for_filter_suggestion(
-        self,
-        raw_file: Any,
-        target_files: list[Any],
-    ) -> int | None:
-        return self._external_label_import.target_index_for_filter_suggestion(
-            raw_file,
-            target_files,
-        )
-
     def show_context_menu(self, pos):
         menu = QMenu(self.panel)
         rows = sorted({i.row() for i in self.panel.table.selectedIndexes()})
@@ -651,23 +487,7 @@ class DatasetActionHandler:
             selection = capture(list(rows))
             if isinstance(selection, DatasetTableSelection):
                 return selection
-        if has_real_application_context(self.panel):
-            return None
-        return DatasetTableSelection(
-            publication_generation=None,
-            rows=tuple(
-                DatasetTableRowIdentity(canonical_filepath="", rendered_row=int(row))
-                for row in rows
-            ),
-        )
-
-    def _coerce_table_selection(
-        self,
-        rows_or_selection: DatasetTableSelection | list[int] | tuple[int, ...],
-    ) -> DatasetTableSelection | None:
-        if isinstance(rows_or_selection, DatasetTableSelection):
-            return rows_or_selection
-        return self._capture_table_selection(rows_or_selection)
+        return None
 
     def _resolve_table_selection(
         self,
@@ -705,7 +525,7 @@ class DatasetActionHandler:
 
     def _batch_set(
         self,
-        rows_or_selection: DatasetTableSelection | list[int] | tuple[int, ...],
+        selection: DatasetTableSelection,
         attr,
     ):
         review_context = get_command_review_context(
@@ -742,14 +562,6 @@ class DatasetActionHandler:
             )
             return
 
-        selection = self._coerce_table_selection(rows_or_selection)
-        if selection is None:
-            self._reject_stale_table_action(
-                "Review Metadata Again",
-                "edit metadata",
-            )
-            return
-
         text, ok = QInputDialog.getText(self.panel, f"Set {attr}", f"Enter {attr}:")
         if ok and text:
             rows = self._resolve_table_selection(
@@ -768,13 +580,7 @@ class DatasetActionHandler:
             result = execute_application_command(
                 self.panel,
                 UpdateMetadataCommand(updates=updates),
-                expected_publication_generation=(
-                    selection.publication_generation
-                    if selection.publication_generation is not None
-                    else review_context.publication_generation
-                    if review_context is not None
-                    else None
-                ),
+                expected_publication_generation=selection.publication_generation,
             )
             if result is None:
                 show_warning(
@@ -796,7 +602,7 @@ class DatasetActionHandler:
 
     def _remove_files(
         self,
-        rows_or_selection: DatasetTableSelection | list[int] | tuple[int, ...],
+        selection: DatasetTableSelection,
     ):
         review_context = get_command_review_context(
             self.panel,
@@ -832,14 +638,6 @@ class DatasetActionHandler:
             )
             return
 
-        selection = self._coerce_table_selection(rows_or_selection)
-        if selection is None:
-            self._reject_stale_table_action(
-                "Review File Removal Again",
-                "remove files",
-            )
-            return
-
         if ask_confirmation(
             self.panel,
             severity=AlertSeverity.WARNING,
@@ -859,13 +657,7 @@ class DatasetActionHandler:
             result = execute_application_command(
                 self.panel,
                 RemoveFilesCommand(indices=list(rows)),
-                expected_publication_generation=(
-                    selection.publication_generation
-                    if selection.publication_generation is not None
-                    else review_context.publication_generation
-                    if review_context is not None
-                    else None
-                ),
+                expected_publication_generation=selection.publication_generation,
             )
             if result is None:
                 show_warning(

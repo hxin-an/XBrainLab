@@ -16,6 +16,7 @@ from XBrainLab.backend.application import ErrorType, ReloadInterpretationRecipeC
 from XBrainLab.backend.application.view_publication import (
     InterpretationReviewIdentity,
 )
+from XBrainLab.backend.study import Study
 from XBrainLab.ui.components import user_error_presentation
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
@@ -93,7 +94,6 @@ _UI_ROOT = _REPO_ROOT / "XBrainLab" / "ui"
 
 def _training_widget(qtbot) -> TrainingSidebar:
     panel = MagicMock()
-    panel.controller = MagicMock()
     panel.main_window = None
     widget = TrainingSidebar(panel, parent=None)
     qtbot.addWidget(widget)
@@ -102,14 +102,27 @@ def _training_widget(qtbot) -> TrainingSidebar:
 
 def _preprocess_widget(qtbot) -> PreprocessSidebar:
     panel = MagicMock()
-    panel.controller = MagicMock()
-    panel.dataset_controller = MagicMock()
     panel.import_is_finishing.return_value = False
     panel.main_window = QMainWindow()
     qtbot.addWidget(panel.main_window)
     widget = PreprocessSidebar(panel)
     qtbot.addWidget(widget)
     return widget
+
+
+def _product_preprocess_widget(qtbot) -> tuple[PreprocessSidebar, Study]:
+    """Build the sidebar beneath a genuine Study-backed desktop context."""
+    study = Study()
+    main_window = QMainWindow()
+    main_window.study = study
+    panel = SimpleNamespace(
+        main_window=main_window,
+        import_is_finishing=lambda: False,
+    )
+    qtbot.addWidget(main_window)
+    widget = PreprocessSidebar(panel, parent=main_window)
+    qtbot.addWidget(widget)
+    return widget, study
 
 
 def _assert_logged_exception(caplog, *, sentinel: str = _SENTINEL) -> None:
@@ -359,7 +372,7 @@ def test_preprocess_async_exception_is_private_and_logged(
     monkeypatch,
     caplog,
 ) -> None:
-    sidebar = _preprocess_widget(qtbot)
+    sidebar, _study = _product_preprocess_widget(qtbot)
     critical = MagicMock()
     monkeypatch.setattr(
         user_error_presentation, "show_alert", _record_shared_alert(critical)
@@ -399,13 +412,14 @@ def test_preprocess_async_exception_is_private_and_logged(
     _assert_logged_exception(caplog)
 
 
-def test_preprocess_sync_exception_is_private_and_returns_stable_outcome(
+def test_preprocess_unscheduled_product_command_returns_stable_blocked_outcome(
     qtbot,
     monkeypatch,
     caplog,
 ) -> None:
-    sidebar = _preprocess_widget(qtbot)
+    sidebar, _study = _product_preprocess_widget(qtbot)
     critical = MagicMock()
+    warning = MagicMock()
     monkeypatch.setattr(
         user_error_presentation, "show_alert", _record_shared_alert(critical)
     )
@@ -414,34 +428,26 @@ def test_preprocess_sync_exception_is_private_and_returns_stable_outcome(
         "execute_application_command_async",
         lambda *_args, **_kwargs: False,
     )
-    monkeypatch.setattr(
-        preprocess_sidebar,
-        "has_real_application_context",
-        lambda _context: False,
-    )
-    monkeypatch.setattr(
-        preprocess_sidebar,
-        "execute_application_command",
-        MagicMock(side_effect=RuntimeError(_SENTINEL)),
+    monkeypatch.setattr(preprocess_sidebar, "show_warning", warning)
+
+    outcome = sidebar._execute_preprocess_command(
+        MagicMock(),
+        blocked_title="Filtering Blocked",
+        failure_prefix="Filtering failed",
+        on_success=MagicMock(),
     )
 
-    with _capture_public_xbrainlab_logs(caplog):
-        outcome = sidebar._execute_preprocess_command(
-            MagicMock(),
-            blocked_title="Filtering Blocked",
-            failure_prefix="Filtering failed",
-            on_success=MagicMock(),
-        )
-
-    assert outcome.status is InteractionStatus.FAILED
-    assert outcome.message == _PREPROCESS_MESSAGE
-    critical.assert_called_once_with(
+    assert outcome.status is InteractionStatus.BLOCKED
+    assert (
+        outcome.message
+        == preprocess_sidebar.CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
+    )
+    warning.assert_called_once_with(
         sidebar,
-        "Preprocessing could not be applied",
-        _PREPROCESS_MESSAGE,
+        "Filtering Blocked",
+        preprocess_sidebar.CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
     )
-    assert _SENTINEL not in outcome.message
-    _assert_logged_exception(caplog)
+    critical.assert_not_called()
 
 
 def test_reset_preprocess_sync_exception_is_private(
@@ -449,29 +455,14 @@ def test_reset_preprocess_sync_exception_is_private(
     monkeypatch,
     caplog,
 ) -> None:
-    sidebar = _preprocess_widget(qtbot)
+    sidebar, study = _product_preprocess_widget(qtbot)
+    raw = MagicMock()
+    raw.get_filename.return_value = "sub-01_task-mi_raw.fif"
+    study.data_manager.loaded_data_list = [raw]
+    study.data_manager.preprocessed_data_list = [raw]
     critical = MagicMock()
     monkeypatch.setattr(
         user_error_presentation, "show_alert", _record_shared_alert(critical)
-    )
-    monkeypatch.setattr(
-        preprocess_sidebar,
-        "get_application_view_publication",
-        lambda _context: None,
-    )
-    monkeypatch.setattr(
-        preprocess_sidebar,
-        "has_real_application_context",
-        lambda _context: False,
-    )
-    monkeypatch.setattr(
-        preprocess_sidebar,
-        "get_command_capability",
-        lambda *_args: SimpleNamespace(
-            enabled=True,
-            confirmation_required=True,
-            requires_confirmation=True,
-        ),
     )
     monkeypatch.setattr(
         preprocess_sidebar,
@@ -616,9 +607,7 @@ def test_training_settings_unexpected_exception_uses_stable_warning(
         dict,
     )
     monkeypatch.setattr(device_setting_dialog, "get_device_count", lambda: 0)
-    controller = MagicMock()
-    controller.get_training_option.return_value = None
-    dialog = training_setting_dialog.TrainingSettingDialog(None, controller)
+    dialog = training_setting_dialog.TrainingSettingDialog(None)
     qtbot.addWidget(dialog)
     warning = MagicMock()
     monkeypatch.setattr(
@@ -681,7 +670,6 @@ def test_dataset_sidebar_electrode_layout_exception_returns_stable_outcome(
     from XBrainLab.ui.panels.dataset import sidebar as dataset_sidebar
 
     panel = MagicMock()
-    panel.controller = MagicMock()
     panel.main_window = QMainWindow()
     qtbot.addWidget(panel.main_window)
     sidebar = dataset_sidebar.DatasetSidebar(panel)

@@ -5,7 +5,7 @@ from XBrainLab.llm.agent.parser import CommandParser, ToolEnvelopeStatus
 
 def test_product_parser_accepts_one_complete_strict_envelope():
     text = (
-        '  {"workflow_stage":"empty","tool_name":"load_data",'
+        '  {"workflow_stage":"empty","tool_name":"import_eeg_data",'
         '"parameters":{"file_paths":["/data/A.gdf"]}}\n'
     )
 
@@ -13,9 +13,11 @@ def test_product_parser_accepts_one_complete_strict_envelope():
 
     assert result.status is ToolEnvelopeStatus.VALID
     assert result.workflow_stage == "empty"
-    assert result.commands == (("load_data", {"file_paths": ["/data/A.gdf"]}),)
+    assert result.commands == (("import_eeg_data", {"file_paths": ["/data/A.gdf"]}),)
     assert result.error == ""
-    assert CommandParser.parse(text) == [("load_data", {"file_paths": ["/data/A.gdf"]})]
+    assert CommandParser.parse(text) == [
+        ("import_eeg_data", {"file_paths": ["/data/A.gdf"]})
+    ]
 
 
 def test_product_parser_classifies_adjacent_complete_objects_without_commands():
@@ -249,14 +251,14 @@ def test_product_parser_rejects_parameter_explanation_at_action_boundary():
     ("text", "error_fragment"),
     [
         (
-            'Sure, here is the command:\n{"tool_name":"load_data","parameters":{}}',
+            'Sure, here is the command:\n{"tool_name":"import_eeg_data","parameters":{}}',
             "entire response",
         ),
         (
-            '```json\n{"tool_name":"load_data","parameters":{}}\n```',
+            '```json\n{"tool_name":"import_eeg_data","parameters":{}}\n```',
             "entire response",
         ),
-        ("load_data\nBlocked reasons: None.", "JSON object"),
+        ("import_eeg_data\nBlocked reasons: None.", "JSON object"),
         (
             '{"tool_name":"preview_interpretation","parameters":{"choices":',
             "complete JSON",
@@ -271,7 +273,7 @@ def test_product_parser_rejects_parameter_explanation_at_action_boundary():
             "complete JSON",
         ),
         (
-            '{"command":"load_data","parameters":{}}',
+            '{"command":"import_eeg_data","parameters":{}}',
             "exactly",
         ),
         (
@@ -312,11 +314,11 @@ def test_product_parser_rejects_non_contract_tool_outputs(text, error_fragment):
 @pytest.mark.parametrize(
     "text",
     [
-        '{"tool_name":"load_data"}',
+        '{"tool_name":"import_eeg_data"}',
         '{"tool_name":"","parameters":{}}',
         '{"tool_name":42,"parameters":{}}',
-        '{"tool_name":"load_data","parameters":null}',
-        '{"tool_name":"load_data","parameters":"{}"}',
+        '{"tool_name":"import_eeg_data","parameters":null}',
+        '{"tool_name":"import_eeg_data","parameters":"{}"}',
     ],
 )
 def test_product_parser_rejects_invalid_envelope_field_types(text):
@@ -371,12 +373,12 @@ def test_product_parser_rejects_non_contract_tool_call_wrappers(text):
 def test_diagnostic_parser_is_explicitly_tolerant_for_legacy_artifacts():
     text = (
         "Legacy model output:\n```json\n"
-        '{"command":"load_data","arguments":{"file_paths":["/data/A.gdf"]}}'
+        '{"command":"import_eeg_data","arguments":{"file_paths":["/data/A.gdf"]}}'
         "\n```"
     )
 
     assert CommandParser.parse_diagnostic(text) == [
-        ("load_data", {"file_paths": ["/data/A.gdf"]})
+        ("import_eeg_data", {"file_paths": ["/data/A.gdf"]})
     ]
 
 

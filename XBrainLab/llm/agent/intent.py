@@ -311,8 +311,6 @@ def infer_user_intent(text: str) -> str:
         return "no_tool"
     if _is_ambiguous_workflow_request(normalized):
         return "ask_clarification"
-    if _is_explicit_legacy_load_request(normalized):
-        return "load_data"
     if _is_reset_preprocess_request(normalized):
         return "reset_preprocess"
     if "reset" in normalized or "clear the dataset" in normalized:
@@ -655,8 +653,6 @@ def command_for_intent(intent: str) -> CommandName | None:
 
 def path_label_for_intent(intent: str) -> str | None:
     """Return the user-facing path label implied by an intent."""
-    if intent == "load_data":
-        return "file path"
     if intent == "scan_source":
         return "source path"
     if intent == "reload_interpretation_recipe":
@@ -840,17 +836,6 @@ def _is_chinese_data_interpretation_request(normalized: str) -> bool:
             "標籤",
             "資料",
         )
-    )
-
-
-def _is_explicit_legacy_load_request(normalized: str) -> bool:
-    """Return True only when the user explicitly asks for compatibility loading."""
-    return (
-        "load_data" in normalized
-        or "legacy load" in normalized
-        or "legacy compatibility" in normalized
-        or "compatibility path" in normalized
-        or "direct load" in normalized
     )
 
 

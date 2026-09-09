@@ -478,6 +478,37 @@ def test_training_history_settle_reveals_execution_actions_in_short_viewport(
     assert panel.sidebar.scroll_area.verticalScrollBar().value() > 0
 
 
+def test_training_history_capture_releases_its_study_runtime_on_destroy(
+    qtbot,
+    monkeypatch,
+) -> None:
+    import scripts.dev.capture_ui_polish_surfaces as polish_capture
+
+    real_runtime = polish_capture.application_ui_runtime
+    closed: list[bool] = []
+
+    class _RuntimePort:
+        def __init__(self, runtime) -> None:
+            self._runtime = runtime
+
+        def __getattr__(self, name):
+            return getattr(self._runtime, name)
+
+        def close(self) -> bool:
+            closed.append(True)
+            return self._runtime.close()
+
+    monkeypatch.setattr(
+        polish_capture,
+        "application_ui_runtime",
+        lambda context: _RuntimePort(real_runtime(context)),
+    )
+    panel = _training_history_few_rows()
+
+    panel.deleteLater()
+    qtbot.waitUntil(lambda: closed == [True], timeout=1_000)
+
+
 def test_reference_crop_scales_logical_widget_bounds_to_capture_pixels(qtbot) -> None:
     owner = QApplication.instance().activeWindow()
     if owner is None:

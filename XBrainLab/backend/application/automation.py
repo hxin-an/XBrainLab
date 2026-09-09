@@ -29,7 +29,6 @@ from .commands import (
     ApplyInterpretationCommand,
     ApplyMontageCommand,
     ApplySmartParseCommand,
-    AttachLabelsCommand,
     ClearDatasetsCommand,
     ClearTrainingHistoryCommand,
     Command,
@@ -38,9 +37,6 @@ from .commands import (
     CreateEpochCommand,
     DiscardTrainingPreparationCommand,
     EvaluateCommand,
-    ImportLabelsCommand,
-    LabelImportPlan,
-    LoadDataCommand,
     MetadataUpdate,
     NewSessionCommand,
     PreprocessCommand,
@@ -77,9 +73,6 @@ class AutomationCommandSpec:
     description: str
     input_schema: dict[str, Any]
     capability: dict[str, Any] | None = None
-    legacy_compatibility: bool = False
-    primary_workflow: bool = True
-    preferred_commands: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return serialize_json_value(self)
@@ -152,9 +145,6 @@ COMMAND_TYPES: dict[CommandName, type[Any]] = {
     CommandName.APPLY_INTERPRETATION: ApplyInterpretationCommand,
     CommandName.SAVE_INTERPRETATION_RECIPE: SaveInterpretationRecipeCommand,
     CommandName.RELOAD_INTERPRETATION_RECIPE: ReloadInterpretationRecipeCommand,
-    CommandName.LOAD_DATA: LoadDataCommand,
-    CommandName.ATTACH_LABELS: AttachLabelsCommand,
-    CommandName.IMPORT_LABELS: ImportLabelsCommand,
     CommandName.UPDATE_METADATA: UpdateMetadataCommand,
     CommandName.APPLY_SMART_PARSE: ApplySmartParseCommand,
     CommandName.REMOVE_FILES: RemoveFilesCommand,
@@ -185,9 +175,6 @@ COMMAND_TAXONOMY: dict[CommandName, str] = {
     CommandName.APPLY_INTERPRETATION: "data_interpretation",
     CommandName.SAVE_INTERPRETATION_RECIPE: "data_interpretation",
     CommandName.RELOAD_INTERPRETATION_RECIPE: "data_interpretation",
-    CommandName.LOAD_DATA: "legacy_data_compatibility",
-    CommandName.ATTACH_LABELS: "legacy_data_compatibility",
-    CommandName.IMPORT_LABELS: "legacy_data_compatibility",
     CommandName.UPDATE_METADATA: "metadata_resolution",
     CommandName.APPLY_SMART_PARSE: "metadata_resolution",
     CommandName.REMOVE_FILES: "metadata_resolution",
@@ -221,45 +208,11 @@ _AUTOMATION_DERIVED_ARGUMENT_FIELDS: dict[CommandName, frozenset[str]] = {
     CommandName.CONFIGURE_TRAINING: frozenset({"edited_recommendation_fields"}),
 }
 
-LEGACY_COMPATIBILITY_COMMANDS: frozenset[CommandName] = frozenset(
-    {
-        CommandName.LOAD_DATA,
-        CommandName.ATTACH_LABELS,
-        CommandName.IMPORT_LABELS,
-    }
-)
-
-LEGACY_PREFERRED_COMMANDS: tuple[str, ...] = (
-    CommandName.REVIEW_INTERPRETATION.value,
-    CommandName.APPLY_INTERPRETATION.value,
-    CommandName.SAVE_INTERPRETATION_RECIPE.value,
-)
-
-LEGACY_COMMAND_DESCRIPTIONS: dict[CommandName, str] = {
-    CommandName.LOAD_DATA: (
-        "Legacy compatibility: directly load raw EEG files. Prefer Data "
-        "Interpretation review_interpretation -> apply_interpretation for "
-        "new imports."
-    ),
-    CommandName.ATTACH_LABELS: (
-        "Legacy compatibility: attach label files to already-loaded raw data. "
-        "Prefer Data Interpretation label/event carrier preview, validation, "
-        "apply, and recipe trace for new imports."
-    ),
-    CommandName.IMPORT_LABELS: (
-        "Legacy compatibility: apply an explicit post-load label import plan. "
-        "Prefer Data Interpretation label/event carrier review and recipe flow "
-        "for new imports."
-    ),
-}
-
 
 def command_specs(
     service: ApplicationService | None = None,
-    *,
-    include_legacy_compatibility: bool = False,
 ) -> list[AutomationCommandSpec]:
-    """Return product command schemas with optional compatibility commands."""
+    """Return product command schemas."""
     capabilities = (
         service.get_view_publication().effective_capabilities
         if service is not None
@@ -267,11 +220,6 @@ def command_specs(
     )
     specs: list[AutomationCommandSpec] = []
     for command_name in CommandName:
-        if (
-            command_name in LEGACY_COMPATIBILITY_COMMANDS
-            and not include_legacy_compatibility
-        ):
-            continue
         command_type = COMMAND_TYPES[command_name]
         capability = (
             capabilities.get(command_name).to_dict()
@@ -285,9 +233,6 @@ def command_specs(
                 description=_command_description(command_name, command_type),
                 input_schema=_command_input_schema(command_type),
                 capability=capability,
-                legacy_compatibility=_is_legacy_compatibility(command_name),
-                primary_workflow=not _is_legacy_compatibility(command_name),
-                preferred_commands=_preferred_commands(command_name),
             )
         )
     return specs
@@ -295,8 +240,6 @@ def command_specs(
 
 def build_command_from_payload(
     payload: dict[str, Any],
-    *,
-    allow_legacy_compatibility: bool = False,
 ) -> Command:
     """Build a typed command object from a JSON-shaped automation payload."""
     if type(payload) is not dict:
@@ -311,13 +254,6 @@ def build_command_from_payload(
     except ValueError as exc:
         raise AutomationPayloadError(f"Unsupported command: {command_value}") from exc
 
-    if command_name in LEGACY_COMPATIBILITY_COMMANDS and not allow_legacy_compatibility:
-        preferred = ", ".join(LEGACY_PREFERRED_COMMANDS)
-        raise AutomationPayloadError(
-            f"{command_name.value} is a legacy compatibility command and requires "
-            f"explicit compatibility opt-in. Prefer: {preferred}."
-        )
-
     arguments = dict.get(payload, "arguments", {})
     if type(arguments) is not dict:
         raise AutomationPayloadError("Payload arguments must be an object.")
@@ -328,8 +264,6 @@ def build_command_from_payload(
 def execute_automation_payload(
     service: ApplicationService,
     payload: dict[str, Any],
-    *,
-    allow_legacy_compatibility: bool = False,
 ) -> AutomationExecution:
     """Execute one automation payload through ApplicationService."""
     publication = service.get_view_publication()
@@ -348,10 +282,7 @@ def execute_automation_payload(
     }
 
     try:
-        command = build_command_from_payload(
-            payload,
-            allow_legacy_compatibility=allow_legacy_compatibility,
-        )
+        command = build_command_from_payload(payload)
     except AutomationPayloadError as exc:
         verification["error"] = _automation_payload_error_text(exc)
         return AutomationExecution(
@@ -479,8 +410,6 @@ def _is_confirmation_field(name: str) -> bool:
 
 
 def _coerce_value(name: str, value: Any) -> Any:
-    if name == "plan" and type(value) is dict:
-        return LabelImportPlan(**value)
     if name == "updates" and type(value) is list:
         return [
             MetadataUpdate(**item) if type(item) is dict else item for item in value
@@ -818,19 +747,7 @@ def _json_schema_for_type(annotation: Any) -> dict[str, Any]:
 
 
 def _command_description(command_name: CommandName, command_type: type[Any]) -> str:
-    if command_name in LEGACY_COMMAND_DESCRIPTIONS:
-        return LEGACY_COMMAND_DESCRIPTIONS[command_name]
     return (command_type.__doc__ or "").strip().splitlines()[0]
-
-
-def _is_legacy_compatibility(command_name: CommandName) -> bool:
-    return command_name in LEGACY_COMPATIBILITY_COMMANDS
-
-
-def _preferred_commands(command_name: CommandName) -> tuple[str, ...]:
-    if _is_legacy_compatibility(command_name):
-        return LEGACY_PREFERRED_COMMANDS
-    return ()
 
 
 def _payload_command_name(payload: dict[str, Any]) -> CommandName | None:

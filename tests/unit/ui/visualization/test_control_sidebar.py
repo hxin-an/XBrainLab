@@ -14,6 +14,9 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.application import (
+    ChangedState,
+    CommandResult,
+    ErrorType,
     SaliencyCommand,
     SaliencyPlanIdentity,
     SaliencyRunIdentity,
@@ -29,22 +32,13 @@ app = QApplication.instance() or QApplication(sys.argv)
 
 
 @pytest.fixture
-def mock_controller():
-    ctrl = MagicMock()
-    ctrl.has_epoch_data.return_value = True
-    ctrl.get_channel_names.return_value = ["Ch1", "Ch2"]
-    return ctrl
-
-
-@pytest.fixture
 def mock_main_window():
     return QMainWindow()
 
 
 @pytest.fixture
-def mock_panel(mock_controller, mock_main_window):
+def mock_panel(mock_main_window):
     panel = MagicMock()
-    panel.controller = mock_controller
     panel.main_window = mock_main_window
     return panel
 
@@ -92,12 +86,9 @@ def test_3d_controls_are_grouped_and_hidden_until_the_ready_3d_tab(mock_panel, q
 
 
 def test_sidebar_set_saliency_blocked_by_backend_capability(qtbot):
-    controller = MagicMock()
-    controller.get_saliency_params.return_value = None
     main_window = QMainWindow()
     cast(Any, main_window).study = Study()
     panel = MagicMock()
-    panel.controller = controller
     panel.main_window = main_window
     sidebar = ControlSidebar(panel)
     qtbot.addWidget(sidebar)
@@ -127,8 +118,11 @@ def test_sidebar_set_saliency_blocked_by_backend_capability(qtbot):
 def test_sidebar_set_saliency_dialog_rejection_returns_cancelled(mock_panel, qtbot):
     sidebar = ControlSidebar(mock_panel)
     qtbot.addWidget(sidebar)
-    query_result = MagicMock(
-        failed=False,
+    query_result = CommandResult.success_result(
+        command_name="saliency",
+        message="Ready",
+        state={},
+        changed_state=ChangedState(),
         diagnostics={"payload_type": "saliency_summary", "params": {}},
     )
 
@@ -163,10 +157,13 @@ def test_sidebar_set_saliency_nonrecoverable_query_failure_returns_failed(
 ):
     sidebar = ControlSidebar(mock_panel)
     qtbot.addWidget(sidebar)
-    query_result = MagicMock(
-        failed=True,
-        recoverable=False,
+    query_result = CommandResult.failure_result(
+        command_name="saliency",
         message="saliency query failed",
+        state={},
+        changed_state=ChangedState(),
+        error_type=ErrorType.VISUALIZATION,
+        recoverable=False,
     )
 
     with (
@@ -187,16 +184,17 @@ def test_sidebar_set_saliency_nonrecoverable_query_failure_returns_failed(
 
 
 def test_sidebar_set_saliency_uses_query_configuration_readiness(qtbot):
-    controller = MagicMock()
     main_window = QMainWindow()
     cast(Any, main_window).study = Study()
     panel = MagicMock()
-    panel.controller = controller
     panel.main_window = main_window
     sidebar = ControlSidebar(panel)
     qtbot.addWidget(sidebar)
-    query_result = MagicMock(
-        failed=False,
+    query_result = CommandResult.success_result(
+        command_name="saliency",
+        message="Ready",
+        state={},
+        changed_state=ChangedState(),
         diagnostics={
             "payload_type": "saliency_summary",
             "params": {},
@@ -236,16 +234,12 @@ def test_sidebar_set_saliency_uses_query_configuration_readiness(qtbot):
         "Saliency blocked",
         "Select a model and training settings before configuring saliency.",
     )
-    controller.get_saliency_params.assert_not_called()
 
 
-def test_sidebar_set_saliency_refuses_real_study_controller_fallback(qtbot):
-    controller = MagicMock()
-    controller.get_saliency_params.return_value = None
+def test_sidebar_set_saliency_refuses_missing_product_review(qtbot):
     main_window = QMainWindow()
     cast(Any, main_window).study = Study()
     panel = MagicMock()
-    panel.controller = controller
     panel.main_window = main_window
     sidebar = ControlSidebar(panel)
     qtbot.addWidget(sidebar)
@@ -280,20 +274,20 @@ def test_sidebar_set_saliency_refuses_real_study_controller_fallback(qtbot):
     mock_dialog.assert_not_called()
     mock_warning.assert_called_once()
     assert "could not safely complete" in mock_warning.call_args.args[2]
-    controller.set_saliency_params.assert_not_called()
 
 
-def test_sidebar_set_saliency_stages_for_real_study_without_controller_fallback(qtbot):
-    controller = MagicMock()
+def test_sidebar_set_saliency_stages_for_real_study(qtbot):
     main_window = QMainWindow()
     cast(Any, main_window).study = Study()
     panel = MagicMock()
-    panel.controller = controller
     panel.main_window = main_window
     sidebar = ControlSidebar(panel)
     qtbot.addWidget(sidebar)
-    query_result = MagicMock(
-        failed=False,
+    query_result = CommandResult.success_result(
+        command_name="saliency",
+        message="Ready",
+        state={},
+        changed_state=ChangedState(),
         diagnostics={
             "payload_type": "saliency_summary",
             "params": {"SmoothGrad": {"nt_samples": 4}},
@@ -343,7 +337,6 @@ def test_sidebar_set_saliency_stages_for_real_study_without_controller_fallback(
         outcome = sidebar.set_saliency()
 
     assert outcome.status is InteractionStatus.ACCEPTED
-    controller.set_saliency_params.assert_not_called()
     panel.stage_saliency_params.assert_called_once_with(
         {"SmoothGrad": {"nt_samples": 5}},
         publication_generation=29,
@@ -359,7 +352,6 @@ def test_sidebar_set_saliency_stages_params_without_starting_compute(
 ):
     sidebar = ControlSidebar(mock_panel)
     qtbot.addWidget(sidebar)
-    mock_panel.controller.get_saliency_params.return_value = None
 
     with (
         patch(
@@ -367,8 +359,11 @@ def test_sidebar_set_saliency_stages_params_without_starting_compute(
         ) as mock_dialog,
         patch(
             "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command",
-            return_value=MagicMock(
-                failed=False,
+            return_value=CommandResult.success_result(
+                command_name="saliency",
+                message="Ready",
+                state={},
+                changed_state=ChangedState(),
                 diagnostics={"payload_type": "saliency_summary", "params": None},
             ),
         ) as mock_execute,
@@ -383,23 +378,22 @@ def test_sidebar_set_saliency_stages_params_without_starting_compute(
     assert command.params is None
     assert mock_execute.call_count == 1
     mock_panel.stage_saliency_params.assert_called_once_with({"method": "gradient"})
-    mock_panel.controller.set_saliency_params.assert_not_called()
     mock_panel.on_update.assert_not_called()
     mock_panel.mark_refresh_dirty.assert_not_called()
     mock_panel.update_info.assert_not_called()
 
 
-def test_sidebar_set_saliency_uses_query_defaults_before_stale_controller(
+def test_sidebar_set_saliency_uses_query_defaults(
     mock_panel,
     qtbot,
 ):
     sidebar = ControlSidebar(mock_panel)
     qtbot.addWidget(sidebar)
-    mock_panel.controller.get_saliency_params.return_value = {
-        "stale": {"nt_samples": 99},
-    }
-    query_result = MagicMock(
-        failed=False,
+    query_result = CommandResult.success_result(
+        command_name="saliency",
+        message="Ready",
+        state={},
+        changed_state=ChangedState(),
         diagnostics={
             "payload_type": "saliency_summary",
             "params": {"SmoothGrad": {"nt_samples": 4}},
@@ -421,7 +415,6 @@ def test_sidebar_set_saliency_uses_query_defaults_before_stale_controller(
 
         sidebar.set_saliency()
 
-    mock_panel.controller.get_saliency_params.assert_not_called()
     mock_dialog.assert_called_once_with(
         sidebar,
         {"SmoothGrad": {"nt_samples": 4}},
@@ -433,7 +426,60 @@ def test_sidebar_set_saliency_uses_query_defaults_before_stale_controller(
     mock_panel.stage_saliency_params.assert_called_once_with(
         {"SmoothGrad": {"nt_samples": 5}}
     )
-    mock_panel.controller.set_saliency_params.assert_not_called()
+
+
+@pytest.mark.parametrize("query_available", [True, False])
+def test_sidebar_preserves_pending_settings_before_query_defaults(
+    mock_panel, qtbot, query_available
+):
+    sidebar = ControlSidebar(mock_panel)
+    qtbot.addWidget(sidebar)
+    pending = {"SmoothGrad": {"nt_samples": 8}}
+    mock_panel.pending_saliency_params = pending
+    query = CommandResult.success_result(
+        command_name="saliency",
+        message="Ready",
+        state={},
+        changed_state=ChangedState(),
+        diagnostics={"payload_type": "saliency_summary", "params": {}},
+    )
+    with (
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command",
+            return_value=query if query_available else None,
+        ),
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.SaliencySettingDialog"
+        ) as dialog,
+    ):
+        dialog.return_value.exec.return_value = False
+        outcome = sidebar.set_saliency()
+    dialog.assert_called_once_with(sidebar, pending)
+    assert outcome.status is InteractionStatus.CANCELLED
+    mock_panel.stage_saliency_params.assert_not_called()
+
+
+def test_sidebar_missing_query_and_pending_settings_fails_closed(mock_panel, qtbot):
+    sidebar = ControlSidebar(mock_panel)
+    qtbot.addWidget(sidebar)
+    mock_panel.pending_saliency_params = None
+    with (
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command",
+            return_value=None,
+        ),
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.SaliencySettingDialog"
+        ) as dialog,
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.show_warning"
+        ) as warning,
+    ):
+        outcome = sidebar.set_saliency()
+    assert outcome.status is InteractionStatus.BLOCKED
+    dialog.assert_not_called()
+    mock_panel.stage_saliency_params.assert_not_called()
+    warning.assert_called_once_with(sidebar, "Saliency blocked", outcome.message)
 
 
 def test_sidebar_set_saliency_binds_reviewed_generation_and_selected_run(
@@ -447,8 +493,11 @@ def test_sidebar_set_saliency_binds_reviewed_generation_and_selected_run(
         plan=SaliencyPlanIdentity(plan_index=1),
         run_index=2,
     )
-    query_result = MagicMock(
-        failed=False,
+    query_result = CommandResult.success_result(
+        command_name="saliency",
+        message="Ready",
+        state={},
+        changed_state=ChangedState(),
         diagnostics={
             "payload_type": "saliency_summary",
             "params": {"SmoothGrad": {"nt_samples": 4}},
@@ -518,8 +567,11 @@ def test_sidebar_set_saliency_surfaces_selection_change_while_dialog_is_open(
         "EEGNet",
     )
     mock_panel.stage_saliency_params.return_value = False
-    query_result = MagicMock(
-        failed=False,
+    query_result = CommandResult.success_result(
+        command_name="saliency",
+        message="Ready",
+        state={},
+        changed_state=ChangedState(),
         diagnostics={"payload_type": "saliency_summary", "params": {}},
     )
 
@@ -571,7 +623,6 @@ def test_visualization_actions_fail_before_command_or_dialog_without_product_rev
     cast(Any, main_window).study = Study()
     qtbot.addWidget(main_window)
     panel = MagicMock()
-    panel.controller = MagicMock()
     panel.main_window = main_window
     sidebar = ControlSidebar(panel)
     qtbot.addWidget(sidebar)

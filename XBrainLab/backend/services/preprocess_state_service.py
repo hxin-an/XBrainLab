@@ -216,18 +216,10 @@ class PreprocessStateService(Observable):
             return not bool(data_list[0].is_raw())
         return False
 
-    def has_data(self) -> bool:
-        return bool(self.study.preprocessed_data_list)
-
     def get_channel_names(self) -> list[str]:
         if self.study.preprocessed_data_list:
             return list(self.study.preprocessed_data_list[0].get_mne().ch_names)
         return []
-
-    def get_first_data(self) -> Any | None:
-        if self.study.preprocessed_data_list:
-            return self.study.preprocessed_data_list[0]
-        return None
 
     def get_runtime_diagnostics(self) -> dict[str, Any]:
         return collect_runtime_diagnostics(self.study.preprocessed_data_list)
@@ -377,17 +369,6 @@ class PreprocessStateService(Observable):
             source_identity=source_identity,
             data=tuple(working_list),
         )
-
-    def get_unique_events(self) -> list[str]:
-        events: set[str] = set()
-        for data in self.study.preprocessed_data_list:
-            try:
-                _, event_ids = data.get_event_list()
-                if event_ids:
-                    events.update(event_ids.keys())
-            except Exception as exc:
-                logger.warning("Failed to get events from preprocessed data: %s", exc)
-        return sorted(events)
 
     def apply_epoching(
         self,

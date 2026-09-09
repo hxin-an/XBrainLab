@@ -233,7 +233,7 @@ class EvaluationPanel(BasePanel):
         self._evaluation_render_cleaned_up = False
         self._info_in_chart_tabs = False
 
-        super().__init__(parent=parent, controller=None)
+        super().__init__(parent=parent)
 
         self._application_render_ledger = ApplicationPublicationRenderLedger(
             panel_name="Evaluation",
@@ -452,7 +452,6 @@ class EvaluationPanel(BasePanel):
         result = execute_application_command(
             self,
             EvaluateCommand(),
-            refresh=False,
             expected_publication_generation=before_publication.generation,
             runtime=cast(ApplicationUiRuntime, self._action_port),
         )
@@ -632,7 +631,6 @@ class EvaluationPanel(BasePanel):
             EvaluateCommand(summary_identity=summary_identity),
             on_result=_handle_result,
             on_error=_handle_error,
-            refresh=False,
             busy_target=self,
             expected_publication_generation=request.publication_generation,
             runtime=cast(ApplicationUiRuntime, self._action_port),

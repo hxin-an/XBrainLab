@@ -238,13 +238,9 @@ def _prepare_variants_from(renderer):
 def _make_panel(
     qtbot,
     *,
-    training_controller=None,
-    preprocess_controller=None,
     parent=None,
 ):
-    """Create a panel whose controller exposes no live training objects."""
-    del training_controller, preprocess_controller
-    controller = Observable()
+    """Create a panel with detached application ports and isolated native views."""
     application_port = Observable()
     runtime_port = cast(Any, application_port)
     runtime_port.get_view_publication = MagicMock(return_value=None)
@@ -307,7 +303,7 @@ def _make_panel(
             action_port=runtime_port,
         )
         qtbot.addWidget(panel)
-    return panel, controller
+    return panel
 
 
 def _make_real_saliency_panel(qtbot, *, application_runtime=None, parent=None):
@@ -342,7 +338,7 @@ def _make_real_saliency_panel(qtbot, *, application_runtime=None, parent=None):
 
 
 @pytest.fixture
-def panel_and_controller(qtbot):
+def visualization_panel(qtbot):
     return _make_panel(qtbot)
 
 
@@ -736,8 +732,8 @@ def test_real_panel_close_ignores_global_pool_saturation_before_submission(
         window.hide()
 
 
-def test_tab_switch_invalidates_previous_saliency_view(panel_and_controller):
-    panel, _controller = panel_and_controller
+def test_tab_switch_invalidates_previous_saliency_view(visualization_panel):
+    panel = visualization_panel
     previous = cast(Any, panel.tab_map)
 
     with patch.object(panel, "on_update"):
@@ -747,8 +743,8 @@ def test_tab_switch_invalidates_previous_saliency_view(panel_and_controller):
     assert panel._last_active_saliency_view is panel.tab_spectro
 
 
-def test_panel_shutdown_fences_all_saliency_views(panel_and_controller):
-    panel, _controller = panel_and_controller
+def test_panel_shutdown_fences_all_saliency_views(visualization_panel):
+    panel = visualization_panel
     views = (panel.tab_map, panel.tab_spectro, panel.tab_topo, panel.tab_3d)
 
     panel.begin_native_render_shutdown()
@@ -764,8 +760,8 @@ def test_panel_shutdown_fences_all_saliency_views(panel_and_controller):
         cast(Any, view).cancel_render_shutdown.assert_called_once_with()
 
 
-def test_panel_cleanup_fences_late_saliency_worker_callbacks(panel_and_controller):
-    panel, _controller = panel_and_controller
+def test_panel_cleanup_fences_late_saliency_worker_callbacks(visualization_panel):
+    panel = visualization_panel
     views = (panel.tab_map, panel.tab_spectro, panel.tab_topo, panel.tab_3d)
 
     panel.cleanup()
@@ -777,11 +773,11 @@ def test_panel_cleanup_fences_late_saliency_worker_callbacks(panel_and_controlle
 
 
 def test_saliency_worker_ownership_lasts_until_finished_callback(
-    panel_and_controller,
+    visualization_panel,
 ):
     from XBrainLab.ui.panels.visualization.panel import _SaliencyRenderTask
 
-    panel, _controller = panel_and_controller
+    panel = visualization_panel
     run = SaliencyRunIdentity(
         plan=SaliencyPlanIdentity(plan_index=0),
         run_index=0,
@@ -822,12 +818,12 @@ def test_saliency_worker_ownership_lasts_until_finished_callback(
 
 
 def test_saliency_worker_error_for_fresh_task_finishes_owned_operation(
-    panel_and_controller,
+    visualization_panel,
 ):
     """A current task without its owner ID is still the failed active render."""
     from XBrainLab.ui.panels.visualization.panel import _SaliencyRenderTask
 
-    panel, _controller = panel_and_controller
+    panel = visualization_panel
     active = _SaliencyRenderTask(
         request=SaliencyRenderRequest(
             publication_generation=1,
@@ -859,11 +855,11 @@ def test_saliency_worker_error_for_fresh_task_finishes_owned_operation(
 
 
 def test_saliency_worker_requeues_active_task_after_its_result_was_discarded(
-    panel_and_controller,
+    visualization_panel,
 ):
     from XBrainLab.ui.panels.visualization.panel import _SaliencyRenderTask
 
-    panel, _controller = panel_and_controller
+    panel = visualization_panel
     run = SaliencyRunIdentity(
         plan=SaliencyPlanIdentity(plan_index=0),
         run_index=0,
@@ -914,11 +910,11 @@ def test_saliency_worker_requeues_active_task_after_its_result_was_discarded(
 
 
 def test_saliency_worker_terminal_for_current_result_avoids_duplicate_render(
-    panel_and_controller,
+    visualization_panel,
 ):
     from XBrainLab.ui.panels.visualization.panel import _SaliencyRenderTask
 
-    panel, _controller = panel_and_controller
+    panel = visualization_panel
     active = _SaliencyRenderTask(
         request=SaliencyRenderRequest(
             publication_generation=1,
@@ -959,9 +955,9 @@ def test_saliency_worker_terminal_for_current_result_avoids_duplicate_render(
 
 
 def test_saliency_cache_miss_never_queries_backend_on_gui_thread(
-    panel_and_controller,
+    visualization_panel,
 ):
-    panel, _controller = panel_and_controller
+    panel = visualization_panel
     request = SaliencyRenderRequest(
         publication_generation=1,
         run=SaliencyRunIdentity(
@@ -980,8 +976,8 @@ def test_saliency_cache_miss_never_queries_backend_on_gui_thread(
     prepare_variants.assert_not_called()
 
 
-def test_panel_native_resource_finalizer_is_idempotent(panel_and_controller):
-    panel, _controller = panel_and_controller
+def test_panel_native_resource_finalizer_is_idempotent(visualization_panel):
+    panel = visualization_panel
     views = (panel.tab_map, panel.tab_spectro, panel.tab_topo, panel.tab_3d)
 
     assert panel.native_render_resources_finalized() is False
@@ -1046,9 +1042,9 @@ def test_real_panel_propagates_3d_native_close_failure_until_verified(qtbot):
 
 
 def test_cancelled_shutdown_resubmits_active_tab_with_current_publication(
-    panel_and_controller,
+    visualization_panel,
 ):
-    panel, _controller = panel_and_controller
+    panel = visualization_panel
     publication = MagicMock(usable=True)
     panel._application_view_publication = publication
     views = (panel.tab_map, panel.tab_spectro, panel.tab_topo, panel.tab_3d)
@@ -1230,8 +1226,8 @@ def test_cancelled_shutdown_resubmits_3d_publication_to_true_worker(
 
 
 class TestRefreshCombos:
-    def test_empty_publication_keeps_only_placeholder(self, panel_and_controller):
-        panel, _controller = panel_and_controller
+    def test_empty_publication_keeps_only_placeholder(self, visualization_panel):
+        panel = visualization_panel
 
         publication = _publish_panel_state(panel, _visualization_result())
 
@@ -1244,9 +1240,9 @@ class TestRefreshCombos:
 
     def test_populates_sorted_typed_plan_and_run_identities(
         self,
-        panel_and_controller,
+        visualization_panel,
     ):
-        panel, _controller = panel_and_controller
+        panel = visualization_panel
         result = _visualization_result(
             _run_coverage(
                 plan_index=1,
@@ -1310,10 +1306,10 @@ class TestRefreshCombos:
 
     def test_backend_admitted_cross_fold_summary_preserves_exact_identity(
         self,
-        panel_and_controller,
+        visualization_panel,
         qtbot,
     ):
-        panel, _controller = panel_and_controller
+        panel = visualization_panel
         cross_choice = {
             "identity": {
                 "members": [
@@ -1406,10 +1402,10 @@ class TestRefreshCombos:
 
     def test_evaluation_admitted_fold_set_is_selectable_before_saliency_exists(
         self,
-        panel_and_controller,
+        visualization_panel,
     ):
         """Newly finished folds must not inherit an earlier rendered result."""
-        panel, _controller = panel_and_controller
+        panel = visualization_panel
         admitted = {
             "identity": {
                 "members": [
@@ -1454,11 +1450,11 @@ class TestRefreshCombos:
 
     def test_evaluation_admitted_fold_set_dispatches_global_finished_compute(
         self,
-        panel_and_controller,
+        visualization_panel,
         monkeypatch,
     ):
         """A Fold Set is display context; Compute covers all finished results."""
-        panel, _controller = panel_and_controller
+        panel = visualization_panel
         admitted = {
             "identity": {
                 "members": [
@@ -1524,10 +1520,10 @@ class TestRefreshCombos:
 
     def test_cross_fold_normalize_during_first_load_reschedules_owned_variant(
         self,
-        panel_and_controller,
+        visualization_panel,
         qtbot,
     ):
-        panel, _controller = panel_and_controller
+        panel = visualization_panel
         cross_choice = {
             "identity": {
                 "members": [
@@ -1610,9 +1606,9 @@ class TestRefreshCombos:
 
     def test_preserves_selection_by_identity_across_publication_generation(
         self,
-        panel_and_controller,
+        visualization_panel,
     ):
-        panel, _controller = panel_and_controller
+        panel = visualization_panel
         initial_result = _visualization_result(
             _run_coverage(
                 plan_index=0,
@@ -1695,11 +1691,11 @@ class TestRefreshCombos:
     )
     def test_rejects_unusable_publication_and_clears_controls(
         self,
-        panel_and_controller,
+        visualization_panel,
         verified,
         stale,
     ):
-        panel, _controller = panel_and_controller
+        panel = visualization_panel
         result = _visualization_result(
             _run_coverage(
                 plan_index=0,
@@ -1725,9 +1721,9 @@ class TestRefreshCombos:
 
     def test_rejects_publication_with_unreliable_state(
         self,
-        panel_and_controller,
+        visualization_panel,
     ):
-        panel, _controller = panel_and_controller
+        panel = visualization_panel
         result = _visualization_result(
             _run_coverage(
                 plan_index=0,
@@ -1750,9 +1746,9 @@ class TestRefreshCombos:
 class TestOnPlanChanged:
     def test_populates_runs_only_for_typed_plan_identity(
         self,
-        panel_and_controller,
+        visualization_panel,
     ):
-        panel, _controller = panel_and_controller
+        panel = visualization_panel
         plan = SaliencyPlanIdentity(plan_index=0)
         result = _visualization_result(
             _run_coverage(
@@ -1782,9 +1778,9 @@ class TestOnPlanChanged:
 
     def test_placeholder_identity_clears_run_selection(
         self,
-        panel_and_controller,
+        visualization_panel,
     ):
-        panel, _controller = panel_and_controller
+        panel = visualization_panel
         _publish_panel_state(
             panel,
             _visualization_result(
@@ -1809,9 +1805,9 @@ class TestOnPlanChanged:
 class TestOnUpdate:
     def test_without_valid_selection_shows_placeholder(
         self,
-        panel_and_controller,
+        visualization_panel,
     ):
-        panel, _controller = panel_and_controller
+        panel = visualization_panel
         _publish_panel_state(panel, _visualization_result())
         current_widget = _current_widget(panel)
         current_widget.show_message.reset_mock()
@@ -1828,9 +1824,9 @@ class TestOnUpdate:
 
     def test_without_run_identity_shows_placeholder(
         self,
-        panel_and_controller,
+        visualization_panel,
     ):
-        panel, _controller = panel_and_controller
+        panel = visualization_panel
         _publish_panel_state(
             panel,
             _visualization_result(
@@ -1859,9 +1855,9 @@ class TestOnUpdate:
 
     def test_missing_publication_with_typed_selection_fails_closed(
         self,
-        panel_and_controller,
+        visualization_panel,
     ):
-        panel, _controller = panel_and_controller
+        panel = visualization_panel
         _publish_panel_state(
             panel,
             _visualization_result(
@@ -1894,9 +1890,9 @@ class TestOnUpdate:
 
     def test_unknown_typed_run_identity_fails_closed(
         self,
-        panel_and_controller,
+        visualization_panel,
     ):
-        panel, _controller = panel_and_controller
+        panel = visualization_panel
         _publish_panel_state(
             panel,
             _visualization_result(
@@ -1934,9 +1930,9 @@ class TestOnUpdate:
 
     def test_unavailable_published_method_never_requests_render(
         self,
-        panel_and_controller,
+        visualization_panel,
     ):
-        panel, _controller = panel_and_controller
+        panel = visualization_panel
         unavailable = SaliencyMethodCoverageSnapshot(
             method="Gradient",
             available=False,
@@ -1979,10 +1975,10 @@ class TestOnUpdate:
 
     def test_render_request_uses_exact_publication_and_run_identity(
         self,
-        panel_and_controller,
+        visualization_panel,
         qtbot,
     ):
-        panel, _controller = panel_and_controller
+        panel = visualization_panel
         coverage = _complete_coverage()
         publication = _publish_panel_state(
             panel,
@@ -2047,10 +2043,10 @@ class TestOnUpdate:
 
     def test_display_transform_toggles_use_fresh_owned_render_operations(
         self,
-        panel_and_controller,
+        visualization_panel,
         qtbot,
     ):
-        panel, _controller = panel_and_controller
+        panel = visualization_panel
         publication = _publish_panel_state(
             panel,
             _visualization_result(
@@ -2141,10 +2137,10 @@ class TestOnUpdate:
 
     def test_render_publication_cache_is_invalidated_by_application_generation(
         self,
-        panel_and_controller,
+        visualization_panel,
         qtbot,
     ):
-        panel, _controller = panel_and_controller
+        panel = visualization_panel
         publication = _publish_panel_state(
             panel,
             _visualization_result(
@@ -2194,10 +2190,10 @@ class TestOnUpdate:
 
     def test_stale_render_publication_is_rejected(
         self,
-        panel_and_controller,
+        visualization_panel,
         qtbot,
     ):
-        panel, _controller = panel_and_controller
+        panel = visualization_panel
         publication = _publish_panel_state(
             panel,
             _visualization_result(
@@ -2249,8 +2245,8 @@ class TestOnUpdate:
 
 
 class TestUpdatePanel:
-    def test_update_panel_refreshes_info_then_plot(self, panel_and_controller):
-        panel, _controller = panel_and_controller
+    def test_update_panel_refreshes_info_then_plot(self, visualization_panel):
+        panel = visualization_panel
         panel._application_summary_dirty = False
         with (
             patch.object(panel, "update_info") as update_info,
@@ -2261,8 +2257,8 @@ class TestUpdatePanel:
         update_info.assert_called_once_with()
         on_update.assert_called_once_with()
 
-    def test_update_info_refreshes_sidebar_and_combos(self, panel_and_controller):
-        panel, _controller = panel_and_controller
+    def test_update_info_refreshes_sidebar_and_combos(self, visualization_panel):
+        panel = visualization_panel
         panel.last_saliency_query = MagicMock()
         panel._saliency_summary_dirty = False
         with patch.object(panel, "refresh_combos") as refresh_combos:

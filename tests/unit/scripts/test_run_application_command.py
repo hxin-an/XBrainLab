@@ -19,7 +19,6 @@ def _payload_file_args(path: Path) -> argparse.Namespace:
         payload=None,
         payload_file=path,
         list_schemas=False,
-        include_legacy_compatibility=False,
     )
 
 
@@ -30,7 +29,6 @@ def _inline_payload_args(
         payload=payload,
         payload_file=None,
         list_schemas=False,
-        include_legacy_compatibility=False,
     )
 
 
@@ -491,7 +489,6 @@ def test_cli_bounds_schema_output(
         payload=None,
         payload_file=None,
         list_schemas=True,
-        include_legacy_compatibility=False,
     )
 
     class OversizedSpec:

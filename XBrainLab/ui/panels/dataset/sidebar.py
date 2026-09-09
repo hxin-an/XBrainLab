@@ -113,16 +113,13 @@ class DatasetSidebar(QWidget):
     """Sidebar for ``DatasetPanel`` containing information and action controls.
 
     Hosts an aggregate info panel, primary import buttons, and channel selection.
-    Metadata parsing and external labels live in
-    the Data Import wizard; the old post-load label button is retained only as
-    hidden compatibility wiring for tests and compatibility adapters.
+    Metadata parsing and external labels live in the Data Import wizard.
 
     Attributes:
         panel: The parent ``DatasetPanel`` reference.
         info_panel: ``AggregateInfoPanel`` displaying summary statistics.
         import_btn: Button to import EEG data files.
         reload_recipe_btn: Button to reload a saved import recipe.
-        import_label_btn: Hidden compatibility button for old label attachment.
         smart_parse_btn: Hidden compatibility button to auto-extract metadata.
         chan_select_btn: Button to open channel selection dialog.
 
@@ -241,13 +238,6 @@ class DatasetSidebar(QWidget):
         self.exec_layout.setContentsMargins(0, 10, 0, 0)
         self.exec_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        self.import_label_btn = QPushButton("Add labels")
-        self.import_label_btn.setToolTip("Attach labels to the loaded EEG data")
-        self.import_label_btn.setStyleSheet(_DATASET_SIDEBAR_BUTTON_STYLE)
-        self.import_label_btn.clicked.connect(self.panel.action_handler.import_label)
-        self.import_label_btn.setVisible(False)
-        self.exec_layout.addWidget(self.import_label_btn)
-
         self.chan_select_btn = QPushButton("Channels")
         self.chan_select_btn.setToolTip("Select specific channels to keep")
         self.chan_select_btn.setStyleSheet(_DATASET_SIDEBAR_BUTTON_STYLE)
@@ -274,7 +264,6 @@ class DatasetSidebar(QWidget):
             self.reload_recipe_btn,
             self.import_cancel_btn,
             self.smart_parse_btn,
-            self.import_label_btn,
             self.chan_select_btn,
             self.electrode_layout_btn,
         )
@@ -301,7 +290,6 @@ class DatasetSidebar(QWidget):
         query = execute_application_command(
             self,
             QueryStateCommand(query="state"),
-            refresh=False,
             expected_publication_generation=reviewed_generation,
         )
         if query is None or query.failed:
@@ -487,24 +475,10 @@ class DatasetSidebar(QWidget):
 
     def _apply_startup_bootstrap_state(self) -> None:
         """Present the known empty-workspace actions before command runtime startup."""
-        if has_real_application_context(self):
-            unavailable_actions = {
-                self.import_btn: _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
-                self.reload_recipe_btn: _RECIPE_RELOAD_AVAILABILITY_UNAVAILABLE,
-                self.smart_parse_btn: _SMART_PARSE_AVAILABILITY_UNAVAILABLE,
-                self.import_label_btn: _LABEL_IMPORT_AVAILABILITY_UNAVAILABLE,
-                self.chan_select_btn: _CHANNEL_SELECTION_AVAILABILITY_UNAVAILABLE,
-            }
-            for button, tooltip in unavailable_actions.items():
-                button.setEnabled(False)
-                button.setToolTip(tooltip)
-            return
-
         unavailable_actions = {
             self.import_btn: _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
             self.reload_recipe_btn: _RECIPE_RELOAD_AVAILABILITY_UNAVAILABLE,
             self.smart_parse_btn: _SMART_PARSE_AVAILABILITY_UNAVAILABLE,
-            self.import_label_btn: _LABEL_IMPORT_AVAILABILITY_UNAVAILABLE,
             self.chan_select_btn: _CHANNEL_SELECTION_AVAILABILITY_UNAVAILABLE,
         }
         for button, tooltip in unavailable_actions.items():
@@ -546,11 +520,6 @@ class DatasetSidebar(QWidget):
             )
             smart_parse_capability = (
                 capabilities.get(CommandName.APPLY_SMART_PARSE)
-                if capabilities is not None
-                else None
-            )
-            import_label_capability = (
-                capabilities.get(CommandName.IMPORT_LABELS)
                 if capabilities is not None
                 else None
             )
@@ -691,20 +660,6 @@ class DatasetSidebar(QWidget):
             else:
                 self.smart_parse_btn.setEnabled(False)
                 self.smart_parse_btn.setToolTip(_SMART_PARSE_AVAILABILITY_UNAVAILABLE)
-
-            if import_label_capability is not None:
-                self.import_label_btn.setEnabled(import_label_capability.enabled)
-                self.import_label_btn.setToolTip(
-                    "Add labels to loaded data and update the current recipe trace."
-                    if import_label_capability.enabled
-                    else blocked_reason(
-                        import_label_capability,
-                        "Interpret a data source before adding labels.",
-                    ),
-                )
-            else:
-                self.import_label_btn.setEnabled(False)
-                self.import_label_btn.setToolTip(_LABEL_IMPORT_AVAILABILITY_UNAVAILABLE)
 
             self._fit_action_labels()
 

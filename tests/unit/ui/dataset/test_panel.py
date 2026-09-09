@@ -50,18 +50,6 @@ def mock_main_window(qtbot):
     window.close()
 
 
-@pytest.fixture
-def mock_controller(mock_main_window):
-    controller = MagicMock()
-    controller.is_locked.return_value = False
-    controller.has_data.return_value = False
-    controller.get_loaded_data_list.return_value = []
-
-    # Configure Study to return this controller
-    cast(Any, mock_main_window).study.get_controller.return_value = controller
-    return controller
-
-
 def loaded_data_stub(filename: str, *, labels_imported: bool = False) -> MagicMock:
     data = MagicMock()
     data.configure_mock(
@@ -135,10 +123,6 @@ def dataset_shell_with_assistant(
 ) -> tuple[QMainWindow, DatasetPanel, QDockWidget]:
     window = QMainWindow()
     cast(Any, window).study = MagicMock()
-    controller = MagicMock()
-    controller.is_locked.return_value = False
-    controller.has_data.return_value = False
-    controller.get_loaded_data_list.return_value = []
 
     central_widget = QWidget(window)
     central_layout = QVBoxLayout(central_widget)
@@ -148,7 +132,7 @@ def dataset_shell_with_assistant(
     top_bar.setObjectName("TopBar")
     top_bar.setFixedHeight(50)
     central_layout.addWidget(top_bar)
-    panel = DatasetPanel(controller=controller, parent=window)
+    panel = DatasetPanel(parent=window)
     central_layout.addWidget(panel)
     window.setCentralWidget(central_widget)
     status_bar = window.statusBar()
@@ -473,34 +457,6 @@ def test_dataset_fixed_sidebar_ignores_wide_native_font_minimum_hints(qtbot):
         app.processEvents()
 
 
-def test_update_panel_uses_query_data_list_before_stale_controller(qtbot):
-    study = Study()
-    data = loaded_data_stub("sub-01_task-mi_raw.fif")
-    study.loaded_data_list = [data]
-
-    controller = MagicMock()
-    controller.study = study
-    controller.is_locked.return_value = False
-    controller.get_loaded_data_list.side_effect = AssertionError(
-        "stale loaded list should not be read",
-    )
-
-    real_window = QMainWindow()
-    cast(Any, real_window).study = study
-    panel = DatasetPanel(controller=controller, parent=real_window)
-    qtbot.addWidget(real_window)
-    qtbot.addWidget(panel)
-
-    panel.update_panel()
-
-    controller.get_loaded_data_list.assert_not_called()
-    assert panel.table.rowCount() == 1
-    file_item = panel.table.item(0, 0)
-    assert file_item is not None
-    assert file_item.text() == "sub-01_task-mi_raw.fif"
-    real_window.close()
-
-
 def test_update_panel_uses_typed_runtime_rows_without_compatibility_controller(qtbot):
     study = Study()
     study.loaded_data_list = [loaded_data_stub("sub-01_task-mi_raw.fif")]
@@ -515,7 +471,6 @@ def test_update_panel_uses_typed_runtime_rows_without_compatibility_controller(q
 
     panel.update_panel()
 
-    assert panel.controller is None
     assert panel.table.rowCount() == 1
     assert panel.data_surface.currentWidget() is panel.table
     file_item = panel.table.item(0, 0)
@@ -528,16 +483,9 @@ def test_update_panel_refuses_real_study_query_none_controller_fallback(qtbot):
     study = Study()
     study.loaded_data_list = [loaded_data_stub("sub-01_task-mi_raw.fif")]
 
-    controller = MagicMock()
-    controller.study = study
-    controller.is_locked.return_value = False
-    controller.get_loaded_data_list.side_effect = AssertionError(
-        "stale loaded list should not be read",
-    )
-
     real_window = QMainWindow()
     cast(Any, real_window).study = study
-    panel = DatasetPanel(controller=controller, parent=real_window)
+    panel = DatasetPanel(parent=real_window)
     qtbot.addWidget(real_window)
     qtbot.addWidget(panel)
 
@@ -547,7 +495,6 @@ def test_update_panel_refuses_real_study_query_none_controller_fallback(qtbot):
     ):
         rendered = panel.update_panel()
 
-    controller.get_loaded_data_list.assert_not_called()
     assert panel.table.rowCount() == 0
     assert rendered is False
     assert panel.data_surface.currentWidget() is panel.empty_state
@@ -559,9 +506,7 @@ def test_update_panel_refuses_real_study_query_none_controller_fallback(qtbot):
 def test_deferred_runtime_uses_actionable_empty_state(qtbot):
     real_window = QMainWindow()
     cast(Any, real_window).study = Study()
-    controller = MagicMock()
-    controller.study = cast(Any, real_window).study
-    panel = DatasetPanel(controller=controller, parent=real_window)
+    panel = DatasetPanel(parent=real_window)
     qtbot.addWidget(real_window)
     qtbot.addWidget(panel)
     panel.table.setRowCount(1)
@@ -590,31 +535,7 @@ def test_deferred_runtime_uses_actionable_empty_state(qtbot):
     real_window.close()
 
 
-def test_dataset_panel_does_not_resolve_controller(
-    mock_main_window, mock_controller, qtbot
-):
-    """Dataset state must start from the typed publication/query boundary."""
-    # Create a REAL QMainWindow to serve as parent
-    real_window = QMainWindow()
-    # Attach the mock study from our fixture to this real window
-    # Note: DatasetPanel accesses self.main_window.study if passed main_window
-    # or parent().study if passed parent.
-    # Let's verify standard pattern: usually parent() -> main_window
-
-    cast(Any, real_window).study = cast(Any, mock_main_window).study
-
-    panel = DatasetPanel(parent=real_window)
-    qtbot.addWidget(panel)
-
-    assert panel.controller is None
-    cast(Any, real_window).study.get_controller.assert_not_called()
-
-    # Clean up
-    panel.close()
-    real_window.close()
-
-
-def test_dataset_panel_import_data_success(mock_main_window, mock_controller, qtbot):
+def test_dataset_panel_import_data_success(mock_main_window, qtbot):
     """Import without command service should not mutate the controller."""
     from XBrainLab.ui.dialogs.dataset.eeg_source_chooser_dialog import (
         EegSourceSelection,
@@ -630,7 +551,7 @@ def test_dataset_panel_import_data_success(mock_main_window, mock_controller, qt
         def get_result(self):
             return EegSourceSelection(kind="files", paths=("/path/to/file.set",))
 
-    panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
+    panel = DatasetPanel(parent=mock_main_window)
     qtbot.addWidget(panel)
     panel.action_handler._data_interpretation._source_chooser_dialog_class = lambda: (
         _AcceptedChooser
@@ -640,17 +561,15 @@ def test_dataset_panel_import_data_success(mock_main_window, mock_controller, qt
         "XBrainLab.ui.panels.dataset.actions.show_warning",
     ) as mock_warning:
         panel.action_handler.import_data()
-        mock_controller.import_files.assert_not_called()
         mock_warning.assert_called_once()
         assert mock_warning.call_args.args[1] == "Interpretation Blocked"
 
 
 def test_dataset_panel_uses_product_empty_state_instead_of_blank_table(
     mock_main_window,
-    mock_controller,
     qtbot,
 ):
-    panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
+    panel = DatasetPanel(parent=mock_main_window)
     qtbot.addWidget(panel)
     panel.resize(980, 520)
     panel.show()
@@ -670,11 +589,10 @@ def test_dataset_panel_uses_product_empty_state_instead_of_blank_table(
 
 def test_dataset_empty_state_primary_action_opens_import_flow(
     mock_main_window,
-    mock_controller,
     qtbot,
 ):
     with patch.object(DatasetActionHandler, "import_data") as import_data:
-        panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
+        panel = DatasetPanel(parent=mock_main_window)
         qtbot.addWidget(panel)
         panel.resize(980, 520)
         panel.show()
@@ -690,10 +608,9 @@ def test_dataset_empty_state_primary_action_opens_import_flow(
 
 def test_dataset_panel_table_columns_fill_available_width(
     mock_main_window,
-    mock_controller,
     qtbot,
 ):
-    panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
+    panel = DatasetPanel(parent=mock_main_window)
     qtbot.addWidget(panel)
     panel.resize(1280, 480)
     panel.show()
@@ -727,10 +644,9 @@ def test_dataset_panel_table_columns_fill_available_width(
 
 def test_dataset_panel_table_columns_shrink_to_fill_narrow_panel(
     mock_main_window,
-    mock_controller,
     qtbot,
 ):
-    panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
+    panel = DatasetPanel(parent=mock_main_window)
     qtbot.addWidget(panel)
     panel.resize(620, 420)
     panel.show()
@@ -768,14 +684,42 @@ def test_dataset_panel_table_columns_shrink_to_fill_narrow_panel(
 
 def test_dataset_panel_refits_table_after_loaded_rows_settle(
     mock_main_window,
-    mock_controller,
     qtbot,
+    monkeypatch,
 ):
-    mock_controller.get_loaded_data_list.return_value = [
-        loaded_data_stub("sub-01_task-mi_run-1_raw.fif"),
-        loaded_data_stub("sub-01_task-mi_run-2_raw.fif", labels_imported=True),
+    import mne
+    import numpy as np
+
+    from XBrainLab.backend.load_data import Raw
+
+    study = Study()
+    rows = [
+        Raw(
+            filename,
+            mne.io.RawArray(
+                np.zeros((2, 100)),
+                mne.create_info(["C3", "C4"], 100.0, ch_types="eeg"),
+                verbose="ERROR",
+            ),
+        )
+        for filename in ("internal_raw.fif", "labelled_raw.fif")
     ]
-    panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
+    for raw in rows:
+        raw.set_event(np.array([[10, 0, 1], [30, 0, 2]]), {"left": 1, "right": 2})
+    rows[1].set_labels_imported(True)
+    study.set_loaded_data_list(rows, force_update=True)
+    cast(Any, mock_main_window).study = study
+    runtime = application_ui_runtime(mock_main_window)
+    assert runtime is not None
+    for raw in rows:
+        monkeypatch.setattr(
+            raw,
+            "get_event_list",
+            MagicMock(
+                side_effect=AssertionError("Table must use cached event metadata")
+            ),
+        )
+    panel = DatasetPanel(parent=mock_main_window)
     qtbot.addWidget(panel)
     panel.resize(760, 420)
     panel.show()
@@ -783,6 +727,18 @@ def test_dataset_panel_refits_table_after_loaded_rows_settle(
     panel.update_panel()
     qtbot.wait(10)
 
+    assert panel.table.rowCount() == 2
+    assert panel.table.item(0, 6).text() == "Events (2)"
+    assert panel.table.item(0, 6).toolTip() == "Events detected in the recording."
+    assert panel.table.item(1, 6).text() == "Labels (2)"
+    assert (
+        panel.table.item(1, 6).toolTip()
+        == "External labels are attached to this recording."
+    )
+    assert (
+        panel.table.item(1, 6).foreground().color().name().lower()
+        == Theme.TEXT_MUTED.lower()
+    )
     header = panel.table.horizontalHeader()
     viewport = panel.table.viewport()
     scrollbar = panel.table.horizontalScrollBar()
@@ -791,14 +747,14 @@ def test_dataset_panel_refits_table_after_loaded_rows_settle(
     assert scrollbar is not None
     assert abs(header.length() - viewport.width()) <= 2
     assert scrollbar.maximum() == 0
+    runtime.close()
 
 
 def test_dataset_panel_keeps_file_column_when_assistant_reduces_width(
     mock_main_window,
-    mock_controller,
     qtbot,
 ):
-    panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
+    panel = DatasetPanel(parent=mock_main_window)
     qtbot.addWidget(panel)
     panel.resize(425, 420)
     panel.show()
@@ -833,10 +789,9 @@ def test_dataset_panel_keeps_file_column_when_assistant_reduces_width(
 
 def test_dataset_panel_keeps_data_summary_at_sidebar_top_across_widths(
     mock_main_window,
-    mock_controller,
     qtbot,
 ):
-    panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
+    panel = DatasetPanel(parent=mock_main_window)
     mock_main_window.setCentralWidget(panel)
     mock_main_window.resize(620, 520)
     mock_main_window.show()
@@ -930,201 +885,54 @@ def test_dataset_summary_uses_one_vertical_scroll_owner_at_short_high_dpi_shell(
 
 def test_dataset_panel_has_no_post_import_interruption_bar(
     mock_main_window,
-    mock_controller,
     qtbot,
 ):
-    panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
+    panel = DatasetPanel(parent=mock_main_window)
     qtbot.addWidget(panel)
 
     assert panel.findChild(QFrame, "DatasetPostImportAction") is None
 
 
-def _legacy_dataset_panel_events_column_uses_semantic_text_and_muted_color(
-    mock_main_window, mock_controller, qtbot
-):
-    internal_events = MagicMock()
-    internal_events.configure_mock(
-        **{
-            "get_filename.return_value": "internal_events.set",
-            "get_subject_name.return_value": "Sub01",
-            "get_session_name.return_value": "Sess01",
-            "get_nchan.return_value": 32,
-            "get_sfreq.return_value": 250,
-            "get_epochs_length.return_value": 0,
-            "has_event.return_value": True,
-            "is_raw.return_value": True,
-            "is_labels_imported.return_value": False,
-            "get_event_summary.return_value": {
-                "available": True,
-                "count": 3,
-                "labels": [],
-                "source": "detected_events",
-                "scanned": True,
-            },
-        }
-    )
-    imported_labels = MagicMock()
-    imported_labels.configure_mock(
-        **{
-            "get_filename.return_value": "imported_labels.set",
-            "get_subject_name.return_value": "Sub02",
-            "get_session_name.return_value": "Sess02",
-            "get_nchan.return_value": 32,
-            "get_sfreq.return_value": 250,
-            "get_epochs_length.return_value": 0,
-            "has_event.return_value": True,
-            "is_raw.return_value": True,
-            "is_labels_imported.return_value": True,
-            "get_event_summary.return_value": {
-                "available": True,
-                "count": 2,
-                "labels": [],
-                "source": "attached_labels",
-                "scanned": True,
-            },
-        }
-    )
-    mock_controller.get_loaded_data_list.return_value = [
-        internal_events,
-        imported_labels,
-    ]
+def test_dataset_panel_metadata_edit_commits_through_real_application(qtbot):
+    """An inline edit changes the actual row through the reviewed command boundary."""
+    import mne
+    import numpy as np
 
-    panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
-    qtbot.addWidget(panel)
-    panel.update_panel()
+    from XBrainLab.backend.load_data import Raw
 
-    internal_item = panel.table.item(0, 6)
-    imported_item = panel.table.item(1, 6)
-    assert internal_item is not None
-    assert imported_item is not None
-
-    assert internal_item.text() == "Events (3)"
-    assert internal_item.toolTip() == "Events detected in the recording."
-    assert imported_item.text() == "Labels (2)"
-    assert imported_item.toolTip() == "External labels are attached to this recording."
-    assert internal_item.foreground().color().name().lower() not in {
-        Theme.ACCENT_SUCCESS.lower(),
-        "#50fa7b",
-    }
-    assert imported_item.foreground().color().name().lower() == (
-        Theme.TEXT_MUTED.lower()
-    )
-
-
-def _legacy_update_panel_uses_cached_event_summary_without_scanning(
-    mock_main_window, mock_controller, qtbot
-):
-    data = loaded_data_stub("cached_events.set")
-    data.get_event_summary.return_value = {
-        "available": True,
-        "count": 5,
-        "labels": ["left", "right"],
-        "source": "detected_events",
-        "scanned": True,
-    }
-    data.get_event_list.side_effect = AssertionError(
-        "dataset table should not scan raw events during render"
-    )
-    data.has_event.side_effect = AssertionError(
-        "dataset table should use cached event summary first"
-    )
-    mock_controller.get_loaded_data_list.return_value = [data]
-
-    panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
-    qtbot.addWidget(panel)
-    panel.update_panel()
-
-    event_item = panel.table.item(0, 6)
-    assert event_item is not None
-    assert event_item.text() == "Events (5)"
-
-
-def _legacy_dataset_panel_on_item_changed(mock_main_window, mock_controller, qtbot):
-    """Test editing subject/session in table updates metadata via controller."""
-    mock_data = MagicMock()
-    mock_data.configure_mock(
-        **{
-            "get_filepath.return_value": "/path/test.set",
-            "get_filename.return_value": "test.set",
-            "get_subject_name.return_value": "Sub01",
-            "get_session_name.return_value": "Sess01",
-            "get_event_list.return_value": ([], {}),
-            "get_epochs_length.return_value": 0,
-            "get_nchan.return_value": 0,
-            "get_sfreq.return_value": 100,
-            "get_tmin.return_value": 0,
-            "get_epoch_duration.return_value": 0,
-            "is_raw.return_value": True,
-            "get_filter_range.return_value": (0, 0),
-        }
-    )
-    # Needed for _populate_table in update_panel
-    mock_data.get_subject_name.return_value = "Sub01"
-
-    mock_controller.get_loaded_data_list.return_value = [mock_data]
-
-    panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
-    qtbot.addWidget(panel)
-    panel.update_panel()
-
-    # Mock update_panel to avoid clearing the table (which deletes the item
-    # triggering the signal)
-    with (
-        patch.object(panel, "update_panel"),
-        patch("XBrainLab.ui.panels.dataset.panel.show_warning") as mock_warning,
-    ):
-        # Simulate editing Subject (Column 1)
-        item = panel.table.item(0, 1)  # Subject
-        assert item is not None
-        item.setText("NewSub")
-
-        mock_controller.update_metadata.assert_not_called()
-        mock_warning.assert_called_once()
-        assert mock_warning.call_args.args[1] == "Metadata blocked"
-
-
-def test_dataset_panel_metadata_service_success_uses_coordinator_refresh(
-    mock_main_window,
-    mock_controller,
-    qtbot,
-):
-    """Service-backed inline metadata edits should not refresh locally."""
-    from XBrainLab.backend.application import UpdateMetadataCommand
-
-    mock_data = MagicMock()
-    mock_controller.get_loaded_data_list.return_value = [mock_data]
-    panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
-    qtbot.addWidget(panel)
-    panel.table.blockSignals(True)
-    panel.table.setRowCount(1)
-    panel.table.setColumnCount(7)
-    name_item = QTableWidgetItem("file.set")
-    name_item.setData(
-        panel._ROW_IDENTITY_ROLE,
-        DatasetTableRowIdentity(
-            canonical_filepath="/data/file.set",
-            rendered_row=0,
+    study = Study()
+    raw = Raw(
+        "recording_raw.fif",
+        mne.io.RawArray(
+            np.zeros((2, 100)),
+            mne.create_info(["C3", "C4"], 100.0, ch_types="eeg"),
+            verbose="ERROR",
         ),
     )
-    panel.table.setItem(0, 0, name_item)
-    subject_item = QTableWidgetItem("S02")
-    panel.table.setItem(0, 1, subject_item)
+    study.set_loaded_data_list([raw], force_update=True)
+    window = QMainWindow()
+    qtbot.addWidget(window)
+    cast(Any, window).study = study
+    runtime = application_ui_runtime(window)
+    assert runtime is not None
+    panel = DatasetPanel(parent=window, publication_port=runtime)
+    qtbot.addWidget(panel)
+    panel.update_panel()
+    subject_item = panel.table.item(0, 1)
+    assert subject_item is not None
+    assert subject_item.flags() & Qt.ItemFlag.ItemIsEditable
+    panel._capture_metadata_edit(0, 1)
+    panel.table.blockSignals(True)
+    subject_item.setText("S02")
     panel.table.blockSignals(False)
 
-    with (
-        patch.object(panel, "update_panel") as mock_update,
-        patch(
-            "XBrainLab.ui.panels.dataset.panel.execute_application_command",
-            return_value=MagicMock(failed=False),
-        ) as mock_execute,
-    ):
+    try:
         panel.on_item_changed(subject_item)
-
-    command = mock_execute.call_args.args[1]
-    assert isinstance(command, UpdateMetadataCommand)
-    assert command.subject == "S02"
-    mock_controller.update_metadata.assert_not_called()
-    mock_update.assert_not_called()
+        assert study.loaded_data_list[0].get_subject_name() == "S02"
+        assert raw.get_subject_name() != "S02"  # Mutation used a detached row.
+        assert runtime.get_view_publication().state.raw.metadata[0]["subject"] == "S02"
+    finally:
+        runtime.close()
 
 
 def test_dataset_panel_metadata_edit_refuses_real_study_controller_fallback(qtbot):
@@ -1134,9 +942,8 @@ def test_dataset_panel_metadata_edit_refuses_real_study_controller_fallback(qtbo
     qtbot.addWidget(window)
     study = Study()
     cast(Any, window).study = study
-    controller = MagicMock()
 
-    panel = DatasetPanel(controller=controller, parent=window)
+    panel = DatasetPanel(parent=window)
     qtbot.addWidget(panel)
     panel.table.blockSignals(True)
     panel.table.setRowCount(1)
@@ -1157,10 +964,6 @@ def test_dataset_panel_metadata_edit_refuses_real_study_controller_fallback(qtbo
     with (
         patch.object(panel, "update_panel") as mock_update,
         patch(
-            "XBrainLab.ui.panels.dataset.panel.get_command_capability",
-            return_value=None,
-        ),
-        patch(
             "XBrainLab.ui.panels.dataset.panel.execute_application_command",
             return_value=None,
         ),
@@ -1168,7 +971,6 @@ def test_dataset_panel_metadata_edit_refuses_real_study_controller_fallback(qtbo
     ):
         panel.on_item_changed(subject_item)
 
-    controller.update_metadata.assert_not_called()
     mock_warning.assert_called_once()
     assert mock_warning.call_args.args[1] == "Metadata blocked"
     assert mock_warning.call_args.args[2] == (
@@ -1203,10 +1005,8 @@ def test_dataset_panel_metadata_cells_use_backend_update_capability(qtbot):
     )
     study.loaded_data_list = [mock_data]
     study.epoch_data = MagicMock()
-    controller = MagicMock()
-    controller.get_loaded_data_list.return_value = [mock_data]
 
-    panel = DatasetPanel(controller=controller, parent=window)
+    panel = DatasetPanel(parent=window)
     qtbot.addWidget(panel)
     panel.update_panel()
 
@@ -1226,8 +1026,7 @@ def test_dataset_panel_clears_state_when_product_publication_is_missing(qtbot):
     window = QMainWindow()
     qtbot.addWidget(window)
     cast(Any, window).study = Study()
-    controller = MagicMock()
-    panel = DatasetPanel(controller=controller, parent=window)
+    panel = DatasetPanel(parent=window)
     qtbot.addWidget(panel)
 
     with (
@@ -1249,7 +1048,6 @@ def test_dataset_panel_metadata_cells_fail_closed_without_product_capability(
     window = QMainWindow()
     qtbot.addWidget(window)
     cast(Any, window).study = Study()
-    controller = MagicMock()
     data = loaded_data_stub("sub-01_task-mi_raw.fif")
     publication = SimpleNamespace(
         usable=True,
@@ -1257,7 +1055,7 @@ def test_dataset_panel_metadata_cells_fail_closed_without_product_capability(
         effective_capabilities={},
         state=SimpleNamespace(active_dataset=None),
     )
-    panel = DatasetPanel(controller=controller, parent=window)
+    panel = DatasetPanel(parent=window)
     qtbot.addWidget(panel)
 
     with (
@@ -1275,10 +1073,6 @@ def test_dataset_panel_metadata_cells_fail_closed_without_product_capability(
             panel,
             "_read_application_publication",
             return_value=publication,
-        ),
-        patch(
-            "XBrainLab.ui.panels.dataset.panel.get_command_capability",
-            return_value=None,
         ),
     ):
         panel.update_panel()
@@ -1300,7 +1094,6 @@ def test_dataset_panel_metadata_edit_fails_closed_without_product_capability(qtb
     window = QMainWindow()
     qtbot.addWidget(window)
     cast(Any, window).study = Study()
-    controller = MagicMock()
     data = loaded_data_stub("sub-01_task-mi_raw.fif")
     publication = SimpleNamespace(
         usable=True,
@@ -1308,7 +1101,7 @@ def test_dataset_panel_metadata_edit_fails_closed_without_product_capability(qtb
         effective_capabilities={},
         state=SimpleNamespace(active_dataset=None),
     )
-    panel = DatasetPanel(controller=controller, parent=window)
+    panel = DatasetPanel(parent=window)
     qtbot.addWidget(panel)
 
     with (
@@ -1326,10 +1119,6 @@ def test_dataset_panel_metadata_edit_fails_closed_without_product_capability(qtb
             panel,
             "_read_application_publication",
             return_value=publication,
-        ),
-        patch(
-            "XBrainLab.ui.panels.dataset.panel.get_command_capability",
-            return_value=None,
         ),
     ):
         panel.update_panel()
@@ -1360,12 +1149,10 @@ def test_dataset_panel_metadata_edit_fails_closed_without_product_capability(qtb
     )
 
 
-def test_dataset_panel_smart_parse(mock_main_window, mock_controller, qtbot):
+def test_dataset_panel_smart_parse(mock_main_window, qtbot):
     """Test smart parser delegates to controller."""
-    mock_controller.has_data.return_value = True
-    mock_controller.get_filenames.return_value = ["/path/file.set"]
 
-    panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
+    panel = DatasetPanel(parent=mock_main_window)
     qtbot.addWidget(panel)
 
     with patch("XBrainLab.ui.panels.dataset.actions.SmartParserDialog") as MockDialog:
@@ -1373,10 +1160,7 @@ def test_dataset_panel_smart_parse(mock_main_window, mock_controller, qtbot):
         instance.exec.return_value = True
         instance.get_result.return_value = {"/path/file.set": ("sub", "ses")}
 
-        mock_controller.apply_smart_parse.return_value = 1
-
         with patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_warning:
             panel.action_handler.open_smart_parser()
-            mock_controller.apply_smart_parse.assert_not_called()
             mock_warning.assert_called_once()
             assert mock_warning.call_args.args[1] == "Smart Parse Blocked"

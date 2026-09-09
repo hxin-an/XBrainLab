@@ -10,15 +10,16 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
+from tests.integration.data_interpretation_support import (
+    import_recording_through_interpretation,
+)
 from XBrainLab.backend.application import (
     ApplicationService,
     ApplyInterpretationCommand,
-    AttachLabelsCommand,
     CommandName,
     ConfigureTrainingCommand,
     CreateEpochCommand,
     EvaluateCommand,
-    LoadDataCommand,
     PreprocessCommand,
     PreprocessOperation,
     PreviewInterpretationCommand,
@@ -257,7 +258,7 @@ def _build_reviewed_label_service(stem: str) -> ApplicationService:
     [
         (None, "explicit target EEG event set"),
         ([], "explicit target EEG event set"),
-        (["event-that-does-not-exist"], "not found in the recording"),
+        (["event-that-does-not-exist"], "Target EEG event(s) were not found"),
     ],
     ids=["missing", "empty", "unknown"],
 )
@@ -267,31 +268,56 @@ def test_checked_in_sequence_labels_fail_without_reviewed_target_events(
 ) -> None:
     gdf_path, label_path = _checked_in_fixture_pair("A01T")
     service = ApplicationService()
-    loaded = service.execute(LoadDataCommand(paths=[gdf_path]))
-    assert loaded.ok is True
-
-    attached = service.execute(
-        AttachLabelsCommand(
-            mapping={"A01T.gdf": label_path},
-            label_paths=[label_path],
-            selected_event_names=selected_event_names,
+    assert import_recording_through_interpretation(service, gdf_path).ok
+    original_raw = service.dataset.get_loaded_data_list()[0]
+    original_events, original_event_id = original_raw.get_event_list()
+    original_events = original_events.copy()
+    assert service.execute(
+        ScanSourceCommand(source_path=gdf_path, label_sources=[label_path])
+    ).ok
+    preview = service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "selected_eeg_files": [gdf_path],
+                "label_carrier_choices": {
+                    label_path: {
+                        "label_field": "classlabel",
+                        "target_event_codes": selected_event_names,
+                        "placement_method": "eeg_event",
+                        "time_model": "trial_order",
+                        "granularity": "trial",
+                        "value_decisions": _class_value_decisions(
+                            {
+                                event_name: event_name
+                                for event_name in EXPECTED_LABEL_EVENT_ID
+                            }
+                        ),
+                    },
+                },
+            }
         )
     )
-
+    assert preview.ok
+    validation = service.execute(ValidateInterpretationCommand())
+    assert validation.ok
+    attached = service.execute(ApplyInterpretationCommand(confirmed=True))
     assert attached.failed is True
     assert expected_message in attached.message
     raw = service.dataset.get_loaded_data_list()[0]
     events, event_id = raw.get_event_list()
+    assert raw is original_raw
+    np.testing.assert_array_equal(events, original_events)
+    assert event_id == original_event_id
     assert raw.is_labels_imported() is False
     assert len(events) == 603
     assert {"769", "770", "771", "772"} <= set(event_id)
+    service.close()
 
 
 def test_checked_in_sequence_labels_preserve_reviewed_cue_sample_positions() -> None:
-    gdf_path, label_path = _checked_in_fixture_pair("A01T")
+    gdf_path, _label_path = _checked_in_fixture_pair("A01T")
     service = ApplicationService()
-    loaded = service.execute(LoadDataCommand(paths=[gdf_path]))
-    assert loaded.ok is True
+    assert import_recording_through_interpretation(service, gdf_path).ok
 
     raw = service.dataset.get_loaded_data_list()[0]
     original_events, original_event_id = raw.get_event_list()
@@ -302,17 +328,12 @@ def test_checked_in_sequence_labels_preserve_reviewed_cue_sample_positions() -> 
     ].copy()
     assert expected_samples.shape == (288,)
 
-    attached = service.execute(
-        AttachLabelsCommand(
-            mapping={"A01T.gdf": label_path},
-            label_paths=[label_path],
-            selected_event_names=["769", "770", "771", "772"],
-        )
-    )
-
-    assert attached.ok is True, attached.message
-    applied_events, _applied_event_id = raw.get_event_list()
+    service.close()
+    interpreted = _build_reviewed_label_service("A01T")
+    applied_raw = interpreted.dataset.get_loaded_data_list()[0]
+    applied_events, _applied_event_id = applied_raw.get_event_list()
     np.testing.assert_array_equal(applied_events[:, 0], expected_samples)
+    interpreted.close()
 
 
 def _query_epoch_setup(service: ApplicationService) -> dict[str, object]:

@@ -132,16 +132,6 @@ def test_training_panel_recovers_after_async_cuda_oom(
 
     request.addfinalizer(close_service)
     study = service.study
-    lifecycle_events: list[str] = []
-    training_controller = study.get_controller("training")
-    training_controller.subscribe(
-        "training_started",
-        lambda: lifecycle_events.append("started"),
-    )
-    training_controller.subscribe(
-        "training_stopped",
-        lambda: lifecycle_events.append("stopped"),
-    )
     host = cast(Any, MainWindow(study))
     qtbot.addWidget(host)
     host.resize(1220, 820)
@@ -218,18 +208,29 @@ def test_training_panel_recovers_after_async_cuda_oom(
         lambda: application_command_registry().active_count(panel.sidebar) == 0,
         timeout=5_000,
     )
-    qtbot.waitUntil(
-        lambda: lifecycle_events == ["started", "stopped"],
-        timeout=5_000,
-    )
-    qtbot.wait(250)
-    visible_log = panel.log_text.toPlainText()
 
     outcome = study.trainer.get_terminal_outcome()
     assert outcome.state is TrainingOutcomeState.FAILED
     assert outcome.detail is not None
     assert "CUDA out of memory during training" in outcome.detail
     assert cache_release_calls == [torch]
+    qtbot.waitUntil(
+        lambda: (
+            not panel.sidebar.btn_stop.isEnabled()
+            and panel.sidebar.btn_start.isEnabled()
+        ),
+        timeout=5_000,
+    )
+    qtbot.waitUntil(
+        lambda: (
+            "Training failed:" in panel.log_text.toPlainText()
+            and "batch size" in panel.log_text.toPlainText().lower()
+            and "input length" in panel.log_text.toPlainText().lower()
+        ),
+        timeout=5_000,
+    )
+    visible_log = panel.log_text.toPlainText()
+
     assert panel.sidebar.btn_stop.isEnabled() is False
     assert panel.sidebar.btn_start.isEnabled() is True
     assert "Training failed:" in visible_log, visible_log
@@ -252,10 +253,12 @@ def test_training_panel_recovers_after_async_cuda_oom(
         timeout=5_000,
     )
     qtbot.waitUntil(
-        lambda: lifecycle_events == ["started", "stopped", "started", "stopped"],
+        lambda: (
+            not panel.sidebar.btn_stop.isEnabled()
+            and panel.sidebar.btn_start.isEnabled()
+        ),
         timeout=5_000,
     )
-    qtbot.wait(250)
 
     trainer = study.trainer
     assert trainer is not None
@@ -290,6 +293,15 @@ def test_training_panel_recovers_after_async_cuda_oom(
         )
 
     qtbot.waitUntil(background_deliveries_idle, timeout=10_000)
+    qtbot.waitUntil(
+        lambda: (
+            service.training_publications.training_delivery_state().pending_count == 0
+            and service.training_publications.training_delivery_state().delivered_count
+            == 2
+            and not service.training_publications.training_delivery_state().retry_owner_active
+        ),
+        timeout=10_000,
+    )
     training_delivery = service.training_publications.training_delivery_state()
     application_delivery = service.training_publications.saliency_delivery_state()
     runtime_delivery = service.training_runtime.saliency_delivery_state()

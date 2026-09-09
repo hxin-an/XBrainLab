@@ -2345,8 +2345,6 @@ class TestProcessToolCalls:
     @pytest.mark.parametrize(
         "tool_name",
         (
-            "load_data",
-            "attach_labels",
             "apply_bandpass_filter",
             "apply_notch_filter",
             "resample_data",
@@ -2403,8 +2401,8 @@ class TestProcessToolCalls:
         ).result
         unrelated = _evaluate_policy(
             ctrl,
-            "load_data",
-            _enabled_tool_context("load_data", generation=13),
+            "stop_training",
+            _enabled_tool_context("stop_training", generation=13),
         ).result
 
         assert isinstance(matching, ToolCommandResult)
@@ -4849,12 +4847,12 @@ class TestOnUserConfirmed:
 # --- HITL: _process_tool_calls confirmation gate ---
 class TestProcessToolCallsConfirmation:
     def test_backend_resource_warning_without_receipt_stays_blocked(self, ctrl):
-        context = _enabled_tool_context("load_data", generation=39)
-        tool = MagicMock(description="Load EEG data")
+        context = _enabled_tool_context("preview_interpretation", generation=39)
+        tool = MagicMock(description="Preview data interpretation")
         result = ToolCommandResult(
             ok=False,
-            tool_name="load_data",
-            command_name="load_data",
+            tool_name="preview_interpretation",
+            command_name="preview_interpretation",
             message="Estimated RAM is near the available-memory limit.",
             error_type="confirmation_required",
             diagnostics={
@@ -4871,8 +4869,8 @@ class TestProcessToolCallsConfirmation:
         ctrl._handle_tool_attempt_blocked = MagicMock()
         decision = ToolAttemptDecision(
             ToolAttemptAction.EXECUTE,
-            "load_data",
-            {"paths": ["/data/eeg.fif"]},
+            "preview_interpretation",
+            {"choices": {"selected_eeg_files": ["/data/eeg.fif"]}},
             context=context,
             tool=tool,
         )
@@ -5251,7 +5249,7 @@ class TestPipelineGate:
             ctrl,
             side_effect=CapabilityPolicyUnavailable("policy missing"),
         )
-        result = ctrl._tool_attempt_coordinator.context_for("load_data")
+        result = ctrl._tool_attempt_coordinator.context_for("apply_bandpass_filter")
 
         assert isinstance(result, ToolAvailabilityContext)
         assert isinstance(result.availability, ToolAvailability)
@@ -5292,21 +5290,23 @@ class TestPipelineGate:
         assert payload["ok"] is False
         assert payload["capability"]["command_name"] == "preprocess"
 
-    def test_retired_load_data_is_rejected_by_action_contract(
+    def test_unregistered_tool_is_rejected_by_action_contract(
         self,
         ctrl,
     ):
-        """Unsafe compatibility loading never reaches the registry implementation."""
+        """An unregistered command never reaches the registry implementation."""
         from XBrainLab.backend.study import Study
 
         ctrl.study = Study()
         mock_tool = MagicMock()
-        mock_tool.execute.side_effect = AssertionError("legacy path should not run")
+        mock_tool.execute.side_effect = AssertionError(
+            "unregistered path should not run"
+        )
         ctrl.registry.get_tool.return_value = mock_tool
 
         outcome = ctrl._execute_tool_no_loop(
-            "load_data",
-            {"file_paths": ["/tmp/sample.gdf"]},
+            "unregistered_tool",
+            {},
         )
         result = outcome.result
 
@@ -5392,22 +5392,22 @@ class TestPipelineGate:
         assert "raw_result" not in payload
         assert "state" not in payload
 
-    def test_legacy_load_summary_uses_neutral_product_language(self):
+    def test_import_summary_uses_neutral_product_language(self):
         from XBrainLab.llm.agent.controller import LLMController
 
         result = ToolCommandResult.failure(
-            "load_data",
+            "import_eeg_data",
             "Load raw data first.",
-            command_name=CommandName.LOAD_DATA.value,
+            command_name=CommandName.SCAN_SOURCE.value,
             error_type="precondition",
         )
 
-        summary = LLMController._summarize_tool_result("load_data", False, result)
+        summary = LLMController._summarize_tool_result("import_eeg_data", False, result)
 
-        assert "Data import can't run yet" in summary
+        assert "EEG data import can't run yet" in summary
         assert "**Required first:** Load raw data first." in summary
         assert "Load EEG data" not in summary
-        assert "load_data" not in summary
+        assert "import_eeg_data" not in summary
 
     def test_train_blocked_until_backend_ready(self, ctrl):
         """Train is blocked until raw data, split, model, and options exist."""
