@@ -76,12 +76,14 @@ every already-tested unaffected GUI action. Merge remains a subsequent explicitl
 
 ### Current next step
 
-Filter and Montage focused repairs passed independent bounded review; native integration is pending.
+Filter, Montage and the reproduced Saliency first-entry repair are implemented and independently
+reviewed. The remaining endpoint is exact-head integrated validation and one native Windows launch
+for the user's targeted GUI/Assistant acceptance. Do not request merge or call pending CI green.
 The existing pinned RAG snapshot was materialized with 11 matching SHA-256 hashes (91,578,415 bytes).
 Native offline initialization indexed the unchanged 23-example corpus; Filter and Saliency retrieval
 passed twice, including reopening/reusing the verified index. No model download or strategy change.
 
-Saliency is still unresolved: real MainWindow-before-training / Braindecode EEGNet / no preconfigured
+Initial Saliency characterization: real MainWindow-before-training / Braindecode EEGNet / no preconfigured
 saliency / actual button compute renders on Linux and Windows CPU/CUDA. On native c07b3351, the normal
 Granite ChatPanel confirmation also computes and renders finite maps. A separate 30-record/four-class
 synthetic sequence reproduced the two Nyquist errors (80 then 50 Hz), resampling, average reference,
@@ -96,23 +98,22 @@ stale-generation, cancellation and failure protection; no polling timer or indep
 policy. Require cold GUI and cold Assistant entry, method/tab change, new-generation recompute and
 visible finite canvas. The user's exact dataset/view remains unknown; do not claim every blank-view
 case is proven identical to this reproducible first-entry failure.
-The bounded repair now passes both real entrypoints on Linux and native Windows (36 native focused
+The bounded repair passes both real entrypoints on Linux and native Windows (36 native focused
 cases), 176 adjacent UI/handoff cases and zero-diagnostic locked typing. An independent lifecycle
 review found no blocker; the additional stale-catalog test proves a changed publication cannot chain
-compute or claim completion. Next: commit this repair, validate the exact integrated head in CI and
-native normal ChatPanel Filter/Saliency, inspect the changed-surface evidence, then deliver Windows.
+compute or claim completion. A normal native Granite ChatPanel walkthrough also verified actionable
+Nyquist feedback, a real valid 4–40 Hz filter, training, first-entry confirmation and 2,316 finite
+Saliency canvas values. The changed screenshot was inspected. Keep these source-bound results
+distinct from the final integrated candidate checks; no unsupported claim about every unseen dataset.
 Persisted evaluation files have no saliency, but this alone cannot prove memory computation failed:
 the existing post-training publication path updates in-memory records, not those artifact files.
 
-The user additionally reported too many virtual environments and low disk space. Inventory the
-known XBrainLab Windows/WSL environments and their real users read-only; create no new environment.
-Preserve the active shared environments and caches. Present exact obsolete-copy candidates and
-space impact before any deletion; the report does not authorize broad or uncertain cleanup.
-Measured: C: 47.67 GiB free / 441.55 GiB total; D: about 262 GiB free. WSL has 69 XBrainLab Poetry
-environments totaling 31.47 GiB (including the active 6.10 GiB shared environment); two historical
-Windows PR-specific environments total about 8 GiB. Preserve the current 4.01 GiB Windows environment.
-No environment was deleted or created for this repair. WSL filesystem free space is not evidence that
-Windows VHDX backing storage has shrunk; shutdown/compaction is outside this running repair.
-The additional 6.20 GiB WSL xaLO7TCQ environment is still used by the shared Git pre-commit hook;
-preserve it too. Three unassigned large WSL environments total 18.32 GiB, and a historical C: Poetry
-environment uses an external research Conda base; both require explicit retention/deletion decisions.
+The user explicitly approved deletion of three named WSL Poetry environments: rd24cvJ2, TKrzxeIe
+and Y5M5tkh1 (all xbrainlab-*-py3.12). Their exact paths were checked before deletion and verified
+absent afterward; WSL available space increased by 20,329,267,200 bytes (about 18.93 GiB allocated).
+The retained IiX9BmR2 test Python and xaLO7TCQ Git-hook Python/pre-commit were smoke-checked.
+No new environment was created; original data, caches and current Windows .venv were untouched.
+Do not delete any other environment without approval: Windows PR-specific copies and the historical
+C: Poetry environment with an external research Conda base remain only candidates. Windows C: had
+47.67 GiB free and D: about 262 GiB before cleanup. WSL internal free space is not evidence that C:'s
+VHDX backing file shrank; no shutdown or compaction is authorized as part of this running repair.
