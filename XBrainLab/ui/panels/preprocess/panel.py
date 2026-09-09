@@ -38,7 +38,7 @@ class PreprocessPanel(BasePanel):
     """Panel for signal preprocessing.
     Features: Plotting (Time/Freq), Operations (Filter, Resample, etc.), History.
     Refactored to compose PreviewWidget, HistoryWidget, and Sidebar.
-    Connects `PreprocessController` and `DatasetController`.
+    Renders application publications and delegates actions to the command runtime.
     """
 
     def __init__(
