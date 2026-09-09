@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import gc
 import json
 import os
 import time
+import weakref
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import replace
@@ -5598,6 +5600,62 @@ def test_stop_command_reports_requested_until_real_worker_exit() -> None:
 
     assert trainer.is_running() is False
     assert trainer.get_terminal_outcome().state is TrainingOutcomeState.CANCELLED
+
+
+@pytest.mark.parametrize("command_type", [ResetSessionCommand, NewSessionCommand])
+def test_session_clear_releases_real_channel_selection_backup(
+    command_type: type[ResetSessionCommand] | type[NewSessionCommand],
+    tmp_path: Path,
+) -> None:
+    study = Study()
+    raw = Raw(
+        "previous-session.fif",
+        mne.io.RawArray(
+            np.zeros((2, 500)),
+            mne.create_info(["C3", "C4"], sfreq=100.0, ch_types="eeg"),
+            verbose="ERROR",
+        ),
+    )
+    study.set_loaded_data_list([raw], force_update=True)
+    service = ApplicationService(study)
+    selected = service.execute(
+        PreprocessCommand(
+            operation=PreprocessOperation.SELECT_CHANNELS,
+            channels=["C3"],
+        )
+    )
+    assert selected.ok
+    backup = study.data_manager.backup_loaded_data_list
+    assert backup is not None
+    assert backup[0].get_mne().ch_names == ["C3", "C4"]
+    backup_ref = weakref.ref(backup[0])
+    samples_ref = weakref.ref(backup[0].get_mne()._data)
+    assert samples_ref().nbytes == 8000
+    del backup
+
+    result = service.execute(command_type(confirmed=True))
+    gc.collect()
+
+    assert result.ok
+    assert result.state.pipeline_stage == "empty"
+    assert study.loaded_data_list == []
+    assert study.preprocessed_data_list == []
+    assert study.data_manager.backup_loaded_data_list is None
+    assert backup_ref() is None
+    assert samples_ref() is None
+
+    replacement_path = tmp_path / "replacement_raw.fif"
+    _write_reviewed_epoch_fixture(replacement_path, channel_names=("Pz",))
+    _apply_reviewed_epoch_fixture(service, replacement_path)
+    replacement = study.loaded_data_list[0]
+
+    reset = service.execute(ResetPreprocessCommand(confirmed=True))
+
+    assert reset.ok
+    assert study.loaded_data_list == [replacement]
+    assert study.preprocessed_data_list == [replacement]
+    assert replacement.get_mne().ch_names == ["Pz"]
+    assert Path(replacement.get_filepath()) == replacement_path
 
 
 @pytest.mark.parametrize(

@@ -217,6 +217,7 @@ class DataManager:
             self._guard_clean_raw_data()
         self.clean_datasets(force_update=force_update)
         self.loaded_data_list = []
+        self.backup_loaded_data_list = None
         self.preprocessed_data_list = []
         self.epoch_data = None
         self.unlock_dataset()

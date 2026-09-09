@@ -99,6 +99,25 @@ class TestBackup:
         dm.backup_loaded_data()
         assert dm.backup_loaded_data_list is None
 
+    def test_replacing_raw_data_invalidates_old_undo_backup(self, dm, raw_data):
+        dm.set_loaded_data_list(raw_data, force_update=True)
+        dm.backup_loaded_data()
+        replacement = Raw(
+            "replacement.fif",
+            mne.io.RawArray(
+                np.zeros((1, 256)),
+                mne.create_info(["Pz"], sfreq=256, ch_types="eeg"),
+                verbose="ERROR",
+            ),
+        )
+
+        dm.set_loaded_data_list([replacement], force_update=True)
+        dm.reset_preprocess(force_update=True)
+
+        assert dm.loaded_data_list == [replacement]
+        assert dm.preprocessed_data_list == [replacement]
+        assert dm.backup_loaded_data_list is None
+
 
 # ---------------------------------------------------------------------------
 # Preprocessing
