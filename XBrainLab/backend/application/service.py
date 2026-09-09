@@ -3014,7 +3014,7 @@ class ApplicationService(Observable):
                     current_state=current_state,
                     publication=current_publication,
                 ):
-                    return self._detached_interpretation_discovery_failure_result(
+                    return self._detached_prepare_failure_result(
                         command=command,
                         error=exc,
                         publication=current_publication,
@@ -3144,19 +3144,14 @@ class ApplicationService(Observable):
             and self.interpretation.discovery_plan_is_current(plan)
         )
 
-    def _detached_interpretation_discovery_failure_result(
+    def _detached_prepare_failure_result(
         self,
         *,
-        command: (
-            ScanSourceCommand
-            | ReviewInterpretationCommand
-            | PreviewInterpretationCommand
-            | ValidateInterpretationCommand
-        ),
+        command: Command,
         error: Exception,
         publication: ApplicationViewPublication,
     ) -> CommandResult:
-        """Bind a detached scan failure to current concurrently committed truth."""
+        """Bind a detached prepare failure to current committed truth."""
         app_error = map_exception(error)
         message = str(app_error)
         diagnostics = {
@@ -3297,7 +3292,7 @@ class ApplicationService(Observable):
                     or current_publication.state != plan.application.state
                     or current_state != current_publication.state
                 ):
-                    return self._detached_apply_prepare_failure_result(
+                    return self._detached_prepare_failure_result(
                         command=command,
                         error=exc,
                         publication=current_publication,
@@ -3489,7 +3484,7 @@ class ApplicationService(Observable):
                     current_state=current_state,
                     publication=current_publication,
                 ):
-                    return self._detached_preprocess_prepare_failure_result(
+                    return self._detached_prepare_failure_result(
                         command=command,
                         error=exc,
                         publication=current_publication,
@@ -3668,40 +3663,6 @@ class ApplicationService(Observable):
         )
         return normalized_expected == current
 
-    def _detached_preprocess_prepare_failure_result(
-        self,
-        *,
-        command: PreprocessCommand | CreateEpochCommand,
-        error: Exception,
-        publication: ApplicationViewPublication,
-    ) -> CommandResult:
-        """Bind detached prepare failure to current concurrently committed truth."""
-        app_error = map_exception(error)
-        message = str(app_error)
-        diagnostics = {
-            **app_error.diagnostics,
-            "exception_type": safe_exception_type_name(error),
-            "handler_error_type": app_error.error_type.value,
-            "handler_error_message": message,
-            "handler_error_recoverable": app_error.recoverable,
-            "detached_prepare_failed_after_concurrent_change": True,
-            "state_preserved": True,
-            "publication_generation": publication.generation,
-            "publication_revision": publication.revision,
-        }
-        if app_error.error_type is ErrorType.CANCELLED:
-            diagnostics["control_flow_outcome"] = True
-        return CommandResult.failure_result(
-            command_name=command_name(command).value,
-            message=message,
-            state=publication.state,
-            changed_state=ChangedState(),
-            error_type=app_error.error_type,
-            recoverable=app_error.recoverable,
-            error_message=message,
-            diagnostics=diagnostics,
-        )
-
     @staticmethod
     def _stale_prepared_preprocess_result(
         *,
@@ -3732,40 +3693,6 @@ class ApplicationService(Observable):
                 "current_publication_revision": publication.revision,
                 "publication_usable": publication.usable,
             },
-        )
-
-    def _detached_apply_prepare_failure_result(
-        self,
-        *,
-        command: ApplyInterpretationCommand,
-        error: Exception,
-        publication: ApplicationViewPublication,
-    ) -> CommandResult:
-        """Bind a detached failure to current truth after another command won."""
-        app_error = map_exception(error)
-        message = str(app_error)
-        diagnostics = {
-            **app_error.diagnostics,
-            "exception_type": safe_exception_type_name(error),
-            "handler_error_type": app_error.error_type.value,
-            "handler_error_message": message,
-            "handler_error_recoverable": app_error.recoverable,
-            "detached_prepare_failed_after_concurrent_change": True,
-            "state_preserved": True,
-            "publication_generation": publication.generation,
-            "publication_revision": publication.revision,
-        }
-        if app_error.error_type is ErrorType.CANCELLED:
-            diagnostics["control_flow_outcome"] = True
-        return CommandResult.failure_result(
-            command_name=self._owned_work_command_identity(command),
-            message=message,
-            state=publication.state,
-            changed_state=ChangedState(),
-            error_type=app_error.error_type,
-            recoverable=app_error.recoverable,
-            error_message=message,
-            diagnostics=diagnostics,
         )
 
     @staticmethod

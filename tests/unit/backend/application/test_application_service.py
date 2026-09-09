@@ -3920,7 +3920,17 @@ def test_preprocess_heavy_prepare_releases_command_lock_and_cancel_can_retry() -
     )
 
 
-def test_preprocess_rejects_prepare_staled_by_concurrent_mutation() -> None:
+@pytest.mark.parametrize(
+    ("failure_mode", "expected_error"),
+    [
+        ("stale", ErrorType.PRECONDITION),
+        ("error", ErrorType.INTERNAL),
+    ],
+)
+def test_preprocess_prepare_after_concurrent_mutation_preserves_current_truth(
+    failure_mode: str,
+    expected_error: ErrorType,
+) -> None:
     study = Study()
     raw = _minimal_raw(Path("recording.fif"))
     study.set_loaded_data_list([raw], force_update=True)
@@ -3932,6 +3942,8 @@ def test_preprocess_rejects_prepare_staled_by_concurrent_mutation() -> None:
         def data_preprocess(self, norm: str) -> list[Raw]:
             processing_started.set()
             assert release_processing.wait(timeout=THREAD_WATCHDOG_SECONDS)
+            if failure_mode == "error":
+                raise RuntimeError("detached preprocessing failed")
             return super().data_preprocess(norm)
 
     original_provider = service.preprocess._processor_provider
@@ -3981,12 +3993,21 @@ def test_preprocess_rejects_prepare_staled_by_concurrent_mutation() -> None:
     assert concurrent_results[0].ok
     assert study.loaded_data_list[0].get_subject_name() == "S99"
     assert len(results) == 1
-    stale = results[0]
-    assert stale.failed
-    assert stale.error_type is ErrorType.PRECONDITION
-    assert stale.diagnostics["stale_prepared_preprocess"] is True
-    assert stale.changed_state == ChangedState()
-    assert stale.state == concurrent_results[0].state
+    failed = results[0]
+    assert failed.failed
+    assert failed.error_type is expected_error
+    assert failed.changed_state == ChangedState()
+    assert failed.state == concurrent_results[0].state
+    if failure_mode == "stale":
+        assert failed.diagnostics["stale_prepared_preprocess"] is True
+    else:
+        assert (
+            failed.diagnostics["detached_prepare_failed_after_concurrent_change"]
+            is True
+        )
+        assert failed.diagnostics["state_preserved"] is True
+        assert service.get_view_publication().state == concurrent_results[0].state
+        assert service._last_error is None
     assert service.get_owned_operation(operation.operation_id).phase is (
         OwnedWorkPhase.FAILED
     )
