@@ -24,7 +24,7 @@ from XBrainLab.llm.tools.application_surface import (
     READ_ONLY_TOOLS,
     SETTING_CHANGE_CONFIRMATION_KIND,
     TOOL_TO_COMMAND,
-    CapabilityPolicyUnavailable,
+    CapabilityPolicyUnavailableError,
     ToolAvailability,
     ToolAvailabilityContext,
     ToolCommandResult,
@@ -113,10 +113,6 @@ class ToolAttemptFeedback(str, Enum):
 
     SYSTEM_REJECTION = "system_rejection"
     TOOL_OUTPUT = "tool_output"
-
-
-# Compatibility export for controller/tests that used the pre-contract name.
-ResourcePreflightReceipt = ResourceConfirmationChallenge
 
 
 @dataclass(frozen=True)
@@ -529,7 +525,7 @@ class ToolAttemptCoordinator:
         """Read one context or return a fail-closed typed context."""
         try:
             context = self._context_source.get_context(command_name)
-        except CapabilityPolicyUnavailable as exc:
+        except CapabilityPolicyUnavailableError as exc:
             safe_detail = redact_public_text(exc)
             return self.unavailable_context(
                 command_name,

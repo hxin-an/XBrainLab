@@ -7,9 +7,11 @@ from typing import Any
 
 import pytest
 
+from XBrainLab.backend.application.resource_preflight import (
+    ResourceConfirmationChallenge,
+)
 from XBrainLab.llm.agent.assembler import PromptToolPublication
 from XBrainLab.llm.agent.tool_attempt_coordinator import (
-    ResourcePreflightReceipt,
     ToolAttemptAction,
     ToolAttemptCoordinator,
     ToolAttemptRequest,
@@ -895,7 +897,7 @@ def test_confirmation_fields_are_owned_by_coordinator() -> None:
         "apply_interpretation",
         {"candidate_id": "candidate-1"},
         confirmation_kind="resource_preflight",
-        resource_preflight_receipt=ResourcePreflightReceipt(
+        resource_preflight_receipt=ResourceConfirmationChallenge(
             challenge_id="receipt-1",
             command_name="apply_interpretation",
             candidate_id="candidate-1",
@@ -995,7 +997,7 @@ def test_resource_warning_becomes_candidate_bound_typed_confirmation() -> None:
     assert confirmation is not None
     assert confirmation.action is ToolAttemptAction.CONFIRMATION_REQUIRED
     assert confirmation.confirmation_kind == "resource_preflight"
-    assert confirmation.resource_preflight_receipt == ResourcePreflightReceipt(
+    assert confirmation.resource_preflight_receipt == ResourceConfirmationChallenge(
         challenge_id="receipt-1",
         command_name="apply_interpretation",
         candidate_id="candidate-1",

@@ -12,6 +12,9 @@ from unittest.mock import MagicMock, call, patch
 import pytest
 
 from XBrainLab.backend.application import CommandName
+from XBrainLab.backend.application.resource_preflight import (
+    ResourceConfirmationChallenge,
+)
 from XBrainLab.backend.application.state import ApplicationStateSnapshot
 from XBrainLab.llm.agent.assembler import PromptToolPublication
 from XBrainLab.llm.agent.assistant_activity import (
@@ -43,7 +46,6 @@ from XBrainLab.llm.agent.runtime_state import (
     AssistantRuntimeSnapshot,
 )
 from XBrainLab.llm.agent.tool_attempt_coordinator import (
-    ResourcePreflightReceipt,
     ToolAttemptAction,
     ToolAttemptDecision,
     ToolAttemptFeedback,
@@ -359,7 +361,7 @@ def _pending_decision(
     context: Any | None = None,
     command_confirmation: bool = True,
     confirmation_kind: str | None = None,
-    resource_preflight_receipt: ResourcePreflightReceipt | None = None,
+    resource_preflight_receipt: ResourceConfirmationChallenge | None = None,
 ) -> ToolAttemptDecision:
     return ToolAttemptDecision(
         action=ToolAttemptAction.CONFIRMATION_REQUIRED,
@@ -443,7 +445,7 @@ def _pending_training_resource_confirmation(
     assert pending.result.capability is None
     assert pending.result.diagnostics == {"resource_preflight": resource_preflight}
     receipt = pending.resource_preflight_receipt
-    assert isinstance(receipt, ResourcePreflightReceipt)
+    assert isinstance(receipt, ResourceConfirmationChallenge)
     assert receipt.command_name == "start_training"
     assert receipt.token == resource_preflight["confirmation_token"]
     assert receipt.candidate_id is None
@@ -3808,7 +3810,7 @@ class TestOnUserConfirmed:
                 {"candidate_id": "candidate-1"},
                 context=context,
                 confirmation_kind="resource_preflight",
-                resource_preflight_receipt=ResourcePreflightReceipt(
+                resource_preflight_receipt=ResourceConfirmationChallenge(
                     challenge_id="receipt-1",
                     command_name="apply_interpretation",
                     candidate_id="candidate-1",
@@ -3886,7 +3888,7 @@ class TestOnUserConfirmed:
                 context=context,
                 command_confirmation=False,
                 confirmation_kind="resource_preflight",
-                resource_preflight_receipt=ResourcePreflightReceipt(
+                resource_preflight_receipt=ResourceConfirmationChallenge(
                     challenge_id=token,
                     command_name=command_name,
                     candidate_id=candidate_id,
@@ -5240,14 +5242,14 @@ class TestPipelineGate:
 
     def test_unavailable_capability_policy_fails_closed(self, ctrl):
         from XBrainLab.llm.tools.application_surface import (
-            CapabilityPolicyUnavailable,
+            CapabilityPolicyUnavailableError,
             ToolAvailability,
             ToolAvailabilityContext,
         )
 
         _set_context_reader(
             ctrl,
-            side_effect=CapabilityPolicyUnavailable("policy missing"),
+            side_effect=CapabilityPolicyUnavailableError("policy missing"),
         )
         result = ctrl._tool_attempt_coordinator.context_for("apply_bandpass_filter")
 
