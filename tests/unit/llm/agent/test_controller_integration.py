@@ -248,7 +248,7 @@ def test_delivery_setup_fault_unwinds_all_controller_turn_state(
             controller.metrics.start_turn()
             controller._begin_rag_turn()
             controller.assembler.add_context("stale RAG context")
-            controller._turn_orchestrator.admitted_command_name = "load_data"
+            controller._turn_orchestrator.admitted_command_name = "scan_source"
             controller._turn_orchestrator.admitted_publication_generation = 12
             controller._turn_orchestrator.active_generation_id = 91
             controller._turn_orchestrator.dispatch_phase = MagicMock()

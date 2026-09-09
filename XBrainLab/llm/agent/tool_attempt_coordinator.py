@@ -58,7 +58,6 @@ _Command = TypeVar("_Command")
 _RECEIPT_BOUND_RESOURCE_COMMANDS = frozenset(
     {
         "apply_interpretation",
-        "load_data",
         "preview_interpretation",
         "reload_interpretation_recipe",
         "saliency",
@@ -68,7 +67,6 @@ _RECEIPT_BOUND_RESOURCE_COMMANDS = frozenset(
 
 _FINGERPRINT_BOUND_RESOURCE_COMMANDS = frozenset(
     {
-        "load_data",
         "preview_interpretation",
         "reload_interpretation_recipe",
         "saliency",

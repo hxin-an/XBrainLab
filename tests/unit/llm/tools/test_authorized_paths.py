@@ -267,44 +267,33 @@ def test_verifier_uses_final_windows_identity_for_selected_root(
     assert type(params["directory"]) is str
 
 
-class _LoadDataRejectingRuntime:
+class _UnregisteredToolRejectingRuntime:
     def __init__(self) -> None:
         self.commands: list[object] = []
 
     def get_view_publication(self) -> object:
-        raise AssertionError("load_data denial must not read backend publication")
+        raise AssertionError(
+            "unregistered tool denial must not read backend publication"
+        )
 
     def execute(self, command: object) -> object:
         self.commands.append(command)
-        raise AssertionError("load_data denial must not call ApplicationService")
-
-
-@pytest.mark.parametrize("with_grant", (False, True))
-def test_retired_load_data_has_no_application_command_path(
-    tmp_path: Path,
-    with_grant: bool,
-) -> None:
-    selected = tmp_path / "selected"
-    selected.mkdir()
-    recording = selected / "recording.edf"
-    recording.touch()
-    path: str = str(recording)
-    if with_grant:
-        path = authorize_existing_path(
-            recording,
-            authorized_root=selected,
-            expected_kind="file",
+        raise AssertionError(
+            "unregistered tool denial must not call ApplicationService"
         )
-    runtime = _LoadDataRejectingRuntime()
+
+
+def test_unregistered_tool_has_no_application_command_path() -> None:
+    runtime = _UnregisteredToolRejectingRuntime()
 
     result = execute_application_tool_command(
         object(),
-        "load_data",
-        {"paths": [path]},
+        "unregistered_tool",
+        {},
         availability=ToolAvailability(
-            tool_name="load_data",
+            tool_name="unregistered_tool",
             enabled=True,
-            command_name="load_data",
+            command_name=None,
         ),
         state={},
         runtime=runtime,  # type: ignore[arg-type]
@@ -312,26 +301,3 @@ def test_retired_load_data_has_no_application_command_path(
 
     assert result is None
     assert runtime.commands == []
-
-
-def test_verifier_identity_binds_load_file_and_folder_inputs(
-    tmp_path: Path,
-) -> None:
-    recording = tmp_path / "recording.edf"
-    recording.touch()
-    folder = tmp_path / "session"
-    folder.mkdir()
-    (folder / "nested.edf").touch()
-    params: dict[str, object] = {"paths": [str(recording), str(folder)]}
-
-    verification = PathProvenanceVerifier().validate(
-        "load_data",
-        params,
-        latest_user_text=f"Load `{recording}` and `{folder}`.",
-        state=None,
-    )
-
-    assert verification.is_valid is True
-    paths = params["paths"]
-    assert isinstance(paths, list)
-    assert all(isinstance(path, AuthorizedPath) for path in paths)

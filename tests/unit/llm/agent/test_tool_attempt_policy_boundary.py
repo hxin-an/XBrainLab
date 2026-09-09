@@ -190,8 +190,8 @@ def test_unavailable_reference_reason_blocks_before_any_execution_boundary() -> 
     assert verifier.calls == []
 
 
-def test_unpublished_legacy_attach_labels_is_rejected_before_verification() -> None:
-    coordinator, source, verifier = _coordinator(_context("attach_labels"))
+def test_unpublished_unregistered_tool_is_rejected_before_verification() -> None:
+    coordinator, source, verifier = _coordinator(_context("unregistered_tool"))
     publication = PromptToolPublication(
         tool_names=frozenset({"scan_source", "preview_interpretation"}),
         backend_generation=47,
@@ -199,9 +199,9 @@ def test_unpublished_legacy_attach_labels_is_rejected_before_verification() -> N
 
     decision = coordinator.evaluate(
         _request(
-            "attach_labels",
-            params={"mapping": {"A01T.gdf": "A01T.mat"}},
-            text="Attach these labels",
+            "unregistered_tool",
+            params={},
+            text="Run this command",
             publication=publication,
         )
     )

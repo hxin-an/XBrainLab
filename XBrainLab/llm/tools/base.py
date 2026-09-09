@@ -24,7 +24,7 @@ class BaseTool(ABC):
     @property
     @abstractmethod
     def name(self) -> str:
-        """The name of the tool (e.g., 'load_data')."""
+        """The name of the tool (e.g., 'start_training')."""
 
     @property
     @abstractmethod

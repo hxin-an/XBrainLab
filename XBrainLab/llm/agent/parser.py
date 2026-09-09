@@ -26,8 +26,6 @@ _BARE_COMMANDS = frozenset(
         "apply_interpretation",
         "save_interpretation_recipe",
         "reload_interpretation_recipe",
-        "load_data",
-        "attach_labels",
         "apply_standard_preprocess",
         "apply_bandpass_filter",
         "epoch_data",

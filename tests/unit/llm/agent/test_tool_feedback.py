@@ -60,9 +60,9 @@ def test_failure_feedback_redacts_paths_and_tokens_from_all_public_fields() -> N
     private_token = "Authorization: Bearer hf_super_secret"  # noqa: S105
     private_message = f"Could not read {private_path}; {private_token}"
     result = ToolCommandResult.failure(
-        "load_data",
+        "import_eeg_data",
         private_message,
-        command_name="load_data",
+        command_name="scan_source",
         state={"last_error": {"message": private_message, "recoverable": True}},
         capability={"reasons": [private_message]},
         raw_result={"status": "failed", "message": private_message},
@@ -70,10 +70,10 @@ def test_failure_feedback_redacts_paths_and_tokens_from_all_public_fields() -> N
         diagnostics={"detail": private_message},
     )
 
-    model_feedback = format_tool_output("load_data", False, result)
-    recovery = build_recovery_feedback("load_data", result)
+    model_feedback = format_tool_output("import_eeg_data", False, result)
+    recovery = build_recovery_feedback("import_eeg_data", result)
     assert recovery is not None
-    user_summary = summarize_tool_result("load_data", False, result)
+    user_summary = summarize_tool_result("import_eeg_data", False, result)
     public_values = "\n".join(
         (
             model_feedback,
@@ -91,16 +91,16 @@ def test_failure_feedback_redacts_paths_and_tokens_from_all_public_fields() -> N
 
 def test_summary_translates_backend_precondition_to_product_language() -> None:
     result = ToolCommandResult.failure(
-        "load_data",
+        "import_eeg_data",
         "ApplicationService requires paths list cannot be empty.",
-        command_name="load_data",
+        command_name="scan_source",
         error_type="precondition",
     )
 
-    summary = summarize_tool_result("load_data", False, result)
+    summary = summarize_tool_result("import_eeg_data", False, result)
 
     assert summary == (
-        "Data import can't run yet.\n\n"
+        "EEG data import can't run yet.\n\n"
         "**Required first:** The workflow requires a file or folder path."
     )
     assert "ApplicationService" not in summary

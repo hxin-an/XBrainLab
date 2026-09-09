@@ -15,12 +15,13 @@ from pathlib import Path
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
-import mne
-import numpy as np
 import pytest
 
+from tests.integration.data_interpretation_support import (
+    import_recording_through_interpretation,
+)
 from tests.qt_lifecycle import close_controller_and_wait
-from XBrainLab.backend.application import ApplicationService, LoadDataCommand
+from XBrainLab.backend.application import get_application_service
 from XBrainLab.backend.controller.chat_controller import ChatController
 from XBrainLab.backend.study import Study
 from XBrainLab.llm.agent.assembler import PromptToolPublication
@@ -232,13 +233,19 @@ def _tool_json(name: str, parameters: dict) -> str:
 
 
 def _load_tiny_raw_via_command_spine(study: Study, tmp_path: Path) -> None:
-    """Load a real 256 Hz recording before the Assistant receives a receipt."""
+    """Import a real 256 Hz recording through Data Interpretation."""
+    import mne
+    import numpy as np
+
     info = mne.create_info(["C3", "C4"], sfreq=256, ch_types="eeg")
     raw = mne.io.RawArray(np.zeros((2, 512)), info)
     path = tmp_path / "assistant-resample_raw.fif"
     raw.save(path, overwrite=True, verbose=False)
 
-    result = ApplicationService(study).execute(LoadDataCommand(paths=[str(path)]))
+    result = import_recording_through_interpretation(
+        get_application_service(study),
+        path,
+    )
 
     assert result.ok is True
 
