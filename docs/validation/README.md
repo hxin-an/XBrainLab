@@ -323,6 +323,12 @@ Stage驗收另有一個硬邊界：匯入建立的working raw copy不算preproce
 
 ### Staged product rebuild
 
+An explicitly user-approved modular cleanup stage may use one integration PR with independently
+reviewed, reversible commits instead of a PR per slice. Record that exception and its module closure
+criteria in the active plan. Cumulative diff size does not trigger intermediate manual acceptance;
+individual slices still undergo complexity review. Final same-source checks, independent integration
+review and human acceptance remain mandatory. This exception does not authorize contract changes.
+
 跨多個bounded slices的產品重建可以先在temporary integration branch組裝，但該branch不是產品
 baseline、release source或manual-acceptance對象：
 
