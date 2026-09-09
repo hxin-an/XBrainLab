@@ -616,9 +616,7 @@ def test_training_settings_unexpected_exception_uses_stable_warning(
         dict,
     )
     monkeypatch.setattr(device_setting_dialog, "get_device_count", lambda: 0)
-    controller = MagicMock()
-    controller.get_training_option.return_value = None
-    dialog = training_setting_dialog.TrainingSettingDialog(None, controller)
+    dialog = training_setting_dialog.TrainingSettingDialog(None)
     qtbot.addWidget(dialog)
     warning = MagicMock()
     monkeypatch.setattr(

@@ -1339,7 +1339,6 @@ class TrainingSidebar(QWidget):
     ) -> _TrainingSettingSelection | InteractionOutcome:
         win = TrainingSettingDialog(
             self,
-            self.controller,
             initial_option=initial_option,
             recommendation=recommendation,
             proposed_values=proposed_values,

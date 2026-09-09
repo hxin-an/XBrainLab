@@ -641,7 +641,6 @@ def _training_setting_dialog() -> TrainingSettingDialog:
     )
     dialog = TrainingSettingDialog(
         None,
-        None,
         initial_option={"device": "cuda:0"},
         resource_preview_request=preview_template,
         resource_preview_dispatcher=_dispatch_training_setting_resource_preview,

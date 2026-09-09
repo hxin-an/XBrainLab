@@ -315,8 +315,6 @@ def _filtering_notch_only_dialog() -> FilteringDialog:
 
 
 def _training_setting_dialog() -> QWidget:
-    controller = MagicMock()
-    controller.get_training_option.return_value = None
     values = TrainingRecommendationValues(
         epochs=50,
         batch_size=32,
@@ -335,15 +333,10 @@ def _training_setting_dialog() -> QWidget:
         reasons=(),
         warnings=(),
     )
-    with patch(
-        "XBrainLab.ui.dialogs.training.training_setting_dialog.get_optimizer_classes",
-        return_value={"Adam": MagicMock(__name__="Adam")},
-    ):
-        dialog = TrainingSettingDialog(
-            None,
-            controller,
-            recommendation=recommendation,
-        )
+    dialog = TrainingSettingDialog(
+        None,
+        recommendation=recommendation,
+    )
     # Keep the production content-aware size. A fixed 560x420 viewport can clip
     # the final form rows once Qt renders at 125/150% DPR, which would make the
     # evidence runner test an artificial capture layout instead of the dialog.

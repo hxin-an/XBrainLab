@@ -75,6 +75,24 @@ its stronger replacement. Persist a new bounded record before changing that fami
 
 ### Sequenced implementation
 
+Current bounded work — Preprocess publication boundary: MainWindow constructs this panel without
+controllers and it resolves the ApplicationUiRuntime. Remove the panel constructor/controller
+resolution, legacy observer bridges, and sidebar controller read/mutation fallbacks after real
+epoch/preprocess/publication baselines pass. Migrate the coupled mock-only tests to the actual
+publication/command path; retain native worker/error/cancel isolation. Scope is the Preprocess panel,
+sidebar and directly coupled tests, with no visible UI changes and no new owner. Command admission,
+mutation and publication remain ApplicationService-owned. Validate epoch runtime, preprocess async
+lifecycle and publication commit/retry, plus affected sidebar tests. Finish this family when no
+product or test caller requires its fallback and the same behavior baselines pass.
+
+Parallel bounded work — Assistant historical alias residue: the authoritative
+`AGENT_ACTION_CONTRACTS` and validated real/mock registry expose none of `load_data`,
+`attach_labels`, or `import_labels`. Remove their unreachable intent/parser/verifier
+special cases and migrate tests that protect general parsing/verification to current tools.
+Keep current 18-tool membership, confirmation and visible results unchanged. Establish
+focused baselines first; no new owner or protocol. Backend/hidden label-route removal
+is a subsequent slice and must preserve historical `ImportRecipe.label_imports` replay.
+
 1. Complete the evidence map and set coverage/branch reporting without gaming the denominator.
 2. Migrate the highest-value UI compatibility tests to typed real-service/publication fixtures;
    delete the now-unused fallback path and its exclusive tests. Repeat through the critical

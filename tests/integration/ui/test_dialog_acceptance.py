@@ -799,14 +799,7 @@ def test_epoching_dialog_uses_card_sections_not_groupbox_legends(qtbot):
 
 
 def test_training_setting_dialog_accepts_user_edits_via_ok_button(qtbot):
-    controller = MagicMock()
-    controller.get_training_option.return_value = None
-
-    with patch(
-        "XBrainLab.ui.dialogs.training.training_setting_dialog.get_optimizer_classes",
-        return_value={"Adam": torch.optim.Adam},
-    ):
-        dialog = TrainingSettingDialog(None, controller)
+    dialog = TrainingSettingDialog(None)
 
     _show_dialog(qtbot, dialog)
 
@@ -954,7 +947,6 @@ def test_training_setting_dialog_uses_real_saved_split_recommendation(qtbot):
         assert prospective.recommended_values.optimizer == "AdamW"
 
         dialog = TrainingSettingDialog(
-            None,
             None,
             initial_option=saved.state.training.training_option,
             recommendation=prospective,
