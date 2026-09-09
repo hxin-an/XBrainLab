@@ -619,7 +619,7 @@ def read(self, study):
     assert any("Study.saliency_params" in item for item in violations)
 
 
-def test_training_runtime_port_boundary_accepts_domain_fields_and_exact_legacy(
+def test_training_runtime_port_boundary_accepts_domain_fields(
     tmp_path: Path,
 ) -> None:
     _write_product_file(
@@ -630,19 +630,10 @@ def read(plan, context, snapshot):
     return plan.model_holder, context.training_option, snapshot.trainer
 """,
     )
-    _write_product_file(
-        tmp_path,
-        "XBrainLab/backend/application/pipeline_stage.py",
-        """
-def _legacy_study_pipeline_stage(study):
-    return getattr(study, "trainer", None)
-""",
-    )
-
     assert check_training_runtime_port_boundary(tmp_path) == []
 
 
-def test_training_runtime_port_boundary_limits_pipeline_stage_legacy_exemption(
+def test_training_runtime_port_boundary_rejects_named_legacy_pipeline_stage_helper(
     tmp_path: Path,
 ) -> None:
     _write_product_file(
@@ -650,9 +641,6 @@ def test_training_runtime_port_boundary_limits_pipeline_stage_legacy_exemption(
         "XBrainLab/backend/application/pipeline_stage.py",
         """
 def _legacy_study_pipeline_stage(study):
-    return getattr(study, "trainer", None)
-
-def read_runtime_state(study):
     return getattr(study, "trainer", None)
 """,
     )

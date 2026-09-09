@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from types import SimpleNamespace
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -122,6 +120,28 @@ def test_snapshot_stage_mapper_preserves_public_stage_values(
     snapshot = replace(ApplicationStateSnapshot.empty(), pipeline_stage=expected.value)
 
     assert pipeline_stage_from_snapshot(snapshot) is expected
+
+
+@pytest.mark.parametrize(
+    ("_case_name", "flags", "expected", "_status_label", "_next_command"),
+    STAGE_CASES,
+)
+def test_compute_pipeline_stage_reads_all_typed_published_stage_values(
+    _case_name: str,
+    flags: dict[str, bool],
+    expected: PipelineStage,
+    _status_label: str,
+    _next_command: str | None,
+) -> None:
+    del flags
+    snapshot = replace(ApplicationStateSnapshot.empty(), pipeline_stage=expected.value)
+    publication = ApplicationViewPublication(
+        generation=4,
+        state=snapshot,
+        capabilities=build_capability_policy(snapshot),
+    )
+
+    assert compute_pipeline_stage(publication) is expected
 
 
 @pytest.mark.parametrize(
@@ -252,84 +272,22 @@ def test_eeg_epoch_stage_and_command_labels_are_domain_explicit() -> None:
     )
 
 
-def test_legacy_study_stage_priority_is_preserved() -> None:
-    trainer = MagicMock()
-    trainer.is_running.return_value = True
-    study = SimpleNamespace(
-        loaded_data_list=[object()],
-        preprocessed_data_list=[object()],
-        epoch_data=object(),
-        datasets=[object()],
-        model_holder=object(),
-        training_option=object(),
-        trainer=trainer,
+def test_compute_pipeline_stage_fails_closed_for_missing_invalid_or_unknown_publication() -> (
+    None
+):
+    unknown_snapshot = replace(
+        ApplicationStateSnapshot.empty(),
+        pipeline_stage="unknown",
+    )
+    unknown_publication = ApplicationViewPublication(
+        generation=5,
+        state=unknown_snapshot,
+        capabilities=build_capability_policy(unknown_snapshot),
     )
 
-    assert compute_pipeline_stage(study) is PipelineStage.TRAINING
-
-
-@pytest.mark.parametrize("invalid_runs", [None, object(), "not-a-run-list"])
-def test_legacy_stage_ignores_non_iterable_or_text_run_collections(
-    invalid_runs: object,
-) -> None:
-    trainer = MagicMock()
-    trainer.is_running.return_value = False
-    trainer.get_training_plan_holders.return_value = invalid_runs
-    study = SimpleNamespace(
-        loaded_data_list=[object()],
-        preprocessed_data_list=[object()],
-        epoch_data=object(),
-        datasets=[object()],
-        model_holder=object(),
-        training_option=object(),
-        trainer=trainer,
-    )
-
-    assert compute_pipeline_stage(study) is PipelineStage.DATASET_READY
-
-
-def test_real_study_stage_requires_explicit_publication() -> None:
-    from XBrainLab.backend.study import Study
-
-    study = Study()
-    study.loaded_data_list = [MagicMock()]
-
-    assert study._application_service is None
-    assert compute_pipeline_stage(study) is PipelineStage.EMPTY
-    assert study._application_service is None
-
-
-def test_explicit_publication_is_the_only_stage_read_for_real_study() -> None:
-    from XBrainLab.backend.study import Study
-
-    study = Study()
-    study.datasets = [MagicMock()]
-    snapshot = replace(ApplicationStateSnapshot.empty(), pipeline_stage="trained")
-    publication = ApplicationViewPublication(
-        generation=4,
-        state=snapshot,
-        capabilities=build_capability_policy(snapshot),
-    )
-
-    assert (
-        compute_pipeline_stage(study, publication=publication) is PipelineStage.TRAINED
-    )
-
-
-def test_real_study_stage_rejects_non_publication_objects() -> None:
-    from XBrainLab.backend.study import Study
-
-    study = Study()
-
-    assert (
-        compute_pipeline_stage(
-            study,
-            publication=SimpleNamespace(
-                state=SimpleNamespace(pipeline_stage="dataset_ready"),
-            ),
-        )
-        is PipelineStage.EMPTY
-    )
+    assert compute_pipeline_stage(None) is PipelineStage.EMPTY
+    assert compute_pipeline_stage(object()) is PipelineStage.EMPTY
+    assert compute_pipeline_stage(unknown_publication) is PipelineStage.EMPTY
 
 
 def test_study_does_not_expose_pipeline_stage_property() -> None:

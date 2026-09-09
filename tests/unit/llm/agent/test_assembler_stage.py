@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock, patch
+from dataclasses import replace
+from unittest.mock import patch
 
+from XBrainLab.backend.application.capabilities import build_capability_policy
+from XBrainLab.backend.application.state import ApplicationStateSnapshot
+from XBrainLab.backend.application.view_publication import ApplicationViewPublication
+from XBrainLab.backend.study import Study
 from XBrainLab.llm.agent.assembler import ContextAssembler
 from XBrainLab.llm.agent.prompt_policy import (
     STRICT_TOOL_RESPONSE_PROMPT_POLICY,
@@ -41,6 +46,22 @@ class _FakeTool(BaseTool):
         return ""
 
 
+def _prompt_policy_read(
+    stage: PipelineStage,
+    *,
+    published_tools: frozenset[str] = frozenset(),
+) -> PromptPolicyReadResult:
+    snapshot = replace(ApplicationStateSnapshot.empty(), pipeline_stage=stage.value)
+    return PromptPolicyReadResult(
+        publication=ApplicationViewPublication(
+            generation=1,
+            state=snapshot,
+            capabilities=build_capability_policy(snapshot),
+        ),
+        published_tools=published_tools,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -54,19 +75,14 @@ class TestStageBasedFiltering:
         for n in tool_names:
             registry.register(_FakeTool(n))
 
-        study = MagicMock()
-
-        with (
-            patch(
-                "XBrainLab.llm.agent.assembler.compute_pipeline_stage",
-                return_value=stage,
-            ),
-            patch(
-                "XBrainLab.llm.agent.assembler.read_prompt_policy",
-                return_value=PromptPolicyReadResult.not_applicable(),
+        with patch(
+            "XBrainLab.llm.agent.assembler.read_prompt_policy",
+            return_value=_prompt_policy_read(
+                stage,
+                published_tools=frozenset(tool_names),
             ),
         ):
-            assembler = ContextAssembler(registry, study)
+            assembler = ContextAssembler(registry, Study())
             return assembler.build_system_prompt()
 
     def test_empty_stage_only_shows_allowed_tools(self):
@@ -78,18 +94,18 @@ class TestStageBasedFiltering:
                 "apply_bandpass_filter",
             ],
         )
-        assert "import_eeg_data" in prompt
-        assert "switch_panel" in prompt
-        assert "apply_bandpass_filter" not in prompt
+        assert '"name": "import_eeg_data"' in prompt
+        assert '"name": "switch_panel"' in prompt
+        assert '"name": "apply_bandpass_filter"' not in prompt
 
     def test_data_loaded_shows_preprocess_not_training(self):
         prompt = self._build(
             PipelineStage.DATA_LOADED,
             ["select_channels", "apply_bandpass_filter", "start_training"],
         )
-        assert "select_channels" in prompt
-        assert "apply_bandpass_filter" in prompt
-        assert "start_training" not in prompt
+        assert '"name": "select_channels"' in prompt
+        assert '"name": "apply_bandpass_filter"' in prompt
+        assert '"name": "start_training"' not in prompt
 
     def test_dataset_ready_shows_training_not_preprocess(self):
         prompt = self._build(
@@ -101,18 +117,18 @@ class TestStageBasedFiltering:
                 "apply_bandpass_filter",
             ],
         )
-        assert "select_model" in prompt
-        assert "start_training" in prompt
-        assert "apply_bandpass_filter" not in prompt
+        assert '"name": "select_model"' in prompt
+        assert '"name": "start_training"' in prompt
+        assert '"name": "apply_bandpass_filter"' not in prompt
 
     def test_training_only_switch_panel(self):
         prompt = self._build(
             PipelineStage.TRAINING,
             ["switch_panel", "select_model", "stop_training"],
         )
-        assert "switch_panel" in prompt
-        assert "stop_training" in prompt
-        assert "select_model" not in prompt
+        assert '"name": "switch_panel"' in prompt
+        assert '"name": "stop_training"' in prompt
+        assert '"name": "select_model"' not in prompt
 
     def test_trained_allows_retraining(self):
         prompt = self._build(
@@ -125,9 +141,9 @@ class TestStageBasedFiltering:
                 "switch_panel",
             ],
         )
-        assert "select_model" in prompt
-        assert "start_training" in prompt
-        assert "clear_training_history" in prompt
+        assert '"name": "select_model"' in prompt
+        assert '"name": "start_training"' in prompt
+        assert '"name": "clear_training_history"' in prompt
 
     def test_no_tools_registered_shows_fallback(self):
         prompt = self._build(PipelineStage.EMPTY, [])
@@ -157,8 +173,8 @@ class TestStageBasedFiltering:
                 "apply_bandpass_filter",
             ],
         )
-        assert "select_channels" in prompt
-        assert "apply_bandpass_filter" in prompt
+        assert '"name": "select_channels"' in prompt
+        assert '"name": "apply_bandpass_filter"' in prompt
         assert "scan_source" not in prompt
         assert "preview_interpretation" not in prompt
 
@@ -173,28 +189,19 @@ class TestStageBasedFiltering:
         registry = ToolRegistry()
         for name in (*retired, "import_eeg_data", "switch_panel"):
             registry.register(_FakeTool(name))
-        study = MagicMock()
-
-        with (
-            patch(
-                "XBrainLab.llm.agent.assembler.compute_pipeline_stage",
-                return_value=PipelineStage.EMPTY,
-            ),
-            patch(
-                "XBrainLab.llm.agent.assembler.read_prompt_policy",
-                return_value=PromptPolicyReadResult(
-                    publication=None,
-                    published_tools=frozenset(
-                        retired | {"import_eeg_data", "switch_panel"}
-                    ),
-                    blocked_reasons=(),
+        with patch(
+            "XBrainLab.llm.agent.assembler.read_prompt_policy",
+            return_value=_prompt_policy_read(
+                PipelineStage.EMPTY,
+                published_tools=frozenset(
+                    retired | {"import_eeg_data", "switch_panel"}
                 ),
             ),
         ):
-            prompt = ContextAssembler(registry, study).build_system_prompt()
+            prompt = ContextAssembler(registry, Study()).build_system_prompt()
 
-        assert "import_eeg_data" in prompt
-        assert "switch_panel" in prompt
+        assert '"name": "import_eeg_data"' in prompt
+        assert '"name": "switch_panel"' in prompt
         for tool_name in retired:
             assert tool_name not in prompt
 
@@ -204,12 +211,11 @@ class TestPromptContent:
 
     def test_stage_name_is_not_in_system_policy(self):
         registry = ToolRegistry()
-        study = MagicMock()
         with patch(
-            "XBrainLab.llm.agent.assembler.compute_pipeline_stage",
-            return_value=PipelineStage.PREPROCESSED,
+            "XBrainLab.llm.agent.assembler.read_prompt_policy",
+            return_value=_prompt_policy_read(PipelineStage.PREPROCESSED),
         ):
-            assembler = ContextAssembler(registry, study)
+            assembler = ContextAssembler(registry, Study())
             prompt = assembler.build_system_prompt()
 
         assert "Preprocessed" not in prompt
@@ -217,12 +223,11 @@ class TestPromptContent:
 
     def test_stage_guidance_is_not_in_system_policy(self):
         registry = ToolRegistry()
-        study = MagicMock()
         with patch(
-            "XBrainLab.llm.agent.assembler.compute_pipeline_stage",
-            return_value=PipelineStage.EMPTY,
+            "XBrainLab.llm.agent.assembler.read_prompt_policy",
+            return_value=_prompt_policy_read(PipelineStage.EMPTY),
         ):
-            assembler = ContextAssembler(registry, study)
+            assembler = ContextAssembler(registry, Study())
             prompt = assembler.build_system_prompt()
 
         assert "no data is loaded" not in prompt.lower()
@@ -230,18 +235,11 @@ class TestPromptContent:
 
     def test_rag_context_is_in_separate_untrusted_message(self):
         registry = ToolRegistry()
-        study = MagicMock()
-        with (
-            patch(
-                "XBrainLab.llm.agent.assembler.compute_pipeline_stage",
-                return_value=PipelineStage.EMPTY,
-            ),
-            patch(
-                "XBrainLab.llm.agent.assembler.read_prompt_policy",
-                return_value=PromptPolicyReadResult.not_applicable(),
-            ),
+        with patch(
+            "XBrainLab.llm.agent.assembler.read_prompt_policy",
+            return_value=_prompt_policy_read(PipelineStage.EMPTY),
         ):
-            assembler = ContextAssembler(registry, study)
+            assembler = ContextAssembler(registry, Study())
             assembler.add_context("RAG info")
             messages = assembler.get_messages(
                 [{"role": "user", "content": "Import EEG data."}]
@@ -260,12 +258,11 @@ class TestPromptContent:
         prompts = {}
         for stage in PipelineStage:
             registry = ToolRegistry()
-            study = MagicMock()
             with patch(
-                "XBrainLab.llm.agent.assembler.compute_pipeline_stage",
-                return_value=stage,
+                "XBrainLab.llm.agent.assembler.read_prompt_policy",
+                return_value=_prompt_policy_read(stage),
             ):
-                assembler = ContextAssembler(registry, study)
+                assembler = ContextAssembler(registry, Study())
                 prompt = assembler.build_system_prompt()
             prompts[stage] = prompt
         assert len(set(prompts.values())) == len(PipelineStage)
@@ -275,12 +272,11 @@ class TestPromptContent:
     def test_rule_6_only_listed_tools(self):
         """Prompt instructs LLM not to call unlisted tools."""
         registry = ToolRegistry()
-        study = MagicMock()
         with patch(
-            "XBrainLab.llm.agent.assembler.compute_pipeline_stage",
-            return_value=PipelineStage.EMPTY,
+            "XBrainLab.llm.agent.assembler.read_prompt_policy",
+            return_value=_prompt_policy_read(PipelineStage.EMPTY),
         ):
-            assembler = ContextAssembler(registry, study)
+            assembler = ContextAssembler(registry, Study())
             prompt = assembler.build_system_prompt()
 
         assert "backend-stage-published action contracts" in prompt

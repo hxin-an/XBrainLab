@@ -4164,7 +4164,6 @@ class _StudyTrainingAliasVisitor(ast.NodeVisitor):
     def __init__(self, relative_path: Path) -> None:
         self.relative_path = relative_path
         self.violations: list[str] = []
-        self._function_stack: list[str] = []
         self._study_alias_scopes: list[set[str]] = [set()]
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
@@ -4177,19 +4176,15 @@ class _StudyTrainingAliasVisitor(ast.NodeVisitor):
         self,
         node: ast.FunctionDef | ast.AsyncFunctionDef,
     ) -> None:
-        self._function_stack.append(node.name)
         aliases = set(self._study_alias_scopes[-1])
         aliases.update(self._function_study_aliases(node))
         self._study_alias_scopes.append(aliases)
         self.generic_visit(node)
         self._study_alias_scopes.pop()
-        self._function_stack.pop()
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
-        if (
-            node.attr in STUDY_TRAINING_COMPATIBILITY_FIELDS
-            and self._is_study_root(node.value)
-            and not self._legacy_pipeline_exemption()
+        if node.attr in STUDY_TRAINING_COMPATIBILITY_FIELDS and self._is_study_root(
+            node.value
         ):
             self._record(node, node.attr)
         self.generic_visit(node)
@@ -4202,7 +4197,6 @@ class _StudyTrainingAliasVisitor(ast.NodeVisitor):
             and self._is_study_root(node.args[0])
             and isinstance(node.args[1], ast.Constant)
             and node.args[1].value in STUDY_TRAINING_COMPATIBILITY_FIELDS
-            and not self._legacy_pipeline_exemption()
         ):
             self._record(node, str(node.args[1].value))
         self.generic_visit(node)
@@ -4211,15 +4205,6 @@ class _StudyTrainingAliasVisitor(ast.NodeVisitor):
         if isinstance(node, ast.Name):
             return node.id == "study" or node.id in self._study_alias_scopes[-1]
         return isinstance(node, ast.Attribute) and node.attr in {"study", "_study"}
-
-    def _legacy_pipeline_exemption(self) -> bool:
-        if (
-            self.relative_path
-            != Path("XBrainLab/backend/application/pipeline_stage.py")
-            or not self._function_stack
-        ):
-            return False
-        return self._function_stack[-1] == "_legacy_study_pipeline_stage"
 
     def _record(self, node: ast.AST, field_name: str) -> None:
         self.violations.append(

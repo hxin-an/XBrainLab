@@ -166,10 +166,7 @@ Action Contract Catalog (input definitions, never an output array):
                     "navigation tool when the user explicitly asks."
                 ),
             }
-        stage = compute_pipeline_stage(
-            self.study_state,
-            publication=publication,
-        )
+        stage = compute_pipeline_stage(publication)
         config = STAGE_CONFIG.get(stage, STAGE_CONFIG[PipelineStage.EMPTY])
         return stage, config
 

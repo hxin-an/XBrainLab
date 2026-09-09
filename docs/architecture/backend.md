@@ -122,10 +122,9 @@ architecture guard now also rejects UI code that bypasses `execute_application_c
 calling `get_application_service(...).execute(...)` directly.
 
 2026-07-12 pipeline-stage ownership cleanup removed the unused `Study.pipeline_stage` property.
-For a real `Study`, `compute_pipeline_stage(...)` now accepts only a caller-supplied
-`ApplicationViewPublication`; a missing, invalid, or unknown publication fails closed to `EMPTY`
-without importing or calling the application runtime. Direct Study-shaped derivation remains only
-for fake / compatibility objects. The preprocess epoch dialog now reads `epoch_handoff` through
+`compute_pipeline_stage(...)` accepts only a caller-supplied `ApplicationViewPublication`; a
+missing, invalid, or unknown publication fails closed to `EMPTY` without importing or calling the
+application runtime. The preprocess epoch dialog now reads `epoch_handoff` through
 `ApplicationUiRuntime.get_view_publication()` instead of inspecting `Study._application_service` or
 calling blocking `get_state()`. Architecture compliance protects the private service cache,
 `Study -> application.runtime` direction, and the no-service-locator pipeline-stage boundary.

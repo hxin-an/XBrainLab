@@ -1415,15 +1415,15 @@ def test_assembler_filtering():
     registry.register(ValidTool())
     registry.register(InvalidTool())
 
-    # 2. Use an explicit non-product context with no application runtime.
-    compatibility_context = object()
+    state = ApplicationStateSnapshot.empty()
+    publication = ApplicationViewPublication(
+        generation=90,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
 
-    # 3. Patch pipeline stage to a config that allows only the approved import action.
+    # 2. Patch only the stage config; the stage comes from one typed publication.
     with (
-        patch(
-            "XBrainLab.llm.agent.assembler.compute_pipeline_stage",
-            return_value=PipelineStage.EMPTY,
-        ),
         patch(
             "XBrainLab.llm.agent.assembler.STAGE_CONFIG",
             {
@@ -1434,7 +1434,11 @@ def test_assembler_filtering():
             },
         ),
     ):
-        assembler = ContextAssembler(registry, compatibility_context)
+        assembler = ContextAssembler(
+            registry,
+            Study(),
+            application_runtime=_ApplicationRuntimeFake(publication),
+        )
         system_prompt = assembler.build_system_prompt()
 
     # 4. Verify Content
@@ -1447,20 +1451,24 @@ def test_assembler_filtering():
 def test_assembler_context_and_history():
     """Test standard features: RAG context and History assembly."""
     registry = ToolRegistry()
-    compatibility_context = object()
+    state = ApplicationStateSnapshot.empty()
+    publication = ApplicationViewPublication(
+        generation=91,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
+    assembler = ContextAssembler(
+        registry,
+        Study(),
+        application_runtime=_ApplicationRuntimeFake(publication),
+    )
 
-    with patch(
-        "XBrainLab.llm.agent.assembler.compute_pipeline_stage",
-        return_value=PipelineStage.EMPTY,
-    ):
-        assembler = ContextAssembler(registry, compatibility_context)
+    # Add RAG context
+    assembler.add_context("Important RAG Info")
 
-        # Add RAG context
-        assembler.add_context("Important RAG Info")
-
-        # Get Messages with History
-        history = [{"role": "user", "content": "Hello"}]
-        messages = assembler.get_messages(history)
+    # Get Messages with History
+    history = [{"role": "user", "content": "Hello"}]
+    messages = assembler.get_messages(history)
 
     # Verify policy and context are separate messages.
     sys_msg = messages[0]["content"]
@@ -1489,12 +1497,18 @@ def test_assembler_sends_state_card_and_one_clean_assistant_message():
         {"role": "user", "content": "Please continue until training is ready."},
     ]
 
-    with patch(
-        "XBrainLab.llm.agent.assembler.compute_pipeline_stage",
-        return_value=PipelineStage.EMPTY,
-    ):
-        assembler = ContextAssembler(registry, mock_study)
-        messages = assembler.get_messages(history)
+    state = ApplicationStateSnapshot.empty()
+    publication = ApplicationViewPublication(
+        generation=92,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
+    assembler = ContextAssembler(
+        registry,
+        mock_study,
+        application_runtime=_ApplicationRuntimeFake(publication),
+    )
+    messages = assembler.get_messages(history)
 
     assert "Workflow Decision Context:" not in messages[0]["content"]
     context = _untrusted_context(messages)

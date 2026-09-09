@@ -1,28 +1,11 @@
-"""Tests for the pipeline state machine.
-
-Covers :func:`compute_pipeline_stage`, :data:`STAGE_CONFIG` integrity,
-and the LLM compatibility re-export of the backend stage contract.
-"""
+"""Tests for the stage-specific Assistant prompt configuration."""
 
 from __future__ import annotations
 
-from dataclasses import replace
-from unittest.mock import MagicMock
-
-from XBrainLab.backend.application.capabilities import build_capability_policy
-from XBrainLab.backend.application.pipeline_stage import (
-    PipelineStage as BackendPipelineStage,
-)
-from XBrainLab.backend.application.pipeline_stage import (
-    compute_pipeline_stage as backend_compute_pipeline_stage,
-)
 from XBrainLab.backend.application.pipeline_stage import derive_pipeline_stage
-from XBrainLab.backend.application.state import ApplicationStateSnapshot
-from XBrainLab.backend.application.view_publication import ApplicationViewPublication
 from XBrainLab.llm.pipeline_state import (
     STAGE_CONFIG,
     PipelineStage,
-    compute_pipeline_stage,
 )
 
 EXPECTED_STAGE_LABELS = {
@@ -172,146 +155,6 @@ def test_stage_config_matches_the_approved_target_ledger() -> None:
     assert {
         stage: set(config["tools"]) for stage, config in STAGE_CONFIG.items()
     } == EXPECTED_TARGET_TOOLS
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _make_study(**overrides):
-    """Create a minimal Study-like mock with sensible defaults."""
-    study = MagicMock()
-    study.loaded_data_list = overrides.get("loaded_data_list", [])
-    study.preprocessed_data_list = overrides.get("preprocessed_data_list", [])
-    study.epoch_data = overrides.get("epoch_data")
-    study.datasets = overrides.get("datasets", [])
-    study.model_holder = overrides.get("model_holder")
-    study.training_option = overrides.get("training_option")
-    study.trainer = overrides.get("trainer")
-    return study
-
-
-def _running_trainer():
-    trainer = MagicMock()
-    trainer.is_running.return_value = True
-    return trainer
-
-
-def _finished_trainer():
-    trainer = MagicMock()
-    trainer.is_running.return_value = False
-    run = MagicMock()
-    run.is_finished.return_value = True
-    holder = MagicMock()
-    holder.get_plans.return_value = [run]
-    trainer.get_training_plan_holders.return_value = [holder]
-    return trainer
-
-
-# ---------------------------------------------------------------------------
-# compute_pipeline_stage
-# ---------------------------------------------------------------------------
-
-
-class TestComputePipelineStage:
-    def test_llm_reexports_backend_stage_contract(self):
-        assert PipelineStage is BackendPipelineStage
-        assert compute_pipeline_stage is backend_compute_pipeline_stage
-
-    def test_empty(self):
-        study = _make_study()
-        assert compute_pipeline_stage(study) == PipelineStage.EMPTY
-
-    def test_data_loaded(self):
-        study = _make_study(loaded_data_list=["raw1"])
-        assert compute_pipeline_stage(study) == PipelineStage.DATA_LOADED
-
-    def test_preprocessed(self):
-        study = _make_study(
-            loaded_data_list=["raw1"],
-            preprocessed_data_list=["preprocessed1"],
-        )
-        assert compute_pipeline_stage(study) == PipelineStage.PREPROCESSED
-
-    def test_epoch_ready(self):
-        study = _make_study(
-            loaded_data_list=["raw1"],
-            preprocessed_data_list=["preprocessed1"],
-            epoch_data=MagicMock(),
-        )
-        assert compute_pipeline_stage(study) == PipelineStage.EPOCH_READY
-
-    def test_dataset_ready(self):
-        study = _make_study(
-            loaded_data_list=["raw1"],
-            epoch_data=MagicMock(),
-            datasets=["ds1"],
-            model_holder=MagicMock(),
-            training_option=MagicMock(),
-        )
-        assert compute_pipeline_stage(study) == PipelineStage.DATASET_READY
-
-    def test_training(self):
-        study = _make_study(
-            loaded_data_list=["raw1"],
-            epoch_data=MagicMock(),
-            datasets=["ds1"],
-            trainer=_running_trainer(),
-        )
-        assert compute_pipeline_stage(study) == PipelineStage.TRAINING
-
-    def test_trained(self):
-        study = _make_study(
-            loaded_data_list=["raw1"],
-            epoch_data=MagicMock(),
-            datasets=["ds1"],
-            trainer=_finished_trainer(),
-        )
-        assert compute_pipeline_stage(study) == PipelineStage.TRAINED
-
-    def test_training_takes_priority_over_trained(self):
-        """If trainer is running, stage is TRAINING regardless of datasets."""
-        study = _make_study(
-            loaded_data_list=["raw1"],
-            epoch_data=MagicMock(),
-            datasets=["ds1"],
-            trainer=_running_trainer(),
-        )
-        assert compute_pipeline_stage(study) == PipelineStage.TRAINING
-
-    def test_trainer_without_completion_evidence_is_not_trained(self):
-        """Trainer construction alone is not evidence of completed results."""
-        trainer = MagicMock(spec=[])  # no attributes
-        study = _make_study(trainer=trainer)
-        assert compute_pipeline_stage(study) == PipelineStage.EMPTY
-
-    def test_real_study_uses_explicit_application_view_publication(self):
-        from XBrainLab.backend.study import Study
-
-        study = Study()
-        snapshot = replace(
-            ApplicationStateSnapshot.empty(),
-            pipeline_stage="dataset_ready",
-        )
-        publication = ApplicationViewPublication(
-            generation=2,
-            state=snapshot,
-            capabilities=build_capability_policy(snapshot),
-        )
-
-        assert (
-            compute_pipeline_stage(study, publication=publication)
-            == PipelineStage.DATASET_READY
-        )
-
-    def test_real_study_without_publication_does_not_fallback_to_direct_state(self):
-        from XBrainLab.backend.study import Study
-
-        study = Study()
-        study.loaded_data_list = [MagicMock()]
-
-        assert compute_pipeline_stage(study) == PipelineStage.EMPTY
 
 
 # ---------------------------------------------------------------------------

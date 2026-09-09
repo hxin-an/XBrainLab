@@ -3,10 +3,8 @@
 Consumes the backend :class:`PipelineStage` read-model contract and defines the
 :data:`STAGE_CONFIG` mapping that drives stage-specific assistant guidance.
 
-For real product sessions, the stage is derived only from the ApplicationService
-state snapshot so tool prompts, capability policy, and command execution share
-one backend truth. Mock / legacy callers may still fall back to direct
-Study-shaped reads for compatibility tests.
+The stage is read only from an explicit ApplicationService state publication so
+tool prompts, capability policy, and command execution share one backend truth.
 """
 
 from __future__ import annotations
