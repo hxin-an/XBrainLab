@@ -2095,12 +2095,12 @@ def check_label_resource_admission_boundary(root_dir: Path) -> list[str]:
     )
     interpretation_tree = _parse_python_file(interpretation_service)
     if interpretation_tree is not None:
-        handle_apply = _class_method_node(
+        prepare_apply = _class_method_node(
             interpretation_tree,
             "DataInterpretationCommandService",
-            "handle_apply_interpretation",
+            "prepare_apply_interpretation",
         )
-        calls = _function_calls_in_order(handle_apply)
+        calls = _function_calls_in_order(prepare_apply)
         preflight_lines = [
             line for line, name in calls if name == "_resolve_apply_resource_preflight"
         ]

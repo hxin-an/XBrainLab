@@ -1,6 +1,8 @@
 import ast
 from pathlib import Path, PureWindowsPath
 
+import pytest
+
 from tests import architecture_compliance
 from tests.architecture_compliance import (
     check_agent_confirmation_contract_evidence,
@@ -1203,6 +1205,43 @@ def apply(path):
     assert any(
         "data_interpretation_apply.py" in item and "direct file IO" in item
         for item in violations
+    )
+
+
+@pytest.mark.parametrize("admit_before_apply", [False, True])
+def test_label_resource_guard_checks_actual_preparation_not_legacy_handler(
+    tmp_path: Path,
+    admit_before_apply: bool,
+) -> None:
+    calls = [
+        "self._resolve_apply_resource_preflight()",
+        "self._admitted_reviewed_label_resources()",
+        "self.apply_label_carriers()",
+    ]
+    if not admit_before_apply:
+        calls.reverse()
+    prepare_body = "\n".join(f"        {call}" for call in calls)
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/backend/application/data_interpretation_service.py",
+        """class DataInterpretationCommandService:
+    def handle_apply_interpretation(self):
+        self._resolve_apply_resource_preflight()
+        self._admitted_reviewed_label_resources()
+        self.apply_label_carriers()
+
+    def prepare_apply_interpretation(self):
+"""
+        + prepare_body
+        + "\n",
+    )
+
+    violations = architecture_compliance.check_label_resource_admission_boundary(
+        tmp_path
+    )
+
+    assert any("authorized preflight before apply" in item for item in violations) is (
+        not admit_before_apply
     )
 
 
