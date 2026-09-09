@@ -192,38 +192,6 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
         continue_allowed_after_success=True,
     )
 
-    load_reasons = []
-    if (
-        active_dataset.has_epoch_data
-        or active_dataset.has_datasets
-        or active_training.has_trainer
-    ):
-        load_reasons.append(
-            "Reset the session before loading new raw data after EEG epochs "
-            "are created, dataset generation, or trainer creation."
-        )
-    if _has_preprocess_operations(state):
-        load_reasons.append(
-            "Reset preprocessing before loading new raw data into this session."
-        )
-    capabilities[CommandName.LOAD_DATA.value] = _cap(
-        CommandName.LOAD_DATA,
-        load_reasons,
-    )
-
-    attach_reasons = []
-    if not active_dataset.has_raw_data:
-        attach_reasons.append("Load raw data before attaching labels.")
-    capabilities[CommandName.ATTACH_LABELS.value] = _cap(
-        CommandName.ATTACH_LABELS,
-        attach_reasons + _raw_edit_blockers(state),
-    )
-
-    capabilities[CommandName.IMPORT_LABELS.value] = _cap(
-        CommandName.IMPORT_LABELS,
-        attach_reasons + _raw_edit_blockers(state),
-    )
-
     raw_edit_reasons = _raw_edit_blockers(state)
     capabilities[CommandName.UPDATE_METADATA.value] = _cap(
         CommandName.UPDATE_METADATA,

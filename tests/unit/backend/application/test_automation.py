@@ -21,7 +21,6 @@ from XBrainLab.backend.application import (
     build_command_from_payload,
     command_specs,
     execute_automation_payload,
-    resource_guard,
 )
 from XBrainLab.backend.application.training_submission import (
     training_submission_edited_fields,
@@ -45,16 +44,7 @@ def test_command_specs_cover_primary_application_commands_with_autonomy_policy()
 
     specs = {spec.name: spec for spec in command_specs(service)}
 
-    assert set(specs) == {
-        name.value
-        for name in CommandName
-        if name
-        not in {
-            CommandName.LOAD_DATA,
-            CommandName.ATTACH_LABELS,
-            CommandName.IMPORT_LABELS,
-        }
-    }
+    assert set(specs) == {name.value for name in CommandName}
     scan = specs[CommandName.SCAN_SOURCE.value]
     assert scan.taxonomy == "data_interpretation"
     assert scan.input_schema["required"] == ["source_path"]
@@ -238,59 +228,6 @@ def test_automation_rejects_ui_only_payload_flags(command_name, field_name):
                 "command": command_name.value,
                 "arguments": {field_name: True},
             },
-        )
-
-
-def test_legacy_compatibility_commands_require_explicit_schema_opt_in():
-    service = ApplicationService(Study())
-
-    specs = {spec.name: spec for spec in command_specs(service)}
-
-    assert {
-        CommandName.LOAD_DATA.value,
-        CommandName.ATTACH_LABELS.value,
-        CommandName.IMPORT_LABELS.value,
-    }.isdisjoint(specs)
-
-    specs = {
-        spec.name: spec
-        for spec in command_specs(
-            service,
-            include_legacy_compatibility=True,
-        )
-    }
-
-    for command_name in (
-        CommandName.LOAD_DATA.value,
-        CommandName.ATTACH_LABELS.value,
-        CommandName.IMPORT_LABELS.value,
-    ):
-        spec = specs[command_name]
-        assert spec.taxonomy == "legacy_data_compatibility"
-        assert spec.legacy_compatibility is True
-        assert spec.primary_workflow is False
-        assert "Legacy compatibility" in spec.description
-        assert "review_interpretation" in spec.preferred_commands
-        assert "apply_interpretation" in spec.preferred_commands
-
-
-@pytest.mark.parametrize(
-    "command_name",
-    [
-        CommandName.LOAD_DATA.value,
-        CommandName.ATTACH_LABELS.value,
-        CommandName.IMPORT_LABELS.value,
-    ],
-)
-def test_legacy_compatibility_payload_requires_explicit_execution_opt_in(
-    command_name: str,
-) -> None:
-    with pytest.raises(
-        AutomationPayloadError,
-        match="requires explicit compatibility opt-in",
-    ):
-        build_command_from_payload(
-            {"command": command_name, "arguments": {}},
         )
 
 
@@ -607,55 +544,6 @@ def test_execute_automation_payload_reports_schema_error_without_service_executi
     assert execution.result is None
 
 
-def test_headless_load_requires_explicit_resource_warning_confirmation(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    path = tmp_path / "warning.unknown"
-    path.write_bytes(b"0" * 100)
-    service = ApplicationService(Study())
-    service.dataset.import_files = MagicMock(return_value=(1, []))
-    monkeypatch.setattr(resource_guard, "available_ram_bytes", lambda: 2_000_000)
-
-    blocked = execute_automation_payload(
-        service,
-        {"command": "load_data", "arguments": {"paths": [str(path)]}},
-        allow_legacy_compatibility=True,
-    )
-
-    assert blocked.result is not None
-    assert blocked.result["status"] == "failed"
-    assert blocked.result["error_type"] == "confirmation_required"
-    assert blocked.result["diagnostics"]["resource_preflight"]["risk_level"] == (
-        "warning"
-    )
-    challenge = blocked.result["diagnostics"]["resource_preflight"][
-        "confirmation_challenge"
-    ]
-    assert challenge["command_name"] == "load_data"
-    service.dataset.import_files.assert_not_called()
-
-    continued = execute_automation_payload(
-        service,
-        {
-            "command": "load_data",
-            "arguments": {
-                "paths": [str(path)],
-                "resource_preflight_confirmed": True,
-                "resource_preflight_token": challenge["challenge_id"],
-            },
-        },
-        allow_legacy_compatibility=True,
-    )
-
-    assert continued.result is not None
-    assert continued.result["status"] == "ok"
-    assert continued.result["diagnostics"]["resource_preflight"]["risk_level"] == (
-        "warning"
-    )
-    service.dataset.import_files.assert_called_once_with([str(path)])
-
-
 def test_automation_preflight_reads_one_committed_publication():
     service = ApplicationService(Study())
     publication = service.get_view_publication()
@@ -681,13 +569,15 @@ def test_headless_cli_redacts_hostile_command_text() -> None:
     completed = subprocess.run(  # noqa: S603
         [
             sys.executable,
-            "scripts/dev/run_application_command.py",
+            "-m",
+            "scripts.dev.run_application_command",
             "--payload",
             json.dumps({"command": private_command, "arguments": {}}),
         ],
         check=False,
         capture_output=True,
         text=True,
+        cwd=Path(__file__).resolve().parents[4],
     )
 
     assert completed.returncode == 1

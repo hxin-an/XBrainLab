@@ -32,9 +32,6 @@ class FakeDatasetActionHandler:
     def open_smart_parser(self) -> None:
         pass
 
-    def import_label(self) -> None:
-        pass
-
 
 @pytest.fixture
 def sidebar(qtbot):
@@ -57,7 +54,6 @@ def test_init_ui(sidebar):
     assert not hasattr(sidebar, "import_folder_btn")
     assert not hasattr(sidebar, "import_bids_btn")
     assert isinstance(sidebar.reload_recipe_btn, QPushButton)
-    assert isinstance(sidebar.import_label_btn, QPushButton)
     assert isinstance(sidebar.smart_parse_btn, QPushButton)
     assert isinstance(sidebar.chan_select_btn, QPushButton)
     assert isinstance(sidebar.electrode_layout_btn, QPushButton)
@@ -507,12 +503,6 @@ def test_publication_refreshes_only_an_active_pending_electrode_summary(
     assert dialog.mapping_page.isHidden() is False
 
 
-def test_add_labels_compatibility_button_stays_hidden(sidebar):
-    assert sidebar.import_label_btn.isHidden() is True
-    assert sidebar.import_label_btn.text() == "Add labels"
-    assert sidebar.smart_parse_btn.isHidden()
-
-
 def test_channel_selection_uses_neutral_action_style(sidebar):
     style = sidebar.chan_select_btn.styleSheet()
 
@@ -602,8 +592,6 @@ def test_update_sidebar_refuses_real_study_no_capability_lock_data_fallback(qtbo
     panel_mock.controller.has_data.assert_not_called()
     assert widget.import_btn.isEnabled() is False
     assert "unavailable" in widget.import_btn.toolTip()
-    assert widget.import_label_btn.isEnabled() is False
-    assert "unavailable" in widget.import_label_btn.toolTip()
 
 
 def test_update_sidebar_missing_publication_fails_closed(
@@ -633,9 +621,6 @@ def test_update_sidebar_missing_publication_fails_closed(
             "Channel selection availability is unavailable right now."
         ),
         widget.smart_parse_btn: "Smart parse availability is unavailable right now.",
-        widget.import_label_btn: (
-            "Label import availability is unavailable right now."
-        ),
     }
     for button, tooltip in expected.items():
         assert button.isEnabled() is False
@@ -665,9 +650,6 @@ def test_deferred_startup_real_study_missing_publication_fails_closed(qtbot):
             "Channel selection availability is unavailable right now."
         ),
         widget.smart_parse_btn: "Smart parse availability is unavailable right now.",
-        widget.import_label_btn: (
-            "Label import availability is unavailable right now."
-        ),
     }
     for button, tooltip in expected.items():
         assert button.isEnabled() is False

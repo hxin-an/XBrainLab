@@ -13,7 +13,6 @@ from PyQt6.QtWidgets import QFileDialog, QWidget
 from XBrainLab.backend.application.commands import (
     ApplyInterpretationCommand,
     CommandName,
-    LoadDataCommand,
     PreviewInterpretationCommand,
     ReviewInterpretationCommand,
     SaveInterpretationRecipeCommand,
@@ -527,30 +526,9 @@ class DataInterpretationActionCoordinator:
                 return InteractionOutcome.blocked(
                     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
                 )
-            result = self._bindings.execute_application_command(
-                self.panel,
-                LoadDataCommand(
-                    paths=filepaths,
-                ),
+            return InteractionOutcome.blocked(
+                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
             )
-            if result is not None and result.failed:
-                self._bindings.show_error(
-                    self.panel,
-                    "Import failed",
-                    result.message,
-                )
-                return self._interaction_failure_outcome(result, result.message)
-            if result is None:
-                self._bindings.show_warning(
-                    self.panel,
-                    "Interpretation Blocked",
-                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
-                )
-                return InteractionOutcome.blocked(
-                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
-                )
-            self._show_status(result.message)
-            return InteractionOutcome.completed(result.message)
         except Exception:
             message = self._bindings.present_unexpected_error(
                 self.panel,

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from pathlib import Path
 from threading import Event, Thread
 from typing import Any, cast
 from unittest.mock import MagicMock
@@ -12,9 +11,9 @@ import pytest
 
 from XBrainLab.backend.application import (
     ApplicationService,
+    ApplyInterpretationCommand,
     CommandName,
     ErrorType,
-    LoadDataCommand,
     QueryStateCommand,
     ResetSessionCommand,
     TrainCommand,
@@ -121,16 +120,13 @@ def test_command_gate_rejects_non_boolean_confirmed_before_training(
 @pytest.mark.parametrize("invalid_confirmation", ["false", 1])
 def test_command_gate_rejects_non_boolean_resource_preflight_confirmation(
     invalid_confirmation: object,
-    tmp_path: Path,
 ) -> None:
     service = ApplicationService(Study())
     service.dataset.import_files = MagicMock(return_value=(0, []))
-    source = tmp_path / "sample.fif"
-    source.write_bytes(b"placeholder")
 
     result = service.execute(
-        LoadDataCommand(
-            paths=[str(source)],
+        ApplyInterpretationCommand(
+            confirmed=True,
             resource_preflight_confirmed=cast(Any, invalid_confirmation),
         ),
     )

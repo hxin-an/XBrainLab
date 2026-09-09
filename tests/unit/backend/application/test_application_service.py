@@ -25,7 +25,6 @@ from XBrainLab.backend.application import (
     ApplyInterpretationCommand,
     ApplyMontageCommand,
     ApplySmartParseCommand,
-    AttachLabelsCommand,
     ChangedState,
     ClearDatasetsCommand,
     ClearTrainingHistoryCommand,
@@ -36,9 +35,6 @@ from XBrainLab.backend.application import (
     DiscardTrainingPreparationCommand,
     ErrorType,
     EvaluateCommand,
-    ImportLabelsCommand,
-    LabelImportPlan,
-    LoadDataCommand,
     NewSessionCommand,
     PreprocessCommand,
     PreprocessOperation,
@@ -5128,7 +5124,6 @@ def test_empty_state_snapshot_and_policy():
     assert state.training.has_trainer is False
     assert state.interpretation.has_scan_result is False
     assert state.interpretation.has_applied_interpretation is False
-    assert policy.get(CommandName.LOAD_DATA).available is True
     assert policy.get(CommandName.SCAN_SOURCE).available is True
     assert policy.get(CommandName.PREVIEW_INTERPRETATION).available is False
     assert policy.get(CommandName.PREPROCESS).available is False
@@ -7508,8 +7503,13 @@ def test_epoch_capability_accepts_raw_data_without_preprocess_operation():
     assert policy.get(CommandName.CREATE_EPOCH).reasons == []
 
 
-def test_load_data_blocks_after_preprocessing_operations():
+def test_apply_interpretation_blocks_after_preprocessing_operations(tmp_path):
     service = ApplicationService(Study())
+    source = tmp_path / "new_file.fif"
+    source.write_bytes(b"not loaded during scan")
+    assert service.execute(ScanSourceCommand(source_path=str(source))).ok
+    assert service.execute(PreviewInterpretationCommand()).ok
+    assert service.execute(ValidateInterpretationCommand()).ok
     raw = _raw_mock()
     raw.get_preprocess_history.return_value = ["bandpass"]
     service.study.data_manager.loaded_data_list = [raw]
@@ -7518,10 +7518,12 @@ def test_load_data_blocks_after_preprocessing_operations():
     service.get_state()
 
     policy = service.get_capabilities()
-    result = service.execute(LoadDataCommand(paths=["/tmp/new_file.gdf"]))
+    result = service.execute(ApplyInterpretationCommand(confirmed=True))
 
-    assert policy.get(CommandName.LOAD_DATA).available is False
-    assert "Reset preprocessing" in policy.get(CommandName.LOAD_DATA).reasons[0]
+    assert policy.get(CommandName.APPLY_INTERPRETATION).available is False
+    assert "Reset preprocessing" in " ".join(
+        policy.get(CommandName.APPLY_INTERPRETATION).reasons
+    )
     assert result.failed is True
     assert result.error_type == ErrorType.PRECONDITION
     service.dataset.import_files.assert_not_called()
@@ -8679,20 +8681,25 @@ def test_saliency_command_returns_typed_validation_failure_for_unsupported_reque
     assert result.state.visualization.saliency_params == {}
 
 
-def test_command_result_classifies_unsupported_load(tmp_path):
+def test_command_result_rejects_source_without_supported_eeg_files(tmp_path):
     service = ApplicationService(Study())
     unsupported_path = tmp_path / "sample.unsupported"
     unsupported_path.write_text("not eeg", encoding="utf-8")
 
-    result = service.execute(LoadDataCommand(paths=[str(unsupported_path)]))
+    review = service.execute(
+        ReviewInterpretationCommand(source_path=str(unsupported_path))
+    )
+    assert review.ok
+    assert review.diagnostics["scan_result"]["eeg_files"] == []
+    result = service.execute(ApplyInterpretationCommand(confirmed=True))
 
     assert result.failed is True
     assert result.ok is False
-    assert result.command_name == "load_data"
-    assert result.error_type == ErrorType.UNSUPPORTED_FORMAT
+    assert result.command_name == "apply_interpretation"
+    assert result.error_type == ErrorType.PRECONDITION
     assert result.recoverable is True
     assert result.state.last_error is not None
-    assert result.state.last_error.error_type == "unsupported_format"
+    assert result.state.last_error.error_type == "precondition"
     assert result.changed_state.error_changed is True
 
 
@@ -9772,9 +9779,6 @@ def test_train_resource_warning_is_returned_before_training_starts(monkeypatch):
 def test_every_declared_command_returns_result_envelope():
     service = ApplicationService(Study())
     commands = [
-        LoadDataCommand(paths=[]),
-        AttachLabelsCommand(mapping={}),
-        ImportLabelsCommand(plan=LabelImportPlan()),
         UpdateMetadataCommand(index=0, subject="S01"),
         ApplySmartParseCommand(results={"/tmp/sample.fif": ("S01", "001")}),
         RemoveFilesCommand(indices=[0]),
@@ -10320,84 +10324,6 @@ def test_metadata_update_command_routes_through_service():
     )
 
 
-def test_import_labels_plan_routes_batch_import(tmp_path):
-    service = ApplicationService(Study())
-    raw = _raw_mock()
-    service.study.data_manager.loaded_data_list = [raw]
-    service.study.data_manager.preprocessed_data_list = [raw]
-    service.dataset.apply_labels_batch = MagicMock(return_value=1)
-    label_path = tmp_path / "labels.txt"
-    label_path.write_text("1 2\n", encoding="utf-8")
-
-    result = service.execute(
-        ImportLabelsCommand(
-            plan=LabelImportPlan(
-                target_indices=[0],
-                label_paths=[str(label_path)],
-                file_mapping={raw.get_filepath(): str(label_path)},
-                mapping={1: "left", 2: "right"},
-                mode="batch",
-            ),
-        ),
-    )
-
-    assert result.ok is True
-    assert result.diagnostics["success_count"] == 1
-    service.dataset.apply_labels_batch.assert_called_once()
-
-
-def test_import_labels_updates_applied_interpretation_recipe_trace(tmp_path):
-    source_dir = tmp_path / "interpreted_with_external_labels"
-    source_dir.mkdir()
-    eeg_path = source_dir / "subject01_run1.fif"
-    eeg_path.write_bytes(b"not loaded during scan")
-    recipe_path = tmp_path / "recipe_with_labels.json"
-    service = ApplicationService(Study())
-    raw = _raw_mock()
-    raw.get_filepath.return_value = str(eeg_path)
-    raw.get_filename.return_value = eeg_path.name
-    _use_test_raw_factory(service, cast(Raw, raw))
-    service.dataset.apply_labels_batch = MagicMock(return_value=1)
-    label_path = tmp_path / "labels.tsv"
-    label_path.write_text("label\n1\n2\n", encoding="utf-8")
-
-    service.execute(ScanSourceCommand(source_path=str(source_dir)))
-    service.execute(PreviewInterpretationCommand())
-    service.execute(ValidateInterpretationCommand())
-    apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
-    assert apply_result.ok
-    import_result = service.execute(
-        ImportLabelsCommand(
-            plan=LabelImportPlan(
-                target_indices=[0],
-                label_paths=[str(label_path)],
-                file_mapping={str(eeg_path): str(label_path)},
-                mapping={1: "left", 2: "right"},
-                mode="batch",
-                selected_event_names=["cue"],
-            ),
-        ),
-    )
-    save_result = service.execute(
-        SaveInterpretationRecipeCommand(recipe_path=str(recipe_path)),
-    )
-
-    assert import_result.ok is True
-    assert import_result.diagnostics["recipe_updated"] is True
-    label_import = import_result.diagnostics["label_import"]
-    canonical_label_path = str(label_path.resolve())
-    assert label_import["mode"] == "batch"
-    assert label_import["label_carriers"] == [canonical_label_path]
-    assert label_import["selected_event_names"] == ["cue"]
-    assert import_result.state.interpretation.label_carriers == [canonical_label_path]
-    assert import_result.state.interpretation.label_import_count == 1
-    assert save_result.ok is True
-    recipe = save_result.diagnostics["recipe"]
-    assert recipe["label_carriers"] == [canonical_label_path]
-    assert recipe["label_imports"][0]["class_map"] == {"1": "left", "2": "right"}
-    assert "label_import:batch:1" in recipe["recipe_trace"]
-
-
 def test_apply_montage_command_routes_confirmed_positions():
     service = ApplicationService(Study())
     raw = _raw_mock()
@@ -10422,7 +10348,6 @@ def test_apply_montage_command_routes_confirmed_positions():
 @pytest.mark.parametrize(
     ("command", "name"),
     [
-        (LoadDataCommand(paths=["/tmp/sample.fif"]), CommandName.LOAD_DATA),
         (RemoveFilesCommand(indices=[0]), CommandName.REMOVE_FILES),
     ],
 )

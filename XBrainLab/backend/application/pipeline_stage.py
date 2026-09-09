@@ -101,8 +101,6 @@ WORKFLOW_COMMAND_LABELS: dict[str, str] = {
     CommandName.APPLY_INTERPRETATION.value: "Apply data interpretation",
     CommandName.SAVE_INTERPRETATION_RECIPE.value: "Save interpretation recipe",
     CommandName.RELOAD_INTERPRETATION_RECIPE.value: "Reload interpretation recipe",
-    CommandName.LOAD_DATA.value: "Import data",
-    CommandName.ATTACH_LABELS.value: "Add labels to loaded data",
     CommandName.PREPROCESS.value: "Preprocess data",
     CommandName.CREATE_EPOCH.value: "Create EEG epochs",
     CommandName.CONFIGURE_DATASET_SPLIT.value: "Configure data splitting",

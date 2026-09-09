@@ -76,14 +76,6 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Print command schemas with current capability/autonomy policy.",
     )
-    parser.add_argument(
-        "--include-legacy-compatibility",
-        action="store_true",
-        help=(
-            "Explicitly expose and allow deprecated direct load/label commands "
-            "for migration tooling."
-        ),
-    )
     return parser.parse_args()
 
 
@@ -114,13 +106,7 @@ def _run(args: argparse.Namespace) -> int:
     if args.list_schemas:
         service = get_application_service(Study())
         return _emit_public_json(
-            [
-                spec.to_dict()
-                for spec in command_specs(
-                    service,
-                    include_legacy_compatibility=args.include_legacy_compatibility,
-                )
-            ],
+            [spec.to_dict() for spec in command_specs(service)],
             exit_code=0,
         )
 
@@ -148,7 +134,6 @@ def _run(args: argparse.Namespace) -> int:
         execute_automation_payload(
             service,
             payload,
-            allow_legacy_compatibility=args.include_legacy_compatibility,
         ).to_public_dict()
         for payload in payloads
     ]

@@ -5,7 +5,6 @@ from XBrainLab.ui.components.single_plot_window import (
     SinglePlotWindow,  # Kept SinglePlotWindow as it's used later
 )
 from XBrainLab.ui.core.base_dialog import BaseDialog
-from XBrainLab.ui.dialogs.dataset.label_mapping_dialog import LabelMappingDialog
 from XBrainLab.ui.dialogs.preprocess.epoching_dialog import EpochingDialog
 from XBrainLab.ui.dialogs.preprocess.rereference_dialog import RereferenceDialog
 
@@ -23,7 +22,6 @@ class TestDialogStructure:
         # We can't easily instantiate complex dialogs without full mocks,
         # but we can check class inheritance safely.
 
-        assert issubclass(LabelMappingDialog, BaseDialog)
         assert issubclass(EpochingDialog, BaseDialog)
         assert issubclass(SinglePlotWindow, BaseDialog)
         assert issubclass(

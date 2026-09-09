@@ -561,7 +561,7 @@ def test_application_service_load_epoch_saved_split_workflow(tmp_path):
     assert epoch_result.state.epoch.epoch_count == 12
     assert epoch_result.state.dataset.available is False
     policy_after_epoch = service.get_capabilities()
-    assert policy_after_epoch.get(CommandName.LOAD_DATA).available is False
+    assert policy_after_epoch.get(CommandName.APPLY_INTERPRETATION).available is False
     assert policy_after_epoch.get(CommandName.CREATE_EPOCH).available is False
     assert (
         "Reset the session"
@@ -652,7 +652,7 @@ def test_application_service_load_epoch_saved_split_workflow(tmp_path):
     assert reset_result.state.training.has_trainer is False
     assert reset_result.state.last_error is None
     assert reset_result.changed_state.error_changed is False
-    assert service.get_capabilities().get(CommandName.LOAD_DATA).available is True
+    assert service.get_capabilities().get(CommandName.SCAN_SOURCE).available is True
 
 
 def test_reviewed_multiclass_epoch_unlocks_deferred_dataset_split(
