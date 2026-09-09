@@ -86,10 +86,21 @@ saliency / actual button compute renders on Linux and Windows CPU/CUDA. On nativ
 Granite ChatPanel confirmation also computes and renders finite maps. A separate 30-record/four-class
 synthetic sequence reproduced the two Nyquist errors (80 then 50 Hz), resampling, average reference,
 normalization, group trial split, training and Assistant compute; it still rendered all four maps.
-The new unmocked integration test covers GUI compute, method/tab change, real Assistant handoff,
-new-generation recompute and visible finite canvas. These are characterization evidence, not proof
-the user's unknown blank-view case is fixed. Ask for the actual EEG folder, epoch window and affected
-view/screenshot; do not invent a lifecycle repair without a red reproduction.
+The new unmocked integration test exposed a test timing defect: QTest clicked a hidden enabled
+button before the asynchronous selection query completed. Waiting for actual visibility (not a
+sleep) passes all 35 focused native cases. Separately, a real cold Assistant handoff now reproduces
+a product failure: its panel-ready callback calls Compute before the selection query completes,
+returns BLOCKED / "Review Saliency Settings Again", and leaves sticky review state without any
+Saliency command. Repair admission through the existing query/interaction lifecycle, preserving
+stale-generation, cancellation and failure protection; no polling timer or independent readiness
+policy. Require cold GUI and cold Assistant entry, method/tab change, new-generation recompute and
+visible finite canvas. The user's exact dataset/view remains unknown; do not claim every blank-view
+case is proven identical to this reproducible first-entry failure.
+The bounded repair now passes both real entrypoints on Linux and native Windows (36 native focused
+cases), 176 adjacent UI/handoff cases and zero-diagnostic locked typing. An independent lifecycle
+review found no blocker; the additional stale-catalog test proves a changed publication cannot chain
+compute or claim completion. Next: commit this repair, validate the exact integrated head in CI and
+native normal ChatPanel Filter/Saliency, inspect the changed-surface evidence, then deliver Windows.
 Persisted evaluation files have no saliency, but this alone cannot prove memory computation failed:
 the existing post-training publication path updates in-memory records, not those artifact files.
 
@@ -102,3 +113,6 @@ environments totaling 31.47 GiB (including the active 6.10 GiB shared environmen
 Windows PR-specific environments total about 8 GiB. Preserve the current 4.01 GiB Windows environment.
 No environment was deleted or created for this repair. WSL filesystem free space is not evidence that
 Windows VHDX backing storage has shrunk; shutdown/compaction is outside this running repair.
+The additional 6.20 GiB WSL xaLO7TCQ environment is still used by the shared Git pre-commit hook;
+preserve it too. Three unassigned large WSL environments total 18.32 GiB, and a historical C: Poetry
+environment uses an external research Conda base; both require explicit retention/deletion decisions.

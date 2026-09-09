@@ -1,5 +1,6 @@
 """Visualization panel: saliency maps, topomaps, spectrograms, and 3-D views."""
 
+from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, cast
@@ -648,9 +649,7 @@ class VisualizationPanel(BasePanel):
             }}
             """
         )
-        self.compute_saliency_btn.clicked.connect(
-            self._compute_saliency_from_action_bar
-        )
+        self.compute_saliency_btn.clicked.connect(self.compute_saliency)
 
         self.cancel_saliency_btn = QPushButton("Cancel")
         self.cancel_saliency_btn.setObjectName("OwnedOperationCancelButton")
@@ -2109,6 +2108,20 @@ class VisualizationPanel(BasePanel):
 
     def compute_saliency(self) -> InteractionOutcome:
         """Start Compute Saliency using the current reviewed panel selection."""
+        if (
+            not self._saliency_compute_in_progress
+            and not self._saliency_settings_review_required
+            and self._current_saliency_settings_target() is None
+            and (self._application_summary_dirty or self.last_application_query is None)
+        ):
+            # Panel materialization precedes the asynchronous result catalog.
+            # Own a fresh read in this interaction before interpreting an empty
+            # selection as stale settings; its callback chains the real compute.
+            if self._refresh_application_query(
+                view="summary", on_ready=self._compute_saliency_from_action_bar
+            ):
+                return InteractionOutcome.accepted("Loading saliency results...")
+            return InteractionOutcome.blocked(_SALIENCY_PUBLICATION_UNAVAILABLE_MESSAGE)
         return self._compute_saliency_from_action_bar()
 
     def _compute_saliency_from_action_bar(self) -> InteractionOutcome:
@@ -3801,7 +3814,8 @@ class VisualizationPanel(BasePanel):
         self,
         *,
         view: str | None = None,
-    ) -> None:
+        on_ready: Callable[[], InteractionOutcome] | None = None,
+    ) -> bool:
         """Dispatch one visualization readiness read outside the GUI thread."""
         action_port = self._action_port
         publication = self._application_view_publication
@@ -3809,9 +3823,11 @@ class VisualizationPanel(BasePanel):
             publication = self._application_view_publication
         if action_port is None or publication is None:
             self.last_application_query = None
-            return
-        if self._active_application_summary_request is not None:
-            return
+            return False
+        if self._active_application_summary_request is not None and on_ready is None:
+            return False
+        # A user action supersedes an uncorrelated background catalog read.
+        # The existing request identity rejects that older callback.
         self._application_summary_request_sequence += 1
         request = (
             self._application_summary_request_sequence,
@@ -3819,8 +3835,12 @@ class VisualizationPanel(BasePanel):
         )
         self._active_application_summary_request = request
 
-        def accept_result(result: CommandResult) -> None:
+        def accept_result(result: CommandResult) -> InteractionOutcome | None:
             if self._active_application_summary_request != request:
+                if on_ready is not None:
+                    return InteractionOutcome.cancelled(
+                        _SALIENCY_RESULTS_CHANGED_DETAIL
+                    )
                 return
             self._active_application_summary_request = None
             self._application_summary_dirty = not self._accept_application_query_result(
@@ -3829,6 +3849,17 @@ class VisualizationPanel(BasePanel):
             )
             if not self._application_summary_dirty:
                 self.update_panel()
+            if on_ready is not None:
+                if (
+                    self._application_summary_dirty
+                    or self._application_query_blocks_display(
+                        self.last_application_query
+                    )
+                    or self._current_saliency_settings_target() is None
+                ):
+                    return InteractionOutcome.blocked(self._application_query_message())
+                return on_ready()
+            return None
 
         def accept_error(error: tuple) -> None:
             if self._active_application_summary_request != request:
@@ -3850,6 +3881,7 @@ class VisualizationPanel(BasePanel):
         if not started and self._active_application_summary_request == request:
             self._active_application_summary_request = None
             self._settle_application_query_failure(publication)
+        return started
 
     def _settle_application_query_failure(
         self,

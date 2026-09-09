@@ -32,6 +32,12 @@ from XBrainLab.backend.application.view_publication import (
 from XBrainLab.backend.training_state_contract import TrainingReadBoundary
 from XBrainLab.backend.utils.observer import Observable
 from XBrainLab.ui.async_command_runner import application_command_registry
+from XBrainLab.ui.interaction_outcome import (
+    InteractionCompletionSession,
+    InteractionCompletionStatus,
+    InteractionOutcome,
+    bind_interaction_completion,
+)
 from XBrainLab.ui.panels.visualization.panel import VisualizationPanel
 
 
@@ -85,6 +91,7 @@ class _VisualizationApplicationPort(Observable):
         self.visualize_gate: Event | None = None
         self.visualize_entered: Event | None = None
         self.query_calls = 0
+        self.commands: list[Command] = []
         self.unsubscribe_calls = 0
 
     def execute(
@@ -97,6 +104,7 @@ class _VisualizationApplicationPort(Observable):
             expected_publication_generation,
             int,
         )
+        self.commands.append(command)
         self.query_calls += 1
         if isinstance(command, SaliencyCommand):
             diagnostics = {
@@ -320,6 +328,43 @@ def test_visualization_cleanup_ignores_a_late_summary_callback(qtbot) -> None:
     port.visualize_gate.set()
     qtbot.waitUntil(lambda: application_command_registry().active_count(panel) == 0)
     assert panel.last_application_query is None
+
+
+def test_action_owned_summary_stale_result_never_starts_saliency(qtbot) -> None:
+    """A stale catalog read must fail its handoff before its compute callback."""
+    port = _VisualizationApplicationPort()
+    port.visualize_gate = Event()
+    port.visualize_entered = Event()
+    panel = _panel(qtbot, port)
+    terminals = []
+    session = InteractionCompletionSession(
+        request_id="saliency-catalog-stale",
+        command_name="saliency",
+        on_terminal=terminals.append,
+    )
+    compute_after_catalog = MagicMock(
+        return_value=InteractionOutcome.accepted("Saliency computation started.")
+    )
+
+    with bind_interaction_completion(session):
+        assert panel._refresh_application_query(
+            view="summary",
+            on_ready=compute_after_catalog,
+        )
+    qtbot.waitUntil(port.visualize_entered.is_set, timeout=500)
+    port.publication_after_visualize = _publication(generation=5, revision=5)
+    port.notify_after_visualize = True
+    port.visualize_gate.set()
+
+    qtbot.waitUntil(lambda: bool(terminals), timeout=3_000)
+    assert terminals[-1].status is InteractionCompletionStatus.FAILED
+    compute_after_catalog.assert_not_called()
+    assert not any(
+        isinstance(command, SaliencyCommand) and command.method is not None
+        for command in port.commands
+    )
+    assert panel._application_view_publication is not None
+    assert panel._application_view_publication.generation == 5
 
 
 @pytest.mark.parametrize("refresh_method", ("on_update", "update_panel"))

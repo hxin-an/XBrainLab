@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
+import pytest
 from PyQt6.QtCore import Qt
 
 from scripts.dev.chatpanel_training_fixture import write_training_ready_raw_fif
@@ -17,6 +18,7 @@ from XBrainLab.backend.application import (
     get_application_service,
 )
 from XBrainLab.backend.study import Study
+from XBrainLab.backend.training_state_contract import TrainingOutcomeState
 from XBrainLab.llm.agent.ui_handoff import (
     WorkflowUiHandoffRequest,
     WorkflowUiHandoffResolutionStatus,
@@ -31,10 +33,15 @@ def _wait_for_finished_training(qtbot, service) -> None:
     qtbot.waitUntil(
         lambda: (
             not service.get_state().training.is_running
-            and service.get_state().training.finished_run_count >= 1
+            and service.get_state().training.terminal_outcome.is_terminal
         ),
         timeout=_TIMEOUT_MS,
     )
+    training = service.get_state().training
+    assert training.terminal_outcome.state is TrainingOutcomeState.COMPLETED, (
+        training.terminal_outcome
+    )
+    assert training.finished_run_count >= 1
 
 
 def _wait_for_visible_finite_saliency(qtbot, panel) -> None:
@@ -77,13 +84,19 @@ def _open_visualization_panel(qtbot, window):
     )
     panel = window.visualization_panel
     panel.tabs.setCurrentWidget(panel.tab_map)
-    qtbot.waitUntil(panel.compute_saliency_btn.isEnabled, timeout=_TIMEOUT_MS)
+    qtbot.waitUntil(
+        lambda: panel.compute_saliency_btn.isVisible()
+        and panel.compute_saliency_btn.isEnabled(),
+        timeout=_TIMEOUT_MS,
+    )
     return panel
 
 
+@pytest.mark.parametrize("first_entrypoint", ["gui", "assistant"])
 def test_real_gui_and_assistant_saliency_entrypoints_render_finite_results(
     qtbot,
     tmp_path: Path,
+    first_entrypoint: str,
 ) -> None:
     """Both approved entry points schedule real work and render a visible result."""
     study = Study()
@@ -121,12 +134,33 @@ def test_real_gui_and_assistant_saliency_entrypoints_render_finite_results(
         _wait_for_finished_training(qtbot, service)
         assert not service.get_state().visualization.saliency_available
 
-        panel = _open_visualization_panel(qtbot, window)
-        qtbot.mouseClick(
-            panel.compute_saliency_btn,
-            Qt.MouseButton.LeftButton,
-            pos=panel.compute_saliency_btn.rect().center(),
+        host = WorkflowUiHandoffHost(window)
+        request = WorkflowUiHandoffRequest.for_action(
+            CommandName.SALIENCY,
+            tool_name="compute_saliency",
         )
+        if first_entrypoint == "gui":
+            panel = _open_visualization_panel(qtbot, window)
+            qtbot.mouseClick(
+                panel.compute_saliency_btn,
+                Qt.MouseButton.LeftButton,
+                pos=panel.compute_saliency_btn.rect().center(),
+            )
+        else:
+            terminal_resolutions = []
+            initial = host.open(
+                request,
+                on_terminal=lambda resolution: terminal_resolutions.append(resolution)
+                or True,
+            )
+            assert initial.status is WorkflowUiHandoffResolutionStatus.COMMAND_PENDING
+            qtbot.waitUntil(lambda: bool(terminal_resolutions), timeout=_TIMEOUT_MS)
+            assert (
+                terminal_resolutions[-1].status
+                is WorkflowUiHandoffResolutionStatus.COMPLETED
+            ), terminal_resolutions[-1]
+            panel = window.visualization_panel
+            panel.tabs.setCurrentWidget(panel.tab_map)
         _wait_for_visible_finite_saliency(qtbot, panel)
         first_generation = (
             service.get_state().visualization.post_training_saliency.generation
@@ -141,11 +175,6 @@ def test_real_gui_and_assistant_saliency_entrypoints_render_finite_results(
         )
 
         terminal_resolutions = []
-        host = WorkflowUiHandoffHost(window)
-        request = WorkflowUiHandoffRequest.for_action(
-            CommandName.SALIENCY,
-            tool_name="compute_saliency",
-        )
         initial = host.open(
             request,
             on_terminal=lambda resolution: terminal_resolutions.append(resolution)
