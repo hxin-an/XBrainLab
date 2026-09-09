@@ -2,209 +2,104 @@
 
 最後更新：`2026-09-09`
 
-## Active — architecture and test-quality hardening
+## Active — integrated quality-hardening validation and one manual handoff
 
-### Delivery protocol — one long-lived Draft, one final manual acceptance
+### Problem, outcome and authorization
 
-- `#130` completed the prior comprehensive cleanup and was manually accepted and merged at
-  `8306a649`. This active stage begins from that exact `main` baseline.
-- This stage uses one long-lived Draft PR. Small commits and focused validation are construction
-  evidence only; they never request intermediate review, manual testing, or merge.
-- The user explicitly authorizes a large-PR exception to the normal production-LOC slice limit,
-  while every slice remains independently reviewable and reversible. Do not use that exception
-  to combine unrelated behavior changes or create a second control plane.
-- The only manual handoff is permitted after every row below is closed, final exact-head checks
-  succeed, and the final isolated build is live. Only explicit acceptance of that final SHA permits
-  merge.
-- UI work is authorized only when it preserves visible presentation, copy, interaction, state and
-  workflow. Stop for a visible UI decision. Preserve EEG semantics, result reading, and Assistant
-  behavior.
+The user accepted the prior cleanup (#130), merged at `8306a649`, but requested a further
+comprehensive pass on overdesign, historical residue, weak coverage and mock-heavy tests.
+Draft #131 is the single delivery vehicle; construction commits are not intermediate handoffs.
 
-### Outcome
+The authorized outcome is a smaller canonical product path with real state/workflow evidence,
+followed by complete exact-head validation and one live manual-test version. The user explicitly
+allows this stage to exceed the normal production-LOC PR limit; each construction slice remains
+independently reviewable and reversible. UI internal cleanup is authorized only while preserving
+visible layout, copy, interactions and behavior. No merge before the user's new acceptance of
+the final product source and explicit merge approval.
 
-Make the product path and its tests materially easier to trust and maintain:
+### Construction closure and retained evidence
 
-1. Replace product-path mock/compatibility tests with lower-mock command/publication/workflow
-   evidence, retaining mocks only for genuine nondeterministic or external seams.
-2. Delete UI/controller compatibility fallback, observer, constructor, and test residue only after
-   the production caller and its stronger replacement test are gone.
-3. Migrate formal legacy data/automation aliases to the canonical Data Interpretation flow, then
-   remove each obsolete alias, handler, schema opt-in, test, docs/configuration entry and persisted
-   representation that has a real migration. Never silently break a supported recipe/result reader.
-4. Reduce measured overdesign in existing owners. Prefer deletion/reuse; split an owner only where
-   the extracted responsibility has two real production callers and removes duplicate policy. No
-   new authoritative owner, state machine, permanent compatibility path or general quality platform.
-5. Raise the global coverage floor to 85% line coverage and start collecting branch coverage as a
-   baseline. Coverage remains secondary to real workflow evidence.
+Implementation is closed for the declared families below; the integrated gates remain outstanding.
+The construction commits hold the detailed history. Inventory counts are not claims that every
+tracked file was deeply read, and passing tests do not establish defect-free architecture.
 
-### Inventory and closure criteria
+| Family | Implemented boundary / evidence |
+| --- | --- |
+| Import, labels and recipes | Canonical scan/review/apply replaces the retired direct-import/post-load-label commands, opt-in and hidden UI route. Real FIF/BIDS workflows, reviewed mapping, historical JSON label recipe replay and atomic failure tests preserve supported data semantics. |
+| Preprocess and epoch | Unused EEG controller forwarding is removed. Real commands protect filter/resample/epoch/reset, event identity and all-dropped epoch rollback. |
+| Split, training, stop/retry and results | Training uses explicit application query/publication/action/transient ports. Real training and OOM/terminal-delivery tests protect retry, history, cancellation and result/saliency delivery; snapshot tests protect stale publication and selection. |
+| Evaluation, Saliency and Visualization | Existing query/publication owners remain. Settings use snapshots, including pending-option precedence and unavailable-query handling; real workflow and applicable native/public-data gates protect integrated result consumption. |
+| Assistant | Stale retired alias references are removed; the 18-tool registry and command spine remain unchanged. Real product diagnostic/confirmation paths and long-session lifecycle evidence replace alias residue, not model-quality evaluation. |
+| MainWindow and shared UI | Empty controller slots, indirect controller context resolution, observer refresh suppression/router and unused helpers are removed. Explicit runtime/parent resolution, real publication delivery and native QObject deletion protect ownership and unsubscribe behavior. |
+| Dataset UI | Row actions require revisioned selections; rendering consumes published metadata. Test-only synchronous dispatch, unversioned selectors and live metadata reconstruction are removed. Real inline edits, row replacement/reordering and asynchronous review/apply tests protect the current product path. |
+| Scripts, fixtures, docs and CI | Gate selectors and capture fixtures use current boundaries. Training captures own and close their real runtime. Coverage collection keeps the existing denominator, enforces 85% lines and records branches separately; Poe uses the same aggregate verifier. |
 
-| Area | Status | Closure evidence |
-| --- | --- | --- |
-| Test quality and coverage | Active | Each critical workflow has a lower-mock product path; external/native mocks have a stated seam; 85% line coverage and branch baseline pass. |
-| UI/controller compatibility | Pending | Real `Study` product path has no controller fallback for action/readiness/render; migrated tests no longer need the helper/constructor before it is removed. |
-| Formal legacy data/automation | Pending | Canonical replacement, dynamic/config/docs/persisted-input sweep, migration evidence, then physical removal of eligible aliases. |
-| ApplicationService ownership | Pending | Command admission/publication/owned-work remain its only authority; forwarding/duplicate policy moves to existing owning services or is deleted. |
-| Assistant and MainWindow ownership | Pending | Turn/lifecycle and shell/navigation owners remain explicit; only independently owned pure/duplicated responsibilities move or disappear. |
-| Scripts, docs, CI and fixtures | Pending | Gates/documentation reflect the canonical flow; no obsolete compatibility contract or exclusive low-value evidence remains. |
+The primary behavioral evidence lives in current tests, including:
+`tests/integration/workflows/`, `tests/integration/`,
+`tests/unit/backend/`, `tests/unit/ui/dataset/`, Training/Saliency/publication test families,
+and `tests/unit/scripts/`. Deleted forwarding/mock choreography is not counted as lost product
+protection where the retained replacement exercises the actual state transition or side effect.
+Mocks remain for external generation, resource failure and nondeterministic/native seams, not
+as proof that mocked product workflows execute.
 
-### First bounded slice — test evidence map and compatibility baseline
+### Ownership review and retention decisions
 
-**Problem and evidence.** Final `#130` CI ran 10,658 tests with 86.68% aggregate line coverage,
-but the configured floor is 50%, branch coverage is not measured, and mock-heavy tests are
-concentrated in UI presentation and compatibility contexts. Product/native/public-data gates exist,
-but their relationship to individual compatibility helpers is not yet mapped.
+- ApplicationService remains the shared admission, publication and owned-work authority.
+  Domain services retain authoritative data/training mutations. Its size alone does not justify
+  another facade, state machine or receipt owner; cancellation, publication and two-phase
+  validation guards are not compatibility residue.
+- Study's unused Dataset/Preprocess/Training controller factory/cache and the three forwarding
+  controllers are removed. ChatController remains an active Assistant boundary.
+- MainWindow owns Qt construction, navigation and shutdown; LLMController owns Assistant
+  turns and leases. Neither gains a second workflow/control layer.
+- The internal raw-mutation lifecycle coordinator still invalidates interpretation state after
+  current metadata, smart-parse and remove-file commands. Its historical name does not make
+  this live consistency protection removable.
+- Lazy imports preserve the measured/import-tested heavy-dependency boundary.
+  Internal label-plan/recipe records remain where canonical replay still consumes them.
+- Supported model catalog, settings, recipes/results, English Assistant behavior and EEG
+  semantics remain in scope for preservation. No visible redesign, prompt/model/RAG experiment,
+  unknown-external API shim, legacy directory or generic inventory platform is introduced.
 
-**Scope.** Build a source-backed map for import→epoch, split→training→stop/retry/reopen,
-evaluation/saliency, Assistant confirmation/handoff, and startup/close. For each test family,
-record the product entry point, state/side effect protected, mock category, lower-mock replacement
-if needed, and deletion candidate. Establish the branch-coverage configuration and 85% line floor
-only after the map identifies the required focused protections. Do not delete behavior or formal
-contracts in this slice.
+### Measured CI aggregation change
 
-**Owners.** ApplicationService remains command admission/publication owner; workflow services own
-domain mutation; MainWindow owns product shell/navigation; LLMController owns turn/lifecycle;
-native/external adapters retain their isolation seam. Owner count must not increase.
+Successful reference run `34250604747` spent 96 seconds in Linux aggregation: Poetry install
+12 seconds, full venv cache restore 50 seconds, sync 1 second and combine/verification 19 seconds.
+Only that aggregation job now installs lock-pinned coverage; provenance and shard verification
+have a tested stdlib-only import closure. Exact-source sidecars, complete shard evidence,
+coverage denominator/85% line floor and artifacts remain mandatory.
+Compare the final run's actual timing with this observation; one sample is not a general
+performance guarantee. Other job environments and gates are unchanged.
 
-**Validation.** Characterize the current aggregate coverage artifact and relevant focused test
-families; run coverage configuration checks, Ruff, architecture compliance, and the selected test
-families. The final stage still requires the complete exact-head CI matrix and one manual handoff.
+### Remaining execution plan and validation
 
-**Stop condition.** The test/evidence map identifies the next concrete compatibility family and
-its stronger replacement. Persist a new bounded record before changing that family.
+1. Finish focused tooling tests, lint and review; commit the coherent tooling/doc closure.
+   The native capture fixture and all final source changes must be included in the candidate.
+2. Freeze and push the single integration head to #131. Verify exact base/head and every
+   applicable non-skipped CI check using actual GitHub conclusions and artifacts.
+3. Require the complete Linux test aggregation, at least 85% line coverage, separate branch
+   baseline, source-diverse required public data, platform/native and applicable UI gates.
+   Earlier green heads cannot substitute. Reuse equivalent same-head CI evidence rather than
+   running a duplicate local full manifest.
+4. Diagnose and repair any direct integrated failure, preserve its evidence, and validate the
+   changed final head again. Pending CI is not a stopping point.
+5. Once all applicable gates pass, launch that exact isolated version and a live log, verify
+   responsiveness, and deliver one workflow-oriented manual checklist. Do not monitor the
+   user's subsequent operation or merge without acceptance.
 
-### Sequenced implementation
+Local focused evidence covers canonical dataset workflows, revisioned Dataset UI and async
+review/apply, preprocessing/epoch rollback, Training state/lifecycle, application boundaries,
+script contracts, Ruff and architecture/type checks. Those passes are construction evidence;
+they do not yet satisfy the final exact-head CI/Windows/source-diverse handoff contract.
 
-Parallel bounded work — legacy backend data entry retirement: Assistant aliases are absent from
-the approved registry; its stale intent/verifier references and real-workflow import fixtures have
-now migrated. Retire `LoadDataCommand`, `AttachLabelsCommand`, `PreviewLabelImportCommand` and
-`ImportLabelsCommand`, their compatibility service/receipt, headless legacy opt-in and hidden
-Dataset Add labels route. Canonical scan/review/apply owns import semantics; saved historical
-`label_imports` recipes retain reload/review/apply support. The new fixed historical JSON test
-already verifies four-class GDF/MAT replay without any retiring command. `LabelImportPlan` still
-has a canonical apply caller and must not be blindly removed with its public command: trace and
-preserve any required internal record representation. Migrate remaining generic command/error/
-confirmation tests, remove only retired-exclusive tests, and preserve equivalent current resource,
-atomic rollback, cancellation and state publication evidence. No visible UI or 18-tool membership
-change, no new authoritative owner; expected owner delta is minus one compatibility service.
-Independent review must examine the actual data/recipe/lifecycle diff before integration.
+### Stop condition and assumptions
 
-Direct dependency closure: `EventFilterDialog` and `LabelMappingDialog` have no current production,
-script, or canonical Data Interpretation caller; only their lazy package exports and exclusive dialog
-tests remain. Data Interpretation review/apply retains reviewed carrier mapping and event choices.
-Remove those orphan dialogs, exports, and exclusive tests; retain canonical preview mapping and
-event-choice evidence. Validate focused Data Interpretation/UI suites and import boundaries.
+Stop only at the single live, validated manual-test handoff, a user pause, or a genuine missing
+authority/resource that cannot be resolved through safe in-scope work. Keep the original dirty
+worktree, user settings, shared environment, original data and existing applications untouched.
+The final candidate uses an isolated runtime and log. New source changes invalidate its prior
+manual acceptance; #130's acceptance does not approve #131.
 
-Direct retirement dependency — the old `label_import_preview` cache has no remaining production,
-registration, script or recipe reader caller after those commands are removed. Delete that cache
-and its preview-only `label_import_policy` dependency, plus unused service forwarding methods for post-load
-recipe recording. Keep `DataInterpretationState.record_label_import_for_recipe`, the internal
-`LabelImportPlan` representation. The old mapping-cardinality policy has no canonical caller;
-its only callers were the retired compatibility service and preview cache. Current reviewed
-carrier validation and admitted parser/resource boundaries remain unchanged.
-Validate canonical label apply, resource admission, recipe round-trip and historical JSON replay;
-remove only source guards/tests exclusive to the retired preview cache. This reduces owners and
-does not weaken current resource/atomicity checks or change visible UI.
-
-Current bounded work — Training publication and query boundary: MainWindow constructs Training
-with application publication/query ports; its remaining controller constructors, observer branch,
-history/readiness/preflight fallbacks serve test-only contexts. First remove ModelSelectionDialog's
-controller argument, using its existing explicit TrainingQueryPort and preserving catalog,
-provider loading, recovery, weight loading and current model identity. Then migrate panel/sidebar
-tests to publication/query state and remove the redundant controller branch. Preserve transient
-training progress, terminal publication ordering, stop/retry, confirmation, stale generation and
-result reopening. No new owner or visible UI change. Validate model dialog/catalog tests and real
-training refresh/runtime tests before/after each coherent change; verify actual event callers
-before deleting callbacks. Finish when the production path and retained tests use only the
-application ports, with equivalent lifecycle/state evidence passing.
-
-Shared UI dependency — after the last Training fallback caller is removed, delete the two
-uncalled controller compatibility lookup/execution helpers in `application_capabilities` and
-their four exclusive tests. Retain the unavailable-context error/message used by current Data
-Interpretation review and all runtime resolution/async lifecycle protections. Confirm no dynamic,
-script or production caller remains; validate application-capability and Data Interpretation UI
-tests. This is deletion of an unused convenience API, not a new UI behavior or owner.
-
-Next bounded shared-UI slice — BasePanel/BaseDialog controller storage and DatasetPanel's ignored
-controller argument have no product reader. Remove these empty constructor slots and the two
-BasePanel observer-refresh convenience methods whose only callers are tests. Migrate callers to
-explicit parent/publication ports; retain `_create_bridge`, publication/transient delivery, busy
-state and native cleanup. The current core/Dataset/context/constructor baseline passes 131 tests.
-Add real Observable delivery/unsubscribe evidence rather than retaining helper-call choreography.
-Validate those same families plus Dataset integration and publication refresh. This reduces unused
-API, adds no owner, and does not alter widget construction order, layout or visible behavior.
-
-Context-resolution dependency — after removing controller constructors/getters, `find_study` still
-searches `controller` and arbitrary `*_controller` attributes only for a standalone test. Remove
-that indirect fallback; keep explicit runtime, context.study, main_window.study and Qt parent-chain
-resolution. Retain a real parent-chain test and prove controller-only contexts cannot execute a
-command. No product caller, registration or script depends on controller-derived context.
-
-Next bounded refresh slice — real-Study command/observer refresh and suppression entry points
-return without action; product commands publish revisioned views and Training progress renders via
-its transient port. Remove the compatibility changed-state router, suppression/deferred replay
-state and their exclusive tests. Retain navigation's guarded refresh of the selected panel and
-native-safe callback containment. Remove the inert `refresh` keyword from UI command helpers and
-their callers (sync already discards it; async always passes False). Async busy/handle ownership,
-result/error delivery, cancellation and shutdown fences remain unchanged. Characterize runner,
-navigation and real Training runtime before edits, then rerun after migration. Review actual
-async cleanup diff independently. Owner delta is minus the compatibility refresh router; no new
-owner, visible behavior or command contract. Separate this deletion from the base-constructor and
-legacy data commits; shared guards must protect publication ownership, not require retired helpers.
-
-Final controller dependency — a complete production/script/reflection sweep now finds no caller
-of `Study.get_controller`; its lazy factory is the sole importer/constructor of DatasetController,
-PreprocessController and TrainingController. ChatController remains active and excluded. The EEG
-adapters delegate to existing Study-owned state services and relay obsolete observer events;
-tests alone do not justify retaining the unknown-external convenience API. Characterize the current
-controller tests, then delete the registry/factory and these three modules. Migrate substantive
-data/metadata/epoch/monitor/cancellation/teardown assertions to their actual state service or command
-owner; delete only forwarding/relay-exclusive tests. Keep command/public query contracts, recipe
-readers, DataManager/TrainingManager and native lifecycle ownership unchanged. Validate matching
-service suites plus real import/preprocess/training workflows and source guards; review the actual
-diff independently. No new owner or visible UI change. Retire documentation claiming the unused
-registry is an active boundary. Stop this slice when no executable registry consumer remains and
-all retained behavioral evidence passes; then finish the already-declared integration gates.
-
-Remaining Dataset UI dependency — the final source sweep found test-only branches still allowing
-Data Interpretation's async dispatcher to run synchronously when no product runtime exists,
-Dataset row actions to invent an unversioned selection, and table rendering to rebuild event
-metadata from a live compatibility object. These are not closed by deleting Study controllers.
-After the controller slice is committed, characterize Dataset action/render/async tests; migrate
-meaningful cases to revisioned rows and explicit async/publication ports, then remove those
-fallbacks and their exclusive tests. Collapse the duplicated startup-disabled branch without
-changing its text or enabled state. Keep deferred startup, real unavailable-state handling,
-generation/row identity, cancellation, resource confirmation and recipe reopen behavior. No new
-owner and no visible UI change. Validate real Dataset wizard/import and row-identity workflows,
-then independently review the async/state diff. This dependency must close before final handoff.
-
-Direct dependency cleanup — `_PanelSpec.controller_names` is an unread empty compatibility slot in
-MainWindow. Remove it and its empty constructor arguments without changing panel construction or
-visible behavior; migrate the existing architecture checks to reject controller wiring/spec fields
-themselves, then run the focused architecture baselines. Stop after MainWindow and its guards no
-longer encode a controller-spec compatibility path; no new guard platform or production owner.
-
-1. Complete the evidence map and set coverage/branch reporting without gaming the denominator.
-2. Migrate the highest-value UI compatibility tests to typed real-service/publication fixtures;
-   delete the now-unused fallback path and its exclusive tests. Repeat through the critical
-   workflows rather than converting mocks indiscriminately.
-3. Audit and migrate formal legacy commands. Known first candidates are `load_data`,
-   `attach_labels`, and `import_labels`; include every real schema, script, documentation,
-   configuration and persisted-input consumer in the decision. Remove only when the canonical
-   Data Interpretation path preserves the supported workflow.
-4. Review the large existing owners after their compatibility consumers are gone. ApplicationService
-   is first; Assistant controller and MainWindow follow only when the previous changes show a
-   concrete duplicated/forwarding responsibility.
-5. Reconcile CI, docs, fixtures and tests with the final canonical surfaces, then perform the
-   complete exact-head validation and one final manual test.
-
-### Non-goals and retained boundaries
-
-- Do not use a line count, raw mock count, or coverage percentage as proof of product correctness.
-- Do not remove supported model implementations, model catalog choices, settings, recipes or result
-  readers unless a verified canonical migration preserves their effective behavior; a model-selection
-  UI change requires a separate decision.
-- Do not weaken native, public-data, Assistant, security, cancellation, publication, SHA/receipt,
-  or data-consistency gates to make cleanup pass.
-- Do not add prompt/model/RAG experiments, performance redesign, a legacy archive, or a permanent
-  compatibility shim.
+Do not claim architecture perfection, complete model reliability, native Windows acceptance from
+offscreen captures, or handoff-ready from partial/pending evidence. Merge and post-merge worktree
+cleanup remain subsequent user-approved actions.
