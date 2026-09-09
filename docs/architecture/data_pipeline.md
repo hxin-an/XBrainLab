@@ -31,7 +31,7 @@ EEG file
   -> RawDataLoaderFactory
   -> Raw wrapper
   -> LabelImportService / event handling
-  -> PreprocessController + preprocessor classes
+  -> PreprocessCommandService / PreprocessStateService + preprocessor classes
   -> Epochs
   -> DatasetGenerator / Dataset masks
   -> TrainingPlanHolder / Trainer
@@ -88,10 +88,10 @@ Training completion 只發布 metrics，Saliency 必須由 visible `Compute Sali
 
 ## Import Layer
 
-import 的核心入口是 `RawDataLoaderFactory`。
+Product import 經 reviewed Data Interpretation；底層格式 dispatch 由 `RawDataLoaderFactory` 負責。
 
 ```text
-DatasetController.import_files(...)
+DataInterpretationApplyService / admitted DatasetProductPort
   -> RawDataLoaderFactory.load(path)
   -> registered loader by extension
   -> Raw(filepath, mne_object)
@@ -172,7 +172,7 @@ evidence contract；特定資料集若需要 code semantics，應由 sidecar、r
 
 ## Preprocess Layer
 
-preprocess 目前是 controller + processor classes 的組合。
+preprocess 由 application command/state services 協調 processor classes。
 
 主要 processors 位於 `XBrainLab/backend/preprocessor/`：
 
@@ -186,7 +186,7 @@ preprocess 目前是 controller + processor classes 的組合。
 - window epoch
 - export
 
-`PreprocessController` 的 domain 行為仍是：
+`PreprocessStateService` 的 domain 行為是：
 
 ```text
 read study.preprocessed_data_list

@@ -81,7 +81,7 @@ blocker was traced to the Data Splitting dialog defaulting test/validation split
 `Disable`; the dialog now defaults both to trial splits and an ApplicationService
 regression proves generated train/val/test splits unlock `TRAIN` readiness. `TrainCommand`
 also now passes `append` and `interactive` through `TrainingCommandService` to
-`TrainingController`, so synchronous test/product smoke training does not bypass the
+`TrainingStateService`, so synchronous test/product smoke training does not bypass the
 command contract.
 
 2026-07-11 training-selection hardening separated checkpoint selection from final test
@@ -302,8 +302,8 @@ contract／security decision，且仍必須delegate through
 - `training_state_service`
 - `visualization_state_service`
 
-`Study.get_controller(...)` 的 cached registry 仍保留給 outer adapter、standalone/mock compatibility
-與尚未移除的低階入口，但不是 `ApplicationService` product dependency。
+沒有 production/script/dynamic caller 的 `Study.get_controller` 與三個 EEG controller adapters
+已移除。`ChatController` 仍服務 Assistant conversation state，不在這個退役範圍。
 
 Evaluation product path 不建立 `EvaluationControllerAdapter`，而是由
 `TrainingProjectionReadPort` 產生 serializable catalog、generation-bound detached render
@@ -696,8 +696,7 @@ compatibility path 顯示的是固定的 public unavailable message，不是 bac
 
 重要邊界：
 
-- product command 透過 `Study`-owned focused services / domain ports 執行；controller registry 僅是
-  outer adapter、standalone/mock compatibility 與少數尚待收斂的低階入口。
+- product command 透過 `Study`-owned focused services / domain ports 執行；不建立 controller registry。
 - Data Interpretation 的 lifecycle truth 目前在 `DataInterpretationSessionState`，並由
   `DataInterpretationCommandService` 作為 command boundary 協調；UI、agent 和
   automation 仍必須透過 `ApplicationService.execute()` 進入，不可直接建立第二套
@@ -727,13 +726,12 @@ compatibility path 顯示的是固定的 public unavailable message，不是 bac
 
 ### Study
 
-`Study` 是中心 state container 和 controller factory。
+`Study` 是中心 domain state container。
 
 目前責任：
 
 - 建立 `DataManager`。
 - 建立 `TrainingManager`。
-- 快取 controllers，確保同一個 `Study` 內 controller 是 singleton-like。
 - 提供舊屬性相容層，例如 `study.loaded_data_list` 實際委派到 `study.data_manager.loaded_data_list`。
 - 提供清理 cascade，例如清 raw data 時也清 datasets / trainer。
 - 擁有 application service cache slot 與 command lock；service/runtime lifecycle owner 負責讀寫
@@ -784,20 +782,6 @@ compatibility path 顯示的是固定的 public unavailable message，不是 bac
 - `generate_plan()` 需要 datasets、training option、model holder 都存在。
 - `train()` 只負責叫現有 trainer 執行；沒有 trainer 會 raise。
 - `set_training_option()` 和 `set_model_holder()` 目前不清 trainer，因為要保留 multi-experiment history。
-
-## Controllers 現況
-
-Controllers 是外層便利 API 和 observer adapters，重用 Study-owned state services；它們不是
-product command spine，也不再負責 product panel 的 readiness 或 publication。
-
-| Controller | 目前責任 |
-| --- | --- |
-| `DatasetController` | 委派 `DatasetStateService` 做 import／metadata／channel 操作，並對 adapter caller 發出 domain events。 |
-| `PreprocessController` | 委派 `PreprocessStateService` 做 preprocessing／epoch 與 copy/swap，轉送 preprocess event。 |
-| `TrainingController` | 委派 `TrainingStateService` 做 readiness／start/stop／history，轉送 lifecycle events；monitor ownership 在 service。 |
-
-Product ports 直接使用相同的 state services，不繞回 controller adapters。保留的 observer relay
-不會建立另一個 mutation owner。
 
 ## 主要資料流
 
@@ -866,7 +850,7 @@ execution 仍可委派既有 controller / manager，但不以 controller state �
 
 - `ApplicationService` is the authoritative command-admission, confirmation, owned-work and publication boundary; focused services own domain mutation.
 - `DataInterpretationCommandService` / `DataInterpretationApplyService` own scan, review, apply and recipe-state orchestration; historical `label_imports` recipes remain replayable.
-- `Study`, `DataManager`, and `TrainingManager` retain live domain state. Their lower-level controllers delegate to the same state services; they are not a product UI readiness or publication boundary.
+- `Study`, `DataManager`, and `TrainingManager` retain live domain state. Study-owned state services supply the domain ports directly, without EEG controller adapters.
 - Product panels, assistant and headless automation enter through typed application commands, queries and publications. MainWindow navigation may refresh its selected panel; command/observer compatibility refresh routing has been removed.
 - Native third-party cancellation and Windows/native teardown require separate evidence. This boundary description is not proof that every module is defect-free.
 
@@ -874,4 +858,4 @@ execution 仍可委派既有 controller / manager，但不以 controller state �
 
 `BackendFacade`, direct-load/post-load label commands, their compatibility service, and legacy headless opt-in are retired. Do not reintroduce them as a compatibility target.
 
-New work must preserve one command spine: UI, Assistant, and scripts request typed commands; `ApplicationService` admits and publishes; focused services and Study-owned domain ports perform the workflow. Read-only data uses published state or typed query results. Tests may construct lower-level domain adapters where a real external/native seam requires it, but those fixtures do not establish a second product workflow.
+New work must preserve one command spine: UI, Assistant, and scripts request typed commands; `ApplicationService` admits and publishes; focused services and Study-owned domain ports perform the workflow. Read-only data uses published state or typed query results. Tests isolate external/native seams without establishing a second product workflow.

@@ -673,7 +673,6 @@ def test_dataset_action_handler_imports_real_gdf_with_external_mat_labels(
 
     host = _DatasetHost(Study())
     qtbot.addWidget(host)
-    controller = host.study.get_controller("dataset")
     panel = DatasetPanel(parent=host)
     host.dataset_panel = panel
     host.stack.addWidget(panel)
@@ -785,7 +784,6 @@ def test_multi_gdf_auto_detected_labels_import_without_blocked_dialog(
 
     host = _DatasetHost(Study())
     qtbot.addWidget(host)
-    controller = host.study.get_controller("dataset")
     panel = DatasetPanel(parent=host)
     host.dataset_panel = panel
     host.stack.addWidget(panel)
@@ -866,7 +864,6 @@ def test_outer_async_review_remove_then_readd_keeps_one_real_label_source(
 
     host = _DatasetHost(Study())
     qtbot.addWidget(host)
-    controller = host.study.get_controller("dataset")
     panel = DatasetPanel(parent=host)
     host.dataset_panel = panel
     host.stack.addWidget(panel)

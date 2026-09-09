@@ -11,10 +11,14 @@ import numpy as np
 import pytest
 from scipy.io import savemat
 
+from tests.integration.data_interpretation_support import (
+    import_recording_through_interpretation,
+)
 from XBrainLab.backend.application import (
     ApplicationService,
     ApplyInterpretationCommand,
     ApplyMontageCommand,
+    ApplySmartParseCommand,
     CommandName,
     ConfigureTrainingCommand,
     CreateEpochCommand,
@@ -27,6 +31,7 @@ from XBrainLab.backend.application import (
     PreviewInterpretationCommand,
     QueryStateCommand,
     ReloadInterpretationRecipeCommand,
+    RemoveFilesCommand,
     ResetPreprocessCommand,
     ResetSessionCommand,
     ReviewInterpretationCommand,
@@ -35,6 +40,7 @@ from XBrainLab.backend.application import (
     SaveInterpretationRecipeCommand,
     ScanSourceCommand,
     TrainCommand,
+    UpdateMetadataCommand,
     ValidateInterpretationCommand,
     VisualizeCommand,
     data_interpretation_bids,
@@ -120,6 +126,128 @@ def _write_synthetic_raw_fif(tmp_path):
     path = tmp_path / "synthetic_raw.fif"
     raw.save(path, overwrite=True)
     return path
+
+
+def test_invalid_import_preserves_existing_real_raw_data(tmp_path):
+    fif_path = _write_synthetic_raw_fif(tmp_path)
+    service = ApplicationService()
+    imported = import_recording_through_interpretation(service, fif_path)
+    raw_before = imported.state.raw
+    invalid_path = tmp_path / "not-an-eeg-recording.txt"
+    invalid_path.write_text("not an EEG recording", encoding="utf-8")
+
+    review = service.execute(
+        ReviewInterpretationCommand(
+            source_path=str(invalid_path),
+            source_hint="file",
+        )
+    )
+    result = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+    assert review.ok is True
+    assert result.failed is True
+    assert result.state.raw == raw_before
+    assert result.state.raw.count == 1
+    assert result.state.raw.metadata[0]["file"] == fif_path.name
+
+
+def test_remove_files_removes_the_exact_real_raw_row(tmp_path):
+    first_path = _write_synthetic_raw_fif(tmp_path)
+    second_path = tmp_path / "second_synthetic_raw.fif"
+    second_path.write_bytes(first_path.read_bytes())
+    service = ApplicationService()
+
+    scan = service.execute(ScanSourceCommand(source_path=str(tmp_path)))
+    preview = service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "selected_eeg_files": [str(first_path), str(second_path)],
+                "skip_labels": True,
+            }
+        )
+    )
+    validated = service.execute(ValidateInterpretationCommand())
+    loaded = service.execute(ApplyInterpretationCommand(confirmed=True))
+    removed = service.execute(RemoveFilesCommand(indices=[0]))
+
+    assert scan.ok is True
+    assert preview.ok is True
+    assert validated.ok is True
+    assert loaded.ok is True
+    assert loaded.state.raw.count == 2
+    assert removed.ok is True
+    assert removed.diagnostics["success_count"] == 1
+    assert removed.state.raw.count == 1
+    assert removed.state.raw.metadata == [
+        {
+            "index": "0",
+            "file": second_path.name,
+            "subject": "0",
+            "session": "0",
+        }
+    ]
+
+
+def test_update_metadata_persists_exact_subject_and_session_for_real_raw(tmp_path):
+    fif_path = _write_synthetic_raw_fif(tmp_path)
+    service = ApplicationService()
+    import_recording_through_interpretation(service, fif_path)
+
+    updated = service.execute(
+        UpdateMetadataCommand(index=0, subject="Sub001", session="Ses01")
+    )
+
+    assert updated.ok is True
+    assert updated.diagnostics["success_count"] == 1
+    assert updated.state.raw.metadata == [
+        {
+            "index": "0",
+            "file": fif_path.name,
+            "subject": "Sub001",
+            "session": "Ses01",
+        }
+    ]
+
+
+def test_reset_session_clears_real_raw_data_and_downstream_state(tmp_path):
+    fif_path = _write_synthetic_raw_fif(tmp_path)
+    service = ApplicationService()
+    imported = import_recording_through_interpretation(service, fif_path)
+    assert imported.state.raw.loaded is True
+    assert imported.state.preprocessed.available is True
+
+    reset = service.execute(ResetSessionCommand(confirmed=True))
+
+    assert reset.ok is True
+    assert reset.state.raw.loaded is False
+    assert reset.state.raw.count == 0
+    assert reset.state.preprocessed.available is False
+    assert reset.state.epoch.available is False
+    assert reset.state.dataset.available is False
+    assert reset.state.training.has_model is False
+
+
+def test_apply_smart_parse_persists_exact_metadata_for_real_raw(tmp_path):
+    fif_path = _write_synthetic_raw_fif(tmp_path)
+    service = ApplicationService()
+    import_recording_through_interpretation(service, fif_path)
+
+    parsed = service.execute(
+        ApplySmartParseCommand(
+            results={str(fif_path.resolve()): ("Sub002", "Ses02")},
+        )
+    )
+
+    assert parsed.ok is True
+    assert parsed.diagnostics["success_count"] == 1
+    assert parsed.state.raw.metadata == [
+        {
+            "index": "0",
+            "file": fif_path.name,
+            "subject": "Sub002",
+            "session": "Ses02",
+        }
+    ]
 
 
 def _apply_synthetic_internal_event_interpretation(

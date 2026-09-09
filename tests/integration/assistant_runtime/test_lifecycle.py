@@ -18,12 +18,10 @@ from typing import Any, cast
 
 import pytest
 from PyQt6 import sip
-from PyQt6.QtCore import QEventLoop, QObject, Qt, QThread, QTimer, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import QObject, QThread, QTimer, pyqtSignal, pyqtSlot
 from PyQt6.QtTest import QSignalSpy
 from PyQt6.QtWidgets import (
     QApplication,
-    QDialog,
-    QDialogButtonBox,
     QMainWindow,
     QToolButton,
     QWidget,
@@ -69,12 +67,7 @@ from XBrainLab.ui.components.assistant_runtime_lifecycle import (
     AssistantRuntimeLifecycle,
     RuntimeCommandAdmissionStatus,
 )
-from XBrainLab.ui.dialogs.training import (
-    ModelSelectionDialog,
-    TrainingSettingDialog,
-)
 from XBrainLab.ui.interaction_outcome import InteractionOutcome
-from XBrainLab.ui.panels.training.sidebar import TrainingSidebar
 from XBrainLab.ui.qt_runtime import drain_qt_runtime_after_event_loop
 
 if sys.platform.startswith("linux"):
@@ -562,83 +555,6 @@ def _install_host_turn_lease(harness: _RuntimeHarness) -> AssistantTurnCorrelati
     harness.controller._turn_orchestrator.host_turn_generation = correlation.generation
     harness.controller._turn_orchestrator.host_turn_id = correlation.turn_id
     return correlation
-
-
-def _install_real_training_surface(
-    qtbot: Any,
-    harness: _RuntimeHarness,
-) -> TrainingSidebar:
-    """Attach the real training sidebar used by the product handoff host."""
-    panel = SimpleNamespace(
-        controller=harness.study.get_controller("training"),
-        dataset_controller=harness.study.get_controller("dataset"),
-        preprocess_controller=harness.study.get_controller("preprocess"),
-        main_window=harness.main_window,
-        update_panel=lambda: None,
-    )
-    sidebar = TrainingSidebar(panel)
-    qtbot.addWidget(sidebar)
-    panel.sidebar = sidebar
-    main_window = cast(Any, harness.main_window)
-    main_window.training_panel = panel
-    main_window.switch_page = lambda _index: None
-    return sidebar
-
-
-def _run_scripted_dialog(
-    dialog: QDialog,
-    action: Any,
-) -> QDialog.DialogCode:
-    """Drive real dialog controls through a nested Qt event loop."""
-    loop = QEventLoop()
-    dialog.finished.connect(loop.quit)
-    dialog.show()
-    QTimer.singleShot(0, lambda: action(dialog))
-    loop.exec()
-    return QDialog.DialogCode(dialog.result())
-
-
-def _model_dialog_accepts_eegnet(dialog: QDialog) -> None:
-    from XBrainLab.backend.model_base.model_catalog import (
-        BraindecodeProviderStatus,
-    )
-
-    assert isinstance(dialog, ModelSelectionDialog)
-    assert dialog.model_results is not None
-    assert dialog.confirm_btn is not None
-    dialog._apply_provider_status(BraindecodeProviderStatus(True, "1.6.1", "", True))
-    for index in range(dialog.model_results.count()):
-        item = dialog.model_results.item(index)
-        if item.data(Qt.ItemDataRole.UserRole) == "braindecode.eegnet":
-            dialog.model_results.setCurrentItem(item)
-            break
-    else:
-        raise AssertionError("Braindecode EEGNet was not offered")
-    dialog.confirm_btn.click()
-
-
-def _training_dialog_cancel(dialog: QDialog) -> None:
-    assert isinstance(dialog, TrainingSettingDialog)
-    button_box = dialog.findChild(QDialogButtonBox)
-    assert button_box is not None
-    cancel = button_box.button(QDialogButtonBox.StandardButton.Cancel)
-    assert cancel is not None
-    cancel.click()
-
-
-def _training_dialog_accepts_suggestions(dialog: QDialog) -> None:
-    assert isinstance(dialog, TrainingSettingDialog)
-    assert dialog.epoch_entry is not None
-    assert dialog.bs_entry is not None
-    assert dialog.lr_entry is not None
-    assert dialog.bs_entry.text() == "32"
-    assert dialog.lr_entry.text() == "0.001"
-    dialog.epoch_entry.setText("12")
-    button_box = dialog.findChild(QDialogButtonBox)
-    assert button_box is not None
-    ok = button_box.button(QDialogButtonBox.StandardButton.Ok)
-    assert ok is not None
-    ok.click()
 
 
 def test_loading_composer_blocks_dispatch_then_ready_dispatches_once(

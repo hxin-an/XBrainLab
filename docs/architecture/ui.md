@@ -32,7 +32,7 @@ shutdown 解除 timers、signal proxies 與 native plot resources。不能把 te
 當成冗餘 observer wiring 刪除。
 
 這不是 repo-wide zero-controller：Assistant 的 ChatController / LLMController 是有效的
-conversation / turn lifecycle owner；backend outer controller adapters 也仍有用途。不能以刪除
+conversation / turn lifecycle owner。沒有 product caller 的三個 EEG controller adapters 已退役。不能以刪除
 workflow controller fallback 推論所有 controller 都應刪除，也不能把 mock-only pass 當
 Windows native acceptance。
 
@@ -333,5 +333,5 @@ Assistant 不是直接塞在 `MainWindow` 內部，而是由 `AgentManager` 管�
 - `AgentManager` 是 assistant 與 UI 的接線層，不是 backend truth owner。
 - `InfoPanelService` 集中 render publication-owned aggregate rows，不建立第二份 query truth。
 
-Assistant conversation/turn controllers 與 backend outer adapters 仍存在；清理不能破壞現有 publication、native teardown 或
+Assistant conversation/turn controllers 仍存在；清理不能破壞現有 publication、native teardown 或
 Assistant lifecycle。是否能交付仍以同版本 handoff gates 與使用者 native acceptance 判斷。

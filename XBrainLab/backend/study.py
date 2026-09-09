@@ -60,9 +60,6 @@ class Study:
             self.training_manager
         )
 
-        # Controller cache for singleton-like access
-        self._controllers: dict[str, Any] = {}
-        self._controller_lock = RLock()
         self._application_service: Any | None = None
         self._application_service_lock = RLock()
 
@@ -155,50 +152,6 @@ class Study:
     @saliency_params.setter
     def saliency_params(self, value: dict | None) -> None:
         self.training_manager.saliency_params = value
-
-    # --- Controller Access ---
-    def get_controller(self, controller_type: str):
-        """Get or create a cached controller instance.
-
-        Args:
-            controller_type: One of ``"dataset"``, ``"preprocess"``,
-                ``"training"``, ``"evaluation"``, or ``"visualization"``.
-
-        Returns:
-            The controller instance for the given type.
-
-        Raises:
-            ValueError: If the controller type is unknown.
-
-        """
-        with self._controller_lock:
-            if controller_type not in self._controllers:
-                controller: Any
-                if controller_type == "dataset":
-                    from .controller.dataset_controller import (  # noqa: PLC0415
-                        DatasetController,
-                    )
-
-                    controller = DatasetController(
-                        self,
-                        dataset_state=self.dataset_state_service,
-                    )
-                elif controller_type == "preprocess":
-                    from .controller.preprocess_controller import (  # noqa: PLC0415
-                        PreprocessController,
-                    )
-
-                    controller = PreprocessController(self)
-                elif controller_type == "training":
-                    from .controller.training_controller import (  # noqa: PLC0415
-                        TrainingController,
-                    )
-
-                    controller = TrainingController(self)
-                else:
-                    raise ValueError(f"Unknown controller type: {controller_type}")
-                self._controllers[controller_type] = controller
-            return self._controllers[controller_type]
 
     # step 1 - load data
     def get_raw_data_loader(self) -> RawDataLoader:

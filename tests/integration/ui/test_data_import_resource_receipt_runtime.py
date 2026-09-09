@@ -32,7 +32,6 @@ from XBrainLab.backend.application.service import ApplicationService
 from XBrainLab.backend.study import Study
 from XBrainLab.ui.async_command_runner import application_command_registry
 from XBrainLab.ui.components.modal_presentation import ModalAlertDialog
-from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.interaction_outcome import (
     InteractionCompletionEvent,
     InteractionCompletionSession,
@@ -44,6 +43,7 @@ from XBrainLab.ui.panels.dataset.actions import DatasetActionHandler
 from XBrainLab.ui.panels.dataset.data_interpretation_action_coordinator import (
     _InterpretationReviewState,
 )
+from XBrainLab.ui.panels.dataset.panel import DatasetPanel
 
 PUBLIC_DATA_DIR = resolve_public_fixture_dir()
 MNE_BIDS_ROOT = PUBLIC_DATA_DIR / "mne-bids-tiny-eeg"
@@ -58,48 +58,11 @@ pytestmark = [
 IMPORT_COMPLETION_TIMEOUT_MS = 45_000
 
 
-class _PassiveRefreshProbe:
-    def __init__(self) -> None:
-        self.refresh_count = 0
-        self.dirty_count = 0
-
-    def update_panel(self) -> None:
-        self.refresh_count += 1
-
-    def mark_refresh_dirty(self) -> None:
-        self.dirty_count += 1
-
-
 class _RuntimeHost(QWidget):
     def __init__(self, study: Study) -> None:
         super().__init__()
         self.study = study
-        self.stack = object()
-        self.info_refresh_count = 0
-        self.dataset_panel: _DatasetRefreshProbe | None = None
-        self.preprocess_panel = _PassiveRefreshProbe()
-        self.training_panel = _PassiveRefreshProbe()
-        self.evaluation_panel = _PassiveRefreshProbe()
-        self.visualization_panel = _PassiveRefreshProbe()
-
-    def update_info_panel(self) -> None:
-        self.info_refresh_count += 1
-
-
-class _DatasetRefreshProbe(BasePanel):
-    def __init__(self, *, parent: _RuntimeHost, controller: Any) -> None:
-        self.refresh_count = 0
-        self.dirty_count = 0
-        super().__init__(parent=parent)
-        # Deliberately observe the retired domain event to detect duplicate
-        # publication; the product panel consumes ApplicationViewPublication.
-        self._create_bridge(controller, "data_changed", self.update_panel)
-
-    def update_panel(self, *_args: Any, **_kwargs: Any) -> None:
-        self.refresh_count += 1
-
-    def mark_refresh_dirty(self) -> None:
-        self.dirty_count += 1
+        self.dataset_panel: DatasetPanel | None = None
 
 
 @dataclass
@@ -114,11 +77,10 @@ class _ImportRuntime:
     study: Study
     service: ApplicationService
     host: _RuntimeHost
-    panel: _DatasetRefreshProbe
+    panel: DatasetPanel
     handler: DatasetActionHandler
     review_state: _InterpretationReviewState
     candidate_id: str
-    import_events: list[tuple[int, list[str]]]
 
 
 def _bids_choices() -> dict[str, Any]:
@@ -172,8 +134,7 @@ def _build_runtime(qtbot) -> _ImportRuntime:
 
     host = _RuntimeHost(study)
     qtbot.addWidget(host)
-    controller = study.get_controller("dataset")
-    panel = _DatasetRefreshProbe(parent=host, controller=controller)
+    panel = DatasetPanel(parent=host)
     host.dataset_panel = panel
     handler = DatasetActionHandler(panel)
     review_state = handler._data_interpretation._review_state_from_review_result(
@@ -182,11 +143,6 @@ def _build_runtime(qtbot) -> _ImportRuntime:
     candidate_id = review_state.candidate_id
     assert candidate_id
 
-    import_events: list[tuple[int, list[str]]] = []
-    controller.subscribe(
-        "import_finished",
-        lambda count, errors: import_events.append((int(count), list(errors))),
-    )
     host.resize(640, 480)
     panel.resize(620, 460)
     host.show()
@@ -200,7 +156,6 @@ def _build_runtime(qtbot) -> _ImportRuntime:
         handler=handler,
         review_state=review_state,
         candidate_id=candidate_id,
-        import_events=import_events,
     )
 
 
@@ -247,7 +202,7 @@ def _issue_apply_challenge(runtime: _ImportRuntime) -> ResourceConfirmationChall
     assert preflight.challenge is not None
     assert preflight.challenge.command_name == "apply_interpretation"
     assert runtime.study.loaded_data_list == []
-    assert runtime.import_events == []
+    assert runtime.panel.table.rowCount() == 0
     assert _pending_receipt(runtime, preflight.challenge) is not None
     return preflight.challenge
 
@@ -354,19 +309,14 @@ def test_warning_confirmation_retries_exact_receipt_and_mutates_once(
     # mutation does not imply an exact single generation increment.
     assert publication_after.generation > publication_before.generation
     assert publication_after.state.active_dataset.has_raw_data is True
-    # Product imports publish application truth once; legacy controller events
-    # must not create a second state-changing refresh path.
-    assert runtime.import_events == []
-    assert runtime.panel.refresh_count == 0
-    assert runtime.panel.dirty_count == 0
+    qtbot.waitUntil(lambda: runtime.panel.table.rowCount() == 1)
+    assert runtime.panel.table.item(0, 0).text() == MNE_BIDS_EEG.name
     assert Path(runtime.study.loaded_data_list[0].get_filepath()).resolve() == (
         MNE_BIDS_EEG.resolve()
     )
     assert _pending_receipt(runtime, challenge) is None
-    assert runtime.import_events == []
     assert len(runtime.study.loaded_data_list) == 1
     assert len(terminal) == 1
-    assert runtime.panel.refresh_count == 0
 
 
 def test_warning_refusal_has_no_mutation_and_one_cancelled_terminal(
@@ -392,9 +342,7 @@ def test_warning_refusal_has_no_mutation_and_one_cancelled_terminal(
     assert terminal[0].status is InteractionCompletionStatus.CANCELLED
     assert "cancelled" in terminal[0].message.lower()
     assert runtime.study.loaded_data_list == []
-    assert runtime.import_events == []
-    assert runtime.panel.refresh_count == 0
-    assert runtime.panel.dirty_count == 0
+    assert runtime.panel.table.rowCount() == 0
     assert _pending_receipt(runtime, challenge) is not None
     assert len(terminal) == 1
 
@@ -428,6 +376,5 @@ def test_owner_deletion_before_confirmed_retry_drops_late_mutation(
     assert len(answer.observed) == 1
     assert terminal[0].status is InteractionCompletionStatus.FAILED
     assert runtime.study.loaded_data_list == []
-    assert runtime.import_events == []
     assert _pending_receipt(runtime, challenge) is not None
     assert len(terminal) == 1

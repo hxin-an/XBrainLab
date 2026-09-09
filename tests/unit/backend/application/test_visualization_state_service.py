@@ -82,24 +82,11 @@ def test_visualization_state_service_preserves_batched_delivery_readback() -> No
     assert service.consume_batched_delivery("saliency_changed", generation) is None
 
 
-def test_application_visualization_composition_never_resolves_controller(
-    monkeypatch,
-) -> None:
+def test_application_visualization_uses_study_owned_service() -> None:
     study = Study()
-    original_get_controller = study.get_controller
-    resolved_names: list[str] = []
-
-    def reject_visualization_controller(name: str) -> Any:
-        resolved_names.append(name)
-        if name == "visualization":
-            raise AssertionError("Application composition resolved a UI controller")
-        return original_get_controller(name)
-
-    monkeypatch.setattr(study, "get_controller", reject_visualization_controller)
 
     service = ApplicationService(study)
     result = service.execute(VisualizeCommand())
 
     assert result.failed is True
     assert service.visualization is study.visualization_state_service
-    assert "visualization" not in resolved_names

@@ -61,7 +61,7 @@ def test_standard_pipeline_failure_is_atomic_through_application_service() -> No
     original_preprocessed = study.preprocessed_data_list
     original_samples = raw.get_mne().get_data().copy()
     notifications: list[str] = []
-    preprocess = study.get_controller("preprocess")
+    preprocess = study.preprocess_state_service
     preprocess.subscribe(
         "preprocess_changed",
         lambda: notifications.append("changed"),
@@ -69,11 +69,11 @@ def test_standard_pipeline_failure_is_atomic_through_application_service() -> No
 
     with (
         patch(
-            "XBrainLab.backend.controller.preprocess_controller.preprocessor.Filtering",
+            "XBrainLab.backend.preprocessor.Filtering",
             _RecordingProcessor,
         ),
         patch(
-            "XBrainLab.backend.controller.preprocess_controller.preprocessor.Resample",
+            "XBrainLab.backend.preprocessor.Resample",
             _FailingProcessor,
         ),
     ):

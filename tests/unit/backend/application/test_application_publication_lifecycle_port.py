@@ -6,7 +6,6 @@ from pathlib import Path
 
 from tests import architecture_compliance
 from XBrainLab.backend.application import ApplicationService
-from XBrainLab.backend.study import Study
 
 
 def _write_product_file(root: Path, relative_path: str, source: str) -> None:
@@ -75,37 +74,3 @@ def test_application_service_does_not_reexport_publication_lifecycle_internals()
     }
 
     assert compatibility_delegates.isdisjoint(ApplicationService.__dict__)
-
-
-def test_real_study_service_construction_does_not_resolve_training_controller() -> None:
-    study = Study()
-
-    service = ApplicationService(study)
-
-    assert service.training is study.training_state_service
-    assert service.training_lifecycle_events is study.training_state_service
-    assert "training" not in study._controllers
-    assert service.get_view_publication().state.training.progress_message is None
-
-    service.close()
-    assert "training" not in study._controllers
-
-
-def test_product_lifecycle_observer_precedes_later_controller_observers() -> None:
-    study = Study()
-    service = ApplicationService(study)
-    delivery_order: list[str] = []
-    service.publication_lifecycle.publish_training_live_state = (
-        lambda *_args, **_kwargs: delivery_order.append("application")
-    )
-
-    controller = study.get_controller("training")
-    controller.subscribe(
-        "training_updated",
-        lambda: delivery_order.append("later-controller-observer"),
-    )
-
-    study.training_state_service.notify("training_updated")
-
-    assert delivery_order == ["application", "later-controller-observer"]
-    service.close()

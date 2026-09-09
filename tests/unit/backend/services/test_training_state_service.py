@@ -6,7 +6,6 @@ from typing import Any
 import pytest
 
 from XBrainLab.backend.application import ApplicationService
-from XBrainLab.backend.controller.training_controller import TrainingController
 from XBrainLab.backend.services.training_state_service import TrainingStateService
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training_state_contract import (
@@ -204,30 +203,13 @@ def test_terminal_publication_false_keeps_waiter_pending_until_retry_succeeds() 
     assert next_generation == generation + 1
 
 
-def test_controller_relays_shared_transient_progress_without_owning_monitor() -> None:
-    study = Study()
-    controller = TrainingController(study)
-    observed: list[str] = []
-    controller.subscribe("training_updated", lambda: observed.append("updated"))
-
-    study.training_state_service.notify("training_updated")
-
-    assert observed == ["updated"]
-    assert controller._training_state is study.training_state_service
-    assert "_monitor_thread" not in controller.__dict__
-    assert "_terminal_handoffs" not in controller.__dict__
-
-
 def test_application_composes_the_study_training_service_without_controller() -> None:
     study = Study()
     service = ApplicationService(study)
 
     assert service.training is study.training_state_service
     assert service.training_lifecycle_events is study.training_state_service
-    assert "training" not in study._controllers
-
     service.close()
-    assert "training" not in study._controllers
 
 
 def test_training_service_exposes_typed_lifecycle_publication_port() -> None:

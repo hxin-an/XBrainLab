@@ -13,7 +13,6 @@ from XBrainLab.backend.application import (
     ResetSessionCommand,
     UpdateMetadataCommand,
 )
-from XBrainLab.backend.controller.dataset_controller import DatasetController
 from XBrainLab.backend.services.dataset_state_service import DatasetStateService
 from XBrainLab.backend.study import Study
 
@@ -68,9 +67,9 @@ class _MetadataStudy:
     def reset_preprocess(self, *, force_update: bool) -> None:
         assert force_update is True
         self.reset_count += 1
+        self.preprocessed_data_list = list(self.loaded_data_list)
         if self.fail_reset:
             raise RuntimeError("reset failed")
-        self.preprocessed_data_list = list(self.loaded_data_list)
 
     def set_loaded_data_list(
         self,
@@ -168,7 +167,8 @@ class _ChannelSelection:
         return ["selected-channel-data"]
 
 
-def test_dataset_state_metadata_batch_is_atomic_before_commit() -> None:
+@pytest.mark.parametrize("smart_parse", [False, True])
+def test_dataset_state_metadata_batch_is_atomic_before_commit(smart_parse) -> None:
     first = _MetadataRow("old-1", "run-1", filepath="/data/one.fif")
     second = _MetadataRow(
         "old-2",
@@ -182,12 +182,17 @@ def test_dataset_state_metadata_batch_is_atomic_before_commit() -> None:
     state = DatasetStateService(study)
 
     with pytest.raises(RuntimeError, match="metadata setter failed"):
-        state.update_metadata_batch(
-            [
-                (0, "new-1", "new-run-1"),
-                (1, "new-2", "bad-run"),
-            ]
-        )
+        if smart_parse:
+            state.apply_smart_parse(
+                {
+                    "/data/one.fif": ("new-1", "new-run-1"),
+                    "/data/two.fif": ("new-2", "bad-run"),
+                }
+            )
+        else:
+            state.update_metadata_batch(
+                [(0, "new-1", "new-run-1"), (1, "new-2", "bad-run")]
+            )
 
     assert study.loaded_data_list is original_rows
     assert [(row.subject, row.session) for row in original_rows] == [
@@ -196,6 +201,45 @@ def test_dataset_state_metadata_batch_is_atomic_before_commit() -> None:
     ]
     assert study.preprocessed_data_list is preprocessing_truth
     assert study.reset_count == 0
+
+
+def test_metadata_commit_reset_failure_restores_both_live_lists() -> None:
+    row = _MetadataRow("old", "run-1", filepath="/data/one.fif")
+    original_rows = [row]
+    original_preprocessed = [object()]
+    study = _MetadataStudy(original_rows, original_preprocessed, fail_reset=True)
+
+    with pytest.raises(RuntimeError, match="reset failed"):
+        DatasetStateService(study).update_metadata_batch([(0, "new", None)])
+
+    assert study.loaded_data_list is original_rows
+    assert study.preprocessed_data_list is original_preprocessed
+    assert (row.subject, row.session) == ("old", "run-1")
+
+
+def test_metadata_batch_publishes_detached_rows_after_all_updates() -> None:
+    rows = [
+        _MetadataRow("old-1", "run-1", filepath="/data/one.fif"),
+        _MetadataRow("old-2", "run-2", filepath="/data/two.fif"),
+    ]
+    study = _MetadataStudy(rows, [object()])
+
+    updated = DatasetStateService(study).update_metadata_batch(
+        [(0, "new-1", None), (1, None, "new-run-2")]
+    )
+
+    assert updated == 2
+    assert study.loaded_data_list is not rows
+    assert [(row.subject, row.session) for row in study.loaded_data_list] == [
+        ("new-1", "run-1"),
+        ("old-2", "new-run-2"),
+    ]
+    assert [(row.subject, row.session) for row in rows] == [
+        ("old-1", "run-1"),
+        ("old-2", "run-2"),
+    ]
+    assert study.preprocessed_data_list == study.loaded_data_list
+    assert study.reset_count == 1
 
 
 def test_dataset_state_smart_parse_and_remove_share_study_state_boundary() -> None:
@@ -333,18 +377,6 @@ def test_dataset_state_projects_invalid_raw_event_shape_as_detached_error() -> N
     assert rows[0]["event_read_error"] == "raw event metadata has an invalid shape"
 
 
-def test_study_application_and_controller_share_one_dataset_mutation_owner() -> None:
-    study = Study()
-    service = ApplicationService(study)
-    controller = study.get_controller("dataset")
-
-    assert isinstance(controller, DatasetController)
-    assert service.dataset is study.dataset_state_service
-    assert controller._dataset_state is study.dataset_state_service
-    assert service._command_lock is study._application_command_lock
-    assert study.dataset_state_service._mutation_lock is study._application_command_lock
-
-
 def test_application_data_table_and_state_queries_use_study_port_not_controller() -> (
     None
 ):
@@ -385,15 +417,6 @@ def test_application_data_table_and_state_queries_use_study_port_not_controller(
         )
 
     service.study.reset_preprocess = MagicMock(side_effect=reset_preprocess)
-    original_get_controller = service.study.get_controller
-
-    def guard_dataset_controller(name: str) -> object:
-        if name == "dataset":
-            raise AssertionError("product read path resolved the dataset controller")
-        return original_get_controller(name)
-
-    service.study.get_controller = MagicMock(side_effect=guard_dataset_controller)
-
     query_result = service.execute(QueryStateCommand(query="data_lists"))
     result = service.execute(UpdateMetadataCommand(index=0, subject="S01"))
 
@@ -422,29 +445,14 @@ def test_application_data_table_and_state_queries_use_study_port_not_controller(
         "lowpass": 40.0,
     }
     assert result.ok is True
-    assert all(
-        call.args != ("dataset",)
-        for call in service.study.get_controller.call_args_list
-    )
 
 
-def test_real_application_reset_does_not_resolve_dataset_controller() -> None:
+def test_real_application_reset_uses_dataset_state_service() -> None:
     study = Study()
-    original_get_controller = study.get_controller
-    resolved: list[str] = []
-
-    def guard_dataset_controller(name: str) -> object:
-        resolved.append(name)
-        if name == "dataset":
-            raise AssertionError("Dataset product command resolved its UI controller")
-        return original_get_controller(name)
-
-    study.get_controller = guard_dataset_controller  # type: ignore[method-assign]
     service = ApplicationService(study)
 
     result = service.execute(ResetSessionCommand())
 
     assert result.ok is True
     assert result.message == "Session reset."
-    assert "dataset" not in resolved
     assert service.dataset is service.dataset_state

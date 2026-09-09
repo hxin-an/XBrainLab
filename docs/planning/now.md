@@ -166,6 +166,18 @@ diff independently. No new owner or visible UI change. Retire documentation clai
 registry is an active boundary. Stop this slice when no executable registry consumer remains and
 all retained behavioral evidence passes; then finish the already-declared integration gates.
 
+Remaining Dataset UI dependency — the final source sweep found test-only branches still allowing
+Data Interpretation's async dispatcher to run synchronously when no product runtime exists,
+Dataset row actions to invent an unversioned selection, and table rendering to rebuild event
+metadata from a live compatibility object. These are not closed by deleting Study controllers.
+After the controller slice is committed, characterize Dataset action/render/async tests; migrate
+meaningful cases to revisioned rows and explicit async/publication ports, then remove those
+fallbacks and their exclusive tests. Collapse the duplicated startup-disabled branch without
+changing its text or enabled state. Keep deferred startup, real unavailable-state handling,
+generation/row identity, cancellation, resource confirmation and recipe reopen behavior. No new
+owner and no visible UI change. Validate real Dataset wizard/import and row-identity workflows,
+then independently review the async/state diff. This dependency must close before final handoff.
+
 1. Complete the evidence map and set coverage/branch reporting without gaming the denominator.
 2. Migrate the highest-value UI compatibility tests to typed real-service/publication fixtures;
    delete the now-unused fallback path and its exclusive tests. Repeat through the critical

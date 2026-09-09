@@ -13,14 +13,17 @@ from tests.integration.data_interpretation_support import (
 )
 from XBrainLab.backend.application import (
     ApplicationService,
+    CreateEpochCommand,
+    PreprocessCommand,
+    PreprocessOperation,
     QueryStateCommand,
+    ResetPreprocessCommand,
 )
-from XBrainLab.backend.controller.preprocess_controller import PreprocessController
 from XBrainLab.backend.load_data import Raw
 
 
-def _first_data(controller: PreprocessController) -> Raw:
-    data = controller.get_first_data()
+def _first_data(service: ApplicationService) -> Raw:
+    data = service.preprocess.get_preprocessed_data_list()[0]
     assert isinstance(data, Raw)
     return data
 
@@ -40,7 +43,7 @@ def _assert_signal_data_shape(raw: Raw) -> Any:
 
 
 @pytest.fixture
-def study_with_synthetic(tmp_path):
+def service_with_synthetic(tmp_path):
     """Create a Study with synthetic raw data loaded via a temp .fif file."""
     service = ApplicationService()
 
@@ -66,27 +69,34 @@ def study_with_synthetic(tmp_path):
     fif_path = str(tmp_path / "test_raw.fif")
     raw.save(fif_path, overwrite=True)
 
-    load_result = import_recording_through_interpretation(service, fif_path)
+    load_result = import_recording_through_interpretation(
+        service, fif_path, class_map={"left": "left", "right": "right"}
+    )
     assert load_result.ok is True
     query_result = service.execute(QueryStateCommand(query="state"))
     assert query_result.ok is True
     assert query_result.diagnostics["state"]["raw"]["count"] == 1
-    return service.study
+    try:
+        yield service
+    finally:
+        service.close()
 
 
 class TestPreprocessValidation:
     """Test preprocessing parameter validation and boundary cases."""
 
-    def test_resample_preserves_events(self, study_with_synthetic):
+    def test_resample_preserves_events(self, service_with_synthetic):
         """After resampling, event count should remain the same."""
-        pc = PreprocessController(study_with_synthetic)
+        pc = service_with_synthetic
         data = _first_data(pc)
         signal_before = _assert_signal_data_shape(data)
         events_before, event_id_before = mne.events_from_annotations(data.get_mne())
         assert event_id_before == {"left": 1, "right": 2}
         assert events_before.shape == (4, 3)
 
-        pc.apply_resample(sfreq=128)
+        assert pc.execute(
+            PreprocessCommand(operation=PreprocessOperation.RESAMPLE, rate=128)
+        ).ok
 
         data_after = _first_data(pc)
         signal_after = _assert_signal_data_shape(data_after)
@@ -98,26 +108,31 @@ class TestPreprocessValidation:
         assert signal_after.shape[0] == signal_before.shape[0]
         assert signal_after.shape[1] < signal_before.shape[1]
 
-    def test_filter_then_epoch_pipeline(self, study_with_synthetic):
+    def test_filter_then_epoch_pipeline(self, service_with_synthetic):
         """Sequential filter → epoch should produce valid epoched data."""
-        pc = PreprocessController(study_with_synthetic)
+        pc = service_with_synthetic
 
         # Apply bandpass filter
-        pc.apply_filter(l_freq=1, h_freq=40)
-        assert not pc.is_epoched()
+        assert pc.execute(
+            PreprocessCommand(
+                operation=PreprocessOperation.BANDPASS, low_freq=1, high_freq=40
+            )
+        ).ok
+        assert not pc.preprocess.is_epoched()
 
         # Get events and epoch
-        unique_events = pc.get_unique_events()
+        unique_events = sorted(_first_data(pc).get_event_list()[1])
         assert unique_events == ["left", "right"]
 
         target_event = "left"
-        pc.apply_epoching(
-            baseline=None,
-            selected_events=[target_event],
-            tmin=0.0,
-            tmax=0.5,
-        )
-        assert pc.is_epoched()
+        assert pc.execute(
+            CreateEpochCommand(
+                event_ids=[target_event],
+                t_min=0.0,
+                t_max=0.5,
+            )
+        ).ok
+        assert pc.preprocess.is_epoched()
         epoched = _first_data(pc)
         epoch_data = _assert_signal_data_shape(epoched)
         epochs: Any = epoched.get_mne()
@@ -130,12 +145,18 @@ class TestPreprocessValidation:
         }
         assert epoch_data.shape[0] == len(epochs.events)
 
-    def test_history_tracks_operations(self, study_with_synthetic):
+    def test_history_tracks_operations(self, service_with_synthetic):
         """Preprocessing history should record all operations."""
-        pc = PreprocessController(study_with_synthetic)
+        pc = service_with_synthetic
 
-        pc.apply_filter(l_freq=1, h_freq=40)
-        pc.apply_resample(sfreq=128)
+        assert pc.execute(
+            PreprocessCommand(
+                operation=PreprocessOperation.BANDPASS, low_freq=1, high_freq=40
+            )
+        ).ok
+        assert pc.execute(
+            PreprocessCommand(operation=PreprocessOperation.RESAMPLE, rate=128)
+        ).ok
 
         history = _first_data(pc).get_preprocess_history()
         assert len(history) == 2
@@ -143,17 +164,19 @@ class TestPreprocessValidation:
         assert any("Filtering" in item for item in history)
         assert any("Resample" in item for item in history)
 
-    def test_reset_restores_original(self, study_with_synthetic):
+    def test_reset_restores_original(self, service_with_synthetic):
         """Reset should restore data to original state."""
-        pc = PreprocessController(study_with_synthetic)
+        pc = service_with_synthetic
         original = _first_data(pc)
         original_sfreq = original.get_mne().info["sfreq"]
         original_signal = _assert_signal_data_shape(original)
 
-        pc.apply_resample(sfreq=64)
+        assert pc.execute(
+            PreprocessCommand(operation=PreprocessOperation.RESAMPLE, rate=64)
+        ).ok
         assert _first_data(pc).get_mne().info["sfreq"] == 64
 
-        pc.reset_preprocess()
+        assert pc.execute(ResetPreprocessCommand(confirmed=True)).ok
         reset_data = _first_data(pc)
         assert reset_data.get_mne().info["sfreq"] == original_sfreq
         assert reset_data.get_preprocess_history() == []

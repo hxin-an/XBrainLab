@@ -67,7 +67,6 @@ class DatasetHost(QWidget):
 def build_dataset_panel(qtbot: Any) -> tuple[DatasetHost, DatasetPanel, Any]:
     host = DatasetHost(Study())
     qtbot.addWidget(host)
-    controller = host.study.get_controller("dataset")
     panel = DatasetPanel(parent=host)
     host.dataset_panel = panel
     host.stack.addWidget(panel)
@@ -85,7 +84,6 @@ def build_dataset_panel_for_runner() -> tuple[
 ]:
     app = QApplication.instance() or QApplication([])
     host = DatasetHost(Study())
-    controller = host.study.get_controller("dataset")
     panel = DatasetPanel(parent=host)
     host.dataset_panel = panel
     host.stack.addWidget(panel)
