@@ -127,6 +127,9 @@ def test_ci_poetry_bootstrap_and_venv_cache_are_lock_exact() -> None:
     workflow_text = CI_WORKFLOW.read_text(encoding="utf-8")
     assert 'pip install "coverage>=7,<8" pytest' not in workflow_text
     assert "poetry run -- coverage combine test-results" in workflow_text
+    assert "coverage json -o coverage.json" in workflow_text
+    assert "verify-coverage --coverage-json coverage.json" in workflow_text
+    assert "coverage report --fail-under=0" in workflow_text
 
 
 def test_product_static_quality_jobs_use_locked_tools_and_parallel_scopes() -> None:

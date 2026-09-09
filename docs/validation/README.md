@@ -1,6 +1,6 @@
 # XBrainLab Validation Contract
 
-最後更新：`2026-09-08`
+最後更新：`2026-09-09`
 
 驗證回答「哪個exact source，在什麼環境，觀察到什麼」，不能把單一PASS放大成產品、科學或真人
 驗收結論。日常與PR交付按下表選證據；CI routing由既有workflow擁有。明確要求完整dossier時，
@@ -34,7 +34,14 @@ includes the entire integration directory; `typecheck-fast` runs whole-project B
 do not make them fast feedback commands. They remain explicit aggregate tools, never per-edit defaults.
 Before widening a slow run, inspect existing JUnit/timing data and separate collection/import, fixture,
 test and teardown cost. Measure only the missing bounded path, not the full suite to obtain a ranking.
-Do not add a second test-selection framework, arbitrary coverage target or duplicated worker runs.
+Do not add a second test-selection framework, a coverage target outside an approved active plan, or
+duplicated worker runs.
+
+The approved quality-hardening gate collects branch coverage for the full Linux aggregate and writes
+`coverage.json`. `scripts/dev/run_tests.py verify-coverage` requires at least 85% line coverage
+(`covered_lines / num_statements`) and requires branch data to be present. The branch percentage is a
+recorded baseline, not a pass/fail threshold. Both the CI aggregate and an explicitly coverage-enabled
+local aggregate use this verifier; focused shards only contribute raw coverage evidence.
 
 ### UI design iteration before formal handoff
 

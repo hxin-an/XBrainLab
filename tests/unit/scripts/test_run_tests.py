@@ -807,8 +807,9 @@ def test_shard_runtime_args_keep_ci_evidence_isolated(
     )
 
 
-def test_main_owns_one_complete_coverage_lifecycle(monkeypatch) -> None:
+def test_main_owns_one_complete_coverage_lifecycle(monkeypatch, tmp_path) -> None:
     calls: list[tuple[str, ...]] = []
+    summary_path = tmp_path / "coverage.json"
 
     def record_command(args, **kwargs):
         assert kwargs == {"cwd": run_tests.ROOT, "check": False}
@@ -823,12 +824,20 @@ def test_main_owns_one_complete_coverage_lifecycle(monkeypatch) -> None:
     monkeypatch.setenv("XBL_TEST_COVERAGE", "1")
     monkeypatch.setattr(run_tests.subprocess, "run", record_command)
     monkeypatch.setattr(run_tests, "_dispatch", fake_dispatch)
+    monkeypatch.setattr(run_tests, "LOCAL_COVERAGE_SUMMARY_PATH", summary_path)
+    monkeypatch.setattr(
+        run_tests,
+        "verify_coverage_summary",
+        lambda path: calls.append(("verify", str(path))) or 0,
+    )
 
     assert run_tests.main(["all"]) == 0
     assert calls == [
         (sys.executable, "-m", "coverage", "erase"),
         ("dispatch",),
-        (sys.executable, "-m", "coverage", "report"),
+        (sys.executable, "-m", "coverage", "report", "--fail-under=0"),
+        (sys.executable, "-m", "coverage", "json", "-o", str(summary_path)),
+        ("verify", str(summary_path)),
     ]
 
 
@@ -895,7 +904,88 @@ def test_linux_ci_wall_clock_group_disables_coverage_instrumentation(
     assert observed == [("linux-integration-agent-timing", False)]
 
 
-@pytest.mark.parametrize("failing_command", ["erase", "report"])
+def _coverage_summary(
+    *,
+    statements: int = 100,
+    covered_lines: int = 85,
+    branches: int = 100,
+    covered_branches: int = 0,
+) -> dict[str, object]:
+    return {
+        "meta": {"branch_coverage": True},
+        "totals": {
+            "num_statements": statements,
+            "covered_lines": covered_lines,
+            "num_branches": branches,
+            "covered_branches": covered_branches,
+        },
+    }
+
+
+def test_coverage_verifier_enforces_line_floor_not_branch_baseline(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    coverage_json = tmp_path / "coverage.json"
+    coverage_json.write_text(
+        json.dumps(_coverage_summary(covered_branches=1)), encoding="utf-8"
+    )
+
+    assert run_tests.verify_coverage_summary(coverage_json) == 0
+    assert "Line coverage: 85.00%" in capsys.readouterr().out
+
+
+def test_coverage_verifier_rejects_low_line_coverage_even_with_full_branches(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    coverage_json = tmp_path / "coverage.json"
+    coverage_json.write_text(
+        json.dumps(_coverage_summary(covered_lines=84, covered_branches=100)),
+        encoding="utf-8",
+    )
+
+    assert run_tests.verify_coverage_summary(coverage_json) == 1
+    assert "below the required 85%" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"totals": {}},
+        {"meta": {"branch_coverage": False}, "totals": {}},
+        _coverage_summary(statements=0, covered_lines=0),
+        _coverage_summary(covered_lines=101),
+        {"totals": {"num_statements": 100, "covered_lines": 100}},
+    ],
+)
+def test_coverage_verifier_fails_closed_for_missing_or_invalid_evidence(
+    tmp_path: Path,
+    payload: dict,
+) -> None:
+    coverage_json = tmp_path / "coverage.json"
+    coverage_json.write_text(json.dumps(payload), encoding="utf-8")
+
+    assert run_tests.verify_coverage_summary(coverage_json) == 1
+
+
+def test_coverage_verifier_fails_closed_for_missing_file(tmp_path: Path) -> None:
+    assert run_tests.verify_coverage_summary(tmp_path / "coverage.json") == 1
+
+
+def test_coverage_verifier_fails_closed_for_empty_file(tmp_path: Path) -> None:
+    coverage_json = tmp_path / "coverage.json"
+    coverage_json.write_text("", encoding="utf-8")
+
+    assert run_tests.verify_coverage_summary(coverage_json) == 1
+
+
+def test_coverage_verifier_requires_a_coverage_json_argument() -> None:
+    assert run_tests.main(["verify-coverage"]) == 2
+
+
+@pytest.mark.parametrize("failing_command", ["erase", "report", "json"])
 def test_main_fails_closed_for_unusable_coverage_data(
     monkeypatch,
     tmp_path,
@@ -905,7 +995,7 @@ def test_main_fails_closed_for_unusable_coverage_data(
     dispatched = False
 
     def run_coverage(args, **kwargs):
-        return_code = 1 if args[-1] == failing_command else 0
+        return_code = 1 if failing_command in args else 0
         return subprocess.CompletedProcess(args, return_code)
 
     def fake_dispatch(command, sink):
@@ -915,11 +1005,38 @@ def test_main_fails_closed_for_unusable_coverage_data(
     monkeypatch.setenv("XBL_TEST_COVERAGE", "1")
     monkeypatch.setattr(run_tests.subprocess, "run", run_coverage)
     monkeypatch.setattr(run_tests, "_dispatch", fake_dispatch)
+    monkeypatch.setattr(
+        run_tests, "LOCAL_COVERAGE_SUMMARY_PATH", tmp_path / "coverage.json"
+    )
 
     assert run_tests.main(["all", "--result-json", str(result_path)]) == 1
-    assert dispatched is (failing_command == "report")
+    assert dispatched is (failing_command in {"report", "json"})
     payload = json.loads(result_path.read_text(encoding="utf-8"))
     assert payload["exit_code"] == 1
+
+
+def test_main_fails_closed_when_local_line_gate_rejects_aggregate(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    result_path = tmp_path / "all.json"
+    dispatched = False
+
+    def fake_dispatch(command, sink):
+        nonlocal dispatched
+        dispatched = True
+
+    monkeypatch.setenv("XBL_TEST_COVERAGE", "1")
+    monkeypatch.setattr(run_tests, "_dispatch", fake_dispatch)
+    monkeypatch.setattr(run_tests, "_run_coverage_command", lambda *_args: 0)
+    monkeypatch.setattr(
+        run_tests, "LOCAL_COVERAGE_SUMMARY_PATH", tmp_path / "coverage.json"
+    )
+    monkeypatch.setattr(run_tests, "verify_coverage_summary", lambda _path: 1)
+
+    assert run_tests.main(["all", "--result-json", str(result_path)]) == 1
+    assert dispatched is True
+    assert json.loads(result_path.read_text(encoding="utf-8"))["exit_code"] == 1
 
 
 def test_ci_uses_full_linux_and_focused_cross_platform_runners() -> None:

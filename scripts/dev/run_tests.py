@@ -7,6 +7,7 @@ Provides functions referenced in pyproject.toml for running specific subsets of 
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import signal
@@ -40,6 +41,7 @@ from scripts.dev.test_runtime_paths import (
 LLM_UNIT_ROOT_TESTS = tuple(
     path.as_posix() for path in sorted(Path("tests/unit/llm").glob("test_*.py"))
 )
+LINE_COVERAGE_FLOOR = 85.0
 UNIT_ROOT_TESTS = tuple(
     path.as_posix() for path in sorted(Path("tests/unit").glob("test_*.py"))
 )
@@ -244,6 +246,9 @@ LINUX_CI_UNCOVERED_COMMANDS = frozenset({"linux-integration-agent-timing"})
 DEFAULT_SHARD_TIMEOUT_SECONDS = 1200
 PRE_TIMEOUT_STACK_RESERVE_SECONDS = 30.0
 ROOT = Path(__file__).resolve().parents[2]
+LOCAL_COVERAGE_SUMMARY_PATH = (
+    ROOT / "build" / "dev-artifacts" / "coverage" / "coverage.json"
+)
 PYTEST_ALLOWED_SKIP_MARKERS = (OPTIONAL_PUBLIC_FIXTURE_SKIP_MARKER,)
 
 
@@ -615,6 +620,72 @@ def verify_linux_ci_evidence(
     return exit_code
 
 
+def _coverage_count(totals: dict[str, Any], key: str) -> int | None:
+    """Return one non-negative integer from a coverage JSON aggregate."""
+    value = totals.get(key)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
+
+
+def verify_coverage_summary(coverage_json: Path) -> int:
+    """Enforce the approved line floor while recording branch coverage separately."""
+    try:
+        payload = json.loads(coverage_json.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        print(f"Coverage summary is unreadable: {error}", file=sys.stderr)
+        return 1
+
+    totals = payload.get("totals") if isinstance(payload, dict) else None
+    meta = payload.get("meta") if isinstance(payload, dict) else None
+    if not isinstance(totals, dict) or not isinstance(meta, dict):
+        print(
+            "Coverage summary has no aggregate totals and branch metadata.",
+            file=sys.stderr,
+        )
+        return 1
+    if meta.get("branch_coverage") is not True:
+        print(
+            "Coverage summary was not collected with branch coverage enabled.",
+            file=sys.stderr,
+        )
+        return 1
+
+    statements = _coverage_count(totals, "num_statements")
+    covered_lines = _coverage_count(totals, "covered_lines")
+    branches = _coverage_count(totals, "num_branches")
+    covered_branches = _coverage_count(totals, "covered_branches")
+    if (
+        statements is None
+        or covered_lines is None
+        or branches is None
+        or covered_branches is None
+        or statements == 0
+        or covered_lines > statements
+        or covered_branches > branches
+    ):
+        print(
+            "Coverage summary is missing usable line or branch aggregate evidence.",
+            file=sys.stderr,
+        )
+        return 1
+
+    line_coverage = covered_lines / statements * 100
+    branch_coverage = 100.0 if branches == 0 else covered_branches / branches * 100
+    print(
+        f"Line coverage: {line_coverage:.2f}% ({covered_lines}/{statements}); "
+        f"branch baseline: {branch_coverage:.2f}% ({covered_branches}/{branches})."
+    )
+    if line_coverage < LINE_COVERAGE_FLOOR:
+        print(
+            f"Line coverage {line_coverage:.2f}% is below the required "
+            f"{LINE_COVERAGE_FLOOR:.0f}%.",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
+
 def _assert_all_test_domains_declared(
     *,
     root: Path,
@@ -668,12 +739,12 @@ def _shard_runtime_args(*, gate_name: str, label: str) -> tuple[str, ...]:
     return tuple(args)
 
 
-def _run_coverage_command(command: str) -> int:
+def _run_coverage_command(command: str, *args: str) -> int:
     """Run one coverage lifecycle command and fail closed on tool errors."""
-    args = [sys.executable, "-m", "coverage", command]
+    command_args = [sys.executable, "-m", "coverage", command, *args]
     try:
         completed = subprocess.run(  # noqa: S603 - current Python, internal command.
-            args,
+            command_args,
             cwd=ROOT,
             check=False,
         )
@@ -687,6 +758,15 @@ def _run_coverage_command(command: str) -> int:
         )
         return 1
     return 0
+
+
+def _verify_local_coverage_summary() -> int:
+    """Write and verify the full local aggregate with the CI's line-only policy."""
+    LOCAL_COVERAGE_SUMMARY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    LOCAL_COVERAGE_SUMMARY_PATH.unlink(missing_ok=True)
+    if _run_coverage_command("json", "-o", str(LOCAL_COVERAGE_SUMMARY_PATH)):
+        return 1
+    return verify_coverage_summary(LOCAL_COVERAGE_SUMMARY_PATH)
 
 
 def _run_shards(
@@ -779,12 +859,14 @@ def _parse_cli(argv: Sequence[str]) -> argparse.Namespace:
             *LINUX_CI_COMMANDS,
             *PLATFORM_CI_COMMANDS,
             "verify-linux-ci",
+            "verify-coverage",
         ),
     )
     parser.add_argument("--result-json", type=Path)
     parser.add_argument("--evidence-dir", type=Path)
     parser.add_argument("--provenance-dir", type=Path)
     parser.add_argument("--expected-provenance", type=Path)
+    parser.add_argument("--coverage-json", type=Path)
     parsed = parser.parse_args(list(argv))
     if parsed.result_json is None:
         configured = os.environ.get("XBL_PYTEST_RESULT_JSON", "").strip()
@@ -840,6 +922,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             provenance_dir=parsed.provenance_dir,
             expected_provenance_path=parsed.expected_provenance,
         )
+    if parsed.command == "verify-coverage":
+        if parsed.coverage_json is None:
+            print("verify-coverage requires --coverage-json.", file=sys.stderr)
+            return 2
+        return verify_coverage_summary(parsed.coverage_json)
     if result_path is not None:
         result_path.unlink(missing_ok=True)
     attestations: list[dict[str, Any]] | None = [] if result_path else None
@@ -857,7 +944,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         except SystemExit as error:
             exit_code = int(error.code or 0)
     if coverage_enabled and exit_code == 0 and not linux_ci_command:
-        exit_code = _run_coverage_command("report")
+        exit_code = _run_coverage_command("report", "--fail-under=0")
+    if coverage_enabled and exit_code == 0 and not linux_ci_command:
+        exit_code = _verify_local_coverage_summary()
     if result_path is not None and attestations is not None:
         write_attestation(
             result_path,
