@@ -836,10 +836,7 @@ class ApplicationService(Observable):
             get_state=self.get_state,
         )
         self.lifecycle = LifecycleCommandService(
-            study=self.study,
             dataset=self.dataset,
-            preprocess=self.preprocess,
-            training=self.training,
             training_commands=self.training_commands,
             interpretation=self.interpretation,
             get_state=self.get_state,

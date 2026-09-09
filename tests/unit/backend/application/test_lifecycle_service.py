@@ -16,6 +16,7 @@ from XBrainLab.backend.application.lifecycle_service import (
     HandlerResult,
     LifecycleCommandService,
 )
+from XBrainLab.backend.application.pipeline_transaction import PipelineStateTransaction
 from XBrainLab.backend.application.state import (
     ActiveDatasetSnapshot,
     ActiveTrainingSnapshot,
@@ -147,40 +148,13 @@ class _Study:
 class _DatasetController:
     def __init__(self, study: _Study) -> None:
         self.study = study
-        self.notifications: list[tuple[Any, ...]] = []
         self.cleaned = False
-
-    def notify(self, *args: Any) -> None:
-        self.notifications.append(args)
 
     def clean_dataset(self) -> None:
         self.cleaned = True
 
     def reset_preprocess(self) -> None:
         self.study.reset_preprocess(force_update=True)
-
-
-class _PreprocessController:
-    def __init__(self) -> None:
-        self.notifications: list[str] = []
-
-    def notify(self, event_name: str) -> None:
-        self.notifications.append(event_name)
-
-
-class _TrainingController:
-    def __init__(self, study: _Study) -> None:
-        self.study = study
-        self.cleaned = False
-        self.fail_clean = False
-
-    def clean_datasets(self, *, force_update: bool) -> None:
-        assert force_update is True
-        self.cleaned = True
-        self.study.data_manager.datasets = []
-        self.study.training_manager.trainer = None
-        if self.fail_clean:
-            raise RuntimeError("dataset cleanup failed")
 
 
 class _TrainingCommands:
@@ -228,38 +202,30 @@ def _service() -> tuple[
     LifecycleCommandService,
     _Study,
     _DatasetController,
-    _PreprocessController,
-    _TrainingController,
     _TrainingCommands,
     _InterpretationCommands,
 ]:
     study = _Study()
     dataset = _DatasetController(study)
-    preprocess = _PreprocessController()
-    training = _TrainingController(study)
     training_commands = _TrainingCommands()
     interpretation = _InterpretationCommands()
     return (
         LifecycleCommandService(
-            study=study,
             dataset=dataset,
-            preprocess=preprocess,
-            training=training,
             training_commands=training_commands,
             interpretation=interpretation,
             get_state=_state,
+            pipeline_transaction=PipelineStateTransaction(study),
         ),
         study,
         dataset,
-        preprocess,
-        training,
         training_commands,
         interpretation,
     )
 
 
 def test_lifecycle_service_resets_preprocess_and_clears_downstream_state() -> None:
-    service, study, dataset, preprocess, training, _, _ = _service()
+    service, study, _, _, _ = _service()
     study.training_manager.trainer = object()
 
     message, payload = _expect_payload(
@@ -273,14 +239,11 @@ def test_lifecycle_service_resets_preprocess_and_clears_downstream_state() -> No
         "dataset_count_before": 2,
         "trainer_cleared": True,
     }
-    assert training.cleaned is False
     assert study.training_manager.trainer is None
-    assert preprocess.notifications == []
-    assert dataset.notifications == []
 
 
 def test_lifecycle_service_rolls_back_reset_preprocess_failure() -> None:
-    service, study, _dataset, _preprocess, _training, _, _ = _service()
+    service, study, _, _, _ = _service()
     previous_preprocessed = [object()]
     previous_loaded = [object()]
     previous_backup = [object()]
@@ -312,7 +275,7 @@ def test_lifecycle_service_rolls_back_reset_preprocess_failure() -> None:
 
 
 def test_lifecycle_service_rolls_back_stale_training_commit() -> None:
-    service, study, _dataset, _preprocess, _training, _, _ = _service()
+    service, study, _, _, _ = _service()
     previous_loaded = [object()]
     previous_backup = [object()]
     previous_preprocessed = [object()]
@@ -351,8 +314,6 @@ def test_lifecycle_service_reset_session_and_new_session_clear_dependent_state()
         service,
         _study,
         dataset,
-        _preprocess,
-        _training,
         training_commands,
         interpretation,
     ) = _service()
