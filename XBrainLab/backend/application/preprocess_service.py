@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hmac
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from contextlib import suppress
 from math import isfinite
 from typing import Any
@@ -64,12 +64,10 @@ class PreprocessCommandService:
         *,
         preprocess: PreprocessProductPort,
         dataset: DatasetChannelSelectionPort,
-        get_state: Callable[[], ApplicationStateSnapshot],
         pipeline_transaction: PipelineStateTransaction | None = None,
     ) -> None:
         self.preprocess = preprocess
         self.dataset = dataset
-        self._get_state = get_state
         self._pipeline_transaction = pipeline_transaction
 
     def begin_prepared_command(
@@ -528,110 +526,6 @@ class PreprocessCommandService:
             return str(value[0]), dict(value[1])
         return str(value), {}
 
-    def handle_create_epoch(self, command: Command) -> HandlerResult:
-        if not isinstance(command, CreateEpochCommand):
-            raise TypeError("Invalid command for create_epoch")
-        handoff = self._epoch_handoff()
-        preprocessed_data = self.preprocess.get_preprocessed_data_list()
-        epoch_context = build_epoching_context(
-            preprocessed_data,
-            epoch_handoff=handoff,
-        )
-        require_epoch_context_available(epoch_context)
-        event_ids = self._event_ids_for_epoch_command(command, handoff=handoff)
-        self._enforce_epoch_confirmation(
-            command,
-            epoch_context=epoch_context,
-            effective_event_ids=event_ids,
-        )
-        resource_check = ResourceChecker.check_epoch_materialization_safe(
-            preprocessed_data,
-            selected_event_names=event_ids,
-            tmin=command.t_min,
-            tmax=command.t_max,
-        )
-        if resource_check.blocking or resource_check.risk_level == RISK_UNKNOWN:
-            raise PreconditionError(
-                resource_check.message,
-                diagnostics={
-                    "resource_preflight": resource_check.to_diagnostics(),
-                },
-            )
-        boundary_summary = summarize_epoch_boundaries(
-            preprocessed_data,
-            event_ids,
-            tmin=command.t_min,
-            tmax=command.t_max,
-        )
-        event_label_aliases_by_source = self._event_label_aliases_by_source(
-            handoff,
-            preprocessed_data,
-        )
-        epoch_options: dict[str, Any] = {}
-        if event_label_aliases_by_source is not None:
-            epoch_options["event_label_aliases_by_source"] = (
-                event_label_aliases_by_source
-            )
-        boundary_diagnostics = boundary_summary.to_diagnostics()
-        if boundary_summary.excluded_event_count:
-            if boundary_summary.remaining_event_count <= 0:
-                raise PreconditionError(
-                    "The selected epoch window exceeds recording bounds for every "
-                    "selected event. Shorten the EEG epoch window before continuing.",
-                    diagnostics={"epoch_boundary_check": boundary_diagnostics},
-                )
-            if boundary_summary.excluded_ratio > EPOCH_BOUNDARY_AUTO_EXCLUDE_MAX_RATIO:
-                raise PreconditionError(
-                    "The selected epoch window would exclude "
-                    f"{boundary_summary.excluded_event_count} of "
-                    f"{boundary_summary.selected_event_count} selected events "
-                    "because they are too close to a recording boundary. Shorten "
-                    "the epoch window or review the selected events.",
-                    diagnostics={"epoch_boundary_check": boundary_diagnostics},
-                )
-        if boundary_summary.excluded_event_count:
-            self.preprocess.apply_epoching(
-                command.baseline,
-                event_ids,
-                command.t_min,
-                command.t_max,
-                True,
-                **epoch_options,
-            )
-        else:
-            self.preprocess.apply_epoching(
-                command.baseline,
-                event_ids,
-                command.t_min,
-                command.t_max,
-                **epoch_options,
-            )
-        message = f"Created EEG epochs from {command.t_min}s to {command.t_max}s."
-        diagnostics: dict[str, Any] = {
-            "epoch_boundary_check": boundary_diagnostics,
-        }
-        if boundary_summary.excluded_event_count:
-            message += (
-                f" Excluded {boundary_summary.excluded_event_count} boundary "
-                "event(s) that could not contain the complete window."
-            )
-        applied = self._applied_deferred_normalization_count()
-        if not applied and not boundary_summary.excluded_event_count:
-            return message
-        if not applied:
-            return message, diagnostics
-        diagnostics.update(
-            {
-                "normalization_scope": NORMALIZATION_SCOPE,
-                "deferred_normalization_applied_count": applied,
-                "recording_statistics_used": False,
-            }
-        )
-        return (
-            message,
-            diagnostics,
-        )
-
     def _event_ids_for_epoch_command(
         self,
         command: CreateEpochCommand,
@@ -704,16 +598,6 @@ class PreprocessCommandService:
         error = ConfirmationRequiredError(requirement["message"])
         error.diagnostics["confirmation_requirement"] = requirement
         raise error
-
-    def _epoch_handoff(self) -> dict[str, Any]:
-        try:
-            state = self._get_state()
-        except PreconditionError:
-            raise
-        except Exception as exc:
-            raise self._epoch_handoff_precondition("state_read_failed") from exc
-
-        return self._epoch_handoff_from_state(state)
 
     @classmethod
     def _epoch_handoff_from_state(
@@ -887,11 +771,6 @@ class PreprocessCommandService:
                 "epoched_items_normalized": epoch_count,
                 "recording_statistics_used": False,
             },
-        )
-
-    def _applied_deferred_normalization_count(self) -> int:
-        return self._applied_deferred_normalization_count_for(
-            self.preprocess.get_preprocessed_data_list()
         )
 
     @staticmethod

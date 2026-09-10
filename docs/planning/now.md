@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `96366558`, 71 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `e8cf3260`, 73 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -126,347 +126,37 @@ retain all five-step, exact fresh review, no-publication, cancellation/drain/ret
 contracts. Optional fixtures were not run here; final required-source gate still applies.
 Continue authorized module3 while awaiting visible decisions; do not markmodule2closed or handoff.
 
-**Completed 3A — split illustration math cleanup and stronger tests.** Main/independent read
-DrawRegion75–250, actual update_preview/testing/validation callers and direct148; change_to and
-decrease_w_tail have no production/dynamic/script/doc caller, only two exclusive tests. Remove
-only these unused methods and exclusive tests from data_splitting_dialog.py/direct test after
-characterization. Strengthen mask from merely changed-array to exact masked/unmasked canvases and
-unchanged source, and parameterize real fractional bounds in set_to. Then retire three duplicate
-DrawRegion checks in dialogs/test_data_splitting.py only after their exact behavior is covered by
-the stronger direct tests; preserve actual PreviewCanvas pixel and dialog strategy/rendering cases.
-No visible/UI/EEG/split policy change, no owner/abstraction; source target is data_splitting_dialog.py,
-NOT protected original-checkout data_splitting_preview_dialog.py. Main owns plan/native runs and
-independent review; assigned worker may own these three files after baseline. Use22 original
-direct/sibling/canvas/grid/strategy cases; migrated characterization before production deletion,
-same retained cases afterward, Ruff and bounded in-memory wrong-mask fault. One reversible commit
-then continue module3 full preprocess/epoch/split responsibilities, not final acceptance.
-Original22 nativecases passed1.35s; worker now strengthens tests first, without deleting production
-or obsolete cases until main characterization passes. Keep original checkout's split/settings dirt.
-Stronger full-canvas fractional/mask characterization23passed1.36s before production edits. Worker
-now removes two unused methods/twoexclusive cases/three replaced sibling cases; retainedexpected18.
-Retained18passed1.37s (23strengthened minus2exclusive and3duplicates). Main nonauthor actualdiff
-review approved source-23/tests+50/-66/net-16; three-file Ruff/check/format passed. In-memory wrong-
-overlap fault failed at all four changed cells (3instead of2),1failed0.13s; no faulty source saved.
-Independent full Step1source1037/direct726/sharedfixture81 review retains detached-context/strategy
-projection, illustrative drawing and draft handoff. Actual Step2 materialization remains separate.
+**Module3 progress and remaining boundaries.** Completed3A–3O/3Q are indexed below; full
+chronology, baselines, correction details and reversible changes remain in their Git commits.
+The actual prepared command spine now has real ordinary preprocessing, boundary ratio/multirecord,
+RAM-before-deepcopy, BIDS receipt/reimport and display-alias materialization protection. Data/render
+publication, immutable buffer copies, cancellation and SET_MONTAGE confirmation stay live; generic
+callback-only epoch tests do not define a second public snapshot contract.
 
-**Completed 3B — unused MAT Export convenience.** Independent full11-preprocessor1541-line source/
-1554-line direct test audit and main Export55/exporttest71/package26/caller read confirm Export is
-only re-exported by preprocessor.__init__ and consumed by its own tests. No current UI, Command,
-Assistant, script/config/doc or dynamic resolver uses it. Remove export.py, package import/__all__
-entry, exclusive directtest file and combined test_preprocess export case/unusedimports only.
-Do not add read-back tests for a retired-only behavior. Preserve every supported transformation,
-EEG/event/copy/cancel semantics and actual result/recipe reading; zero new owner or compatibility.
-Main owns fourfiles and existing-environment runs. Baseline fullpreprocessor direct suite once
-because package export membership is shared; repeat retained suite afterward, Ruff and independent
-actual-diff review then separatecommit. Review actual parametrized removedcase count, not assumed4.
-No actual export files/user weights/data are removed, only Git-tracked dead source/tests.
-Native preprocessor baseline78passed3.04s; retained73passed3.02s, exactlyfive obsolete Export cases
-removed (three direct plus raw/epoch parametrizations). Same17 upstream MNE/NumPy/expected short-
-signal/drop warnings before/after. Source-57, tests-98; independent actualdiff review/Ruff/check/format
-passed. No actual export artifacts were deleted; removed source is recoverable from Git.
+Module3 is not closed. Remaining obligations:
+- Complete caller/test/script inventory reconciliation and independent closure review, including
+  current dataset UI adapters and real-data/native lifecycle entries; zero pending rows is not
+  a substitute for evidence or resolution of confirmed findings.
+- Decide the documented split-artifact chain below; actual Generator/provenance/audit and receipt/
+  rollback state remain intact. No restoration of retired picker-expanded indices.
+- Shared-runtime module7 owns the native split-dialog center investigation: Windows QPA windows
+  compact752/760 cases both pass (horizontal range0); offscreen30/22px overflow was a font/platform
+  artifact. Native full layout26pass/1fail shows client center31px below screen center. Inspect actual
+  frame/client geometry before requesting visible change; do not weaken assertions.
+- Existing UI RAM presentation test spies Raw.copy, which is not the live preprocessing allocation
+  seam. Actual no-allocation evidence is3H's deepcopy witness and omitted-guard fault, not that spy.
+- Real-GDF training smoke currently patches persistence calls (torch.save/numpy.savetxt/os.makedirs/
+  pyplot.savefig). Its observed learning flow is not result-reopen/checkpoint evidence; resolve the
+  persistence test-quality boundary in module4, retaining actual output only under test tmp paths.
 
-**Module3 shared owner audit, not yet an implementation slice.** Independently fully read
-preprocess_service996/preparation120/render536/state524 and directservice985/state526/render240.
-Prepared application path owns detached work, source/publication/training identity, short mutation
-and rollback. Render's copied immutable buffers/generation guard is a distinct live boundary.
-Old direct handlers duplicate supported operations but SET_MONTAGE is a live generic confirmation
-branch (actual montage mutation is ApplyMontageCommand); invalid-operation parsing also matters.
-Do not delete whole handler/map from text-search alone. Map every legacy epoch resource/boundary/
-receipt/handoff assertion to actual prepared/ApplicationService evidence before declaring3C.
+Evidence qualifications: 3G removed307 collected obsolete cases, not the earlier mistaken309
+(actual108 trial-list entries times2, not109). 3E/F terminal output lost during context recovery was
+rerun:291combined/25plotter passed. 3I's alleged third enum argument was a reviewer misread, retracted
+without product edits. 3O fixture default class maps were corrected before the passing baseline.
+3Q proves control synchronization/coalescing/real signal/shutdown, not precise restart latency.
+No measured end-user speed gain, whole-module approval or final Windows manual acceptance is claimed.
 
-**Completed 3C — retire unreachable ordinary preprocess dispatch, not epoch safety.** Main and
-independent execute trace confirms every valid PreprocessCommand except SET_MONTAGE is intercepted
-by _uses_prepared_preprocess before generic dispatch. Invalid operation parses and SET_MONTAGE's
-existing confirmation error must remain. After real ApplicationService characterization for bandpass/
-notch/resample/normalization/reference/channel aliases/standard pipeline, remove those unreachable
-handle_preprocess branches, exclusive _handle_standard_preprocess/_normalization_target_counts
-chain and three obsolete fake-controller operation tests plus exclusively used fake methods/classes.
-Do not delete handle_create_epoch or its safety tests: exact RAM-before-copy, boundary ratio/message,
-duration receipt scope, handoff aliases/corrupt-state assertions lack equivalent real route evidence.
-They remain an explicit next migration obligation, not proof that the prepared epoch path is covered.
-No Command/UI/message/diagnostic/owner change; no compatibility layer. Main owns source/validation,
-assigned worker may author test-only real operation characterization first in existing service test.
-Use real Study/Raw/MNE, exact messages and actual transformed/deferred state with original data
-unchanged; service.close in finally. No fake two-phase harness. Baseline new characterization before
-production deletion, then retained direct service tests +actual ApplicationService cancel/stale/commit
-and SET_MONTAGE/invalid-operation neighbors; Ruff and independent actualdiff review, separatecommit.
-Legacy worker now authors only real-operation tests; main retains source ownership. No production
-change yet. First characterization36passed/2failed4.15s: both channel-alias cases incorrectly assumed
-loaded-data identity survives channel selection. Existing channel commit intentionally publishes a
-selected copy as loaded and preprocessed data; correct this fixture assertion after tracing that path,
-retain original object nonmutation, and rerun before deletion. This is not a product failure.
-Main fully read epoch_handoff_blockers59, epoch_context1247 and direct759. Retain duration evidence,
-half-open sample math, source/handoff matching and scoped confirmation. Direct lightweight data ports
-cover real context policy, not actual epoch materialization; that migration obligation remains3Cnext.
-Step2 preview source1501 +applicationDTO/publisher936 and direct backend745/boundary36/UI376/UI828/
-layout397/Step1dialogs726/support81 full independent read retains generation/cancellation/claim/receipt,
-state restoration, real Thread/Event close and geometry ownership. The previously suspected duplicate
-evidence_reference assignment is absent in current source; do not claim it as a deletion.
-
-**Completed bounded 3D — split preview handoff protection and unused no-op.** Independently confirmed
-DataSplitterHolder.to_thread is empty, absent from the base contract and has no actual caller.
-Add focused existing-file tests first for a typed receipt invalidated by changed controls and a stale
-generation unable to replace current preview rows/status/receipt. Use actual dialog typed publication
-and existing fixtures, no parallel authority or new harness. Baseline direct UI/split-layout cases;
-after passing characterization remove only the no-op (no thread policy/layout/copy changes), rerun
-the relevant cases and bounded in-memory guard faults, Ruff and independent actualdiff review.
-Main owns source; independent worker may author only tests/unit/ui/test_data_splitting.py or the
-existing direct dataset/test_data_splitting.py as appropriate. UI internal deletion already authorized;
-no visible change/new owner. Commit separately, then continue the remaining module3 epoch/split audit.
-3D baseline24passed/3failed1.78s: new stale case assumed running while actual debounce enters idle;
-corrected to existing idle/render semantics, direct16passed1.29s before source deletion. Two existing
-compact-layout cases at752/760px fail with horizontal ranges30/22px on Windows. This is unrelated to
-the no-op and remains an explicit phase UI issue: inspect header/style widths and native screenshot
-before requesting visible-change approval; do not weaken the layout assertions or claim green.
-Main removes only unused to_thread after the passing direct baseline. Reviewer strengthened receipt
-test to retain old cached successful evidence after control edit, so it tests fingerprint rejection
-and not merely schedule_preview clearing the receipt. Retained16passed1.27s; removing both guards
-only in memory causes exactly their two tests to fail0.21s. Source-3/tests+87, Ruff passed.
-Native QPA windows measurement supersedes the suspected visible defect: both compact cases pass0.31s;
-752px viewport/header388px,760px396px, horizontal range0 at both, Microsoft JhengHei UI9pt/DPR1.
-Main inspected the752px screenshot: no clipped headers/footer/overflow. Earlier failure is an
-offscreen font/platform limitation, not established product layout defect. Full native27 ran:
-26passed/1failed2.08s, remaining client-center assertion differs31px from screen center. Preserve this
-separate native placement investigation in shared-runtime module7; no-op deletion does not cause it.
-Do not claim the whole layout suite green or final module closure. Retain all assertions; no font/
-layout workaround. Main/nonauthor actualtest review and independent source-deletion review approved3D.
-
-3C corrected real characterization38passed4.07s before deletion; admission/cancel/stale/rollback
-neighbors44passed/1failed7.54s only because invalid-operation test guessed a custom message rather
-than existing Enum ValueError. Corrected exact enum-message/no-mutation pair2passed3.68s before source
-deletion. Retained full selection42passed7.16s after deleting exactlythree obsolete fake-operation
-cases; all epoch safety cases remain. Main/independent actualdiff review and four-file Ruff passed.
-Final formatted3C source-76/tests+233/-196/net+37; fewer duplicate production paths, stronger real
-side-effect evidence rather than a claim of test LOC reduction. Epoch legacy migration remains open.
-
-**Completed bounded 3E — real prepared epoch boundary admission characterization.** Reuse existing
-_write_reviewed_epoch_fixture/_apply_reviewed_epoch_fixture in test_application_service.py; permit
-explicit synthetic event coordinates in the existing writer while preserving its default recordings.
-Add actual Scan/Preview/Validate/Apply/CreateEpoch cases at1% and above1% boundary exclusion, with
-exact diagnostic counts/message, unchanged source arrays/identity and real resulting epoch counts or
-atomic rejection. No mocked boundary summary, generator or command result; isolate only resource RAM
-reading if required for determinism. This is test-only first; keep all old epoch cases until main
-baseline and evidence mapping pass. Then retire only the two replaced legacy boundary cases if their
-multirecord/count semantics have equivalent real evidence; do not delete remaining legacy handler yet.
-Main owns plan/review/native evidence; legacy worker owns only existing application test file.
-Run new cases plus existing reviewed-epoch lifecycle and all-dropped safety neighbors; bounded wrong
-threshold fault, Ruff and independent actualdiff review. Receipt/RAM/aliases migration remains next;
-no epoch/UI/data policy change, new fixture platform or production owner. Continue module3 afterward.
-Final real cases include100/1 and99/1 boundary events plus300/2 across three recordings; exact
-diagnostics, actual epochs/lock and unchanged loaded/source data are asserted. Retired only two
-legacy boundary-summary mock cases. In-memory threshold0.02 fault makes above1% rejection fail;
-no faulty source persisted. Initial fixture mistakes (extra EEG in message and raw rather than
-normalized label IDs in the separate3G case) were corrected against actual behavior, not product.
-Recovered final3E/3G/preprocess selection291passed10.14s with601 upstream/expected MNE warnings;
-prior terminal output was lost across context recovery, so it was rerun rather than assumed green.
-Independent actualdiff approved; nine changed source/test files pass Ruff/check/format. 3E tests
-+124/-81/net+43, no production change. Remaining RAM/receipt/handoff cases are explicitly retained.
-
-**Completed bounded 3F — actual Preprocess plotter contract, not obsolete async compatibility.** Main fully
-read plotter204/direct252, PreviewWidget1135/directpreview127, panel304/history124/dataquery83/direct159.
-All three live plotter constructors receive PreviewWidget; Welch calculation/application are synchronous
-inside the existing reentrancy guard. Local plot-generation state/check has only an artificial direct
-test; it is not the live backend publication/stale-work guard. First add real PreviewWidget/PyQtGraph
-curve characterization for time/PSD with/without original signals and exact distinct-rate Welch output.
-Keep old tests until passing baseline; then remove only local synchronous generation and duck-typed
-widget fallbacks, replacing calls with the actual typed widget methods. Retain nonreentrancy, deferred
-PSD until selected, backend generation guards and all native detach/resume/finalize lifecycle.
-Also replace PreviewWidget's test-only locked_status_label alias with its same existing QLabel owner,
-migrating assertions before deletion. No visible/state/plot math change, new owner or thread.
-Main owns these files; select direct plotter/preview/presentation and existing native lifecycle stress
-evidence, bounded wrong-PSD fault, Ruff and independent nonauthor review before separatecommit.
-New four real time/PSD/current/overlay cases plus original direct preview/presentation30passed3.37s
-before production edits. Alias assertions now target the identical existing locked_state_detail;
-run that migrated baseline before deleting the alias. Native lifecycle source65 fully read: subprocess
-uses actual checked-in GDF, eight destroy/recreate and cancelled-close resume cycles with bounded timeout.
-Migrated QLabel-owner assertions7passed0.43s before alias deletion. Initial production patch was
-rejected by auto-review as possibly removing required asynchronous guards; no source changes applied.
-Independent reviewer then traced ALL three real plotter callers: panel75/update_plot_only, capture399,
-native stress194/197/249; _apply_psd_result has only inline caller180 after synchronous Welch, no worker,
-queued callback, executor or event processing. Existing _is_plotting covers synchronous Qt reentry.
-Backend publication-ledger and saliency worker generations remain untouched. This concrete evidence
-supports resubmitting only the declared synchronous-state deletion, not bypassing review or weakening
-any live asynchronous boundary. If rejected again, retain it and report the authority blocker.
-The evidence-backed resubmission was accepted; actual source deletion then applied. Retained29 direct
-plus existing real-GDF native lifecycle1 passed7.33s, including eight detach/resume/finalize cycles.
-Wrong PSD-frequency fault is caught by actual curve data (250/251bins mismatch),1failed0.19s.
-Before retiring four now-redundant mock happy-path cases (time data/events, frequency sampling,
-Welch-called, no-data clear), strengthen the new real-widget cases with exact time view range and
-repeat-render-to-no-data clearing of all four native curves and marker visibility; baseline those
-assertions first. Keep actual reentrant/failure/deferral seam tests and raw-offset data regression.
-Strengthened14plottercases passed1.96s before four duplicate mock cases were removed. Recovered
-retained direct25passed2.60s; existing native8cycle stress above remains applicable. Independent
-review of the FINAL applied source/tests approved synchronous caller coverage, actual widget API,
-alias migration and replacement protection. Production+15/-44/net-29; tests+84/-85/net-1.
-
-**Completed bounded 3G — retire legacy Epochs picker chain after real allocator characterization.** Independent
-full dataset7-source4071-line/direct7-test4037-line audit (verify counts from wc, not inventory) traces
-pick_subject/session/trial and their exclusive helpers to tests only; current DatasetGenerator owns all
-materialization. Characterize successful Generator Manual Trial index selection expanding the entire
-overlap group, preserving train classes and passing actual split audit before deleting old picker tests.
-Existing old class-incomplete audit case should use explicit masks to test the audit, not obsolete pickers.
-Do not recreate old expanded_indices evidence: its only writers are legacy pickers; actual Generator
-never produces it and no current canonical promise requires it. Retain artifact builder/writer/schema/
-reader and rollback fields in this slice; any orphan evidence chain needs separate contract review.
-Worker may author test-only changes in existing test_atomic_trial_groups.py first. Passing real manual
-baseline plus actual generator/atomic/epoch direct tests precede the bounded picker deletion. Main owns
-source until migration map/deletion count reviewed; zero new owner, no allocation/data/visible policy
-change. Keep pick_subject_mask_by_idx (live Dataset caller), provenance/atomic group construction and
-channel/order/copy semantics. Independent review, retained tests/Ruff and rollback-small commit follow.
-Corrected real manual allocator plus explicit class-incomplete audit cases2passed3.60s before source
-deletion. Production-538 removes only the obsolete picker/helper/enum chain; current Generator,
-live subject mask, provenance, artifact schema/readers and rollback state remain. Main read the full
-deletion diff; independent nonauthor source/test review approved. Final retained291-case combined
-selection and Ruff pass as recorded3E; this is not all of module3 or final-source certification.
-Removed case count corrected by executing historical/current parametrization definitions in memory:
-307 (301 old Epochs picker/helper parametrizations and six atomic-picker cases). Earlier static309
-overcounted the generated trial list: actual108 entries times2 is216, not218. Baseline563 already
-included the new real manual case; retained256 plus35 current preprocess-service cases equals291.
-No historical source or product file was modified by this counting probe. Test count reduction follows deletion
-of the unused allocator, not reduced protection for the actual Generator.
-
-**Completed bounded 3H — real epoch RAM-before-copy admission.** Existing UI runtime evidence has a fake
-dialog seam; old direct service case uses a fake materializing controller. Add one direct actual
-ApplicationService case using the existing real FIF import helpers. After confirmed Apply, isolate
-only the resource check to deny admission and observe the processor's actual deepcopy allocation seam.
-Assert exact resource failure diagnostics, unchanged loaded/preprocessed objects and data, no epoch,
-no lock and no copying. Keep existing UI delivery test. Passing new characterization allows removal
-of only the replaced legacy RAM case and its exclusive fixture members, not receipt/alias/handoff
-cases. No production behavior/owner change; main owns plan/native runs/review, legacy worker owns
-test_application_service.py initially. Focused new case plus epoch materialization safety/UI resource
-neighbors, bounded omitted-resource-check fault, Ruff and independent actualdiff review. Then
-continue scoped receipt/context/alias migration, remaining UI/domain audits and modules4–9.
-Initial new/legacy/adjacent38passed8.81s; retained37passed8.72s after one obsolete case was removed.
-The omitted-resource-check fault correctly failed because epochs were created, but also revealed
-Raw.copy was NOT the live preparation allocation path (PreprocessBase uses deepcopy). Main traced
-the actual TimeEpoch preparation and corrected the new witness to that exact deepcopy seam; rerun
-this strengthened case and its fault before claiming ordering evidence or committing3H.
-Corrected live-deepcopy witness1passed7.34s; omitted admission guard now fails at the real allocation
-seam with INTERNAL instead of PRECONDITION,1failed7.19s. No faulty source persisted. Main and
-independent final-diff review approved; Ruff passed. Tests+64/-71/net-7, no production change.
-
-**Completed bounded 3I — normalize split commands once.** Main fully read generation service1146/direct876/
-contract245 and actual deferred command callers. `config_from_payload` already validates before
-returning, so handle_save's immediate repeat is unnecessary. `_build_data_splitting_config` has one
-production caller only after split_config is None; its structured-payload branch serves only a private
-test. `_enum_from_value.default` has no caller. First protect default None versus explicit empty
-payload through the actual ApplicationService fixture in deferred split tests; preserve exact saved
-specification and failed-empty/no-mutation behavior. Then remove only duplicated validation, the
-unreachable branch and unused keyword; migrate the exclusive private test after passing baseline.
-Keep structured/headless public Command fields, all validation policies/messages, preview receipt,
-digest, allocation, publication, cache and training rollback. Zero new owner, production net negative.
-Main owns source/test changes. Focused contract/generation/deferred save+preview/preparation cases
-before/after, Ruff and independent actualdiff review; separate reversible commit then continue audits.
-Baseline47passed/1new fixture message mismatch7.95s: public specification parser reports
-`train_type is required`, not the deeper config parser's prefixed message. Corrected new case1passed
-5.80s before source deletion; retained47passed7.97s after one replaced private case was removed.
-Independent final-diff review approved; an alleged third enum argument was a reviewer misread,
-retracted after exact source reread without changing the caller. Ruff passed. Production+1/-11/net-10;
-tests+48/-18/net+30. Actual speculative allocation/rollback and public configuration rules unchanged.
-Main1–1080 and independent1081–1833 now fully cover deferred-split tests. Retain distinct start,
-restart, append, cleanup, rollback-failure, receipt/token and bounded-audit failure windows; targeted
-failure mocks are necessary seams. Missing close calls in synchronous/mocked-start fixtures are a
-convention risk, not a measured worker leak or permission to add broad lifecycle machinery.
-
-**Completed bounded 3J — preprocessing setting dialogs reuse their existing geometry owner.** Full main/
-independent reads confirm common.fit_preprocess_dialog_to_content only forwards six calls in four
-BaseDialog subclasses. Replace calls with the same inherited fit_to_content keyword, remove wrapper
-and unused import; remove RereferenceDialog avg_check/toggle_avg compatibility members with no
-source/test/script/doc/dynamic consumer. Exactly five production files, zero new owner and no layout,
-wording, interaction, sizing or Command change. Existing UI-internal authorization applies.
-Use actual setting-dialog content sizing, filter center/keyboard/Nyquist/mode checks, reference
-radio/selection acceptance and actual rereference command route before/after; no new mock tests.
-Main owns plan/validation and nonauthor final-diff review; worker may implement after passing baseline.
-Ruff and separate reversible commit; remaining sidebar argument cleanup and epoch receipt migration
-remain separately declared work, not implicit additions to3J.
-Same real Windows QPA windows24cases pass4.94s before/5.09s after; five-file Ruff/check/format and
-main nonauthor actualdiff review passed. Exactly six inherited calls, same keyword/geometry path;
-production+6/-28/net-22, no test changes or visible behavior change.
-
-**Completed bounded 3K — unused dataset metadata conveniences and direct test quality.** Main/independent
-full dataset/data_splitter source and tests plus whole-tree callers identify get_ori_name, three
-enum repr conveniences and get_raw_value as test-only. Remove these five methods/exclusive
-assertions after baseline, retaining actual get_name/get_value/get_split_unit/get_splitter_option,
-parser policy, mask copy and resource revision. Restore a missing assertion on the empty remaining
-mask in test_dataset_set_test_mask before deletion; remove one exactly duplicated intersection
-param only after baseline. Two production/two existing test files, zero new owner/semantic change.
-Use direct splitter/dataset/generator cases before and same retained cases after, exact removed
-count, Ruff and independent actualdiff review; a separate reversible commit, then continue module3.
-Stronger baseline113passed4.37s; retained112passed4.35s, exactly one duplicate parametrization
-removed. Production-49/tests+1/-12/net-11; parser/name/mask consumers unchanged. Independent actual
-diff and main review approved; four-file Ruff passed.
-
-**Completed bounded 3L — real BIDS epoch receipt scope/context.** Extend the existing integration duration
-fixture and genuine Scan/Preview/Validate/Apply workflow. Cover changed t_min/t_max/event IDs with
-old receipt, refreshed requirement and no mutation; cover changed duration through actual reimport,
-keeping command scope constant so context, not a new proposed window, causes invalidation. Compare
-same-duration reimport where appropriate to rule out a mere fresh-service token failure. Keep actual
-basic challenge/accepted materialization, current raw identity/data/lock/epoch state and close owned
-services in finally. Worker owns only test_bids_epoch_duration_handoff.py initially. Main baseline
-before retiring only corresponding legacy receipt cases; no production/receipt/EEG/visible changes.
-Use this existing BIDS file plus remaining direct service cases, bounded stale-receipt admission fault,
-Ruff and nonauthor actualdiff review. Actual defaults/raw IDs already have real command protection;
-display-alias materialization and semantic unavailable-context remain explicit migration gaps.
-Legacy _get_state callback exceptions are not a second public read contract: real prepared epoch
-uses captured plan.application.state and validated_epoch_handoff, while ApplicationService owns
-generic read-failure admission. Remove obsolete callback-only tests with that dead path, not recreate
-its error semantics. Current public state-read-failure test remains required evidence.
-Baseline45passed6.66s; after removing five exclusive legacy receipt cases/helper, retained40passed
-6.61s (352 upstream MNE deprecation warnings). In-memory acceptance of any nonempty receipt makes
-all four stale scope/context cases fail4.62s; no faulty source persisted. Same-context reimport
-control passes, distinguishing changed context from fresh-service identity. Main nonauthor actual
-diff review approved; production unchanged, tests+206/-139/net+67. Native runner uses prlimit --core=0
-and bounded timeout; no new environment or dependency.
-
-**Completed bounded 3M — dataset dialog lazy exports match supported classes.** Full package init38 and
-root package tests39 read: __all__ lists retired ImportLabelDialog absent from its lazy export map;
-whole-tree source/test/script/doc references show no consumer or replacement class. Add one dynamic
-export-resolution regression to existing test_init.py that imports every declared class and checks
-the four supported names. Observe the actual missing-attribute failure, then reuse list(_EXPORT_MODULES)
-as the export list, preserving all four lazy module targets and no eager import. One production/one
-test file, no new owner/UI behavior/public Command change. Focused package tests plus relevant lazy
-panel constructor protection, Ruff and independent actualdiff review; separate reversible commit.
-Observed exact missing ImportLabelDialog red1failed/11passed6.81s; after map-owned exports all12passed
-6.71s. Independent actualdiff review approved; production+1/-7/net-6, tests+13, lazy targets unchanged.
-
-**Completed bounded 3N — preprocess Sidebar removes an ignored error prefix.** Independent source899 and
-direct TestPreprocessSidebar125–861/error350–470 trace confirms failure_prefix is not read. Remove
-that argument, five production literal calls and two private error-test call arguments only. Preserve
-actual mapped messages/diagnostics, expected generation, async-only execution, cancellation/busy and
-error UI. Main owns scope/native baseline; assigned worker may author Sidebar and the two direct
-test edits after passing baseline. Use real rereference route, async scheduling failure and selected
-stale/epoch/worker exception cases; same after, Ruff and main nonauthor diff review. No visible change.
-Same28passed7.27s before/7.35s after. Main nonauthor actualdiff review confirms mapped result/error,
-generation and scheduling paths unchanged; production-6/tests-2, zero new owner.
-
-**Declared 3O — actual reviewed display aliases before retiring legacy epoch handler.** Add one
-parametrized real FIF Scan/Preview/Validate/Apply/CreateEpoch characterization in existing application
-tests: raw769/770 reviewed as Left hand/Right hand must materialize correct epoch labels/count;
-unknown list/dict targets must return the current precondition and preserve actual data identity,
-samples, lock and absent epoch. Worker owns this one test file, no production/legacy deletions yet.
-Use focused new nodes and existing prepared epoch/default/raw-ID evidence; inspect real event labels,
-Ruff and nonauthor review. No new helper unless existing fixture reuse needs bounded optional fields.
-Semantic unavailable codes already have exact owner tests in test_epoch_context; callback-only error
-tests are not a second public API. After this evidence, separately declare dead handler retirement
-and audit every coupled constructor/dynamic caller before deletion. No visible or EEG semantic change.
-
-**Declared 3Q — real preview debounce signal instead of rewired mocks.** Full55-line performance test
-disconnects the production timer and substitutes a mocked plotter, so it cannot detect a broken
-timer-to-request connection; it also manually calls private slots instead of changing controls.
-Main replaces these two cases with real PreviewWidget slider/spin value changes, reciprocal values,
-zero immediate requests and exactly one eventual production request; retain single-shot and shutdown
-silence, with owned native teardown. No production changes or speed claims. First run existing two
-cases, add stronger parametrized control tests, run before removing old cases, and use an in-memory
-omitted signal forwarding fault. Focused native tests/Ruff and independent actualdiff review; keep
-plot rendering coverage in the existing real-curve tests rather than duplicating it here.
-Old2passed2.19s; stronger+old4passed2.33s; retained2+15 direct preview/presentation cases17passed0.83s.
-In-memory omitted forwarding causes both new cases to time out2.16s; no faulty source persisted.
-Evidence establishes real wiring/coalescing/control synchronization/shutdown, not precise timer
-restart latency. Independent review accepts the stronger boundary; exact restart timing remains an
-unclaimed property, not a reason to retain old tests that never checked it either.
-
-**Declared 3P — retire unused synchronous epoch handler after real migration.** 3O and its real
+**Completed bounded 3P — retire unused synchronous epoch handler after real migration.** 3O and its real
 boundary/RAM/default/semantic neighbors40passed8.79s; actual epoch label sequence Left/Right/Left and
 class counts2/1 verified. Main nonauthor review corrected helper defaults before the passing run.
 Independent dispatch audit confirms every CreateEpochCommand uses two-phase preparation/commit;
@@ -481,6 +171,11 @@ estimated production-125, below slice complexity ceiling. Native retained3O set 
 cancel/stale/public-read failure/BIDS/epoch-context/state-service neighbors, Ruff and main nonauthor
 review before separate commit. Concrete state-service apply_epoching/Protocol follow-up separately
 declared after full callers/cancellation mapping, not bundled silently.
+Integrated3P/3R and actual BIDS/context/cancel/stale/public read-failure protection89passed11.50s.
+First attempted collection caught a still-used cast import removed with legacy fixtures; restored
+only that import before green. Main nonauthor review/Ruff approved; production+1/-123/net-122,
+tests+13/-515/net-502. Exactly17 obsolete direct cases removed; twelve actual operation/invalid/montage
+cases remain. No weakening of captured-state validation or actual two-phase publication.
 
 **Module3 unresolved artifact decision.** Independent full validator123/direct45/schema134/split_audit1085
 and thesis protocol285–375 audit found artifact writers have no product producer, but the documented
@@ -489,6 +184,45 @@ overlap, not the full claimed schema/provenance. User asked asynchronously to re
 or retain-and-align its contract. No deletion, acceptance-strengthening or scientific claim until choice.
 Unused build_training_ready_state test helper is separately removable; actual saved split/receipt seam
 helpers retain live integration callers. Continue independent cleanup; module3 not closed.
+
+**Completed bounded 3R — remove unused direct-apply preprocess conveniences.** Main full state-service524 and
+tests526 read; after3P, all six apply_filter/resample/rereference/normalization/standard_pipeline/epoching
+methods and matching ProductPort declarations have no production caller. Test-only uses combine
+prepare/commit and duplicate that spelling; migrate those tests to actual prepare plus commit,
+preserving late failure/no publication, one notification, cancellation before commit/retry and rejection
+of cancellation after admission. Keep apply_montage, reset/read/notify and every prepared method.
+Main owns service/test changes after baseline; no provider/EEG/transaction policy or owner change.
+Remove obsolete controller.apply_filter example from observer docstring by showing actual notify
+batching, without changing observer code. Native state-service direct cases before/after plus3P actual
+prepared paths, Ruff and independent review. No mock-count reduction claimed from spelling migration.
+Direct10passed3.90s; migrated same10passed3.83s before deletion; integrated89above after. Independent
+actualdiff review approved; production-93 (observer example+4/-4), tests+10/-6/net+4; seven-file Ruff
+passed. No live apply_* callers remain; architecture fixture strings deliberately model forbidden UI.
+
+**Completed bounded 8F — retire orphan synthetic epoch dialog capture.** Independent full726 script/direct96
+audit plus main whole-tree references confirms no CI/handoff/current-doc consumer. Remove only
+capture_epoching_dialog.py, its exclusive test and optional now-dead capture path in architecture
+guard. Retain actual epoch dialog tests, current capture_ui_polish_surfaces and all real data/native
+gates. First run direct capture test plus two epoch boundary guards and live narrow/public CI script
+tests; then same retained gates after deletion, Ruff/affected collection and main nonauthor actual
+diff review. Zero production/UI changes; historical synthetic artifact entry recoverable from Git.
+Worker owns these script/test/guard files after baseline, independently from3P/main3R files.
+Main fully read the script/test and nonauthor deletion diff; baseline7passed3.45s, retained6passed2.83s
+after exactlyone exclusive test was removed. Script-726/tests-96/guard+1/-4, net-826; current polish
+capture and public data/handoff gates unchanged. Ruff passed, deleted files remain recoverable in Git.
+
+**Completed bounded 3S — dataset adapter test duplication and unused split fixture.** Independent full sidebar963,
+panel1166/minimal51/rowidentity321 tests and main relevant replacement paths confirm an unused fake
+action class, two panel tests directly calling ActionHandler's already-covered blocked paths, and
+one weak duplicate init/style case. Remove those only; preserve actual empty-state button wiring,
+headless/no-bridges, real metadata mutation, row identity/generation, geometry and all action cases.
+Retire definition-only build_training_ready_state and its exclusive imports from deferred_split_support;
+retain live saved-split/materialized-candidate helpers used by resource receipt integration. Main owns
+three UI test files plus that helper; no production/visible behavior change. Baseline exact candidates
+and richer retained action/row/sidebar/publication/receipt cases, same retained after, exact removed
+count, Ruff and independent actualdiff review. Do not manufacture new mock alternatives.
+Native43passed8.54s before/40passed8.44s after, exactlythree duplicate cases removed. Independent
+actualdiff review approved; no-parent widget now explicitly qtbot-owned, assertions retained.
 
 **Module4 bounded read-only audit (not closure or implementation permission).** Independent full
 model_catalog892/braindecode_catalog408/catalog_contract20/model_holder117/input_contract201/
@@ -723,6 +457,11 @@ this table replaces their duplicated active-plan narrative, not any unresolved m
 | 3I / `db4670d7` | Normalize/validate split command once; productionnet-10/testsnet+30 | Real defaultNone vs explicitempty replacement; retained47pass; exact public message, independentreview/Ruff |
 | 3J / `e77e389c` | Dialogs reuse inherited geometry owner; dead reference aliases removed; productionnet-22 | Same24 Windows QPA windows cases before/after, no visible change; main nonauthorreview/Ruff |
 | 3K / `0b7d77ef` | Retire test-only dataset metadata conveniences; production-49/testsnet-11 | Missing mask assertion restored;113before112retained, exactlyone duplicate removed; independentreview/Ruff |
+| 3L / `81e0dfb6` | Real BIDS receipt scope and same/changed-context reimport; testsnet+69 |45before40retained; four stale-acceptance faults caught; main nonauthorreview/Ruff |
+| 3M / `a7b1ad2c` | Export supported lazy dialog targets only; productionnet-6/tests+13 | Missing-class red,12green; independentreview/Ruff |
+| 3N / `96366558` | Remove ignored preprocess error-prefix plumbing; production-6/tests-2 | Same28before/after; main nonauthorreview/Ruff |
+| 3O / `9ddb204c` | Actual alias-to-epoch labels/counts and unknown list/dict atomic rejection; testsnet+87 | Real3new plusneighbors40pass before handler retirement; main nonauthorreview/Ruff |
+| 3Q / `e8cf3260` | Real Qt controls/signals replace timer-rewired mocks; testsnet-19 | Old2→combined4→retained2+15neighbors17; omitted-signal faults detected; independentreview/Ruff |
 
 ### Evidence qualifications that remain relevant
 

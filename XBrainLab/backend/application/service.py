@@ -671,7 +671,6 @@ class ApplicationService(Observable):
         self.preprocess_commands = PreprocessCommandService(
             preprocess=self.preprocess,
             dataset=self.dataset,
-            get_state=self.get_state,
             pipeline_transaction=self.pipeline_transaction,
         )
         self.dataset_generation = _LazyDatasetGenerationCommandService(
