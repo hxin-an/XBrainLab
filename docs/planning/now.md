@@ -45,8 +45,8 @@ UI/test files and root settings. Worktree/branch/source facts come from Git, not
 | Module | Includes | Status |
 | --- | --- | --- |
 | 1 Command/state spine | Admission, capabilities, confirmation, publication, owned work, shared domain ports | Responsibility review closed at 1247cf7c; native 178 passed; domain branches explicitly remain modules 2–6 |
-| 2 Import/interpretation | Loaders, BIDS, labels/classes, channel/montage, metadata, recipes, related UI | 2A–2AE reviewed; remaining resource/domain/UI/scripts audit open |
-| 3 Preprocess/epoch/split | Processing, copies, invalidation, preview/materialization, related UI/tools | Pending |
+| 2 Import/interpretation | Loaders, BIDS, labels/classes, channel/montage, metadata, recipes, related UI | Audited core reviewed; not closed: two confirmed visible defects await authorization; inventory reconciliation in progress |
+| 3 Preprocess/epoch/split | Processing, copies, invalidation, preview/materialization, related UI/tools | Next module; DrawRegion candidate mapped from misrouted module2 test |
 | 4 Models/training | Catalog, resource preflight, settings, stop/rerun, history/checkpoints | Pending |
 | 5 Evaluation/saliency/views | Read/publication, SmoothGrad/recompute, four views, stale work/render lifecycle | Pending |
 | 6 Assistant/chat | Tool adapters, turns/confirmation/execution, model/RAG lifecycle and shutdown | Pending |
@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `e8ed6d4b`, 54 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `528322e7`, 55 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -139,9 +139,10 @@ git-dir/work-tree resolves the exact20b05f75 HEAD; process-only GIT_DIR/GIT_WORK
 32passed3.80s with unchanged identity guard. Do not rewrite the worktree pointer or forge a digest.
 After deleting the unused chain the same32passed3.30s. Main nonauthor actual-diff review approved:
 all three canonical fixture functions are byte-identical; module docstring now states factory role.
-Script +1/-75/net-74; no product source/test/evidence-inventory change. Ruff/check/format passed.
+Git-verified script +1/-76/net-75 (corrected the reviewer's arithmetic); no product source/test/
+evidence-inventory change. Ruff/check/format passed.
 
-**Completed 2AG, pending commit — wizard unused footer instance / single-use exclusion forwarding.** Full source
+**Completed 2AG — wizard unused footer instance / single-use exclusion forwarding.** Full source
 reads and whole-family caller search show PreviewDialog constructs an empty QDialogButtonBox with
 no layout, buttons, signals or consumer; actual footer owns separate Back/Next/Cancel/Apply buttons.
 Remove only the empty instance/annotation/import, retaining stylesheet selectors and all real
@@ -158,7 +159,7 @@ neighbors passed0.93s before any2AG edits. Independent candidate/caller/base-dia
 After deletion the combined same13 passed1.49s, Ruff/check/format passed. Main and independent
 actual-diff review approve source +1/-9/net-8, ownerdelta0; no visible footer or layout change.
 
-**Declared 8D — replay shutdown timeout evidence.** The complete replay1329/direct572 audit found
+**Completed 8D, pending commit — replay shutdown timeout evidence.** The complete replay1329/direct572 audit found
 real deferred-close success coverage but no persistent-visible timeout case. Baseline the existing
 real Qt shutdown case; add a rejecting-close QWidget with guaranteed finally hide and observable
 timeout-once/no-success assertions. Keep actual Qt polling and monotonic deadline, no fake lifecycle
@@ -167,14 +168,33 @@ ownership assignment. Main runs baseline/new/adjacent cases and a bounded in-mem
 fault to verify the new assertion, Ruff, nonauthor review, separate commit then module continuation.
 Do not claim this unit proves real MainWindow shutdown; actual native lifecycle gates remain required.
 Original deferred-close case passed0.55s. Author waits until2AG commit completes before editing.
+After adding the real rejecting-close case both passed0.63s. A50ms Qt timer fence observes two
+poll intervals after timeout; finally hides the intentional refusing widget. Main nonauthor review
+approved test-only+36; Ruff/check/format passed. In-memory wrong-success fault failed precisely
+because no timeout callback arrived (1failed1.12s); no faulty source was saved. No real MainWindow
+shutdown claim is implied.
 
-**Declared 8E — unused review-state capture fixture.** Main and independent caller audit confirm
+**Completed 8E, pending commit — unused review-state capture fixture.** Main and independent caller audit confirm
 _review_import_state_dialog has only its definition; canonical factories/specs use _review_import_dialog
 and explicit callables, no dynamic lookup or CLI route. Remove only the unused62-line fixture from
 capture_data_import_wizard_steps.py; preserve every canonical state/filename/manifest requirement,
 real factory and its tests. Observer owns this script only after main baseline and8D ownership remains
 separate. Rerun two canonicalcapture test files because intervening2AG touched the real dialog; then
 delete and repeat32/Ruff/mainnonauthor review before its own commit. No UI/gate-contract change.
+Refreshed baseline32passed3.36s, after32passed3.32s. Main nonauthor diff review approved and restored
+two formatting blank lines omitted by the initial deletion; final script-63, Ruff/check/format passed.
+
+**Module2 independent closure review.** Reviewer did not approve module closure: two confirmed
+visible defects below remain unresolved, not merely documentation or LOC concerns. The audited
+interior has one command spine, separate backend mutation/publication and UI draft/presentation;
+large file size alone did not establish a competing owner. Three stale tracker pending rows were
+actually inspected (montage capability80 +owner170, empty loader test package marker needed for
+relative imports, DrawRegion148 +owner75–250). Reconcile these; DrawRegion belongs to module3.
+Main fully read wizard runtime145 (real Scan/Preview/Validate +Qt draft handoff, intentionally invalid
+FIF not actual EEG Apply). Main1–440 +independent441–1788 fully cover real-fixture wizard acceptance:
+retain all five-step, exact fresh review, no-publication, cancellation/drain/retry and BIDS recovery
+contracts. Optional fixtures were not run here; final required-source gate still applies.
+Continue authorized module3 while awaiting visible decisions; do not markmodule2closed or handoff.
 
 Completed2X–2AC are indexed below; their full scope/evidence remains in Git history.
 2AC found an existing shared-environment source hazard: Windows .pth adds the original checkout
@@ -420,7 +440,8 @@ this table replaces their duplicated active-plan narrative, not any unresolved m
 | 2AD / `27c525c6` | Remove four Coordinator payload forwarders; +20/-39/net-19 | Native80 before/after; migrated assertions6focused before deletion; independentreview/Ruff |
 | 2AE / `20b05f75` | Remove unused loader lookup/commented rejection; production -17 | Strengthened23 before/after, no-publication fault detected; real Apply neighbors, independentreview/Ruff |
 | 2AF / `4df0c36e` | Remove preflight forwards/list copy and unused multiplier aliases; +8/-40/net-32 | Same20 native before/after; receipt/scope/BIDS fallback review and Ruff; policies unchanged |
-| 8C / `e8ed6d4b` | Retire duplicate placement capture entrypoint; script +1/-75/net-74 | Canonicalcapture32 before/after, mainnonauthorreview/Ruff; actual factories unchanged |
+| 8C / `e8ed6d4b` | Retire duplicate placement capture entrypoint; script +1/-76/net-75 | Canonicalcapture32 before/after, mainnonauthorreview/Ruff; actual factories unchanged |
+| 2AG / `528322e7` | Remove empty wizard footer instance and exclusion forward; +1/-9/net-8 | Same13 native rendering/removal/geometry before/after, independentreview/Ruff |
 
 ### Evidence qualifications that remain relevant
 
