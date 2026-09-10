@@ -44,8 +44,8 @@ UI/test files and root settings. Worktree/branch/source facts come from Git, not
 
 | Module | Includes | Status |
 | --- | --- | --- |
-| 1 Command/state spine | Admission, capabilities, confirmation, publication, owned work, shared domain ports | 1A–1L reviewed; remaining file/test closure audit open |
-| 2 Import/interpretation | Loaders, BIDS, labels/classes, channel/montage, metadata, recipes, related UI | 2A backup fix and 2B guard reviewed; legacy apply audit active |
+| 1 Command/state spine | Admission, capabilities, confirmation, publication, owned work, shared domain ports | 1A–1M reviewed; Study conveniences and final shared-spine evidence audit open |
+| 2 Import/interpretation | Loaders, BIDS, labels/classes, channel/montage, metadata, recipes, related UI | 2A–2E reviewed; remaining domain implementation/tests audit open |
 | 3 Preprocess/epoch/split | Processing, copies, invalidation, preview/materialization, related UI/tools | Pending |
 | 4 Models/training | Catalog, resource preflight, settings, stop/rerun, history/checkpoints | Pending |
 | 5 Evaluation/saliency/views | Read/publication, SmoothGrad/recompute, four views, stale work/render lifecycle | Pending |
@@ -103,14 +103,62 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-- Recovery after accidental shutdown: product commits through `9e2994b8` survived; 1K is
-  `e2f483dd`, 2B is `930c2a6a`. Original dirty UI/test/settings are intact. Existing Windows
-  Python 3.12.10 starts; model/RAG/data caches remain and removed abandoned compaction files remain
-  absent. No Windows Python/pytest process remains. Earlier worker sessions ended; resume bounded
-  assignments from these source facts, not previous in-flight messages.
-- Active next: complete the 2C legacy evidence map and prepared-path characterization, then retire
-  the old handler. Infrastructure withdrawal is committed; selected native reboot checks passed.
-  Remaining module 1 observer cleanup/full test audit and modules 2–9 remain in scope, not complete.
+- Recovery reverified: product branch `cleanup/module-quality` is clean at `7b4fc8a0` (22 commits
+  after baseline); original dirty UI/test/settings remain intact. Earlier reboot checks verified the
+  existing Windows Python and retained caches. Resume from committed source, not ended tool sessions.
+- Active next: finish module 1 Study convenience caller/test audit, reconcile shared-spine inventory
+  and run directly relevant confirmation/publication/owned-work/shutdown closure evidence. Independent
+  full state-service test audit read 2,063 lines / 49 functions and found no safe deletion: failure,
+  detachment and retry tests protect distinct read-port contracts. Verify existing actual data_lists
+  stale-generation/lock tests before treating a file-local coverage gap as a product evidence gap.
+  Module 2 prepared-path cleanup 2C/2D and native recipe repair 2E are committed; remaining module 2
+  domain review and modules 3–9 remain open. No whole-module closure or manual candidate claim.
+- Bounded 1N caller audit (read-only until its evidence map is complete): Study loader/export/read
+  conveniences and their exclusive manager forwarding paths. Check dynamic/config/doc consumers;
+  retain actual Command/query/result export and saliency propagation owners. Do not remove methods
+  just because they forward. Independent worker owns the audit, not source edits.
+- Bounded 1O test consolidation: runtime tests repeat direct construction's cache identity checks.
+  Merge the explicit-construction-then-runtime-lookup case into the existing two-explicit-instances
+  test, retaining all distinct identity/cache assertions and the separate opposite creation-order
+  case. Preserve failure/retry and actual concurrent close/lookup tests. Production unchanged;
+  same native runtime suite before/after, Ruff and independent diff review. One rollback commit.
+  Existing data_lists tests already exercise nonwaiting lock rejection, pre-read stale-generation
+  rejection and use of committed state without refresh; retain these as shared-spine evidence,
+  while row/EEG domain semantics remain module 2, not an invented new concurrency owner.
+- 1N implementation declared after independent caller audit: delete Study.get_raw_data_loader and
+  DataManager.get_raw_data_loader, Study.export_output_csv and TrainingManager.export_output_csv,
+  and Study-only get_saliency_params/unlock_dataset/has_raw_data/has_datasets/has_trainer wrappers.
+  Whole tracked source/config/scripts/docs checks found no runtime/dynamic consumers. Preserve real
+  RawDataLoader, result-record CSV export, manager predicates/unlock, manager saliency getter and
+  formal visualization/analysis consumers. Remove exactly their loader/export-exclusive tests and
+  fake export helpers; migrate the two Study saliency read assertions to its retained manager while
+  preserving setter/trainer propagation checks. No new owner, fallback or visible/public contract
+  change. Worker owns the three backend classes and four directly affected test files, main owns
+  plan/inventory/runtime tests. Native baseline/after on those test files plus actual analysis/
+  visualization getter consumers; unchanged retained assertions, Ruff and independent actual diff
+  review before a separate rollback commit. Do not expand to other training/data methods.
+- 1O completed focused evidence: native runtime baseline 10 passed; consolidated suite 9 passed,
+  with all distinct prior cache/identity assertions retained and explicit-close isolation added.
+  Production unchanged, Ruff/format passed; independent reviewer approved actual diff/ownership.
+- Next bounded 2F import verification simplification: full content-identity source (1,010 lines)
+  and its two test files (945 lines) were read. Preserve streaming SHA, canonical path scope,
+  admitted digest reuse, bounded workers and explicit owned-context/cancellation/progress behavior.
+  Remove only a consecutive duplicate session-current check in prepared apply, its single-use
+  `_ensure_reviewed_label_content_is_current` forwarding wrapper, and the one-use nested `_build`
+  wrapper inside hash dispatch by inlining under the existing context bindings. No cache, identity
+  schema, extra owner, I/O or lifecycle redesign; no performance claim. Native content identity/hash
+  cancellation and actual prepared apply stale/content/rollback tests before/after; unchanged tests,
+  Ruff and independent data/lifecycle review. Main owns these two production files, separate from 1N.
+- 1N native before/after: 158 / 146 passed on identical four-file selection. Exactly 12 loader/export
+  exclusive cases removed; real plan, saliency propagation and manager mutation assertions retained.
+  Production +2/-63/net -61, tests +8/-112/net -104; Ruff/format/diff pass. Independent final review
+  pending. EvalRecord.export_csv itself remains for module 5 caller/disposition review; this slice
+  does not assert a currently reachable CSV-export product feature.
+- Recipe audit: independent full source/test/caller read retains persistence, replay conversion,
+  legacy class-map migration and current label-audit reconstruction. Their real save/reload and
+  state roundtrip cases protect current behavior. Target-level extra provenance/schema fields are
+  not current guarantees or authorized schema work. 2F baseline: 49 content/prepared cases plus
+  6 actual stale-session/cancel/commit/content-boundary cases pass before edits.
 - Planned 1L observer cleanup: remove the unread QtObserverBridge._observer_callback member (two
   assignments) while retaining Observable/_ObserverSubscription callback ownership, QObject destroyed
   cleanup and finalizer. Replace the test-only empty MockObservable subclass with Observable itself.

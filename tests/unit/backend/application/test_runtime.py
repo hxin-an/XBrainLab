@@ -48,8 +48,14 @@ def test_direct_construction_is_initialization_only_and_not_cached():
     assert second.study is study
     assert study._application_service is None
     assert application_service_initialized(study) is False
+    resolved = get_application_service(study)
+    assert resolved is not first
+    assert resolved is not second
+    assert resolved.study is study
+    assert study._application_service is resolved
     first.close()
     second.close()
+    assert get_application_service(study) is resolved
 
 
 def test_direct_construction_does_not_replace_runtime_cached_service():
@@ -97,18 +103,6 @@ def test_get_application_service_is_atomic_per_study(monkeypatch):
         services = [future.result(timeout=2.0) for future in futures]
 
     assert services[0] is services[1]
-
-
-def test_direct_construction_does_not_publish_into_runtime_cache(monkeypatch):
-    study = Study()
-    constructed = ApplicationService(study)
-    resolved = get_application_service(study)
-
-    assert resolved is not constructed
-    assert resolved.study is study
-    assert constructed.study is study
-    assert study._application_service is resolved
-    constructed.close()
 
 
 def test_failed_runtime_initialization_is_not_cached_and_can_retry(monkeypatch):
