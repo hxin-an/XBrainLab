@@ -356,6 +356,29 @@ def test_action_catalog_ends_with_one_short_output_reminder() -> None:
         workflow_stage="epoch_ready",
     )
 
+    definitions = [
+        json.JSONDecoder().raw_decode(section)[0]
+        for section in contracts.split("Callable action contract:\n")[1:]
+    ]
+    assert {
+        definition["name"]: definition["parameters"] for definition in definitions
+    } == {
+        "configure_training": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        },
+        "apply_bandpass_filter": {
+            "type": "object",
+            "properties": {
+                "low_freq": {"type": "number"},
+                "high_freq": {"type": "number"},
+            },
+            "required": ["low_freq", "high_freq"],
+            "additionalProperties": False,
+        },
+    }
+
     reminder = contracts.rsplit("Final output reminder:\n", maxsplit=1)[1]
     assert (
         '{"workflow_stage":"epoch_ready","tool_name":"<exact enabled action '

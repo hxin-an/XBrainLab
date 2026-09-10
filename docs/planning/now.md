@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `4f352cab`, 102 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `3d498c51`, 104 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -165,7 +165,7 @@ separate module9 quality question, not part of this deletion.
 Original74passed6.36s, retained71passed6.23s; only three exclusive resolver cases removed. Independent
 actualdiff/registration/owner review approved and changed-file Ruffpassed. Production-101, testsnet-36.
 
-**Bounded6B — real confirmation approval/replay/stale mutation evidence.** Full product-flow528,
+**Completed bounded6B — real confirmation approval/replay/stale mutation evidence.** Full product-flow528,
 resource-receipt302 and strict-recovery273 do not connect actual confirmation to a real mutation;
 independent long-session1151 and AgentManager product-chat3503–3769 show no-action model responses
 or fake controller confirmation. Reuse the existing real-controller/AgentManager long-session test
@@ -182,6 +182,44 @@ bounded in-memory omitted/duplicate reset fault where practical, Ruff and main n
 Keep long-session no-action/heartbeat limits unchanged; do not loosen them to make new evidence pass.
 Existing full host/soak suite21passed46.35s before edits. Worker waits for6A/6C commit hooks before
 writing this one test file; main owns focused after/fault/lint and review.
+First focused run exposed three new-fixture mistakes (missing host navigation, zero-argument started
+signal collector, and expecting reset to remove rather than restore loaded data); corrected without
+product edits. Retained full suite24passed47.20s, six MNE NumPy deprecation warnings. In-memory handler
+that reports success without resetting data fails the real256Hz assertion in9.06s. Main nonauthor
+actualdiff review approves real command/publication/raw identity/file-byte/replay evidence; model,
+RAG and minimal in-process runtime/navigation host remain isolated, not native/manual acceptance.
+Test-only net291LOC; no existing cases removed. The fault runner preimport also exposed cp950 console
+encoding failure for metrics' approximately sign; shared logger/launcher audit owns investigation,
+not a reason to alter this test's success criteria or claim product logs validated.
+
+**Completed bounded6D — remove unreachable empty-schema override.** Main full assembler835/schema72 and
+independent context1791/stage283 tests confirm no caller supplies backend_default_tools or
+use_backend_defaults. The real formatter always uses strict_prompt_parameters; alternate forced-empty
+schema cannot run. Strengthen existing two-action catalog test to parse emitted configure_training/
+bandpass schemas and assert their exact properties/required/additionalProperties before deletion.
+Run full assembler/stage baseline, then delete only unused parameter/forward/conditional in two source
+files. Keep prompt strings, actual schemas, current publication/tool membership, history/RAG/model
+policy byte-for-byte unchanged. No experiment or new owner; roughly-13productionLOC. Same retained
+tests, in-memory empty-schema fault, Ruff and independent actualdiff review before commit. No existing
+case removed. Other unreachable history options/stage prose are separately audited candidates, not
+part of this slice.
+Strengthened baseline72passed6.58s; recovered after72passed6.07s (earlier after output unavailable,
+not counted). In-memory forced-empty schema fault fails the exact bandpass properties assertion
+in0.45s. Ruffcheck/formatpassed; independent actualdiff review approved. Production+2/-17/net-15LOC,
+tests+23; no existing cases removed.
+
+**Next bounded6E — retire unused stage prose and unreachable history suppression.** Full pipeline190/
+direct298 and assembler835 audit, plus independent exact caller search, find STAGE_CONFIG's seven
+system_prompt values unused by runtime: assembler and evaluator consume only tools. Preserve that
+live stage/tool ledger, public membership and all actual generated prompt bytes. Before deletion,
+compare full prompts for all seven fixed-publication stages with unique sentinel prose substituted;
+also record exact before/after prompt digests. Remove only prose builder/values, unused fallback
+prose/docs and exclusive prose tests; retain tool-stage and label assertions. Separately remove
+receipt_question whose sole caller always passes None, retaining selected/sanitized bounded history.
+No model/prompt experiment, new owner or compatibility shell; approximately-120productionLOC across
+two files, owner delta0. Full stage/config/context baseline and retained after, exact output comparison,
+Ruff and independent actualdiff review are required. No UI behavior change or confirmation-policy edit.
+Stop this slice at verified output-preserving deletion, then continue module6 lifecycle/tool/UI audit.
 
 Completed2AD–2AG and8C–8E are indexed below and fully traceable in Git. For source-bound Windows
 capture tests only, use process-local GIT_DIR/GIT_WORK_TREE pointing to the actual Windows paths:

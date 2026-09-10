@@ -13,24 +13,13 @@ TOOL_TAXONOMY: dict[str, str] = AGENT_ACTION_CONTRACTS.taxonomy()
 
 def tool_contract_for_llm(
     tool: BaseTool,
-    *,
-    use_backend_defaults: bool = False,
 ) -> dict[str, Any]:
     """Return a compact, schema-constrained tool definition for the LLM."""
-    parameters = (
-        {
-            "type": "object",
-            "properties": {},
-            "additionalProperties": False,
-        }
-        if use_backend_defaults
-        else strict_prompt_parameters(tool.parameters)
-    )
     payload: dict[str, Any] = {
         "name": tool.name,
         "taxonomy": TOOL_TAXONOMY.get(tool.name, "Workflow"),
         "description": tool.description,
-        "parameters": parameters,
+        "parameters": strict_prompt_parameters(tool.parameters),
     }
     return payload
 

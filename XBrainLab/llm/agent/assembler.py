@@ -175,7 +175,6 @@ Action Contract Catalog (input definitions, never an output array):
         allowed_names: list[str],
         *,
         workflow_stage: str = "unavailable",
-        backend_default_tools: frozenset[str] = frozenset(),
         unavailable_actions: dict[str, str] | None = None,
     ) -> str:
         """Format request-scoped contracts without resembling model output.
@@ -199,10 +198,7 @@ Action Contract Catalog (input definitions, never an output array):
 
         sections: list[str] = []
         for tool in active_tools:
-            tool_def = tool_contract_for_llm(
-                tool,
-                use_backend_defaults=tool.name in backend_default_tools,
-            )
+            tool_def = tool_contract_for_llm(tool)
             sections.extend(
                 (
                     "Callable action contract:",
