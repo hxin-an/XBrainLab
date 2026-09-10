@@ -634,32 +634,6 @@ MUTABLE_OBJECT_BOUNDARY_DEBT_ALLOWLIST = (
         "assignment",
     ),
     MutableObjectBoundaryDebt(
-        "XBrainLab/ui/components/plot_figure_window.py",
-        "PlotFigureWindow.__init__",
-        MUTABLE_BOUNDARY_UI_DOMAIN_STORAGE,
-        "assignment",
-        2,
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/components/plot_figure_window.py",
-        "PlotFigureWindow.on_plan_select",
-        MUTABLE_BOUNDARY_UI_DOMAIN_STORAGE,
-        "assignment",
-        2,
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/components/plot_figure_window.py",
-        "PlotFigureWindow.on_real_plan_select",
-        MUTABLE_BOUNDARY_UI_DOMAIN_STORAGE,
-        "assignment",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/components/plot_figure_window.py",
-        "PlotFigureWindow.update_loop",
-        MUTABLE_BOUNDARY_UI_DOMAIN_STORAGE,
-        "assignment",
-    ),
-    MutableObjectBoundaryDebt(
         "XBrainLab/ui/main_window.py",
         "MainWindow.__init__",
         MUTABLE_BOUNDARY_UI_DOMAIN_STORAGE,

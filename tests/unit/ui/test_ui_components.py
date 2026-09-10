@@ -10,59 +10,6 @@ import numpy as np
 import pytest
 from PyQt6.QtWidgets import QWidget
 
-# ============ SinglePlotWindow ============
-
-
-class TestSinglePlotWindow:
-    def test_creates(self, qtbot):
-        from XBrainLab.ui.components.single_plot_window import SinglePlotWindow
-
-        w = SinglePlotWindow(None, title="Test Plot")
-        qtbot.addWidget(w)
-        assert w.windowTitle() == "Test Plot"
-
-    def test_has_figure_canvas(self, qtbot):
-        from XBrainLab.ui.components.single_plot_window import SinglePlotWindow
-
-        w = SinglePlotWindow(None, title="Test")
-        qtbot.addWidget(w)
-        assert isinstance(w.figure_canvas, QWidget)
-
-    def test_close_releases_current_figure_and_qt_widgets(self, qtbot):
-        from matplotlib.figure import Figure
-        from PyQt6.QtGui import QCloseEvent
-
-        from XBrainLab.ui.components import single_plot_window
-        from XBrainLab.ui.components.single_plot_window import SinglePlotWindow
-
-        w = SinglePlotWindow(None, title="Test")
-        qtbot.addWidget(w)
-        external_figure = Figure()
-        w.set_figure(external_figure, w.figsize, w.dpi)
-
-        with patch.object(single_plot_window.plt, "close") as close_figure:
-            w.closeEvent(QCloseEvent())
-
-        assert external_figure in [call.args[0] for call in close_figure.call_args_list]
-        assert w.figure_canvas is None
-        assert w.toolbar is None
-        assert w.plot_number is None
-
-    def test_set_figure_reuses_same_figure_without_closing_it(self, qtbot):
-        from XBrainLab.ui.components import single_plot_window
-        from XBrainLab.ui.components.single_plot_window import SinglePlotWindow
-
-        w = SinglePlotWindow(None, title="Test")
-        qtbot.addWidget(w)
-        current_figure = w.fig_param["fig"]
-
-        with patch.object(single_plot_window.plt, "close") as close_figure:
-            w.set_figure(current_figure, w.figsize, w.dpi)
-
-        close_figure.assert_not_called()
-        assert w.fig_param["fig"] is current_figure
-
-
 # ============ ConfusionMatrix & MetricsBarChart ============
 
 

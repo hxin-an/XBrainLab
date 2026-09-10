@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `5132d43e`, 124 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `c089d7a8`, 127 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -245,6 +245,43 @@ retained cases after, lint and main nonauthor actual diff review; no test remova
 then continue shared components; final data/native gates still required for integrated handoff.
 7B implemented-63productionLOC; same52before4.43s/after4.56s, no test changes. Main nonauthor actual
 diff/caller review and Ruff passed; resource admission/backend query and variants lifecycles remain.
+
+**Bounded7C — retire four unused desktop component classes as a complete chain.** Full main Card80,
+Placeholder51, PlotFigureWindow269, SinglePlotWindow210, lazy package exports and styles551, plus
+independent actual caller/dynamic/script/doc sweep confirm no current UI entry; Plot->Single inheritance
+and lazy exports are internal only. Actual evaluation/saliency views are separate and stay untouched.
+Remove four modules, their lazy export machinery (keep ordinary package marker), exactly CardWidget/
+CardTitle style blocks, exclusive plot-window test file, four SinglePlot tests and one exclusive dialog
+init case; preserve remaining active widget/lifecycle/geometry and Epoch/Rereference inheritance tests.
+Remove four obsolete mutable-boundary allowlist entries rather than widening the gate. About-660
+productionLOC/sixfiles, no added owner; no visible behavior/feature/public Command change, unused Python
+convenience API and UI-internal deletion explicitly authorized. Baseline existing UI-components,
+old plot-window, dialog structure, theme and main-window suites plus architecture guard; after retain
+same active cases and guard, expose exact removed count. Verify package import and live component
+submodule access, actual diff review/lint; one reversible commit. No wall-time acceleration claim for
+the retired polling timer since no live widget starts it. Continue shared component audit, not handoff.
+
+7C verified: original70passed9.79s; retained50passed8.57s after deleting exactly20 exclusive cases.
+An intermediate retained test run caught a mistakenly removed QWidget import used by a live chart
+lifecycle case; restored it, without weakening that test. Architecture guard passed before/after on
+Windows; cold package import excludes Matplotlib and live presentation submodule resolves to active
+checkout. Five surviving changed Python files pass Ruff check/format. Main reviewed author's actual
+diff and retirement callers. Production-660, tests-227; no current plots/data removed. Commit next.
+
+**Bounded7D — remove aggregate renderer's unused domain retention and prove weak listeners.** Full
+main InfoPanelService131/direct238 plus renderer/main-window tests show study is stored but never read;
+_observes_controller_events is alwaysFalse and read only by tests. Actual owner consumes committed
+publication rows and weak panel listeners. Remove unused study constructor argument/field and false
+marker, update sole production MainWindow composition and existing test call sites; remove only this
+service's obsolete mutable-domain allowlist entry (after7C). Keep publication cache, render failure
+acknowledgement/retry, deletedQObject handling and all UI strings. Also remove ignored notify_all
+args after confirming only no-argument caller. Strengthen weakref test to assert actual collection
+and listener removal (not container type), characterize before source changes and make a deliberate
+strong-reference fault fail. Keep cases, replace marker/identity assertions with real rendered-row or
+subscription evidence already exercised; two production files expectednegativeLOC, no new owner/UI
+behavior. Baseline service, renderer, main-window and UI integration plus affected sync nodes; same
+after and canonical architecture guard, actual diff review/Ruff. Sync only constructor mentions in
+docs/architecture/ui.md. Stop slice at unchanged publication UI/no domain retention, continue phase.
 
 **Module6 initial full owner audit (not closure).** Independent full controller2949/attempt898/
 execution342/confirmation314/pending443 and respective direct confirmation154/pending560/execution151/
