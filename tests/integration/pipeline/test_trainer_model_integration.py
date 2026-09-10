@@ -17,7 +17,7 @@ from XBrainLab.backend.application.evaluation_render import (
     EvaluationPlanIdentity,
     EvaluationRunIdentity,
     EvaluationSummaryIdentity,
-    build_evaluation_model_summary,
+    build_evaluation_model_summary_result,
 )
 from XBrainLab.backend.dataset import Dataset, DataSplittingConfig, Epochs, TrainingType
 from XBrainLab.backend.load_data import Raw
@@ -147,16 +147,16 @@ class TestTrainerModelIntegration:
             assert record.eval_record is not None
 
             plan_identity = EvaluationPlanIdentity(plan_index=0)
-            summary = build_evaluation_model_summary(
+            summary = build_evaluation_model_summary_result(
                 SimpleNamespace(training_plan_holders=lambda: (plan,)),
                 EvaluationSummaryIdentity(
                     plan=plan_identity,
                     run=EvaluationRunIdentity(plan=plan_identity, run_index=0),
                 ),
             )
-            assert "=== Run: Repeat-0 ===" in summary
-            assert "EEGNet" in summary
-            assert "Total params" in summary
+            assert "=== Run: Repeat-0 ===" in summary.text
+            assert "EEGNet" in summary.text
+            assert "Total params" in summary.text
 
     def test_sccnet_model(self, synthetic_dataset, tmp_path):
         """Pipeline also works with SCCNet model."""

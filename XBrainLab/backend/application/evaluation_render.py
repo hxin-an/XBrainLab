@@ -873,16 +873,6 @@ class EvaluationRenderPublisher:
         )
 
     @staticmethod
-    def _final_unavailable_error(message: str) -> PreconditionError:
-        return PreconditionError(
-            f"{message}. Configure a validation or test split and train again.",
-            diagnostics={
-                "evaluation_final_unavailable": True,
-                "retryable": False,
-            },
-        )
-
-    @staticmethod
     def _target_error(message: str) -> PreconditionError:
         return PreconditionError(
             f"{message}. Refresh Evaluation and try again.",
@@ -922,14 +912,6 @@ class EvaluationRenderPublisher:
                 ),
             },
         )
-
-
-def build_evaluation_model_summary(
-    training_runtime: TrainingProjectionReadPort,
-    identity: EvaluationSummaryIdentity,
-) -> str:
-    """Build one model summary from a validated backend-only identity."""
-    return build_evaluation_model_summary_result(training_runtime, identity).text
 
 
 def build_evaluation_model_summary_result(
@@ -1362,7 +1344,6 @@ __all__ = [
     "EvaluationSelectionIdentity",
     "EvaluationSummaryIdentity",
     "build_evaluation_cross_fold_choices",
-    "build_evaluation_model_summary",
     "build_evaluation_model_summary_result",
     "build_prepared_evaluation_model_summary",
     "prepare_evaluation_model_summary",

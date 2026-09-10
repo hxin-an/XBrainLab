@@ -18,7 +18,6 @@ from XBrainLab.backend.application.evaluation_render import (
     EvaluationRunIdentity,
     EvaluationSummaryIdentity,
     build_evaluation_cross_fold_choices,
-    build_evaluation_model_summary,
     build_evaluation_model_summary_result,
     build_prepared_evaluation_model_summary,
     prepare_evaluation_model_summary,
@@ -1202,7 +1201,7 @@ def test_model_summary_maps_selected_fold_and_run_to_its_trained_model() -> None
     ]
     plan_identity = EvaluationPlanIdentity(plan_index=1)
 
-    summary = build_evaluation_model_summary(
+    summary = build_evaluation_model_summary_result(
         _Runtime(plans),
         EvaluationSummaryIdentity(
             plan=plan_identity,
@@ -1210,9 +1209,9 @@ def test_model_summary_maps_selected_fold_and_run_to_its_trained_model() -> None
         ),
     )
 
-    assert "=== Run: Repeat-1 ===" in summary
-    assert "EEGNet" in summary
-    assert "Total params" in summary
+    assert "=== Run: Repeat-1 ===" in summary.text
+    assert "EEGNet" in summary.text
+    assert "Total params" in summary.text
 
 
 def test_model_summary_preparation_defers_model_construction(
@@ -1249,15 +1248,6 @@ def test_model_summary_is_unavailable_when_selected_run_model_is_missing() -> No
     plan = _Plan([run])
     plan_identity = EvaluationPlanIdentity(plan_index=0)
 
-    summary = build_evaluation_model_summary(
-        _Runtime([plan]),
-        EvaluationSummaryIdentity(
-            plan=plan_identity,
-            run=EvaluationRunIdentity(plan=plan_identity, run_index=0),
-        ),
-    )
-
-    assert summary == ""
     assert build_evaluation_model_summary_result(
         _Runtime([plan]),
         EvaluationSummaryIdentity(
