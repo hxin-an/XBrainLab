@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `26b8c054`, 46 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `4e317328`, 47 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -144,7 +144,7 @@ removed). Actual production -224 LOC, fourfiles, no owner delta. Independent act
 approved; main removed the newly unused pytest import and normalized blank lines. Focused Ruff
 passed for allfivefiles. Independently reversible commit is complete; continue module2.
 
-**Completed 2Z, pending commit — honest private tree-sizing inputs.** Full source and whole caller graph confirm
+**Completed 2Z at4e317328 — honest private tree-sizing inputs.** Full source and whole caller graph confirm
 stretch_column/max_height/max_visible_rows are ignored by the two private sizing methods; remove
 only these unused keyword parameters and all local caller hints. Simplify visible_rows=row_count
 and min(row_count,visible_rows) to the same row_count. Preserve every actual computed width/height,
@@ -156,20 +156,30 @@ of native DPI acceptance; final platform gate remains. Native10passed1.44s (seve
 rescan/resume cases); Ruff/format passed. Independent reviewer verified every arithmetic/height/
 header/scroll/callback path is identical. Production +4/-21/net-17, owner delta0. Commit then continue.
 
-**Active 2AA — merge duplicate rescan widget tests.** Full direct-test review found two identical
+**Completed 2AA, pending commit — merge duplicate rescan widget tests.** Full direct-test review found two identical
 folder-add/Next/accepted/source/resume cases, with only a no-scan-carrier-mutation assertion unique
 to test_load_labels_next_returns_sources_for_outer_review_rerun. Observer owns that test file only:
 add this assertion to test_load_labels_next_requests_rescan_for_new_label_source, main runs both
 against unchanged behavior, then remove the duplicate entire test. Preserve all assertions and
 real Qt actions; no production change. Original both already passed in128-case2Y suite. Focused
 two-case-before/one-after plus resume neighbor and Ruff; main non-author review then separatecommit.
+Strengthened three-case baseline passed1.02s before duplicate deletion; retainedtwo passed0.88s,
+Ruff/format passed. Main actual-diff review approved, test +1/-35/net-34; no assertions lost.
 
-**Next confirmed montage cleanup candidate.** Full source102/direct97 and whole symbol/module/
+**Active 2AB — retire dead montage matching chain, protect live position boundary.** Full source102/direct97 and whole symbol/module/
 script/doc graph show backend/utils/montage_mapping.py is now test-only after2T retired its last
 smart-match consumer. Seven exclusive tests protect no reachable product. Actual safe montage
 mapping, reviewed ApplyMontageCommand and UI normalize_montage_positions remain live. The latter
-28-line mapping/iterable-to-ordered3D-tuples boundary lacks positive/error direct tests; declare
-baseline and exact cleanup scope before retiring the dead chain. Do not change matching semantics.
+28-line mapping/iterable-to-ordered3D-tuples boundary lacks positive/error direct tests. Main owns
+backend/utils/montage_mapping.py deletion, its exclusive seven-case test deletion and new focused
+tests/unit/ui/test_montage_positions.py. Before deletion, run oldseven + new actual-normalizer cases
+plus current montage capability/picker protection; after remove exactly the seven obsolete cases.
+Cover ordered mapping/iterable inputs, float conversion, absent coordinate/count/shape failures
+without changing semantics or creating a new helper. Package __all__/dynamic imports only expose
+seed/check utilities, not this chain. Backend production -102, owner delta0 (removedDTO notowner);
+actual safe matching, geometry admission, command generation and positions remain unchanged.
+Independent reviewer checks dead graph and new tests; focused Ruff and retained same-suite pass
+before commit. This is not native DPI or source-diverse certification. Continue module2 afterward.
 
 - Main fully read load_labels_step462 and wizard preview4850; independent reviewer fully read
   label_placement_step2179 and coupled caller/test ranges. Independent workers fully read all7,359
@@ -334,6 +344,7 @@ this table replaces their duplicated active-plan narrative, not any unresolved m
 | 2W / `bb5a27e0` | Unused wizard legacy review fallbacks/target/clear_skip; production -172 | Native28 ->27; full target/empty metadata assertions preserved, main focused1; main nonauthor review; no separately strengthened pre-delete run |
 | 2X / `bf1a14e6` | Wait for real cancelled-review terminal delivery; tests only | Same native5 before/after, Ruff; in-memory late delivery detected1!=0; finally releases on assertion failure |
 | 2Y / `26b8c054` | Remove16 unused wizard-private helpers acrossfourfiles; production -224 | Native130 ->128, exactlytwoexclusivecases removed; real sidecar field retained; independentreview and Ruff |
+| 2Z / `4e317328` | Removeignored tree-sizing inputs and equivalent row-count aliases; +4/-21/net-17 | Native10 geometry/rescan cases, Ruff; independent arithmetic/caller review; no visible geometry change |
 
 ### Evidence qualifications that remain relevant
 
