@@ -1212,7 +1212,7 @@ class DataInterpretationCommandService:
             # multiple attempts after a downstream loader failure.
             return preflight, consumed, True
 
-        pending_receipt = self._pending_import_preflight_receipt(
+        pending_receipt = self._import_preflight_receipts.pending(
             candidate_id=candidate.candidate_id,
             scope_fingerprint=fingerprint,
             preflight_fingerprint=preflight_fingerprint,
@@ -1327,7 +1327,7 @@ class DataInterpretationCommandService:
         resource_scope: InterpretationResourceScope | None = None,
     ) -> _PreviewResourceAdmission:
         """Check all payloads before candidate preview may materialize labels."""
-        scope = resource_scope or self._resource_scope_for_scan(scan, choices)
+        scope = resource_scope or resolve_interpretation_resource_scope(scan, choices)
         resource_paths = _deduplicate_resource_paths(
             [*scope.paths, *(additional_paths or [])]
         )
@@ -1449,7 +1449,7 @@ class DataInterpretationCommandService:
         """Materialize one unchanged BIDS scan without repeating discovery."""
         if not bool(getattr(scan, "bids", {}).get("is_bids")):
             return None
-        scope = self._resource_scope_for_scan(scan, choices)
+        scope = resolve_interpretation_resource_scope(scan, choices)
         cache_key = self._preview_admission_cache_key(
             receipt_authority=self._preview_preflight_receipts,
             scan=scan,
@@ -1475,25 +1475,13 @@ class DataInterpretationCommandService:
         )
         return materialized_scan, replace(
             admission,
-            resource_scope=self._resource_scope_for_scan(
+            resource_scope=resolve_interpretation_resource_scope(
                 materialized_scan,
                 choices,
-                fallback_catalog=admission.resource_scope.bids_events_json_by_carrier,
+                bids_events_json_by_carrier=(
+                    admission.resource_scope.bids_events_json_by_carrier
+                ),
             ),
-        )
-
-    def _resource_scope_for_scan(
-        self,
-        scan: Any,
-        choices: dict[str, Any],
-        *,
-        fallback_catalog: dict[str, tuple[str, ...]] | None = None,
-    ) -> InterpretationResourceScope:
-        """Discover sidecars per command or reuse only this command's admission."""
-        return resolve_interpretation_resource_scope(
-            scan,
-            choices,
-            bids_events_json_by_carrier=fallback_catalog,
         )
 
     def _reusable_safe_preview_admission(
@@ -1812,19 +1800,6 @@ class DataInterpretationCommandService:
             preflight_fingerprint=preflight_fingerprint,
         )
 
-    def _pending_import_preflight_receipt(
-        self,
-        *,
-        candidate_id: str,
-        scope_fingerprint: str,
-        preflight_fingerprint: str,
-    ) -> _ImportPreflightReceipt | None:
-        return self._import_preflight_receipts.pending(
-            scope_fingerprint=scope_fingerprint,
-            candidate_id=candidate_id,
-            preflight_fingerprint=preflight_fingerprint,
-        )
-
     def _store_import_preflight_receipt(
         self,
         *,
@@ -1998,7 +1973,7 @@ class DataInterpretationCommandService:
                 "; ".join(decision.blocked_reasons) or "Interpretation is blocked."
             )
             raise PreconditionError(blocked)
-        if self._has_active_raw_data() and not command.confirmed:
+        if self.dataset.get_loaded_data_list() and not command.confirmed:
             raise ConfirmationRequiredError(
                 "Confirm replacing the currently loaded EEG data.",
             )
@@ -2042,9 +2017,6 @@ class DataInterpretationCommandService:
                 "state_preserved": True,
             },
         )
-
-    def _has_active_raw_data(self) -> bool:
-        return bool(list(self.dataset.get_loaded_data_list() or []))
 
     @staticmethod
     def _build_applied_interpretation(

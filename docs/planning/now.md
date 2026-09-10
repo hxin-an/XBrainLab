@@ -103,11 +103,40 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `27c525c6`, 51 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `20b05f75`, 52 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
 **Current work — finish module 2 coverage and coherent remaining deletions.**
+
+**Completed 2AF, pending commit — backend preflight conveniences.** Inline pending receipt lookup into its sole caller,
+replace three resource-scope forwards with already imported resolve_interpretation_resource_scope
+(preserve admitted BIDS fallback on the materialized scan), and use the existing dataset snapshot's
+truth value for replacement confirmation without a second list copy. Delete the two unused tabular
+multiplier aliases only. Retain multi-consumer preflight path validation, maps/budgets, cache admission,
+one-shot receipt authority, all confirmation/mutation order and public contracts. Main owns only
+data_interpretation_service.py and resource_label_estimation.py; no UI, new owner or abstraction.
+Independent candidate review approved. Baseline receipt/admission/cache/scope service cases plus
+real receipt/application confirmation neighbors and directly relevant label estimates; repeat exact
+selection after deletion, Ruff and independent actual-diff review, one reversible commit. Complete
+this slice then continue module2; not a handoff or full-platform claim.
+Same20 native cases passed8.25s before and8.18s after. Source +8/-40/net-32, zero owner delta;
+tests unchanged. Ruff/check/format and independent actual-diff scope/receipt/BIDS fallback review
+passed. No measured performance claim from removal of one redundant snapshot copy.
+
+**Declared 8C (module2 consumer) — duplicate placement-capture entrypoint.** Full independent reads
+of capture contract234, canonical wizard runner2017, placement helper320 and tests216/660 confirm
+only build_dialog is imported by the canonical runner; no gate/docs/Poe calls standalone main.
+After baseline canonical capture tests, remove standalone-only main/constants/capture helper chain
+and unused imports from capture_data_import_match_label_placement_modes.py. Retain actual dialog/
+preview/placement factories and canonical xcb capture/manifest/hash validation unchanged. No visible
+UI or evidence-inventory change, no new owner; observer authors only this script after main baseline.
+Main nonauthor diff review and same tests/Ruff before separate commit; no screenshots claimed from
+this unit selection. No environment, display-server or model creation.
+First baseline31passed/1failed because Windows Git cannot follow the WSL absolute .git pointer,
+so source identity was unavailable (not a source-stability failure). Verified explicit Windows
+git-dir/work-tree resolves the exact20b05f75 HEAD; process-only GIT_DIR/GIT_WORK_TREE then produced
+32passed3.80s with unchanged identity guard. Do not rewrite the worktree pointer or forge a digest.
 
 Completed2X–2AC are indexed below; their full scope/evidence remains in Git history.
 2AC found an existing shared-environment source hazard: Windows .pth adds the original checkout
@@ -186,6 +215,12 @@ then declare2AF backend preflight convenience cleanup and baseline before editin
   infrastructure ownership does not make them out ofscope. Main fully read shared DataManager244/
   direct206: retain copy-on-preprocess, channel-undo deep backup, force-clean guards and invalidation;
   MagicMock dataset fixtures do not prove actual training transitions (module3/4 remain open).
+- Independent full audits: wizard harness617 uses real Study/Qt/application runtime, visible modal
+  controls and terminal fail/stop paths; retain. Format matrix2953/direct639/UI integration248
+  retain real commands, fixed requirements, strict failure/artifact exit and honest generated-vs-public
+  claim boundaries. Dataset matrix781/direct453 retains fixed denominator/diversity and lifecycle
+  checks as a renderer, not a new command owner. Teacher/replay bodies still pending. Script cleanup
+  findings do not authorize shrinking existing evidence inventory or relaxing fail-closed outcomes.
 - Confirmed backend candidates: two definition-only tabular multiplier aliases; CommandService
   pure pending-receipt/scope forwarders and raw-presence double-copy convenience. The preflight
   path-set method has two actual consumers and transforms/validates diagnostics; retain it rather
@@ -341,6 +376,7 @@ this table replaces their duplicated active-plan narrative, not any unresolved m
 | 2AB / `fca0ac35` | Deleteunused fuzzy montage chain/module; production -102 | Native59 ->52, nine new no-mock actualnormalizer cases; sevenexclusiveold removed; same18upstreamwarnings; independentreview/Ruff |
 | 2AC / `36b2de7e` | TwoOpenNeuro integration roots reuse configured storage; tests only | Isolated red2fail/4pass ->6pass; runpyactualconsumer definitions, no downloads; independentreview/Ruff |
 | 2AD / `27c525c6` | Remove four Coordinator payload forwarders; +20/-39/net-19 | Native80 before/after; migrated assertions6focused before deletion; independentreview/Ruff |
+| 2AE / `20b05f75` | Remove unused loader lookup/commented rejection; production -17 | Strengthened23 before/after, no-publication fault detected; real Apply neighbors, independentreview/Ruff |
 
 ### Evidence qualifications that remain relevant
 
