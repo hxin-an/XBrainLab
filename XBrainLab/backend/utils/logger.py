@@ -479,6 +479,28 @@ def _bounded_traceback_text(exc_info: tuple) -> str:
     )
 
 
+class _ConsoleHandler(logging.StreamHandler):
+    """Keep redacted records readable on restricted terminal encodings."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            message = self.format(record) + self.terminator
+            try:
+                self.stream.write(message)
+            except UnicodeEncodeError as error:
+                # Do not alter the shared record or the user's stdout policy.
+                self.stream.write(
+                    message.encode(error.encoding, errors="backslashreplace").decode(
+                        error.encoding
+                    )
+                )
+            self.flush()
+        except RecursionError:
+            raise
+        except Exception:
+            self.handleError(record)
+
+
 class SafeRotatingFileHandler(RotatingFileHandler):
     """Rotate bounded logs and keep each active file owner-only on POSIX."""
 
@@ -751,7 +773,7 @@ def setup_logger(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
-    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler = _ConsoleHandler(sys.stdout)
     console_handler.setFormatter(formatter)
     console_handler.setLevel(level)
     console_handler.addFilter(diagnostic_filter)

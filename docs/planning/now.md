@@ -103,13 +103,13 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `92d6a091`, 115 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `b6d596d4`, 116 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
 **Current work — module6 Assistant/runtime/RAG; module2–5 closure gaps and visible/API decisions remain open.**
 
-**Bounded6O — unused model-download conveniences.** Full downloader/lifecycle and actual shutdown,
+**Completed6O (`b6d596d4`) — unused model-download conveniences.** Full downloader/lifecycle and actual shutdown,
 settings and setup consumers show no `wait_ms` arguments or `ModelCacheCleanupResult.message` reads.
 Remove only that ignored argument and safe-message alias; preserve cancellation -> cleanup retry ->
 idle ownership, terminal fences and the actual `public_message` privacy contract. Two production
@@ -121,7 +121,7 @@ Native before23passed6.89s and identical after23passed6.78s; no skipped/retired 
 diff/caller review confirms AgentWorker's real timed shutdown is separate and unchanged. Production
 +2/-9/net-7 after retaining top-level formatting; two files, no owner change. Lint before commit.
 
-**Module7 logging audit, not yet implementation.** Independent full logger874/direct1304, run.py370,
+**Module7 logging audit.** Independent full logger874/direct1304, run.py370,
 Windows/WSL launcher sources and tests traced console output: StreamHandler binds native stdout;
 CP950/strict cannot encode actual metrics `≈`, losing/noising that console record while UTF8 file
 logging remains intact. Reproduce with a real strict encoded stream before any console-boundary fix;
@@ -137,6 +137,18 @@ or compatibility framework. Run the red reproduction before production, then ful
 actual metrics tests, inspect privacy/error paths independently, lint and commit separately from6O.
 Rollback is one commit; stop this slice at preserved representable/escaped console and exact UTF8 file
 output with unchanged privacy evidence, then continue modules6–9. No manual handoff claim.
+Native red4failed/2passed1.49s: both handler orders fail only with CP950/ASCII strict streams.
+After full direct logger+metrics58passed/8POSIX-only skips4.47s; six changed cases rechecked after
+test-only lint corrections6passed1.30s. Production+23/-1/net+22, tests+63/six added cases. Independent
+actual-diff privacy review approved both sink orders, no shared-record mutation and unchanged file
+retention/filtering. Ruff/format passed. This proves real TextIOWrapper encode-before-write behavior,
+not arbitrary third-party stream atomicity; POSIX storage cases remain final Linux CI obligations.
+
+**Controller test audit completed (not module closure).** Independent full unit5429/integration582
+reads retain typed receipt/confirmation generation, strict envelope, stale/duplicate terminal and
+handoff contracts. High-mock units isolate real narrow seams; actual QObject/AgentWorker/QThread
+integration covers nonblocking RAG/stop/setup rollback. No justified obsolete/duplicate case found;
+neither suite alone claims real model/tool execution. Chat/AgentManager full test audit continues.
 
 **Module6 initial full owner audit (not closure).** Independent full controller2949/attempt898/
 execution342/confirmation314/pending443 and respective direct confirmation154/pending560/execution151/
