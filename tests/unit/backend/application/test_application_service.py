@@ -489,6 +489,7 @@ def _write_reviewed_epoch_fixture(
     path: Path,
     channel_names: tuple[str, ...] = ("Cz",),
     event_rows: np.ndarray | None = None,
+    event_desc: dict[int, str] | None = None,
 ) -> None:
     """Write one real FIF recording accepted by the interpretation workflow."""
     sfreq = 100.0
@@ -513,7 +514,7 @@ def _write_reviewed_epoch_fixture(
         mne.annotations_from_events(
             events,
             sfreq=sfreq,
-            event_desc={1: "left", 2: "right"},
+            event_desc=event_desc or {1: "left", 2: "right"},
         )
     )
     raw.save(path, overwrite=True, verbose="ERROR")
@@ -523,9 +524,14 @@ def _apply_reviewed_epoch_fixture(
     service: ApplicationService,
     path: Path,
     additional_paths: tuple[Path, ...] = (),
+    *,
+    internal_event_codes: tuple[str, ...] = ("left", "right"),
+    class_map: dict[str, str] | None = None,
 ) -> None:
     """Run the public interpretation commands needed for epoch admission."""
     selected_paths = (path, *additional_paths)
+    selection_class_map = class_map or {"left": "left", "right": "right"}
+    reviewed_class_map = class_map or {"1": "left", "2": "right"}
     assert service.execute(
         ScanSourceCommand(
             source_path=str(path.parent) if additional_paths else str(path)
@@ -536,17 +542,98 @@ def _apply_reviewed_epoch_fixture(
             choices={
                 "selected_eeg_files": [str(item) for item in selected_paths],
                 "internal_event_selection": {
-                    "label_event_codes": ["left", "right"],
-                    "class_map": {"left": "left", "right": "right"},
+                    "label_event_codes": list(internal_event_codes),
+                    "class_map": selection_class_map,
                 },
                 "label_carrier": "embedded_events",
                 "event_roles": {"internal_events": "class cue"},
-                "class_map": {"1": "left", "2": "right"},
+                "class_map": reviewed_class_map,
             },
         )
     ).ok
     assert service.execute(ValidateInterpretationCommand()).ok
     assert service.execute(ApplyInterpretationCommand(confirmed=True)).ok
+
+
+@pytest.mark.parametrize(
+    ("event_ids", "accepted"),
+    [
+        (["Left hand", "Right hand"], True),
+        (["Artifact"], False),
+        ({"Artifact": 99}, False),
+    ],
+    ids=("display-aliases", "unreviewed-list", "unreviewed-dict"),
+)
+def test_prepared_epoch_uses_reviewed_display_aliases_and_rejects_unreviewed_targets(
+    tmp_path: Path,
+    event_ids: list[str] | dict[str, int],
+    accepted: bool,
+) -> None:
+    path = tmp_path / "display-aliases_raw.fif"
+    _write_reviewed_epoch_fixture(
+        path,
+        event_rows=np.asarray([[100, 0, 769], [250, 0, 770], [400, 0, 769]], dtype=int),
+        event_desc={769: "769", 770: "770"},
+    )
+    service = ApplicationService(Study())
+    try:
+        _apply_reviewed_epoch_fixture(
+            service,
+            path,
+            internal_event_codes=("769", "770"),
+            class_map={"769": "Left hand", "770": "Right hand"},
+        )
+        original_loaded = list(service.study.loaded_data_list)
+        original_preprocessed = service.study.preprocessed_data_list
+        original_samples = [
+            raw.get_mne().get_data().copy() for raw in original_preprocessed
+        ]
+
+        result = service.execute(
+            CreateEpochCommand(t_min=0.0, t_max=0.2, event_ids=event_ids)
+        )
+
+        if accepted:
+            assert result.ok, result.message
+            assert result.state.epoch.event_names == ["Left hand", "Right hand"]
+            assert set(result.state.epoch.event_ids or {}) == {
+                "Left hand",
+                "Right hand",
+            }
+            epoch_data = service.study.epoch_data
+            assert epoch_data is not None
+            assert epoch_data.get_data_length() == 3
+            assert epoch_data.get_label_map() == {
+                0: "Left hand",
+                1: "Right hand",
+            }
+            assert [
+                epoch_data.get_label_name(int(label))
+                for label in epoch_data.get_label_list()
+            ] == ["Left hand", "Right hand", "Left hand"]
+            assert np.bincount(epoch_data.get_label_list()).tolist() == [2, 1]
+            assert service.study.is_locked() is True
+        else:
+            assert result.failed is True
+            assert result.error_type is ErrorType.PRECONDITION
+            assert result.message == (
+                "EEG epoch target is not in the reviewed import labels: Artifact."
+            )
+            assert service.study.preprocessed_data_list is original_preprocessed
+            assert all(
+                current is original
+                for current, original in zip(
+                    service.study.loaded_data_list, original_loaded, strict=True
+                )
+            )
+            for raw, samples in zip(
+                service.study.preprocessed_data_list, original_samples, strict=True
+            ):
+                np.testing.assert_array_equal(raw.get_mne().get_data(), samples)
+            assert service.study.epoch_data is None
+            assert service.study.is_locked() is False
+    finally:
+        service.close()
 
 
 @pytest.mark.parametrize(

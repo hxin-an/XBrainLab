@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `0b7d77ef`, 68 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `96366558`, 71 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -450,6 +450,45 @@ Ruff and nonauthor review. No new helper unless existing fixture reuse needs bou
 Semantic unavailable codes already have exact owner tests in test_epoch_context; callback-only error
 tests are not a second public API. After this evidence, separately declare dead handler retirement
 and audit every coupled constructor/dynamic caller before deletion. No visible or EEG semantic change.
+
+**Declared 3Q — real preview debounce signal instead of rewired mocks.** Full55-line performance test
+disconnects the production timer and substitutes a mocked plotter, so it cannot detect a broken
+timer-to-request connection; it also manually calls private slots instead of changing controls.
+Main replaces these two cases with real PreviewWidget slider/spin value changes, reciprocal values,
+zero immediate requests and exactly one eventual production request; retain single-shot and shutdown
+silence, with owned native teardown. No production changes or speed claims. First run existing two
+cases, add stronger parametrized control tests, run before removing old cases, and use an in-memory
+omitted signal forwarding fault. Focused native tests/Ruff and independent actualdiff review; keep
+plot rendering coverage in the existing real-curve tests rather than duplicating it here.
+Old2passed2.19s; stronger+old4passed2.33s; retained2+15 direct preview/presentation cases17passed0.83s.
+In-memory omitted forwarding causes both new cases to time out2.16s; no faulty source persisted.
+Evidence establishes real wiring/coalescing/control synchronization/shutdown, not precise timer
+restart latency. Independent review accepts the stronger boundary; exact restart timing remains an
+unclaimed property, not a reason to retain old tests that never checked it either.
+
+**Declared 3P — retire unused synchronous epoch handler after real migration.** 3O and its real
+boundary/RAM/default/semantic neighbors40passed8.79s; actual epoch label sequence Left/Right/Left and
+class counts2/1 verified. Main nonauthor review corrected helper defaults before the passing run.
+Independent dispatch audit confirms every CreateEpochCommand uses two-phase preparation/commit;
+no dynamic/script/config caller of handle_create_epoch. Remove only that duplicate method, its
+get_state constructor callback/field, _epoch_handoff callback wrapper and old normalization-count
+forwarder; remove the one matching constructor keyword in ApplicationService. Retain captured-state
+validation, actual prepared policies/receipt/RAM/alias/boundary/normalization, transaction/cancel and
+SET_MONTAGE confirmation. Remove exclusive fake-handler tests/classes, retaining real prepared cases
+and the SET_MONTAGE safety assertion with real ApplicationService ownership. Worker owns these two
+production files and test_preprocess_service.py, not the 3O characterization file. Zero new owner;
+estimated production-125, below slice complexity ceiling. Native retained3O set plus actual
+cancel/stale/public-read failure/BIDS/epoch-context/state-service neighbors, Ruff and main nonauthor
+review before separate commit. Concrete state-service apply_epoching/Protocol follow-up separately
+declared after full callers/cancellation mapping, not bundled silently.
+
+**Module3 unresolved artifact decision.** Independent full validator123/direct45/schema134/split_audit1085
+and thesis protocol285–375 audit found artifact writers have no product producer, but the documented
+CLI/schema remain a public thesis evidence entry. Validator only checks reported audit and cross-split
+overlap, not the full claimed schema/provenance. User asked asynchronously to retire the unused entry
+or retain-and-align its contract. No deletion, acceptance-strengthening or scientific claim until choice.
+Unused build_training_ready_state test helper is separately removable; actual saved split/receipt seam
+helpers retain live integration callers. Continue independent cleanup; module3 not closed.
 
 **Module4 bounded read-only audit (not closure or implementation permission).** Independent full
 model_catalog892/braindecode_catalog408/catalog_contract20/model_holder117/input_contract201/
