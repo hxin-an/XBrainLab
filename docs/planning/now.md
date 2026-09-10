@@ -44,8 +44,8 @@ UI/test files and root settings. Worktree/branch/source facts come from Git, not
 
 | Module | Includes | Status |
 | --- | --- | --- |
-| 1 Command/state spine | Admission, capabilities, confirmation, publication, owned work, shared domain ports | Audit and first slice selection |
-| 2 Import/interpretation | Loaders, BIDS, labels/classes, channel/montage, metadata, recipes, related UI | Pending |
+| 1 Command/state spine | Admission, capabilities, confirmation, publication, owned work, shared domain ports | 1A–1L reviewed; remaining file/test closure audit open |
+| 2 Import/interpretation | Loaders, BIDS, labels/classes, channel/montage, metadata, recipes, related UI | 2A backup fix and 2B guard reviewed; legacy apply audit active |
 | 3 Preprocess/epoch/split | Processing, copies, invalidation, preview/materialization, related UI/tools | Pending |
 | 4 Models/training | Catalog, resource preflight, settings, stop/rerun, history/checkpoints | Pending |
 | 5 Evaluation/saliency/views | Read/publication, SmoothGrad/recompute, four views, stale work/render lifecycle | Pending |
@@ -102,6 +102,70 @@ Manual findings receive affected/adjacent revalidation and an updated delta chec
 whole-suite human retesting. Merge only after explicit final-source acceptance and permission.
 
 ### Current slice / next step
+
+- Recovery after accidental shutdown: product commits through `9e2994b8` survived; 1K is
+  `e2f483dd`, 2B is `930c2a6a`. Original dirty UI/test/settings are intact. Existing Windows
+  Python 3.12.10 starts; model/RAG/data caches remain and removed abandoned compaction files remain
+  absent. No Windows Python/pytest process remains. Earlier worker sessions ended; resume bounded
+  assignments from these source facts, not previous in-flight messages.
+- Active next: complete the 2C legacy evidence map and prepared-path characterization, then retire
+  the old handler. Infrastructure withdrawal is committed; selected native reboot checks passed.
+  Remaining module 1 observer cleanup/full test audit and modules 2–9 remain in scope, not complete.
+- Planned 1L observer cleanup: remove the unread QtObserverBridge._observer_callback member (two
+  assignments) while retaining Observable/_ObserverSubscription callback ownership, QObject destroyed
+  cleanup and finalizer. Replace the test-only empty MockObservable subclass with Observable itself.
+  UI-internal changes authorized; no visible behavior change. Native bridge suite before/after plus
+  observer lifetime checks, unchanged assertions, independent review and one rollback commit.
+- 1L baseline/after native selection: 34 passed both times (513 deselected), including real Qt
+  handoff/ack/teardown and reboot smoke. Independent reviewer approved callback retention and
+  unchanged test assertions. Infrastructure withdrawal is committed separately as `acf7c56d`;
+  no PR merge or product handoff was inferred. 1L is committed as `3a35efee` (production -2 LOC).
+- 2C authorized next data slice: first migrate legacy-only selected-file, partial-load failure,
+  reviewed resource mutation and essential confirmation-receipt cases onto the real prepared
+  ApplicationService path, using existing real Study fixtures and only external loader/resource
+  isolation. Preserve before/during content-change coverage for EEG, BrainVision dependencies and
+  EEGLAB sidecars where feasible; keep label-byte mutation and recipe assertions. Do not teach the
+  legacy fake controller to imitate two-phase mutation. Obtain passing characterization before
+  deleting handle_apply_interpretation and its four exclusive raw-replacement/snapshot helpers.
+  Migrate the private rollback test to the existing PipelineStateTransaction owner and retarget the
+  owned-work materialization guard at prepare/load/commit owners. Existing equivalent real tests stay.
+  Deletion requires a per-group evidence map; unresolved groups block this slice, not disappear.
+  No formal Command/UI/EEG change/new owner. Separate test migration and production deletion commits
+  are allowed within this coherent reviewed slice; focused import/content/receipt/rollback/recipe
+  tests before/after, meaningful fault probe and independent data/lifecycle review before closure.
+- 2C characterization before production deletion: 22 new real ApplicationService cases passed
+  natively; six existing selected apply cases also passed. Independent review approved the actual
+  test diff and bounded loader/preflight fault isolation. The materialization guard now inspects
+  real detached prepare/load and guarded commit, not the unused handler; all 29 owned-work tests
+  passed. Remaining receipt permutations and label/recipe legacy cases still require an exact
+  retained-evidence map. No production deletion has occurred and 2C is not complete.
+- 2C deeper map found pending-token, warning-to-blocking, external-label preflight scope and
+  label-before-apply gaps; extend actual command cases before deleting those old tests. Add exact
+  candidate binding where not already protected. TTL/eviction primitives remain protected by the
+  actual ResourceReceiptAuthority tests, not by unrelated preview-wrapper claims. Manual recipe
+  state mutation is superseded by real apply/save/metadata/label flows and retained state-owner tests.
+- Before-delete full legacy service plus receipt-owner baseline: 101 passed / 3 failed on native
+  Windows. The three recipe reload failures precede production edits and report fingerprint/diagnostic
+  mismatches; independent diagnosis is checking real stat/fstat evidence. Do not waive or count them
+  as green. Separate recipe repair scope if a real platform defect is confirmed. The 23-case actual
+  prepared apply plus transaction rollback selection passed; guard formatting was corrected by Ruff.
+- 2C complete replacement characterization: 28 prepared-apply cases passed, including all identified
+  missing receipt/label/candidate/placement cases. Retained recipe evidence includes actual
+  choices_flow_into_recipe, apply_updates_loaded_metadata, label_carrier_choices_flow_into_recipe,
+  failed_replacement_restores_raw_interpretation_and_recipe and state-owner record/roundtrip tests.
+  Retain the non-apply validate-after-label-change test, non-BIDS BrainVision scan fixture and all
+  resource-cache/admission tests. Only old apply-exclusive tests/helpers are deletion candidates.
+- 2E necessary native recipe repair declared before edits: independent measurement found unchanged
+  files whose descriptor fstat ctime and path stat ctime differ by milliseconds on Windows; dev/inode,
+  size and mtime agree. Recipe fingerprint compares unlike observation channels, causing false stale
+  errors. Preserve bounded SHA/size and all admission/receipt guards. Match the existing admitted
+  resource-reader approach: compare complete identity within descriptor and within path observations,
+  but cross-check descriptor/path object identity without ctime. Add a deterministic skew regression
+  plus changed-observation rejection before repair, then rerun native recipe reload cases and resource
+  reader protection. No UI/public contract/new owner; separate small commit and independent review.
+  This prerequisite does not close or replace the 2C deletion work or the remaining module stage.
+
+### Earlier slice declarations and evidence
 
 - Baseline: fetched main `4770b049`; original dirty checkout preserved; source-only integration worktree
   created on `cleanup/module-quality`. Existing Windows Python/pytest are available without installation.

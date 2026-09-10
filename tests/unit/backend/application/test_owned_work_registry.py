@@ -81,7 +81,9 @@ def test_apply_is_the_exact_cancellable_import_materialization_operation() -> No
 
 def test_apply_materialization_source_keeps_checkpoints_and_final_admission() -> None:
     dataset_tree = ast.parse(
-        textwrap.dedent(inspect.getsource(DatasetStateService.import_files))
+        textwrap.dedent(
+            inspect.getsource(DatasetStateService.prepare_replacement_import)
+        )
     )
     import_calls = [
         node for node in ast.walk(dataset_tree) if isinstance(node, ast.Call)
@@ -91,11 +93,6 @@ def test_apply_materialization_source_keeps_checkpoints_and_final_admission() ->
         for node in import_calls
         if isinstance(node.func, ast.Attribute) and node.func.attr == "load"
     )
-    materialize_call = next(
-        node
-        for node in import_calls
-        if isinstance(node.func, ast.Attribute) and node.func.attr == "apply"
-    )
     import_checkpoint_lines = [
         node.lineno
         for node in import_calls
@@ -103,16 +100,16 @@ def test_apply_materialization_source_keeps_checkpoints_and_final_admission() ->
     ]
 
     assert any(line < load_call.lineno for line in import_checkpoint_lines)
-    assert any(
-        load_call.lineno < line < materialize_call.lineno
-        for line in import_checkpoint_lines
+    assert any(line > load_call.lineno for line in import_checkpoint_lines)
+    assert not any(
+        isinstance(node.func, ast.Attribute) and node.func.attr == "apply"
+        for node in import_calls
     )
-    assert any(line > materialize_call.lineno for line in import_checkpoint_lines)
 
     apply_tree = ast.parse(
         textwrap.dedent(
             inspect.getsource(
-                DataInterpretationCommandService.handle_apply_interpretation
+                DataInterpretationCommandService.prepare_apply_interpretation
             )
         )
     )
@@ -126,7 +123,6 @@ def test_apply_materialization_source_keeps_checkpoints_and_final_admission() ->
         and isinstance(node.args[0], ast.Constant)
     }
     assert {
-        "Loading reviewed EEG recordings",
         "Binding reviewed source identity",
         "Applying reviewed channel metadata",
         "Recording interpreted dataset state",
@@ -134,25 +130,47 @@ def test_apply_materialization_source_keeps_checkpoints_and_final_admission() ->
         "Applying reviewed label carriers",
         "Recording reviewed epoch hints",
     } <= checkpoint_stages
-    commit_admission = next(
-        node
-        for node in apply_calls
-        if isinstance(node.func, ast.Name)
-        and node.func.id == "owned_work_commit_boundary"
-    )
     label_verification = next(
         node
         for node in apply_calls
         if isinstance(node.func, ast.Attribute)
         and node.func.attr == "_ensure_label_apply_succeeded"
     )
-    pipeline_commit = next(
+    prepared_result = next(
         node
         for node in apply_calls
-        if isinstance(node.func, ast.Attribute)
-        and node.func.attr == "commit_pipeline_invalidation"
+        if isinstance(node.func, ast.Name)
+        and node.func.id == "PreparedInterpretationApply"
     )
-    assert label_verification.lineno < commit_admission.lineno < pipeline_commit.lineno
+    assert label_verification.lineno < prepared_result.lineno
+    assert not any(
+        isinstance(node.func, ast.Name) and node.func.id == "owned_work_commit_boundary"
+        for node in apply_calls
+    )
+
+    commit_tree = ast.parse(
+        textwrap.dedent(
+            inspect.getsource(
+                DataInterpretationCommandService.commit_prepared_apply_interpretation
+            )
+        )
+    )
+    commit_calls = [
+        node for node in ast.walk(commit_tree) if isinstance(node, ast.Call)
+    ]
+    commit_admission = next(
+        node
+        for node in commit_calls
+        if isinstance(node.func, ast.Name)
+        and node.func.id == "owned_work_commit_boundary"
+    )
+    pipeline_commit = next(
+        node
+        for node in commit_calls
+        if isinstance(node.func, ast.Attribute)
+        and node.func.attr == "commit_pipeline_replacement"
+    )
+    assert commit_admission.lineno < pipeline_commit.lineno
 
 
 @pytest.mark.parametrize(
