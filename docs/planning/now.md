@@ -103,27 +103,11 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `ef161994`, 113 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `ec4eeeda`, 114 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
 **Current work — module6 Assistant/runtime/RAG; module2–5 closure gaps and visible/API decisions remain open.**
-
-**Completed bounded8G — preserve caller-owned walkthrough output directory.** Main fully read visualization
-capture2857; main() recursively deletes the arbitrary --training-output-dir before capture. Its
-registered handoff caller supplies an evidence runtime directory; no contract requires erasing its
-contents. Existing training output owner creates exclusive per-record directories. Remove the two-line
-rmtree branch and now-unused shutil import, retain directory creation and unchanged configured output
-path. No production/UI/Command/schema change, script-3LOC, owner delta0. Do not add a cleanup framework
-or run the unsafe script against real directories. Test main with real pytest filesystem, spaces/non-ASCII
-path, preexisting nested sentinel and two runs; isolate only QApplication/walkthrough (not filesystem).
-Cover new/existing roots and passed/failed capture exit/artifact status. Red before fix, same green plus
-full direct script tests, Ruff and independent actualdiff review. This does not certify native render
-or delete retained test weights; explicit target-verified cleanup remains separate. Stop this slice
-when rerun preservation and honest output/exit are proven, then continue remaining module audits.
-Actual red4failed5.83s on deleted sentinel/prior-output reads; corrected full direct suite76passed8.18s.
-Ruffcheck/formatpassed and independent actualdiff review approved. Script-3/test+61LOC; all prior
-cases retained. Test sys.excepthook registration intentionally restores main's replacement at teardown.
 
 **Module6 initial full owner audit (not closure).** Independent full controller2949/attempt898/
 execution342/confirmation314/pending443 and respective direct confirmation154/pending560/execution151/
@@ -133,80 +117,6 @@ Real tiny-FIF product-flow528 proves a current direct-input receipt makes one re
 RAG and stale receipt makes none; it does not prove confirmation-card approval through real mutation.
 No controller split merely for LOC: lifecycle/presentation delegation already exists, with no proven
 competing owner. Remaining helpers/direct suites/model/RAG/UI/scripts still require full audit.
-
-**Completed bounded6A — retire orphan Assistant command-to-panel route chain.** Independent full presentation285/
-direct209 and controller audit show unused private wrapper is the sole production consumer of the
-presentation helper, which solely owns command maps/canonicalizer/action-contract import. Remove
-that whole test-only chain and controller's write-only _max_tool_failures, not a replacement shell.
-Keep typed AssistantPanelNavigationRequest/target/view modes, actual UiRequest→AgentManager routing,
-_command_identifier and CommandName for live interaction copy, _max_loop_breaks and all pending/
-confirmation/publication policy. No dynamic/config/docs/export caller; no visible UI/public tool/model/
-prompt/RAG change. Two production files roughly-60LOC, owner delta0, no new abstraction. Establish
-passing response/controller/UI-handoff/actual navigation tests before deletion; remove only two
-exclusive routing test functions (three collected cases) after baseline, preserving negative handoff
-guard. Same retained tests, Ruff and main nonauthor actualdiff review before commit. User-authorized
-unused convenience retirement applies; stop at that bounded verified deletion then continue module6.
-Original full response/controller/UIhandoff +real navigation/product-flow342passed15.18s, three MNE
-deprecation warnings. Worker owns exactly controller/presentation/direct presentation test; main
-owns after verification and plan. No concurrent source writes during hooks.
-Retained339passed15.51s with the same three MNE warnings; exactly three exclusive route cases removed.
-Production-80 across2files, tests-18; main nonauthor actualdiff approved, Ruffcheck/formatpassed.
-
-**Completed bounded6C — retire orphan Assistant backend class registry.** Main fully read backend_resolver101,
-actual real adapters249/package registration288 and mixed tools/debug tests423. BackendClassRegistry
-is imported only by three exclusive direct tests; real tools now use ApplicationService/GUI owners.
-No dynamic registration/config/script/doc/export caller. Delete that source module and only its three
-exclusive tests, updating the mixed suite's introductory description. Preserve actual backend model
-catalog, optimizer map, preprocess owner and exact18 real/mock registration. Production-101, no new
-or replacement owner; no public tool/schema/model/UI behavior change. Baseline mixed suite +real-tools
-ownership/registry tests, same retained after, Ruff and independent source/diff review. No artificial
-compatibility shell or per-model tests removed. Other mixed-suite visualizer/seed/logger overlap is a
-separate module9 quality question, not part of this deletion.
-Original74passed6.36s, retained71passed6.23s; only three exclusive resolver cases removed. Independent
-actualdiff/registration/owner review approved and changed-file Ruffpassed. Production-101, testsnet-36.
-
-**Completed bounded6B — real confirmation approval/replay/stale mutation evidence.** Full product-flow528,
-resource-receipt302 and strict-recovery273 do not connect actual confirmation to a real mutation;
-independent long-session1151 and AgentManager product-chat3503–3769 show no-action model responses
-or fake controller confirmation. Reuse the existing real-controller/AgentManager long-session test
-host, adding only the necessary deterministic worker proposal and confirmation transport seam. Send
-a real strict reset_preprocessing proposal from current preprocessed publication, receive the actual
-pending request/card, click its real approve/cancel control, and observe actual ApplicationService
-derived-state reset/raw retention. Replayed exact approval must not mutate twice; after a legitimate
-external preprocess changes generation, old approval must not reset new data. Do not fabricate pending
-decisions/receipts or mock execute, confirmation/capability policy, application state or filesystem.
-Inference/RAG and existing runtime transport host remain explicit test seams; this is not real-model,
-native desktop/production dispatcher acceptance. Test-only, one existing integration file, no new
-production owner/UI/contract. Establish its existing baseline, add focused cases, same retained checks,
-bounded in-memory omitted/duplicate reset fault where practical, Ruff and main nonauthor diff review.
-Keep long-session no-action/heartbeat limits unchanged; do not loosen them to make new evidence pass.
-Existing full host/soak suite21passed46.35s before edits. Worker waits for6A/6C commit hooks before
-writing this one test file; main owns focused after/fault/lint and review.
-First focused run exposed three new-fixture mistakes (missing host navigation, zero-argument started
-signal collector, and expecting reset to remove rather than restore loaded data); corrected without
-product edits. Retained full suite24passed47.20s, six MNE NumPy deprecation warnings. In-memory handler
-that reports success without resetting data fails the real256Hz assertion in9.06s. Main nonauthor
-actualdiff review approves real command/publication/raw identity/file-byte/replay evidence; model,
-RAG and minimal in-process runtime/navigation host remain isolated, not native/manual acceptance.
-Test-only net291LOC; no existing cases removed. The fault runner preimport also exposed cp950 console
-encoding failure for metrics' approximately sign; shared logger/launcher audit owns investigation,
-not a reason to alter this test's success criteria or claim product logs validated.
-
-**Completed bounded6D — remove unreachable empty-schema override.** Main full assembler835/schema72 and
-independent context1791/stage283 tests confirm no caller supplies backend_default_tools or
-use_backend_defaults. The real formatter always uses strict_prompt_parameters; alternate forced-empty
-schema cannot run. Strengthen existing two-action catalog test to parse emitted configure_training/
-bandpass schemas and assert their exact properties/required/additionalProperties before deletion.
-Run full assembler/stage baseline, then delete only unused parameter/forward/conditional in two source
-files. Keep prompt strings, actual schemas, current publication/tool membership, history/RAG/model
-policy byte-for-byte unchanged. No experiment or new owner; roughly-13productionLOC. Same retained
-tests, in-memory empty-schema fault, Ruff and independent actualdiff review before commit. No existing
-case removed. Other unreachable history options/stage prose are separately audited candidates, not
-part of this slice.
-Strengthened baseline72passed6.58s; recovered after72passed6.07s (earlier after output unavailable,
-not counted). In-memory forced-empty schema fault fails the exact bandpass properties assertion
-in0.45s. Ruffcheck/formatpassed; independent actualdiff review approved. Production+2/-17/net-15LOC,
-tests+23; no existing cases removed.
 
 **Pending explicit decision6E — retire unused stage prose and unreachable history suppression.** Full pipeline190/
 direct298 and assembler835 audit, plus independent exact caller search, find STAGE_CONFIG's seven
@@ -236,23 +146,6 @@ No measured redundant wait found; preserve close grace, deadlines and monitor po
 four diagnostic-only properties on each RAG lifecycle have no product caller; process has_active_process
 is live in native shutdown and must remain.
 
-**Completed bounded6F — retire test-only RAG diagnostic forwards without losing daemon evidence.** Main full
-thread214/process466/direct151+217 plus independent controller caller audit establishes eight accessors
-have no runtime/config/dynamic consumer. Preserve actual worker liveness/daemon tests by capturing
-threading.current_thread() inside the external test retriever callbacks, not by adding a production
-probe or inspecting owner's private fields. Existing event/close/join/callback assertions remain;
-the controller heartbeat test keeps real blocked-retriever/Qt heartbeat/result evidence, with daemon
-ownership independently protected by the dedicated lifecycle tests. Delete only eight convenience
-properties; no deadline, sleep, cancel/close behavior, public Assistant tool or RAG policy change.
-Production about-50LOC in2files, owner delta0. Baseline direct thread/process plus controller baseline
-from6G; characterize captured-worker assertions before deletion, then same cases after, Ruff and
-independent actualdiff review. No case deletion or new generic testing layer. Must keep test-owned
-stuck workers releasable under failed assertions, and keep production has_active_process shutdown query.
-Original direct12passed29.76s; strengthened before12passed32.72s; full retained direct/controller
-271passed37.22s with one MNE deprecation. In-memory non-daemon constructor fault fails the captured
-actual thread assertion0.15s and exits normally after finally cleanup. Independent actualdiff review
-approved; Ruffcheck passed. Production-51LOC in2files, tests+10net, no cases removed. Reviewer advisory
-to additionally assert post-finally join is not a blocker; normal join already has separate evidence.
 **Pending explicit decision6G — retire bypassed legacy direct-tool forwarding.** Full real adapters/definitions/registry
 audit plus main package288/coordinator path/guard review proves all18 contracts are9 Application
 commands and9 UI requests; READ_ONLY projection is empty and pinned by actual surface tests. Mapped
@@ -279,123 +172,7 @@ base registration as potentially public-tool behavior. Worker verified all seven
 Concrete external direct-Python API removal approval requested separately; no split/indirect retry.
 The baseline/digest and independent whole-chain audit remain evidence, not permission or completion.
 
-Latest reversible slices: f4c060c5 (6D, unreachable schema override); 5afdb10d (6B, real confirmation
-mutation/replay/stale evidence). Native checks and regular commit hooks passed; no PR/push/merge.
-
-**Completed bounded6H — use one existing settings-path policy and retire unused cache alias.** Independent
-full config524/config_paths85/runtime_selection257/catalog1102 and direct config761/catalog636/
-runtime284, plus main full platform_paths247/config_paths85, confirm duplicated per-user path rules.
-Route LLMConfig and six direct path tests to platform_paths.user_settings_path. Keep the same repo-root
-legacy migration input in LLMConfig's existing _legacy_settings_path method; both files occupy the
-same directory, so parents[3] is unchanged. Remove config_paths module, not a forwarding shell.
-Preserve default/explicit path behavior, platform/env overrides, malformed-current no-fallback,
-successful-write-only legacy migration, atomic save and all root settings protection. No settings
-file is migrated/rewritten by this refactor itself. Also remove the zero-caller model_cache_exists
-alias; model_cache_complete and all cache/model/revision/size/symlink/hardlink policies stay intact.
-Approximately-85productionLOC across3files, no new owner; sole shared path policy retained. Baseline
-full config/catalog/runtime/platform path suites, same retained after, exact representative path
-matrix comparison, Ruff and independent actualdiff review. No model/UI/prompt experiment or download.
-Stop slice after verified behavior-preserving reuse, then continue outstanding module6–9 coverage.
-Full baseline94passed28.10s and retained after94passed26.52s; all21 Windows/Darwin/Linux/environment
-path combinations match exactly, including retained worktree-root legacy path. Matrix SHA256
-18e79f26e5c8e255e60ea48e0aca40d98bd3cbf34b8123adef92c18f95911857 before/after. Independent actualdiff
-approved; production+6/-96/net-90LOC, tests imports only net0, no removed cases. Ruffcheck/formatpassed.
-
-**Completed bounded6I — replace synthetic walkthrough metrics with actual tracker lifecycle.** Full metrics184/
-direct104 and capture510/direct124 audit retains completed turn history: the walkthrough actually
-collects it before closing. It resets with conversation, but has no numeric cap within an indefinitely
-long session; no measured issue justifies truncating this evidence. Replace the nested SimpleNamespace
-fixture in the existing capture collection test with actual AgentMetricsTracker.start/record/finish,
-normal and failed tool outcomes, unfinished-turn exclusion, automatic prior finalization and reset.
-Preserve exact artifact fields/order/rounding; no production change or GUI/model run. Baseline direct
-metrics/capture suites, same cases after, in-memory omitted-finish fault, Ruff and main nonauthor review.
-No new generic test helper/platform and no test count inflation; stop after this real evidence replacement.
-Existing direct suites17passed6.44s. Worker may edit only the collection test after6H hooks finish;
-main owns after/fault/lint and actualdiff review. No product metrics history deletion or cap change.
-Retained17passed5.57s; in-memory omitted finish_turn fails the exact completed-tool list assertion
-in5.51s. Main nonauthor actualdiff review approved; only the existing test was strengthened, no case
-added/deleted and no product behavior changed. Ruff import sorting corrected; format check before commit.
-
-**Completed bounded6J — remove dormant RAG helper/publication alternatives.** Main full retriever527/
-config221/example132/indexer396/direct retriever443 and independent full indexer479 tests/caller audit
-find dead _collection_exists (existence belongs to indexer), unused tool_name_from_call fallback, ignored
-close(wait) option, and _auto_initialize/_build_bm25_index publish=True/self fallback paths whose sole
-caller always supplies newly built resources with publish=False. Delete these unused private/Python
-conveniences; initialization still publishes once under the existing closed fence. Keep vectorstore
-verification, lease/retired-client closure, corpus/point/payload identity, strict example/allowed tools,
-semantic admission, local-only pinned embedding and all model/prompt/RAG policy untouched. Remove only
-the unused _collection_exists test monkeypatch, no test case. No new owner, roughly-65productionLOC
-across2files. Full RAG focused baseline/retained after plus dependency/privacy/untrusted-context tests,
-Ruff and independent actualdiff review. No download/cache deletion or claimed latency improvement.
-If any edit is rejected, do not bypass; record exact unchanged scope and continue other work.
-Original full RAG89passed/2POSIX-skipped34.59s. Baseline created a10,100,000,000-byte partial-weight
-fixture on Windows; measured st_blocks19726568 (roughly9.41GiB), not cheap sparse storage. Completed
-test output exact pytest-88/.../test_oversized_partial_embeddi0/.../partial.bin removed after ownership
-and size checks; never a real embedding/model/data file. Fix this test-only cost in6L before rerunning
-the full directory; do not repeatedly allocate10GB while auditing unrelated RAG helpers.
-Retained full RAG89passed/2POSIX-skipped26.55s with6L fixture; no cases removed. Main nonauthor
-actualdiff review and changed-file Ruffcheck/formatpassed. Production+9/-55/net-46LOC; test-1.
-The POSIX-only permission tests still require final Linux evidence, not a Windows equivalence claim.
-
-**Completed bounded6K — retire sole-subclass backend shell and ignored engine argument.** Independent full
-engine230/generation106/base39/local728/process617 and10direct/context suites2986 retain actual process
-cancel/escalation, immutable generation profile, local-only loading/resource checks and prompt capture.
-BaseBackend is used only as LocalBackend's parent and exclusive abstract-class test, not as a factory,
-annotation, script/export/config/dynamic entry. Delete that abstract shell/import/inheritance and
-exclusive52-line test, preserving all concrete backend and process tests. Inline engine's ignored-mode
-_get_current_model_id into its two real callers as config.model_name; remove only exclusive helper case.
-No runtime selection/template/model policy change, new owner or class. Approximately-50productionLOC
-in3files; baseline retained engine/backend/context/resource/process suites, same after, Ruff and
-independent actualdiff review. Keep lifecycle ownership PID/wait witnesses used to prove actual process
-termination. Correct obsolete load doc wording only to reflect existing local_files_only behavior.
-Full original116passed51.97s. No model downloaded; existing external runtime seams and real owned
-process tests supply the relevant evidence.
-First after-run ending was lost across recovery; it is not counted. Recovered retained run110passed
-48.65s; exactlyfour abstract-shell andtwo ignored-helper cases removed. Main nonauthor actualdiff
-review and Ruffcheck/formatpassed. Actual production+5/-55/net-50LOC, tests-60; no new owner.
-
-**Completed bounded6L — avoid10GB synthetic weight allocation in quota regression.** Existing oversized
-partial embedding test writes10.1GB solely to cross the production10GB limit. Keep actual filesystem
-cache scanning and download preflight/no-network assertion, but inject a test-only100-byte single-model
-quota and create101bytes. Pin observed current bytes/limit and the specific already-over-limit reason,
-so estimated-download denial cannot masquerade as partial-cache denial. Actual production quota policy
-remains unchanged and separately asserted by the existing default-quota test. One existing test only,
-no new test/helper/production code or blanket temp cleanup. Original case passed in6J baseline; same
-case/default quota after plus omitted current-target guard fault where safe, Ruff/main actualdiff
-review. Verify exact generated large file absent; preserve all other test/cache/model/data paths.
-Full RAG after89passed/2POSIX-skipped26.55s; actual generated partial file is101bytes. In-memory
-omitted current-target guard fails the specific already-over-limit assertion0.20s, proving estimated
-download denial cannot substitute for this protection. Independent review and Ruffcheck/formatpassed;
-test+11/-2/net+9LOC, no production/default-quota/test-count change. Exact prior10.1GB fake file was
-removed and verified absent; source remains regenerable, real caches/data/environments were untouched.
-
-**Completed bounded6M — small real-file model quota fixtures.** Full independent downloader tests1178 and
-catalog preflight/postcheck audit locate two15GB catalog files and10.1/20.1GB post-download fixtures.
-The measured6L NTFS allocation proves truncate is not a portable cheap-storage assumption. Replace
-only these four fixtures in two existing test files; production policy/owners/UI/default quotas remain
-unchanged. Catalog tests retain actual model estimate, set explicit total limit to estimate+200bytes,
-write300bytes and assert exact current/projected quantities, projected-only rejection and unchanged
-disallowed cleanup discovery. Downloader tests use101-byte weights with test-only minimum weight1,
-partial(real validator, explicit small quotas) at the existing imported validation seam, not a fake
-result or cache scan. Require actual pinned snapshot completeness, exact scanned bytes, snapshot
-download called once and error/no-finished terminal. Keep all default-limit/completeness cases.
-Existing6H94pass covers catalog originals. Do not repeat multi-GB allocations merely for a baseline:
-run downloader originals excluding only the two giant cases, then full retained two suites after edits.
-In-memory omitted projected/post-download quota guards must fail appropriate cases; all faults are
-process-only. Ruff and main nonauthor actualdiff review before a test-only reversible commit. No new
-helper/platform/production owner, download, environment or blanket artifact deletion. Stop this slice
-at preserved quota protection with bounded fixture bytes, then continue module6 and remaining modules.
-Original downloader selection41passed/1failed/2giantcases-deselected6.12s: existing inactive-child
-test expects a POSIX literal although production correctly passes str(Path(snapshot)) on Windows.
-Correct only that expected platform path, preserving exact pinned identity/terminal assertions,
-then recheck the same baseline before quota-fixture changes; do not change production path handling.
-Corrected baseline42passed/2giantcases-deselected5.95s; full retained downloader/catalog77passed8.61s.
-All four in-memory omitted projected/post-download quota guards fail the intended cases1.02s.
-Real target totals105/206bytes and partial/blocked totals302/300bytes replace the four giant files;
-no test cases removed, actual production/default policy unchanged. Main nonauthor actualdiff review
-and Ruffcheck/formatpassed. No real model download or broad storage deletion occurred.
-
-**Next bounded6N — retire unused tolerant parser and strict-result convenience.** Full independent and
+**Completed bounded6N — retire unused tolerant parser and strict-result convenience.** Full independent and
 main parser463/direct390 plus actual controller/coordinator/scorer and negative guard caller audit
 prove parse_product is the sole live parser; parse/parse_diagnostic and four extraction helpers have
 only exclusive tests. Remove that dead chain and its now-unused logging imports, preserving all
@@ -417,23 +194,48 @@ existing direct tests only cover single-line strings and read_text hides newline
 the directly blocking exact-byte issue as6P before declaring this baseline passing or retiring source.
 After6P, the same405case selection plus47direct capture/backend/context cases passed452in23.50s;
 this establishes the strengthened passing baseline before parser retirement. No real model run.
+Retained403passed21.31s, same one MNE warning; exactlytwo exclusive diagnostic cases removed.
+All57 result payloads have the identical matrix digest. Omitted parameter-type guard now fails both
+null/string cases0.11s (otherthreepass), exposing a defect the previous missing-field fixtures missed.
+Main nonauthor actualdiff review approved; production+1/-137/net-136, tests+26/-35/net-9. Actual strict
+grammar/negative architecture guards stay unchanged. Ruff/format and guidance audit before commit.
 
-**Completed bounded6P — exact UTF8 capture bytes on Windows.** Preserve the opted-in capture contract
-by writing content.encode('utf-8') bytes in the existing writer; no new owner/path/schema or inference/
-UI/prompt/RAG change. Strengthen existing actual LocalBackend.generate_stream capture test with LF,
-CRLF and mixed Unicode/chunk-boundary text and assert physical read_bytes equals exact encoded model
-input/output as well as existing metadata SHA/counts. External model/streamer/thread seams stay; real
-capture filesystem/hashes stay. Reproduce native red before one-line writer fix. Align evaluator's
-test-only capture helper with same raw/prompt byte payloads; never normalize bytes in production
-validator or weaken its failure codes. Run full capture/scorer suites, adjacent backend context and
-resume6N baseline; independent actualdiff/security review and Ruff before separate commit. Retain
-opt-in-only/no-IO-disabled/redacted-failure/prepared/cancelled/failed cleanup evidence. Existing valid
-artifacts remain readable; previously inconsistent Windows captures must remain rejected, not relabeled.
-Native multiline reproduction3failed/10passed0.72s at physical prompt bytes (LF→CRLF andCRLF→CRCRLF).
-Corrected full capture/scorer/parser/controller/recovery/backend/context452passed23.50s with one MNE
-deprecation. Independent actualdiff review approved; production+1/-1/net0, test fixture bytes aligned,
-three added parametrizations retain exact output/hash assertions. All6Pfiles Ruffcheck/formatpassed;
-unrelated6Ntest needed mechanical formatting only. No hash-normalizing compatibility path added.
+**Module6 completed reads and remaining candidates (not module closure).** Full core model download
+lifecycle665/direct659 and downloader1086/direct1178 retain shared lifecycle composition, bounded
+consumption/inactivity, conservative process ownership/reap/retry and terminal-after-reap. Confirmed
+unused shutdown(wait_ms) argument and cleanup-result message alias await a same-owner bounded slice.
+
+Full context_encoding712/direct683 retain exact-type admission, cycle/node/UTF8 limits, path/secret/
+role sanitation and final assembler re-encoding; no serialization or model-obedience gap established.
+Only unused CHARS constant alias (same BYTES value) is a candidate. Full intent935/training_request75/
+prompt_policy215 retains RAG suppression classification, not host action routing. path_label_for_intent,
+BlockedExplanationIntent.target_command/ambiguous and test-only prompt payload helpers are candidates;
+do not alter classifier semantics, actual prompt bytes or recovery taxonomy without separate review.
+
+Main full conversation76/direct51, runtime_snapshot120/direct43, coordinator289/direct290,
+activity102/direct137, turn456, orchestrator362/direct211, confidence91/direct96,
+decision55/direct115 and tool_feedback574/direct445 distinguish real typed/correlated state from
+test-only convenience projections. Candidate runtime to_dict/from_payload/fallback aliases and
+conversation get/index/equality/repr need full caller/test migration before retirement. Preserve all
+typed snapshots, validation_error, publication/activation/turn/cancellation and actual history limits.
+ToolRecoveryFeedback builder appears test-only; assembler recovery state must be fully traced before
+retiring that chain. Actual summary/compact transcript payloads and public diagnostic bounds remain.
+
+Source counts denote exact read versions, not current LOC or automatically approved closure. Main
+reconciled50 existing core/RAG inventory rows; module6 direct controller/UI suites and other modules
+still have uncovered ranges. Completed6B/P show concrete workflow/capture protection, not model or
+manual acceptance. Preimported Windows probes exposed cp950 logger output failures; module7 owns
+the unresolved logger/launcher defect. Both registered WSLs, sole Windows environment and real model/
+dataset caches remain untouched; no repeated compaction. Continue independent authorized work.
+
+Independent full runtime_lifecycle1531/dispatcher532/AgentManager2163 retain one UI composition owner,
+one correlated runtime admission owner and one queued transport/QThread owner; controller owns its
+worker thread. MainWindow cleanup-fence/retry and actual script diagnostics are live. Full direct
+dispatcher529/delivery547/service1956/threading749 and integration lifecycle1303 retain distinct
+admission, delivery timeout/stale, real command-thread affinity and real topology close/recreate
+protection. No arbitrary AgentManager split or duplicate-test deletion justified. Only unread
+RuntimeSetupOutcome.message and one-test is_queued property are future candidates; preserve important
+expected_activation_id/turn_in_flight witnesses until equivalent behavior evidence exists.
 
 Completed2AD–2AG and8C–8E are indexed below and fully traceable in Git. For source-bound Windows
 capture tests only, use process-local GIT_DIR/GIT_WORK_TREE pointing to the actual Windows paths:
@@ -975,6 +777,20 @@ this table replaces their duplicated active-plan narrative, not any unresolved m
 | 5I / `75bd4047` | Real Saliency estimator/receipt/receiver evidence; testsnet+113 |42after within80combined; admission-bypass fault fails; not an attribution journey |
 | 5J / `848d3356` | Reuse newly normalized detached arrays; production+1 |Same38before/after; normalized extra copies128→0bytes, raw copy retained; independentreview/Ruff |
 | 5K / `e3c57cd9` | Retire unused coverage forwards; production-39 |Same258before/after; all assertions and negative UI boundaries retained; main nonauthorreview/Ruff |
+
+| 8G / `4f352cab` | Preserve caller-owned capture output root; script-3/test+61 | Red4 then76passed; real nested sentinel/rerun/exit evidence, not native rendering |
+| 6A / `296af917` | Orphan command-to-panel route removed; production-80/test-18 |342before339retained; exactly3exclusive cases; actual navigation retained |
+| 6C / `3d498c51` | Orphan backend class registry removed; production-101/testnet-36 |74before71retained; actual18-tool registration unchanged |
+| 6D / `f4c060c5` | Unreachable empty-schema override; productionnet-15/test+23 |72before/after; exact schema assertions and empty-schema fault detected |
+| 6B / `5afdb10d` | Real confirmation card → reset/replay/cancel/stale mutation; testnet+291 |21before24after; omitted-reset fault detected; real raw identity/256Hz/file bytes, model/runtime transport isolated |
+| 6F / `65cd3519` | Eight test-only RAG probes removed; production-51/testnet+10 |12original/strengthened,271combinedafter; captured actual thread non-daemon fault detected; live shutdown query retained |
+| 6H / `42cc98a4` | Shared settings-path owner and orphan cache alias; productionnet-90 |Same94before/after,21exact path combinations; no user settings written |
+| 6I / `a2b21efc` | Real metrics tracker replaces synthetic capture fixture |Same17before/after; omitted-finish fault detected; no production/count change |
+| 6J / `3831a483` | Dormant RAG initialize/publish/helper paths; productionnet-46/test-1 |89before/after,2POSIX-only skips; lease/closed fence/local-only/corpus policy retained |
+| 6K / `965bc97e` | Sole-subclass backend shell/ignored-mode helper; productionnet-50/test-60 |116before110retained48.65s;6exclusive cases removed; first lost after ending not counted |
+| 6L / `f44d3e0e` | Real RAG quota fixture10.1GB→101bytes; testsnet+9 |89after/2POSIXskips; omitted current-target guard fails; actual9.41GiB fake file removed, real caches untouched |
+| 6M / `ef161994` | Four giant model quota fixtures →105/206/302/300bytes; tests only |77retained8.61s,4omitted-quota faults fail; baseline Windows expected-path mismatch corrected; defaults unchanged |
+| 6P / `ec4eeeda` | Exact capture UTF8 writes on Windows; productionnet0/testnet+12 |3red/10pass→452combinedgreen23.50s; real LF/CRLF/Unicode bytes+SHA, strict validator retained |
 
 ### Evidence qualifications that remain relevant
 
