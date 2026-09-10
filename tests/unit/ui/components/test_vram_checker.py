@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
+from PyQt6.QtWidgets import (
+    QMainWindow,
+    QStackedWidget,
+    QTabWidget,
+    QWidget,
+)
 
 from XBrainLab.llm.agent.runtime_state import (
     AssistantRuntimePhase,
@@ -19,129 +25,162 @@ from XBrainLab.ui.components.vram_checker import (
 
 
 @pytest.fixture()
-def mock_main_window():
-    mw = MagicMock()
-    mw.visualization_panel.tabs.currentIndex.return_value = 0
-    mw.visualization_panel.isHidden.return_value = False
-    mw.stack.currentIndex.return_value = PANEL_VISUALIZATION
-    return mw
+def widget_main_window(qtbot):
+    main_window = QMainWindow()
+    stack = QStackedWidget(main_window)
+    for _ in range(PANEL_VISUALIZATION):
+        stack.addWidget(QWidget(stack))
+
+    visualization_panel = QWidget(stack)
+    tabs = QTabWidget(visualization_panel)
+    for index in range(VIZ_TAB_3D_PLOT + 1):
+        tabs.addTab(QWidget(tabs), f"Tab {index}")
+    stack.addWidget(visualization_panel)
+    stack.setCurrentIndex(PANEL_VISUALIZATION)
+
+    main_window.setCentralWidget(stack)
+    main_window.stack = stack
+    main_window.visualization_panel = visualization_panel
+    visualization_panel.tabs = tabs
+    qtbot.addWidget(main_window)
+    main_window.show()
+    return main_window
 
 
 @pytest.fixture()
-def make_checker(mock_main_window):
-    def _factory(snapshot=None):
-        runtime = snapshot or AssistantRuntimeSnapshot(
-            phase=AssistantRuntimePhase.IDLE,
-            initialized=False,
-        )
-        return VRAMConflictChecker(mock_main_window, lambda: runtime)
-
-    return _factory
+def local_runtime_snapshot():
+    return AssistantRuntimeSnapshot(
+        phase=AssistantRuntimePhase.READY,
+        initialized=True,
+        backend_mode="local",
+    )
 
 
-class TestVRAMConflictChecker:
-    def test_no_warning_when_not_local(self, make_checker):
-        checker = make_checker()
-        with patch.object(VRAMConflictChecker, "_is_local_mode", return_value=False):
-            checker.check(switching_to_local=False, switching_to_3d=True)
-        # No QMessageBox should be shown — no error
+@pytest.fixture()
+def widget_checker(widget_main_window, local_runtime_snapshot):
+    return VRAMConflictChecker(widget_main_window, lambda: local_runtime_snapshot)
 
-    def test_warning_when_local_and_3d(self, make_checker):
-        checker = make_checker()
-        with (
-            patch.object(VRAMConflictChecker, "_is_local_mode", return_value=True),
-            patch.object(VRAMConflictChecker, "_is_3d_active", return_value=True),
-            patch("XBrainLab.ui.components.vram_checker.show_alert") as show_alert,
-        ):
-            checker.check(switching_to_local=True, switching_to_3d=True)
-            show_alert.assert_called_once_with(
-                checker.main_window,
-                severity=AlertSeverity.WARNING,
-                title="VRAM Warning",
-                message=(
-                    "This requires significant VRAM (Video Memory). "
-                    "If you experience crashes or lag, please close the 3D view "
-                    "before using the assistant."
-                ),
-            )
 
-    def test_no_warning_when_local_but_no_3d(self, make_checker):
-        checker = make_checker()
-        with (
-            patch.object(VRAMConflictChecker, "_is_local_mode", return_value=True),
-            patch.object(VRAMConflictChecker, "_is_3d_active", return_value=False),
-            patch("XBrainLab.ui.components.vram_checker.show_alert") as show_alert,
-        ):
-            checker.check(switching_to_local=True)
-            show_alert.assert_not_called()
+def test_real_widgets_warn_for_initialized_local_mode_with_active_3d(
+    widget_main_window,
+    widget_checker,
+):
+    widget_main_window.visualization_panel.tabs.setCurrentIndex(VIZ_TAB_3D_PLOT)
+    assert not widget_main_window.visualization_panel.isHidden()
+    assert widget_main_window.stack.currentIndex() == PANEL_VISUALIZATION
 
-    def test_on_viz_tab_changed_triggers_check_for_3d(self, make_checker):
-        checker = make_checker()
-        with patch.object(checker, "check") as mock_check:
-            checker.on_viz_tab_changed(VIZ_TAB_3D_PLOT)
-            mock_check.assert_called_once_with(switching_to_3d=True)
+    with patch("XBrainLab.ui.components.vram_checker.show_alert") as show_alert:
+        widget_checker.check()
 
-    def test_on_viz_tab_changed_ignores_other_tabs(self, make_checker):
-        checker = make_checker()
-        with patch.object(checker, "check") as mock_check:
-            checker.on_viz_tab_changed(0)
-            mock_check.assert_not_called()
+    show_alert.assert_called_once_with(
+        widget_main_window,
+        severity=AlertSeverity.WARNING,
+        title="VRAM Warning",
+        message=(
+            "This requires significant VRAM (Video Memory). "
+            "If you experience crashes or lag, please close the 3D view "
+            "before using the assistant."
+        ),
+    )
 
-    def test_is_local_mode_switching(self, make_checker):
-        checker = make_checker()
-        assert checker._is_local_mode(switching_to_local=True) is True
 
-    def test_is_local_mode_from_controller(self, make_checker):
-        snapshot = AssistantRuntimeSnapshot(
-            phase=AssistantRuntimePhase.READY,
-            initialized=True,
-            backend_mode="local",
-        )
-        checker = make_checker(snapshot=snapshot)
-        assert checker._is_local_mode(switching_to_local=False) is True
+@pytest.mark.parametrize(
+    ("tab_index", "panel_hidden", "stack_index", "initialized", "backend_mode"),
+    [
+        (0, False, PANEL_VISUALIZATION, True, "local"),
+        (VIZ_TAB_3D_PLOT, True, PANEL_VISUALIZATION, True, "local"),
+        (VIZ_TAB_3D_PLOT, False, 0, True, "local"),
+        (VIZ_TAB_3D_PLOT, False, PANEL_VISUALIZATION, True, "remote"),
+        (VIZ_TAB_3D_PLOT, False, PANEL_VISUALIZATION, False, "local"),
+    ],
+    ids=("other-tab", "hidden", "other-workspace", "nonlocal", "not-initialized"),
+)
+def test_real_widgets_skip_warning_outside_active_local_3d_conditions(
+    widget_main_window,
+    tab_index,
+    panel_hidden,
+    stack_index,
+    initialized,
+    backend_mode,
+):
+    widget_main_window.visualization_panel.tabs.setCurrentIndex(tab_index)
+    widget_main_window.stack.setCurrentIndex(stack_index)
+    if panel_hidden:
+        widget_main_window.visualization_panel.hide()
+    snapshot = AssistantRuntimeSnapshot(
+        phase=AssistantRuntimePhase.READY
+        if initialized
+        else AssistantRuntimePhase.IDLE,
+        initialized=initialized,
+        backend_mode=backend_mode,
+    )
+    checker = VRAMConflictChecker(widget_main_window, lambda: snapshot)
 
-    def test_is_local_mode_prefers_inference_mode(self, make_checker):
-        snapshot = AssistantRuntimeSnapshot(
-            phase=AssistantRuntimePhase.READY,
-            initialized=True,
-            backend_mode="local",
-        )
-        checker = make_checker(snapshot=snapshot)
-        assert checker._is_local_mode(switching_to_local=False) is True
+    with patch("XBrainLab.ui.components.vram_checker.show_alert") as show_alert:
+        checker.check()
 
-    def test_is_local_mode_no_controller(self, make_checker):
-        checker = make_checker()
-        assert checker._is_local_mode(switching_to_local=False) is False
+    assert widget_main_window.visualization_panel.isHidden() is (
+        panel_hidden or stack_index != PANEL_VISUALIZATION
+    )
+    assert widget_main_window.stack.currentIndex() == stack_index
+    show_alert.assert_not_called()
 
-    def test_is_3d_active_switching(self, make_checker, mock_main_window):
-        checker = make_checker()
-        assert checker._is_3d_active(switching_to_3d=True) is True
 
-    def test_is_3d_active_from_panel(self, make_checker, mock_main_window):
-        mock_main_window.visualization_panel.tabs.currentIndex.return_value = (
-            VIZ_TAB_3D_PLOT
-        )
-        checker = make_checker()
-        assert checker._is_3d_active(switching_to_3d=False) is True
+def test_real_widgets_warn_when_switching_to_local_with_3d_visible(
+    widget_main_window,
+):
+    widget_main_window.visualization_panel.tabs.setCurrentIndex(VIZ_TAB_3D_PLOT)
+    remote_snapshot = AssistantRuntimeSnapshot(
+        phase=AssistantRuntimePhase.READY,
+        initialized=True,
+        backend_mode="remote",
+    )
+    checker = VRAMConflictChecker(widget_main_window, lambda: remote_snapshot)
 
-    def test_is_3d_active_hidden_panel(self, make_checker, mock_main_window):
-        mock_main_window.visualization_panel.tabs.currentIndex.return_value = (
-            VIZ_TAB_3D_PLOT
-        )
-        mock_main_window.visualization_panel.isHidden.return_value = True
-        checker = make_checker()
-        assert checker._is_3d_active(switching_to_3d=False) is False
+    with patch("XBrainLab.ui.components.vram_checker.show_alert") as show_alert:
+        checker.check(switching_to_local=True)
 
-    def test_is_3d_active_ignores_lazy_placeholder(
-        self,
-        make_checker,
-        mock_main_window,
-    ):
-        class LazyPlaceholder:
-            def isHidden(self) -> bool:
-                return False
+    show_alert.assert_called_once()
 
-        mock_main_window.visualization_panel = LazyPlaceholder()
-        checker = make_checker()
 
-        assert checker._is_3d_active(switching_to_3d=False) is False
+def test_real_widgets_warn_when_switching_to_3d_with_local_mode(
+    widget_main_window,
+    widget_checker,
+):
+    widget_main_window.visualization_panel.tabs.setCurrentIndex(0)
+
+    with patch("XBrainLab.ui.components.vram_checker.show_alert") as show_alert:
+        widget_checker.on_viz_tab_changed(0)
+        show_alert.assert_not_called()
+        widget_checker.on_viz_tab_changed(VIZ_TAB_3D_PLOT)
+
+    show_alert.assert_called_once()
+
+
+def test_real_widgets_skip_warning_when_runtime_snapshot_is_unavailable(
+    widget_main_window,
+):
+    widget_main_window.visualization_panel.tabs.setCurrentIndex(VIZ_TAB_3D_PLOT)
+
+    def unavailable_snapshot():
+        raise RuntimeError("runtime not ready")
+
+    checker = VRAMConflictChecker(widget_main_window, unavailable_snapshot)
+    with patch("XBrainLab.ui.components.vram_checker.show_alert") as show_alert:
+        checker.check()
+
+    show_alert.assert_not_called()
+
+
+def test_real_widgets_skip_warning_for_lazy_visualization_placeholder(
+    widget_main_window,
+    local_runtime_snapshot,
+):
+    lazy_placeholder = QWidget(widget_main_window)
+    widget_main_window.visualization_panel = lazy_placeholder
+    checker = VRAMConflictChecker(widget_main_window, lambda: local_runtime_snapshot)
+
+    with patch("XBrainLab.ui.components.vram_checker.show_alert") as show_alert:
+        checker.check()
+
+    show_alert.assert_not_called()
