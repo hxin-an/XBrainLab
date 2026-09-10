@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from inspect import Parameter, signature
 from typing import Any
 
 from XBrainLab.backend.application.commands import CommandName
@@ -625,26 +624,19 @@ class WorkflowUiHandoffHost:
             callback_delivered = True
             self._fail_pending_navigation(panel, generation, failure)
 
-        if self._accepts_ready_callback(switch_page):
-            self._navigation_pending_panel = panel
-            callback_kwargs: dict[str, object] = {"on_ready": _on_ready}
-            if self._accepts_callback(switch_page, "on_failed"):
-                callback_kwargs["on_failed"] = _on_failed
-            try:
-                materialized = switch_page(
-                    _PANEL_INDEX[panel],
-                    **callback_kwargs,
-                )
-            except Exception:
-                if generation == self._navigation_generation:
-                    self._invalidate_pending_navigation()
-                raise
-            if materialized is not False and not callback_delivered:
-                _on_ready(None)
-        else:
-            materialized = switch_page(_PANEL_INDEX[panel])
-            if materialized is False:
-                self._navigation_pending_panel = panel
+        self._navigation_pending_panel = panel
+        try:
+            materialized = switch_page(
+                _PANEL_INDEX[panel],
+                on_ready=_on_ready,
+                on_failed=_on_failed,
+            )
+        except Exception:
+            if generation == self._navigation_generation:
+                self._invalidate_pending_navigation()
+            raise
+        if materialized is not False and not callback_delivered:
+            _on_ready(None)
         if callback_delivered:
             return
         status_bar = self._main_window.statusBar()
@@ -654,27 +646,6 @@ class WorkflowUiHandoffHost:
                 if self._navigation_pending_panel is panel
                 else f"Opened {_PANEL_LABEL[panel]} panel."
             )
-
-    @staticmethod
-    def _accepts_ready_callback(switch_page: Callable[..., object]) -> bool:
-        """Identify the public callback contract without breaking legacy doubles."""
-        return WorkflowUiHandoffHost._accepts_callback(switch_page, "on_ready")
-
-    @staticmethod
-    def _accepts_callback(
-        switch_page: Callable[..., object],
-        callback_name: str,
-    ) -> bool:
-        """Identify one named callback without breaking legacy test doubles."""
-        try:
-            parameters = signature(switch_page).parameters
-        except (TypeError, ValueError):
-            return False
-        callback = parameters.get(callback_name)
-        return callback is not None and callback.kind in {
-            Parameter.KEYWORD_ONLY,
-            Parameter.POSITIONAL_OR_KEYWORD,
-        }
 
     def _invalidate_pending_navigation(self) -> int:
         """Invalidate stale first-open callbacks and return the new generation."""

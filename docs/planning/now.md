@@ -103,11 +103,11 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `e89291f9`, 132 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `d7003752`, 134 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
-**Current work — module6 Assistant/runtime/RAG; module2–5 closure gaps and visible/API decisions remain open.**
+**Current work — shared UI callback/test cleanup and scripts; module2–6 closure gaps and explicit decisions remain open.**
 
 **Module7 logging audit.** Independent full logger874/direct1304, run.py370,
 Windows/WSL launcher sources and tests traced console output: StreamHandler binds native stdout;
@@ -163,26 +163,6 @@ ToolCommandResult.to_payload privacy/capability evidence also lives in controlle
 execution coordinator92; absence in one direct file is not an overall coverage gap. Final byte-fit
 behavior still needs bounded test/caller review.
 
-6V retired the never-populated recovery-feedback chain after informed explicit user approval:
-「同意移除未使用的整段能力與專屬測試」. First edit rejection occurred before any mutation; no bypass.
-Production-131 across3files; tests-102, exactly3exclusive cases removed. Shared actual privacy,
-hostile RAG/history and terminal/no-regeneration assertions remain.403before65.10s ->400after80.19s,
-same7MNE/NumPy deprecation warnings. Fourteen stage/stale exact prompts/publications unchanged:
-133367bytes SHA256e5e84c01e0b44eac4ab4c8fe183969cc32adbeef90550c3b1d2eb22fb6f64872.
-Typed fixtures are parity evidence, not scientific workflow or real-model evidence. Independent actual
-diff/privacy review approved; main review and10file Ruff pass. Final unused test import/format changes
-verified18passed5.97s. Separate blocked6E/6G remain untouched. Committed337d94e7, not handoff.
-
-**Bounded6W — discard unused footer input construction.** Full status presenter/projection and direct
-footer tests trace one production caller: display_commands is immediately discarded, while projection
-allocates a display_labels list only for that discarded argument. Delete that argument/list/call input;
-retain recommended_label in actual projection/tooltips and every footer string/blocked condition.
-UI-internal behavior-preserving cleanup is explicitly authorized; no layout/copy/interaction change.
-Owners stay the same pure presenter and backend publication; two production files, estimated-4LOC,
-no new owner/contract. Establish passing footer and full agent-presentation-service baseline, change
-only three direct test call signatures without changing assertions, rerun same tests, main actual diff
-review/lint, small reversible commit. Same35passed before0.52s/after0.50s; independent actual-diff review
-approved and lint passed. Production-4/testsnet-5, no cases removed. Committed5132d43e, not handoff.
 
 **Publication/turn audit.** Full main presentation199/turn_state141/direct121+63 retains typed view-only
 progress and exact admission/stop/terminal lease ownership. Independent coordinator251/direct149 and
@@ -200,209 +180,73 @@ Retain authorize_existing_path and POSIX/Windows identity checks. Only retained-
 consumer absence is a retirement candidate; downstream backend IO protections were not examined in
 this bounded audit, so no end-to-end TOCTOU defect is established. Do not delete the whole capability.
 
-**Bounded6X — remove stateless indirection without policy change.** Full confidence91 and encoder712
-audit/caller search show _collect_known_tools only initializes _KNOWN_TOOLS and CHARS is only an alias
-used by encode_untrusted_context's default. Inline the actual contract tool_names call and use existing
-MAX_UNTRUSTED_CONTEXT_BYTES directly; remove stale compatibility comments, preserve max_chars keyword,
-exact8192-byte cap, all sanitization and scoring formula. Two production files, expected-14LOC, no new
-owner/class/contract or UI effect. Passing direct confidence+untrusted-context+assembler baseline,
-same retained cases after, lint/main diff review; no test removal. Rollback one small commit; continue
-worker fixture/remaining module audits after unchanged results, not handoff.
-6X verified104before7.05s/after7.16s, no cases removed; main actual diff review and Ruff passed.
-Productionnet-14. Also correct one stale assembler class-docstring phrase left by6V; prompt strings
-are unchanged. Committed a6e3d7e9; no model/scoring/encoding/visible behavior claim beyond parity.
+**Completed shared UI/runtime audit (not module closure).** Full capabilities1654/direct1610,
+renderer428/direct377 and runner431/direct509 retain existing publication/Qt owners. Full main and
+independent info_panel626/direct605 retain detached13row rendering, preprocessed precedence and actual
+narrow/DPI/font/scrollbar geometry. Full service131/direct238 retained committed rows and weak listeners;
+7D removed only unused Study retention. Full sizing60/direct24 and button policy78/direct97 retain
+two-surface exact-pixel sizing and global post-style/safe Cancel policy. Full modal406/error319/common463/
+BaseDialog209 and direct448/26/891/138/147 retain shared confirmation, geometry and diagnostic privacy.
+Completed slices and evidence are in the table below; no unresolved item is closed by their test counts.
 
-**Bounded6Y — characterize actual owned-process initialization, remove only synchronous fallback.**
-Full worker1065, direct1058/runtime-selection189/correlation855 and timeout333/process245 audit finds
-initialize_agent's sole production constructor is LocalRuntimeProcessOwner (uses_owned_process=True).
-Migrate only initialization/frozen-launch/load-failure/retry fixtures to explicit owned-process-shaped
-doubles with real RuntimeLoadThread delivery. Establish passing baseline on unchanged production;
-preserve exact launch config/activation, LOADING->READY/FAILED, failed-owner close and fresh-owner retry,
-no settings reread and untyped rejection. Fault omission of failed-owner close must fail. Then remove
-only initialize_agent's unreachable synchronous load/ready/log branch; keep constructor/start-thread
-exception cleanup, owned async handlers, all generation/cancel/timeout/shutdown/switch behavior.
-One production file, expected negative LOC, no owner/public/UI change; tests own only two existing
-files, no new generic fixture platform. Identical retained worker/runtime/correlation/process/timeout
-suites, lint and independent actual lifecycle review before reversible commit. Continue phase audit
-after slice evidence; full model/native acceptance remains final-stage work, not this test seam.
-6Y migrated six initialization cases with real QObject/RuntimeLoadThread;110before15.43s/after15.37s.
-Omitting failed-owner close in memory makes both failure/retry cases fail(close_calls0!=1),0.38s.
-Productionnet-13; testsnet+99, no cases removed. Main caught and corrected double.close signature
-before baseline; seven-file Ruff passed after mechanical test formatting. Independent reviewer first
-confused worker's LocalRuntimeProcessOwner alias with child core.engine.LLMEngine, then checked actual
-binding/callers and withdrew the unreachable injection-only blocker. Approved for actual production
-owner; external monkeypatch/injection compatibility intentionally unsupported. Committed6c66f2a0, not handoff.
+**Completed-slice qualifications.** 6V was explicitly approved by user
+「同意移除未使用的整段能力與專屬測試」 after rejection before mutation; separate6E/6G remain untouched.
+Its14stage/stale typed fixtures preserve133367bytes, SHA256
+e5e84c01e0b44eac4ab4c8fe183969cc32adbeef90550c3b1d2eb22fb6f64872; not real-model/scientific evidence.
+6Y reviewer initially confused LocalRuntimeProcessOwner alias with child core.engine.LLMEngine, then
+checked actual constructor/callers and withdrew the injection-only blocker. Real QObject/load-thread
+fixtures retain owned async initialization; no external monkeypatch compatibility claim.
+7C intermediate test caught a removed QWidget import needed by a live chart; restored, final50pass.
+7G initially39pass/3fail under Windows Python offscreen with missing fonts: message height30/minimum15,
+unchanged after event drain. Same42pass on actual Windows Qt before/after and offscreen with installed
+fonts. 9A defaults that existing directory in direct pytest, matching existing CI without product font/
+assertion changes. Earlier Windows-interpreter offscreen counts are unit/component, not native-window
+acceptance. Local MkDocs remains unavailable; final same-head CI docs validation is still required.
+8A initial oversized-byte pytest ID caused Windows temp-path setup errors; explicit short IDs repaired
+fixture only. Initial fault run with that error is invalid; corrected SHA-bypass gives1failed/2passed.
+Public fixture SHA triggered detect-secrets; exact known test checksum annotated, hooks then passed.
 
-**Bounded7B — remove unused shared UI query forwards.** Independent full capabilities1654/direct1610,
-renderer428/direct377 and runner431/direct509 audit retains existing publication/Qt owners. Main traces
-no caller for get_training_resource_preflight UI helper/Study adapter/type import or singular
-prepare_saliency_render_operation/helper/protocol/Study adapter; live views use variants. Remove only
-these UI-internal forwards from application_capabilities.py. Preserve backend service query methods,
-variant rendering, ownership/commit/cancel, native-stress fake and all resource admission checks.
-User authorized behavior-preserving UI deletion; no visible UI/schema change. One production file,
-expected-60LOC, no owner addition. Baseline full capabilities and saliency-render-work tests, identical
-retained cases after, lint and main nonauthor actual diff review; no test removals. Reversible commit
-then continue shared components; final data/native gates still required for integrated handoff.
-7B implemented-63productionLOC; same52before4.43s/after4.56s, no test changes. Main nonauthor actual
-diff/caller review and Ruff passed; resource admission/backend query and variants lifecycles remain.
-Committed c089d7a8.
+**Module8 setup audit.** Full independent setup881/PS187/rootCMD20/direct436 retains
+cmd->PS1->Python->existing model lifecycle ownership. Integrity evidence improved8A; orchestration
+order/env failure-stop and wrapper argument forwarding remain bounded test-quality candidates.
+Full WSL launcher CMD42/PS1276/direct89 retains console-only child output, bounded log retention,
+exit propagation and safe optional IBus; source guards are not native launch/wait evidence.
+Independent initially proposed integrating infraacf7c56d; main challenged absent product paths. Exact
+Git has no compact/manual_environment tracked files and common ancestor4770b049, not a dependency.
+Recommendation withdrawn: retain separate infra history, do not import absent tooling to withdraw it.
 
-**Bounded7C — retire four unused desktop component classes as a complete chain.** Full main Card80,
-Placeholder51, PlotFigureWindow269, SinglePlotWindow210, lazy package exports and styles551, plus
-independent actual caller/dynamic/script/doc sweep confirm no current UI entry; Plot->Single inheritance
-and lazy exports are internal only. Actual evaluation/saliency views are separate and stay untouched.
-Remove four modules, their lazy export machinery (keep ordinary package marker), exactly CardWidget/
-CardTitle style blocks, exclusive plot-window test file, four SinglePlot tests and one exclusive dialog
-init case; preserve remaining active widget/lifecycle/geometry and Epoch/Rereference inheritance tests.
-Remove four obsolete mutable-boundary allowlist entries rather than widening the gate. About-660
-productionLOC/sixfiles, no added owner; no visible behavior/feature/public Command change, unused Python
-convenience API and UI-internal deletion explicitly authorized. Baseline existing UI-components,
-old plot-window, dialog structure, theme and main-window suites plus architecture guard; after retain
-same active cases and guard, expose exact removed count. Verify package import and live component
-submodule access, actual diff review/lint; one reversible commit. No wall-time acceleration claim for
-the retired polling timer since no live widget starts it. Continue shared component audit, not handoff.
+**Shared async handoff audit.** Full independent router260/host1004/interaction624 and direct265/939/
+343/616 retain request-correlated session terminal-once, continuation leases, cancellation, stale
+navigation and synchronous failure delivery. Host, interaction session and Assistant pending coordinator
+have distinct live responsibilities, not duplicate state owners. Main traced actual MainWindow callbacks.
 
-7C verified: original70passed9.79s; retained50passed8.57s after deleting exactly20 exclusive cases.
-An intermediate retained test run caught a mistakenly removed QWidget import used by a live chart
-lifecycle case; restored it, without weakening that test. Architecture guard passed before/after on
-Windows; cold package import excludes Matplotlib and live presentation submodule resolves to active
-checkout. Five surviving changed Python files pass Ruff check/format. Main reviewed author's actual
-diff and retirement callers. Production-660, tests-227; no current plots/data removed. Committed deb4a3cf.
+**Bounded7H — use actual lazy-navigation callback contract.** Sole production host is constructed by
+AgentManager with real MainWindow.switch_page(index,on_ready,on_failed). Remove signature inspection,
+optional failure callback and no-ready legacy path; keep generation/one-shot/reentrant failure/exception
+cleanup and current UI messages. First migrate existing test doubles to explicit on_ready/on_failed
+contracts and real immediate/deferred callback delivery, preserving all outcome/cancel/stale assertions.
+Characterize full router/host/outcome/interaction suites and actual lazy MainWindow callback tests
+before source changes; after identicalcases, fault dropped failure callback must fail. One production
+file expectednegativeLOC/noowner/public/UI change, two direct test files at most; independent actual
+lifecycle review/Ruff before reversible commit. Keep pending publication/admission owners untouched.
+Result: migrated characterization94passed0.93s before, identical94passed0.85s after; production
++13/-42/net-29, tests net+13, no cases removed. In-memory omitted failure callback fails actual
+MainWindow terminal-count assertion (1failed0.26s); faulty source never written. Independent actual
+caller/lifecycle review approved; Ruff/format six7H/7I files passed. Integration callers use actual
+MainWindow, not the retired compatibility route. Existing closing-window False/no-callback behavior
+still relies on host/controller abandon; this slice does not claim to improve that boundary.
 
-**Bounded7D — remove aggregate renderer's unused domain retention and prove weak listeners.** Full
-main InfoPanelService131/direct238 plus renderer/main-window tests show study is stored but never read;
-_observes_controller_events is alwaysFalse and read only by tests. Actual owner consumes committed
-publication rows and weak panel listeners. Remove unused study constructor argument/field and false
-marker, update sole production MainWindow composition and existing test call sites; remove only this
-service's obsolete mutable-domain allowlist entry (after7C). Keep publication cache, render failure
-acknowledgement/retry, deletedQObject handling and all UI strings. Also remove ignored notify_all
-args after confirming only no-argument caller. Strengthen weakref test to assert actual collection
-and listener removal (not container type), characterize before source changes and make a deliberate
-strong-reference fault fail. Keep cases, replace marker/identity assertions with real rendered-row or
-subscription evidence already exercised; two production files expectednegativeLOC, no new owner/UI
-behavior. Baseline service, renderer, main-window and UI integration plus affected sync nodes; same
-after and canonical architecture guard, actual diff review/Ruff. Sync only constructor mentions in
-docs/architecture/ui.md. Stop slice at unchanged publication UI/no domain retention, continue phase.
-
-7D implemented: production+3/-5/net-2, same two owners; no cases removed. Strengthened weak-listener
-and real MainWindow rows baseline42passed11.83s, then real empty-widget baseline42passed8.70s;
-after42passed8.63s. Deliberate in-memory retained-panel fault fails reference()isNone (1failed0.17s).
-Independent actual diff/lifecycle review approved; main reviewed exact diff, seven-file Ruff passed.
-Removed only obsolete Study identity/false-marker assertions and disconnected Study fixture; retained
-deletedQObject, missing rows and renderer failure/retry cases. Corrected stale direct-refresh fallback
-prose against MainWindow.update_info_panel's actual no-fallback source. Canonical Windows architecture
-guard and guidance audit passed. Local MkDocs is still unavailable in the retained environment;
-same-head CI docs validation remains required before final handoff. Committed0aa9fa6c, not module closure.
-
-**Shared aggregate widget audit.** Full independent info_panel626/direct605 retains detached mapping
-rendering, preprocessed precedence, stable13rows, one SidebarScrollArea width owner and real narrow/DPI/
-font/scrollbar geometry assertions. No unnecessary wait established. Unused minimum_readable_table_width
-and test-only presentation_changed signal are bounded candidates, not yet changed.
-
-**Bounded7E — remove unused summary measurement and test-only notifications.** Main and independent
-full info_panel626/direct605, production/script/doc/dynamic name search show no caller for
-minimum_readable_table_width or its exclusive horizontal buffer constant, and no product connection
-to presentation_changed. Remove those unused internal surfaces, retaining all synchronous rendering,
-font/resize/show metrics and every visible value. Migrate two exclusive waitSignal wrappers to direct
-calls before the source edit; keep their displayed-value assertions and all cases. Full direct summary
-and service suites before/after, Ruff and main actual diff review; same render/width owners, one source
-file about-34LOC, no new owner/contract/UI change. One reversible commit, then continue module audit.
-
-7E verified48before2.00s/after2.03s; no cases removed or displayed-value/geometry assertions weakened.
-Production+1/-34/net-33; tests-2. Main full source/tests/caller and actual diff review passed; two-file
-Ruff check/format passed. No latency claim from deleting an unconnected signal. Committed48b9f880.
-
-Shared sizing/button audit: independent full table_sizing60/direct24 and dialog_button_policy78/
-direct97 retain real two-surface minimum/exact-pixel sizing and global post-style icon/default policy.
-Real QMessageBox/ModalAlertDialog Enter/Escape tests protect safe cancellation; no duplicated owner or
-confirmed deletion candidate. These retained findings do not close the remaining shared runtime module.
-
-**Bounded7F — retire unused Qt event surfaces.** Full main EventBus54/direct63 and Worker140/direct174,
-plus independently full MainWindow and actual signal/caller search identify an entirely unused
-EventBus singleton, WorkerSignals.progress (only two exclusive tests), and MainWindow.sig_init_agent/
-sig_generate (declarations only; different live controller signal stays). Remove these unconnected
-UI-internal surfaces and exact EventBus tests/seven cases plus two progress-only cases. Preserve all
-worker finished/result/error delivery, native-heavy Python thread seam and actual Assistant wiring.
-No public Command/UI behavior change, no new owner; three production files about-63LOC. Characterize
-worker/event-bus/main-window/async-command suites; after retain all other cases, lint and actual diff/
-independent caller review. One reversible commit, continue shared lifecycle audit, not handoff.
-
-7F verified52before7.55s ->43after7.30s, exactly9 exclusive orphan cases removed. Production-59,
-testsnet-75. Independent actual-diff/caller review approved and three surviving changed Python files
-pass Ruff. Main verified actual diff and distinct live controller/close signals. Committed36a23137.
-
-Modal/error audit: independent full modal406/error319/common463/BaseDialog209 and direct448/26/891/
-138/147 retain shared alert/confirmation, safe Cancel/Enter, geometry/order and public diagnostic
-privacy. Unused show_information facade and ignored message_box injection parameter are candidates;
-all context recovery text and actual warning/error/confirmation routes remain necessary.
-
-**Bounded7G — remove obsolete modal convenience and ignored error injection.** Main and independent
-source/caller review confirm show_information is used only by its facade test and message_box is an
-unused, immediately discarded keyword in present_unexpected_error. Remove this facade and its one
-invocation/expected severity within the shared facade test (retain the case and warning/error checks),
-and remove ignored keyword/comment/del. Keep INFORMATION severity and actual ModalAlertDialog path,
-all recovery copy/context, logging/redaction/hostile payload and confirmation semantics. Two source
-files expected-15LOC, no owner/UI/public Command change. Characterize full modal+policy+unexpected-error
-suites, same retained cases after, lint/main actual diff and independent privacy-boundary review.
-One reversible commit then remaining runtime audit, no final privacy/native acceptance claim.
-
-7G characterization initially39passed/3failed8.25s in Windows Python with Qt offscreen: message label
-height30 vs minimum15, unchanged after event drain, and Qt reports missing bundled font directory.
-Exact same42 cases pass8.43s with actual Windows Qt platform; no source/test assertions altered to get
-this baseline. Continue retirement using same native platform before/after, retain offscreen/font
-fixture issue for module9/final platform validation. Do not mislabel Windows-interpreter offscreen runs
-as native-window evidence; earlier focused counts support only their actual unit/component contracts.
-Same offscreen baseline42passed8.31s when pointed at installed C:\Windows\Fonts; native after42passed
-8.44s. No tests removed; production-14/tests-3. Main actual diff and independent privacy-boundary review
-approved, three-file Ruff passed. Existing Windows CI already provisions the font directory; the
-direct-pytest fixture gap is fixed by9A, not a product-layout change. Committed e89291f9.
-
-**Bounded8A — replace mocked installer-integrity evidence with real validation.** Independent full
-Windows setup881/PS187/rootCMD20/direct436 retains existing setup->model lifecycle ownership. Main
-read actual download/install seam: pinned HTTPS, final-scheme check, bounded read and SHA comparison
-precede file write/installer execution. Existing checksum test replaces this entire validator with a
-throw, so cannot catch bypass. Tests-only: isolate only urllib response and process execution; exercise
-real validator/hash/temp file via _install_poetry for rejected redirect/oversize/checksum, plus actual
-validated-byte write using an explicit fixture digest. Retain official pin assertions, no real network,
-installer/env/model mutation; one existing test file only, no new platform/owner. Run full direct
-bootstrap tests before/after and intentional checksum bypass must fail; independent actual test review.
-Production unchanged, no visible/public behavior decision. Main owns plan, worker owns exacttestfile;
-commit after no active writes/tests/hooks. Continue broader script audit, not installer certification.
-
-8A implemented20before0.09s ->23after0.09s; one mocked case becomes3real rejection paths plus1verified
-payload write, official pins unchanged. First after run hit Windows pytest path errors because the
-oversized byte parameter became its test ID (22pass/2setup-teardown errors); main added explicit short
-IDs, not weakened assertions. An initial fault run shared that fixture error and is not proof.
-Corrected in-memory SHA-bypass probe gives1failed/2passed0.13s at missing SetupError, proving checksum
-regression detection. Main removed redundant BytesIO context-manager overrides; final combined direct
-bootstrap+fixture policy29passed4.22s and three-file Ruff passed. Independent actual integrity-test
-review approved; production unchanged, testnet+92. Commit next.
-
-**Bounded9A — align direct Windows pytest with existing CI fonts.** Measured7G before source change:
-Windows offscreen lacks installed fonts and3geometry cases fail; native platform and offscreen with
-existing SystemRoot/Fonts each pass identical42. CI already sets that directory at ci.yml492-500.
-Tests-only fix in existing pre-PyQt tests/conftest.py environment setup: default QT_QPA_FONTDIR only
-for Windows offscreen, only if installed directory exists; preserve explicit overrides and all other
-platforms. No downloads, product fonts/style, gate weakening or new environment policy module.
-Add isolated process tests exercising actual conftest loading for default/override/non-offscreen/missing
-directory cases, not source-text assertions. Baseline3fail established, then same42 offscreen without
-injectedfontenv and directfixturepolicy cases; lint and independent actual diff review. Main owns plan;
-one worker may own conftest+test_test_fixture_policy.py only, separate from8A. One reversible commit,
-continue cross-module inventory; no global/Windows persistent environment mutation.
-
-9A after48passed12.20s: original42modal/privacy cases plus2retained fixture-policy and4isolated child
-cases, with no external QT_QPA_FONTDIR override. Main removed test's fake sys.platform assignment,
-made actual-Windows cases explicit platform tests and bounded child timeout30s; no Linux disguise.
-Mechanical formatting/import sort applied; uppercase Windows environment key and narrow subprocess
-lint justification corrected after first lint. Final combined29passed4.22s and three-file Ruff passed;
-main nonauthor actualdiff approved. Testconfig+87LOC/no production change, commit next.
-
-Module8 Git correction: independent initially proposed integrating infra acf7c56d, but main challenged
-the absent product paths. Exact product Git has no compact/manual_environment tracked files and common
-ancestor4770b049, not an unintegrated dependency. Recommendation withdrawn: preserve separate infra
-history; do not import absent infrastructure just to withdraw it. Full launcher CMD42/PS1276/direct89
-review retains bounded console-only child output/log retention, exit propagation and optional safe IBus
-setup. Source guards do not prove native launch or measured wait improvement; setup/gate audit remains.
+**Bounded7I — remove unused stateless presentation residue.** Full main language111/direct188,
+status401/ownedpresenter132/direct320 and refresh50/direct78 plus caller sweep identify unused
+COMMAND_LABELS alias/import and command_labels helper; _display_progress ignores completed/total;
+refresh_panel only forwards to _call_noarg with literal update_panel. Remove unused labels and ignored
+arguments; inline only private noarg helper into existing refresh_panel, preserving exact logging,
+guard release, status timing/copy and every active caller. Three production files expectednegativeLOC,
+no new owner or visible behavior. Baseline product-language/refresh/ownedpresenter suites, same tests
+after, main actualdiff/lint; no case removal. Separate commit from7H, continue audit rather than handoff.
+Result:40passed2.55s baseline,40passed2.52s after; production+2/-20/net-18, no test or owner changes.
+Main actualdiff/caller review and changed-file Ruff/format pass. Earlier7H/7I terminal outputs lost
+during context recovery were not counted; the recovered runs above provide the evidence.
 
 **Module6 initial full owner audit (not closure).** Independent full controller2949/attempt898/
 execution342/confirmation314/pending443 and respective direct confirmation154/pending560/execution151/
@@ -1074,6 +918,18 @@ this table replaces their duplicated active-plan narrative, not any unresolved m
 | 6S / `f7632053` | Unused conversation convenience chain; production-33/testnet-23 |19before7.54s/15retained7.38s; wrong-end window2faults fail6.12s; exact list semantics |
 | 6T / `f4d2884a` | Suggestion row churn +unused render helpers/arg; productionnet-33/testnet+27 |213before9.09s,3red1.01s,216after9.34s;3width geometry equal,15+15calls→0+0 |
 | 6U / `5cf7a6df` | Unused private command list normalizer; production-7 |Same25before6.38s/after6.36s; no tests/contract changes |
+| 6V / `337d94e7` | Approved dormant recovery-feedback chain; production-131/tests-102 |403before/400after,3exclusive cases retired;14prompt parity digest above; privacy review |
+| 6W / `5132d43e` | Discarded footer input/list; production-4/tests-5 |35before/after, copy unchanged; independent review |
+| 6X / `a6e3d7e9` | Stateless names/byte alias indirection; production-14 |104before/after; prompts/scoring/8192byte cap unchanged |
+| 6Y / `6c66f2a0` | Owned runtime init only; production-13/tests+99 |110before/after;2failed-close faults fail; independent lifecycle review |
+| 7B / `c089d7a8` | Unused UI query forwards; production-63 |52before/after; backend queries/variant lifecycle retained |
+| 7C / `deb4a3cf` | Four orphan widgets/lazy exports/styles; production-660/tests-227 |70before/50retained,20exclusive cases retired; architecture/import/lint pass |
+| 7D / `0aa9fa6c` | Aggregate renderer unused Study/marker; production-2 |42before/after; real rows/empty widget and weakref fault; architecture/review pass |
+| 7E / `48b9f880` | Unused summary measurement/notifications; production-33/tests-2 |48before/after, no cases removed; all geometry/value assertions retained |
+| 7F / `36a23137` | Orphan EventBus and unconnected worker/window signals; production-59/tests-75 |52before/43after,9exclusive cases retired; independent caller review |
+| 7G / `e89291f9` | Unused modal facade/ignored error argument; production-14/tests-3 |42nativebefore/after; privacy review; INFORMATION severity retained |
+| 8A / `f54e3c4f` | Real installer SHA/HTTPS/size/noexec evidence; tests+92 |20before/23after;SHA-bypass1fail/2pass; no network/install; independent review |
+| 9A / `d7003752` | Direct Windows offscreen installed-font default; tests/config+87 |48after incl original42+4child cases; finalbootstrap+fixture29pass/Ruff; no production change |
 
 
 ### Evidence qualifications that remain relevant
