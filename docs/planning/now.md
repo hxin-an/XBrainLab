@@ -182,7 +182,7 @@ Main owns this one file/plan; baseline and after direct BIDS events-resource sui
 Ruff and independent diff review. No replacement API/owner, UI/public/recipe semantics or performance
 claim. If baseline exposes a real defect, separate its diagnosis before this deletion.
 2L complete focused evidence: identical native 28 passed before/after, no test changes or skips;
-Ruff/format/diff check and independent review approved. Production -7 LOC; commit next.
+Ruff/format/diff check and independent review approved. Production -7 LOC; committed `d575fba4`.
 
 Read-only audits continue: worker fully reviews label carrier/field/format boundaries and tests;
 shared BIDS index/cache audits retain distinct registry/command ownership and byte freshness checks.
@@ -200,6 +200,9 @@ data_interpretation_label_carriers.py and its direct test file only; main owns p
 Native original direct suite, migrated same suite before production deletion, identical after,
 actual event-value/recipe neighbors, Ruff and independent review; no new owner/UI/public schema.
 2M original direct suite: native 35 passed before any test or production edits.
+Migrated characterization also 35 passed before helper deletion. After: 41 passed (same 35 plus
+six actual event-value apply neighbors); unchanged four expected maps, no cases deleted. Independent
+final review and Ruff/format/diff check approved. Production -37 LOC; commit next.
 
 Module-8 entry audit read current Windows bootstrap and separately supported WSL launcher routes.
 Retain distinct cmd/PowerShell bootstrap/exit wrappers and bounded input-method readiness waits;
@@ -207,6 +210,19 @@ no measured redundant waiting established. One false WSL log message remains: ch
 only to terminal by privacy design, while text claims launcher-log mirroring. Correct only after
 declaring a bounded truth-sync slice and reading its existing privacy tests; no Windows GUI relaunch
 or environment change is part of that audit.
+
+**Bounded 8B — launcher output truth sync.** Main read the entire WSL launcher and its privacy
+tests using release-packaging-reviewer. Existing Invoke-WslWithLiveLog sends raw child output only
+to Write-LauncherConsoleLine, but startup copy falsely promises launcher-log mirroring. Update
+that single message to terminal-only delivery with an explicit no-launcher-log statement; retain
+all bounded lifecycle logging, privacy, process/exit and cache/input-method behavior. Extend the
+existing privacy test's visible-copy assertion, observe its failure before the copy correction,
+then rerun the same file and lint. This is script diagnostic truth sync, no GUI behavior redesign,
+actual WSL/app launch, dependency installation or new environment. Main owns launcher and its
+privacy test; independent review before separate commit. Module-8 full inventory remains open.
+8B focused evidence: original 5 pass; new copy assertion 1 fail/4 pass before correction; after
+single-line correction 5 pass. Ruff/format/diff check and independent actual-diff review approved.
+This is static/source evidence only, not launcher execution or Windows GUI acceptance.
 
 **Remaining module-2 work.**
 Continue event/label semantics, BIDS, channel/montage and related UI review. Modules 3–9 remain open.

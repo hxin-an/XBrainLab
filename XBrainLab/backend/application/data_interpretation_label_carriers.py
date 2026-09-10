@@ -24,7 +24,6 @@ from .data_interpretation_bids_resources import (
 )
 from .data_interpretation_event_values import (
     class_map_from_value_decisions,
-    derive_class_views,
     review_event_values,
 )
 from .data_interpretation_parsed_cache import (
@@ -136,32 +135,6 @@ def build_label_carrier_plan(
                 row["label_field_recommendation_details"] = details
                 break
     return rows
-
-
-def infer_class_map_from_label_carrier_plan(
-    label_carrier_plan: list[dict[str, Any]],
-    *,
-    limit: int = 20,
-    sidecar_reader: BidsEventsJsonReader | None = None,
-    resource_reader: AdmittedResourceReader | None = None,
-) -> dict[str, str]:
-    """Return the collision-safe class view selected by value decisions."""
-    del sidecar_reader, resource_reader
-    class_map, _run_maps = derive_class_views(label_carrier_plan)
-    return dict(list(class_map.items())[: max(int(limit), 0)])
-
-
-def observed_class_map_for_label_carrier(
-    carrier: dict[str, Any],
-    *,
-    sidecar_reader: BidsEventsJsonReader | None = None,
-) -> dict[str, str]:
-    """Return the selected class view for one carrier."""
-    del sidecar_reader
-    decisions = carrier.get("value_decisions")
-    return class_map_from_value_decisions(
-        decisions if isinstance(decisions, dict) else {}
-    )
 
 
 def normalize_label_carrier_choices(payload: Any) -> dict[str, dict[str, Any]]:
@@ -1905,13 +1878,3 @@ def _existing_bids_events_json_candidates(
         for candidate in bids_events_json_candidates(path)
         if candidate.exists()
     ]
-
-
-def _sidecar_reader_for_plan(
-    label_carrier_plan: list[dict[str, Any]],
-) -> BidsEventsJsonReader:
-    return BidsEventsJsonReader.from_paths(
-        bids_events_json_resource_paths(
-            str(carrier.get("path") or "") for carrier in label_carrier_plan
-        ),
-    )
