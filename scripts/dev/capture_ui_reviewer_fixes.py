@@ -42,6 +42,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from scripts.dev.capture_config import isolated_capture_config
 from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
     collect_screenshot_artifacts,
     collect_source_identity,
@@ -196,69 +197,70 @@ def main(argv: list[str] | None = None) -> int:
 
     fixture_evidence_at_start = _fixture_evidence(fixture)
     source_identity_at_start = collect_source_identity(ROOT, refresh=True)
-    instance = QApplication.instance()
-    app = instance if isinstance(instance, QApplication) else QApplication(sys.argv)
-    app.setStyle("Fusion")
-    app.setStyleSheet(Stylesheets.MAIN_WINDOW)
-    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    with isolated_capture_config():
+        instance = QApplication.instance()
+        app = instance if isinstance(instance, QApplication) else QApplication(sys.argv)
+        app.setStyle("Fusion")
+        app.setStyleSheet(Stylesheets.MAIN_WINDOW)
+        output_dir.parent.mkdir(parents=True, exist_ok=True)
 
-    with TemporaryDirectory(
-        prefix=f".{output_dir.name}-capture-",
-        dir=output_dir.parent,
-    ) as staging_name:
-        staging_dir = Path(staging_name)
-        plot_checks, runtime_fixture_evidence = _capture_preprocess_states(
-            app,
-            staging_dir,
-            fixture,
-        )
-        _capture_preprocess_dialogs(app, staging_dir)
-        geometry_checks = _capture_training_setting_surfaces(app, staging_dir)
-        _capture_smart_parser_modes(app, staging_dir)
-        _capture_extended_review_surfaces(app, staging_dir)
+        with TemporaryDirectory(
+            prefix=f".{output_dir.name}-capture-",
+            dir=output_dir.parent,
+        ) as staging_name:
+            staging_dir = Path(staging_name)
+            plot_checks, runtime_fixture_evidence = _capture_preprocess_states(
+                app,
+                staging_dir,
+                fixture,
+            )
+            _capture_preprocess_dialogs(app, staging_dir)
+            geometry_checks = _capture_training_setting_surfaces(app, staging_dir)
+            _capture_smart_parser_modes(app, staging_dir)
+            _capture_extended_review_surfaces(app, staging_dir)
 
-        review = _ready_import_dialog()
-        review.resize(QSize(1100, 800))
-        review._go_to_step(review._step_titles.index("Review and Import"))
-        review.import_report_toggle.click()
-        _capture(app, review, "import-report-ready.png", output_dir=staging_dir)
+            review = _ready_import_dialog()
+            review.resize(QSize(1100, 800))
+            review._go_to_step(review._step_titles.index("Review and Import"))
+            review.import_report_toggle.click()
+            _capture(app, review, "import-report-ready.png", output_dir=staging_dir)
 
-        review = _ready_import_dialog()
-        review.resize(QSize(1100, 800))
-        review._go_to_step(review._step_titles.index("Review and Import"))
-        review.save_recipe_check.setChecked(True)
-        _capture(app, review, "import-review-will-save.png", output_dir=staging_dir)
+            review = _ready_import_dialog()
+            review.resize(QSize(1100, 800))
+            review._go_to_step(review._step_titles.index("Review and Import"))
+            review.save_recipe_check.setChecked(True)
+            _capture(app, review, "import-review-will-save.png", output_dir=staging_dir)
 
-        review = _ready_import_dialog(recipe_loaded=True)
-        review.resize(QSize(1100, 800))
-        review._go_to_step(review._step_titles.index("Review and Import"))
-        _capture(
-            app,
-            review,
-            "import-review-loaded-recipe.png",
-            output_dir=staging_dir,
-        )
+            review = _ready_import_dialog(recipe_loaded=True)
+            review.resize(QSize(1100, 800))
+            review._go_to_step(review._step_titles.index("Review and Import"))
+            _capture(
+                app,
+                review,
+                "import-review-loaded-recipe.png",
+                output_dir=staging_dir,
+            )
 
-        fixture_evidence_at_end = _fixture_evidence(fixture)
-        if fixture_evidence_at_start != fixture_evidence_at_end:
-            raise RuntimeError("The EEG fixture changed during focused UI capture.")
-        fixture_evidence = {
-            **fixture_evidence_at_start,
-            **runtime_fixture_evidence,
-        }
-        source_identity_at_end = collect_source_identity(ROOT, refresh=True)
-        _write_evidence_manifest(
-            output_dir=staging_dir,
-            source_identity_at_start=source_identity_at_start,
-            source_identity_at_end=source_identity_at_end,
-            fixture_evidence=fixture_evidence,
-            geometry_checks=geometry_checks,
-            plot_checks=plot_checks,
-            generated_at=datetime.now(UTC),
-            qt_platform=QApplication.platformName(),
-        )
-        _publish_capture(staging_dir, output_dir)
-    return 0
+            fixture_evidence_at_end = _fixture_evidence(fixture)
+            if fixture_evidence_at_start != fixture_evidence_at_end:
+                raise RuntimeError("The EEG fixture changed during focused UI capture.")
+            fixture_evidence = {
+                **fixture_evidence_at_start,
+                **runtime_fixture_evidence,
+            }
+            source_identity_at_end = collect_source_identity(ROOT, refresh=True)
+            _write_evidence_manifest(
+                output_dir=staging_dir,
+                source_identity_at_start=source_identity_at_start,
+                source_identity_at_end=source_identity_at_end,
+                fixture_evidence=fixture_evidence,
+                geometry_checks=geometry_checks,
+                plot_checks=plot_checks,
+                generated_at=datetime.now(UTC),
+                qt_platform=QApplication.platformName(),
+            )
+            _publish_capture(staging_dir, output_dir)
+        return 0
 
 
 def _capture_preprocess_states(

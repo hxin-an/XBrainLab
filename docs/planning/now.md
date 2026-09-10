@@ -109,6 +109,22 @@ old session IDs and plan text do not prove a process is running. No manual candi
 
 **Current work — developer docs/config truth and remaining scripts; module2–6 closure gaps and explicit decisions remain open.**
 
+**Bounded9L4A — cover remaining standalone replay/dialog preference consumers.** Same-class caller
+scan finds Data Interpretation replay constructs/closes real MainWindow, reviewer-fixes opens real
+SmartParser, and app-polish constructs MontagePicker; all reach application_settings without an outer
+config override. Reuse existing isolated_capture_config around each Qt-to-publication lifetime after
+CLI/preflight, preserving validate-only, source/fixture validation, staging, output and existing cleanup.
+No new owner/helper, dataset/model execution or visible product change. Extend the shared pre-GUI
+matrix7→10 with only external fixture/Git seams isolated; restore replay's existing mutable artifact
+directory in test teardown. Three target reds before source edits; shared17 cases and directly related
+CLI/validation controls, independent actual lifetime review and Ruff. Pure config isolation is not a
+claim that the giant script bodies are fully audited or their full captures pass. MOABB local-import
+CLI is a separate next slice; normal Windows/WSL product launcher preference policy stays untouched.
+Result: three targeted reds fail at inherited host config before GUI6.75s; all17 shared cases pass7.40s.
+All three real CLI help/declared-option checks pass without GUI/data/model execution. Four-file Ruff
+and format pass; independent actual lifetime/publication diff review approves. Only existing context
+reuse and entrypoint tests change; full capture execution and whole-script audit are not claimed.
+
 **Bounded9Q — remove stale architecture cache/status/dispatch claims.** Independent full agent543/
 target425/backend860/data-pipeline430 and main's affected source traces identify: unconditional old
 repo-local cache default, dated host cache/benchmark values presented among current runtime facts,

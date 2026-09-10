@@ -50,6 +50,7 @@ from scripts.dev.app_polish_capture_contract import (
     validate_app_polish_evidence,
     write_app_polish_evidence,
 )
+from scripts.dev.capture_config import isolated_capture_config
 from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
     collect_source_identity,
 )
@@ -177,73 +178,74 @@ def main(argv: list[str] | None = None) -> int:
     capture_started_at = datetime.now(UTC)
     source_identity_at_start = collect_source_identity(ROOT, refresh=True)
 
-    instance = QApplication.instance()
-    app = instance if isinstance(instance, QApplication) else QApplication(sys.argv)
-    _apply_capture_application_theme(app)
-    output_dir.parent.mkdir(parents=True, exist_ok=True)
-    with TemporaryDirectory(
-        prefix=f".{output_dir.name}-capture-",
-        dir=output_dir.parent,
-    ) as staging_name:
-        staging_dir = Path(staging_name)
-        for filename, factory in captures:
-            if filename not in selected_set:
-                continue
-            widget = factory()
-            try:
-                widget.show()
-                _settle_capture_widget(app, widget)
-                _assert_capture_geometry(filename, widget)
-                frame_readiness = _capture(widget, staging_dir / filename)
-                surface_contracts[filename] = _surface_contract(
-                    filename,
-                    widget,
-                    frame_readiness=frame_readiness,
+    with isolated_capture_config():
+        instance = QApplication.instance()
+        app = instance if isinstance(instance, QApplication) else QApplication(sys.argv)
+        _apply_capture_application_theme(app)
+        output_dir.parent.mkdir(parents=True, exist_ok=True)
+        with TemporaryDirectory(
+            prefix=f".{output_dir.name}-capture-",
+            dir=output_dir.parent,
+        ) as staging_name:
+            staging_dir = Path(staging_name)
+            for filename, factory in captures:
+                if filename not in selected_set:
+                    continue
+                widget = factory()
+                try:
+                    widget.show()
+                    _settle_capture_widget(app, widget)
+                    _assert_capture_geometry(filename, widget)
+                    frame_readiness = _capture(widget, staging_dir / filename)
+                    surface_contracts[filename] = _surface_contract(
+                        filename,
+                        widget,
+                        frame_readiness=frame_readiness,
+                    )
+                finally:
+                    widget.close()
+                    widget.deleteLater()
+                    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+                    app.processEvents()
+            _write_readme(staging_dir)
+            source_identity_at_end = collect_source_identity(ROOT, refresh=True)
+            if source_identity_at_start.get(
+                "source_digest"
+            ) != source_identity_at_end.get("source_digest"):
+                raise RuntimeError(
+                    "Product source changed during app-polish capture; discard this run."
                 )
-            finally:
-                widget.close()
-                widget.deleteLater()
-                QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-                app.processEvents()
-        _write_readme(staging_dir)
-        source_identity_at_end = collect_source_identity(ROOT, refresh=True)
-        if source_identity_at_start.get("source_digest") != source_identity_at_end.get(
-            "source_digest"
-        ):
-            raise RuntimeError(
-                "Product source changed during app-polish capture; discard this run."
+            evidence = build_app_polish_evidence(
+                staging_dir,
+                expected_surfaces=expected_surfaces,
+                selected_surfaces=selected_surfaces,
+                surface_contracts=surface_contracts,
+                capture_started_at=capture_started_at,
+                source_identity=source_identity_at_end,
+                source_identity_at_start=source_identity_at_start,
+                qt_platform=QApplication.platformName(),
+                platform_system=platform.system(),
+                requested_scale_factor=float(os.environ.get("QT_SCALE_FACTOR", "1.0")),
+                observed_device_pixel_ratio=(
+                    app.primaryScreen().devicePixelRatio()
+                    if app.primaryScreen() is not None
+                    else 0.0
+                ),
             )
-        evidence = build_app_polish_evidence(
-            staging_dir,
-            expected_surfaces=expected_surfaces,
-            selected_surfaces=selected_surfaces,
-            surface_contracts=surface_contracts,
-            capture_started_at=capture_started_at,
-            source_identity=source_identity_at_end,
-            source_identity_at_start=source_identity_at_start,
-            qt_platform=QApplication.platformName(),
-            platform_system=platform.system(),
-            requested_scale_factor=float(os.environ.get("QT_SCALE_FACTOR", "1.0")),
-            observed_device_pixel_ratio=(
-                app.primaryScreen().devicePixelRatio()
-                if app.primaryScreen() is not None
-                else 0.0
-            ),
-        )
-        ok, reason = validate_app_polish_evidence(
-            evidence,
-            output_dir=staging_dir,
-            require_complete=not bool(args.only),
-        )
-        if not ok:
-            raise RuntimeError(f"App-polish evidence contract failed: {reason}")
-        write_app_polish_evidence(staging_dir, evidence)
-        _publish_capture(
-            staging_dir,
-            output_dir,
-            selected_surfaces=selected_surfaces,
-        )
-    return 0
+            ok, reason = validate_app_polish_evidence(
+                evidence,
+                output_dir=staging_dir,
+                require_complete=not bool(args.only),
+            )
+            if not ok:
+                raise RuntimeError(f"App-polish evidence contract failed: {reason}")
+            write_app_polish_evidence(staging_dir, evidence)
+            _publish_capture(
+                staging_dir,
+                output_dir,
+                selected_surfaces=selected_surfaces,
+            )
+        return 0
 
 
 def _apply_capture_application_theme(app: QApplication) -> None:

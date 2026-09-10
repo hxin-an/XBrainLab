@@ -42,6 +42,9 @@ def capture_tmp(monkeypatch, tmp_path):
         ("capture_visualization_render_walkthrough", False),
         ("capture_human_like_product_walkthrough", False),
         ("capture_chatpanel_ui_ux_walkthrough", False),
+        ("capture_data_interpretation_replay", False),
+        ("capture_ui_reviewer_fixes", False),
+        ("capture_ui_polish_surfaces", False),
     ],
 )
 def test_main_isolates_preferences_before_gui_and_restores_host_on_failure(
@@ -82,8 +85,16 @@ def test_main_isolates_preferences_before_gui_and_restores_host_on_failure(
     if module_name in (
         "capture_ui_baseline",
         "capture_human_like_product_walkthrough",
+        "capture_ui_reviewer_fixes",
+        "capture_ui_polish_surfaces",
     ):
         monkeypatch.setattr(module, "collect_source_identity", lambda *a, **k: {})
+    if module_name == "capture_ui_reviewer_fixes":
+        monkeypatch.setattr(module, "_fixture_evidence", lambda _path: {})
+    if module_name == "capture_data_interpretation_replay":
+        monkeypatch.setattr(
+            module.ARTIFACT_PATHS, "directory", module.ARTIFACT_PATHS.directory
+        )
 
     roots = []
 
