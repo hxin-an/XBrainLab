@@ -238,6 +238,8 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
   before removing the lazy test. Baseline/characterization/after on these three files; no production
   change. Preserve real FIF/epochs and checked-in multi-format integration evidence, test denominator
   reduction exactly eight. Independent diff review and separate test-only rollback commit.
+- 2G committed as `aba4eea7`; 2H source/test review and relevant evidence complete, commit next.
+  No module-2 closure yet: label/event/BIDS/UI and complete inventory obligations remain open.
 - Planned 1L observer cleanup: remove the unread QtObserverBridge._observer_callback member (two
   assignments) while retaining Observable/_ObserverSubscription callback ownership, QObject destroyed
   cleanup and finalizer. Replace the test-only empty MockObservable subclass with Observable itself.

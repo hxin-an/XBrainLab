@@ -71,15 +71,15 @@ def test_edit_event_name_epoch(epoch):
     # all match
     processor.data_preprocess({"a": "a", "b": "b", "c": "c", "d": "e"})
     result = processor.get_preprocessed_data_list()[0]
-    assert epoch.get_event_name_list_str() == "a,b,c,d"
-    assert result.get_event_name_list_str() == "a,b,c,e"
+    assert list(epoch.get_event_list()[1]) == ["a", "b", "c", "d"]
+    assert list(result.get_event_list()[1]) == ["a", "b", "c", "e"]
     assert result.get_preprocess_history()[0] == "Update 1 event names"
 
     # miss at new event
     processor.data_preprocess({"a": "a", "b": "b", "e": "f"})
     result = processor.get_preprocessed_data_list()[0]
-    assert epoch.get_event_name_list_str() == "a,b,c,d"
-    assert result.get_event_name_list_str() == "a,b,c,f"
+    assert list(epoch.get_event_list()[1]) == ["a", "b", "c", "d"]
+    assert list(result.get_event_list()[1]) == ["a", "b", "c", "f"]
     assert result.get_preprocess_history()[1] == "Update 1 event names"
 
 
@@ -238,7 +238,7 @@ def test_time_epoch_without_baseline(annotated_raw):
         baseline=None, selected_event_names=["a", "b", "c", "d"], tmin=0, tmax=1
     )
     result = processor.get_preprocessed_data_list()[0]
-    assert result.get_event_name_list_str() == "a,b,c,d"
+    assert list(result.get_event_list()[1]) == ["a", "b", "c", "d"]
     assert result.get_mne().get_data().shape == (4, 2, 2)
     assert np.allclose(
         result.get_mne().get_data(),
@@ -262,7 +262,7 @@ def test_time_epoch_with_baseline(annotated_raw):
         baseline=(-1, 0), selected_event_names=["a", "b", "c", "d"], tmin=0, tmax=1
     )
     result = processor.get_preprocessed_data_list()[0]
-    assert result.get_event_name_list_str() == "a,b,c,d"
+    assert list(result.get_event_list()[1]) == ["a", "b", "c", "d"]
     assert result.get_mne().get_data().shape == (4, 2, 2)
     assert np.allclose(
         result.get_mne().get_data(),
@@ -283,7 +283,7 @@ def test_window_epoch(annotated_raw):
     processor = preprocessor.WindowEpoch([annotated_raw])
     processor.data_preprocess(duration=2, overlap=1)
     result = processor.get_preprocessed_data_list()[0]
-    assert result.get_event_name_list_str() == "a"
+    assert list(result.get_event_list()[1]) == ["a"]
     assert result.get_mne().get_data().shape == (9, 2, 2)
     assert np.allclose(
         result.get_mne().get_data(),

@@ -137,7 +137,7 @@ class TestIOIntegration:
 
         raw = _assert_raw(load_gdf_file(GDF_FILE))
 
-        assert raw.has_runtime_signals() is False
+        assert raw.get_runtime_signals() == []
         assert raw.get_mne().ch_names[0:7] == [
             "EEG-Fz",
             "EEG-FC3",
@@ -153,8 +153,8 @@ class TestIOIntegration:
             "EEG-P2",
             "EEG-POz",
         ]
-        assert raw.has_runtime_detail("gdf_duplicate_channel_names")
-        assert raw.has_gdf_duplicate_channel_detail()
+        assert raw.get_runtime_detail("gdf_duplicate_channel_names") is not None
+        assert raw.get_gdf_duplicate_channel_detail() is not None
 
         detail = raw.get_gdf_duplicate_channel_detail()
         assert isinstance(detail, dict)

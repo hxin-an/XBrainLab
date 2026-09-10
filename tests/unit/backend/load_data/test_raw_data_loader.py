@@ -157,12 +157,12 @@ class TestRawDataLoaderUnit:
             in mock_logger_warning.call_args[0][1]
         )
         assert "dummy.gdf" in mock_logger_warning.call_args[0][1]
-        assert result.has_runtime_signals()
+        assert result.get_runtime_signals()
         assert (
             "auto-renaming duplicate channel names" in result.get_runtime_signals()[0]
         )
-        assert result.has_runtime_detail("gdf_duplicate_channel_names")
-        assert result.has_gdf_duplicate_channel_detail()
+        assert result.get_runtime_detail("gdf_duplicate_channel_names") is not None
+        assert result.get_gdf_duplicate_channel_detail() is not None
         assert result.get_gdf_duplicate_channel_detail() == {
             "kind": "gdf_duplicate_channel_names",
             "filepath": "dummy.gdf",
@@ -254,7 +254,7 @@ class TestRawDataLoaderUnit:
             "EEG-P2",
             "EEG-POz",
         ]
-        assert result.has_runtime_signals() is False
+        assert result.get_runtime_signals() == []
         detail = result.get_gdf_duplicate_channel_detail()
         assert detail is not None
         assert detail["resolved"] is True
