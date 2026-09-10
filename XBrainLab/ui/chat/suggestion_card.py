@@ -8,7 +8,6 @@ from PyQt6.QtWidgets import (
     QLabel,
     QPushButton,
     QSizePolicy,
-    QStyle,
     QVBoxLayout,
     QWidget,
 )
@@ -30,7 +29,6 @@ class AssistantSuggestionCard(QPushButton):
         title: str,
         subtitle: str,
         *,
-        icon: QStyle.StandardPixmap,
         accent: str,
         parent=None,
     ) -> None:

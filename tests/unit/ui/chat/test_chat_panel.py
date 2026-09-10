@@ -1,4 +1,4 @@
-"""Coverage tests for ChatPanel - 59 uncovered lines."""
+"""Behavioral tests for the chat transcript, controls and Qt layout lifecycle."""
 
 from __future__ import annotations
 
@@ -226,6 +226,33 @@ class TestChatPanelInit:
         assert chat_panel.input_field.text() == prompts[0].property("assistantPrompt")
         assert chat_panel.send_btn.isEnabled()
         assert emitted == []
+
+    @pytest.mark.parametrize("width", [400, 620, 900])
+    def test_reflow_keeps_suggestion_rows_without_rebuilding_layout(
+        self,
+        chat_panel,
+        qtbot,
+        width,
+    ) -> None:
+        chat_panel.resize(width, 900)
+        chat_panel.show()
+        qtbot.wait(20)
+        layout = chat_panel.suggestion_prompt_layout
+        buttons = chat_panel.suggestion_prompt_buttons
+        before = [button.geometry().getRect() for button in buttons]
+
+        with (
+            patch.object(layout, "removeWidget", wraps=layout.removeWidget) as remove,
+            patch.object(layout, "addWidget", wraps=layout.addWidget) as add,
+        ):
+            for _ in range(5):
+                chat_panel._reflow_chat_content()
+            qtbot.wait(10)
+
+        assert [layout.itemAt(i).widget() for i in range(layout.count())] == buttons
+        assert [button.geometry().getRect() for button in buttons] == before
+        assert remove.call_count == 0
+        assert add.call_count == 0
 
     def test_empty_state_copy_and_prompts_ignore_backend_stage(
         self,

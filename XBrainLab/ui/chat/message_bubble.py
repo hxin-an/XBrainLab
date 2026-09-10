@@ -765,12 +765,3 @@ class MessageBubble(QWidget):
         parent = self.parentWidget()
         if parent is not None:
             self.adjust_width(parent.width())
-
-    def setText(self, text):  # noqa: N802
-        """Compatibility alias for ``set_text``.
-
-        Args:
-            text: The text to set.
-
-        """
-        self.set_text(text)

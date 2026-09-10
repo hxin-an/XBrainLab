@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `f3b850d7`, 119 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `f7632053`, 120 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -218,6 +218,26 @@ selection and shared design tokens. Candidate unused bubble.setText, suggestion 
 panel._render_message need bounded same-owner retirement. Panel suggestion layout removes/readds
 all three unchanged rows on reflow despite ignoring columns; measure actual layout calls and geometry
 before removing that redundant work. Keep direct script-used append_message and all visible copy.
+
+**Bounded6T — remove measured redundant suggestion re-layout and unused rendering conveniences.**
+Read-only caller audit finds panel._render_message and bubble.setText have no production/test/script/
+config consumers; actual typed render and script-used append_message remain. Suggestion icon argument
+is ignored (sole caller passes a constant); retain visible card semantics. First measure real Qt layout
+remove/add counts over repeated ready-panel reflows at narrow/default/wide widths and freeze geometry
+snapshots; only if unchanged-order redundant work is established, place rows once during construction
+and remove the ignored-column helper/reflow call. Keep wrap/height fitting, all timers, transcript and
+reader-anchor lifecycle. Before edits run full panel/bubble/card suites; after repeat, compare exact
+geometry/work counts and review actual UI-internal diff independently. User's behavior-preserving UI
+authorization applies; no visible copy/layout/interaction redesign. Expected3productionfiles/netbelow60,
+zeroownerincrease, one reversible commit. Optional hidden-icon/widget/style removal is not yet included;
+it needs separate caller/geometry evidence. Final Windows/DPI gate remains necessary for phase handoff.
+Baseline213passed9.09s. Three new real-layout cost tests failed3in1.01s specifically on15remove
+calls per5reflows while order/geometry already matched. After216passed9.34s. Same standalone real
+Qt probe at400/620/900: each15remove+15add ->0+0; all before/after card geometry/text/order snapshots
+exactly equal. This is measured redundant-work removal, not an elapsed-time/user-perceived speed claim.
+Production+1/-34/net-33 across3files, tests+28/-1/net+27/threeaddedcases; none retired. Main and
+independent actual-diff review approved. Actual typed rendering, streaming set_text and script-used
+append_message stay; hidden icon widget/style remains. Ruff/format before separate commit.
 
 **Module6 initial full owner audit (not closure).** Independent full controller2949/attempt898/
 execution342/confirmation314/pending443 and respective direct confirmation154/pending560/execution151/
