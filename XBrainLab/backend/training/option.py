@@ -662,18 +662,6 @@ class TrainingOption:
             return "None"
         return parse_optim_name(self.optim, self.optim_params)
 
-    def get_optimizer_repr(self) -> str:
-        """Return a formatted optimizer description string.
-
-        Returns:
-            A string formatted as ``'OptimizerName (param=value, ...)'``,
-            or ``'None'`` if the optimizer is not set.
-
-        """
-        if self.optim is None or self.optim_params is None:
-            return "None"
-        return parse_optim_name(self.optim, self.optim_params)
-
     def get_device_name(self) -> str:
         """Return a human-readable device description string.
 

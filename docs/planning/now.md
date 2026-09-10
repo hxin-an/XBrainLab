@@ -318,7 +318,7 @@ remains1 with no GPU query. Independent finaldiff review approved; production+13
 tests net+93. Four-file Ruff passed after equivalent context-manager syntax correction. No whole
 training/model performance or final native/manual acceptance claim.
 
-**Declared4D — unused training metadata conveniences.** Complete model-family audit retains pinned
+**Completed bounded4D — unused training metadata conveniences.** Complete model-family audit retains pinned
 catalog/provider/recovery and upstream license/provenance groups; finite gradients cover54selectable
 models and actual full workflows6family representatives, not allmodel mathematical correctness.
 Exact hidden callers show model_command_names plus its sole TRAINING_MODEL_NAMES import, four unused
@@ -328,6 +328,21 @@ get_optim_name/get_optim_desc_str, actual numeric/schema validation and all mode
 three production files, roughly-25LOC, no new owner or visible/public Command/Assistant changes.
 Baseline direct catalog/input/options and actual request parser consumers, same after, Ruff and
 independent actualdiff review before separate commit. No tests removed or new compatibility paths.
+Same125passed17.76s before/17.63s after, same6 upstream warnings; production-25, tests unchanged.
+Independent actualdiff review approved; changed-file Ruff passed; no remaining slice finding.
+
+**Declared4E — checked-in GDF training persists actual artifacts.** Full test593 and related public
+workflow251/real-family219 read; persistence owner read ranges remain partial, not full module audit.
+Three savefig/savetxt/makedirs mocks are inert on training; torch.save suppresses actual checkpoint
+bytes. Remove all four mocks from existing checked-in training helper and OOM retry, no conditional
+test-only persistence switch. Existing model is bounded CPU one epoch under test tmp_path; measure
+resulting output size and ensure no external model/cache writes. Reuse existing public-source artifact
+assertions for checkpoint state_dict and EvalRecord safe reload in at least A01T and successful retry;
+retain all3 GDF semantic/training cases. Worker owns this single integration test after baseline5
+training/workflow/retry nodes; main runs same after, omitted-save fault, Ruff and nonauthor review.
+No product change/download/new environment. Native persistence evidence does not prove GUI restart
+reopening: current UI/application reads live records, with no production caller of domain load APIs.
+That missing product workflow is a claim limitation, not authorization to add a feature in cleanup.
 
 Completed2X–2AC are indexed below; their full scope/evidence remains in Git history.
 2AC found an existing shared-environment source hazard: Windows .pth adds the original checkout
