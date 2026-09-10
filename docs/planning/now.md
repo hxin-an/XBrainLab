@@ -44,7 +44,7 @@ UI/test files and root settings. Worktree/branch/source facts come from Git, not
 
 | Module | Includes | Status |
 | --- | --- | --- |
-| 1 Command/state spine | Admission, capabilities, confirmation, publication, owned work, shared domain ports | 1A–1M reviewed; Study conveniences and final shared-spine evidence audit open |
+| 1 Command/state spine | Admission, capabilities, confirmation, publication, owned work, shared domain ports | Responsibility review closed at 1247cf7c; native 178 passed; domain branches explicitly remain modules 2–6 |
 | 2 Import/interpretation | Loaders, BIDS, labels/classes, channel/montage, metadata, recipes, related UI | 2A–2E reviewed; remaining domain implementation/tests audit open |
 | 3 Preprocess/epoch/split | Processing, copies, invalidation, preview/materialization, related UI/tools | Pending |
 | 4 Models/training | Catalog, resource preflight, settings, stop/rerun, history/checkpoints | Pending |
@@ -106,8 +106,9 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 - Recovery reverified: product branch `cleanup/module-quality` is clean at `7b4fc8a0` (22 commits
   after baseline); original dirty UI/test/settings remain intact. Earlier reboot checks verified the
   existing Windows Python and retained caches. Resume from committed source, not ended tool sessions.
-- Active next: finish module 1 Study convenience caller/test audit, reconcile shared-spine inventory
-  and run directly relevant confirmation/publication/owned-work/shutdown closure evidence. Independent
+- Active next: commit reviewed module 2 state/Raw cleanup after final focused evidence; continue
+  loader test consolidation, label/event and remaining BIDS/import/UI audits. Module 1 responsibility
+  closure is independently approved with 178 native cases, not whole-stage completion. Independent
   full state-service test audit read 2,063 lines / 49 functions and found no safe deletion: failure,
   detachment and retry tests protect distinct read-port contracts. Verify existing actual data_lists
   stale-generation/lock tests before treating a file-local coverage gap as a product evidence gap.
@@ -166,6 +167,77 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
   Production +9/-21/net -12, no test changes or new owner. Commit this slice, then run same-head
   shared-spine closure evidence and continue module 2 Raw/loader/state audits. No manual acceptance
   or whole-project completion is implied.
+- 2F committed `1247cf7c`. Shared-spine closure suite now runs against that source (native runtime,
+  confirmation, publication/delivery, owned work, state/read models, observer batching plus actual
+  query/shutdown nodes); no source edits until it finishes. Shared service domain branches/tests
+  stay explicit module 2–6 obligations, not falsely counted as whole-file completion.
+- Next declared 2G state cleanup: independent full 1,932-line state / 1,110-line test audit found
+  restore_session_state, session_checkpoint_is_current and discard_applied have no production
+  callers. Active detached publication/rollback already uses checkpoint/stage/publish and lightweight
+  session identity. Retain those owners and all recipe/epoch-handoff semantics. First migrate
+  useful checkpoint/isolation/revision assertions to actual checkpoint/publish/session_identity
+  behavior; remove only obsolete discard/restore-specific cases after mapping actual failed-apply
+  rollback protection. Replace the discovery test's obsolete restore-method sentinel with an
+  actual no-deepcopy-during-commit check (after prepare), retaining one-shot/publication assertions.
+  Then delete the three unused methods and only their entries in the existing mutator revision guard.
+  Native state/discovery plus actual apply rollback/cancel/stale tests before/after, unchanged
+  semantic assertions, Ruff and independent lifecycle review. Worker owns state source/two direct
+  test files; main owns plan and actual integration verification. No new owner/visible/public change.
+- Shared-spine independent closure approved after inventory reconciliation and native 178-pass run.
+  This is module-1 responsibility closure, not whole service-file/domain or stage completion. Reopen
+  affected evidence if later domain changes alter shared identity/publication/lifecycle behavior.
+- Next bounded 2H Raw cleanup: full Raw source (513 lines) and unit tests (461 lines) read. Whole-tree
+  caller/dynamic name checks find only test callers for has_runtime_signals, has_runtime_detail,
+  has_gdf_duplicate_channel_detail, has_event_str, get_event_name_list_str and get_row_info. Remove
+  those display/convenience helpers after migrating tests to actual signal/detail/event APIs. Retain
+  has_event (EventLoader/export callers), get_tmin (dynamic dataset summary caller), all MNE/event
+  mutation/cache/copy semantics and actual typed dataset row projection. Preserve exact event-name
+  ordering and GDF detail assertions. Delete the no-op test_set_mne_consistency; strengthen existing
+  wipe-events tests with pre-existing imported events/cache so they can detect a missing wipe.
+  Main owns Raw and its direct raw/loader/preprocess/IO test callers only, separate from 2G. Native
+  baseline, improved passing characterization before deletion, same retained tests after plus actual
+  dataset summary protection; changed-file Ruff and independent review. No visible UI/EEG change,
+  extra owner or timing claim. Loader duplicate-test cleanup stays separately mapped, not mixed in.
+- 2G review requires actual post-publish recipe rollback evidence: the existing recipe case fails
+  during prepare; the existing retirement failure reaches publish but had no prior saved recipe.
+  Main extends that retirement case with real prior apply/save and checks restored interpretation,
+  recipe ID/path/content after the injected post-publish failure. No new production behavior.
+  Worker characterization chronology: no original unedited two-file baseline was run; migrated
+  pre-delete tests passed 81 but its environment-assignment warning means cache isolation is not
+  claimed. Fresh-cache after and strengthened nested-isolation rerun each passed 81. Preserve this
+  limitation rather than mislabel these as three equivalent original/characterization/after runs.
+- 2H original native baseline 113 passed / 13 skipped; initial migration 112 passed / same 13 skipped
+  after deleting the no-op case. Skips are existing external public fixtures under unconfigured local
+  fixture path, not the checked-in GDF/multiformat cases; final source-diverse gate remains required.
+  Strengthened eight-case event wipe matrix passed before production deletion; intentional in-memory
+  replacement with set_mne caused all four imported-event cases to fail. No faulty source persisted.
+  Main corrected test fixture aliasing before that probe. Production now removes only six proven
+  test-only conveniences; final after/native typed-summary evidence and review remain.
+- Combined 2G/2H after selection: 130 passed / 13 external-fixture skips / 1 fixture failure. The
+  extended retirement test injected trainer history after service creation without publishing it;
+  the normal stale-publication guard correctly rejected Scan before the intended failure boundary.
+  Publish that test-only injection with existing get_state before review, then rerun the failing
+  test; no product-policy change. All Raw/loader/preprocess/typed-summary cases passed (116 retained
+  Raw selection plus 11 dataset-state and 3 original rollback neighbors). 2H independent review
+  approved production -49 LOC, event ordering and eight-case wipe matrix; no failed source persisted.
+- 2G post-publication failure case now passes after the test-only fixture publication correction.
+  Independent review approved full recipe/ID/path, pipeline and training-history restoration.
+  To remove the earlier cache ambiguity, load exact 1247cf7c state-module source from Git into an
+  isolated native process and run current strengthened tests: 82 passed. First attempt had 81 pass
+  and an inspect-source line-cache mismatch; registering the exact historical source for inspect
+  fixed the harness, not product code. This is retrospective historical-source characterization,
+  not a claim that these final tests ran before edits. Current-source identical selection: 82 passed.
+  2G production -55 LOC; current state ownership and rollback unchanged. 2H retained native selection
+  116 passed / 13 known external-fixture skips, plus 11 typed dataset-state cases and 3 unchanged
+  rollback neighbors passed in the combined run. Both actual diffs are independently approved.
+- Next declared 2I test-only loader consolidation: remove test_loaders.py (six redundant mock cases)
+  and test_lazy_loading.py (two cases), keeping full actual-reader/registration/factory coverage.
+  Map four wrapping cases to parameterized wrapping tests, EDF inference to its richer retained case,
+  failure to retained raw+epochs exception tests, GDF preload to exact call assertion. Main found SET
+  success currently asserts only call count: strengthen that retained case to exact codec/preload args
+  before removing the lazy test. Baseline/characterization/after on these three files; no production
+  change. Preserve real FIF/epochs and checked-in multi-format integration evidence, test denominator
+  reduction exactly eight. Independent diff review and separate test-only rollback commit.
 - Planned 1L observer cleanup: remove the unread QtObserverBridge._observer_callback member (two
   assignments) while retaining Observable/_ObserverSubscription callback ownership, QObject destroyed
   cleanup and finalizer. Replace the test-only empty MockObservable subclass with Observable itself.

@@ -225,63 +225,6 @@ def test_legacy_raw_mutation_invalidation_clears_the_whole_lifecycle() -> None:
     assert state.invalidate_for_legacy_raw_mutation() is False
 
 
-def test_discard_failed_replacement_restores_previous_applied_interpretation() -> None:
-    state = _state()
-    old_scan = _scan(state.next_id("scan"))
-    old_candidate = _candidate(old_scan, state.next_id("candidate"))
-    old_applied = _applied(state, old_candidate)
-    new_scan = _scan(state.next_id("scan"))
-    new_candidate = _candidate(new_scan, state.next_id("candidate"))
-    new_applied = _applied(state, new_candidate)
-    state.record_applied(old_applied)
-    state.record_applied(new_applied)
-
-    state.discard_applied(new_applied.interpretation_id)
-
-    assert state.resolve_applied_interpretation() is old_applied
-    assert state.snapshot().latest_interpretation_id == old_applied.interpretation_id
-
-
-def test_session_checkpoint_restores_applied_and_recipe_state() -> None:
-    state = _state()
-    old_scan = _scan(state.next_id("scan"))
-    old_candidate = _candidate(old_scan, state.next_id("candidate"))
-    old_applied = _applied(state, old_candidate)
-    old_recipe = _recipe(state, old_applied)
-    state.record_applied(old_applied)
-    state.record_recipe(old_recipe, recipe_path="/tmp/xbrainlab/old-recipe.json")
-    checkpoint = state.checkpoint_session_state()
-    new_scan = _scan(state.next_id("scan"))
-    new_candidate = _candidate(new_scan, state.next_id("candidate"))
-    new_applied = _applied(state, new_candidate)
-    state.record_applied(new_applied)
-
-    state.restore_session_state(checkpoint)
-
-    restored_applied = state.resolve_applied_interpretation()
-    restored_recipe = state.resolve_recipe(None)
-    assert restored_applied == old_applied
-    assert restored_recipe == old_recipe
-    assert restored_applied is not old_applied
-    assert restored_recipe is not old_recipe
-    snapshot = state.snapshot()
-    assert snapshot.latest_interpretation_id == old_applied.interpretation_id
-    assert snapshot.latest_recipe_id == old_recipe.recipe_id
-    assert snapshot.recipe_path == "/tmp/xbrainlab/old-recipe.json"
-
-
-def test_session_checkpoint_current_guard_tracks_lifecycle_mutations() -> None:
-    state = _state()
-    checkpoint = state.checkpoint_session_state()
-
-    assert state.session_checkpoint_is_current(checkpoint) is True
-
-    scan = _scan(state.next_id("scan"))
-    state.record_scan(scan)
-
-    assert state.session_checkpoint_is_current(checkpoint) is False
-
-
 def test_session_identity_is_lightweight_and_tracks_same_value_mutation() -> None:
     state = _state()
     scan = _scan(state.next_id("scan"))
@@ -299,26 +242,24 @@ def test_session_identity_is_lightweight_and_tracks_same_value_mutation() -> Non
     assert state.session_identity_is_current(identity) is False
 
 
-def test_empty_legacy_invalidation_keeps_session_checkpoint_current() -> None:
+def test_empty_legacy_invalidation_keeps_session_identity_current() -> None:
     state = _state()
-    checkpoint = state.checkpoint_session_state()
+    identity = state.session_identity()
 
     assert state.invalidate_for_legacy_raw_mutation() is False
 
-    assert state.session_checkpoint_is_current(checkpoint) is True
+    assert state.session_identity_is_current(identity) is True
 
 
 def test_all_session_mutators_advance_the_lightweight_revision() -> None:
     mutation_methods = (
         "next_id",
-        "restore_session_state",
         "stage_session_state",
         "publish_staged_session_state",
         "record_scan",
         "record_preview",
         "record_validation",
         "record_applied",
-        "discard_applied",
         "record_recipe",
         "record_recipe_reload",
         "clear",
@@ -347,7 +288,7 @@ def test_resolved_nested_state_is_documented_read_only() -> None:
         assert "session mutators" in doc
 
 
-def test_restored_session_checkpoint_keeps_nested_values_isolated() -> None:
+def test_checkpoint_isolates_prepare_input_before_staged_publish() -> None:
     source = _state()
     scan = _scan(source.next_id("scan"))
     candidate = _candidate(scan, source.next_id("candidate"))
@@ -355,26 +296,30 @@ def test_restored_session_checkpoint_keeps_nested_values_isolated() -> None:
     source.record_scan(scan)
     source.record_preview(candidate, preview)
     checkpoint = source.checkpoint_session_state()
-    restored = _state()
-
-    restored.restore_session_state(checkpoint)
-    checkpoint.previews[preview.preview_id].metadata_preview.append(
-        {"file": "mutated-after-restore.fif"}
+    preview.metadata_preview.append({"file": "later-source-state.fif"})
+    candidate.class_map["later"] = "Later source class"
+    published = _state()
+    published.publish_staged_session_state(
+        StagedInterpretationSessionState(checkpoint).take(),
     )
 
-    assert restored.snapshot().metadata_preview == [{"file": "sub-01_raw.fif"}]
+    assert published.snapshot().metadata_preview == [{"file": "sub-01_raw.fif"}]
+    assert published.resolve_candidate(None) is not candidate
+    assert published.snapshot().class_map == {"left": "left hand"}
 
 
-def test_staged_session_checkpoint_no_longer_describes_detached_owner() -> None:
+def test_staged_session_transfer_clears_old_owner_and_publishes_new_owner() -> None:
     state = _state()
     scan = _scan(state.next_id("scan"))
     state.record_scan(scan)
 
     staged = state.stage_session_state()
+    published = _state()
+    published.publish_staged_session_state(staged)
 
     assert staged.scans == {scan.scan_id: scan}
     assert state.snapshot().has_scan_result is False
-    assert state.session_checkpoint_is_current(staged) is False
+    assert published.resolve_scan(None) is scan
 
 
 def test_new_label_import_does_not_mutate_previous_recipe() -> None:

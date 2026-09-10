@@ -2735,14 +2735,37 @@ def test_apply_retirement_failure_restores_pipeline_and_training_history(
     eeg_path = source_dir / "subject01_run1.fif"
     eeg_path.write_bytes(b"reviewed EEG identity")
     study = Study()
-    previous_raw = _minimal_raw(tmp_path / "previous.fif")
-    study.set_loaded_data_list([previous_raw], force_update=True)
+    previous_path = tmp_path / "previous.fif"
+    previous_path.write_bytes(b"previous reviewed EEG identity")
+    service = ApplicationService(study)
+    _use_test_raw_factory(
+        service,
+        {
+            str(previous_path): _minimal_raw(previous_path),
+            str(eeg_path): _minimal_raw(eeg_path),
+        },
+    )
+    assert service.execute(ScanSourceCommand(source_path=str(previous_path))).ok
+    assert service.execute(
+        PreviewInterpretationCommand(choices={"skip_labels": True})
+    ).ok
+    assert service.execute(ValidateInterpretationCommand()).ok
+    applied = service.execute(ApplyInterpretationCommand(confirmed=True))
+    assert applied.ok
+    recipe_path = tmp_path / "previous-recipe.json"
+    saved = service.execute(
+        SaveInterpretationRecipeCommand(recipe_path=str(recipe_path))
+    )
+    assert saved.ok
+    interpretation = service.interpretation._service()
+    previous_recipe = interpretation.state.resolve_recipe(None).to_dict()
+    previous_interpretation_id = applied.state.interpretation.latest_interpretation_id
     trainer = Trainer([])
     history_holder = MagicMock(name="completed_apply_training_history")
     trainer.training_plan_holders = cast(Any, [history_holder])
     study.training_manager.trainer = trainer
-    service = ApplicationService(study)
-    _use_test_raw_factory(service, _minimal_raw(eeg_path))
+    # This fixture injects completed history directly; publish it before review.
+    service.get_state()
     assert service.execute(ScanSourceCommand(source_path=str(source_dir))).ok
     preview = service.execute(
         PreviewInterpretationCommand(
@@ -2769,6 +2792,10 @@ def test_apply_retirement_failure_restores_pipeline_and_training_history(
     def _mutate_training_then_fail(expected, *, publish) -> bool:
         del expected
         publish()
+        assert (
+            interpretation.state.resolve_applied_interpretation().interpretation_id
+            != previous_interpretation_id
+        )
         trainer.clear_history()
         study.training_manager.trainer = None
         raise RuntimeError("apply trainer retirement failed after cleanup")
@@ -2789,7 +2816,15 @@ def test_apply_retirement_failure_restores_pipeline_and_training_history(
     assert service.pipeline_transaction.capture() == pipeline_before
     assert study.training_manager.trainer is trainer
     assert trainer.get_training_plan_holders() == [history_holder]
-    assert result.state.interpretation.has_applied_interpretation is False
+    assert result.state.interpretation.has_applied_interpretation is True
+    assert result.state.interpretation.latest_interpretation_id == (
+        previous_interpretation_id
+    )
+    assert result.state.interpretation.latest_recipe_id == (
+        saved.state.interpretation.latest_recipe_id
+    )
+    assert result.state.interpretation.recipe_path == str(recipe_path)
+    assert interpretation.state.resolve_recipe(None).to_dict() == previous_recipe
     publication_after = service.get_view_publication()
     assert (
         replace(

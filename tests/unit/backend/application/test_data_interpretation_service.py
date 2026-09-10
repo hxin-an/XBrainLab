@@ -18,6 +18,9 @@ from XBrainLab.backend.application import (
 from XBrainLab.backend.application import (
     data_interpretation_service as service_module,
 )
+from XBrainLab.backend.application import (
+    data_interpretation_state as state_module,
+)
 from XBrainLab.backend.application import resource_guard
 from XBrainLab.backend.application.commands import (
     ApplyInterpretationCommand,
@@ -118,9 +121,9 @@ def test_discovery_commit_publishes_prepared_state_without_commit_time_copy(
         lambda: pytest.fail("commit copied the live session checkpoint"),
     )
     monkeypatch.setattr(
-        service.state,
-        "restore_session_state",
-        lambda _checkpoint: pytest.fail("commit recopied prepared session state"),
+        state_module,
+        "deepcopy",
+        lambda _value: pytest.fail("commit copied prepared session state"),
     )
 
     _message, payload = _expect_payload(
