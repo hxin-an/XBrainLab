@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `11125166`, 48 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `fca0ac35`, 49 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -166,7 +166,7 @@ two-case-before/one-after plus resume neighbor and Ruff; main non-author review 
 Strengthened three-case baseline passed1.02s before duplicate deletion; retainedtwo passed0.88s,
 Ruff/format passed. Main actual-diff review approved, test +1/-35/net-34; no assertions lost.
 
-**Completed 2AB, pending commit — retire dead montage matching chain, protect live position boundary.** Full source102/direct95 and whole symbol/module/
+**Completed 2AB atfca0ac35 — retire dead montage matching chain, protect live position boundary.** Full source102/direct95 and whole symbol/module/
 script/doc graph show backend/utils/montage_mapping.py is now test-only after2T retired its last
 smart-match consumer. Seven exclusive tests protect no reachable product. Actual safe montage
 mapping, reviewed ApplyMontageCommand and UI normalize_montage_positions remain live. The latter
@@ -185,12 +185,35 @@ new no-mock normalizer cases retained). Both runs report18 upstream MNE/NumPy de
 Ruff/format passed; independent actual-diff review approved. Production -102, tests old95 removed/
 new54 added. No current matching or command behavior changed.
 
-**Next 2AC candidate — two optional BIDS integration roots ignore configured storage.** Main fully
+**Completed 2AC, pending commit — two optional BIDS integration roots ignore configured storage.** Main fully
 read responsiveness165/multisubject416 tests: both hardcode repo tests/fixtures/data/public although
 fetcher and other current consumers honor XBRAINLAB_DATA_DIR via resolve_public_fixture_dir. This
 can skip existing centrally stored data and weaken actual local evidence. Main will add a two-consumer
 configured-root regression under existing fetcher tests, reproduce, then reuse the canonical resolver
 in these two test modules only. No downloads, data move, fixture generation or gate weakening.
+Main owns tests/unit/scripts/test_fetch_public_eeg_fixtures.py and the two integration files.
+Execute module definitions with runpy under configured temporary data root (no tests/download run)
+to observe actual consumer constants; require both to agree with the existing shared resolver.
+Red then green plus existing configured/default/CLI storage tests and Ruff; independent review
+before commit. Production delta0/owners0; optional-fixture availability remains a separate claim.
+First run3failed/3passed included the two expected wrong-root failures and a source-origin failure:
+shared Windows .pth adds original checkout to sys.path, expanding scripts.dev namespace across both
+trees. Main confirmed actual product source is current but scripts namespace includes oldroot.
+Process-only pre-import removal of that exact original path, followed by unchanged existing
+assert_active_checkout_import(Path.cwd()), yielded clean2failed/4passed1.68s; fixed6passed1.58s.
+No environment/.pth or gate was modified. Independent actual-diff review and Ruff/format passed.
+This validates configured-root declarations, not a downloaded-fixture run.
+
+**Queued 2AD — remove Coordinator-only payload forwarding layer.** Entire2400-line coordinator and
+4660-line test audit confirms four static aliases only forward to existing data_interpretation_ui_payload
+functions: _merge_interpretation_choices, _diagnostic_payload, _optional_payload_id, _decision_reason.
+Replace coordinator self-calls with those already imported functions; migrate five choice-merge tests
+to the real helper while preserving every assertion. Keep _choices_after_label_source_change, all
+typed review/session/command ownership, cancellation, receipt handling and callback order unchanged.
+Observer owns coordinator and directasync test only. Main owns plan/baseline/runtime. Baseline whole
+direct async-flow suite once (includes deliberate5.1s delayed-modal case), migrate tests and verify
+focused choice cases before production deletion, then rerun retainedwhole suite and Ruff. Main
+non-author review, production deletion/owner delta0; separatecommit then continue module2.
 
 - Main fully read load_labels_step462 and wizard preview4850; independent reviewer fully read
   label_placement_step2179 and coupled caller/test ranges. Independent workers fully read all7,359
@@ -357,6 +380,7 @@ this table replaces their duplicated active-plan narrative, not any unresolved m
 | 2Y / `26b8c054` | Remove16 unused wizard-private helpers acrossfourfiles; production -224 | Native130 ->128, exactlytwoexclusivecases removed; real sidecar field retained; independentreview and Ruff |
 | 2Z / `4e317328` | Removeignored tree-sizing inputs and equivalent row-count aliases; +4/-21/net-17 | Native10 geometry/rescan cases, Ruff; independent arithmetic/caller review; no visible geometry change |
 | 2AA / `11125166` | Merge duplicate rescan case while preserving all assertions; tests net-34 | Strengthened3before ->retained2after, Ruff; main nonauthorreview |
+| 2AB / `fca0ac35` | Deleteunused fuzzy montage chain/module; production -102 | Native59 ->52, nine new no-mock actualnormalizer cases; sevenexclusiveold removed; same18upstreamwarnings; independentreview/Ruff |
 
 ### Evidence qualifications that remain relevant
 

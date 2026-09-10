@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import runpy
 import sys
 from pathlib import Path
 
@@ -48,6 +49,28 @@ def test_public_fixture_dir_uses_canonical_dataset_storage_when_configured(
 
 def test_public_fixture_dir_keeps_repo_fallback_for_hermetic_ci() -> None:
     assert resolve_public_fixture_dir(environ={}) == fixture_fetcher.PUBLIC_DIR
+
+
+@pytest.mark.parametrize(
+    "consumer",
+    [
+        "test_openneuro_bids_import_responsiveness.py",
+        "test_bids_subject_selection_multisubject.py",
+    ],
+)
+def test_openneuro_integration_consumers_follow_configured_fixture_storage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    consumer: str,
+) -> None:
+    monkeypatch.setenv("XBRAINLAB_DATA_DIR", str(tmp_path))
+    definitions = runpy.run_path(
+        str(fixture_fetcher.ROOT / "tests" / "integration" / "io" / consumer)
+    )
+
+    assert definitions["OPENNEURO_P300_ROOT"] == (
+        tmp_path / "datasets" / "public-fixtures" / OPENNEURO_P300_NAME
+    )
 
 
 def test_cli_output_dir_overrides_configured_dataset_root(
