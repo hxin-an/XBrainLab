@@ -126,8 +126,14 @@ PowerShell 執行。
 poetry run python run.py
 ```
 
-Repository root 的 `settings.json` 保存本機 runtime 設定，不屬於 feature change，必須維持
-uncommitted。
+Assistant 設定預設保存於 OS 的 per-user XBrainLab config 目錄，Windows 為
+`%APPDATA%\XBrainLab\settings.json`；可用 `XBRAINLAB_CONFIG_DIR` 明確指定設定根目錄。
+指定時，Qt 視窗／對話框偏好也寫入該目錄下的 `qt-settings/*.ini`；未指定時維持原生 Qt 使用者儲存。
+這個 override 不會搬移既有 Qt 偏好，也不會變更 model／RAG cache 位置。
+
+Repository root 的 `settings.json` 是受保護的舊本機設定，僅在 per-user 設定尚不存在時參與
+既有一次性匯入；不要 stage、覆寫或 revert。產品不會自動載入 `.env`，需要的環境變數請由
+啟動 shell 設定。
 
 ## Windows 上透過 WSLg 輸入中文
 

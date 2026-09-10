@@ -19,11 +19,10 @@
 | 這次修改 | 測試入口 |
 | --- | --- |
 | 一個明確行為或錯誤 | [執行對應的 pytest test file 或 test node](developer/testing.md#focused-test) |
-| Backend | [Backend 測試集](developer/testing.md#domain-test) |
-| 桌面 UI | [UI 測試集](developer/testing.md#domain-test) |
-| Assistant 或 tool call | [LLM suite、五份 GUI walkthrough 與真模型測試](developer/testing.md#tool-call-tests) |
+| Backend／桌面 UI | [對應 workflow 的 focused test，再按風險擴大](developer/testing.md#focused-test) |
+| Assistant 或 tool call | [Contract、GUI walkthrough 與真模型證據的適用邊界](developer/testing.md#tool-call-tests) |
 | 文件網站 | [文件 portal build](developer/testing.md#docs-test) |
-| 候選版本 | [執行完整 handoff manifest](developer/testing.md#handoff) |
+| 候選版本 | [核對同版本 CI 與適用交付證據](developer/testing.md#handoff) |
 
 完整命令、適用時機，以及每項結果可以證明到什麼程度，見[測試與驗證](developer/testing.md)。
 

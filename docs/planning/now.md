@@ -107,7 +107,27 @@ Git recovery checkpoint: product branch `cleanup/module-quality`, HEAD `e49a3121
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
-**Current work — shared UI callback/test cleanup and scripts; module2–6 closure gaps and explicit decisions remain open.**
+**Current work — developer docs/config truth and remaining scripts; module2–6 closure gaps and explicit decisions remain open.**
+
+**Bounded9M — remove stale developer instructions without weakening gates.** Main fully read developer
+setup214/testing406/index32/map32/change56, root README69, docs index52 and local dev configs. Testing
+guide still demands a full manifest for every candidate, contradicting the existing validation L0–L3
+contract and handoff workflow; it also says capture clears native geometry after9L2 removed that action.
+Synchronize these exact statements and docs index navigation with existing authority: focused checks
+first, same-head applicable CI for delivery, full unchanged manifest only when explicitly required.
+Document current capture-owned settings lifetime, retaining legacy preflight normalization limitation.
+Clarify actual per-user settings versus protected root legacy import using platform_paths/config and
+9K Qt adapter; do not change config/loading behavior or model selection. Remove orphan .env.example
+comments-only template (no loader/reference, deleted download planner, obsolete cache path); keep actual
+environment-variable support and dependency decisions separate. No product/UI behavior, version or
+public gate changes. Independent source-backed doc review, link/user-site checks and strict portal
+build in existing environment; no new environment/downloads. Continue modules after docs slice.
+Result: independent source-backed doc/deletion review and diff check pass. User-site source validation
+and guidance audit (ok=true/no errors) pass. Strict portal build cannot start: sole Windows environment
+and system Python both lack MkDocs; no install/new environment was attempted. Owned build temp root
+was cleaned by its creator. Existing same-head docs CI must supply strict build/built-site evidence
+before final delivery;9M is source-reviewed, not a successful site-build claim. Deleted .env.example
+contains only stale comments and is recoverable from Git; no user .env/config/model/data was removed.
 
 **Bounded7J — retire test-only window bounds forwarder.** Full main geometry lifecycle373/placement439
 and direct185/193/integration332 retain sole Qt restore/show/persist owner and pure multi-screen policy.

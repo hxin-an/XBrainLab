@@ -1,7 +1,8 @@
 # 測試與驗證
 
-如果只修改一個功能，先跑能直接觀察該功能的測試；不要一開始就跑全部測試。只有準備交付
-候選版本時，才需要執行完整 handoff 驗證。
+如果只修改一個功能，先跑能直接觀察該功能的測試；不要一開始就跑全部測試。交付候選版本時，
+依[驗證契約](../validation/README.md#daily-checks-and-pr-delivery)確認同版本的適用 CI 與專項證據；
+完整 release dossier 另有明確適用條件，不是每個 PR 都要重跑的本機流程。
 
 本頁所有命令都要在 repository root 執行。
 
@@ -12,11 +13,11 @@
 | 這次改了什麼 | 先執行 | 接著看 |
 | --- | --- | --- |
 | 一個函式、錯誤或明確行為 | 直接覆蓋該行為的 pytest test file 或 test node | [只測這次修改](#focused-test) |
-| Backend | Backend 測試集 | [命令與說明](#domain-test) |
-| 桌面 UI | UI 測試集 | [命令與說明](#domain-test) |
-| Assistant 或 tool call | LLM 測試集 | [三層 tool-call 測試](#tool-call-tests) |
+| Backend | 對應 command／service 的 focused test | [擴大到功能區的時機](#domain-test) |
+| 桌面 UI | 對應元件／workflow 的 focused test | [擴大到功能區的時機](#domain-test) |
+| Assistant 或 tool call | 對應 contract／執行邊界的 focused test | [三層 tool-call 測試](#tool-call-tests) |
 | 文件或 MkDocs | 文件 portal build | [命令與說明](#docs-test) |
-| 準備交付候選版本 | 完整 handoff manifest | [準備交付候選版本](#handoff) |
+| 準備交付候選版本 | 同版本適用 CI；補齊缺少的必要證據 | [準備交付候選版本](#handoff) |
 
 測試通過只代表該測試實際觀察到的行為通過。例如，unit test 通過不代表真人操作 GUI 已通過，
 真模型選對工具也不代表工具已成功執行。
@@ -63,7 +64,7 @@ timeout 10m prlimit --core=0 -- \
 ## 測整個功能區 { #domain-test }
 
 Repository runner 會替容易發生 native crash 的測試設定 headless 環境、程序隔離和 timeout。
-先選與這次改動相符的一個功能區：
+只有共享邊界變更、失敗或未解的相鄰風險需要擴大證據時，才選與改動相符的一個功能區：
 
 | 功能區 | 命令 |
 | --- | --- |
@@ -99,17 +100,21 @@ poetry run python scripts/dev/run_tests.py --help
 ```bash
 poetry run ruff check path/to/changed.py tests/path/test_changed.py
 poetry run ruff format --check path/to/changed.py tests/path/test_changed.py
-poetry run python scripts/dev/run_basedpyright_regression.py
 git diff --check
 ```
 
 - `ruff check`：檢查 lint 問題。
 - `ruff format --check`：檢查格式，但不修改檔案。
-- `run_basedpyright_regression.py`：確認型別檢查沒有增加新的 diagnostic。
 - `git diff --check`：檢查 diff 的空白與 patch 格式。
 
-Basedpyright runner 會使用 repository 內已提交的 allowlist。不要用型別分析器自動產生的新
-baseline 取代它，否則可能把新問題一起接受進去。
+完整型別檢查由同版本 CI 提供；需要本機診斷型別問題時執行：
+
+```bash
+poetry run python scripts/dev/run_basedpyright_regression.py
+```
+
+這是全專案分析，不是 changed-file lint。Runner 使用 repository 內已提交的唯讀 allowlist，
+確認沒有增加新的 diagnostic。不要自動產生新 baseline 取代它，否則可能把新問題一起接受進去。
 
 ## 測文件網站 { #docs-test }
 
@@ -367,13 +372,19 @@ timeout 10m prlimit --core=0 -- \
   --output-dir build/dev-artifacts/chatpanel-local-tool-chain
 ```
 
-這個命令需要可見的 Qt display。為了產生可重複比較的截圖，它會清除 XBrainLab 儲存的主視窗
-位置與大小，並在 `build/dev-artifacts/` 寫入 transcript、JSON 和 screenshots。它只檢查三個
-指定 action，不代表全部 18 個可執行 action 都完成端到端驗證。
+這個命令需要可見的 Qt display。Capture 在自有暫存設定目錄中執行並沿用目前支援的模型設定，
+不清除正常使用的主視窗位置與大小；結束後釋放該暫存目錄。開始前仍沿用產品既有的設定載入／
+退役模型正規化政策，不代表所有舊設定都完全唯讀。Transcript、JSON 和 screenshots 寫入
+`build/dev-artifacts/`。它只檢查三個指定 action，不代表全部 18 個 action 都完成端到端驗證。
 
 ## 準備交付候選版本 { #handoff }
 
-這不是日常開發命令。只有要宣稱某個 exact commit 已經 handoff-ready 時才執行完整 manifest。
+一般 PR 依[驗證契約](../validation/README.md#daily-checks-and-pr-delivery)核對同一 exact commit 的
+全部適用 CI、資料／平台／UI／Assistant 證據。已成功的同版本 CI 不在本機重跑；本機只補缺少的
+必要證據。Missing、pending、stale、cancelled 或 failed checks 都不能視為通過。
+
+只有明確要求完整 release dossier，或適用能力契約要求時，才執行下列完整 manifest；
+它不是每個 PR 或每次修改的預設命令，也不能以刪減 sections 的結果宣稱完整 dossier 通過。
 
 Runner 會要求來源已 commit、工作區狀態符合規則，而且 exact source 已 push。先填入實際 cache
 路徑和候選 branch：
@@ -390,8 +401,9 @@ poetry run python scripts/dev/run_handoff_validation_manifest.py \
 ```
 
 完整 gate 清單的唯一權威來源是 `scripts/dev/handoff_gate_spec.py`，不要把其中的命令複製到其他
-文件後自行刪減。若 required gate 缺少、不同 gate 使用不同 SHA、CI 尚未成功，或必要的人工驗收
-不存在，就不能宣稱 handoff-ready。
+文件後自行刪減。缺少適用 gate、不同 gate 使用不同 SHA 或 CI 尚未成功，都不能宣稱
+handoff-ready。工程證據通過後才交付 Windows 原生手測；產品合併仍需使用者對該 source
+明確回報手測通過並同意 merge，自動證據不取代這項批准。
 
 ## 怎麼回報測試結果
 
