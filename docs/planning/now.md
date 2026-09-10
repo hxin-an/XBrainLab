@@ -164,6 +164,18 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
   plus changed-observation rejection before repair, then rerun native recipe reload cases and resource
   reader protection. No UI/public contract/new owner; separate small commit and independent review.
   This prerequisite does not close or replace the 2C deletion work or the remaining module stage.
+- 2C evidence migration committed as `1c7ba6fc`; no production deletion in that commit. The 2E
+  worker owns only recipe fingerprint and its regression tests; main preserves those files until
+  release. Concurrent bounded 1M closes the observer compatibility-property finding: `_batch_depth`
+  and `_pending_events` have only two unit-test callers, no runtime/registry/config consumers.
+  Delete those two views of existing ContextVar state and stale attribute docs. Replace the tests'
+  implementation-state assertions with public notify/notifications_deferred outcomes, retaining
+  batching exception, callback delivery and concurrency assertions. Baseline the same observer/batch
+  tests before and after, plus publication-delivery neighbors and independent review. No owner/API
+  contract/UI change; one rollback commit. Continue 2C immediately after the prerequisite repair.
+- 1M original baseline, public-behavior characterization and after-delete runs each passed 33 native
+  cases; Ruff/format passed. Independent reviewer approved no remaining runtime/dynamic callers and
+  preserved callback/batch/publication behavior. Production -17 LOC; no owner or visible behavior change.
 
 ### Earlier slice declarations and evidence
 

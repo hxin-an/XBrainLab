@@ -56,8 +56,8 @@ class TestNotify:
         assert received[0] == ((1, 2), {"key": "val"})
 
     def test_notify_no_subscribers(self, obs):
-        obs.notify("no_event")
-        assert obs._pending_events == {}
+        assert obs.notify("no_event") is True
+        assert obs.notifications_deferred is False
 
     def test_notify_multiple_subscribers(self, obs):
         calls = []

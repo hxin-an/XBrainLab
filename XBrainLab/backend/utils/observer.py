@@ -42,9 +42,6 @@ class Observable:
 
     Attributes:
         _observers: Mapping of event names to lists of callback functions.
-        _batch_depth: Nesting depth of ``batch_notifications`` contexts.
-        _pending_events: Events deferred during a batch that will be
-            emitted once all nested batches are exited.
 
     """
 
@@ -60,20 +57,6 @@ class Observable:
         self._batch_sequence: int = 0
         self._active_batch_generations: set[int] = set()
         self._batch_delivery_results: dict[tuple[int, str], bool] = {}
-
-    @property
-    def _batch_depth(self) -> int:
-        """Compatibility view of the current execution context's nesting depth."""
-        state = self._batch_state.get()
-        return state.depth if state is not None else 0
-
-    @property
-    def _pending_events(
-        self,
-    ) -> dict[str, tuple[tuple[Any, ...], dict[str, Any]]]:
-        """Compatibility view of events deferred by the current context."""
-        state = self._batch_state.get()
-        return state.pending_events if state is not None else {}
 
     @property
     def notifications_deferred(self) -> bool:
