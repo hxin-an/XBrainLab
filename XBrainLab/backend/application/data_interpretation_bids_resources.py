@@ -189,13 +189,6 @@ class BidsEventsJsonReader:
     )
     _verified_cache_keys: set[str] = field(default_factory=set, init=False)
 
-    @property
-    def admitted_file_bytes(self) -> dict[str, int]:
-        """Expose the previous size-only view for diagnostics compatibility."""
-        return {
-            path: identity.file_bytes for path, identity in self.admitted_files.items()
-        }
-
     def content_identities(
         self,
         paths: Iterable[str] | None = None,

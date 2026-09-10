@@ -172,7 +172,41 @@ consumer selection 18 passed. Independent actual-diff approval, Ruff/format/diff
 An isolated reversed-row fault makes both new real Raw cases fail on timestamps/prior values;
 no faulty file persisted (first argv-based probe had a quoting SyntaxError, not test evidence).
 Production +5/-126/net -121; the helper alone is about 94 lines, not the total reduction.
-Commit this slice, then continue remaining import domain audits, not manual handoff.
+2K committed `0e1c096c`; continue remaining import domain audits, not manual handoff.
+
+**Next bounded 2L — remove unused BIDS size-only view.** Independent full channels/resources and
+main caller/property audit found BidsEventsJsonReader.admitted_file_bytes has no production, test,
+dynamic/config/script/doc consumers. Delete only this seven-line compatibility projection; retain
+actual content_identities, admitted content binding, per-command freshness/budget and parsed cache.
+Main owns this one file/plan; baseline and after direct BIDS events-resource suite, unchanged tests,
+Ruff and independent diff review. No replacement API/owner, UI/public/recipe semantics or performance
+claim. If baseline exposes a real defect, separate its diagnosis before this deletion.
+2L complete focused evidence: identical native 28 passed before/after, no test changes or skips;
+Ruff/format/diff check and independent review approved. Production -7 LOC; commit next.
+
+Read-only audits continue: worker fully reviews label carrier/field/format boundaries and tests;
+shared BIDS index/cache audits retain distinct registry/command ownership and byte freshness checks.
+The tiny subject-catalog wrapper is not deleted merely to reduce module count: its optional index
+freshness/rebuild and error normalization need preservation; no blocking redundancy established.
+
+**Next bounded 2M — unused label-carrier projections.** Independent complete label-carrier source
+audit plus main helper/caller/semantic-owner read found _sidecar_reader_for_plan and
+observed_class_map_for_label_carrier unused everywhere; infer_class_map_from_label_carrier_plan has
+only four test callers. Delete these three conveniences and resulting unused imports after migrating
+the four assertions to actual derive_class_views(plan)[0]. They check resolved/unresolved names,
+not the retired helper's arbitrary display cap. Preserve full expected maps and all actual value
+decision, admitted reader, cache-vs-streaming and BIDS recommendation semantics. Worker owns
+data_interpretation_label_carriers.py and its direct test file only; main owns plan/native validation.
+Native original direct suite, migrated same suite before production deletion, identical after,
+actual event-value/recipe neighbors, Ruff and independent review; no new owner/UI/public schema.
+2M original direct suite: native 35 passed before any test or production edits.
+
+Module-8 entry audit read current Windows bootstrap and separately supported WSL launcher routes.
+Retain distinct cmd/PowerShell bootstrap/exit wrappers and bounded input-method readiness waits;
+no measured redundant waiting established. One false WSL log message remains: child output goes
+only to terminal by privacy design, while text claims launcher-log mirroring. Correct only after
+declaring a bounded truth-sync slice and reading its existing privacy tests; no Windows GUI relaunch
+or environment change is part of that audit.
 
 **Remaining module-2 work.**
 Continue event/label semantics, BIDS, channel/montage and related UI review. Modules 3–9 remain open.
