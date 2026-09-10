@@ -281,27 +281,6 @@ class DatasetActionHandler:
     def _recipe_save_block_reason(self) -> str | None:
         return self._data_interpretation._recipe_save_block_reason()
 
-    def on_import_finished(self, success_count, errors):
-        """Handle the import-finished callback from the controller.
-
-        Shows warnings for failures. Successful compatibility imports already emit
-        ``data_changed``, and that observer event owns the panel refresh.
-
-        Args:
-            success_count: Number of files successfully imported.
-            errors: List of error message strings for failed imports.
-
-        """
-        if errors:
-            error_msg = "\n".join(errors[:10])
-            if len(errors) > 10:
-                error_msg += f"\n...and {len(errors) - 10} more errors."
-            show_warning(
-                self.panel,
-                "Import Warnings",
-                f"Failed files:\n{error_msg}",
-            )
-
     def open_smart_parser(self):
         """Open the smart-parser dialog to auto-extract metadata from filenames.
 

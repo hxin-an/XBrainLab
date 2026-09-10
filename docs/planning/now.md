@@ -50,9 +50,9 @@ UI/test files and root settings. Worktree/branch/source facts come from Git, not
 | 4 Models/training | Catalog, resource preflight, settings, stop/rerun, history/checkpoints | Core/model/resource/record/UI audit substantially complete; final inventory, convenience retirement and two visible decisions remain open |
 | 5 Evaluation/saliency/views | Read/publication, SmoothGrad/recompute, four views, stale work/render lifecycle | Core/attribution/3D/publication integration fully read; script/inventory reconciliation and two explicit retirement decisions remain open |
 | 6 Assistant/chat | Tool adapters, turns/confirmation/execution, model/RAG lifecycle and shutdown | Core/runtime/RAG/controller/chat source and major tests deeply audited; adapters/helpers/inventory and explicit retirement decisions remain open |
-| 7 Shared desktop/runtime | Shell/navigation, shared components, configuration, errors/logging/start/close | Shell/navigation/shared owners reviewed7A–7M; remaining shared UI tests/inventory and module closure review open |
+| 7 Shared desktop/runtime | Shell/navigation, shared components, configuration, errors/logging/start/close | Shell/navigation/shared owners reviewed7A–7N; actual Qt config routing fixed9K; inventory and module closure review open |
 | 8 Scripts/dev/CI | Launch/setup, Poe/hooks, runners, walkthroughs/evaluators/reports and artifacts | Launch/setup/CI/runners/reviewer-capture reviewed; remaining scripts/walkthrough/inventory open |
-| 9 Cross-module tests/docs | Shared fixtures/guards, dependencies, canonical truth/navigation and coverage gaps | Fonts/RNG/VRAM/weight/refresh evidence strengthened9A–9G; docs/deps/remaining fixtures and full coverage evidence open |
+| 9 Cross-module tests/docs | Shared fixtures/guards, dependencies, canonical truth/navigation and coverage gaps | Fonts/RNG/VRAM/weight/refresh/settings evidence strengthened9A–9L; docs/deps/remaining fixtures and full coverage evidence open |
 
 Each module includes its callers, tests and related scripts. Domain UI belongs to its domain module;
 shared UI belongs to module 7. Script infrastructure has a separate complete review in module 8.
@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `f3554558`, 146 commits after baseline
+Git recovery checkpoint: product branch `cleanup/module-quality`, HEAD `e49a3121`, 151 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -428,6 +428,30 @@ direct native-preference clear helpers and their capture callers are gone; produ
 Scope limit: valid host settings remain byte-identical in tests. Existing Assistant preflight
 load_from_file may normalize retired host configurations before isolation; that public policy remains
 unchanged, so this is capture-time isolation, not a blanket no-write guarantee for legacy preflight.
+
+**Bounded7N — retire an orphan import callback and collapse identical admission paths.** Main's
+caller trace supersedes the earlier9I warning-test consolidation candidate: DatasetActionHandler's
+on_import_finished has only three dedicated tests, no source/script/docs/config/Qt-registration caller.
+Pure Python action handler construction binds explicit typed coordinator callbacks, not this obsolete
+controller completion hook. Verify independently before deleting the method and exclusive tests;
+retain all live import warnings, publication-driven refresh and command contracts.
+In coordinator.import_data, missing scan capability returns identical blocked message for real/nonreal
+contexts; after that return, scan_capability is provably non-None and a later compatibility branch is
+unreachable. Collapse only these branches, preserving exact warning/error/outcome and chooser/async
+ordering. No new policy owner, compatibility shim, UI copy/layout change or data semantics. Two
+production files, expected net decrease; user-approved unchanged-visible UI internals apply.
+Start with current DatasetActionHandler suite, then parameterize existing strong missing-capability
+case across real Study and fixture context before retiring two weaker cases. Keep distinct no-sync/
+no-command-bypass/worker tests. Independent caller+diff review, retained focused suite, one intentional
+admission-guard omission, Ruff. Three dead-callback tests are retired with their unused capability,
+not treated as replaced live coverage. Then continue module/script inventory, not manual handoff.
+Result: original28passed2.29s; stronger two-context admission baseline2passed0.68s before production
+edits; retained24passed2.25s after. In-memory omission of the admission guard makes both stronger
+cases fail because the chooser is opened; no source fault persisted. Removed three orphan tests and
+two weak duplicates, added one parameter value (net-4 cases), without reducing live no-bypass/worker
+protection. Production two files +6/-52/net-46; tests +5/-38/net-33; owners unchanged. Independent
+caller/actual-diff review and three-file Ruff/format pass. This is bounded import evidence, not full GUI
+or module closure. Next: finish script dispositions and remaining script/docs/dependency deep audit.
 
 **Module8 CI/Poe disposition.** Independent full ci925/docsworkflow83/pyproject314 plus routing109,
 artifact verifier216/direct311 and reliability409/UI40/data58/integration-trigger24 retains distinct

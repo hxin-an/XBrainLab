@@ -445,18 +445,6 @@ class DataInterpretationActionCoordinator:
                 message,
             )
             return InteractionOutcome.blocked(message)
-        if scan_capability is None and self._bindings.has_real_application_context(
-            self.panel
-        ):
-            self._bindings.show_warning(
-                self.panel,
-                "Interpretation Blocked",
-                _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
-            )
-            return InteractionOutcome.blocked(
-                _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE
-            )
-
         if scan_capability is None:
             self._bindings.show_warning(
                 self.panel,
@@ -506,26 +494,13 @@ class DataInterpretationActionCoordinator:
             )
             if outcome is not None:
                 return outcome
-            if scan_capability is not None:
-                message = "Data Interpretation command service is unavailable."
-                self._bindings.show_error(
-                    self.panel,
-                    "Interpretation unavailable",
-                    message,
-                )
-                return InteractionOutcome.failed(message)
-            if self._bindings.has_real_application_context(self.panel):
-                self._bindings.show_warning(
-                    self.panel,
-                    "Interpretation Blocked",
-                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
-                )
-                return InteractionOutcome.blocked(
-                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
-                )
-            return InteractionOutcome.blocked(
-                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
+            message = "Data Interpretation command service is unavailable."
+            self._bindings.show_error(
+                self.panel,
+                "Interpretation unavailable",
+                message,
             )
+            return InteractionOutcome.failed(message)
         except Exception:
             message = self._bindings.present_unexpected_error(
                 self.panel,
