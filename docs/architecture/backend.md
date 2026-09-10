@@ -773,7 +773,6 @@ compatibility path 顯示的是固定的 public unavailable message，不是 bac
 - saliency params
 - training plan generation
 - training start / stop
-- export evaluation CSV
 - trainer cleanup
 
 重要行為：

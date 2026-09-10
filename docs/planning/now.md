@@ -109,6 +109,22 @@ old session IDs and plan text do not prove a process is running. No manual candi
 
 **Current work — developer docs/config truth and remaining scripts; module2–6 closure gaps and explicit decisions remain open.**
 
+**Bounded9Q — remove stale architecture cache/status/dispatch claims.** Independent full agent543/
+target425/backend860/data-pipeline430 and main's affected source traces identify: unconditional old
+repo-local cache default, dated host cache/benchmark values presented among current runtime facts,
+TrainingManager CSV-export responsibility after5A retirement, undated dashboard PASS, and data-pipeline
+next-slice instructions outside Now. Replace physical cache/config claims with existing platform/explicit
+override owners and narrow WSL launcher policy; preserve model/revision/quota/fail-closed contracts,
+normal JSON/NPZ result persistence and all actual dataset limitations. Remove obsolete measurements
+and dispatch instead of moving them to a new record; Git remains historical provenance. Describe
+evidence kinds and link canonical validation/Now, not fresh PASS or new target. Target files unchanged.
+Independent actualdiff/source-backed review, guidance/source-link checks, diff check. Strict site build
+remains the already-known missing-MkDocs/final same-head CI obligation; do not rerun that unavailable
+tool or install another environment. Continue unfinished module audit after this doc-only slice.
+Result: independent actual source/authority/link review approved; user-site source validation,
+guidance audit (ok=true/no errors) and diff check pass. Three architecture pages net-25 lines;
+no new record/target/contract. Final same-head strict docs build remains open; not site-build complete.
+
 **Bounded9L3 — extend existing capture preferences isolation to two uncovered native entries.**
 Independent caller trace and main's complete short main/lifecycle reads find human-like capture closes
 real MainWindow (therefore persists normal host geometry), while UI/UX capture reads native geometry

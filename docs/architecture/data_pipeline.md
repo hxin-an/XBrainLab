@@ -316,13 +316,15 @@ Tiny synthetic training integration、checked-in GDF training smoke 與 successf
 
 ## Evidence Matrix
 
-| Evidence | 目前狀態 | 代表意思 | 不代表 |
+| Evidence | 驗證入口 | 代表意思 | 不代表 |
 | --- | --- | --- | --- |
-| Real-data IO integration | `PASS` in fast dashboard | 多格式 real fixtures 可 import。 | 完整 training / thesis reproducibility。 |
+| Real-data IO integration | `tests/integration/io/test_io_integration.py`；dashboard 有對應 gate | 驗證所選 real fixtures 的多格式 import。 | 當前 source 已通過、完整 training / thesis reproducibility。 |
 | Checked-in GDF+MAT dataset generation | tests exist | A01T/A02T/A03T 可 attach labels、preprocess、epoch、generate dataset。 | 所有資料集來源都正確。 |
 | Checked-in GDF+MAT training smoke | tests exist | A01T/A02T/A03T 可 one-epoch training smoke。 | accuracy 有意義或 protocol 可發表。 |
 | Public cross-source workflow smoke | local-only tests exist | PhysioNet EDF、BBCI GDF 走 training smoke；SCCN EEGLAB、tiny CNT 保留為 import/preprocess boundary，沒有足夠 reviewed classes 時明確阻止 supervised epoch。 | fixture 一定存在於乾淨 clone，或 thesis-grade reproducibility 完成。 |
-| Tiny E2E pipeline smoke | `2 passed in 7.54s` on 2026-05-01 | synthetic / Study train cycle 有基本閉環。 | real-world data 全面可信。 |
+| Tiny E2E pipeline smoke | synthetic / Study training integration tests | 驗證最小 train cycle 與暫存 artifact 重讀。 | real-world data 全面可信。 |
+
+這是證據種類與邊界，不是當前測試結果；同版本執行要求由[驗證契約](../validation/README.md)擁有。
 
 ## 目前可信結論
 
@@ -409,22 +411,4 @@ Data Import wizard baseline 和仍未完成的產品化差距，不是新增目�
 | Wizard polish | Current implementation is a task-oriented step-panel dialog with step-specific cards, left-side Cancel and right-side navigation/apply. Exact-source screenshots are generated under ignored handoff evidence. | Human Windows desktop acceptance is still needed; offscreen screenshots are product evidence but not release approval. |
 | Grouped checklist hierarchy | action items are structured and rendered as target-step review cards. | Very long review text may still need a detail drawer or row expansion after human walkthrough. |
 
-### 建議下一個 backend slice
-
-不要先大改整個 importer。下一個有效切片應是：
-
-1. 補 event extraction summary，讓 internal GDF / BIDS events 的 class cues 更容易人工確認。
-2. 把 metadata Smart Parse provenance 寫進 recipe trace。
-3. 補 screenshot / walkthrough artifact：EEG files 在 `eeg/`、labels 在 sibling `labels/`，使用者能
-   attach labels 並完成 preview / validate / apply。
-
-## 後續重構前要做
-
-1. 把 import / label / preprocess / epoch / dataset / training 的 command boundary 畫清楚。
-2. 決定哪些 data pipeline operation 要進 Application Service / Command API。
-3. 定義 dataset testing 在穩定化階段的 scope：
-   - checked-in fixtures
-   - local-only public fixtures
-   - optional downloaded fixtures
-   - thesis experiments
-4. 把 real-data IO、dataset generation、training smoke、reproducibility 分開記錄，不混成一個「支援資料集」claim。
+目前施工與下一個切片只由 [Now](../planning/now.md)擁有；本頁的已知邊界不構成新的實作授權。
