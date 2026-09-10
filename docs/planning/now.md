@@ -384,7 +384,7 @@ Same real Windows QPA windows24cases pass4.94s before/5.09s after; five-file Ruf
 main nonauthor actualdiff review passed. Exactly six inherited calls, same keyword/geometry path;
 production+6/-28/net-22, no test changes or visible behavior change.
 
-**Declared 3K — unused dataset metadata conveniences and direct test quality.** Main/independent
+**Completed bounded 3K — unused dataset metadata conveniences and direct test quality.** Main/independent
 full dataset/data_splitter source and tests plus whole-tree callers identify get_ori_name, three
 enum repr conveniences and get_raw_value as test-only. Remove these five methods/exclusive
 assertions after baseline, retaining actual get_name/get_value/get_split_unit/get_splitter_option,
@@ -393,6 +393,9 @@ mask in test_dataset_set_test_mask before deletion; remove one exactly duplicate
 param only after baseline. Two production/two existing test files, zero new owner/semantic change.
 Use direct splitter/dataset/generator cases before and same retained cases after, exact removed
 count, Ruff and independent actualdiff review; a separate reversible commit, then continue module3.
+Stronger baseline113passed4.37s; retained112passed4.35s, exactly one duplicate parametrization
+removed. Production-49/tests+1/-12/net-11; parser/name/mask consumers unchanged. Independent actual
+diff and main review approved; four-file Ruff passed.
 
 **Declared 3L — real BIDS epoch receipt scope/context.** Extend the existing integration duration
 fixture and genuine Scan/Preview/Validate/Apply workflow. Cover changed t_min/t_max/event IDs with
@@ -413,6 +416,18 @@ its error semantics. Current public state-read-failure test remains required evi
 Additional inventory finding, not yet changed: dataset dialog package __all__ lists retired
 ImportLabelDialog absent from its lazy export map; no source/test/script/doc consumer. Retire the
 stale declaration in a separately declared package cleanup after actual lazy-export characterization.
+
+**Module4 bounded read-only audit (not closure or implementation permission).** Independent full
+model_catalog892/braindecode_catalog408/catalog_contract20/model_holder117/input_contract201/
+option909/training_service687/model_base.__init__7/training.__init__23 =3264source lines, plus
+catalog662/model_holder114/option450direct tests. Resource guard only1290–1925,2255–2341 and
+training_runtime1–190,280–355 were read; full resource/training closure stays pending. Retain static
+catalog browsing (no provider import), stable identity/provider admission, numeric/device/class-weight
+validation, conditional model context and single configure/build/preflight/receipt owner. Actual
+preflight differs intentionally from advisory preview. Catalog command-name helper/input aliases and
+optimizer repr duplicate have no consumers; TestOnlyOption and its export are used only by exclusive
+tests, while actual manager accepts base TrainingOption. Declare separate baseline slices before
+removing these. Manager option contract310–456/direct346–429 read only; not whole-manager audit.
 
 Completed2X–2AC are indexed below; their full scope/evidence remains in Git history.
 2AC found an existing shared-environment source hazard: Windows .pth adds the original checkout
@@ -633,6 +648,7 @@ this table replaces their duplicated active-plan narrative, not any unresolved m
 | 3G / `d86efa15` | Retire unused Epochs picker chain; production-538 | 307 obsolete collected cases removed (corrected actual parametrization count), actual manual Generator retained; combined291pass, independentreview/Ruff |
 | 3H / `3e556a98` | Actual RAM-before-deepcopy test replaces exclusive fake; testsnet-7 | Direct/adjacent37 retained; strengthened actual-copy node1pass and omitted-check fault caught; independentreview/Ruff |
 | 3I / `db4670d7` | Normalize/validate split command once; productionnet-10/testsnet+30 | Real defaultNone vs explicitempty replacement; retained47pass; exact public message, independentreview/Ruff |
+| 3J / `e77e389c` | Dialogs reuse inherited geometry owner; dead reference aliases removed; productionnet-22 | Same24 Windows QPA windows cases before/after, no visible change; main nonauthorreview/Ruff |
 
 ### Evidence qualifications that remain relevant
 

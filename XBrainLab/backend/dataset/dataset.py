@@ -65,10 +65,6 @@ class Dataset:
         """Get the formatted name of the dataset."""
         return self.name
 
-    def get_ori_name(self) -> str:
-        """Get the original name of the dataset."""
-        return self.name
-
     def get_resource_fingerprint_revision(self) -> int:
         """Return the monotonic revision for training-admission freshness."""
         return int(getattr(self, "_resource_fingerprint_revision", 0))
