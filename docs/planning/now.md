@@ -152,13 +152,16 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 - 1N native before/after: 158 / 146 passed on identical four-file selection. Exactly 12 loader/export
   exclusive cases removed; real plan, saliency propagation and manager mutation assertions retained.
   Production +2/-63/net -61, tests +8/-112/net -104; Ruff/format/diff pass. Independent final review
-  pending. EvalRecord.export_csv itself remains for module 5 caller/disposition review; this slice
+  approved. Retained visualization/analysis readback neighbors: 7 passed (33 deselected).
+  EvalRecord.export_csv itself remains for module 5 caller/disposition review; this slice
   does not assert a currently reachable CSV-export product feature.
 - Recipe audit: independent full source/test/caller read retains persistence, replay conversion,
   legacy class-map migration and current label-audit reconstruction. Their real save/reload and
   state roundtrip cases protect current behavior. Target-level extra provenance/schema fields are
   not current guarantees or authorized schema work. 2F baseline: 49 content/prepared cases plus
   6 actual stale-session/cancel/commit/content-boundary cases pass before edits.
+- 1O committed as `6c0ee806`; 1N commit next. 2F source edited only after its baseline; after evidence
+  and independent review remain. No module closure or manual acceptance is implied by these commits.
 - Planned 1L observer cleanup: remove the unread QtObserverBridge._observer_callback member (two
   assignments) while retaining Observable/_ObserverSubscription callback ownership, QObject destroyed
   cleanup and finalizer. Replace the test-only empty MockObservable subclass with Observable itself.

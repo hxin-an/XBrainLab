@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from XBrainLab.backend.data_manager import DataManager
-from XBrainLab.backend.load_data import Raw, RawDataLoader
+from XBrainLab.backend.load_data import Raw
 from XBrainLab.backend.preprocessor import PreprocessBase
 
 
@@ -48,10 +48,6 @@ class TestInit:
         assert dm.dataset_generator is None
         assert dm.dataset_locked is False
         assert dm.backup_loaded_data_list is None
-
-    def test_get_raw_data_loader(self, dm):
-        loader = dm.get_raw_data_loader()
-        assert isinstance(loader, RawDataLoader)
 
 
 # ---------------------------------------------------------------------------

@@ -857,32 +857,6 @@ class TestIsTraining:
         assert tm.is_training() is True
 
 
-class TestExportOutputCsv:
-    def test_no_trainer_raises(self):
-        tm = TrainingManager()
-        with pytest.raises(ValueError, match="No valid training plan"):
-            tm.export_output_csv("out.csv", "p", "rp")
-
-    def test_no_record_raises(self):
-        tm = TrainingManager()
-        tm.trainer = MagicMock()
-        plan = MagicMock()
-        plan.get_eval_record.return_value = None
-        tm.trainer.get_real_training_plan.return_value = plan
-        with pytest.raises(ValueError, match="No evaluation record"):
-            tm.export_output_csv("out.csv", "p", "rp")
-
-    def test_exports(self):
-        tm = TrainingManager()
-        tm.trainer = MagicMock()
-        record = MagicMock()
-        plan = MagicMock()
-        plan.get_eval_record.return_value = record
-        tm.trainer.get_real_training_plan.return_value = plan
-        tm.export_output_csv("out.csv", "p", "rp")
-        record.export_csv.assert_called_once_with("out.csv")
-
-
 class TestSaliencyParams:
     def test_get_none_default(self):
         tm = TrainingManager()

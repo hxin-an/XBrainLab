@@ -1,6 +1,6 @@
 """Study facade and TrainingManager integration contracts.
 
-Covers: Study.generate_plan, train, stop_training, export_output_csv,
+Covers: Study.generate_plan, train, stop_training,
 clean cascade, append plan, saliency propagation, and error paths. The tests
 construct facade state directly; they are not product-workflow evidence.
 """
@@ -180,7 +180,7 @@ class TestStudyGeneratePlan:
         ):
             ready_study.generate_plan(force_update=True)
             assert ready_study.trainer is not None
-            assert ready_study.has_trainer()
+            assert ready_study.training_manager.has_trainer()
 
     def test_generate_plan_no_datasets_raises(self, tmp_path):
         study = Study()
@@ -399,26 +399,8 @@ class TestSaliencyPropagation:
             }
             study.set_saliency_params(params)
 
-            # Saliency params should be stored
-            assert study.get_saliency_params() == params
+            # Saliency params are stored by the retained manager owner.
+            assert study.training_manager.get_saliency_params() == params
             # And propagated to plan holders
             for plan in study.trainer.get_training_plan_holders():
                 assert plan.saliency_params == params
-
-
-class TestExportOutputCsv:
-    """Study.export_output_csv delegates to TrainingManager."""
-
-    def test_no_trainer_raises(self):
-        study = Study()
-        with pytest.raises(ValueError, match="No valid training plan"):
-            study.export_output_csv("out.csv", "p", "rp")
-
-    def test_no_eval_record_raises(self):
-        study = Study()
-        study.trainer = MagicMock()
-        plan = MagicMock()
-        plan.get_eval_record.return_value = None
-        study.trainer.get_real_training_plan.return_value = plan
-        with pytest.raises(ValueError, match="No evaluation record"):
-            study.export_output_csv("out.csv", "p", "rp")

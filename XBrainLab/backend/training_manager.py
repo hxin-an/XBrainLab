@@ -719,25 +719,6 @@ class TrainingManager:
             return ""
         return str(progress or "")
 
-    # --- Evaluation Helpers ---
-
-    def export_output_csv(self, filepath: str, plan_name: str, real_plan_name: str):
-        """Export model inference output to csv file.
-
-        Args:
-            filepath: Path to save the CSV.
-            plan_name: Name of the plan.
-            real_plan_name: Real name of the plan.
-
-        """
-        if not self.trainer:
-            raise ValueError("No valid training plan is generated")
-        plan = self.trainer.get_real_training_plan(plan_name, real_plan_name)
-        record = plan.get_eval_record()
-        if not record:
-            raise ValueError("No evaluation record for this training plan")
-        record.export_csv(filepath)
-
     # --- Saliency ---
 
     def get_saliency_params(self) -> dict | None:

@@ -11,7 +11,7 @@ from XBrainLab.backend.dataset import (
     DataSplittingConfig,
     TrainingType,
 )
-from XBrainLab.backend.load_data import Raw, RawDataLoader
+from XBrainLab.backend.load_data import Raw
 from XBrainLab.backend.preprocessor import PreprocessBase
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training import (
@@ -21,10 +21,6 @@ from XBrainLab.backend.training import (
     TrainingOption,
     TrainingPlanHolder,
 )
-
-
-def test_study_load_data():
-    assert isinstance(Study().get_raw_data_loader(), RawDataLoader)
 
 
 @pytest.fixture
@@ -151,28 +147,11 @@ def test_study_set_datasets(
     test_hook(study, loaded_data_list, force_update)
 
 
-class FakeRecord:
-    def export_csv(self, filepath):
-        self.filepath = filepath
-
-
-class FakePlan:
-    def __init__(self, name, real_name, record=None):
-        self.name = name
-        self.real_name = real_name
-        self.record = record
-
-    def get_eval_record(self):
-        return self.record
-
-
 class FakeTrainer:
-    def __init__(self, record=None):
+    def __init__(self):
         self.running = False
         self.interact = None
         self.interrupt = False
-        self.return_plan = False
-        self.record = record
 
     def run(self, interact=False):
         self.running = True
@@ -192,12 +171,6 @@ class FakeTrainer:
 
     def clean(self, force_update):
         pass
-
-    def get_real_training_plan(self, name, real_name):
-        if self.return_plan:
-            return FakePlan(name, real_name, self.record)
-        else:
-            raise ValueError
 
 
 @pytest.fixture
@@ -421,35 +394,6 @@ def test_study_training_not_set():
         study.stop_training()
 
 
-@pytest.mark.parametrize("has_record", [True, False])
-@pytest.mark.parametrize("has_eval", [True, False])
-def test_study_export_output_csv(trainer_study, has_record, has_eval):
-    record = FakeRecord()
-    if has_eval:
-        trainer_study.trainer.record = record
-    else:
-        trainer_study.trainer.record = None
-
-    trainer_study.trainer.return_plan = has_record
-
-    if not has_record:
-        with pytest.raises(ValueError):
-            trainer_study.export_output_csv("test", "1", "2")
-        return
-    if not has_eval:
-        with pytest.raises(ValueError):
-            trainer_study.export_output_csv("test", "1", "2")
-        return
-    trainer_study.export_output_csv("test", "1", "2")
-    assert record.filepath == "test"
-
-
-def test_study_export_output_csv_not_set():
-    study = Study()
-    with pytest.raises(ValueError):
-        study.export_output_csv("test", "test", "test")
-
-
 def test_study_set_channels():
     class FakeEpochData:
         def __init__(self):
@@ -526,7 +470,7 @@ def test_study_saliency_params():
     study = Study()
     params = {"method": {"param": 1}}
     study.set_saliency_params(params)
-    assert study.get_saliency_params() == params
+    assert study.training_manager.get_saliency_params() == params
 
     holder = object.__new__(TrainingPlanHolder)
     holder.train_record_list = []

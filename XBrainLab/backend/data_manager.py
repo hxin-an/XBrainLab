@@ -10,7 +10,7 @@ from .utils.logger import logger
 
 if TYPE_CHECKING:
     from .dataset import Dataset, DatasetGenerator, Epochs
-    from .load_data import Raw, RawDataLoader
+    from .load_data import Raw
     from .preprocessor import PreprocessBase
 
 
@@ -43,18 +43,6 @@ class DataManager:
         # Locking & Backup
         self.dataset_locked = False
         self.backup_loaded_data_list: list[Raw] | None = None
-
-    # --- Loading ---
-    def get_raw_data_loader(self) -> RawDataLoader:
-        """Get the raw data loader instance.
-
-        Returns:
-            RawDataLoader: An instance of the raw data loader.
-
-        """
-        from .load_data import RawDataLoader  # noqa: PLC0415
-
-        return RawDataLoader()
 
     def set_loaded_data_list(
         self,
