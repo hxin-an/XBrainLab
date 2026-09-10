@@ -109,6 +109,23 @@ old session IDs and plan text do not prove a process is running. No manual candi
 
 **Current work — developer docs/config truth and remaining scripts; module2–6 closure gaps and explicit decisions remain open.**
 
+**Bounded9W — actual Windows process-tree containment evidence.** Main fully read owned_process_group
+441/bootstrap33/native_safety29 and direct owned tests388/native61; current Windows Job Object tests
+replace the entire native owner while actual recorder descendant cases are POSIX-only. Retain those
+platform/ordering/error seams and add bounded native Windows evidence for a live descendant when its
+parent either exits normally or remains running. Use only the existing interpreter, exact test-created
+PIDs, tiny temporary PID file, explicit startup/collect/reap deadlines and finally owner cleanup. No
+unrelated process signal, WSL operation, environment creation, app settings or model/cache writes.
+Exercise real spawn/handshake/Job Object/quiescence/termination, not fake WinAPI success. Run original
+owned tests before, then retained plus two native cases; native failure is evidence to diagnose, not
+a skip/timeout increase. No production change unless an observed defect is separately declared.
+Independent lifecycle review; continue scripts/inventory after this bounded test-quality step.
+Result: original11pass/4POSIXskips0.05s, final13pass/same4skips0.52s. Both native Windows Job Object
+cases execute with no mocked process/job owner; parent-exit case observes surviving descendant via
+real Job accounting before close, live-parent case exercises bounded terminate-and-collect. Readiness
+is atomic and published after stdout flush; cleanup only test-owned Job/PID. Ruff/format and
+independent lifecycle review pass; tests+64, production unchanged. No general app shutdown/CI claim.
+
 **Bounded4P — remove unused resource-view conveniences and unreachable shape serialization.**
 Main fully read resource_preflight563/resource_receipt322/training_resource_receipt517 and direct
 contract300/training256 cases. Product callers use challenge_id and create/from/to_diagnostics;
