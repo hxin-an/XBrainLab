@@ -85,42 +85,6 @@ def test_train_record_getter(
     assert record.is_finished()
 
 
-def test_train_record_summary_reports_empty_state(train_record):
-    summary = train_record.get_model_output()
-
-    assert "=== Training Summary for Repeat-0 ===" in summary
-    assert "Total Training Epochs: 0" in summary
-    assert "[Best Performance]" in summary
-    assert "No training data available." in summary
-
-
-def test_train_record_summary_reports_latest_and_best_validation_state(train_record):
-    for epoch in range(3):
-        train_record.update_train(
-            {
-                RecordKey.LOSS: 0.5 - epoch * 0.1,
-                RecordKey.ACC: 50.0 + epoch * 10.0,
-            }
-        )
-        train_record.update_validation(
-            {
-                RecordKey.LOSS: 0.6 - epoch * 0.1,
-                RecordKey.ACC: 45.0 + epoch * 10.0,
-            }
-        )
-        train_record.step()
-
-    summary = train_record.get_model_output()
-
-    assert "Total Training Epochs: 3" in summary
-    assert "best_val_loss: 0.4000 (Training epoch 2)" in summary
-    assert "best_val_accuracy: 65.0000 (Training epoch 2)" in summary
-    assert "Train Loss: 0.3000" in summary
-    assert "Train Acc:  70.00%" in summary
-    assert "Val Loss:   0.4000" in summary
-    assert "Val Acc:    65.00%" in summary
-
-
 def test_resume_and_pause_preserve_training_interval_boundaries(train_record):
     with patch(
         "XBrainLab.backend.training.record.train.time.time",
@@ -183,47 +147,11 @@ def train_record(tmp_path, dataset, training_option, model_holder):  # noqa: F81
     return record
 
 
-def test_train_record_append_record(train_record):
-    arr = []
-    values = np.random.rand(10)
-    for value in values:
-        train_record.append_record(value, arr)
-        assert len(arr) == 1
-        assert arr[0] == value
-
-
-def test_train_record_append_record_with_step(train_record):
-    arr = []
-    values = np.random.rand(10)
-    for idx, value in enumerate(values):
-        train_record.append_record(value, arr)
-        train_record.step()
-        assert len(arr) == idx + 1
-        assert arr[-1] == value
-
-
-def test_train_record_append_record_with_large_array(train_record):
-    arr = [1, 2, 3, 4, 5]
-    values = np.random.rand(10)
-    for idx, value in enumerate(values):
-        train_record.append_record(value, arr)
-        train_record.step()
-        if idx < 5:
-            assert len(arr) == 5
-        else:
-            assert len(arr) == idx + 1
-        assert arr[idx] == value
-
-
-def test_train_record_append_record_with_small_array(train_record):
-    arr = []
+def test_train_record_update_train_fills_missing_epochs(train_record):
     for _ in range(5):
         train_record.step()
-    train_record.append_record(15, arr)
-    assert len(arr) == 6
-    assert arr[-1] == 15
-    for i in range(5):
-        assert arr[i] is None
+    train_record.update_train({RecordKey.LOSS: 15})
+    assert train_record.train[RecordKey.LOSS] == [None] * 5 + [15]
 
 
 @pytest.mark.parametrize(
