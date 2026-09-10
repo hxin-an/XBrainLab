@@ -192,10 +192,10 @@ class Observable:
 
         Example::
 
-            with controller.batch_notifications():
-                controller.apply_filter(4, 40)
-                controller.apply_notch_filter(50)
-            # ``preprocess_changed`` is emitted only once here.
+            with observable.batch_notifications():
+                observable.notify("changed")
+                observable.notify("changed")
+            # ``changed`` is emitted only once here.
 
         """
         active = self._batch_state.get()
