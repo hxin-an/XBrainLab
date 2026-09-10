@@ -369,6 +369,20 @@ def test_capture_walkthrough_replays_real_widget_and_writes_gate(
     assert "does not demonstrate windows native dpi" in readme.lower()
 
 
+def test_capture_report_links_match_actual_settings_images(qapp, tmp_path) -> None:
+    payload = capture_walkthrough(qapp, tmp_path)
+    readme = (tmp_path / README_ARTIFACT).read_text(encoding="utf-8")
+    assert f"- machine gate: `{payload['status']}`" in readme
+    for state in ("advanced", "disabled"):
+        filename = f"assistant-settings-{state}.png"
+        assert (tmp_path / filename).is_file()
+        assert any(
+            screen["file"] == filename
+            for screen in payload["assistant_settings"]["screens"]
+        )
+        assert f"- {state} frame: `{filename}`" in readme
+
+
 def test_validate_payload_rejects_one_failed_geometry_check(qapp, tmp_path) -> None:
     payload = capture_walkthrough(qapp, tmp_path)
     broken = copy.deepcopy(payload)

@@ -2022,7 +2022,7 @@ def _capture_metric_tab_transition(
     before.update(before_capture)
     before["file"] = METRIC_TAB_SCREEN_FILES[0]
 
-    tab.update_plot(1, 72.0, 68.0)
+    tab.set_series([1], [72.0], [68.0])
     _settle_layout(app, tab)
     after = human_evidence.training_metric_tab_evidence(tab)
     canvas = tab.canvas
@@ -3593,7 +3593,7 @@ def render_readme(payload: dict[str, Any]) -> str:
             "## Training Metric Transition",
             "",
             "A real `MetricTab` records the pre-first-epoch empty state, then applies "
-            "epoch 1 through `update_plot()` and records the first train/validation "
+            "epoch 1 through `set_series()` and records the first train/validation "
             "series frame.",
             "",
             f"- transition passed: `{payload['metric_tab_transition']['passed']}`",
@@ -3613,9 +3613,9 @@ def render_readme(payload: dict[str, Any]) -> str:
             f"- collapsed frame: "
             f"`{payload['assistant_settings']['screens'][0]['file']}`",
             f"- advanced frame: "
-            f"`{payload['assistant_settings']['screens'][4]['file']}`",
-            f"- disabled frame: "
             f"`{payload['assistant_settings']['screens'][5]['file']}`",
+            f"- disabled frame: "
+            f"`{payload['assistant_settings']['screens'][6]['file']}`",
             "",
             "## Teardown",
             "",

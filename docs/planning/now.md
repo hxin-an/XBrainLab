@@ -109,6 +109,31 @@ old session IDs and plan text do not prove a process is running. No manual candi
 
 **Current work — developer docs/config truth and remaining scripts; module2–6 closure gaps and explicit decisions remain open.**
 
+**Bounded8J — correct actual Settings screenshot labels in the UI/UX report.** Independent full
+walkthrough3713/direct747 audit and main's renderer/capture-order trace identify README advanced and
+disabled links selecting runtime-loading and advanced images respectively. Preserve the existing seven
+states and their order; fix only two renderer indices. Strengthen the existing real Qt capture test
+with exact generated README-to-image mappings, first red at that mismatch, then green without relaxing
+geometry/content/lifecycle assertions. No product/UI/model/prompt/schema change, ownerdelta0. Use the
+existing Windows interpreter and isolated test preferences; focused full-capture case, Ruff and actual
+diff review. This validates the report artifact, not final DPI/manual/real-model acceptance. Continue
+MOABB CLI isolation and remaining full-script/inventory audit after this bounded repair.
+First native full-capture run fails before report assertions: MetricTab.update_plot was retired in
+eac27aad but this script caller was missed. This is a directly blocking stage regression, not valid
+README red evidence. Migrate that real caller to existing set_series([1], [72.0], [68.0]) and update
+the report's API description; preserve all first-data/empty-state assertions. Then reproduce the
+README mismatch and fix its indices. No compatibility wrapper or product API reintroduction.
+The migrated caller now executes, but native and offscreen full captures both report real-dock320px
+first-paint no_horizontal_scroll failure. Keep that original strict test/assertions intact; independent
+source diagnosis proceeds separately. Add a focused real-artifact report test that verifies links to
+actually generated Settings images and preserves the actual machine-gate status, including failed
+captures. This is report evidence only, not a green full-capture claim or weakened geometry gate.
+Result: real native report test red at the advanced link12.79s, then pass12.69s after two-index fix;
+two-file Ruff/format and diff check pass. MetricTab caller now completes via the unchanged bulk API.
+Independent first-paint diagnosis identifies post-show dock-width/reflow scheduling as a candidate,
+not proven root cause; raw geometry/pixel evidence remains required before any visible repair decision.
+Full capture remains failing on the retained no-horizontal-scroll first-paint gate in both backends.
+
 **Bounded9L4A — cover remaining standalone replay/dialog preference consumers.** Same-class caller
 scan finds Data Interpretation replay constructs/closes real MainWindow, reviewer-fixes opens real
 SmartParser, and app-polish constructs MontagePicker; all reach application_settings without an outer
