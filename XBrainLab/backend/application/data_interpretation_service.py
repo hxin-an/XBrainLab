@@ -823,7 +823,6 @@ class DataInterpretationCommandService:
             preflight,
         )
         self._ensure_apply_session_is_current(plan)
-        self._ensure_apply_session_is_current(plan)
         prepared_dataset = self.dataset.prepare_replacement_import(
             candidate.selected_eeg_files
         )
@@ -887,7 +886,7 @@ class DataInterpretationCommandService:
             # the reviewed bytes now rather than misreporting changed content as
             # invalid user choices.  This branch is terminal and therefore still
             # performs exactly one full identity check for the attempt.
-            self._ensure_reviewed_label_content_is_current(candidate)
+            self._reviewed_content_identity(candidate)
         owned_work_checkpoint("Recording reviewed epoch hints")
         internal_epoch_hints = detached_apply.record_internal_epoch_hints(candidate)
         self._ensure_label_apply_succeeded(candidate, label_apply)
@@ -1103,12 +1102,6 @@ class DataInterpretationCommandService:
                 "state_preserved": True,
             },
         )
-
-    @staticmethod
-    def _ensure_reviewed_label_content_is_current(
-        candidate: InterpretationCandidate,
-    ) -> None:
-        DataInterpretationCommandService._reviewed_content_identity(candidate)
 
     @staticmethod
     def _reviewed_content_identity(

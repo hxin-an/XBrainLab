@@ -160,8 +160,12 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
   state roundtrip cases protect current behavior. Target-level extra provenance/schema fields are
   not current guarantees or authorized schema work. 2F baseline: 49 content/prepared cases plus
   6 actual stale-session/cancel/commit/content-boundary cases pass before edits.
-- 1O committed as `6c0ee806`; 1N commit next. 2F source edited only after its baseline; after evidence
-  and independent review remain. No module closure or manual acceptance is implied by these commits.
+- 1O committed as `6c0ee806`; 1N as `0b0a8e7b`. 2F source edited only after its baseline;
+  unchanged combined after selection: 55 passed (272 deselected), Ruff/format pass. Independent review
+  approved exact session checks, terminal-only rehash and unchanged context/cancellation boundaries.
+  Production +9/-21/net -12, no test changes or new owner. Commit this slice, then run same-head
+  shared-spine closure evidence and continue module 2 Raw/loader/state audits. No manual acceptance
+  or whole-project completion is implied.
 - Planned 1L observer cleanup: remove the unread QtObserverBridge._observer_callback member (two
   assignments) while retaining Observable/_ObserverSubscription callback ownership, QObject destroyed
   cleanup and finalizer. Replace the test-only empty MockObservable subclass with Observable itself.

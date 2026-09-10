@@ -426,18 +426,6 @@ def _content_file_identities(
     if progress is not None:
         progress.start()
 
-    def _build(
-        request: tuple[Path, str, Mapping[str, Any] | None],
-    ) -> dict[str, Any]:
-        path, role, admitted_identity = request
-        return _content_file_identity(
-            path=path,
-            role=role,
-            resource_reader=resource_reader,
-            admitted_identity=admitted_identity,
-            path_identity_scope=path_identity_scope,
-        )
-
     def _build_with_context(
         request: tuple[Path, str, Mapping[str, Any] | None],
     ) -> dict[str, Any]:
@@ -445,7 +433,14 @@ def _content_file_identities(
             bind_captured_owned_work(captured_work),
             _bind_content_hash_progress(progress),
         ):
-            return _build(request)
+            path, role, admitted_identity = request
+            return _content_file_identity(
+                path=path,
+                role=role,
+                resource_reader=resource_reader,
+                admitted_identity=admitted_identity,
+                path_identity_scope=path_identity_scope,
+            )
 
     worker_count = min(CONTENT_IDENTITY_HASH_WORKERS, len(requests))
     if worker_count <= 1:
