@@ -52,7 +52,6 @@ if TYPE_CHECKING:
         PreprocessRenderRequest,
     )
     from XBrainLab.backend.application.resource_guard import (
-        ResourcePreflightResult,
         TrainingResourcePreviewRequest,
         TrainingResourcePreviewResult,
     )
@@ -304,14 +303,6 @@ class VisualizationQueryPort(Protocol):
         """Reserve unified ownership for one native saliency render."""
         ...
 
-    def prepare_saliency_render(
-        self,
-        operation_id: str,
-        request: SaliencyRenderRequest,
-    ) -> SaliencyRenderPublication:
-        """Prepare detached data without prematurely completing ownership."""
-        ...
-
     def prepare_saliency_render_variants(
         self,
         operation_id: str,
@@ -456,12 +447,6 @@ class ApplicationUiRuntime(
         self,
         request: SaliencyRenderRequest,
     ) -> OwnedOperationSnapshot: ...
-
-    def prepare_saliency_render(
-        self,
-        operation_id: str,
-        request: SaliencyRenderRequest,
-    ) -> SaliencyRenderPublication: ...
 
     def prepare_saliency_render_variants(
         self,
@@ -634,13 +619,6 @@ class _StudyApplicationUiRuntime:
     ) -> OwnedOperationSnapshot:
         return self._service().begin_saliency_render(request)
 
-    def prepare_saliency_render(
-        self,
-        operation_id: str,
-        request: SaliencyRenderRequest,
-    ) -> SaliencyRenderPublication:
-        return self._service().prepare_saliency_render(operation_id, request)
-
     def prepare_saliency_render_variants(
         self,
         operation_id: str,
@@ -794,9 +772,6 @@ class _StudyApplicationUiRuntime:
             service.unsubscribe(event_name, callback)
             return
         self._service().unsubscribe(event_name, callback)
-
-    def get_training_resource_preflight(self) -> ResourcePreflightResult | None:
-        return self._service().get_training_resource_preflight()
 
     def request_shutdown_fence(self) -> None:
         self._service().request_shutdown_fence()
@@ -1105,30 +1080,6 @@ def get_training_model_signal_context(
     return dict(value) if isinstance(value, dict) else None
 
 
-def get_training_resource_preflight(
-    context: Any,
-    *,
-    runtime: ApplicationUiRuntime | None = None,
-) -> ResourcePreflightResult | None:
-    """Read the current training resource preflight through ApplicationService."""
-    from XBrainLab.backend.application.resource_guard import (  # noqa: PLC0415
-        ResourcePreflightResult,
-    )
-
-    application_runtime = _resolve_application_ui_runtime(context, runtime)
-    if application_runtime is None:
-        return None
-    getter = getattr(application_runtime, "get_training_resource_preflight", None)
-    if not callable(getter):
-        return None
-    try:
-        result = getter()
-    except Exception:
-        logger.error("Training resource preflight failed.", exc_info=True)
-        return None
-    return result if isinstance(result, ResourcePreflightResult) else None
-
-
 def begin_saliency_render_operation(
     context: Any,
     request: SaliencyRenderRequest,
@@ -1144,20 +1095,6 @@ def begin_saliency_render_operation(
     if not isinstance(operation_id, str) or not operation_id:
         raise TypeError("Application runtime returned invalid saliency ownership")
     return snapshot
-
-
-def prepare_saliency_render_operation(
-    context: Any,
-    operation_id: str,
-    request: SaliencyRenderRequest,
-    *,
-    runtime: ApplicationUiRuntime | None = None,
-) -> SaliencyRenderPublication | None:
-    """Prepare one saliency DTO inside its backend-owned lifecycle."""
-    application_runtime = _resolve_application_ui_runtime(context, runtime)
-    if application_runtime is None:
-        return None
-    return application_runtime.prepare_saliency_render(operation_id, request)
 
 
 def prepare_saliency_render_variants_operation(
