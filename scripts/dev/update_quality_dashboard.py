@@ -53,7 +53,6 @@ HEADLESS_CACHE_DIR = Path(tempfile.gettempdir()) / "matplotlib-codex"
 POETRY = "/home/administrator/.local/bin/poetry"
 POETRY_RUN = f"{POETRY} run --"
 POETRY_PYTHON = f"{POETRY_RUN} python"
-UI_WRAPPER = str(ROOT / "scripts" / "dev" / "run_ui_pytest.sh")
 DEFAULT_FRESH_MINUTES = 60
 DEFAULT_CHECK_TIMEOUT_SECONDS = 300
 UI_UNIT_SUITE_TIMEOUT_SECONDS = 900
@@ -972,9 +971,6 @@ def _dashboard_pytest_attestation_contract(
 ) -> tuple[str, tuple[str, ...]] | None:
     if not args:
         return None
-    executable = Path(args[0]).name.casefold()
-    if executable == "run_ui_pytest.sh":
-        return REQUIRED_PYTEST_RUNNER_ID, ("--capture=sys", *args[1:])
     tokens = list(args)
     if tokens[:2] == [POETRY, "run"]:
         tokens = tokens[2:]
@@ -1367,7 +1363,10 @@ def build_checks_for_mode(
             key="ui_dialog_acceptance",
             label="UI Dialog Acceptance",
             category="ui",
-            command=f"{UI_WRAPPER} tests/integration/ui/test_dialog_acceptance.py -q",
+            command=(
+                f"{POETRY_PYTHON} -m scripts.dev.run_required_pytest_gate -- "
+                "--capture=sys tests/integration/ui/test_dialog_acceptance.py -q"
+            ),
             ui=True,
             validator=validate_required_pytest_matrix,
         ),
@@ -1376,7 +1375,8 @@ def build_checks_for_mode(
             label="UI Product Walkthrough",
             category="ui",
             command=(
-                f"{UI_WRAPPER} "
+                f"{POETRY_PYTHON} -m scripts.dev.run_required_pytest_gate -- "
+                "--capture=sys "
                 "tests/integration/ui/test_product_walkthrough.py "
                 "tests/integration/ui/test_data_import_wizard_runtime.py -q"
             ),

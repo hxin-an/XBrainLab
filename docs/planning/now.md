@@ -103,11 +103,31 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery checkpoint: product branch `cleanup/module-quality`, HEAD `5311b705`, 166 commits after baseline
+Git recovery checkpoint: product branch `cleanup/module-quality`, HEAD `57deef5e`, 170 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
 **Current work — developer docs/config truth and remaining scripts; module2–6 closure gaps and explicit decisions remain open.**
+
+**Bounded8N — retire dashboard-only UI pytest shell indirection.** Independent full dashboard1711/
+direct2038 plus main shell23/caller/env/attestation trace confirms run_ui_pytest.sh has exactly two
+dashboard consumers and no docs/Poe/CI entry. Both can use the existing direct required-pytest runner,
+as other dashboard UI checks already do. Preserve exact dialog/product/wizard nodes, --capture=sys,
+ui=True/offscreen/Agg/cache setup and actual completion-attestation requirement. Add semantic command
+selection characterization that passes before and after, then delete only wrapper, UI_WRAPPER and its
+special-case parser branch; no new adapter. Keep sharded UI unit gate, all non-skipped policies and
+dashboard's existing Poetry executable policy unchanged (this is not dashboard portability work).
+Original/stronger/after direct tests, Ruff, static caller check and independent review; no actual full
+dashboard/UI/model/data gate or new environment. Continue stage inventory after bounded completion.
+Result: original87pass/1POSIXskip plus two failures traced to Windows Git reading a WSL .git path
+(check-ignore128). Exact process-local Git dirs/HEAD verified; those two pass0.20s without source
+or Git metadata edits. Keep this mapping away from other tests that create temporary Git repos.
+Two new semantic cases pass before deletion0.15s; their initial POSIX tokenization lost Windows
+backslashes, corrected to existing suite platform-aware split (not product portability evidence).
+After:89pass/1samePOSIXskip0.80s in normal environment, plus two Git-dependent cases separately
+mapped pass0.19s; no case removed. Wrapper23lines and parser indirection retired, script net-23/tests+33;
+Ruff/format, no remaining callers, independent environment/attestation review approve. Native
+dashboard/GUI execution and final CI are not implied by these command-construction tests.
 
 **Bounded9W — actual Windows process-tree containment evidence.** Main fully read owned_process_group
 441/bootstrap33/native_safety29 and direct owned tests388/native61; current Windows Job Object tests
@@ -124,7 +144,7 @@ Result: original11pass/4POSIXskips0.05s, final13pass/same4skips0.52s. Both nativ
 cases execute with no mocked process/job owner; parent-exit case observes surviving descendant via
 real Job accounting before close, live-parent case exercises bounded terminate-and-collect. Readiness
 is atomic and published after stdout flush; cleanup only test-owned Job/PID. Ruff/format and
-independent lifecycle review pass; tests+64, production unchanged. No general app shutdown/CI claim.
+independent lifecycle review pass; tests+55, production unchanged. No general app shutdown/CI claim.
 
 **Bounded4P — remove unused resource-view conveniences and unreachable shape serialization.**
 Main fully read resource_preflight563/resource_receipt322/training_resource_receipt517 and direct
@@ -169,10 +189,14 @@ expected2x2 output, and seven provenance plus three legacy catalog cases pass10/
 no case removed. This does not replace final source-diverse/native model workflow gates.
 
 Remaining large-file qualification: independent source audit now fully reads architecture_compliance.py
-1-11617. No proven obsolete/duplicate guard; distinct mutable-state/consent/publication/async bypass
-checks remain. Its concentrated AST/guard families impose substantial maintenance cost; this is not
-an execution PASS or a declaration of ideal architecture. Review its direct characterization before
-deciding whether a behavior-preserving family split belongs in this stage; retain one aggregator.
+1-11617 and direct characterization1-5996. No proven obsolete/duplicate guard or removable test;
+distinct mutable-state/consent/publication/async bypass checks remain. Real hostile/allowed source
+fixtures characterize scanner behavior, not runtime product safety. Retain this stage: concentrated
+AST/guard families impose maintenance cost but splitting solely for LOC creates churn without an
+observed boundary fix. Three coupling limits remain: combined receipt fixture, direct coordinator
+AST assertions, exact mutable-object debt list. Future family changes may split matching source/tests
+behind the existing aggregator; no new framework. This review is not an execution PASS or ideal-
+architecture claim.
 
 **Bounded9V — retain real downloader safety while removing duplicate profile membership.** Full
 independent fetcher1135/direct427 and main download chain read retain one pinned-size/SHA/atomic
