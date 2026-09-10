@@ -291,6 +291,64 @@ class TestTrainingPipelineMutationBoundary:
         assert manager.has_active_saliency_work() is True
         assert boundary.saliency_work_active is True
 
+    def test_startup_rollback_restores_quiescent_trainer_and_saliency_truth(
+        self,
+    ) -> None:
+        class _Record:
+            def bind_state_tracker(self, _tracker) -> None:
+                return None
+
+        class _Holder(TrainingPlanHolder):
+            def __init__(self, record: _Record) -> None:
+                self.train_record_list = [record]
+                self._state_tracker = None
+                self._interrupt = Event()
+                self.error = None
+
+            def get_name(self) -> str:
+                return "snapshot-holder"
+
+            def train(self) -> None:
+                return None
+
+        manager = TrainingManager()
+        first_record = _Record()
+        second_record = _Record()
+        first_holder = _Holder(first_record)
+        second_holder = _Holder(second_record)
+        trainer = Trainer([first_holder, second_holder])
+        trainer.run(interact=False)
+        manager.trainer = trainer
+        manager._saliency_request_sequence = 4
+        manager._saliency_cancellation_epoch = 7
+        manager._saliency_job_sequence = 4
+        manager._post_training_saliency_status = PostTrainingSaliencyStatus.idle(
+            generation=4,
+        )
+
+        before = trainer.capture_startup_snapshot()
+        snapshot = manager.capture_startup_rollback_snapshot()
+        assert snapshot.trainer_startup_snapshot == before
+        manager.clean_trainer(force_update=True)
+        trainer.clear_history()
+
+        manager.restore_startup_rollback_snapshot(snapshot)
+
+        assert manager.trainer is trainer
+        restored_holders = trainer.get_training_plan_holders()
+        assert restored_holders == [first_holder, second_holder]
+        assert restored_holders[0].train_record_list == [first_record]
+        assert restored_holders[1].train_record_list == [second_record]
+        assert trainer.capture_startup_snapshot() == before
+        assert manager.get_post_training_saliency_status() == (
+            PostTrainingSaliencyStatus.idle(generation=4)
+        )
+        assert manager._saliency_request_sequence == 4
+        assert manager._saliency_cancellation_epoch == 7
+        assert manager._saliency_job_sequence == 4
+        assert manager.has_active_saliency_work() is False
+        assert manager._training_operation_owner is None
+
 
 class TestTrainingCompletionIdentity:
     def test_wait_rejects_a_different_trainer_before_blocking(self) -> None:

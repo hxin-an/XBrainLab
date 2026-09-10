@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `731e28d5`, 77 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `b1c0b902`, 79 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -278,6 +278,56 @@ do not share draft preview with final admission or introduce a persistent cache.
 no errors). Strict MkDocs build could not start in the existing Windows interpreter: No module named
 mkdocs. No environment/dependency installed. Final exact-source docs CI remains required; current
 source-only consolidation is not a successful docs-site build or final handoff.
+
+**Completed bounded4B — real manager startup rollback evidence.** Existing transaction tests prove only fake
+runtime delegation. Actual prepared pipeline rollback can restore a quiescent retired trainer;
+capture rejects active work, so do not invent active-worker resurrection. Add one test in
+test_training_manager.py with real manager/Trainer and a minimal contract-valid holder/record,
+capture then actual clean_trainer then restore. Verify exact trainer/holder/record identities,
+queue/outcome and saliency lifecycle sequences/status plus no active work or unreleased lease.
+Worker owns this test only; no production changes. Run direct manager and existing Trainer snapshot
+neighbors, then a bounded in-memory omitted-restore fault; main nonauthor actualdiff review/Ruff.
+If fixture cannot exercise the supported path, repair fixture or report the limitation, not mock
+manager restore. Separate commit and continue module4, not stage completion.
+Actual Trainer runs two lightweight holder operations synchronously to completion, then capture /
+retirement / clear_history / restore verifies full non-default TrainerStartupSnapshot equality and
+exact record identities. Included in237pass; in-memory omitted Trainer.restore fails on empty restored
+holders (1fail0.31s). Main nonauthor actualdiff review approved; tests+58, no production changes.
+
+**Completed bounded4C — estimate once within one authoritative training preflight.** A native read-only probe
+with actual ModelHolder/tiny PyTorch Linear and fixed external RAM/VRAM observed2 estimator calls,
+2 model constructions and2 data reads for a single GPU preflight, both reporting24 parameter bytes.
+No wall-time/RSS/user-speed claim. Characterize GPU and CPU counts plus returned RAM/VRAM diagnostics
+before changes. Compute once locally in check_training_resource_preflight and pass that estimate to
+RAM/VRAM checks, retiring the single-use estimate_training_vram convenience. No cache, new owner,
+draft-preview reuse, thresholds/messages/receipt policy or available-memory sampling change. Preserve
+CPU/missing settings short-circuit and all fallback/unknown/blocking semantics. Main owns resource_guard
+and its direct tests plus recommendation no-work guard (retarget only retired seam). Independent
+review specifically checks CPU/unknown/fallback/cancel safety and identical diagnostics; direct
+resource tests plus TrainingService/receipt consumers before/after, same measured probe, Ruff.
+Estimated production net-negative, no module/public Command class or owner addition. A direct
+Python convenience checker may take the already-computed estimate; no unknown-script compatibility.
+Characterized baseline131passed9.34s, first refactor plus4B/Trainer neighbors237passed9.84s.
+Independent review then identified the removed duplicate pass also removed a cancellation observation
+after RAM query. New real OwnedWorkRegistry test reproduced cancelled preflight entering GPU query;
+preserve one checkpoint with the existing stage text after RAM/before GPU, not a second estimate.
+Revalidate this direct defect and resource/receipt neighbors; earlier237 does not certify this fix.
+Final133passed9.27s (baseline131 plus missing-settings/cancellation cases). Same measurement now1
+estimator/model/data-read instead of2, identical safe risk and24parameter bytes in RAM/VRAM; CPU
+remains1 with no GPU query. Independent finaldiff review approved; production+13/-37/net-24,
+tests net+93. Four-file Ruff passed after equivalent context-manager syntax correction. No whole
+training/model performance or final native/manual acceptance claim.
+
+**Declared4D — unused training metadata conveniences.** Complete model-family audit retains pinned
+catalog/provider/recovery and upstream license/provenance groups; finite gradients cover54selectable
+models and actual full workflows6family representatives, not allmodel mathematical correctness.
+Exact hidden callers show model_command_names plus its sole TRAINING_MODEL_NAMES import, four unused
+input_contract TRAINING_* constants (including the one imported alias), and option.get_optimizer_repr
+duplicate have no use. Delete those only; keep canonical model names, DEFAULT_TRAINING_OUTPUT_DIR,
+get_optim_name/get_optim_desc_str, actual numeric/schema validation and all model contracts. Main owns
+three production files, roughly-25LOC, no new owner or visible/public Command/Assistant changes.
+Baseline direct catalog/input/options and actual request parser consumers, same after, Ruff and
+independent actualdiff review before separate commit. No tests removed or new compatibility paths.
 
 Completed2X–2AC are indexed below; their full scope/evidence remains in Git history.
 2AC found an existing shared-environment source hazard: Windows .pth adds the original checkout
