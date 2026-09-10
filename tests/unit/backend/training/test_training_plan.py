@@ -693,7 +693,7 @@ def test_training_plan_holder_keeps_saliency_empty_until_configured(
         saliency_params=None,
     )
 
-    assert holder.get_saliency_params() == {}
+    assert holder.saliency_params == {}
 
 
 def test_saliency_producer_identity_is_stable_for_same_training_run(base_holder):

@@ -4280,7 +4280,6 @@ def test_visualization_panel_has_no_average_option_without_publication(
     assert commands
     assert all(set(vars(command)) == {"view"} for command in commands)
 
-    assert all(set(vars(command)) == {"view"} for command in commands)
     assert panel.run_combo.findText("Average") == -1
 
 

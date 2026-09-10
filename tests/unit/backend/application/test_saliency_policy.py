@@ -14,7 +14,6 @@ from XBrainLab.backend.application.saliency_policy import (
     RECOMMENDED_SALIENCY_METHODS,
     baseline_saliency_params,
     normalize_saliency_params,
-    recommended_saliency_params_for_method,
     saliency_command_params_from_configured,
     selected_saliency_methods_from_params,
 )
@@ -182,21 +181,15 @@ def test_noise_sample_amplification_limits_are_enforced(
 
 def test_ui_payload_helpers_share_backend_method_policy():
     baseline = baseline_saliency_params()
-    recommended = recommended_saliency_params_for_method("Gradient * Input")
-    advanced = recommended_saliency_params_for_method("VarGrad")
+    configured, _requested_method = normalize_saliency_params(
+        "VarGrad", {"nt_samples": 5}
+    )
 
-    assert baseline == recommended
-    assert selected_saliency_methods_from_params(recommended) == set(
+    assert selected_saliency_methods_from_params(baseline) == set(
         RECOMMENDED_SALIENCY_METHODS,
     )
-    assert advanced["profile"] == "advanced"
-    assert advanced["methods"] == ["VarGrad"]
-    assert selected_saliency_methods_from_params(advanced) == {"VarGrad"}
-
-
-def test_ui_payload_helper_rejects_unknown_method_without_baseline_fallback():
-    with pytest.raises(ValueError, match="Unsupported saliency method"):
-        recommended_saliency_params_for_method("IntegratedGradients")
+    assert configured["_methods"] == ["VarGrad"]
+    assert selected_saliency_methods_from_params(configured) == {"VarGrad"}
 
 
 @pytest.mark.parametrize(

@@ -409,7 +409,7 @@ two import-order issues; import-only formatting and Ruff check/format recheck pa
 review approves the behavioral diff; architecture persistence
 claim is corrected. No mock-heavy delegation tests or existing training assertions were discarded.
 
-**Bounded5F — retire dormant automatic saliency scheduler.** Main and independent caller audit
+**Pending explicit lifecycle-risk decision5F — dormant automatic saliency scheduler.** Main and independent caller audit
 prove PostTrainingSaliencyAutomation is instantiated but never armed by production; its only active
 arm calls are exclusive compatibility tests. Remove the220line class, exclusive imports/service
 construction/callback/cancel/wait wiring and shutdown cancellation port; remove the dev native-stress
@@ -426,6 +426,46 @@ and normal observer lifetime coverage. Approximate production-260, three product
 script; main final diff/LOC and independent non-author lifecycle review before commit. Focused same
 retained notification/observer/service/background/publication integration plus script evidence, Ruff
 and source call-site sweep are required. No automatic closure of module5 or handoff claim.
+
+5F original baseline448passed34.01s; migrated retained429passed33.60s against unchanged production.
+The19 removed collected cases are15 scheduler-only parametrizations, one armed observer, one
+submission-only wait and two automatic-thread failure cases. Live runtime cancellation failure now
+proved close still discards delivery. Source deletion was rejected by edit safety review before
+mutation: explicit approval is required after disclosing that external/manual service.post_training_saliency.arm
+calls would fail. User asked asynchronously; no reply. Main restored all five worker-owned test/script
+changes to HEAD so retained source keeps its protection. No source deletion or dummy replacement;
+do not bypass the gate. Resume the tested migration only after approval. The now-exclusive runtime
+submission-failure forwarding chain and manager helper are additional retirement dependencies for that
+same decision, not grounds to silently delete the underlying live target/publication contracts.
+
+**Completed bounded5G — unused saliency/render conveniences.** Full independent visualization2332source and
+2526directtests plus main policy305/direct215 and holder caller audit identify unused inverse_dist_weighted_sum,
+SaliencySpectrogramMapViz._describe_values static forward, TrainingPlanHolder.get_saliency_params,
+recommended_saliency_params_for_method and normalize_saliency_methods. Actual vectorized interpolation,
+module diagnostic helper, manager-owned params, strict normalize_saliency_params and shared selected-method
+policy stay. Migrate policy helper case to real baseline/configured payload extraction before deletion;
+remove only unused helper unknown-method case, preserving strict normalizer unknown-method coverage.
+Holder getter case protects empty-until-configured state: migrate its assertion to actual holder
+saliency_params, preserving the real construction/default-state case rather than deleting it.
+Separately remove one literally repeated adjacent command-shape assertion from the fully reviewed UI
+test, retaining its identical neighbor. Four production files, roughly-70LOC, zero owner change or
+visible UI/public command change. Main owns these source/test files. Before/after focused real
+visualizer/3D/cache/normalization/policy/holder tests and the exact Qt regression, Ruff and independent
+actualdiff review are required; no whole-suite or native3D-render claim from mocked mesh IO.
+Migrated235passed22.14s before deletion; retained234passed21.78s after, same7upstream warnings.
+Exactlyone obsolete unknown-helper case removed; real strict-normalizer invalid-method case remains.
+Independent actualdiff review approved; four production files net-61 (one blank-line normalization),
+testsnet-8, zero owner change. Changed-file Ruff format/check/format-check passed.
+
+**Module5 full source/test audit additions.** Backend visualizers2332source/direct2526 retain exact
+class identity, scientific color/time/geometry semantics, actual STFT and cache single-flight/clear/
+failure fanout/LRU; native mesh IO isolation is justified. All4602visualization redesign tests read
+contiguously to EOF: typed receipt/terminal/request identity and state behavior remain valuable.
+TrainingPlan prepared publication1–150/953–1348 +fullEvaluator477 +directtests1516–2399 retain atomic
+multi-record replacement, captured identity/stale/cancel fences, selected-method batching and final CPU
+release. Captum inner calls remain cooperatively cancellable only between protected boundaries;
+no stronger interruption promise or measured end-user speed improvement. Direct tests of successful
+temporary-model CPU cleanup need tracing before any cleanup-semantics change.
 
 **Module4 preview coordinator full audit.** Main read439source/341directtests: retain single-flight
 same-request sharing, latest queued draft replacement, exact generation/receipt refinement, shared

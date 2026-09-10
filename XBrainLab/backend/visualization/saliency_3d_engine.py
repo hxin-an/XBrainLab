@@ -34,22 +34,6 @@ class _InterpolationWeights:
     weights: np.ndarray
 
 
-def inverse_dist_weighted_sum(dist, val):
-    """Compute an inverse-distance weighted sum of values.
-
-    Args:
-        dist: Array of distances from the query point to each source.
-        val: Array of scalar values at each source.
-
-    Returns:
-        float: Weighted sum where closer sources contribute more.
-
-    """
-    weight = 1 / (dist + 1e-8)
-    weight = weight / weight.sum()
-    return (weight * val).sum()
-
-
 def channel_convex_hull(ch_pos: np.ndarray) -> pv.PolyData:
     """Build a triangulated surface mesh from channel positions.
 

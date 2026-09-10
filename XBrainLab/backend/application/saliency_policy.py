@@ -46,19 +46,6 @@ def baseline_saliency_params() -> dict[str, object]:
     }
 
 
-def recommended_saliency_params_for_method(method_name: str) -> dict[str, object]:
-    """Return a command payload suitable for the selected saliency method."""
-    if is_recommended_saliency_method(method_name):
-        return baseline_saliency_params()
-    if method_name in ADVANCED_SALIENCY_METHODS:
-        return {
-            "profile": "advanced",
-            "methods": [method_name],
-            method_name: dict(DEFAULT_ADVANCED_SALIENCY_PARAMS),
-        }
-    raise ValueError(f"Unsupported saliency method: {method_name}")
-
-
 def is_recommended_saliency_method(method_name: str) -> bool:
     """Return whether a method belongs to the recommended baseline profile."""
     return method_name in RECOMMENDED_SALIENCY_METHODS
@@ -263,25 +250,6 @@ def _validated_noise_params(params: Mapping[str, Any]) -> dict[str, Any]:
             normalized_value = float(value)
         validated[key] = normalized_value
     return validated
-
-
-def normalize_saliency_methods(value: Any) -> list[str]:
-    """Return valid saliency methods from a loose string/list payload."""
-    if value is None:
-        return []
-    if isinstance(value, str):
-        items = [value]
-    elif isinstance(value, (list, tuple, set)):
-        items = list(value)
-    else:
-        return []
-
-    methods = []
-    for item in items:
-        method = str(item).strip()
-        if method in ALL_SALIENCY_METHODS and method not in methods:
-            methods.append(method)
-    return methods
 
 
 def select_saliency_methods(
