@@ -14,8 +14,6 @@ from XBrainLab.ui.dialogs.dataset.review_import_presenter import (
 )
 from XBrainLab.ui.dialogs.dataset.review_presenter import (
     is_optional_metadata_review_row,
-    metadata_required_fields_complete,
-    primary_action_item_rows,
 )
 
 
@@ -90,7 +88,7 @@ def test_typed_validation_decision_projects_authoritative_action_targets():
     assert contract.decision == "needs_confirmation"
     assert contract.contract_errors == ()
     assert contract.action_items[0].issue == "Confirm subject metadata."
-    assert contract.action_targets == frozenset({"Review Metadata"})
+    assert [item.target_step for item in contract.action_items] == ["Review Metadata"]
     assert contract.blocking_action_targets == frozenset()
 
 
@@ -276,36 +274,6 @@ def test_metadata_summary_hides_optional_session_run_noise():
         )
         == "BIDS entities reviewed · 3 files"
     )
-
-
-def test_review_metadata_requires_subject_but_not_task_session_or_run():
-    assert metadata_required_fields_complete(
-        row_count=2,
-        missing_fields={"task": 2, "session": 2, "run": 2},
-    )
-    assert not metadata_required_fields_complete(
-        row_count=2,
-        missing_fields={"subject": 1, "task": 2},
-    )
-    assert is_optional_metadata_review_row(
-        (
-            "Review Metadata",
-            "Task metadata is missing",
-            "Optional task metadata is unavailable.",
-            "Review metadata if needed.",
-        )
-    )
-
-
-def test_primary_review_rows_exclude_nonblocking_limited_items():
-    rows = primary_action_item_rows(
-        [
-            {"severity": "limited", "issue": "Labels skipped for now."},
-            {"severity": "blocked", "issue": "Label alignment is unresolved."},
-        ]
-    )
-
-    assert [row[1] for row in rows] == ["Label alignment is unresolved."]
     assert (
         metadata_summary(
             row_count=0,
@@ -315,6 +283,17 @@ def test_primary_review_rows_exclude_nonblocking_limited_items():
             fallback_summary="unused",
         )
         == "No metadata rows detected."
+    )
+
+
+def test_optional_metadata_review_row_is_suppressed():
+    assert is_optional_metadata_review_row(
+        (
+            "Review Metadata",
+            "Task metadata is missing",
+            "Optional task metadata is unavailable.",
+            "Review metadata if needed.",
+        )
     )
 
 

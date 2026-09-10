@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Recovery verified product branch `cleanup/module-quality` clean at `92a7cc38` (41 commits after
+Recovery verified product branch `cleanup/module-quality` at `1e28068c` (43 commits after
 baseline `4770b049`). The original checkout's UI/test/settings changes remain intact. Recheck Git
 after reboot; old session IDs are not running-work evidence. Completed slices are recorded below.
 
@@ -134,7 +134,7 @@ exclusive helper case, retained289 passed38.63s; seven actual receipt/content-ch
 passed9.09s. Ruff/format and independent actual-diff review pass. Production -258 across two files;
 the removed module is recoverable from Git. No actual confirmation authority or parser/hash changed.
 
-**Active 2W — unused wizard review fallbacks/conveniences.** Independent full audit and main source/test
+**Completed 2W — unused wizard review fallbacks/conveniences.** Independent full audit and main source/test
 reads found no production/dynamic/config/doc callers for review_presenter.build_review_rows,
 build_primary_review_rows and exclusive legacy text-routing/action-row helpers, required-metadata
 helper, ValidationReviewContract.action_targets or LabelSourceState.clear_skip. Actual ReviewImportStep
@@ -149,6 +149,15 @@ First native presenter suite plus eight existing typed-widget behavior nodes; pr
 assertions before deletion if needed, same remaining selection after, Ruff and independent actual-diff
 review. Main owns plan/inventory and integration. One reversible commit; continue resource and wizard
 audit then remaining module order, not a final handoff.
+Worker native baseline28 passed1.35s; after deletion27 passed1.22s and final formatted27 passed1.25s.
+Main non-author inspected full actual diff, owned presenter bodies and eight relevant widget cases;
+live empty metadata assertion was moved, and the target assertion now checks the complete actual
+action-item target list (main focused1 passed0.11s). No separate strengthened-before-production run
+was made: original target/empty-metadata evidence already passed, later edits migrated that evidence.
+Ruff/format and main independent review approved. Production -172 across three existing files,
+tests net -21; one exclusive helper case removed, no live behavior or owner change.
+First worker launch lacked escalated Windows interop and failed before collection with WSL vsock;
+the same bounded native command succeeded with required permissions, no env/restart workaround.
 
 **Completed 2V — measured discarded label payload hash.** Main and independent security/caller review
 confirm session full hashes have no consumer: session.assert_current is never called. Actual parser
@@ -237,8 +246,11 @@ visible state. Do not change this product behavior until approved; other authori
 - Module 8 actual aggregation is already slim: it installs only lock-derived coverage, not the full
   product environment. Shards/platform/data/UI lanes provide non-equivalent evidence; retain gates.
   No measured unnecessary wait was established. Launcher/Poe/CI routing audit is only partial
-  module coverage: workflow, run_tests, Windows bootstrap and their test bodies still need complete
-  reading where inventory says partial. Do not claim all scripts reviewed.
+  module coverage. Full reads now include run_tests961/direct1174, attestation195/direct185,
+  required-wrapper260/direct409, Windows bootstrap881/direct436, run.py370 and startup test bodies,
+  WSL launcher276/cmd42, setup ps1/cmd, ci_change_scope109 and artifact verifier216. Whole CI925,
+  all Poe/dependency entries, other scripts and handoff/dashboard adapters remain open; do not claim
+  all scripts reviewed. Inventory must distinguish these completed bodies from partial callers.
 - Continue import event/value/placement, BIDS/montage, metadata and related UI audit. Modules 3–9
   still require their complete per-module closure and final integration evidence.
 
