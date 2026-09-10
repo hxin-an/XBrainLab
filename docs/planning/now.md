@@ -103,11 +103,11 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `e8cf3260`, 73 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `731e28d5`, 77 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
-**Current work — module3 cleanup; module2 visible decisions remain open.**
+**Current work — module3 closure gaps and module4 training; module2 visible decisions remain open.**
 
 Completed2AD–2AG and8C–8E are indexed below and fully traceable in Git. For source-bound Windows
 capture tests only, use process-local GIT_DIR/GIT_WORK_TREE pointing to the actual Windows paths:
@@ -134,6 +134,7 @@ publication, immutable buffer copies, cancellation and SET_MONTAGE confirmation 
 callback-only epoch tests do not define a second public snapshot contract.
 
 Module3 is not closed. Remaining obligations:
+
 - Complete caller/test/script inventory reconciliation and independent closure review, including
   current dataset UI adapters and real-data/native lifecycle entries; zero pending rows is not
   a substitute for evidence or resolution of confirmed findings.
@@ -208,7 +209,7 @@ tests; then same retained gates after deletion, Ruff/affected collection and mai
 diff review. Zero production/UI changes; historical synthetic artifact entry recoverable from Git.
 Worker owns these script/test/guard files after baseline, independently from3P/main3R files.
 Main fully read the script/test and nonauthor deletion diff; baseline7passed3.45s, retained6passed2.83s
-after exactlyone exclusive test was removed. Script-726/tests-96/guard+1/-4, net-826; current polish
+after exactlyone exclusive test was removed. Script-726/tests-96/guard+1/-4, net-825; current polish
 capture and public data/handoff gates unchanged. Ruff passed, deleted files remain recoverable in Git.
 
 **Completed bounded 3S — dataset adapter test duplication and unused split fixture.** Independent full sidebar963,
@@ -234,7 +235,49 @@ validation, conditional model context and single configure/build/preflight/recei
 preflight differs intentionally from advisory preview. Catalog command-name helper/input aliases and
 optimizer repr duplicate have no consumers; TestOnlyOption and its export are used only by exclusive
 tests, while actual manager accepts base TrainingOption. Declare separate baseline slices before
-removing these. Manager option contract310–456/direct346–429 read only; not whole-manager audit.
+removing these. Subsequent independent full TrainingManager2413/direct1122/training_runtime587 audit
+retains real config/start-stop/wait/CAS/lease/rollback ownership; saliency724–2115 is module5's obligation.
+Study110–360/shutdown180–245/pipeline tests1–230/integration1–250 remain partial, not full audits.
+Missing real-manager startup snapshot restore evidence is a module4 test-quality obligation; existing
+transaction tests only fake the runtime delegation. Keep useful Thread/Event/identity tests.
+
+**Completed bounded 4A — retire unused inference-only TrainingOption subclass.** Whole hidden source/test/
+script/doc/config references confirm TestOnlyOption has no product consumer: only package exports,
+21 exclusive option parametrizations and one manager subclass case. Remove class191lines and two
+export entries plus22 obsolete tests/imports, keeping base TrainingOption, all its validation helpers,
+manager defensive-copy/invalid-mutation protection and result reading unchanged. Worker owns
+option.py/training.__init__/test_option.py/test_training_manager.py after native baseline. No new owner,
+public Command/visible UI/model behavior change; roughly-193production, no replacement compatibility.
+Use direct option/manager cases plus actual TrainingService configuration consumers before/retained
+after, Ruff and main nonauthor review; separate reversible commit then next training audit.
+Baseline162passed9.85s; retained140passed9.73s, exactly22 exclusive obsolete cases removed.
+Actual production-195/tests-99 after formatting; base validation untouched. Main nonauthor actual
+diff/caller review approved and eight-file combined3U/4A Ruff passed. No native/manual claim.
+
+**Completed bounded 3U — preprocess query uses the existing shared adapter directly.** Main full data_query83,
+panel304/sidebar899 and whole-tree caller trace: panel's _query_preprocess_data_rows only forwards to
+the shared function, and sidebar dynamically rediscovers that one private method. Call the same query
+with the same panel context directly, remove the panel forward/import and unused dynamic type cast;
+remove data_query's redundant if-None-return-None tail. Migrate the one test's patch to the shared
+adapter seam, retaining its lowest-rate assertion. Preserve exception/fail-closed/rate parsing and
+all visible behavior. Main owns three UI files and one direct test. Native query/sidebar/rate baseline,
+same after, Ruff and independent review; zero new owner. Existing UI-internal authorization applies.
+Original27passed6.73s, migrated27passed6.69s before production; recovered after27passed6.55s.
+Previous process result was unavailable, not presumed green. Independent actualdiff review approved
+same context/failed query/lowest-rate behavior; Ruff passed. No visible UI behavior change.
+
+**Module4 resource admission audit.** Independent full resource_guard2341/resource_preflight563/
+resource_receipt322/training_resource_receipt517 and3371direct/integration test lines reviewed.
+Retain advisory draft preview versus current authoritative start admission and distinct receipts;
+exact scope/TTL/capacity/consume-before-start and actual Agent/Application/Qt paths remain protected.
+OS/GPU/MNE isolation is justified, not a deletion target. Suspected duplicate training estimate across
+RAM and VRAM paths requires measured call counts before declaring a behavior-preserving slice;
+do not share draft preview with final admission or introduce a persistent cache.
+
+**Documentation evidence limitation.** Consolidated plan passed audit_agent_guidance check (ok=true,
+no errors). Strict MkDocs build could not start in the existing Windows interpreter: No module named
+mkdocs. No environment/dependency installed. Final exact-source docs CI remains required; current
+source-only consolidation is not a successful docs-site build or final handoff.
 
 Completed2X–2AC are indexed below; their full scope/evidence remains in Git history.
 2AC found an existing shared-environment source hazard: Windows .pth adds the original checkout
@@ -462,6 +505,10 @@ this table replaces their duplicated active-plan narrative, not any unresolved m
 | 3N / `96366558` | Remove ignored preprocess error-prefix plumbing; production-6/tests-2 | Same28before/after; main nonauthorreview/Ruff |
 | 3O / `9ddb204c` | Actual alias-to-epoch labels/counts and unknown list/dict atomic rejection; testsnet+87 | Real3new plusneighbors40pass before handler retirement; main nonauthorreview/Ruff |
 | 3Q / `e8cf3260` | Real Qt controls/signals replace timer-rewired mocks; testsnet-19 | Old2→combined4→retained2+15neighbors17; omitted-signal faults detected; independentreview/Ruff |
+| 3P / `7e6007c1` | Retire synchronous epoch duplicate and callback chain; productionnet-122/testsnet-502 |17obsolete nodes retired after real migration; integrated3P/R89pass; main nonauthorreview/Ruff |
+| 3R / `8ff29e95` | Six unused state-service apply conveniences/protocol entries removed; productionnet-93 | Same10direct before/migrated,89integrated after; independentreview/Ruff |
+| 8F / `161b5a33` | Retire orphan synthetic epoch capture/test/optional scan path; script-726,totalnet-825 |7before6retained, oneexclusivecase removed; main nonauthorreview/Ruff |
+| 3S / `731e28d5` | Three duplicate adapter tests and unused helpers retired; testsnet-123 |43before40retained; real metadata/row identity/receipt/wiring preserved; independentreview/Ruff |
 
 ### Evidence qualifications that remain relevant
 

@@ -2,7 +2,6 @@
 
 from .model_holder import ModelHolder
 from .option import (
-    TestOnlyOption,
     TrainingEvaluation,
     TrainingOption,
     parse_device_name,
@@ -13,7 +12,6 @@ from .training_plan import TrainingPlanHolder
 
 __all__ = [
     "ModelHolder",
-    "TestOnlyOption",
     "Trainer",
     "TrainingEvaluation",
     "TrainingOption",

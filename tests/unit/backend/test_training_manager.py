@@ -13,7 +13,6 @@ from XBrainLab.backend.exceptions import (
 )
 from XBrainLab.backend.training import (
     ModelHolder,
-    TestOnlyOption,
     Trainer,
     TrainingEvaluation,
     TrainingOption,
@@ -381,20 +380,6 @@ class TestSetTrainingOption:
         candidate = _valid_training_option()
         tm.set_training_option(existing)
         setattr(candidate, field, invalid_value)
-
-        with pytest.raises(ValueError):
-            tm.set_training_option(candidate)
-
-        published = tm.training_option
-        assert published is not None
-        assert published.epoch == existing.epoch
-
-    def test_rejects_mutated_test_only_option_before_replacing_state(self):
-        tm = TrainingManager()
-        existing = _valid_training_option()
-        candidate = TestOnlyOption("./output", True, 0, 20)
-        cast(Any, candidate).repeat_num = 1.5
-        tm.set_training_option(existing)
 
         with pytest.raises(ValueError):
             tm.set_training_option(candidate)

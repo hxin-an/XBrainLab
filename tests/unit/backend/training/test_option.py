@@ -5,7 +5,6 @@ import pytest
 import torch
 
 from XBrainLab.backend.training import (
-    TestOnlyOption,
     TrainingEvaluation,
     TrainingOption,
     parse_device_name,
@@ -365,86 +364,3 @@ def test_training_option_rejects_nonportable_or_overflowing_seed(
             repeat_num=repeat_num,
             seed=seed,
         )
-
-
-@pytest.mark.parametrize(
-    "kwargs, has_error",
-    [
-        ({"output_dir": None}, True),
-        ({"output_dir": 123}, True),
-        ({"use_cpu": None, "gpu_idx": None}, True),
-        ({"use_cpu": None, "gpu_idx": 1}, True),
-        ({"use_cpu": False, "gpu_idx": None}, True),
-        ({"use_cpu": False, "gpu_idx": 1}, False),
-        ({"use_cpu": False, "gpu_idx": "cuda:0"}, True),
-        ({"use_cpu": True, "gpu_idx": None}, False),
-        ({"use_cpu": True, "gpu_idx": 1}, False),
-        ({"use_cpu": True, "gpu_idx": 1.5}, True),
-        ({"bs": None}, True),
-        ({"bs": "error"}, True),
-        ({"bs": 2.5}, True),
-    ],
-)
-def test_test_only_option(kwargs, has_error):
-    args = {"output_dir": "ok", "use_cpu": False, "gpu_idx": 0, "bs": 20}
-
-    for k in kwargs:
-        args[k] = kwargs[k]
-
-    with (
-        patch("torch.cuda.is_available", return_value=True),
-        patch("torch.cuda.device_count", return_value=2),
-        patch("torch.cuda.get_device_name", return_value="test_gpu"),
-        patch(
-            "XBrainLab.backend.training.option.is_cuda_device_usable",
-            return_value=(True, None),
-        ),
-    ):
-        if has_error:
-            with pytest.raises(ValueError):
-                option = TestOnlyOption(**args)
-            return
-
-        option = TestOnlyOption(**args)
-
-        assert option.get_output_dir() == "ok"
-        assert option.get_evaluation_option_repr() == "TrainingEvaluation.LAST_EPOCH"
-
-        if args["use_cpu"] or (not args["use_cpu"] and torch.cuda.is_available()):
-            assert option.get_device_name() == parse_device_name(
-                args["use_cpu"], args["gpu_idx"]
-            )
-        if args["use_cpu"]:
-            assert option.get_device() == "cpu"
-        else:
-            assert option.get_device() == "cuda:" + str(args["gpu_idx"])
-
-        assert option.get_optimizer_name_repr() == "-"
-
-
-@pytest.mark.parametrize(
-    ("field", "invalid_value"),
-    [
-        ("epoch", 0.5),
-        ("epoch", 1),
-        ("lr", float("nan")),
-        ("lr", 0.1),
-        ("checkpoint_epoch", 0.5),
-        ("checkpoint_epoch", 1),
-        ("repeat_num", 1.5),
-        ("repeat_num", 2),
-    ],
-)
-def test_test_only_option_rejects_mutated_fixed_runtime_fields(
-    field,
-    invalid_value,
-):
-    option = TestOnlyOption("./output", True, 0, 20)
-    setattr(option, field, invalid_value)
-
-    with pytest.raises(ValueError):
-        option.validate()
-        assert option.get_optim_desc_str() == "-"
-
-        assert option.get_optim(None) is None
-        assert option.get_optim(10) is None
