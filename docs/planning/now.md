@@ -263,6 +263,22 @@ publication/status and all lifecycle assertions. Original7M121case baseline cove
 focused stronger10 then retained5 mapping cases, intentional wrong-page/all-pages refresh fault,
 independent actualdiff review/Ruff. Production unchanged, one fewer case only with stronger evidence;
 no new helper framework, native/manual model claim or module closure inferred.
+Result: six old mapping cases covered in7M121baseline;10stronger0.62s ->5retained0.58s. Tests
++6/-34/net-28, production unchanged. Wrong-page in-memory fault fails4/5; all-pages refresh fails5/5
+at exact selected/non-selected assertions. Independent actualdiff review and Ruff pass; unrelated
+navigation/delegation/publication/shutdown cases unchanged.
+
+**Bounded9G — retire misleading publication test duplicates only after preserving their nuances.**
+Full main/independent primary publication suite570 uses real panels/Observable/Qt timers with narrow
+render/query isolation. Dataset-only case's controller is never wired, so its notify proves nothing;
+Preprocess-only case overlaps all-three-panel ledger evidence. Main identified two details not yet
+subsumed: idle-before-any-event25ms negative window and repeated identical pending revision before
+first render. Fold both into existing all-panel commit/coalescing cases, pass strengthened baseline,
+then remove only those two superseded cases. Retain query failure/row preservation, queued filtering
+readiness, transient training updates, retry/backoff/cleanup/stale and synchronous-command no-refresh.
+Production unchanged; no reset of publication policy or mock readiness. Original/full stronger/retained
+suite and an intentional premature-render fault, independent mapping/diff review/Ruff. The retained
+bounded negative-observation window is test evidence, not an introduced UI wait or speed claim.
 
 **Module8 CI/Poe disposition.** Independent full ci925/docsworkflow83/pyproject314 plus routing109,
 artifact verifier216/direct311 and reliability409/UI40/data58/integration-trigger24 retains distinct

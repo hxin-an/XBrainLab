@@ -72,12 +72,6 @@ def main_window(mock_study, qtbot):
         return window
 
 
-def test_switch_page_updates_dataset_panel(main_window):
-    """Test switching to Dataset panel (Index 0) calls update_panel."""
-    main_window.switch_page(0)
-    main_window.dataset_panel.update_panel.assert_called_once()
-
-
 def test_workflow_state_snapshot_is_detached_from_visible_publication(
     main_window,
 ) -> None:
@@ -126,30 +120,6 @@ def test_workflow_state_snapshot_rejects_shell_only_pending_revision(
         pytest.raises(RuntimeError, match="has not acknowledged current truth"),
     ):
         main_window.workflow_state_snapshot()
-
-
-def test_switch_page_updates_preprocess_panel(main_window):
-    """Test switching to Preprocess panel (Index 1) calls update_panel."""
-    main_window.switch_page(1)
-    main_window.preprocess_panel.update_panel.assert_called_once()
-
-
-def test_switch_page_updates_training_panel(main_window):
-    """Test switching to Training panel (Index 2) calls update_panel."""
-    main_window.switch_page(2)
-    main_window.training_panel.update_panel.assert_called_once()
-
-
-def test_switch_page_updates_evaluation_panel(main_window):
-    """Test switching to Evaluation panel (Index 3) calls update_panel."""
-    main_window.switch_page(3)
-    main_window.evaluation_panel.update_panel.assert_called_once()
-
-
-def test_switch_page_updates_visualization_panel(main_window):
-    """Test switching to Visualization panel (Index 4) calls update_panel."""
-    main_window.switch_page(4)
-    main_window.visualization_panel.update_panel.assert_called_once()
 
 
 def test_switch_page_checks_only_active_nav_button(main_window):
@@ -556,7 +526,8 @@ def test_product_shell_repeated_hide_show_keeps_fixed_right_dock_and_heartbeat(
     assert len(heartbeats) == 20
 
 
-def test_switch_page_only_updates_target_panel(main_window):
+@pytest.mark.parametrize("index", range(5))
+def test_switch_page_only_updates_target_panel(main_window, index):
     """Only the selected panel should be refreshed for a page switch."""
     panels = [
         main_window.dataset_panel,
@@ -566,10 +537,11 @@ def test_switch_page_only_updates_target_panel(main_window):
         main_window.visualization_panel,
     ]
 
-    main_window.switch_page(2)
+    main_window.switch_page(index)
 
-    main_window.training_panel.update_panel.assert_called_once()
-    for panel in (p for p in panels if p is not main_window.training_panel):
+    target = panels[index]
+    target.update_panel.assert_called_once()
+    for panel in (p for p in panels if p is not target):
         panel.update_panel.assert_not_called()
 
 
