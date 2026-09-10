@@ -48,8 +48,8 @@ UI/test files and root settings. Worktree/branch/source facts come from Git, not
 | 2 Import/interpretation | Loaders, BIDS, labels/classes, channel/montage, metadata, recipes, related UI | Audited core reviewed; not closed: two confirmed visible defects await authorization; inventory reconciliation in progress |
 | 3 Preprocess/epoch/split | Processing, copies, invalidation, preview/materialization, related UI/tools | 3A–3U reviewed; documented split-artifact decision and final inventory/closure review remain open |
 | 4 Models/training | Catalog, resource preflight, settings, stop/rerun, history/checkpoints | Core/model/resource/record/UI audit substantially complete; final inventory, convenience retirement and two visible decisions remain open |
-| 5 Evaluation/saliency/views | Read/publication, SmoothGrad/recompute, four views, stale work/render lifecycle | Record/render/provenance and UI owners reviewed; attribution/3D/integration gaps and legacy scheduler retirement remain open |
-| 6 Assistant/chat | Tool adapters, turns/confirmation/execution, model/RAG lifecycle and shutdown | Pending |
+| 5 Evaluation/saliency/views | Read/publication, SmoothGrad/recompute, four views, stale work/render lifecycle | Core/attribution/3D/publication integration fully read; script/inventory reconciliation and two explicit retirement decisions remain open |
+| 6 Assistant/chat | Tool adapters, turns/confirmation/execution, model/RAG lifecycle and shutdown | Controller/confirmation/execution ownership audit started; not closed |
 | 7 Shared desktop/runtime | Shell/navigation, shared components, configuration, errors/logging/start/close | Pending |
 | 8 Scripts/dev/CI | Launch/setup, Poe/hooks, runners, walkthroughs/evaluators/reports and artifacts | Read-only inventory |
 | 9 Cross-module tests/docs | Shared fixtures/guards, dependencies, canonical truth/navigation and coverage gaps | Pending |
@@ -103,11 +103,11 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `ae7c8d62`, 95 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `0839dcc2`, 97 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
-**Current work — module3 closure gaps and module4 training; module2 visible decisions remain open.**
+**Current work — module5 render/resource/lifecycle and module2–4 closure gaps; visible/API decisions remain open.**
 
 Completed2AD–2AG and8C–8E are indexed below and fully traceable in Git. For source-bound Windows
 capture tests only, use process-local GIT_DIR/GIT_WORK_TREE pointing to the actual Windows paths:
@@ -214,52 +214,11 @@ backend supports it. Real application_ui_runtime over Study reproduced the TypeE
 no signature mock or product file change. User asynchronously asked to authorize the visible device
 workflow repair; no reply yet. ApplicationUiRuntime itself is the Protocol, not the concrete adapter.
 
-**Completed bounded4I — retire orphan evaluation record wrappers.** Independent full training_plan1487,
-record/train1547, artifact_store475 and record key/init/wrappers review found ProxyRecord and
-PooledRecordWrapper have no production/dynamic/config/script/doc entry. Only five exclusive wrapper
-tests use them; the current evaluation architecture guard explicitly rejects the old pooled wrapper.
-Main verifies these callers and establishes the five-case baseline plus live record/read-side tests,
-then removes wrappers.py82 and its exclusive test59 only. No replacement owner, DTO or compatibility
-path; production-82/tests-59, no visible behavior, schema, save/load or Command change. Retain PlotType's
-dynamic figure methods, get_eval_record saliency consumer and actual secure artifact publication.
-Run retained record tests/read-side guards after removal, Ruff and independent actual-diff review;
-separate reversible commit, then continue module4. Baseline70passed11.48s, retained65passed11.28s;
-exactlyfive exclusive wrapper cases removed. Independent actual-diff review approved. No product
-persistence/query path changed; deleted files contain82production/59test lines.
+Completed4I–4N and5A–5D/5G are indexed below; actual source, review and focused evidence
+remain traceable in their small commits. Remaining decisions/audit gaps follow.
 
-**Completed bounded4J — unused TrainRecord summary/generic append conveniences.** Full owner/caller audit finds
-get_model_output only two exclusive formatting tests; append_record only four generic-array tests.
-Retain _append_record and its real update_train/update_validation/update_statistic consumers. Migrate
-one meaningful gap-fill test to actual step ×5 then update_train(loss=15), preserving five missing
-prior epochs and current value. Establish passing record/epoch-runner baseline before deleting the
-public wrapper, dead text summary and five remaining exclusive cases. Main owns train.py/test_train.py;
-no schema/figure/dynamic PlotType/safe-load/state publication changes, zero new owner, estimated-60
-production. Same retained tests, a bounded omitted-gap-fill fault, Ruff and independent review;
-separate reversible commit. Do not alter result UI or persistence fixtures in this slice.
-Migrated before production67passed9.74s; retained62 plus4K25 all87passed12.05s. Production-57/testsnet-72;
-five exclusive cases retired. Independent actual-diff review approved; in-memory omitted gap-fill
-fault failed3.25s on the actual empty metric history. No faulty source persisted.
 
-**Completed bounded4K — unused recommendation cache accessor.** Full recommendation owner604/direct314 and
-hidden source/test/config/docs/dynamic scans find cached_for_context has zero caller. Remove only
-this12-line convenience; keep for_state_snapshot pending-submission consumption, locking, context
-fingerprints, deterministic formula and real preview/query consumers. No new owner/test deletion/
-visible policy change. Direct recommendation plus actual metadata-only/state submission/model/device/
-automation/saved-split UI consumers before/after, Ruff and independent review, separate commit.
-Unchanged25 baseline passed7.80s, same25 in combined87after passed. Actual production-13 including
-separator, no test change; independent actual-diff review approved.
 
-**Completed bounded4L — unused model description convenience.** Independent full first-party EEGNet200/SCCNet150/
-ShallowConvNet141, requirements89, ModelHolder117 and direct model/selection/identity tests retain
-all supported classes and one shared minimum-input policy. Tests exercise actual boundary constructors,
-forward/optimizer steps and identity/context; this is not mathematical/scientific certification.
-get_model_desc_str has no production/dynamic/script/doc consumer, only two assertions in otherwise
-useful ModelHolder tests. Remove only method17lines and those assertions; preserve entire tests,
-pretrained weights/effective arguments/stable catalog identity and UI/Assistant model choices. Main
-owns model_holder.py/test_model_holder.py after direct baseline; same after plus model boundary tests,
-Ruff and independent review. Zero new owner, no visible/UI/model behavior or public Command change.
-Original232passed10.21s; same232 with5A34retained all266passed10.37s, same one upstream MNE warning.
-Independent actual-diff approved; production-18 including separator/tests-2, no cases removed.
 
 **Module5 entry audit / next declaration.** Independent full evaluator477/EvalRecord1344 and direct
 evaluator173/eval352/metrics155/context532/integrity608/safe-store889 reviewed. Retain real torch
@@ -270,33 +229,7 @@ export_csv, standalone export_saliency and five saliency getter conveniences; ea
 own plan/baseline and exact exclusive test disposition before deletion. Existing canonical EvalRecord
 export/load and dynamic figures stay. No unknown-script compatibility or new artifact format.
 
-**Completed bounded5A — unused evaluation CSV convenience.** Main and independent caller/registration/export/
-docs/script/config trace finds EvalRecord.export_csv only the exclusive direct test. No current UI,
-Command or script exposes this CSV operation. Remove only method21lines and its one exclusive case;
-retain canonical JSON+NPZ result export/load, metrics and saliency. Existing direct EvalRecord tests
-and real metrics form passing baseline; same retained after, exact test disposition, Ruff and
-independent actual-diff review before commit. Main owns record/eval.py and record/test_eval.py only.
-No supported result-reading/schema/visible feature change, new owner or compatibility replacement.
-Original35passed5.40s; retained34 with4L232 all266passed10.37s. Independent actual-diff approved;
-production-21/tests-15, exactlyone exclusive CSV case retired.
 
-**Completed bounded5B — retire standalone unread saliency export.** Full EvalRecord/caller/config/docs/registry
-audit found export_saliency has only eight exclusive parametrized cases, no product producer/reader
-or supported UI/Command entry. Canonical EvalRecord.export/load persists all actual results; retain
-that schema, context/integrity validation and safe store untouched. Main verifies exact tests/imports,
-then worker may remove only export_saliency, its sole schema constant, unused artifact-type constant/
-export and eight cases plus exclusive imports in test_eval/test_eval_saliency_context. Keep shared
-saliency fixture still used by getters. Two production files, two tests, roughly-82production and no
-new owner; no supported result format/reading change or external-compatibility shell. Baseline direct
-EvalRecord/context/integrity/safe-store cases before, retained after, Ruff and independent actual-diff
-review before separate commit. Existing real roundtrip/tamper/fail-closed context tests remain.
-Baseline101passed/8POSIX-onlyskips12.97s on Windows; one upstream NumPy shape warning. Those skipped
-no-follow/hardlink/FIFO tests remain required on POSIX CI, not removed or claimed passed. Worker
-owns only the four declared files; main runs/reviews/commits after write release.
-Main nonauthor actualdiff review found/removes one now-exclusive read_json_npz_artifact test import;
-canonical artifact reads/validation untouched. Retained93saliency plus4M32 all125passed/12POSIX-only
-skips12.91s; eight exclusive export cases retired. Production-83/tests-76 after exclusive import
-cleanup (verify numstat before commit); Ruff before separate commit. No current schema/reader removed.
 
 **Module4 additional completed audits.** Independent full training_history417/direct159 retained as
 sole detached JSON-safe projection. Full first-party model/requirements/holder plus direct tests
@@ -316,56 +249,8 @@ and legacy build_evaluation_model_summary string forward (migrate three test/hel
 result.text before deleting). Actual typed model-summary preparation/result stays. Full Evaluation/
 Visualization UI audit is ongoing; sampled main-window/renderer paths remain incomplete.
 
-**Completed bounded4M — replace mock-only output uniqueness regression with actual records.** Main full
-test_training_fix107 and existing frozen-clock test_training_plan collision case found duplicated
-plan-ID assertion but only the mock-only test asserts distinct output paths. Strengthen the existing
-real MNE Dataset/tiny torch ModelHolder/TrainingOption collision test to assert both actual record
-directories exist, differ and preserve model/Repeat naming. Establish passing strengthened baseline
-before removing test_training_fix.py and its sole class/module-wide Captum/MagicMock fixture.
-No production changes; keep required external-clock isolation and frozen same-second pressure.
-Run strengthened collision plus existing output namespace/record path cases and original test once;
-then retained after deletion, a bounded omitted-identity fault and independent actualdiff review/Ruff.
-No reduction of useful collision protection, no temp paths outside existing test policy/new environment.
-Strengthened real case+original mock-only test+output namespace selection32passed with5B93=125;
-four additional POSIX-only output-path skips remain applicable CI requirements. Main removes only
-the obsolete107line test module after this passing baseline; same retained31 and omitted-identity
-fault/review/lint before commit. Actual record output directory names/existence are now asserted.
-Independent actualdiff approved; duplicateUUID in-memory fault failed3.31s at real exclusive output
-creation (FileExistsError), proving no silent overwrite. No faulty source persisted. Final retained
-output-path selection and changed-file Ruff must finish before commit; tests net-98/no production.
 
-**Completed bounded5C — unused saliency getter conveniences, preserve actual rendering rejection.** Full source/
-hidden callers find five EvalRecord getters plus _saliency_for_class have no production/dynamic/
-script/doc consumer; actual render uses validated immutable stores. First migrate three existing
-tampered/old/producer-mismatch assertions from loaded.get_gradient to actual validate_saliency_context
-with the same real epoch context, preserving all error/detail/metrics assertions; migrate one valid
-roundtrip assertion to loaded.gradient[1]. These are not deleted tests. Baseline migrated before
-source removal, retaining actual Visualizer label/context and application render tests. Then remove
-only five getter parametrizations, their now-exclusive complete-context fixture/helper, and the six
-source methods (~99LOC). Keep Mapping import (other live usage), _raise/_verify validators, canonical
-safe export/load, label resolver and real renderer ownership. Main owns eval.py and three direct
-record tests. Same retained baseline plus a bounded validator-bypass fault, Ruff/independent review.
-No UI/EEG/current result schema change or new owner; lower-mock render evidence must remain.
-Migrated pre-deletion93passed7.50s with real Visualizer/application renderer; five obsolete cases
-removed only after green. One additional valid getter caller in artifact-integrity roundtrip was
-found by main and migrated, not deleted. Final88passed7.32s; allsix migrated invalid-artifact cases
-fail when real validator is bypassed only in memory (6fail0.50s). Independent actualdiff approved;
-Ruff passed after EOF cleanup. Actual production-100/testsnet-67. Three failure sites/sixcases and
-valid roundtrip remain, exactlyfive getter-only cases removed; no loading/context/integrity gate lost.
 
-**Completed bounded5D — evaluation rendering dead error/string helpers.** Independent full owner/directtests
-and main caller tracing show _final_unavailable_error has no callers; live split errors use
-_split_unavailable_error. build_evaluation_model_summary is an unused production string forward to
-the actual typed result API, with two direct test and one real trainer integration caller. Migrate
-selected-run/integration uses to result.text; missing-run case retains existing typed unavailable
-assertion (which also fixes empty text), not two equivalent invocations. Passing direct render and
-real trainer integration baseline before deleting the two helpers and __all__ entry; same retained
-after, Ruff and independent review. Main owns evaluation_render/test_evaluation_render and one
-integration caller; no actual summary construction/wait/cancel/identity/visible behavior change.
-Production roughly-18, no owner addition. Synthetic integration persistence mocks are a separately
-declared test-quality cleanup, not silently mixed into this API migration.
-Same50passed12.06s migrated-before/11.95s after; same2upstream warnings. Independent actualdiff
-approved; production-19/testsnet-10, no cases removed. Commit hooks provide changed-file lint.
 
 **Pending explicit import-risk decision5E — provenance compatibility re-exports.** Independent full provenance925/
 integrity872 plus exact-hash270/ownership138/integrity81/contextconsumer190 retain bounded exact
@@ -386,28 +271,6 @@ changed. Gate requires a fresh explicit decision after disclosure that external 
 would fail. User asked asynchronously; no reply yet. Preserve aliases and matching guard until then.
 Do not bypass the gate with a different editing tool. Continue independent authorized module work.
 
-**Completed bounded4N — real persistence in synthetic training integration.** Main fully read Study facade406
-and trainer/model integration233; both repeatedly suppress pyplot.savefig/torch.save/numpy.savetxt/
-os.makedirs, just like4E's retired test patches. Fixtures already use bounded real MNE data and
-temporary output. Remove only those FS patch scopes and exclusive patch import; retain all existing
-metrics/identity/append/stop/cleanup/parameter assertions and model/repeat cases. Reuse the existing
-assert_real_training_artifacts helper per actual record.target_path, including both repeats, so all
-trained outputs are safely reloadable. No optional flag/persistence owner or production change.
-Study MagicMock trainer isolation for facade dispatch stays justified. Main owns the two integration
-test modules after baseline; before/after full files and bounded missing-save fault, actual tmp output
-size check, Ruff and independent actualdiff review. Do not claim this synthetic facade path is the
-product command journey or GUI restart/reopen. Duplicate tiny dataset factory consolidation is a
-separate candidate; don't mix it with persistence evidence migration.
-
-4N worker released the two-file diff: test-only +105/-146 (net-41), all existing cases preserved.
-Main reviewed actual diff; full27passed13.88s after, against27passed12.74s before. Actual temporary
-outputs total122files/723462bytes; checkpoint and EvalRecord reload assertions execute per trained
-record. Omitted torch.save in-memory fault fails the exact real EEGNet case at safe checkpoint
-reload (ArtifactIntegrityError/EOF,1fail3.88s); no faulty source persisted. The first keyword fault
-selection collected no case, so only the corrected exact-node run is evidence. Initial Ruff found
-two import-order issues; import-only formatting and Ruff check/format recheck passed. Main non-author
-review approves the behavioral diff; architecture persistence
-claim is corrected. No mock-heavy delegation tests or existing training assertions were discarded.
 
 **Pending explicit lifecycle-risk decision5F — dormant automatic saliency scheduler.** Main and independent caller audit
 prove PostTrainingSaliencyAutomation is instantiated but never armed by production; its only active
@@ -438,24 +301,69 @@ do not bypass the gate. Resume the tested migration only after approval. The now
 submission-failure forwarding chain and manager helper are additional retirement dependencies for that
 same decision, not grounds to silently delete the underlying live target/publication contracts.
 
-**Completed bounded5G — unused saliency/render conveniences.** Full independent visualization2332source and
-2526directtests plus main policy305/direct215 and holder caller audit identify unused inverse_dist_weighted_sum,
-SaliencySpectrogramMapViz._describe_values static forward, TrainingPlanHolder.get_saliency_params,
-recommended_saliency_params_for_method and normalize_saliency_methods. Actual vectorized interpolation,
-module diagnostic helper, manager-owned params, strict normalize_saliency_params and shared selected-method
-policy stay. Migrate policy helper case to real baseline/configured payload extraction before deletion;
-remove only unused helper unknown-method case, preserving strict normalizer unknown-method coverage.
-Holder getter case protects empty-until-configured state: migrate its assertion to actual holder
-saliency_params, preserving the real construction/default-state case rather than deleting it.
-Separately remove one literally repeated adjacent command-shape assertion from the fully reviewed UI
-test, retaining its identical neighbor. Four production files, roughly-70LOC, zero owner change or
-visible UI/public command change. Main owns these source/test files. Before/after focused real
-visualizer/3D/cache/normalization/policy/holder tests and the exact Qt regression, Ruff and independent
-actualdiff review are required; no whole-suite or native3D-render claim from mocked mesh IO.
-Migrated235passed22.14s before deletion; retained234passed21.78s after, same7upstream warnings.
-Exactlyone obsolete unknown-helper case removed; real strict-normalizer invalid-method case remains.
-Independent actualdiff review approved; four production files net-61 (one blank-line normalization),
-testsnet-8, zero owner change. Changed-file Ruff format/check/format-check passed.
+
+**Completed bounded5H — no-op 3D scene internals.** Independent full base1548/head269/3Dview1749 and
+direct baseasync896/cache391/time264/worker1273 audit plus main fullhead269 confirms definition-only
+CHECKBOX_KWARGS/CHECKBOX_TEXT_KWARGS, empty _setup_scene/sole constructor call and unread self.save/
+param[save]. Remove only those internals and the fixture's unused save key; sample_index routing,
+actors/orientation/camera/control behavior stay. UI-internal behavior-preserving changes are explicitly
+authorized; no visible change, owner addition or native lifecycle rewrite. Worker owns only head.py
+and time-slider test after fullthree3D test baseline; main actualdiff/lint/after and independent
+nonauthor review. Roughly-25productionLOC, oneUIfile; no screenshot equivalence/native3D acceptance
+claim from controlled PyVista tests. Base/3D worker, cache, weakrefs and verified teardown are retained.
+Same43passed6.74s before/6.50s after; main nonauthor actualdiff approved and Ruffpassed. Actual one
+production file+1/-21/net-20; test+1/-1. No sample-index/control behavior or native ownership changed.
+
+**Completed bounded5I — actual Saliency estimator-to-receipt evidence.** Full resource817/direct244 and
+Analysis618/direct1409 audits found receipt tests patch preflight; integration confirmation402 covers
+import/training only. Add one case to existing analysis test module: allocated tiny NumPy epoch data,
+real torch Linear parameters and actual estimator produce a RAM warning (only OS telemetry isolated),
+then exact challenge/confirmed consume/readback/replay. Reuse actual TrainingManager and
+VisualizationStateService receiver, asserting no initial mutation, one confirmed notification and no
+replay mutation. Prove each attempt rechecks current RAM before receipt authorization. The manager has
+no trainer to avoid attribution: this is Analysis estimator/receipt/configuration wiring, not a whole
+ApplicationService/GUI/training-compute journey. No production change or additional receipt owner.
+Worker owns only test_analysis_service.py after existing analysis/resource baseline; fullsameafter,
+bounded in-memory admission-bypass fault, Ruff and main nonauthor actualdiff review before commit.
+Original41passed0.48s; new42passed2.70s. Admission-bypass in-memory fault fails at the initial challenge
+(DIDNOTRAISE,1fail2.15s), no faulty source persisted. Main made the allocated fixture type explicit,
+matched Linear input to32flattened features and asserted264real parameter bytes; final combined42+5J38
+passed80in6.00s. Ruffpassed. Main nonauthor review approves real receiver/probe/readback evidence, not
+a training job. Test-only+116/-3/net+113; existing receipt isolation tests remain useful and retained.
+
+**Completed bounded5J — reuse owned normalized arrays in direct render query.** Main full SaliencyRenderPublisher1420/
+work176 and direct733/317 found single-run normalize=True allocates normalized arrays, then copies
+them again in DTO construction. An actual Windows publisher probe measured two extra copies/128bytes
+for128bytes of output; raw also copies128bytes, which is required to detach source. Current GUI variant
+preparation already uses the owned-array path, so this is direct query cleanup, not measured GUI speedup.
+Reuse existing adopt_saliency_store only for newly normalized single-run arrays; raw source remains
+copied, cancellation checkpoints/read-only flags/identity fences unchanged. No new cache/owner/buffer
+type. Add normal/zero and raw/normalized source-isolation/dtype/value tests, establish passing baseline,
+then one-line production reuse +stable copy regression/identical focused render/work/normalization
+tests. Repeat probe, independent actualdiff review and Ruff before commit. DTO read-only arrays remain
+trusted detached renderer data, distinct from immutable bytes-backed authoritative EvalRecord stores.
+Do not claim measured RSS/latency gains or strengthen immutability through unnecessary extra copies.
+Four new normal/zero/raw/normalized characterization cases and full render/work/normalization38passed
+5.65s before reuse. Sole production+1 passes already-reviewed adopt flag only after fresh normalization;
+independent actualdiff review approved. Same38after passed within80combined6.00s; repeated exact
+probe shows normalized extra copies2/128bytes→0/0, output stays128bytes; raw remains2/128bytes.
+Changed-file Ruffpassed. Production+1/testsnet+50, no owner or visible behavior change.
+
+**Completed bounded5K — retire unused coverage forwarding shell.** Full main482source/294tests and independent
+caller/guard audit find three compatibility functions plus _DEFAULT_PROJECTOR used only by one
+direct test. Migrate that case to the actual SaliencyCoverageProjector methods, keeping all label/
+method/complete assertions; passing baseline before deleting shell and its three exports. Keep
+project_method/project_run/label projection and all coverage/context/integrity policy unchanged.
+Architecture guard must require only the actual projector definition while still forbidding retired
+names in UI imports/calls and state-service policy: retain COMPATIBILITY_NAMES and union it with
+PUBLIC_NAMES for negative import detection. Do not weaken tests or the specialized visualization
+guard. One production file roughly-40LOC, zero owner/public Command/query/EEG/visible UI change;
+three scoped files only (coverage owner/directtest/architecture helper). Full direct coverage +actual
+state architecture +negative architecture tests before/after, Ruff and main nonauthor review.
+5E provenance aliases and5F scheduler remain unchanged pending explicit decisions.
+Same258passed36.69s before/36.50s after, including full architecture negative tests and actual
+state boundaries. Ruffpassed; main nonauthor actualdiff approved. Production-39, zero owner change;
+all label/method/complete assertions retained. Retired-name negative UI import/call guards stay active.
 
 **Module5 full source/test audit additions.** Backend visualizers2332source/direct2526 retain exact
 class identity, scientific color/time/geometry semantics, actual STFT and cache single-flight/clear/
@@ -467,13 +375,24 @@ release. Captum inner calls remain cooperatively cancellable only between protec
 no stronger interruption promise or measured end-user speed improvement. Direct tests of successful
 temporary-model CPU cleanup need tracing before any cleanup-semantics change.
 
+Independent full manager724–2413/directsaliencylifecycle1882 and actual-method accumulation275
+retain explicit command target admission, terminal generation/notification/retry, unlocked callbacks,
+stale/CAS fences, atomic recompute and actual safe reload. Full publication integration2773 (not the
+earlier approximate2430) includes real MNE/EEGNet multi-fold commands, actual Qt close, render barriers,
+live-model/mask/metadata mutation rejection and recovered publication. Narrow compute/thread/queue
+fault seams are justified, not mock-only duplicates. Its one manually armed dormant scheduler case
+remains protected pending5F; similarly named explicit-command scheduler/target tests must stay.
+Seven compact read-side/UI/label/FIF tests1277 were fully source-reviewed, not executed native GUI
+acceptance. Capture walkthrough/script test audit and final inventory review remain unfinished.
+
 **Module4 preview coordinator full audit.** Main read439source/341directtests: retain single-flight
 same-request sharing, latest queued draft replacement, exact generation/receipt refinement, shared
 OwnedWork cancellation, non-daemon worker admission/failure/close/retry and nonblocking diagnostics.
 Real threads/Events/registry assertions give direct evidence; model estimate callback is a justified
 external seam. Retained cache has one bounded completed result, not a second policy owner. No measured
-unnecessary waiting; waits are explicit ticket/lifecycle boundaries. Possible dead None branch and
-test-only worker identity convenience require separate caller/test disposition, not module closure.
+unnecessary waiting; waits are explicit ticket/lifecycle boundaries. The worker_thread property is
+used by actual UI tests to check non-daemon identity and is retained. A possible dead None branch
+requires control-flow disposition before closure; do not infer deletion from a text-only search.
 
 Completed2X–2AC are indexed below; their full scope/evidence remains in Git history.
 2AC found an existing shared-environment source hazard: Windows .pth adds the original checkout
@@ -715,6 +634,17 @@ this table replaces their duplicated active-plan narrative, not any unresolved m
 | 4F / `893e4ad0` | Unused Trainer name lookup; production-22/tests-21 |Retained Trainer/real rollback/optimizer stop47pass;4obsolete cases; independentreview/Ruff |
 | 4G / `eac27aad` | Live bulk metric/history rendering only; productionnet-26/testsnet-46 |35baseline→42final incl7retained presentation neighbors;2obsolete append cases retired after historical9pass; independentreview/Ruff |
 | 4H / `05da6d88` | Inert settings fields/note/helper removed; productionnet-22/tests-1 |Same45before/after incl real saved-split recommendation; main nonauthorreview/Ruff; no visible change |
+| 4I / `77fc31c2` | Orphan record wrappers/exclusive suite removed; production-82/tests-59 |70before65retained;5obsolete cases; negative architecture boundary retained; independentreview |
+| 4J / `4e9deb3a` | Unused TrainRecord summary/append API; production-57/tests-72 |67migrated before;62retained+4K25=87after; actual update gapfill and omitted-gap fault retained |
+| 4K / `e90be669` | Unused recommendation cache accessor; production-13 |Same25before/after within87; cache/invalidation/policy unchanged; independentreview |
+| 4L / `2ab22913` | Unused ModelHolder description; production-18/tests-2 |Same232 real model/catalog construction+gradient cases; no test case removed; independentreview |
+| 5A / `6558bd06` | Unused EvalRecord CSV export; production-21/tests-15 |35before34retained; current JSON/NPZ reading unchanged; independentreview |
+| 5B / `5c33337d` | Unread standalone saliency export retired; production-83/tests-76 |101before93retained;8obsolete cases;8POSIX-only skips still CI obligations; main nonauthorreview |
+| 4M / `bf24db3f` | Mock-only output uniqueness replaced by real frozen-clock records; testsnet-98 |32before31retained/4POSIXskips; duplicateUUID fails real exclusive output creation; independentreview |
+| 5C / `cdeb3175` | Unused saliency getters removed; production-100/testsnet-67 |93migrated before88after;6actual-validator bypass faults fail; invalid/old/producer checks migratednotremoved |
+| 5D / `ae7c8d62` | Dead render error/string forwards; production-19/testsnet-10 |Same50before/after incl real trainer typed summary; no cases removed; independentreview |
+| 4N / `33a7ad8b` | Real persistence in synthetic training integration; testsnet-41 |Same27before/after;122files/723462bytes; omitted-save exactcase fails safe load; main nonauthorreview/Ruff |
+| 5G / `0839dcc2` | Unused policy/holder/render conveniences + duplicate assertion; productionnet-61/testsnet-8 |235migrated before234after; strict invalid-method/default state/vectorized interpolation retained; independentreview/Ruff |
 
 ### Evidence qualifications that remain relevant
 

@@ -13,14 +13,6 @@ from XBrainLab.ui.styles.theme import Theme
 bgcolor = Theme.BACKGROUND_MID
 mesh_scale_scalar = 0.8
 
-CHECKBOX_KWARGS = {
-    "size": 20,
-    "border_size": 5,
-    "color_on": Theme.CHECKBOX_ON,
-    "color_off": bgcolor,
-}
-CHECKBOX_TEXT_KWARGS = {"color": Theme.TEXT_PRIMARY, "shadow": True, "font_size": 8}
-
 
 class Saliency3D:
     def __init__(
@@ -36,7 +28,6 @@ class Saliency3D:
     ):
         # set parameters
         self.selected_event_name = selected_event_name
-        self.save = False
         self.showChannel = True
         self.showHead = True
         self.cmap = colormaps["coolwarm"]
@@ -63,10 +54,7 @@ class Saliency3D:
         if self.engine is not None:
             self.cmap = colormaps[getattr(self.engine, "cmap_name", "coolwarm")]
 
-        self.param = {
-            "sample_index": 0,
-            "save": self.save,
-        }
+        self.param = {"sample_index": 0}
 
         # set plotter
         if plotter:
@@ -82,7 +70,6 @@ class Saliency3D:
         self._orientation_widget: Any | None = None
 
         if self.engine:
-            self._setup_scene()
             self._init_actors()
 
         # checkbox instances
@@ -109,13 +96,6 @@ class Saliency3D:
             absolute=absolute,
         )
         return engine, int(channel_count)
-
-    def _setup_scene(self):
-        # Access engine meshes
-        # Note: PyVista meshes are mutable, so we can add them directly
-        # But we need them to be stored in "self" for update logic?
-        # Actually update logic acts on self.engine.saliency_cap
-        pass
 
     def _init_actors(self):
         # Create channel spheres

@@ -95,7 +95,7 @@ def _saliency_with_time_axis() -> tuple[
     saliency_any.showHead = True
     saliency_any.chs = []
     saliency_any.cmap = "coolwarm"
-    saliency_any.param = {"sample_index": 0, "save": False}
+    saliency_any.param = {"sample_index": 0}
     saliency_any.update = update
     return saliency, plotter, engine, update
 
