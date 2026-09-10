@@ -68,9 +68,8 @@ def assert_region_has_no_unpainted_block(
             f"{surface_name} required region is outside {screenshot.name}."
         )
 
-    pixels = list(_pixels(region))
-    black_pixels = sum(max(pixel) <= black_threshold for pixel in pixels)
-    black_ratio = black_pixels / max(len(pixels), 1)
+    black_pixels = sum(max(pixel) <= black_threshold for pixel in _pixels(region))
+    black_ratio = black_pixels / (region.width * region.height)
     if black_ratio > max_black_ratio or _contains_black_tile(
         region,
         black_threshold=black_threshold,
@@ -237,9 +236,8 @@ def _contains_black_tile(
             tile = region.crop(
                 (left, top, left + tile_size, top + tile_size),
             )
-            pixels = list(_pixels(tile))
-            black = sum(max(pixel) <= black_threshold for pixel in pixels)
-            if black >= len(pixels) * 0.98:
+            black = sum(max(pixel) <= black_threshold for pixel in _pixels(tile))
+            if black >= tile.width * tile.height * 0.98:
                 return True
     return False
 

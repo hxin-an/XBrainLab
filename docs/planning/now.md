@@ -103,11 +103,29 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery checkpoint: product branch `cleanup/module-quality`, HEAD `af66a3aa`, 171 commits after baseline
+Git recovery checkpoint: product branch `cleanup/module-quality`, HEAD `565aed27`, 172 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
 **Current work — developer docs/config truth and remaining scripts; module2–6 closure gaps and explicit decisions remain open.**
+
+**Bounded8P — measure screenshot-readiness pixel materialization before consolidation.** Main full
+readiness341/callers and direct black-region/frame tests identify two list(_pixels(...)) copies used
+only for iteration and length. Measure actual PNG760x520 warmed validation in the existing Windows
+Pillow runtime (wall time and Python traced peak; not total process/native RAM). If material, iterate
+existing pixel data without a second list and use exact dimensions; preserve thresholds, tiles/errors.
+Characterize valid dark-theme frame, global black area and small all-black tile before edits, then
+same cases after plus existing frame-stability protection. No UI/gate policy or new dependency/owner;
+script-only two loops, focused Ruff and independent actual-diff review. Measurement/test failure is
+not a reason to relax image acceptance. Continue stage audit after this bounded work.
+Baseline760x520: Pillow pixel API already returns a tuple; the extra list is redundant. Three warmed
+runs with tracemalloc:0.4759/0.4636/0.4613s, peak31,619,373/31,619,357/31,619,349bytes. This targets
+one transient list allocation, not all Pillow pixel materialization or general application speed.
+Result: exact four real-PNG cases before4pass6.98s/after4pass6.99s. Forced in-memory tile-check
+bypass fails only small-black-tile rejection (DID NOT RAISE), clean dark frame still passes; original
+function restored, no fault source persisted. Same warmed after samples0.4543/0.4559/0.4600s and
+peak28,458,270/28,458,254/28,458,246bytes: ~3.16MB less traced peak; no total-RAM/app-speed claim.
+Ruff/format and independent actual-diff/caller review pass. Script+4/-6/net-2, tests+22, owners unchanged.
 
 **Bounded8O — retire unreachable script-only Qt shutdown coordinator.** Main and independent full
 read of bounded_qt_shutdown98/direct188, repository-wide symbol/module search, runner registry and

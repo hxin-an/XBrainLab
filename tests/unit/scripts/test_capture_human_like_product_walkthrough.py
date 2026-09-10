@@ -2695,6 +2695,28 @@ def test_capture_frame_readiness_rejects_large_local_unpainted_region(tmp_path) 
         )
 
 
+@pytest.mark.parametrize("black_tile", [False, True])
+def test_capture_readiness_preserves_dark_theme_and_small_black_tile_rejection(
+    tmp_path, black_tile
+) -> None:
+    screenshot = tmp_path / "dark-theme.png"
+    image = Image.new("RGB", (192, 192), "#252a30")
+    if black_tile:
+        # Only 1/64 of the image is black: below the global ratio threshold.
+        ImageDraw.Draw(image).rectangle((0, 0, 23, 23), fill="#000000")
+    image.save(screenshot)
+
+    expectation = (
+        pytest.raises(RuntimeError, match="unpainted block")
+        if black_tile
+        else nullcontext()
+    )
+    with expectation:
+        _assert_region_has_no_unpainted_block(
+            screenshot, (0, 0, 192, 192), surface_name="Dark theme"
+        )
+
+
 def test_capture_frame_readiness_requires_stable_consecutive_frames(tmp_path) -> None:
     first = tmp_path / "frame-one.png"
     second = tmp_path / "frame-two.png"
