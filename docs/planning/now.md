@@ -103,11 +103,24 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery checkpoint: product branch `cleanup/module-quality`, HEAD `e49a3121`, 151 commits after baseline
+Git recovery checkpoint: product branch `cleanup/module-quality`, HEAD `a7cc2d47`, 160 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
 **Current work — developer docs/config truth and remaining scripts; module2–6 closure gaps and explicit decisions remain open.**
+
+**Bounded8K — remove unused phase-alias arguments without changing evidence.** Independent full
+human-like parent4966/direct5939 and main four-caller/helper read find append_phase_alias ignores
+widget and service; these are not state owners or observation hooks. Characterize actual helper output
+and rejection of undeclared/source-missing/mismatched aliases before removal, retaining existing phase
+contract/payload validators. Then delete two parameters and eight passed arguments only. Existing
+source phase supplies copied visible text/buttons/workflow state; notes and screenshot identity remain
+unchanged. No real dataset/training/model run, product/UI/schema/public gate change or new helper.
+Focused characterization before/after, caller sweep, Ruff and actual diff review; continue app-polish
+full-audit findings and inventory instead of claiming module closure.
+Result:8 cases pass before7.11s and after6.93s, preserving actual helper output/rejection and existing
+phase ordering/alias validators. Script-10 lines; tests+36 lines/4 actual behavior cases, no cases
+retired. Ruff/format pass; repo-wide source/config/docs search finds only the four migrated callers.
 
 **Bounded9L4B — isolate MOABB CLI capture preferences after exact-source preflight.** Full CLI138
 and actual capture MainWindow construction/close trace show the same inherited preferences risk.
@@ -147,6 +160,21 @@ two-file Ruff/format and diff check pass. MetricTab caller now completes via the
 Independent first-paint diagnosis identifies post-show dock-width/reflow scheduling as a candidate,
 not proven root cause; raw geometry/pixel evidence remains required before any visible repair decision.
 Full capture remains failing on the retained no-horizontal-scroll first-paint gate in both backends.
+Next8J diagnostic is read-only: in-memory wrap the existing first-paint observer to record raw panel/
+viewport/content widths, minimum hints, horizontal range, child bounds and reflow timers, then the
+same fields after original capture and three explicit event turns. Run only the real-artifact test
+under existing isolated native Qt fixtures; restore wrappers in finally, no persisted source patch,
+model/data/cache writes or altered first-paint assertion. Geometry establishes whether overflow
+persists, not whether raw first-frame pixels visibly clip; any visible product repair needs approval.
+Diagnostic: initial instrumentation failed on parentless standalone widget and sibling mapTo usage;
+no product evidence from that attempt. Corrected temporary observer: real-dock raw first paint has
+viewport320/content564/horizontal max244/deferred reflow active, but measured runtime/composer bounds
+both12..308 already fit. After original capture, range is0/content matches viewport; extra turns
+retain0. Standalone range0 nevertheless has runtime widget59..355 until next turn12..308. This proves
+transient geometry/range settling and a limit of range-only evidence, not persistent or visually proven
+clipping. Raw first-frame pixels were not captured. Keep the full gate failure open; do not relabel it
+passing or implement a visible UI correction from these observations alone. Diagnostic report test
+passed6.81s; its extra observation turns are not uninstrumented full-gate evidence.
 
 **Bounded9L4A — cover remaining standalone replay/dialog preference consumers.** Same-class caller
 scan finds Data Interpretation replay constructs/closes real MainWindow, reviewer-fixes opens real

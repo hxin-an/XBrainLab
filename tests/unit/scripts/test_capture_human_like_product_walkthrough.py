@@ -1032,6 +1032,42 @@ def test_product_walkthrough_screenshot_manifest_excludes_eval_dashboard() -> No
     assert "20-eval-dashboard.png" not in SCREENSHOT_NAMES.values()
 
 
+@pytest.mark.parametrize("failure", [None, "undeclared", "missing", "mismatch"])
+def test_phase_alias_preserves_observations_and_rejects_unbacked_aliases(failure):
+    source = {
+        "phase": "data_source_selection",
+        "screenshot": "source.png",
+        "visible_text": ["Source"],
+        "button_state": [{"text": "Next", "enabled": True}],
+        "workflow_state": {"loaded": False},
+    }
+    phases = [] if failure == "missing" else [source]
+    original = deepcopy(phases)
+    phase = (
+        "unknown" if failure == "undeclared" else "data_interpretation_select_source"
+    )
+    screenshot = "other.png" if failure == "mismatch" else "source.png"
+    notes = {"active_step": "Select Source"}
+    expected = pytest.raises(RuntimeError) if failure else nullcontext()
+    with expected:
+        walkthrough_module.append_phase_alias(phases, phase, screenshot, notes)
+    if failure:
+        assert phases == original
+        return
+    assert phases == [
+        source,
+        {
+            **source,
+            "phase": phase,
+            "alias_of": "data_source_selection",
+            "notes": notes,
+        },
+    ]
+    alias = phases[-1]
+    for key in ("visible_text", "button_state", "workflow_state"):
+        assert alias[key] is not source[key]
+
+
 @pytest.mark.parametrize("mutation", ["reordered", "duplicate"])
 def test_validate_walkthrough_payload_rejects_noncanonical_phase_sequence(
     mutation: str,

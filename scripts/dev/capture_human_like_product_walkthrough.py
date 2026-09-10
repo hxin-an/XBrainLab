@@ -932,8 +932,6 @@ def _run_walkthrough_steps(
         phases,
         "data_interpretation_select_source",
         screenshots["source_selection"],
-        dialog,
-        service,
         {
             "active_step": active_dialog_step(dialog),
             "selected_source": sanitize_path(str(source_path)),
@@ -1253,8 +1251,6 @@ def _run_walkthrough_steps(
         phases,
         "data_interpretation_apply",
         screenshots["applied"],
-        window,
-        service,
         {
             "validation": command_summary(reviewed_validation),
             "applied": command_summary(apply_confirmed),
@@ -1267,8 +1263,6 @@ def _run_walkthrough_steps(
         phases,
         "data_interpretation_save_recipe",
         screenshots["applied"],
-        window,
-        service,
         {"recipe": command_summary(save_recipe)},
     )
     reload_dialog = DataInterpretationPreviewDialog(
@@ -1427,8 +1421,6 @@ def _run_walkthrough_steps(
         phases,
         "dataset_generation",
         screenshots["dataset_ready"],
-        window.training_panel,
-        service,
         {
             "dataset": command_summary(dataset),
             "split_handoff": split_handoff,
@@ -1992,8 +1984,6 @@ def append_phase_alias(
     phases: list[dict[str, Any]],
     phase: str,
     screenshot: str,
-    widget: QWidget,
-    service: ApplicationService,
     notes: dict[str, Any],
 ) -> None:
     """Append an additional acceptance phase backed by an existing screenshot."""
