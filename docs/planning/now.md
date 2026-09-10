@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `48b9f880`, 130 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `36a23137`, 131 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -329,12 +329,80 @@ independent caller review. One reversible commit, continue shared lifecycle audi
 
 7F verified52before7.55s ->43after7.30s, exactly9 exclusive orphan cases removed. Production-59,
 testsnet-75. Independent actual-diff/caller review approved and three surviving changed Python files
-pass Ruff. Main verified actual diff and distinct live controller/close signals. Commit next.
+pass Ruff. Main verified actual diff and distinct live controller/close signals. Committed36a23137.
 
 Modal/error audit: independent full modal406/error319/common463/BaseDialog209 and direct448/26/891/
 138/147 retain shared alert/confirmation, safe Cancel/Enter, geometry/order and public diagnostic
 privacy. Unused show_information facade and ignored message_box injection parameter are candidates;
 all context recovery text and actual warning/error/confirmation routes remain necessary.
+
+**Bounded7G — remove obsolete modal convenience and ignored error injection.** Main and independent
+source/caller review confirm show_information is used only by its facade test and message_box is an
+unused, immediately discarded keyword in present_unexpected_error. Remove this facade and its one
+invocation/expected severity within the shared facade test (retain the case and warning/error checks),
+and remove ignored keyword/comment/del. Keep INFORMATION severity and actual ModalAlertDialog path,
+all recovery copy/context, logging/redaction/hostile payload and confirmation semantics. Two source
+files expected-15LOC, no owner/UI/public Command change. Characterize full modal+policy+unexpected-error
+suites, same retained cases after, lint/main actual diff and independent privacy-boundary review.
+One reversible commit then remaining runtime audit, no final privacy/native acceptance claim.
+
+7G characterization initially39passed/3failed8.25s in Windows Python with Qt offscreen: message label
+height30 vs minimum15, unchanged after event drain, and Qt reports missing bundled font directory.
+Exact same42 cases pass8.43s with actual Windows Qt platform; no source/test assertions altered to get
+this baseline. Continue retirement using same native platform before/after, retain offscreen/font
+fixture issue for module9/final platform validation. Do not mislabel Windows-interpreter offscreen runs
+as native-window evidence; earlier focused counts support only their actual unit/component contracts.
+Same offscreen baseline42passed8.31s when pointed at installed C:\Windows\Fonts; native after42passed
+8.44s. No tests removed; production-14/tests-3. Main actual diff and independent privacy-boundary review
+approved, three-file Ruff passed. Existing Windows CI already provisions the font directory; the
+direct-pytest fixture gap remains a bounded module9 fix, not a product-layout change. Commit next.
+
+**Bounded8A — replace mocked installer-integrity evidence with real validation.** Independent full
+Windows setup881/PS187/rootCMD20/direct436 retains existing setup->model lifecycle ownership. Main
+read actual download/install seam: pinned HTTPS, final-scheme check, bounded read and SHA comparison
+precede file write/installer execution. Existing checksum test replaces this entire validator with a
+throw, so cannot catch bypass. Tests-only: isolate only urllib response and process execution; exercise
+real validator/hash/temp file via _install_poetry for rejected redirect/oversize/checksum, plus actual
+validated-byte write using an explicit fixture digest. Retain official pin assertions, no real network,
+installer/env/model mutation; one existing test file only, no new platform/owner. Run full direct
+bootstrap tests before/after and intentional checksum bypass must fail; independent actual test review.
+Production unchanged, no visible/public behavior decision. Main owns plan, worker owns exacttestfile;
+commit after no active writes/tests/hooks. Continue broader script audit, not installer certification.
+
+8A implemented20before0.09s ->23after0.09s; one mocked case becomes3real rejection paths plus1verified
+payload write, official pins unchanged. First after run hit Windows pytest path errors because the
+oversized byte parameter became its test ID (22pass/2setup-teardown errors); main added explicit short
+IDs, not weakened assertions. An initial fault run shared that fixture error and is not proof.
+Corrected in-memory SHA-bypass probe gives1failed/2passed0.13s at missing SetupError, proving checksum
+regression detection. Main removed redundant BytesIO context-manager overrides; final combined direct
+bootstrap+fixture policy29passed4.22s and three-file Ruff passed. Independent actual integrity-test
+review approved; production unchanged, testnet+92. Commit next.
+
+**Bounded9A — align direct Windows pytest with existing CI fonts.** Measured7G before source change:
+Windows offscreen lacks installed fonts and3geometry cases fail; native platform and offscreen with
+existing SystemRoot/Fonts each pass identical42. CI already sets that directory at ci.yml492-500.
+Tests-only fix in existing pre-PyQt tests/conftest.py environment setup: default QT_QPA_FONTDIR only
+for Windows offscreen, only if installed directory exists; preserve explicit overrides and all other
+platforms. No downloads, product fonts/style, gate weakening or new environment policy module.
+Add isolated process tests exercising actual conftest loading for default/override/non-offscreen/missing
+directory cases, not source-text assertions. Baseline3fail established, then same42 offscreen without
+injectedfontenv and directfixturepolicy cases; lint and independent actual diff review. Main owns plan;
+one worker may own conftest+test_test_fixture_policy.py only, separate from8A. One reversible commit,
+continue cross-module inventory; no global/Windows persistent environment mutation.
+
+9A after48passed12.20s: original42modal/privacy cases plus2retained fixture-policy and4isolated child
+cases, with no external QT_QPA_FONTDIR override. Main removed test's fake sys.platform assignment,
+made actual-Windows cases explicit platform tests and bounded child timeout30s; no Linux disguise.
+Mechanical formatting/import sort applied; uppercase Windows environment key and narrow subprocess
+lint justification corrected after first lint. Final combined29passed4.22s and three-file Ruff passed;
+main nonauthor actualdiff approved. Testconfig+87LOC/no production change, commit next.
+
+Module8 Git correction: independent initially proposed integrating infra acf7c56d, but main challenged
+the absent product paths. Exact product Git has no compact/manual_environment tracked files and common
+ancestor4770b049, not an unintegrated dependency. Recommendation withdrawn: preserve separate infra
+history; do not import absent infrastructure just to withdraw it. Full launcher CMD42/PS1276/direct89
+review retains bounded console-only child output/log retention, exit propagation and optional safe IBus
+setup. Source guards do not prove native launch or measured wait improvement; setup/gate audit remains.
 
 **Module6 initial full owner audit (not closure).** Independent full controller2949/attempt898/
 execution342/confirmation314/pending443 and respective direct confirmation154/pending560/execution151/

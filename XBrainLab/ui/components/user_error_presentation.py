@@ -246,13 +246,9 @@ def present_unexpected_error(
     context: UnexpectedErrorContext,
     *,
     error_info: object | None = None,
-    message_box: Any | None = None,
     title: str | None = None,
 ) -> str:
     """Log technical details and show only stable recovery guidance."""
-    # Keep the legacy injection argument temporarily so workflow callers can
-    # migrate independently; visible presentation is always the shared shell.
-    del message_box
     presentation = context.value
     if error_info is None:
         _safe_logger_error(presentation.log_message, exc_info=True)
