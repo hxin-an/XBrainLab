@@ -185,13 +185,6 @@ def test_discovery_commit_validates_cache_payload_before_live_publication(
     assert service.state.checkpoint_session_state() == before
 
 
-def _data_filename(data: Any) -> str:
-    get_filename = getattr(data, "get_filename", None)
-    if callable(get_filename):
-        return str(get_filename())
-    return Path(_data_filepath(data)).name
-
-
 def _data_filepath(data: Any) -> str:
     get_filepath = getattr(data, "get_filepath", None)
     if callable(get_filepath):
@@ -204,7 +197,6 @@ def _service() -> tuple[DataInterpretationCommandService, DatasetStateService]:
     return (
         DataInterpretationCommandService(
             dataset,
-            data_filename=_data_filename,
             data_filepath=_data_filepath,
         ),
         dataset,

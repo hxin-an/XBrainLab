@@ -522,7 +522,6 @@ def test_strict_bids_legal_special_values_remain_schema_evidence_but_block_apply
     dataset.get_loaded_data_list.return_value = [raw]
     apply_service = DataInterpretationApplyService(
         dataset,
-        data_filename=lambda item: str(item.get_filepath()),
         data_filepath=lambda item: str(item.get_filepath()),
         record_label_import=lambda **_kwargs: None,
     )
@@ -1131,7 +1130,6 @@ def test_timestamp_label_apply_uses_per_run_mapping_instead_of_global_mapping(
     dataset.get_loaded_data_list.return_value = [raw_1, raw_2]
     service = DataInterpretationApplyService(
         dataset,
-        data_filename=lambda raw: str(raw.get_filepath()),
         data_filepath=lambda raw: str(raw.get_filepath()),
         record_label_import=lambda **_kwargs: None,
     )
@@ -1236,7 +1234,6 @@ def test_internal_event_hints_use_each_run_mapping(tmp_path: Path) -> None:
     dataset.get_loaded_data_list.return_value = [raw_1, raw_2]
     service = DataInterpretationApplyService(
         dataset,
-        data_filename=lambda raw: str(raw.get_filepath()),
         data_filepath=lambda raw: str(raw.get_filepath()),
         record_label_import=lambda **_kwargs: None,
     )
@@ -1336,7 +1333,6 @@ def test_partial_internal_run_mapping_keeps_affected_run_in_confirmation_evidenc
     dataset.get_loaded_data_list.return_value = [raw_1, raw_2]
     apply_service = DataInterpretationApplyService(
         dataset,
-        data_filename=lambda raw: str(raw.get_filepath()),
         data_filepath=lambda raw: str(raw.get_filepath()),
         record_label_import=lambda **_kwargs: None,
     )

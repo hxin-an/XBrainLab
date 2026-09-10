@@ -49,7 +49,6 @@ class _UnsupportedTimestampTarget:
 def _service(dataset: _Dataset) -> DataInterpretationApplyService:
     return DataInterpretationApplyService(
         dataset,
-        data_filename=lambda item: item.get_filename(),
         data_filepath=lambda item: item.get_filepath(),
         record_label_import=lambda **_kwargs: None,
     )

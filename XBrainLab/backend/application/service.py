@@ -293,7 +293,6 @@ class _LazyDataInterpretationCommandService:
 
             self._service_instance = DataInterpretationCommandService(
                 self.dataset,
-                data_filename=StateSnapshotService.data_filename,
                 data_filepath=StateSnapshotService.data_filepath,
                 pipeline_transaction=self.pipeline_transaction,
             )

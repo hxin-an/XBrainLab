@@ -95,7 +95,6 @@ def test_generic_timestamp_apply_keeps_semantic_annotations_and_class_only_event
     dataset = _RealLabelDataset([raw])
     service = DataInterpretationApplyService(
         dataset,
-        data_filename=lambda item: item.get_filename(),
         data_filepath=lambda item: item.get_filepath(),
         record_label_import=lambda **_kwargs: None,
     )
@@ -190,7 +189,6 @@ def test_numeric_bids_preview_decisions_apply_through_admitted_pandas_reader(
     )
     service = DataInterpretationApplyService(
         _RealLabelDataset([raw]),
-        data_filename=lambda item: item.get_filename(),
         data_filepath=lambda item: item.get_filepath(),
         record_label_import=lambda **_kwargs: None,
     )
@@ -271,7 +269,6 @@ def test_bids_apply_preserves_na_like_categories_and_excludes_canonical_na(
     )
     service = DataInterpretationApplyService(
         _RealLabelDataset([raw]),
-        data_filename=lambda item: item.get_filename(),
         data_filepath=lambda item: item.get_filepath(),
         record_label_import=lambda **_kwargs: None,
     )

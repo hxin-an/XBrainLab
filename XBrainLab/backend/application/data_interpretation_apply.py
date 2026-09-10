@@ -93,12 +93,10 @@ class DataInterpretationApplyService:
         self,
         dataset_controller: DatasetInterpretationPort,
         *,
-        data_filename: Callable[[Any], str],
         data_filepath: Callable[[Any], str],
         record_label_import: LabelImportRecorder,
     ) -> None:
         self.dataset = dataset_controller
-        self._data_filename = data_filename
         self._data_filepath = data_filepath
         self._record_label_import = record_label_import
 
@@ -145,7 +143,6 @@ class DataInterpretationApplyService:
         """Create the same apply policy over a detached Dataset holder."""
         return type(self)(
             dataset_controller,
-            data_filename=self._data_filename,
             data_filepath=self._data_filepath,
             record_label_import=record_label_import,
         )

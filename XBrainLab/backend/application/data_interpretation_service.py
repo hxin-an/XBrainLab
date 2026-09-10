@@ -224,12 +224,10 @@ class DataInterpretationCommandService:
         self,
         dataset_controller: DatasetInterpretationPort,
         *,
-        data_filename: Callable[[Any], str],
         data_filepath: Callable[[Any], str],
         pipeline_transaction: PipelineStateTransaction | None = None,
     ) -> None:
         self.dataset = dataset_controller
-        self._data_filename = data_filename
         self._data_filepath = data_filepath
         self._pipeline_transaction = pipeline_transaction
         self.state = DataInterpretationSessionState(
@@ -237,7 +235,6 @@ class DataInterpretationCommandService:
         )
         self.apply_service = DataInterpretationApplyService(
             self.dataset,
-            data_filename=self._data_filename,
             data_filepath=self._data_filepath,
             record_label_import=self.state.record_label_import_for_recipe,
         )
@@ -373,7 +370,6 @@ class DataInterpretationCommandService:
         """Return a private state/cache owner sharing only locked authorities."""
         detached = DataInterpretationCommandService(
             self.dataset,
-            data_filename=self._data_filename,
             data_filepath=self._data_filepath,
             pipeline_transaction=None,
         )

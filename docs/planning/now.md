@@ -230,6 +230,20 @@ discovery-preparation142 and public-projection124 source reads, and projection25
 Retain staged publication/rollback, command-bound one-shot resource receipts, BIDS per-run semantics,
 bounded/public-vs-persistent evidence and Windows freshness checks; no whole module/UI closure yet.
 
+**Completed 2S — unused filename dependency chain.** Whole production/caller search and both owner
+reads show `data_filename` is stored and forwarded but never invoked by interpretation CommandService
+or ApplyService. Remove it from those two constructors, their detached copy wiring, and the sole
+ApplicationService injection; update exact direct test factories and remove their now-unused helper.
+Keep live data_filepath injection and StateSnapshotService.data_filename (actual other workflows use
+it). Three production files, no new owner or formal Command/query/UI contract change, deletion only.
+Baseline same101 apply suites plus BIDS index/catalog constructor callers, then identical after;
+also selected actual ApplicationService interpretation apply/recipe/sequence paths for shared wiring.
+Ruff/format, independent actual-diff review, small reversible commit. No source wrappers or data/state
+policies mixed into this constructor-only slice. Continue full module2UI/state obligations afterward.
+Native direct126 passed8.10s before /8.00s after; selected ApplicationService30 passed9.41s before
+and9.49s after. Ruff/format9 files and independent exact-diff review passed.
+Production -8 across3 files, test factories/helper -20; no owner change. StateSnapshot filename stays.
+
 ### Responsibility closure and retained boundaries
 
 - Module 1: independent reviewer approved shared-spine responsibility closure at `1247cf7c`.
