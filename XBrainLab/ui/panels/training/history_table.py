@@ -237,15 +237,6 @@ class TrainingHistoryTable(QTableWidget):
         self.row_identity_by_index.clear()
         self._sync_content_height()
 
-    def update_table(self, target_rows):
-        """Alias for ``update_history`` to satisfy the panel interface.
-
-        Args:
-            target_rows: List of formatted row dictionaries.
-
-        """
-        self.update_history(target_rows)
-
     def update_history(self, target_rows):
         """Update the table with formatted training history rows.
 
