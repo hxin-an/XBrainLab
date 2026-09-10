@@ -103,11 +103,40 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `ec4eeeda`, 114 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `92d6a091`, 115 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
 **Current work — module6 Assistant/runtime/RAG; module2–5 closure gaps and visible/API decisions remain open.**
+
+**Bounded6O — unused model-download conveniences.** Full downloader/lifecycle and actual shutdown,
+settings and setup consumers show no `wait_ms` arguments or `ModelCacheCleanupResult.message` reads.
+Remove only that ignored argument and safe-message alias; preserve cancellation -> cleanup retry ->
+idle ownership, terminal fences and the actual `public_message` privacy contract. Two production
+files, no owner or visible UI change, expected net deletion below20lines. First run the full direct
+lifecycle suite, downloader nonblocking shutdown and five actual model-settings cleanup outcomes;
+repeat unchanged after deletion, inspect diff/callers and lint. No tests are retired. Rollback is one
+commit. Completion requires identical focused behavior, not overall module/Windows handoff closure.
+Native before23passed6.89s and identical after23passed6.78s; no skipped/retired cases. Main actual
+diff/caller review confirms AgentWorker's real timed shutdown is separate and unchanged. Production
++2/-9/net-7 after retaining top-level formatting; two files, no owner change. Lint before commit.
+
+**Module7 logging audit, not yet implementation.** Independent full logger874/direct1304, run.py370,
+Windows/WSL launcher sources and tests traced console output: StreamHandler binds native stdout;
+CP950/strict cannot encode actual metrics `≈`, losing/noising that console record while UTF8 file
+logging remains intact. Reproduce with a real strict encoded stream before any console-boundary fix;
+do not change metrics copy, global/user encoding, redaction policy or introduce another log window.
+
+**Bounded7A — preserve console diagnostics with restricted encodings.** Reproduce the actual Unicode
+metrics record through setup_logger and a real CP950/strict TextIOWrapper; also protect UTF8 output
+and public redaction before either sink. Then adapt only the existing console sink to escape characters
+its stream cannot encode, without modifying the shared record, file UTF8 text, stdout configuration,
+log disclosure, retention or UI. A private StreamHandler specialization is the necessary external-stream
+seam, not a new owner/control layer; expected one production file/net below30lines. No generic retry
+or compatibility framework. Run the red reproduction before production, then full direct logger and
+actual metrics tests, inspect privacy/error paths independently, lint and commit separately from6O.
+Rollback is one commit; stop this slice at preserved representable/escaped console and exact UTF8 file
+output with unchanged privacy evidence, then continue modules6–9. No manual handoff claim.
 
 **Module6 initial full owner audit (not closure).** Independent full controller2949/attempt898/
 execution342/confirmation314/pending443 and respective direct confirmation154/pending560/execution151/
@@ -203,7 +232,7 @@ grammar/negative architecture guards stay unchanged. Ruff/format and guidance au
 **Module6 completed reads and remaining candidates (not module closure).** Full core model download
 lifecycle665/direct659 and downloader1086/direct1178 retain shared lifecycle composition, bounded
 consumption/inactivity, conservative process ownership/reap/retry and terminal-after-reap. Confirmed
-unused shutdown(wait_ms) argument and cleanup-result message alias await a same-owner bounded slice.
+unused shutdown(wait_ms) argument and cleanup-result message alias are retired by6O above.
 
 Full context_encoding712/direct683 retain exact-type admission, cycle/node/UTF8 limits, path/secret/
 role sanitation and final assembler re-encoding; no serialization or model-obedience gap established.

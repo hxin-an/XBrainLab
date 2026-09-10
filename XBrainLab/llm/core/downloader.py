@@ -950,17 +950,15 @@ class ModelDownloader(QObject):
         # This ensures the process is consistently terminated.
         # Cleanup signals will handle the rest.
 
-    def shutdown(self, wait_ms: int | None = None) -> bool:
+    def shutdown(self) -> bool:
         """Request cancellation without blocking the Qt GUI thread.
 
-        ``wait_ms`` remains accepted for compatibility but is deliberately
-        ignored. Callers must retry from the event loop or observe ``terminal``.
+        Callers must retry from the event loop or observe ``terminal``.
 
         Returns:
             ``True`` only when no active thread ownership remains.
 
         """
-        del wait_ms
         self.cancel_download()
         self.request_cleanup_retry()
         return self.is_idle()
