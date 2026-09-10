@@ -1065,6 +1065,7 @@ class SaliencyRenderPublisher:
             aggregation="per-epoch",
             fold_count=1,
             producer_identities=producer_identities,
+            adopt_saliency_store=request.normalize,
         )
 
     def _copy_cross_fold_render_data(
