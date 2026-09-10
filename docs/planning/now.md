@@ -373,6 +373,35 @@ repair; nine changed Python files pass Ruff/format and independent final actual-
 Production5 files+28/-19/net+9 (includes15-line Qt adapter); no owner increase, migration shim or
 user/native settings write. Script callers retain9L as an explicit unresolved blocker to capture gates.
 
+**Bounded9L — isolate smoke/capture preferences and retire unsafe clears.** Full main/independent
+native-smoke251/startup141/prepare65 and direct native117/startup191/prepare29 retain existing
+process ownership, absolute Unicode isolated-root admission, timeout and shutdown evidence. Full
+independent baseline667/local510/tool-chain600/workflow911 capture source; visualization entry310
+of2854 only, remaining source audit still open. Four capture helpers delete native preferences; the
+tool-chain helper (also used by visualization) deletes obsolete geometry/windowState keys. Do not run
+any capture until it owns an isolated config lifetime before actual Qt preferences are created.
+First9L1: retire native smoke static Qt defaults/path setup; obtain actual settings from9K factory,
+fail closed before creating MainWindow if its file escapes the admitted config root or is non-INI,
+and report the actual qsettings_root in the unchanged artifact schema. Add an out-of-root negative
+test that fails before any preference write. Focused script tests, independent review, then bounded
+real Windows startup/native smoke using existing isolated environment and process owner. No live
+model activation/download, data/training operation or new environment.
+9L1 result: out-of-root case first fails at wrong-platform check (proves missing admission, no window
+or write); after repair21 focused startup/native/prepare tests pass0.13s. Independent diff review and
+Ruff/format pass. First real-smoke invocation was rejected before execution for implicit parent-isolation
+risk; re-read exact source and strengthened invocation to establish/validate all parent paths plus all3
+actual INI stores before any GUI. Approved safer run: real Windows startup exit0, clean close/quiescent;
+native product exit0, five real panels, New Session generation, actual config-root assertion and clean
+shutdown with zero workers/subprocesses. No data/train/model work. Both used existing bounded process
+ownership; temporary roots cleaned by their creator. These focused results do not certify same-head CI
+or manual acceptance. Capture entrypoints below are still pending, not covered by this pass.
+Next9L2: capture entrypoints need a temporary owned config lifetime, preserving real host Assistant
+selection/cache by loading the existing config before isolation and using that same config inside it.
+Remove duplicated clear helpers only when all callers have isolation; retain explicit deactivation
+CLI/settings-path contract unless a separate decision changes it. Review helper reuse vs repeated
+setup without introducing a generic capture framework. Existing model-free/capture direct tests plus
+safe real Qt storage evidence; full model/data captures remain final applicable gate work.
+
 **Module8 CI/Poe disposition.** Independent full ci925/docsworkflow83/pyproject314 plus routing109,
 artifact verifier216/direct311 and reliability409/UI40/data58/integration-trigger24 retains distinct
 Linux coverage shards/coverage-only aggregate, platform/native/data/visual/provenance gates. Repeated
