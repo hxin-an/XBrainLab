@@ -18,7 +18,6 @@ from XBrainLab.backend.dataset import (
     TrainingType,
     ValSplitByType,
     audit_dataset_splits,
-    build_split_artifact,
 )
 from XBrainLab.backend.load_data import Raw
 
@@ -92,69 +91,6 @@ def test_atomic_groups_include_transitive_overlap_but_not_adjacency_or_other_sou
     assert groups[0] == groups[1] == groups[2]
     assert groups[3] != groups[2]  # [320, 420) touches [220, 320)
     assert groups[9] != groups[0]  # same samples, different source recording
-
-
-def test_trial_ratio_selection_never_splits_atomic_groups():
-    epoch_data = _atomic_epochs()
-    mask = np.ones(epoch_data.get_data_length(), dtype=bool)
-
-    selected, remaining = epoch_data.pick_trial(
-        mask,
-        None,
-        0.4,
-        SplitUnit.RATIO,
-        0,
-    )
-
-    _assert_groups_are_atomic(epoch_data, [selected, remaining])
-    assert selected.any()
-
-
-def test_trial_number_selection_never_splits_atomic_groups():
-    epoch_data = _atomic_epochs()
-    mask = np.ones(epoch_data.get_data_length(), dtype=bool)
-
-    selected, remaining = epoch_data.pick_trial(
-        mask,
-        None,
-        2,
-        SplitUnit.NUMBER,
-        0,
-    )
-
-    _assert_groups_are_atomic(epoch_data, [selected, remaining])
-    assert 2 <= int(selected.sum()) < 5
-
-
-def test_trial_kfold_assigns_each_atomic_group_to_exactly_one_fold():
-    epoch_data = _atomic_epochs()
-    clean_mask = np.ones(epoch_data.get_data_length(), dtype=bool)
-    remaining = clean_mask.copy()
-    folds: list[np.ndarray] = []
-
-    for fold_index in range(3):
-        selected, remaining = epoch_data.pick_trial(
-            remaining,
-            clean_mask,
-            3,
-            SplitUnit.KFOLD,
-            fold_index,
-        )
-        folds.append(selected)
-
-    assert not remaining.any()
-    assert all(fold.any() for fold in folds)
-    _assert_groups_are_atomic(epoch_data, folds)
-
-
-def test_trial_kfold_blocks_when_there_are_fewer_atomic_groups_than_folds():
-    epoch_data = Epochs(
-        [_recording_epochs("recordings/one-component.fif", [100, 150, 220])],
-    )
-    mask = np.ones(epoch_data.get_data_length(), dtype=bool)
-
-    with pytest.raises(ValueError, match="requires at least 2 atomic groups"):
-        epoch_data.pick_trial(mask, mask.copy(), 2, SplitUnit.KFOLD, 0)
 
 
 def test_trial_kfold_rejects_one_fold_before_any_split_is_materialized():
@@ -1020,46 +956,28 @@ def test_non_cv_ratio_without_validation_uses_nearest_train_covering_count():
     )
 
 
-def test_manual_trial_selection_expands_to_the_whole_atomic_group_with_evidence():
+def test_generator_manual_trial_index_materializes_the_whole_atomic_group():
     epoch_data = _atomic_epochs()
-    mask = np.ones(epoch_data.get_data_length(), dtype=bool)
-
-    selected, remaining = epoch_data.pick_trial(
-        mask,
-        None,
-        [1],
-        SplitUnit.MANUAL,
-        0,
+    config = DataSplittingConfig(
+        TrainingType.FULL,
+        False,
+        [],
+        [DataSplitter(SplitByType.TRIAL, "1", SplitUnit.MANUAL)],
     )
 
-    assert np.flatnonzero(selected).tolist() == [0, 1, 2]
-    assert not remaining[:3].any()
-    evidence = epoch_data.get_trial_selection_evidence()[-1]
-    assert evidence["selection_unit"] == "manual"
-    assert evidence["requested_indices"] == [1]
-    assert evidence["expanded_indices"] == [0, 2]
-    assert evidence["selected_epoch_count"] == 3
-    dataset = Dataset(
+    dataset = DatasetGenerator(epoch_data, config).generate()[0]
+
+    assert np.flatnonzero(dataset.test_mask).tolist() == [0, 1, 2]
+    assert (
+        set(epoch_data.label[dataset.train_mask].tolist())
+        == set(epoch_data.label.tolist())
+        == {0, 1}
+    )
+    _assert_groups_are_atomic(
         epoch_data,
-        DataSplittingConfig(TrainingType.FULL, False, [], []),
+        [dataset.train_mask, dataset.val_mask, dataset.test_mask],
     )
-    dataset.set_name("manual-expansion")
-    dataset.test_mask = selected
-    dataset.train_mask = remaining
-    dataset.remaining_mask[:] = False
-    artifact_evidence = build_split_artifact([dataset])["datasets"][0][
-        "trial_selection_evidence"
-    ]
-    assert artifact_evidence["records"][-1]["expanded_indices"] == [0, 2]
-
-
-def test_manual_trial_selection_blocks_when_whole_group_is_not_available():
-    epoch_data = _atomic_epochs()
-    mask = np.ones(epoch_data.get_data_length(), dtype=bool)
-    mask[0] = False
-
-    with pytest.raises(ValueError, match="would split atomic overlap group"):
-        epoch_data.pick_trial(mask, None, [1], SplitUnit.MANUAL, 0)
+    assert audit_dataset_splits([dataset], protocol="trial-wise").ok is True
 
 
 @pytest.mark.parametrize(
@@ -1285,34 +1203,19 @@ def test_class_coverage_audit_does_not_break_atomic_group_to_repair_train_split(
             ),
         ],
     )
-    available = np.ones(epoch_data.get_data_length(), dtype=bool)
-    test_mask, available = epoch_data.pick_trial(
-        available,
-        None,
-        [0],
-        SplitUnit.MANUAL,
-        0,
-    )
-    val_mask, available = epoch_data.pick_trial(
-        available,
-        None,
-        [2],
-        SplitUnit.MANUAL,
-        0,
-    )
     dataset = Dataset(
         epoch_data,
         DataSplittingConfig(TrainingType.FULL, False, [], []),
     )
     dataset.set_name("class-boundary")
-    dataset.test_mask = test_mask
-    dataset.val_mask = val_mask
-    dataset.train_mask = available
+    dataset.test_mask = np.asarray([True, True, False, False])
+    dataset.val_mask = np.asarray([False, False, True, False])
+    dataset.train_mask = np.asarray([False, False, False, True])
     dataset.remaining_mask[:] = False
 
     result = audit_dataset_splits([dataset], protocol="trial-wise")
 
-    assert np.flatnonzero(test_mask).tolist() == [0, 1]
+    assert np.flatnonzero(dataset.test_mask).tolist() == [0, 1]
     assert result.ok is False
     assert any(
         issue.severity == "error" and "train split is missing class" in issue.message

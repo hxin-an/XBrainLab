@@ -319,6 +319,22 @@ deletion. Production-538 removes only the obsolete picker/helper/enum chain; cur
 live subject mask, provenance, artifact schema/readers and rollback state remain. Main read the full
 deletion diff; independent nonauthor source/test review approved. Final retained291-case combined
 selection and Ruff pass as recorded3E; this is not all of module3 or final-source certification.
+Removed case count independently reconciled:309 (303 old Epochs picker/helper parametrizations and
+six atomic-picker cases). Baseline563 already included the new real manual case; retained254 plus
+37 current preprocess-service cases exactly equals final291. Test count reduction follows deletion
+of the unused allocator, not reduced protection for the actual Generator.
+
+**Declared 3H — real epoch RAM-before-copy admission.** Existing UI runtime evidence has a fake
+dialog seam; old direct service case uses a fake materializing controller. Add one direct actual
+ApplicationService case using the existing real FIF import helpers. After confirmed Apply, isolate
+only the resource check to deny admission and observe Raw.copy as a fail-fast allocation witness.
+Assert exact resource failure diagnostics, unchanged loaded/preprocessed objects and data, no epoch,
+no lock and no copying. Keep existing UI delivery test. Passing new characterization allows removal
+of only the replaced legacy RAM case and its exclusive fixture members, not receipt/alias/handoff
+cases. No production behavior/owner change; main owns plan/native runs/review, legacy worker owns
+test_application_service.py initially. Focused new case plus epoch materialization safety/UI resource
+neighbors, bounded omitted-resource-check fault, Ruff and independent actualdiff review. Then
+continue scoped receipt/context/alias migration, remaining UI/domain audits and modules4–9.
 
 Completed2X–2AC are indexed below; their full scope/evidence remains in Git history.
 2AC found an existing shared-environment source hazard: Windows .pth adds the original checkout
