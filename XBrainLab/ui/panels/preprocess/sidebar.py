@@ -1,7 +1,7 @@
 """Sidebar widget for the preprocessing panel with operations and execution controls."""
 
 from collections.abc import Callable
-from typing import Any, cast
+from typing import Any
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
@@ -56,6 +56,7 @@ from XBrainLab.ui.dialogs.preprocess import (
 )
 from XBrainLab.ui.interaction_outcome import InteractionOutcome
 from XBrainLab.ui.owned_operation_presenter import OwnedOperationPresenter
+from XBrainLab.ui.panels.preprocess.data_query import query_preprocess_data_rows
 from XBrainLab.ui.status import show_status_message
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
@@ -607,15 +608,8 @@ class PreprocessSidebar(QWidget):
 
     def _current_sampling_rate_hz(self) -> float | None:
         """Return the lowest loaded rate so validation is safe for every file."""
-        query_candidate = getattr(self.panel, "_query_preprocess_data_rows", None)
-        if not callable(query_candidate):
-            return None
-        query = cast(
-            Callable[[], tuple[list[dict[str, Any]], list[dict[str, Any]]] | None],
-            query_candidate,
-        )
         try:
-            rendered = query()
+            rendered = query_preprocess_data_rows(self.panel)
         except Exception:
             return None
         if not rendered or not rendered[0]:

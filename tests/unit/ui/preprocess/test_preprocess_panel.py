@@ -329,11 +329,20 @@ def test_preprocess_history_has_stable_locked_row_layout(qtbot) -> None:
 def test_filtering_dialog_uses_lowest_published_sampling_rate(qtbot) -> None:
     panel = PreprocessPanel()
     qtbot.addWidget(panel)
-    panel._query_preprocess_data_rows = lambda: (
-        [{"sampling_frequency": 512.0}, {"sampling_frequency": 128.0}],
-        [],
-    )
     with (
+        patch(
+            "XBrainLab.ui.panels.preprocess.data_query.execute_application_command",
+            return_value=SimpleNamespace(
+                failed=False,
+                diagnostics={
+                    "preprocessed_rows": [
+                        {"sampling_frequency": 512.0},
+                        {"sampling_frequency": 128.0},
+                    ],
+                    "raw_rows": [],
+                },
+            ),
+        ) as query,
         patch.object(
             panel.sidebar,
             "_begin_preprocess_review",
@@ -344,6 +353,7 @@ def test_filtering_dialog_uses_lowest_published_sampling_rate(qtbot) -> None:
         dialog.return_value.exec.return_value = False
         panel.sidebar.open_filtering()
     assert dialog.call_args.kwargs["sampling_rate_hz"] == 128.0
+    assert query.call_args.args[0] is panel
 
 
 def test_preprocess_async_schedule_failure_never_uses_sync_command(qtbot) -> None:
