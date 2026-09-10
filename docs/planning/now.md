@@ -109,6 +109,20 @@ old session IDs and plan text do not prove a process is running. No manual candi
 
 **Current work — developer docs/config truth and remaining scripts; module2–6 closure gaps and explicit decisions remain open.**
 
+**Bounded9N — retire historical repository-wide terminal auto-approval.** Main fully read the tracked
+17-line .vscode/settings.json: its only content is blanket Poetry auto-approval, two one-off compile
+command regexes naming already removed modules, and automatic git add -A. No editor formatting/debug
+configuration exists in it. Those grants are not needed to run the application or existing developer
+commands and may approve unrelated edits/settings staging. Delete this exact repo-local file only;
+do not modify root settings.json, user/global VS Code settings, installed editor state or runtime
+permissions. Generic dashboard/handoff dirty-path fixtures mentioning the path test arbitrary Git
+status and remain meaningful after deletion. Retain all checks and commands; no replacement allowlist
+or second approval owner. Independent actual file/reference/security review, guidance audit and diff
+check; no product tests or screenshot needed for this configuration deletion. Continue module audit.
+Result: independent actual-file/security/caller review approved; guidance audit ok=true/no errors and
+diff check pass. Seventeen tracked config lines removed, recoverable in Git. Existing generic dirty-path
+tests retained; no global editor settings or root settings.json changed, no product behavior claim.
+
 **Bounded9M — remove stale developer instructions without weakening gates.** Main fully read developer
 setup214/testing406/index32/map32/change56, root README69, docs index52 and local dev configs. Testing
 guide still demands a full manifest for every candidate, contradicting the existing validation L0–L3
