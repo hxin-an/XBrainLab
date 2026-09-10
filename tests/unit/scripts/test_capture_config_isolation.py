@@ -40,6 +40,8 @@ def capture_tmp(monkeypatch, tmp_path):
         ("capture_chatpanel_local_tool_chain_walkthrough", True),
         ("capture_chatpanel_local_workflow_walkthrough", True),
         ("capture_visualization_render_walkthrough", False),
+        ("capture_human_like_product_walkthrough", False),
+        ("capture_chatpanel_ui_ux_walkthrough", False),
     ],
 )
 def test_main_isolates_preferences_before_gui_and_restores_host_on_failure(
@@ -77,7 +79,10 @@ def test_main_isolates_preferences_before_gui_and_restores_host_on_failure(
         monkeypatch.setattr(
             module, "write_synthetic_raw_fif", lambda: tmp_path / "source.fif"
         )
-    if module_name == "capture_ui_baseline":
+    if module_name in (
+        "capture_ui_baseline",
+        "capture_human_like_product_walkthrough",
+    ):
         monkeypatch.setattr(module, "collect_source_identity", lambda *a, **k: {})
 
     roots = []
@@ -103,7 +108,15 @@ def test_main_isolates_preferences_before_gui_and_restores_host_on_failure(
             assert not (isolated / "settings.json").exists()
         raise _BeforeGui
 
-    monkeypatch.setattr(module, "QApplication", before_gui)
+    class BeforeGuiApplication:
+        @staticmethod
+        def instance():
+            return None
+
+        def __init__(self, argv):
+            before_gui(argv)
+
+    monkeypatch.setattr(module, "QApplication", BeforeGuiApplication)
     argv = [module_name, "--output-dir", str(tmp_path / "outputs")]
     if module_name == "capture_visualization_render_walkthrough":
         argv.extend(["--training-output-dir", str(tmp_path / "training")])

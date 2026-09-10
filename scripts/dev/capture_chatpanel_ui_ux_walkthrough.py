@@ -63,6 +63,7 @@ import XBrainLab
 from scripts.dev.capture_chatpanel_local_walkthrough import (
     collect_visible_messages,
 )
+from scripts.dev.capture_config import isolated_capture_config
 from scripts.dev.human_like_walkthrough import evidence as human_evidence
 from XBrainLab.backend.controller.chat_controller import (
     ChatController,
@@ -3695,16 +3696,17 @@ def main() -> int:
         help="Directory for PNG, JSON, and README artifacts.",
     )
     args = parser.parse_args()
-    app = QApplication.instance() or QApplication(sys.argv)
-    if not isinstance(app, QApplication):
-        raise RuntimeError("A QApplication is required for ChatPanel capture.")
-    payload = capture_walkthrough(app, args.output_dir)
-    print(f"ChatPanel UI/UX gate: {payload['status']}")
-    for failure in payload["failures"]:
-        print(f"- {failure}", file=sys.stderr)
-    print(f"Wrote {args.output_dir / JSON_ARTIFACT}")
-    print(f"Wrote {args.output_dir / README_ARTIFACT}")
-    return 0 if payload["status"] == "passed" else 1
+    with isolated_capture_config():
+        app = QApplication.instance() or QApplication(sys.argv)
+        if not isinstance(app, QApplication):
+            raise RuntimeError("A QApplication is required for ChatPanel capture.")
+        payload = capture_walkthrough(app, args.output_dir)
+        print(f"ChatPanel UI/UX gate: {payload['status']}")
+        for failure in payload["failures"]:
+            print(f"- {failure}", file=sys.stderr)
+        print(f"Wrote {args.output_dir / JSON_ARTIFACT}")
+        print(f"Wrote {args.output_dir / README_ARTIFACT}")
+        return 0 if payload["status"] == "passed" else 1
 
 
 if __name__ == "__main__":

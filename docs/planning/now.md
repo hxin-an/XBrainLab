@@ -109,6 +109,26 @@ old session IDs and plan text do not prove a process is running. No manual candi
 
 **Current work — developer docs/config truth and remaining scripts; module2–6 closure gaps and explicit decisions remain open.**
 
+**Bounded9L3 — extend existing capture preferences isolation to two uncovered native entries.**
+Independent caller trace and main's complete short main/lifecycle reads find human-like capture closes
+real MainWindow (therefore persists normal host geometry), while UI/UX capture reads native geometry
+and may remove invalid saved values. Neither entry sets CONFIG_DIR; CI/DPI/handoff callers do not
+shield it. The inner human-like Assistant settings helper only isolates LLM JSON/cache, not Qt.
+Wrap each existing post-parse main body in isolated_capture_config() with no config copy; deterministic
+human-like driver explicitly constructs primary-model/fake-runtime configuration and does not require
+host model/enabled preferences. Preserve args, staging/publication, failure codes, Qt lifecycle, content,
+model/prompt contracts and all production source. No new helper/owner, environment or real-model run.
+Extend existing shared pre-GUI test matrix from five to seven mains, retaining real Qt INI roundtrip,
+host-byte/env checks and owned-root cleanup; adapt only factory .instance() test seam and Git provenance
+seam for pre-GUI interception. Reproduce both paths before edits, rerun shared tests + existing human-like
+main-failure test with verified process-local Windows Git mapping, independent lifecycle/diff review
+and Ruff. Continue remaining captures/docs inventory; not a full capture or handoff claim.
+Result: two targeted reds fail at inherited host config before GUI6.89s; all14 shared isolation cases
+pass6.86s after. Existing main-failure plus two inner-settings cases pass8.50s with exact8080dd0e
+Windows Git mapping. Three-file Ruff/format, diff check and independent actual lifetime review pass.
+Scripts +55/-51/net+4 (mostly context indentation), test +15/-2/net+13; zero product changes/new owners.
+The two large parent files were entry/lifecycle traced, not fully audited; remaining file review stays open.
+
 **Bounded9P — prove walkthrough settings/cache cleanup on both exits.** Independent full human-like
 capture helper1207 retains real readiness classification and outer-owned GUI lifecycle. Existing direct
 8-line test checks only in-context cache completeness, not host bytes/default-path restoration or
