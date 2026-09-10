@@ -109,6 +109,23 @@ old session IDs and plan text do not prove a process is running. No manual candi
 
 **Current work — developer docs/config truth and remaining scripts; module2–6 closure gaps and explicit decisions remain open.**
 
+**Bounded9U — align fixture/architecture evidence descriptions with required CI.** Main fully read
+public fixture README190, baseline README19 and multiformat README23; source/CI trace shows required
+CI fetches/verifies pinned data and runs strict IO/BIDS/cross-source checks, while architecture still
+calls this local-only/skippable CI. Correct this distinction without claiming a current pass. Pure
+manifest inspection (no download) shows required-ci8groups/52files/205255918bytes, teacher10/57/
+277106963bytes, p3002/68/569171066bytes. Public README wrongly calls teacher an extension of7groups
+adding OpenNeuro: OpenNeuro is already among required8, teacher adds only CHB-MIT and Sleep-EDF.
+Fix that source mapping, remove machine-specific Poetry executable paths, qualify default BIDS root
+versus DATA_DIR override. Preserve dataset/task limitations, all byte limits and current source/label
+contracts; checked-in multiformat fixtures remain one-source format coverage, not source diversity.
+Docs-only source/manifest/link review and guidance/user-site source audit; known missing local MkDocs
+remains final same-head docs CI obligation. Do not install/download or change fixture bytes/references.
+Result: all three pinned profile counts/sizes match source; nine unchanged reference PNGs verify as
+valid images (seven1280x800 shell/panels plus two520x316 filter states), not a fresh visual comparison.
+Guidance and user-site source checks pass; independent actual CI/manifest/doc review approves.
+Strict docs-site build remains pending final CI; no download, image rebaseline or EEG execution.
+
 **Bounded9T — remove inactive global PyTorch coverage import hook.** Main/independent full
 tests/fixtures/sitecustomize.py60 and source/CI/Poe/docs/startup trace find no route that adds its
 directory to Python startup search paths or imports it. Current pytest pythonpath is repo root;

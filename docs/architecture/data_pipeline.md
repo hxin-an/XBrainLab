@@ -321,7 +321,7 @@ Tiny synthetic training integration、checked-in GDF training smoke 與 successf
 | Real-data IO integration | `tests/integration/io/test_io_integration.py`；dashboard 有對應 gate | 驗證所選 real fixtures 的多格式 import。 | 當前 source 已通過、完整 training / thesis reproducibility。 |
 | Checked-in GDF+MAT dataset generation | tests exist | A01T/A02T/A03T 可 attach labels、preprocess、epoch、generate dataset。 | 所有資料集來源都正確。 |
 | Checked-in GDF+MAT training smoke | tests exist | A01T/A02T/A03T 可 one-epoch training smoke。 | accuracy 有意義或 protocol 可發表。 |
-| Public cross-source workflow smoke | local-only tests exist | PhysioNet EDF、BBCI GDF 走 training smoke；SCCN EEGLAB、tiny CNT 保留為 import/preprocess boundary，沒有足夠 reviewed classes 時明確阻止 supervised epoch。 | fixture 一定存在於乾淨 clone，或 thesis-grade reproducibility 完成。 |
+| Public cross-source workflow smoke | Downloaded fixtures; required CI and local tests | PhysioNet EDF、BBCI GDF 走 training smoke；SCCN EEGLAB、tiny CNT 保留為 import/preprocess boundary，沒有足夠 reviewed classes 時明確阻止 supervised epoch。 | fixture 一定存在於乾淨 clone，或 thesis-grade reproducibility 完成。 |
 | Tiny E2E pipeline smoke | synthetic / Study training integration tests | 驗證最小 train cycle 與暫存 artifact 重讀。 | real-world data 全面可信。 |
 
 這是證據種類與邊界，不是當前測試結果；同版本執行要求由[驗證契約](../validation/README.md)擁有。
@@ -332,7 +332,7 @@ Tiny synthetic training integration、checked-in GDF training smoke 與 successf
 - `ApplicationService / Command API` 能跑多格式 import path；`BackendFacade` module 已移除，
   guard 會擋 product runtime 重新引入。
 - checked-in GDF+MAT fixtures 已有 dataset generation 和 one-epoch training smoke tests。
-- public fixtures 的 cross-source evidence 屬於 local-only evidence，不能當成 checked-in baseline；tiny CNT 不再被宣稱可支撐 class-balanced training smoke。
+- public fixtures 不隨 Git 提供；required CI 先驗證 pinned manifest，再執行 strict cross-source gate。本機也可執行，但不能當成 checked-in baseline；tiny CNT 不支撐 class-balanced training smoke。
 - pipeline 已有工程 smoke，但還不是 thesis validation。
 
 ## 目前風險
@@ -340,7 +340,7 @@ Tiny synthetic training integration、checked-in GDF training smoke 與 successf
 - label/event correctness 是 data pipeline 的關鍵風險，不應只看 import 成功。
 - `Epochs` 會 normalization event IDs 並影響 input `Raw`，後續重構要釐清 ownership。
 - `DatasetGenerator` 支援多種 split，但文件還沒逐一映射到正式 thesis protocol。
-- public fixture tests 可能因資料未下載而 skip，不能被寫成 always-on CI evidence。
+- 一般本機 public fixture tests 可因未下載資料而 skip；required CI 先 fetch／verify，strict matrix 和 required pytest runner 不接受必要 fixture 缺失。Gate 定義不代表目前 source 已通過。
 - training smoke 目前看的是流程閉環和 metrics 存在，不看 scientific performance。
 
 ## Data Import UX Redesign Gap Audit
