@@ -103,86 +103,16 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `aeb53bf4`, 56 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `b7ed74ab`, 57 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
-**Current work — finish module 2 coverage and coherent remaining deletions.**
+**Current work — module3 cleanup; module2 visible decisions remain open.**
 
-**Completed 2AF — backend preflight conveniences.** Inline pending receipt lookup into its sole caller,
-replace three resource-scope forwards with already imported resolve_interpretation_resource_scope
-(preserve admitted BIDS fallback on the materialized scan), and use the existing dataset snapshot's
-truth value for replacement confirmation without a second list copy. Delete the two unused tabular
-multiplier aliases only. Retain multi-consumer preflight path validation, maps/budgets, cache admission,
-one-shot receipt authority, all confirmation/mutation order and public contracts. Main owns only
-data_interpretation_service.py and resource_label_estimation.py; no UI, new owner or abstraction.
-Independent candidate review approved. Baseline receipt/admission/cache/scope service cases plus
-real receipt/application confirmation neighbors and directly relevant label estimates; repeat exact
-selection after deletion, Ruff and independent actual-diff review, one reversible commit. Complete
-this slice then continue module2; not a handoff or full-platform claim.
-Same20 native cases passed8.25s before and8.18s after. Source +8/-40/net-32, zero owner delta;
-tests unchanged. Ruff/check/format and independent actual-diff scope/receipt/BIDS fallback review
-passed. No measured performance claim from removal of one redundant snapshot copy.
-
-**Completed 8C (module2 consumer) — duplicate placement-capture entrypoint.** Full independent reads
-of capture contract234, canonical wizard runner2017, placement helper320 and tests216/660 confirm
-only build_dialog is imported by the canonical runner; no gate/docs/Poe calls standalone main.
-After baseline canonical capture tests, remove standalone-only main/constants/capture helper chain
-and unused imports from capture_data_import_match_label_placement_modes.py. Retain actual dialog/
-preview/placement factories and canonical xcb capture/manifest/hash validation unchanged. No visible
-UI or evidence-inventory change, no new owner; observer authors only this script after main baseline.
-Main nonauthor diff review and same tests/Ruff before separate commit; no screenshots claimed from
-this unit selection. No environment, display-server or model creation.
-First baseline31passed/1failed because Windows Git cannot follow the WSL absolute .git pointer,
-so source identity was unavailable (not a source-stability failure). Verified explicit Windows
-git-dir/work-tree resolves the exact20b05f75 HEAD; process-only GIT_DIR/GIT_WORK_TREE then produced
-32passed3.80s with unchanged identity guard. Do not rewrite the worktree pointer or forge a digest.
-After deleting the unused chain the same32passed3.30s. Main nonauthor actual-diff review approved:
-all three canonical fixture functions are byte-identical; module docstring now states factory role.
-Git-verified script +1/-76/net-75 (corrected the reviewer's arithmetic); no product source/test/
-evidence-inventory change. Ruff/check/format passed.
-
-**Completed 2AG — wizard unused footer instance / single-use exclusion forwarding.** Full source
-reads and whole-family caller search show PreviewDialog constructs an empty QDialogButtonBox with
-no layout, buttons, signals or consumer; actual footer owns separate Back/Next/Cancel/Apply buttons.
-Remove only the empty instance/annotation/import, retaining stylesheet selectors and all real
-footer geometry/signals. Other dialog button boxes and their native probes remain live and untouched.
-LoadLabelsStep's _remove_label_carrier_without_refresh only re-strips an already stripped nonempty
-path and forwards to existing LabelSourceState.exclude_carrier (which owns normalization/idempotence).
-Inline its sole caller without refresh/notification/order changes. Main owns these two UI files only;
-no visible behavior change (authorized UI internals), no new owner or tests asserting dead structure.
-Baseline actual wizard rendering/footer and remove-folder/carrier/restore/rescan choices first;
-same selection after + Ruff and independent actual-diff review, separate reversible commit. Pending
-floating-label/onset decisions below remain untouched. Then continue unfinished module audit.
-Baseline11 actual rendering/session/removal/restore/rescan cases passed1.39s plus two geometry
-neighbors passed0.93s before any2AG edits. Independent candidate/caller/base-dialog review approved.
-After deletion the combined same13 passed1.49s, Ruff/check/format passed. Main and independent
-actual-diff review approve source +1/-9/net-8, ownerdelta0; no visible footer or layout change.
-
-**Completed 8D — replay shutdown timeout evidence.** The complete replay1329/direct572 audit found
-real deferred-close success coverage but no persistent-visible timeout case. Baseline the existing
-real Qt shutdown case; add a rejecting-close QWidget with guaranteed finally hide and observable
-timeout-once/no-success assertions. Keep actual Qt polling and monotonic deadline, no fake lifecycle
-or production change. Observer/legacy may author only this direct test after main baseline and
-ownership assignment. Main runs baseline/new/adjacent cases and a bounded in-memory wrong-success
-fault to verify the new assertion, Ruff, nonauthor review, separate commit then module continuation.
-Do not claim this unit proves real MainWindow shutdown; actual native lifecycle gates remain required.
-Original deferred-close case passed0.55s. Author waits until2AG commit completes before editing.
-After adding the real rejecting-close case both passed0.63s. A50ms Qt timer fence observes two
-poll intervals after timeout; finally hides the intentional refusing widget. Main nonauthor review
-approved test-only+36; Ruff/check/format passed. In-memory wrong-success fault failed precisely
-because no timeout callback arrived (1failed1.12s); no faulty source was saved. No real MainWindow
-shutdown claim is implied.
-
-**Completed 8E, pending commit — unused review-state capture fixture.** Main and independent caller audit confirm
-_review_import_state_dialog has only its definition; canonical factories/specs use _review_import_dialog
-and explicit callables, no dynamic lookup or CLI route. Remove only the unused62-line fixture from
-capture_data_import_wizard_steps.py; preserve every canonical state/filename/manifest requirement,
-real factory and its tests. Observer owns this script only after main baseline and8D ownership remains
-separate. Rerun two canonicalcapture test files because intervening2AG touched the real dialog; then
-delete and repeat32/Ruff/mainnonauthor review before its own commit. No UI/gate-contract change.
-Refreshed baseline32passed3.36s, after32passed3.32s. Main nonauthor diff review approved and restored
-two formatting blank lines omitted by the initial deletion; final script-63, Ruff/check/format passed.
+Completed2AD–2AG and8C–8E are indexed below and fully traceable in Git. For source-bound Windows
+capture tests only, use process-local GIT_DIR/GIT_WORK_TREE pointing to the actual Windows paths:
+Windows Git cannot follow the WSL-absolute worktree pointer. Keep the existing identity guard;
+do not edit .git pointers, shared environments or substitute a synthetic source digest.
 
 **Module2 independent closure review.** Reviewer did not approve module closure: two confirmed
 visible defects below remain unresolved, not merely documentation or LOC concerns. The audited
@@ -210,6 +140,35 @@ independent review; assigned worker may own these three files after baseline. Us
 direct/sibling/canvas/grid/strategy cases; migrated characterization before production deletion,
 same retained cases afterward, Ruff and bounded in-memory wrong-mask fault. One reversible commit
 then continue module3 full preprocess/epoch/split responsibilities, not final acceptance.
+Original22 nativecases passed1.35s; worker now strengthens tests first, without deleting production
+or obsolete cases until main characterization passes. Keep original checkout's split/settings dirt.
+Stronger full-canvas fractional/mask characterization23passed1.36s before production edits. Worker
+now removes two unused methods/twoexclusive cases/three replaced sibling cases; retainedexpected18.
+
+**Completed 3B, pending commit — unused MAT Export convenience.** Independent full11-preprocessor1541-line source/
+1554-line direct test audit and main Export55/exporttest71/package26/caller read confirm Export is
+only re-exported by preprocessor.__init__ and consumed by its own tests. No current UI, Command,
+Assistant, script/config/doc or dynamic resolver uses it. Remove export.py, package import/__all__
+entry, exclusive directtest file and combined test_preprocess export case/unusedimports only.
+Do not add read-back tests for a retired-only behavior. Preserve every supported transformation,
+EEG/event/copy/cancel semantics and actual result/recipe reading; zero new owner or compatibility.
+Main owns fourfiles and existing-environment runs. Baseline fullpreprocessor direct suite once
+because package export membership is shared; repeat retained suite afterward, Ruff and independent
+actual-diff review then separatecommit. Review actual parametrized removedcase count, not assumed4.
+No actual export files/user weights/data are removed, only Git-tracked dead source/tests.
+Native preprocessor baseline78passed3.04s; retained73passed3.02s, exactlyfive obsolete Export cases
+removed (three direct plus raw/epoch parametrizations). Same17 upstream MNE/NumPy/expected short-
+signal/drop warnings before/after. Source-57, tests-98; independent actualdiff review/Ruff/check/format
+passed. No actual export artifacts were deleted; removed source is recoverable from Git.
+
+**Module3 shared owner audit, not yet an implementation slice.** Independently fully read
+preprocess_service996/preparation120/render536/state524 and directservice985/state526/render240.
+Prepared application path owns detached work, source/publication/training identity, short mutation
+and rollback. Render's copied immutable buffers/generation guard is a distinct live boundary.
+Old direct handlers duplicate supported operations but SET_MONTAGE is a live generic confirmation
+branch (actual montage mutation is ApplyMontageCommand); invalid-operation parsing also matters.
+Do not delete whole handler/map from text-search alone. Map every legacy epoch resource/boundary/
+receipt/handoff assertion to actual prepared/ApplicationService evidence before declaring3C.
 
 Completed2X–2AC are indexed below; their full scope/evidence remains in Git history.
 2AC found an existing shared-environment source hazard: Windows .pth adds the original checkout
@@ -219,44 +178,6 @@ assert_active_checkout_import(Path.cwd()). Do not edit the environment/.pth or w
 The first2AC run had two expected root failures plus this separate origin failure; isolated rerun
 had only two expected failures, then allsix passed after the resolver fix. No real fixture ran.
 
-**Completed 2AD — remove Coordinator-only payload forwarding layer.** Entire2400-line coordinator and
-4660-line test audit confirms four static aliases only forward to existing data_interpretation_ui_payload
-functions: _merge_interpretation_choices, _diagnostic_payload, _optional_payload_id, _decision_reason.
-Replace coordinator self-calls with those already imported functions; migrate five choice-merge tests
-to the real helper while preserving every assertion. Keep _choices_after_label_source_change, all
-typed review/session/command ownership, cancellation, receipt handling and callback order unchanged.
-Observer owns coordinator and directasync test only. Main owns plan/baseline/runtime. Baseline whole
-direct async-flow suite once (includes deliberate5.1s delayed-modal case), migrate tests and verify
-focused choice cases before production deletion, then rerun retainedwhole suite and Ruff. Main
-non-author review, production deletion/owner delta0; separatecommit then continue module2.
-Originalwhole80passed12.43s; five tests migrated with every assertion unchanged, sixfocused
-merge/invalidation cases passed1.91s before production edits. Observer now removes only the four
-forwarders and redirects existing calls; main will inspect the exact diff and run retainedwhole80.
-Actualsource +20/-39/net-19,20directcalls andfourforwarders removed; test +8/-5 forfiveunchanged
-assertion sets. Main non-author actual-diff/callback review approved; samewhole80passed12.18s,
-Ruff/format passed. Keepactual label-source invalidation policy unchanged.
-
-**Completed 2AE, pending commit — RawDataLoader reachable collection tests and dead lookup.** Main fully read source166/
-direct157. get_loaded_raw has only three assertions in its append test and no production/script/doc/
-dynamic caller; actual DatasetStateService still calls apply, so retain that mutation seam. First
-strengthen init to prove unlabeled and labeled inputs, append to prove ordered object identity,
-failed append to prove collection unchanged, and assertion-free test_apply to verify Study contains
-the exact Raw. Baseline these meaningful behaviors before deleting private-use convenience lookup
-and its exclusive assertions, obsolete commented event rejection, and repeated empty assertion.
-Do not alter consistency/append/apply policies or formal Command API; no new abstraction/owner.
-Main owns loader/directtest, independent reviewer checks exact evidence and consumer. Focused loader/
-factory tests and actual apply neighbor, no whole-project rerun; bounded in-memory no-publication
-fault should fail the strengthened apply case. Target is load_data/data_loader.py, not the format
-registry raw_data_loader.py. Independent caller/scope review approved; real apply neighbors cover
-candidate-specific confirmation and partial loader failure preserving Study. One reversible commit
-then continue module2.
-Strengthened23-case loader/factory/registration +two actualApply-neighbor baseline passed7.35s
-before lookup/source deletion. No chronological original pre-strengthening run in this slice;
-the added assertions pass against unchanged production, which is the refactor characterization.
-After deletion the same23 passed7.36s. A process-only no-op apply fault failed the strengthened
-Study publication assertion (zero rather than one item); no faulty source was saved. Source -17,
-owners unchanged; Ruff/check/format and independent actual-diff review passed. Commit this slice,
-then declare2AF backend preflight convenience cleanup and baseline before editing production.
 
 - Main fully read load_labels_step462 and wizard preview4850; independent reviewer fully read
   label_placement_step2179 and coupled caller/test ranges. Independent workers fully read all7,359
@@ -458,6 +379,7 @@ this table replaces their duplicated active-plan narrative, not any unresolved m
 | 8C / `e8ed6d4b` | Retire duplicate placement capture entrypoint; script +1/-76/net-75 | Canonicalcapture32 before/after, mainnonauthorreview/Ruff; actual factories unchanged |
 | 2AG / `528322e7` | Remove empty wizard footer instance and exclusion forward; +1/-9/net-8 | Same13 native rendering/removal/geometry before/after, independentreview/Ruff |
 | 8D / `aeb53bf4` | Real Qt persistent-visible timeout evidence; tests+36 | Originalsuccess1 ->success/timeout2pass; in-memory wrong-success fault detected; mainnonauthorreview/Ruff |
+| 8E / `b7ed74ab` | Remove unused review-state capture fixture; script-63 | Same32 native before/after, mainnonauthorreview/Ruff; canonical factories/inventory unchanged |
 
 ### Evidence qualifications that remain relevant
 
