@@ -487,6 +487,7 @@ def _raw_with_event_codes(filepath: Path, event_codes: list[int]) -> Raw:
 def _write_reviewed_epoch_fixture(
     path: Path,
     channel_names: tuple[str, ...] = ("Cz",),
+    event_rows: np.ndarray | None = None,
 ) -> None:
     """Write one real FIF recording accepted by the interpretation workflow."""
     sfreq = 100.0
@@ -495,13 +496,17 @@ def _write_reviewed_epoch_fixture(
         mne.create_info(list(channel_names), sfreq=sfreq, ch_types="eeg"),
         verbose="ERROR",
     )
-    events = np.asarray(
-        [
-            [100, 0, 1],
-            [250, 0, 2],
-            [400, 0, 1],
-        ],
-        dtype=int,
+    events = (
+        np.asarray(event_rows, dtype=int)
+        if event_rows is not None
+        else np.asarray(
+            [
+                [100, 0, 1],
+                [250, 0, 2],
+                [400, 0, 1],
+            ],
+            dtype=int,
+        )
     )
     raw.set_annotations(
         mne.annotations_from_events(
@@ -516,13 +521,19 @@ def _write_reviewed_epoch_fixture(
 def _apply_reviewed_epoch_fixture(
     service: ApplicationService,
     path: Path,
+    additional_paths: tuple[Path, ...] = (),
 ) -> None:
     """Run the public interpretation commands needed for epoch admission."""
-    assert service.execute(ScanSourceCommand(source_path=str(path))).ok
+    selected_paths = (path, *additional_paths)
+    assert service.execute(
+        ScanSourceCommand(
+            source_path=str(path.parent) if additional_paths else str(path)
+        )
+    ).ok
     assert service.execute(
         PreviewInterpretationCommand(
             choices={
-                "selected_eeg_files": [str(path)],
+                "selected_eeg_files": [str(item) for item in selected_paths],
                 "internal_event_selection": {
                     "label_event_codes": ["left", "right"],
                     "class_map": {"left": "left", "right": "right"},
@@ -535,6 +546,110 @@ def _apply_reviewed_epoch_fixture(
     ).ok
     assert service.execute(ValidateInterpretationCommand()).ok
     assert service.execute(ApplyInterpretationCommand(confirmed=True)).ok
+
+
+@pytest.mark.parametrize(
+    ("event_count", "recording_count", "accepted"),
+    [(100, 1, True), (99, 1, False), (100, 3, True)],
+    ids=(
+        "one-percent-boundary-drop-accepted",
+        "above-one-percent-rejected",
+        "multi-recording-below-one-percent-accepted",
+    ),
+)
+def test_prepared_epoch_boundary_limit_uses_real_reviewed_events(
+    tmp_path: Path,
+    event_count: int,
+    recording_count: int,
+    accepted: bool,
+) -> None:
+    paths: list[Path] = []
+    for recording_index in range(recording_count):
+        path = tmp_path / f"boundary-{event_count}-{recording_index}-events_raw.fif"
+        has_boundary_event = recording_count == 1 or recording_index < 2
+        events = np.asarray(
+            [
+                [
+                    0
+                    if has_boundary_event and index == 0
+                    else 50 + (index - int(has_boundary_event)) * 5,
+                    0,
+                    1 if index % 2 == 0 else 2,
+                ]
+                for index in range(event_count)
+            ],
+            dtype=int,
+        )
+        _write_reviewed_epoch_fixture(path, event_rows=events)
+        paths.append(path)
+    service = ApplicationService(Study())
+    try:
+        _apply_reviewed_epoch_fixture(service, paths[0], tuple(paths[1:]))
+        loaded_sources = list(service.study.loaded_data_list)
+        original_preprocessed = service.study.preprocessed_data_list
+        original_samples = [
+            item.get_mne().get_data().copy() for item in original_preprocessed
+        ]
+
+        result = service.execute(
+            CreateEpochCommand(
+                t_min=-0.1,
+                t_max=0.2,
+                event_ids=["left", "right"],
+            )
+        )
+
+        excluded = 1 if recording_count == 1 else 2
+        selected = event_count * recording_count
+        boundary = result.diagnostics["epoch_boundary_check"]
+        assert boundary == {
+            "selected_event_count": selected,
+            "excluded_event_count": excluded,
+            "remaining_event_count": selected - excluded,
+            "affected_recording_count": excluded,
+            "recording_count": recording_count,
+            "excluded_ratio": pytest.approx(excluded / selected),
+        }
+        for raw, samples, loaded in zip(
+            original_preprocessed, original_samples, loaded_sources, strict=True
+        ):
+            np.testing.assert_array_equal(raw.get_mne().get_data(), samples)
+            assert raw is loaded
+        current_loaded = service.study.loaded_data_list
+        assert len(current_loaded) == recording_count
+        assert all(
+            current is expected
+            for current, expected in zip(current_loaded, loaded_sources, strict=True)
+        )
+        if accepted:
+            assert result.ok, result.message
+            assert result.message == (
+                f"Created EEG epochs from -0.1s to 0.2s. Excluded {excluded} boundary "
+                "event(s) that could not contain the complete window."
+            )
+            assert service.study.preprocessed_data_list is not original_preprocessed
+            epoch_data = service.study.epoch_data
+            assert epoch_data is not None
+            assert epoch_data.get_data_length() == selected - excluded
+            assert (
+                sum(
+                    len(item.get_mne()) for item in service.study.preprocessed_data_list
+                )
+                == selected - excluded
+            )
+            assert service.study.is_locked() is True
+        else:
+            assert result.failed is True
+            assert result.message == (
+                "The selected epoch window would exclude 1 of 99 selected events "
+                "because they are too close to a recording boundary. Shorten the "
+                "epoch window or review the selected events."
+            )
+            assert service.study.preprocessed_data_list is original_preprocessed
+            assert service.study.epoch_data is None
+            assert service.study.is_locked() is False
+    finally:
+        service.close()
 
 
 def _use_test_raw_factory(

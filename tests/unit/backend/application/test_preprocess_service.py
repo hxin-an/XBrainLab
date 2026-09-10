@@ -26,7 +26,6 @@ from XBrainLab.backend.application.preprocess_service import (
 from XBrainLab.backend.application.service import ApplicationService
 from XBrainLab.backend.application.state import ApplicationStateSnapshot
 from XBrainLab.backend.load_data import Raw
-from XBrainLab.backend.preprocessor.time_epoch import EpochBoundarySummary
 from XBrainLab.backend.study import Study
 
 
@@ -464,77 +463,6 @@ def test_preprocess_service_creates_epoch() -> None:
     assert preprocess.events == [
         ("epoch", ((0.0, 0.2), {"left": 1}, -0.5, 1.5)),
     ]
-
-
-def test_preprocess_service_reports_small_reviewed_boundary_exclusion(
-    monkeypatch,
-) -> None:
-    service, preprocess, _dataset = _service()
-    monkeypatch.setattr(
-        "XBrainLab.backend.application.preprocess_service.summarize_epoch_boundaries",
-        lambda *_args, **_kwargs: EpochBoundarySummary(
-            selected_event_count=2_245,
-            excluded_event_count=2,
-            affected_recording_count=2,
-            recording_count=3,
-        ),
-    )
-
-    result = service.handle_create_epoch(
-        CreateEpochCommand(
-            baseline=(-0.2, 0.0),
-            event_ids=["noise", "oddball", "standard"],
-            t_min=-0.2,
-            t_max=0.5,
-        )
-    )
-
-    assert isinstance(result, tuple)
-    message, diagnostics = result
-    assert "Excluded 2 boundary event(s)" in message
-    assert diagnostics["epoch_boundary_check"] == {
-        "selected_event_count": 2_245,
-        "excluded_event_count": 2,
-        "remaining_event_count": 2_243,
-        "affected_recording_count": 2,
-        "recording_count": 3,
-        "excluded_ratio": pytest.approx(2 / 2_245),
-    }
-    assert preprocess.events == [
-        (
-            "epoch",
-            (
-                (-0.2, 0.0),
-                ["noise", "oddball", "standard"],
-                -0.2,
-                0.5,
-                True,
-            ),
-        )
-    ]
-
-
-def test_preprocess_service_blocks_large_boundary_exclusion(monkeypatch) -> None:
-    service, preprocess, _dataset = _service()
-    monkeypatch.setattr(
-        "XBrainLab.backend.application.preprocess_service.summarize_epoch_boundaries",
-        lambda *_args, **_kwargs: EpochBoundarySummary(
-            selected_event_count=100,
-            excluded_event_count=2,
-            affected_recording_count=1,
-            recording_count=1,
-        ),
-    )
-
-    with pytest.raises(PreconditionError, match=r"exclude 2 of 100") as exc_info:
-        service.handle_create_epoch(
-            CreateEpochCommand(t_min=-0.2, t_max=0.5, event_ids=["oddball"])
-        )
-
-    assert exc_info.value.diagnostics["epoch_boundary_check"][
-        "excluded_ratio"
-    ] == pytest.approx(0.02)
-    assert preprocess.events == []
 
 
 def test_bids_duration_warning_requires_receipt_before_epoch_mutation(

@@ -46,7 +46,7 @@ UI/test files and root settings. Worktree/branch/source facts come from Git, not
 | --- | --- | --- |
 | 1 Command/state spine | Admission, capabilities, confirmation, publication, owned work, shared domain ports | Responsibility review closed at 1247cf7c; native 178 passed; domain branches explicitly remain modules 2–6 |
 | 2 Import/interpretation | Loaders, BIDS, labels/classes, channel/montage, metadata, recipes, related UI | Audited core reviewed; not closed: two confirmed visible defects await authorization; inventory reconciliation in progress |
-| 3 Preprocess/epoch/split | Processing, copies, invalidation, preview/materialization, related UI/tools | Active3A–3C; preprocess source/direct audits complete, dispatch migration and split/UI/domain coverage remain open |
+| 3 Preprocess/epoch/split | Processing, copies, invalidation, preview/materialization, related UI/tools | 3A–3G bounded changes reviewed; remaining epoch dispatch migration, UI/domain audit and inventory reconciliation stay open |
 | 4 Models/training | Catalog, resource preflight, settings, stop/rerun, history/checkpoints | Pending |
 | 5 Evaluation/saliency/views | Read/publication, SmoothGrad/recompute, four views, stale work/render lifecycle | Pending |
 | 6 Assistant/chat | Tool adapters, turns/confirmation/execution, model/RAG lifecycle and shutdown | Pending |
@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `c628be38`, 60 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `036cb1cc`, 61 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -240,7 +240,7 @@ cases; all epoch safety cases remain. Main/independent actualdiff review and fou
 Final formatted3C source-76/tests+233/-196/net+37; fewer duplicate production paths, stronger real
 side-effect evidence rather than a claim of test LOC reduction. Epoch legacy migration remains open.
 
-**Declared 3E — real prepared epoch boundary admission characterization.** Reuse existing
+**Completed bounded 3E — real prepared epoch boundary admission characterization.** Reuse existing
 _write_reviewed_epoch_fixture/_apply_reviewed_epoch_fixture in test_application_service.py; permit
 explicit synthetic event coordinates in the existing writer while preserving its default recordings.
 Add actual Scan/Preview/Validate/Apply/CreateEpoch cases at1% and above1% boundary exclusion, with
@@ -253,6 +253,72 @@ Main owns plan/review/native evidence; legacy worker owns only existing applicat
 Run new cases plus existing reviewed-epoch lifecycle and all-dropped safety neighbors; bounded wrong
 threshold fault, Ruff and independent actualdiff review. Receipt/RAM/aliases migration remains next;
 no epoch/UI/data policy change, new fixture platform or production owner. Continue module3 afterward.
+Final real cases include100/1 and99/1 boundary events plus300/2 across three recordings; exact
+diagnostics, actual epochs/lock and unchanged loaded/source data are asserted. Retired only two
+legacy boundary-summary mock cases. In-memory threshold0.02 fault makes above1% rejection fail;
+no faulty source persisted. Initial fixture mistakes (extra EEG in message and raw rather than
+normalized label IDs in the separate3G case) were corrected against actual behavior, not product.
+Recovered final3E/3G/preprocess selection291passed10.14s with601 upstream/expected MNE warnings;
+prior terminal output was lost across context recovery, so it was rerun rather than assumed green.
+Independent actualdiff approved; nine changed source/test files pass Ruff/check/format. 3E tests
++124/-81/net+43, no production change. Remaining RAM/receipt/handoff cases are explicitly retained.
+
+**Completed bounded 3F — actual Preprocess plotter contract, not obsolete async compatibility.** Main fully
+read plotter204/direct252, PreviewWidget1135/directpreview127, panel304/history124/dataquery83/direct159.
+All three live plotter constructors receive PreviewWidget; Welch calculation/application are synchronous
+inside the existing reentrancy guard. Local plot-generation state/check has only an artificial direct
+test; it is not the live backend publication/stale-work guard. First add real PreviewWidget/PyQtGraph
+curve characterization for time/PSD with/without original signals and exact distinct-rate Welch output.
+Keep old tests until passing baseline; then remove only local synchronous generation and duck-typed
+widget fallbacks, replacing calls with the actual typed widget methods. Retain nonreentrancy, deferred
+PSD until selected, backend generation guards and all native detach/resume/finalize lifecycle.
+Also replace PreviewWidget's test-only locked_status_label alias with its same existing QLabel owner,
+migrating assertions before deletion. No visible/state/plot math change, new owner or thread.
+Main owns these files; select direct plotter/preview/presentation and existing native lifecycle stress
+evidence, bounded wrong-PSD fault, Ruff and independent nonauthor review before separatecommit.
+New four real time/PSD/current/overlay cases plus original direct preview/presentation30passed3.37s
+before production edits. Alias assertions now target the identical existing locked_state_detail;
+run that migrated baseline before deleting the alias. Native lifecycle source65 fully read: subprocess
+uses actual checked-in GDF, eight destroy/recreate and cancelled-close resume cycles with bounded timeout.
+Migrated QLabel-owner assertions7passed0.43s before alias deletion. Initial production patch was
+rejected by auto-review as possibly removing required asynchronous guards; no source changes applied.
+Independent reviewer then traced ALL three real plotter callers: panel75/update_plot_only, capture399,
+native stress194/197/249; _apply_psd_result has only inline caller180 after synchronous Welch, no worker,
+queued callback, executor or event processing. Existing _is_plotting covers synchronous Qt reentry.
+Backend publication-ledger and saliency worker generations remain untouched. This concrete evidence
+supports resubmitting only the declared synchronous-state deletion, not bypassing review or weakening
+any live asynchronous boundary. If rejected again, retain it and report the authority blocker.
+The evidence-backed resubmission was accepted; actual source deletion then applied. Retained29 direct
+plus existing real-GDF native lifecycle1 passed7.33s, including eight detach/resume/finalize cycles.
+Wrong PSD-frequency fault is caught by actual curve data (250/251bins mismatch),1failed0.19s.
+Before retiring four now-redundant mock happy-path cases (time data/events, frequency sampling,
+Welch-called, no-data clear), strengthen the new real-widget cases with exact time view range and
+repeat-render-to-no-data clearing of all four native curves and marker visibility; baseline those
+assertions first. Keep actual reentrant/failure/deferral seam tests and raw-offset data regression.
+Strengthened14plottercases passed1.96s before four duplicate mock cases were removed. Recovered
+retained direct25passed2.60s; existing native8cycle stress above remains applicable. Independent
+review of the FINAL applied source/tests approved synchronous caller coverage, actual widget API,
+alias migration and replacement protection. Production+15/-44/net-29; tests+84/-85/net-1.
+
+**Completed bounded 3G — retire legacy Epochs picker chain after real allocator characterization.** Independent
+full dataset7-source4071-line/direct7-test4037-line audit (verify counts from wc, not inventory) traces
+pick_subject/session/trial and their exclusive helpers to tests only; current DatasetGenerator owns all
+materialization. Characterize successful Generator Manual Trial index selection expanding the entire
+overlap group, preserving train classes and passing actual split audit before deleting old picker tests.
+Existing old class-incomplete audit case should use explicit masks to test the audit, not obsolete pickers.
+Do not recreate old expanded_indices evidence: its only writers are legacy pickers; actual Generator
+never produces it and no current canonical promise requires it. Retain artifact builder/writer/schema/
+reader and rollback fields in this slice; any orphan evidence chain needs separate contract review.
+Worker may author test-only changes in existing test_atomic_trial_groups.py first. Passing real manual
+baseline plus actual generator/atomic/epoch direct tests precede the bounded picker deletion. Main owns
+source until migration map/deletion count reviewed; zero new owner, no allocation/data/visible policy
+change. Keep pick_subject_mask_by_idx (live Dataset caller), provenance/atomic group construction and
+channel/order/copy semantics. Independent review, retained tests/Ruff and rollback-small commit follow.
+Corrected real manual allocator plus explicit class-incomplete audit cases2passed3.60s before source
+deletion. Production-538 removes only the obsolete picker/helper/enum chain; current Generator,
+live subject mask, provenance, artifact schema/readers and rollback state remain. Main read the full
+deletion diff; independent nonauthor source/test review approved. Final retained291-case combined
+selection and Ruff pass as recorded3E; this is not all of module3 or final-source certification.
 
 Completed2X–2AC are indexed below; their full scope/evidence remains in Git history.
 2AC found an existing shared-environment source hazard: Windows .pth adds the original checkout
@@ -467,6 +533,7 @@ this table replaces their duplicated active-plan narrative, not any unresolved m
 | 3B / `7fb9fcc9` | Retire unused MAT Export/module/export tests; production-57/tests-98 | Native78 ->73, exactlyfive obsoletecases; same17upstreamwarnings; independentreview/Ruff |
 | 3A / `07881c8d` | Two unused DrawRegion APIs removed; production-23/testsnet-16 | Original22 ->stronger23 ->retained18; wrongoverlapfaultdetected; actualcanvas/strategycases and mainnonauthorreview/Ruff |
 | 3C / `c628be38` | Remove unreachable ordinary preprocess handler branches/helpers; production-76/testsnet+37 | Real ordinary/admission characterization before deletion, retained42pass; cancellation/stale/rollback/epoch safety retained, independentreview/Ruff |
+| 3D / `036cb1cc` | Remove unused split to_thread no-op; production-3/tests+87 | Native direct16 before/after; both omitted-guard faults detected; independentreview/Ruff; distinct offscreen font/native-center limitations remain tracked |
 
 ### Evidence qualifications that remain relevant
 
