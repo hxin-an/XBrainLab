@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `528322e7`, 55 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `aeb53bf4`, 56 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -159,7 +159,7 @@ neighbors passed0.93s before any2AG edits. Independent candidate/caller/base-dia
 After deletion the combined same13 passed1.49s, Ruff/check/format passed. Main and independent
 actual-diff review approve source +1/-9/net-8, ownerdelta0; no visible footer or layout change.
 
-**Completed 8D, pending commit — replay shutdown timeout evidence.** The complete replay1329/direct572 audit found
+**Completed 8D — replay shutdown timeout evidence.** The complete replay1329/direct572 audit found
 real deferred-close success coverage but no persistent-visible timeout case. Baseline the existing
 real Qt shutdown case; add a rejecting-close QWidget with guaranteed finally hide and observable
 timeout-once/no-success assertions. Keep actual Qt polling and monotonic deadline, no fake lifecycle
@@ -195,6 +195,21 @@ FIF not actual EEG Apply). Main1–440 +independent441–1788 fully cover real-f
 retain all five-step, exact fresh review, no-publication, cancellation/drain/retry and BIDS recovery
 contracts. Optional fixtures were not run here; final required-source gate still applies.
 Continue authorized module3 while awaiting visible decisions; do not markmodule2closed or handoff.
+
+**Active 3A — split illustration math cleanup and stronger tests.** Main/independent read
+DrawRegion75–250, actual update_preview/testing/validation callers and direct148; change_to and
+decrease_w_tail have no production/dynamic/script/doc caller, only two exclusive tests. Remove
+only these unused methods and exclusive tests from data_splitting_dialog.py/direct test after
+characterization. Strengthen mask from merely changed-array to exact masked/unmasked canvases and
+unchanged source, and parameterize real fractional bounds in set_to. Then retire three duplicate
+DrawRegion checks in dialogs/test_data_splitting.py only after their exact behavior is covered by
+the stronger direct tests; preserve actual PreviewCanvas pixel and dialog strategy/rendering cases.
+No visible/UI/EEG/split policy change, no owner/abstraction; source target is data_splitting_dialog.py,
+NOT protected original-checkout data_splitting_preview_dialog.py. Main owns plan/native runs and
+independent review; assigned worker may own these three files after baseline. Use22 original
+direct/sibling/canvas/grid/strategy cases; migrated characterization before production deletion,
+same retained cases afterward, Ruff and bounded in-memory wrong-mask fault. One reversible commit
+then continue module3 full preprocess/epoch/split responsibilities, not final acceptance.
 
 Completed2X–2AC are indexed below; their full scope/evidence remains in Git history.
 2AC found an existing shared-environment source hazard: Windows .pth adds the original checkout
@@ -442,6 +457,7 @@ this table replaces their duplicated active-plan narrative, not any unresolved m
 | 2AF / `4df0c36e` | Remove preflight forwards/list copy and unused multiplier aliases; +8/-40/net-32 | Same20 native before/after; receipt/scope/BIDS fallback review and Ruff; policies unchanged |
 | 8C / `e8ed6d4b` | Retire duplicate placement capture entrypoint; script +1/-76/net-75 | Canonicalcapture32 before/after, mainnonauthorreview/Ruff; actual factories unchanged |
 | 2AG / `528322e7` | Remove empty wizard footer instance and exclusion forward; +1/-9/net-8 | Same13 native rendering/removal/geometry before/after, independentreview/Ruff |
+| 8D / `aeb53bf4` | Real Qt persistent-visible timeout evidence; tests+36 | Originalsuccess1 ->success/timeout2pass; in-memory wrong-success fault detected; mainnonauthorreview/Ruff |
 
 ### Evidence qualifications that remain relevant
 

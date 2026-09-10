@@ -1849,69 +1849,6 @@ def _review_import_dialog() -> DataInterpretationPreviewDialog:
     )
 
 
-def _review_import_state_dialog(state: str) -> DataInterpretationPreviewDialog:
-    preview: dict[str, Any] = {
-        "summary": "Found 3 EEG file(s) and 3 label/event carrier(s).",
-        "source_selection": "3 selected file(s)",
-        "metadata_preview": _metadata_rows(),
-        "label_carrier_preview": _label_carriers(),
-    }
-    validation_decision: dict[str, Any] = {"decision": "safe"}
-    if state == "confirm":
-        validation_decision = {
-            "decision": "needs_confirmation",
-            "action_items": [
-                {
-                    "target_step": "Review Metadata",
-                    "issue": "Confirm subject metadata.",
-                    "impact": "Subject was inferred from filenames for 3 files.",
-                    "next_action": "Review metadata if the subject is wrong.",
-                    "severity": "needs_confirmation",
-                }
-            ],
-        }
-    elif state == "review":
-        validation_decision = {
-            "decision": "safe",
-            "action_items": [
-                {
-                    "target_step": "Match Labels",
-                    "issue": "Label count needs review.",
-                    "impact": "A03T.mat has 282 labels and 288 selected EEG events.",
-                    "next_action": "Check target EEG events in Match Labels.",
-                    "severity": "warning",
-                }
-            ],
-        }
-    elif state == "both":
-        validation_decision = {
-            "decision": "needs_confirmation",
-            "action_items": [
-                {
-                    "target_step": "Review Metadata",
-                    "issue": "Confirm subject metadata.",
-                    "impact": "Subject was inferred from filenames for 3 files.",
-                    "next_action": "Review metadata if the subject is wrong.",
-                    "severity": "needs_confirmation",
-                },
-                {
-                    "target_step": "Match Labels",
-                    "issue": "Label count needs review.",
-                    "impact": "A03T.mat has 282 labels and 288 selected EEG events.",
-                    "next_action": "Check target EEG events in Match Labels.",
-                    "severity": "warning",
-                },
-            ],
-        }
-
-    return DataInterpretationPreviewDialog(
-        parent=None,
-        scan_result=_base_scan(),
-        preview=preview,
-        validation_decision=validation_decision,
-    )
-
-
 def _metadata_rows() -> list[dict[str, Any]]:
     return [
         {
