@@ -103,13 +103,13 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `20b05f75`, 52 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `4df0c36e`, 53 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
 **Current work — finish module 2 coverage and coherent remaining deletions.**
 
-**Completed 2AF, pending commit — backend preflight conveniences.** Inline pending receipt lookup into its sole caller,
+**Completed 2AF — backend preflight conveniences.** Inline pending receipt lookup into its sole caller,
 replace three resource-scope forwards with already imported resolve_interpretation_resource_scope
 (preserve admitted BIDS fallback on the materialized scan), and use the existing dataset snapshot's
 truth value for replacement confirmation without a second list copy. Delete the two unused tabular
@@ -124,7 +124,7 @@ Same20 native cases passed8.25s before and8.18s after. Source +8/-40/net-32, zer
 tests unchanged. Ruff/check/format and independent actual-diff scope/receipt/BIDS fallback review
 passed. No measured performance claim from removal of one redundant snapshot copy.
 
-**Declared 8C (module2 consumer) — duplicate placement-capture entrypoint.** Full independent reads
+**Completed 8C, pending commit (module2 consumer) — duplicate placement-capture entrypoint.** Full independent reads
 of capture contract234, canonical wizard runner2017, placement helper320 and tests216/660 confirm
 only build_dialog is imported by the canonical runner; no gate/docs/Poe calls standalone main.
 After baseline canonical capture tests, remove standalone-only main/constants/capture helper chain
@@ -137,6 +137,24 @@ First baseline31passed/1failed because Windows Git cannot follow the WSL absolut
 so source identity was unavailable (not a source-stability failure). Verified explicit Windows
 git-dir/work-tree resolves the exact20b05f75 HEAD; process-only GIT_DIR/GIT_WORK_TREE then produced
 32passed3.80s with unchanged identity guard. Do not rewrite the worktree pointer or forge a digest.
+After deleting the unused chain the same32passed3.30s. Main nonauthor actual-diff review approved:
+all three canonical fixture functions are byte-identical; module docstring now states factory role.
+Script +1/-75/net-74; no product source/test/evidence-inventory change. Ruff/check/format passed.
+
+**Active 2AG — wizard unused footer instance / single-use exclusion forwarding.** Full source
+reads and whole-family caller search show PreviewDialog constructs an empty QDialogButtonBox with
+no layout, buttons, signals or consumer; actual footer owns separate Back/Next/Cancel/Apply buttons.
+Remove only the empty instance/annotation/import, retaining stylesheet selectors and all real
+footer geometry/signals. Other dialog button boxes and their native probes remain live and untouched.
+LoadLabelsStep's _remove_label_carrier_without_refresh only re-strips an already stripped nonempty
+path and forwards to existing LabelSourceState.exclude_carrier (which owns normalization/idempotence).
+Inline its sole caller without refresh/notification/order changes. Main owns these two UI files only;
+no visible behavior change (authorized UI internals), no new owner or tests asserting dead structure.
+Baseline actual wizard rendering/footer and remove-folder/carrier/restore/rescan choices first;
+same selection after + Ruff and independent actual-diff review, separate reversible commit. Pending
+floating-label/onset decisions below remain untouched. Then continue unfinished module audit.
+Baseline11 actual rendering/session/removal/restore/rescan cases passed1.39s plus two geometry
+neighbors passed0.93s before any2AG edits. Independent candidate/caller/base-dialog review approved.
 
 Completed2X–2AC are indexed below; their full scope/evidence remains in Git history.
 2AC found an existing shared-environment source hazard: Windows .pth adds the original checkout
@@ -219,7 +237,11 @@ then declare2AF backend preflight convenience cleanup and baseline before editin
   controls and terminal fail/stop paths; retain. Format matrix2953/direct639/UI integration248
   retain real commands, fixed requirements, strict failure/artifact exit and honest generated-vs-public
   claim boundaries. Dataset matrix781/direct453 retains fixed denominator/diversity and lifecycle
-  checks as a renderer, not a new command owner. Teacher/replay bodies still pending. Script cleanup
+  checks as a renderer, not a new command owner. Teacher1259/unit430/integration197 retains actual
+  command/epoch/digest contracts, sidecar nonpromotion and explicit best-effort raw/service cleanup.
+  Replay1329/direct572 retains live command/widget capture, geometry/artifact/identity guards and
+  explicit noncanonical claim boundary. Its persistent-visible close timeout lacks a direct test;
+  declare that focused evidence improvement separately before authoring. Script cleanup
   findings do not authorize shrinking existing evidence inventory or relaxing fail-closed outcomes.
 - Confirmed backend candidates: two definition-only tabular multiplier aliases; CommandService
   pure pending-receipt/scope forwarders and raw-presence double-copy convenience. The preflight
@@ -377,6 +399,7 @@ this table replaces their duplicated active-plan narrative, not any unresolved m
 | 2AC / `36b2de7e` | TwoOpenNeuro integration roots reuse configured storage; tests only | Isolated red2fail/4pass ->6pass; runpyactualconsumer definitions, no downloads; independentreview/Ruff |
 | 2AD / `27c525c6` | Remove four Coordinator payload forwarders; +20/-39/net-19 | Native80 before/after; migrated assertions6focused before deletion; independentreview/Ruff |
 | 2AE / `20b05f75` | Remove unused loader lookup/commented rejection; production -17 | Strengthened23 before/after, no-publication fault detected; real Apply neighbors, independentreview/Ruff |
+| 2AF / `4df0c36e` | Remove preflight forwards/list copy and unused multiplier aliases; +8/-40/net-32 | Same20 native before/after; receipt/scope/BIDS fallback review and Ruff; policies unchanged |
 
 ### Evidence qualifications that remain relevant
 
