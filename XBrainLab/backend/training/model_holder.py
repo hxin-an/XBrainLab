@@ -60,24 +60,6 @@ class ModelHolder:
             "source_revision": self.source_revision,
         }
 
-    def get_model_desc_str(self) -> str:
-        """Get a human-readable model description string.
-
-        Returns:
-            A string containing the model name and its non-empty parameters,
-            formatted as ``'ModelName (param1=val1, param2=val2)'``.
-
-        """
-        option_list = [
-            f"{name}={value}"
-            for name, value in self._model_params_map.items()
-            if value is not None
-        ]
-        options = ", ".join(option_list)
-        if not options:
-            return self.display_name
-        return f"{self.display_name} ({options})"
-
     def effective_model_args(self, args: dict[str, Any]) -> dict[str, Any]:
         """Select channel metadata using the model factory contract."""
         model_args = dict(args)

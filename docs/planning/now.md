@@ -249,7 +249,7 @@ automation/saved-split UI consumers before/after, Ruff and independent review, s
 Unchanged25 baseline passed7.80s, same25 in combined87after passed. Actual production-13 including
 separator, no test change; independent actual-diff review approved.
 
-**Bounded4L — unused model description convenience.** Independent full first-party EEGNet200/SCCNet150/
+**Completed bounded4L — unused model description convenience.** Independent full first-party EEGNet200/SCCNet150/
 ShallowConvNet141, requirements89, ModelHolder117 and direct model/selection/identity tests retain
 all supported classes and one shared minimum-input policy. Tests exercise actual boundary constructors,
 forward/optimizer steps and identity/context; this is not mathematical/scientific certification.
@@ -258,6 +258,8 @@ useful ModelHolder tests. Remove only method17lines and those assertions; preser
 pretrained weights/effective arguments/stable catalog identity and UI/Assistant model choices. Main
 owns model_holder.py/test_model_holder.py after direct baseline; same after plus model boundary tests,
 Ruff and independent review. Zero new owner, no visible/UI/model behavior or public Command change.
+Original232passed10.21s; same232 with5A34retained all266passed10.37s, same one upstream MNE warning.
+Independent actual-diff approved; production-18 including separator/tests-2, no cases removed.
 
 **Module5 entry audit / next declaration.** Independent full evaluator477/EvalRecord1344 and direct
 evaluator173/eval352/metrics155/context532/integrity608/safe-store889 reviewed. Retain real torch
@@ -267,6 +269,27 @@ saliency paths were only sampled, so whole module5 remains open. Concrete candid
 export_csv, standalone export_saliency and five saliency getter conveniences; each requires its
 own plan/baseline and exact exclusive test disposition before deletion. Existing canonical EvalRecord
 export/load and dynamic figures stay. No unknown-script compatibility or new artifact format.
+
+**Completed bounded5A — unused evaluation CSV convenience.** Main and independent caller/registration/export/
+docs/script/config trace finds EvalRecord.export_csv only the exclusive direct test. No current UI,
+Command or script exposes this CSV operation. Remove only method21lines and its one exclusive case;
+retain canonical JSON+NPZ result export/load, metrics and saliency. Existing direct EvalRecord tests
+and real metrics form passing baseline; same retained after, exact test disposition, Ruff and
+independent actual-diff review before commit. Main owns record/eval.py and record/test_eval.py only.
+No supported result-reading/schema/visible feature change, new owner or compatibility replacement.
+Original35passed5.40s; retained34 with4L232 all266passed10.37s. Independent actual-diff approved;
+production-21/tests-15, exactlyone exclusive CSV case retired.
+
+**Bounded5B — retire standalone unread saliency export.** Full EvalRecord/caller/config/docs/registry
+audit found export_saliency has only eight exclusive parametrized cases, no product producer/reader
+or supported UI/Command entry. Canonical EvalRecord.export/load persists all actual results; retain
+that schema, context/integrity validation and safe store untouched. Main verifies exact tests/imports,
+then worker may remove only export_saliency, its sole schema constant, unused artifact-type constant/
+export and eight cases plus exclusive imports in test_eval/test_eval_saliency_context. Keep shared
+saliency fixture still used by getters. Two production files, two tests, roughly-82production and no
+new owner; no supported result format/reading change or external-compatibility shell. Baseline direct
+EvalRecord/context/integrity/safe-store cases before, retained after, Ruff and independent actual-diff
+review before separate commit. Existing real roundtrip/tamper/fail-closed context tests remain.
 
 Completed2X–2AC are indexed below; their full scope/evidence remains in Git history.
 2AC found an existing shared-environment source hazard: Windows .pth adds the original checkout

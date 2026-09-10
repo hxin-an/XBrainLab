@@ -26,7 +26,6 @@ def test_model_holder():
     with patch("torch.load", return_value="state_dict"):
         model = holder.get_model({"c": 3})
 
-        assert holder.get_model_desc_str() == "FakeModel (a=1, b=2)"
         assert model.kwargs == {"a": 1, "b": 2, "c": 3}
         assert model.state_dict == "state_dict"
 
@@ -69,7 +68,6 @@ def test_model_holder_preserves_stable_catalog_identity():
         "provider": "braindecode",
         "source_revision": "braindecode==1.6.1",
     }
-    assert holder.get_model_desc_str() == "EEGNet (Braindecode)"
 
 
 def test_direct_model_holder_ignores_catalog_only_channel_context():
