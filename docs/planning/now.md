@@ -122,7 +122,31 @@ and selected actual scan admission/budget cases, migrated characterization befor
 after, Ruff and independent review; no new owner/API, visible UI or EEG/public schema changes.
 Native original, migrated characterization and after selection each passed 27 cases (2.85/2.84/2.87s).
 Ruff/format and independent actual-diff review passed; production -30 lines, no owner change.
-Commit this bounded change, then continue module-2 review/candidate consolidation audit.
+Committed as `2a61245b`; continue module-2 review/candidate consolidation audit.
+
+**Completed 2O — review projection helper consolidation.** Main read all review source (842 lines)
+and direct tests (499 lines), plus searched actual public preview/service/UI consumers. `_raw_paths`
+and `_path_values` implement identical ordered nonempty stripped path deduplication; use `_raw_paths`
+for recipe diff rows as well as remap options and remove `_path_values`. Remove the private
+`_target_step_for_text` forwarding alias and call the existing shared public routing function at
+its three internal callers. Keep all visible wording, decision/identity validation and projections.
+No UI file edit, new owner, schema or public-contract change; pure deletion/reuse in one source file.
+Before deletion strengthen the existing recipe-preview characterization with duplicate/blank/None
+path inputs for both EEG and labels, proving unchanged public diff/remap output. Run direct review,
+candidate and recipe suites before and after, Ruff and independent actual-diff review; reversible
+commit then continue remaining module2. Candidate one-use forwarder remains a separate next slice.
+Original/strengthened-before-production/after native review+candidate+recipe selection each passed
+80 cases (3.41/3.32/3.27s); Ruff/format and independent actual-diff review pass.
+Production +8/-23/net -15, unchanged owners.
+
+Placement source/direct tests were independently read (972/429 lines). Retain trial-order, time,
+interval, event-code and committed-scope admission rules. Follow up event-code/interval branch evidence:
+reviewer is checking existing downstream tests before declaring a gap. Main noticed interval may
+overwrite a time-field `needs_review` with `ready` when duration count matches but onset count does not.
+Reviewer traced real TSV plan -> wrong ready -> atomic apply fails nonnumeric onset without mutation.
+Existing candidate tests cover normal interval and event-code ready/repeated/conflict; they do not
+cover partial onset. User confirmation requested asynchronously because correcting ready changes
+visible state. Do not change this product behavior until approved; other authorized work continues.
 
 **Remaining read-only audits / next scope decisions.**
 

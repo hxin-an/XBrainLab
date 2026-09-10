@@ -135,8 +135,14 @@ def test_build_interpretation_preview_summarizes_recipe_reload_diff():
     recipe = SimpleNamespace(
         recipe_id="recipe-1",
         source_path="/data",
-        selected_eeg_files=["/data/sub-01.fif", "/data/missing.fif"],
-        label_carriers=["/data/old_events.tsv"],
+        selected_eeg_files=[
+            " /data/sub-01.fif ",
+            "",
+            None,
+            "/data/sub-01.fif",
+            "/data/missing.fif",
+        ],
+        label_carriers=[None, " /data/old_events.tsv ", "/data/old_events.tsv", ""],
         metadata=[],
         event_roles={"trial_type": "class cue"},
         class_map={"1": "left"},
@@ -144,8 +150,14 @@ def test_build_interpretation_preview_summarizes_recipe_reload_diff():
     )
     scan = SimpleNamespace(
         source_path="/data",
-        eeg_files=["/data/sub-01.fif", "/data/sub-02.fif"],
-        label_carriers=["/data/events.tsv"],
+        eeg_files=[
+            None,
+            " /data/sub-01.fif ",
+            "/data/sub-02.fif",
+            "/data/sub-02.fif",
+            "",
+        ],
+        label_carriers=[" /data/events.tsv ", "", None, "/data/events.tsv"],
     )
 
     preview = build_interpretation_preview(
