@@ -1,6 +1,6 @@
 # XBrainLab Now
 
-最後更新：`2026-09-10`
+最後更新：`2026-09-11`
 
 ## Active
 
@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `a850a786`, 136 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `1dee2d2a`, 139 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -175,6 +175,32 @@ caller/privacy review, then same retained cases. Production-81/test-182, live ow
 Command/query/Assistant or visible semantics change; unknown external convenience imports are not
 preserved per stage authorization. No replacement wrapper or new policy. Commit independently, then
 continue shared UI/scripts audit; a failed permission decision stops only this deletion, not other work.
+Result: original decorator11 plus live mapping/privacy25 and styles25 baseline61passed6.92s;
+retained live exceptions/results25passed5.38s after deletion. Independent actualdiff/caller review
+approved; public error/privacy owners unchanged. Only orphan source81/test182 lines removed, no data.
+
+**Bounded7L — remove unused theme/registry surface.** Full independent and main icons52/direct65,
+theme192/direct133 plus actual AgentManager474/settings button3128–3197 and AppConfig owner74 read.
+Six icon entries reference absent assets and have no consumers; the only real SETTINGS.path forwards
+literal settings.svg to AppConfig.get_icon_path. Use that existing owner directly in AgentManager and
+the actual QIcon pixel test, then remove whole Icons module and its four exclusive registry mocks.
+Retain actual settings.svg and standardIcon fallback unchanged; no visible UI/art change. Remove six
+unused theme tokens and test-only get_style_sheet/three exclusive tests, not Stylesheets.MAIN_WINDOW
+or live Matplotlib styling. Strengthen actual figure/axes/legend color assertions before retirement:
+current not-white/legend-exists assertions can miss a styling no-op. Keep existing case shapes and
+live color/style semantics. Baseline icons/theme/actual dock-titlebar test, stronger pre-delete then
+retained after; exact path equality/pixel assertions, intentional no-style fault, Ruff and independent
+actualdiff review. Three production files netnegative, ownerdelta0, no generic registry replacement.
+Result:25original ->25stronger6.52s ->18retained6.49s. Seven exclusive registry/stylesheet cases
+removed only after stronger live evidence; six actual Matplotlib cases remain. In-memory styling
+no-op fails five exact color cases (one None case passes), proving detection. Production+2/-86/net-84;
+tests net-8; independent actualdiff review approved and Ruff/format passed. No asset/layout change.
+
+**Inventory corrections.** Current Windows setup launcher is87lines, not earlier187 typo. Installer
+integrity tests belong to tests/unit/scripts/test_windows_source_bootstrap.py, not the UI local-bootstrap
+suite. Main corrected the misattributed inventory row and then fully read the actual340line UI suite:
+real dialog/runtime/settings behavior retained; its256MB-per-file fake weights need a bounded fixture
+budget reduction (not model admission weakening). Reading that suite is not installer evidence.
 
 **Module7 logging audit.** Independent full logger874/direct1304, run.py370,
 Windows/WSL launcher sources and tests traced console output: StreamHandler binds native stdout;
@@ -269,12 +295,12 @@ unchanged after event drain. Same42pass on actual Windows Qt before/after and of
 fonts. 9A defaults that existing directory in direct pytest, matching existing CI without product font/
 assertion changes. Earlier Windows-interpreter offscreen counts are unit/component, not native-window
 acceptance. Local MkDocs remains unavailable; final same-head CI docs validation is still required.
-8A initial oversized-byte pytest ID caused Windows temp-path setup errors; explicit short IDs repaired
+8H initial oversized-byte pytest ID caused Windows temp-path setup errors; explicit short IDs repaired
 fixture only. Initial fault run with that error is invalid; corrected SHA-bypass gives1failed/2passed.
 Public fixture SHA triggered detect-secrets; exact known test checksum annotated, hooks then passed.
 
-**Module8 setup audit.** Full independent setup881/PS187/rootCMD20/direct436 retains
-cmd->PS1->Python->existing model lifecycle ownership. Integrity evidence improved8A; orchestration
+**Module8 setup audit.** Full independent setup881/PS87/rootCMD20/direct436 retains
+cmd->PS1->Python->existing model lifecycle ownership. Integrity evidence improved8H; orchestration
 order/env failure-stop and wrapper argument forwarding remain bounded test-quality candidates.
 Full WSL launcher CMD42/PS1276/direct89 retains console-only child output, bounded log retention,
 exit propagation and safe optional IBus; source guards are not native launch/wait evidence.
@@ -995,7 +1021,7 @@ this table replaces their duplicated active-plan narrative, not any unresolved m
 | 7E / `48b9f880` | Unused summary measurement/notifications; production-33/tests-2 |48before/after, no cases removed; all geometry/value assertions retained |
 | 7F / `36a23137` | Orphan EventBus and unconnected worker/window signals; production-59/tests-75 |52before/43after,9exclusive cases retired; independent caller review |
 | 7G / `e89291f9` | Unused modal facade/ignored error argument; production-14/tests-3 |42nativebefore/after; privacy review; INFORMATION severity retained |
-| 8A / `f54e3c4f` | Real installer SHA/HTTPS/size/noexec evidence; tests+92 |20before/23after;SHA-bypass1fail/2pass; no network/install; independent review |
+| 8H / `f54e3c4f` | Real installer SHA/HTTPS/size/noexec evidence; tests+92 |20before/23after;SHA-bypass1fail/2pass; no network/install; independent review |
 | 9A / `d7003752` | Direct Windows offscreen installed-font default; tests/config+87 |48after incl original42+4child cases; finalbootstrap+fixture29pass/Ruff; no production change |
 
 
