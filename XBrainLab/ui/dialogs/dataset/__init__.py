@@ -18,13 +18,7 @@ _EXPORT_MODULES = {
     "SmartParserDialog": ".smart_parser_dialog",
 }
 
-__all__ = [
-    "ChannelSelectionDialog",
-    "DataInterpretationPreviewDialog",
-    "DataSplittingDialog",
-    "ImportLabelDialog",
-    "SmartParserDialog",
-]
+__all__ = list(_EXPORT_MODULES)
 
 
 def __getattr__(name: str) -> Any:

@@ -22,6 +22,19 @@ class TestPackageInit:
         assert "Study" in XBrainLab.__all__
         assert "__version__" in XBrainLab.__all__
 
+    def test_dataset_dialog_exports_resolve_to_supported_classes(self):
+        from XBrainLab.ui.dialogs import dataset
+
+        exports = {name: getattr(dataset, name) for name in dataset.__all__}
+
+        assert set(exports) == {
+            "ChannelSelectionDialog",
+            "DataInterpretationPreviewDialog",
+            "DataSplittingDialog",
+            "SmartParserDialog",
+        }
+        assert all(value.__name__ == name for name, value in exports.items())
+
     def test_package_import_does_not_eagerly_import_study(self):
         code = (
             "import sys; "
