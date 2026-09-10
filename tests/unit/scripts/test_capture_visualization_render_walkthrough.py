@@ -1,4 +1,5 @@
 import hashlib
+import json
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -62,6 +63,66 @@ from XBrainLab.backend.application.montage_capability import (
 )
 from XBrainLab.backend.application.results import ErrorType
 from XBrainLab.ui.interaction_outcome import InteractionOutcome
+
+
+@pytest.mark.parametrize("existing", [False, True])
+@pytest.mark.parametrize(("status", "exit_code"), [("passed", 0), ("failed", 1)])
+def test_main_preserves_training_directory_on_rerun(
+    tmp_path, monkeypatch, qapp, existing, status, exit_code
+) -> None:
+    training_dir = tmp_path / "training outputs 測試"
+    previous = training_dir / "unrelated" / "keep.bin"
+    if existing:
+        previous.parent.mkdir(parents=True)
+        previous.write_bytes(b"caller-owned data")
+    output_dir = tmp_path / "capture artifacts"
+    produced = training_dir / "earlier-run.bin"
+    calls = []
+
+    def capture(app, output, training, timeout):
+        assert app is qapp
+        assert output == output_dir
+        assert training == training_dir
+        assert training.is_dir()
+        assert timeout == 3
+        if existing:
+            assert previous.read_bytes() == b"caller-owned data"
+        if calls:
+            assert produced.read_bytes() == b"previous capture output"
+        produced.write_bytes(b"previous capture output")
+        calls.append(training)
+        return {
+            "status": status,
+            "dataset_preparation": {"ok": True},
+            "elapsed_seconds": 0.0,
+        }
+
+    monkeypatch.setattr(capture_script, "QApplication", lambda _argv: qapp)
+    monkeypatch.setattr(capture_script, "run_visualization_render_walkthrough", capture)
+    # main installs a hook; register the original for restoration after this test.
+    monkeypatch.setattr(capture_script.sys, "excepthook", capture_script.sys.excepthook)
+    monkeypatch.setattr(
+        capture_script.sys,
+        "argv",
+        [
+            "capture_visualization_render_walkthrough.py",
+            "--output-dir",
+            str(output_dir),
+            "--training-output-dir",
+            str(training_dir),
+            "--timeout-seconds",
+            "3",
+        ],
+    )
+
+    for _ in range(2):
+        assert capture_script.main() == exit_code
+        artifact = json.loads((output_dir / capture_script.JSON_ARTIFACT).read_text())
+        assert artifact["status"] == status
+        assert f"- status: `{status}`" in (
+            output_dir / capture_script.MD_ARTIFACT
+        ).read_text(encoding="utf-8")
+    assert len(calls) == 2
 
 
 def test_capture_saliency_uses_explicit_panel_action_and_waits_for_terminal(

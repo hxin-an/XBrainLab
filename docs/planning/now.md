@@ -103,11 +103,49 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `0839dcc2`, 97 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `e3c57cd9`, 101 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
 **Current work — module5 render/resource/lifecycle and module2–4 closure gaps; visible/API decisions remain open.**
+
+**Completed bounded8G — preserve caller-owned walkthrough output directory.** Main fully read visualization
+capture2857; main() recursively deletes the arbitrary --training-output-dir before capture. Its
+registered handoff caller supplies an evidence runtime directory; no contract requires erasing its
+contents. Existing training output owner creates exclusive per-record directories. Remove the two-line
+rmtree branch and now-unused shutil import, retain directory creation and unchanged configured output
+path. No production/UI/Command/schema change, script-3LOC, owner delta0. Do not add a cleanup framework
+or run the unsafe script against real directories. Test main with real pytest filesystem, spaces/non-ASCII
+path, preexisting nested sentinel and two runs; isolate only QApplication/walkthrough (not filesystem).
+Cover new/existing roots and passed/failed capture exit/artifact status. Red before fix, same green plus
+full direct script tests, Ruff and independent actualdiff review. This does not certify native render
+or delete retained test weights; explicit target-verified cleanup remains separate. Stop this slice
+when rerun preservation and honest output/exit are proven, then continue remaining module audits.
+Actual red4failed5.83s on deleted sentinel/prior-output reads; corrected full direct suite76passed8.18s.
+Ruffcheck/formatpassed and independent actualdiff review approved. Script-3/test+61LOC; all prior
+cases retained. Test sys.excepthook registration intentionally restores main's replacement at teardown.
+
+**Module6 initial full owner audit (not closure).** Independent full controller2949/attempt898/
+execution342/confirmation314/pending443 and respective direct confirmation154/pending560/execution151/
+closure91 plus controller4625–4805 retain one host-turn/Qt orchestration, deterministic admission,
+one pending correlation owner and authoritative ApplicationService expected-generation execution.
+Real tiny-FIF product-flow528 proves a current direct-input receipt makes one resample without model/
+RAG and stale receipt makes none; it does not prove confirmation-card approval through real mutation.
+No controller split merely for LOC: lifecycle/presentation delegation already exists, with no proven
+competing owner. Remaining helpers/direct suites/model/RAG/UI/scripts still require full audit.
+
+**Bounded6A — retire orphan Assistant command-to-panel route chain.** Independent full presentation285/
+direct209 and controller audit show unused private wrapper is the sole production consumer of the
+presentation helper, which solely owns command maps/canonicalizer/action-contract import. Remove
+that whole test-only chain and controller's write-only _max_tool_failures, not a replacement shell.
+Keep typed AssistantPanelNavigationRequest/target/view modes, actual UiRequest→AgentManager routing,
+_command_identifier and CommandName for live interaction copy, _max_loop_breaks and all pending/
+confirmation/publication policy. No dynamic/config/docs/export caller; no visible UI/public tool/model/
+prompt/RAG change. Two production files roughly-60LOC, owner delta0, no new abstraction. Establish
+passing response/controller/UI-handoff/actual navigation tests before deletion; remove only two
+exclusive routing test functions (three collected cases) after baseline, preserving negative handoff
+guard. Same retained tests, Ruff and main nonauthor actualdiff review before commit. User-authorized
+unused convenience retirement applies; stop at that bounded verified deletion then continue module6.
 
 Completed2AD–2AG and8C–8E are indexed below and fully traceable in Git. For source-bound Windows
 capture tests only, use process-local GIT_DIR/GIT_WORK_TREE pointing to the actual Windows paths:
@@ -645,6 +683,10 @@ this table replaces their duplicated active-plan narrative, not any unresolved m
 | 5D / `ae7c8d62` | Dead render error/string forwards; production-19/testsnet-10 |Same50before/after incl real trainer typed summary; no cases removed; independentreview |
 | 4N / `33a7ad8b` | Real persistence in synthetic training integration; testsnet-41 |Same27before/after;122files/723462bytes; omitted-save exactcase fails safe load; main nonauthorreview/Ruff |
 | 5G / `0839dcc2` | Unused policy/holder/render conveniences + duplicate assertion; productionnet-61/testsnet-8 |235migrated before234after; strict invalid-method/default state/vectorized interpolation retained; independentreview/Ruff |
+| 5H / `cef27766` | Inert 3D setup/state removed; productionnet-20 |Same43before/after; control/sample identity/lifecycle unchanged; main nonauthorreview/Ruff |
+| 5I / `75bd4047` | Real Saliency estimator/receipt/receiver evidence; testsnet+113 |42after within80combined; admission-bypass fault fails; not an attribution journey |
+| 5J / `848d3356` | Reuse newly normalized detached arrays; production+1 |Same38before/after; normalized extra copies128→0bytes, raw copy retained; independentreview/Ruff |
+| 5K / `e3c57cd9` | Retire unused coverage forwards; production-39 |Same258before/after; all assertions and negative UI boundaries retained; main nonauthorreview/Ruff |
 
 ### Evidence qualifications that remain relevant
 

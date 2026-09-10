@@ -12,7 +12,6 @@ import math
 import os
 import random
 import re
-import shutil
 import sys
 import tempfile
 import time
@@ -233,8 +232,6 @@ def main() -> int:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     training_output_dir = Path(args.training_output_dir)
-    if training_output_dir.exists():
-        shutil.rmtree(training_output_dir)
     training_output_dir.mkdir(parents=True, exist_ok=True)
 
     app = QApplication(sys.argv)
