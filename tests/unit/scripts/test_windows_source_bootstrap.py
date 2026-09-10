@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import signal
 import subprocess
@@ -10,6 +11,7 @@ import pytest
 from scripts import windows_setup
 from scripts.windows_setup import (
     CUDA_MINIMUM_DRIVER_MAJOR,
+    MAXIMUM_INSTALLER_BYTES,
     POETRY_INSTALLER_COMMIT,
     POETRY_INSTALLER_SHA256,
     POETRY_INSTALLER_URL,
@@ -333,27 +335,117 @@ def test_invalid_environment_is_preserved_by_rename(tmp_path: Path) -> None:
     assert (backups[0] / "owned.txt").read_text(encoding="utf-8") == "keep"
 
 
-def test_poetry_checksum_failure_never_executes_installer(
+@pytest.mark.parametrize(
+    ("final_url", "payload", "error", "expected_read_sizes"),
+    [
+        (
+            "http://example.invalid/install-poetry.py",
+            b"not read when the redirect is insecure",
+            "redirect was not HTTPS",
+            [],
+        ),
+        (
+            "https://example.invalid/install-poetry.py",
+            b"x" * (MAXIMUM_INSTALLER_BYTES + 1),
+            "exceeded the expected size limit",
+            [MAXIMUM_INSTALLER_BYTES + 1],
+        ),
+        (
+            "https://example.invalid/install-poetry.py",
+            b"wrong checksum fixture",
+            "checksum did not match",
+            [MAXIMUM_INSTALLER_BYTES + 1],
+        ),
+    ],
+    ids=["insecure-redirect", "oversized-body", "checksum-mismatch"],
+)
+def test_poetry_installer_rejection_never_writes_or_executes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    final_url: str,
+    payload: bytes,
+    error: str,
+    expected_read_sizes: list[int],
 ) -> None:
+    class FakeInstallerResponse(io.BytesIO):
+        def __init__(self, body: bytes, url: str) -> None:
+            super().__init__(body)
+            self.url = url
+            self.read_sizes: list[int] = []
+
+        def geturl(self) -> str:
+            return self.url
+
+        def read(self, size: int = -1) -> bytes:
+            self.read_sizes.append(size)
+            return super().read(size)
+
+    responses: list[FakeInstallerResponse] = []
+    calls: list[tuple[object, int]] = []
+
+    def fake_urlopen(request: object, timeout: int) -> FakeInstallerResponse:
+        calls.append((request, timeout))
+        response = FakeInstallerResponse(payload, final_url)
+        responses.append(response)
+        return response
+
     monkeypatch.setattr(
-        windows_setup,
-        "_download_poetry_installer",
-        lambda _path: (_ for _ in ()).throw(SetupError("checksum mismatch")),
+        windows_setup.urllib.request,
+        "urlopen",
+        fake_urlopen,
     )
     monkeypatch.setattr(
         windows_setup,
         "_run",
         lambda *_args, **_kwargs: pytest.fail("unverified installer was executed"),
     )
+    destination = tmp_path / "install-poetry.py"
 
-    with pytest.raises(SetupError, match="checksum mismatch"):
+    with pytest.raises(SetupError, match=error):
+        windows_setup._download_poetry_installer(destination)
+    assert not destination.exists()
+
+    with pytest.raises(SetupError, match=error):
         _install_poetry(
             Path("python.exe"),
             tmp_path / "poetry",
             tmp_path,
         )
+
+    assert len(calls) == 2
+    assert [timeout for _request, timeout in calls] == [60, 60]
+    assert [response.read_sizes for response in responses] == [
+        expected_read_sizes,
+        expected_read_sizes,
+    ]
+
+
+def test_verified_poetry_installer_fixture_writes_exact_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = b"verified installer fixture\n"
+    fixture_digest = "c78518d18e57979ae32c87d35c08ee20eb388d98b488c568162e57734dcfab79"  # pragma: allowlist secret - SHA256 of public test bytes
+
+    class FakeInstallerResponse(io.BytesIO):
+        def geturl(self) -> str:
+            return "https://example.invalid/install-poetry.py"
+
+    response = FakeInstallerResponse(fixture)
+    timeouts: list[int] = []
+
+    def fake_urlopen(_request: object, timeout: int) -> FakeInstallerResponse:
+        timeouts.append(timeout)
+        return response
+
+    monkeypatch.setattr(windows_setup.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(windows_setup, "POETRY_INSTALLER_SHA256", fixture_digest)
+    destination = tmp_path / "install-poetry.py"
+
+    windows_setup._download_poetry_installer(destination)
+
+    assert timeouts == [60]
+    assert destination.read_bytes() == fixture
 
 
 def test_existing_environment_no_launch_runs_sync_and_model_only(

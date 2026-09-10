@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `36a23137`, 131 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `e89291f9`, 132 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -355,7 +355,7 @@ as native-window evidence; earlier focused counts support only their actual unit
 Same offscreen baseline42passed8.31s when pointed at installed C:\Windows\Fonts; native after42passed
 8.44s. No tests removed; production-14/tests-3. Main actual diff and independent privacy-boundary review
 approved, three-file Ruff passed. Existing Windows CI already provisions the font directory; the
-direct-pytest fixture gap remains a bounded module9 fix, not a product-layout change. Commit next.
+direct-pytest fixture gap is fixed by9A, not a product-layout change. Committed e89291f9.
 
 **Bounded8A — replace mocked installer-integrity evidence with real validation.** Independent full
 Windows setup881/PS187/rootCMD20/direct436 retains existing setup->model lifecycle ownership. Main
