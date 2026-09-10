@@ -6,10 +6,7 @@ in :class:`LLMController`.
 
 from __future__ import annotations
 
-import logging
 from typing import Any
-
-logger = logging.getLogger(__name__)
 
 
 class ConversationHistory:
@@ -29,10 +26,6 @@ class ConversationHistory:
         self.messages: list[dict[str, Any]] = []
         self.max_size = max_size
 
-    # ------------------------------------------------------------------
-    # Core operations
-    # ------------------------------------------------------------------
-
     def append(self, role: str, content: str) -> None:
         """Append a message and prune if over the sliding window limit.
 
@@ -48,29 +41,3 @@ class ConversationHistory:
     def clear(self) -> None:
         """Remove all messages from history."""
         self.messages.clear()
-
-    # ------------------------------------------------------------------
-    # Convenience accessors
-    # ------------------------------------------------------------------
-
-    def get_messages(self) -> list[dict[str, Any]]:
-        """Return a shallow copy of the message list."""
-        return list(self.messages)
-
-    def __len__(self) -> int:
-        return len(self.messages)
-
-    def __getitem__(self, index: int) -> dict[str, Any]:
-        return self.messages[index]
-
-    __hash__: None = None  # type: ignore[assignment]  # mutable container
-
-    def __eq__(self, other: object) -> bool:
-        if isinstance(other, list):
-            return self.messages == other
-        if isinstance(other, ConversationHistory):
-            return self.messages == other.messages
-        return NotImplemented
-
-    def __repr__(self) -> str:
-        return f"ConversationHistory({len(self.messages)} msgs, max={self.max_size})"

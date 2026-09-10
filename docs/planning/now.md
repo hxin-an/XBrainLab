@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `0181b233`, 118 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `f3b850d7`, 119 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -208,7 +208,8 @@ diff/caller review and lint. One reversible commit after6R; no merge or module-c
 Strengthened baseline19passed7.54s, retained15passed7.38s; exactlyfour exclusive convenience cases
 removed. Independent actual-diff review confirmed unchanged append/clear list identity and existing
 overflow list replacement. Production-33, tests+6/-29/net-23; Ruff/format passed. Wrong-end window
-fault is process-local only; exact result recorded before commit.
+fault is process-local only: both direct/controller cases failed2in6.12s on retaining old rather than
+new rows. No injected defect persisted.6R is committed f3b850d7;6S source/tests commit follows.
 
 **Additional chat widget audit.** Full independent action_card783/message_bubble776 retains exact
 typed request capture/disable-before-emit and safe link/Markdown/streaming/geometry handling. Full
