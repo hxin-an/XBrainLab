@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `036cb1cc`, 61 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `d86efa15`, 64 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -319,15 +319,17 @@ deletion. Production-538 removes only the obsolete picker/helper/enum chain; cur
 live subject mask, provenance, artifact schema/readers and rollback state remain. Main read the full
 deletion diff; independent nonauthor source/test review approved. Final retained291-case combined
 selection and Ruff pass as recorded3E; this is not all of module3 or final-source certification.
-Removed case count independently reconciled:309 (303 old Epochs picker/helper parametrizations and
-six atomic-picker cases). Baseline563 already included the new real manual case; retained254 plus
-37 current preprocess-service cases exactly equals final291. Test count reduction follows deletion
+Removed case count corrected by executing historical/current parametrization definitions in memory:
+307 (301 old Epochs picker/helper parametrizations and six atomic-picker cases). Earlier static309
+overcounted the generated trial list: actual108 entries times2 is216, not218. Baseline563 already
+included the new real manual case; retained256 plus35 current preprocess-service cases equals291.
+No historical source or product file was modified by this counting probe. Test count reduction follows deletion
 of the unused allocator, not reduced protection for the actual Generator.
 
-**Declared 3H — real epoch RAM-before-copy admission.** Existing UI runtime evidence has a fake
+**Completed bounded 3H — real epoch RAM-before-copy admission.** Existing UI runtime evidence has a fake
 dialog seam; old direct service case uses a fake materializing controller. Add one direct actual
 ApplicationService case using the existing real FIF import helpers. After confirmed Apply, isolate
-only the resource check to deny admission and observe Raw.copy as a fail-fast allocation witness.
+only the resource check to deny admission and observe the processor's actual deepcopy allocation seam.
 Assert exact resource failure diagnostics, unchanged loaded/preprocessed objects and data, no epoch,
 no lock and no copying. Keep existing UI delivery test. Passing new characterization allows removal
 of only the replaced legacy RAM case and its exclusive fixture members, not receipt/alias/handoff
@@ -335,6 +337,37 @@ cases. No production behavior/owner change; main owns plan/native runs/review, l
 test_application_service.py initially. Focused new case plus epoch materialization safety/UI resource
 neighbors, bounded omitted-resource-check fault, Ruff and independent actualdiff review. Then
 continue scoped receipt/context/alias migration, remaining UI/domain audits and modules4–9.
+Initial new/legacy/adjacent38passed8.81s; retained37passed8.72s after one obsolete case was removed.
+The omitted-resource-check fault correctly failed because epochs were created, but also revealed
+Raw.copy was NOT the live preparation allocation path (PreprocessBase uses deepcopy). Main traced
+the actual TimeEpoch preparation and corrected the new witness to that exact deepcopy seam; rerun
+this strengthened case and its fault before claiming ordering evidence or committing3H.
+Corrected live-deepcopy witness1passed7.34s; omitted admission guard now fails at the real allocation
+seam with INTERNAL instead of PRECONDITION,1failed7.19s. No faulty source persisted. Main and
+independent final-diff review approved; Ruff passed. Tests+64/-71/net-7, no production change.
+
+**Completed bounded 3I — normalize split commands once.** Main fully read generation service1146/direct876/
+contract245 and actual deferred command callers. `config_from_payload` already validates before
+returning, so handle_save's immediate repeat is unnecessary. `_build_data_splitting_config` has one
+production caller only after split_config is None; its structured-payload branch serves only a private
+test. `_enum_from_value.default` has no caller. First protect default None versus explicit empty
+payload through the actual ApplicationService fixture in deferred split tests; preserve exact saved
+specification and failed-empty/no-mutation behavior. Then remove only duplicated validation, the
+unreachable branch and unused keyword; migrate the exclusive private test after passing baseline.
+Keep structured/headless public Command fields, all validation policies/messages, preview receipt,
+digest, allocation, publication, cache and training rollback. Zero new owner, production net negative.
+Main owns source/test changes. Focused contract/generation/deferred save+preview/preparation cases
+before/after, Ruff and independent actualdiff review; separate reversible commit then continue audits.
+Baseline47passed/1new fixture message mismatch7.95s: public specification parser reports
+`train_type is required`, not the deeper config parser's prefixed message. Corrected new case1passed
+5.80s before source deletion; retained47passed7.97s after one replaced private case was removed.
+Independent final-diff review approved; an alleged third enum argument was a reviewer misread,
+retracted after exact source reread without changing the caller. Ruff passed. Production+1/-11/net-10;
+tests+48/-18/net+30. Actual speculative allocation/rollback and public configuration rules unchanged.
+Main1–1080 and independent1081–1833 now fully cover deferred-split tests. Retain distinct start,
+restart, append, cleanup, rollback-failure, receipt/token and bounded-audit failure windows; targeted
+failure mocks are necessary seams. Missing close calls in synchronous/mocked-start fixtures are a
+convention risk, not a measured worker leak or permission to add broad lifecycle machinery.
 
 Completed2X–2AC are indexed below; their full scope/evidence remains in Git history.
 2AC found an existing shared-environment source hazard: Windows .pth adds the original checkout
@@ -550,6 +583,9 @@ this table replaces their duplicated active-plan narrative, not any unresolved m
 | 3A / `07881c8d` | Two unused DrawRegion APIs removed; production-23/testsnet-16 | Original22 ->stronger23 ->retained18; wrongoverlapfaultdetected; actualcanvas/strategycases and mainnonauthorreview/Ruff |
 | 3C / `c628be38` | Remove unreachable ordinary preprocess handler branches/helpers; production-76/testsnet+37 | Real ordinary/admission characterization before deletion, retained42pass; cancellation/stale/rollback/epoch safety retained, independentreview/Ruff |
 | 3D / `036cb1cc` | Remove unused split to_thread no-op; production-3/tests+87 | Native direct16 before/after; both omitted-guard faults detected; independentreview/Ruff; distinct offscreen font/native-center limitations remain tracked |
+| 3E / `63f691b2` | Real epoch boundary workflow replaces two summary mocks; testsnet+43 | Exact1%, above1%, multirecord counts/atomicity; threshold fault detected; combined3E/3G291pass, independentreview/Ruff |
+| 3F / `f234a5ea` | Synchronous plotter/fallback/alias cleanup; productionnet-29/testsnet-1 | Real curves/current+overlay/time+PSD; direct25pass and native8cycle stress; wrong-frequency fault, independentreview/Ruff |
+| 3G / `d86efa15` | Retire unused Epochs picker chain; production-538 | 307 obsolete collected cases removed (corrected actual parametrization count), actual manual Generator retained; combined291pass, independentreview/Ruff |
 
 ### Evidence qualifications that remain relevant
 

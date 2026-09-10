@@ -84,6 +84,7 @@ from XBrainLab.backend.application.preprocess_preparation import (
 )
 from XBrainLab.backend.application.resource_guard import (
     ResourceChecker,
+    ResourceCheckResult,
     ResourcePreflightResult,
     TrainingResourcePreviewRequest,
     TrainingResourcePreviewResult,
@@ -648,6 +649,69 @@ def test_prepared_epoch_boundary_limit_uses_real_reviewed_events(
             assert service.study.preprocessed_data_list is original_preprocessed
             assert service.study.epoch_data is None
             assert service.study.is_locked() is False
+    finally:
+        service.close()
+
+
+def test_prepared_epoch_ram_denial_precedes_eeg_copy_and_publication(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "ram-denied-epoch_raw.fif"
+    _write_reviewed_epoch_fixture(path)
+    service = ApplicationService(Study())
+    blocking = ResourceCheckResult(
+        required_memory_bytes=10_000,
+        available_memory_bytes=1_000,
+        total_memory_bytes=2_000,
+        used_memory_bytes=1_000,
+        risk_level="blocking",
+        message="EEG epoch data is too large for available RAM.",
+        details={"estimate_status": "blocking", "source_count": 1},
+    )
+    try:
+        _apply_reviewed_epoch_fixture(service, path)
+        original_loaded = list(service.study.loaded_data_list)
+        original_preprocessed = service.study.preprocessed_data_list
+        original_samples = [
+            raw.get_mne().get_data().copy() for raw in original_preprocessed
+        ]
+        copy_spy = MagicMock(side_effect=AssertionError("EEG deepcopy must not run"))
+
+        with (
+            patch.object(
+                ResourceChecker,
+                "check_epoch_materialization_safe",
+                return_value=blocking,
+            ),
+            patch("XBrainLab.backend.preprocessor.base.deepcopy", copy_spy),
+        ):
+            result = service.execute(
+                CreateEpochCommand(
+                    t_min=-0.1,
+                    t_max=0.2,
+                    event_ids=["left", "right"],
+                )
+            )
+
+        assert result.failed is True
+        assert result.error_type is ErrorType.PRECONDITION
+        assert result.message == blocking.message
+        assert result.diagnostics["resource_preflight"] == blocking.to_diagnostics()
+        copy_spy.assert_not_called()
+        assert service.study.preprocessed_data_list is original_preprocessed
+        assert len(service.study.loaded_data_list) == len(original_loaded)
+        assert all(
+            current is original
+            for current, original in zip(
+                service.study.loaded_data_list, original_loaded, strict=True
+            )
+        )
+        for raw, samples in zip(
+            service.study.preprocessed_data_list, original_samples, strict=True
+        ):
+            np.testing.assert_array_equal(raw.get_mne().get_data(), samples)
+        assert service.study.epoch_data is None
+        assert service.study.is_locked() is False
     finally:
         service.close()
 
