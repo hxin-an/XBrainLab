@@ -2058,6 +2058,7 @@ class DataInterpretationCommandService:
         digest = hashlib.sha256()
         total = 0
         try:
+            path_before = path.stat()
             with path.open("rb") as handle:
                 opened = os.fstat(handle.fileno())
                 while chunk := handle.read(65_536):
@@ -2070,7 +2071,7 @@ class DataInterpretationCommandService:
                         )
                     digest.update(chunk)
                 finished = os.fstat(handle.fileno())
-            current = path.stat()
+            path_after = path.stat()
         except PreconditionError:
             raise
         except OSError as exc:
@@ -2084,11 +2085,22 @@ class DataInterpretationCommandService:
                     },
                 },
             ) from exc
-        identity_fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
+        observation_fields = (
+            "st_dev",
+            "st_ino",
+            "st_size",
+            "st_mtime_ns",
+            "st_ctime_ns",
+        )
+        object_fields = observation_fields[:-1]
         if any(
             getattr(opened, field) != getattr(finished, field)
-            or getattr(opened, field) != getattr(current, field)
-            for field in identity_fields
+            or getattr(path_before, field) != getattr(path_after, field)
+            for field in observation_fields
+        ) or any(
+            getattr(opened, field) != getattr(path_before, field)
+            or getattr(finished, field) != getattr(path_after, field)
+            for field in object_fields
         ):
             raise PreconditionError(
                 f"Import recipe changed while it was being identified: {path}.",

@@ -2104,6 +2104,109 @@ def test_reload_recipe_reader_blocks_same_size_rewrite_during_parse(
     assert service.snapshot().has_scan_result is False
 
 
+def test_bounded_recipe_fingerprint_accepts_descriptor_path_ctime_skew(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import hashlib
+
+    recipe_path = tmp_path / "recipe.json"
+    recipe_path.write_bytes(b'{"recipe_id":"recipe-1"}')
+    original_fstat = service_module.os.fstat
+
+    def descriptor_ctime_skew(descriptor: int) -> SimpleNamespace:
+        observed = original_fstat(descriptor)
+        return SimpleNamespace(
+            st_dev=observed.st_dev,
+            st_ino=observed.st_ino,
+            st_size=observed.st_size,
+            st_mtime_ns=observed.st_mtime_ns,
+            st_ctime_ns=observed.st_ctime_ns + 1,
+        )
+
+    monkeypatch.setattr(service_module.os, "fstat", descriptor_ctime_skew)
+
+    fingerprint = DataInterpretationCommandService._bounded_recipe_content_fingerprint(
+        str(recipe_path)
+    )
+
+    assert fingerprint == hashlib.sha256(recipe_path.read_bytes()).hexdigest()
+
+
+def test_bounded_recipe_fingerprint_rejects_descriptor_observation_change(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recipe_path = tmp_path / "recipe.json"
+    recipe_path.write_bytes(b'{"recipe_id":"recipe-1"}')
+    original_fstat = service_module.os.fstat
+    calls = 0
+
+    def changed_descriptor_observation(descriptor: int) -> SimpleNamespace:
+        nonlocal calls
+        calls += 1
+        observed = original_fstat(descriptor)
+        return SimpleNamespace(
+            st_dev=observed.st_dev,
+            st_ino=observed.st_ino,
+            st_size=observed.st_size,
+            st_mtime_ns=observed.st_mtime_ns,
+            st_ctime_ns=observed.st_ctime_ns + (1 if calls == 2 else 0),
+        )
+
+    monkeypatch.setattr(
+        service_module.os,
+        "fstat",
+        changed_descriptor_observation,
+    )
+
+    with pytest.raises(PreconditionError) as raised:
+        DataInterpretationCommandService._bounded_recipe_content_fingerprint(
+            str(recipe_path)
+        )
+
+    assert raised.value.diagnostics["code"] == (
+        "interpretation_recipe_changed_during_fingerprint"
+    )
+
+
+def test_bounded_recipe_fingerprint_rejects_path_observation_change(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recipe_path = tmp_path / "recipe.json"
+    recipe_path.write_bytes(b'{"recipe_id":"recipe-1"}')
+    original_stat = Path.stat
+    path_observations = 0
+
+    def changed_path_observation(path: Path, *args: Any, **kwargs: Any) -> Any:
+        nonlocal path_observations
+        observed = original_stat(path, *args, **kwargs)
+        if path != recipe_path:
+            return observed
+        path_observations += 1
+        if path_observations == 2:
+            return SimpleNamespace(
+                st_dev=observed.st_dev,
+                st_ino=observed.st_ino,
+                st_size=observed.st_size,
+                st_mtime_ns=observed.st_mtime_ns,
+                st_ctime_ns=observed.st_ctime_ns + 1,
+            )
+        return observed
+
+    monkeypatch.setattr(Path, "stat", changed_path_observation)
+
+    with pytest.raises(PreconditionError) as raised:
+        DataInterpretationCommandService._bounded_recipe_content_fingerprint(
+            str(recipe_path)
+        )
+
+    assert raised.value.diagnostics["code"] == (
+        "interpretation_recipe_changed_during_fingerprint"
+    )
+
+
 def test_apply_interpretation_imports_only_preview_selected_eeg_files(
     tmp_path: Path,
 ) -> None:

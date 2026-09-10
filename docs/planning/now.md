@@ -176,6 +176,13 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 - 1M original baseline, public-behavior characterization and after-delete runs each passed 33 native
   cases; Ruff/format passed. Independent reviewer approved no remaining runtime/dynamic callers and
   preserved callback/batch/publication behavior. Production -17 LOC; no owner or visible behavior change.
+  Committed as `8d51502e`.
+- 2E repair evidence: deterministic skew/path/descriptor cases produced 2 fail / 1 pass before repair,
+  then 3 pass. Native selected recipe/resource-reader checks: 18 pass; final complete legacy service
+  plus receipt-owner baseline: 107 pass (the original 104 plus 3 new cases), resolving all three
+  original native failures. Independent review approved full within-channel identity checks and
+  cross-channel object comparisons; bounded SHA, size/admission/receipt protections remain intact.
+  Production +16/-4/net +12, no new owner/module/type. Next remains 2C legacy deletion, not handoff.
 
 ### Earlier slice declarations and evidence
 
