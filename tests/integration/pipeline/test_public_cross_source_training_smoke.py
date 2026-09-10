@@ -16,6 +16,7 @@ from scripts.dev.run_public_cross_source_training_smoke import (
     PUBLIC_TRAINING_FIXTURES,
     _apply_reviewed_internal_event_import,
 )
+from tests.integration.training_artifact_support import assert_real_training_artifacts
 from XBrainLab.backend.application import (
     ApplicationService,
     CommandName,
@@ -27,8 +28,7 @@ from XBrainLab.backend.application import (
     SaveDatasetSplitCommand,
     TrainCommand,
 )
-from XBrainLab.backend.training.record import EvalRecord, RecordKey
-from XBrainLab.backend.training.record.artifact_store import load_model_state_dict
+from XBrainLab.backend.training.record import RecordKey
 
 pytestmark = pytest.mark.optional_public_fixture
 
@@ -49,28 +49,6 @@ class PublicTrainingFixture(TypedDict):
     tmax: float
     expected_epoch_block: NotRequired[str]
     split_ratio: NotRequired[float]
-
-
-def _assert_real_training_artifacts(output_root: Path) -> None:
-    """Prove that one public-source run persisted reloadable safe artifacts."""
-    record_manifests = list(output_root.rglob("record"))
-    assert len(record_manifests) == 1
-    artifact_dir = record_manifests[0].parent
-    persisted_names = {path.name for path in artifact_dir.iterdir() if path.is_file()}
-    assert {"record", "record.npz", "eval", "eval.npz"} <= persisted_names
-    checkpoint_paths = [
-        path
-        for path in artifact_dir.iterdir()
-        if path.is_file() and path.name.startswith("Epoch-1-model")
-    ]
-    assert len(checkpoint_paths) == 1
-    reloaded_state_dict = load_model_state_dict(checkpoint_paths[0])
-    assert reloaded_state_dict
-
-    reloaded_evaluation = EvalRecord.load(str(artifact_dir))
-    assert reloaded_evaluation is not None
-    assert len(reloaded_evaluation.label) > 0
-    assert len(reloaded_evaluation.output) == len(reloaded_evaluation.label)
 
 
 def _build_public_training_service(
@@ -208,7 +186,7 @@ def test_public_cross_source_training_smoke(
     train_metrics = history.diagnostics["rows"][0]["metrics"]["train"]
     assert RecordKey.LOSS in train_metrics
     assert RecordKey.ACC in train_metrics
-    _assert_real_training_artifacts(output_root)
+    assert_real_training_artifacts(output_root)
 
 
 @pytest.mark.parametrize("fixture", PUBLIC_EPOCH_ONLY_FIXTURES, ids=lambda f: f["name"])

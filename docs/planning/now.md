@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `b1c0b902`, 79 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `12e389be`, 82 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -331,18 +331,100 @@ independent actualdiff review before separate commit. No tests removed or new co
 Same125passed17.76s before/17.63s after, same6 upstream warnings; production-25, tests unchanged.
 Independent actualdiff review approved; changed-file Ruff passed; no remaining slice finding.
 
-**Declared4E — checked-in GDF training persists actual artifacts.** Full test593 and related public
+**Completed bounded4E — checked-in GDF training persists actual artifacts.** Full test593 and related public
 workflow251/real-family219 read; persistence owner read ranges remain partial, not full module audit.
 Three savefig/savetxt/makedirs mocks are inert on training; torch.save suppresses actual checkpoint
 bytes. Remove all four mocks from existing checked-in training helper and OOM retry, no conditional
 test-only persistence switch. Existing model is bounded CPU one epoch under test tmp_path; measure
 resulting output size and ensure no external model/cache writes. Reuse existing public-source artifact
 assertions for checkpoint state_dict and EvalRecord safe reload in at least A01T and successful retry;
-retain all3 GDF semantic/training cases. Worker owns this single integration test after baseline5
+retain all3 GDF semantic/training cases. Main review found the new assertion body duplicated the
+existing public-source helper; move that identical helper into tests/integration/training_artifact_support.py
+for these two actual callers, keeping optional-public markers/imports out of the shared module.
+Worker owns these two integration test files plus shared test helper after baseline5
 training/workflow/retry nodes; main runs same after, omitted-save fault, Ruff and nonauthor review.
 No product change/download/new environment. Native persistence evidence does not prove GUI restart
 reopening: current UI/application reads live records, with no production caller of domain load APIs.
 That missing product workflow is a claim limitation, not authorization to add a feature in cleanup.
+Initial actual persistence5passed26.12s versus mocked baseline5passed25.98s, same173 upstream warnings;
+A01T artifacts100784bytes/12files and OOM retry100750bytes/12files. Other size output was truncated,
+so do not claim a full-five byte total. Shared-helper migration/fault/lint/review remain before commit.
+Shared helper migrated without optional fixture imports; one actualA01T aftermigration passed13.22s.
+In-memory omitted torch.save fault failed8.10s at safe checkpoint reload with ArtifactIntegrityError;
+no faulty source persisted. Main nonauthor actualdiff review approved; tests net-2 including30line
+shared helper for two real callers; Ruffpassed. No test or supported artifact/schema inventory removed.
+
+**Completed bounded4F — retire unused Trainer name lookup.** Independent full Trainer646/state_contract489/
+TrainingStateService726 and direct821/stopbarrier207/epochrunner189/utils109/service234 audit retains
+actual lifecycle, stable read tokens, CAS, terminal acknowledgment and optimizer stop barrier. Only
+get_real_training_plan has no production/dynamic/script/doc caller; its four exclusive parametrizations
+are obsolete. Main removes method and those cases only, retaining every holder/record snapshot API.
+Passing baseline is unchanged Trainer source/tests in integrated4B237 (not a new redundant run).
+Run retained Trainer +real manager rollback +stop barrier after, Ruff and independent actualdiff review.
+Production-23/tests-23 estimated; no new owner/public contract/visible change, separate reversible commit.
+RetainedTrainer/rollback/optimizerstop47passed8.27s; four exclusivecases removed. Independent actualdiff
+approved; actual production-22/tests-21 after Ruff EOF normalization. No lifecycle assertions removed.
+
+**Module4 main presentation audit (not closure).** Full MetricTab332/history497/modeldialog702/
+optimizerdialog212/devicedialog94, metric tests155/history412 read. MetricTab.update_plot has only
+test callers; set_series is real product path. History update_table is only a panel forward to
+update_history. Declare behavior-preserving removal with migrated observable tests separately.
+Model dialog async provider, stable recovery identity and pretrained-weight handoff remain live;
+direct modelselection429 and training setting1242 are now fully read. Settings-related tests remain open.
+
+**Pending visible-state decision — zero validation metrics.** Actual offscreen TrainingHistoryTable
+fed validationloss0.0/accuracy0.0 renders both cells N/A. Zero is a valid result, distinct from missing.
+User asynchronously asked to authorize0.0000/0.00% with N/A only for absent metrics; no reply yet.
+No product edit made. Continue internal cleanup; do not silently treat this visible issue as fixed.
+
+**Completed bounded4G — training presentation uses only live bulk-render APIs.** FullMetricTab/history source,
+directtests and panel caller show update_plot onlytests, update_table oneforwarder to update_history.
+Migrate three metric test setup uses and existing update case to actual set_series, preserving curve,
+empty/clear/shutdown assertions, then remove dead append API. Panel calls history.update_history
+directly; delete history forwarding alias. Main owns components/history/panel and metric test only.
+No layout/style/canvas lifetime/visible data/rate changes or new owner; roughly-27production.
+Baseline real metric/history/panel tests, migrated tests before deletion, same retained after, Ruff
+and independent actualdiff review. Shared UI behavior authorization applies; no visible metric fix here.
+35original7.02s/migrated6.90s/after6.92s passed, but independent reviewer found two remaining
+incremental-only cases in test_training_result_presentation.py (sixupdate_plotcalls). That file was
+outside35selection; slice not approved. Include those exact obsolete tests in4G disposition, establish
+their historical helper baseline in memory, remove only them after actual bulk-series protection,
+then validate retained presentation neighbors. Do not restore a compatibility method to satisfy tests.
+Historical append method loaded only in memory gave full missed-file9pass8.73s. Exactlytwoobsolete
+cases removed; clear_then_new_series retains their useful reset/repopulate behavior through real
+set_series. Final35+7retained42passed8.50s; independent finalactualdiff approved, Ruffpassed.
+Productionnet-26/testsnet-46; no visible zero-metric correction mixed in.
+
+**Completed bounded4H — training settings dead presentation remnants.** Full dialog1242 and directtests1321
+plus real saved-split recommendation consumer reviewed. Remove forever-None recommendation_note and
+docstring-only _update_recommendation_note/fourcalls, unread evaluation_list duplicate, and inline
+single-call _raise_value_error. Keep real provenance/manual edit/previewreceipt and enum population,
+classweight/earlystop/backend validation and every geometry/visible string. Worker owns dialog and
+one existing test: remove only assertion against deletedNonefield; keep actual no-QLabel assertion
+and manual provenance protection. Baseline direct settings plus real saved-split recommendation,
+same after, Ruff and main nonauthor review; net-negative/no new owner, UI internal scope authorized.
+Same45passed8.91s before/8.82s after. Main nonauthor actualdiff approved; productionnet-22/tests-1.
+Local TRY301 exemption retains the same fail-fast validation/error handler without a one-call helper;
+global lint unchanged, final changed-file Ruffpassed. Visible labels/geometry/provenance unchanged.
+
+**New module4 query-adapter finding — diagnosis pending.** Independent recommendation owner604/
+direct314 audit retained metadata-only formula/cache/provenance and all scope keys. Unused
+cached_for_context is a separate deletion candidate. Real Sidebar device recommendation passes
+prospective_device, while ApplicationUiRuntime/TrainingQueryPort signature lacks it although backend
+supports it. Mock query port masks that TypeError. Reproduce against actual runtime before declaring
+repair; visible device workflow correction requires explicit authorization. Continue independent work.
+
+**Bounded4I — retire orphan evaluation record wrappers.** Independent full training_plan1487,
+record/train1547, artifact_store475 and record key/init/wrappers review found ProxyRecord and
+PooledRecordWrapper have no production/dynamic/config/script/doc entry. Only five exclusive wrapper
+tests use them; the current evaluation architecture guard explicitly rejects the old pooled wrapper.
+Main verifies these callers and establishes the five-case baseline plus live record/read-side tests,
+then removes wrappers.py82 and its exclusive test59 only. No replacement owner, DTO or compatibility
+path; production-82/tests-59, no visible behavior, schema, save/load or Command change. Retain PlotType's
+dynamic figure methods, get_eval_record saliency consumer and actual secure artifact publication.
+Run retained record tests/read-side guards after removal, Ruff and independent actual-diff review;
+separate reversible commit, then continue module4. append_record/get_model_output and recommendation
+cache accessor remain separate candidates until exact caller/test disposition and baseline.
 
 Completed2X–2AC are indexed below; their full scope/evidence remains in Git history.
 2AC found an existing shared-environment source hazard: Windows .pth adds the original checkout
