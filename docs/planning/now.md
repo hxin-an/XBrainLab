@@ -295,7 +295,11 @@ so both labels remain accepted; this is not a copy defect or UI change. No produ
 activation/download or environment change. Same suite before/after, actual click/wait measurement,
 Ruff/main+independent review. Report measured helper overhead only, not application speed or native
 manual acceptance. Keep meaningful negative-observation waits in other tests; do not strip waits globally.
-Execution resumed after9J settings isolation and85-case native validation below; no9H edits yet.
+Result:11 cases before9.03s and after8.74s; same11 click calls measured0.938120s before versus
+0.019085s after in helper (including event processing). Removed only the fixed50ms delay and unused
+constant; readiness now uses bounded loaded-panel/dock-visibility conditions. Whole-suite timing is
+a single-run observation, not a stable speedup claim; no production performance claim. Independent
+actual-diff review approves readiness ordering and all unchanged assertions; Ruff/format pass.
 
 **Bounded9J — isolate actual Qt settings before more GUI tests.** Main found three live Python
 QSettings consumers: main-window geometry, montage preferences and SmartParser settings. Test root

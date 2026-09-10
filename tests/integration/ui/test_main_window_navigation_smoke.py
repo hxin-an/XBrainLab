@@ -44,7 +44,6 @@ EXPECTED_PANEL_TYPES = [
     EvaluationPanel,
     VisualizationPanel,
 ]
-EXPECTED_EVALUATION_TABS = ["Metrics Summary", "Model Summary"]
 EXPECTED_VISUALIZATION_TABS = [
     "Saliency Map",
     "Spectrogram",
@@ -56,7 +55,6 @@ EXPECTED_VISUALIZATION_TABS = [
 def _click(qtbot, btn: QPushButton):
     """Convenience wrapper for mouseClick on a button."""
     qtbot.mouseClick(btn, Qt.MouseButton.LeftButton)
-    qtbot.wait(50)  # Let Qt's event loop process the click
 
 
 def _checked_states(test_app):
@@ -112,15 +110,18 @@ class TestNavigation:
     def test_click_nav_buttons(self, test_app, qtbot, btn_index, expected_panel):
         """Clicking a nav button switches the stacked widget."""
         _click(qtbot, test_app.nav_btns[btn_index])
+        _wait_for_panel(qtbot, test_app, expected_panel)
         assert test_app.stack.currentIndex() == expected_panel
         assert _checked_states(test_app) == _checked_state_for(expected_panel)
 
     def test_round_trip_returns_to_original(self, test_app, qtbot):
         """Navigate away and back — panel index should be restored."""
         _click(qtbot, test_app.nav_btns[3])
+        _wait_for_panel(qtbot, test_app, 3)
         assert test_app.stack.currentIndex() == 3
         assert _checked_states(test_app) == _checked_state_for(3)
         _click(qtbot, test_app.nav_btns[0])
+        _wait_for_panel(qtbot, test_app, 0)
         assert test_app.stack.currentIndex() == 0
         assert _checked_states(test_app) == _checked_state_for(0)
 
@@ -142,9 +143,13 @@ class TestAIAssistantDock:
             ),
         )
         _click(qtbot, test_app.ai_btn)
+        qtbot.waitUntil(test_app.agent_manager.chat_dock.isVisible, timeout=5_000)
         assert test_app.ai_btn.isChecked()
         assert test_app.agent_manager.chat_dock.isVisible()
         _click(qtbot, test_app.ai_btn)
+        qtbot.waitUntil(
+            lambda: not test_app.agent_manager.chat_dock.isVisible(), timeout=5_000
+        )
         assert not test_app.ai_btn.isChecked()
         assert not test_app.agent_manager.chat_dock.isVisible()
 
