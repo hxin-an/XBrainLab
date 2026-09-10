@@ -98,7 +98,6 @@ class QtObserverBridge(QObject):
                     return delivered
             return None
 
-        self._observer_callback: Callable[..., Any] | None = observer_callback
         self.observable.subscribe(self.event_name, observer_callback)
         self._observer_subscription = _ObserverSubscription(
             observable,
@@ -197,7 +196,6 @@ class QtObserverBridge(QObject):
     def cleanup(self):
         """Unsubscribe from the backend observable event and disconnect signals."""
         self._active = False
-        self._observer_callback = None
         with contextlib.suppress(TypeError, RuntimeError):
             self._observer_subscription.close()
             self._observer_finalizer.detach()
