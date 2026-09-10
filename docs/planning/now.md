@@ -103,108 +103,21 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `fca0ac35`, 49 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `36b2de7e`, 50 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
 **Current work — finish module 2 coverage and coherent remaining deletions.**
 
-**Completed 2X at bf1a14e6 — cancellation test waits for actual terminal delivery.** Independent full async-flow
-test audit found test_cancelled_review_loading_does_not_reopen_wizard uses an always-true wait
-predicate then100ms sleep; its no-reopen assertion can pass before a late worker result is delivered.
-Main read the test and AsyncCommandCleanup/Registry: registry release follows serialized outcome
-delivery, so the existing context-scoped active_count is the correct terminal witness. Tests only.
-Observer owns this one test: first baseline, then assert one registered panel command before cancel,
-release worker in finally and wait for that panel's registry count to reach zero before no-reopen.
-Retain cancel operation ID assertion, loading-token behavior and actual Qt worker. No new hook,
-production change or longer arbitrary sleep. Run focused cancellation/cleanup neighbors, Ruff and
-non-author review; verify a bounded intentionally late erroneous continuation is detected if feasible.
-Main non-author review moved finally around every assertion after async launch. Same native5 cases
-passed before and after (final2.14s); Ruff/format passed. In-memory bypass of the cancelled-owner
-delivery guard failed exactly at the terminal no-continuation assertion (1 !=0), proving late result
-detection. First probe had only a Windows quoting SyntaxError; corrected hex argv probe ran the test.
-No faulty source was saved. Main retains plan/inventory ownership; commit this test slice then continue.
+Completed2X–2AC are indexed below; their full scope/evidence remains in Git history.
+2AC found an existing shared-environment source hazard: Windows .pth adds the original checkout
+to sys.path, making scripts.dev a two-checkout namespace. For subsequent native validation, remove
+only that exact oldroot from the process search path before imports, then call unchanged
+assert_active_checkout_import(Path.cwd()). Do not edit the environment/.pth or weaken the gate.
+The first2AC run had two expected root failures plus this separate origin failure; isolated rerun
+had only two expected failures, then allsix passed after the resolver fix. No real fixture ran.
 
-**Completed 2Y at26b8c054 — remove unreachable wizard-private UI helpers.** Full dialog/three-mixin source reads
-and whole production/test/script/doc/dynamic-call search identify eight unused preview methods
-(_summary_line, _inline_rule_control, _matched_label_pair_count, _unmatched_eeg_file_names,
-_is_auto_label_source_duplicate, _metadata_missing_hint, _label_source_summary_text, _field_text),
-three placement methods (_build_label_rule_card, _placement_note, _select_target_event), three
-review methods (_review_metadata_text, _compact_review_rows, _recipe_trace_rows), two internal-event
-methods (_internal_event_check_text, _bids_events_json_text). Last has only an exclusive two-case
-private-helper test; remove the whole obsolete test, not its sole assertion. Retain actual structured
-sidecar evidence and current rendered controls. _metadata_missing_text is live through the Review
-mixin and stays. Main owns four source files and the one direct test file; independent reviewer
-checks actual diff/callers. Baseline the complete direct wizard suite once because these deletions
-span every wizard step, then rerun identical retained cases plus Ruff. Remove exclusive imports/helpers
-only after following their graph. No widget parenting, visible state/copy/layout, styling, sizing,
-data/Command contract or owner changes. Deletion-only, anticipated under300 production LOC; no new
-abstraction. Native baseline130 passed7.70s; after128 passed7.58s (exactly the two exclusive cases
-removed). Actual production -224 LOC, fourfiles, no owner delta. Independent actual-diff review
-approved; main removed the newly unused pytest import and normalized blank lines. Focused Ruff
-passed for allfivefiles. Independently reversible commit is complete; continue module2.
-
-**Completed 2Z at4e317328 — honest private tree-sizing inputs.** Full source and whole caller graph confirm
-stretch_column/max_height/max_visible_rows are ignored by the two private sizing methods; remove
-only these unused keyword parameters and all local caller hints. Simplify visible_rows=row_count
-and min(row_count,visible_rows) to the same row_count. Preserve every actual computed width/height,
-minimum, scroll policy, interactive header and delayed Qt geometry refresh. One production file,
-no test or UI-visible behavior change, owner delta0 and deletion-only. Main authors; independent
-reviewer checks exact arithmetic equivalence. Reuse just-passed128-case wizard characterization;
-after editing run existing table-fit/shrink/whole-row/compact-step geometry cases and Ruff. No claim
-of native DPI acceptance; final platform gate remains. Native10passed1.44s (seven geometry andthree
-rescan/resume cases); Ruff/format passed. Independent reviewer verified every arithmetic/height/
-header/scroll/callback path is identical. Production +4/-21/net-17, owner delta0. Commit then continue.
-
-**Completed 2AA at11125166 — merge duplicate rescan widget tests.** Full direct-test review found two identical
-folder-add/Next/accepted/source/resume cases, with only a no-scan-carrier-mutation assertion unique
-to test_load_labels_next_returns_sources_for_outer_review_rerun. Observer owns that test file only:
-add this assertion to test_load_labels_next_requests_rescan_for_new_label_source, main runs both
-against unchanged behavior, then remove the duplicate entire test. Preserve all assertions and
-real Qt actions; no production change. Original both already passed in128-case2Y suite. Focused
-two-case-before/one-after plus resume neighbor and Ruff; main non-author review then separatecommit.
-Strengthened three-case baseline passed1.02s before duplicate deletion; retainedtwo passed0.88s,
-Ruff/format passed. Main actual-diff review approved, test +1/-35/net-34; no assertions lost.
-
-**Completed 2AB atfca0ac35 — retire dead montage matching chain, protect live position boundary.** Full source102/direct95 and whole symbol/module/
-script/doc graph show backend/utils/montage_mapping.py is now test-only after2T retired its last
-smart-match consumer. Seven exclusive tests protect no reachable product. Actual safe montage
-mapping, reviewed ApplyMontageCommand and UI normalize_montage_positions remain live. The latter
-28-line mapping/iterable-to-ordered3D-tuples boundary lacks positive/error direct tests. Main owns
-backend/utils/montage_mapping.py deletion, its exclusive seven-case test deletion and new focused
-tests/unit/ui/test_montage_positions.py. Before deletion, run oldseven + new actual-normalizer cases
-plus current montage capability/picker protection; after remove exactly the seven obsolete cases.
-Cover ordered mapping/iterable inputs, float conversion, absent coordinate/count/shape failures
-without changing semantics or creating a new helper. Package __all__/dynamic imports only expose
-seed/check utilities, not this chain. Backend production -102, owner delta0 (removedDTO notowner);
-actual safe matching, geometry admission, command generation and positions remain unchanged.
-Independent reviewer checks dead graph and new tests; focused Ruff and retained same-suite pass
-before commit. This is not native DPI or source-diverse certification. Continue module2 afterward.
-Native59passed10.51s before deletion,52passed10.78s after (exactlyseven oldcases removed, nine
-new no-mock normalizer cases retained). Both runs report18 upstream MNE/NumPy deprecation warnings.
-Ruff/format passed; independent actual-diff review approved. Production -102, tests old95 removed/
-new54 added. No current matching or command behavior changed.
-
-**Completed 2AC, pending commit — two optional BIDS integration roots ignore configured storage.** Main fully
-read responsiveness165/multisubject416 tests: both hardcode repo tests/fixtures/data/public although
-fetcher and other current consumers honor XBRAINLAB_DATA_DIR via resolve_public_fixture_dir. This
-can skip existing centrally stored data and weaken actual local evidence. Main will add a two-consumer
-configured-root regression under existing fetcher tests, reproduce, then reuse the canonical resolver
-in these two test modules only. No downloads, data move, fixture generation or gate weakening.
-Main owns tests/unit/scripts/test_fetch_public_eeg_fixtures.py and the two integration files.
-Execute module definitions with runpy under configured temporary data root (no tests/download run)
-to observe actual consumer constants; require both to agree with the existing shared resolver.
-Red then green plus existing configured/default/CLI storage tests and Ruff; independent review
-before commit. Production delta0/owners0; optional-fixture availability remains a separate claim.
-First run3failed/3passed included the two expected wrong-root failures and a source-origin failure:
-shared Windows .pth adds original checkout to sys.path, expanding scripts.dev namespace across both
-trees. Main confirmed actual product source is current but scripts namespace includes oldroot.
-Process-only pre-import removal of that exact original path, followed by unchanged existing
-assert_active_checkout_import(Path.cwd()), yielded clean2failed/4passed1.68s; fixed6passed1.58s.
-No environment/.pth or gate was modified. Independent actual-diff review and Ruff/format passed.
-This validates configured-root declarations, not a downloaded-fixture run.
-
-**Queued 2AD — remove Coordinator-only payload forwarding layer.** Entire2400-line coordinator and
+**Completed 2AD, pending commit — remove Coordinator-only payload forwarding layer.** Entire2400-line coordinator and
 4660-line test audit confirms four static aliases only forward to existing data_interpretation_ui_payload
 functions: _merge_interpretation_choices, _diagnostic_payload, _optional_payload_id, _decision_reason.
 Replace coordinator self-calls with those already imported functions; migrate five choice-merge tests
@@ -214,6 +127,30 @@ Observer owns coordinator and directasync test only. Main owns plan/baseline/run
 direct async-flow suite once (includes deliberate5.1s delayed-modal case), migrate tests and verify
 focused choice cases before production deletion, then rerun retainedwhole suite and Ruff. Main
 non-author review, production deletion/owner delta0; separatecommit then continue module2.
+Originalwhole80passed12.43s; five tests migrated with every assertion unchanged, sixfocused
+merge/invalidation cases passed1.91s before production edits. Observer now removes only the four
+forwarders and redirects existing calls; main will inspect the exact diff and run retainedwhole80.
+Actualsource +20/-39/net-19,20directcalls andfourforwarders removed; test +8/-5 forfiveunchanged
+assertion sets. Main non-author actual-diff/callback review approved; samewhole80passed12.18s,
+Ruff/format passed. Keepactual label-source invalidation policy unchanged.
+
+**Active 2AE — RawDataLoader reachable collection tests and dead lookup.** Main fully read source166/
+direct157. get_loaded_raw has only three assertions in its append test and no production/script/doc/
+dynamic caller; actual DatasetStateService still calls apply, so retain that mutation seam. First
+strengthen init to prove unlabeled and labeled inputs, append to prove ordered object identity,
+failed append to prove collection unchanged, and assertion-free test_apply to verify Study contains
+the exact Raw. Baseline these meaningful behaviors before deleting private-use convenience lookup
+and its exclusive assertions, obsolete commented event rejection, and repeated empty assertion.
+Do not alter consistency/append/apply policies or formal Command API; no new abstraction/owner.
+Main owns loader/directtest, independent reviewer checks exact evidence and consumer. Focused loader/
+factory tests and actual apply neighbor, no whole-project rerun; bounded in-memory no-publication
+fault should fail the strengthened apply case. Target is load_data/data_loader.py, not the format
+registry raw_data_loader.py. Independent caller/scope review approved; real apply neighbors cover
+candidate-specific confirmation and partial loader failure preserving Study. One reversible commit
+then continue module2.
+Strengthened23-case loader/factory/registration +two actualApply-neighbor baseline passed7.35s
+before lookup/source deletion. No chronological original pre-strengthening run in this slice;
+the added assertions pass against unchanged production, which is the refactor characterization.
 
 - Main fully read load_labels_step462 and wizard preview4850; independent reviewer fully read
   label_placement_step2179 and coupled caller/test ranges. Independent workers fully read all7,359
@@ -230,8 +167,23 @@ non-author review, production deletion/owner delta0; separatecommit then continu
   synthesize training records and do not prove actual training. Several standalone ApplicationService
   fixtures lack finally-close; no global autouse service close exists. This is an advisory hygiene
   candidate, not a demonstrated leak or permission to rewrite these fixtures during 2X.
-- Confirmed next backend candidates: two definition-only tabular multiplier aliases; CommandService
-  single-use preflight/scope/raw-presence forwarders. Declare exact coherent scope/baseline before edits.
+- Remaining UI family source fullreads: subject chooser241/loading302/normalizer28, smart parser1035/
+  channel chooser183/source chooser298, event editor644; direct tests237/63/407/109/125/431 retained.
+  Actual BIDS editor157 integration proves real file -> Qt choices -> backend recheck -> confirmed Apply.
+  Actions678/panel991/sidebar860 source read; import/review/recipe facets reviewed, other domain tests
+  remain partial: panel450–620, sidebar1–75/514–644/945–963, minimal51. Preserve live public façade.
+- Main fully read receipt authority153 (distinct from deleted label receipt), real receipt integration99,
+  event-value workflow290, metadata111, optional BIDS montage130/public480/multisubject416/
+  responsiveness165, Assistant exact-review cancellation130. Retain one-shot/semantic/atomic paths;
+  Assistant cancellation seeds pending handoff directly and does not close actual model-attempt gap.
+  External-label real Qt/GDF/MAT workflow934 is fully reviewed, including async remove/re-add andrecipe.
+- Coverage routing found module2 consumers hidden by initial keyword mapping: Data Import capture/
+  replay/report scripts and their tests, wizard harness617, plus shared DataManager244/direct206.
+  Their body audits remain required; module8 infrastructure ownership does not make them out ofscope.
+- Confirmed backend candidates: two definition-only tabular multiplier aliases; CommandService
+  pure pending-receipt/scope forwarders and raw-presence double-copy convenience. The preflight
+  path-set method has two actual consumers and transforms/validates diagnostics; retain it rather
+  than treating it as a one-call alias. Declare exact coherent scope/baseline before further edits.
   Actual memory multipliers/maps, preflight policy, receipts and candidate scope must remain.
 - Coordinator payload wrappers and wizard source/state copies remain candidates, not approved changes.
   Trace dynamic bindings and real widget lifecycle before removal. Do not move large classes merely
@@ -381,6 +333,7 @@ this table replaces their duplicated active-plan narrative, not any unresolved m
 | 2Z / `4e317328` | Removeignored tree-sizing inputs and equivalent row-count aliases; +4/-21/net-17 | Native10 geometry/rescan cases, Ruff; independent arithmetic/caller review; no visible geometry change |
 | 2AA / `11125166` | Merge duplicate rescan case while preserving all assertions; tests net-34 | Strengthened3before ->retained2after, Ruff; main nonauthorreview |
 | 2AB / `fca0ac35` | Deleteunused fuzzy montage chain/module; production -102 | Native59 ->52, nine new no-mock actualnormalizer cases; sevenexclusiveold removed; same18upstreamwarnings; independentreview/Ruff |
+| 2AC / `36b2de7e` | TwoOpenNeuro integration roots reuse configured storage; tests only | Isolated red2fail/4pass ->6pass; runpyactualconsumer definitions, no downloads; independentreview/Ruff |
 
 ### Evidence qualifications that remain relevant
 

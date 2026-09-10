@@ -67,6 +67,9 @@ from XBrainLab.ui.panels.dataset.data_interpretation_action_coordinator import (
     DataInterpretationActionCoordinator,
     _InterpretationReviewState,
 )
+from XBrainLab.ui.panels.dataset.data_interpretation_ui_payload import (
+    merge_interpretation_choices,
+)
 
 
 class _InterpretationReviewRuntime:
@@ -288,7 +291,7 @@ def test_label_configuration_merge_replaces_mutually_exclusive_source_state():
         "metadata_overrides": {"A01T.gdf": {"subject": "01"}},
     }
 
-    merged = DataInterpretationActionCoordinator._merge_interpretation_choices(
+    merged = merge_interpretation_choices(
         base,
         {"label_carrier_choices": {"/labels/A01T.mat": {"label_field": "classlabel"}}},
     )
@@ -327,7 +330,7 @@ def test_label_configuration_merge_preserves_reviewed_external_choices_when_unch
             },
         }
     }
-    merged = DataInterpretationActionCoordinator._merge_interpretation_choices(
+    merged = merge_interpretation_choices(
         {
             "selected_eeg_files": ["/bids/sub-01_task-p300_eeg.set"],
             "label_carrier_choices": reviewed_choices,
@@ -344,7 +347,7 @@ def test_label_configuration_merge_preserves_reviewed_external_choices_when_unch
 def test_label_configuration_merge_preserves_untouched_explicit_run_choices():
     first = "/bids/sub-01_task-p300_run-1_events.tsv"
     second = "/bids/sub-01_task-p300_run-2_events.tsv"
-    merged = DataInterpretationActionCoordinator._merge_interpretation_choices(
+    merged = merge_interpretation_choices(
         {
             "label_carrier": "loaded_label_files",
             "label_carrier_choices": {
@@ -390,7 +393,7 @@ def test_label_configuration_merge_deep_merges_sparse_carrier_decision_edit():
         "keep_event": True,
         "use_as_class": False,
     }
-    merged = DataInterpretationActionCoordinator._merge_interpretation_choices(
+    merged = merge_interpretation_choices(
         {
             "label_carrier": "loaded_label_files",
             "label_carrier_choices": {
@@ -428,7 +431,7 @@ def test_label_configuration_merge_deep_merges_sparse_carrier_decision_edit():
 
 
 def test_label_configuration_merge_clears_external_state_for_embedded_events():
-    merged = DataInterpretationActionCoordinator._merge_interpretation_choices(
+    merged = merge_interpretation_choices(
         {
             "label_carrier_choices": {
                 "/labels/A01T.mat": {"label_field": "classlabel"}
