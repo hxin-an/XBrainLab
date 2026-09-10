@@ -377,7 +377,7 @@ class TestSaveAndLoad:
 
 class TestPerUserSettingsBoundary:
     def test_windows_uses_roaming_app_data(self, tmp_path):
-        from XBrainLab.llm.core.config_paths import user_settings_path
+        from XBrainLab.platform_paths import user_settings_path
 
         roaming = tmp_path / "AppData" / "Roaming"
 
@@ -390,7 +390,7 @@ class TestPerUserSettingsBoundary:
         assert path == roaming / "XBrainLab" / "settings.json"
 
     def test_linux_uses_xdg_config_home(self, tmp_path):
-        from XBrainLab.llm.core.config_paths import user_settings_path
+        from XBrainLab.platform_paths import user_settings_path
 
         xdg_home = tmp_path / "xdg"
 
@@ -403,7 +403,7 @@ class TestPerUserSettingsBoundary:
         assert path == xdg_home / "xbrainlab" / "settings.json"
 
     def test_wsl_uses_linux_per_user_config_boundary(self, tmp_path):
-        from XBrainLab.llm.core.config_paths import user_settings_path
+        from XBrainLab.platform_paths import user_settings_path
 
         home = tmp_path / "wsl-home"
 
@@ -416,7 +416,7 @@ class TestPerUserSettingsBoundary:
         assert path == home / ".config" / "xbrainlab" / "settings.json"
 
     def test_explicit_config_directory_override_has_priority(self, tmp_path):
-        from XBrainLab.llm.core.config_paths import user_settings_path
+        from XBrainLab.platform_paths import user_settings_path
 
         override = tmp_path / "isolated-config"
 
@@ -432,7 +432,7 @@ class TestPerUserSettingsBoundary:
         assert path == override / "settings.json"
 
     def test_relative_override_is_anchored_to_user_home(self, tmp_path):
-        from XBrainLab.llm.core.config_paths import user_settings_path
+        from XBrainLab.platform_paths import user_settings_path
 
         home = tmp_path / "home"
 
@@ -445,7 +445,7 @@ class TestPerUserSettingsBoundary:
         assert path == home / "isolated-config" / "settings.json"
 
     def test_relative_xdg_config_home_is_ignored(self, tmp_path):
-        from XBrainLab.llm.core.config_paths import user_settings_path
+        from XBrainLab.platform_paths import user_settings_path
 
         home = tmp_path / "home"
 

@@ -282,7 +282,7 @@ The baseline/digest and independent whole-chain audit remain evidence, not permi
 Latest reversible slices: f4c060c5 (6D, unreachable schema override); 5afdb10d (6B, real confirmation
 mutation/replay/stale evidence). Native checks and regular commit hooks passed; no PR/push/merge.
 
-**Next bounded6H — use one existing settings-path policy and retire unused cache alias.** Independent
+**Completed bounded6H — use one existing settings-path policy and retire unused cache alias.** Independent
 full config524/config_paths85/runtime_selection257/catalog1102 and direct config761/catalog636/
 runtime284, plus main full platform_paths247/config_paths85, confirm duplicated per-user path rules.
 Route LLMConfig and six direct path tests to platform_paths.user_settings_path. Keep the same repo-root
@@ -296,6 +296,22 @@ Approximately-85productionLOC across3files, no new owner; sole shared path polic
 full config/catalog/runtime/platform path suites, same retained after, exact representative path
 matrix comparison, Ruff and independent actualdiff review. No model/UI/prompt experiment or download.
 Stop slice after verified behavior-preserving reuse, then continue outstanding module6–9 coverage.
+Full baseline94passed28.10s and retained after94passed26.52s; all21 Windows/Darwin/Linux/environment
+path combinations match exactly, including retained worktree-root legacy path. Matrix SHA256
+18e79f26e5c8e255e60ea48e0aca40d98bd3cbf34b8123adef92c18f95911857 before/after. Independent actualdiff
+approved; production+6/-96/net-90LOC, tests imports only net0, no removed cases. Ruffcheck/formatpassed.
+
+**Next bounded6I — replace synthetic walkthrough metrics with actual tracker lifecycle.** Full metrics184/
+direct104 and capture510/direct124 audit retains completed turn history: the walkthrough actually
+collects it before closing. It resets with conversation, but has no numeric cap within an indefinitely
+long session; no measured issue justifies truncating this evidence. Replace the nested SimpleNamespace
+fixture in the existing capture collection test with actual AgentMetricsTracker.start/record/finish,
+normal and failed tool outcomes, unfinished-turn exclusion, automatic prior finalization and reset.
+Preserve exact artifact fields/order/rounding; no production change or GUI/model run. Baseline direct
+metrics/capture suites, same cases after, in-memory omitted-finish fault, Ruff and main nonauthor review.
+No new generic test helper/platform and no test count inflation; stop after this real evidence replacement.
+Existing direct suites17passed6.44s. Worker may edit only the collection test after6H hooks finish;
+main owns after/fault/lint and actualdiff review. No product metrics history deletion or cap change.
 
 Completed2AD–2AG and8C–8E are indexed below and fully traceable in Git. For source-bound Windows
 capture tests only, use process-local GIT_DIR/GIT_WORK_TREE pointing to the actual Windows paths:
