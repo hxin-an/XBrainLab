@@ -206,6 +206,22 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
   snapshot test while preserving explicit restore/training isolation. Keep all cancellation, resource,
   channel and label behavior, no new owner/API/visible UI change. Separate scope baseline/after and
   independent review; do not mix any further preprocess legacy path removal into this slice.
+- 2C committed as `d3ef1ac4` after independent final source/test approval. 2D main baseline and
+  prepare/commit fixture characterization each passed 24 native cases. Worker retargeted seven
+  blocked import cases plus confirmation/automation: initial selection 10 pass. Main review additionally
+  found four original-dataset label mocks cannot see the actual detached label owner; remove those
+  ineffective checks in favor of no actual loader entry and no applied truth. The automation case
+  tests review-state serialization but silently attempted failing Apply on a placeholder FIF: stop
+  at successful Validate and assert its actual result while preserving all review-state assertions.
+  Re-characterize before production deletion. Also remove clean_dataset only from the interpretation
+  port's obsolete requirements; lifecycle port/implementation still own reset and remain unchanged.
+- 2D final: corrected worker selection 10 pass before/after, no placeholder-FIF warnings after
+  removing the irrelevant Apply attempt. Main after selection 53 pass (24 direct neighbors plus
+  29 owned-work cases; one existing MNE/NumPy warning). Production -81 LOC across two files;
+  no executable caller remains, only the intentional architecture forbidden-name guard. Independent
+  reviewer approved unchanged prepared mutation/admission/lifecycle boundaries and actual-side-effect
+  test replacement. Finish the small commit, then close remaining module 1 full-test audit gaps
+  and continue module 2 domain implementation/tests; no whole-module closure or handoff claim yet.
 
 ### Earlier slice declarations and evidence
 

@@ -77,7 +77,6 @@ class DatasetLoadedDataReadPort(Protocol):
 class DatasetInterpretationPort(DatasetLoadedDataReadPort, Protocol):
     """Raw import and label operations used by interpretation commands."""
 
-    def import_files(self, filepaths: Sequence[str]) -> tuple[int, list[str]]: ...
     def prepare_replacement_import(
         self,
         filepaths: Sequence[str],
@@ -87,7 +86,6 @@ class DatasetInterpretationPort(DatasetLoadedDataReadPort, Protocol):
         self,
         prepared: PreparedDatasetImport,
     ) -> DatasetInterpretationPort: ...
-    def clean_dataset(self) -> None: ...
     def apply_labels_batch(
         self,
         target_files: Sequence[Any],
@@ -396,74 +394,6 @@ class DatasetStateService:
             "highpass": highpass,
             "lowpass": lowpass,
         }
-
-    def import_files(
-        self,
-        filepaths: Sequence[str],
-    ) -> tuple[int, list[str]]:
-        with self._mutation_lock:
-            paths = [str(path) for path in filepaths]
-            total = len(paths)
-            owned_work_checkpoint(
-                "Preparing EEG import",
-                completed=0,
-                total=total or None,
-            )
-            existing_data = self.get_loaded_data_list()
-            try:
-                loader = self._raw_loader_provider()(existing_data)
-            except Exception as exc:
-                raise ValueError(f"Existing dataset inconsistent: {exc}") from exc
-
-            success_count = 0
-            errors: list[str] = []
-            factory = self._raw_factory_provider()
-            for index, path in enumerate(paths, start=1):
-                owned_work_checkpoint(
-                    f"Loading EEG recording {index} of {total}",
-                    completed=index - 1,
-                    total=None,
-                )
-                if any(data.get_filepath() == path for data in loader):
-                    logger.info("Skipping duplicate: %s", path)
-                    continue
-                try:
-                    logger.info("Loading file: %s", path)
-                    raw = factory.load(path)
-                    if raw is None:
-                        errors.append(f"{path}: Loader returned None.")
-                        continue
-                    loader.append(raw)
-                    success_count += 1
-                except UnsupportedFormatError:
-                    logger.error("Unsupported format: %s", path)
-                    errors.append(f"{path}: Unsupported format.")
-                except FileCorruptedError:
-                    logger.error("File corrupted: %s", path)
-                    errors.append(f"{path}: File corrupted.")
-                except Exception as exc:
-                    logger.error("Error loading %s: %s", path, exc)
-                    errors.append(f"{path}: {exc!s}")
-                finally:
-                    owned_work_checkpoint(
-                        f"Loaded EEG recording {index} of {total}",
-                        completed=index,
-                        total=total,
-                    )
-
-            if success_count > 0:
-                owned_work_checkpoint(
-                    "Materializing imported EEG recordings",
-                    completed=total,
-                    total=None,
-                )
-                loader.apply(self.study, force_update=True)
-                owned_work_checkpoint(
-                    "Imported EEG recordings materialized",
-                    completed=total,
-                    total=total,
-                )
-            return success_count, errors
 
     def prepare_replacement_import(
         self,

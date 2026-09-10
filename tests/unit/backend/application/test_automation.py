@@ -478,7 +478,6 @@ def test_execute_automation_payload_state_contains_interpretation_review_truth(
     eeg_path.write_bytes(b"placeholder")
     events_path.write_text("onset\ttrial_type\n0.0\tleft\n", encoding="utf-8")
     service = ApplicationService(Study())
-    service.dataset.import_files = MagicMock(return_value=(1, []))
 
     execute_automation_payload(
         service,
@@ -510,16 +509,15 @@ def test_execute_automation_payload_state_contains_interpretation_review_truth(
             },
         },
     )
-    execute_automation_payload(
+    validation_execution = execute_automation_payload(
         service,
         {"command": "validate_interpretation", "arguments": {}},
     )
-    apply_execution = execute_automation_payload(
-        service,
-        {"command": "apply_interpretation", "arguments": {"confirmed": True}},
-    )
 
-    interpretation = apply_execution.state["interpretation"]
+    assert validation_execution.accepted is True
+    assert validation_execution.result is not None
+    assert validation_execution.result["status"] == "ok"
+    interpretation = validation_execution.state["interpretation"]
     assert interpretation["label_carrier_plan"][0]["path"] == str(events_path)
     assert interpretation["label_carrier_plan"][0]["selected_anchor"] == "onset"
     assert interpretation["class_map"] == {"left": "left hand"}

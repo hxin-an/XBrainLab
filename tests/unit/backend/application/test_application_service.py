@@ -6800,7 +6800,7 @@ def test_data_interpretation_unresolved_sequence_target_cannot_be_confirmed(tmp_
     eeg_path.write_bytes(b"not loaded during scan")
     label_path.write_bytes(b"not loaded during scan")
     service = ApplicationService(Study())
-    service.dataset.import_files = MagicMock(return_value=(1, []))
+    load = _use_test_raw_factory(service)
 
     scan = service.execute(ScanSourceCommand(source_path=str(source_dir)))
     preview = service.execute(PreviewInterpretationCommand())
@@ -6835,7 +6835,7 @@ def test_data_interpretation_unresolved_sequence_target_cannot_be_confirmed(tmp_
     assert confirmed_apply.failed is True
     assert confirmed_apply.error_type == ErrorType.PRECONDITION
     assert "explicit target EEG event" in confirmed_apply.message
-    assert service.dataset.import_files.call_count == 0
+    load.assert_not_called()
     assert confirmed_apply.state.interpretation.has_applied_interpretation is False
 
 
@@ -7583,12 +7583,7 @@ def test_apply_interpretation_skips_ambiguous_multi_file_timestamp_labels(tmp_pa
     eeg_2.write_bytes(b"not loaded during scan")
     events.write_text("onset\ttrial_type\n0.5\tleft\n", encoding="utf-8")
     service = ApplicationService(Study())
-    raw_1 = _raw_mock()
-    raw_1.get_filepath.return_value = str(eeg_1)
-    raw_2 = _raw_mock()
-    raw_2.get_filepath.return_value = str(eeg_2)
-    service.dataset.import_files = MagicMock(return_value=(2, []))
-    service.dataset.apply_labels_batch = MagicMock(return_value=2)
+    load = _use_test_raw_factory(service)
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(
@@ -7612,8 +7607,8 @@ def test_apply_interpretation_skips_ambiguous_multi_file_timestamp_labels(tmp_pa
     assert apply_result.failed is True
     assert apply_result.error_type == ErrorType.PRECONDITION
     assert "Label carrier pairing is incomplete" in apply_result.message
-    service.dataset.import_files.assert_not_called()
-    service.dataset.apply_labels_batch.assert_not_called()
+    load.assert_not_called()
+    assert apply_result.state.interpretation.has_applied_interpretation is False
 
 
 def test_apply_interpretation_blocks_partial_manual_timestamp_label_mapping(
@@ -7628,14 +7623,7 @@ def test_apply_interpretation_blocks_partial_manual_timestamp_label_mapping(
     eeg_2.write_bytes(b"not loaded during scan")
     events.write_text("onset\ttrial_type\n0.5\tleft\n", encoding="utf-8")
     service = ApplicationService(Study())
-    raw_1 = _raw_mock()
-    raw_1.get_filepath.return_value = str(eeg_1)
-    raw_1.get_filename.return_value = eeg_1.name
-    raw_2 = _raw_mock()
-    raw_2.get_filepath.return_value = str(eeg_2)
-    raw_2.get_filename.return_value = eeg_2.name
-    service.dataset.import_files = MagicMock(return_value=(2, []))
-    service.dataset.apply_labels_batch = MagicMock(return_value=1)
+    load = _use_test_raw_factory(service)
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(
@@ -7663,8 +7651,8 @@ def test_apply_interpretation_blocks_partial_manual_timestamp_label_mapping(
     assert "task-mi_run-1_raw.fif" in apply_result.message
     assert "sub-01" not in apply_result.message
     assert "[SUBJECT_REF:" in apply_result.message
-    service.dataset.import_files.assert_not_called()
-    service.dataset.apply_labels_batch.assert_not_called()
+    load.assert_not_called()
+    assert apply_result.state.interpretation.has_applied_interpretation is False
 
 
 def test_apply_interpretation_applies_reviewed_mat_sequence_label_carrier(
@@ -8312,12 +8300,7 @@ def test_apply_interpretation_blocks_ambiguous_multi_file_sequence_labels(
         },
     )
     service = ApplicationService(Study())
-    raw_1 = _raw_mock()
-    raw_1.get_filepath.return_value = str(eeg_1)
-    raw_2 = _raw_mock()
-    raw_2.get_filepath.return_value = str(eeg_2)
-    service.dataset.import_files = MagicMock(return_value=(2, []))
-    service.dataset.apply_labels_batch = MagicMock(return_value=2)
+    load = _use_test_raw_factory(service)
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(
@@ -8344,8 +8327,8 @@ def test_apply_interpretation_blocks_ambiguous_multi_file_sequence_labels(
     assert apply_result.failed is True
     assert apply_result.error_type == ErrorType.PRECONDITION
     assert "Label carrier pairing is incomplete" in apply_result.message
-    service.dataset.import_files.assert_not_called()
-    service.dataset.apply_labels_batch.assert_not_called()
+    load.assert_not_called()
+    assert apply_result.state.interpretation.has_applied_interpretation is False
 
 
 def test_apply_interpretation_blocks_partial_manual_sequence_label_mapping(
@@ -8370,14 +8353,7 @@ def test_apply_interpretation_blocks_partial_manual_sequence_label_mapping(
         },
     )
     service = ApplicationService(Study())
-    raw_1 = _raw_mock()
-    raw_1.get_filepath.return_value = str(eeg_1)
-    raw_1.get_filename.return_value = eeg_1.name
-    raw_2 = _raw_mock()
-    raw_2.get_filepath.return_value = str(eeg_2)
-    raw_2.get_filename.return_value = eeg_2.name
-    service.dataset.import_files = MagicMock(return_value=(2, []))
-    service.dataset.apply_labels_batch = MagicMock(return_value=1)
+    load = _use_test_raw_factory(service)
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(
@@ -8406,8 +8382,8 @@ def test_apply_interpretation_blocks_partial_manual_sequence_label_mapping(
     assert apply_result.error_type == ErrorType.PRECONDITION
     assert "Label carrier pairing is incomplete" in apply_result.message
     assert eeg_2.name in apply_result.message
-    service.dataset.import_files.assert_not_called()
-    service.dataset.apply_labels_batch.assert_not_called()
+    load.assert_not_called()
+    assert apply_result.state.interpretation.has_applied_interpretation is False
 
 
 def test_data_interpretation_blocks_sources_without_eeg_files(tmp_path):
@@ -8493,7 +8469,7 @@ def test_apply_interpretation_blocks_after_preprocessing_operations(tmp_path):
     raw.get_preprocess_history.return_value = ["bandpass"]
     service.study.data_manager.loaded_data_list = [raw]
     service.study.data_manager.preprocessed_data_list = [raw]
-    service.dataset.import_files = MagicMock(return_value=(1, []))
+    load = _use_test_raw_factory(service)
     service.get_state()
 
     policy = service.get_capabilities()
@@ -8505,7 +8481,7 @@ def test_apply_interpretation_blocks_after_preprocessing_operations(tmp_path):
     )
     assert result.failed is True
     assert result.error_type == ErrorType.PRECONDITION
-    service.dataset.import_files.assert_not_called()
+    load.assert_not_called()
 
 
 def test_evaluate_command_returns_typed_service_backed_summary():
@@ -10828,7 +10804,7 @@ def test_apply_interpretation_blocks_after_epoch_without_import_side_effect(
     eeg_path = source_dir / "sub-02_task-mi_raw.fif"
     eeg_path.write_bytes(b"not loaded during scan")
     service = ApplicationService(Study())
-    service.dataset.import_files = MagicMock(return_value=(1, []))
+    load = _use_test_raw_factory(service)
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(PreviewInterpretationCommand())
@@ -10850,7 +10826,7 @@ def test_apply_interpretation_blocks_after_epoch_without_import_side_effect(
     assert result.failed is True
     assert result.error_type == ErrorType.PRECONDITION
     assert "Reset the session" in result.message
-    service.dataset.import_files.assert_not_called()
+    load.assert_not_called()
 
 
 def test_configure_dataset_split_save_preserves_existing_dataset_without_confirmation():

@@ -279,7 +279,9 @@ def test_dataset_state_service_owns_import_label_channel_and_reset_mutations() -
         channel_selection_provider=lambda: _ChannelSelection,
     )
 
-    count, errors = state.import_files(["/data/new.fif"])
+    prepared = state.prepare_replacement_import(["/data/new.fif"])
+    assert study.loaded_data_list == []
+    state.commit_prepared_import(prepared)
     label_count = state.apply_labels_batch(
         [_RawFactory.loaded],
         {"labels.csv": [1]},
@@ -291,7 +293,7 @@ def test_dataset_state_service_owns_import_label_channel_and_reset_mutations() -
     state.reset_preprocess()
     state.clean_dataset()
 
-    assert (count, errors) == (1, [])
+    assert (prepared.success_count, prepared.errors) == (1, ())
     assert label_count == 1
     assert selected is True
     assert study.backup_count == 1
