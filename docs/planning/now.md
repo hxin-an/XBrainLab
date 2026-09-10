@@ -195,7 +195,7 @@ Native original 59 passed3.30s; added characterization before deletion61 passed3
 Main reviewed actual test/diff; independent non-author review and Ruff/format passed.
 Production +1/-22/net -21, unchanged owners. Commit separately from 2Q.
 
-**Parallel 2Q — montage promotion retry characterization, tests only.** Independent audit read all
+**Completed 2Q — montage promotion retry characterization, tests only.** Independent audit read all
 preparation/coordinator/lifecycle sources (1282/460/355 lines), direct tests (809/630 lines) and real
 fixture integration test (130 lines). Keep distinct geometry/resource admission, generation/manual
 precedence, and worker/publication responsibilities. Existing real geometry tests and deterministic
@@ -208,6 +208,8 @@ whether the assertion actually protects publication/retry, then independent revi
 This is added behavior evidence, not a claim real-fixture/Windows UI handoff has passed.
 Native coordinator suite18 passed1.79s; Ruff/format and independent review passed. This directly
 protects coordinator retention/promotion, not separate service-level stale-publication recovery dispatch.
+An isolated in-memory missing-retention fault made the new regression fail at pending-candidate
+assertion; expected fault detected, no production source mutation was saved.
 
 ### Responsibility closure and retained boundaries
 
