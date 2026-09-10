@@ -5,6 +5,7 @@
 
 import logging
 import os
+import sys
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, NoReturn
@@ -27,6 +28,13 @@ repo_root = Path(__file__).resolve().parents[1]
 test_temp_root = configure_test_temp_root(repo_root)
 matplotlib_cache_dir = matplotlib_cache_root(test_temp_root)
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+if (
+    sys.platform == "win32"
+    and os.environ["QT_QPA_PLATFORM"].strip().lower() == "offscreen"
+):
+    windows_fonts = Path(os.environ.get("SYSTEMROOT", r"C:\Windows")) / "Fonts"
+    if windows_fonts.is_dir():
+        os.environ.setdefault("QT_QPA_FONTDIR", str(windows_fonts))
 os.environ.setdefault("MPLBACKEND", "Agg")
 os.environ["MPLCONFIGDIR"] = str(matplotlib_cache_dir)
 os.makedirs(matplotlib_cache_dir, exist_ok=True)
