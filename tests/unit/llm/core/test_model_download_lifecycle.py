@@ -29,8 +29,17 @@ PRIMARY_MODEL_ID = "ibm-granite/granite-4.0-micro"
 PRIMARY_MODEL_REVISION = (
     "56111ae135df9c53a78c99028e7bc24035a9e979"  # pragma: allowlist secret
 )
-VALID_TEST_WEIGHT_BYTES = 300_000_000
+VALID_TEST_WEIGHT_BYTES = 1024
 BACKGROUND_WORK_WAIT_SECONDS = 5.0
+
+
+@pytest.fixture
+def small_weight_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Use tiny real cache artifacts without bypassing admission inspection."""
+    monkeypatch.setattr(
+        "XBrainLab.llm.core.model_catalog.MIN_MODEL_WEIGHT_BYTES",
+        VALID_TEST_WEIGHT_BYTES,
+    )
 
 
 def _write_complete_model_cache(cache_dir: Path) -> Path:
@@ -39,8 +48,7 @@ def _write_complete_model_cache(cache_dir: Path) -> Path:
     snapshot.mkdir(parents=True)
     (snapshot / "config.json").write_text("{}", encoding="utf-8")
     (snapshot / "tokenizer_config.json").write_text("{}", encoding="utf-8")
-    with (snapshot / "model.safetensors").open("wb") as stream:
-        stream.truncate(VALID_TEST_WEIGHT_BYTES)
+    (snapshot / "model.safetensors").write_bytes(b"x" * VALID_TEST_WEIGHT_BYTES)
     return model_root
 
 
@@ -152,6 +160,7 @@ def test_success_path_forwards_one_target_aware_terminal_outcome(qtbot) -> None:
     assert finished_outcomes[0].model_path == "/cache/model"
 
 
+@pytest.mark.usefixtures("small_weight_limit")
 def test_ensure_download_reuses_complete_pinned_cache_without_worker(
     tmp_path,
 ) -> None:
@@ -317,6 +326,7 @@ def test_failed_download_preserves_partial_target_for_retry(
         )
 
 
+@pytest.mark.usefixtures("small_weight_limit")
 @pytest.mark.parametrize(
     "status",
     [ModelDownloadStatus.FAILED, ModelDownloadStatus.CANCELLED],

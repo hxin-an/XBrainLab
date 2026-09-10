@@ -231,6 +231,23 @@ cleanup assertions and fake downloader external isolation. No production/runtime
 user files changed, no shared fixture platform. Same focused suites plus small boundary cases,
 intentional missing-shard and strict-greater-than faults, independent actualdiff review and Ruff;
 commit tests-only and continue remaining module audit, not manual handoff.
+Result: original50passed3.59s, stronger54passed0.77s, weights20paths4800000308logicalbytes ->
+24paths21812bytes (four added boundary/policy cases). First baseline attempt49pass/2errors was an
+ephemeral measurement-hook conflict with mocked scandir; isolated measurement scan and repeated once,
+no product/test assertion changed. Strict > instead of >= fails exact-limit case (other2pass);
+omitted missing-shard check fails despite present weight meeting minimum. Production unchanged,
+tests+61/-18/net+43, independent actualdiff approved, Ruff pass. No physical disk/speed certification.
+
+**Bounded7M — retire MainWindow test-only global loader bypasses.** Independent source1–240 and
+Git-wide dynamic/config/script/doc audit identifies seven None compatibility globals and three
+globals().get early returns, with only five InfoPanelService test patch sites. Actual three lazy
+loaders, module imports, panel import lock and GUI-only preparation flags remain sole owners. First
+baseline main-window sync/launch/lazy-completion suites; try removing the five obsolete service mocks
+so those cases compose the real lightweight InfoPanelService. Preserve controller-free typed-port
+and real widget assertions; no new fake/adapter unless an actual external seam requires isolation.
+After passing migrated tests, remove the unused globals/bypass branches. No visible UI, eager import,
+timing/shutdown/publication change, ownerdelta0. Same focused suites plus independent actualdiff
+review/Ruff; one independently reversible commit, then continue inventory/remaining tests/scripts.
 
 **Module7 logging audit.** Independent full logger874/direct1304, run.py370,
 Windows/WSL launcher sources and tests traced console output: StreamHandler binds native stdout;

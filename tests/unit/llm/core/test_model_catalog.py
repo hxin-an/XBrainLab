@@ -41,7 +41,15 @@ RETIRED_MODEL_IDS = (
     "microsoft/Phi-4-mini-instruct",
     "microsoft/Phi-3.5-mini-instruct",
 )
-VALID_TEST_WEIGHT_BYTES = 300_000_000
+VALID_TEST_WEIGHT_BYTES = 1024
+
+
+@pytest.fixture
+def small_weight_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Scale only opted-in artifact tests, retaining the real completeness checks."""
+    monkeypatch.setattr(
+        model_catalog, "MIN_MODEL_WEIGHT_BYTES", VALID_TEST_WEIGHT_BYTES
+    )
 
 
 def test_cache_usage_scan_is_bounded_and_interruptible(tmp_path: Path) -> None:
@@ -142,8 +150,7 @@ def _write_complete_project_cache(model_root: Path) -> None:
     model_root.mkdir(parents=True)
     (model_root / "config.json").write_text("{}", encoding="utf-8")
     (model_root / "tokenizer_config.json").write_text("{}", encoding="utf-8")
-    with (model_root / "model.safetensors").open("wb") as stream:
-        stream.truncate(VALID_TEST_WEIGHT_BYTES)
+    (model_root / "model.safetensors").write_bytes(b"x" * VALID_TEST_WEIGHT_BYTES)
 
 
 def _write_complete_hf_cache(
@@ -168,8 +175,7 @@ def _write_complete_hf_cache(
         (refs / "main").write_text(revision, encoding="utf-8")
     (snapshot / "config.json").write_text("{}", encoding="utf-8")
     (snapshot / "tokenizer_config.json").write_text("{}", encoding="utf-8")
-    with (snapshot / "model.safetensors").open("wb") as stream:
-        stream.truncate(weight_bytes)
+    (snapshot / "model.safetensors").write_bytes(b"x" * weight_bytes)
     return model_root
 
 
@@ -360,6 +366,7 @@ def test_inflight_consumption_inspection_fails_closed_without_leaking_diagnostic
     assert sensitive in result.diagnostic_message
 
 
+@pytest.mark.usefixtures("small_weight_limit")
 def test_download_preflight_allows_already_cached_model_without_increment(
     tmp_path: Path,
 ):
@@ -380,6 +387,7 @@ def test_download_preflight_allows_already_cached_model_without_increment(
     assert "already cached" in result.message
 
 
+@pytest.mark.usefixtures("small_weight_limit")
 def test_windows_style_snapshot_does_not_require_blobs_or_symlinks(
     tmp_path: Path,
 ) -> None:
@@ -390,6 +398,7 @@ def test_windows_style_snapshot_does_not_require_blobs_or_symlinks(
     assert model_cache_complete(str(cache_dir), PRIMARY_MODEL_ID) is True
 
 
+@pytest.mark.usefixtures("small_weight_limit")
 def test_pinned_snapshot_is_discoverable_by_huggingface_local_cache_lookup(
     tmp_path: Path,
 ) -> None:
@@ -410,6 +419,7 @@ def test_pinned_snapshot_is_discoverable_by_huggingface_local_cache_lookup(
     )
 
 
+@pytest.mark.usefixtures("small_weight_limit")
 def test_internal_hf_blob_symlinks_are_supported(tmp_path: Path) -> None:
     cache_dir = tmp_path / "models"
     model_root = cache_dir / f"models--{PRIMARY_MODEL_ID.replace('/', '--')}"
@@ -422,8 +432,7 @@ def test_internal_hf_blob_symlinks_are_supported(tmp_path: Path) -> None:
     weight_blob = blobs / "weights"
     config_blob.write_text("{}", encoding="utf-8")
     tokenizer_blob.write_text("{}", encoding="utf-8")
-    with weight_blob.open("wb") as stream:
-        stream.truncate(VALID_TEST_WEIGHT_BYTES)
+    weight_blob.write_bytes(b"x" * VALID_TEST_WEIGHT_BYTES)
     try:
         (snapshot / "config.json").symlink_to(config_blob)
         (snapshot / "tokenizer_config.json").symlink_to(tokenizer_blob)
@@ -434,6 +443,7 @@ def test_internal_hf_blob_symlinks_are_supported(tmp_path: Path) -> None:
     assert model_cache_complete(str(cache_dir), PRIMARY_MODEL_ID) is True
 
 
+@pytest.mark.usefixtures("small_weight_limit")
 def test_sharded_weights_require_every_indexed_artifact(tmp_path: Path) -> None:
     cache_dir = tmp_path / "models"
     snapshot = (
@@ -456,17 +466,21 @@ def test_sharded_weights_require_every_indexed_artifact(tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
-    with (snapshot / "model-00001-of-00002.safetensors").open("wb") as stream:
-        stream.truncate(150_000_000)
+    # A missing shard must fail even if present weights already meet the minimum.
+    (snapshot / "model-00001-of-00002.safetensors").write_bytes(
+        b"x" * VALID_TEST_WEIGHT_BYTES
+    )
 
     assert model_cache_complete(str(cache_dir), PRIMARY_MODEL_ID) is False
 
-    with (snapshot / "model-00002-of-00002.safetensors").open("wb") as stream:
-        stream.truncate(150_000_000)
+    (snapshot / "model-00002-of-00002.safetensors").write_bytes(
+        b"x" * VALID_TEST_WEIGHT_BYTES
+    )
 
     assert model_cache_complete(str(cache_dir), PRIMARY_MODEL_ID) is True
 
 
+@pytest.mark.usefixtures("small_weight_limit")
 def test_project_local_dir_layout_is_not_reported_as_runtime_cache(
     tmp_path: Path,
 ) -> None:
@@ -489,6 +503,25 @@ def test_tiny_weight_file_is_not_reported_as_complete(tmp_path: Path) -> None:
     assert model_cache_complete(str(cache_dir), PRIMARY_MODEL_ID) is False
 
 
+def test_production_minimum_rejects_scaled_fixture(tmp_path: Path) -> None:
+    # Deliberately outside small_weight_limit: fixture scaling cannot lower policy.
+    assert model_catalog.MIN_MODEL_WEIGHT_BYTES == 256_000_000
+    _write_complete_hf_cache(tmp_path, PRIMARY_MODEL_ID)
+
+    assert model_cache_complete(str(tmp_path), PRIMARY_MODEL_ID) is False
+
+
+@pytest.mark.usefixtures("small_weight_limit")
+@pytest.mark.parametrize("offset, complete", [(-1, False), (0, True), (1, True)])
+def test_weight_size_boundary(tmp_path: Path, offset: int, complete: bool) -> None:
+    _write_complete_hf_cache(
+        tmp_path, PRIMARY_MODEL_ID, weight_bytes=VALID_TEST_WEIGHT_BYTES + offset
+    )
+
+    assert model_cache_complete(str(tmp_path), PRIMARY_MODEL_ID) is complete
+
+
+@pytest.mark.usefixtures("small_weight_limit")
 def test_corrupt_model_metadata_is_not_reported_as_complete(tmp_path: Path) -> None:
     cache_dir = tmp_path / "models"
     model_root = _write_complete_hf_cache(cache_dir, PRIMARY_MODEL_ID)
@@ -498,6 +531,7 @@ def test_corrupt_model_metadata_is_not_reported_as_complete(tmp_path: Path) -> N
     assert model_cache_complete(str(cache_dir), PRIMARY_MODEL_ID) is False
 
 
+@pytest.mark.usefixtures("small_weight_limit")
 def test_weight_symlink_outside_cache_is_not_reported_as_complete(
     tmp_path: Path,
 ) -> None:
@@ -512,8 +546,7 @@ def test_weight_symlink_outside_cache_is_not_reported_as_complete(
     weight = snapshot / "model.safetensors"
     weight.unlink()
     outside_weight = tmp_path / "outside.safetensors"
-    with outside_weight.open("wb") as stream:
-        stream.truncate(VALID_TEST_WEIGHT_BYTES)
+    outside_weight.write_bytes(b"x" * VALID_TEST_WEIGHT_BYTES)
     try:
         weight.symlink_to(outside_weight)
     except OSError as exc:
@@ -522,6 +555,7 @@ def test_weight_symlink_outside_cache_is_not_reported_as_complete(
     assert model_cache_complete(str(cache_dir), PRIMARY_MODEL_ID) is False
 
 
+@pytest.mark.usefixtures("small_weight_limit")
 @pytest.mark.parametrize(
     "partial_layout",
     (
@@ -567,8 +601,7 @@ def test_partial_cache_never_bypasses_download_estimate(
         snapshot.mkdir(parents=True)
         (snapshot / "config.json").write_text("{}", encoding="utf-8")
         (snapshot / "tokenizer_config.json").write_text("{}", encoding="utf-8")
-        with (snapshot / "model.safetensors").open("wb") as stream:
-            stream.truncate(VALID_TEST_WEIGHT_BYTES)
+        (snapshot / "model.safetensors").write_bytes(b"x" * VALID_TEST_WEIGHT_BYTES)
         if partial_layout == "hf-no-ref":
             (hf_root / "blobs").mkdir()
             (hf_root / "blobs" / "weights").write_bytes(b"weights")
