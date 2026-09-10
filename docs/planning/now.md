@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `e6aa7d44`, 117 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `0181b233`, 118 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -176,6 +176,47 @@ need callers/direct tests before disposition. AgentManager direct3769 retains ac
 ApplicationService publication and real-controller debug blocked-command cases alongside isolated
 manager correlation mocks. Three candidate test redundancies need main diff/equivalence review before
 retirement: zero-assert processing case, duplicate model forwarding and single-branch dock toggle.
+Direct panel3041 now fully independently read: actual Qt runtime/confirmation, chunked rebuild/deltas,
+prune/reader anchor/tail, resize/code/text geometry and clear lifecycle retain. Compatibility append
+tests need caller migration evidence before retirement; no blanket deletion of rendering protection.
+
+**Bounded6R — strengthen manager-to-panel evidence and remove two exact duplicate tests.** Main
+confirmed full reviewer3769-line test audit candidates against actual source/test bodies. Replace the
+zero-assert processing-state case with actual ChatPanel ready -> busy -> idle (nonblank composer,
+Working/Send and input/button enabled state), keeping only model/runtime external isolation. Remove
+test_set_model already covered by exact approved-model+VRAM case, and toggle_already_visible already
+covered by close-then-reopen exact calls. Keep other cases including toggle_show; fix obsolete test-file
+coverage-count docstring. One test file only, zero production/owner/UI change. Run original full manager
+suite before edits and retained full suite afterwards; bounded no-op forwarding fault must fail the
+new real-widget test. Main nonauthor diff/coverage-map review, Ruff, separate reversible commit.
+Only two cases retired; stronger real-widget evidence replaces one no-assert case. Then continue audit.
+Original150passed22.79s; retained148passed22.63s. In-memory no-op manager forwarding makes the new
+real-panel case fail on is_processing0.44s (the former zero-assert case could not detect it). Main
+nonauthor actual-diff/equivalence review approved; test+25/-16/net+9, production0. Ruff/format passed.
+The font-directory warning in the pre-import fault probe is environment output, not its failure cause;
+normal manager suites passed. Real Qt widgets in offscreen unit tests are not native window acceptance.
+
+**Bounded6S — keep only live conversation-window operations.** Full source76/direct51 and all
+controller callers use messages/append/clear; get_messages, len/index/equality/repr/hash conveniences
+have only exclusive tests. No script/config/doc/dynamic reference found. Strengthen retained direct
+tests to assert complete ordered message values through the actual messages field, then run before
+retirement with controller append/reset and full controller integration. Remove the convenience chain,
+unused logger/import and four exclusive tests; preserve exact append/prune/clear implementation and
+controller history property/setter. One production file/net about-30, no owner/public/UI change.
+Repeat retained tests, use bounded wrong-window fault to check actual order evidence, independent
+diff/caller review and lint. One reversible commit after6R; no merge or module-closure implication.
+Strengthened baseline19passed7.54s, retained15passed7.38s; exactlyfour exclusive convenience cases
+removed. Independent actual-diff review confirmed unchanged append/clear list identity and existing
+overflow list replacement. Production-33, tests+6/-29/net-23; Ruff/format passed. Wrong-end window
+fault is process-local only; exact result recorded before commit.
+
+**Additional chat widget audit.** Full independent action_card783/message_bubble776 retains exact
+typed request capture/disable-before-emit and safe link/Markdown/streaming/geometry handling. Full
+composer144/suggestion167/segmented98/styles753/package6 retains IME/bounded input, live model-setting
+selection and shared design tokens. Candidate unused bubble.setText, suggestion icon argument,
+panel._render_message need bounded same-owner retirement. Panel suggestion layout removes/readds
+all three unchanged rows on reflow despite ignoring columns; measure actual layout calls and geometry
+before removing that redundant work. Keep direct script-used append_message and all visible copy.
 
 **Module6 initial full owner audit (not closure).** Independent full controller2949/attempt898/
 execution342/confirmation314/pending443 and respective direct confirmation154/pending560/execution151/
