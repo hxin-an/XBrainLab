@@ -684,9 +684,8 @@ class DataInterpretationPreviewDialog(
         self._fit_tree_columns(
             self.file_tree,
             (260, 110, 120, 150, 70),
-            stretch_column=0,
         )
-        self._fit_compact_tree_height(self.file_tree, min_height=86, max_height=160)
+        self._fit_compact_tree_height(self.file_tree, min_height=86)
         complete_count, missing_fields = self._metadata_completion_counts()
         missing_fields = self._metadata_required_missing_fields(missing_fields)
         metadata_table_card = QFrame()
@@ -765,12 +764,10 @@ class DataInterpretationPreviewDialog(
         self._fit_tree_columns(
             self.label_carrier_tree,
             (190, 145, 150, 175, 135, 150),
-            stretch_column=5,
         )
         self._fit_compact_tree_height(
             self.label_carrier_tree,
             min_height=92,
-            max_height=150,
         )
         self.label_carrier_tree.setVisible(False)
 
@@ -890,7 +887,6 @@ class DataInterpretationPreviewDialog(
         self._fit_tree_columns(
             self.review_tree,
             (135, 220, 315, 245),
-            stretch_column=3,
         )
         self.review_tree.setTextElideMode(Qt.TextElideMode.ElideNone)
         self.review_tree.setWordWrap(True)
@@ -1271,7 +1267,7 @@ class DataInterpretationPreviewDialog(
         )
         if not uses_external_value_editor:
             self._populate_event_tree()
-        self._fit_tree_columns(self.event_tree, (220, 150, 420), stretch_column=2)
+        self._fit_tree_columns(self.event_tree, (220, 150, 420))
         self._fit_event_tree_height()
         if self._label_source_mode() == "internal_events":
             self._build_internal_event_rules_view()
@@ -3171,10 +3167,7 @@ class DataInterpretationPreviewDialog(
         self,
         tree: QTreeWidget,
         widths: tuple[int, ...],
-        *,
-        stretch_column: int,  # retained for call-site readability
     ) -> None:
-        _ = stretch_column
         tree.setTextElideMode(Qt.TextElideMode.ElideRight)
         tree.setWordWrap(False)
         tree.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -3303,7 +3296,6 @@ class DataInterpretationPreviewDialog(
         self._fit_compact_tree_height(
             self.file_tree,
             min_height=90,
-            max_height=260,
             row_height_extra=2,
         )
 
@@ -3313,7 +3305,6 @@ class DataInterpretationPreviewDialog(
         self._fit_compact_tree_height(
             self.label_carrier_tree,
             min_height=96,
-            max_height=220,
             row_height_extra=2,
         )
 
@@ -3323,8 +3314,6 @@ class DataInterpretationPreviewDialog(
         self._fit_compact_tree_height(
             self.event_tree,
             min_height=72,
-            max_height=210,
-            max_visible_rows=6,
             row_height_extra=1,
         )
         if hasattr(self, "event_group"):
@@ -3339,17 +3328,11 @@ class DataInterpretationPreviewDialog(
         tree: QTreeWidget,
         *,
         min_height: int,
-        max_height: int,
-        max_visible_rows: int = 5,
         row_height_extra: int = 0,
     ) -> None:
-        _ = max_height
         tree.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         row_count = max(1, tree.topLevelItemCount())
-        visible_rows = row_count
-        row_heights = [
-            tree.sizeHintForRow(index) for index in range(min(row_count, visible_rows))
-        ]
+        row_heights = [tree.sizeHintForRow(index) for index in range(row_count)]
         positive_row_heights = [height for height in row_heights if height > 0]
         row_height = (
             max(positive_row_heights) + row_height_extra
@@ -3359,7 +3342,7 @@ class DataInterpretationPreviewDialog(
         header = tree.header()
         header_height = header.height() if header is not None else 28
         frame_padding = tree.frameWidth() * 2
-        target_height = header_height + (visible_rows * row_height) + frame_padding + 4
+        target_height = header_height + (row_count * row_height) + frame_padding + 4
         bounded_height = max(target_height, min_height)
         tree.setMinimumHeight(bounded_height)
         tree.setMaximumHeight(bounded_height)

@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `bf1a14e6`, 45 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `26b8c054`, 46 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -125,7 +125,7 @@ delivery guard failed exactly at the terminal no-continuation assertion (1 !=0),
 detection. First probe had only a Windows quoting SyntaxError; corrected hex argv probe ran the test.
 No faulty source was saved. Main retains plan/inventory ownership; commit this test slice then continue.
 
-**Active 2Y — remove unreachable wizard-private UI helpers.** Full dialog/three-mixin source reads
+**Completed 2Y at26b8c054 — remove unreachable wizard-private UI helpers.** Full dialog/three-mixin source reads
 and whole production/test/script/doc/dynamic-call search identify eight unused preview methods
 (_summary_line, _inline_rule_control, _matched_label_pair_count, _unmatched_eeg_file_names,
 _is_auto_label_source_duplicate, _metadata_missing_hint, _label_source_summary_text, _field_text),
@@ -142,7 +142,34 @@ data/Command contract or owner changes. Deletion-only, anticipated under300 prod
 abstraction. Native baseline130 passed7.70s; after128 passed7.58s (exactly the two exclusive cases
 removed). Actual production -224 LOC, fourfiles, no owner delta. Independent actual-diff review
 approved; main removed the newly unused pytest import and normalized blank lines. Focused Ruff
-is being completed. Commit this slice independently, then continue module2.
+passed for allfivefiles. Independently reversible commit is complete; continue module2.
+
+**Completed 2Z, pending commit — honest private tree-sizing inputs.** Full source and whole caller graph confirm
+stretch_column/max_height/max_visible_rows are ignored by the two private sizing methods; remove
+only these unused keyword parameters and all local caller hints. Simplify visible_rows=row_count
+and min(row_count,visible_rows) to the same row_count. Preserve every actual computed width/height,
+minimum, scroll policy, interactive header and delayed Qt geometry refresh. One production file,
+no test or UI-visible behavior change, owner delta0 and deletion-only. Main authors; independent
+reviewer checks exact arithmetic equivalence. Reuse just-passed128-case wizard characterization;
+after editing run existing table-fit/shrink/whole-row/compact-step geometry cases and Ruff. No claim
+of native DPI acceptance; final platform gate remains. Native10passed1.44s (seven geometry andthree
+rescan/resume cases); Ruff/format passed. Independent reviewer verified every arithmetic/height/
+header/scroll/callback path is identical. Production +4/-21/net-17, owner delta0. Commit then continue.
+
+**Active 2AA — merge duplicate rescan widget tests.** Full direct-test review found two identical
+folder-add/Next/accepted/source/resume cases, with only a no-scan-carrier-mutation assertion unique
+to test_load_labels_next_returns_sources_for_outer_review_rerun. Observer owns that test file only:
+add this assertion to test_load_labels_next_requests_rescan_for_new_label_source, main runs both
+against unchanged behavior, then remove the duplicate entire test. Preserve all assertions and
+real Qt actions; no production change. Original both already passed in128-case2Y suite. Focused
+two-case-before/one-after plus resume neighbor and Ruff; main non-author review then separatecommit.
+
+**Next confirmed montage cleanup candidate.** Full source102/direct97 and whole symbol/module/
+script/doc graph show backend/utils/montage_mapping.py is now test-only after2T retired its last
+smart-match consumer. Seven exclusive tests protect no reachable product. Actual safe montage
+mapping, reviewed ApplyMontageCommand and UI normalize_montage_positions remain live. The latter
+28-line mapping/iterable-to-ordered3D-tuples boundary lacks positive/error direct tests; declare
+baseline and exact cleanup scope before retiring the dead chain. Do not change matching semantics.
 
 - Main fully read load_labels_step462 and wizard preview4850; independent reviewer fully read
   label_placement_step2179 and coupled caller/test ranges. Independent workers fully read all7,359
@@ -306,6 +333,7 @@ this table replaces their duplicated active-plan narrative, not any unresolved m
 | 2V / `1e28068c` | Discarded full label payload hash/state; +4/-119/net -115 | Real1MiB admission stream1,048,576 ->0 bytes; actual524,288 labels unchanged;64 safety cases before/65 after; identity probes/early descriptor/final SHA intact |
 | 2W / `bb5a27e0` | Unused wizard legacy review fallbacks/target/clear_skip; production -172 | Native28 ->27; full target/empty metadata assertions preserved, main focused1; main nonauthor review; no separately strengthened pre-delete run |
 | 2X / `bf1a14e6` | Wait for real cancelled-review terminal delivery; tests only | Same native5 before/after, Ruff; in-memory late delivery detected1!=0; finally releases on assertion failure |
+| 2Y / `26b8c054` | Remove16 unused wizard-private helpers acrossfourfiles; production -224 | Native130 ->128, exactlytwoexclusivecases removed; real sidecar field retained; independentreview and Ruff |
 
 ### Evidence qualifications that remain relevant
 
