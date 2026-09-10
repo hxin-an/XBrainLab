@@ -11,9 +11,6 @@ import pytest
 
 from XBrainLab.backend.application.saliency_coverage import (
     SaliencyCoverageProjector,
-    saliency_coverage_for_eval_record,
-    saliency_label_items_from_epoch,
-    saliency_method_coverage,
 )
 from XBrainLab.backend.training.record.eval import EvalRecord
 from XBrainLab.backend.training.saliency_provenance import (
@@ -146,7 +143,7 @@ def test_projector_matches_partial_explicit_event_code_and_class_name() -> None:
     assert [item.store_key for item in coverage.classes] == [769, "Right hand"]
 
 
-def test_epoch_label_projection_and_coverage_helpers_preserve_behavior() -> None:
+def test_epoch_label_projection_and_coverage_preserve_behavior() -> None:
     epoch = SimpleNamespace(event_id={"Left": 7, "Right": 8})
     eval_record = SimpleNamespace(
         saliency_context=SimpleNamespace(
@@ -161,12 +158,13 @@ def test_epoch_label_projection_and_coverage_helpers_preserve_behavior() -> None
         },
     )
 
-    label_items = saliency_label_items_from_epoch(epoch)
-    methods = saliency_coverage_for_eval_record(
+    projector = SaliencyCoverageProjector()
+    label_items = projector.label_items_from_epoch(epoch)
+    methods = projector.project_eval_record(
         eval_record,
         label_items=label_items,
     )
-    gradient = saliency_method_coverage(
+    gradient = projector.project_method(
         eval_record,
         "Gradient",
         label_items=label_items,

@@ -496,9 +496,6 @@ QUERY_STATE_SERVICE_OWNER = Path("XBrainLab/backend/application/query_state_serv
 SALIENCY_COVERAGE_PUBLIC_NAMES = frozenset(
     {
         "SaliencyCoverageProjector",
-        "saliency_coverage_for_eval_record",
-        "saliency_label_items_from_epoch",
-        "saliency_method_coverage",
     }
 )
 SALIENCY_COVERAGE_COMPATIBILITY_NAMES = frozenset(
@@ -3386,7 +3383,10 @@ def check_application_state_module_boundaries(root_dir: Path) -> list[str]:
                         f"must point to {QUERY_STATE_SERVICE_OWNER}."
                     )
 
-                ui_policy_imports = imported_names & SALIENCY_COVERAGE_PUBLIC_NAMES
+                ui_policy_imports = imported_names & (
+                    SALIENCY_COVERAGE_PUBLIC_NAMES
+                    | SALIENCY_COVERAGE_COMPATIBILITY_NAMES
+                )
                 imports_saliency_owner = _application_module_matches(
                     node.module,
                     "saliency_coverage",
