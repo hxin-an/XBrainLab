@@ -740,7 +740,6 @@ class TestTrainingSetting:
         )
         qtbot.addWidget(dialog)
 
-        assert dialog.recommendation_note is None
         assert dialog.findChild(QLabel, "TrainingRecommendationNote") is None
 
         dialog.epoch_entry.textEdited.emit("50")

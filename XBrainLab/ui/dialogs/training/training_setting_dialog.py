@@ -162,7 +162,6 @@ class TrainingSettingDialog(BaseDialog):
         self.class_weight_combo: QComboBox | None = None
         self.class_weight_entries: dict[str, QLineEdit] = {}
         self._class_weight_row_widgets: list[QWidget] = []
-        self.recommendation_note: QLabel | None = None
         self.resource_preview_note: QLabel | None = None
         self.content_scroll: QScrollArea | None = None
         self.content_widget: QWidget | None = None
@@ -442,7 +441,6 @@ class TrainingSettingDialog(BaseDialog):
             if field in self._recommendation_invalid_fields:
                 continue
             self._set_recommendation_field(field, value)
-        self._update_recommendation_note()
 
     def get_recommendation(self) -> TrainingRecommendation | None:
         """Return the current backend-owned recommendation/provenance contract."""
@@ -525,18 +523,12 @@ class TrainingSettingDialog(BaseDialog):
                 self.resource_preview_note.hide()
         if value is None:
             self._recommendation_invalid_fields.add(field)
-            self._update_recommendation_note()
             return
         self._recommendation_invalid_fields.discard(field)
         recommendation = self._recommendation
         if recommendation is None:
-            self._update_recommendation_note()
             return
         self._recommendation = recommendation.with_user_values({field: value})
-        self._update_recommendation_note()
-
-    def _update_recommendation_note(self) -> None:
-        """Keep provenance internal; first-layer UI has no persistent note."""
 
     def _recommendation_field_value(
         self,
@@ -797,9 +789,6 @@ class TrainingSettingDialog(BaseDialog):
         evaluation_combo = QComboBox()
         self.evaluation_combo = evaluation_combo
         evaluation_combo.setObjectName("TrainingEvaluationInput")
-        self.evaluation_list = [
-            self._EVALUATION_DISPLAY_LABELS[option] for option in TrainingEvaluation
-        ]
         for option in TrainingEvaluation:
             evaluation_combo.addItem(
                 self._EVALUATION_DISPLAY_LABELS[option],
@@ -1173,7 +1162,8 @@ class TrainingSettingDialog(BaseDialog):
                 raise ValueError(msg) from e
 
             if epoch <= 0 or bs <= 0:
-                self._raise_value_error(
+                # Reuse this dialog's validation handler, without a one-call helper.
+                raise ValueError(  # noqa: TRY301
                     "Training epochs and Batch Size must be positive."
                 )
 
@@ -1219,18 +1209,6 @@ class TrainingSettingDialog(BaseDialog):
                 self,
                 UnexpectedErrorContext.TRAINING_SETTINGS,
             )
-
-    def _raise_value_error(self, msg: str):
-        """Raise a ValueError with the given message.
-
-        Args:
-            msg: Error message string.
-
-        Raises:
-            ValueError: Always raised with the provided message.
-
-        """
-        raise ValueError(msg)
 
     def get_result(self):
         """Return the configured training option.
