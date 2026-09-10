@@ -309,12 +309,6 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
         # user can select target events, timing, intervals, or event codes.
         return ""
 
-    def _build_label_rule_card(self, layout: QVBoxLayout) -> None:
-        """Compatibility wrapper for older tests and callers."""
-        self._build_label_values_card(layout)
-        self._build_placement_card(layout)
-        self._build_match_check_card(layout)
-
     def _placement_method_choices(self) -> list[tuple[str, str]]:
         return [
             ("EEG event order", "eeg_event"),
@@ -702,12 +696,6 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
         layout.addWidget(title_label)
         layout.addWidget(detail_label)
         return block
-
-    def _placement_note(self, text: str) -> QLabel:
-        label = QLabel(text)
-        label.setObjectName("DataImportSourceDetail")
-        label.setWordWrap(True)
-        return label
 
     def _target_event_header_row(self) -> QFrame:
         header = QFrame()
@@ -1732,17 +1720,6 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
             if page is not None:
                 self.placement_detail_stack.setFixedHeight(page.sizeHint().height())
         self._sync_target_event_buttons()
-
-    def _select_target_event(self, target: str) -> None:
-        self._target_event_selection_touched = True
-        self._target_event_code_selection = [str(target).strip()] if target else []
-        if self._target_event_code_selection:
-            self._set_combo_current_data(
-                self.rule_alignment_combo,
-                self._target_event_code_selection[0],
-            )
-        self._sync_target_event_buttons()
-        self._apply_label_rule_to_preview()
 
     def _handle_target_event_selection_change(self) -> None:
         self._target_event_selection_touched = True

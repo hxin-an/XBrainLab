@@ -311,24 +311,6 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
             if value:
                 self._internal_class_name_edits[code] = value
 
-    def _internal_event_check_text(
-        self,
-        candidate_rows: list[dict[str, str]],
-        not_used_rows: list[dict[str, str]],
-    ) -> str:
-        label_count = len(candidate_rows)
-        other_count = len(not_used_rows)
-        if label_count:
-            label_text = f"{label_count} EEG event(s) will be used as training labels."
-        else:
-            label_text = "No EEG events are currently selected as training labels."
-        other_text = (
-            f"{other_count} other EEG event(s) are kept out of training labels."
-            if other_count
-            else "No other EEG events are listed for this preview."
-        )
-        return f"{label_text} {other_text}"
-
     def _internal_event_selection_preview_text(
         self,
         candidate_rows: list[dict[str, str]],
@@ -435,17 +417,6 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
             return "No events.tsv"
         file_word = "file" if len(events) == 1 else "files"
         return f"{len(events)} events.tsv {file_word}"
-
-    def _bids_events_json_text(self) -> str:
-        carriers = self._bids_event_carriers()
-        sidecar_states = [
-            carrier.get("events_json_sidecar_present") for carrier in carriers
-        ]
-        if any(state is True for state in sidecar_states):
-            return "Found"
-        if sidecar_states and all(state is False for state in sidecar_states):
-            return "Missing"
-        return "Not detected"
 
     def _preview_matched_eeg_pair_count(self) -> int:
         pairing = resolve_label_file_pairing(

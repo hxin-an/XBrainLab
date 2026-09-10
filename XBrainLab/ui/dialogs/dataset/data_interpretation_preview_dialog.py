@@ -1093,23 +1093,6 @@ class DataInterpretationPreviewDialog(
             layout.addWidget(detail_label)
         return card
 
-    @staticmethod
-    def _summary_line(label: str, value: str) -> QFrame:
-        row = QFrame()
-        row.setObjectName("DataImportSummaryLine")
-        layout = QHBoxLayout(row)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
-        label_widget = QLabel(label)
-        label_widget.setObjectName("DataImportSummaryLabel")
-        value_widget = QLabel(value)
-        value_widget.setObjectName("DataImportSummaryValue")
-        value_widget.setWordWrap(True)
-        layout.addWidget(label_widget)
-        layout.addStretch()
-        layout.addWidget(value_widget)
-        return row
-
     def _build_label_source_mode_card(self, layout: QVBoxLayout) -> None:
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
@@ -1515,24 +1498,6 @@ class DataInterpretationPreviewDialog(
             or item.text(0)
         )
 
-    def _inline_rule_control(self, label: str, selector: QComboBox) -> QFrame:
-        frame = QFrame()
-        frame.setObjectName("DataImportInlineRuleControl")
-        frame.setMinimumWidth(370)
-        layout = QHBoxLayout(frame)
-        layout.setContentsMargins(8, 5, 8, 5)
-        layout.setSpacing(7)
-        title = QLabel(label)
-        title.setObjectName("DataImportRuleLabel")
-        layout.addWidget(title)
-        selector.setFixedWidth(250)
-        selector.setSizePolicy(
-            QSizePolicy.Policy.Fixed,
-            QSizePolicy.Policy.Fixed,
-        )
-        layout.addWidget(selector)
-        return frame
-
     def _refresh_pairing_status(self) -> None:
         for eeg_file, selector in getattr(self, "_eeg_label_widgets", {}).items():
             expected_key = self._label_key_for_eeg(eeg_file)
@@ -1608,33 +1573,6 @@ class DataInterpretationPreviewDialog(
             for name in self._selected_eeg_file_names()
             if self._label_key_for_eeg(name)
         )
-
-    def _matched_label_pair_count(self) -> int:
-        return sum(
-            1
-            for item, _original in self._label_carrier_items
-            if self._label_carrier_choice_text(
-                "target_file",
-                self._label_carrier_item_text(item, 1),
-            )
-        )
-
-    def _unmatched_eeg_file_names(self) -> list[str]:
-        eeg_files = self._selected_eeg_file_names()
-        matched = {
-            Path(
-                self._label_carrier_choice_text(
-                    "target_file",
-                    self._label_carrier_item_text(item, 1),
-                )
-            ).name
-            for item, _original in self._label_carrier_items
-            if self._label_carrier_choice_text(
-                "target_file",
-                self._label_carrier_item_text(item, 1),
-            )
-        }
-        return [name for name in eeg_files if name not in matched]
 
     def _unassigned_label_file_names(self) -> list[str]:
         result: list[str] = []
@@ -2184,15 +2122,6 @@ class DataInterpretationPreviewDialog(
             else:
                 folder_keys.add(key)
         return file_keys, folder_keys
-
-    def _is_auto_label_source_duplicate(self, source: str) -> bool:
-        key = self._normalized_label_source_key(source)
-        if not key:
-            return False
-        auto_file_keys, auto_folder_keys = self._auto_label_source_keys()
-        if self._looks_like_file(source):
-            return key in auto_file_keys
-        return key in auto_folder_keys
 
     def _is_label_carrier_excluded(self, carrier_path: str) -> bool:
         key = self._normalized_label_source_key(carrier_path)
@@ -3574,27 +3503,6 @@ class DataInterpretationPreviewDialog(
         parts.append(f"Missing {missing_text}")
         return " · ".join(parts)
 
-    @staticmethod
-    def _metadata_missing_hint(missing_fields: set[str]) -> str:
-        if not missing_fields:
-            return ""
-        ordered = [
-            field.capitalize()
-            for field in ("subject", "session", "task", "run")
-            if field in missing_fields
-        ]
-        field_text = ", ".join(ordered)
-        verb = "is" if len(ordered) == 1 else "are"
-        return f"{field_text} {verb} missing. Double-click a cell to edit it."
-
-    def _label_source_summary_text(self) -> str:
-        carriers = self.label_carrier_tree.topLevelItemCount()
-        if carriers <= 0:
-            return "Internal events or no labels"
-        if self._extra_label_sources:
-            return "Detected and loaded separately"
-        return "Detected near EEG"
-
     def _source_selection_text(self) -> str:
         selection = str(self.preview.get("source_selection") or "").strip()
         if selection:
@@ -3982,16 +3890,6 @@ class DataInterpretationPreviewDialog(
                     ],
                 ),
             )
-
-    @staticmethod
-    def _field_text(value: Any) -> str:
-        if not isinstance(value, dict):
-            return ""
-        resolved = value.get("value")
-        decision = value.get("decision")
-        if resolved in (None, ""):
-            return str(decision or "missing")
-        return f"{resolved} ({decision})" if decision else str(resolved)
 
     @staticmethod
     def _field_value(value: Any) -> str:

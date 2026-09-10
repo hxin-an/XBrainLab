@@ -644,20 +644,6 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             preview_text=self._event_code_list_text(names, limit=3),
         )
 
-    def _review_metadata_text(self) -> str:
-        complete_count, missing_fields = self._metadata_completion_counts()
-        missing_fields = self._metadata_required_missing_fields(missing_fields)
-        return metadata_review_summary_text(
-            row_count=self.file_tree.topLevelItemCount(),
-            complete_count=complete_count,
-            missing_fields=missing_fields,
-            is_bids_source=self._is_bids_source(),
-            fallback_summary=self._metadata_review_summary(
-                complete_count,
-                missing_fields,
-            ),
-        )
-
     def _review_label_source_text(self) -> str:
         return label_source_summary(
             source_mode=self._label_source_mode(),
@@ -1470,64 +1456,8 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             del self._remap_review_choice_snapshot
 
     @staticmethod
-    def _compact_review_rows(rows: list[ReviewRow]) -> list[ReviewRow]:
-        return compact_review_rows(rows)
-
-    @staticmethod
     def _merged_review_rows(rows: list[ReviewRow]) -> list[ReviewRow]:
         return merge_review_rows(rows)
-
-    def _recipe_trace_rows(self, values: Any) -> list[tuple[str, str, str, str]]:
-        if not isinstance(values, list):
-            return []
-        rows: list[tuple[str, str, str, str]] = []
-        trace_labels = {
-            "scan": "Source scan",
-            "candidate": "Interpretation candidate",
-            "preview": "Interpretation preview",
-            "validate": "Validation decision",
-            "validation": "Validation decision",
-            "apply": "Applied interpretation",
-            "metadata": "Metadata decision",
-            "metadata_override": "Metadata override",
-            "label": "Label decision",
-            "labels": "Label decision",
-            "label_carrier": "Label carrier decision",
-            "label_import": "Label import",
-            "class_map": "Class map decision",
-            "recipe": "Recipe",
-        }
-        choice_labels = {
-            "metadata_overrides": "Metadata choices",
-            "event_roles": "Event use choices",
-            "label_carriers": "Label carrier choices",
-            "class_map": "Class map choices",
-            "eeg_file_remap": "EEG file remap",
-            "label_carrier_remap": "Label carrier remap",
-            "label_sources": "Label source choices",
-            "skip_labels": "Label skip choice",
-        }
-        for value in values:
-            raw = str(value).strip()
-            if not raw:
-                continue
-            trace_key, _, trace_detail = raw.partition(":")
-            trace_key = trace_key.strip().lower()
-            trace_detail = trace_detail.strip().lower()
-            item = trace_labels.get(trace_key)
-            if trace_key == "choices":
-                item = choice_labels.get(trace_detail, "Saved choices")
-            if item is None:
-                item = self._label_choice_display(trace_key)
-            rows.append(
-                (
-                    "Review and Import",
-                    item,
-                    f"{item} is saved in the import recipe.",
-                    "No action needed.",
-                )
-            )
-        return rows
 
     def _confirmation_text(self) -> str:
         if self.decision == "blocked":

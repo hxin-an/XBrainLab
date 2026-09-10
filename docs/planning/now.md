@@ -103,13 +103,13 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `bb5a27e0`, 44 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `bf1a14e6`, 45 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
 **Current work — finish module 2 coverage and coherent remaining deletions.**
 
-**Completed 2X, pending commit — cancellation test waits for actual terminal delivery.** Independent full async-flow
+**Completed 2X at bf1a14e6 — cancellation test waits for actual terminal delivery.** Independent full async-flow
 test audit found test_cancelled_review_loading_does_not_reopen_wizard uses an always-true wait
 predicate then100ms sleep; its no-reopen assertion can pass before a late worker result is delivered.
 Main read the test and AsyncCommandCleanup/Registry: registry release follows serialized outcome
@@ -139,12 +139,17 @@ checks actual diff/callers. Baseline the complete direct wizard suite once becau
 span every wizard step, then rerun identical retained cases plus Ruff. Remove exclusive imports/helpers
 only after following their graph. No widget parenting, visible state/copy/layout, styling, sizing,
 data/Command contract or owner changes. Deletion-only, anticipated under300 production LOC; no new
-abstraction. Commit after non-author review; rollback this slice independently, then continue module2.
+abstraction. Native baseline130 passed7.70s; after128 passed7.58s (exactly the two exclusive cases
+removed). Actual production -224 LOC, fourfiles, no owner delta. Independent actual-diff review
+approved; main removed the newly unused pytest import and normalized blank lines. Focused Ruff
+is being completed. Commit this slice independently, then continue module2.
 
 - Main fully read load_labels_step462 and wizard preview4850; independent reviewer fully read
-  label_placement_step2179 and coupled caller/test ranges. Direct preview tests remain partly read;
+  label_placement_step2179 and coupled caller/test ranges. Independent workers fully read all7,359
+  original direct preview test lines in two contiguous halves; real Qt controls/signals/serialized
+  choices are useful UI evidence, not actual backend workflow evidence.
   ReviewImportStep1556 and InternalEventStep879 full independent audits are complete. No whole-family
-  closure yet; direct7,359-line preview test coverage is still partial, not inferred from test execution.
+  closure yet; confirmed remaining candidates and UI decision items still need disposition.
 - Independent coordinator audit fully read recipe reload431/payload126/ActionCoordinator2400 and
   all4660 lines of direct async-flow tests across explicit non-overlapping ranges. Retain
   generation-bound apply, modal cleanup, live Cancel, exact
@@ -168,6 +173,13 @@ then rejects the nonnumeric onset without mutation. The matching-count interval 
 ready/repeated/conflict cases exist, but partial-onset preview evidence is missing. A visible-state
 correction needs user approval, requested asynchronously; no reply yet. Do not silently change
 readiness/UI behavior. Continue all independent authorized cleanup while awaiting that decision.
+
+**Pending visible-UI decision — floating remap confirmation.** Main traced parentless confirmation_label
+construction and its setVisible call. A read-only in-memory pytest profile of the actual recipe remap
+widget test passed and observed parentWidget=None, isWindow=True, isVisible=True with replacement-file
+confirmation text. This confirms an extra top-level Qt label, not Windows window-manager acceptance.
+User approval requested asynchronously to contain the text in the wizard; no source/UI change yet.
+Keep this separate from dead-helper removal and continue independent authorized cleanup.
 
 **Recently closed source/test audits — retain reasons.**
 
@@ -293,6 +305,7 @@ this table replaces their duplicated active-plan narrative, not any unresolved m
 | 2U / `20c139b3` | Dead label admission/receipt/specs chain; production -258 | Native289 original ->290 migrated ->289 after one obsolete case; seven actual receipt/SHA neighbors; all safety gates retained |
 | 2V / `1e28068c` | Discarded full label payload hash/state; +4/-119/net -115 | Real1MiB admission stream1,048,576 ->0 bytes; actual524,288 labels unchanged;64 safety cases before/65 after; identity probes/early descriptor/final SHA intact |
 | 2W / `bb5a27e0` | Unused wizard legacy review fallbacks/target/clear_skip; production -172 | Native28 ->27; full target/empty metadata assertions preserved, main focused1; main nonauthor review; no separately strengthened pre-delete run |
+| 2X / `bf1a14e6` | Wait for real cancelled-review terminal delivery; tests only | Same native5 before/after, Ruff; in-memory late delivery detected1!=0; finally releases on assertion failure |
 
 ### Evidence qualifications that remain relevant
 

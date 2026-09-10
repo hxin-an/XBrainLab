@@ -4,7 +4,6 @@ import inspect
 import re
 from pathlib import Path
 
-import pytest
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -4537,48 +4536,6 @@ def test_bids_preset_uses_compact_actionable_first_layer(qtbot):
         and "onset + duration" in row
         for row in report_rows
     )
-
-
-@pytest.mark.parametrize(
-    ("sidecar_present", "warnings", "expected"),
-    [
-        (True, ["events.json sidecar is missing."], "Found"),
-        (False, [], "Missing"),
-    ],
-)
-def test_bids_events_json_status_uses_structured_preview_field(
-    qtbot,
-    sidecar_present,
-    warnings,
-    expected,
-):
-    events_path = "/tmp/source/sub-01_task-mi_events.tsv"
-    dialog = DataInterpretationPreviewDialog(
-        parent=None,
-        scan_result={
-            "source_path": "/tmp/source",
-            "source_kind": "bids",
-            "eeg_files": ["/tmp/source/sub-01_task-mi_eeg.vhdr"],
-            "label_carriers": [events_path],
-            "bids": {"is_bids": True, "events_files": [events_path]},
-        },
-        preview={
-            "label_carrier_preview": [
-                {
-                    "path": events_path,
-                    "name": "sub-01_task-mi_events.tsv",
-                    "format": "BIDS events",
-                    "selected_label_field": "trial_type",
-                    "events_json_sidecar_present": sidecar_present,
-                    "warnings": warnings,
-                }
-            ]
-        },
-        validation_decision=_validation_decision("safe"),
-    )
-    qtbot.addWidget(dialog)
-
-    assert dialog._bids_events_json_text() == expected
 
 
 def test_bids_review_blocks_when_one_selected_run_has_no_events_tsv(qtbot):
