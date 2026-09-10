@@ -103,11 +103,11 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `5afdb10d`, 106 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `42cc98a4`, 108 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
-**Current work — module5 render/resource/lifecycle and module2–4 closure gaps; visible/API decisions remain open.**
+**Current work — module6 Assistant/runtime/RAG; module2–5 closure gaps and visible/API decisions remain open.**
 
 **Completed bounded8G — preserve caller-owned walkthrough output directory.** Main fully read visualization
 capture2857; main() recursively deletes the arbitrary --training-output-dir before capture. Its
@@ -301,7 +301,7 @@ path combinations match exactly, including retained worktree-root legacy path. M
 18e79f26e5c8e255e60ea48e0aca40d98bd3cbf34b8123adef92c18f95911857 before/after. Independent actualdiff
 approved; production+6/-96/net-90LOC, tests imports only net0, no removed cases. Ruffcheck/formatpassed.
 
-**Next bounded6I — replace synthetic walkthrough metrics with actual tracker lifecycle.** Full metrics184/
+**Completed bounded6I — replace synthetic walkthrough metrics with actual tracker lifecycle.** Full metrics184/
 direct104 and capture510/direct124 audit retains completed turn history: the walkthrough actually
 collects it before closing. It resets with conversation, but has no numeric cap within an indefinitely
 long session; no measured issue justifies truncating this evidence. Replace the nested SimpleNamespace
@@ -312,6 +312,34 @@ metrics/capture suites, same cases after, in-memory omitted-finish fault, Ruff a
 No new generic test helper/platform and no test count inflation; stop after this real evidence replacement.
 Existing direct suites17passed6.44s. Worker may edit only the collection test after6H hooks finish;
 main owns after/fault/lint and actualdiff review. No product metrics history deletion or cap change.
+Retained17passed5.57s; in-memory omitted finish_turn fails the exact completed-tool list assertion
+in5.51s. Main nonauthor actualdiff review approved; only the existing test was strengthened, no case
+added/deleted and no product behavior changed. Ruff import sorting corrected; format check before commit.
+
+**Next bounded6J — remove dormant RAG helper/publication alternatives.** Main full retriever527/
+config221/example132/indexer396/direct retriever443 and independent full indexer479 tests/caller audit
+find dead _collection_exists (existence belongs to indexer), unused tool_name_from_call fallback, ignored
+close(wait) option, and _auto_initialize/_build_bm25_index publish=True/self fallback paths whose sole
+caller always supplies newly built resources with publish=False. Delete these unused private/Python
+conveniences; initialization still publishes once under the existing closed fence. Keep vectorstore
+verification, lease/retired-client closure, corpus/point/payload identity, strict example/allowed tools,
+semantic admission, local-only pinned embedding and all model/prompt/RAG policy untouched. Remove only
+the unused _collection_exists test monkeypatch, no test case. No new owner, roughly-65productionLOC
+across2files. Full RAG focused baseline/retained after plus dependency/privacy/untrusted-context tests,
+Ruff and independent actualdiff review. No download/cache deletion or claimed latency improvement.
+If any edit is rejected, do not bypass; record exact unchanged scope and continue other work.
+
+**Next bounded6K — retire sole-subclass backend shell and ignored engine argument.** Independent full
+engine230/generation106/base39/local728/process617 and10direct/context suites2986 retain actual process
+cancel/escalation, immutable generation profile, local-only loading/resource checks and prompt capture.
+BaseBackend is used only as LocalBackend's parent and exclusive abstract-class test, not as a factory,
+annotation, script/export/config/dynamic entry. Delete that abstract shell/import/inheritance and
+exclusive52-line test, preserving all concrete backend and process tests. Inline engine's ignored-mode
+_get_current_model_id into its two real callers as config.model_name; remove only exclusive helper case.
+No runtime selection/template/model policy change, new owner or class. Approximately-50productionLOC
+in3files; baseline retained engine/backend/context/resource/process suites, same after, Ruff and
+independent actualdiff review. Keep lifecycle ownership PID/wait witnesses used to prove actual process
+termination. Correct obsolete load doc wording only to reflect existing local_files_only behavior.
 
 Completed2AD–2AG and8C–8E are indexed below and fully traceable in Git. For source-bound Windows
 capture tests only, use process-local GIT_DIR/GIT_WORK_TREE pointing to the actual Windows paths:
