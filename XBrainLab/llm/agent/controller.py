@@ -74,7 +74,6 @@ from .response_presentation import (
     AssistantResponsePresentation,
     interaction_outcome_kind,
     interaction_outcome_message,
-    panel_target_for_command,
     user_facing_generation_error,
 )
 from .runtime_state import AssistantRuntimePhase, AssistantRuntimeSnapshot
@@ -378,7 +377,6 @@ class LLMController(QObject):
         self._strict_envelope_recovery_policy = DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY
 
         # Tool Failure Loop Protection
-        self._max_tool_failures = 3
         self._max_loop_breaks = 3
 
         # The model proposes commands; this deterministic policy boundary owns
@@ -1619,13 +1617,6 @@ class LLMController(QObject):
             response_kind,
         )
         self._finalize_turn_after_tool("blocked" if blocked else "failed")
-
-    @staticmethod
-    def _panel_target_for_command(
-        command_name: str,
-    ) -> AssistantPanelTarget | None:
-        """Map a blocked backend/tool action to one existing product surface."""
-        return panel_target_for_command(command_name)
 
     @staticmethod
     def _tool_result_response_kind(

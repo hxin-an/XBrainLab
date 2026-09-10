@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `e3c57cd9`, 101 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `4f352cab`, 102 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -134,7 +134,7 @@ RAG and stale receipt makes none; it does not prove confirmation-card approval t
 No controller split merely for LOC: lifecycle/presentation delegation already exists, with no proven
 competing owner. Remaining helpers/direct suites/model/RAG/UI/scripts still require full audit.
 
-**Bounded6A — retire orphan Assistant command-to-panel route chain.** Independent full presentation285/
+**Completed bounded6A — retire orphan Assistant command-to-panel route chain.** Independent full presentation285/
 direct209 and controller audit show unused private wrapper is the sole production consumer of the
 presentation helper, which solely owns command maps/canonicalizer/action-contract import. Remove
 that whole test-only chain and controller's write-only _max_tool_failures, not a replacement shell.
@@ -146,6 +146,42 @@ passing response/controller/UI-handoff/actual navigation tests before deletion; 
 exclusive routing test functions (three collected cases) after baseline, preserving negative handoff
 guard. Same retained tests, Ruff and main nonauthor actualdiff review before commit. User-authorized
 unused convenience retirement applies; stop at that bounded verified deletion then continue module6.
+Original full response/controller/UIhandoff +real navigation/product-flow342passed15.18s, three MNE
+deprecation warnings. Worker owns exactly controller/presentation/direct presentation test; main
+owns after verification and plan. No concurrent source writes during hooks.
+Retained339passed15.51s with the same three MNE warnings; exactly three exclusive route cases removed.
+Production-80 across2files, tests-18; main nonauthor actualdiff approved, Ruffcheck/formatpassed.
+
+**Completed bounded6C — retire orphan Assistant backend class registry.** Main fully read backend_resolver101,
+actual real adapters249/package registration288 and mixed tools/debug tests423. BackendClassRegistry
+is imported only by three exclusive direct tests; real tools now use ApplicationService/GUI owners.
+No dynamic registration/config/script/doc/export caller. Delete that source module and only its three
+exclusive tests, updating the mixed suite's introductory description. Preserve actual backend model
+catalog, optimizer map, preprocess owner and exact18 real/mock registration. Production-101, no new
+or replacement owner; no public tool/schema/model/UI behavior change. Baseline mixed suite +real-tools
+ownership/registry tests, same retained after, Ruff and independent source/diff review. No artificial
+compatibility shell or per-model tests removed. Other mixed-suite visualizer/seed/logger overlap is a
+separate module9 quality question, not part of this deletion.
+Original74passed6.36s, retained71passed6.23s; only three exclusive resolver cases removed. Independent
+actualdiff/registration/owner review approved and changed-file Ruffpassed. Production-101, testsnet-36.
+
+**Bounded6B — real confirmation approval/replay/stale mutation evidence.** Full product-flow528,
+resource-receipt302 and strict-recovery273 do not connect actual confirmation to a real mutation;
+independent long-session1151 and AgentManager product-chat3503–3769 show no-action model responses
+or fake controller confirmation. Reuse the existing real-controller/AgentManager long-session test
+host, adding only the necessary deterministic worker proposal and confirmation transport seam. Send
+a real strict reset_preprocessing proposal from current preprocessed publication, receive the actual
+pending request/card, click its real approve/cancel control, and observe actual ApplicationService
+derived-state reset/raw retention. Replayed exact approval must not mutate twice; after a legitimate
+external preprocess changes generation, old approval must not reset new data. Do not fabricate pending
+decisions/receipts or mock execute, confirmation/capability policy, application state or filesystem.
+Inference/RAG and existing runtime transport host remain explicit test seams; this is not real-model,
+native desktop/production dispatcher acceptance. Test-only, one existing integration file, no new
+production owner/UI/contract. Establish its existing baseline, add focused cases, same retained checks,
+bounded in-memory omitted/duplicate reset fault where practical, Ruff and main nonauthor diff review.
+Keep long-session no-action/heartbeat limits unchanged; do not loosen them to make new evidence pass.
+Existing full host/soak suite21passed46.35s before edits. Worker waits for6A/6C commit hooks before
+writing this one test file; main owns focused after/fault/lint and review.
 
 Completed2AD–2AG and8C–8E are indexed below and fully traceable in Git. For source-bound Windows
 capture tests only, use process-local GIT_DIR/GIT_WORK_TREE pointing to the actual Windows paths:
