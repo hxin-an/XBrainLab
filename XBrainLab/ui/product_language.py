@@ -7,14 +7,11 @@ from typing import Any
 
 from XBrainLab.backend.application.commands import CommandName
 from XBrainLab.backend.application.pipeline_stage import (
-    WORKFLOW_COMMAND_LABELS,
     pipeline_stage_contract,
     pipeline_stage_status_label,
     workflow_command_label,
 )
 from XBrainLab.product_language import tool_action_label as shared_tool_action_label
-
-COMMAND_LABELS = WORKFLOW_COMMAND_LABELS
 
 DECISION_FIELD_LABELS: dict[str, str] = {
     "epoch_window": "EEG epoch window",
@@ -42,11 +39,6 @@ _GENERATED_SUBJECT_FOLD_NAME = re.compile(r"^Subject-(?P<subject>.+)_(?P<fold>\d
 def command_label(command_name: str | CommandName) -> str:
     """Return a user-facing label for an application command."""
     return workflow_command_label(command_name)
-
-
-def command_labels(command_names: list[str] | tuple[str, ...]) -> list[str]:
-    """Return user-facing labels for application command names."""
-    return [command_label(name) for name in command_names]
 
 
 def tool_action_label(tool_name: str) -> str:

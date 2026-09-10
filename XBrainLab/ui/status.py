@@ -114,8 +114,6 @@ def publish_owned_operation_progress(
             progress=_display_progress(
                 kind=normalized_kind,
                 progress=progress,
-                completed=completed,
-                total=total,
             ),
             cancel_requested=cancel_requested,
         )
@@ -254,8 +252,6 @@ def _publish_deferred_owned_message(
             progress=_display_progress(
                 kind=current_kind,
                 progress=current_progress,
-                completed=None,
-                total=None,
             ),
             cancel_requested=current_cancel_requested,
         )
@@ -273,8 +269,6 @@ def _display_progress(
     *,
     kind: str,
     progress: str,
-    completed: int | None,
-    total: int | None,
 ) -> str:
     """Only expose aggregate progress when its denominator is workflow-wide."""
     if kind not in {"import_review", "import_apply"}:
