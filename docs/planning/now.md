@@ -244,6 +244,34 @@ Native direct126 passed8.10s before /8.00s after; selected ApplicationService30 
 and9.49s after. Ruff/format9 files and independent exact-diff review passed.
 Production -8 across3 files, test factories/helper -20; no owner change. StateSnapshot filename stays.
 
+**Active 2T — unused montage fuzzy convenience.** User explicitly authorized behavior-preserving
+UI internals. Independent full source/direct tests (montage946/1238, channel183/109) and dynamic
+sidebar refresh/result caller audit found `PickMontageDialog.smart_match` only in three exclusive tests.
+Actual prefill uses `_safe_mapping_for_montage`, which maps unique normalized identities without fuzzy
+inference. Remove only smart_match and its three exclusive tests; replace stale coverage-line-count
+test module docstring with its actual behavior responsibility. Keep all existing current safe mapping,
+BIDS pending/ready refresh, duplicate/incomplete validation, persistence, geometry and large-table
+interaction tests. No layout/text/interaction/state change; no new owner or backend rule.
+Main native original montage/channel suites first, then worker owns only montage source/direct tests;
+after identical remaining cases, Ruff and independent actual-diff review. Native unit Qt evidence is
+not final DPI/manual acceptance. Weak/duplicate unrelated UI tests stay a separate next slice.
+Original Windows baseline currently2 failed/44 passed: pending BIDS summary and shown refresh tests
+require bottom gap14..16px but actual height150/action bottom131 gives19px. No UI source edit has
+occurred. Pause2T deletion while reviewing actual150px minimum/layout and whether fixed gap assertions
+are invalid on native metrics; do not weaken assertions or silently change visible UI. Continue other
+authorized audits while this focused baseline is diagnosed.
+Read-only native failure metrics confirm natural dialog/layout hint143, summary max/hint115, explicit
+minimum150 and outer margins14/14. The7px floor surplus is distributed by Qt; measured bottom gap19
+is legitimate, not a visual regression. Repair only the two test upper bounds to include the derived
+`max(0, minimumHeight - sizeHint.height)` surplus, retaining14px lower margin, existing2px rounding
+tolerance, visibility/overlap checks and long-content exact bound (zero surplus). Existing shown
+short->long->short refresh case provides all states; no new generic test platform or product edit.
+Run full original46 cases with this corrected characterization before deleting smart_match; independent
+review must check it still rejects excessive footer space and does not mask the geometry regression.
+Corrected characterization46 passed10.86s; strengthened with explicit minimumHeight==150 guards,
+46 passed10.73s. Independent review approved derived-surplus bound; native offscreen is not screenshot
+or Windows window-manager acceptance. Commit this test baseline separately before the dead UI method.
+
 ### Responsibility closure and retained boundaries
 
 - Module 1: independent reviewer approved shared-spine responsibility closure at `1247cf7c`.

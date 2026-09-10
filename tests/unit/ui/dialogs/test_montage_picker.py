@@ -463,7 +463,11 @@ class TestPickMontageInit:
             + 1
         )
         assert bids_dialog.height() >= 150
-        assert 14 <= bids_dialog.height() - change_bottom <= 16
+        assert bids_dialog.minimumHeight() == 150
+        floor_surplus = max(
+            0, bids_dialog.minimumHeight() - bids_dialog.sizeHint().height()
+        )
+        assert 14 <= bids_dialog.height() - change_bottom <= 16 + floor_surplus
         assert bids_dialog.btn_close.isVisible() is True
         assert bids_dialog.btn_change_layout.isVisible() is True
 
@@ -587,6 +591,7 @@ class TestPickMontageInit:
         assert facts is not None
 
         def assert_shown_summary_geometry(minimum_height: int | None = None) -> None:
+            assert bids_dialog.minimumHeight() == 150
             if minimum_height is not None:
                 assert bids_dialog.height() >= minimum_height
             context_top = context.mapTo(bids_dialog, context.rect().topLeft()).y()
@@ -606,7 +611,10 @@ class TestPickMontageInit:
             assert facts_bottom <= action_top - 16
             assert bids_dialog.btn_close.isVisible() is True
             assert bids_dialog.btn_change_layout.isVisible() is True
-            assert 14 <= bids_dialog.height() - action_bottom <= 16
+            floor_surplus = max(
+                0, bids_dialog.minimumHeight() - bids_dialog.sizeHint().height()
+            )
+            assert 14 <= bids_dialog.height() - action_bottom <= 16 + floor_surplus
 
         assert_shown_summary_geometry(minimum_height=150)
         bids_dialog.refresh_bids_layout(
