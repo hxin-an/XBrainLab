@@ -8,7 +8,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Protocol
 
-from XBrainLab.backend.application.results import CommandResult
 from XBrainLab.backend.application.state import ApplicationStateSnapshot
 from XBrainLab.backend.application.view_publication import (
     ApplicationViewPublication,
@@ -97,10 +96,6 @@ def redact_public_text(value: object) -> str:
     return public_diagnostic_text(value)
 
 
-def _public_safe_value(value: Any, *, field_name: str | None = None) -> Any:
-    return public_diagnostic_value(value, field_name=field_name)
-
-
 def public_safe_result_projection(
     *,
     message: object,
@@ -111,7 +106,7 @@ def public_safe_result_projection(
     diagnostics: dict[str, Any] | None = None,
 ) -> PublicSafeResultProjection:
     """Project one result onto fields safe for every public consumer."""
-    safe_envelope = _public_safe_value(
+    safe_envelope = public_diagnostic_value(
         {
             "message": message,
             "blocked_reason": blocked_reason,
@@ -341,47 +336,6 @@ class UiRequest:
 
 ToolExecutionResult = ToolResult | UiRequest
 """Only result envelopes that a concrete assistant tool may return."""
-
-
-def tool_result_from_command(
-    result: CommandResult,
-    *,
-    message: str | None = None,
-) -> ToolResult:
-    """Project one backend result onto the assistant's public tool contract."""
-    public = result.to_public_dict()
-    public_state = public.get("state")
-    public_diagnostics = public.get("diagnostics")
-    public_changed_state = public.get("changed_state")
-    public_message = public.get("message")
-    public_error_type = public.get("error_type")
-    return ToolResult(
-        ok=result.ok,
-        message=(
-            public_diagnostic_text(message)
-            if type(message) is str
-            else public_message
-            if type(public_message) is str
-            else PUBLIC_DIAGNOSTIC_TRUNCATED_MARKER
-        ),
-        payload=(
-            dict.copy(public_diagnostics) if type(public_diagnostics) is dict else {}
-        ),
-        error_type=(
-            public_error_type if type(public_error_type) is str else "internal"
-        ),
-        recoverable=result.recoverable,
-        command_name=result.command_name,
-        state=public_state if type(public_state) is dict else None,
-        diagnostics=(
-            dict.copy(public_diagnostics) if type(public_diagnostics) is dict else {}
-        ),
-        changed_state=(
-            dict.copy(public_changed_state)
-            if type(public_changed_state) is dict
-            else {}
-        ),
-    )
 
 
 def runtime_tool_failure(

@@ -8,7 +8,6 @@ from pathlib import Path
 
 import pytest
 
-from XBrainLab.backend.application.results import ChangedState, CommandResult
 from XBrainLab.llm.tools.result_contract import (
     SAFE_UNEXPECTED_FAILURE_CODE,
     SAFE_UNEXPECTED_FAILURE_MESSAGE,
@@ -17,7 +16,6 @@ from XBrainLab.llm.tools.result_contract import (
     recover_authoritative_failure_state,
     redact_public_text,
     safe_unexpected_failure,
-    tool_result_from_command,
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
@@ -444,23 +442,6 @@ def test_public_projection_and_tool_result_reject_hostile_truth_protocols() -> N
     assert tool_result.message == "failed"
 
 
-def test_tool_command_adapter_uses_only_public_command_result_projection() -> None:
-    private_path = "/srv/clinical/subject-17/events.tsv"
-    command_result = CommandResult.success_result(
-        command_name="query_state",
-        message="ready",
-        state={"source_path": private_path},
-        changed_state=ChangedState(),
-        diagnostics={"source_path": private_path},
-    )
-
-    tool_result = tool_result_from_command(command_result)
-    serialized = repr(tool_result)
-
-    assert private_path not in serialized
-    assert "[REDACTED_PATH]" in serialized
-
-
 def test_failed_tool_result_projects_every_public_feedback_field() -> None:
     private_path = "/srv/clinical/subject-17/events.tsv"
 
@@ -478,19 +459,25 @@ def test_failed_tool_result_projects_every_public_feedback_field() -> None:
     assert "[REDACTED_PATH]" in serialized
 
 
-def test_failure_state_recovery_contains_hostile_publication_baseexception(
-    caplog,
+@pytest.mark.parametrize("raises_base_exception", [False, True])
+def test_failure_state_recovery_contains_untrusted_publication_boundary(
+    caplog, raises_base_exception
 ) -> None:
+    protocol_reads = []
+
     class HostileBoundarySignal(BaseException):
         pass
 
     class HostilePublication:
         @property
         def usable(self) -> bool:
+            protocol_reads.append("usable")
             raise HostileBoundarySignal("/srv/clinical/sub-P001/events.tsv")
 
     class Runtime:
         def get_view_publication(self) -> HostilePublication:
+            if raises_base_exception:
+                raise HostileBoundarySignal("/srv/clinical/sub-P001/events.tsv")
             return HostilePublication()
 
     logger = logging.getLogger("tests.hostile-publication")
@@ -505,6 +492,8 @@ def test_failure_state_recovery_contains_hostile_publication_baseexception(
     assert recovery.state is None
     assert recovery.changed_state == {"state_unknown": True}
     assert recovery.diagnostics["refresh_required"] is True
+    assert protocol_reads == []
+    assert any("Unexpected tool failure" in record.message for record in caplog.records)
     assert "/srv/clinical" not in "\n".join(
         record.getMessage() for record in caplog.records
     )

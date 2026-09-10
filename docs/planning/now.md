@@ -103,11 +103,30 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery checkpoint: product branch `cleanup/module-quality`, HEAD `565aed27`, 172 commits after baseline
+Git recovery checkpoint: product branch `cleanup/module-quality`, HEAD `f14423fe`, 173 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
 **Current work — developer docs/config truth and remaining scripts; module2–6 closure gaps and explicit decisions remain open.**
+
+**Bounded6Z — retire unused tool-result bridge and repair failure-test reachability.** Main full
+result_contract423/direct538 and repo-wide caller search find tool_result_from_command only exercised
+by its exclusive test; actual mapped tools use application_surface's existing command projection.
+Remove dead bridge/backend CommandResult import/exclusive case, plus private _public_safe_value
+single-use forwarder (reuse existing shared redactor directly). No ToolResult fields, registered tool,
+public command/query/result semantics, consent or privacy policy change; no new owner. User approved
+unused whole-capability/test retirement. Current hostile-publication test rejects unsupported type
+before its raising property, so it does not exercise BaseException interception as named. Keep that
+no-protocol-execution boundary and add actual failing runtime read as a separate parameter case.
+Baseline direct suite, stronger passing characterization, same retained suite after; in-memory catch
+narrowing should expose the failure case, then restore. Independent privacy/caller/diff review, Ruff
+and focused adjacent tool execution evidence. No real-model or full Assistant handoff claim. Continue
+stage audit; removal is Git-reversible, not retirement of a formal tool or command.
+Result: original32pass5.64s; stronger33pass5.81s; after32retained direct plus14live coordinator/
+command-ownership cases46pass6.12s. One dead-bridge case removed, actual failure-reader case added.
+In-memory narrowing to except Exception leaves unsupported-type case passing but actual BaseException
+case fails; restored original function, no fault source retained. Ruff/format and independent actual
+diff/caller/privacy review pass. Production+1/-47/net-46, tests+10/-21/net-11; owners unchanged.
 
 **Bounded8P — measure screenshot-readiness pixel materialization before consolidation.** Main full
 readiness341/callers and direct black-region/frame tests identify two list(_pixels(...)) copies used
