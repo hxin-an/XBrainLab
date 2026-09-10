@@ -5171,10 +5171,7 @@ def check_epoch_dialog_publication_boundary(root_dir: Path) -> list[str]:
     sidebar_path = Path("XBrainLab/ui/panels/preprocess/sidebar.py")
     dialog_path = Path("XBrainLab/ui/dialogs/preprocess/epoching_dialog.py")
     inspected_paths = [*sorted(product_dir.rglob("*.py"))]
-    capture_paths = (
-        root_dir / "scripts/dev/capture_epoching_dialog.py",
-        root_dir / "scripts/dev/capture_ui_polish_surfaces.py",
-    )
+    capture_paths = (root_dir / "scripts/dev/capture_ui_polish_surfaces.py",)
     inspected_paths.extend(path for path in capture_paths if path.exists())
 
     def record(relative: str, line: int, kind: str, message: str) -> None:
