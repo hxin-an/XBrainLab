@@ -17,14 +17,8 @@ from .data_interpretation_path_identity import (
 from .data_interpretation_resource_reader import AdmittedResourceReader
 from .errors import PreconditionError
 from .label_resource_reader import AdmittedLabelResourceReader
-from .label_resource_receipt import LabelResourceReceiptAuthority
 from .owned_work import owned_work_checkpoint
-from .resource_guard import check_import_resource_preflight
 from .resource_label_estimation import SUPPORTED_EXTERNAL_LABEL_EXTENSIONS
-from .resource_receipt import (
-    fingerprint_resource_preflight,
-    fingerprint_resource_scope,
-)
 
 LABEL_CONTENT_HASH_CHUNK_BYTES = 1024 * 1024
 NPY_MAGIC = b"\x93NUMPY"
@@ -98,79 +92,6 @@ class AdmittedLabelResourceSession:
         )
 
 
-class LabelResourceAdmissionService:
-    """Preflight, bind, authorize, and expose one bounded label reader."""
-
-    def __init__(self, *, command_name: str) -> None:
-        self.command_name = str(command_name)
-        self._receipts = LabelResourceReceiptAuthority(command_name=command_name)
-
-    def admit(
-        self,
-        specs: Iterable[LabelResourceSpec],
-        *,
-        confirmed: bool,
-        token: str | None,
-        configuration: Mapping[str, Any] | None = None,
-    ) -> AdmittedLabelResourceSession:
-        """Return a bounded parser session or fail before parser entry."""
-        normalized_specs = _normalized_specs(specs)
-        paths = [spec.path for spec in normalized_specs]
-        _inspect_label_resource_paths(paths)
-        preflight = check_import_resource_preflight(paths)
-        self._receipts.enforce_blocking(token=token, preflight=preflight)
-        resource_reader = AdmittedResourceReader.from_resource_preflight(
-            paths,
-            preflight,
-        )
-        admitted_reader = AdmittedLabelResourceReader(
-            resource_reader,
-            admitted_specs={
-                _path_key(spec.path): spec.to_scope() for spec in normalized_specs
-            },
-        )
-        content_identities = [
-            _content_identity(path, reader=admitted_reader) for path in paths
-        ]
-        configuration_fingerprint = fingerprint_resource_scope(
-            {
-                "command": self.command_name,
-                "configuration": dict(configuration or {}),
-                "label_specs": [spec.to_scope() for spec in normalized_specs],
-            }
-        )
-        preflight_fingerprint = fingerprint_resource_preflight(preflight)
-        scope_fingerprint = fingerprint_resource_scope(
-            {
-                "command": self.command_name,
-                "configuration_fingerprint": configuration_fingerprint,
-                "content_identities": content_identities,
-            }
-        )
-        receipt_reused = self._receipts.authorize(
-            confirmed=confirmed,
-            token=token,
-            preflight=preflight,
-            scope_fingerprint=scope_fingerprint,
-            configuration_fingerprint=configuration_fingerprint,
-            preflight_fingerprint=preflight_fingerprint,
-        )
-        diagnostics = {
-            **preflight.to_diagnostics(),
-            "configuration_fingerprint": configuration_fingerprint,
-            "preflight_fingerprint": preflight_fingerprint,
-            "scope_fingerprint": scope_fingerprint,
-            "confirmation_receipt_reused": receipt_reused,
-            "parser_admission": admitted_reader.diagnostics(),
-        }
-        return AdmittedLabelResourceSession(
-            reader=admitted_reader,
-            specs=normalized_specs,
-            resource_preflight=diagnostics,
-            _content_identities=tuple(content_identities),
-        )
-
-
 def session_from_resource_preflight(
     specs: Iterable[LabelResourceSpec],
     resource_preflight: Any,
@@ -220,34 +141,6 @@ def session_from_resource_preflight(
         },
         _content_identities=tuple(content_identities),
     )
-
-
-def specs_from_paths(
-    paths: Iterable[str],
-    *,
-    configs: Mapping[str, Mapping[str, Any]] | None = None,
-    sequence_only: bool = False,
-) -> tuple[LabelResourceSpec, ...]:
-    """Build parser specs from public command paths and plain config maps."""
-    normalized_configs = {
-        _path_key(path): dict(value)
-        for path, value in (configs or {}).items()
-        if isinstance(value, Mapping)
-    }
-    result: list[LabelResourceSpec] = []
-    for path in paths:
-        key = _path_key(path)
-        config = normalized_configs.get(key, {})
-        result.append(
-            LabelResourceSpec(
-                path=_path_value(path),
-                label_field=_optional_text(config.get("label_field")),
-                anchor=_optional_text(config.get("anchor")),
-                duration_field=_optional_text(config.get("duration_field")),
-                sequence_only=bool(config.get("sequence_only", sequence_only)),
-            )
-        )
-    return tuple(result)
 
 
 def _normalized_specs(

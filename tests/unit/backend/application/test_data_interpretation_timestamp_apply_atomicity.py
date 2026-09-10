@@ -17,9 +17,10 @@ from XBrainLab.backend.application.data_interpretation_candidate import (
     InterpretationCandidate,
 )
 from XBrainLab.backend.application.label_resource_admission import (
-    LabelResourceAdmissionService,
     LabelResourceSpec,
+    session_from_resource_preflight,
 )
+from XBrainLab.backend.application.resource_guard import check_import_resource_preflight
 from XBrainLab.backend.load_data.raw import Raw
 from XBrainLab.backend.services.label_import_service import (
     AtomicLabelApplyError,
@@ -222,9 +223,7 @@ def test_public_timestamp_apply_preserves_nonrecoverable_state_unknown_error(
     )
     target = _raw(str(eeg_path))
     service = _service(_Dataset([target]))
-    resources = LabelResourceAdmissionService(
-        command_name="test_timestamp_atomicity"
-    ).admit(
+    resources = session_from_resource_preflight(
         [
             LabelResourceSpec(
                 path=str(label_path),
@@ -232,8 +231,7 @@ def test_public_timestamp_apply_preserves_nonrecoverable_state_unknown_error(
                 anchor="onset",
             )
         ],
-        confirmed=False,
-        token=None,
+        check_import_resource_preflight([str(label_path)]),
     )
     atomic_error = AtomicLabelStateUnknownError(
         operation_name="reviewed timestamp label batch",

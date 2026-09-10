@@ -769,29 +769,46 @@ def preview(path):
     )
 
 
+@pytest.mark.parametrize(
+    ("admission_import", "factory"),
+    [
+        (
+            "from XBrainLab.backend.application.label_resource_admission "
+            "import session_from_resource_preflight",
+            "session_from_resource_preflight",
+        ),
+        (
+            "import XBrainLab.backend.application.label_resource_admission as admission",
+            "admission.session_from_resource_preflight",
+        ),
+    ],
+)
 def test_label_resource_guard_rejects_ui_admission_session_and_materialized_cache(
     tmp_path: Path,
+    admission_import: str,
+    factory: str,
 ) -> None:
     _write_product_file(
         tmp_path,
         "XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py",
-        """from XBrainLab.backend.application.label_resource_admission import LabelResourceAdmissionService
+        admission_import
+        + "\n"
+        + """
 
 class DataInterpretationPreviewDialog:
     def __init__(self):
         self.label_data_map = {}
-        self.resources = LabelResourceAdmissionService(command_name="ui")
 
-    def preview(self, spec):
-        session = self.resources.admit([spec], confirmed=False, token=None)
+    def preview(self, spec, preflight):
+        session = FACTORY([spec], preflight)
         self.label_data_map[spec.path] = session.load(spec.path)
-""",
+""".replace("FACTORY", factory),
     )
     violations = architecture_compliance.check_label_resource_admission_boundary(
         tmp_path
     )
 
-    assert any("LabelResourceAdmissionService" in item for item in violations)
+    assert any("label resource admission" in item for item in violations)
     assert any("session.load" in item for item in violations)
     assert any("materialized label payload" in item for item in violations)
 
@@ -804,20 +821,19 @@ def test_label_resource_guard_resolves_aliased_ui_io_parser_and_admission(
         "XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py",
         """import builtins as runtime_io
 import pathlib as paths
-from XBrainLab.backend.application.label_resource_admission import LabelResourceAdmissionService as ResourceGate
+from XBrainLab.backend.application.label_resource_admission import session_from_resource_preflight as bind_session
 from XBrainLab.backend.load_data import label_loader as external_parser
 from XBrainLab.backend.load_data import label_parser as alternate_parser
 
 class DataInterpretationPreviewDialog:
-    def preview(self, selected):
+    def preview(self, selected, preflight):
         source = paths.Path(selected)
         with runtime_io.open(selected, "rb") as handle:
             handle.read(1)
         source.read_bytes()
         external_parser.load_label_file(selected)
         alternate_parser.parse_labels(selected)
-        resources = ResourceGate(command_name="ui")
-        session = resources.admit([], confirmed=False, token=None)
+        session = bind_session([], preflight)
         self.materialized_labels = session.load(selected)
 """,
     )
@@ -840,6 +856,7 @@ def preview(selected):
     assert any("label parser" in item for item in violations)
     assert any("actions.py" in item and "label parser" in item for item in violations)
     assert any("label resource admission" in item for item in violations)
+    assert any("session.load" in item for item in violations)
     assert any("materialized label payload" in item for item in violations)
 
 

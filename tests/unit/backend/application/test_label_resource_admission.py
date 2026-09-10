@@ -7,42 +7,17 @@ from pathlib import Path
 import pytest
 
 from XBrainLab.backend.application import (
-    data_interpretation_path_identity as path_identity_module,
-)
-from XBrainLab.backend.application import (
     label_resource_admission as label_admission_module,
 )
 from XBrainLab.backend.application.commands import LabelImportPlan
-from XBrainLab.backend.application.label_resource_admission import specs_from_paths
+from XBrainLab.backend.application.label_resource_admission import (
+    LabelResourceSpec,
+)
 from XBrainLab.backend.application.resource_guard import check_import_resource_preflight
 from XBrainLab.backend.application.resource_label_estimation import (
     LABEL_CARRIER_FILE_SIZE_MULTIPLIERS,
     SUPPORTED_EXTERNAL_LABEL_EXTENSIONS,
 )
-
-
-def test_label_specs_preserve_spelling_while_matching_windows_case_variants(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    label_path = (tmp_path / "ExternalLabels" / "A01T.mat").resolve()
-    config_path = str(label_path).swapcase()
-    windows_path = type(
-        "WindowsPathOps",
-        (),
-        {"normcase": staticmethod(lambda value: str(value).casefold())},
-    )()
-    windows_os = type("WindowsOs", (), {"path": windows_path})()
-    monkeypatch.setattr(label_admission_module, "os", windows_os)
-    monkeypatch.setattr(path_identity_module, "os", windows_os, raising=False)
-
-    specs = specs_from_paths(
-        [str(label_path)],
-        configs={config_path: {"label_field": "classlabel"}},
-    )
-
-    assert specs[0].path == str(label_path)
-    assert specs[0].label_field == "classlabel"
 
 
 def test_reviewed_label_session_reports_each_real_resource_checkpoint(
@@ -65,7 +40,7 @@ def test_reviewed_label_session_reports_each_real_resource_checkpoint(
     )
 
     session = label_admission_module.session_from_resource_preflight(
-        specs_from_paths(paths),
+        [LabelResourceSpec(path=path) for path in paths],
         preflight,
     )
 

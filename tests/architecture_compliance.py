@@ -1968,6 +1968,7 @@ def check_label_resource_admission_boundary(root_dir: Path) -> list[str]:
                     _check_label_ui_owner_boundary(relative=relative, tree=tree)
                 )
             if is_ui_module:
+                module_aliases, symbol_aliases = _label_import_bindings(tree)
                 imports_admission_owner = any(
                     isinstance(node, ast.ImportFrom)
                     and str(node.module or "").endswith(
@@ -1979,6 +1980,7 @@ def check_label_resource_admission_boundary(root_dir: Path) -> list[str]:
                             "AdmittedLabelResourceSession",
                             "LabelResourceAdmissionService",
                             "AdmittedLabelResourceReader",
+                            "session_from_resource_preflight",
                         }
                         for alias in node.names
                     )
@@ -1986,7 +1988,7 @@ def check_label_resource_admission_boundary(root_dir: Path) -> list[str]:
                 )
                 if imports_admission_owner:
                     violations.append(
-                        f"{relative_posix} imports LabelResourceAdmissionService or its "
+                        f"{relative_posix} imports a label admission owner or its "
                         "materialized session; UI must use an ApplicationService "
                         "preview command."
                     )
@@ -1999,8 +2001,23 @@ def check_label_resource_admission_boundary(root_dir: Path) -> list[str]:
                     )
                     if isinstance(target, ast.Name)
                     and isinstance(node.value, ast.Call)
-                    and isinstance(node.value.func, ast.Attribute)
-                    and node.value.func.attr == "admit"
+                    and (
+                        (
+                            isinstance(node.value.func, ast.Attribute)
+                            and node.value.func.attr == "admit"
+                        )
+                        or _label_qualified_name(
+                            node.value.func,
+                            module_aliases=module_aliases,
+                            symbol_aliases=symbol_aliases,
+                        )
+                        in {
+                            "XBrainLab.backend.application.label_resource_admission."
+                            "session_from_resource_preflight",
+                            "XBrainLab.backend.application.label_resource_admission."
+                            "AdmittedLabelResourceSession",
+                        }
+                    )
                 }
                 for node in ast.walk(tree):
                     if (

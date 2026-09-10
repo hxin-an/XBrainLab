@@ -36,8 +36,8 @@ from XBrainLab.backend.application.data_interpretation_state import (
     DataInterpretationSessionState,
 )
 from XBrainLab.backend.application.label_resource_admission import (
-    LabelResourceAdmissionService,
     LabelResourceSpec,
+    session_from_resource_preflight,
 )
 from XBrainLab.backend.load_data.raw import Raw
 
@@ -1175,9 +1175,7 @@ def test_timestamp_label_apply_uses_per_run_mapping_instead_of_global_mapping(
         },
     )
 
-    label_resources = LabelResourceAdmissionService(
-        command_name="test_apply_interpretation"
-    ).admit(
+    label_resources = session_from_resource_preflight(
         [
             LabelResourceSpec(
                 path=str(path),
@@ -1187,8 +1185,7 @@ def test_timestamp_label_apply_uses_per_run_mapping_instead_of_global_mapping(
             )
             for path in (events_1, events_2)
         ],
-        confirmed=False,
-        token=None,
+        resource_guard.check_import_resource_preflight([str(events_1), str(events_2)]),
     )
 
     result = service.apply_label_carriers(candidate, label_resources)

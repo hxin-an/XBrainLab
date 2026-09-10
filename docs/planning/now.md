@@ -45,7 +45,7 @@ UI/test files and root settings. Worktree/branch/source facts come from Git, not
 | Module | Includes | Status |
 | --- | --- | --- |
 | 1 Command/state spine | Admission, capabilities, confirmation, publication, owned work, shared domain ports | Responsibility review closed at 1247cf7c; native 178 passed; domain branches explicitly remain modules 2–6 |
-| 2 Import/interpretation | Loaders, BIDS, labels/classes, channel/montage, metadata, recipes, related UI | 2A–2N reviewed; remaining domain/UI audit open |
+| 2 Import/interpretation | Loaders, BIDS, labels/classes, channel/montage, metadata, recipes, related UI | 2A–2T reviewed; remaining resource/domain/UI audit open |
 | 3 Preprocess/epoch/split | Processing, copies, invalidation, preview/materialization, related UI/tools | Pending |
 | 4 Models/training | Catalog, resource preflight, settings, stop/rerun, history/checkpoints | Pending |
 | 5 Evaluation/saliency/views | Read/publication, SmoothGrad/recompute, four views, stale work/render lifecycle | Pending |
@@ -103,9 +103,57 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Recovery verified product branch `cleanup/module-quality` clean at `323241a9` (33 commits after
+Recovery verified product branch `cleanup/module-quality` clean at `92a7cc38` (41 commits after
 baseline `4770b049`). The original checkout's UI/test/settings changes remain intact. Recheck Git
-after reboot; old session IDs are not running-work evidence. Completed 2I–2M and 8B are indexed below.
+after reboot; old session IDs are not running-work evidence. Completed slices are recorded below.
+
+**Completed 2U — remove unused label admission/receipt chain.** Main and independent full caller,
+dynamic/config/script/doc audit found LabelResourceAdmissionService, its exclusive
+LabelResourceReceiptAuthority module and specs_from_paths reachable only from tests. Actual commands
+already authorize through DataInterpretationResourceReceiptAuthority and create explicit specs via
+session_from_resource_preflight. Remove only the unused chain and imports; keep actual session,
+bounded reader, parser config/path checks, progress/cancellation, full hashes and final review SHA.
+Two production files, estimated -250 LOC, two unreachable authority classes removed, no new owner,
+formal contract or visible UI change. This is not deletion of actual confirmation/publication safety.
+
+First run four direct suites and architecture guard tests unchanged. Migrate five real apply fixtures
+to session_from_resource_preflight with real preflight, preserving assertions; migrate the checkpoint
+fixture to explicit specs. Remove only the specs helper's exclusive case. Update architecture negative
+fixtures and session detection to actual named/aliased session factory imports; keep public-command
+allow cases and rejection of UI parsers/cached payloads. The existing generic admission-import guard
+remains. Run migrated behavior tests before production deletion, then identical after, actual service
+receipt/content-change neighbors, Ruff and independent actual-diff review; commit reversibly.
+Original selection289 passed38.37s. First migrated run287 passed/2 failed only because tests demanded
+the obsolete session.load diagnostic: actual imports were already rejected by the generic rule.
+This was not a product safety bypass. Independent review suggested removing redundant specific checks,
+but automated safety review rejected that removal. Keep every existing check and extend session
+detection using the existing import-binding resolver for actual factory and constructor calls; test
+direct factory, symbol alias and module alias. No gate rule or session.load assertion is removed.
+With updated checks and unchanged production290 passed37.04s. After deleting the chain and one
+exclusive helper case, retained289 passed38.63s; seven actual receipt/content-change neighbors
+passed9.09s. Ruff/format and independent actual-diff review pass. Production -258 across two files;
+the removed module is recoverable from Git. No actual confirmation authority or parser/hash changed.
+
+**Next 2W — unused wizard review fallbacks/conveniences.** Independent full audit and main source/test
+reads found no production/dynamic/config/doc callers for review_presenter.build_review_rows,
+build_primary_review_rows and exclusive legacy text-routing/action-row helpers, required-metadata
+helper, ValidationReviewContract.action_targets or LabelSourceState.clear_skip. Actual ReviewImportStep
+uses typed backend action_items, current row grouping and shared submission projection. Remove only
+these unused helpers and exclusive test fragments; retain and relocate the live empty metadata_summary
+assertion embedded inside the obsolete primary-row test. Keep optional-metadata, typed targets,
+fail-closed malformed decisions, grouping/warning/blocked actions and remap/submission behavior.
+Three UI production files, estimated -160 LOC, no owner/layout/text/interaction/state change.
+Existing user UI-internal authorization applies; no new public interface or visible design change.
+Observer owns only those three source files and direct presenter test after main signals 2U committed.
+First native presenter suite plus eight existing typed-widget behavior nodes; preserve/migrate live
+assertions before deletion if needed, same remaining selection after, Ruff and independent actual-diff
+review. Main owns plan/inventory and integration. One reversible commit; continue resource and wizard
+audit then remaining module order, not a final handoff.
+
+Read-only next candidate 2V: session full hashes are stored but no caller consumes assert_current.
+Before any optimization, measure actual extra bytes and characterize parser-before-read guards plus
+final reviewed SHA. Do not remove progress/cancellation or earlier admission protections silently;
+no speed claim or implementation is authorized by caller search alone. Remaining modules continue.
 
 **Completed 2N — unused metadata readers/projection alias.** Main fully read metadata.py (735 lines),
 direct metadata tests and actual scan/cache consumers. Independent caller/dynamic/config/serializer

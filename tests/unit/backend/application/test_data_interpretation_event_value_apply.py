@@ -13,9 +13,10 @@ from XBrainLab.backend.application.data_interpretation_label_carriers import (
     build_label_carrier_plan,
 )
 from XBrainLab.backend.application.label_resource_admission import (
-    LabelResourceAdmissionService,
     LabelResourceSpec,
+    session_from_resource_preflight,
 )
+from XBrainLab.backend.application.resource_guard import check_import_resource_preflight
 from XBrainLab.backend.load_data.raw import Raw
 from XBrainLab.backend.services.label_import_service import (
     LabelImportService,
@@ -99,9 +100,7 @@ def test_generic_timestamp_apply_keeps_semantic_annotations_and_class_only_event
         record_label_import=lambda **_kwargs: None,
     )
 
-    label_resources = LabelResourceAdmissionService(
-        command_name="test_apply_interpretation"
-    ).admit(
+    label_resources = session_from_resource_preflight(
         [
             LabelResourceSpec(
                 path=str(labels),
@@ -109,8 +108,7 @@ def test_generic_timestamp_apply_keeps_semantic_annotations_and_class_only_event
                 anchor="onset",
             )
         ],
-        confirmed=False,
-        token=None,
+        check_import_resource_preflight([str(labels)]),
     )
 
     result = service.apply_label_carriers(candidate, label_resources)
@@ -192,9 +190,7 @@ def test_numeric_bids_preview_decisions_apply_through_admitted_pandas_reader(
         data_filepath=lambda item: item.get_filepath(),
         record_label_import=lambda **_kwargs: None,
     )
-    label_resources = LabelResourceAdmissionService(
-        command_name="test_apply_interpretation"
-    ).admit(
+    label_resources = session_from_resource_preflight(
         [
             LabelResourceSpec(
                 path=str(events),
@@ -203,8 +199,7 @@ def test_numeric_bids_preview_decisions_apply_through_admitted_pandas_reader(
                 duration_field="duration",
             )
         ],
-        confirmed=False,
-        token=None,
+        check_import_resource_preflight([str(events)]),
     )
 
     result = service.apply_label_carriers(candidate, label_resources)
@@ -272,9 +267,7 @@ def test_bids_apply_preserves_na_like_categories_and_excludes_canonical_na(
         data_filepath=lambda item: item.get_filepath(),
         record_label_import=lambda **_kwargs: None,
     )
-    label_resources = LabelResourceAdmissionService(
-        command_name="test_apply_interpretation"
-    ).admit(
+    label_resources = session_from_resource_preflight(
         [
             LabelResourceSpec(
                 path=str(events),
@@ -283,8 +276,7 @@ def test_bids_apply_preserves_na_like_categories_and_excludes_canonical_na(
                 duration_field="duration",
             )
         ],
-        confirmed=False,
-        token=None,
+        check_import_resource_preflight([str(events)]),
     )
 
     loaded_rows = label_resources.load(str(events))
