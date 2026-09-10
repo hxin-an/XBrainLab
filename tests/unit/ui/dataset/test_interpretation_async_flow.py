@@ -3800,16 +3800,21 @@ def test_cancelled_review_loading_does_not_reopen_wizard(qtbot, monkeypatch):
         [],
     )
 
-    assert outcome is not None
-    assert worker_started.wait(timeout=1.0)
-    assert handler._data_interpretation._loading_session is not None
-    loading = handler._data_interpretation._loading_session.dialog
-    loading.cancelled_by_user = True
-    loading.rejected.emit()
-    assert cancelled_operations == ["review-operation-1"]
-    worker_release.set()
-    qtbot.waitUntil(lambda: not worker_release.is_set() or True, timeout=100)
-    qtbot.wait(100)
+    try:
+        assert outcome is not None
+        assert worker_started.wait(timeout=1.0)
+        assert application_command_registry().active_count(panel) == 1
+        assert handler._data_interpretation._loading_session is not None
+        loading = handler._data_interpretation._loading_session.dialog
+        loading.cancelled_by_user = True
+        loading.rejected.emit()
+        assert cancelled_operations == ["review-operation-1"]
+    finally:
+        worker_release.set()
+    qtbot.waitUntil(
+        lambda: application_command_registry().active_count(panel) == 0,
+        timeout=2000,
+    )
     assert continue_flow.call_count == 0
 
 
