@@ -80,16 +80,6 @@ from XBrainLab.ui.status import transient_status_remaining_ms
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 from XBrainLab.ui.window_geometry_lifecycle import WindowGeometryLifecycle
 
-# Compatibility hooks for older tests and debug fixtures that patch these names
-# directly. Runtime loading still happens through the lazy loader helpers below.
-AgentManager = None
-InfoPanelService = None
-DatasetPanel = None
-PreprocessPanel = None
-TrainingPanel = None
-EvaluationPanel = None
-VisualizationPanel = None
-
 
 class _ResponsiveTopBar(QFrame):
     """Notify the shell when docks change the navigation's usable width."""
@@ -167,9 +157,6 @@ _LAZY_IMPORT_LOCK = RLock()
 
 def _load_panel_class(module_name: str, class_name: str) -> Any:
     """Load a workflow panel class only when the panel is first opened."""
-    patched = globals().get(class_name)
-    if patched is not None:
-        return patched
     with _LAZY_IMPORT_LOCK:
         module = import_module(module_name)
     return getattr(module, class_name)
@@ -177,18 +164,12 @@ def _load_panel_class(module_name: str, class_name: str) -> Any:
 
 def _load_agent_manager_class():
     """Load the AI assistant stack only when the user opens it."""
-    patched = globals().get("AgentManager")
-    if patched is not None:
-        return patched
     module = import_module("XBrainLab.ui.components.agent_manager")
     return module.AgentManager
 
 
 def _load_info_panel_service_class() -> Callable[..., Any]:
     """Load the aggregate publication service during desktop composition."""
-    patched = globals().get("InfoPanelService")
-    if patched is not None:
-        return patched
     module = import_module("XBrainLab.ui.components.info_panel_service")
     return module.InfoPanelService
 

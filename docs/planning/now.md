@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `1dee2d2a`, 139 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `aa14db7a`, 143 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -248,6 +248,30 @@ and real widget assertions; no new fake/adapter unless an actual external seam r
 After passing migrated tests, remove the unused globals/bypass branches. No visible UI, eager import,
 timing/shutdown/publication change, ownerdelta0. Same focused suites plus independent actualdiff
 review/Ruff; one independently reversible commit, then continue inventory/remaining tests/scripts.
+Result:121before11.01s; six migrated real-service construction cases pass0.58s before removal;
+same121after11.03s. Production-19/test-5, no cases/assertions removed. Independent actualdiff
+review approves lazy/thread/startup invariants; Ruff passes after restoring one required import/class
+blank line. Seven unused globals/three bypasses gone, real InfoPanelService used in all five patch sites.
+
+**Bounded9F — consolidate all-page refresh behavior evidence.** Full independent MainWindow sync
+3052lines (93definitions) retains real Qt/service/render/thread cases and distinct shutdown gates.
+Five one-page positive refresh cases duplicate the same shape; existing stronger only-target case
+covers training only. Parametrize that stronger case across all five pages and pass before retiring
+the five weaker single-page cases. Assert selected refresh exactly once and all other panels untouched
+through MainWindow.switch_page, not a mocked refresh policy. Keep nav checked-state, delegated refresh,
+publication/status and all lifecycle assertions. Original7M121case baseline covers these six cases;
+focused stronger10 then retained5 mapping cases, intentional wrong-page/all-pages refresh fault,
+independent actualdiff review/Ruff. Production unchanged, one fewer case only with stronger evidence;
+no new helper framework, native/manual model claim or module closure inferred.
+
+**Module8 CI/Poe disposition.** Independent full ci925/docsworkflow83/pyproject314 plus routing109,
+artifact verifier216/direct311 and reliability409/UI40/data58/integration-trigger24 retains distinct
+Linux coverage shards/coverage-only aggregate, platform/native/data/visual/provenance gates. Repeated
+setup occurs on isolated runners; aggregate already avoids full Poetry environment. No measured
+redundant install or equivalent removable gate found. Existing developer CLI tasks remain live public
+entrypoints, not orphan Python helpers. Docs workflow's direct bounded dependencies duplicate docs
+group constraints without lock-exact install; record as a reproducibility decision candidate, not an
+authorized environment migration or speed claim. This is full source audit, not same-head CI success.
 
 **Module7 logging audit.** Independent full logger874/direct1304, run.py370,
 Windows/WSL launcher sources and tests traced console output: StreamHandler binds native stdout;

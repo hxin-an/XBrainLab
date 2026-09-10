@@ -2107,7 +2107,6 @@ def test_init_panels_never_resolves_workflow_controllers(
         patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
         patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
         patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
-        patch("XBrainLab.ui.main_window.InfoPanelService"),
         patch(
             "XBrainLab.ui.main_window._load_panel_class",
             side_effect=lambda _module, class_name: (
@@ -2155,7 +2154,6 @@ def test_primary_panel_materializes_with_publication_port_only(
         patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
         patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
         patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
-        patch("XBrainLab.ui.main_window.InfoPanelService"),
         patch(
             "XBrainLab.ui.main_window.application_ui_runtime",
             return_value=runtime,
@@ -2207,7 +2205,6 @@ def test_training_materializes_with_narrow_typed_ports_only(mock_study, qtbot):
         patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
         patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
         patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
-        patch("XBrainLab.ui.main_window.InfoPanelService"),
         patch(
             "XBrainLab.ui.main_window.application_ui_runtime",
             return_value=runtime,
@@ -2257,7 +2254,6 @@ def test_evaluation_materializes_without_compatibility_controller_access(
         patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
         patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
         patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
-        patch("XBrainLab.ui.main_window.InfoPanelService"),
         patch(
             "XBrainLab.ui.main_window.application_ui_runtime",
             return_value=runtime,
@@ -2299,7 +2295,6 @@ def test_visualization_materializes_with_narrow_application_ports(
         patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
         patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
         patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
-        patch("XBrainLab.ui.main_window.InfoPanelService"),
         patch(
             "XBrainLab.ui.main_window.application_ui_runtime",
             return_value=runtime,
