@@ -64,12 +64,24 @@ def _backend() -> LocalBackend:
     return backend
 
 
+@pytest.mark.parametrize(
+    ("user_text", "chunks"),
+    [
+        ("hello", ("raw ", "output")),
+        ("line one\nline two", ("raw\n", "output\n")),
+        ("line one\r\nline two", ("raw\r", "\noutput\r\n")),
+        ("hello\n\u03bc\r\nEEG", ("\u03bc\r", "\nEEG\noutput")),
+    ],
+)
 def test_enabled_capture_persists_exact_fitted_prompt_raw_output_and_metadata(
     tmp_path: Path,
     monkeypatch,
+    user_text: str,
+    chunks: tuple[str, ...],
 ) -> None:
     capture_dir = tmp_path / "assistant-runtime-prompts"
     monkeypatch.setenv("XBRAINLAB_ASSISTANT_PROMPT_CAPTURE_DIR", str(capture_dir))
+    monkeypatch.setattr(_Streamer, "__iter__", lambda _self: iter(chunks))
     backend = _backend()
     options = ResolvedGenerationOptions(max_new_tokens=128, do_sample=False)
 
@@ -86,17 +98,17 @@ def test_enabled_capture_persists_exact_fitted_prompt_raw_output_and_metadata(
     ):
         assert list(
             backend.generate_stream(
-                [{"role": "user", "content": "hello"}], options=options
+                [{"role": "user", "content": user_text}], options=options
             )
-        ) == ["raw ", "output"]
+        ) == list(chunks)
 
     captures = list(capture_dir.glob("*/*"))
     assert len(captures) == 1
     artifact_dir = captures[0]
-    prompt = "<user>hello<assistant>"
-    raw_output = "raw output"
-    assert (artifact_dir / "prompt.txt").read_text(encoding="utf-8") == prompt
-    assert (artifact_dir / "raw-output.txt").read_text(encoding="utf-8") == raw_output
+    prompt = f"<user>{user_text}<assistant>"
+    raw_output = "".join(chunks)
+    assert (artifact_dir / "prompt.txt").read_bytes() == prompt.encode("utf-8")
+    assert (artifact_dir / "raw-output.txt").read_bytes() == raw_output.encode("utf-8")
     metadata = json.loads((artifact_dir / "metadata.json").read_text(encoding="utf-8"))
     spec = local_model_spec(PRIMARY_LOCAL_MODEL_ID)
     assert spec is not None

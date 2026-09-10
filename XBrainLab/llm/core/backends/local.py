@@ -82,7 +82,7 @@ class LocalBackend:
 
     @staticmethod
     def _write_capture_file(path: Path, content: str) -> None:
-        path.write_text(content, encoding="utf-8")
+        path.write_bytes(content.encode("utf-8"))
 
     def _start_prompt_capture(
         self,

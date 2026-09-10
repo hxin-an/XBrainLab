@@ -261,8 +261,8 @@ def _write_runtime_capture_session(
         directory.mkdir(parents=True)
         prompt = f"private prompt {sequence}"
         prompt_bytes = prompt.encode("utf-8")
-        (directory / "prompt.txt").write_text(prompt, encoding="utf-8")
-        (directory / "raw-output.txt").write_text(raw_output, encoding="utf-8")
+        (directory / "prompt.txt").write_bytes(prompt_bytes)
+        (directory / "raw-output.txt").write_bytes(raw_bytes)
         (directory / "metadata.json").write_text(
             json.dumps(
                 {

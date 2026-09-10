@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `f44d3e0e`, 112 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `ef161994`, 113 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -409,6 +409,31 @@ prompt policy change. Baseline parser/controller/recovery/scorer plus exact guar
 retained after and a representative source-only exact parse-output comparison; Ruff/main nonauthor
 diff review. No tolerant fallback replacement or normalizer edits. Restore untouched scope if an edit
 is rejected; no indirect retry. End this slice at verified dead-chain removal, then continue audit.
+Strengthened baseline404passed/1failed16.72s, one MNE warning. All57 parse-output matrix results digest
+2634fe1b345c4c129ee13a3f370c5ad01d5f08c654a02f207f9bf054623e7428 recorded before source removal.
+Failure is evaluator capture integrity on native Windows: helper hashes110UTF8bytes but writes111
+because write_text translates LF toCRLF. Actual LocalBackend._write_capture_file has the same defect;
+existing direct tests only cover single-line strings and read_text hides newline conversion. Resolve
+the directly blocking exact-byte issue as6P before declaring this baseline passing or retiring source.
+After6P, the same405case selection plus47direct capture/backend/context cases passed452in23.50s;
+this establishes the strengthened passing baseline before parser retirement. No real model run.
+
+**Completed bounded6P — exact UTF8 capture bytes on Windows.** Preserve the opted-in capture contract
+by writing content.encode('utf-8') bytes in the existing writer; no new owner/path/schema or inference/
+UI/prompt/RAG change. Strengthen existing actual LocalBackend.generate_stream capture test with LF,
+CRLF and mixed Unicode/chunk-boundary text and assert physical read_bytes equals exact encoded model
+input/output as well as existing metadata SHA/counts. External model/streamer/thread seams stay; real
+capture filesystem/hashes stay. Reproduce native red before one-line writer fix. Align evaluator's
+test-only capture helper with same raw/prompt byte payloads; never normalize bytes in production
+validator or weaken its failure codes. Run full capture/scorer suites, adjacent backend context and
+resume6N baseline; independent actualdiff/security review and Ruff before separate commit. Retain
+opt-in-only/no-IO-disabled/redacted-failure/prepared/cancelled/failed cleanup evidence. Existing valid
+artifacts remain readable; previously inconsistent Windows captures must remain rejected, not relabeled.
+Native multiline reproduction3failed/10passed0.72s at physical prompt bytes (LF→CRLF andCRLF→CRCRLF).
+Corrected full capture/scorer/parser/controller/recovery/backend/context452passed23.50s with one MNE
+deprecation. Independent actualdiff review approved; production+1/-1/net0, test fixture bytes aligned,
+three added parametrizations retain exact output/hash assertions. All6Pfiles Ruffcheck/formatpassed;
+unrelated6Ntest needed mechanical formatting only. No hash-normalizing compatibility path added.
 
 Completed2AD–2AG and8C–8E are indexed below and fully traceable in Git. For source-bound Windows
 capture tests only, use process-local GIT_DIR/GIT_WORK_TREE pointing to the actual Windows paths:
