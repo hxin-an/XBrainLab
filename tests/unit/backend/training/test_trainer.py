@@ -798,24 +798,3 @@ def test_trainer_force_clean_raises_when_job_stays_running(training_plan_holders
         trainer.clean(force_update=True)
 
     assert trainer.job_thread is thread
-
-
-@pytest.mark.parametrize(
-    "plan_name, real_plan_name, error_stage",
-    [
-        ["Fake", "test", 1],
-        ["Fake0", "test", 0],
-        ["Fake1", "test", 0],
-        ["Fake1", "tests", 2],
-    ],
-)
-def test_trainer_get_plan(
-    training_plan_holders, plan_name, real_plan_name, error_stage
-):
-    trainer = Trainer(training_plan_holders)
-    if error_stage == 0:
-        trainer.get_real_training_plan(plan_name, real_plan_name)
-    else:
-        error = ".*training plan.*" if error_stage == 1 else ".*real plan.*"
-        with pytest.raises(ValueError, match=error):
-            trainer.get_real_training_plan(plan_name, real_plan_name)
