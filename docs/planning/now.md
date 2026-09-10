@@ -401,6 +401,33 @@ Remove duplicated clear helpers only when all callers have isolation; retain exp
 CLI/settings-path contract unless a separate decision changes it. Review helper reuse vs repeated
 setup without introducing a generic capture framework. Existing model-free/capture direct tests plus
 safe real Qt storage evidence; full model/data captures remain final applicable gate work.
+9L2 design review approves one small scripts/dev/capture_config.py context for five real main callers:
+stdlib TemporaryDirectory and scoped env restoration; optional exact ready host config copy using its
+existing save_to_file, fail closed on write failure. No new product owner/module or broad capture
+framework. The context encloses QApplication creation and the entire existing run-function/shutdown
+return, not an inner event-loop section. All five run functions have only their main caller; no external
+script/doc run-function contract found. Workflow deactivation preserves its explicit OS-temp settings
+filename and existing preparation, skips redundant config copy, and restores its temporary class-path
+override through ExitStack even on failure. Keep model/data/cache paths and CLI unchanged.
+First add red parameterized main-entry assertions before GUI creation (actual temp config/storage and
+real non-default LLMConfig save/load; isolate only classification, synthetic EEG writing and GUI/capture
+execution). Then shared context + five caller migrations and four helper deletions. Verify exception
+restoration/config-copy failure/normal context cleanup, retained direct tests, actual Qt roundtrip without
+pytest monkeypatch and independent final review. Do not run real model captures for this focused slice.
+9L2 result: corrected five-case red reproduces inherited host config before any GUI; initial three
+Assistant fixture failures were cache-path setup, corrected to existing MODEL_CACHE_DIR authority,
+not product policy changes. Twelve new storage/lifetime/entrypoint/deactivation cases pass5.88s.
+Retained focused set43pass/2source-identity failures7.66s: Windows Git cannot interpret this WSL-created
+worktree's .git absolute path. Read-only explicit GIT_DIR/COMMON_DIR/WORK_TREE and OPTIONAL_LOCKS=0
+prove the same root/HEAD; those two unchanged tests pass2.40s. Do not weaken identity assertions or
+modify/prune Git metadata; this process-local mapping is required for further Windows evidence here.
+Separate Windows probe without pytest proves all3 real Qt stores, model copy, environment restoration
+and creator-owned root cleanup. Seven-file Ruff/format and independent final diff review pass. Main
+integration review caught/removed one residual call to a deleted helper before validation. All four
+direct native-preference clear helpers and their capture callers are gone; production behavior unchanged.
+Scope limit: valid host settings remain byte-identical in tests. Existing Assistant preflight
+load_from_file may normalize retired host configurations before isolation; that public policy remains
+unchanged, so this is capture-time isolation, not a blanket no-write guarantee for legacy preflight.
 
 **Module8 CI/Poe disposition.** Independent full ci925/docsworkflow83/pyproject314 plus routing109,
 artifact verifier216/direct311 and reliability409/UI40/data58/integration-trigger24 retains distinct

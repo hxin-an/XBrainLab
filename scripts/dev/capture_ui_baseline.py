@@ -31,10 +31,11 @@ from XBrainLab.ui.qt_runtime import (
 
 configure_qt_platform_for_runtime()
 
-from PyQt6.QtCore import QPoint, QSettings, QSize, Qt, QTimer
+from PyQt6.QtCore import QPoint, QSize, Qt, QTimer
 from PyQt6.QtWidgets import QApplication
 
 from scripts.dev.app_polish_capture_contract import FILTERING_SURFACES
+from scripts.dev.capture_config import isolated_capture_config
 from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
     collect_source_identity,
     inspect_screenshot_artifact,
@@ -294,13 +295,6 @@ def validate_ui_baseline_evidence(
     return True, summary
 
 
-def _clear_saved_main_window_geometry() -> None:
-    """Remove user/session geometry so capture remains deterministic."""
-    settings = QSettings("XBrainLab", "XBrainLab")
-    settings.remove("main_window/geometry")
-    settings.sync()
-
-
 def _shutdown_snapshot_is_clean(snapshot: object) -> bool:
     if not isinstance(snapshot, Mapping):
         return False
@@ -430,7 +424,6 @@ def capture_window(
     shutdown_timer = QTimer()
     shutdown_timer.setSingleShot(True)
 
-    _clear_saved_main_window_geometry()
     study = Study()
     get_application_service(study)
     window = MainWindow(study)
@@ -629,38 +622,41 @@ def main(argv: list[str] | None = None) -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / MANIFEST_NAME).unlink(missing_ok=True)
     source_at_start = collect_source_identity(ROOT, refresh=True)
-    app = QApplication([sys.argv[0]])
-    app.setStyle("Fusion")
-    code, shutdown = capture_window(app, output_dir / OUTPUT_PATH.name)
-    if code != 0:
-        return code
-    source_at_end = collect_source_identity(ROOT, refresh=True)
-    if source_at_start.get("source_digest") != source_at_end.get("source_digest"):
-        print("Product source changed during UI baseline capture.", file=sys.stderr)
-        return 6
-    status, summary = validate_ui_artifacts(output_dir, reference_dir=reference_dir)
-    if status != "pass":
-        print(summary, file=sys.stderr)
-        return 7
-    screen = app.primaryScreen()
-    evidence = build_ui_baseline_evidence(
-        output_dir=output_dir,
-        reference_dir=reference_dir,
-        source_identity=source_at_end,
-        qt_platform=QApplication.platformName(),
-        qt_style=app.style().objectName(),
-        device_pixel_ratio=(screen.devicePixelRatio() if screen is not None else 0.0),
-        shutdown=shutdown,
-    )
-    _write_manifest(output_dir, evidence)
-    ok, reason = validate_ui_baseline_evidence(
-        evidence,
-        output_dir=output_dir,
-        reference_dir=reference_dir,
-        current_source_identity=source_at_end,
-    )
-    print(reason, file=sys.stdout if ok else sys.stderr)
-    return 0 if ok else 8
+    with isolated_capture_config():
+        app = QApplication([sys.argv[0]])
+        app.setStyle("Fusion")
+        code, shutdown = capture_window(app, output_dir / OUTPUT_PATH.name)
+        if code != 0:
+            return code
+        source_at_end = collect_source_identity(ROOT, refresh=True)
+        if source_at_start.get("source_digest") != source_at_end.get("source_digest"):
+            print("Product source changed during UI baseline capture.", file=sys.stderr)
+            return 6
+        status, summary = validate_ui_artifacts(output_dir, reference_dir=reference_dir)
+        if status != "pass":
+            print(summary, file=sys.stderr)
+            return 7
+        screen = app.primaryScreen()
+        evidence = build_ui_baseline_evidence(
+            output_dir=output_dir,
+            reference_dir=reference_dir,
+            source_identity=source_at_end,
+            qt_platform=QApplication.platformName(),
+            qt_style=app.style().objectName(),
+            device_pixel_ratio=(
+                screen.devicePixelRatio() if screen is not None else 0.0
+            ),
+            shutdown=shutdown,
+        )
+        _write_manifest(output_dir, evidence)
+        ok, reason = validate_ui_baseline_evidence(
+            evidence,
+            output_dir=output_dir,
+            reference_dir=reference_dir,
+            current_source_identity=source_at_end,
+        )
+        print(reason, file=sys.stdout if ok else sys.stderr)
+        return 0 if ok else 8
 
 
 if __name__ == "__main__":

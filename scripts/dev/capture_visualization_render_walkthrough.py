@@ -33,10 +33,10 @@ from PyQt6.QtGui import QColor, QPixmap
 from PyQt6.QtWidgets import QApplication, QLabel, QMessageBox, QScrollArea, QWidget
 
 from scripts.dev.capture_chatpanel_local_tool_chain_walkthrough import (
-    _clear_saved_main_window_geometry,
     _set_baseline_window_geometry,
 )
 from scripts.dev.capture_chatpanel_local_walkthrough import is_nearly_black
+from scripts.dev.capture_config import isolated_capture_config
 from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
     collect_source_identity,
     validate_source_identity,
@@ -234,18 +234,19 @@ def main() -> int:
     training_output_dir = Path(args.training_output_dir)
     training_output_dir.mkdir(parents=True, exist_ok=True)
 
-    app = QApplication(sys.argv)
-    app.setStyle("Fusion")
-    payload = run_visualization_render_walkthrough(
-        app,
-        output_dir,
-        training_output_dir,
-        args.timeout_seconds,
-    )
-    _write_artifacts(output_dir, payload)
-    print(f"Wrote {output_dir / JSON_ARTIFACT}")
-    print(f"Wrote {output_dir / MD_ARTIFACT}")
-    return 0 if payload["status"] == "passed" else 1
+    with isolated_capture_config():
+        app = QApplication(sys.argv)
+        app.setStyle("Fusion")
+        payload = run_visualization_render_walkthrough(
+            app,
+            output_dir,
+            training_output_dir,
+            args.timeout_seconds,
+        )
+        _write_artifacts(output_dir, payload)
+        print(f"Wrote {output_dir / JSON_ARTIFACT}")
+        print(f"Wrote {output_dir / MD_ARTIFACT}")
+        return 0 if payload["status"] == "passed" else 1
 
 
 def run_visualization_render_walkthrough(
@@ -264,7 +265,6 @@ def run_visualization_render_walkthrough(
     _set_deterministic_capture_seed()
     started_at = time.monotonic()
     source_identity_at_start = collect_source_identity(ROOT, refresh=True)
-    _clear_saved_main_window_geometry()
     source_path = write_synthetic_training_raw_fif()
     study = Study()
     service = get_application_service(study)

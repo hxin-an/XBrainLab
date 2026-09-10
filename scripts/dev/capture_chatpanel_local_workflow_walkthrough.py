@@ -10,12 +10,12 @@ import re
 import sys
 import tempfile
 import time
-from contextlib import suppress
+from contextlib import ExitStack, suppress
 from pathlib import Path
 from typing import Any
 
 from PIL import Image
-from PyQt6.QtCore import QPoint, QSettings, QSize, QTimer
+from PyQt6.QtCore import QPoint, QSize, QTimer
 from PyQt6.QtWidgets import QApplication
 
 from scripts.dev.capture_chatpanel_local_walkthrough import (
@@ -26,6 +26,7 @@ from scripts.dev.capture_chatpanel_local_walkthrough import (
     has_raw_debug_text,
     is_nearly_black,
 )
+from scripts.dev.capture_config import isolated_capture_config
 from scripts.dev.inspect_local_assistant_runtime import classify_runtime
 from XBrainLab.llm.core.config import LLMConfig
 
@@ -71,32 +72,44 @@ def main() -> int:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    if args.exercise_deactivation:
-        if not args.isolated_settings_path:
-            parser.error("--exercise-deactivation requires --isolated-settings-path")
-        _prepare_isolated_settings(
-            Path(args.isolated_settings_path),
-        )
+    with ExitStack() as cleanup:
+        if args.exercise_deactivation:
+            if not args.isolated_settings_path:
+                parser.error(
+                    "--exercise-deactivation requires --isolated-settings-path"
+                )
+            original_default_settings_path = LLMConfig.__dict__[
+                "_default_settings_path"
+            ]
+            cleanup.callback(
+                setattr,
+                LLMConfig,
+                "_default_settings_path",
+                original_default_settings_path,
+            )
+            _prepare_isolated_settings(
+                Path(args.isolated_settings_path),
+            )
 
-    _force_offline_hf_runtime()
-    config = _load_capture_config()
-    runtime = classify_runtime(config)
-    if runtime["classification"] not in {"gpu-ready", "cpu-fallback"}:
-        payload = _blocked_payload(args, runtime)
-        _write_artifacts(output_dir, payload)
-        print(payload["status"])
-        return 2
+        _force_offline_hf_runtime()
+        config = _load_capture_config()
+        runtime = classify_runtime(config)
+        if runtime["classification"] not in {"gpu-ready", "cpu-fallback"}:
+            payload = _blocked_payload(args, runtime)
+            _write_artifacts(output_dir, payload)
+            print(payload["status"])
+            return 2
 
-    app = QApplication(sys.argv)
-    app.setStyle("Fusion")
-
-    payload = run_workflow(
-        app,
-        output_dir,
-        args.timeout_seconds,
-        runtime_inspection=runtime,
-        exercise_deactivation=bool(args.exercise_deactivation),
-    )
+        with isolated_capture_config(None if args.exercise_deactivation else config):
+            app = QApplication(sys.argv)
+            app.setStyle("Fusion")
+            payload = run_workflow(
+                app,
+                output_dir,
+                args.timeout_seconds,
+                runtime_inspection=runtime,
+                exercise_deactivation=bool(args.exercise_deactivation),
+            )
     _write_artifacts(output_dir, payload)
     print(f"Wrote {output_dir / JSON_ARTIFACT}")
     print(f"Wrote {output_dir / MD_ARTIFACT}")
@@ -115,7 +128,6 @@ def run_workflow(
     from XBrainLab.backend.study import Study
     from XBrainLab.ui.main_window import MainWindow
 
-    _clear_saved_main_window_geometry()
     study = Study()
     window = MainWindow(study)
     _set_baseline_window_geometry(window)
@@ -716,12 +728,6 @@ def _has_unpainted_main_surface(path: Path) -> bool:
 def _load_capture_config() -> LLMConfig:
     config = LLMConfig.load_from_file() or LLMConfig()
     return config
-
-
-def _clear_saved_main_window_geometry() -> None:
-    settings = QSettings("XBrainLab", "XBrainLab")
-    settings.remove("main_window/geometry")
-    settings.sync()
 
 
 def _set_baseline_window_geometry(window: Any) -> None:

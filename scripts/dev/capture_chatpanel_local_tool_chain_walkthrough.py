@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Any
 
 import mne
 import numpy as np
-from PyQt6.QtCore import QPoint, QSettings, QSize, QTimer
+from PyQt6.QtCore import QPoint, QSize, QTimer
 from PyQt6.QtWidgets import QApplication
 
 from scripts.dev.capture_chatpanel_local_walkthrough import (
@@ -33,6 +33,7 @@ from scripts.dev.capture_chatpanel_local_walkthrough import (
 from scripts.dev.capture_chatpanel_local_workflow_walkthrough import (
     _has_runtime_error_text,
 )
+from scripts.dev.capture_config import isolated_capture_config
 from scripts.dev.inspect_local_assistant_runtime import classify_runtime
 from XBrainLab.llm.core.config import LLMConfig
 
@@ -81,16 +82,16 @@ def main() -> int:
         print(payload["status"])
         return 2
 
-    source_path = write_synthetic_raw_fif()
-    app = QApplication(sys.argv)
-    app.setStyle("Fusion")
-
-    payload = run_tool_chain(
-        app,
-        output_dir,
-        source_path,
-        args.timeout_seconds,
-    )
+    with isolated_capture_config(config):
+        source_path = write_synthetic_raw_fif()
+        app = QApplication(sys.argv)
+        app.setStyle("Fusion")
+        payload = run_tool_chain(
+            app,
+            output_dir,
+            source_path,
+            args.timeout_seconds,
+        )
     _write_artifacts(output_dir, payload)
     print(f"Wrote {output_dir / JSON_ARTIFACT}")
     print(f"Wrote {output_dir / MD_ARTIFACT}")
@@ -159,7 +160,6 @@ def run_tool_chain(
     from XBrainLab.ui.main_window import MainWindow
 
     prompts = build_prompts(source_path)
-    _clear_saved_main_window_geometry()
     study = Study()
     window = MainWindow(study)
     _set_baseline_window_geometry(window)
@@ -566,13 +566,6 @@ def _capture_current_window(window: Any, output_path: Path) -> int:
         return 2
     print(f"Saved screenshot to {output_path}")
     return 0
-
-
-def _clear_saved_main_window_geometry() -> None:
-    settings = QSettings("XBrainLab", "XBrainLab")
-    settings.remove("geometry")
-    settings.remove("windowState")
-    settings.sync()
 
 
 def _set_baseline_window_geometry(window: Any) -> None:
