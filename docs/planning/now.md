@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `deb4a3cf`, 128 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `0aa9fa6c`, 129 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -292,12 +292,30 @@ Removed only obsolete Study identity/false-marker assertions and disconnected St
 deletedQObject, missing rows and renderer failure/retry cases. Corrected stale direct-refresh fallback
 prose against MainWindow.update_info_panel's actual no-fallback source. Canonical Windows architecture
 guard and guidance audit passed. Local MkDocs is still unavailable in the retained environment;
-same-head CI docs validation remains required before final handoff. Commit next, not module closure.
+same-head CI docs validation remains required before final handoff. Committed0aa9fa6c, not module closure.
 
 **Shared aggregate widget audit.** Full independent info_panel626/direct605 retains detached mapping
 rendering, preprocessed precedence, stable13rows, one SidebarScrollArea width owner and real narrow/DPI/
 font/scrollbar geometry assertions. No unnecessary wait established. Unused minimum_readable_table_width
 and test-only presentation_changed signal are bounded candidates, not yet changed.
+
+**Bounded7E — remove unused summary measurement and test-only notifications.** Main and independent
+full info_panel626/direct605, production/script/doc/dynamic name search show no caller for
+minimum_readable_table_width or its exclusive horizontal buffer constant, and no product connection
+to presentation_changed. Remove those unused internal surfaces, retaining all synchronous rendering,
+font/resize/show metrics and every visible value. Migrate two exclusive waitSignal wrappers to direct
+calls before the source edit; keep their displayed-value assertions and all cases. Full direct summary
+and service suites before/after, Ruff and main actual diff review; same render/width owners, one source
+file about-34LOC, no new owner/contract/UI change. One reversible commit, then continue module audit.
+
+7E verified48before2.00s/after2.03s; no cases removed or displayed-value/geometry assertions weakened.
+Production+1/-34/net-33; tests-2. Main full source/tests/caller and actual diff review passed; two-file
+Ruff check/format passed. No latency claim from deleting an unconnected signal. Commit next.
+
+Shared sizing/button audit: independent full table_sizing60/direct24 and dialog_button_policy78/
+direct97 retain real two-surface minimum/exact-pixel sizing and global post-style icon/default policy.
+Real QMessageBox/ModalAlertDialog Enter/Escape tests protect safe cancellation; no duplicated owner or
+confirmed deletion candidate. These retained findings do not close the remaining shared runtime module.
 
 **Module6 initial full owner audit (not closure).** Independent full controller2949/attempt898/
 execution342/confirmation314/pending443 and respective direct confirmation154/pending560/execution151/
