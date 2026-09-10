@@ -109,6 +109,22 @@ old session IDs and plan text do not prove a process is running. No manual candi
 
 **Current work — developer docs/config truth and remaining scripts; module2–6 closure gaps and explicit decisions remain open.**
 
+**Bounded9T — remove inactive global PyTorch coverage import hook.** Main/independent full
+tests/fixtures/sitecustomize.py60 and source/CI/Poe/docs/startup trace find no route that adds its
+directory to Python startup search paths or imports it. Current pytest pythonpath is repo root;
+coverage flags do not activate a sitecustomize in an unrelated directory. Retire this entire unused
+builtins.__import__/_add_docstr mutation capability, including its own stale Usage comments. No
+dedicated tests exist; retain live test-temp policy and runner coverage/85% verification tests. First
+check actual native startup resolution/path and focused runtime-path/coverage tests, delete exactly
+this tracked file, rerun same protection and caller/dynamic search. No installed Python/sitecustomize,
+coverage denominator, environment, model, user data or CI gate changes. Independent retirement review
+already confirms no dynamic caller; review final diff and commit separately, then continue fixture
+documentation contradictions and remaining inventory.
+Result: actual Windows startup cannot resolve the retired fixture hook; same26 retained temp/coverage
+tests pass before0.32s and after0.27s. Source/config/docs residual-reference scan and diff check pass.
+Exactly60 inactive fixture lines removed, no tests retired; Git preserves recovery. Actual coverage
+collection/Linux aggregate is still a final CI obligation, not proved by these runner contract tests.
+
 **Bounded9S — retire stale package descriptions and absent-path secret-scan exclusions.** Main full
 package initializer/hook reads and live engine/catalog/sidebar trace retain real package markers,
 reviewed model closures and training-dialog exports. Correct only styles' removed icon registry claim
