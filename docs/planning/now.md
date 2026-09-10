@@ -244,7 +244,7 @@ Native direct126 passed8.10s before /8.00s after; selected ApplicationService30 
 and9.49s after. Ruff/format9 files and independent exact-diff review passed.
 Production -8 across3 files, test factories/helper -20; no owner change. StateSnapshot filename stays.
 
-**Active 2T — unused montage fuzzy convenience.** User explicitly authorized behavior-preserving
+**Completed 2T — unused montage fuzzy convenience.** User explicitly authorized behavior-preserving
 UI internals. Independent full source/direct tests (montage946/1238, channel183/109) and dynamic
 sidebar refresh/result caller audit found `PickMontageDialog.smart_match` only in three exclusive tests.
 Actual prefill uses `_safe_mapping_for_montage`, which maps unique normalized identities without fuzzy
@@ -271,6 +271,11 @@ review must check it still rejects excessive footer space and does not mask the 
 Corrected characterization46 passed10.86s; strengthened with explicit minimumHeight==150 guards,
 46 passed10.73s. Independent review approved derived-surplus bound; native offscreen is not screenshot
 or Windows window-manager acceptance. Commit this test baseline separately before the dead UI method.
+Baseline committed separately as `b67d24f8`. After deleting the unused method and its three exclusive
+tests, identical retained native selection43 passed10.81s; Ruff/format passed. Independent actual-diff
+review approved deletion subject to correcting two stale smart-match comments; both now describe the
+retained safe/reviewed mapping. Production +2/-50/net -48, no owner or visible behavior change.
+Continue the unused label-admission chain; final module and integrated handoff obligations remain open.
 
 ### Responsibility closure and retained boundaries
 

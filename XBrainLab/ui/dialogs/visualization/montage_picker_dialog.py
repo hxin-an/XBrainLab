@@ -468,7 +468,7 @@ class PickMontageDialog(BaseDialog):
             self.table.setItem(i, 0, item)
 
     def on_montage_select(self, montage_name):
-        """Load montage channels and apply smart match / saved settings.
+        """Load montage channels and apply safe mapping or reviewed settings.
 
         Args:
             montage_name: Name of the selected montage standard.
@@ -492,7 +492,7 @@ class PickMontageDialog(BaseDialog):
             saved_mapping = self._saved_mapping_for_current_schema(montage_name)
             safe_mapping = self._safe_mapping_for_montage(montage_name)
 
-            # 1. Create all widgets and run Smart Match / Load Settings
+            # 1. Create widgets using safe mapping or reviewed settings.
             for row in range(self.table.rowCount()):
                 dataset_item = self.table.item(row, 0)
                 if dataset_item is None:
@@ -801,54 +801,6 @@ class PickMontageDialog(BaseDialog):
         ) or len(values) != len(set(values)):
             return {}
         return {str(channel): str(electrode) for channel, electrode in mapping.items()}
-
-    def smart_match(self, combo, target_name):
-        """Try to find the best montage channel match for a dataset channel.
-
-        Performs exact match, case-insensitive match, then cleaned fuzzy
-        match to find the closest montage channel.
-
-        Args:
-            combo: QComboBox containing montage channel options.
-            target_name: Dataset channel name to match.
-
-        Returns:
-            True if a match was found and set, False otherwise.
-
-        """
-        target = target_name.lower().strip()
-
-        # Clean target name
-        clean_target = (
-            target.replace("eeg", "").replace("ref", "").replace("-", "").strip()
-        )
-
-        best_match_idx = -1
-
-        # 1. Exact Match (Case Insensitive)
-        idx = combo.findText(
-            target_name,
-            Qt.MatchFlag.MatchFixedString | Qt.MatchFlag.MatchCaseSensitive,
-        )
-        if idx != -1:
-            best_match_idx = idx
-        else:
-            # 2. Case Insensitive Match
-            idx = combo.findText(target_name, Qt.MatchFlag.MatchFixedString)
-            if idx != -1:
-                best_match_idx = idx
-            else:
-                # 3. Fuzzy / Cleaned Match
-                for i in range(1, combo.count()):  # Skip empty first item
-                    item_text = combo.itemText(i).lower()
-                    if item_text == clean_target:
-                        best_match_idx = i
-                        break
-
-        if best_match_idx != -1:
-            combo.setCurrentIndex(best_match_idx)
-            return True
-        return False
 
     def clear_selections(self):
         """Clear all channel mappings and anchors."""

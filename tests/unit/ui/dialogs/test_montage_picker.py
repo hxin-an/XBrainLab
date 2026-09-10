@@ -1,4 +1,4 @@
-"""Coverage tests for PickMontageDialog - 241 uncovered lines."""
+"""Behavior regressions for montage review, mapping, and dialog lifecycle."""
 
 from __future__ import annotations
 
@@ -932,12 +932,6 @@ class TestMontageSelection:
         first.setCurrentIndex(first.findText("F3"))
         assert second.currentText() == ""
 
-    def test_smart_match(self, dialog):
-        combo = dialog.table.cellWidget(0, 1)
-        if combo:
-            result = dialog.smart_match(combo, "Fp1")
-            assert isinstance(result, bool)
-
     def test_non_bids_unique_best_prefills_only_safe_one_to_one_matches(
         self, qtbot, monkeypatch, tmp_path
     ):
@@ -1232,15 +1226,3 @@ class TestMontagePickerEdgeCases:
             ),
         ):
             dialog.on_montage_select("standard_1020")
-
-    def test_smart_match_case_insensitive(self, dialog):
-        combo = dialog.table.cellWidget(0, 1)
-        if isinstance(combo, QComboBox):
-            result = dialog.smart_match(combo, "fp1")
-            assert result is True
-
-    def test_smart_match_no_match(self, dialog):
-        combo = dialog.table.cellWidget(0, 1)
-        if isinstance(combo, QComboBox):
-            result = dialog.smart_match(combo, "NONEXISTENT_XYZ")
-            assert result is False
