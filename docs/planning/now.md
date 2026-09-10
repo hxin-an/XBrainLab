@@ -134,7 +134,7 @@ exclusive helper case, retained289 passed38.63s; seven actual receipt/content-ch
 passed9.09s. Ruff/format and independent actual-diff review pass. Production -258 across two files;
 the removed module is recoverable from Git. No actual confirmation authority or parser/hash changed.
 
-**Next 2W — unused wizard review fallbacks/conveniences.** Independent full audit and main source/test
+**Active 2W — unused wizard review fallbacks/conveniences.** Independent full audit and main source/test
 reads found no production/dynamic/config/doc callers for review_presenter.build_review_rows,
 build_primary_review_rows and exclusive legacy text-routing/action-row helpers, required-metadata
 helper, ValidationReviewContract.action_targets or LabelSourceState.clear_skip. Actual ReviewImportStep
@@ -150,10 +150,32 @@ assertions before deletion if needed, same remaining selection after, Ruff and i
 review. Main owns plan/inventory and integration. One reversible commit; continue resource and wizard
 audit then remaining module order, not a final handoff.
 
-Read-only next candidate 2V: session full hashes are stored but no caller consumes assert_current.
-Before any optimization, measure actual extra bytes and characterize parser-before-read guards plus
-final reviewed SHA. Do not remove progress/cancellation or earlier admission protections silently;
-no speed claim or implementation is authorized by caller search alone. Remaining modules continue.
+**Completed 2V — measured discarded label payload hash.** Main and independent security/caller review
+confirm session full hashes have no consumer: session.assert_current is never called. Actual parser
+descriptor/probe guard and prepared reviewed-content SHA remain authoritative. First measure payload
+bytes using a real1MiB TXT session plus actual load, and characterize same-size changes during
+admission and before load rejecting before parser materialization. No production edit before this
+baseline and meaningful resource regression evidence.
+
+If confirmed, preserve the exact per-path owned-work stages, progress/cancellation and early
+open_binary context including descriptor and before/after identity checks, but do not read payload
+inside that context. Remove discarded hash field/helpers and unused session/reader.assert_current
+methods. This deliberately retains early checking; it is not removal of admission or final SHA.
+Two production files, estimated -125 LOC, unchanged owners and no visible stage/schema change.
+Main owns these files and direct label-admission tests; observer's2W files are disjoint.
+Run existing reader race/probe tests, actual before/during-detached-apply no-publication cases and
+five migrated apply fixtures along with new characterization before/after, Ruff and independent
+security/actual-diff review. Metric is admission full-payload bytes, not total OS/probe IO or wall-time
+speed promise. One reversible commit; continue the module audit rather than handing off this slice.
+Measured Windows baseline: real1MiB TXT session consumed exactly1,048,576 bounded payload bytes before
+actual load; the new zero-admission-payload check failed on that count as intended. All64 correctness,
+same-size pre-parser rejection, reader race/probe and apply no-publication neighbors passed10.41s.
+The actual TXT load already produced every expected alternating label before the budget assertion.
+This confirms one discarded full-stream read, not an OS-IO or whole-application speed estimate.
+After retaining the exact context/guard and deleting the discarded hash chain, identical native65
+passed10.10s: admission payload bytes0, actual parsed labels unchanged. Ruff/format and independent
+security/resource actual-diff review pass. Production +4/-119/net -115 across two files; owner count,
+formal diagnostics, checkpoint text/order and final full reviewed-content SHA remain unchanged.
 
 **Completed 2N — unused metadata readers/projection alias.** Main fully read metadata.py (735 lines),
 direct metadata tests and actual scan/cache consumers. Independent caller/dynamic/config/serializer

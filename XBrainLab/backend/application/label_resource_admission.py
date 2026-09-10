@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import hashlib
 import os
 import stat
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -20,7 +19,6 @@ from .label_resource_reader import AdmittedLabelResourceReader
 from .owned_work import owned_work_checkpoint
 from .resource_label_estimation import SUPPORTED_EXTERNAL_LABEL_EXTENSIONS
 
-LABEL_CONTENT_HASH_CHUNK_BYTES = 1024 * 1024
 NPY_MAGIC = b"\x93NUMPY"
 NPY_SUPPORTED_VERSIONS = frozenset({(1, 0), (2, 0), (3, 0)})
 
@@ -62,7 +60,6 @@ class AdmittedLabelResourceSession:
     reader: AdmittedLabelResourceReader
     specs: tuple[LabelResourceSpec, ...]
     resource_preflight: dict[str, Any]
-    _content_identities: tuple[dict[str, Any], ...]
 
     def load(self, path: str) -> Any:
         key = _path_key(path)
@@ -78,17 +75,6 @@ class AdmittedLabelResourceSession:
         raise PreconditionError(
             f"Label resource was not admitted for this command: {path}.",
             diagnostics={"code": "label_resource_not_admitted", "path": key},
-        )
-
-    def assert_current(self, *, purpose: str) -> None:
-        """Verify that every admitted file still has its preview identity."""
-        _assert_content_identities_current(
-            self._content_identities,
-            purpose=purpose,
-        )
-        self.reader.assert_current(
-            [spec.path for spec in self.specs],
-            purpose=purpose,
         )
 
 
@@ -119,14 +105,15 @@ def session_from_resource_preflight(
             _path_key(spec.path): spec.to_scope() for spec in normalized_specs
         },
     )
-    content_identities: list[dict[str, Any]] = []
     for index, path in enumerate(paths):
         owned_work_checkpoint(
             f"Verifying reviewed label resource {index + 1} of {resource_count}",
             completed=index,
             total=resource_count,
         )
-        content_identities.append(_content_identity(path, reader=admitted_reader))
+        # Keep the exact admission guard without reading a discarded payload hash.
+        with admitted_reader.open_binary(path, purpose="label content identity"):
+            pass
     owned_work_checkpoint(
         "Reviewed label resources admitted",
         completed=resource_count,
@@ -139,7 +126,6 @@ def session_from_resource_preflight(
             **resource_preflight.to_diagnostics(),
             "parser_admission": admitted_reader.diagnostics(),
         },
-        _content_identities=tuple(content_identities),
     )
 
 
@@ -219,101 +205,6 @@ def _inspect_label_resource_paths(paths: Iterable[str]) -> None:
                             "format": ".npy",
                         },
                     )
-
-
-def _content_identity(
-    path: str,
-    *,
-    reader: AdmittedLabelResourceReader,
-) -> dict[str, Any]:
-    digest = hashlib.sha256()
-    total = 0
-    with reader.open_binary(path, purpose="label content identity") as handle:
-        while chunk := handle.read(LABEL_CONTENT_HASH_CHUNK_BYTES):
-            digest.update(chunk)
-            total += len(chunk)
-    return {
-        "path": _path_value(path),
-        "file_bytes": total,
-        "sha256": digest.hexdigest(),
-    }
-
-
-def _assert_content_identities_current(
-    expected_identities: Iterable[Mapping[str, Any]],
-    *,
-    purpose: str,
-) -> None:
-    for expected in expected_identities:
-        path = _path_value(str(expected.get("path") or ""))
-        expected_bytes = int(expected.get("file_bytes") or 0)
-        observed = _current_content_identity(path, expected_bytes=expected_bytes)
-        if observed["file_bytes"] == expected_bytes and observed[
-            "sha256"
-        ] == expected.get("sha256"):
-            continue
-        changed_fields = []
-        if observed["file_bytes"] != expected_bytes:
-            changed_fields.append("file_bytes")
-        if observed["sha256"] != expected.get("sha256"):
-            changed_fields.append("sha256")
-        raise PreconditionError(
-            f"A selected label file changed after resource admission: {path}.",
-            diagnostics={
-                "code": "interpretation_resource_changed_after_admission",
-                "path": path,
-                "purpose": purpose,
-                "parse_started": False,
-                "admitted_bytes": expected_bytes,
-                "observed_bytes": observed["file_bytes"],
-                "changed_fields": changed_fields,
-            },
-        )
-
-
-def _current_content_identity(
-    path: str,
-    *,
-    expected_bytes: int,
-) -> dict[str, Any]:
-    digest = hashlib.sha256()
-    total = 0
-    try:
-        with open(path, "rb") as handle:
-            file_stat = os.fstat(handle.fileno())
-            if not stat.S_ISREG(file_stat.st_mode):
-                raise PreconditionError(
-                    f"A selected label path is not a regular file: {path}.",
-                    diagnostics={
-                        "code": "interpretation_resource_changed_after_admission",
-                        "path": path,
-                        "parse_started": False,
-                    },
-                )
-            observed_bytes = max(int(file_stat.st_size), 0)
-            read_limit = min(observed_bytes, max(expected_bytes, 0))
-            while total < read_limit:
-                chunk = handle.read(
-                    min(LABEL_CONTENT_HASH_CHUNK_BYTES, read_limit - total)
-                )
-                if not chunk:
-                    break
-                digest.update(chunk)
-                total += len(chunk)
-    except OSError as exc:
-        raise PreconditionError(
-            f"A selected label file is unavailable during commit: {path}.",
-            diagnostics={
-                "code": "interpretation_resource_changed_after_admission",
-                "path": path,
-                "parse_started": False,
-            },
-        ) from exc
-    return {
-        "path": _path_value(path),
-        "file_bytes": observed_bytes,
-        "sha256": digest.hexdigest() if total == observed_bytes else "",
-    }
 
 
 def _path_key(path: str | Path) -> str:

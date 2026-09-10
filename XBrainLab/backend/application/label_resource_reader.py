@@ -191,12 +191,6 @@ class AdmittedLabelResourceReader:
     def diagnostics(self) -> dict[str, Any]:
         return self._resource_reader.diagnostics()
 
-    def assert_current(self, paths: list[str], *, purpose: str) -> None:
-        """Verify admitted identities without exposing or rereading file payloads."""
-        normalized = [_path_key(path) for path in paths]
-        with self._resource_reader.guard(normalized, purpose=purpose):
-            return
-
 
 def _assert_open_identity(
     handle: Any,
