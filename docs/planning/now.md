@@ -45,7 +45,7 @@ UI/test files and root settings. Worktree/branch/source facts come from Git, not
 | Module | Includes | Status |
 | --- | --- | --- |
 | 1 Command/state spine | Admission, capabilities, confirmation, publication, owned work, shared domain ports | Responsibility review closed at 1247cf7c; native 178 passed; domain branches explicitly remain modules 2–6 |
-| 2 Import/interpretation | Loaders, BIDS, labels/classes, channel/montage, metadata, recipes, related UI | 2A–2E reviewed; remaining domain implementation/tests audit open |
+| 2 Import/interpretation | Loaders, BIDS, labels/classes, channel/montage, metadata, recipes, related UI | 2A–2H reviewed; loader consolidation active, remaining domain audit open |
 | 3 Preprocess/epoch/split | Processing, copies, invalidation, preview/materialization, related UI/tools | Pending |
 | 4 Models/training | Catalog, resource preflight, settings, stop/rerun, history/checkpoints | Pending |
 | 5 Evaluation/saliency/views | Read/publication, SmoothGrad/recompute, four views, stale work/render lifecycle | Pending |
@@ -103,505 +103,166 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-- Recovery reverified: product branch `cleanup/module-quality` is clean at `7b4fc8a0` (22 commits
-  after baseline); original dirty UI/test/settings remain intact. Earlier reboot checks verified the
-  existing Windows Python and retained caches. Resume from committed source, not ended tool sessions.
-- Active next: commit reviewed module 2 state/Raw cleanup after final focused evidence; continue
-  loader test consolidation, label/event and remaining BIDS/import/UI audits. Module 1 responsibility
-  closure is independently approved with 178 native cases, not whole-stage completion. Independent
-  full state-service test audit read 2,063 lines / 49 functions and found no safe deletion: failure,
-  detachment and retry tests protect distinct read-port contracts. Verify existing actual data_lists
-  stale-generation/lock tests before treating a file-local coverage gap as a product evidence gap.
-  Module 2 prepared-path cleanup 2C/2D and native recipe repair 2E are committed; remaining module 2
-  domain review and modules 3–9 remain open. No whole-module closure or manual candidate claim.
-- Bounded 1N caller audit (read-only until its evidence map is complete): Study loader/export/read
-  conveniences and their exclusive manager forwarding paths. Check dynamic/config/doc consumers;
-  retain actual Command/query/result export and saliency propagation owners. Do not remove methods
-  just because they forward. Independent worker owns the audit, not source edits.
-- Bounded 1O test consolidation: runtime tests repeat direct construction's cache identity checks.
-  Merge the explicit-construction-then-runtime-lookup case into the existing two-explicit-instances
-  test, retaining all distinct identity/cache assertions and the separate opposite creation-order
-  case. Preserve failure/retry and actual concurrent close/lookup tests. Production unchanged;
-  same native runtime suite before/after, Ruff and independent diff review. One rollback commit.
-  Existing data_lists tests already exercise nonwaiting lock rejection, pre-read stale-generation
-  rejection and use of committed state without refresh; retain these as shared-spine evidence,
-  while row/EEG domain semantics remain module 2, not an invented new concurrency owner.
-- 1N implementation declared after independent caller audit: delete Study.get_raw_data_loader and
-  DataManager.get_raw_data_loader, Study.export_output_csv and TrainingManager.export_output_csv,
-  and Study-only get_saliency_params/unlock_dataset/has_raw_data/has_datasets/has_trainer wrappers.
-  Whole tracked source/config/scripts/docs checks found no runtime/dynamic consumers. Preserve real
-  RawDataLoader, result-record CSV export, manager predicates/unlock, manager saliency getter and
-  formal visualization/analysis consumers. Remove exactly their loader/export-exclusive tests and
-  fake export helpers; migrate the two Study saliency read assertions to its retained manager while
-  preserving setter/trainer propagation checks. No new owner, fallback or visible/public contract
-  change. Worker owns the three backend classes and four directly affected test files, main owns
-  plan/inventory/runtime tests. Native baseline/after on those test files plus actual analysis/
-  visualization getter consumers; unchanged retained assertions, Ruff and independent actual diff
-  review before a separate rollback commit. Do not expand to other training/data methods.
-- 1O completed focused evidence: native runtime baseline 10 passed; consolidated suite 9 passed,
-  with all distinct prior cache/identity assertions retained and explicit-close isolation added.
-  Production unchanged, Ruff/format passed; independent reviewer approved actual diff/ownership.
-- Next bounded 2F import verification simplification: full content-identity source (1,010 lines)
-  and its two test files (945 lines) were read. Preserve streaming SHA, canonical path scope,
-  admitted digest reuse, bounded workers and explicit owned-context/cancellation/progress behavior.
-  Remove only a consecutive duplicate session-current check in prepared apply, its single-use
-  `_ensure_reviewed_label_content_is_current` forwarding wrapper, and the one-use nested `_build`
-  wrapper inside hash dispatch by inlining under the existing context bindings. No cache, identity
-  schema, extra owner, I/O or lifecycle redesign; no performance claim. Native content identity/hash
-  cancellation and actual prepared apply stale/content/rollback tests before/after; unchanged tests,
-  Ruff and independent data/lifecycle review. Main owns these two production files, separate from 1N.
-- 1N native before/after: 158 / 146 passed on identical four-file selection. Exactly 12 loader/export
-  exclusive cases removed; real plan, saliency propagation and manager mutation assertions retained.
-  Production +2/-63/net -61, tests +8/-112/net -104; Ruff/format/diff pass. Independent final review
-  approved. Retained visualization/analysis readback neighbors: 7 passed (33 deselected).
-  EvalRecord.export_csv itself remains for module 5 caller/disposition review; this slice
-  does not assert a currently reachable CSV-export product feature.
-- Recipe audit: independent full source/test/caller read retains persistence, replay conversion,
-  legacy class-map migration and current label-audit reconstruction. Their real save/reload and
-  state roundtrip cases protect current behavior. Target-level extra provenance/schema fields are
-  not current guarantees or authorized schema work. 2F baseline: 49 content/prepared cases plus
-  6 actual stale-session/cancel/commit/content-boundary cases pass before edits.
-- 1O committed as `6c0ee806`; 1N as `0b0a8e7b`. 2F source edited only after its baseline;
-  unchanged combined after selection: 55 passed (272 deselected), Ruff/format pass. Independent review
-  approved exact session checks, terminal-only rehash and unchanged context/cancellation boundaries.
-  Production +9/-21/net -12, no test changes or new owner. Commit this slice, then run same-head
-  shared-spine closure evidence and continue module 2 Raw/loader/state audits. No manual acceptance
-  or whole-project completion is implied.
-- 2F committed `1247cf7c`. Shared-spine closure suite now runs against that source (native runtime,
-  confirmation, publication/delivery, owned work, state/read models, observer batching plus actual
-  query/shutdown nodes); no source edits until it finishes. Shared service domain branches/tests
-  stay explicit module 2–6 obligations, not falsely counted as whole-file completion.
-- Next declared 2G state cleanup: independent full 1,932-line state / 1,110-line test audit found
-  restore_session_state, session_checkpoint_is_current and discard_applied have no production
-  callers. Active detached publication/rollback already uses checkpoint/stage/publish and lightweight
-  session identity. Retain those owners and all recipe/epoch-handoff semantics. First migrate
-  useful checkpoint/isolation/revision assertions to actual checkpoint/publish/session_identity
-  behavior; remove only obsolete discard/restore-specific cases after mapping actual failed-apply
-  rollback protection. Replace the discovery test's obsolete restore-method sentinel with an
-  actual no-deepcopy-during-commit check (after prepare), retaining one-shot/publication assertions.
-  Then delete the three unused methods and only their entries in the existing mutator revision guard.
-  Native state/discovery plus actual apply rollback/cancel/stale tests before/after, unchanged
-  semantic assertions, Ruff and independent lifecycle review. Worker owns state source/two direct
-  test files; main owns plan and actual integration verification. No new owner/visible/public change.
-- Shared-spine independent closure approved after inventory reconciliation and native 178-pass run.
-  This is module-1 responsibility closure, not whole service-file/domain or stage completion. Reopen
-  affected evidence if later domain changes alter shared identity/publication/lifecycle behavior.
-- Next bounded 2H Raw cleanup: full Raw source (513 lines) and unit tests (461 lines) read. Whole-tree
-  caller/dynamic name checks find only test callers for has_runtime_signals, has_runtime_detail,
-  has_gdf_duplicate_channel_detail, has_event_str, get_event_name_list_str and get_row_info. Remove
-  those display/convenience helpers after migrating tests to actual signal/detail/event APIs. Retain
-  has_event (EventLoader/export callers), get_tmin (dynamic dataset summary caller), all MNE/event
-  mutation/cache/copy semantics and actual typed dataset row projection. Preserve exact event-name
-  ordering and GDF detail assertions. Delete the no-op test_set_mne_consistency; strengthen existing
-  wipe-events tests with pre-existing imported events/cache so they can detect a missing wipe.
-  Main owns Raw and its direct raw/loader/preprocess/IO test callers only, separate from 2G. Native
-  baseline, improved passing characterization before deletion, same retained tests after plus actual
-  dataset summary protection; changed-file Ruff and independent review. No visible UI/EEG change,
-  extra owner or timing claim. Loader duplicate-test cleanup stays separately mapped, not mixed in.
-- 2G review requires actual post-publish recipe rollback evidence: the existing recipe case fails
-  during prepare; the existing retirement failure reaches publish but had no prior saved recipe.
-  Main extends that retirement case with real prior apply/save and checks restored interpretation,
-  recipe ID/path/content after the injected post-publish failure. No new production behavior.
-  Worker characterization chronology: no original unedited two-file baseline was run; migrated
-  pre-delete tests passed 81 but its environment-assignment warning means cache isolation is not
-  claimed. Fresh-cache after and strengthened nested-isolation rerun each passed 81. Preserve this
-  limitation rather than mislabel these as three equivalent original/characterization/after runs.
-- 2H original native baseline 113 passed / 13 skipped; initial migration 112 passed / same 13 skipped
-  after deleting the no-op case. Skips are existing external public fixtures under unconfigured local
-  fixture path, not the checked-in GDF/multiformat cases; final source-diverse gate remains required.
-  Strengthened eight-case event wipe matrix passed before production deletion; intentional in-memory
-  replacement with set_mne caused all four imported-event cases to fail. No faulty source persisted.
-  Main corrected test fixture aliasing before that probe. Production now removes only six proven
-  test-only conveniences; final after/native typed-summary evidence and review remain.
-- Combined 2G/2H after selection: 130 passed / 13 external-fixture skips / 1 fixture failure. The
-  extended retirement test injected trainer history after service creation without publishing it;
-  the normal stale-publication guard correctly rejected Scan before the intended failure boundary.
-  Publish that test-only injection with existing get_state before review, then rerun the failing
-  test; no product-policy change. All Raw/loader/preprocess/typed-summary cases passed (116 retained
-  Raw selection plus 11 dataset-state and 3 original rollback neighbors). 2H independent review
-  approved production -49 LOC, event ordering and eight-case wipe matrix; no failed source persisted.
-- 2G post-publication failure case now passes after the test-only fixture publication correction.
-  Independent review approved full recipe/ID/path, pipeline and training-history restoration.
-  To remove the earlier cache ambiguity, load exact 1247cf7c state-module source from Git into an
-  isolated native process and run current strengthened tests: 82 passed. First attempt had 81 pass
-  and an inspect-source line-cache mismatch; registering the exact historical source for inspect
-  fixed the harness, not product code. This is retrospective historical-source characterization,
-  not a claim that these final tests ran before edits. Current-source identical selection: 82 passed.
-  2G production -55 LOC; current state ownership and rollback unchanged. 2H retained native selection
-  116 passed / 13 known external-fixture skips, plus 11 typed dataset-state cases and 3 unchanged
-  rollback neighbors passed in the combined run. Both actual diffs are independently approved.
-- Next declared 2I test-only loader consolidation: remove test_loaders.py (six redundant mock cases)
-  and test_lazy_loading.py (two cases), keeping full actual-reader/registration/factory coverage.
-  Map four wrapping cases to parameterized wrapping tests, EDF inference to its richer retained case,
-  failure to retained raw+epochs exception tests, GDF preload to exact call assertion. Main found SET
-  success currently asserts only call count: strengthen that retained case to exact codec/preload args
-  before removing the lazy test. Baseline/characterization/after on these three files; no production
-  change. Preserve real FIF/epochs and checked-in multi-format integration evidence, test denominator
-  reduction exactly eight. Independent diff review and separate test-only rollback commit.
-- 2G committed as `aba4eea7`; 2H source/test review and relevant evidence complete, commit next.
-  No module-2 closure yet: label/event/BIDS/UI and complete inventory obligations remain open.
-- Planned 1L observer cleanup: remove the unread QtObserverBridge._observer_callback member (two
-  assignments) while retaining Observable/_ObserverSubscription callback ownership, QObject destroyed
-  cleanup and finalizer. Replace the test-only empty MockObservable subclass with Observable itself.
-  UI-internal changes authorized; no visible behavior change. Native bridge suite before/after plus
-  observer lifetime checks, unchanged assertions, independent review and one rollback commit.
-- 1L baseline/after native selection: 34 passed both times (513 deselected), including real Qt
-  handoff/ack/teardown and reboot smoke. Independent reviewer approved callback retention and
-  unchanged test assertions. Infrastructure withdrawal is committed separately as `acf7c56d`;
-  no PR merge or product handoff was inferred. 1L is committed as `3a35efee` (production -2 LOC).
-- 2C authorized next data slice: first migrate legacy-only selected-file, partial-load failure,
-  reviewed resource mutation and essential confirmation-receipt cases onto the real prepared
-  ApplicationService path, using existing real Study fixtures and only external loader/resource
-  isolation. Preserve before/during content-change coverage for EEG, BrainVision dependencies and
-  EEGLAB sidecars where feasible; keep label-byte mutation and recipe assertions. Do not teach the
-  legacy fake controller to imitate two-phase mutation. Obtain passing characterization before
-  deleting handle_apply_interpretation and its four exclusive raw-replacement/snapshot helpers.
-  Migrate the private rollback test to the existing PipelineStateTransaction owner and retarget the
-  owned-work materialization guard at prepare/load/commit owners. Existing equivalent real tests stay.
-  Deletion requires a per-group evidence map; unresolved groups block this slice, not disappear.
-  No formal Command/UI/EEG change/new owner. Separate test migration and production deletion commits
-  are allowed within this coherent reviewed slice; focused import/content/receipt/rollback/recipe
-  tests before/after, meaningful fault probe and independent data/lifecycle review before closure.
-- 2C characterization before production deletion: 22 new real ApplicationService cases passed
-  natively; six existing selected apply cases also passed. Independent review approved the actual
-  test diff and bounded loader/preflight fault isolation. The materialization guard now inspects
-  real detached prepare/load and guarded commit, not the unused handler; all 29 owned-work tests
-  passed. Remaining receipt permutations and label/recipe legacy cases still require an exact
-  retained-evidence map. No production deletion has occurred and 2C is not complete.
-- 2C deeper map found pending-token, warning-to-blocking, external-label preflight scope and
-  label-before-apply gaps; extend actual command cases before deleting those old tests. Add exact
-  candidate binding where not already protected. TTL/eviction primitives remain protected by the
-  actual ResourceReceiptAuthority tests, not by unrelated preview-wrapper claims. Manual recipe
-  state mutation is superseded by real apply/save/metadata/label flows and retained state-owner tests.
-- Before-delete full legacy service plus receipt-owner baseline: 101 passed / 3 failed on native
-  Windows. The three recipe reload failures precede production edits and report fingerprint/diagnostic
-  mismatches; independent diagnosis is checking real stat/fstat evidence. Do not waive or count them
-  as green. Separate recipe repair scope if a real platform defect is confirmed. The 23-case actual
-  prepared apply plus transaction rollback selection passed; guard formatting was corrected by Ruff.
-- 2C complete replacement characterization: 28 prepared-apply cases passed, including all identified
-  missing receipt/label/candidate/placement cases. Retained recipe evidence includes actual
-  choices_flow_into_recipe, apply_updates_loaded_metadata, label_carrier_choices_flow_into_recipe,
-  failed_replacement_restores_raw_interpretation_and_recipe and state-owner record/roundtrip tests.
-  Retain the non-apply validate-after-label-change test, non-BIDS BrainVision scan fixture and all
-  resource-cache/admission tests. Only old apply-exclusive tests/helpers are deletion candidates.
-- 2E necessary native recipe repair declared before edits: independent measurement found unchanged
-  files whose descriptor fstat ctime and path stat ctime differ by milliseconds on Windows; dev/inode,
-  size and mtime agree. Recipe fingerprint compares unlike observation channels, causing false stale
-  errors. Preserve bounded SHA/size and all admission/receipt guards. Match the existing admitted
-  resource-reader approach: compare complete identity within descriptor and within path observations,
-  but cross-check descriptor/path object identity without ctime. Add a deterministic skew regression
-  plus changed-observation rejection before repair, then rerun native recipe reload cases and resource
-  reader protection. No UI/public contract/new owner; separate small commit and independent review.
-  This prerequisite does not close or replace the 2C deletion work or the remaining module stage.
-- 2C evidence migration committed as `1c7ba6fc`; no production deletion in that commit. The 2E
-  worker owns only recipe fingerprint and its regression tests; main preserves those files until
-  release. Concurrent bounded 1M closes the observer compatibility-property finding: `_batch_depth`
-  and `_pending_events` have only two unit-test callers, no runtime/registry/config consumers.
-  Delete those two views of existing ContextVar state and stale attribute docs. Replace the tests'
-  implementation-state assertions with public notify/notifications_deferred outcomes, retaining
-  batching exception, callback delivery and concurrency assertions. Baseline the same observer/batch
-  tests before and after, plus publication-delivery neighbors and independent review. No owner/API
-  contract/UI change; one rollback commit. Continue 2C immediately after the prerequisite repair.
-- 1M original baseline, public-behavior characterization and after-delete runs each passed 33 native
-  cases; Ruff/format passed. Independent reviewer approved no remaining runtime/dynamic callers and
-  preserved callback/batch/publication behavior. Production -17 LOC; no owner or visible behavior change.
-  Committed as `8d51502e`.
-- 2E repair evidence: deterministic skew/path/descriptor cases produced 2 fail / 1 pass before repair,
-  then 3 pass. Native selected recipe/resource-reader checks: 18 pass; final complete legacy service
-  plus receipt-owner baseline: 107 pass (the original 104 plus 3 new cases), resolving all three
-  original native failures. Independent review approved full within-channel identity checks and
-  cross-channel object comparisons; bounded SHA, size/admission/receipt protections remain intact.
-  Production +16/-4/net +12, no new owner/module/type. Next remains 2C legacy deletion, not handoff.
-- 2E committed `722207cc`. 2C deletion now begins against its passing 107-case baseline: remove
-  the unreachable direct handler plus four exclusive raw replacement/snapshot helpers and unused
-  imports. Worker removes exactly the mapped 21 legacy apply test functions and three exclusive
-  integrity helpers, preserving validation/scan/preview/recipe/resource tests and new 2E regressions.
-  Replace the now-obsolete dataset/Raw fake classes with existing DatasetStateService(Study()) for
-  retained discovery fixtures; no imitation two-phase controller. Verify 28 replacement cases,
-  retained coordinator/receipt/state/recipe behavior and actual cancel/stale/rollback neighbors.
-- 2C after deletion: actual application import/recipe/label/cancel/stale/rollback selection 79 pass;
-  retained coordinator/receipt/state/owned-work/resource-publication selection 134 pass (one existing
-  MNE/NumPy deprecation warning). Exactly 21 legacy test functions removed; AST comparison confirms
-  every retained test body/decorator is unchanged. Main caught/restored required fixture callbacks
-  during editing before the shared run. Production +2/-186/net -184; legacy test file +37/-1283.
-  In-memory bypass of reviewed content verification makes the new actual selected-EEG mutation case
-  fail because mutated content is incorrectly published; the normal source passes the same case.
-- Next bounded 2D follow-on removes now-unreachable DatasetStateService.import_files and its
-  interpretation-port declaration plus PipelineStateTransaction.prepare_raw_replacement. These
-  have no remaining production callers after 2C. First retarget seven stale no-import assertions
-  in actual command tests and the confirmation test to the real factory/prepare entry; they currently
-  watch the unused convenience. Migrate the two direct import fixtures to prepare/commit, preserving
-  actual unexpected-mutation publication evidence. Remove only the obsolete raw-detach call in the
-  snapshot test while preserving explicit restore/training isolation. Keep all cancellation, resource,
-  channel and label behavior, no new owner/API/visible UI change. Separate scope baseline/after and
-  independent review; do not mix any further preprocess legacy path removal into this slice.
-- 2C committed as `d3ef1ac4` after independent final source/test approval. 2D main baseline and
-  prepare/commit fixture characterization each passed 24 native cases. Worker retargeted seven
-  blocked import cases plus confirmation/automation: initial selection 10 pass. Main review additionally
-  found four original-dataset label mocks cannot see the actual detached label owner; remove those
-  ineffective checks in favor of no actual loader entry and no applied truth. The automation case
-  tests review-state serialization but silently attempted failing Apply on a placeholder FIF: stop
-  at successful Validate and assert its actual result while preserving all review-state assertions.
-  Re-characterize before production deletion. Also remove clean_dataset only from the interpretation
-  port's obsolete requirements; lifecycle port/implementation still own reset and remain unchanged.
-- 2D final: corrected worker selection 10 pass before/after, no placeholder-FIF warnings after
-  removing the irrelevant Apply attempt. Main after selection 53 pass (24 direct neighbors plus
-  29 owned-work cases; one existing MNE/NumPy warning). Production -81 LOC across two files;
-  no executable caller remains, only the intentional architecture forbidden-name guard. Independent
-  reviewer approved unchanged prepared mutation/admission/lifecycle boundaries and actual-side-effect
-  test replacement. Finish the small commit, then close remaining module 1 full-test audit gaps
-  and continue module 2 domain implementation/tests; no whole-module closure or handoff claim yet.
+Recovery verified product branch `cleanup/module-quality`, clean source `7c89b532` before 2I edits
+(27 commits after baseline `4770b049`). The original checkout's UI/test/settings edits remain intact.
+Read Git again after a reboot; old session IDs are not evidence of running work.
 
-### Earlier slice declarations and evidence
+**Active 2I — test-only loader consolidation.** Main owns the three loader test files and this plan.
+Remove test_loaders.py (six redundant mock cases) and test_lazy_loading.py (two cases). Four wrapping
+cases map to the retained parameterized wrapping test; EDF maps to richer inference/reader-close
+coverage; FIF failure maps to retained raw/epochs error cases; GDF preload already has exact arguments.
+Strengthen retained SET success to exact codec/preload arguments before deletion. Original Windows
+baseline: 39 passed. Run strengthened characterization, then retained suite after deletion, Ruff and
+independent actual-diff review. No production changes; exactly eight duplicate cases removed. Keep
+actual FIF/epochs, factory/registration and checked-in multi-format integration protection. One
+reversible test-only commit. Whole-tree script/config/doc lookup found no references to deleted paths.
 
-- Baseline: fetched main `4770b049`; original dirty checkout preserved; source-only integration worktree
-  created on `cleanup/module-quality`. Existing Windows Python/pytest are available without installation.
-- Slice 1A: remove snapshot-to-training-command coupling. StateSnapshotService uses a training command
-  object solely to forward three pure serializers already owned by training_snapshot.py. Both the lazy
-  adapter and TrainingCommandService duplicate these wrappers. Route callers directly to the existing
-  serializers, remove the dependency and wrapper-only fixture construction; keep lazy heavy imports,
-  publication/consistency checks and serializer behavior unchanged. No new owner/module/public type.
-- Baseline/after: native Windows state-service tests, training-service tests and directly selected real
-  application configuration/reset/query tests, plus changed-file lint. Rollback is one slice commit.
-- Slice 1A committed as `0d67870f` after independent approval; persistent stage plan `5346a296`.
-- Slice 1B: remove unused state-service compatibility reexports and their alias-identity-only test,
-  unused optional duplicate training/evaluation read-port constructor aliases, and lazy adapter methods
-  proven absent from dispatch/callers (handle_train and active_split_summary only; handle_evaluate is
-  retained because the handler registry binds it). Keep formal query/coverage behavior and lazy imports.
-  Add serializer model-name fallback/detachment characterization through a real snapshot build.
-  Baseline/after: state-service, saliency coverage, import boundaries, application-state architecture,
-  application lazy configure/reset/empty state tests; compare exact retained behavior denominator.
-  No new owner/type/module; rollback one slice commit. Main owns production/state tests; worker 8A owns
-  CI routing and its tests without overlap. Independent core lifecycle audit is read-only.
-- Inventory: 1,292 tracked files initially routed in ignored
-  `build/dev-artifacts/module-quality-audit/tracked-files.md`; pending means not deeply inspected.
-  Correct path-based initial routing from actual responsibility as each module is read.
-- Blockers: none established. No module is complete and no manual candidate is being offered.
+2I strengthened characterization also passed 39; after deletion 31 passed, exactly eight fewer.
+Ruff/format pass. Independent actual-diff review approved; no production edits in this slice.
 
-### Reviewed slices and concurrent work
+**Declared next 2J — retire unreachable label sequence/force chain.** Independent full service/test
+audit and main caller review establish actual reviewed sequence imports use mapped checked atomic
+batches, not the flat distribution API. Delete LabelImportService.apply_labels_sequence,
+_force_apply_single, its fallback count/operation flag, DatasetStateService.apply_labels_sequence,
+and the catch-to-zero LabelImportService.apply_labels_batch convenience. Remove the unread
+LabelImportPlan.force_import field: architecture/backend.md explicitly defines this as an internal
+recipe-record DTO, not a public command; current construction and recipe serialization never read it.
+Preserve actual DatasetStateService.apply_labels_batch, checked atomic/timestamp entry points,
+explicit event selection, rollback/unknown-state errors and get_epoch_count_for_file.
 
-- 1A snapshot/training-command decoupling: before/after 139 native Windows focused cases passed;
-  changed-file Ruff and format checks passed. Independent `snapshot_review` approved actual diff and
-  caller/lazy-import evidence, no blocking findings. Production +16/-50/net -34, no new owner. This is
-  slice evidence, not module closure or measured speedup. Retain model-name fallback/detachment
-  characterization as a next test-quality check within the snapshot audit.
-- Script inventory: 106 tracked files on main, 66,204 physical lines. Earlier stale-branch candidate
-  names were discarded after exact checkout verification. Registry/CI/evidence scripts are not dead
-  solely because they lack product callers. Full domain semantics and actual deletion still pending.
-- 8A authorized concurrent slice: inspect and reproduce missing UI-evidence script routing in
-  ci_change_scope.py; ensure changed visual evidence producers trigger existing visual lanes. Add
-  precise path-classification regression before the smallest policy fix; preserve non-visual routing,
-  gate requirements and CI cost boundaries. Worker owns that script and its existing test file only.
-  Baseline/after: focused CI scope tests and changed-file lint; rollback one commit. No public/UI change.
-  Independent main review rejected the first five-path proposal: the current visual CI lanes do not
-  execute those separate handoff captures, so that routing could add irrelevant waits without proving
-  their output. Worker must trace actual visual-lane helper dependencies before proposing a replacement;
-  a red test for an unsupported routing expectation is not evidence of a product defect.
-  Corrected 8A now covers only the three actual visual CI dependencies artifact_integrity.py,
-  human_like_walkthrough/readiness.py and ui_navigation.py; all five unrelated producer additions were
-  withdrawn. Worker evidence: baseline 10 pass, helper regression 1 fail/10 pass, corrected 11 pass,
-  Ruff pass. Main is verifying actual imports and diff before approval/commit.
-- 1C authorized concurrent slice: remove OwnedWorkRegistry.start(), a forwarding convenience with
-  only low-level test callers, in favor of existing claim_start(). Inspect dynamic callers and update
-  tests to exercise the authoritative claim API without changing assertions or Thread.start calls.
-  Preserve binding, replay rejection, cancellation/commit fence and retention. No new owner/type;
-  focused owned-work registry tests before/after plus lint. Independent worker owns owned_work.py and
-  its directly affected tests only, main reviews actual diff/evidence before integration.
-  Worker finished: before/after registry 29 pass; all seven migrated caller files 112 pass. Main
-  verified the full diff: only the four-line alias and 20 exact test-call replacements; no assertions,
-  Thread.start calls, claim/cancel/commit/replay or state semantics changed. Approved for slice commit.
-- 1B evidence: baseline 92 pass; retained behavior after cleanup 94 pass (one alias-identity-only case
-  removed, three snapshot behavior cases added). An obsolete guard initially failed while 93 passed;
-  only its forced compatibility-export requirements were removed, ownership/cold-import checks retained.
-  New detachment cases all fail on the intended live-alias mutation in an isolated in-memory probe;
-  normal source passes. A first probe had only a quoting SyntaxError and was not counted as evidence.
-  Independent scripts_audit reviewer now examines 1B actual diff. No module-level approval yet.
-- 1D next authorized slice: remove unreachable split_runtime_fields/_is_json_contract_value from
-  serialization.py after whole-repo source/config/doc/registry caller checks. Formal results already
-  use detached diagnostics and explicit internal/public serializers, not this retired runtime split.
-  Preserve serialize_json_value behavior; correct its stale runtime-query description. Focused baseline
-  results/automation/import tests before/after, no new owner/type; worker owns serialization.py only.
-- 1B committed `f498e436` after independent approval. Reviewer additionally ran native Windows
-  focused suites: 84 passed; no blocking findings. Correction: -B only prevents bytecode writes,
-  not reads, so that run was not cache-isolated. Subsequent native checks use a fresh unique
-  PYTHONPYCACHEPREFIX plus -B to avoid stale WSL-edited bytecode; recheck 1B using that isolation.
-- 1C committed `25aca4a8`; corrected 8A committed `c0425f43` after main verified actual CI imports.
-- 1D committed `1f0329fd` after main independently inspected the complete diff/callers. Results,
-  automation and import boundaries: 55 passed before and after. Production +2/-34/net -32;
-  no serializer behavior or owner changed.
-- 1E authorized next: pipeline_stage.py contains a second Study-shaped stage derivation used only
-  by compatibility mocks, while the real Assistant consumes an explicit ApplicationViewPublication.
-  Remove the mock discriminator, legacy derivation/run scan and obsolete architecture exemption.
-  Simplify compute_pipeline_stage to accept only the existing publication; migrate its sole real
-  assembler caller and test callers. Preserve all stage labels, stage priority, STAGE_CONFIG prompt
-  bytes/tool membership, fail-closed missing/invalid/unknown publication and unavailable policy.
-  Replace mock-return stage filtering with typed publication inputs; remove obsolete mock-business
-  cases only after all-stage publication characterization passes. Keep real runtime/policy tests.
-  Baseline/after: backend/LLM pipeline tests, assembler stage/context tests, focused training-runtime
-  architecture tests and changed-file lint. Independent review checks publication-only admission
-  and tests that actually detect a wrong stage. No UI/public contract/owner addition; one rollback
-  commit. Worker owns those production/tests plus backend architecture truth paragraph; main retains
-  this plan and inventory. Module 1 capability/confirmation audit proceeds read-only separately.
-- 1F authorized parallel main slice: application/__init__.py duplicates its 114 lazy export names
-  in a manually sorted __all__ list. AST baseline confirms identical membership and sorted order.
-  Derive __all__ from the existing mapping, retaining all public names, lazy resolver and memoization.
-  No new owner/type/module or contract change. Characterize lazy import and unknown-name behavior,
-  run existing import-boundary tests before/after, compare exact baseline export list after rewrite,
-  and lint. Main owns only initializer/import-boundary tests; independent review before one commit.
-- 1G authorized concurrent alias cleanup from capability/confirmation audit: remove the uncalled
-  enabled_tool_names/blocked_tool_reasons convenience functions; replace internal/test imports of
-  CapabilityPolicyUnavailable and ResourcePreflightReceipt with the actual existing error/receipt
-  types, then delete those aliases. Do not change tool membership, confirmation fields, generation/
-  fingerprint checks, receipts, prompts or execution. Keep existing behavioral assertions intact.
-  Worker owns application_surface.py, tool_attempt_coordinator.py and their affected tests only.
-  Focused baseline/after: application surface, attempt policy, selected controller receipt/error cases
-  and real resource-receipt integration. No new owner/public tool contract; one rollback commit.
-  Capability audit retained confirmation metadata despite apparent duplication because both fields
-  are observable contracts. A destructive Assistant confirmation end-to-end coverage gap remains
-  for module 6 closure; alias deletion alone does not certify that workflow.
-- 1B revalidation: fresh isolated bytecode prefix + no bytecode writes, native state-service,
-  saliency coverage and state-read-model suites: 84 passed. This supersedes the ambiguous cache claim,
-  but is still focused evidence, not the full stage gate.
-- 1F characterization: original import suite 4 passed; strengthened cold-import/unknown-name/
-  memoization assertions also 4 passed before deletion. Exact comparison preserves all 114 exports
-  and their order. Existing Ruff rejects sorted()/starred-list __all__ forms; use its supported
-  explicit list constructor and in-place sort, preserving the rule rather than adding a suppression.
-- 1H next main slice after 1F validation: remove unread visualization constructor/member from
-  StateSnapshotService and unread study constructor/member from QueryStateCommandService; collapse
-  the snapshot's duplicate training/training_state references onto training_state. Migrate all
-  constructor callers and the optional progress-failure fixture without weakening its assertions.
-  Full source read confirms visualization has no use; data_filepath is retained because it is
-  injected into interpretation as a callback (absence of direct calls alone would be misleading).
-  Baseline/after: state-service/read-model suites, import/lazy application query/reset tests, lint.
-  No public/UI change, owner or module addition. Main owns these read services/callers/tests only;
-  independent review before one rollback commit.
-- 1F committed `8044302c`, production +2/-116/net -114. 1H committed `f5c7fd77`, production
-  +1/-8/net -7. Both independently approved. Main final command ran state-service, saliency coverage,
-  state-read-model and import-boundary files: 88 passed (reviewer's 84 omitted the 4 read-model cases).
-  Ruff check/format passed; no test-count discrepancy after comparing exact file lists.
-- 1G committed `b5d6dc4b` after main inspected the full diff, dynamic caller sweep and exact canonical
-  error/receipt identity. Production +2/-49/net -47. Identical baseline/after: application surface,
-  attempt policy and real resource-receipt integration 89 passed; selected controller cases 4 passed.
-  No policy/confirmation assertion changed. An attempted Poetry lint lookup could not create an env;
-  it was abandoned and all actual lint ran in the existing Windows environment, with no installation.
-- 1E main review accepts production/guard removal but requests eliminating newly duplicated backend/
-  LLM stage mapper tests and using an applicable typed publication policy in assembler fixtures.
-  Retain all-stage backend mapping and all-stage actual assembler consumer behavior, not two copies
-  of the same reexport test. Exact original/characterized/after counts and a wrong-stage probe remain
-  required before approval. STAGE_CONFIG and real runtime-policy tests remain unchanged.
-- 1I authorized next worker slice: consolidate the three identical detached-prepare failure envelope
-  methods in ApplicationService into one private typed-Command helper. They preserve a concurrent
-  winner's publication after discovery/apply/preprocess preparation fails; keep every diagnostic,
-  cancellation marker, empty ChangedState and current state/error semantics. No new owner/type/module.
-  Whole service source is now read; maintainability issues must be resolved by actual duplication
-  removal, not file movement. Baseline/after include real concurrent apply failure/cancel, discovery
-  failure-after-reset and preprocess stale/cancel tests. Extend the existing preprocess concurrent
-  mutation fixture to characterize failed preparation too before changing production. Worker owns
-  service.py and its application-service test only; main independently reviews. Rollback one commit.
-  Six repeated publication-fence blocks are retained pending separate lifecycle characterization;
-  do not conflate their sequencing refactor with error-envelope reuse.
-- 1J next main read-dependency slice: LifecycleCommandService retains unread study/preprocess/training
-  members and creates a fallback PipelineStateTransaction only for its unit fixture; real composition
-  supplies the existing transaction. Require that injected transaction, remove unused dependencies
-  and the two trivial private clear forwarders; retain reset/rollback/invalidation order and results.
-  Remove fixture-only preprocess/training controller doubles and their identity/no-call assertions
-  once existing rollback/stale trainer/current-state evidence passes. Do not delete real rollback
-  tests. Main owns lifecycle_service.py/test_lifecycle_service.py; update its service.py composition
-  only after worker 1I releases that file. Baseline/after: lifecycle/pipeline-transaction tests and real
-  application reset/new-session/rollback cases, cold-import guard and lint. No new owner/type/module;
-  independent review and one rollback commit. UI unchanged.
+Worker owns the three production files plus test_label_import_service.py and the event-value test's
+single fake adapter call. Main owns atomic architecture guard/tests and plan. First run original
+service/event-value/timestamp/state/atomic-guard baseline. Migrate meaningful batch tests to checked
+entry, explicit AtomicLabelApplyError assertions and unchanged real Raw outcomes before deletion;
+retarget the existing atomic guard to checked owner and retain unsafe-write detection. Remove only
+11 sequence/force-exclusive cases after mapping their live-behavior protection. Retain actual
+prepared command sequence/recipe/rollback neighbors. No owner addition, UI/public contract or EEG
+semantics change; production decreases, one reversible commit after characterization/after tests,
+changed-file lint and independent lifecycle/test review. No new guard framework.
 
-- 1E committed `3a8143f0` after main review corrections. Production +4/-107/net -103;
-  original focused baseline 138 passed, final 127 passed after retiring duplicate legacy/reexport
-  cases and retaining typed all-stage mapping plus actual assembler consumer coverage. New typed
-  cases were not run against the old signature before implementation; do not claim otherwise.
-  Both forced-wrong-stage probes were detected. Callable schema assertions now distinguish enabled
-  tools from unavailable reference text. Architecture guard, Ruff and diff checks passed.
-- 1I committed `264ef571`: production +6/-79/net -73, three real callers reuse one failure envelope.
-  Original focused baseline 5 passed; extended concurrent-preprocess failure characterization 6
-  passed before and after production edits. Main approved actual current-publication/cancellation
-  semantics; all six publication fence blocks remain untouched.
-- 1J baseline lifecycle/pipeline-transaction suites: 10 passed in isolated native Windows run.
-  After cleanup, extended real reset/new-session/rollback and cold-import selection: 26 passed,
-  268 deselected. Ruff passed. Independent review remains before commit.
-- Independent test-quality audit fully read results, automation, pipeline-transaction and workflow-
-  projection tests (1,761 lines): retain all four suites. Privacy/public-JSON contracts, real command
-  and subprocess flows, explicit mutation-port isolation and fail-closed policy cases protect distinct
-  observable failures. Mock count alone is not grounds for deletion. No module closure claim.
-- 2A next bounded data-lifecycle repair: DataManager.clean_raw_data clears active lists but retains
-  the channel-selection backup. Confirm real Select Channels -> Reset/New Session retains the old
-  Raw/array with a native test and a bounded byte/weak-reference witness before adding one reset in
-  the existing cleanup owner. Preserve in-session channel undo and transactional rollback; test both
-  session commands plus direct raw replacement so a later reset cannot restore an obsolete backup.
-  Main/reviewer trace confirms formal two-phase apply calls commit_prepared_import -> loader.apply ->
-  set_loaded_data_list; the explicit prepare_raw_replacement safeguard belongs to the older handler,
-  not this prepared path. Reproduce the actual reset retention and replacement/undo invariant rather
-  than assuming the other handler protects it. No UI change/new owner/module; one rollback commit.
-  Main owns data_manager.py, test_data_manager.py and the new real command regression. Independent
-  data/lifecycle review required; focused channel-selection/rollback/session and data-manager suites.
+2J original five-file native baseline: 79 passed before any label source/test changes.
 
-- 1J committed `a5101683` after independent lifecycle approval: production +5/-22/net -17;
-  extended native 26-case selection passed, no rollback/trainer assertion weakened.
-- 2A reproduced three failures before the one-line cleanup fix. After: 59 focused cases passed,
-  including channel cancellation/stale/failed commit and raw/session rollback. Two session cases
-  were then extended through real FIF scan/preview/validate/apply and Reset Preprocess: both passed.
-  An 8,000-byte deterministic backup and its Raw wrapper become unreachable after cleanup; this
-  is object-retention evidence, not an immediate OS RSS or allocator-reclamation promise. Independent
-  reviewer approved invalidation timing and restoration on transactional failure; Ruff passed.
-- Separate authorized storage residual cleanup executed: removed only the abandoned backup
-  `E:\XBrainLabBackups\XBrainLab-WslCompaction-20260909-232646-9134c3e5810d4399b274695a2b546bce\Ubuntu-24.04-ext4.vhdx.bak`
-  and its now-empty run directory, plus the verified empty runs
-  `XBrainLab-WslCompaction-20260910-011228-93f0770cd28e49afb965485b587f3763` and
-  `XBrainLab-WslCompaction-20260910-014659-d5c3910b070c4a3ba2b6877f5734369d`.
-  E free bytes rose from 712835555328 to 927430828032: exact delta 214595272704 (~199.86 GiB).
-  Backup deletion is not recycle-bin recoverable. Both registered C WSL VHDXs, working Windows Python,
-  model/RAG caches and central datasets were verified retained. No compaction/shutdown/WSL deregistration
-  ran, and no C-drive reclamation is claimed. Source withdrawal of compaction-only tools from separate
-  manual-environment branch remains; retain its useful single-environment launcher/config work.
+**Remaining module-2 work.**
+Continue event/label semantics, BIDS, channel/montage and related UI review. Modules 3–9 remain open.
+There is no current handoff candidate or merge request.
 
-- 2A committed `d1dc62ff`, production +1/-0; no public API/owner addition.
-- 1K next declared spine slice: six command/read-publication paths repeat the same fence decrement,
-  underflow recovery and invariant error. Reuse one private release helper in ApplicationService;
-  keep every increment, lock, mutation flag reset, mark_stale call and finally placement unchanged.
-  This intentionally does not introduce a context manager or alter exception sequencing. Six real
-  callers justify the helper; no new owner/module/type. Characterize current deferred-publication,
-  handler failure/early return and Evaluation-summary behavior before edits; same focused after
-  plus changed-file lint. Reviewer checks exact sequencing and a bounded intentional missing-release
-  mutation is detected. Worker owns service.py and only directly relevant test additions if needed;
-  main reviews actual diff. One rollback commit; module remains open until coverage gaps resolve.
+### Responsibility closure and retained boundaries
 
-- Module 2 next audit focus: the unused direct handle_apply_interpretation path duplicates normal
-  two-phase apply and is still the target of several source guards and mock-heavy tests. Main confirmed
-  the product lazy adapter/dispatch does not call it. Before deletion, map every protected label,
-  resource receipt, rollback, content-identity and recipe behavior to the actual prepared path; migrate
-  meaningful tests/guards first. Do not keep a second mutation implementation solely for those tests,
-  and do not delete scientific/security evidence without replacement. This is audit scope, not yet an
-  approved code slice; choose the bounded migration after complete caller/test reading.
+- Module 1: independent reviewer approved shared-spine responsibility closure at `1247cf7c`.
+  Native same-source selection: 178 passed, covering runtime/cache, confirmation, publication/delivery,
+  owned work, state/read models, observer batching and actual query/shutdown cases. Service domain
+  branches and state/snapshot projections remain explicit module 2–6 obligations. Later changes to
+  shared identity/publication/lifecycle reopen affected evidence.
+- The state-service test audit read all 2,063 lines / 49 functions: retain distinct failure, detachment
+  and retry contracts. Actual data_lists cases already protect nonwaiting lock rejection,
+  stale-generation admission and committed-state reads; do not invent another concurrency owner.
+- Results, automation, pipeline-transaction and workflow-projection test audit read 1,761 lines:
+  retain privacy/public-JSON, real command/subprocess, mutation-port and fail-closed behavior.
+- Module 2: content identity source (1,010 lines) and direct/hash-cancel tests (945 lines) retain
+  streaming SHA, path scope, admitted digest reuse, bounded workers and owned-context cancellation.
+  PathIdentity lexical/resolved matching and parser-window ResourceReader checks protect different
+  boundaries from cross-review SHA; they are not redundant caches.
+- Recipe source/direct tests retain save/replay, legacy class-map migration into unconfirmed
+  suggestions and current label-audit reconstruction. Target provenance/schema additions are not
+  current guarantees or authorized schema work.
+- Loader orchestration/factory/registration and direct tests have been read. Native installed MNE
+  source refuted the proposed Raw lazy-handle leak: relevant Raw readers reopen paths per read,
+  while EpochsFIF legitimately retains its live descriptor. Do not add a disposal owner without
+  evidence. No measured startup/performance improvement is claimed.
+- Study convenience cleanup does not certify training/domain methods. EvalRecord.export_csv remains
+  a module-5 caller/disposition question, not a claim of reachable product CSV export.
+- Module 6 must close the actual Assistant attempt -> pending confirmation -> application workflow
+  evidence gap; separately tested halves do not prove stale approval rejects with exactly one
+  authorized mutation. Preserve accepted bounded Assistant limitations, not Stable promotion.
+- Module 8 initial inventory: 106 scripts, 66,204 physical lines. This is not deep-review evidence.
+  Current CI routing correction covers only helpers actually used by visual lanes; separate handoff
+  producers are not grounds for extra unrelated CI waits.
 
-- 2B first bounded evidence migration: check_label_resource_admission_boundary currently examines
-  only the unused direct apply handler, allowing the real prepare_apply_interpretation ordering to
-  regress without a guard failure. Add a failing fixture with safe legacy code and unsafe actual
-  preparation, then point the existing guard at the actual preparation owner. Keep the rule (resource
-  preflight/admission before label materialization), no new guard framework or production change.
-  Validate both safe and unsafe actual order, existing label-resource guard cases and current source.
-  Main owns tests/architecture_compliance.py and its unit test only; independent review before commit.
-  Remaining legacy runtime/test deletion stays open, this guard correction is not its completion.
+### Completed slices — compact recovery index
 
-- 1K main independently approved exact six finally replacements: production +15/-36/net -21.
-  Baseline 17 passed plus the existing actual NewSession publication-consumer characterization;
-  final 18 passed. Disabling release in memory makes that consumer test fail. No test source or
-  lock/flag/exception sequence changed. Ruff and diff checks passed.
-- 2B red evidence: after fixing a missing pytest import (collection error, not a regression result),
-  actual unsafe preparation with safe legacy handler produced 1 fail/1 pass against the old guard.
-  Corrected guard: 15 label-resource cases pass, including current-source check. Independent reviewer
-  approved unchanged privacy/admission rule and the fixture's false-green detection; Ruff passed.
-- Compaction tooling withdrawal on separate manual-environment branch: 84 retained scripts tests
-  passed using a short existing-cache temp path; first attempt hit native Windows path-length errors,
-  not a product assertion. Main review caught and removed the leftover host-only shard filter,
-  while preserving Linux scripts invocation and manual-environment gate coverage. Deployed
-  `D:\XBrainLabCache\tools\compact_wsl.ps1` matched retired source SHA-256
-  `6675b7debb8f02fc163ba1efed2eaff0d89afa632cd388329bff3935af73d0f5`; that exact deployed copy
-  was removed, with both manual launch tools retained. Source remains recoverable from Git history.
+Each entry was inspected by the main agent and independently reviewed unless a limitation is stated.
+These focused counts are not additive whole-project evidence. Owners/public contracts did not increase.
+Detailed scope declarations and chronological corrections remain in the associated Git history;
+this table replaces their duplicated active-plan narrative, not any unresolved module obligation.
+
+| Slice / commit | Change and production LOC | Focused evidence / limitation |
+| --- | --- | --- |
+| Stage / `5346a296` | One integrated phase plan, small-commit exception; no runtime change | Baseline main `4770b049`; source-only worktree, existing Windows environment |
+| 1A / `0d67870f` | Snapshot uses existing pure training serializers; +16/-50/net -34 | 139 before/after; lazy imports and publication preserved |
+| 1B / `f498e436` | Unused state exports/aliases/lazy forwards; handle_evaluate registry retained | 92 original -> 94 retained with real model-name/detachment cases; live-alias fault detected; fresh-cache native 84 later |
+| 1C / `25aca4a8` | Delete four-line registry.start forwarding alias | 29 before/after; all seven migrated files 112; 20 calls changed, assertions unchanged |
+| 1D / `1f0329fd` | Retired runtime serialization helpers; +2/-34/net -32 | 55 before/after; explicit public/internal serializers retained |
+| 1E / `3a8143f0` | Publication-only Assistant stage, remove mock/Study derivation; +4/-107/net -103 | 138 -> 127; typed mapper and actual assembler; two wrong-stage probes detected; new typed cases were not run against old signature |
+| 1F / `8044302c` | Derive lazy exports from existing mapping; +2/-116/net -114 | 4 original/strengthened cases; exact 114 names/order preserved; cold import/memoization retained |
+| 1G / `b5d6dc4b` | Unused Assistant conveniences/type aliases; +2/-49/net -47 | Same 89 plus 4 selected before/after; no tool/policy/receipt changes |
+| 1H / `f5c7fd77` | Unread snapshot/query dependencies; +1/-8/net -7 | Main selection 88; reviewer's 84 omitted four read-model cases, not failures |
+| 1I / `264ef571` | Reuse detached prepare failure envelope in three callers; +6/-79/net -73 | Original 5, strengthened 6 before/after; concurrent winning publication/cancellation retained |
+| 1J / `a5101683` | Lifecycle unread dependencies/fallback/forwarders; +5/-22/net -17 | 10 baseline, 26 extended reset/rollback/import cases; injected transaction remains owner |
+| 1K / `e2f483dd` | Reuse six identical fence release blocks; +15/-36/net -21 | 17 + consumer -> 18; missing-release fault detected; locks/flags/finally order unchanged |
+| 1L / `3a35efee` | Unread Qt callback member and empty test subclass; production -2 | 34 before/after, real Qt delivery/ack/teardown; visible behavior unchanged |
+| 1M / `8d51502e` | Unused observer batch compatibility properties; production -17 | 33 original/characterized/after; public notify/deferred outcomes retained |
+| 1N / `0b0a8e7b` | Unused Study and exclusive manager convenience chains; +2/-63/net -61 | Four-file 158 -> 146 (exactly 12 obsolete cases), 7 analysis/readback neighbors; real saliency/manager behavior retained |
+| 1O / `6c0ee806` | Consolidate duplicate runtime identity test; no production change | 10 -> 9; both construction orders, concurrency/retry and explicit-close cache isolation retained |
+| 2A / `d1dc62ff` | Fix raw cleanup retaining channel backup; +1/-0 | 3 red -> 59 green; two real FIF apply/session/reset cases; 8,000-byte weakref witness is retention evidence, not OS RSS promise |
+| 2B / `930c2a6a` | Resource admission guard targets actual prepare, not dead handler; test-only | Unsafe actual path red -> 15 pass; no security rule weakening |
+| 2C / `1c7ba6fc`, `d3ef1ac4` | Actual prepared-path characterization, then remove old direct apply/helpers; +2/-186/net -184 | 28 real command replacement cases; after 79 actual application and 134 retained cases; 21 legacy functions/35 cases removed; retained AST bodies unchanged; bypass-content-check fault detected |
+| 2D / `7b4fc8a0` | Dead DatasetStateService import/port and raw prepare convenience; production -81 | Main 24 original/characterized -> 53 after; worker 10 before/after; stale no-import sentinels now watch actual loader |
+| 2E / `722207cc` | Fix Windows recipe descriptor/path ctime mismatch; +16/-4/net +12 | 2 red/1 pass -> 3 pass; 18 selected, 107 full service/receipt cases resolve three native failures; complete within-channel checks and cross-channel dev/inode/size/mtime retained |
+| 2F / `1247cf7c` | Duplicate current-session check and single-use verification wrappers; +9/-21/net -12 | 49 + 6 before, identical 55 after; SHA, contexts, cancellation unchanged |
+| 2G / `aba4eea7` | Three unused interpretation mutation APIs; production -55 | Strengthened actual checkpoint/one-shot/recipe rollback protection; final historical-source 82 and current 82 pass; chronology qualification below |
+| 2H / `7c89b532` | Six test-only Raw display conveniences; production -49 | 113 original, strengthened retained 116; 13 external-fixture skips; eight wipe cases before deletion and imported-event fault detection; 11 typed-summary + 3 rollback neighbors passed |
+| 8A / `c0425f43` | Route three actual visual-CI helpers | 10 baseline, 1 red/10 pass, 11 corrected; five unrelated producer additions rejected before commit |
+
+### Evidence qualifications that remain relevant
+
+- Use a fresh unique PYTHONPYCACHEPREFIX plus -B for Windows tests of WSL-edited source: -B alone
+  prevents writes, not stale reads. The earlier ambiguous 1B run was superseded by fresh-cache 84.
+  No new environment was installed; an attempted Poetry environment lookup was abandoned.
+- 2G had no original unedited chronological two-file baseline. Migrated tests before production
+  deletion passed 81, but an environment-assignment warning invalidated its cache-isolation claim.
+  Fresh-cache current runs passed 81; nested isolation was strengthened to mutate actual nested input.
+  Final strengthened tests then passed 82 against exact historical `1247cf7c` state source loaded only
+  in memory and 82 against current source. The first historical harness needed correct inspect
+  linecache registration; that was a harness fix, not a product failure.
+- 2G actual post-publication retirement failure now includes prior real apply/save and verifies
+  interpretation identity, recipe ID/path/full content and pipeline/trainer/history restoration.
+  It intentionally isolates internal transaction rollback with admission bypasses; normal policy
+  blocks replacing data after training. A manually injected trainer fixture first caused stale
+  Scan admission (combined 130 pass / 13 skip / 1 fail); publishing that injection through get_state
+  fixed the fixture, and the corrected case plus full 82-case selection passed. Recipe carried into
+  prepared state means recipe assertions alone do not prove rollback; restored interpretation ID does.
+- 2H same retained Raw/loader/preprocess selection is 116 passed: one no-op case removed, four extra
+  event-wipe parameter cases added. All passed within the combined run above. Thirteen skips are
+  unconfigured external public fixtures, not checked-in GDF/multiformat cases; the final canonical
+  source-diverse gate is still required. Replacing wipe with set_mne in memory caused all four
+  imported-event cases to fail; no faulty source persisted. Existing MNE/NumPy warnings are not
+  evidence of final whole-platform readiness.
+- Lower-mock internal paths retain external MNE/resource isolation where necessary. No reduced test
+  count or path-only inventory establishes stronger workflow coverage by itself.
+
+### Inventory and separate infrastructure recovery
+
+The ignored static inventory is `build/dev-artifacts/module-quality-audit/tracked-files.md`,
+initially 1,292 tracked files. Update disposition from actual source/caller/test reading; pending
+remains unknown. Reconcile newly added/deleted files and domain-owned ranges before final closure.
+Do not create a second planning platform or treat generated files as inspected production.
+
+Authorized storage cleanup is complete locally: removed only abandoned backup
+`E:\XBrainLabBackups\XBrainLab-WslCompaction-20260909-232646-9134c3e5810d4399b274695a2b546bce\Ubuntu-24.04-ext4.vhdx.bak`
+and its empty parent, plus verified empty runs ending
+`20260910-011228-93f0770cd28e49afb965485b587f3763` and
+`20260910-014659-d5c3910b070c4a3ba2b6877f5734369d`.
+E free bytes increased 712835555328 -> 927430828032 (214595272704 bytes, about 199.86 GiB).
+Deletion is not recycle-bin recoverable. Both registered C WSL VHDXs, Windows Python, model/RAG caches
+and central datasets remain. No C shrink, compaction, shutdown or deregistration ran.
+
+Compaction-only source tooling withdrawal is separately committed `acf7c56d` on
+`chore/manual-environment` in the infrastructure worktree; 84 retained native scripts tests passed.
+An initial MAXPATH failure was resolved by the existing short cache temp path. Exact deployed
+`D:\XBrainLabCache\tools\compact_wsl.ps1` matched retired source SHA-256
+`6675b7debb8f02fc163ba1efed2eaff0d89afa632cd388329bff3935af73d0f5` and was removed.
+Both manual launch tools remain. Source is recoverable from Git. No push/merge or manual-checkout
+update is implied; inspect current Git/PR state before eventual integration.
 
 ### Recovery after context compaction
 

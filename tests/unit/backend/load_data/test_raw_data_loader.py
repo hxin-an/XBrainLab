@@ -503,7 +503,9 @@ class TestRawDataLoaderUnit:
 
         result = load_set_file("dummy.set")
 
-        mock_read_eeglab.assert_called_once()
+        mock_read_eeglab.assert_called_once_with(
+            "dummy.set", uint16_codec="latin1", preload=False
+        )
         assert isinstance(result, Raw)
         assert result.get_mne() == mock_raw
 
