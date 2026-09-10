@@ -17,7 +17,6 @@ from XBrainLab.ui.dialogs.common import normalize_dialog_button_box
 from XBrainLab.ui.dialogs.preprocess.common import (
     configure_preprocess_dialog_layout,
     create_preprocess_section,
-    fit_preprocess_dialog_to_content,
 )
 
 
@@ -34,14 +33,13 @@ class RereferenceDialog(BaseDialog):
         self.reference_method_group: QButtonGroup
         self.average_radio: QRadioButton
         self.selected_channels_radio: QRadioButton
-        self.avg_check: QRadioButton
         self.chan_list: QListWidget
         self.validation_label: QLabel
         self.ok_button: QPushButton
         self.section_title: QLabel
         self.channels_title: QLabel
         super().__init__(parent, title="Re-reference", width=460, height=420)
-        fit_preprocess_dialog_to_content(self, minimum_width=460)
+        self.fit_to_content(minimum_width=460)
 
     def init_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -91,18 +89,11 @@ class RereferenceDialog(BaseDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
-        # Compatibility alias retained for callers that only inspect checked state.
-        self.avg_check = self.average_radio
         self.average_radio.toggled.connect(self._sync_reference_mode)
         self.selected_channels_radio.toggled.connect(self._sync_reference_mode)
         self.chan_list.itemSelectionChanged.connect(self._sync_reference_mode)
         self.average_radio.setChecked(True)
         self._sync_reference_mode()
-
-    def toggle_avg(self, checked: bool) -> None:
-        """Compatibility entry point for older callers."""
-        self.average_radio.setChecked(bool(checked))
-        self.selected_channels_radio.setChecked(not bool(checked))
 
     def _sync_reference_mode(self, *_args) -> None:
         selected_mode = self.selected_channels_radio.isChecked()
@@ -111,7 +102,7 @@ class RereferenceDialog(BaseDialog):
         valid = not selected_mode or bool(self.chan_list.selectedItems())
         self.validation_label.setVisible(selected_mode and not valid)
         self.ok_button.setEnabled(valid)
-        fit_preprocess_dialog_to_content(self, minimum_width=460)
+        self.fit_to_content(minimum_width=460)
 
     def accept(self) -> None:
         if self.average_radio.isChecked():

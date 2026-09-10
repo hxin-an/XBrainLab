@@ -18,7 +18,6 @@ from XBrainLab.ui.dialogs.common import normalize_dialog_button_box
 from XBrainLab.ui.dialogs.preprocess.common import (
     configure_preprocess_dialog_layout,
     create_preprocess_section,
-    fit_preprocess_dialog_to_content,
 )
 
 
@@ -38,7 +37,7 @@ class ResampleDialog(BaseDialog):
         self.sfreq_spin = None
         self.section_title = None
         super().__init__(parent, title="Resample", width=400, height=220)
-        fit_preprocess_dialog_to_content(self, minimum_width=400)
+        self.fit_to_content(minimum_width=400)
 
     def init_ui(self):
         """Initialize the dialog UI with sampling rate input and buttons."""

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from PyQt6.QtWidgets import QCheckBox, QFrame, QLabel, QVBoxLayout, QWidget
 
-from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.common import icon_path
 
 _DIALOG_MARGINS = (18, 12, 18, 12)
@@ -37,15 +36,6 @@ def configure_preprocess_dialog_layout(layout: QVBoxLayout) -> None:
     """Apply compact, DPI-safe spacing shared by preprocessing dialogs."""
     layout.setContentsMargins(*_DIALOG_MARGINS)
     layout.setSpacing(_DIALOG_SPACING)
-
-
-def fit_preprocess_dialog_to_content(
-    dialog: BaseDialog,
-    *,
-    minimum_width: int,
-) -> None:
-    """Remove surplus vertical space while preserving a stable dialog width."""
-    dialog.fit_to_content(minimum_width=minimum_width)
 
 
 def create_preprocess_section(

@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `d86efa15`, 64 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `db4670d7`, 66 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -369,7 +369,7 @@ restart, append, cleanup, rollback-failure, receipt/token and bounded-audit fail
 failure mocks are necessary seams. Missing close calls in synchronous/mocked-start fixtures are a
 convention risk, not a measured worker leak or permission to add broad lifecycle machinery.
 
-**Declared 3J — preprocessing setting dialogs reuse their existing geometry owner.** Full main/
+**Completed bounded 3J — preprocessing setting dialogs reuse their existing geometry owner.** Full main/
 independent reads confirm common.fit_preprocess_dialog_to_content only forwards six calls in four
 BaseDialog subclasses. Replace calls with the same inherited fit_to_content keyword, remove wrapper
 and unused import; remove RereferenceDialog avg_check/toggle_avg compatibility members with no
@@ -380,6 +380,39 @@ radio/selection acceptance and actual rereference command route before/after; no
 Main owns plan/validation and nonauthor final-diff review; worker may implement after passing baseline.
 Ruff and separate reversible commit; remaining sidebar argument cleanup and epoch receipt migration
 remain separately declared work, not implicit additions to3J.
+Same real Windows QPA windows24cases pass4.94s before/5.09s after; five-file Ruff/check/format and
+main nonauthor actualdiff review passed. Exactly six inherited calls, same keyword/geometry path;
+production+6/-28/net-22, no test changes or visible behavior change.
+
+**Declared 3K — unused dataset metadata conveniences and direct test quality.** Main/independent
+full dataset/data_splitter source and tests plus whole-tree callers identify get_ori_name, three
+enum repr conveniences and get_raw_value as test-only. Remove these five methods/exclusive
+assertions after baseline, retaining actual get_name/get_value/get_split_unit/get_splitter_option,
+parser policy, mask copy and resource revision. Restore a missing assertion on the empty remaining
+mask in test_dataset_set_test_mask before deletion; remove one exactly duplicated intersection
+param only after baseline. Two production/two existing test files, zero new owner/semantic change.
+Use direct splitter/dataset/generator cases before and same retained cases after, exact removed
+count, Ruff and independent actualdiff review; a separate reversible commit, then continue module3.
+
+**Declared 3L — real BIDS epoch receipt scope/context.** Extend the existing integration duration
+fixture and genuine Scan/Preview/Validate/Apply workflow. Cover changed t_min/t_max/event IDs with
+old receipt, refreshed requirement and no mutation; cover changed duration through actual reimport,
+keeping command scope constant so context, not a new proposed window, causes invalidation. Compare
+same-duration reimport where appropriate to rule out a mere fresh-service token failure. Keep actual
+basic challenge/accepted materialization, current raw identity/data/lock/epoch state and close owned
+services in finally. Worker owns only test_bids_epoch_duration_handoff.py initially. Main baseline
+before retiring only corresponding legacy receipt cases; no production/receipt/EEG/visible changes.
+Use this existing BIDS file plus remaining direct service cases, bounded stale-receipt admission fault,
+Ruff and nonauthor actualdiff review. Actual defaults/raw IDs already have real command protection;
+display-alias materialization and semantic unavailable-context remain explicit migration gaps.
+Legacy _get_state callback exceptions are not a second public read contract: real prepared epoch
+uses captured plan.application.state and validated_epoch_handoff, while ApplicationService owns
+generic read-failure admission. Remove obsolete callback-only tests with that dead path, not recreate
+its error semantics. Current public state-read-failure test remains required evidence.
+
+Additional inventory finding, not yet changed: dataset dialog package __all__ lists retired
+ImportLabelDialog absent from its lazy export map; no source/test/script/doc consumer. Retire the
+stale declaration in a separately declared package cleanup after actual lazy-export characterization.
 
 Completed2X–2AC are indexed below; their full scope/evidence remains in Git history.
 2AC found an existing shared-environment source hazard: Windows .pth adds the original checkout
@@ -598,6 +631,8 @@ this table replaces their duplicated active-plan narrative, not any unresolved m
 | 3E / `63f691b2` | Real epoch boundary workflow replaces two summary mocks; testsnet+43 | Exact1%, above1%, multirecord counts/atomicity; threshold fault detected; combined3E/3G291pass, independentreview/Ruff |
 | 3F / `f234a5ea` | Synchronous plotter/fallback/alias cleanup; productionnet-29/testsnet-1 | Real curves/current+overlay/time+PSD; direct25pass and native8cycle stress; wrong-frequency fault, independentreview/Ruff |
 | 3G / `d86efa15` | Retire unused Epochs picker chain; production-538 | 307 obsolete collected cases removed (corrected actual parametrization count), actual manual Generator retained; combined291pass, independentreview/Ruff |
+| 3H / `3e556a98` | Actual RAM-before-deepcopy test replaces exclusive fake; testsnet-7 | Direct/adjacent37 retained; strengthened actual-copy node1pass and omitted-check fault caught; independentreview/Ruff |
+| 3I / `db4670d7` | Normalize/validate split command once; productionnet-10/testsnet+30 | Real defaultNone vs explicitempty replacement; retained47pass; exact public message, independentreview/Ruff |
 
 ### Evidence qualifications that remain relevant
 
