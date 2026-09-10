@@ -1614,13 +1614,6 @@ def _optional_str(value: Any) -> str | None:
     return text or None
 
 
-def _optional_str_list(value: Any) -> list[str] | None:
-    if not isinstance(value, (list, tuple)):
-        return None
-    normalized = [str(item).strip() for item in value if str(item).strip()]
-    return list(dict.fromkeys(normalized)) or None
-
-
 def _optional_float(value: Any) -> float | None:
     if value is None:
         return None

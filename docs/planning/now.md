@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `f7632053`, 120 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `f4d2884a`, 121 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -238,6 +238,26 @@ exactly equal. This is measured redundant-work removal, not an elapsed-time/user
 Production+1/-34/net-33 across3files, tests+28/-1/net+27/threeaddedcases; none retired. Main and
 independent actual-diff review approved. Actual typed rendering, streaming set_text and script-used
 append_message stay; hidden icon widget/style remains. Ruff/format before separate commit.
+
+**Bounded6U — remove unused private command conversion helper.** Independent full application_surface
+1687 and direct264/authorized_paths303/result_contract538 retain actual Command spine, atomic
+publication, typed results/privacy and confirmation fingerprints. Main and independent whole-repo
+hidden/config/script/docs search finds _optional_str_list only at its definition, never registry data.
+Delete that helper alone after passing direct application-surface baseline; same suite/lint afterwards,
+main nonauthor diff review. One production file/about-6lines, no tests or owner/public contract change.
+One reversible commit; do not mix6G legacy-adapter decision into this private deletion. Separate deeper
+ToolCommandResult final payload-size test coverage question needs whole-test caller review first.
+Native before25passed6.38s/after25passed6.36s, zero tests retired. Production-7; main nonauthor
+actual-diff review and Ruff/format passed. Global review also found existing to_payload privacy/
+capability evidence in controller5289, feedback82 and execution coordinator92; a missing direct-file
+test is not a proven overall coverage gap. Final byte-fit behavior remains a separate bounded audit.
+
+**Confirmed recovery-feedback candidate (not implementation yet).** Independent + main source/caller
+audit proves no production writer for assembler._recovery_feedback; only two tests set it, controller
+only clears it atfour boundaries. ToolRecoveryFeedback/build_recovery_feedback, branch and clear calls
+are dormant. Any removal must preserve live terminal-failure/no-retry policy and actual hostile RAG/
+history sanitizer coverage; remove only three exclusive cases and recovery fragment of shared tests.
+This is separate from blocked6E/6G and needs its own declared baseline/exact prompt parity evidence.
 
 **Module6 initial full owner audit (not closure).** Independent full controller2949/attempt898/
 execution342/confirmation314/pending443 and respective direct confirmation154/pending560/execution151/
