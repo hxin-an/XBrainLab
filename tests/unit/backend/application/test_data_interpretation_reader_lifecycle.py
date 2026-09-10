@@ -6,6 +6,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import mne
+import numpy as np
 import pytest
 
 from XBrainLab.backend.application import (
@@ -129,3 +131,51 @@ def test_internal_event_preview_closes_reader_when_metadata_read_fails(
     assert "annotation metadata failed" in preview["scan_warnings"][0]
     assert "cleanup failed" not in preview["scan_warnings"][0]
     assert reader.closed is True
+
+
+@pytest.mark.parametrize(
+    ("with_annotations", "expected_codes"),
+    [
+        (
+            True,
+            ["12", "Stimulus/S  11"],
+        ),
+        (False, ["99"]),
+    ],
+    ids=["annotations-take-precedence", "stim-fallback"],
+)
+def test_internal_event_preview_reads_saved_fif_annotation_or_stim_events(
+    tmp_path: Path,
+    with_annotations: bool,
+    expected_codes: list[str],
+) -> None:
+    """Use MNE's persisted reader path rather than a mocked event payload."""
+    source = tmp_path / "recording_raw.fif"
+    info = mne.create_info(
+        ["Cz", "STI 014"],
+        sfreq=100.0,
+        ch_types=["eeg", "stim"],
+    )
+    values = np.zeros((2, 100))
+    values[1, 20] = 99
+    raw = mne.io.RawArray(values, info, verbose="ERROR")
+    if with_annotations:
+        raw.set_annotations(
+            mne.Annotations(
+                onset=[0.1, 0.5],
+                duration=[0.0, 0.0],
+                description=["Stimulus/S  11", "0012"],
+            )
+        )
+    raw.save(source, overwrite=True, verbose="ERROR")
+
+    preview = data_interpretation_internal_events.build_internal_event_preview(
+        [str(source)],
+    )
+
+    rows = [
+        *preview["candidate_label_events"],
+        *preview["not_used_events"],
+    ]
+    assert preview["event_count"] == len(expected_codes)
+    assert sorted(row["event_code"] for row in rows) == expected_codes

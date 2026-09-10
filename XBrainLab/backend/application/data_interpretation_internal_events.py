@@ -350,8 +350,6 @@ def _event_code_from_description(description: str, *, fallback: str = "") -> str
     text = str(description or "").strip()
     if text.isdigit():
         return str(int(text))
-    if _looks_like_prefixed_marker(text):
-        return text
     fallback_text = str(fallback or "").strip()
     if text:
         return text
@@ -360,18 +358,6 @@ def _event_code_from_description(description: str, *, fallback: str = "") -> str
 
 def _looks_like_coded_marker(text: str) -> bool:
     return bool(_NUMBER_RE.fullmatch(str(text or "").strip()))
-
-
-def _looks_like_prefixed_marker(text: str) -> bool:
-    normalized = text.casefold()
-    prefixes = (
-        "stimulus/s",
-        "response/r",
-        "event/e",
-        "annotation/",
-        "trigger/",
-    )
-    return normalized.startswith(prefixes)
 
 
 def _semantic_for_event(stats: dict[str, Any]) -> dict[str, str]:

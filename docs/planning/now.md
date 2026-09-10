@@ -175,6 +175,40 @@ visible state. Do not change this product behavior until approved; other authori
 There is no manual candidate or merge request. Completed slices, context recovery and pending gates
 are not an endpoint; continue the next unfinished authorized step.
 
+**Completed 2P — remove import-event identity-only branches.** Independent full candidate/internal-event
+audits and main inspected changed caller graphs confirm two no-op layers: candidate's one-call
+`_selected_files_missing_from_scan` forwards unchanged to the already-shared `_paths_missing_from_scan`;
+internal `_looks_like_prefixed_marker` only returns the same nonempty string as the following branch.
+Main removes only these no-ops after passing candidate/lifecycle characterization. Preserve both
+the shared missing-path policy and all marker text/spacing/numeric normalization/semantic rules.
+One reversible import-event simplification commit, no owners/schema/visible behavior change.
+
+Before source edits, an independent worker owns only test_data_interpretation_reader_lifecycle.py
+to add a tiny real saved FIF annotation+stim fixture through build_internal_event_preview, checking
+marker spacing/numeric normalization and annotation priority, plus stim-only fallback if coherent.
+Existing candidate tests do exercise description normalization after their mocked reader payload;
+they do not exercise actual MNE dispatch/priority. Keep their assertions and the reader-failure-close
+case. Main runs added characterization against unchanged production, then identical after plus native
+Ruff/format and non-author review. No new environment, downloaded fixture or production test seam.
+Native original 59 passed3.30s; added characterization before deletion61 passed3.50s; identical after
+61 passed3.54s. The real stim reader emits an upstream MNE/NumPy deprecation warning (not failure).
+Main reviewed actual test/diff; independent non-author review and Ruff/format passed.
+Production +1/-22/net -21, unchanged owners. Commit separately from 2Q.
+
+**Parallel 2Q — montage promotion retry characterization, tests only.** Independent audit read all
+preparation/coordinator/lifecycle sources (1282/460/355 lines), direct tests (809/630 lines) and real
+fixture integration test (130 lines). Keep distinct geometry/resource admission, generation/manual
+precedence, and worker/publication responsibilities. Existing real geometry tests and deterministic
+async seam isolation are useful. Confirmed uncovered transition: refresh_candidate failure retains
+_retry_candidate; a later ApplicationService command calls retry_promotion. Worker owns only
+test_bids_montage_coordinator.py: add a deterministic failed-refresh -> retained pending -> successful
+retry -> no duplicate publication test using actual coordinator/lifecycle and existing parser seam.
+No source changes or new control owner. Main reads patch and runs focused native suite and reviews
+whether the assertion actually protects publication/retry, then independent review and separate commit.
+This is added behavior evidence, not a claim real-fixture/Windows UI handoff has passed.
+Native coordinator suite18 passed1.79s; Ruff/format and independent review passed. This directly
+protects coordinator retention/promotion, not separate service-level stale-publication recovery dispatch.
+
 ### Responsibility closure and retained boundaries
 
 - Module 1: independent reviewer approved shared-spine responsibility closure at `1247cf7c`.
