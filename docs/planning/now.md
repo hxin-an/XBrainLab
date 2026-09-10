@@ -109,6 +109,26 @@ old session IDs and plan text do not prove a process is running. No manual candi
 
 **Current work — developer docs/config truth and remaining scripts; module2–6 closure gaps and explicit decisions remain open.**
 
+**Bounded8M — reject contradictory MOABB evaluation evidence.** Independent full capture779/
+contract506/direct305 and main publication trace find validator checks route_semantics_match type,
+but trusts its truth even when recorded expected/observed labels disagree. Site publication invokes
+this validator, so forged/buggy true claims can qualify. Capture already defines the value by set
+equality; reuse that exact meaning after existing nonempty string-list checks. Reject contradictory
+flags in both directions, retain honest mismatch as valid but unqualified, and preserve order-insensitive
+matching. No EEG execution/class mapping, schema, public Command/UI, new owner or data download change.
+Add full-manifest tests with real source/PNG/hash fixtures for mismatched-true, matching-false and
+reordered-matching-true; baseline direct suite before source, same after, publication-caller review,
+Ruff/diff checks. This validates evidence consistency, not actual dataset correctness or fresh MOABB
+source-diverse gate success. Continue full script inventory after repair.
+Result: two contradictory manifests reproduce false acceptance;9 retained/valid cases pass0.36s.
+After repair all11 pass0.26s, including honest mismatch and reordered match. Ruff/format, diff and
+independent publication/capture-semantics review pass. Script+4/test+36, zero schema or owner change.
+
+Next integration check: the missed script-to-MetricTab API caller in8J warrants one early existing
+whole-project Basedpyright regression gate after the current commit. This is shared-boundary feedback,
+not final same-head CI; preserve its baseline/version/denominator, use sole existing Windows Python,
+no install/new environment and do not run full pytest in parallel. Any failure needs cause triage.
+
 **Bounded8L — retire orphan capture alias and correct generated app-polish report.** Independent
 full capture2231/direct1282 and main factory/report/caller traces find _epoching_dialog only forwards
 to the live internal-events factory with no caller/registration/config/doc use. Remove that alias,
