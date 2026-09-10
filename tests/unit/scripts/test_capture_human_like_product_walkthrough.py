@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+import tempfile
 from collections.abc import Mapping
+from contextlib import nullcontext
 from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
@@ -178,13 +180,61 @@ def _admit_walkthrough_turn(
     return request
 
 
-def test_assistant_settings_isolation_builds_a_complete_pinned_model_snapshot() -> None:
-    with isolated_assistant_settings() as isolation:
+@pytest.mark.parametrize("capture_fails", [False, True])
+def test_assistant_settings_isolation_builds_a_complete_pinned_model_snapshot(
+    monkeypatch, tmp_path, capture_fails
+) -> None:
+    host_path = tmp_path / "host" / "settings.json"
+    legacy_path = tmp_path / "legacy-settings.json"
+    assert LLMConfig().save_to_file(str(host_path))
+    host_bytes = host_path.read_bytes()
+    legacy_path.write_bytes(b"untouched legacy settings")
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    monkeypatch.setattr(
+        LLMConfig, "_default_settings_path", staticmethod(lambda: str(host_path))
+    )
+    monkeypatch.setattr(
+        LLMConfig, "_legacy_settings_path", staticmethod(lambda: str(legacy_path))
+    )
+    original_bindings = {
+        name: LLMConfig.__dict__[name]
+        for name in (
+            "_default_settings_path",
+            "_legacy_settings_path",
+            "load_from_file",
+        )
+    }
+
+    expected_exit = (
+        pytest.raises(RuntimeError, match="capture failed")
+        if capture_fails
+        else nullcontext()
+    )
+    with expected_exit, isolated_assistant_settings() as isolation:
         config = LLMConfig.load_from_file()
 
         assert config is not None
         assert config.cache_dir == str(isolation.cache_root)
         assert config.has_local_model_cache(PRIMARY_LOCAL_MODEL_ID) is True
+        assert LLMConfig._default_settings_path() == str(isolation.settings_path)
+        assert isolation.settings_path.is_file()
+        assert isolation.settings_path.is_relative_to(tmp_path)
+        assert config.save_to_file()
+        assert host_path.read_bytes() == host_bytes
+        if capture_fails:
+            raise RuntimeError("capture failed")
+
+    assert host_path.read_bytes() == host_bytes
+    assert legacy_path.read_bytes() == b"untouched legacy settings"
+    assert not isolation.cache_root.exists()
+    assert not isolation.settings_path.parent.exists()
+    assert LLMConfig._default_settings_path() == str(host_path)
+    assert all(
+        LLMConfig.__dict__[name] is binding
+        for name, binding in original_bindings.items()
+    )
+    if not capture_fails:
+        assert isolation.evidence["host_config_unchanged"] is True
 
 
 def test_rotated_x_tick_overlap_uses_anchor_spacing_not_axis_aligned_bounds() -> None:

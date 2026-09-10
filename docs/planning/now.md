@@ -109,6 +109,48 @@ old session IDs and plan text do not prove a process is running. No manual candi
 
 **Current work — developer docs/config truth and remaining scripts; module2–6 closure gaps and explicit decisions remain open.**
 
+**Bounded9P — prove walkthrough settings/cache cleanup on both exits.** Independent full human-like
+capture helper1207 retains real readiness classification and outer-owned GUI lifecycle. Existing direct
+8-line test checks only in-context cache completeness, not host bytes/default-path restoration or
+temporary cache cleanup. Strengthen it using test-owned host/legacy paths and original method bindings,
+with normal and raised-exception exits; retain actual LLMConfig load and actual pinned cache inspection.
+The256MiB logical fixture crosses production's256,000,000-byte readiness threshold: retain it in an
+owned temporary D-drive directory, not a smaller fake or permanent weight. Do not invoke a model,
+GUI, download or change product/helper behavior. First run original single case; strengthened two-case
+suite, bounded in-memory lost-restore/cleanup fault, independent actualdiff/evidence review and Ruff.
+Normal-exit host-digest receipt is asserted only on normal completion; on error actual bytes/restored
+bindings/root absence prove cleanup without inventing an error-path artifact contract. Continue audit.
+Result: original1passed7.16s, stronger2passed7.26s. In-memory omitted temporary-directory cleanup
+fails both cases at the cache-exists assertion; pytest-owned roots clean up the intentional leftovers.
+Independent diff review approved. Ruff required combined with-context/style formatting; final focused
+rerun2passed7.26s and lint/format pass. Production unchanged, no test removed, one parameter case added.
+
+**Bounded9O — retire two unconsumed direct dependencies, preserve external reader requirements.**
+Independent full pyproject314 plus package/lock/caller audit finds no product/script/test/dynamic theme
+or environment loader for qdarkstyle and python-dotenv. Main verified the removed comments-only .env
+template was not a loader. Keep pymatreader: installed MNE EEGLAB reader invokes it for supported
+.set/MATLAB HDF5 handling despite no project import; initial static-only removal suggestion rejected.
+Keep requests/tqdm and optional hosted SDK group pending separate ownership decisions; no broad dep
+upgrades or model/runtime changes. Remove exactly these two direct declarations and regenerate the
+existing lock through installed Poetry2.3.4, preserving versions/sources/hashes of surviving packages.
+No environment creation/sync/install, package/model payload download, global config write or manual
+transitive stanza edits. Read-only PyPI JSON metadata for already locked exact versions is permitted
+when the installed resolver needs it; restrict requests to those endpoints and use a creator-owned
+temporary metadata cache. Reject wheel/source payload URLs and unpinned/latest/version changes.
+Original poetry check --lock --strict passes. Run lock refresh with network denied and environment
+creation disabled. Offline diagnosis identified missing google-genai1.59.0 metadata (an unchanged
+optional group dependency); a bounded pinned-JSON-only refresh may fill this, otherwise leave the
+candidate explicitly unresolved, not a hand-edited supposedly valid lock. Verify exact graph delta/lock freshness, focused startup/shared Qt
+paths with imports of retired dependencies denied in memory, independent diff review and CI remains
+required. This is metadata cleanup, not a claim of reclaimed installed-package bytes.
+Unresolved result: offline refresh lacks pinned metadata. The bounded read-only metadata attempt
+subsequently reached an unpinned /simple/types-pyyaml/ lookup and was deliberately rejected before
+any lock write or payload download. No lock diff was produced. Restored only this slice's two direct
+declarations so pyproject and the existing lock remain consistent; no installed package changed.
+Independent caller audit approves the deletion candidates, not a nonexistent lock refresh. These two
+retirements remain open until exact-pinned resolution can be obtained without an unrelated upgrade;
+continue independent authorized work instead of bypassing the resolver or expanding dependency scope.
+
 **Bounded9N — retire historical repository-wide terminal auto-approval.** Main fully read the tracked
 17-line .vscode/settings.json: its only content is blanket Poetry auto-approval, two one-off compile
 command regexes naming already removed modules, and automatic git add -A. No editor formatting/debug
