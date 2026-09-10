@@ -120,7 +120,7 @@ reversible test-only commit. Whole-tree script/config/doc lookup found no refere
 2I strengthened characterization also passed 39; after deletion 31 passed, exactly eight fewer.
 Ruff/format pass. Independent actual-diff review approved; no production edits in this slice.
 
-**Reviewed 2J — retire unreachable label sequence/force chain; commit next.** Independent full service/test
+**Completed 2J — retire unreachable label sequence/force chain, `daaf1a59`.** Independent full service/test
 audit and main caller review establish actual reviewed sequence imports use mapped checked atomic
 batches, not the flat distribution API. Delete LabelImportService.apply_labels_sequence,
 _force_apply_single, its fallback count/operation flag, DatasetStateService.apply_labels_sequence,
@@ -167,6 +167,12 @@ independent review and one reversible commit. This removes demonstrably redundan
 measured user-visible speedup or a timestamp redesign.
 2K original native selection: 36 passed; strengthened real Raw characterization: 39 passed before
 EventLoader changes. One existing expected MNE warning comes from the safety test dropping all epochs.
+After deleting two replaced mock cases: 37 passed; identical actual reviewed sequence/recipe
+consumer selection 18 passed. Independent actual-diff approval, Ruff/format/diff check pass.
+An isolated reversed-row fault makes both new real Raw cases fail on timestamps/prior values;
+no faulty file persisted (first argv-based probe had a quoting SyntaxError, not test evidence).
+Production +5/-126/net -121; the helper alone is about 94 lines, not the total reduction.
+Commit this slice, then continue remaining import domain audits, not manual handoff.
 
 **Remaining module-2 work.**
 Continue event/label semantics, BIDS, channel/montage and related UI review. Modules 3–9 remain open.
