@@ -109,6 +109,20 @@ old session IDs and plan text do not prove a process is running. No manual candi
 
 **Current work — developer docs/config truth and remaining scripts; module2–6 closure gaps and explicit decisions remain open.**
 
+**Bounded9S — retire stale package descriptions and absent-path secret-scan exclusions.** Main full
+package initializer/hook reads and live engine/catalog/sidebar trace retain real package markers,
+reviewed model closures and training-dialog exports. Correct only styles' removed icon registry claim
+and LLM's obsolete multiple-backend description to existing local-only engine truth. Hook excludes
+package-lock.json and retired artifacts/user-journeys registry path, neither tracked nor a current
+generated output/caller; remove those two exemptions without adding broader replacements. Retain
+the existing baseline, pinned hooks and live public-checksum exclusions. No runtime imports, user
+config, dependency versions, secrets or UI behavior change. Review exact diff, YAML/source guidance
+audit and existing pre-commit checks; this tightens scan coverage, not a new security policy owner.
+Continue remaining module8/9 file coverage; no full docs-site rebuild for Python comments/hook paths.
+Result: actual YAML parse and narrowed regex checks preserve live exclusions/baseline, two-file
+Ruff/format and guidance audit(ok=true/no errors) pass. Independent actual diff review approves;
+only two absent-path scan exemptions and two false docstring claims changed, no runtime behavior.
+
 **Bounded8M — reject contradictory MOABB evaluation evidence.** Independent full capture779/
 contract506/direct305 and main publication trace find validator checks route_semantics_match type,
 but trusts its truth even when recorded expected/observed labels disagree. Site publication invokes
@@ -128,6 +142,13 @@ Next integration check: the missed script-to-MetricTab API caller in8J warrants 
 whole-project Basedpyright regression gate after the current commit. This is shared-boundary feedback,
 not final same-head CI; preserve its baseline/version/denominator, use sole existing Windows Python,
 no install/new environment and do not run full pytest in parallel. Any failure needs cause triage.
+Scope correction before execution: configured analyzer includes XBrainLab only, not scripts/tests;
+it checks product-to-product API integration, not the8J script caller. Script consumers still require
+their actual focused workflow/CLI tests. Do not silently broaden analyzer include or claim script
+coverage. Checked-in allowlist is empty; retain zero-new-diagnostics policy and PyQt type probe.
+Result at product source500d4717: existing Basedpyright1.39.2 gate passes its real PyQt dependency
+probe and reports0 baseline/0 observed/0 new diagnostics. No baseline/config/denominator changed;
+only this plan was dirty. This is whole configured product type evidence, not scripts or full CI.
 
 **Bounded8L — retire orphan capture alias and correct generated app-polish report.** Independent
 full capture2231/direct1282 and main factory/report/caller traces find _epoching_dialog only forwards
