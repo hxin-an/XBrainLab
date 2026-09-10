@@ -271,21 +271,6 @@ def test_export_supports_a_named_prediction_split_artifact(tmp_path) -> None:
     assert (tmp_path / "eval-validation.npz").exists()
 
 
-def test_export_csv(tmp_path):
-    csv_file = str(tmp_path / "output.csv")
-    gradient = {"123": "test"}
-    label = [1, 2]
-    output = np.array([[0, 1], [1, 0]])
-    eval_record = EvalRecord(label, output, gradient, {}, {}, {}, {})
-    eval_record.export_csv(csv_file)
-    assert os.path.exists(csv_file)
-
-    with open(csv_file) as f:
-        assert f.readline() == "0,1,ground_truth,predict\n"
-        assert [float(i) for i in f.readline().split(",")] == [0, 1, 1, 1]
-        assert [float(i) for i in f.readline().split(",")] == [1, 0, 2, 0]
-
-
 def test_load_returns_none_when_evaluation_artifact_is_missing(tmp_path):
     assert EvalRecord.load(str(tmp_path / "missing")) is None
 

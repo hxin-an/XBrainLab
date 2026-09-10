@@ -1033,27 +1033,6 @@ class EvalRecord:
                 record._freeze_verified_saliency_result()
             return record
 
-    def export_csv(self, target_path: str) -> None:
-        """Export evaluation results as a CSV file.
-
-        The CSV contains model outputs, ground truth labels, and predicted labels.
-
-        Args:
-            target_path: Full file path for the CSV output.
-
-        """
-        data = np.c_[self.output, self.label, self.output.argmax(axis=1)]
-        index_header_str = ",".join([str(i) for i in range(self.output.shape[1])])
-        header = f"{index_header_str},ground_truth,predict"
-        np.savetxt(
-            target_path,
-            data,
-            delimiter=",",
-            newline="\n",
-            header=header,
-            comments="",
-        )
-
     def export_saliency(self, method: str, target_path: str | None = None) -> dict:
         """Build and optionally save an identity-bearing saliency artifact.
 
