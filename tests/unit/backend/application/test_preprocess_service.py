@@ -15,7 +15,6 @@ from XBrainLab.backend.application.commands import (
     PreprocessCommand,
     PreprocessOperation,
 )
-from XBrainLab.backend.application.epoch_context import build_epoching_context
 from XBrainLab.backend.application.errors import (
     ConfirmationRequiredError,
     PreconditionError,
@@ -173,41 +172,6 @@ def _service() -> tuple[
         preprocess,
         dataset,
     )
-
-
-def _bids_epoch_confirmation_service(
-    monkeypatch,
-) -> tuple[
-    PreprocessCommandService,
-    _PreprocessController,
-    _BidsEpochData,
-    dict[str, Any],
-]:
-    data = _BidsEpochData()
-    preprocess = _PreprocessController()
-    preprocess.data_list = [data]
-    handoff = {
-        "ready": True,
-        "supervised_ready": True,
-        "default_epoch_events": ["left", "right"],
-        "selected_event_names": ["left", "right"],
-        "label_source": "bids_events",
-        "placement_modes": ["interval"],
-    }
-    service = PreprocessCommandService(
-        preprocess=preprocess,
-        dataset=SimpleNamespace(),
-        get_state=lambda: _state_with_epoch_handoff(handoff),
-    )
-    monkeypatch.setattr(
-        "XBrainLab.backend.application.preprocess_service."
-        "ResourceChecker.check_epoch_materialization_safe",
-        lambda *_args, **_kwargs: SimpleNamespace(
-            blocking=False,
-            risk_level="safe",
-        ),
-    )
-    return service, preprocess, data, handoff
 
 
 def _real_preprocess_application() -> tuple[ApplicationService, Raw, np.ndarray]:
@@ -463,80 +427,6 @@ def test_preprocess_service_creates_epoch() -> None:
     assert preprocess.events == [
         ("epoch", ((0.0, 0.2), {"left": 1}, -0.5, 1.5)),
     ]
-
-
-def test_bids_duration_warning_requires_receipt_before_epoch_mutation(
-    monkeypatch,
-) -> None:
-    service, preprocess, data, handoff = _bids_epoch_confirmation_service(monkeypatch)
-    context = build_epoching_context([data], epoch_handoff=handoff)
-    requirement = context["confirmation_requirement"]
-    command = CreateEpochCommand(
-        t_min=requirement["scope"]["t_min"],
-        t_max=requirement["scope"]["t_max"],
-        event_ids=requirement["scope"]["selected_events"],
-    )
-
-    with pytest.raises(ConfirmationRequiredError) as exc_info:
-        service.handle_create_epoch(command)
-
-    assert exc_info.value.diagnostics["confirmation_requirement"] == requirement
-    assert preprocess.events == []
-
-    accepted = replace(
-        command,
-        confirmation_receipt=requirement["receipt"],
-    )
-    assert (
-        service.handle_create_epoch(accepted)
-        == f"Created EEG epochs from {command.t_min}s to {command.t_max}s."
-    )
-    assert preprocess.events == [
-        (
-            "epoch",
-            (
-                None,
-                ["left", "right"],
-                command.t_min,
-                command.t_max,
-            ),
-        )
-    ]
-
-
-@pytest.mark.parametrize("changed_field", ["t_min", "t_max", "event_ids", "context"])
-def test_bids_epoch_receipt_is_invalidated_by_scope_or_context_change(
-    monkeypatch,
-    changed_field,
-) -> None:
-    service, preprocess, data, handoff = _bids_epoch_confirmation_service(monkeypatch)
-    context = build_epoching_context([data], epoch_handoff=handoff)
-    requirement = context["confirmation_requirement"]
-    command = CreateEpochCommand(
-        t_min=requirement["scope"]["t_min"],
-        t_max=requirement["scope"]["t_max"],
-        event_ids=requirement["scope"]["selected_events"],
-        confirmation_receipt=requirement["receipt"],
-    )
-    if changed_field == "context":
-        data.hint["duration_stats"] = {
-            "numeric_count": 2,
-            "min": 0.25,
-            "max": 14.0,
-        }
-    elif changed_field == "event_ids":
-        command = replace(command, event_ids=["left"])
-    elif changed_field == "t_min":
-        command = replace(command, t_min=-0.1)
-    else:
-        command = replace(command, t_max=10.0)
-
-    with pytest.raises(ConfirmationRequiredError) as exc_info:
-        service.handle_create_epoch(command)
-
-    refreshed = exc_info.value.diagnostics["confirmation_requirement"]
-    assert refreshed["receipt"] != requirement["receipt"]
-    assert preprocess.events == []
 
 
 @pytest.mark.parametrize(

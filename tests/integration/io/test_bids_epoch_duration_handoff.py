@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import mne
@@ -67,7 +68,11 @@ def _write_exact_end_bids_run(
     return eeg_path.resolve(), events_path.resolve()
 
 
-def _write_duration_review_bids_run(root: Path) -> tuple[Path, Path]:
+def _write_duration_review_bids_run(
+    root: Path,
+    *,
+    long_duration: float = 12.0,
+) -> tuple[Path, Path]:
     root.mkdir(parents=True, exist_ok=True)
     (root / "dataset_description.json").write_text(
         json.dumps({"Name": "duration-review", "BIDSVersion": "1.11.1"}),
@@ -82,20 +87,26 @@ def _write_duration_review_bids_run(root: Path) -> tuple[Path, Path]:
     raw = mne.io.RawArray(np.zeros((1, 3_000)), info, verbose="ERROR")
     raw.save(eeg_path, overwrite=True, verbose="ERROR")
     events_path.write_text(
-        "onset\tduration\ttrial_type\n1.0\t0.25\tshort_event\n15.0\t12.0\tlong_event\n",
+        (
+            "onset\tduration\ttrial_type\n"
+            f"1.0\t0.25\tshort_event\n15.0\t{long_duration}\tlong_event\n"
+        ),
         encoding="utf-8",
     )
     return eeg_path.resolve(), events_path.resolve()
 
 
-def test_bids_long_uneven_duration_requires_receipt_before_create_epoch(
-    tmp_path: Path,
-) -> None:
-    bids_root = tmp_path / "bids"
-    eeg_path, events_path = _write_duration_review_bids_run(bids_root)
-    service = ApplicationService()
-    service.execute(ScanSourceCommand(source_path=str(bids_root), source_hint="bids"))
-    service.execute(
+def _apply_duration_review_bids_run(
+    service: ApplicationService,
+    *,
+    bids_root: Path,
+    eeg_path: Path,
+    events_path: Path,
+) -> tuple[dict[str, object], CreateEpochCommand]:
+    assert service.execute(
+        ScanSourceCommand(source_path=str(bids_root), source_hint="bids")
+    ).ok
+    assert service.execute(
         PreviewInterpretationCommand(
             choices={
                 "selected_eeg_files": [str(eeg_path)],
@@ -114,37 +125,205 @@ def test_bids_long_uneven_duration_requires_receipt_before_create_epoch(
                 },
             }
         )
-    )
-    service.execute(ValidateInterpretationCommand())
+    ).ok
+    assert service.execute(ValidateInterpretationCommand()).ok
     applied = service.execute(ApplyInterpretationCommand(confirmed=True))
     assert applied.ok is True
-
     context = build_epoching_context(service.study.preprocessed_data_list)
-    command = CreateEpochCommand(
+    return context, CreateEpochCommand(
         t_min=context["suggested_t_min"],
         t_max=context["suggested_t_max"],
         event_ids=["short_event", "long_event"],
     )
-    challenged = service.execute(command)
 
-    assert challenged.ok is False
-    assert challenged.error_type is ErrorType.CONFIRMATION_REQUIRED
-    requirement = challenged.diagnostics["confirmation_requirement"]
-    assert requirement["code"] == "bids_duration_review"
-    assert challenged.state.epoch.available is False
 
-    accepted = service.execute(
-        CreateEpochCommand(
-            t_min=command.t_min,
-            t_max=command.t_max,
-            event_ids=command.event_ids,
-            confirmation_receipt=requirement["receipt"],
+def test_bids_long_uneven_duration_requires_receipt_before_create_epoch(
+    tmp_path: Path,
+) -> None:
+    bids_root = tmp_path / "bids"
+    eeg_path, events_path = _write_duration_review_bids_run(bids_root)
+    service = ApplicationService()
+    try:
+        _context, command = _apply_duration_review_bids_run(
+            service,
+            bids_root=bids_root,
+            eeg_path=eeg_path,
+            events_path=events_path,
         )
-    )
+        challenged = service.execute(command)
 
-    assert accepted.ok is True
-    assert accepted.state.epoch.available is True
-    assert accepted.state.epoch.epoch_count == 2
+        assert challenged.ok is False
+        assert challenged.error_type is ErrorType.CONFIRMATION_REQUIRED
+        requirement = challenged.diagnostics["confirmation_requirement"]
+        assert requirement["code"] == "bids_duration_review"
+        assert challenged.state.epoch.available is False
+
+        accepted = service.execute(
+            CreateEpochCommand(
+                t_min=command.t_min,
+                t_max=command.t_max,
+                event_ids=command.event_ids,
+                confirmation_receipt=requirement["receipt"],
+            )
+        )
+
+        assert accepted.ok is True
+        assert accepted.state.epoch.available is True
+        assert accepted.state.epoch.epoch_count == 2
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize(
+    "scope_change",
+    [
+        {"t_min": -0.1},
+        {"t_max": 10.0},
+        {"event_ids": ["short_event"]},
+    ],
+    ids=("t-min", "t-max", "event-ids"),
+)
+def test_bids_duration_receipt_rejects_changed_epoch_scope(
+    tmp_path: Path,
+    scope_change: dict[str, float | list[str]],
+) -> None:
+    bids_root = tmp_path / "bids"
+    eeg_path, events_path = _write_duration_review_bids_run(bids_root)
+    service = ApplicationService()
+    try:
+        _context, command = _apply_duration_review_bids_run(
+            service,
+            bids_root=bids_root,
+            eeg_path=eeg_path,
+            events_path=events_path,
+        )
+        challenged = service.execute(command)
+        requirement = challenged.diagnostics["confirmation_requirement"]
+        before = service.get_state()
+        loaded_before = list(service.study.loaded_data_list)
+        preprocessed_before = service.study.preprocessed_data_list
+        samples_before = [
+            item.get_mne().get_data().copy() for item in preprocessed_before
+        ]
+        rejected = service.execute(
+            replace(
+                command,
+                confirmation_receipt=requirement["receipt"],
+                **scope_change,
+            )
+        )
+
+        assert rejected.failed is True
+        assert rejected.error_type is ErrorType.CONFIRMATION_REQUIRED
+        refreshed = rejected.diagnostics["confirmation_requirement"]
+        assert refreshed["receipt"] != requirement["receipt"]
+        assert rejected.state.pipeline_stage == before.pipeline_stage
+        assert service.study.preprocessed_data_list is preprocessed_before
+        assert all(
+            current is original
+            for current, original in zip(
+                service.study.loaded_data_list, loaded_before, strict=True
+            )
+        )
+        for item, samples in zip(
+            service.study.preprocessed_data_list, samples_before, strict=True
+        ):
+            np.testing.assert_array_equal(item.get_mne().get_data(), samples)
+        assert service.study.epoch_data is None
+        assert service.study.is_locked() is False
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize(
+    ("long_duration", "accepted"),
+    [(12.0, True), (14.0, False)],
+    ids=("same-context-control", "changed-duration-context"),
+)
+def test_bids_duration_receipt_is_bound_to_reimported_context(
+    tmp_path: Path,
+    long_duration: float,
+    accepted: bool,
+) -> None:
+    bids_root = tmp_path / "bids"
+    eeg_path, events_path = _write_duration_review_bids_run(bids_root)
+    original_service = ApplicationService()
+    try:
+        original_context, command = _apply_duration_review_bids_run(
+            original_service,
+            bids_root=bids_root,
+            eeg_path=eeg_path,
+            events_path=events_path,
+        )
+        original_requirement = original_service.execute(command).diagnostics[
+            "confirmation_requirement"
+        ]
+    finally:
+        original_service.close()
+
+    eeg_path, events_path = _write_duration_review_bids_run(
+        bids_root,
+        long_duration=long_duration,
+    )
+    reimported_service = ApplicationService()
+    try:
+        reimported_context, _reimported_command = _apply_duration_review_bids_run(
+            reimported_service,
+            bids_root=bids_root,
+            eeg_path=eeg_path,
+            events_path=events_path,
+        )
+        before = reimported_service.get_state()
+        loaded_before = list(reimported_service.study.loaded_data_list)
+        preprocessed_before = reimported_service.study.preprocessed_data_list
+        samples_before = [
+            item.get_mne().get_data().copy() for item in preprocessed_before
+        ]
+
+        result = reimported_service.execute(
+            CreateEpochCommand(
+                t_min=command.t_min,
+                t_max=command.t_max,
+                event_ids=command.event_ids,
+                confirmation_receipt=original_requirement["receipt"],
+            )
+        )
+
+        assert (
+            reimported_context["confirmation_context_fingerprint"]
+            == original_context["confirmation_context_fingerprint"]
+        ) is accepted
+        if accepted:
+            assert result.ok is True
+            assert result.state.epoch.available is True
+            assert result.state.epoch.epoch_count == 2
+        else:
+            assert result.failed is True
+            assert result.error_type is ErrorType.CONFIRMATION_REQUIRED
+            refreshed = result.diagnostics["confirmation_requirement"]
+            assert refreshed["receipt"] != original_requirement["receipt"]
+            assert result.state.pipeline_stage == before.pipeline_stage
+            assert (
+                reimported_service.study.preprocessed_data_list is preprocessed_before
+            )
+            assert all(
+                current is original
+                for current, original in zip(
+                    reimported_service.study.loaded_data_list,
+                    loaded_before,
+                    strict=True,
+                )
+            )
+            for item, samples in zip(
+                reimported_service.study.preprocessed_data_list,
+                samples_before,
+                strict=True,
+            ):
+                np.testing.assert_array_equal(item.get_mne().get_data(), samples)
+            assert reimported_service.study.epoch_data is None
+            assert reimported_service.study.is_locked() is False
+    finally:
+        reimported_service.close()
 
 
 def test_reviewed_bids_mixed_sampling_rates_block_then_resample_enables_epoch(

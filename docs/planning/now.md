@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `db4670d7`, 66 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `0b7d77ef`, 68 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -397,7 +397,7 @@ Stronger baseline113passed4.37s; retained112passed4.35s, exactly one duplicate p
 removed. Production-49/tests+1/-12/net-11; parser/name/mask consumers unchanged. Independent actual
 diff and main review approved; four-file Ruff passed.
 
-**Declared 3L — real BIDS epoch receipt scope/context.** Extend the existing integration duration
+**Completed bounded 3L — real BIDS epoch receipt scope/context.** Extend the existing integration duration
 fixture and genuine Scan/Preview/Validate/Apply workflow. Cover changed t_min/t_max/event IDs with
 old receipt, refreshed requirement and no mutation; cover changed duration through actual reimport,
 keeping command scope constant so context, not a new proposed window, causes invalidation. Compare
@@ -412,10 +412,44 @@ Legacy _get_state callback exceptions are not a second public read contract: rea
 uses captured plan.application.state and validated_epoch_handoff, while ApplicationService owns
 generic read-failure admission. Remove obsolete callback-only tests with that dead path, not recreate
 its error semantics. Current public state-read-failure test remains required evidence.
+Baseline45passed6.66s; after removing five exclusive legacy receipt cases/helper, retained40passed
+6.61s (352 upstream MNE deprecation warnings). In-memory acceptance of any nonempty receipt makes
+all four stale scope/context cases fail4.62s; no faulty source persisted. Same-context reimport
+control passes, distinguishing changed context from fresh-service identity. Main nonauthor actual
+diff review approved; production unchanged, tests+206/-139/net+67. Native runner uses prlimit --core=0
+and bounded timeout; no new environment or dependency.
 
-Additional inventory finding, not yet changed: dataset dialog package __all__ lists retired
-ImportLabelDialog absent from its lazy export map; no source/test/script/doc consumer. Retire the
-stale declaration in a separately declared package cleanup after actual lazy-export characterization.
+**Completed bounded 3M — dataset dialog lazy exports match supported classes.** Full package init38 and
+root package tests39 read: __all__ lists retired ImportLabelDialog absent from its lazy export map;
+whole-tree source/test/script/doc references show no consumer or replacement class. Add one dynamic
+export-resolution regression to existing test_init.py that imports every declared class and checks
+the four supported names. Observe the actual missing-attribute failure, then reuse list(_EXPORT_MODULES)
+as the export list, preserving all four lazy module targets and no eager import. One production/one
+test file, no new owner/UI behavior/public Command change. Focused package tests plus relevant lazy
+panel constructor protection, Ruff and independent actualdiff review; separate reversible commit.
+Observed exact missing ImportLabelDialog red1failed/11passed6.81s; after map-owned exports all12passed
+6.71s. Independent actualdiff review approved; production+1/-7/net-6, tests+13, lazy targets unchanged.
+
+**Completed bounded 3N — preprocess Sidebar removes an ignored error prefix.** Independent source899 and
+direct TestPreprocessSidebar125–861/error350–470 trace confirms failure_prefix is not read. Remove
+that argument, five production literal calls and two private error-test call arguments only. Preserve
+actual mapped messages/diagnostics, expected generation, async-only execution, cancellation/busy and
+error UI. Main owns scope/native baseline; assigned worker may author Sidebar and the two direct
+test edits after passing baseline. Use real rereference route, async scheduling failure and selected
+stale/epoch/worker exception cases; same after, Ruff and main nonauthor diff review. No visible change.
+Same28passed7.27s before/7.35s after. Main nonauthor actualdiff review confirms mapped result/error,
+generation and scheduling paths unchanged; production-6/tests-2, zero new owner.
+
+**Declared 3O — actual reviewed display aliases before retiring legacy epoch handler.** Add one
+parametrized real FIF Scan/Preview/Validate/Apply/CreateEpoch characterization in existing application
+tests: raw769/770 reviewed as Left hand/Right hand must materialize correct epoch labels/count;
+unknown list/dict targets must return the current precondition and preserve actual data identity,
+samples, lock and absent epoch. Worker owns this one test file, no production/legacy deletions yet.
+Use focused new nodes and existing prepared epoch/default/raw-ID evidence; inspect real event labels,
+Ruff and nonauthor review. No new helper unless existing fixture reuse needs bounded optional fields.
+Semantic unavailable codes already have exact owner tests in test_epoch_context; callback-only error
+tests are not a second public API. After this evidence, separately declare dead handler retirement
+and audit every coupled constructor/dynamic caller before deletion. No visible or EEG semantic change.
 
 **Module4 bounded read-only audit (not closure or implementation permission).** Independent full
 model_catalog892/braindecode_catalog408/catalog_contract20/model_holder117/input_contract201/
@@ -649,6 +683,7 @@ this table replaces their duplicated active-plan narrative, not any unresolved m
 | 3H / `3e556a98` | Actual RAM-before-deepcopy test replaces exclusive fake; testsnet-7 | Direct/adjacent37 retained; strengthened actual-copy node1pass and omitted-check fault caught; independentreview/Ruff |
 | 3I / `db4670d7` | Normalize/validate split command once; productionnet-10/testsnet+30 | Real defaultNone vs explicitempty replacement; retained47pass; exact public message, independentreview/Ruff |
 | 3J / `e77e389c` | Dialogs reuse inherited geometry owner; dead reference aliases removed; productionnet-22 | Same24 Windows QPA windows cases before/after, no visible change; main nonauthorreview/Ruff |
+| 3K / `0b7d77ef` | Retire test-only dataset metadata conveniences; production-49/testsnet-11 | Missing mask assertion restored;113before112retained, exactlyone duplicate removed; independentreview/Ruff |
 
 ### Evidence qualifications that remain relevant
 
