@@ -596,29 +596,6 @@ class DatasetStateService:
                 self.reset_preprocess()
             return count
 
-    def apply_labels_sequence(
-        self,
-        target_files: Sequence[Any],
-        labels: Sequence[Any],
-        mapping: Mapping[Any, str],
-        selected_event_names: Sequence[str] | set[str] | None,
-        *,
-        force_import: bool = False,
-    ) -> int:
-        with self._mutation_lock:
-            count = int(
-                self.label_service.apply_labels_sequence(
-                    list(target_files),
-                    labels,
-                    dict(mapping),
-                    selected_event_names,
-                    force_import=force_import,
-                )
-            )
-            if count > 0:
-                self.reset_preprocess()
-            return count
-
     def apply_channel_selection(self, selected_channels: Sequence[str]) -> bool:
         return self.commit_prepared_channel_selection(
             self.prepare_channel_selection(

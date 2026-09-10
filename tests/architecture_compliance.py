@@ -1865,63 +1865,29 @@ def check_raw_mutation_atomicity_boundaries(root_dir: Path) -> list[str]:
     )
 
     label_tree = _parse_python_file(label_service_path)
-    batch_wrapper = _class_method_node(
+    method = _class_method_node(
         label_tree,
         "LabelImportService",
-        "apply_labels_batch",
+        "apply_labels_batch_checked",
     )
-    batch_wrapper_calls = _resolved_function_call_names(batch_wrapper, label_tree)
-    if (
-        not {
-            "apply_labels_batch_checked",
-            "_apply_label_operations_atomically",
-        }
-        & batch_wrapper_calls
-    ):
+    calls = _resolved_function_call_names(method, label_tree)
+    if "_apply_label_operations_atomically" not in calls:
         violations.append(
             "XBrainLab/backend/services/label_import_service.py "
-            "apply_labels_batch() must delegate to the checked atomic batch path."
+            "apply_labels_batch_checked() must delegate to the atomic copy/commit helper."
         )
-    forbidden_wrapper_calls = {
-        "apply_labels_to_single_file",
-        "_force_apply_single",
-    } & batch_wrapper_calls
-    if forbidden_wrapper_calls:
+    forbidden = {"apply_labels_to_single_file", "_force_apply_single"} & calls
+    if forbidden:
         violations.append(
             "XBrainLab/backend/services/label_import_service.py "
-            "apply_labels_batch() directly mutates label targets via "
-            f"{', '.join(sorted(forbidden_wrapper_calls))}."
+            "apply_labels_batch_checked() directly mutates label targets via "
+            f"{', '.join(sorted(forbidden))}."
         )
-    if _UNRESOLVED_CALLABLE_ORIGIN in batch_wrapper_calls:
+    if _UNRESOLVED_CALLABLE_ORIGIN in calls:
         violations.append(
             "XBrainLab/backend/services/label_import_service.py "
-            "apply_labels_batch() cannot prove callable construction is atomic."
+            "apply_labels_batch_checked() cannot prove callable construction is atomic."
         )
-
-    for method_name in ("apply_labels_batch_checked", "apply_labels_sequence"):
-        method = _class_method_node(
-            label_tree,
-            "LabelImportService",
-            method_name,
-        )
-        calls = _resolved_function_call_names(method, label_tree)
-        if "_apply_label_operations_atomically" not in calls:
-            violations.append(
-                "XBrainLab/backend/services/label_import_service.py "
-                f"{method_name}() must delegate to the atomic copy/commit helper."
-            )
-        forbidden = {"apply_labels_to_single_file", "_force_apply_single"} & calls
-        if forbidden:
-            violations.append(
-                "XBrainLab/backend/services/label_import_service.py "
-                f"{method_name}() directly mutates label targets via "
-                f"{', '.join(sorted(forbidden))}."
-            )
-        if _UNRESOLVED_CALLABLE_ORIGIN in calls:
-            violations.append(
-                "XBrainLab/backend/services/label_import_service.py "
-                f"{method_name}() cannot prove callable construction is atomic."
-            )
     return violations
 
 

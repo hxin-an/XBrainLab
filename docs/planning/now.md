@@ -107,7 +107,7 @@ Recovery verified product branch `cleanup/module-quality`, clean source `7c89b53
 (27 commits after baseline `4770b049`). The original checkout's UI/test/settings edits remain intact.
 Read Git again after a reboot; old session IDs are not evidence of running work.
 
-**Active 2I — test-only loader consolidation.** Main owns the three loader test files and this plan.
+**Completed 2I — test-only loader consolidation, `73002524`.**
 Remove test_loaders.py (six redundant mock cases) and test_lazy_loading.py (two cases). Four wrapping
 cases map to the retained parameterized wrapping test; EDF maps to richer inference/reader-close
 coverage; FIF failure maps to retained raw/epochs error cases; GDF preload already has exact arguments.
@@ -120,7 +120,7 @@ reversible test-only commit. Whole-tree script/config/doc lookup found no refere
 2I strengthened characterization also passed 39; after deletion 31 passed, exactly eight fewer.
 Ruff/format pass. Independent actual-diff review approved; no production edits in this slice.
 
-**Declared next 2J — retire unreachable label sequence/force chain.** Independent full service/test
+**Reviewed 2J — retire unreachable label sequence/force chain; commit next.** Independent full service/test
 audit and main caller review establish actual reviewed sequence imports use mapped checked atomic
 batches, not the flat distribution API. Delete LabelImportService.apply_labels_sequence,
 _force_apply_single, its fallback count/operation flag, DatasetStateService.apply_labels_sequence,
@@ -141,6 +141,32 @@ semantics change; production decreases, one reversible commit after characteriza
 changed-file lint and independent lifecycle/test review. No new guard framework.
 
 2J original five-file native baseline: 79 passed before any label source/test changes.
+Migrated checked-entry/guard characterization: identical 79 passed before production deletion;
+25 callable-origin guard cases also passed before/after guard-only removal of legacy requirements.
+Worker's interop process failed before launch; only main's successful native runs count.
+After deletion: 68 passed on the same five-file selection (exactly 11 legacy cases removed),
+18 actual reviewed sequence/recipe consumers passed. Nine retained checked-batch cases (not ten)
+preserve real Raw no-mutation/rollback and explicit failure phase/cause. Ruff/format/diff check pass;
+independent final review approved after correcting the stale force-mode class docstring.
+Production +9/-223/net -214 across three files; no owner/public contract addition.
+
+**Declared independent 2K — remove identity alignment work.** Full EventLoader (908 lines) and
+five related test files (1,041 lines) read. Its sole align_sequence caller is after strict equal-count
+validation; both generated index lists are always identity ranges. Remove the 95-line speculative
+alignment helper, impossible truncation warning and identity advanced-index copies. Use already
+validated event rows and labels in order; keep integer event-code allocation, prior event values,
+timestamps, input isolation, count rejection and all timestamp annotation/lifecycle code unchanged.
+No external/dynamic/config/script caller exists; smart_filter stays for actual query/row projection.
+Main owns event_loader.py and directly related tests, separate from worker 2J. Native original
+event/strict/semantic/label suites, then stronger real Raw sequence characterization before edits:
+filtered interleaved triggers, nonzero first sample/prior values, exact order/code mapping, source
+unchanged until apply and mismatch both directions. Replace mock sequence success/mismatch tests
+only after the real equivalent passes. Characterize existing Nx3/epoch behavior without changing
+it; no new public semantics. Same after suites plus actual reviewed sequence consumers, Ruff,
+independent review and one reversible commit. This removes demonstrably redundant work, not a
+measured user-visible speedup or a timestamp redesign.
+2K original native selection: 36 passed; strengthened real Raw characterization: 39 passed before
+EventLoader changes. One existing expected MNE warning comes from the safety test dropping all epochs.
 
 **Remaining module-2 work.**
 Continue event/label semantics, BIDS, channel/montage and related UI review. Modules 3–9 remain open.

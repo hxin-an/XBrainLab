@@ -165,7 +165,6 @@ class LabelImportPlan:
     file_mapping: dict[str, str] = field(default_factory=dict)
     mode: str = "batch"
     selected_event_names: list[str] | set[str] | None = None
-    force_import: bool = False
 
 
 @dataclass(frozen=True)

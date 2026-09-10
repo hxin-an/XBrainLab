@@ -22,7 +22,6 @@ LabelOperation: TypeAlias = tuple[
     LabelPayload,
     dict[Any, str],
     set[str] | None,
-    bool,
 ]
 TimestampLabelOperation: TypeAlias = tuple[Raw, LabelPayload, dict[Any, str]]
 
@@ -32,44 +31,8 @@ class LabelImportService:
 
     Encapsulates logic for mapping label files to data files, filtering
     and synchronizing events, and applying labels to ``Raw`` objects.
-    Supports batch mapping, sequential label distribution, and explicit
-    force-import compatibility mode.
+    Supports checked batch mapping and atomic label application.
     """
-
-    _FORCE_IMPORT_FALLBACK_EPOCHS = 100
-    """Legacy default epoch count used when the actual count is unknown."""
-
-    def apply_labels_batch(
-        self,
-        target_files: list[Any],
-        label_map: dict[str, LabelPayload],
-        file_mapping: dict[str, str],
-        mapping: dict[Any, str],
-        selected_event_names: set[str] | None = None,
-    ) -> int:
-        """Apply labels to multiple files based on a file-to-label mapping.
-
-        Args:
-            target_files: List of Raw data objects to label.
-            label_map: Mapping from label filename to its label array.
-            file_mapping: Mapping from data filepath to label filename.
-            mapping: Mapping from numeric label code to human-readable name.
-            selected_event_names: Optional set of event names to filter by.
-
-        Returns:
-            Number of files successfully updated.
-
-        """
-        try:
-            return self.apply_labels_batch_checked(
-                target_files,
-                label_map,
-                file_mapping,
-                mapping,
-                selected_event_names,
-            )
-        except AtomicLabelApplyError:
-            return 0
 
     def apply_labels_batch_checked(
         self,
@@ -113,7 +76,7 @@ class LabelImportService:
             )
         mode = "timestamp" if timestamp_matches else "sequence"
         operations = [
-            (target, labels, mapping, selected_event_names, False)
+            (target, labels, mapping, selected_event_names)
             for target, _label_name, labels in matched
         ]
         return self._apply_label_operations_atomically(
@@ -165,8 +128,7 @@ class LabelImportService:
                 f"received: {target_types}."
             )
         prepared: list[LabelOperation] = [
-            (target, labels, mapping, None, False)
-            for target, labels, mapping in operations
+            (target, labels, mapping, None) for target, labels, mapping in operations
         ]
         return self._apply_label_operations_atomically(
             prepared,
@@ -188,23 +150,14 @@ class LabelImportService:
                 labels,
                 mapping,
                 selected_event_names,
-                force_import,
             ) in operations:
                 staged_target = self._copy_label_target(target)
-                if force_import:
-                    self._force_apply_single(
-                        staged_target,
-                        list(labels),
-                        mapping,
-                        selected_event_names,
-                    )
-                else:
-                    self.apply_labels_to_single_file(
-                        staged_target,
-                        labels,
-                        mapping,
-                        selected_event_names,
-                    )
+                self.apply_labels_to_single_file(
+                    staged_target,
+                    labels,
+                    mapping,
+                    selected_event_names,
+                )
                 staged.append((target, staged_target))
             snapshots = [
                 (target, self._copy_label_target(target))
@@ -316,114 +269,6 @@ class LabelImportService:
         )
         target.set_labels_imported(source.is_labels_imported())
 
-    def apply_labels_sequence(
-        self,
-        target_files: list[Any],
-        labels: list[Any],
-        mapping: dict[Any, str],
-        selected_event_names: set[str] | None = None,
-        force_import: bool = False,
-    ) -> int:
-        """Apply a flat label list sequentially across multiple files.
-
-        Distributes labels based on each file's epoch count. Falls back
-        to force-import mode if a count mismatch occurs and ``force_import``
-        is True.
-
-        Args:
-            target_files: List of Raw data objects.
-            labels: Flat list of labels to distribute.
-            mapping: Mapping from numeric label code to human-readable name.
-            selected_event_names: Optional set of event names to filter by.
-            force_import: If True, ignore mismatches and force application.
-
-        Returns:
-            Number of files successfully updated, or 0 on mismatch
-            without force.
-
-        """
-        label_count = len(labels)
-        total_epochs = sum(
-            self.get_epoch_count_for_file(d, selected_event_names) for d in target_files
-        )
-
-        if label_count == total_epochs and total_epochs > 0:
-            current_idx = 0
-            operations: list[LabelOperation] = []
-            for data in target_files:
-                n = self.get_epoch_count_for_file(data, selected_event_names)
-                file_labels = labels[current_idx : current_idx + n]
-                current_idx += n
-
-                if n > 0:
-                    operations.append(
-                        (
-                            data,
-                            file_labels,
-                            mapping,
-                            selected_event_names,
-                            False,
-                        )
-                    )
-            try:
-                return self._apply_label_operations_atomically(
-                    operations,
-                    operation_name="distributed sequence label batch",
-                    success_count=len(target_files),
-                )
-            except AtomicLabelApplyError:
-                return 0
-
-        if force_import:
-            # Force Import Logic
-            current_idx = 0
-            operations = []
-            for data in target_files:
-                # In force mode, we might not trust the filter, but let's try to
-                # estimate size or just take chunks. The original UI logic used
-                # get_epoch_count_for_file(data, None)
-                n = self.get_epoch_count_for_file(data, None)
-                if n == 0:
-                    n = self._FORCE_IMPORT_FALLBACK_EPOCHS
-
-                if current_idx + n <= len(labels):
-                    file_labels = labels[current_idx : current_idx + n]
-                    current_idx += n
-                    operations.append(
-                        (
-                            data,
-                            file_labels,
-                            mapping,
-                            selected_event_names,
-                            True,
-                        )
-                    )
-                    continue
-                logger.warning(
-                    "Forced sequence label import cannot cover every target; "
-                    "no labels were applied."
-                )
-                return 0
-            try:
-                return self._apply_label_operations_atomically(
-                    operations,
-                    operation_name="forced sequence label batch",
-                    success_count=len(target_files),
-                )
-            except AtomicLabelApplyError:
-                return 0
-
-        # Mismatch and not forced
-        logger.warning(
-            "Sequential label import skipped due to count mismatch: labels=%d, "
-            "expected_epochs=%d, files=%d, filtered_events=%s",
-            label_count,
-            total_epochs,
-            len(target_files),
-            selected_event_names,
-        )
-        return 0
-
     def apply_labels_to_single_file(
         self,
         data: Any,
@@ -479,41 +324,6 @@ class LabelImportService:
         loader.apply()
         data.set_labels_imported(True)
         logger.info("Successfully applied labels to %s", data.get_filename())
-
-    def _force_apply_single(
-        self,
-        data: Any,
-        labels: list[Any],
-        mapping: dict[Any, str],
-        selected_event_names: set[str] | None = None,
-    ):
-        """Force-apply labels to a single data object without validation.
-
-        Args:
-            data: Raw data object to apply labels to.
-            labels: Integer labels to force-apply.
-            mapping: Mapping from numeric label code to human-readable name.
-            selected_event_names: Optional set of event names to filter by.
-
-        """
-        selected_ids = None
-        if data.is_raw():
-            selected_ids = self._resolve_raw_sequence_event_ids(
-                data,
-                selected_event_names,
-            )
-            logger.info(
-                "Force Import: Filtered IDs for %s: %s",
-                data.get_filename(),
-                selected_ids,
-            )
-
-        loader = EventLoader(data)
-        loader.label_list = list(labels)
-        loader.create_event(mapping, selected_event_ids=selected_ids)
-        loader.apply()
-
-        data.set_labels_imported(True)
 
     @staticmethod
     def _resolve_raw_sequence_event_ids(

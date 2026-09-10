@@ -39,7 +39,7 @@ class _RealLabelDataset:
         mapping: dict[object, str],
         selected_event_names: set[str] | None = None,
     ) -> int:
-        return self.label_import.apply_labels_batch(
+        return self.label_import.apply_labels_batch_checked(
             target_files,
             label_map,
             file_mapping,
