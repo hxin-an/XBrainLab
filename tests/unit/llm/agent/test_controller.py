@@ -1098,8 +1098,6 @@ def test_handle_user_input_does_not_block_qt_event_loop_during_rag(qtbot):
 
     assert rag.started.wait(timeout=2)
     assert not rag.release.is_set()
-    assert ctrl._rag_lifecycle.is_retrieving
-    assert ctrl._rag_lifecycle.retrieval_thread_daemon is True
     ctrl._generate_response.assert_not_called()
 
     processed = []

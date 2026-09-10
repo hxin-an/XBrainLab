@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `3d498c51`, 104 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `5afdb10d`, 106 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -208,7 +208,7 @@ not counted). In-memory forced-empty schema fault fails the exact bandpass prope
 in0.45s. Ruffcheck/formatpassed; independent actualdiff review approved. Production+2/-17/net-15LOC,
 tests+23; no existing cases removed.
 
-**Next bounded6E — retire unused stage prose and unreachable history suppression.** Full pipeline190/
+**Pending explicit decision6E — retire unused stage prose and unreachable history suppression.** Full pipeline190/
 direct298 and assembler835 audit, plus independent exact caller search, find STAGE_CONFIG's seven
 system_prompt values unused by runtime: assembler and evaluator consume only tools. Preserve that
 live stage/tool ledger, public membership and all actual generated prompt bytes. Before deletion,
@@ -220,6 +220,82 @@ No model/prompt experiment, new owner or compatibility shell; approximately-120p
 two files, owner delta0. Full stage/config/context baseline and retained after, exact output comparison,
 Ruff and independent actualdiff review are required. No UI behavior change or confirmation-policy edit.
 Stop this slice at verified output-preserving deletion, then continue module6 lifecycle/tool/UI audit.
+Baseline92passed0.89s after imports; all seven fixed-publication prompt bytes remain exactly equal
+when old prose is replaced with a stage-unique sentinel. Edit review rejected removal as potentially
+external-contract-sensitive and correctly caught malformed generated source (nested closing lines
+were not removed). Restored both uncommitted source files to5afdb10d with apply_patch; tests unchanged,
+clean Git confirmed. Do not retry the rejected retirement without the separately requested approval.
+No malformed source was committed or handed off. Corrected construction and full parse/output checks
+would be required if approved. This item is not completed and does not block unrelated module work.
+
+**Module6 async responsibility audit.** Independent full worker1065, RAG thread214/process466 and
+their six direct suites2193 retain actual load/generation ownership, correlation/cancel fencing,
+restart-required state and production child/queue/monitor lifecycle. Thread lifecycle remains the
+intentional injected retriever seam; production process lifecycle has real spawned-process tests.
+No measured redundant wait found; preserve close grace, deadlines and monitor polling. Candidate6F:
+four diagnostic-only properties on each RAG lifecycle have no product caller; process has_active_process
+is live in native shutdown and must remain.
+
+**Completed bounded6F — retire test-only RAG diagnostic forwards without losing daemon evidence.** Main full
+thread214/process466/direct151+217 plus independent controller caller audit establishes eight accessors
+have no runtime/config/dynamic consumer. Preserve actual worker liveness/daemon tests by capturing
+threading.current_thread() inside the external test retriever callbacks, not by adding a production
+probe or inspecting owner's private fields. Existing event/close/join/callback assertions remain;
+the controller heartbeat test keeps real blocked-retriever/Qt heartbeat/result evidence, with daemon
+ownership independently protected by the dedicated lifecycle tests. Delete only eight convenience
+properties; no deadline, sleep, cancel/close behavior, public Assistant tool or RAG policy change.
+Production about-50LOC in2files, owner delta0. Baseline direct thread/process plus controller baseline
+from6G; characterize captured-worker assertions before deletion, then same cases after, Ruff and
+independent actualdiff review. No case deletion or new generic testing layer. Must keep test-owned
+stuck workers releasable under failed assertions, and keep production has_active_process shutdown query.
+Original direct12passed29.76s; strengthened before12passed32.72s; full retained direct/controller
+271passed37.22s with one MNE deprecation. In-memory non-daemon constructor fault fails the captured
+actual thread assertion0.15s and exits normally after finally cleanup. Independent actualdiff review
+approved; Ruffcheck passed. Production-51LOC in2files, tests+10net, no cases removed. Reviewer advisory
+to additionally assert post-finally join is not a blocker; normal join already has separate evidence.
+**Pending explicit decision6G — retire bypassed legacy direct-tool forwarding.** Full real adapters/definitions/registry
+audit plus main package288/coordinator path/guard review proves all18 contracts are9 Application
+commands and9 UI requests; READ_ONLY projection is empty and pinned by actual surface tests. Mapped
+commands always execute through application_surface; a missing mapped result fails closed before
+legacy tool.execute. Remove seven unused Real command adapters (two modules), their now-orphan
+execute_real_application_tool/context-binding chain and coordinator's unreachable wrapping branch.
+Instantiate existing schema definitions in real registration (concrete execute intentionally raises
+if incorrectly called), preserving names/order/descriptions/schemas/confirmation and switch-panel
+live UI request adapter. No empty subclasses, replacement owner or execution route. External direct
+Python Real adapters cease to be supported under the approved unused-convenience policy; model/UI/
+formal Command contracts do not change. Remove only exclusive high-mock forwarding tests and the
+guard/fixtures that enforce those retired adapters; retain actual command ownership/negative mapped
+fallback, generic tool contracts, UI request and real application workflow evidence. Approximately
+-240productionLOC across4files, owner delta0; guard retirement is not a general gate relaxation.
+Before edits run surface/coordinator/controller/debug/registry/architecture +real product-flow focused
+baseline and snapshot exact18 schema/confirmation payloads. After deletion compare exact payloads,
+same retained tests plus6B real confirmation cases, Ruff and independent main nonauthor actualdiff
+review. Stop slice only at verified complete dead-chain removal, then continue remaining module audit.
+Baseline602passed42.55s, three MNE deprecations; exact18 schema/description/confirmation SHA256
+ec17216b9683a2ae275511a83cbbce037c62b9729c0b753e9cfc02dd879e74db. Worker owns only declared adapter/
+coordinator and exclusive guard/test files; main owns after verification, plan and actualdiff review.
+Safety review rejected the whole write before any change, classifying the legacy adapter removal/
+base registration as potentially public-tool behavior. Worker verified all seven scoped paths clean.
+Concrete external direct-Python API removal approval requested separately; no split/indirect retry.
+The baseline/digest and independent whole-chain audit remain evidence, not permission or completion.
+
+Latest reversible slices: f4c060c5 (6D, unreachable schema override); 5afdb10d (6B, real confirmation
+mutation/replay/stale evidence). Native checks and regular commit hooks passed; no PR/push/merge.
+
+**Next bounded6H — use one existing settings-path policy and retire unused cache alias.** Independent
+full config524/config_paths85/runtime_selection257/catalog1102 and direct config761/catalog636/
+runtime284, plus main full platform_paths247/config_paths85, confirm duplicated per-user path rules.
+Route LLMConfig and six direct path tests to platform_paths.user_settings_path. Keep the same repo-root
+legacy migration input in LLMConfig's existing _legacy_settings_path method; both files occupy the
+same directory, so parents[3] is unchanged. Remove config_paths module, not a forwarding shell.
+Preserve default/explicit path behavior, platform/env overrides, malformed-current no-fallback,
+successful-write-only legacy migration, atomic save and all root settings protection. No settings
+file is migrated/rewritten by this refactor itself. Also remove the zero-caller model_cache_exists
+alias; model_cache_complete and all cache/model/revision/size/symlink/hardlink policies stay intact.
+Approximately-85productionLOC across3files, no new owner; sole shared path policy retained. Baseline
+full config/catalog/runtime/platform path suites, same retained after, exact representative path
+matrix comparison, Ruff and independent actualdiff review. No model/UI/prompt experiment or download.
+Stop slice after verified behavior-preserving reuse, then continue outstanding module6–9 coverage.
 
 Completed2AD–2AG and8C–8E are indexed below and fully traceable in Git. For source-bound Windows
 capture tests only, use process-local GIT_DIR/GIT_WORK_TREE pointing to the actual Windows paths:
