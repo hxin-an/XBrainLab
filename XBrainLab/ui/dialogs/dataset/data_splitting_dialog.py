@@ -150,17 +150,6 @@ class DrawRegion:
         self.from_canvas[self.from_x : self.to_x, self.from_y : self.to_y] = from_w
         self.to_canvas[self.from_x : self.to_x, self.from_y : self.to_y] = to_w
 
-    def change_to(self, x, y):
-        """Update only the ending coordinates without modifying canvas data.
-
-        Args:
-            x: New ending X coordinate.
-            y: New ending Y coordinate.
-
-        """
-        self.to_x = x
-        self.to_y = y
-
     def mask(self, rhs):
         """Apply a mask from another region, adjusting canvas boundaries.
 
@@ -208,18 +197,6 @@ class DrawRegion:
             ).all()
         ):
             self.to_y -= 1
-
-    def decrease_w_tail(self, w):
-        """Shrink the region from the tail end by a proportional factor.
-
-        Args:
-            w: Proportion (0.0 to 1.0) to retain from the tail.
-
-        """
-        self.to_canvas[self.from_x : self.to_x, self.from_y : self.to_y] = (
-            self.to_canvas[self.from_x : self.to_x, self.from_y : self.to_y]
-            - self.from_canvas[self.from_x : self.to_x, self.from_y : self.to_y]
-        ) * w + self.from_canvas[self.from_x : self.to_x, self.from_y : self.to_y]
 
     def decrease_w_head(self, w):
         """Shrink the region from the head end by a proportional factor.

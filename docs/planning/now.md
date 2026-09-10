@@ -46,7 +46,7 @@ UI/test files and root settings. Worktree/branch/source facts come from Git, not
 | --- | --- | --- |
 | 1 Command/state spine | Admission, capabilities, confirmation, publication, owned work, shared domain ports | Responsibility review closed at 1247cf7c; native 178 passed; domain branches explicitly remain modules 2–6 |
 | 2 Import/interpretation | Loaders, BIDS, labels/classes, channel/montage, metadata, recipes, related UI | Audited core reviewed; not closed: two confirmed visible defects await authorization; inventory reconciliation in progress |
-| 3 Preprocess/epoch/split | Processing, copies, invalidation, preview/materialization, related UI/tools | Next module; DrawRegion candidate mapped from misrouted module2 test |
+| 3 Preprocess/epoch/split | Processing, copies, invalidation, preview/materialization, related UI/tools | Active3A–3C; preprocess source/direct audits complete, dispatch migration and split/UI/domain coverage remain open |
 | 4 Models/training | Catalog, resource preflight, settings, stop/rerun, history/checkpoints | Pending |
 | 5 Evaluation/saliency/views | Read/publication, SmoothGrad/recompute, four views, stale work/render lifecycle | Pending |
 | 6 Assistant/chat | Tool adapters, turns/confirmation/execution, model/RAG lifecycle and shutdown | Pending |
@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `b7ed74ab`, 57 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `7fb9fcc9`, 58 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -126,7 +126,7 @@ retain all five-step, exact fresh review, no-publication, cancellation/drain/ret
 contracts. Optional fixtures were not run here; final required-source gate still applies.
 Continue authorized module3 while awaiting visible decisions; do not markmodule2closed or handoff.
 
-**Active 3A — split illustration math cleanup and stronger tests.** Main/independent read
+**Completed 3A, pending commit — split illustration math cleanup and stronger tests.** Main/independent read
 DrawRegion75–250, actual update_preview/testing/validation callers and direct148; change_to and
 decrease_w_tail have no production/dynamic/script/doc caller, only two exclusive tests. Remove
 only these unused methods and exclusive tests from data_splitting_dialog.py/direct test after
@@ -144,8 +144,13 @@ Original22 nativecases passed1.35s; worker now strengthens tests first, without 
 or obsolete cases until main characterization passes. Keep original checkout's split/settings dirt.
 Stronger full-canvas fractional/mask characterization23passed1.36s before production edits. Worker
 now removes two unused methods/twoexclusive cases/three replaced sibling cases; retainedexpected18.
+Retained18passed1.37s (23strengthened minus2exclusive and3duplicates). Main nonauthor actualdiff
+review approved source-23/tests+50/-66/net-16; three-file Ruff/check/format passed. In-memory wrong-
+overlap fault failed at all four changed cells (3instead of2),1failed0.13s; no faulty source saved.
+Independent full Step1source1037/direct726/sharedfixture81 review retains detached-context/strategy
+projection, illustrative drawing and draft handoff. Actual Step2 materialization remains separate.
 
-**Completed 3B, pending commit — unused MAT Export convenience.** Independent full11-preprocessor1541-line source/
+**Completed 3B — unused MAT Export convenience.** Independent full11-preprocessor1541-line source/
 1554-line direct test audit and main Export55/exporttest71/package26/caller read confirm Export is
 only re-exported by preprocessor.__init__ and consumed by its own tests. No current UI, Command,
 Assistant, script/config/doc or dynamic resolver uses it. Remove export.py, package import/__all__
@@ -169,6 +174,23 @@ Old direct handlers duplicate supported operations but SET_MONTAGE is a live gen
 branch (actual montage mutation is ApplyMontageCommand); invalid-operation parsing also matters.
 Do not delete whole handler/map from text-search alone. Map every legacy epoch resource/boundary/
 receipt/handoff assertion to actual prepared/ApplicationService evidence before declaring3C.
+
+**Declared 3C — retire unreachable ordinary preprocess dispatch, not epoch safety.** Main and
+independent execute trace confirms every valid PreprocessCommand except SET_MONTAGE is intercepted
+by _uses_prepared_preprocess before generic dispatch. Invalid operation parses and SET_MONTAGE's
+existing confirmation error must remain. After real ApplicationService characterization for bandpass/
+notch/resample/normalization/reference/channel aliases/standard pipeline, remove those unreachable
+handle_preprocess branches, exclusive _handle_standard_preprocess/_normalization_target_counts
+chain and three obsolete fake-controller operation tests plus exclusively used fake methods/classes.
+Do not delete handle_create_epoch or its safety tests: exact RAM-before-copy, boundary ratio/message,
+duration receipt scope, handoff aliases/corrupt-state assertions lack equivalent real route evidence.
+They remain an explicit next migration obligation, not proof that the prepared epoch path is covered.
+No Command/UI/message/diagnostic/owner change; no compatibility layer. Main owns source/validation,
+assigned worker may author test-only real operation characterization first in existing service test.
+Use real Study/Raw/MNE, exact messages and actual transformed/deferred state with original data
+unchanged; service.close in finally. No fake two-phase harness. Baseline new characterization before
+production deletion, then retained direct service tests +actual ApplicationService cancel/stale/commit
+and SET_MONTAGE/invalid-operation neighbors; Ruff and independent actualdiff review, separatecommit.
 
 Completed2X–2AC are indexed below; their full scope/evidence remains in Git history.
 2AC found an existing shared-environment source hazard: Windows .pth adds the original checkout
@@ -380,6 +402,7 @@ this table replaces their duplicated active-plan narrative, not any unresolved m
 | 2AG / `528322e7` | Remove empty wizard footer instance and exclusion forward; +1/-9/net-8 | Same13 native rendering/removal/geometry before/after, independentreview/Ruff |
 | 8D / `aeb53bf4` | Real Qt persistent-visible timeout evidence; tests+36 | Originalsuccess1 ->success/timeout2pass; in-memory wrong-success fault detected; mainnonauthorreview/Ruff |
 | 8E / `b7ed74ab` | Remove unused review-state capture fixture; script-63 | Same32 native before/after, mainnonauthorreview/Ruff; canonical factories/inventory unchanged |
+| 3B / `7fb9fcc9` | Retire unused MAT Export/module/export tests; production-57/tests-98 | Native78 ->73, exactlyfive obsoletecases; same17upstreamwarnings; independentreview/Ruff |
 
 ### Evidence qualifications that remain relevant
 
