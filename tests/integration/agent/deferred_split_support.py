@@ -8,11 +8,9 @@ import numpy as np
 
 from XBrainLab.backend.application import (
     ApplicationService,
-    ConfigureTrainingCommand,
     SaveDatasetSplitCommand,
     get_application_service,
 )
-from XBrainLab.backend.application.state import ApplicationStateSnapshot
 from XBrainLab.backend.dataset import (
     Dataset,
     DataSplittingConfig,
@@ -56,29 +54,6 @@ def build_saved_split_runtime(
     assert saved.state.dataset.split_materialized is False
     assert study.datasets == []
     return service, epoch
-
-
-def build_training_ready_state() -> ApplicationStateSnapshot:
-    """Return command-derived readiness with saved, unmaterialized split intent."""
-    study = Study()
-    service, _epoch = build_saved_split_runtime(study)
-    configured = service.execute(
-        ConfigureTrainingCommand(
-            model_name="EEGNet",
-            epoch=1,
-            batch_size=2,
-            learning_rate=0.001,
-            device="cpu",
-        )
-    )
-    assert configured.ok is True
-    state = service.get_state()
-    assert state.dataset.split_spec_saved is True
-    assert state.dataset.split_materialized is False
-    assert state.active_dataset.has_saved_split is True
-    assert state.training.has_model is True
-    assert state.training.has_training_option is True
-    return state
 
 
 def install_materialized_candidate(study: Study, epoch: Epochs) -> None:

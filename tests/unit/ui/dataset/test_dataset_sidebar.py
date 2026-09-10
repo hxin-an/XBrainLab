@@ -16,23 +16,6 @@ from XBrainLab.ui.panels.dataset.sidebar import (
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 
-class FakeDatasetActionHandler:
-    def import_data(self) -> None:
-        pass
-
-    def import_folder_source(self) -> None:
-        pass
-
-    def import_bids_source(self) -> None:
-        pass
-
-    def reload_interpretation_recipe(self) -> None:
-        pass
-
-    def open_smart_parser(self) -> None:
-        pass
-
-
 @pytest.fixture
 def sidebar(qtbot):
     panel_mock = MagicMock()

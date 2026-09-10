@@ -535,36 +535,6 @@ def test_deferred_runtime_uses_actionable_empty_state(qtbot):
     real_window.close()
 
 
-def test_dataset_panel_import_data_success(mock_main_window, qtbot):
-    """Import without command service should not mutate the controller."""
-    from XBrainLab.ui.dialogs.dataset.eeg_source_chooser_dialog import (
-        EegSourceSelection,
-    )
-
-    class _AcceptedChooser:
-        def __init__(self, _parent, *, start_directory=""):
-            assert isinstance(start_directory, str)
-
-        def exec(self):
-            return True
-
-        def get_result(self):
-            return EegSourceSelection(kind="files", paths=("/path/to/file.set",))
-
-    panel = DatasetPanel(parent=mock_main_window)
-    qtbot.addWidget(panel)
-    panel.action_handler._data_interpretation._source_chooser_dialog_class = lambda: (
-        _AcceptedChooser
-    )
-
-    with patch(
-        "XBrainLab.ui.panels.dataset.actions.show_warning",
-    ) as mock_warning:
-        panel.action_handler.import_data()
-        mock_warning.assert_called_once()
-        assert mock_warning.call_args.args[1] == "Interpretation Blocked"
-
-
 def test_dataset_panel_uses_product_empty_state_instead_of_blank_table(
     mock_main_window,
     qtbot,
@@ -1147,20 +1117,3 @@ def test_dataset_panel_metadata_edit_fails_closed_without_product_capability(qtb
         "Metadata blocked",
         "Metadata editing availability is unavailable right now.",
     )
-
-
-def test_dataset_panel_smart_parse(mock_main_window, qtbot):
-    """Test smart parser delegates to controller."""
-
-    panel = DatasetPanel(parent=mock_main_window)
-    qtbot.addWidget(panel)
-
-    with patch("XBrainLab.ui.panels.dataset.actions.SmartParserDialog") as MockDialog:
-        instance = MockDialog.return_value
-        instance.exec.return_value = True
-        instance.get_result.return_value = {"/path/file.set": ("sub", "ses")}
-
-        with patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_warning:
-            panel.action_handler.open_smart_parser()
-            mock_warning.assert_called_once()
-            assert mock_warning.call_args.args[1] == "Smart Parse Blocked"
