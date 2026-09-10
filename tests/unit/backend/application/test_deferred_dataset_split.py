@@ -317,6 +317,54 @@ def test_split_confirmation_saves_typed_summary_without_materializing_masks() ->
     service.study.get_datasets_generator.assert_not_called()
 
 
+def test_default_split_command_and_explicit_empty_payload_keep_distinct_contracts() -> (
+    None
+):
+    service, epoch = _service_with_epoch()
+    try:
+        saved = service.execute(SaveDatasetSplitCommand(split_config=None))
+
+        assert saved.ok, saved.message
+        assert saved.state.dataset.split_specification == {
+            "train_type": "Full Data",
+            "is_cross_validation": False,
+            "val_splitters": [
+                {
+                    "split_type": "By Trial",
+                    "split_unit": "Ratio",
+                    "value": "0.2",
+                    "is_option": True,
+                }
+            ],
+            "test_splitters": [
+                {
+                    "split_type": "By Trial",
+                    "split_unit": "Ratio",
+                    "value": "0.2",
+                    "is_option": True,
+                }
+            ],
+        }
+        assert saved.state.dataset.split_materialized is False
+        saved_specification = saved.state.dataset.split_specification
+        saved_fingerprint = saved.state.dataset.split_specification_fingerprint
+
+        rejected = service.execute(SaveDatasetSplitCommand(split_config={}))
+
+        assert rejected.failed is True
+        assert rejected.message == "train_type is required"
+        assert rejected.state.dataset.split_specification == saved_specification
+        assert (
+            rejected.state.dataset.split_specification_fingerprint == saved_fingerprint
+        )
+        assert rejected.state.dataset.split_materialized is False
+        assert service.study.epoch_data is epoch
+        assert service.study.datasets == []
+        assert service.study.dataset_generator is None
+    finally:
+        service.close()
+
+
 def test_saved_split_publishes_consistent_training_readiness_before_materialization() -> (
     None
 ):

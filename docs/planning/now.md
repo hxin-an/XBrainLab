@@ -369,6 +369,18 @@ restart, append, cleanup, rollback-failure, receipt/token and bounded-audit fail
 failure mocks are necessary seams. Missing close calls in synchronous/mocked-start fixtures are a
 convention risk, not a measured worker leak or permission to add broad lifecycle machinery.
 
+**Declared 3J — preprocessing setting dialogs reuse their existing geometry owner.** Full main/
+independent reads confirm common.fit_preprocess_dialog_to_content only forwards six calls in four
+BaseDialog subclasses. Replace calls with the same inherited fit_to_content keyword, remove wrapper
+and unused import; remove RereferenceDialog avg_check/toggle_avg compatibility members with no
+source/test/script/doc/dynamic consumer. Exactly five production files, zero new owner and no layout,
+wording, interaction, sizing or Command change. Existing UI-internal authorization applies.
+Use actual setting-dialog content sizing, filter center/keyboard/Nyquist/mode checks, reference
+radio/selection acceptance and actual rereference command route before/after; no new mock tests.
+Main owns plan/validation and nonauthor final-diff review; worker may implement after passing baseline.
+Ruff and separate reversible commit; remaining sidebar argument cleanup and epoch receipt migration
+remain separately declared work, not implicit additions to3J.
+
 Completed2X–2AC are indexed below; their full scope/evidence remains in Git history.
 2AC found an existing shared-environment source hazard: Windows .pth adds the original checkout
 to sys.path, making scripts.dev a two-checkout namespace. For subsequent native validation, remove

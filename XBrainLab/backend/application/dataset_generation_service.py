@@ -122,8 +122,7 @@ class DatasetGenerationCommandService:
         if not isinstance(command, SaveDatasetSplitCommand):
             raise TypeError("Invalid command for configure_dataset_split")
         specification = self._specification_from_command(command)
-        config = self.config_from_payload(specification.to_payload())
-        self._validate_split_config(config)
+        self.config_from_payload(specification.to_payload())
         preview_summary = self._validated_preview_summary(
             command.preview_receipt,
             specification=specification,
@@ -953,11 +952,6 @@ class DatasetGenerationCommandService:
     def _build_data_splitting_config(
         command: SaveDatasetSplitCommand,
     ) -> DataSplittingConfig:
-        if command.split_config is not None:
-            return DatasetGenerationCommandService.config_from_payload(
-                command.split_config,
-            )
-
         split_strategy = command.split_strategy.lower()
         split_by = {
             "trial": SplitByType.TRIAL,
@@ -1075,11 +1069,7 @@ class DatasetGenerationCommandService:
     def _enum_from_value(
         enum_type: Any,
         value: Any,
-        *,
-        default: Any | None = None,
     ) -> Any:
-        if value is None and default is not None:
-            return default
         text = str(value or "").strip()
         for item in enum_type:
             enum_repr = f"{item.__class__.__name__}.{item.name}"
