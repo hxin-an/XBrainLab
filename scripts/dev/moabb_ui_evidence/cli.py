@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from scripts.dev.capture_config import isolated_capture_config
 from scripts.dev.moabb_user_journeys.registry import (
     DEFAULT_REGISTRY_PATH,
     REPO_ROOT,
@@ -84,44 +85,45 @@ def main(argv: list[str] | None = None) -> int:
         shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True)
 
-    _configure_qt_environment()
-    from PyQt6.QtCore import QThreadPool
-    from PyQt6.QtWidgets import QApplication
+    with isolated_capture_config():
+        _configure_qt_environment()
+        from PyQt6.QtCore import QThreadPool
+        from PyQt6.QtWidgets import QApplication
 
-    from XBrainLab.ui.qt_runtime import (
-        configure_qt_platform_for_runtime,
-        drain_qt_runtime_after_event_loop,
-    )
+        from XBrainLab.ui.qt_runtime import (
+            configure_qt_platform_for_runtime,
+            drain_qt_runtime_after_event_loop,
+        )
 
-    configure_qt_platform_for_runtime()
-    app = QApplication.instance() or QApplication(sys.argv[:1])
-    app.setStyle("Fusion")
-    from .capture import capture_all_datasets
+        configure_qt_platform_for_runtime()
+        app = QApplication.instance() or QApplication(sys.argv[:1])
+        app.setStyle("Fusion")
+        from .capture import capture_all_datasets
 
-    payload = capture_all_datasets(
-        app=app,
-        registry=registry,
-        registry_path=registry_path,
-        plan=plan,
-        cache=cache,
-        output_dir=output_dir,
-        run_id=args.run_id,
-        profile=args.profile,
-        mode=args.mode,
-        confirm_resource_plan=args.confirm_resource_plan,
-    )
-    thread_pool = QThreadPool.globalInstance()
-    if thread_pool is not None:
-        thread_pool.waitForDone(30_000)
-    drain_qt_runtime_after_event_loop(app)
-    summary: dict[str, Any] = {
-        "manifest": str(output_dir / MANIFEST_NAME),
-        "status": payload["status"],
-        "site_qualification": payload["site_qualification"],
-        "datasets": [item["dataset_id"] for item in payload["datasets"]],
-    }
-    print(json.dumps(summary, indent=2, sort_keys=True))
-    return 0 if payload["status"] != "failed" else 1
+        payload = capture_all_datasets(
+            app=app,
+            registry=registry,
+            registry_path=registry_path,
+            plan=plan,
+            cache=cache,
+            output_dir=output_dir,
+            run_id=args.run_id,
+            profile=args.profile,
+            mode=args.mode,
+            confirm_resource_plan=args.confirm_resource_plan,
+        )
+        thread_pool = QThreadPool.globalInstance()
+        if thread_pool is not None:
+            thread_pool.waitForDone(30_000)
+        drain_qt_runtime_after_event_loop(app)
+        summary: dict[str, Any] = {
+            "manifest": str(output_dir / MANIFEST_NAME),
+            "status": payload["status"],
+            "site_qualification": payload["site_qualification"],
+            "datasets": [item["dataset_id"] for item in payload["datasets"]],
+        }
+        print(json.dumps(summary, indent=2, sort_keys=True))
+        return 0 if payload["status"] != "failed" else 1
 
 
 def _configure_qt_environment() -> None:

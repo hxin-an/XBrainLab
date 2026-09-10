@@ -45,6 +45,7 @@ def capture_tmp(monkeypatch, tmp_path):
         ("capture_data_interpretation_replay", False),
         ("capture_ui_reviewer_fixes", False),
         ("capture_ui_polish_surfaces", False),
+        ("moabb_ui_evidence.cli", False),
     ],
 )
 def test_main_isolates_preferences_before_gui_and_restores_host_on_failure(
@@ -97,8 +98,32 @@ def test_main_isolates_preferences_before_gui_and_restores_host_on_failure(
         )
 
     roots = []
+    cache_checked = []
+
+    if module_name == "moabb_ui_evidence.cli":
+        monkeypatch.setattr(
+            module,
+            "load_registry",
+            lambda _path: {"resource_policy": {"evidence_root": "build/evidence"}},
+        )
+        monkeypatch.setattr(module, "load_validated_plan", lambda *a, **k: {})
+
+        def validate_cache(_plan):
+            assert os.environ["XBRAINLAB_CONFIG_DIR"] == str(host)
+            cache_checked.append(True)
+            return {}
+
+        monkeypatch.setattr(module, "validate_plan_cache", validate_cache)
+        require_output = module.require_build_output_path
+        monkeypatch.setattr(
+            module,
+            "require_build_output_path",
+            lambda path: require_output(path, repo_root=tmp_path),
+        )
 
     def before_gui(_argv):
+        if module_name == "moabb_ui_evidence.cli":
+            assert cache_checked == [True]
         isolated = Path(os.environ["XBRAINLAB_CONFIG_DIR"])
         assert isolated != host
         assert isolated.is_dir()
@@ -127,8 +152,22 @@ def test_main_isolates_preferences_before_gui_and_restores_host_on_failure(
         def __init__(self, argv):
             before_gui(argv)
 
-    monkeypatch.setattr(module, "QApplication", BeforeGuiApplication)
     argv = [module_name, "--output-dir", str(tmp_path / "outputs")]
+    if module_name == "moabb_ui_evidence.cli":
+        from PyQt6 import QtWidgets
+
+        monkeypatch.setattr(QtWidgets, "QApplication", BeforeGuiApplication)
+        argv = [
+            module_name,
+            "--output-dir",
+            str(tmp_path / "build" / "outputs"),
+            "--run-id",
+            "config-isolation",
+            "--plan",
+            str(tmp_path / "plan.json"),
+        ]
+    else:
+        monkeypatch.setattr(module, "QApplication", BeforeGuiApplication)
     if module_name == "capture_visualization_render_walkthrough":
         argv.extend(["--training-output-dir", str(tmp_path / "training")])
     monkeypatch.setattr(sys, "argv", argv)

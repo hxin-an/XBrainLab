@@ -109,6 +109,20 @@ old session IDs and plan text do not prove a process is running. No manual candi
 
 **Current work — developer docs/config truth and remaining scripts; module2–6 closure gaps and explicit decisions remain open.**
 
+**Bounded9L4B — isolate MOABB CLI capture preferences after exact-source preflight.** Full CLI138
+and actual capture MainWindow construction/close trace show the same inherited preferences risk.
+Reuse existing isolated_capture_config around Qt import/configuration, capture, drain and summary/return;
+keep run-id/registry/plan/cache verification and owned build-output admission before it. No download,
+force deletion, dataset execution, new owner or changed exit/publication contract. Extend shared
+pre-GUI test matrix with real INI roundtrip/host restoration, isolating registry/cache inputs only;
+preserve actual build-containment function with test-owned root and assert cache check precedes config
+override. Test local QApplication import at its external constructor seam. One targeted red, shared
+18 cases, real CLI help/option checks, Ruff and independent lifetime/preflight review; no MOABB data
+gate claim. Then continue remaining scripts and first-paint diagnosis, not handoff.
+Result: targeted red fails before GUI at inherited host root0.15s; all18 shared cases pass7.34s.
+Ruff/format, diff check and independent actual preflight/lifetime review pass. Product source and
+dataset execution unchanged; the independent review confirms existing force semantics were not run.
+
 **Bounded8J — correct actual Settings screenshot labels in the UI/UX report.** Independent full
 walkthrough3713/direct747 audit and main's renderer/capture-order trace identify README advanced and
 disabled links selecting runtime-loading and advanced images respectively. Preserve the existing seven
