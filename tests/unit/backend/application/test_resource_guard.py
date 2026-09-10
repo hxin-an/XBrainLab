@@ -567,22 +567,14 @@ def test_training_vram_thresholds_use_strict_greater_than_semantics(
 ) -> None:
     monkeypatch.setattr(
         resource_guard.ResourceChecker,
-        "estimate_training_vram",
-        staticmethod(
-            lambda _datasets, _option, _holder=None: _training_estimate(required_bytes)
-        ),
-    )
-    monkeypatch.setattr(
-        resource_guard.ResourceChecker,
         "get_gpu_vram_status",
         staticmethod(lambda _gpu_idx=None: _gpu_status(available_bytes=1_000)),
     )
     option = SimpleNamespace(use_cpu=False, gpu_idx=0, bs=8, optim=object)
 
     result = resource_guard.ResourceChecker.check_training_config_safe(
-        [],
+        _training_estimate(required_bytes),
         option,
-        _ModelHolder(),
     )
 
     assert result.risk_level == expected_risk
@@ -1151,6 +1143,109 @@ def test_training_preflight_keeps_warning_and_unknown_details(monkeypatch) -> No
     assert "GPU memory" in preflight.message
 
 
+@pytest.mark.parametrize(("use_cpu", "expected_estimates"), [(True, 1), (False, 1)])
+def test_training_preflight_model_and_dataset_work(
+    monkeypatch, use_cpu, expected_estimates
+) -> None:
+    import numpy as np
+    import torch
+
+    from XBrainLab.backend.training import ModelHolder
+
+    constructions = []
+    data_reads = []
+
+    class CountingEpoch(_EpochData):
+        def get_data(self):
+            data_reads.append(True)
+            return super().get_data()
+
+    def model_factory(**kwargs):
+        constructions.append(kwargs)
+        return torch.nn.Linear(2, 2)
+
+    dataset = _Dataset(CountingEpoch(np.zeros((10, 2, 5)), np.zeros(10)))
+    option = SimpleNamespace(use_cpu=use_cpu, gpu_idx=0, bs=4, optim="Adam")
+    memory = {
+        "available_bytes": 10**12,
+        "total_bytes": 2 * 10**12,
+        "used_bytes": 10**12,
+    }
+    monkeypatch.setattr(
+        resource_guard.ResourceChecker, "get_system_ram_status", lambda: memory
+    )
+
+    def gpu_memory(_index):
+        assert not use_cpu, "CPU preflight queried GPU memory"
+        return memory
+
+    monkeypatch.setattr(
+        resource_guard.ResourceChecker, "get_gpu_vram_status", gpu_memory
+    )
+    result = resource_guard.check_training_resource_preflight(
+        (item for item in [dataset]), option, ModelHolder(model_factory, {})
+    )
+
+    assert len(constructions) == expected_estimates
+    assert len(data_reads) == expected_estimates
+    assert result.risk_level is resource_guard.ResourceRiskLevel.SAFE
+    assert result.diagnostics["model_parameter_bytes"] == 24
+    assert result.diagnostics["dataset_bytes"] == 880
+    assert "estimated_vram_bytes" not in result.diagnostics
+    vram = result.diagnostics["vram"]
+    if use_cpu:
+        assert vram["required_memory_bytes"] == 0
+        assert vram["uses_cpu"] is True
+    else:
+        assert vram["model_parameter_bytes"] == 24
+        assert vram["dataset_bytes"] == 880
+        assert (
+            vram["estimated_vram_bytes"]
+            == result.diagnostics["estimated_gpu_batch_working_set_bytes"]
+        )
+
+
+def test_training_preflight_cancel_after_ram_does_not_query_gpu(monkeypatch):
+    registry = OwnedWorkRegistry()
+    operation = registry.begin(OwnedWorkKind.TRAINING, cancellable=True)
+
+    def cancel_during_ram():
+        assert registry.cancel(operation.operation_id)
+        return {"available_bytes": 10**12}
+
+    def unexpected_gpu_query(*_args):
+        pytest.fail("Cancelled preflight queried GPU memory")
+
+    monkeypatch.setattr(
+        resource_guard.ResourceChecker, "get_system_ram_status", cancel_during_ram
+    )
+    monkeypatch.setattr(
+        resource_guard.ResourceChecker, "get_gpu_vram_status", unexpected_gpu_query
+    )
+    with (
+        pytest.raises(OwnedOperationCancelledError),
+        registry.bind(operation.operation_id),
+    ):
+        registry.claim_start(operation.operation_id)
+        resource_guard.check_training_resource_preflight(
+            [], SimpleNamespace(use_cpu=False, gpu_idx=0, bs=4, optim="Adam")
+        )
+    assert registry.snapshot(operation.operation_id).phase is OwnedWorkPhase.CANCELLED
+
+
+def test_training_vram_missing_settings_does_not_read_estimate_or_gpu(monkeypatch):
+    def unexpected_gpu_query(*_args):
+        pytest.fail("Missing settings must not query GPU memory")
+
+    monkeypatch.setattr(
+        resource_guard.ResourceChecker, "get_gpu_vram_status", unexpected_gpu_query
+    )
+    result = resource_guard.ResourceChecker.check_training_config_safe({}, None)
+    assert result.risk_level == resource_guard.RISK_UNKNOWN
+    assert result.required_memory_bytes is None
+    assert result.details == {"uses_cpu": True, "reason": "missing_training_option"}
+
+
 def test_training_preflight_materializes_dataset_iterable_once(monkeypatch) -> None:
     data = _ArrayLike(nbytes=10_000, shape=(10, 1_000))
     labels = _ArrayLike(nbytes=1_000, shape=(10,))
@@ -1223,9 +1318,10 @@ def test_training_vram_check_uses_peak_batch_not_fold_sum(monkeypatch) -> None:
     )
 
     result = resource_guard.ResourceChecker.check_training_config_safe(
-        datasets,
+        resource_guard.estimate_training_resources(
+            datasets, option, model_holder=_ModelHolder()
+        ),
         option,
-        _ModelHolder(),
     )
 
     assert result.risk_level == resource_guard.RISK_WARNING
@@ -1407,9 +1503,10 @@ def test_training_vram_check_is_unknown_when_model_cannot_be_estimated(
     )
 
     result = resource_guard.ResourceChecker.check_training_config_safe(
-        datasets,
+        resource_guard.estimate_training_resources(
+            datasets, option, model_holder=model_holder
+        ),
         option,
-        model_holder,
     )
 
     assert result.risk_level == resource_guard.RISK_UNKNOWN
@@ -1427,7 +1524,9 @@ def test_training_vram_check_unknown_when_cuda_memory_unavailable(monkeypatch) -
         staticmethod(lambda _gpu_idx=None: {"available_bytes": None, "gpu_name": None}),
     )
 
-    result = resource_guard.ResourceChecker.check_training_config_safe([], option)
+    result = resource_guard.ResourceChecker.check_training_config_safe(
+        resource_guard.estimate_training_resources([], option), option
+    )
 
     assert result.risk_level == resource_guard.RISK_UNKNOWN
     assert "Unable to estimate GPU memory" in result.message

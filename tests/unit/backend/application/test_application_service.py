@@ -1431,11 +1431,6 @@ def test_get_training_recommendation_does_not_touch_payload_or_resource_queries(
             "get_gpu_vram_status",
             return_value=unknown_vram,
         ) as gpu_query,
-        patch.object(
-            ResourceChecker,
-            "estimate_training_vram",
-            side_effect=AssertionError("recommendation estimated training VRAM"),
-        ) as vram_estimator,
         patch(
             "XBrainLab.backend.application.resource_guard.estimate_training_resources",
             side_effect=AssertionError("recommendation ran direct estimator"),
@@ -1457,7 +1452,6 @@ def test_get_training_recommendation_does_not_touch_payload_or_resource_queries(
     epoch_get_data.assert_not_called()
     resource_check.assert_not_called()
     gpu_query.assert_not_called()
-    vram_estimator.assert_not_called()
     direct_estimator.assert_not_called()
     model_factory.assert_not_called()
     model_lookup.assert_not_called()
