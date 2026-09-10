@@ -202,6 +202,36 @@ suite. Main corrected the misattributed inventory row and then fully read the ac
 real dialog/runtime/settings behavior retained; its256MB-per-file fake weights need a bounded fixture
 budget reduction (not model admission weakening). Reading that suite is not installer evidence.
 
+**Bounded9D — shrink runtime-readiness fake weight fixtures.** Three fully audited suites (UI
+local-bootstrap340, config761, runtime-inspection383) create seven256MB fake weights per full run;
+they test settings/selection/readiness/classification, not production model size policy. First measure
+actual fixture file counts/logical bytes on the existing Windows environment with pytest-owned
+temporary cleanup, retaining all assertions. Then explicitly inject a test-local scaled minimum and
+write tiny real weight files in the existing helpers; no global/autouse patch, mock cache-complete,
+new shared fixture framework or production admission change. Preserve metadata/pinned revision and
+real Qt inspection workers, wait through their terminal state before fixture teardown. Production
+unchanged. Same three suites before/after, byte measurement, unchanged catalog tiny-weight rejection
+and deliberate empty-weight fault must fail. Main/independent actualdiff review and Ruff; continue
+catalog/lifecycle fixture audit separately, not final handoff. No real model/cache/env deletion.
+Result: same72passed before7.72s/after6.34s; measured fake-weight logical bytes1792000000->7168
+across7files. This is not physical disk reclamation or a stable speed claim. Production unchanged,
+tests+52/-33/net+19, zero removed assertions/cases. Three empty-weight injected cases fail their
+actual readiness/classification assertions; unpatched256MB minimum plus tiny-weight rejection passes.
+Independent actualdiff/lifetime review and Ruff pass; all test artifacts use pytest temporary cleanup.
+
+**Bounded9E — scale catalog/lifecycle fake weights without losing admission boundaries.** Full
+independent catalog655/lifecycle659 and main affected helpers/callers show300MB complete/150MB shard
+fixtures only cross the256MB minimum; no actual model loading/process download uses them. Baseline
+both suites with temporary cleanup and measured logical artifact bytes. Replace giant weights with
+real1KiB files and explicitly opt affected cases into a local threshold fixture (not global/autouse).
+Keep default-size rejection outside that fixture, add below/equal/above scaled-limit assertions;
+shard test must reject a missing shard even when its present shard alone meets total minimum.
+Preserve actual pinned metadata, symlink/hardlink guards, partial quota accounting, Qt thread/terminal/
+cleanup assertions and fake downloader external isolation. No production/runtime/download policy or
+user files changed, no shared fixture platform. Same focused suites plus small boundary cases,
+intentional missing-shard and strict-greater-than faults, independent actualdiff review and Ruff;
+commit tests-only and continue remaining module audit, not manual handoff.
+
 **Module7 logging audit.** Independent full logger874/direct1304, run.py370,
 Windows/WSL launcher sources and tests traced console output: StreamHandler binds native stdout;
 CP950/strict cannot encode actual metrics `≈`, losing/noising that console record while UTF8 file

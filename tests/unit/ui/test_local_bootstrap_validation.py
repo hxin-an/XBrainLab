@@ -7,11 +7,10 @@ from pathlib import Path
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from XBrainLab.llm.core.config import LLMConfig
-from XBrainLab.llm.core.model_catalog import (
-    MIN_MODEL_WEIGHT_BYTES,
-    local_model_spec,
-)
+from XBrainLab.llm.core.model_catalog import local_model_spec
 from XBrainLab.llm.core.runtime_selection import AssistantRuntimeLaunchResolver
 
 
@@ -33,7 +32,14 @@ def _write_settings(path: Path, repo_id: str) -> None:
     )
 
 
-def _create_hf_cache(cache_dir: Path, repo_id: str) -> None:
+def _create_hf_cache(
+    cache_dir: Path, repo_id: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Readiness uses real artifacts; model-size policy has separate catalog tests.
+    weight = b"x" * 1024
+    monkeypatch.setattr(
+        "XBrainLab.llm.core.model_catalog.MIN_MODEL_WEIGHT_BYTES", len(weight)
+    )
     spec = local_model_spec(repo_id)
     assert spec is not None
     model_root = cache_dir / f"models--{repo_id.replace('/', '--')}"
@@ -48,7 +54,6 @@ def _create_hf_cache(cache_dir: Path, repo_id: str) -> None:
         "config.json",
         "tokenizer_config.json",
         "model.safetensors.index.json",
-        "model-00001-of-00001.safetensors",
     ):
         (snapshot_dir / filename).write_text("{}", encoding="utf-8")
     (snapshot_dir / "model.safetensors.index.json").write_text(
@@ -61,8 +66,7 @@ def _create_hf_cache(cache_dir: Path, repo_id: str) -> None:
         ),
         encoding="utf-8",
     )
-    with (snapshot_dir / "model-00001-of-00001.safetensors").open("r+b") as stream:
-        stream.truncate(MIN_MODEL_WEIGHT_BYTES)
+    (snapshot_dir / "model-00001-of-00001.safetensors").write_bytes(weight)
 
 
 def _make_worker():
@@ -82,6 +86,7 @@ class TestLocalBootstrapValidation:
         self,
         qtbot,
         tmp_path,
+        monkeypatch,
     ):
         from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
 
@@ -92,7 +97,7 @@ class TestLocalBootstrapValidation:
         cache_dir = tmp_path / "models"
         legacy_settings_path.parent.mkdir(parents=True)
         _write_settings(legacy_settings_path, retired_repo)
-        _create_hf_cache(cache_dir, product_repo)
+        _create_hf_cache(cache_dir, product_repo, monkeypatch)
         original_legacy_settings = legacy_settings_path.read_bytes()
 
         with (
@@ -144,12 +149,13 @@ class TestLocalBootstrapValidation:
         self,
         qtbot,
         tmp_path,
+        monkeypatch,
     ):
         repo_id = LLMConfig.default_local_model_id()
         settings_path = tmp_path / "settings.json"
         cache_dir = tmp_path / "models"
         _write_settings(settings_path, repo_id)
-        _create_hf_cache(cache_dir, repo_id)
+        _create_hf_cache(cache_dir, repo_id, monkeypatch)
 
         config = LLMConfig.load_from_file(str(settings_path))
         assert config is not None
@@ -222,13 +228,15 @@ class TestLocalBootstrapValidation:
         MockEngine.assert_not_called()
         cast(MagicMock, worker.error.emit).assert_not_called()
 
-    def test_dialog_uses_selected_model_for_local_runtime_truth(self, qtbot, tmp_path):
+    def test_dialog_uses_selected_model_for_local_runtime_truth(
+        self, qtbot, tmp_path, monkeypatch
+    ):
         saved_repo = "microsoft/Phi-4-mini-instruct"
         product_repo = LLMConfig.default_local_model_id()
         settings_path = tmp_path / "settings.json"
         cache_dir = tmp_path / "models"
         _write_settings(settings_path, saved_repo)
-        _create_hf_cache(cache_dir, product_repo)
+        _create_hf_cache(cache_dir, product_repo, monkeypatch)
         original_settings = settings_path.read_bytes()
 
         config = LLMConfig.load_from_file(str(settings_path))
@@ -275,12 +283,13 @@ class TestLocalBootstrapValidation:
         self,
         qtbot,
         tmp_path,
+        monkeypatch,
     ):
         repo_id = LLMConfig.default_local_model_id()
         settings_path = tmp_path / "settings.json"
         cache_dir = tmp_path / "models"
         _write_settings(settings_path, repo_id)
-        _create_hf_cache(cache_dir, repo_id)
+        _create_hf_cache(cache_dir, repo_id, monkeypatch)
 
         config = LLMConfig.load_from_file(str(settings_path))
         assert config is not None

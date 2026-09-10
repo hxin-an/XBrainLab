@@ -17,13 +17,17 @@ from scripts.dev.inspect_local_assistant_runtime import (
 )
 from scripts.dev.sensitive_path_redaction import contains_sensitive_path
 from XBrainLab.llm.core.config import LLMConfig
-from XBrainLab.llm.core.model_catalog import (
-    MIN_MODEL_WEIGHT_BYTES,
-    local_model_spec,
-)
+from XBrainLab.llm.core.model_catalog import local_model_spec
 
 
-def _create_hf_cache(cache_dir: Path, repo_id: str) -> None:
+def _create_hf_cache(
+    cache_dir: Path, repo_id: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Readiness uses real artifacts; model-size policy has separate catalog tests.
+    weight = b"x" * 1024
+    monkeypatch.setattr(
+        "XBrainLab.llm.core.model_catalog.MIN_MODEL_WEIGHT_BYTES", len(weight)
+    )
     spec = local_model_spec(repo_id)
     assert spec is not None
     model_root = cache_dir / f"models--{repo_id.replace('/', '--')}"
@@ -41,18 +45,17 @@ def _create_hf_cache(cache_dir: Path, repo_id: str) -> None:
         '{"weight_map":{"layer":"model-00001-of-00001.safetensors"}}',
         encoding="utf-8",
     )
-    with (snapshot_dir / "model-00001-of-00001.safetensors").open("wb") as stream:
-        stream.truncate(MIN_MODEL_WEIGHT_BYTES)
+    (snapshot_dir / "model-00001-of-00001.safetensors").write_bytes(weight)
 
 
-def test_classify_runtime_reports_cpu_fallback(tmp_path: Path):
+def test_classify_runtime_reports_cpu_fallback(tmp_path: Path, monkeypatch):
     config = LLMConfig()
     config.inference_mode = "local"
     config.active_mode = "local"
     config.device = "cuda"
     config.cache_dir = str(tmp_path / "models")
     config.load_in_4bit = True
-    _create_hf_cache(Path(config.cache_dir), config.model_name)
+    _create_hf_cache(Path(config.cache_dir), config.model_name, monkeypatch)
 
     with (
         patch(
