@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `a2b21efc`, 109 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `f44d3e0e`, 112 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -368,6 +368,47 @@ omitted current-target guard fails the specific already-over-limit assertion0.20
 download denial cannot substitute for this protection. Independent review and Ruffcheck/formatpassed;
 test+11/-2/net+9LOC, no production/default-quota/test-count change. Exact prior10.1GB fake file was
 removed and verified absent; source remains regenerable, real caches/data/environments were untouched.
+
+**Completed bounded6M — small real-file model quota fixtures.** Full independent downloader tests1178 and
+catalog preflight/postcheck audit locate two15GB catalog files and10.1/20.1GB post-download fixtures.
+The measured6L NTFS allocation proves truncate is not a portable cheap-storage assumption. Replace
+only these four fixtures in two existing test files; production policy/owners/UI/default quotas remain
+unchanged. Catalog tests retain actual model estimate, set explicit total limit to estimate+200bytes,
+write300bytes and assert exact current/projected quantities, projected-only rejection and unchanged
+disallowed cleanup discovery. Downloader tests use101-byte weights with test-only minimum weight1,
+partial(real validator, explicit small quotas) at the existing imported validation seam, not a fake
+result or cache scan. Require actual pinned snapshot completeness, exact scanned bytes, snapshot
+download called once and error/no-finished terminal. Keep all default-limit/completeness cases.
+Existing6H94pass covers catalog originals. Do not repeat multi-GB allocations merely for a baseline:
+run downloader originals excluding only the two giant cases, then full retained two suites after edits.
+In-memory omitted projected/post-download quota guards must fail appropriate cases; all faults are
+process-only. Ruff and main nonauthor actualdiff review before a test-only reversible commit. No new
+helper/platform/production owner, download, environment or blanket artifact deletion. Stop this slice
+at preserved quota protection with bounded fixture bytes, then continue module6 and remaining modules.
+Original downloader selection41passed/1failed/2giantcases-deselected6.12s: existing inactive-child
+test expects a POSIX literal although production correctly passes str(Path(snapshot)) on Windows.
+Correct only that expected platform path, preserving exact pinned identity/terminal assertions,
+then recheck the same baseline before quota-fixture changes; do not change production path handling.
+Corrected baseline42passed/2giantcases-deselected5.95s; full retained downloader/catalog77passed8.61s.
+All four in-memory omitted projected/post-download quota guards fail the intended cases1.02s.
+Real target totals105/206bytes and partial/blocked totals302/300bytes replace the four giant files;
+no test cases removed, actual production/default policy unchanged. Main nonauthor actualdiff review
+and Ruffcheck/formatpassed. No real model download or broad storage deletion occurred.
+
+**Next bounded6N — retire unused tolerant parser and strict-result convenience.** Full independent and
+main parser463/direct390 plus actual controller/coordinator/scorer and negative guard caller audit
+prove parse_product is the sole live parser; parse/parse_diagnostic and four extraction helpers have
+only exclusive tests. Remove that dead chain and its now-unused logging imports, preserving all
+parse_product code, exact model output grammar, bare-attempt classification and actual errors. Keep
+architecture negative guards for retired parser calls unchanged. Before deletion strengthen invalid
+field cases that currently omit workflow_stage and therefore stop at missing-root-fields rather than
+the claimed type check. Retain the diagnostic test's real bare-evaluate product rejection by moving
+it into the existing malformed-input parametrization; delete only two exclusive diagnostic cases and
+duplicate convenience assertions. About-140productionLOC/oneownerfile, zero new owner or tool/UI/
+prompt policy change. Baseline parser/controller/recovery/scorer plus exact guard tests, then same
+retained after and a representative source-only exact parse-output comparison; Ruff/main nonauthor
+diff review. No tolerant fallback replacement or normalizer edits. Restore untouched scope if an edit
+is rejected; no indirect retry. End this slice at verified dead-chain removal, then continue audit.
 
 Completed2AD–2AG and8C–8E are indexed below and fully traceable in Git. For source-bound Windows
 capture tests only, use process-local GIT_DIR/GIT_WORK_TREE pointing to the actual Windows paths:

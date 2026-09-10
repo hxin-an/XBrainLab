@@ -587,34 +587,53 @@ def test_partial_cache_never_bypasses_download_estimate(
 def test_large_partial_cache_cannot_bypass_total_limit(tmp_path: Path) -> None:
     repo_id = PRIMARY_MODEL_ID
     cache_dir = tmp_path / "models"
+    empty_plan = plan_model_download(repo_id, str(cache_dir))
+    quota_gb = (empty_plan.estimated_download_bytes + 200) / 1e9
     partial = cache_dir / repo_id.replace("/", "_")
     partial.mkdir(parents=True)
     (partial / "config.json").write_text("{}", encoding="utf-8")
-    with (partial / "model.safetensors.incomplete").open("wb") as stream:
-        stream.truncate(15_000_000_000)
+    (partial / "model.safetensors.incomplete").write_bytes(b"x" * 300)
 
-    result = plan_model_download(repo_id, str(cache_dir))
+    result = plan_model_download(repo_id, str(cache_dir), max_total_cache_gb=quota_gb)
 
-    assert result.estimated_download_bytes > 0
+    assert empty_plan.ok is True
+    assert result.estimated_download_bytes == empty_plan.estimated_download_bytes
+    assert result.current_cache_bytes == 302
+    assert result.projected_cache_bytes == (
+        result.current_cache_bytes + result.estimated_download_bytes
+    )
+    assert result.current_cache_bytes < result.max_total_cache_bytes
+    assert result.estimated_download_bytes <= result.max_total_cache_bytes
     assert result.ok is False
-    assert result.projected_cache_bytes > int(MAX_TOTAL_MODEL_CACHE_GB * 1_000_000_000)
+    assert result.projected_cache_bytes > result.max_total_cache_bytes
+    assert "would raise" in result.message
 
 
 def test_download_preflight_blocks_total_cache_over_limit(tmp_path: Path):
     cache_dir = tmp_path / "models"
+    empty_plan = plan_model_download(PRIMARY_MODEL_ID, str(cache_dir))
+    quota_gb = (empty_plan.estimated_download_bytes + 200) / 1e9
     blocked_cache = cache_dir / "models--Qwen--Qwen2.5-7B-Instruct"
     blocked_cache.mkdir(parents=True)
-    # Simulate an existing 15GB blocked model cache without writing huge data.
-    with open(blocked_cache / "weights.safetensors", "wb") as f:
-        f.truncate(15_000_000_000)
+    blocked_cache.joinpath("weights.safetensors").write_bytes(b"x" * 300)
 
     result = plan_model_download(
         PRIMARY_MODEL_ID,
         str(cache_dir),
+        max_total_cache_gb=quota_gb,
     )
 
+    assert empty_plan.ok is True
+    assert result.estimated_download_bytes == empty_plan.estimated_download_bytes
+    assert result.current_cache_bytes == 300
+    assert result.projected_cache_bytes == (
+        result.current_cache_bytes + result.estimated_download_bytes
+    )
+    assert result.current_cache_bytes < result.max_total_cache_bytes
+    assert result.estimated_download_bytes <= result.max_total_cache_bytes
     assert result.ok is False
-    assert result.projected_cache_bytes > int(MAX_TOTAL_MODEL_CACHE_GB * 1_000_000_000)
+    assert result.projected_cache_bytes > result.max_total_cache_bytes
+    assert "would raise" in result.message
     assert str(blocked_cache) in result.cleanup_candidates
     assert disallowed_cache_candidates(str(cache_dir)) == [str(blocked_cache)]
 
