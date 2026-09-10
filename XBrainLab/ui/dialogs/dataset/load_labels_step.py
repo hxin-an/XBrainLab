@@ -355,12 +355,7 @@ class LoadLabelsStepMixin(DataImportWizardStepHostProtocol):
         for carrier in self._label_carrier_preview_rows():
             carrier_path = str(carrier.get("path") or "").strip()
             if carrier_path and self._carrier_belongs_to_source(carrier, source):
-                self._remove_label_carrier_without_refresh(carrier_path)
-
-    def _remove_label_carrier_without_refresh(self, carrier_path: str) -> None:
-        carrier = str(carrier_path).strip()
-        if carrier:
-            self._wizard_state.label_sources.exclude_carrier(carrier)
+                self._wizard_state.label_sources.exclude_carrier(carrier_path)
 
     def _refresh_load_labels_static_state(self) -> None:
         has_bids_events = self._has_bids_events()

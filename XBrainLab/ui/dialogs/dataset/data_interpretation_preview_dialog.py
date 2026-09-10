@@ -11,7 +11,6 @@ from PyQt6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QComboBox,
-    QDialogButtonBox,
     QFileDialog,
     QFrame,
     QGridLayout,
@@ -396,7 +395,6 @@ class DataInterpretationPreviewDialog(
         self.event_layout: QVBoxLayout
         self.scroll_area: QScrollArea
         self.step_stack: QStackedWidget
-        self.button_box: QDialogButtonBox
         self.back_button: QPushButton
         self.next_button: QPushButton
         self.cancel_button: QPushButton
@@ -952,7 +950,6 @@ class DataInterpretationPreviewDialog(
         self.next_button.setStyleSheet(self._primary_button_style())
         self.next_button.clicked.connect(self._go_next_step)
 
-        self.button_box = QDialogButtonBox(self)
         self.apply_button = QPushButton(
             "Apply Remap"
             if self.decision == "blocked" and self._has_remap_options()

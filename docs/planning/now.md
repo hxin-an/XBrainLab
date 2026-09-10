@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `4df0c36e`, 53 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `e8ed6d4b`, 54 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -124,7 +124,7 @@ Same20 native cases passed8.25s before and8.18s after. Source +8/-40/net-32, zer
 tests unchanged. Ruff/check/format and independent actual-diff scope/receipt/BIDS fallback review
 passed. No measured performance claim from removal of one redundant snapshot copy.
 
-**Completed 8C, pending commit (module2 consumer) — duplicate placement-capture entrypoint.** Full independent reads
+**Completed 8C (module2 consumer) — duplicate placement-capture entrypoint.** Full independent reads
 of capture contract234, canonical wizard runner2017, placement helper320 and tests216/660 confirm
 only build_dialog is imported by the canonical runner; no gate/docs/Poe calls standalone main.
 After baseline canonical capture tests, remove standalone-only main/constants/capture helper chain
@@ -141,7 +141,7 @@ After deleting the unused chain the same32passed3.30s. Main nonauthor actual-dif
 all three canonical fixture functions are byte-identical; module docstring now states factory role.
 Script +1/-75/net-74; no product source/test/evidence-inventory change. Ruff/check/format passed.
 
-**Active 2AG — wizard unused footer instance / single-use exclusion forwarding.** Full source
+**Completed 2AG, pending commit — wizard unused footer instance / single-use exclusion forwarding.** Full source
 reads and whole-family caller search show PreviewDialog constructs an empty QDialogButtonBox with
 no layout, buttons, signals or consumer; actual footer owns separate Back/Next/Cancel/Apply buttons.
 Remove only the empty instance/annotation/import, retaining stylesheet selectors and all real
@@ -155,6 +155,26 @@ same selection after + Ruff and independent actual-diff review, separate reversi
 floating-label/onset decisions below remain untouched. Then continue unfinished module audit.
 Baseline11 actual rendering/session/removal/restore/rescan cases passed1.39s plus two geometry
 neighbors passed0.93s before any2AG edits. Independent candidate/caller/base-dialog review approved.
+After deletion the combined same13 passed1.49s, Ruff/check/format passed. Main and independent
+actual-diff review approve source +1/-9/net-8, ownerdelta0; no visible footer or layout change.
+
+**Declared 8D — replay shutdown timeout evidence.** The complete replay1329/direct572 audit found
+real deferred-close success coverage but no persistent-visible timeout case. Baseline the existing
+real Qt shutdown case; add a rejecting-close QWidget with guaranteed finally hide and observable
+timeout-once/no-success assertions. Keep actual Qt polling and monotonic deadline, no fake lifecycle
+or production change. Observer/legacy may author only this direct test after main baseline and
+ownership assignment. Main runs baseline/new/adjacent cases and a bounded in-memory wrong-success
+fault to verify the new assertion, Ruff, nonauthor review, separate commit then module continuation.
+Do not claim this unit proves real MainWindow shutdown; actual native lifecycle gates remain required.
+Original deferred-close case passed0.55s. Author waits until2AG commit completes before editing.
+
+**Declared 8E — unused review-state capture fixture.** Main and independent caller audit confirm
+_review_import_state_dialog has only its definition; canonical factories/specs use _review_import_dialog
+and explicit callables, no dynamic lookup or CLI route. Remove only the unused62-line fixture from
+capture_data_import_wizard_steps.py; preserve every canonical state/filename/manifest requirement,
+real factory and its tests. Observer owns this script only after main baseline and8D ownership remains
+separate. Rerun two canonicalcapture test files because intervening2AG touched the real dialog; then
+delete and repeat32/Ruff/mainnonauthor review before its own commit. No UI/gate-contract change.
 
 Completed2X–2AC are indexed below; their full scope/evidence remains in Git history.
 2AC found an existing shared-environment source hazard: Windows .pth adds the original checkout
@@ -400,6 +420,7 @@ this table replaces their duplicated active-plan narrative, not any unresolved m
 | 2AD / `27c525c6` | Remove four Coordinator payload forwarders; +20/-39/net-19 | Native80 before/after; migrated assertions6focused before deletion; independentreview/Ruff |
 | 2AE / `20b05f75` | Remove unused loader lookup/commented rejection; production -17 | Strengthened23 before/after, no-publication fault detected; real Apply neighbors, independentreview/Ruff |
 | 2AF / `4df0c36e` | Remove preflight forwards/list copy and unused multiplier aliases; +8/-40/net-32 | Same20 native before/after; receipt/scope/BIDS fallback review and Ruff; policies unchanged |
+| 8C / `e8ed6d4b` | Retire duplicate placement capture entrypoint; script +1/-75/net-74 | Canonicalcapture32 before/after, mainnonauthorreview/Ruff; actual factories unchanged |
 
 ### Evidence qualifications that remain relevant
 
