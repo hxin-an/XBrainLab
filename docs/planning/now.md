@@ -103,11 +103,78 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `d7003752`, 134 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `a850a786`, 136 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
 **Current work — shared UI callback/test cleanup and scripts; module2–6 closure gaps and explicit decisions remain open.**
+
+**Bounded7J — retire test-only window bounds forwarder.** Full main geometry lifecycle373/placement439
+and direct185/193/integration332 retain sole Qt restore/show/persist owner and pure multi-screen policy.
+Only lifecycle.position_bounds has one test caller and no runtime/script/config/doc consumer; it repeats
+the live pure usable_window_position_bounds adapter. Migrate that first-launch assertion to the actual
+pure helper plus native frame_extents, preserving every geometry assertion; remove only the unused
+method/import. Keep policy accessor used throughout geometry tests, actual bounded_position used by
+MainWindow, saved settings and0/250ms recovery timers. No visible placement/timing change, new owner
+or user settings write. Three suites before/after, Windows actual Qt platform where available; review
+actual diff/callers and Ruff, commit independently; then continue module audit, not handoff.
+Result:31geometry+6seed baseline37passed4.49s on Windows Qt windows; migrated first-launch1passed0.50s,
+retained geometry31passed2.26s after. Production-27, testnet+8, zero case removal; exact policy/frame
+assertions unchanged. Independent actualdiff review approved, Ruff/format passed.
+
+**Bounded9B — strengthen actual RNG reproducibility evidence.** Utility audit full seed90/direct79
+retains shared real Python/NumPy/Torch state ownership. Existing restore test captures and restores
+without advancing generators, so an omitted restore can pass. Replace it with actual draws, advancing
+all three streams and then verifying exact replay; strengthen set_seed with repeated real draws.
+Preserve original state in finally, isolate only CUDA availability, keep actual CUDA configuration/
+state seam cases and automatically generated seed assertion. Add rejected malformed-state/CUDA-unavailable
+cases proving no partial CPU mutation. Production unchanged, no model/download/GPU allocation or
+scientific reproducibility claim. Original six-case baseline, stronger focused suite, intentional omitted
+restore fault must fail, main nonauthor review and Ruff before tests-only commit.
+Result:9passed2.18s, original6 cases preserved/replaced plus3 new. Main review corrected CUDA
+atomicity fixture to use requestedseed123 versus currentseed456; same-state input would miss premature
+mutation. Three separate in-memory omitted Python/NumPy/Torch restore faults fail each exact stream,
+and moved CPU mutation before unavailable-CUDA rejection fails fourth case. No faulty source written.
+Ruff initially flags intentional experiment random.random as non-cryptographic; file-scoped S311
+annotation documents exact test purpose, formatter/Ruff then pass. Only CUDA availability is isolated
+for CPU cases; real CUDA allocation/reproducibility is not claimed.
+
+**Bounded9C — replace mock-only VRAM warning tests with actual widget conditions.** Full main checker124/
+direct147 finds one no-assertion negative case, two identical snapshot helper cases and policy tests
+mocking both predicates. Preserve existing heuristic/copy/public behavior (not resource admission).
+Use real QMainWindow/QStackedWidget/QTabWidget and immutable runtime snapshots, isolate only modal
+show_alert. Cover initialized local+active3D warning, other tab/hidden/other workspace/no local,
+explicit switching entrypoints, unavailable snapshot and lazy placeholder. Migrate assertions to
+check()/on_viz_tab_changed results, retire exact duplicate/private-helper cases only after stronger
+baseline. No production change or GPU/model invocation. Focused original and stronger suites,
+intentional ignored-local or ignored-tab guard fault, main nonauthor review/Ruff; no handoff claim.
+Result:13original0.09s ->23stronger0.15s ->10retained0.13s. All old behavior assertions migrated to
+actual widget conditions, including non3D signal ignored and exact warning copy; one literal duplicate
+and no-assertion path replaced. First stronger run22pass/1fail exposed fixture.show overriding stack
+hiding; fixed fixture order, removed import-time QApplication, retained assertions. Omitted local and
+tab guards each fail at unexpected show_alert. Production unchanged; tests+163/-124/net+39; Ruff pass.
+
+**Security utility audit disposition.** Independent full filesystem_identity1115/direct121,
+public_diagnostics1897/direct2256, structured projection531 and runtime collector71 retain live
+descriptor/handle identity and single fail-closed privacy boundary. Tests exercise real hostile inputs,
+budgets/cycles/idempotence and recovery-text preservation; no justified duplicate deletion. Runtime
+collector intentionally returns internal filename/GDF details to dataset/preprocess state services.
+Main traced state_builder->typed snapshot/query; model state-card assembler423–496 selects counts/
+readiness, not raw diagnostics. ToolCommandResult.to_payload uses public_safe_result_projection and
+final public_diagnostic_value for nested state/diagnostics. Raw internal snapshots are not public-safe
+payload claims; no new leak or sanitizer rewrite justified by these internal fields alone.
+
+**Bounded7K — retire orphan error decorator capability.** Full main utils/error_handler81/direct182
+and actual exceptions141/application errors246 audit finds all three bespoke subclasses, handle_error
+and its private message/storage helpers have only11 exclusive test callers. Git-wide source/config/
+script/docs search and utils package exports show no registration/decorator use. Actual backend
+XBrainLabError/subtypes, application map_exception and UI error presentation remain separate live
+boundaries with retained real privacy/hostile-protocol tests; do not move these into the retired file.
+Delete exactly orphan source/test file after original+live exceptions/results baseline, independent
+caller/privacy review, then same retained cases. Production-81/test-182, live owner0delta, no public
+Command/query/Assistant or visible semantics change; unknown external convenience imports are not
+preserved per stage authorization. No replacement wrapper or new policy. Commit independently, then
+continue shared UI/scripts audit; a failed permission decision stops only this deletion, not other work.
 
 **Module7 logging audit.** Independent full logger874/direct1304, run.py370,
 Windows/WSL launcher sources and tests traced console output: StreamHandler binds native stdout;

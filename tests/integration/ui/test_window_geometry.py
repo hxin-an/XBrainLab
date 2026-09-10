@@ -8,6 +8,10 @@ import pytest
 from PyQt6.QtCore import QRect, Qt
 
 from XBrainLab.ui.main_window import MainWindow
+from XBrainLab.ui.window_placement import (
+    frame_extents_for,
+    usable_window_position_bounds,
+)
 
 
 class _FakeSettings:
@@ -125,11 +129,15 @@ def test_first_launch_window_is_on_available_screen(qtbot):
     owner = window.window_geometry
     available = owner.available_screen_geometry()
     geometry = window.geometry()
-    _min_x, _max_x, min_y, _max_y = owner.position_bounds(
+    _min_x, _max_x, min_y, _max_y = usable_window_position_bounds(
         available,
         geometry.width(),
         geometry.height(),
+        edge_margin=owner.policy.edge_margin,
+        top_drag_margin=owner.policy.top_drag_margin,
+        bottom_margin=owner.policy.bottom_margin,
         screen_geometry=owner.full_screen_geometry(),
+        frame_extents=frame_extents_for(geometry, window.frameGeometry()),
     )
 
     assert available.contains(geometry.topLeft())

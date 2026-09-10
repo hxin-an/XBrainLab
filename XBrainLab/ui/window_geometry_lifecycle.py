@@ -22,7 +22,6 @@ from XBrainLab.ui.window_placement import (
     screen_geometry_for,
     startup_geometry_diagnostics_enabled,
     startup_screen_hint,
-    usable_window_position_bounds,
     widget_geometry_diagnostic_line,
 )
 
@@ -267,32 +266,6 @@ class WindowGeometryLifecycle(QObject):
             height,
             preferred_x,
             preferred_y,
-            edge_margin=self._policy.edge_margin,
-            top_drag_margin=self._policy.top_drag_margin,
-            bottom_margin=self._policy.bottom_margin,
-            screen_geometry=screen_geometry,
-            frame_extents=frame_extents,
-        )
-
-    def position_bounds(
-        self,
-        available: QRect,
-        width: int,
-        height: int,
-        *,
-        screen_geometry: QRect | None = None,
-    ) -> tuple[int, int, int, int]:
-        """Return frame-aware client bounds that keep the title bar reachable."""
-        window = self._window_if_alive()
-        frame_extents = (
-            frame_extents_for(window.geometry(), window.frameGeometry())
-            if window is not None
-            else None
-        )
-        return usable_window_position_bounds(
-            available,
-            width,
-            height,
             edge_margin=self._policy.edge_margin,
             top_drag_margin=self._policy.top_drag_margin,
             bottom_margin=self._policy.bottom_margin,
