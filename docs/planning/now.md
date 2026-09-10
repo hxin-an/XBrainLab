@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `07881c8d`, 59 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `c628be38`, 60 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -204,7 +204,7 @@ layout397/Step1dialogs726/support81 full independent read retains generation/can
 state restoration, real Thread/Event close and geometry ownership. The previously suspected duplicate
 evidence_reference assignment is absent in current source; do not claim it as a deletion.
 
-**Declared 3D — split preview handoff protection and unused no-op.** Independently confirmed
+**Completed bounded 3D — split preview handoff protection and unused no-op.** Independently confirmed
 DataSplitterHolder.to_thread is empty, absent from the base contract and has no actual caller.
 Add focused existing-file tests first for a typed receipt invalidated by changed controls and a stale
 generation unable to replace current preview rows/status/receipt. Use actual dialog typed publication
@@ -226,8 +226,11 @@ only in memory causes exactly their two tests to fail0.21s. Source-3/tests+87, R
 Native QPA windows measurement supersedes the suspected visible defect: both compact cases pass0.31s;
 752px viewport/header388px,760px396px, horizontal range0 at both, Microsoft JhengHei UI9pt/DPR1.
 Main inspected the752px screenshot: no clipped headers/footer/overflow. Earlier failure is an
-offscreen font/platform limitation, not established product layout defect. Full native27 still to run;
-retain tests/assertions and original failure limitation, no product font/layout workaround.
+offscreen font/platform limitation, not established product layout defect. Full native27 ran:
+26passed/1failed2.08s, remaining client-center assertion differs31px from screen center. Preserve this
+separate native placement investigation in shared-runtime module7; no-op deletion does not cause it.
+Do not claim the whole layout suite green or final module closure. Retain all assertions; no font/
+layout workaround. Main/nonauthor actualtest review and independent source-deletion review approved3D.
 
 3C corrected real characterization38passed4.07s before deletion; admission/cancel/stale/rollback
 neighbors44passed/1failed7.54s only because invalid-operation test guessed a custom message rather
@@ -236,6 +239,20 @@ deletion. Retained full selection42passed7.16s after deleting exactlythree obsol
 cases; all epoch safety cases remain. Main/independent actualdiff review and four-file Ruff passed.
 Final formatted3C source-76/tests+233/-196/net+37; fewer duplicate production paths, stronger real
 side-effect evidence rather than a claim of test LOC reduction. Epoch legacy migration remains open.
+
+**Declared 3E — real prepared epoch boundary admission characterization.** Reuse existing
+_write_reviewed_epoch_fixture/_apply_reviewed_epoch_fixture in test_application_service.py; permit
+explicit synthetic event coordinates in the existing writer while preserving its default recordings.
+Add actual Scan/Preview/Validate/Apply/CreateEpoch cases at1% and above1% boundary exclusion, with
+exact diagnostic counts/message, unchanged source arrays/identity and real resulting epoch counts or
+atomic rejection. No mocked boundary summary, generator or command result; isolate only resource RAM
+reading if required for determinism. This is test-only first; keep all old epoch cases until main
+baseline and evidence mapping pass. Then retire only the two replaced legacy boundary cases if their
+multirecord/count semantics have equivalent real evidence; do not delete remaining legacy handler yet.
+Main owns plan/review/native evidence; legacy worker owns only existing application test file.
+Run new cases plus existing reviewed-epoch lifecycle and all-dropped safety neighbors; bounded wrong
+threshold fault, Ruff and independent actualdiff review. Receipt/RAM/aliases migration remains next;
+no epoch/UI/data policy change, new fixture platform or production owner. Continue module3 afterward.
 
 Completed2X–2AC are indexed below; their full scope/evidence remains in Git history.
 2AC found an existing shared-environment source hazard: Windows .pth adds the original checkout
@@ -449,6 +466,7 @@ this table replaces their duplicated active-plan narrative, not any unresolved m
 | 8E / `b7ed74ab` | Remove unused review-state capture fixture; script-63 | Same32 native before/after, mainnonauthorreview/Ruff; canonical factories/inventory unchanged |
 | 3B / `7fb9fcc9` | Retire unused MAT Export/module/export tests; production-57/tests-98 | Native78 ->73, exactlyfive obsoletecases; same17upstreamwarnings; independentreview/Ruff |
 | 3A / `07881c8d` | Two unused DrawRegion APIs removed; production-23/testsnet-16 | Original22 ->stronger23 ->retained18; wrongoverlapfaultdetected; actualcanvas/strategycases and mainnonauthorreview/Ruff |
+| 3C / `c628be38` | Remove unreachable ordinary preprocess handler branches/helpers; production-76/testsnet+37 | Real ordinary/admission characterization before deletion, retained42pass; cancellation/stale/rollback/epoch safety retained, independentreview/Ruff |
 
 ### Evidence qualifications that remain relevant
 

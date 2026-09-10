@@ -374,3 +374,90 @@ def test_data_splitting_window_confirm_accepts_only_successful_preview(qtbot) ->
         window.confirm()
 
     accept.assert_called_once()
+
+
+def test_preview_receipt_is_invalidated_when_a_split_control_changes(qtbot) -> None:
+    specification = DatasetSplitSpecification.from_payload(
+        {
+            "train_type": "Full Data",
+            "is_cross_validation": False,
+            "val_splitters": [],
+            "test_splitters": [
+                {
+                    "split_type": SplitByType.TRIAL.value,
+                    "split_unit": SplitUnit.RATIO.value,
+                    "value": "0.2",
+                    "is_option": True,
+                }
+            ],
+        }
+    )
+    config = DataSplittingConfig(
+        train_type=TrainingType.FULL,
+        is_cross_validation=False,
+        val_splitter_list=[],
+        test_splitter_list=[DataSplitterHolder(True, SplitByType.TRIAL)],
+    )
+    window = DataSplittingPreviewDialog(
+        None,
+        "Test Window",
+        config=config,
+        initial_specification=specification,
+        **dialog_context_kwargs(preview_provider=successful_preview),
+    )
+    qtbot.addWidget(window)
+    if window.preview_worker is not None:
+        window.preview_worker.join(timeout=1)
+        assert window.preview_worker.is_alive() is False
+
+    receipt = window.get_preview_receipt()
+    assert receipt is not None
+    original_rows = window._preview_rows
+    _unit_combo, entry = window.test_widgets[0]
+    assert entry.text() == "0.2"
+
+    entry.setText("0.3")
+
+    window._set_preview_state(
+        window._preview_generation_id,
+        "succeeded",
+        rows=original_rows,
+        receipt=receipt,
+    )
+
+    assert window._preview_status == "succeeded"
+    assert window._preview_receipt is receipt
+    assert window.get_preview_receipt() is None
+    if window.preview_debounce_timer is not None:
+        window.preview_debounce_timer.stop()
+
+
+def test_old_preview_generation_cannot_overwrite_current_rows_or_receipt(qtbot) -> None:
+    window = _window(qtbot)
+    receipt = window.get_preview_receipt()
+    assert receipt is not None
+    original_generation = window._preview_generation_id
+
+    window.schedule_preview()
+
+    window._set_preview_state(
+        original_generation,
+        "succeeded",
+        rows=(
+            DatasetSplitPreviewRow(
+                name="Stale Fold",
+                train_count=1,
+                validation_count=1,
+                test_count=1,
+            ),
+        ),
+        receipt=receipt,
+    )
+
+    assert window._preview_status == "idle"
+    assert window._preview_rows == ()
+    assert window._preview_receipt is None
+    window.update_table()
+    assert window.tree.topLevelItem(0).text(0) == "Updating preview"
+    if window.preview_debounce_timer is not None:
+        window.preview_debounce_timer.stop()
