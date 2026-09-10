@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `b6d596d4`, 116 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `e6aa7d44`, 117 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -149,6 +149,33 @@ reads retain typed receipt/confirmation generation, strict envelope, stale/dupli
 handoff contracts. High-mock units isolate real narrow seams; actual QObject/AgentWorker/QThread
 integration covers nonblocking RAG/stop/setup rollback. No justified obsolete/duplicate case found;
 neither suite alone claims real model/tool execution. Chat/AgentManager full test audit continues.
+
+**Bounded6Q — retire unused runtime-snapshot serialization.** Full runtime_state120/direct43 and
+coordinator289/direct290 plus worker/controller/dialog consumers use typed Qt snapshots and
+validation_error, not to_dict/from_payload or the two convenience fallback booleans. Remove only
+those methods/imports and two exclusive serialization tests after strengthening the actual coordinator
+invalid-state rejection matrix and preserving explicit device/fallback publication. Keep every dataclass
+field, phase/outcome enum, activation correlation and validation rule; no stored result/settings/schema
+or UI changes. Expected one production file/net about-65lines, no owner increase. Before deletion run
+direct runtime-state/coordinator plus worker runtime-selection and runtime lifecycle delivery suites;
+repeat retained tests afterwards and inspect full diff/callers. Test-only malformed-state matrix must
+catch a bounded omitted validation guard. One reversible commit; slice closure is not module closure.
+Strengthened native baseline39passed5.74s; after37passed5.74s, exactlytwo exclusive serializers
+tests removed. In-memory omitted validation_error yields5failed/1passed0.12s: the remaining string-id
+case is independently rejected by coordinator correlation, so this is not six distinct guard faults.
+Independent actual-diff review approved typed/device/correlation preservation. Production+2/-72/net-70;
+two old tests43lines removed, six-case real-consumer matrix replaces one existing case. Ruff/format
+passed; no malformed fault persisted. Existing inventory50rows reconciled from actual completed reads,
+not50new independent deep audits or module closure.
+
+**Latest full UI reads (not closure).** Independent panel2349/controller483/history235+62 retains
+sole backend transcript owner and bounded Qt reconciliation, stale deltas, reader-anchor/tail-follow
+and typed confirmation/runtime controls. Zero-delay coalescing and capped8ms anchor retries are not
+measured redundant waits. Ignored suggestion-column argument and compatibility render paths still
+need callers/direct tests before disposition. AgentManager direct3769 retains actual Qt/Study/
+ApplicationService publication and real-controller debug blocked-command cases alongside isolated
+manager correlation mocks. Three candidate test redundancies need main diff/equivalence review before
+retirement: zero-assert processing case, duplicate model forwarding and single-branch dock toggle.
 
 **Module6 initial full owner audit (not closure).** Independent full controller2949/attempt898/
 execution342/confirmation314/pending443 and respective direct confirmation154/pending560/execution151/
