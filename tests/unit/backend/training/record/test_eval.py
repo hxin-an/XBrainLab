@@ -32,52 +32,6 @@ def _saliency_context() -> SaliencyArtifactContext:
     )
 
 
-def _complete_saliency_context() -> SaliencyArtifactContext:
-    producer_identity = SaliencyProducerIdentity.from_components(
-        dataset={"name": "saliency-methods"},
-        split={"name": "saliency-methods"},
-        run={"name": "saliency-methods"},
-        model={"name": "saliency-methods"},
-    )
-    return SaliencyArtifactContext(
-        class_map=((0, "class 0"), (1, "class 1")),
-        channel_names=("Cz",),
-        sampling_frequency_hz=1.0,
-        epoch_start_seconds=0.0,
-        epoch_end_seconds=1.0,
-        epoch_sample_count=2,
-        montage_fingerprint=None,
-        epoch_data_fingerprint=producer_identity.dataset_fingerprint,
-        producer_identity=producer_identity,
-    )
-
-
-@pytest.fixture
-def saliency_eval_record() -> EvalRecord:
-    return EvalRecord(
-        np.array([0, 1]),
-        np.array([[1.0, 0.0], [0.0, 1.0]]),
-        {0: np.array([1.0, 2.0]), 1: np.array([3.0, 4.0])},
-        {0: np.array([0.5, 1.0]), 1: np.array([1.5, 2.0])},
-        {0: np.array([0.1, 0.2]), 1: np.array([0.3, 0.4])},
-        {0: np.array([0.01, 0.04]), 1: np.array([0.09, 0.16])},
-        {0: np.array([0.05, 0.1]), 1: np.array([0.15, 0.2])},
-        saliency_context=_complete_saliency_context(),
-        saliency_method_parameters={
-            "Gradient": {},
-            "Gradient * Input": {},
-            "SmoothGrad": {},
-            "SmoothGrad_Squared": {},
-            "VarGrad": {},
-        },
-        saliency_noise_seeds={
-            "SmoothGrad": 1,
-            "SmoothGrad_Squared": 1,
-            "VarGrad": 1,
-        },
-    )
-
-
 @pytest.mark.parametrize(
     "output, label, expected",
     [
@@ -273,24 +227,3 @@ def test_export_supports_a_named_prediction_split_artifact(tmp_path) -> None:
 
 def test_load_returns_none_when_evaluation_artifact_is_missing(tmp_path):
     assert EvalRecord.load(str(tmp_path / "missing")) is None
-
-
-@pytest.mark.parametrize(
-    ("getter_name", "class_index", "expected"),
-    [
-        ("get_gradient", 0, np.array([1.0, 2.0])),
-        ("get_gradient_input", 0, np.array([0.5, 1.0])),
-        ("get_smoothgrad", 1, np.array([0.3, 0.4])),
-        ("get_smoothgrad_sq", 1, np.array([0.09, 0.16])),
-        ("get_vargrad", 0, np.array([0.05, 0.1])),
-    ],
-)
-def test_saliency_getters_return_requested_class_values(
-    saliency_eval_record,
-    getter_name,
-    class_index,
-    expected,
-):
-    values = getattr(saliency_eval_record, getter_name)(class_index)
-
-    np.testing.assert_array_equal(values, expected)

@@ -208,7 +208,7 @@ def test_round_trip_verifies_every_method_class_entry(tmp_path: Path) -> None:
     assert loaded.saliency_integrity_manifest is not None
     manifest = cast(dict[str, Any], loaded.saliency_integrity_manifest)
     assert len(manifest["entries"]) == 4
-    np.testing.assert_array_equal(loaded.get_gradient(1), record.gradient[1])
+    np.testing.assert_array_equal(loaded.gradient[1], record.gradient[1])
 
 
 def test_retain_compatible_methods_reuses_sealed_buffers_without_rehashing(

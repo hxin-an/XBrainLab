@@ -332,7 +332,7 @@ def test_load_rejects_expected_producer_mismatch_without_losing_metrics(
     assert expected_detail in (loaded.saliency_recompute_reason or "")
     np.testing.assert_array_equal(loaded.label, np.array([0, 1]))
     with pytest.raises(SaliencyContextError, match=expected_detail):
-        loaded.get_gradient(0)
+        loaded.validate_saliency_context(epoch_data)
 
 
 def test_legacy_context_schema_artifact_is_rejected_as_unsafe(
@@ -382,7 +382,7 @@ def test_previous_bounded_hash_artifact_keeps_metrics_but_saliency_fails_closed(
     assert loaded.saliency_context_status == "incompatible"
     assert "schema version 2" in (loaded.saliency_recompute_reason or "")
     with pytest.raises(SaliencyContextError, match=r"schema version 2"):
-        loaded.get_gradient(0)
+        loaded.validate_saliency_context(epoch_data)
 
 
 def test_current_schema_missing_producer_field_fails_closed(tmp_path) -> None:
@@ -428,7 +428,7 @@ def test_tampered_producer_fingerprint_fails_closed(tmp_path) -> None:
     assert loaded.saliency_context_status == "incompatible"
     assert "integrity" in (loaded.saliency_recompute_reason or "").lower()
     with pytest.raises(SaliencyContextError, match=r"integrity.*Recompute saliency"):
-        loaded.get_gradient(0)
+        loaded.validate_saliency_context(epoch_data)
 
 
 def test_sealed_saliency_detaches_aliases_and_public_array_metadata() -> None:

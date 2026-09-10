@@ -334,7 +334,7 @@ Independent actualdiff approved; duplicateUUID in-memory fault failed3.31s at re
 creation (FileExistsError), proving no silent overwrite. No faulty source persisted. Final retained
 output-path selection and changed-file Ruff must finish before commit; tests net-98/no production.
 
-**Bounded5C — unused saliency getter conveniences, preserve actual rendering rejection.** Full source/
+**Completed bounded5C — unused saliency getter conveniences, preserve actual rendering rejection.** Full source/
 hidden callers find five EvalRecord getters plus _saliency_for_class have no production/dynamic/
 script/doc consumer; actual render uses validated immutable stores. First migrate three existing
 tampered/old/producer-mismatch assertions from loaded.get_gradient to actual validate_saliency_context
@@ -346,6 +346,24 @@ source methods (~99LOC). Keep Mapping import (other live usage), _raise/_verify 
 safe export/load, label resolver and real renderer ownership. Main owns eval.py and three direct
 record tests. Same retained baseline plus a bounded validator-bypass fault, Ruff/independent review.
 No UI/EEG/current result schema change or new owner; lower-mock render evidence must remain.
+Migrated pre-deletion93passed7.50s with real Visualizer/application renderer; five obsolete cases
+removed only after green. One additional valid getter caller in artifact-integrity roundtrip was
+found by main and migrated, not deleted. Final88passed7.32s; allsix migrated invalid-artifact cases
+fail when real validator is bypassed only in memory (6fail0.50s). Independent actualdiff approved;
+Ruff passed after EOF cleanup. Actual production-100/testsnet-67. Three failure sites/sixcases and
+valid roundtrip remain, exactlyfive getter-only cases removed; no loading/context/integrity gate lost.
+
+**Bounded5D — evaluation rendering dead error/string helpers.** Independent full owner/directtests
+and main caller tracing show _final_unavailable_error has no callers; live split errors use
+_split_unavailable_error. build_evaluation_model_summary is an unused production string forward to
+the actual typed result API, with two direct test and one real trainer integration caller. Migrate
+selected-run/integration uses to result.text; missing-run case retains existing typed unavailable
+assertion (which also fixes empty text), not two equivalent invocations. Passing direct render and
+real trainer integration baseline before deleting the two helpers and __all__ entry; same retained
+after, Ruff and independent review. Main owns evaluation_render/test_evaluation_render and one
+integration caller; no actual summary construction/wait/cancel/identity/visible behavior change.
+Production roughly-18, no owner addition. Synthetic integration persistence mocks are a separately
+declared test-quality cleanup, not silently mixed into this API migration.
 
 Completed2X–2AC are indexed below; their full scope/evidence remains in Git history.
 2AC found an existing shared-environment source hazard: Windows .pth adds the original checkout
