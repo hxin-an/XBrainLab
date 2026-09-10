@@ -371,14 +371,14 @@ class DataInterpretationApplyService:
                     candidate,
                 )
             elif mode == "sequence":
-                count = self._apply_reviewed_sequence_label_map(
-                    mapped_target_files,
-                    applicable,
-                    label_map,
-                    file_mapping,
-                    mapping,
-                    selected_event_names,
-                    candidate,
+                count = self._apply_reviewed_mapped_label_map(
+                    target_files=mapped_target_files,
+                    label_plans=applicable,
+                    label_map=label_map,
+                    file_mapping=file_mapping,
+                    default_mapping=mapping,
+                    selected_event_names=selected_event_names,
+                    candidate=candidate,
                 )
             self._ensure_all_mapped_labels_applied(count, len(mapped_target_files))
             plan = LabelImportPlan(
@@ -1054,13 +1054,6 @@ class DataInterpretationApplyService:
         return DataInterpretationApplyService._duration_stats_from_values(values)
 
     @staticmethod
-    def _duration_stats_from_bids_review(
-        plan: dict[str, Any],
-    ) -> dict[str, Any] | None:
-        evidence = DataInterpretationApplyService._bids_duration_epoch_evidence(plan)
-        return None if evidence is None else evidence["duration_stats"]
-
-    @staticmethod
     def _bids_duration_epoch_evidence(
         plan: dict[str, Any],
     ) -> dict[str, Any] | None:
@@ -1132,26 +1125,6 @@ class DataInterpretationApplyService:
             "min": min(values),
             "max": max(values),
         }
-
-    def _apply_reviewed_sequence_label_map(
-        self,
-        target_files: list[Any],
-        label_plans: list[dict[str, Any]],
-        label_map: dict[str, Any],
-        file_mapping: dict[str, str],
-        mapping: dict[Any, str],
-        selected_event_names: set[str] | None,
-        candidate: InterpretationCandidate,
-    ) -> int:
-        return self._apply_reviewed_mapped_label_map(
-            target_files=target_files,
-            label_plans=label_plans,
-            label_map=label_map,
-            file_mapping=file_mapping,
-            default_mapping=mapping,
-            selected_event_names=selected_event_names,
-            candidate=candidate,
-        )
 
     def _apply_reviewed_mapped_label_map(
         self,

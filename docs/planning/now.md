@@ -211,6 +211,25 @@ protects coordinator retention/promotion, not separate service-level stale-publi
 An isolated in-memory missing-retention fault made the new regression fail at pending-candidate
 assertion; expected fault detected, no production source mutation was saved.
 
+**Completed 2R — apply helper contraction.** Main fully read apply.py (1479 lines); independent caller
+audit confirms `_duration_stats_from_bids_review` is test-only while actual epoch hints already use
+the richer `_bids_duration_epoch_evidence`. Migrate its single assertion into the existing complete
+duration-evidence assertion (same class-only stats and unknown/count fields), then remove the wrapper.
+The one-use `_apply_reviewed_sequence_label_map` forwards unchanged into `_apply_reviewed_mapped_label_map`;
+call the actual owner directly with named arguments and remove only the forwarder. Retain actual
+mapped batching/per-run decisions, selection, atomic timestamp staging, SHA, rollback and hints.
+One production file, no owner/public/visible behavior change. Native event-value apply, timestamp
+atomicity, BIDS and service suites original/characterized before deletion/identical after, Ruff and
+independent review before a reversible commit. Unused data_filename chain is separate next candidate,
+not mixed here; broad remaining service/UI audits stay open even when these focused checks pass.
+Original101 passed8.11s; migrated-before-production101 passed7.36s; identical after101 passed7.42s.
+Ruff/format and independent actual-diff review passed; production +8/-35/net -27, no owner change.
+Independent full test-body audits now complete for service2464, BIDS1375, event-value apply447 and
+timestamp atomicity279 lines. Main completed command-service2309, apply-preparation230,
+discovery-preparation142 and public-projection124 source reads, and projection253-line tests.
+Retain staged publication/rollback, command-bound one-shot resource receipts, BIDS per-run semantics,
+bounded/public-vs-persistent evidence and Windows freshness checks; no whole module/UI closure yet.
+
 ### Responsibility closure and retained boundaries
 
 - Module 1: independent reviewer approved shared-spine responsibility closure at `1247cf7c`.

@@ -325,20 +325,16 @@ def test_bids_epoch_duration_stats_include_only_class_rows() -> None:
         },
     }
 
-    stats = DataInterpretationApplyService._duration_stats_from_bids_review(plan)
-
-    assert stats == {
-        "row_count": 1,
-        "value_counts": {"1.5": 1},
-        "numeric_count": 1,
-        "min": 1.5,
-        "max": 1.5,
-    }
-
     evidence = DataInterpretationApplyService._bids_duration_epoch_evidence(plan)
 
     assert evidence == {
-        "duration_stats": stats,
+        "duration_stats": {
+            "row_count": 1,
+            "value_counts": {"1.5": 1},
+            "numeric_count": 1,
+            "min": 1.5,
+            "max": 1.5,
+        },
         "placement_event_count": 1,
         "unknown_duration_count": 0,
         "unknown_duration_rows": [],
