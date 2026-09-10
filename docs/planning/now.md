@@ -45,7 +45,7 @@ UI/test files and root settings. Worktree/branch/source facts come from Git, not
 | Module | Includes | Status |
 | --- | --- | --- |
 | 1 Command/state spine | Admission, capabilities, confirmation, publication, owned work, shared domain ports | Responsibility review closed at 1247cf7c; native 178 passed; domain branches explicitly remain modules 2–6 |
-| 2 Import/interpretation | Loaders, BIDS, labels/classes, channel/montage, metadata, recipes, related UI | 2A–2T reviewed; remaining resource/domain/UI audit open |
+| 2 Import/interpretation | Loaders, BIDS, labels/classes, channel/montage, metadata, recipes, related UI | 2A–2AE reviewed; remaining resource/domain/UI/scripts audit open |
 | 3 Preprocess/epoch/split | Processing, copies, invalidation, preview/materialization, related UI/tools | Pending |
 | 4 Models/training | Catalog, resource preflight, settings, stop/rerun, history/checkpoints | Pending |
 | 5 Evaluation/saliency/views | Read/publication, SmoothGrad/recompute, four views, stale work/render lifecycle | Pending |
@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `36b2de7e`, 50 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `27c525c6`, 51 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -117,7 +117,7 @@ assert_active_checkout_import(Path.cwd()). Do not edit the environment/.pth or w
 The first2AC run had two expected root failures plus this separate origin failure; isolated rerun
 had only two expected failures, then allsix passed after the resolver fix. No real fixture ran.
 
-**Completed 2AD, pending commit — remove Coordinator-only payload forwarding layer.** Entire2400-line coordinator and
+**Completed 2AD — remove Coordinator-only payload forwarding layer.** Entire2400-line coordinator and
 4660-line test audit confirms four static aliases only forward to existing data_interpretation_ui_payload
 functions: _merge_interpretation_choices, _diagnostic_payload, _optional_payload_id, _decision_reason.
 Replace coordinator self-calls with those already imported functions; migrate five choice-merge tests
@@ -134,7 +134,7 @@ Actualsource +20/-39/net-19,20directcalls andfourforwarders removed; test +8/-5 
 assertion sets. Main non-author actual-diff/callback review approved; samewhole80passed12.18s,
 Ruff/format passed. Keepactual label-source invalidation policy unchanged.
 
-**Active 2AE — RawDataLoader reachable collection tests and dead lookup.** Main fully read source166/
+**Completed 2AE, pending commit — RawDataLoader reachable collection tests and dead lookup.** Main fully read source166/
 direct157. get_loaded_raw has only three assertions in its append test and no production/script/doc/
 dynamic caller; actual DatasetStateService still calls apply, so retain that mutation seam. First
 strengthen init to prove unlabeled and labeled inputs, append to prove ordered object identity,
@@ -151,6 +151,10 @@ then continue module2.
 Strengthened23-case loader/factory/registration +two actualApply-neighbor baseline passed7.35s
 before lookup/source deletion. No chronological original pre-strengthening run in this slice;
 the added assertions pass against unchanged production, which is the refactor characterization.
+After deletion the same23 passed7.36s. A process-only no-op apply fault failed the strengthened
+Study publication assertion (zero rather than one item); no faulty source was saved. Source -17,
+owners unchanged; Ruff/check/format and independent actual-diff review passed. Commit this slice,
+then declare2AF backend preflight convenience cleanup and baseline before editing production.
 
 - Main fully read load_labels_step462 and wizard preview4850; independent reviewer fully read
   label_placement_step2179 and coupled caller/test ranges. Independent workers fully read all7,359
@@ -178,8 +182,10 @@ the added assertions pass against unchanged production, which is the refactor ch
   Assistant cancellation seeds pending handoff directly and does not close actual model-attempt gap.
   External-label real Qt/GDF/MAT workflow934 is fully reviewed, including async remove/re-add andrecipe.
 - Coverage routing found module2 consumers hidden by initial keyword mapping: Data Import capture/
-  replay/report scripts and their tests, wizard harness617, plus shared DataManager244/direct206.
-  Their body audits remain required; module8 infrastructure ownership does not make them out ofscope.
+  replay/report scripts and their tests and wizard harness617 still require body audits; module8
+  infrastructure ownership does not make them out ofscope. Main fully read shared DataManager244/
+  direct206: retain copy-on-preprocess, channel-undo deep backup, force-clean guards and invalidation;
+  MagicMock dataset fixtures do not prove actual training transitions (module3/4 remain open).
 - Confirmed backend candidates: two definition-only tabular multiplier aliases; CommandService
   pure pending-receipt/scope forwarders and raw-presence double-copy convenience. The preflight
   path-set method has two actual consumers and transforms/validates diagnostics; retain it rather
@@ -334,6 +340,7 @@ this table replaces their duplicated active-plan narrative, not any unresolved m
 | 2AA / `11125166` | Merge duplicate rescan case while preserving all assertions; tests net-34 | Strengthened3before ->retained2after, Ruff; main nonauthorreview |
 | 2AB / `fca0ac35` | Deleteunused fuzzy montage chain/module; production -102 | Native59 ->52, nine new no-mock actualnormalizer cases; sevenexclusiveold removed; same18upstreamwarnings; independentreview/Ruff |
 | 2AC / `36b2de7e` | TwoOpenNeuro integration roots reuse configured storage; tests only | Isolated red2fail/4pass ->6pass; runpyactualconsumer definitions, no downloads; independentreview/Ruff |
+| 2AD / `27c525c6` | Remove four Coordinator payload forwarders; +20/-39/net-19 | Native80 before/after; migrated assertions6focused before deletion; independentreview/Ruff |
 
 ### Evidence qualifications that remain relevant
 
