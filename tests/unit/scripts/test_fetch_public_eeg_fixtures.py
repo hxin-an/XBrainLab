@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import io
 import runpy
+import ssl
 import sys
 from pathlib import Path
 
@@ -195,6 +197,63 @@ def test_fixture_file_is_valid_rejects_empty_or_hash_mismatch(tmp_path: Path):
 
     fixture.write_bytes(b"")
     assert fixture_file_is_valid(fixture, expected) is False
+
+
+@pytest.mark.parametrize(
+    "url", ["http://physionet.org/fixture.edf", "https://example.invalid/fixture.edf"]
+)
+def test_download_rejects_unapproved_url_before_io(monkeypatch, tmp_path, url):
+    destination = tmp_path / "fixture.edf"
+    destination.write_bytes(b"previous")
+
+    def forbidden_open(*args, **kwargs):
+        pytest.fail("Rejected URL must not start a network request")
+
+    monkeypatch.setattr(fixture_fetcher.urllib.request, "urlopen", forbidden_open)
+    with pytest.raises(
+        ValueError, match=r"Unsupported download URL scheme|Unexpected download host"
+    ):
+        fixture_fetcher.download_file(url, destination, max_bytes=4)
+    assert destination.read_bytes() == b"previous"
+
+
+@pytest.mark.parametrize("oversized", [False, True])
+def test_streamed_download_obeys_size_and_atomic_publication(
+    monkeypatch, tmp_path, oversized
+):
+    payload = b"data"
+    destination = tmp_path / "fixture.edf"
+    destination.write_bytes(b"previous")
+    fixture: FixtureFile = {
+        "filename": destination.name,
+        "url": "https://physionet.org/fixture.edf",
+        "sha256": hashlib.sha256(payload).hexdigest(),
+        "size_bytes": len(payload),
+    }
+
+    class ChunkedResponse(io.BytesIO):
+        def read(self, size=-1):
+            return super().read(min(size, 2))
+
+    response = ChunkedResponse(payload + (b"x" if oversized else b""))
+
+    def open_response(request, *, context, timeout):
+        assert request.full_url == fixture["url"]
+        assert isinstance(context, ssl.SSLContext)
+        assert context.verify_mode == ssl.CERT_REQUIRED
+        assert timeout == 120
+        return response
+
+    monkeypatch.setattr(fixture_fetcher.urllib.request, "urlopen", open_response)
+    if oversized:
+        with pytest.raises(ValueError, match="exceeds pinned size boundary"):
+            download_fixture_file(fixture, destination)
+        assert destination.read_bytes() == b"previous"
+    else:
+        download_fixture_file(fixture, destination)
+        assert destination.read_bytes() == payload
+    assert response.closed
+    assert not destination.with_suffix(".edf.part").exists()
 
 
 def test_required_ci_profile_is_small_pinned_and_source_diverse():

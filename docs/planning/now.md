@@ -103,11 +103,28 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery checkpoint: product branch `cleanup/module-quality`, HEAD `a7cc2d47`, 160 commits after baseline
+Git recovery checkpoint: product branch `cleanup/module-quality`, HEAD `5311b705`, 166 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
 **Current work — developer docs/config truth and remaining scripts; module2–6 closure gaps and explicit decisions remain open.**
+
+**Bounded9V — retain real downloader safety while removing duplicate profile membership.** Full
+independent fetcher1135/direct427 and main download chain read retain one pinned-size/SHA/atomic
+publication owner. Teacher profile redundantly names OpenNeuro already present in its expanded
+required-CI set; remove only that element after passing identical manifest behavior. Current tests
+mock download_file in atomic-publication cases, leaving actual URL admission/streamed size bounds
+unobserved. Add no-network tests that replace only urlopen: reject non-HTTPS/unapproved host before
+destination mutation; real chunked stream at exact limit installs after real hash/size verification,
+one byte over limit rejects and preserves old destination/cleans .part. Preserve actual SSL context,
+request construction, IO, hash and cleanup. Original/stronger/after direct suite, bounded in-memory
+size-guard omission must fail the oversized-stream case, Ruff and independent diff review. No actual
+download, new environment, model cache/data or runtime policy change. Continue inventory afterward.
+Result: original19pass1.67s, strengthened23pass1.66s, identical23after5.56s; Ruff check/format
+both pass. Recovered explicit in-memory omitted-size-guard run: oversized case fails on late size
+mismatch instead of bounded streaming rejection, exact-limit case passes (0.17s); original restored.
+No fault source persisted. Independent actual-diff review finds no blockers; script-1/test+59,
+no cases retired. This is no-network safety evidence, not a successful public dataset download.
 
 **Bounded9U — align fixture/architecture evidence descriptions with required CI.** Main fully read
 public fixture README190, baseline README19 and multiformat README23; source/CI trace shows required
