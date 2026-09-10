@@ -183,6 +183,29 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
   original native failures. Independent review approved full within-channel identity checks and
   cross-channel object comparisons; bounded SHA, size/admission/receipt protections remain intact.
   Production +16/-4/net +12, no new owner/module/type. Next remains 2C legacy deletion, not handoff.
+- 2E committed `722207cc`. 2C deletion now begins against its passing 107-case baseline: remove
+  the unreachable direct handler plus four exclusive raw replacement/snapshot helpers and unused
+  imports. Worker removes exactly the mapped 21 legacy apply test functions and three exclusive
+  integrity helpers, preserving validation/scan/preview/recipe/resource tests and new 2E regressions.
+  Replace the now-obsolete dataset/Raw fake classes with existing DatasetStateService(Study()) for
+  retained discovery fixtures; no imitation two-phase controller. Verify 28 replacement cases,
+  retained coordinator/receipt/state/recipe behavior and actual cancel/stale/rollback neighbors.
+- 2C after deletion: actual application import/recipe/label/cancel/stale/rollback selection 79 pass;
+  retained coordinator/receipt/state/owned-work/resource-publication selection 134 pass (one existing
+  MNE/NumPy deprecation warning). Exactly 21 legacy test functions removed; AST comparison confirms
+  every retained test body/decorator is unchanged. Main caught/restored required fixture callbacks
+  during editing before the shared run. Production +2/-186/net -184; legacy test file +37/-1283.
+  In-memory bypass of reviewed content verification makes the new actual selected-EEG mutation case
+  fail because mutated content is incorrectly published; the normal source passes the same case.
+- Next bounded 2D follow-on removes now-unreachable DatasetStateService.import_files and its
+  interpretation-port declaration plus PipelineStateTransaction.prepare_raw_replacement. These
+  have no remaining production callers after 2C. First retarget seven stale no-import assertions
+  in actual command tests and the confirmation test to the real factory/prepare entry; they currently
+  watch the unused convenience. Migrate the two direct import fixtures to prepare/commit, preserving
+  actual unexpected-mutation publication evidence. Remove only the obsolete raw-detach call in the
+  snapshot test while preserving explicit restore/training isolation. Keep all cancellation, resource,
+  channel and label behavior, no new owner/API/visible UI change. Separate scope baseline/after and
+  independent review; do not mix any further preprocess legacy path removal into this slice.
 
 ### Earlier slice declarations and evidence
 

@@ -15,7 +15,7 @@ from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from XBrainLab.backend.exceptions import StaleTrainingPipelineMutationError
 from XBrainLab.backend.services.dataset_state_service import DatasetInterpretationPort
@@ -104,7 +104,7 @@ from .label_resource_admission import (
     session_from_resource_preflight,
 )
 from .owned_work import owned_work_checkpoint, owned_work_commit_boundary
-from .pipeline_transaction import PipelineStateSnapshot, PipelineStateTransaction
+from .pipeline_transaction import PipelineStateTransaction
 from .resource_guard import (
     RAM_WARNING_RATIO,
     ResourceConfirmationRequiredError,
@@ -749,126 +749,6 @@ class DataInterpretationCommandService:
         prepared: _PreparedInterpretationValidation,
     ) -> None:
         self.state.record_validation(prepared.candidate_id, prepared.decision)
-
-    def handle_apply_interpretation(self, command: Command) -> HandlerResult:
-        """Apply a validated interpretation to the active dataset."""
-        if not isinstance(command, ApplyInterpretationCommand):
-            raise TypeError("Invalid command for apply_interpretation")
-        owned_work_checkpoint("Preparing interpretation apply")
-        candidate = self.state.resolve_candidate(command.candidate_id)
-        decision = self.state.resolve_validation_decision(candidate.candidate_id)
-        if decision is None:
-            raise PreconditionError("Validate an interpretation before applying it.")
-        self._ensure_candidate_can_apply(command, candidate, decision)
-        preflight, _preflight_receipt, receipt_reused = (
-            self._resolve_apply_resource_preflight(
-                command=command,
-                candidate=candidate,
-            )
-        )
-        self._ensure_reviewed_label_content_is_current(candidate)
-        owned_work_checkpoint("Starting interpretation transaction")
-        training_boundary = (
-            self._pipeline_transaction.begin_raw_replacement()
-            if self._pipeline_transaction is not None
-            else None
-        )
-        snapshot = self._snapshot_raw_state()
-        state_checkpoint = self.state.checkpoint_session_state()
-        try:
-            owned_work_checkpoint("Loading reviewed EEG recordings")
-            count, errors = self._replace_active_raw_data(
-                candidate.selected_eeg_files,
-            )
-            owned_work_checkpoint("Binding reviewed source identity")
-            loaded_files = self._loaded_filepaths() or list(
-                candidate.selected_eeg_files
-            )
-            source_identity_apply = self.apply_service.bind_source_content_identity(
-                candidate,
-            )
-            owned_work_checkpoint("Applying reviewed channel metadata")
-            channels_apply = self.apply_service.apply_bids_channels(candidate)
-            owned_work_checkpoint("Recording interpreted dataset state")
-            interpretation_id = self.state.next_id("interpretation")
-            applied = self._build_applied_interpretation(
-                interpretation_id=interpretation_id,
-                candidate=candidate,
-                decision=decision,
-                loaded_files=loaded_files,
-            )
-            self.state.record_applied(applied)
-            owned_work_checkpoint("Applying reviewed recording metadata")
-            metadata_apply = self.apply_service.apply_candidate_metadata_to_loaded_data(
-                candidate,
-            )
-            owned_work_checkpoint("Applying reviewed label carriers")
-            label_resources = self._admitted_reviewed_label_resources(
-                candidate,
-                preflight,
-            )
-            label_apply = self.apply_service.apply_label_carriers(
-                candidate,
-                label_resources,
-            )
-            owned_work_checkpoint("Recording reviewed epoch hints")
-            internal_epoch_hints = self.apply_service.record_internal_epoch_hints(
-                candidate,
-            )
-            # Recheck inside the transaction so a carrier changed while raw/labels
-            # were being loaded cannot become applied workflow truth.
-            self._ensure_reviewed_label_content_is_current(candidate)
-            self._ensure_label_apply_succeeded(candidate, label_apply)
-            owned_work_commit_boundary("Committing interpreted dataset")
-            trainer_retired = (
-                self._pipeline_transaction.commit_pipeline_invalidation(
-                    training_boundary,
-                )
-                if self._pipeline_transaction is not None
-                and training_boundary is not None
-                else False
-            )
-        except Exception:
-            self.state.restore_session_state(state_checkpoint)
-            self._restore_raw_state(snapshot)
-            raise
-        applied_payload = self.state.resolve_applied_interpretation().to_dict()
-        label_message = ""
-        if label_apply.get("status") == "applied":
-            label_message = (
-                f" Imported reviewed labels for "
-                f"{label_apply.get('success_count', 0)} file(s)."
-            )
-        elif label_apply.get("status") == "failed":
-            label_message = (
-                f" Reviewed labels were not applied: "
-                f"{label_apply.get('reason', 'unknown error')}."
-            )
-        elif label_apply.get("status") == "skipped" and candidate.label_carrier_plan:
-            label_message = (
-                f" Reviewed labels still need setup: "
-                f"{label_apply.get('reason', 'manual review required')}."
-            )
-        return (
-            f"Applied interpretation and loaded {count} file(s).{label_message}",
-            {
-                "payload_type": "applied_interpretation",
-                "success_count": count,
-                "errors": errors,
-                "applied_interpretation": applied_payload,
-                "metadata_apply": metadata_apply,
-                "source_identity_apply": source_identity_apply,
-                "channels_apply": channels_apply,
-                "label_carriers_pending": list(candidate.label_carriers),
-                "label_apply": label_apply,
-                "internal_epoch_hints": internal_epoch_hints,
-                "trainer_retired": trainer_retired,
-                "resource_preflight": {
-                    **preflight.to_diagnostics(),
-                    "confirmation_receipt_reused": receipt_reused,
-                },
-            },
-        )
 
     def begin_apply_interpretation(
         self,
@@ -2141,38 +2021,6 @@ class DataInterpretationCommandService:
                 "Confirm this interpretation before applying it.",
             )
 
-    def _replace_active_raw_data(
-        self,
-        paths: list[str],
-    ) -> tuple[int, list[str]]:
-        """Replace active raw data before importing reviewed interpretation files."""
-        expected_count = len(paths)
-        loaded_files = list(self.dataset.get_loaded_data_list() or [])
-        if self._pipeline_transaction is not None:
-            self._pipeline_transaction.prepare_raw_replacement()
-        else:
-            clean_dataset = getattr(self.dataset, "clean_dataset", None)
-            if loaded_files and callable(clean_dataset):
-                clean_dataset()
-        count, errors = self.dataset.import_files(paths)
-        if errors or count != expected_count:
-            diagnostics = {
-                "errors": errors,
-                "success_count": count,
-                "expected_count": expected_count,
-            }
-            raise ApplicationError(
-                message=(
-                    "Failed to apply interpretation without changing the active "
-                    f"dataset: loaded {count}/{expected_count} file(s)"
-                    + (f"; errors: {errors}" if errors else ".")
-                ),
-                error_type=ErrorType.RUNTIME,
-                recoverable=True,
-                diagnostics=diagnostics,
-            )
-        return count, errors
-
     @staticmethod
     def _label_apply_blocks_interpretation(
         candidate: InterpretationCandidate,
@@ -2208,38 +2056,6 @@ class DataInterpretationCommandService:
 
     def _has_active_raw_data(self) -> bool:
         return bool(list(self.dataset.get_loaded_data_list() or []))
-
-    def _loaded_filepaths(self) -> list[str]:
-        return [
-            self._data_filepath(data)
-            for data in list(self.dataset.get_loaded_data_list() or [])
-        ]
-
-    def _snapshot_raw_state(self) -> PipelineStateSnapshot | dict[str, Any]:
-        """Capture active raw state so failed interpretation apply can roll back."""
-        if self._pipeline_transaction is not None:
-            return self._pipeline_transaction.capture()
-        return {
-            "kind": "generic",
-            "loaded": list(getattr(self.dataset, "loaded", [])),
-            "imported_paths": list(getattr(self.dataset, "imported_paths", [])),
-        }
-
-    def _restore_raw_state(
-        self,
-        snapshot: PipelineStateSnapshot | dict[str, Any],
-    ) -> None:
-        """Restore raw state captured before a failed interpretation apply."""
-        if isinstance(snapshot, PipelineStateSnapshot):
-            if self._pipeline_transaction is None:
-                raise RuntimeError("Pipeline transaction is unavailable for restore.")
-            self._pipeline_transaction.restore(snapshot)
-        elif snapshot.get("kind") == "generic":
-            compatibility_dataset = cast(Any, self.dataset)
-            if hasattr(compatibility_dataset, "loaded"):
-                compatibility_dataset.loaded = list(snapshot["loaded"])
-            if hasattr(compatibility_dataset, "imported_paths"):
-                compatibility_dataset.imported_paths = list(snapshot["imported_paths"])
 
     @staticmethod
     def _build_applied_interpretation(
