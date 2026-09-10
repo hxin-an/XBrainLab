@@ -507,7 +507,6 @@ class PreprocessSidebar(QWidget):
         command: PreprocessCommand | CreateEpochCommand,
         *,
         blocked_title: str,
-        failure_prefix: str,
         on_success: Callable[[Any], None],
         expected_publication_generation: int | None = None,
         stale_review_title: str | None = None,
@@ -598,7 +597,6 @@ class PreprocessSidebar(QWidget):
                 self._execute_preprocess_command(
                     command,
                     blocked_title="Filtering Blocked",
-                    failure_prefix="Filtering failed",
                     on_success=lambda result: self._show_preprocess_success(
                         result,
                         "Filtering applied.",
@@ -663,7 +661,6 @@ class PreprocessSidebar(QWidget):
                         rate=rate,
                     ),
                     blocked_title="Resampling Blocked",
-                    failure_prefix="Resample failed",
                     on_success=lambda result: self._show_preprocess_success(
                         result,
                         "Resampling applied.",
@@ -703,7 +700,6 @@ class PreprocessSidebar(QWidget):
                         else None,
                     ),
                     blocked_title="Re-reference Blocked",
-                    failure_prefix="Re-reference failed",
                     on_success=lambda result: self._show_preprocess_success(
                         result,
                         "Re-reference applied.",
@@ -735,7 +731,6 @@ class PreprocessSidebar(QWidget):
                         method=method,
                     ),
                     blocked_title="Normalization Blocked",
-                    failure_prefix="Normalization failed",
                     on_success=lambda result: self._show_preprocess_success(
                         result,
                         result.message,
@@ -811,7 +806,6 @@ class PreprocessSidebar(QWidget):
                 confirmation_receipt=dialog.get_confirmation_receipt(),
             ),
             blocked_title="Create EEG Epochs Blocked",
-            failure_prefix="Creating EEG epochs failed",
             on_success=self._handle_epoch_command_success,
             expected_publication_generation=(dialog_context.publication_generation),
             stale_review_title="Review EEG Epoch Setup Again",
