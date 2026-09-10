@@ -109,6 +109,20 @@ old session IDs and plan text do not prove a process is running. No manual candi
 
 **Current work — developer docs/config truth and remaining scripts; module2–6 closure gaps and explicit decisions remain open.**
 
+**Bounded8L — retire orphan capture alias and correct generated app-polish report.** Independent
+full capture2231/direct1282 and main factory/report/caller traces find _epoching_dialog only forwards
+to the live internal-events factory with no caller/registration/config/doc use. Remove that alias,
+not either live epoch scenario. Generated README omits both filtering images, mislabels the requested
+820x470 split factory as752x470, and hardcodes offscreen despite native DPI callers. Correct only
+report text/list, point runtime platform/scale to the existing manifest and distinguish requested size
+from observed geometry. Strengthen existing real-file README test against all canonical surfaces and
+these facts; before-source run also retains real filtering/epoch/split geometry cases. Then same tests,
+Ruff/caller/diff review. No product/UI layout/schema/gate change, new owner or screenshot rebasing;
+continue remaining evidence contract audit after this slice.
+Result: original live native filtering/epoch/split7 pass while strengthened README fails missing
+inventory8.58s; same8 pass8.56s after. Ruff/format, diff and independent caller/manifest-truth review
+pass. Script+4/-7/net-3, test+4, no case retirement or product/UI source change.
+
 **Bounded8K — remove unused phase-alias arguments without changing evidence.** Independent full
 human-like parent4966/direct5939 and main four-caller/helper read find append_phase_alias ignores
 widget and service; these are not state owners or observation hooks. Characterize actual helper output

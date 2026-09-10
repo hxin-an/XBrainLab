@@ -506,11 +506,6 @@ def _fit_dialog_to_native_layout(dialog: QWidget, minimum: QSize) -> None:
                 app.processEvents()
 
 
-def _epoching_dialog() -> EpochingDialog:
-    """Compatibility alias for the internal-event capture fixture."""
-    return _epoching_internal_events_dialog()
-
-
 def _data_splitting_dialog() -> QWidget:
     dialog = DataSplittingDialog(
         None,
@@ -2160,7 +2155,7 @@ def _write_readme(output_dir: Path = DEFAULT_OUTPUT_DIR) -> None:
         "# App Polish Screenshots\n\n"
         "status: generated focused UI review evidence\n"
         "generator: `scripts/dev/capture_ui_polish_surfaces.py`\n"
-        "environment: PyQt offscreen capture\n"
+        "platform and requested scale: see `app-polish-evidence.json`\n"
         "supports: current visual state for adaptive assistant setup, active-turn, "
         "and runtime recovery surfaces, plus model selection, data splitting, "
         "and evaluation metrics table polish\n"
@@ -2188,9 +2183,11 @@ def _write_readme(output_dir: Path = DEFAULT_OUTPUT_DIR) -> None:
         "- `model-selection-dialog.png`\n"
         "- `training-setting-dialog.png`\n"
         "- `preprocess-rereference-dialog.png`\n"
+        "- `preprocess-filtering-default.png`\n"
+        "- `preprocess-filtering-notch-only.png`\n"
         "- `preprocess-epoching-internal-events-dialog.png`\n"
         "- `preprocess-epoching-bids-interval-duration-dialog.png`\n"
-        "- `data-splitting-dialog.png` (752 x 470 scroll fallback)\n"
+        "- `data-splitting-dialog.png` (820 x 470 requested; scroll fallback)\n"
         "- `data-splitting-dialog-narrow.png` (752 x 700 full reflow)\n"
         "- `data-splitting-preview-dialog.png`\n"
         "- `assistant-setup-required-narrow.png` (320 x 650, setup-required "
