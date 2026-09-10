@@ -299,9 +299,6 @@ class MainWindow(QMainWindow):
 
     """
 
-    # Signals to control the worker
-    sig_init_agent = pyqtSignal()
-    sig_generate = pyqtSignal(str, str)
     shutdown_completed = pyqtSignal(object)
     _close_retry_requested = pyqtSignal(int)
     COMPACT_NAV_BREAKPOINT = 720

@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `0aa9fa6c`, 129 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `48b9f880`, 130 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -310,12 +310,31 @@ file about-34LOC, no new owner/contract/UI change. One reversible commit, then c
 
 7E verified48before2.00s/after2.03s; no cases removed or displayed-value/geometry assertions weakened.
 Production+1/-34/net-33; tests-2. Main full source/tests/caller and actual diff review passed; two-file
-Ruff check/format passed. No latency claim from deleting an unconnected signal. Commit next.
+Ruff check/format passed. No latency claim from deleting an unconnected signal. Committed48b9f880.
 
 Shared sizing/button audit: independent full table_sizing60/direct24 and dialog_button_policy78/
 direct97 retain real two-surface minimum/exact-pixel sizing and global post-style icon/default policy.
 Real QMessageBox/ModalAlertDialog Enter/Escape tests protect safe cancellation; no duplicated owner or
 confirmed deletion candidate. These retained findings do not close the remaining shared runtime module.
+
+**Bounded7F — retire unused Qt event surfaces.** Full main EventBus54/direct63 and Worker140/direct174,
+plus independently full MainWindow and actual signal/caller search identify an entirely unused
+EventBus singleton, WorkerSignals.progress (only two exclusive tests), and MainWindow.sig_init_agent/
+sig_generate (declarations only; different live controller signal stays). Remove these unconnected
+UI-internal surfaces and exact EventBus tests/seven cases plus two progress-only cases. Preserve all
+worker finished/result/error delivery, native-heavy Python thread seam and actual Assistant wiring.
+No public Command/UI behavior change, no new owner; three production files about-63LOC. Characterize
+worker/event-bus/main-window/async-command suites; after retain all other cases, lint and actual diff/
+independent caller review. One reversible commit, continue shared lifecycle audit, not handoff.
+
+7F verified52before7.55s ->43after7.30s, exactly9 exclusive orphan cases removed. Production-59,
+testsnet-75. Independent actual-diff/caller review approved and three surviving changed Python files
+pass Ruff. Main verified actual diff and distinct live controller/close signals. Commit next.
+
+Modal/error audit: independent full modal406/error319/common463/BaseDialog209 and direct448/26/891/
+138/147 retain shared alert/confirmation, safe Cancel/Enter, geometry/order and public diagnostic
+privacy. Unused show_information facade and ignored message_box injection parameter are candidates;
+all context recovery text and actual warning/error/confirmation routes remain necessary.
 
 **Module6 initial full owner audit (not closure).** Independent full controller2949/attempt898/
 execution342/confirmation314/pending443 and respective direct confirmation154/pending560/execution151/
