@@ -258,54 +258,12 @@ class PreprocessCommandService:
         if not isinstance(command, PreprocessCommand):
             raise TypeError("Invalid command for preprocess")
         operation = PreprocessOperation(command.operation)
-        if operation == PreprocessOperation.BANDPASS:
-            low_freq = self._require(command.low_freq, "low_freq")
-            high_freq = self._require(command.high_freq, "high_freq")
-            notch_freqs = [command.notch_freq] if command.notch_freq else None
-            self.preprocess.apply_filter(low_freq, high_freq, notch_freqs)
-            return f"Applied bandpass filter: {low_freq}-{high_freq} Hz."
-        if operation == PreprocessOperation.NOTCH:
-            freq = self._require(command.notch_freq, "notch_freq")
-            self.preprocess.apply_filter(None, None, [freq])
-            return f"Applied notch filter: {freq} Hz."
-        if operation == PreprocessOperation.RESAMPLE:
-            rate = self._require(command.rate, "rate")
-            self.preprocess.apply_resample(rate)
-            return f"Resampled data to {rate} Hz."
-        if operation == PreprocessOperation.NORMALIZE:
-            method = self._require(command.method, "method")
-            raw_count, epoch_count = self._normalization_target_counts()
-            self.preprocess.apply_normalization(method)
-            return self._normalization_result(
-                str(method),
-                raw_count=raw_count,
-                epoch_count=epoch_count,
-            )
-        if operation == PreprocessOperation.REREFERENCE:
-            ref_channels: str | list[str]
-            if command.channels:
-                ref_channels = command.channels
-                method = ", ".join(command.channels)
-            else:
-                method = self._require(command.method, "method")
-                ref_channels = "average" if method == "average" else [method]
-            self.preprocess.apply_rereference(ref_channels)
-            return f"Applied reference: {method}."
-        if operation in (
-            PreprocessOperation.CHANNEL_SELECTION,
-            PreprocessOperation.SELECT_CHANNELS,
-        ):
-            channels = self._require(command.channels, "channels")
-            self.dataset.apply_channel_selection(channels)
-            return f"Selected {len(channels)} channel(s)."
         if operation == PreprocessOperation.SET_MONTAGE:
             montage_name = self._require(command.montage_name, "montage_name")
             raise ConfirmationRequiredError(
                 "set_montage requires UI confirmation and remains on the "
                 f"app confirmation path for '{montage_name}'.",
             )
-        if operation == PreprocessOperation.STANDARD:
-            return self._handle_standard_preprocess(command)
         raise ValueError(f"Unsupported preprocess operation: {operation}")
 
     def _prepare_preprocess(
@@ -890,40 +848,6 @@ class PreprocessCommandService:
             if event_name and label_name and event_name != label_name:
                 aliases[event_name] = label_name
         return aliases
-
-    def _handle_standard_preprocess(self, command: PreprocessCommand) -> HandlerResult:
-        low_freq = command.low_freq if command.low_freq is not None else 4
-        high_freq = command.high_freq if command.high_freq is not None else 40
-        reference: str | list[str] | None = None
-        if command.channels:
-            is_average = (
-                len(command.channels) == 1 and command.channels[0].lower() == "average"
-            )
-            reference = "average" if is_average else list(command.channels)
-        raw_count, epoch_count = self._normalization_target_counts()
-        self.preprocess.apply_standard_pipeline(
-            l_freq=low_freq,
-            h_freq=high_freq,
-            notch_freq=command.notch_freq,
-            rate=command.rate,
-            ref_channels=reference,
-            normalization=command.method,
-        )
-        if command.method:
-            message, diagnostics = self._normalization_result(
-                command.method,
-                raw_count=raw_count,
-                epoch_count=epoch_count,
-            )
-            return (
-                f"Standard preprocessing applied. {message}",
-                diagnostics,
-            )
-        return "Standard preprocessing applied."
-
-    def _normalization_target_counts(self) -> tuple[int, int]:
-        data_list = self.preprocess.get_preprocessed_data_list()
-        return self._normalization_target_counts_for(data_list)
 
     @staticmethod
     def _normalization_target_counts_for(

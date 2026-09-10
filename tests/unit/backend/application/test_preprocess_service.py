@@ -6,6 +6,7 @@ from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any, cast
 
+import mne
 import numpy as np
 import pytest
 
@@ -22,8 +23,11 @@ from XBrainLab.backend.application.errors import (
 from XBrainLab.backend.application.preprocess_service import (
     PreprocessCommandService,
 )
+from XBrainLab.backend.application.service import ApplicationService
 from XBrainLab.backend.application.state import ApplicationStateSnapshot
+from XBrainLab.backend.load_data import Raw
 from XBrainLab.backend.preprocessor.time_epoch import EpochBoundarySummary
+from XBrainLab.backend.study import Study
 
 
 class _PreprocessController:
@@ -33,54 +37,6 @@ class _PreprocessController:
 
     def get_preprocessed_data_list(self) -> list[Any]:
         return self.data_list
-
-    def apply_filter(
-        self,
-        low_freq: float | None,
-        high_freq: float | None,
-        notch_freqs: list[float] | None,
-    ) -> None:
-        self.events.append(("filter", (low_freq, high_freq, notch_freqs)))
-
-    def apply_resample(self, rate: float) -> None:
-        self.events.append(("resample", rate))
-
-    def apply_normalization(self, method: str) -> None:
-        self.events.append(("normalize", method))
-
-    def apply_rereference(self, channels: str | list[str]) -> None:
-        self.events.append(("rereference", channels))
-
-    def apply_montage(
-        self,
-        channels: list[str],
-        positions: list[tuple[float, float, float]],
-    ) -> None:
-        self.events.append(("montage", (channels, positions)))
-
-    def apply_standard_pipeline(
-        self,
-        *,
-        l_freq: float,
-        h_freq: float,
-        notch_freq: float | None = None,
-        rate: float | None = None,
-        ref_channels: str | list[str] | None = None,
-        normalization: str | None = None,
-    ) -> None:
-        self.events.append(
-            (
-                "standard_pipeline",
-                {
-                    "l_freq": l_freq,
-                    "h_freq": h_freq,
-                    "notch_freq": notch_freq,
-                    "rate": rate,
-                    "ref_channels": ref_channels,
-                    "normalization": normalization,
-                },
-            )
-        )
 
     def apply_epoching(
         self,
@@ -95,22 +51,6 @@ class _PreprocessController:
         if allow_boundary_drop:
             values += (True,)
         self.events.append(("epoch", values))
-
-
-class _DatasetController:
-    def __init__(self) -> None:
-        self.selected_channels: list[str] | None = None
-
-    def apply_channel_selection(self, channels: list[str]) -> None:
-        self.selected_channels = channels
-
-
-class _NormalizationTarget:
-    def __init__(self, *, raw: bool) -> None:
-        self._raw = raw
-
-    def is_raw(self) -> bool:
-        return self._raw
 
 
 class _BidsEpochData:
@@ -217,12 +157,12 @@ def _state_with_epoch_handoff(
 def _service() -> tuple[
     PreprocessCommandService,
     _PreprocessController,
-    _DatasetController,
+    SimpleNamespace,
 ]:
     preprocess = _PreprocessController()
     event_names = ["left", "right", "noise", "oddball", "standard"]
     preprocess.data_list = [_InternalEpochData(event_names)]
-    dataset = _DatasetController()
+    dataset = SimpleNamespace()
     return (
         PreprocessCommandService(
             preprocess=preprocess,
@@ -257,7 +197,7 @@ def _bids_epoch_confirmation_service(
     }
     service = PreprocessCommandService(
         preprocess=preprocess,
-        dataset=_DatasetController(),
+        dataset=SimpleNamespace(),
         get_state=lambda: _state_with_epoch_handoff(handoff),
     )
     monkeypatch.setattr(
@@ -271,137 +211,239 @@ def _bids_epoch_confirmation_service(
     return service, preprocess, data, handoff
 
 
-def test_preprocess_service_applies_core_operations() -> None:
-    service, preprocess, dataset = _service()
+def _real_preprocess_application() -> tuple[ApplicationService, Raw, np.ndarray]:
+    study = Study()
+    source_values = np.vstack(
+        [
+            np.sin(np.linspace(0.0, 20.0, 2_048))
+            + 5.0 * np.sin(2 * np.pi * 50.0 * np.arange(2_048) / 256.0),
+            np.cos(np.linspace(0.0, 20.0, 2_048)),
+            np.sin(np.linspace(0.0, 40.0, 2_048)),
+        ]
+    )
+    raw = Raw(
+        "preprocess-characterization.fif",
+        mne.io.RawArray(
+            source_values.copy(),
+            mne.create_info(["C3", "C4", "Cz"], sfreq=256.0, ch_types="eeg"),
+            verbose="ERROR",
+        ),
+    )
+    study.set_loaded_data_list([raw], force_update=True)
+    return ApplicationService(study), raw, source_values
 
-    assert (
-        service.handle_preprocess(
+
+@pytest.mark.parametrize(
+    ("command", "expected_message", "effect"),
+    [
+        (
+            PreprocessCommand(
+                operation=PreprocessOperation.BANDPASS, low_freq=1.0, high_freq=40.0
+            ),
+            "Applied bandpass filter: 1.0-40.0 Hz.",
+            "filter",
+        ),
+        (
+            PreprocessCommand(operation=PreprocessOperation.NOTCH, notch_freq=50.0),
+            "Applied notch filter: 50.0 Hz.",
+            "notch",
+        ),
+        (
+            PreprocessCommand(operation=PreprocessOperation.RESAMPLE, rate=128.0),
+            "Resampled data to 128.0 Hz.",
+            "resample",
+        ),
+        (
+            PreprocessCommand(
+                operation=PreprocessOperation.NORMALIZE, method="z-score"
+            ),
+            "Z-score normalization will be applied independently to each EEG epoch when epochs are created.",
+            "normalize",
+        ),
+        (
+            PreprocessCommand(
+                operation=PreprocessOperation.REREFERENCE, method="average"
+            ),
+            "Applied reference: average.",
+            "average_reference",
+        ),
+        (
+            PreprocessCommand(
+                operation=PreprocessOperation.REREFERENCE, channels=["Cz"]
+            ),
+            "Applied reference: Cz.",
+            "named_reference",
+        ),
+        (
+            PreprocessCommand(
+                operation=PreprocessOperation.CHANNEL_SELECTION, channels=["C3", "C4"]
+            ),
+            "Selected 2 channel(s).",
+            "channel_selection",
+        ),
+        (
+            PreprocessCommand(
+                operation=PreprocessOperation.SELECT_CHANNELS, channels=["C3", "C4"]
+            ),
+            "Selected 2 channel(s).",
+            "channel_selection",
+        ),
+        (
+            PreprocessCommand(
+                operation=PreprocessOperation.STANDARD,
+                notch_freq=60.0,
+                rate=128.0,
+                channels=["average"],
+                method="z score",
+            ),
+            "Standard preprocessing applied. Z score normalization will be applied independently to each EEG epoch when epochs are created.",
+            "standard",
+        ),
+    ],
+    ids=(
+        "bandpass",
+        "notch",
+        "resample",
+        "normalize",
+        "average-reference",
+        "named-reference",
+        "channel-selection",
+        "select-channels",
+        "standard",
+    ),
+)
+def test_application_preprocess_operations_use_prepared_command_path(
+    command: PreprocessCommand,
+    expected_message: str,
+    effect: str,
+) -> None:
+    service, source, source_values = _real_preprocess_application()
+    try:
+        result = service.execute(command)
+
+        assert result.ok, result.message
+        assert result.message == expected_message
+        np.testing.assert_array_equal(source.get_mne().get_data(), source_values)
+        assert source.get_preprocess_history() == []
+        if effect == "channel_selection":
+            selected_loaded = service.study.loaded_data_list[0]
+            assert selected_loaded is not source
+            assert selected_loaded.get_mne().ch_names == ["C3", "C4"]
+            np.testing.assert_array_equal(
+                selected_loaded.get_mne().get_data(), source_values[:2]
+            )
+        else:
+            assert service.study.loaded_data_list[0] is source
+        prepared = service.study.preprocessed_data_list[0]
+        assert prepared is not source
+        if effect in {"filter", "notch"}:
+            frequencies = np.fft.rfftfreq(source_values.shape[1], 1 / 256.0)
+            index_50_hz = int(np.argmin(np.abs(frequencies - 50.0)))
+            original_power = abs(np.fft.rfft(source_values[0])[index_50_hz]) ** 2
+            processed_power = (
+                abs(np.fft.rfft(prepared.get_mne().get_data()[0])[index_50_hz]) ** 2
+            )
+            assert processed_power < original_power * (
+                0.1 if effect == "filter" else 0.5
+            )
+        elif effect == "resample":
+            assert prepared.get_sfreq() == 128.0
+        elif effect == "normalize":
+            assert prepared.get_runtime_detail("normalization") == {
+                "method": "z score",
+                "scope": "per_epoch_per_channel",
+                "status": "pending",
+                "requested_on": "raw",
+                "uses_recording_statistics": False,
+            }
+            assert {
+                key: result.diagnostics[key]
+                for key in (
+                    "normalization_method",
+                    "normalization_scope",
+                    "raw_requests_deferred",
+                    "epoched_items_normalized",
+                    "recording_statistics_used",
+                )
+            } == {
+                "normalization_method": "z-score",
+                "normalization_scope": "per_epoch_per_channel",
+                "raw_requests_deferred": 1,
+                "epoched_items_normalized": 0,
+                "recording_statistics_used": False,
+            }
+        elif effect == "average_reference":
+            assert np.allclose(prepared.get_mne().get_data().sum(axis=0), 0.0)
+        elif effect == "named_reference":
+            assert np.allclose(prepared.get_mne().get_data()[2], 0.0)
+        elif effect == "channel_selection":
+            assert prepared.get_mne().ch_names == ["C3", "C4"]
+        elif effect == "standard":
+            assert prepared.get_sfreq() == 128.0
+            assert prepared.get_filter_range() == (4.0, 40.0)
+            assert np.allclose(prepared.get_mne().get_data().sum(axis=0), 0.0)
+            assert prepared.get_runtime_detail("normalization") == {
+                "method": "z score",
+                "scope": "per_epoch_per_channel",
+                "status": "pending",
+                "requested_on": "raw",
+                "uses_recording_statistics": False,
+            }
+            assert {
+                key: result.diagnostics[key]
+                for key in (
+                    "normalization_method",
+                    "normalization_scope",
+                    "raw_requests_deferred",
+                    "epoched_items_normalized",
+                    "recording_statistics_used",
+                )
+            } == {
+                "normalization_method": "z score",
+                "normalization_scope": "per_epoch_per_channel",
+                "raw_requests_deferred": 1,
+                "epoched_items_normalized": 0,
+                "recording_statistics_used": False,
+            }
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize(
+    ("command", "expected_message"),
+    [
+        (
             PreprocessCommand(
                 operation=PreprocessOperation.BANDPASS,
-                low_freq=1.0,
                 high_freq=40.0,
-                notch_freq=50.0,
             ),
-        )
-        == "Applied bandpass filter: 1.0-40.0 Hz."
-    )
-    assert (
-        service.handle_preprocess(
-            PreprocessCommand(
-                operation=PreprocessOperation.REREFERENCE,
-                method="average",
-            ),
-        )
-        == "Applied reference: average."
-    )
-    assert (
-        service.handle_preprocess(
-            PreprocessCommand(
-                operation=PreprocessOperation.SELECT_CHANNELS,
-                channels=["C3", "C4"],
-            ),
-        )
-        == "Selected 2 channel(s)."
-    )
-
-    assert preprocess.events == [
-        ("filter", (1.0, 40.0, [50.0])),
-        ("rereference", "average"),
-    ]
-    assert dataset.selected_channels == ["C3", "C4"]
-
-
-def test_preprocess_service_maps_individual_operations_without_facade() -> None:
-    service, preprocess, _dataset = _service()
-    preprocess.data_list = [_NormalizationTarget(raw=True)]
-
-    assert (
-        service.handle_preprocess(
-            PreprocessCommand(
-                operation=PreprocessOperation.NOTCH,
-                notch_freq=60.0,
-            ),
-        )
-        == "Applied notch filter: 60.0 Hz."
-    )
-    assert (
-        service.handle_preprocess(
-            PreprocessCommand(
-                operation=PreprocessOperation.RESAMPLE,
-                rate=256,
-            ),
-        )
-        == "Resampled data to 256 Hz."
-    )
-    normalize_message, normalize_diagnostics = service.handle_preprocess(
-        PreprocessCommand(
-            operation=PreprocessOperation.NORMALIZE,
-            method="z-score",
+            "low_freq is required.",
         ),
-    )
-    assert normalize_message == (
-        "Z-score normalization will be applied independently to each EEG epoch "
-        "when epochs are created."
-    )
-    assert normalize_diagnostics == {
-        "normalization_method": "z-score",
-        "normalization_scope": "per_epoch_per_channel",
-        "raw_requests_deferred": 1,
-        "epoched_items_normalized": 0,
-        "recording_statistics_used": False,
-    }
-    assert (
-        service.handle_preprocess(
-            PreprocessCommand(
-                operation=PreprocessOperation.REREFERENCE,
-                channels=["Cz"],
-            ),
-        )
-        == "Applied reference: Cz."
-    )
-
-    assert preprocess.events == [
-        ("filter", (None, None, [60.0])),
-        ("resample", 256),
-        ("normalize", "z-score"),
-        ("rereference", ["Cz"]),
-    ]
-
-
-def test_preprocess_service_applies_standard_preprocess_in_batch() -> None:
-    service, preprocess, _dataset = _service()
-    preprocess.data_list = [_NormalizationTarget(raw=True)]
-
-    message, diagnostics = service.handle_preprocess(
-        PreprocessCommand(
-            operation=PreprocessOperation.STANDARD,
-            notch_freq=60.0,
-            rate=128,
-            method="z score",
-            channels=["average"],
-        ),
-    )
-    assert message == (
-        "Standard preprocessing applied. Z score normalization will be applied "
-        "independently to each EEG epoch when epochs are created."
-    )
-    assert diagnostics["normalization_scope"] == "per_epoch_per_channel"
-    assert diagnostics["raw_requests_deferred"] == 1
-    assert diagnostics["recording_statistics_used"] is False
-
-    assert preprocess.events == [
         (
-            "standard_pipeline",
-            {
-                "l_freq": 4,
-                "h_freq": 40,
-                "notch_freq": 60.0,
-                "rate": 128,
-                "ref_channels": "average",
-                "normalization": "z score",
-            },
+            PreprocessCommand(operation=cast(PreprocessOperation, "unsupported")),
+            "'unsupported' is not a valid PreprocessOperation",
         ),
-    ]
+    ],
+    ids=("bandpass-missing-low-frequency", "unsupported-operation"),
+)
+def test_application_preprocess_rejects_invalid_commands_without_mutation(
+    command: PreprocessCommand,
+    expected_message: str,
+) -> None:
+    service, source, source_values = _real_preprocess_application()
+    try:
+        original_preprocessed = service.study.preprocessed_data_list
+
+        result = service.execute(command)
+
+        assert result.failed is True
+        assert result.message == expected_message
+        assert service.study.loaded_data_list[0] is source
+        assert service.study.preprocessed_data_list is original_preprocessed
+        np.testing.assert_array_equal(source.get_mne().get_data(), source_values)
+        assert source.get_preprocess_history() == []
+    finally:
+        service.close()
 
 
 def test_preprocess_service_creates_epoch() -> None:
@@ -631,7 +673,7 @@ def test_preprocess_service_rejects_semantically_unavailable_epoch_context(
     preprocess.data_list = [data]
     service = PreprocessCommandService(
         preprocess=preprocess,
-        dataset=_DatasetController(),
+        dataset=SimpleNamespace(),
         get_state=lambda: _state_with_epoch_handoff(handoff),
     )
 
@@ -699,7 +741,7 @@ def test_preprocess_service_blocks_epoch_ram_before_copy_or_materialization(
     preprocess = MaterializingPreprocessController(source)
     service = PreprocessCommandService(
         preprocess=preprocess,
-        dataset=_DatasetController(),
+        dataset=SimpleNamespace(),
         get_state=lambda: _state_with_epoch_handoff(
             _ready_internal_handoff(["left", "right"])
         ),
@@ -723,7 +765,7 @@ def test_preprocess_service_uses_data_import_epoch_defaults() -> None:
     preprocess = _PreprocessController()
     event_names = ["Left hand", "Right hand"]
     preprocess.data_list = [_InternalEpochData(event_names)]
-    dataset = _DatasetController()
+    dataset = SimpleNamespace()
     service = PreprocessCommandService(
         preprocess=preprocess,
         dataset=dataset,
@@ -743,7 +785,7 @@ def test_preprocess_service_uses_raw_event_defaults_for_internal_labels() -> Non
     preprocess = _PreprocessController()
     event_names = ["769", "770"]
     preprocess.data_list = [_InternalEpochData(event_names)]
-    dataset = _DatasetController()
+    dataset = SimpleNamespace()
     handoff = _ready_internal_handoff(event_names)
     handoff["event_label_aliases"] = {
         "769": "Left hand",
@@ -766,7 +808,7 @@ def test_preprocess_service_accepts_display_aliases_for_internal_labels() -> Non
     preprocess = _PreprocessController()
     event_names = ["769", "770"]
     preprocess.data_list = [_InternalEpochData(event_names)]
-    dataset = _DatasetController()
+    dataset = SimpleNamespace()
     handoff = _ready_internal_handoff(event_names)
     handoff["event_label_aliases"] = {
         "769": "Left hand",
@@ -795,7 +837,7 @@ def test_preprocess_service_rejects_epoch_targets_outside_import_handoff() -> No
     preprocess = _PreprocessController()
     event_names = ["Left hand", "Right hand", "Artifact"]
     preprocess.data_list = [_InternalEpochData(event_names)]
-    dataset = _DatasetController()
+    dataset = SimpleNamespace()
     service = PreprocessCommandService(
         preprocess=preprocess,
         dataset=dataset,
@@ -813,7 +855,7 @@ def test_preprocess_service_rejects_epoch_targets_outside_import_handoff() -> No
 def test_preprocess_service_blocks_handoff_blockers_before_defaults() -> None:
     preprocess = _PreprocessController()
     preprocess.data_list = [_InternalEpochData(["Left hand", "Right hand"])]
-    dataset = _DatasetController()
+    dataset = SimpleNamespace()
     service = PreprocessCommandService(
         preprocess=preprocess,
         dataset=dataset,
@@ -839,7 +881,7 @@ def test_preprocess_service_rejects_dict_epoch_targets_outside_import_handoff() 
     preprocess = _PreprocessController()
     event_names = ["Left hand", "Right hand", "Artifact"]
     preprocess.data_list = [_InternalEpochData(event_names)]
-    dataset = _DatasetController()
+    dataset = SimpleNamespace()
     service = PreprocessCommandService(
         preprocess=preprocess,
         dataset=dataset,
@@ -868,7 +910,7 @@ def test_preprocess_service_fails_closed_when_epoch_state_read_raises() -> None:
 
     service = PreprocessCommandService(
         preprocess=preprocess,
-        dataset=_DatasetController(),
+        dataset=SimpleNamespace(),
         get_state=raise_state_read,
     )
 
@@ -889,7 +931,7 @@ def test_preprocess_service_fails_closed_for_unreliable_epoch_state() -> None:
     preprocess = _PreprocessController()
     service = PreprocessCommandService(
         preprocess=preprocess,
-        dataset=_DatasetController(),
+        dataset=SimpleNamespace(),
         get_state=lambda: _state_with_epoch_handoff({}, reliable=False),
     )
 
@@ -926,7 +968,7 @@ def test_preprocess_service_fails_closed_for_invalid_epoch_handoff_payload(
     preprocess = _PreprocessController()
     service = PreprocessCommandService(
         preprocess=preprocess,
-        dataset=_DatasetController(),
+        dataset=SimpleNamespace(),
         get_state=lambda: cast(ApplicationStateSnapshot, invalid_state),
     )
 
@@ -948,7 +990,7 @@ def test_preprocess_service_accepts_explicit_ordinary_epoch_settings() -> None:
     preprocess.data_list = [_InternalEpochData(event_names)]
     service = PreprocessCommandService(
         preprocess=preprocess,
-        dataset=_DatasetController(),
+        dataset=SimpleNamespace(),
         get_state=lambda: _state_with_epoch_handoff(
             _ready_internal_handoff(event_names)
         ),
@@ -970,11 +1012,6 @@ def test_preprocess_service_accepts_explicit_ordinary_epoch_settings() -> None:
 
 def test_preprocess_service_preserves_safety_boundaries() -> None:
     service, _preprocess, _dataset = _service()
-
-    with pytest.raises(PreconditionError, match="low_freq is required"):
-        service.handle_preprocess(
-            PreprocessCommand(operation=PreprocessOperation.BANDPASS, high_freq=40.0),
-        )
 
     with pytest.raises(ConfirmationRequiredError, match="set_montage requires UI"):
         service.handle_preprocess(

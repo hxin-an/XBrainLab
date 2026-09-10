@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `7fb9fcc9`, 58 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `07881c8d`, 59 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -126,7 +126,7 @@ retain all five-step, exact fresh review, no-publication, cancellation/drain/ret
 contracts. Optional fixtures were not run here; final required-source gate still applies.
 Continue authorized module3 while awaiting visible decisions; do not markmodule2closed or handoff.
 
-**Completed 3A, pending commit — split illustration math cleanup and stronger tests.** Main/independent read
+**Completed 3A — split illustration math cleanup and stronger tests.** Main/independent read
 DrawRegion75–250, actual update_preview/testing/validation callers and direct148; change_to and
 decrease_w_tail have no production/dynamic/script/doc caller, only two exclusive tests. Remove
 only these unused methods and exclusive tests from data_splitting_dialog.py/direct test after
@@ -175,7 +175,7 @@ branch (actual montage mutation is ApplyMontageCommand); invalid-operation parsi
 Do not delete whole handler/map from text-search alone. Map every legacy epoch resource/boundary/
 receipt/handoff assertion to actual prepared/ApplicationService evidence before declaring3C.
 
-**Declared 3C — retire unreachable ordinary preprocess dispatch, not epoch safety.** Main and
+**Completed 3C — retire unreachable ordinary preprocess dispatch, not epoch safety.** Main and
 independent execute trace confirms every valid PreprocessCommand except SET_MONTAGE is intercepted
 by _uses_prepared_preprocess before generic dispatch. Invalid operation parses and SET_MONTAGE's
 existing confirmation error must remain. After real ApplicationService characterization for bandpass/
@@ -191,6 +191,51 @@ Use real Study/Raw/MNE, exact messages and actual transformed/deferred state wit
 unchanged; service.close in finally. No fake two-phase harness. Baseline new characterization before
 production deletion, then retained direct service tests +actual ApplicationService cancel/stale/commit
 and SET_MONTAGE/invalid-operation neighbors; Ruff and independent actualdiff review, separatecommit.
+Legacy worker now authors only real-operation tests; main retains source ownership. No production
+change yet. First characterization36passed/2failed4.15s: both channel-alias cases incorrectly assumed
+loaded-data identity survives channel selection. Existing channel commit intentionally publishes a
+selected copy as loaded and preprocessed data; correct this fixture assertion after tracing that path,
+retain original object nonmutation, and rerun before deletion. This is not a product failure.
+Main fully read epoch_handoff_blockers59, epoch_context1247 and direct759. Retain duration evidence,
+half-open sample math, source/handoff matching and scoped confirmation. Direct lightweight data ports
+cover real context policy, not actual epoch materialization; that migration obligation remains3Cnext.
+Step2 preview source1501 +applicationDTO/publisher936 and direct backend745/boundary36/UI376/UI828/
+layout397/Step1dialogs726/support81 full independent read retains generation/cancellation/claim/receipt,
+state restoration, real Thread/Event close and geometry ownership. The previously suspected duplicate
+evidence_reference assignment is absent in current source; do not claim it as a deletion.
+
+**Declared 3D — split preview handoff protection and unused no-op.** Independently confirmed
+DataSplitterHolder.to_thread is empty, absent from the base contract and has no actual caller.
+Add focused existing-file tests first for a typed receipt invalidated by changed controls and a stale
+generation unable to replace current preview rows/status/receipt. Use actual dialog typed publication
+and existing fixtures, no parallel authority or new harness. Baseline direct UI/split-layout cases;
+after passing characterization remove only the no-op (no thread policy/layout/copy changes), rerun
+the relevant cases and bounded in-memory guard faults, Ruff and independent actualdiff review.
+Main owns source; independent worker may author only tests/unit/ui/test_data_splitting.py or the
+existing direct dataset/test_data_splitting.py as appropriate. UI internal deletion already authorized;
+no visible change/new owner. Commit separately, then continue the remaining module3 epoch/split audit.
+3D baseline24passed/3failed1.78s: new stale case assumed running while actual debounce enters idle;
+corrected to existing idle/render semantics, direct16passed1.29s before source deletion. Two existing
+compact-layout cases at752/760px fail with horizontal ranges30/22px on Windows. This is unrelated to
+the no-op and remains an explicit phase UI issue: inspect header/style widths and native screenshot
+before requesting visible-change approval; do not weaken the layout assertions or claim green.
+Main removes only unused to_thread after the passing direct baseline. Reviewer strengthened receipt
+test to retain old cached successful evidence after control edit, so it tests fingerprint rejection
+and not merely schedule_preview clearing the receipt. Retained16passed1.27s; removing both guards
+only in memory causes exactly their two tests to fail0.21s. Source-3/tests+87, Ruff passed.
+Native QPA windows measurement supersedes the suspected visible defect: both compact cases pass0.31s;
+752px viewport/header388px,760px396px, horizontal range0 at both, Microsoft JhengHei UI9pt/DPR1.
+Main inspected the752px screenshot: no clipped headers/footer/overflow. Earlier failure is an
+offscreen font/platform limitation, not established product layout defect. Full native27 still to run;
+retain tests/assertions and original failure limitation, no product font/layout workaround.
+
+3C corrected real characterization38passed4.07s before deletion; admission/cancel/stale/rollback
+neighbors44passed/1failed7.54s only because invalid-operation test guessed a custom message rather
+than existing Enum ValueError. Corrected exact enum-message/no-mutation pair2passed3.68s before source
+deletion. Retained full selection42passed7.16s after deleting exactlythree obsolete fake-operation
+cases; all epoch safety cases remain. Main/independent actualdiff review and four-file Ruff passed.
+Final formatted3C source-76/tests+233/-196/net+37; fewer duplicate production paths, stronger real
+side-effect evidence rather than a claim of test LOC reduction. Epoch legacy migration remains open.
 
 Completed2X–2AC are indexed below; their full scope/evidence remains in Git history.
 2AC found an existing shared-environment source hazard: Windows .pth adds the original checkout
@@ -403,6 +448,7 @@ this table replaces their duplicated active-plan narrative, not any unresolved m
 | 8D / `aeb53bf4` | Real Qt persistent-visible timeout evidence; tests+36 | Originalsuccess1 ->success/timeout2pass; in-memory wrong-success fault detected; mainnonauthorreview/Ruff |
 | 8E / `b7ed74ab` | Remove unused review-state capture fixture; script-63 | Same32 native before/after, mainnonauthorreview/Ruff; canonical factories/inventory unchanged |
 | 3B / `7fb9fcc9` | Retire unused MAT Export/module/export tests; production-57/tests-98 | Native78 ->73, exactlyfive obsoletecases; same17upstreamwarnings; independentreview/Ruff |
+| 3A / `07881c8d` | Two unused DrawRegion APIs removed; production-23/testsnet-16 | Original22 ->stronger23 ->retained18; wrongoverlapfaultdetected; actualcanvas/strategycases and mainnonauthorreview/Ruff |
 
 ### Evidence qualifications that remain relevant
 
