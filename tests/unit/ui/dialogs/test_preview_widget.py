@@ -1,4 +1,4 @@
-"""Coverage tests for PreviewWidget - 65 uncovered lines."""
+"""Preview state, persistent graphics, and owned callback regressions."""
 
 from __future__ import annotations
 
@@ -26,8 +26,8 @@ class TestPreviewWidgetMethods:
     def test_show_locked_message(self, preview):
         preview.show_locked_message("Data locked")
 
-        assert preview.locked_status_label.text() == "Data locked"
-        assert not preview.locked_status_label.isHidden()
+        assert preview.locked_state_detail.text() == "Data locked"
+        assert not preview.locked_state_detail.isHidden()
         assert not preview.plot_tabs.isEnabled()
         assert not preview.chan_combo.isEnabled()
         assert not preview.yscale_spin.isEnabled()
@@ -43,7 +43,7 @@ class TestPreviewWidgetMethods:
         preview.show_locked_message("Data is Epoched - Preprocessing Locked")
         qtbot.wait(0)
 
-        assert preview.locked_status_label.isVisibleTo(preview)
+        assert preview.locked_state_detail.isVisibleTo(preview)
         assert not preview.chan_combo.isEnabled()
 
         preview.chan_combo.clear()
@@ -55,7 +55,7 @@ class TestPreviewWidgetMethods:
         assert preview.yscale_spin.isEnabled()
         assert preview.time_slider.isEnabled()
         assert preview.time_spin.isEnabled()
-        assert not preview.locked_status_label.isVisibleTo(preview)
+        assert not preview.locked_state_detail.isVisibleTo(preview)
 
     def test_new_curve_data_restores_preview_without_repopulating_channels(
         self,
@@ -69,7 +69,7 @@ class TestPreviewWidgetMethods:
         assert preview.plot_tabs.isEnabled()
         assert preview.chan_combo.isEnabled()
         assert preview.time_slider.isEnabled()
-        assert preview.locked_status_label.isHidden()
+        assert preview.locked_state_detail.isHidden()
 
     def test_clear_plot_data_keeps_persistent_items(self, preview):
         preview.time_current_curve.setData([0, 1], [0, 1])

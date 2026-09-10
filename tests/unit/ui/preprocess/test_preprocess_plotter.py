@@ -14,7 +14,10 @@ from XBrainLab.backend.application.preprocess_render import (
     SignalSeries,
 )
 from XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter import PreprocessPlotter
-from XBrainLab.ui.panels.preprocess.preview_widget import PREVIEW_RENDER_FAILED_MESSAGE
+from XBrainLab.ui.panels.preprocess.preview_widget import (
+    PREVIEW_RENDER_FAILED_MESSAGE,
+    PreviewWidget,
+)
 
 
 @pytest.fixture
@@ -89,31 +92,84 @@ def test_plotter_init_has_no_backend_controller(mock_widget) -> None:
     assert not hasattr(plotter, "controller")
 
 
-def test_time_domain_renders_detached_signal_and_events(mock_widget) -> None:
+@pytest.mark.parametrize("frequency_tab", [False, True], ids=["time", "psd"])
+@pytest.mark.parametrize("with_original", [False, True], ids=["current", "overlay"])
+def test_native_curves_render_detached_signals_at_each_sampling_rate(
+    qtbot, frequency_tab: bool, with_original: bool
+) -> None:
+    widget = PreviewWidget()
+    qtbot.addWidget(
+        widget, before_close_func=lambda owned: owned.prepare_for_shutdown()
+    )
+    widget.chan_combo.addItem("C3")
+    widget.plot_tabs.setCurrentIndex(int(frequency_tab))
     current = _series(start=1.0)
-    original = _series(sampling_frequency=50.0, start=1.0, samples=250)
-    publication = _publication(
-        current=current,
-        original=original,
-        events=(SignalEvent(1.5, "cue", 0.2),),
+    original = (
+        _series(sampling_frequency=50.0, start=1.0, samples=250)
+        if with_original
+        else None
     )
-    plotter = PreprocessPlotter(mock_widget)
+    current_before = current.values_volts.copy()
+    original_before = original.values_volts.copy() if original is not None else None
 
-    plotter.plot_sample_data(publication)
-
-    mock_widget.clear_plot_data.assert_called_once()
-    mock_widget.time_current_curve.setData.assert_called_once()
-    current_x, current_y = mock_widget.time_current_curve.setData.call_args.args
-    assert current_x is current.time_seconds
-    assert current_y[[0, -1]].tolist() == pytest.approx([-1.0, 1.0])
-    mock_widget.time_original_curve.setData.assert_called_once()
-    mock_widget.plot_time.setTitle.assert_called_once_with("C3 (Time)")
-    mock_widget.plot_time.getPlotItem.return_value.setXRange.assert_called_once_with(
-        1.0,
-        pytest.approx(5.99),
-        padding=0,
+    plotter = PreprocessPlotter(widget)
+    plotter.plot_sample_data(
+        _publication(
+            current=current,
+            original=original,
+            events=(SignalEvent(1.5, "cue", 0.2),),
+        )
     )
-    mock_widget.show_time_event_markers.assert_called_once_with([(1.5, "cue", 0.2)])
+
+    for series, curve in (
+        (current, widget.time_current_curve),
+        (original, widget.time_original_curve),
+    ):
+        x_values, y_values = curve.getData()
+        if series is None:
+            assert x_values is None or len(x_values) == 0
+        else:
+            np.testing.assert_array_equal(x_values, series.time_seconds)
+            np.testing.assert_allclose(y_values, series.values_volts * 1e6, atol=1e-12)
+    assert widget.time_event_markers[0].value() == 1.5
+    assert widget.time_event_markers[0].toolTip() == "cue (0.2 s)"
+    assert widget.plot_time.getPlotItem().titleLabel.text == "C3 (Time)"
+    assert widget.plot_time.getPlotItem().viewRange()[0] == pytest.approx([1.0, 5.99])
+    for series, curve in (
+        (current, widget.freq_current_curve),
+        (original, widget.freq_original_curve),
+    ):
+        frequencies, power = curve.getData()
+        if not frequency_tab or series is None:
+            assert frequencies is None or len(frequencies) == 0
+        else:
+            expected_frequencies, expected_power = welch(
+                series.values_volts * 1e6,
+                fs=series.sampling_frequency,
+                nperseg=min(len(series.values_volts), 1024),
+            )
+            np.testing.assert_array_equal(frequencies, expected_frequencies)
+            np.testing.assert_allclose(
+                power,
+                10 * np.log10(np.maximum(expected_power, np.finfo(float).tiny)),
+            )
+    if frequency_tab:
+        assert widget.plot_freq.getPlotItem().titleLabel.text == "C3 (PSD)"
+    np.testing.assert_array_equal(current.values_volts, current_before)
+    if original is not None:
+        np.testing.assert_array_equal(original.values_volts, original_before)
+
+    plotter.plot_sample_data(_publication(state=PreprocessSignalState.NO_DATA))
+
+    for curve in (
+        widget.time_current_curve,
+        widget.time_original_curve,
+        widget.freq_current_curve,
+        widget.freq_original_curve,
+    ):
+        x_values, _y_values = curve.getData()
+        assert x_values is None or len(x_values) == 0
+    assert not widget.time_event_markers[0].isVisible()
 
 
 def test_time_domain_aligns_raw_baseline_without_changing_filtered_signal(
@@ -145,28 +201,6 @@ def test_time_domain_aligns_raw_baseline_without_changing_filtered_signal(
     )
 
 
-def test_frequency_domain_uses_each_series_sampling_frequency(mock_widget) -> None:
-    current = _series(sampling_frequency=100.0)
-    original = _series(sampling_frequency=50.0, samples=250)
-    publication = _publication(current=current, original=original)
-    plotter = PreprocessPlotter(mock_widget)
-    mock_widget.plot_tabs.currentIndex.return_value = 1
-
-    with patch.object(
-        plotter,
-        "_calc_psd_task",
-        wraps=plotter._calc_psd_task,
-    ) as calculate:
-        plotter.plot_sample_data(publication)
-
-    args = calculate.call_args.args
-    assert args[1] == 100.0
-    assert args[3] == 50.0
-    mock_widget.freq_current_curve.setData.assert_called_once()
-    mock_widget.freq_original_curve.setData.assert_called_once()
-    mock_widget.plot_freq.setTitle.assert_called_with("C3 (PSD)")
-
-
 def test_time_tab_defers_psd_work(mock_widget) -> None:
     plotter = PreprocessPlotter(mock_widget)
 
@@ -175,31 +209,6 @@ def test_time_tab_defers_psd_work(mock_widget) -> None:
 
     calculate.assert_not_called()
     mock_widget.freq_current_curve.setData.assert_not_called()
-
-
-def test_frequency_render_uses_scipy_without_worker_creation(mock_widget) -> None:
-    plotter = PreprocessPlotter(mock_widget)
-    mock_widget.plot_tabs.currentIndex.return_value = 1
-
-    with patch(
-        "XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.welch",
-        wraps=welch,
-    ) as wrapped_welch:
-        plotter.plot_sample_data(_publication(current=_series()))
-
-    assert wrapped_welch.called
-
-
-def test_stale_psd_result_does_not_update_latest_plot(mock_widget) -> None:
-    plotter = PreprocessPlotter(mock_widget)
-    result = (np.array([1.0]), np.array([1.0]), None, None)
-    plotter._plot_generation = 2
-
-    plotter._apply_psd_result(result, "C3", plot_generation=1)
-    mock_widget.freq_current_curve.setData.assert_not_called()
-
-    plotter._apply_psd_result(result, "C3", plot_generation=2)
-    mock_widget.freq_current_curve.setData.assert_called_once()
 
 
 def test_reentrant_refresh_is_ignored(mock_widget) -> None:
@@ -213,16 +222,6 @@ def test_reentrant_refresh_is_ignored(mock_widget) -> None:
 
     mock_widget.clear_plot_data.assert_called_once()
     mock_widget.time_current_curve.setData.assert_called_once()
-
-
-def test_no_data_publication_only_clears_transient_curves(mock_widget) -> None:
-    plotter = PreprocessPlotter(mock_widget)
-
-    plotter.plot_sample_data(_publication(state=PreprocessSignalState.NO_DATA))
-
-    mock_widget.clear_plot_data.assert_called_once()
-    mock_widget.time_current_curve.setData.assert_not_called()
-    mock_widget.freq_current_curve.setData.assert_not_called()
 
 
 def test_render_failure_surfaces_product_message(mock_widget) -> None:
