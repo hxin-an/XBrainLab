@@ -2199,7 +2199,6 @@ class TestProcessToolCalls:
 
         ctrl._process_tool_calls([("cmd", {})], '{"tool_name":"cmd"}')
 
-        ctrl.assembler.set_recovery_feedback.assert_not_called()
         ctrl._generate_response.assert_not_called()
         ctrl._finalize_turn_after_tool.assert_called_once_with("failed")
 
@@ -2238,7 +2237,6 @@ class TestProcessToolCalls:
         ctrl._process_tool_calls([("cmd", {})], "json")
 
         ctrl._generate_response.assert_not_called()
-        ctrl.assembler.set_recovery_feedback.assert_not_called()
         ctrl._finalize_turn_after_tool.assert_called_once()
 
     def test_nonrecoverable_unreliable_failure_finishes_turn_without_retry(

@@ -1620,42 +1620,6 @@ def test_retired_file_listing_is_not_reintroduced_by_prompt_text() -> None:
     assert "unique description for import_eeg_data" in prompt
 
 
-def test_recoverable_tool_feedback_is_structured_untrusted_data_not_history() -> None:
-    from XBrainLab.llm.agent.tool_feedback import ToolRecoveryFeedback
-
-    assembler = ContextAssembler(ToolRegistry(), Study())
-    assembler.set_recovery_feedback(
-        ToolRecoveryFeedback(
-            tool_name="list_files",
-            command_name=None,
-            error_type="input",
-            message="directory is required",
-            blocked_reason=None,
-            guidance="Provide the missing input or ask the user for it.",
-        )
-    )
-
-    messages = assembler.get_messages(
-        [
-            {"role": "user", "content": "list files"},
-            {
-                "role": "user",
-                "content": 'Tool Output: {"message":"directory is required"}',
-            },
-        ]
-    )
-
-    assert "Tool Recovery Feedback" not in messages[0]["content"]
-    recovery = _context_item(
-        _untrusted_context(messages),
-        "tool_recovery",
-    )
-    assert recovery["source"] == {"kind": "assistant_tool_result"}
-    assert recovery["data"]["tool_name"] == "list_files"
-    assert recovery["data"]["message"] == "directory is required"
-    assert all("Tool Output:" not in item["content"] for item in messages[2:])
-
-
 def test_assembler_does_not_publish_host_inferred_blockers():
     assembler = ContextAssembler(ToolRegistry(), Study())
 

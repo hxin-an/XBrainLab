@@ -606,7 +606,6 @@ class LLMController(QObject):
             ("metrics", self.metrics.finish_turn),
             ("pending interactions", self.pending_interactions.clear),
             ("RAG context", self.assembler.clear_context),
-            ("recovery feedback", self.assembler.clear_recovery_feedback),
         )
         for label, cleanup in cleanup_steps:
             self._run_turn_setup_cleanup(label, cleanup)
@@ -742,7 +741,6 @@ class LLMController(QObject):
         self._turn_orchestrator.reset_for_user_turn()
         self.pending_interactions.clear_workflow_handoff()
         self.pending_interactions.activate_tool_input()
-        self.assembler.clear_recovery_feedback()
 
     def _collect_active_tool_input_reply(self, text: str) -> bool:
         """Resolve one bounded receipt reply before any RAG/model dispatch."""
@@ -1643,7 +1641,6 @@ class LLMController(QObject):
         """Finish after one executed command failure without model continuation."""
         del autonomy
         self._tool_attempt_session.record_failure()
-        self.assembler.clear_recovery_feedback()
         self._finalize_turn_after_tool(self._terminal_outcome_for_result(False, result))
 
     def _handle_tool_success(
@@ -1655,7 +1652,6 @@ class LLMController(QObject):
     ) -> None:
         """Finish after one trusted tool result; each user turn owns one action."""
         del autonomy, after_confirmation
-        self.assembler.clear_recovery_feedback()
         self._tool_attempt_session.record_success()
         logger.info(
             "Assistant completed one action for this turn: %s",

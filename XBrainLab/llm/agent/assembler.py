@@ -36,7 +36,6 @@ from .prompt_policy import (
     PromptPolicyReadResult,
     read_prompt_policy,
 )
-from .tool_feedback import ToolRecoveryFeedback
 from .turn import (
     AssistantGenerationRequest,
     AssistantResponseContract,
@@ -137,7 +136,6 @@ Action Contract Catalog (input definitions, never an output array):
         )
         self.context_notes: list[str] = []
         self._latest_context_items: tuple[UntrustedContextItem, ...] = ()
-        self._recovery_feedback: ToolRecoveryFeedback | None = None
         self._latest_tool_publication = PromptToolPublication.empty()
         self.max_history_utf8_bytes = _MAX_HISTORY_UTF8_BYTES
 
@@ -403,16 +401,6 @@ Action Contract Catalog (input definitions, never an output array):
                 ),
             )
         ]
-        if self._recovery_feedback is not None:
-            context_items.append(
-                UntrustedContextItem(
-                    item_type="tool_recovery",
-                    source=UntrustedContextSource(
-                        kind="assistant_tool_result",
-                    ),
-                    data=self._recovery_feedback.to_prompt_payload(),
-                )
-            )
         context_items.extend(self._context_note_items())
         self._latest_context_items = tuple(context_items)
 
@@ -551,17 +539,6 @@ Action Contract Catalog (input definitions, never an output array):
     def latest_tool_publication(self) -> PromptToolPublication:
         """Return the exact tool set shown by the latest assembled prompt."""
         return self._latest_tool_publication
-
-    def set_recovery_feedback(
-        self,
-        feedback: ToolRecoveryFeedback | None,
-    ) -> None:
-        """Publish one typed runtime failure to the next model generation."""
-        self._recovery_feedback = feedback
-
-    def clear_recovery_feedback(self) -> None:
-        """Discard failure feedback at a user-turn or success boundary."""
-        self._recovery_feedback = None
 
     def get_messages(self, history: list) -> list:
         """Build policy, untrusted context, and the current user request.

@@ -49,8 +49,8 @@ UI/test files and root settings. Worktree/branch/source facts come from Git, not
 | 3 Preprocess/epoch/split | Processing, copies, invalidation, preview/materialization, related UI/tools | 3A–3U reviewed; documented split-artifact decision and final inventory/closure review remain open |
 | 4 Models/training | Catalog, resource preflight, settings, stop/rerun, history/checkpoints | Core/model/resource/record/UI audit substantially complete; final inventory, convenience retirement and two visible decisions remain open |
 | 5 Evaluation/saliency/views | Read/publication, SmoothGrad/recompute, four views, stale work/render lifecycle | Core/attribution/3D/publication integration fully read; script/inventory reconciliation and two explicit retirement decisions remain open |
-| 6 Assistant/chat | Tool adapters, turns/confirmation/execution, model/RAG lifecycle and shutdown | Controller/confirmation/execution ownership audit started; not closed |
-| 7 Shared desktop/runtime | Shell/navigation, shared components, configuration, errors/logging/start/close | Pending |
+| 6 Assistant/chat | Tool adapters, turns/confirmation/execution, model/RAG lifecycle and shutdown | Core/runtime/RAG/controller/chat source and major tests deeply audited; adapters/helpers/inventory and explicit retirement decisions remain open |
+| 7 Shared desktop/runtime | Shell/navigation, shared components, configuration, errors/logging/start/close | Logger/startup inspected; Windows encoding fixed7A; shared shell/components closure pending |
 | 8 Scripts/dev/CI | Launch/setup, Poe/hooks, runners, walkthroughs/evaluators/reports and artifacts | Read-only inventory |
 | 9 Cross-module tests/docs | Shared fixtures/guards, dependencies, canonical truth/navigation and coverage gaps | Pending |
 
@@ -103,23 +103,11 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `f4d2884a`, 121 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `5cf7a6df`, 122 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
 **Current work — module6 Assistant/runtime/RAG; module2–5 closure gaps and visible/API decisions remain open.**
-
-**Completed6O (`b6d596d4`) — unused model-download conveniences.** Full downloader/lifecycle and actual shutdown,
-settings and setup consumers show no `wait_ms` arguments or `ModelCacheCleanupResult.message` reads.
-Remove only that ignored argument and safe-message alias; preserve cancellation -> cleanup retry ->
-idle ownership, terminal fences and the actual `public_message` privacy contract. Two production
-files, no owner or visible UI change, expected net deletion below20lines. First run the full direct
-lifecycle suite, downloader nonblocking shutdown and five actual model-settings cleanup outcomes;
-repeat unchanged after deletion, inspect diff/callers and lint. No tests are retired. Rollback is one
-commit. Completion requires identical focused behavior, not overall module/Windows handoff closure.
-Native before23passed6.89s and identical after23passed6.78s; no skipped/retired cases. Main actual
-diff/caller review confirms AgentWorker's real timed shutdown is separate and unchanged. Production
-+2/-9/net-7 after retaining top-level formatting; two files, no owner change. Lint before commit.
 
 **Module7 logging audit.** Independent full logger874/direct1304, run.py370,
 Windows/WSL launcher sources and tests traced console output: StreamHandler binds native stdout;
@@ -127,22 +115,9 @@ CP950/strict cannot encode actual metrics `≈`, losing/noising that console rec
 logging remains intact. Reproduce with a real strict encoded stream before any console-boundary fix;
 do not change metrics copy, global/user encoding, redaction policy or introduce another log window.
 
-**Bounded7A — preserve console diagnostics with restricted encodings.** Reproduce the actual Unicode
-metrics record through setup_logger and a real CP950/strict TextIOWrapper; also protect UTF8 output
-and public redaction before either sink. Then adapt only the existing console sink to escape characters
-its stream cannot encode, without modifying the shared record, file UTF8 text, stdout configuration,
-log disclosure, retention or UI. A private StreamHandler specialization is the necessary external-stream
-seam, not a new owner/control layer; expected one production file/net below30lines. No generic retry
-or compatibility framework. Run the red reproduction before production, then full direct logger and
-actual metrics tests, inspect privacy/error paths independently, lint and commit separately from6O.
-Rollback is one commit; stop this slice at preserved representable/escaped console and exact UTF8 file
-output with unchanged privacy evidence, then continue modules6–9. No manual handoff claim.
-Native red4failed/2passed1.49s: both handler orders fail only with CP950/ASCII strict streams.
-After full direct logger+metrics58passed/8POSIX-only skips4.47s; six changed cases rechecked after
-test-only lint corrections6passed1.30s. Production+23/-1/net+22, tests+63/six added cases. Independent
-actual-diff privacy review approved both sink orders, no shared-record mutation and unchanged file
-retention/filtering. Ruff/format passed. This proves real TextIOWrapper encode-before-write behavior,
-not arbitrary third-party stream atomicity; POSIX storage cases remain final Linux CI obligations.
+7A is committed e6aa7d44: console fallback preserves already-redacted records, UTF8 file fidelity and
+user stdout policy. Real strict CP950/ASCII/UTF8 streams test both sink orders; arbitrary third-party
+stream partial-write atomicity is not claimed. Eight POSIX storage cases remain Linux CI obligations.
 
 **Controller test audit completed (not module closure).** Independent full unit5429/integration582
 reads retain typed receipt/confirmation generation, strict envelope, stale/duplicate terminal and
@@ -150,114 +125,72 @@ handoff contracts. High-mock units isolate real narrow seams; actual QObject/Age
 integration covers nonblocking RAG/stop/setup rollback. No justified obsolete/duplicate case found;
 neither suite alone claims real model/tool execution. Chat/AgentManager full test audit continues.
 
-**Bounded6Q — retire unused runtime-snapshot serialization.** Full runtime_state120/direct43 and
-coordinator289/direct290 plus worker/controller/dialog consumers use typed Qt snapshots and
-validation_error, not to_dict/from_payload or the two convenience fallback booleans. Remove only
-those methods/imports and two exclusive serialization tests after strengthening the actual coordinator
-invalid-state rejection matrix and preserving explicit device/fallback publication. Keep every dataclass
-field, phase/outcome enum, activation correlation and validation rule; no stored result/settings/schema
-or UI changes. Expected one production file/net about-65lines, no owner increase. Before deletion run
-direct runtime-state/coordinator plus worker runtime-selection and runtime lifecycle delivery suites;
-repeat retained tests afterwards and inspect full diff/callers. Test-only malformed-state matrix must
-catch a bounded omitted validation guard. One reversible commit; slice closure is not module closure.
-Strengthened native baseline39passed5.74s; after37passed5.74s, exactlytwo exclusive serializers
-tests removed. In-memory omitted validation_error yields5failed/1passed0.12s: the remaining string-id
-case is independently rejected by coordinator correlation, so this is not six distinct guard faults.
-Independent actual-diff review approved typed/device/correlation preservation. Production+2/-72/net-70;
-two old tests43lines removed, six-case real-consumer matrix replaces one existing case. Ruff/format
-passed; no malformed fault persisted. Existing inventory50rows reconciled from actual completed reads,
-not50new independent deep audits or module closure.
+6Q retired unused snapshot serialization only; all typed fields/device/activation validation remain.
+The six-state fault matrix catches five omitted-validation failures; string activation id is separately
+rejected by coordinator correlation. Removing its two exclusive serializer cases is not reduced gate scope.
 
 **Latest full UI reads (not closure).** Independent panel2349/controller483/history235+62 retains
 sole backend transcript owner and bounded Qt reconciliation, stale deltas, reader-anchor/tail-follow
 and typed confirmation/runtime controls. Zero-delay coalescing and capped8ms anchor retries are not
-measured redundant waits. Ignored suggestion-column argument and compatibility render paths still
-need callers/direct tests before disposition. AgentManager direct3769 retains actual Qt/Study/
+measured redundant waits. 6T removed the proven ignored-column/redundant-reflow and unused render paths after caller/geometry evidence. AgentManager direct3769 retains actual Qt/Study/
 ApplicationService publication and real-controller debug blocked-command cases alongside isolated
-manager correlation mocks. Three candidate test redundancies need main diff/equivalence review before
-retirement: zero-assert processing case, duplicate model forwarding and single-branch dock toggle.
+manager correlation mocks. 6R replaced the zero-assert processing case with real widgets and removed only two exact duplicate
+model-forwarding/dock-toggle cases after main nonauthor review.
 Direct panel3041 now fully independently read: actual Qt runtime/confirmation, chunked rebuild/deltas,
 prune/reader anchor/tail, resize/code/text geometry and clear lifecycle retain. Compatibility append
 tests need caller migration evidence before retirement; no blanket deletion of rendering protection.
 
-**Bounded6R — strengthen manager-to-panel evidence and remove two exact duplicate tests.** Main
-confirmed full reviewer3769-line test audit candidates against actual source/test bodies. Replace the
-zero-assert processing-state case with actual ChatPanel ready -> busy -> idle (nonblank composer,
-Working/Send and input/button enabled state), keeping only model/runtime external isolation. Remove
-test_set_model already covered by exact approved-model+VRAM case, and toggle_already_visible already
-covered by close-then-reopen exact calls. Keep other cases including toggle_show; fix obsolete test-file
-coverage-count docstring. One test file only, zero production/owner/UI change. Run original full manager
-suite before edits and retained full suite afterwards; bounded no-op forwarding fault must fail the
-new real-widget test. Main nonauthor diff/coverage-map review, Ruff, separate reversible commit.
-Only two cases retired; stronger real-widget evidence replaces one no-assert case. Then continue audit.
-Original150passed22.79s; retained148passed22.63s. In-memory no-op manager forwarding makes the new
-real-panel case fail on is_processing0.44s (the former zero-assert case could not detect it). Main
-nonauthor actual-diff/equivalence review approved; test+25/-16/net+9, production0. Ruff/format passed.
-The font-directory warning in the pre-import fault probe is environment output, not its failure cause;
-normal manager suites passed. Real Qt widgets in offscreen unit tests are not native window acceptance.
-
-**Bounded6S — keep only live conversation-window operations.** Full source76/direct51 and all
-controller callers use messages/append/clear; get_messages, len/index/equality/repr/hash conveniences
-have only exclusive tests. No script/config/doc/dynamic reference found. Strengthen retained direct
-tests to assert complete ordered message values through the actual messages field, then run before
-retirement with controller append/reset and full controller integration. Remove the convenience chain,
-unused logger/import and four exclusive tests; preserve exact append/prune/clear implementation and
-controller history property/setter. One production file/net about-30, no owner/public/UI change.
-Repeat retained tests, use bounded wrong-window fault to check actual order evidence, independent
-diff/caller review and lint. One reversible commit after6R; no merge or module-closure implication.
-Strengthened baseline19passed7.54s, retained15passed7.38s; exactlyfour exclusive convenience cases
-removed. Independent actual-diff review confirmed unchanged append/clear list identity and existing
-overflow list replacement. Production-33, tests+6/-29/net-23; Ruff/format passed. Wrong-end window
-fault is process-local only: both direct/controller cases failed2in6.12s on retaining old rather than
-new rows. No injected defect persisted.6R is committed f3b850d7;6S source/tests commit follows.
+6R replaces the zero-assert processing check with actual ready -> Working/disabled -> Send/enabled
+widgets; two exact duplicate cases retired.6S retains literal conversation append/prune/clear and
+controller history field access; four exclusive convenience cases retired. Windows pre-import probes
+can emit a Qt font-directory warning, but actual fault failures were state/order assertions.
 
 **Additional chat widget audit.** Full independent action_card783/message_bubble776 retains exact
 typed request capture/disable-before-emit and safe link/Markdown/streaming/geometry handling. Full
 composer144/suggestion167/segmented98/styles753/package6 retains IME/bounded input, live model-setting
-selection and shared design tokens. Candidate unused bubble.setText, suggestion icon argument,
-panel._render_message need bounded same-owner retirement. Panel suggestion layout removes/readds
-all three unchanged rows on reflow despite ignoring columns; measure actual layout calls and geometry
-before removing that redundant work. Keep direct script-used append_message and all visible copy.
+selection and shared design tokens. Direct action_card438/bubble824 tests fully read: exact request,
+doubleclick, privacy/HTTPS confirmation, Markdown streaming/reuse and geometry evidence retained.
+6T removed only proven unused conveniences and redundant row relocation; hidden icon/style remains.
 
-**Bounded6T — remove measured redundant suggestion re-layout and unused rendering conveniences.**
-Read-only caller audit finds panel._render_message and bubble.setText have no production/test/script/
-config consumers; actual typed render and script-used append_message remain. Suggestion icon argument
-is ignored (sole caller passes a constant); retain visible card semantics. First measure real Qt layout
-remove/add counts over repeated ready-panel reflows at narrow/default/wide widths and freeze geometry
-snapshots; only if unchanged-order redundant work is established, place rows once during construction
-and remove the ignored-column helper/reflow call. Keep wrap/height fitting, all timers, transcript and
-reader-anchor lifecycle. Before edits run full panel/bubble/card suites; after repeat, compare exact
-geometry/work counts and review actual UI-internal diff independently. User's behavior-preserving UI
-authorization applies; no visible copy/layout/interaction redesign. Expected3productionfiles/netbelow60,
-zeroownerincrease, one reversible commit. Optional hidden-icon/widget/style removal is not yet included;
-it needs separate caller/geometry evidence. Final Windows/DPI gate remains necessary for phase handoff.
-Baseline213passed9.09s. Three new real-layout cost tests failed3in1.01s specifically on15remove
-calls per5reflows while order/geometry already matched. After216passed9.34s. Same standalone real
-Qt probe at400/620/900: each15remove+15add ->0+0; all before/after card geometry/text/order snapshots
-exactly equal. This is measured redundant-work removal, not an elapsed-time/user-perceived speed claim.
-Production+1/-34/net-33 across3files, tests+28/-1/net+27/threeaddedcases; none retired. Main and
-independent actual-diff review approved. Actual typed rendering, streaming set_text and script-used
-append_message stay; hidden icon widget/style remains. Ruff/format before separate commit.
+6T places unchanged suggestion rows once; at400/620/900, five reflows each remove/add15+15 ->0+0,
+with exact equal geometry/text/order. This is work elimination, not a wall-time speed claim. Deleted
+panel._render_message, bubble.setText and ignored icon argument; typed rendering, script-used
+append_message and hidden icon widget/style remain. Native Windows/DPI handoff remains required.
 
-**Bounded6U — remove unused private command conversion helper.** Independent full application_surface
-1687 and direct264/authorized_paths303/result_contract538 retain actual Command spine, atomic
-publication, typed results/privacy and confirmation fingerprints. Main and independent whole-repo
-hidden/config/script/docs search finds _optional_str_list only at its definition, never registry data.
-Delete that helper alone after passing direct application-surface baseline; same suite/lint afterwards,
-main nonauthor diff review. One production file/about-6lines, no tests or owner/public contract change.
-One reversible commit; do not mix6G legacy-adapter decision into this private deletion. Separate deeper
-ToolCommandResult final payload-size test coverage question needs whole-test caller review first.
-Native before25passed6.38s/after25passed6.36s, zero tests retired. Production-7; main nonauthor
-actual-diff review and Ruff/format passed. Global review also found existing to_payload privacy/
-capability evidence in controller5289, feedback82 and execution coordinator92; a missing direct-file
-test is not a proven overall coverage gap. Final byte-fit behavior remains a separate bounded audit.
+6U removed only _optional_str_list after full application_surface1687/direct264/authorized_paths303/
+result_contract538 audit and caller/config/script/doc search. Formal contracts unchanged. Existing
+ToolCommandResult.to_payload privacy/capability evidence also lives in controller5289, feedback82 and
+execution coordinator92; absence in one direct file is not an overall coverage gap. Final byte-fit
+behavior still needs bounded test/caller review.
 
-**Confirmed recovery-feedback candidate (not implementation yet).** Independent + main source/caller
-audit proves no production writer for assembler._recovery_feedback; only two tests set it, controller
-only clears it atfour boundaries. ToolRecoveryFeedback/build_recovery_feedback, branch and clear calls
-are dormant. Any removal must preserve live terminal-failure/no-retry policy and actual hostile RAG/
-history sanitizer coverage; remove only three exclusive cases and recovery fragment of shared tests.
-This is separate from blocked6E/6G and needs its own declared baseline/exact prompt parity evidence.
+6V retired the never-populated recovery-feedback chain after informed explicit user approval:
+「同意移除未使用的整段能力與專屬測試」. First edit rejection occurred before any mutation; no bypass.
+Production-131 across3files; tests-102, exactly3exclusive cases removed. Shared actual privacy,
+hostile RAG/history and terminal/no-regeneration assertions remain.403before65.10s ->400after80.19s,
+same7MNE/NumPy deprecation warnings. Fourteen stage/stale exact prompts/publications unchanged:
+133367bytes SHA256e5e84c01e0b44eac4ab4c8fe183969cc32adbeef90550c3b1d2eb22fb6f64872.
+Typed fixtures are parity evidence, not scientific workflow or real-model evidence. Independent actual
+diff/privacy review approved; main review and10file Ruff pass. Final unused test import/format changes
+verified18passed5.97s. Separate blocked6E/6G remain untouched. Ready for reversible commit, not handoff.
+
+**Bounded6W — discard unused footer input construction.** Full status presenter/projection and direct
+footer tests trace one production caller: display_commands is immediately discarded, while projection
+allocates a display_labels list only for that discarded argument. Delete that argument/list/call input;
+retain recommended_label in actual projection/tooltips and every footer string/blocked condition.
+UI-internal behavior-preserving cleanup is explicitly authorized; no layout/copy/interaction change.
+Owners stay the same pure presenter and backend publication; two production files, estimated-4LOC,
+no new owner/contract. Establish passing footer and full agent-presentation-service baseline, change
+only three direct test call signatures without changing assertions, rerun same tests, main actual diff
+review/lint, small reversible commit. Same35passed before0.52s/after0.50s; independent actual-diff review
+approved and lint passed. Production-4/testsnet-5, no cases removed. Ready for commit, not handoff.
+
+**Publication/turn audit.** Full main presentation199/turn_state141/direct121+63 retains typed view-only
+progress and exact admission/stop/terminal lease ownership. Independent coordinator251/direct149 and
+actual AgentManager callers retain newest-revision retry/cadence and originating-turn training notice.
+Stored training handoff_generation is unread after admission; retain admission validation pending a
+bounded field-only cleanup decision. Manager/long-session evidence, not direct149 alone, protects
+stale/missing run identity and exactly-once transcript delivery. Tool definitions/authorized paths and
+remaining worker/runtime audit continue alongside inventory reconciliation.
 
 **Module6 initial full owner audit (not closure).** Independent full controller2949/attempt898/
 execution342/confirmation314/pending443 and respective direct confirmation154/pending560/execution151/
@@ -322,33 +255,13 @@ base registration as potentially public-tool behavior. Worker verified all seven
 Concrete external direct-Python API removal approval requested separately; no split/indirect retry.
 The baseline/digest and independent whole-chain audit remain evidence, not permission or completion.
 
-**Completed bounded6N — retire unused tolerant parser and strict-result convenience.** Full independent and
-main parser463/direct390 plus actual controller/coordinator/scorer and negative guard caller audit
-prove parse_product is the sole live parser; parse/parse_diagnostic and four extraction helpers have
-only exclusive tests. Remove that dead chain and its now-unused logging imports, preserving all
-parse_product code, exact model output grammar, bare-attempt classification and actual errors. Keep
-architecture negative guards for retired parser calls unchanged. Before deletion strengthen invalid
-field cases that currently omit workflow_stage and therefore stop at missing-root-fields rather than
-the claimed type check. Retain the diagnostic test's real bare-evaluate product rejection by moving
-it into the existing malformed-input parametrization; delete only two exclusive diagnostic cases and
-duplicate convenience assertions. About-140productionLOC/oneownerfile, zero new owner or tool/UI/
-prompt policy change. Baseline parser/controller/recovery/scorer plus exact guard tests, then same
-retained after and a representative source-only exact parse-output comparison; Ruff/main nonauthor
-diff review. No tolerant fallback replacement or normalizer edits. Restore untouched scope if an edit
-is rejected; no indirect retry. End this slice at verified dead-chain removal, then continue audit.
-Strengthened baseline404passed/1failed16.72s, one MNE warning. All57 parse-output matrix results digest
-2634fe1b345c4c129ee13a3f370c5ad01d5f08c654a02f207f9bf054623e7428 recorded before source removal.
-Failure is evaluator capture integrity on native Windows: helper hashes110UTF8bytes but writes111
-because write_text translates LF toCRLF. Actual LocalBackend._write_capture_file has the same defect;
-existing direct tests only cover single-line strings and read_text hides newline conversion. Resolve
-the directly blocking exact-byte issue as6P before declaring this baseline passing or retiring source.
-After6P, the same405case selection plus47direct capture/backend/context cases passed452in23.50s;
-this establishes the strengthened passing baseline before parser retirement. No real model run.
-Retained403passed21.31s, same one MNE warning; exactlytwo exclusive diagnostic cases removed.
-All57 result payloads have the identical matrix digest. Omitted parameter-type guard now fails both
-null/string cases0.11s (otherthreepass), exposing a defect the previous missing-field fixtures missed.
-Main nonauthor actualdiff review approved; production+1/-137/net-136, tests+26/-35/net-9. Actual strict
-grammar/negative architecture guards stay unchanged. Ruff/format and guidance audit before commit.
+6N92d6a091 retires only unused tolerant parser/strict-result convenience. Before removal, malformed
+field fixtures were fixed to include workflow_stage so they actually reach type validation; bare
+evaluate rejection moved into the retained malformed matrix. The first strengthened run404pass/1fail
+uncovered6P's Windows capture newline defect; after6P the complete baseline452passed, then retained
+403passed21.31s after exactlytwo diagnostic cases were removed. One MNE warning persists.57exact
+parse-result payloads before/after share SHA2562634fe1b345c4c129ee13a3f370c5ad01d5f08c654a02f207f9bf054623e7428.
+Omitting the parameter-type guard fails null/string cases; actual strict grammar/negative guards unchanged.
 
 **Module6 completed reads and remaining candidates (not module closure).** Full core model download
 lifecycle665/direct659 and downloader1086/direct1178 retain shared lifecycle composition, bounded
@@ -941,6 +854,15 @@ this table replaces their duplicated active-plan narrative, not any unresolved m
 | 6L / `f44d3e0e` | Real RAG quota fixture10.1GB→101bytes; testsnet+9 |89after/2POSIXskips; omitted current-target guard fails; actual9.41GiB fake file removed, real caches untouched |
 | 6M / `ef161994` | Four giant model quota fixtures →105/206/302/300bytes; tests only |77retained8.61s,4omitted-quota faults fail; baseline Windows expected-path mismatch corrected; defaults unchanged |
 | 6P / `ec4eeeda` | Exact capture UTF8 writes on Windows; productionnet0/testnet+12 |3red/10pass→452combinedgreen23.50s; real LF/CRLF/Unicode bytes+SHA, strict validator retained |
+| 6N / `92d6a091` | Unused tolerant parser chain; productionnet-136/testnet-9 |403retained21.31s;57exact-result digest; omittedtypeguard2fail; strict grammar unchanged |
+| 6O / `b6d596d4` | Ignored downloader arg/cleanup message alias; productionnet-7 |Same23before6.89s/after6.78s; lifecycle/public-message protection retained |
+| 7A / `e6aa7d44` | CP950/ASCII console encoding fallback; productionnet+22/test+63 |4red/2pass→58green8POSIXskips4.47s;6final1.30s; both sink orders/privacy/UTF8 intact |
+| 6Q / `0181b233` | Unused snapshot serialization; productionnet-70/testnet-27 |39before37retained5.74s;5omitted-validation faults fail; typed/device/activation intact |
+| 6R / `f3b850d7` | Real processing widget state +2duplicate tests retired; testnet+9 |150before22.79s/148after22.63s; noop forwarding fault fails; no production change |
+| 6S / `f7632053` | Unused conversation convenience chain; production-33/testnet-23 |19before7.54s/15retained7.38s; wrong-end window2faults fail6.12s; exact list semantics |
+| 6T / `f4d2884a` | Suggestion row churn +unused render helpers/arg; productionnet-33/testnet+27 |213before9.09s,3red1.01s,216after9.34s;3width geometry equal,15+15calls→0+0 |
+| 6U / `5cf7a6df` | Unused private command list normalizer; production-7 |Same25before6.38s/after6.36s; no tests/contract changes |
+
 
 ### Evidence qualifications that remain relevant
 
