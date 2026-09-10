@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `05da6d88`, 86 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `6558bd06`, 91 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -280,7 +280,7 @@ No supported result-reading/schema/visible feature change, new owner or compatib
 Original35passed5.40s; retained34 with4L232 all266passed10.37s. Independent actual-diff approved;
 production-21/tests-15, exactlyone exclusive CSV case retired.
 
-**Bounded5B — retire standalone unread saliency export.** Full EvalRecord/caller/config/docs/registry
+**Completed bounded5B — retire standalone unread saliency export.** Full EvalRecord/caller/config/docs/registry
 audit found export_saliency has only eight exclusive parametrized cases, no product producer/reader
 or supported UI/Command entry. Canonical EvalRecord.export/load persists all actual results; retain
 that schema, context/integrity validation and safe store untouched. Main verifies exact tests/imports,
@@ -290,6 +290,62 @@ saliency fixture still used by getters. Two production files, two tests, roughly
 new owner; no supported result format/reading change or external-compatibility shell. Baseline direct
 EvalRecord/context/integrity/safe-store cases before, retained after, Ruff and independent actual-diff
 review before separate commit. Existing real roundtrip/tamper/fail-closed context tests remain.
+Baseline101passed/8POSIX-onlyskips12.97s on Windows; one upstream NumPy shape warning. Those skipped
+no-follow/hardlink/FIFO tests remain required on POSIX CI, not removed or claimed passed. Worker
+owns only the four declared files; main runs/reviews/commits after write release.
+Main nonauthor actualdiff review found/removes one now-exclusive read_json_npz_artifact test import;
+canonical artifact reads/validation untouched. Retained93saliency plus4M32 all125passed/12POSIX-only
+skips12.91s; eight exclusive export cases retired. Production-83/tests-76 after exclusive import
+cleanup (verify numstat before commit); Ruff before separate commit. No current schema/reader removed.
+
+**Module4 additional completed audits.** Independent full training_history417/direct159 retained as
+sole detached JSON-safe projection. Full first-party model/requirements/holder plus direct tests
+retain supported catalog/identity/minimum-input/real forward+optimizer boundaries. Full
+training_contract9/reset30/submission65/synchronous_lifecycle365/publication_lifecycle582 and direct
+reset60/contract32/synchronous574/publication597 retain exact reset ordering, typed host submission,
+unlocked waits/locked final verification, retry/dedupe/supersession/close. Secure output paths518 and
+safe-store889 were already fully reviewed; don't repeat reads as new coverage. Preview coordinator,
+remaining training integration/script entries and final inventory still require completion.
+
+**Module5 render owner audit (not closure).** Independent full evaluation_render1369/work139,
+direct1267/205 and UI publication_refresh935 retain immutable DTO copies, exact selected identity
+fences and shared owned-work claim/cancel/retry. Copies have a concrete isolation purpose; no new
+cache or measured redundant allocation established. UI timer/worker tests use mock ports and do not
+prove full native GUI acceptance. Two separate future candidates: unused _final_unavailable_error,
+and legacy build_evaluation_model_summary string forward (migrate three test/helper calls to typed
+result.text before deleting). Actual typed model-summary preparation/result stays. Full Evaluation/
+Visualization UI audit is ongoing; sampled main-window/renderer paths remain incomplete.
+
+**Completed bounded4M — replace mock-only output uniqueness regression with actual records.** Main full
+test_training_fix107 and existing frozen-clock test_training_plan collision case found duplicated
+plan-ID assertion but only the mock-only test asserts distinct output paths. Strengthen the existing
+real MNE Dataset/tiny torch ModelHolder/TrainingOption collision test to assert both actual record
+directories exist, differ and preserve model/Repeat naming. Establish passing strengthened baseline
+before removing test_training_fix.py and its sole class/module-wide Captum/MagicMock fixture.
+No production changes; keep required external-clock isolation and frozen same-second pressure.
+Run strengthened collision plus existing output namespace/record path cases and original test once;
+then retained after deletion, a bounded omitted-identity fault and independent actualdiff review/Ruff.
+No reduction of useful collision protection, no temp paths outside existing test policy/new environment.
+Strengthened real case+original mock-only test+output namespace selection32passed with5B93=125;
+four additional POSIX-only output-path skips remain applicable CI requirements. Main removes only
+the obsolete107line test module after this passing baseline; same retained31 and omitted-identity
+fault/review/lint before commit. Actual record output directory names/existence are now asserted.
+Independent actualdiff approved; duplicateUUID in-memory fault failed3.31s at real exclusive output
+creation (FileExistsError), proving no silent overwrite. No faulty source persisted. Final retained
+output-path selection and changed-file Ruff must finish before commit; tests net-98/no production.
+
+**Bounded5C — unused saliency getter conveniences, preserve actual rendering rejection.** Full source/
+hidden callers find five EvalRecord getters plus _saliency_for_class have no production/dynamic/
+script/doc consumer; actual render uses validated immutable stores. First migrate three existing
+tampered/old/producer-mismatch assertions from loaded.get_gradient to actual validate_saliency_context
+with the same real epoch context, preserving all error/detail/metrics assertions; migrate one valid
+roundtrip assertion to loaded.gradient[1]. These are not deleted tests. Baseline migrated before
+source removal, retaining actual Visualizer label/context and application render tests. Then remove
+only five getter parametrizations, their now-exclusive complete-context fixture/helper, and the six
+source methods (~99LOC). Keep Mapping import (other live usage), _raise/_verify validators, canonical
+safe export/load, label resolver and real renderer ownership. Main owns eval.py and three direct
+record tests. Same retained baseline plus a bounded validator-bypass fault, Ruff/independent review.
+No UI/EEG/current result schema change or new owner; lower-mock render evidence must remain.
 
 Completed2X–2AC are indexed below; their full scope/evidence remains in Git history.
 2AC found an existing shared-environment source hazard: Windows .pth adds the original checkout

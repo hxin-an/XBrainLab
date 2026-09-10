@@ -276,47 +276,6 @@ def test_load_returns_none_when_evaluation_artifact_is_missing(tmp_path):
 
 
 @pytest.mark.parametrize(
-    ("method", "attribute"),
-    [
-        ("Gradient", "gradient"),
-        ("Gradient * Input", "gradient_input"),
-        ("SmoothGrad", "smoothgrad"),
-        ("SmoothGrad_Squared", "smoothgrad_sq"),
-        ("VarGrad", "vargrad"),
-    ],
-)
-def test_export_saliency_selects_requested_method_and_identity(
-    saliency_eval_record,
-    method,
-    attribute,
-):
-    artifact = saliency_eval_record.export_saliency(method)
-
-    assert artifact["method"] == method
-    exported = artifact["saliency"]
-    source = getattr(saliency_eval_record, attribute)
-    assert set(exported) == set(source)
-    for class_index, values in source.items():
-        np.testing.assert_array_equal(exported[class_index], values)
-    exported.clear()
-    assert getattr(saliency_eval_record, attribute)
-    assert artifact["saliency_context"] == _complete_saliency_context().to_payload()
-    assert artifact["saliency_method_parameters"] == {
-        method: saliency_eval_record.saliency_method_parameters[method]
-    }
-    expected_seeds = (
-        {method: 1} if method in saliency_eval_record.saliency_noise_seeds else {}
-    )
-    assert artifact["saliency_noise_seeds"] == expected_seeds
-    assert artifact["saliency_integrity_manifest"]["manifest_sha256"]
-
-
-def test_export_saliency_rejects_unknown_method(saliency_eval_record):
-    with pytest.raises(ValueError, match=r"Unknown saliency method: InvalidMethod"):
-        saliency_eval_record.export_saliency("InvalidMethod")
-
-
-@pytest.mark.parametrize(
     ("getter_name", "class_index", "expected"),
     [
         ("get_gradient", 0, np.array([1.0, 2.0])),

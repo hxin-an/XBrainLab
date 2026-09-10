@@ -39,7 +39,6 @@ from ..saliency_provenance import (
 )
 from .artifact_store import (
     EVALUATION_RECORD_ARTIFACT_TYPE,
-    SALIENCY_EXPORT_ARTIFACT_TYPE,
     ArtifactStoreError,
     UnsupportedArtifactError,
     read_json_npz_artifact,
@@ -50,8 +49,6 @@ EVAL_ARTIFACT_SCHEMA_VERSION = 4
 EVAL_ARTIFACT_BASENAMES = frozenset(
     {"eval", "eval-training", "eval-validation", "eval-test"}
 )
-SALIENCY_EXPORT_ARTIFACT_SCHEMA_VERSION = 3
-
 _SEALED_RESULT_FIELDS = frozenset(
     {
         "label",
@@ -1032,84 +1029,6 @@ class EvalRecord:
             ):
                 record._freeze_verified_saliency_result()
             return record
-
-    def export_saliency(self, method: str, target_path: str | None = None) -> dict:
-        """Build and optionally save an identity-bearing saliency artifact.
-
-        Args:
-            method: Saliency method name. One of ``'Gradient'``,
-                ``'Gradient * Input'``, ``'SmoothGrad'``,
-                ``'SmoothGrad_Squared'``, or ``'VarGrad'``.
-            target_path: Optional JSON manifest path. Its numeric arrays are
-                saved in a sibling path ending in ``.npz``.
-
-        Returns:
-            A versioned artifact envelope containing the requested saliency and
-            its immutable EEG identity context.
-
-        """
-        if method == "Gradient":
-            saliency = self.gradient
-        elif method == "Gradient * Input":
-            saliency = self.gradient_input
-        elif method == "SmoothGrad":
-            saliency = self.smoothgrad
-        elif method == "SmoothGrad_Squared":
-            saliency = self.smoothgrad_sq
-        elif method == "VarGrad":
-            saliency = self.vargrad
-        else:
-            raise ValueError(f"Unknown saliency method: {method}")
-        self._require_persistable_saliency_context()
-        if self.saliency_context is None:
-            raise SaliencyContextError("Saliency identity context is not bound.")
-        method_parameters = {
-            method: copy.deepcopy(self.saliency_method_parameters[method])
-        }
-        noise_seeds = (
-            {method: self.saliency_noise_seeds[method]}
-            if method in self.saliency_noise_seeds
-            else {}
-        )
-        manifest = build_saliency_artifact_manifest(
-            {method: saliency},
-            context=self.saliency_context,
-            method_parameters=method_parameters,
-            noise_seeds=noise_seeds,
-        )
-        artifact = {
-            "artifact_schema_version": SALIENCY_EXPORT_ARTIFACT_SCHEMA_VERSION,
-            "method": method,
-            "saliency": saliency,
-            "saliency_context": self.saliency_context.to_payload()
-            if self.saliency_context is not None
-            else None,
-            "saliency_method_parameters": copy.deepcopy(method_parameters),
-            "saliency_noise_seeds": copy.deepcopy(noise_seeds),
-            "saliency_integrity_manifest": copy.deepcopy(manifest),
-        }
-        if target_path:
-            arrays: dict[str, object] = {}
-            saliency_entries: list[dict[str, object]] = []
-            for index, (class_index, values) in enumerate(saliency.items()):
-                array_name = f"saliency.{index}"
-                arrays[array_name] = values
-                saliency_entries.append(
-                    {
-                        "class_index": class_index,
-                        "array": array_name,
-                    }
-                )
-            write_json_npz_artifact(
-                target_path,
-                artifact_type=SALIENCY_EXPORT_ARTIFACT_TYPE,
-                payload={
-                    key: value for key, value in artifact.items() if key != "saliency"
-                }
-                | {"saliency_arrays": saliency_entries},
-                arrays=arrays,
-            )
-        return artifact
 
     def get_acc(self) -> float:
         """Compute the classification accuracy.

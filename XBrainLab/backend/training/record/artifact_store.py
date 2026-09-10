@@ -22,7 +22,6 @@ from ...utils.filesystem_identity import (
 
 ARTIFACT_STORE_SCHEMA_VERSION = 1
 EVALUATION_RECORD_ARTIFACT_TYPE = "xbrainlab.evaluation_record"
-SALIENCY_EXPORT_ARTIFACT_TYPE = "xbrainlab.saliency_export"
 TRAINING_RECORD_ARTIFACT_TYPE = "xbrainlab.training_record"
 
 _RESERVED_FLOAT_TAG = "__xbrainlab_nonfinite_float__"
@@ -463,7 +462,6 @@ def save_model_state_dict(
 __all__ = [
     "ARTIFACT_STORE_SCHEMA_VERSION",
     "EVALUATION_RECORD_ARTIFACT_TYPE",
-    "SALIENCY_EXPORT_ARTIFACT_TYPE",
     "TRAINING_RECORD_ARTIFACT_TYPE",
     "ArtifactIntegrityError",
     "ArtifactStoreError",
