@@ -45,7 +45,7 @@ UI/test files and root settings. Worktree/branch/source facts come from Git, not
 | Module | Includes | Status |
 | --- | --- | --- |
 | 1 Command/state spine | Admission, capabilities, confirmation, publication, owned work, shared domain ports | Responsibility review closed at 1247cf7c; native 178 passed; domain branches explicitly remain modules 2–6 |
-| 2 Import/interpretation | Loaders, BIDS, labels/classes, channel/montage, metadata, recipes, related UI | 2A–2H reviewed; loader consolidation active, remaining domain audit open |
+| 2 Import/interpretation | Loaders, BIDS, labels/classes, channel/montage, metadata, recipes, related UI | 2A–2N reviewed; remaining domain/UI audit open |
 | 3 Preprocess/epoch/split | Processing, copies, invalidation, preview/materialization, related UI/tools | Pending |
 | 4 Models/training | Catalog, resource preflight, settings, stop/rerun, history/checkpoints | Pending |
 | 5 Evaluation/saliency/views | Read/publication, SmoothGrad/recompute, four views, stale work/render lifecycle | Pending |
@@ -103,130 +103,53 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Recovery verified product branch `cleanup/module-quality`, clean source `7c89b532` before 2I edits
-(27 commits after baseline `4770b049`). The original checkout's UI/test/settings edits remain intact.
-Read Git again after a reboot; old session IDs are not evidence of running work.
+Recovery verified product branch `cleanup/module-quality` clean at `323241a9` (33 commits after
+baseline `4770b049`). The original checkout's UI/test/settings changes remain intact. Recheck Git
+after reboot; old session IDs are not running-work evidence. Completed 2I–2M and 8B are indexed below.
 
-**Completed 2I — test-only loader consolidation, `73002524`.**
-Remove test_loaders.py (six redundant mock cases) and test_lazy_loading.py (two cases). Four wrapping
-cases map to the retained parameterized wrapping test; EDF maps to richer inference/reader-close
-coverage; FIF failure maps to retained raw/epochs error cases; GDF preload already has exact arguments.
-Strengthen retained SET success to exact codec/preload arguments before deletion. Original Windows
-baseline: 39 passed. Run strengthened characterization, then retained suite after deletion, Ruff and
-independent actual-diff review. No production changes; exactly eight duplicate cases removed. Keep
-actual FIF/epochs, factory/registration and checked-in multi-format integration protection. One
-reversible test-only commit. Whole-tree script/config/doc lookup found no references to deleted paths.
+**Completed 2N — unused metadata readers/projection alias.** Main fully read metadata.py (735 lines),
+direct metadata tests and actual scan/cache consumers. Independent caller/dynamic/config/serializer
+audit confirms BidsMetadataReadBudget.read and _read_json_object have no callers; the
+DATASET_DESCRIPTION_MAX_BYTES alias has only one test caller. Actual materialization uses
+_read_bids_dataset_description -> parsed_json_value with admitted guards and the retained budget
+fields, remaining_bytes and to_diagnostics. Delete only those unused methods/alias; migrate the
+existing bounded-read test to BIDS_METADATA_READ_BUDGET_BYTES without weakening its assertions.
 
-2I strengthened characterization also passed 39; after deletion 31 passed, exactly eight fewer.
-Ruff/format pass. Independent actual-diff review approved; no production edits in this slice.
+Preserve current byte caps/accounting, parsed-content freshness, containment, callbacks and
+metadata/recipe field serialization. MetadataFieldResolution.to_dict remains: actual review calls
+item.subject.to_dict. Main owns metadata.py/direct test only. Original metadata+parsed-cache suites
+and selected actual scan admission/budget cases, migrated characterization before deletion, identical
+after, Ruff and independent review; no new owner/API, visible UI or EEG/public schema changes.
+Native original, migrated characterization and after selection each passed 27 cases (2.85/2.84/2.87s).
+Ruff/format and independent actual-diff review passed; production -30 lines, no owner change.
+Commit this bounded change, then continue module-2 review/candidate consolidation audit.
 
-**Completed 2J — retire unreachable label sequence/force chain, `daaf1a59`.** Independent full service/test
-audit and main caller review establish actual reviewed sequence imports use mapped checked atomic
-batches, not the flat distribution API. Delete LabelImportService.apply_labels_sequence,
-_force_apply_single, its fallback count/operation flag, DatasetStateService.apply_labels_sequence,
-and the catch-to-zero LabelImportService.apply_labels_batch convenience. Remove the unread
-LabelImportPlan.force_import field: architecture/backend.md explicitly defines this as an internal
-recipe-record DTO, not a public command; current construction and recipe serialization never read it.
-Preserve actual DatasetStateService.apply_labels_batch, checked atomic/timestamp entry points,
-explicit event selection, rollback/unknown-state errors and get_epoch_count_for_file.
+**Remaining read-only audits / next scope decisions.**
 
-Worker owns the three production files plus test_label_import_service.py and the event-value test's
-single fake adapter call. Main owns atomic architecture guard/tests and plan. First run original
-service/event-value/timestamp/state/atomic-guard baseline. Migrate meaningful batch tests to checked
-entry, explicit AtomicLabelApplyError assertions and unchanged real Raw outcomes before deletion;
-retarget the existing atomic guard to checked owner and retain unsafe-write detection. Remove only
-11 sequence/force-exclusive cases after mapping their live-behavior protection. Retain actual
-prepared command sequence/recipe/rollback neighbors. No owner addition, UI/public contract or EEG
-semantics change; production decreases, one reversible commit after characterization/after tests,
-changed-file lint and independent lifecycle/test review. No new guard framework.
+- Candidate/choice-schema source (1348/303 lines), all candidate tests (2518 lines, 56 cases) and
+  event-value candidate/schema tests (342 lines) were fully read independently. Retain real temporary
+  filesystem/format tests and external event-reader isolation. A one-use missing-files forwarder
+  is a candidate only; underlying path resolver has two real consumers and must remain.
+- Scan source (1493 lines) and all direct tests (1245 lines, 38 cases) were independently read.
+  Preserve explicit-vs-recursive source selection, no-payload discovery then admitted materialization,
+  shared budgets, identity/link guards and BIDS index traversal interfaces. No confirmed deletion.
+- Metadata/pairing: retain the single shared pairing policy used by candidate, apply and UI.
+  Subject-catalog wrapper is not deleted for module count: optional-index freshness/rebuild and
+  error normalization remain useful. Label-carrier cache vs streaming fallback and BIDS multi-run
+  suggestions have distinct evidence contracts, not duplicate class policy.
+- BIDS index/parsed cache/channels/events-reader full source audits preserve distinct registry,
+  command freshness, admitted-byte/provenance and atomic MNE mutation responsibilities. Inventory
+  records exact full/partial test reads; no dataset-certification claim.
+- Module 8 actual aggregation is already slim: it installs only lock-derived coverage, not the full
+  product environment. Shards/platform/data/UI lanes provide non-equivalent evidence; retain gates.
+  No measured unnecessary wait was established. Launcher/Poe/CI routing audit is only partial
+  module coverage: workflow, run_tests, Windows bootstrap and their test bodies still need complete
+  reading where inventory says partial. Do not claim all scripts reviewed.
+- Continue import event/value/placement, BIDS/montage, metadata and related UI audit. Modules 3–9
+  still require their complete per-module closure and final integration evidence.
 
-2J original five-file native baseline: 79 passed before any label source/test changes.
-Migrated checked-entry/guard characterization: identical 79 passed before production deletion;
-25 callable-origin guard cases also passed before/after guard-only removal of legacy requirements.
-Worker's interop process failed before launch; only main's successful native runs count.
-After deletion: 68 passed on the same five-file selection (exactly 11 legacy cases removed),
-18 actual reviewed sequence/recipe consumers passed. Nine retained checked-batch cases (not ten)
-preserve real Raw no-mutation/rollback and explicit failure phase/cause. Ruff/format/diff check pass;
-independent final review approved after correcting the stale force-mode class docstring.
-Production +9/-223/net -214 across three files; no owner/public contract addition.
-
-**Declared independent 2K — remove identity alignment work.** Full EventLoader (908 lines) and
-five related test files (1,041 lines) read. Its sole align_sequence caller is after strict equal-count
-validation; both generated index lists are always identity ranges. Remove the 95-line speculative
-alignment helper, impossible truncation warning and identity advanced-index copies. Use already
-validated event rows and labels in order; keep integer event-code allocation, prior event values,
-timestamps, input isolation, count rejection and all timestamp annotation/lifecycle code unchanged.
-No external/dynamic/config/script caller exists; smart_filter stays for actual query/row projection.
-Main owns event_loader.py and directly related tests, separate from worker 2J. Native original
-event/strict/semantic/label suites, then stronger real Raw sequence characterization before edits:
-filtered interleaved triggers, nonzero first sample/prior values, exact order/code mapping, source
-unchanged until apply and mismatch both directions. Replace mock sequence success/mismatch tests
-only after the real equivalent passes. Characterize existing Nx3/epoch behavior without changing
-it; no new public semantics. Same after suites plus actual reviewed sequence consumers, Ruff,
-independent review and one reversible commit. This removes demonstrably redundant work, not a
-measured user-visible speedup or a timestamp redesign.
-2K original native selection: 36 passed; strengthened real Raw characterization: 39 passed before
-EventLoader changes. One existing expected MNE warning comes from the safety test dropping all epochs.
-After deleting two replaced mock cases: 37 passed; identical actual reviewed sequence/recipe
-consumer selection 18 passed. Independent actual-diff approval, Ruff/format/diff check pass.
-An isolated reversed-row fault makes both new real Raw cases fail on timestamps/prior values;
-no faulty file persisted (first argv-based probe had a quoting SyntaxError, not test evidence).
-Production +5/-126/net -121; the helper alone is about 94 lines, not the total reduction.
-2K committed `0e1c096c`; continue remaining import domain audits, not manual handoff.
-
-**Next bounded 2L — remove unused BIDS size-only view.** Independent full channels/resources and
-main caller/property audit found BidsEventsJsonReader.admitted_file_bytes has no production, test,
-dynamic/config/script/doc consumers. Delete only this seven-line compatibility projection; retain
-actual content_identities, admitted content binding, per-command freshness/budget and parsed cache.
-Main owns this one file/plan; baseline and after direct BIDS events-resource suite, unchanged tests,
-Ruff and independent diff review. No replacement API/owner, UI/public/recipe semantics or performance
-claim. If baseline exposes a real defect, separate its diagnosis before this deletion.
-2L complete focused evidence: identical native 28 passed before/after, no test changes or skips;
-Ruff/format/diff check and independent review approved. Production -7 LOC; committed `d575fba4`.
-
-Read-only audits continue: worker fully reviews label carrier/field/format boundaries and tests;
-shared BIDS index/cache audits retain distinct registry/command ownership and byte freshness checks.
-The tiny subject-catalog wrapper is not deleted merely to reduce module count: its optional index
-freshness/rebuild and error normalization need preservation; no blocking redundancy established.
-
-**Next bounded 2M — unused label-carrier projections.** Independent complete label-carrier source
-audit plus main helper/caller/semantic-owner read found _sidecar_reader_for_plan and
-observed_class_map_for_label_carrier unused everywhere; infer_class_map_from_label_carrier_plan has
-only four test callers. Delete these three conveniences and resulting unused imports after migrating
-the four assertions to actual derive_class_views(plan)[0]. They check resolved/unresolved names,
-not the retired helper's arbitrary display cap. Preserve full expected maps and all actual value
-decision, admitted reader, cache-vs-streaming and BIDS recommendation semantics. Worker owns
-data_interpretation_label_carriers.py and its direct test file only; main owns plan/native validation.
-Native original direct suite, migrated same suite before production deletion, identical after,
-actual event-value/recipe neighbors, Ruff and independent review; no new owner/UI/public schema.
-2M original direct suite: native 35 passed before any test or production edits.
-Migrated characterization also 35 passed before helper deletion. After: 41 passed (same 35 plus
-six actual event-value apply neighbors); unchanged four expected maps, no cases deleted. Independent
-final review and Ruff/format/diff check approved. Production -37 LOC; commit next.
-
-Module-8 entry audit read current Windows bootstrap and separately supported WSL launcher routes.
-Retain distinct cmd/PowerShell bootstrap/exit wrappers and bounded input-method readiness waits;
-no measured redundant waiting established. One false WSL log message remains: child output goes
-only to terminal by privacy design, while text claims launcher-log mirroring. Correct only after
-declaring a bounded truth-sync slice and reading its existing privacy tests; no Windows GUI relaunch
-or environment change is part of that audit.
-
-**Bounded 8B — launcher output truth sync.** Main read the entire WSL launcher and its privacy
-tests using release-packaging-reviewer. Existing Invoke-WslWithLiveLog sends raw child output only
-to Write-LauncherConsoleLine, but startup copy falsely promises launcher-log mirroring. Update
-that single message to terminal-only delivery with an explicit no-launcher-log statement; retain
-all bounded lifecycle logging, privacy, process/exit and cache/input-method behavior. Extend the
-existing privacy test's visible-copy assertion, observe its failure before the copy correction,
-then rerun the same file and lint. This is script diagnostic truth sync, no GUI behavior redesign,
-actual WSL/app launch, dependency installation or new environment. Main owns launcher and its
-privacy test; independent review before separate commit. Module-8 full inventory remains open.
-8B focused evidence: original 5 pass; new copy assertion 1 fail/4 pass before correction; after
-single-line correction 5 pass. Ruff/format/diff check and independent actual-diff review approved.
-This is static/source evidence only, not launcher execution or Windows GUI acceptance.
-
-**Remaining module-2 work.**
-Continue event/label semantics, BIDS, channel/montage and related UI review. Modules 3–9 remain open.
-There is no current handoff candidate or merge request.
+There is no manual candidate or merge request. Completed slices, context recovery and pending gates
+are not an endpoint; continue the next unfinished authorized step.
 
 ### Responsibility closure and retained boundaries
 
@@ -294,6 +217,12 @@ this table replaces their duplicated active-plan narrative, not any unresolved m
 | 2G / `aba4eea7` | Three unused interpretation mutation APIs; production -55 | Strengthened actual checkpoint/one-shot/recipe rollback protection; final historical-source 82 and current 82 pass; chronology qualification below |
 | 2H / `7c89b532` | Six test-only Raw display conveniences; production -49 | 113 original, strengthened retained 116; 13 external-fixture skips; eight wipe cases before deletion and imported-event fault detection; 11 typed-summary + 3 rollback neighbors passed |
 | 8A / `c0425f43` | Route three actual visual-CI helpers | 10 baseline, 1 red/10 pass, 11 corrected; five unrelated producer additions rejected before commit |
+| 2I / `73002524` | Remove eight duplicate loader cases; no production change | 39 original/strengthened -> 31; exact SET codec/preload strengthened; actual FIF/epochs retained; plan history consolidated |
+| 2J / `daaf1a59` | Retire unused flat sequence/force and catch-to-zero label chain; +9/-223/net -214 | 79 original/migrated -> 68 after (11 dead cases), 18 actual sequence/recipe neighbors; nine checked-batch cases retain explicit error phases/real Raw rollback; actual public state entry unchanged |
+| 2K / `0e1c096c` | Remove identity alignment helper/index copies/unreachable warning; +5/-126/net -121 | 36 original -> 39 real Raw characterization -> 37 after two replaced mocks; 18 actual consumers; reversed-row fault detected |
+| 2L / `d575fba4` | Unused BIDS admitted size-only property; production -7 | Identical native 28 before/after; property is not a dataclass field; content identity/budget unchanged |
+| 2M / `e0df098d` | Three unused label-carrier convenience helpers; production -37 | 35 original/migrated -> same35 + six event-value consumers after; four full maps unchanged through actual derive_class_views |
+| 8B / `323241a9` | Correct WSL launcher terminal-only output description; script +1/-1 | 5 original -> 1 red/4 pass -> 5 corrected; existing privacy source assertions; no launcher/app executed |
 
 ### Evidence qualifications that remain relevant
 
@@ -319,6 +248,15 @@ this table replaces their duplicated active-plan narrative, not any unresolved m
   source-diverse gate is still required. Replacing wipe with set_mne in memory caused all four
   imported-event cases to fail; no faulty source persisted. Existing MNE/NumPy warnings are not
   evidence of final whole-platform readiness.
+- 2K's list/ndarray real Raw cases cover filtered interleaving, nonzero first sample, previous-value
+  column, exact code/order and no source mutation before apply. Mismatch covers both directions.
+  The isolated reversed-row probe failed both cases on timestamps/prior values; no faulty source
+  persisted. The first argv probe had only a Windows quoting SyntaxError. One existing MNE warning
+  in normal suites is expected all-epochs-dropped safety behavior, not a new failure.
+- 2J's force_import field belonged to the explicitly internal LabelImportPlan recipe DTO; current
+  construction/serialization never used it. Actual DatasetStateService.apply_labels_batch and
+  checked atomic ownership remain. 2M's limit=20 belonged only to its discarded test-only convenience,
+  not the current preview/public class-map policy. No formal contract changes are implied.
 - Lower-mock internal paths retain external MNE/resource isolation where necessary. No reduced test
   count or path-only inventory establishes stronger workflow coverage by itself.
 

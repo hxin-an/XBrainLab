@@ -23,7 +23,6 @@ from .data_interpretation_path_identity import normalized_path_identity
 SAFE = "safe"
 NEEDS_CONFIRMATION = "needs_confirmation"
 BIDS_METADATA_READ_BUDGET_BYTES = 1_048_576
-DATASET_DESCRIPTION_MAX_BYTES = BIDS_METADATA_READ_BUDGET_BYTES
 
 
 @dataclass
@@ -37,26 +36,6 @@ class BidsMetadataReadBudget:
     @property
     def remaining_bytes(self) -> int:
         return max(self.limit_bytes - self.bytes_read, 0)
-
-    def read(self, path: Path) -> tuple[bytes | None, str]:
-        """Read one admitted file without exceeding the aggregate byte cap."""
-        try:
-            with path.open("rb") as handle:
-                file_bytes = max(int(os.fstat(handle.fileno()).st_size), 0)
-                if file_bytes > self.remaining_bytes:
-                    self.exhausted = True
-                    return None, (
-                        f"{path.name} exceeds the bounded discovery limit of "
-                        f"{self.limit_bytes} bytes (the shared BIDS metadata byte "
-                        "budget)."
-                    )
-                encoded = handle.read(file_bytes)
-        except OSError:
-            return None, f"{path.name} could not be read."
-        self.bytes_read += len(encoded)
-        if len(encoded) != file_bytes:
-            return None, f"{path.name} could not be read completely."
-        return encoded, ""
 
     def to_diagnostics(self) -> dict[str, Any]:
         return {
@@ -528,15 +507,6 @@ def _read_bids_dataset_description(
             + ".",
         )
     return payload, ""
-
-
-def _read_json_object(path: Path) -> dict[str, Any]:
-    """Compatibility wrapper for one bounded dataset-description read."""
-    payload, _issue = _read_bids_dataset_description(
-        path,
-        BidsMetadataReadBudget(),
-    )
-    return payload
 
 
 def _channel_status_summary(
