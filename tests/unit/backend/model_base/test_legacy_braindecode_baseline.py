@@ -7,8 +7,6 @@ import sys
 import pytest
 import torch
 
-from XBrainLab.backend.model_base.legacy_braindecode import models as legacy_models
-
 _BASELINE_MODELS = (
     ("eegnet", "EEGNet"),
     ("deep4", "Deep4Net"),
@@ -38,11 +36,14 @@ def test_local_baseline_import_does_not_load_installed_braindecode() -> None:
             "-c",
             (
                 "import sys; "
-                "from XBrainLab.backend.model_base.legacy_braindecode "
-                "import models; "
-                "assert models.EEGNet; "
+                "from XBrainLab.backend.model_base.legacy_braindecode.models.eegnet "
+                "import EEGNet; "
+                "assert EEGNet; "
                 "assert not any(name == 'braindecode' or "
-                "name.startswith('braindecode.') for name in sys.modules)"
+                "name.startswith('braindecode.') for name in sys.modules); "
+                "prefix = 'XBrainLab.backend.model_base.legacy_braindecode.models.'; "
+                "assert not any(prefix + name in sys.modules "
+                "for name in ('labram', 'reve', 'signal_jepa'))"
             ),
         ],
         check=False,
@@ -60,7 +61,12 @@ def test_local_baseline_strictly_loads_upstream_state_and_matches_output(
 ) -> None:
     upstream_module = importlib.import_module(f"braindecode.models.{module_name}")
     upstream_class = getattr(upstream_module, class_name)
-    legacy_class = getattr(legacy_models, class_name)
+    legacy_class = getattr(
+        importlib.import_module(
+            f"XBrainLab.backend.model_base.legacy_braindecode.models.{module_name}"
+        ),
+        class_name,
+    )
     kwargs = _model_kwargs(class_name)
 
     torch.manual_seed(23)
@@ -86,11 +92,19 @@ def test_local_baseline_strictly_loads_upstream_state_and_matches_output(
     torch.testing.assert_close(actual, expected, rtol=1e-6, atol=1e-7)
 
 
-@pytest.mark.parametrize("class_name", ("EEGNet", "EEGNeX"))
+@pytest.mark.parametrize(
+    ("module_name", "class_name"), (("eegnet", "EEGNet"), ("eegnex", "EEGNeX"))
+)
 def test_local_baseline_representatives_support_finite_backward(
+    module_name: str,
     class_name: str,
 ) -> None:
-    model_class = getattr(legacy_models, class_name)
+    model_class = getattr(
+        importlib.import_module(
+            f"XBrainLab.backend.model_base.legacy_braindecode.models.{module_name}"
+        ),
+        class_name,
+    )
     model = model_class(**_model_kwargs(class_name)).train()
     generator = torch.Generator().manual_seed(53)
     inputs = torch.randn(2, 22, 301, generator=generator)

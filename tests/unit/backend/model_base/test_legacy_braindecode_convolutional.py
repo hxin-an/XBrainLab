@@ -5,8 +5,6 @@ import importlib
 import pytest
 import torch
 
-from XBrainLab.backend.model_base.legacy_braindecode import models as legacy_models
-
 _CONVOLUTIONAL_MODELS = (
     ("eeginception_mi", "EEGInceptionMI"),
     ("eegitnet", "EEGITNet"),
@@ -106,7 +104,12 @@ def test_local_convolutional_strictly_loads_upstream_state_and_matches_output(
 ) -> None:
     upstream_module = importlib.import_module(f"braindecode.models.{module_name}")
     upstream_class = getattr(upstream_module, class_name)
-    legacy_class = getattr(legacy_models, class_name)
+    legacy_class = getattr(
+        importlib.import_module(
+            f"XBrainLab.backend.model_base.legacy_braindecode.models.{module_name}"
+        ),
+        class_name,
+    )
     kwargs = _model_kwargs(class_name)
 
     torch.manual_seed(101)
@@ -131,11 +134,24 @@ def test_local_convolutional_strictly_loads_upstream_state_and_matches_output(
     torch.testing.assert_close(actual, expected, rtol=1e-6, atol=1e-7)
 
 
-@pytest.mark.parametrize("class_name", ("EEGInceptionMI", "ContraWR", "SSTDPN"))
+@pytest.mark.parametrize(
+    ("module_name", "class_name"),
+    (
+        ("eeginception_mi", "EEGInceptionMI"),
+        ("contrawr", "ContraWR"),
+        ("sstdpn", "SSTDPN"),
+    ),
+)
 def test_local_convolutional_representatives_support_finite_backward(
+    module_name: str,
     class_name: str,
 ) -> None:
-    model_class = getattr(legacy_models, class_name)
+    model_class = getattr(
+        importlib.import_module(
+            f"XBrainLab.backend.model_base.legacy_braindecode.models.{module_name}"
+        ),
+        class_name,
+    )
     model = model_class(**_model_kwargs(class_name)).train()
     inputs = torch.randn(2, 4, 256, generator=torch.Generator().manual_seed(107))
 

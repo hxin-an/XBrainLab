@@ -109,6 +109,34 @@ old session IDs and plan text do not prove a process is running. No manual candi
 
 **Current work — developer docs/config truth and remaining scripts; module2–6 closure gaps and explicit decisions remain open.**
 
+**Bounded4O — stop importing every legacy model for a concrete model selection.** Main/independent
+caller trace finds product catalog imports concrete submodules; only ten model tests consume the
+private117-line eager facade. Measure cold concrete EEGNet import time/module count in the existing
+Windows environment before intervention. Migrate tests to concrete modules using their existing
+family cases (no new registry/loader), preserve all parity/state/gradient/offline assertions, obtain
+passing characterization, then reduce only models/__init__.py to a package docstring. Preserve all
+model/support/provenance files, catalog IDs, public selection and saved-result semantics. Owners
+unchanged; anticipated production-116 in one file. No UI/public contract or pretrained-weight changes.
+Validation: identical bounded small-configuration ten-family suite before/after, fresh-process
+no-upstream/no-unrelated-model import protection, Ruff, independent actual-diff review, repeated cold
+import measurement. No downloads, new environment or GPU runs; do not extrapolate to application
+startup or model training speed. Rollback this slice only. Then resume outstanding inventory.
+Result: original89pass18.81s, migrated89pass13.87s, strengthened subprocess red8.12s, final89pass
+12.08s (same44 upstream/model warnings). Independent actual-diff review approves preserved cases,
+catalog IDs and concrete model imports. Production-116; model/support/provenance untouched.
+Three fresh-process EEGNet imports load52 ->2 local model modules. Before19.4376/5.5232/5.4771s;
+after3.9682/3.9190/3.9098s. First-before OS-cache outlier prevents a claimed percentage speedup;
+this measures interpreter-cold concrete imports only, not OS-cold application startup or training.
+Changed11-file Ruff/format passes; actual legacy EEGNet catalog factory CPU forward is finite with
+expected2x2 output, and seven provenance plus three legacy catalog cases pass10/0.08s. Tests net+131;
+no case removed. This does not replace final source-diverse/native model workflow gates.
+
+Remaining large-file qualification: independent source audit now fully reads architecture_compliance.py
+1-11617. No proven obsolete/duplicate guard; distinct mutable-state/consent/publication/async bypass
+checks remain. Its concentrated AST/guard families impose substantial maintenance cost; this is not
+an execution PASS or a declaration of ideal architecture. Review its direct characterization before
+deciding whether a behavior-preserving family split belongs in this stage; retain one aggregator.
+
 **Bounded9V — retain real downloader safety while removing duplicate profile membership.** Full
 independent fetcher1135/direct427 and main download chain read retain one pinned-size/SHA/atomic
 publication owner. Teacher profile redundantly names OpenNeuro already present in its expanded

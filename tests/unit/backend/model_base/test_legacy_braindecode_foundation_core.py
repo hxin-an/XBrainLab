@@ -6,8 +6,6 @@ from pathlib import Path
 import pytest
 import torch
 
-from XBrainLab.backend.model_base.legacy_braindecode import models as legacy_models
-
 _FOUNDATION_CORE_MODELS = (
     ("eegpt", "EEGPT", False),
     ("eegpt", "InterpolatedEEGPT", True),
@@ -85,7 +83,12 @@ def test_local_foundation_core_strictly_loads_upstream_state_and_matches_output(
 ) -> None:
     upstream_module = importlib.import_module(f"braindecode.models.{module_name}")
     upstream_class = getattr(upstream_module, class_name)
-    legacy_class = getattr(legacy_models, class_name)
+    legacy_class = getattr(
+        importlib.import_module(
+            f"XBrainLab.backend.model_base.legacy_braindecode.models.{module_name}"
+        ),
+        class_name,
+    )
     kwargs, n_chans, n_times = _base_kwargs(class_name)
     if interpolated:
         kwargs["chs_info"] = upstream_class._TARGET_CHS_INFO
@@ -120,9 +123,20 @@ def test_local_foundation_core_strictly_loads_upstream_state_and_matches_output(
     torch.testing.assert_close(actual, expected, rtol=1e-6, atol=1e-7)
 
 
-@pytest.mark.parametrize("class_name", ("EEGPT", "BIOT", "BENDR"))
-def test_local_foundation_core_supports_finite_backward(class_name: str) -> None:
-    model_class = getattr(legacy_models, class_name)
+@pytest.mark.parametrize(
+    ("module_name", "class_name"),
+    (("eegpt", "EEGPT"), ("biot", "BIOT"), ("bendr", "BENDR")),
+)
+def test_local_foundation_core_supports_finite_backward(
+    module_name: str,
+    class_name: str,
+) -> None:
+    model_class = getattr(
+        importlib.import_module(
+            f"XBrainLab.backend.model_base.legacy_braindecode.models.{module_name}"
+        ),
+        class_name,
+    )
     kwargs, n_chans, n_times = _base_kwargs(class_name)
     kwargs["n_chans"] = n_chans
     model = model_class(**kwargs).train()
@@ -146,9 +160,12 @@ def test_local_foundation_core_supports_finite_backward(class_name: str) -> None
 
 
 def test_local_foundation_core_has_no_remote_loader_surface() -> None:
-    model_root = Path(legacy_models.__file__).parent
     for module_name in ("eegpt", "biot", "bendr"):
-        source = (model_root / f"{module_name}.py").read_text(encoding="utf-8")
+        source = Path(
+            importlib.import_module(
+                f"XBrainLab.backend.model_base.legacy_braindecode.models.{module_name}"
+            ).__file__
+        ).read_text(encoding="utf-8")
         for forbidden_surface in (
             "Hugging Face Hub",
             "_hub_mixin_config",

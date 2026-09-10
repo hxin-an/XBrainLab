@@ -8,14 +8,14 @@ import numpy as np
 import pytest
 import torch
 
-from XBrainLab.backend.model_base.legacy_braindecode import models as legacy_models
+from XBrainLab.backend.model_base.legacy_braindecode.models import luna, signal_jepa
 
 _SIGNAL_JEPA_MODELS = (
-    "SignalJEPA",
-    "InterpolatedSignalJEPA",
-    "SignalJEPA_Contextual",
-    "SignalJEPA_PostLocal",
-    "SignalJEPA_PreLocal",
+    ("signal_jepa", "SignalJEPA"),
+    ("signal_jepa", "InterpolatedSignalJEPA"),
+    ("signal_jepa", "SignalJEPA_Contextual"),
+    ("signal_jepa", "SignalJEPA_PostLocal"),
+    ("signal_jepa", "SignalJEPA_PreLocal"),
 )
 
 
@@ -87,14 +87,20 @@ def _luna_case() -> tuple[dict[str, object], torch.Tensor]:
     )
 
 
-@pytest.mark.parametrize("class_name", _SIGNAL_JEPA_MODELS)
+@pytest.mark.parametrize(("module_name", "class_name"), _SIGNAL_JEPA_MODELS)
 def test_local_signal_jepa_strictly_loads_upstream_state_and_matches_output(
+    module_name: str,
     class_name: str,
 ) -> None:
     upstream_class = getattr(
         importlib.import_module("braindecode.models.signal_jepa"), class_name
     )
-    legacy_class = getattr(legacy_models, class_name)
+    legacy_class = getattr(
+        importlib.import_module(
+            f"XBrainLab.backend.model_base.legacy_braindecode.models.{module_name}"
+        ),
+        class_name,
+    )
     kwargs, inputs = _signal_jepa_case(class_name)
 
     torch.manual_seed(421)
@@ -123,7 +129,7 @@ def test_local_luna_strictly_loads_upstream_state_and_matches_output() -> None:
 
     torch.manual_seed(423)
     upstream = upstream_class(**kwargs).eval()
-    legacy = legacy_models.LUNA(**kwargs).eval()
+    legacy = luna.LUNA(**kwargs).eval()
 
     upstream_state = upstream.state_dict()
     legacy_state = legacy.state_dict()
@@ -141,12 +147,19 @@ def test_local_luna_strictly_loads_upstream_state_and_matches_output() -> None:
     torch.testing.assert_close(actual, expected, rtol=1e-6, atol=1e-7)
 
 
-@pytest.mark.parametrize("class_name", ("SignalJEPA", "LUNA"))
-def test_local_signal_jepa_luna_supports_finite_backward(class_name: str) -> None:
+@pytest.mark.parametrize(
+    ("module_name", "class_name"),
+    (("signal_jepa", "SignalJEPA"), ("luna", "LUNA")),
+)
+def test_local_signal_jepa_luna_supports_finite_backward(
+    module_name: str,
+    class_name: str,
+) -> None:
     kwargs, inputs = (
         _signal_jepa_case(class_name) if class_name == "SignalJEPA" else _luna_case()
     )
-    model = getattr(legacy_models, class_name)(**kwargs).train()
+    model_class = signal_jepa.SignalJEPA if module_name == "signal_jepa" else luna.LUNA
+    model = model_class(**kwargs).train()
 
     model(inputs).square().mean().backward()
 
@@ -159,9 +172,8 @@ def test_local_signal_jepa_luna_supports_finite_backward(class_name: str) -> Non
 
 
 def test_local_signal_jepa_luna_has_no_remote_loader_surface() -> None:
-    model_root = Path(legacy_models.__file__).parent
-    for module_name in ("signal_jepa", "luna"):
-        source = (model_root / f"{module_name}.py").read_text(encoding="utf-8")
+    for module in (signal_jepa, luna):
+        source = Path(module.__file__).read_text(encoding="utf-8")
         for forbidden_surface in (
             "Hugging Face Hub",
             "HuggingFace",
