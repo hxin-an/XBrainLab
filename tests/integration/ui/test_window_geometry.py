@@ -35,7 +35,7 @@ class _FakeSettings:
 def _make_lightweight_window(qtbot, settings):
     with (
         patch(
-            "XBrainLab.ui.window_geometry_lifecycle.QSettings",
+            "XBrainLab.ui.window_geometry_lifecycle.application_settings",
             return_value=settings,
         ),
         patch("XBrainLab.ui.main_window.MainWindow.init_panels"),

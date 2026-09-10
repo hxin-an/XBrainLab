@@ -51,6 +51,8 @@ import pytest
 from PyQt6.QtCore import QSettings
 from PyQt6.QtWidgets import QDialog, QMessageBox
 
+from XBrainLab.platform_paths import user_config_dir
+
 
 @pytest.fixture(autouse=True)
 def isolate_product_qt_settings(request, monkeypatch):
@@ -58,15 +60,35 @@ def isolate_product_qt_settings(request, monkeypatch):
     original_init = QSettings.__init__
 
     def isolated_init(self, *args, **kwargs):
+        application = None
         if (
             len(args) == 2
             and args[0] == "XBrainLab"
             and isinstance(args[1], str)
             and not kwargs
         ):
-            # Resolve lazily: tests without Qt preferences need no extra directory.
+            application = args[1]
+        elif (
+            len(args) == 2
+            and isinstance(args[0], str)
+            and args[1] == QSettings.Format.IniFormat
+            and not kwargs
+        ):
+            candidate = Path(args[0])
+            if (
+                candidate.parent == user_config_dir() / "qt-settings"
+                and candidate.name
+                in {"XBrainLab.ini", "MontagePicker.ini", "SmartParser.ini"}
+                and not candidate.is_relative_to(request.getfixturevalue("tmp_path"))
+            ):
+                application = candidate.stem
+
+        if application is not None:
+            # Resolve lazily; preserve explicit paths already owned by this test.
             path = (
-                request.getfixturevalue("tmp_path") / "qt-settings" / f"{args[1]}.ini"
+                request.getfixturevalue("tmp_path")
+                / "qt-settings"
+                / f"{application}.ini"
             )
             original_init(self, str(path), QSettings.Format.IniFormat)
         else:

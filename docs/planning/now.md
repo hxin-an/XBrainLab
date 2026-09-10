@@ -333,6 +333,46 @@ geometry evidence. App-polish/baseline overlap conceptually but no equivalent pe
 proved. No script/test/gate deletion; any future surface migration needs an explicit evidence-preserving
 decision. Source inspection is not a newly executed capture or performance result.
 
+**Bounded9K — make the existing config override reach actual Qt preferences.** Follow-up read of
+run.py370/platform_paths247/native-smoke251/startup-smoke141 confirms the same real defect outside
+pytest: smoke sets a static Ini default/path but splash and geometry/dialog consumers still construct
+native settings. A smoke close can therefore persist to the user's native store. Do not run startup,
+native-product or capture gates until their actual settings path is proven isolated.
+Outcome: explicit XBRAINLAB_CONFIG_DIR routes real Qt preferences into per-application INI files in
+that existing config root; absent override retains the exact native org/app store. Reuse existing
+platform_paths.user_config_dir resolution, retain preference names/values and geometry lifecycle;
+no normal-launch visible behavior, model/EEG/public-command change or settings migration. UI-internal
+authorization already covers this boundary repair. First add red actual geometry path assertion before
+write, then route splash/geometry/MontagePicker/SmartParser through one small UI Qt constructor helper.
+Retire the orphan geometry factory and ineffective startup static Qt setters, replacing mocked-setter
+tests with real storage/reopen assertions. Keep explicit smoke absolute-path admission.
+Complexity review before implementation: new module is a pure Qt construction seam for four real
+consumers, not an admission/publication/async owner; authoritative owner counts unchanged. Expected
+five production files and about+25/-20 LOC; exact delta required after edit. Separate scripts/capture
+migration into9L so no unsafe capture is run between slices. Do not add a general storage framework.
+Validate normal native constructor selection read-only, override path/partition/roundtrip, actual
+geometry/montage/parser/splash focused tests, caller/diff review and Ruff. One reversible commit;
+then directly continue9L to remove duplicated unsafe capture clearing/global setter paths. Capture
+entrypoints must establish isolation themselves or fail closed, never rely on pytest monkeypatching.
+Direct shared-fixture dependency: an inherited config override makes the new explicit INI route
+bypass9J's org/app-only interception. Add a before-write regression using an external test-owned config
+root. Extend only the current product INI path interception to per-test storage when the requested
+file is outside that test's tmp_path; preserve explicit overrides already owned by the test and all
+unrelated explicit INI callers. No config-env or Assistant JSON override. This is necessary before
+broader GUI tests; final factory/native and test-isolation claims must be separately verified.
+Execution:24 settings/splash cases pass0.55s; independent Windows probe without pytest confirms
+unchanged native filename/format read-only and all3 override stores sync/reopen within a temporary root.
+Native combined104 run102pass/2splash centering failures: tests assume primary screen, while existing
+product policy correctly chooses the cursor's secondary monitor (observed x=-960 vs primary959).
+Do not change product placement or weaken centering assertions. Fix the two test preconditions by
+isolating QCursor.pos at primary center, retaining real screen choice/placement and exact pixel bounds;
+then revalidate only affected settings/native paths. New fixture routing also needs final Ruff/review.
+Final focused24 native cases pass0.61s after deterministic cursor setup. The other80 native component
+cases already passed against the same production source. Both before-write defects reproduced before
+repair; nine changed Python files pass Ruff/format and independent final actual-diff review approves.
+Production5 files+28/-19/net+9 (includes15-line Qt adapter); no owner increase, migration shim or
+user/native settings write. Script callers retain9L as an explicit unresolved blocker to capture gates.
+
 **Module8 CI/Poe disposition.** Independent full ci925/docsworkflow83/pyproject314 plus routing109,
 artifact verifier216/direct311 and reliability409/UI40/data58/integration-trigger24 retains distinct
 Linux coverage shards/coverage-only aggregate, platform/native/data/visual/provenance gates. Repeated

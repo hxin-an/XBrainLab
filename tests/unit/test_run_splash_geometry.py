@@ -4,8 +4,8 @@ import inspect
 from pathlib import Path
 
 import pytest
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor
+from PyQt6.QtCore import QByteArray, QSettings, Qt
+from PyQt6.QtGui import QColor, QCursor
 from PyQt6.QtWidgets import QApplication, QMainWindow
 
 import run as run_entrypoint
@@ -44,31 +44,21 @@ def test_startup_smoke_qsettings_is_explicit_and_isolated(
     assert _configure_startup_smoke_qsettings({}) is None
 
     settings_root = tmp_path / "Native settings"
-    calls: list[tuple] = []
-    monkeypatch.setattr(
-        run_entrypoint.QSettings,
-        "setDefaultFormat",
-        lambda *args: calls.append(args),
-    )
-    monkeypatch.setattr(
-        run_entrypoint.QSettings,
-        "setPath",
-        lambda *args: calls.append(args),
-    )
-    resolved = _configure_startup_smoke_qsettings(
-        {
-            "XBRAINLAB_STARTUP_SMOKE_CLOSE_MS": "1000",
-            "XBRAINLAB_CONFIG_DIR": str(settings_root),
-        }
-    )
+    monkeypatch.setenv("XBRAINLAB_STARTUP_SMOKE_CLOSE_MS", "1000")
+    monkeypatch.setenv("XBRAINLAB_CONFIG_DIR", str(settings_root))
+    resolved = _configure_startup_smoke_qsettings()
 
     assert resolved == settings_root.resolve()
     assert settings_root.is_dir()
-    assert calls[0] == (run_entrypoint.QSettings.Format.IniFormat,)
-    assert calls[1] == (
-        run_entrypoint.QSettings.Format.IniFormat,
-        run_entrypoint.QSettings.Scope.UserScope,
-        str(settings_root),
+    settings = run_entrypoint.application_settings()
+    assert settings.format() == QSettings.Format.IniFormat
+    assert Path(settings.fileName()).is_relative_to(settings_root)
+    geometry = QByteArray(b"splash geometry")
+    settings.setValue("main_window/geometry", geometry)
+    settings.sync()
+    assert settings.status() == QSettings.Status.NoError
+    assert (
+        run_entrypoint.application_settings().value("main_window/geometry") == geometry
     )
 
 
@@ -119,11 +109,12 @@ def test_splash_pixmap_contains_branded_loading_text(qapp):
     assert image.pixelColor(image.width() // 2, 3) == QColor("#0e7ac4")
 
 
-def test_splash_is_centered_before_show(qapp, qtbot):
+def test_splash_is_centered_before_show(qapp, qtbot, monkeypatch):
+    screen = qapp.primaryScreen()
+    monkeypatch.setattr(QCursor, "pos", lambda: screen.geometry().center())
     splash = _create_centered_splash(qapp, saved_geometry=None)
     qtbot.addWidget(splash)
 
-    screen = qapp.primaryScreen()
     available = screen.availableGeometry()
     center = splash.geometry().center()
 
@@ -132,11 +123,12 @@ def test_splash_is_centered_before_show(qapp, qtbot):
     assert abs(center.y() - available.center().y()) <= 1
 
 
-def test_splash_is_recentered_after_show(qapp, qtbot):
+def test_splash_is_recentered_after_show(qapp, qtbot, monkeypatch):
+    screen = qapp.primaryScreen()
+    monkeypatch.setattr(QCursor, "pos", lambda: screen.geometry().center())
     splash = _create_centered_splash(qapp, saved_geometry=None)
     qtbot.addWidget(splash)
 
-    screen = qapp.primaryScreen()
     available = screen.availableGeometry()
     splash.move(available.topLeft())
 

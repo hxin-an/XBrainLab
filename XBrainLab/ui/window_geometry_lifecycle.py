@@ -8,11 +8,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from PyQt6 import sip
-from PyQt6.QtCore import QObject, QRect, QSettings, QSize, Qt, QTimer
+from PyQt6.QtCore import QObject, QRect, QSize, Qt, QTimer
 from PyQt6.QtGui import QScreen
 from PyQt6.QtWidgets import QMainWindow
 
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.ui.qt_settings import application_settings
 from XBrainLab.ui.window_placement import (
     bounded_window_position,
     choose_screen_for_rect,
@@ -40,10 +41,6 @@ class WindowGeometryPolicy:
     delayed_recovery_ms: int = 250
 
 
-def _default_settings() -> QSettings:
-    return QSettings("XBrainLab", "XBrainLab")
-
-
 class WindowGeometryLifecycle(QObject):
     """Coordinate geometry side effects for one top-level window."""
 
@@ -57,7 +54,7 @@ class WindowGeometryLifecycle(QObject):
         super().__init__(window)
         self._window_ref = weakref.ref(window)
         self._policy = policy or WindowGeometryPolicy()
-        self._settings = (settings_factory or _default_settings)()
+        self._settings = (settings_factory or application_settings)()
         self._post_show_recovery_scheduled = False
         self._startup_fallback_applied = False
 

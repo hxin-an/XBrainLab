@@ -59,10 +59,11 @@ def _resolve_tool_debug_script(value: str) -> str:
     )
 
 
-from PyQt6.QtCore import QSettings, QSize, Qt, QTimer
+from PyQt6.QtCore import QSize, Qt, QTimer
 from PyQt6.QtGui import QColor, QFont, QPainter, QPaintEvent, QPen, QPixmap
 from PyQt6.QtWidgets import QApplication, QWidget
 
+from XBrainLab.ui.qt_settings import application_settings
 from XBrainLab.ui.window_placement import (
     center_widget_on_screen,
     choose_screen_for_saved_geometry,
@@ -246,12 +247,6 @@ def _configure_startup_smoke_qsettings(
     if not settings_root.is_absolute():
         raise ValueError("Startup smoke config path must be absolute.")
     settings_root.mkdir(parents=True, exist_ok=True)
-    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
-    QSettings.setPath(
-        QSettings.Format.IniFormat,
-        QSettings.Scope.UserScope,
-        str(settings_root),
-    )
     return settings_root.resolve()
 
 
@@ -316,7 +311,7 @@ def main() -> None:
     _configure_application_identity(app)
 
     # --- Splash Screen (shown while heavy imports load) ---
-    settings = QSettings("XBrainLab", "XBrainLab")
+    settings = application_settings()
     splash = _create_centered_splash(app, settings.value("main_window/geometry", None))
     _show_centered_splash(app, splash)
 

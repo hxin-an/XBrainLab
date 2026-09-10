@@ -14,7 +14,7 @@ if sys.version_info >= (3, 12):
 else:
     from typing_extensions import override
 
-from PyQt6.QtCore import QSettings, Qt
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QShowEvent
 from PyQt6.QtWidgets import (
     QAbstractSpinBox,
@@ -41,6 +41,7 @@ from PyQt6.QtWidgets import (
 from XBrainLab.backend.utils.filename_parser import FilenameParser
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.core.base_dialog import BaseDialog
+from XBrainLab.ui.qt_settings import application_settings
 from XBrainLab.ui.styles.theme import Theme
 
 _PARSER_MODE_MIN_WIDTH = 116
@@ -953,7 +954,7 @@ class SmartParserDialog(BaseDialog):
 
     def save_settings(self):
         """Persist current parsing settings to QSettings."""
-        settings = QSettings("XBrainLab", "SmartParser")
+        settings = application_settings("SmartParser")
 
         # Save Mode
         if self.mode_group:
@@ -989,7 +990,7 @@ class SmartParserDialog(BaseDialog):
 
     def load_settings(self):
         """Restore parsing settings from QSettings."""
-        settings = QSettings("XBrainLab", "SmartParser")
+        settings = application_settings("SmartParser")
 
         # Load Mode
         mode_id = settings.value("mode", 0, type=int)

@@ -6,7 +6,7 @@ infers an electrode from adjacent table rows.
 
 import re
 
-from PyQt6.QtCore import QSettings, Qt
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import (
     QWIDGETSIZE_MAX,
@@ -47,6 +47,7 @@ from XBrainLab.ui.dialogs.common import (
     fit_table_height_to_contents,
     normalize_dialog_button_box,
 )
+from XBrainLab.ui.qt_settings import application_settings
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 from XBrainLab.ui.styles.theme import Theme
 
@@ -150,7 +151,7 @@ class PickMontageDialog(BaseDialog):
         self._safe_mapping_by_montage: dict[str, dict[str, str]] = {}
 
         # Settings for persistence
-        self.settings = QSettings("XBrainLab", "MontagePicker")
+        self.settings = application_settings("MontagePicker")
 
         # UI Elements
         self.montage_combo = None
