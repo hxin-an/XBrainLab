@@ -238,7 +238,7 @@ set -o pipefail
 cd '$Repo'
 export PYTHONUNBUFFERED=1
 echo "WSL repo: `$(pwd)"
-echo "Python stdout/stderr are mirrored to this terminal and the launcher log."
+echo "Python stdout/stderr are shown in this terminal, not saved in the launcher log."
 export PYTHONFAULTHANDLER=1
 if [ "`${XBRAINLAB_STARTUP_DIAGNOSTICS:-}" = "1" ]; then
   echo "Startup geometry diagnostics: enabled"
