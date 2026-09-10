@@ -1,8 +1,4 @@
-"""HuggingFace Transformers local inference backend.
-
-Implements the ``BaseBackend`` interface for on-device inference using
-HuggingFace ``transformers`` with optional 4-bit quantization.
-"""
+"""HuggingFace Transformers local inference backend."""
 
 import gc
 import hashlib
@@ -34,8 +30,6 @@ from XBrainLab.llm.core.model_catalog import (
     local_model_spec,
 )
 
-from .base import BaseBackend
-
 logger = logging.getLogger("XBrainLab.LLM.Local")
 
 _PROMPT_CAPTURE_DIRECTORY_ENV = "XBRAINLAB_ASSISTANT_PROMPT_CAPTURE_DIR"
@@ -52,7 +46,7 @@ class _GenerationLease:
     thread: Thread | None = None
 
 
-class LocalBackend(BaseBackend):
+class LocalBackend:
     """HuggingFace Transformers backend for local inference.
 
     Loads a causal language model with optional 4-bit quantization and
@@ -205,7 +199,7 @@ class LocalBackend(BaseBackend):
         )
 
     def load(self):
-        """Downloads (if necessary) and loads the model and tokenizer.
+        """Loads the configured local model and tokenizer.
 
         Uses 4-bit quantization when ``config.load_in_4bit`` is enabled,
         otherwise falls back to float16 on CUDA or full precision on CPU.

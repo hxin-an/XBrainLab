@@ -56,11 +56,6 @@ class LLMEngine:
         """Load the product local model."""
         self.switch_backend(self.config.runtime_backend_mode_key())
 
-    def _get_current_model_id(self, mode: str) -> str:
-        """Return the model identifier for the given backend mode."""
-        _ = mode
-        return self.config.model_name
-
     @staticmethod
     def _unload_backend(backend: Any) -> bool:
         """Return whether a backend released its generation-owned resources."""
@@ -95,7 +90,7 @@ class LLMEngine:
         # 1. Check Cache and Validity (compare snapshots, not shared refs)
         if mode in self.backends:
             cached_id = self._backend_model_ids.get(mode, "")
-            current_id = self._get_current_model_id(mode)
+            current_id = self.config.model_name
             is_stale = cached_id != current_id
 
             if is_stale:
@@ -158,7 +153,7 @@ class LLMEngine:
             raise
 
         self.backends[mode] = new_backend
-        self._backend_model_ids[mode] = self._get_current_model_id(mode)
+        self._backend_model_ids[mode] = self.config.model_name
         self.active_backend = new_backend
         logger.info("Created and switched to backend: %s", mode)
 
