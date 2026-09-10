@@ -30,13 +30,7 @@ class Theme:
     ACCENT_WARNING = "#f1fa8c"
 
     # Chat Specific
-    CHAT_USER_BUBBLE = "#005c4b"  # Original dark green
     CHAT_AI_BUBBLE = "#202c33"
-    CHAT_SYSTEM_BUBBLE = "#3e3e3e"
-
-    # Borders
-    BORDER_LIGHT = "1px solid #3e3e3e"
-    BORDER_ACCENT = f"1px solid {ACCENT_PRIMARY}"
 
     # Action Buttons
     BTN_SUCCESS_BG = "#1b5e20"
@@ -77,7 +71,6 @@ class Theme:
 
     # Visualization
     BRAIN_MESH = "#FDEBD0"
-    CHECKBOX_ON = "#456071"
 
     # --- UI Elements ---
     GRAY_MUTED = "#808080"
@@ -99,7 +92,6 @@ class Theme:
     SCROLLBAR_HANDLE_HOVER = "#5f5f5f"
 
     # Status / Logs
-    LOG_DEBUG = "#808080"
     LOG_INFO = "#a5d6a7"
     LOG_WARNING = "#ffcc80"
     LOG_ERROR = "#ff9999"
@@ -166,27 +158,3 @@ class Theme:
                 frame.set_edgecolor(Theme.TEXT_MUTED)
                 for text in legend.get_texts():
                     text.set_color(Theme.TEXT_MUTED)
-
-    @staticmethod
-    def get_style_sheet() -> str:
-        """Return a global Qt stylesheet for generic widget styling.
-
-        Returns:
-            A multi-line Qt CSS stylesheet string.
-
-        """
-        return f"""
-            QWidget {{
-                background-color: {Theme.BACKGROUND_DARK};
-                color: {Theme.TEXT_PRIMARY};
-                font-family: 'Segoe UI', sans-serif;
-            }}
-            QScrollBar:vertical {{
-                background: {Theme.BACKGROUND_DARK};
-                width: 10px;
-            }}
-            QScrollBar::handle:vertical {{
-                background: {Theme.BACKGROUND_LIGHT};
-                border-radius: 5px;
-            }}
-        """

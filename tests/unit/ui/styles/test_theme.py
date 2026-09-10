@@ -3,6 +3,7 @@
 import matplotlib
 import matplotlib.pyplot as plt
 import pytest
+from matplotlib.colors import to_rgba
 
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 from XBrainLab.ui.styles.theme import Theme
@@ -50,55 +51,77 @@ class TestApplyMatplotlibDarkTheme:
 
     def test_fig_facecolor(self):
         fig, ax = plt.subplots()
-        Theme.apply_matplotlib_dark_theme(fig, ax=ax)
-        assert fig.get_facecolor() != (1.0, 1.0, 1.0, 1.0)  # not white
-        plt.close(fig)
+        try:
+            fig.patch.set_facecolor("#010203")
+
+            Theme.apply_matplotlib_dark_theme(fig, ax=ax)
+
+            assert fig.get_facecolor() == to_rgba(Theme.BACKGROUND_MID)
+        finally:
+            plt.close(fig)
 
     def test_ax_facecolor(self):
         fig, ax = plt.subplots()
-        Theme.apply_matplotlib_dark_theme(fig, ax=ax)
-        fc = ax.get_facecolor()
-        assert fc != (1.0, 1.0, 1.0, 1.0)
-        plt.close(fig)
+        try:
+            ax.set_facecolor("#010203")
+
+            Theme.apply_matplotlib_dark_theme(fig, ax=ax)
+
+            assert ax.get_facecolor() == to_rgba(Theme.BACKGROUND_MID)
+        finally:
+            plt.close(fig)
 
     def test_multiple_axes(self):
         fig, axes = plt.subplots(1, 2)
-        Theme.apply_matplotlib_dark_theme(fig, axes=list(axes))
-        for ax in axes:
-            assert ax.get_facecolor() != (1.0, 1.0, 1.0, 1.0)
-        plt.close(fig)
+        try:
+            for ax in axes:
+                ax.set_facecolor("#010203")
+
+            Theme.apply_matplotlib_dark_theme(fig, axes=list(axes))
+
+            for ax in axes:
+                assert ax.get_facecolor() == to_rgba(Theme.BACKGROUND_MID)
+        finally:
+            plt.close(fig)
 
     def test_auto_detect_axes(self):
         fig, ax = plt.subplots()
-        Theme.apply_matplotlib_dark_theme(fig)  # no ax/axes arg
-        assert ax.get_facecolor() != (1.0, 1.0, 1.0, 1.0)
-        plt.close(fig)
+        try:
+            ax.set_facecolor("#010203")
+
+            Theme.apply_matplotlib_dark_theme(fig)  # no ax/axes arg
+
+            assert ax.get_facecolor() == to_rgba(Theme.BACKGROUND_MID)
+        finally:
+            plt.close(fig)
 
     def test_none_figure_is_ignored(self):
         assert Theme.apply_matplotlib_dark_theme(None) is None
 
     def test_legend_styled(self):
         fig, ax = plt.subplots()
-        ax.plot([1, 2], label="test")
-        ax.legend()
-        Theme.apply_matplotlib_dark_theme(fig, ax=ax)
-        legend = ax.legend_
-        assert legend is not None
-        plt.close(fig)
+        try:
+            ax.plot([1, 2], label="test")
+            legend = ax.legend()
+            legend.get_frame().set_facecolor("#010203")
+            legend.get_frame().set_edgecolor("#010203")
+            for text in legend.get_texts():
+                text.set_color("#010203")
 
+            Theme.apply_matplotlib_dark_theme(fig, ax=ax)
 
-class TestGetStyleSheet:
-    def test_returns_string(self):
-        ss = Theme.get_style_sheet()
-        assert isinstance(ss, str)
-
-    def test_contains_background(self):
-        ss = Theme.get_style_sheet()
-        assert Theme.BACKGROUND_DARK in ss
-
-    def test_contains_qwidget(self):
-        ss = Theme.get_style_sheet()
-        assert "QWidget" in ss
+            assert (
+                legend.get_frame().get_facecolor()[:3]
+                == to_rgba(Theme.BACKGROUND_MID)[:3]
+            )
+            assert (
+                legend.get_frame().get_edgecolor()[:3] == to_rgba(Theme.TEXT_MUTED)[:3]
+            )
+            assert all(
+                text.get_color() == Theme.TEXT_MUTED for text in legend.get_texts()
+            )
+        finally:
+            plt.close(fig)
 
 
 class TestMainWindowStylesheet:
