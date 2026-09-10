@@ -410,7 +410,7 @@ def test_start_training_warning_creates_command_bound_resource_receipt() -> None
     assert receipt is not None
     assert receipt.command_name == "start_training"
     assert receipt.candidate_id is None
-    assert receipt.token == "training-receipt-1"  # noqa: S105
+    assert receipt.challenge_id == "training-receipt-1"
     assert receipt.configuration_fingerprint == "configuration-1"
     assert receipt.preflight_fingerprint == "preflight-1"
     assert receipt.scope_fingerprint == "scope-1"

@@ -86,11 +86,6 @@ class ResourceConfirmationChallenge:
                 "Resource confirmation TTL must be positive."
             )
 
-    @property
-    def token(self) -> str:
-        """Compatibility alias for command fields that still use token naming."""
-        return self.challenge_id
-
     def to_diagnostics(self) -> dict[str, Any]:
         """Serialize the canonical confirmation challenge."""
         return {
@@ -341,29 +336,6 @@ class ResourcePreflightView:
             challenge=challenge,
             details=details,
             schema_version=schema_version,
-        )
-
-    def with_challenge(
-        self,
-        challenge: ResourceConfirmationChallenge | None,
-    ) -> ResourcePreflightView:
-        """Return the same preflight presentation with a backend challenge."""
-        return ResourcePreflightView(
-            risk_level=self.risk_level,
-            requires_confirmation=self.requires_confirmation,
-            message=self.message,
-            issues=self.issues,
-            warnings=self.warnings,
-            unknowns=self.unknowns,
-            suggestions=self.suggestions,
-            dataset_ram=self.dataset_ram,
-            vram=self.vram,
-            model_name=self.model_name,
-            batch_size=self.batch_size,
-            reason=self.reason,
-            challenge=challenge,
-            details=dict(self.details),
-            schema_version=self.schema_version,
         )
 
     def to_diagnostics(self) -> dict[str, Any]:

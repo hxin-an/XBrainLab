@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import time
 from pathlib import Path
 from threading import RLock
@@ -244,7 +243,7 @@ def _array_descriptor(
     descriptor: dict[str, Any] = {
         "type": _type_name(value),
         "object_id": id(value),
-        "shape": _canonical_value(shape),
+        "shape": list(shape) if shape is not None else None,
         "shape_element_count": shape_count,
         "declared_size": _safe_int(getattr(value, "size", None)),
         "dtype": str(getattr(value, "dtype", "")) or None,
@@ -469,28 +468,6 @@ def _preflight_fingerprint(preflight: ResourcePreflightResult) -> str:
             "diagnostics": preflight.diagnostics,
         }
     )
-
-
-def _canonical_value(value: Any) -> Any:
-    if value is None or isinstance(value, (str, int, float, bool)):
-        return value
-    if isinstance(value, dict):
-        return {
-            str(key): _canonical_value(item)
-            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
-        }
-    if isinstance(value, (list, tuple)):
-        return [_canonical_value(item) for item in value]
-    if isinstance(value, (set, frozenset)):
-        normalized = [_canonical_value(item) for item in value]
-        return sorted(
-            normalized,
-            key=lambda item: json.dumps(item, sort_keys=True, default=str),
-        )
-    enum_value = getattr(value, "value", None)
-    if isinstance(enum_value, (str, int, float, bool)):
-        return enum_value
-    return repr(value)
 
 
 def _safe_call(target: Any, method_name: str) -> Any:

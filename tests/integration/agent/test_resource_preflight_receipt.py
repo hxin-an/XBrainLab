@@ -265,7 +265,7 @@ def test_agent_start_training_rejects_stale_receipt_before_execution(
     assert refreshed is not None
     assert refreshed.action is ToolAttemptAction.CONFIRMATION_REQUIRED
     new_receipt = _required_receipt(refreshed)
-    assert new_receipt.token != old_receipt.token
+    assert new_receipt.challenge_id != old_receipt.challenge_id
     assert new_receipt.scope_fingerprint != old_receipt.scope_fingerprint
     if change == "configuration":
         assert (

@@ -447,7 +447,7 @@ def _pending_training_resource_confirmation(
     receipt = pending.resource_preflight_receipt
     assert isinstance(receipt, ResourceConfirmationChallenge)
     assert receipt.command_name == "start_training"
-    assert receipt.token == resource_preflight["confirmation_token"]
+    assert receipt.challenge_id == resource_preflight["confirmation_token"]
     assert receipt.candidate_id is None
     assert (
         receipt.configuration_fingerprint
@@ -3987,9 +3987,7 @@ class TestOnUserConfirmed:
         refreshed = ctrl.pending_interactions.confirmation_decision
         assert isinstance(refreshed, ToolAttemptDecision)
         assert refreshed.resource_preflight_receipt is not None
-        assert (
-            refreshed.resource_preflight_receipt.token == "training-receipt-2"  # noqa: S105 - opaque test receipt
-        )
+        assert refreshed.resource_preflight_receipt.challenge_id == "training-receipt-2"
         ctrl._handle_tool_result_logic.assert_not_called()
         ctrl._handle_tool_success.assert_not_called()
 
@@ -4055,9 +4053,7 @@ class TestOnUserConfirmed:
         assert pending.context is context
         assert pending.params == {"candidate_id": "candidate-2"}
         assert pending.resource_preflight_receipt is not None
-        assert (
-            pending.resource_preflight_receipt.token == "receipt-2"  # noqa: S105 - opaque test receipt
-        )
+        assert pending.resource_preflight_receipt.challenge_id == "receipt-2"
         refreshed_request = ctrl.pending_interactions.confirmation_request
         assert isinstance(refreshed_request, AgentConfirmationRequest)
         assert refreshed_request.command_name == "apply_interpretation"

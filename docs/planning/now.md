@@ -109,6 +109,26 @@ old session IDs and plan text do not prove a process is running. No manual candi
 
 **Current work — developer docs/config truth and remaining scripts; module2–6 closure gaps and explicit decisions remain open.**
 
+**Bounded4P — remove unused resource-view conveniences and unreachable shape serialization.**
+Main fully read resource_preflight563/resource_receipt322/training_resource_receipt517 and direct
+contract300/training256 cases. Product callers use challenge_id and create/from/to_diagnostics;
+with_challenge has no callers, token property only supports tests. Migrate only test property reads
+to challenge_id, preserve canonical/flat serialized token fields and every receipt assertion. The
+training-only recursive _canonical_value is called solely on _normalized_shape's tuple[int,...]|None;
+replace with direct list conversion and remove unreachable dict/set/enum/string branches/sole json
+import. No change to generic fingerprint owner, bounded sampling, TTL, one-shot authorization,
+confirmation/UI/public wire contract. Owners unchanged, no new modules or abstraction. Baseline
+same direct contracts, training freshness and affected Assistant receipt tests before/after; compare
+descriptor/fingerprint parity in memory for real scalar/empty/multidimensional and unavailable shapes;
+Ruff and independent review. No downloads/weights/state changes. Roll back this bounded slice if
+parity fails; continue remaining inventory, not handoff at this checkpoint.
+Result: same52before8.99s/after7.94s, sameone warning. Seven in-memory comparisons using the exact
+old converter show descriptor and final SHA parity for real multidimensional/scalar/empty arrays,
+missing/invalid/excess-dimensional shapes and None. No fault source or weight persisted. Initial
+after lint caught three now-unused S105 exemptions after token-property rename; removed only those,
+five-file Ruff/format then pass. Independent actual-diff review approves; product+1/-52/net-51,
+no tests removed, no receipt wire/admission/lifecycle changes.
+
 **Bounded4O — stop importing every legacy model for a concrete model selection.** Main/independent
 caller trace finds product catalog imports concrete submodules; only ten model tests consume the
 private117-line eager facade. Measure cold concrete EEGNet import time/module count in the existing
