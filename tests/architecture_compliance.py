@@ -628,12 +628,6 @@ MUTABLE_OBJECT_BOUNDARY_DEBT_ALLOWLIST = (
         "assignment",
     ),
     MutableObjectBoundaryDebt(
-        "XBrainLab/ui/components/info_panel_service.py",
-        "InfoPanelService.__init__",
-        MUTABLE_BOUNDARY_UI_DOMAIN_STORAGE,
-        "assignment",
-    ),
-    MutableObjectBoundaryDebt(
         "XBrainLab/ui/main_window.py",
         "MainWindow.__init__",
         MUTABLE_BOUNDARY_UI_DOMAIN_STORAGE,

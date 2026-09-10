@@ -15,12 +15,10 @@ from XBrainLab.backend.utils.logger import logger
 class InfoPanelService(QObject):
     """Render publication-owned Aggregate Information rows across the desktop."""
 
-    def __init__(self, study: Any):
+    def __init__(self):
         super().__init__()
-        self.study = study
         self._listeners: weakref.WeakSet = weakref.WeakSet()
         self._latest_publication: ApplicationViewPublication | None = None
-        self._observes_controller_events = False
 
     def register(self, panel):
         """Register an info panel to receive automatic updates.
@@ -44,7 +42,7 @@ class InfoPanelService(QObject):
         """
         self._listeners.discard(panel)
 
-    def notify_all(self, *args, **kwargs):
+    def notify_all(self):
         """Replay the latest publication, failing closed when none exists."""
         publication = self._latest_publication
         if publication is not None:

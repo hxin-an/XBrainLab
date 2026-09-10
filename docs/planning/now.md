@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `c089d7a8`, 127 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `deb4a3cf`, 128 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -210,7 +210,7 @@ same retained cases after, lint/main diff review; no test removal. Rollback one 
 worker fixture/remaining module audits after unchanged results, not handoff.
 6X verified104before7.05s/after7.16s, no cases removed; main actual diff review and Ruff passed.
 Productionnet-14. Also correct one stale assembler class-docstring phrase left by6V; prompt strings
-are unchanged. Commit next; no model/scoring/encoding/visible behavior claim beyond parity.
+are unchanged. Committed a6e3d7e9; no model/scoring/encoding/visible behavior claim beyond parity.
 
 **Bounded6Y — characterize actual owned-process initialization, remove only synchronous fallback.**
 Full worker1065, direct1058/runtime-selection189/correlation855 and timeout333/process245 audit finds
@@ -231,7 +231,7 @@ Productionnet-13; testsnet+99, no cases removed. Main caught and corrected doubl
 before baseline; seven-file Ruff passed after mechanical test formatting. Independent reviewer first
 confused worker's LocalRuntimeProcessOwner alias with child core.engine.LLMEngine, then checked actual
 binding/callers and withdrew the unreachable injection-only blocker. Approved for actual production
-owner; external monkeypatch/injection compatibility intentionally unsupported. Commit next, not handoff.
+owner; external monkeypatch/injection compatibility intentionally unsupported. Committed6c66f2a0, not handoff.
 
 **Bounded7B — remove unused shared UI query forwards.** Independent full capabilities1654/direct1610,
 renderer428/direct377 and runner431/direct509 audit retains existing publication/Qt owners. Main traces
@@ -245,6 +245,7 @@ retained cases after, lint and main nonauthor actual diff review; no test remova
 then continue shared components; final data/native gates still required for integrated handoff.
 7B implemented-63productionLOC; same52before4.43s/after4.56s, no test changes. Main nonauthor actual
 diff/caller review and Ruff passed; resource admission/backend query and variants lifecycles remain.
+Committed c089d7a8.
 
 **Bounded7C — retire four unused desktop component classes as a complete chain.** Full main Card80,
 Placeholder51, PlotFigureWindow269, SinglePlotWindow210, lazy package exports and styles551, plus
@@ -266,7 +267,7 @@ An intermediate retained test run caught a mistakenly removed QWidget import use
 lifecycle case; restored it, without weakening that test. Architecture guard passed before/after on
 Windows; cold package import excludes Matplotlib and live presentation submodule resolves to active
 checkout. Five surviving changed Python files pass Ruff check/format. Main reviewed author's actual
-diff and retirement callers. Production-660, tests-227; no current plots/data removed. Commit next.
+diff and retirement callers. Production-660, tests-227; no current plots/data removed. Committed deb4a3cf.
 
 **Bounded7D — remove aggregate renderer's unused domain retention and prove weak listeners.** Full
 main InfoPanelService131/direct238 plus renderer/main-window tests show study is stored but never read;
@@ -282,6 +283,21 @@ subscription evidence already exercised; two production files expectednegativeLO
 behavior. Baseline service, renderer, main-window and UI integration plus affected sync nodes; same
 after and canonical architecture guard, actual diff review/Ruff. Sync only constructor mentions in
 docs/architecture/ui.md. Stop slice at unchanged publication UI/no domain retention, continue phase.
+
+7D implemented: production+3/-5/net-2, same two owners; no cases removed. Strengthened weak-listener
+and real MainWindow rows baseline42passed11.83s, then real empty-widget baseline42passed8.70s;
+after42passed8.63s. Deliberate in-memory retained-panel fault fails reference()isNone (1failed0.17s).
+Independent actual diff/lifecycle review approved; main reviewed exact diff, seven-file Ruff passed.
+Removed only obsolete Study identity/false-marker assertions and disconnected Study fixture; retained
+deletedQObject, missing rows and renderer failure/retry cases. Corrected stale direct-refresh fallback
+prose against MainWindow.update_info_panel's actual no-fallback source. Canonical Windows architecture
+guard and guidance audit passed. Local MkDocs is still unavailable in the retained environment;
+same-head CI docs validation remains required before final handoff. Commit next, not module closure.
+
+**Shared aggregate widget audit.** Full independent info_panel626/direct605 retains detached mapping
+rendering, preprocessed precedence, stable13rows, one SidebarScrollArea width owner and real narrow/DPI/
+font/scrollbar geometry assertions. No unnecessary wait established. Unused minimum_readable_table_width
+and test-only presentation_changed signal are bounded candidates, not yet changed.
 
 **Module6 initial full owner audit (not closure).** Independent full controller2949/attempt898/
 execution342/confirmation314/pending443 and respective direct confirmation154/pending560/execution151/

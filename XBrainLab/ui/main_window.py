@@ -469,7 +469,7 @@ class MainWindow(QMainWindow):
 
         # 2. Services (Must be before panels to allow registration)
         info_service_class = _load_info_panel_service_class()
-        self.info_service = info_service_class(self.study)
+        self.info_service = info_service_class()
 
         # 3. Stacked Widget (Content Area)
         self.stack = QStackedWidget()

@@ -1601,7 +1601,7 @@ def test_desktop_renderer_recovers_from_long_panel_deferral_without_false_error(
     panel._application_render_ledger = ledger
     main_window.dataset_panel = panel
     main_window._loaded_panel_indices.add(0)
-    main_window.info_service = InfoPanelService(study)
+    main_window.info_service = InfoPanelService()
     renderer = DesktopApplicationPublicationRenderer(
         service=service,
         render_publication=main_window._render_application_view_publication,
@@ -2068,6 +2068,8 @@ def test_update_info_panel_uses_info_service(main_window):
 
 def test_main_window_delegates_info_refresh_to_coordinator(mock_study, qtbot):
     """Product MainWindow should not double-subscribe aggregate info refresh."""
+    from XBrainLab.ui.components.info_panel import AggregateInfoPanel
+
     with (
         patch("XBrainLab.ui.main_window.MainWindow.init_panels"),
         patch("XBrainLab.ui.main_window.MainWindow.init_agent"),
@@ -2078,8 +2080,20 @@ def test_main_window_delegates_info_refresh_to_coordinator(mock_study, qtbot):
         window = MainWindow(mock_study)
 
     qtbot.addWidget(window)
-    assert window.info_service.study is mock_study
-    assert window.info_service._observes_controller_events is False
+    panel = AggregateInfoPanel(window)
+    state = ApplicationStateSnapshot.empty()
+    publication = ApplicationViewPublication(
+        generation=1,
+        state=state,
+        capabilities=build_capability_policy(state),
+        data_summary_rows=({"is_raw": True, "n_channels": 22},),
+    )
+    assert window.info_service.render_publication(publication)
+    window.update_info_panel()
+
+    assert panel.table.item(panel.row_map["EEG files"], 1).text() == "1"
+    assert panel.table.item(panel.row_map["Channels"], 1).text() == "22"
+    mock_study.get_controller.assert_not_called()
 
 
 def test_init_panels_never_resolves_workflow_controllers(
