@@ -50,9 +50,9 @@ UI/test files and root settings. Worktree/branch/source facts come from Git, not
 | 4 Models/training | Catalog, resource preflight, settings, stop/rerun, history/checkpoints | Core/model/resource/record/UI audit substantially complete; final inventory, convenience retirement and two visible decisions remain open |
 | 5 Evaluation/saliency/views | Read/publication, SmoothGrad/recompute, four views, stale work/render lifecycle | Core/attribution/3D/publication integration fully read; script/inventory reconciliation and two explicit retirement decisions remain open |
 | 6 Assistant/chat | Tool adapters, turns/confirmation/execution, model/RAG lifecycle and shutdown | Core/runtime/RAG/controller/chat source and major tests deeply audited; adapters/helpers/inventory and explicit retirement decisions remain open |
-| 7 Shared desktop/runtime | Shell/navigation, shared components, configuration, errors/logging/start/close | Logger/startup inspected; Windows encoding fixed7A; shared shell/components closure pending |
-| 8 Scripts/dev/CI | Launch/setup, Poe/hooks, runners, walkthroughs/evaluators/reports and artifacts | Read-only inventory |
-| 9 Cross-module tests/docs | Shared fixtures/guards, dependencies, canonical truth/navigation and coverage gaps | Pending |
+| 7 Shared desktop/runtime | Shell/navigation, shared components, configuration, errors/logging/start/close | Shell/navigation/shared owners reviewed7A–7M; remaining shared UI tests/inventory and module closure review open |
+| 8 Scripts/dev/CI | Launch/setup, Poe/hooks, runners, walkthroughs/evaluators/reports and artifacts | Launch/setup/CI/runners/reviewer-capture reviewed; remaining scripts/walkthrough/inventory open |
+| 9 Cross-module tests/docs | Shared fixtures/guards, dependencies, canonical truth/navigation and coverage gaps | Fonts/RNG/VRAM/weight/refresh evidence strengthened9A–9G; docs/deps/remaining fixtures and full coverage evidence open |
 
 Each module includes its callers, tests and related scripts. Domain UI belongs to its domain module;
 shared UI belongs to module 7. Script infrastructure has a separate complete review in module 8.
@@ -279,6 +279,29 @@ readiness, transient training updates, retry/backoff/cleanup/stale and synchrono
 Production unchanged; no reset of publication policy or mock readiness. Original/full stronger/retained
 suite and an intentional premature-render fault, independent mapping/diff review/Ruff. The retained
 bounded negative-observation window is test evidence, not an introduced UI wait or speed claim.
+Result:32original8.68s ->32stronger8.81s ->30retained8.67s; productionunchanged, tests+5/-37/net-32.
+Idle spontaneous-render fault fails all3 exact no-render assertions; same-pending immediate-render
+fault fails all3 pre-queue assertions. Main corrected review's initially incomplete replacement map
+before deleting anything; independent final diff approves, Ruff passes. No source fault persisted.
+
+**Bounded9H — remove blind waits from navigation smoke when measured state evidence permits.**
+Full main/independent integration smoke194 and shared test_app fixture retain real Study/MainWindow,
+lazy panels and exact dock/stack assertions. _click always waits50ms, regardless of ready state;
+measure count/helper duration and full-suite baseline first. Replace fixed delay with existing
+_wait_for_panel at navigation assertions and explicit bounded dock-visibility waits; retain all
+current state/type/ownership assertions and remove only unused EXPECTED_EVALUATION_TABS constant.
+Evaluation intentionally supports bottom long-label and chart short-label layouts (source1974–2130),
+so both labels remain accepted; this is not a copy defect or UI change. No production edits, model
+activation/download or environment change. Same suite before/after, actual click/wait measurement,
+Ruff/main+independent review. Report measured helper overhead only, not application speed or native
+manual acceptance. Keep meaningful negative-observation waits in other tests; do not strip waits globally.
+
+**Reviewer-capture disposition.** Full independent script1629/direct767 plus actual handoff registry
+and manifest consumers retain ui-reviewer-fixes as a required gate. It owns real A01T preview/time/PSD
+curves, history/normalization/resampling/SmartParser/import-review states and unique multi-method/split
+geometry evidence. App-polish/baseline overlap conceptually but no equivalent per-surface contract was
+proved. No script/test/gate deletion; any future surface migration needs an explicit evidence-preserving
+decision. Source inspection is not a newly executed capture or performance result.
 
 **Module8 CI/Poe disposition.** Independent full ci925/docsworkflow83/pyproject314 plus routing109,
 artifact verifier216/direct311 and reliability409/UI40/data58/integration-trigger24 retains distinct
