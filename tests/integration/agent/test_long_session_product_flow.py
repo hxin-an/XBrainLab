@@ -10,17 +10,19 @@ from dataclasses import dataclass
 from itertools import pairwise
 from math import ceil
 from time import monotonic
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 from unittest.mock import patch
 
 import mne
 import numpy as np
 import pytest
-from PyQt6.QtCore import QObject, QTimer, pyqtSignal
+from PyQt6.QtCore import QObject, Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import QMainWindow
 
 from XBrainLab.backend.application import (
     ApplyInterpretationCommand,
+    PreprocessCommand,
+    PreprocessOperation,
     PreviewInterpretationCommand,
     ResetSessionCommand,
     ScanSourceCommand,
@@ -39,6 +41,7 @@ from XBrainLab.chat_contract import (
     MAX_CHAT_HISTORY_ROWS,
     MAX_CHAT_MODEL_REQUEST_UTF8_BYTES,
 )
+from XBrainLab.llm.agent.confirmation import AgentConfirmationResolution
 from XBrainLab.llm.agent.context_encoding import decode_untrusted_context
 from XBrainLab.llm.agent.controller import LLMController
 from XBrainLab.llm.agent.rag_lifecycle import RAGRetrieverLifecycle
@@ -181,6 +184,9 @@ class _ImmediateRagLifecycle:
 class _DeterministicModelWorker(AgentWorker):
     """Worker-contract model double that still crosses the queued Qt boundary."""
 
+    proposed_tool_name = "respond_to_user"
+    proposed_tool_parameters: ClassVar[dict[str, object] | None] = None
+
     def __init__(self) -> None:
         super().__init__()
         self.requests: list[AssistantGenerationRequest] = []
@@ -190,11 +196,14 @@ class _DeterministicModelWorker(AgentWorker):
         generation_id = request.generation_id
         response_text = f"Bounded deterministic response {len(self.requests)}."
         if request.response_contract is AssistantResponseContract.STRUCTURED_ACTION:
+            parameters = self.proposed_tool_parameters
+            if parameters is None:
+                parameters = {"message": response_text}
             response_text = json.dumps(
                 {
                     "workflow_stage": _request_workflow_stage(request),
-                    "tool_name": "respond_to_user",
-                    "parameters": {"message": response_text},
+                    "tool_name": self.proposed_tool_name,
+                    "parameters": parameters,
                 },
                 separators=(",", ":"),
             )
@@ -297,6 +306,19 @@ class _ControllerRuntime(QObject):
         )
         self.admissions.append(admission)
         return admission
+
+    def confirm(
+        self,
+        resolution: AgentConfirmationResolution,
+    ) -> RuntimeCommandAdmissionResult:
+        """Forward a typed UI-card decision to the real in-process controller."""
+        if not isinstance(resolution, AgentConfirmationResolution):
+            raise TypeError("Assistant confirmation resolution must be typed.")
+        self.controller.on_user_confirmation_resolved(resolution)
+        return RuntimeCommandAdmissionResult(
+            command_name="confirm",
+            status=RuntimeCommandAdmissionStatus.ACCEPTED,
+        )
 
     def activate_persisted(self) -> RuntimeActivationResult:
         return RuntimeActivationResult(RuntimeActivationStatus.ALREADY_READY)
@@ -727,6 +749,275 @@ def test_ui_settle_gate_rejects_sustained_or_severe_stalls(
     failures = _ui_settle_responsiveness_failures(latencies)
 
     assert any(expected_failure in failure for failure in failures)
+
+
+class _ResetPreprocessingProposalWorker(_DeterministicModelWorker):
+    """Propose one real destructive tool through the ordinary model boundary."""
+
+    proposed_tool_name = "reset_preprocessing"
+    proposed_tool_parameters: ClassVar[dict[str, object]] = {}
+
+
+def _prepare_preprocessed_confirmation_state(
+    service: Any,
+    source_path: Any,
+) -> tuple[bytes, Any]:
+    raw = mne.io.RawArray(
+        np.zeros((2, 512)),
+        mne.create_info(["C3", "C4"], sfreq=256, ch_types="eeg"),
+    )
+    raw.save(source_path, overwrite=True, verbose=False)
+    source_bytes = source_path.read_bytes()
+    for command in (
+        ScanSourceCommand(source_path=str(source_path), source_hint="file"),
+        PreviewInterpretationCommand(
+            choices={
+                "selected_eeg_files": [str(source_path)],
+                "skip_labels": True,
+            }
+        ),
+        ValidateInterpretationCommand(),
+        ApplyInterpretationCommand(confirmed=True),
+        PreprocessCommand(operation=PreprocessOperation.RESAMPLE, rate=128.0),
+    ):
+        assert service.execute(command).success is True
+    assert len(service.study.loaded_data_list) == 1
+    assert len(service.study.preprocessed_data_list) == 1
+    assert service.study.loaded_data_list[0].get_mne().info["sfreq"] == 256.0
+    assert service.study.preprocessed_data_list[0].get_sfreq() == 128.0
+    return source_bytes, service.study.loaded_data_list[0]
+
+
+def _open_reset_preprocessing_confirmation(
+    qtbot: Any,
+    tmp_path: Any,
+) -> tuple[
+    Any,
+    Any,
+    _ControllerRuntime,
+    LLMController,
+    _ResetPreprocessingProposalWorker,
+    bytes,
+    Any,
+]:
+    study = Study()
+    service = get_application_service(study)
+    source_bytes, loaded_raw = _prepare_preprocessed_confirmation_state(
+        service,
+        tmp_path / "confirmation-source_raw.fif",
+    )
+    retriever = _DeterministicRagRetriever()
+    rag_lifecycle = _ImmediateRagLifecycle(retriever)
+    main_window = cast(Any, QMainWindow())
+    main_window.ai_btn = type(
+        "AssistantButton",
+        (),
+        {
+            "blockSignals": lambda _self, _blocked: None,
+            "setChecked": lambda _self, _checked: None,
+        },
+    )()
+    main_window.assistant_navigation_requests = []
+
+    def switch_page(panel_index, *, on_ready=None, on_failed=None):
+        del on_failed
+        main_window.assistant_navigation_requests.append(panel_index)
+        if on_ready is not None:
+            on_ready(None)
+        return True
+
+    main_window.switch_page = switch_page
+    qtbot.addWidget(main_window)
+    with patch(
+        "XBrainLab.llm.agent.controller.AgentWorker",
+        _ResetPreprocessingProposalWorker,
+    ):
+        controller = LLMController(
+            study,
+            rag_lifecycle=cast(RAGRetrieverLifecycle, rag_lifecycle),
+        )
+    worker = controller.worker
+    assert isinstance(worker, _ResetPreprocessingProposalWorker)
+    runtime = _ControllerRuntime(controller, rag_lifecycle)
+    manager = None
+    try:
+        manager = AgentManager(
+            main_window,
+            study,
+            runtime_lifecycle=cast(AssistantRuntimeLifecycle, runtime),
+        )
+        manager.init_ui()
+        manager.start_system()
+        assert manager.chat_panel is not None
+        main_window.show()
+        manager.chat_dock.show()
+        manager.chat_panel.input_field.setText("Reset preprocessing changes.")
+        manager.chat_panel._on_send()
+        qtbot.waitUntil(
+            lambda: manager.chat_panel.confirmation_card_widget.isVisible(),
+            timeout=2_000,
+        )
+        assert (
+            worker.requests[-1].response_contract
+            is AssistantResponseContract.STRUCTURED_ACTION
+        )
+        assert manager.chat_panel.confirmation_card_widget.command_name == (
+            "reset_preprocessing"
+        )
+    except BaseException:
+        if manager is not None:
+            manager.close()
+        else:
+            controller.close()
+        raise
+    else:
+        return service, manager, runtime, controller, worker, source_bytes, loaded_raw
+
+
+def test_model_confirmation_card_approval_resets_preprocessing_once(
+    qtbot: Any,
+    tmp_path: Any,
+) -> None:
+    service, manager, runtime, controller, _worker, source_bytes, loaded_raw = (
+        _open_reset_preprocessing_confirmation(qtbot, tmp_path)
+    )
+    panel = manager.chat_panel
+    assert panel is not None
+    card = panel.confirmation_card_widget
+    emitted_resolutions: list[AgentConfirmationResolution] = []
+    panel.confirmation_decision_requested.connect(emitted_resolutions.append)
+    starts: list[object] = []
+    completions: list[object] = []
+    controller.application_command_started.connect(lambda: starts.append(object()))
+    controller.application_command_completed.connect(
+        lambda *_args: completions.append(object())
+    )
+    before = service.get_view_publication()
+    request_id = card.request_id
+    assert request_id is not None
+
+    try:
+        qtbot.mouseClick(card.primary_button, Qt.MouseButton.LeftButton)
+        qtbot.waitUntil(lambda: len(emitted_resolutions) == 1, timeout=2_000)
+        qtbot.waitUntil(lambda: not controller.is_processing, timeout=2_000)
+        qtbot.waitUntil(
+            lambda: service.study.preprocessed_data_list[0].get_sfreq() == 256.0,
+            timeout=2_000,
+        )
+
+        approved = emitted_resolutions[0]
+        after_approval = service.get_view_publication()
+        assert approved.request_id == request_id
+        assert approved.command_name == "reset_preprocessing"
+        assert len(starts) == 1
+        assert len(completions) == 1
+        assert after_approval.generation > before.generation
+        assert after_approval.revision > before.revision
+        assert service.study.loaded_data_list[0] is loaded_raw
+        assert loaded_raw.get_mne().info["sfreq"] == 256.0
+        assert (tmp_path / "confirmation-source_raw.fif").read_bytes() == source_bytes
+        assert service.study.preprocessed_data_list[0] is loaded_raw
+        assert service.study.preprocessed_data_list[0].get_preprocess_history() == []
+        assert manager.main_window.assistant_navigation_requests
+
+        runtime.confirm(approved)
+        qtbot.wait(20)
+        replay = service.get_view_publication()
+        assert replay.generation == after_approval.generation
+        assert replay.revision == after_approval.revision
+        assert len(starts) == 1
+        assert len(completions) == 1
+    finally:
+        manager.close()
+
+
+def test_model_confirmation_card_cancellation_keeps_preprocessing(
+    qtbot: Any,
+    tmp_path: Any,
+) -> None:
+    service, manager, _runtime, controller, _worker, source_bytes, loaded_raw = (
+        _open_reset_preprocessing_confirmation(qtbot, tmp_path)
+    )
+    panel = manager.chat_panel
+    assert panel is not None
+    card = panel.confirmation_card_widget
+    emitted_resolutions: list[AgentConfirmationResolution] = []
+    panel.confirmation_decision_requested.connect(emitted_resolutions.append)
+    starts: list[object] = []
+    controller.application_command_started.connect(lambda: starts.append(object()))
+    before = service.get_view_publication()
+    request_id = card.request_id
+    assert request_id is not None
+
+    try:
+        qtbot.mouseClick(card.secondary_button, Qt.MouseButton.LeftButton)
+        qtbot.waitUntil(lambda: len(emitted_resolutions) == 1, timeout=2_000)
+        qtbot.waitUntil(lambda: not controller.is_processing, timeout=2_000)
+
+        after = service.get_view_publication()
+        assert emitted_resolutions[0].request_id == request_id
+        assert after.generation == before.generation
+        assert after.revision == before.revision
+        assert after.state.preprocessed.available is True
+        assert service.study.preprocessed_data_list[0].get_sfreq() == 128.0
+        assert service.study.loaded_data_list[0] is loaded_raw
+        assert loaded_raw.get_mne().info["sfreq"] == 256.0
+        assert (tmp_path / "confirmation-source_raw.fif").read_bytes() == source_bytes
+        assert starts == []
+    finally:
+        manager.close()
+
+
+def test_stale_model_confirmation_cannot_reset_new_preprocessing(
+    qtbot: Any,
+    tmp_path: Any,
+) -> None:
+    service, manager, _runtime, controller, _worker, source_bytes, loaded_raw = (
+        _open_reset_preprocessing_confirmation(qtbot, tmp_path)
+    )
+    panel = manager.chat_panel
+    assert panel is not None
+    card = panel.confirmation_card_widget
+    emitted_resolutions: list[AgentConfirmationResolution] = []
+    panel.confirmation_decision_requested.connect(emitted_resolutions.append)
+    starts: list[object] = []
+    completions: list[object] = []
+    controller.application_command_started.connect(lambda: starts.append(object()))
+    controller.application_command_completed.connect(
+        lambda *_args: completions.append(object())
+    )
+    pending = service.get_view_publication()
+    request_id = card.request_id
+    assert request_id is not None
+
+    try:
+        external = service.execute(
+            PreprocessCommand(operation=PreprocessOperation.RESAMPLE, rate=64.0)
+        )
+        assert external.success is True
+        current = service.get_view_publication()
+        assert current.generation > pending.generation
+        assert current.revision > pending.revision
+        assert current.state.preprocessed.available is True
+        assert service.study.preprocessed_data_list[0].get_sfreq() == 64.0
+
+        qtbot.mouseClick(card.primary_button, Qt.MouseButton.LeftButton)
+        qtbot.waitUntil(lambda: len(emitted_resolutions) == 1, timeout=2_000)
+        qtbot.waitUntil(lambda: not controller.is_processing, timeout=2_000)
+
+        after = service.get_view_publication()
+        assert emitted_resolutions[0].request_id == request_id
+        assert after.generation == current.generation
+        assert after.revision == current.revision
+        assert after.state.preprocessed.available is True
+        assert service.study.preprocessed_data_list[0].get_sfreq() == 64.0
+        assert service.study.loaded_data_list[0] is loaded_raw
+        assert loaded_raw.get_mne().info["sfreq"] == 256.0
+        assert (tmp_path / "confirmation-source_raw.fif").read_bytes() == source_bytes
+        assert starts == []
+        assert completions == []
+    finally:
+        manager.close()
 
 
 def test_long_session_uses_real_policy_and_stays_bounded_across_two_prunes(
