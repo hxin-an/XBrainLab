@@ -103,11 +103,25 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery checkpoint: product branch `cleanup/module-quality`, HEAD `57deef5e`, 170 commits after baseline
+Git recovery checkpoint: product branch `cleanup/module-quality`, HEAD `af66a3aa`, 171 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
 **Current work — developer docs/config truth and remaining scripts; module2–6 closure gaps and explicit decisions remain open.**
+
+**Bounded8O — retire unreachable script-only Qt shutdown coordinator.** Main and independent full
+read of bounded_qt_shutdown98/direct188, repository-wide symbol/module search, runner registry and
+live capture cleanup callers find no runtime consumer. Remove this unused owner, its five exclusive
+tests and only its platform test-path entry. Keep product qt_runtime and its real capture/desktop
+consumers unchanged; no replacement owner or visible UI change. User has approved unused whole-
+capability/test retirement. Script -99/test -188; dormant owner1→0, live owners unchanged. Before:
+direct suite plus existing Qt runtime and platform-registry/termination guards; after: same retained
+adjacent protection, Ruff and no stale caller/path. Independent actual-diff review required. This does
+not claim native GUI shutdown acceptance. Restore via this slice's Git commit if needed, then continue
+remaining module inventory, not a handoff or stage completion.
+Result: before16pass0.61s includes five exclusive retired cases; unchanged retained runtime/registry/
+termination protection11pass0.37s after. Ruff/format/caller search and independent actual-diff review
+pass. Live product cleanup, its tests and native capture consumers remain unchanged; no GUI claim.
 
 **Bounded8N — retire dashboard-only UI pytest shell indirection.** Independent full dashboard1711/
 direct2038 plus main shell23/caller/env/attestation trace confirms run_ui_pytest.sh has exactly two
