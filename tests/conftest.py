@@ -48,7 +48,32 @@ try:
 except ImportError:
     matplotlib = None
 import pytest
+from PyQt6.QtCore import QSettings
 from PyQt6.QtWidgets import QDialog, QMessageBox
+
+
+@pytest.fixture(autouse=True)
+def isolate_product_qt_settings(request, monkeypatch):
+    """Keep real Qt serialization, but never use the product's native user store."""
+    original_init = QSettings.__init__
+
+    def isolated_init(self, *args, **kwargs):
+        if (
+            len(args) == 2
+            and args[0] == "XBrainLab"
+            and isinstance(args[1], str)
+            and not kwargs
+        ):
+            # Resolve lazily: tests without Qt preferences need no extra directory.
+            path = (
+                request.getfixturevalue("tmp_path") / "qt-settings" / f"{args[1]}.ini"
+            )
+            original_init(self, str(path), QSettings.Format.IniFormat)
+        else:
+            original_init(self, *args, **kwargs)
+
+    # Patch the class method so aliases imported before fixture setup are covered.
+    monkeypatch.setattr(QSettings, "__init__", isolated_init)
 
 
 def _unexpected_modal(*_args: Any, **_kwargs: Any) -> NoReturn:

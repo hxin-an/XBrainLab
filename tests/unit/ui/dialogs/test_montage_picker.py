@@ -35,13 +35,7 @@ def montage_positions():
 
 
 @pytest.fixture
-def dialog(qtbot, channel_names, montage_positions, monkeypatch, tmp_path):
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config"))
-    QSettings.setPath(
-        QSettings.Format.NativeFormat,
-        QSettings.Scope.UserScope,
-        str(tmp_path / "qt-settings"),
-    )
+def dialog(qtbot, channel_names, montage_positions):
     with (
         patch(
             "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_builtin_montages",
@@ -71,7 +65,7 @@ def dialog(qtbot, channel_names, montage_positions, monkeypatch, tmp_path):
 
 @pytest.mark.parametrize("channel_count", [66, 128])
 def test_large_mapping_batches_style_updates_and_keeps_live_feedback(
-    qtbot, monkeypatch, tmp_path, channel_count
+    qtbot, monkeypatch, channel_count
 ):
     from mne.channels import make_standard_montage
 
@@ -79,11 +73,6 @@ def test_large_mapping_batches_style_updates_and_keeps_live_feedback(
         PickMontageDialog,
     )
 
-    QSettings.setPath(
-        QSettings.Format.NativeFormat,
-        QSettings.Scope.UserScope,
-        str(tmp_path / "large-mapping-settings"),
-    )
     channels = make_standard_montage("standard_1005").ch_names[:channel_count]
     style_writes = []
     original_set_style = QComboBox.setStyleSheet
@@ -880,11 +869,8 @@ class TestPickMontageInit:
         self,
         qtbot,
         montage_positions,
-        monkeypatch,
-        tmp_path,
     ):
         """A short channel list must not leave a large empty table viewport."""
-        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config-small"))
         with (
             patch(
                 "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_builtin_montages",
@@ -932,14 +918,11 @@ class TestMontageSelection:
         first.setCurrentIndex(first.findText("F3"))
         assert second.currentText() == ""
 
-    def test_non_bids_unique_best_prefills_only_safe_one_to_one_matches(
-        self, qtbot, monkeypatch, tmp_path
-    ):
+    def test_non_bids_unique_best_prefills_only_safe_one_to_one_matches(self, qtbot):
         from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
             PickMontageDialog,
         )
 
-        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config-safe"))
         positions = {
             "candidate-a": {"ch_pos": {"C3": (0, 0, 0), "C4": (1, 0, 0)}},
             "candidate-b": {"ch_pos": {"F3": (0, 0, 0)}},
@@ -966,19 +949,11 @@ class TestMontageSelection:
         assert picker.table.cellWidget(2, 1).currentText() == ""
         assert picker.table.cellWidget(3, 1).currentText() == ""
 
-    def test_non_bids_tied_or_ambiguous_matches_stay_unselected(
-        self, qtbot, monkeypatch, tmp_path
-    ):
+    def test_non_bids_tied_or_ambiguous_matches_stay_unselected(self, qtbot):
         from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
             PickMontageDialog,
         )
 
-        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config-tie"))
-        QSettings.setPath(
-            QSettings.Format.NativeFormat,
-            QSettings.Scope.UserScope,
-            str(tmp_path / "qt-settings-tie"),
-        )
         QSettings("XBrainLab", "MontagePicker").setValue("last_montage", "candidate-a")
         positions = {
             "candidate-a": {"ch_pos": {"C3": (0, 0, 0)}},
@@ -1024,19 +999,11 @@ class TestMontageSelection:
         )
         assert picker.settings.value("mapping_v2/candidate-a", {}) == before_mapping
 
-    def test_non_bids_no_match_stays_unselected_and_cannot_save(
-        self, qtbot, monkeypatch, tmp_path
-    ):
+    def test_non_bids_no_match_stays_unselected_and_cannot_save(self, qtbot):
         from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
             PickMontageDialog,
         )
 
-        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config-no-match"))
-        QSettings.setPath(
-            QSettings.Format.NativeFormat,
-            QSettings.Scope.UserScope,
-            str(tmp_path / "qt-settings-no-match"),
-        )
         QSettings("XBrainLab", "MontagePicker").setValue("last_montage", "candidate")
         with (
             patch(
@@ -1064,14 +1031,11 @@ class TestMontageSelection:
         assert picker.settings.value("last_montage", "") == "candidate"
         assert picker.settings.value("mapping_v2/candidate", {}) == before_mapping
 
-    def test_saved_mapping_requires_exact_ordered_channel_schema(
-        self, qtbot, monkeypatch, tmp_path
-    ):
+    def test_saved_mapping_requires_exact_ordered_channel_schema(self, qtbot):
         from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
             PickMontageDialog,
         )
 
-        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config-schema"))
         with (
             patch(
                 "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_builtin_montages",

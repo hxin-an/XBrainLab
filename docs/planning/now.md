@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `aa14db7a`, 143 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `f3554558`, 146 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -295,6 +295,32 @@ so both labels remain accepted; this is not a copy defect or UI change. No produ
 activation/download or environment change. Same suite before/after, actual click/wait measurement,
 Ruff/main+independent review. Report measured helper overhead only, not application speed or native
 manual acceptance. Keep meaningful negative-observation waits in other tests; do not strip waits globally.
+Execution resumed after9J settings isolation and85-case native validation below; no9H edits yet.
+
+**Bounded9J — isolate actual Qt settings before more GUI tests.** Main found three live Python
+QSettings consumers: main-window geometry, montage preferences and SmartParser settings. Test root
+has no QSettings isolation; montage tests attempt NativeFormat.setPath, ineffective on Windows/macOS.
+Read-only Windows probe confirms setDefaultFormat(IniFormat) does not alter the two-string org/app
+constructor (stillNativeFormat), consistent with [Qt's constructor/setPath documentation](https://doc.qt.io/qt-6/qsettings.html).
+Do not run further native-preference-consuming tests until isolated. Previous preference changes
+cannot be excluded without before-state; do not claim no QSettings side effects or restore guessed
+values. Root settings.json/model/data/env remain out of scope and untouched.
+Scope: tests-only fail-closed isolation at the actual Qt constructor seam, preserving real per-test
+INI serialization/roundtrip instead of Mock settings. First validate that scoped monkeypatching the
+real QSettings.__init__ reaches existing imported aliases without eager UI imports. Audit actual
+overloads and teardown order; avoid generic storage/control framework and extra temp allocation for
+tests that never construct settings. Add red path/format assertion before any write, then isolation,
+roundtrip and per-test reset tests; retire ineffective montage NativeFormat path/env redirects.
+Keep production QSettings/native behavior and existing geometry-specific fakes unchanged. Focused
+isolation/geometry/montage/SmartParser and9H baseline only after safe routing, independent safety/diff
+review/Ruff. Necessary shared-fixture evidence may widen only to affected UI paths. Native registry
+persistence is not claimed by INI-backed tests; required out-of-process gates retain separate review.
+Result:4 red cases fail on NativeFormat before any write; isolated5 cases (including explicit INI
+pass-through) pass0.30s. Affected85-case offscreen run83pass/2montage height failures; same assertions
+on verified Qt windows platform85pass15.26s, with18 MNE/NumPy deprecation warnings. Keep offscreen
+geometry limitation visible; no weakened assertions or claimed native registry persistence. Scoped
+real constructor patch reaches imported aliases without eager UI imports; ineffective four NativeFormat
+and six XDG redirects retired. Independent actual-diff/fixture-order review approves. Production unchanged.
 
 **Reviewer-capture disposition.** Full independent script1629/direct767 plus actual handoff registry
 and manifest consumers retain ui-reviewer-fixes as a required gate. It owns real A01T preview/time/PSD
