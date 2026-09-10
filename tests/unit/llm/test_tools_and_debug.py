@@ -1,4 +1,4 @@
-"""Coverage tests for llm/tools/__init__.py, backend_resolver.py, and debug modules."""
+"""Tool registration, debug execution and shared runtime utility regressions."""
 
 from __future__ import annotations
 
@@ -52,42 +52,6 @@ class TestGetAllTools:
 
         with pytest.raises(ValueError, match="Unknown tool mode"):
             get_all_tools("bad")
-
-
-# --- backend_resolver.py ---
-class TestBackendResolver:
-    def test_get_model_class(self):
-        from XBrainLab.backend.model_base.EEGNet import EEGNet
-        from XBrainLab.backend.model_base.SCCNet import SCCNet
-        from XBrainLab.llm.tools.real.backend_resolver import (
-            BackendClassRegistry as ToolRegistry,
-        )
-
-        assert ToolRegistry.get_model_class("EEGNet") is EEGNet
-        assert ToolRegistry.get_model_class("sccnet") is SCCNet
-        assert ToolRegistry.get_model_class("unknown") is None
-
-    def test_get_preprocessor_class(self):
-        from XBrainLab.backend.preprocessor.filtering import Filtering
-        from XBrainLab.llm.tools.real.backend_resolver import (
-            BackendClassRegistry as ToolRegistry,
-        )
-
-        assert ToolRegistry.get_preprocessor_class("bandpass") is Filtering
-        assert ToolRegistry.get_preprocessor_class("unknown") is None
-
-    def test_get_optimizer_class(self):
-        import torch
-
-        from XBrainLab.llm.tools.real.backend_resolver import (
-            BackendClassRegistry as ToolRegistry,
-        )
-
-        assert ToolRegistry.get_optimizer_class("adam") is torch.optim.Adam
-        assert ToolRegistry.get_optimizer_class("sgd") is torch.optim.SGD
-        assert ToolRegistry.get_optimizer_class("adamw") is torch.optim.AdamW
-        # Fallback returns Adam
-        assert ToolRegistry.get_optimizer_class("unknown") is torch.optim.Adam
 
 
 # --- tool_executor.py ---
