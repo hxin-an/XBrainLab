@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `42cc98a4`, 108 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `a2b21efc`, 109 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -316,7 +316,7 @@ Retained17passed5.57s; in-memory omitted finish_turn fails the exact completed-t
 in5.51s. Main nonauthor actualdiff review approved; only the existing test was strengthened, no case
 added/deleted and no product behavior changed. Ruff import sorting corrected; format check before commit.
 
-**Next bounded6J — remove dormant RAG helper/publication alternatives.** Main full retriever527/
+**Completed bounded6J — remove dormant RAG helper/publication alternatives.** Main full retriever527/
 config221/example132/indexer396/direct retriever443 and independent full indexer479 tests/caller audit
 find dead _collection_exists (existence belongs to indexer), unused tool_name_from_call fallback, ignored
 close(wait) option, and _auto_initialize/_build_bm25_index publish=True/self fallback paths whose sole
@@ -328,8 +328,16 @@ the unused _collection_exists test monkeypatch, no test case. No new owner, roug
 across2files. Full RAG focused baseline/retained after plus dependency/privacy/untrusted-context tests,
 Ruff and independent actualdiff review. No download/cache deletion or claimed latency improvement.
 If any edit is rejected, do not bypass; record exact unchanged scope and continue other work.
+Original full RAG89passed/2POSIX-skipped34.59s. Baseline created a10,100,000,000-byte partial-weight
+fixture on Windows; measured st_blocks19726568 (roughly9.41GiB), not cheap sparse storage. Completed
+test output exact pytest-88/.../test_oversized_partial_embeddi0/.../partial.bin removed after ownership
+and size checks; never a real embedding/model/data file. Fix this test-only cost in6L before rerunning
+the full directory; do not repeatedly allocate10GB while auditing unrelated RAG helpers.
+Retained full RAG89passed/2POSIX-skipped26.55s with6L fixture; no cases removed. Main nonauthor
+actualdiff review and changed-file Ruffcheck/formatpassed. Production+9/-55/net-46LOC; test-1.
+The POSIX-only permission tests still require final Linux evidence, not a Windows equivalence claim.
 
-**Next bounded6K — retire sole-subclass backend shell and ignored engine argument.** Independent full
+**Completed bounded6K — retire sole-subclass backend shell and ignored engine argument.** Independent full
 engine230/generation106/base39/local728/process617 and10direct/context suites2986 retain actual process
 cancel/escalation, immutable generation profile, local-only loading/resource checks and prompt capture.
 BaseBackend is used only as LocalBackend's parent and exclusive abstract-class test, not as a factory,
@@ -340,6 +348,26 @@ No runtime selection/template/model policy change, new owner or class. Approxima
 in3files; baseline retained engine/backend/context/resource/process suites, same after, Ruff and
 independent actualdiff review. Keep lifecycle ownership PID/wait witnesses used to prove actual process
 termination. Correct obsolete load doc wording only to reflect existing local_files_only behavior.
+Full original116passed51.97s. No model downloaded; existing external runtime seams and real owned
+process tests supply the relevant evidence.
+First after-run ending was lost across recovery; it is not counted. Recovered retained run110passed
+48.65s; exactlyfour abstract-shell andtwo ignored-helper cases removed. Main nonauthor actualdiff
+review and Ruffcheck/formatpassed. Actual production+5/-55/net-50LOC, tests-60; no new owner.
+
+**Completed bounded6L — avoid10GB synthetic weight allocation in quota regression.** Existing oversized
+partial embedding test writes10.1GB solely to cross the production10GB limit. Keep actual filesystem
+cache scanning and download preflight/no-network assertion, but inject a test-only100-byte single-model
+quota and create101bytes. Pin observed current bytes/limit and the specific already-over-limit reason,
+so estimated-download denial cannot masquerade as partial-cache denial. Actual production quota policy
+remains unchanged and separately asserted by the existing default-quota test. One existing test only,
+no new test/helper/production code or blanket temp cleanup. Original case passed in6J baseline; same
+case/default quota after plus omitted current-target guard fault where safe, Ruff/main actualdiff
+review. Verify exact generated large file absent; preserve all other test/cache/model/data paths.
+Full RAG after89passed/2POSIX-skipped26.55s; actual generated partial file is101bytes. In-memory
+omitted current-target guard fails the specific already-over-limit assertion0.20s, proving estimated
+download denial cannot substitute for this protection. Independent review and Ruffcheck/formatpassed;
+test+11/-2/net+9LOC, no production/default-quota/test-count change. Exact prior10.1GB fake file was
+removed and verified absent; source remains regenerable, real caches/data/environments were untouched.
 
 Completed2AD–2AG and8C–8E are indexed below and fully traceable in Git. For source-bound Windows
 capture tests only, use process-local GIT_DIR/GIT_WORK_TREE pointing to the actual Windows paths:
