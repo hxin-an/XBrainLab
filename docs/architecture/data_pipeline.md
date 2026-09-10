@@ -310,7 +310,9 @@ Visualization 的 visible `Compute Saliency` 會送出 explicit `SaliencyCommand
 目前 selection。Normalize、All Folds 與 plot preparation 仍各自執行 bounded cancel / stale checks；
 這不代表 attribution 的 scientific validity 已驗證。
 
-目前 tiny smoke 和 checked-in real-data smoke 都會 patch file outputs，例如 `torch.save`、`numpy.savetxt`、`matplotlib.pyplot.savefig`，避免測試污染 workspace。
+Tiny synthetic training integration、checked-in GDF training smoke 與 successful OOM retry
+會在測試暫存目錄實際寫出 checkpoint／record／evaluation，並透過正式安全讀取入口重讀。
+這些證據涵蓋 persistence，不代表 GUI 關閉後重新開啟結果或完整 user-facing command journey。
 
 ## Evidence Matrix
 

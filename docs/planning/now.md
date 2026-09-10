@@ -48,7 +48,7 @@ UI/test files and root settings. Worktree/branch/source facts come from Git, not
 | 2 Import/interpretation | Loaders, BIDS, labels/classes, channel/montage, metadata, recipes, related UI | Audited core reviewed; not closed: two confirmed visible defects await authorization; inventory reconciliation in progress |
 | 3 Preprocess/epoch/split | Processing, copies, invalidation, preview/materialization, related UI/tools | 3A–3U reviewed; documented split-artifact decision and final inventory/closure review remain open |
 | 4 Models/training | Catalog, resource preflight, settings, stop/rerun, history/checkpoints | Core/model/resource/record/UI audit substantially complete; final inventory, convenience retirement and two visible decisions remain open |
-| 5 Evaluation/saliency/views | Read/publication, SmoothGrad/recompute, four views, stale work/render lifecycle | Pending |
+| 5 Evaluation/saliency/views | Read/publication, SmoothGrad/recompute, four views, stale work/render lifecycle | Record/render/provenance and UI owners reviewed; attribution/3D/integration gaps and legacy scheduler retirement remain open |
 | 6 Assistant/chat | Tool adapters, turns/confirmation/execution, model/RAG lifecycle and shutdown | Pending |
 | 7 Shared desktop/runtime | Shell/navigation, shared components, configuration, errors/logging/start/close | Pending |
 | 8 Scripts/dev/CI | Launch/setup, Poe/hooks, runners, walkthroughs/evaluators/reports and artifacts | Read-only inventory |
@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `6558bd06`, 91 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `ae7c8d62`, 95 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -353,7 +353,7 @@ fail when real validator is bypassed only in memory (6fail0.50s). Independent ac
 Ruff passed after EOF cleanup. Actual production-100/testsnet-67. Three failure sites/sixcases and
 valid roundtrip remain, exactlyfive getter-only cases removed; no loading/context/integrity gate lost.
 
-**Bounded5D — evaluation rendering dead error/string helpers.** Independent full owner/directtests
+**Completed bounded5D — evaluation rendering dead error/string helpers.** Independent full owner/directtests
 and main caller tracing show _final_unavailable_error has no callers; live split errors use
 _split_unavailable_error. build_evaluation_model_summary is an unused production string forward to
 the actual typed result API, with two direct test and one real trainer integration caller. Migrate
@@ -364,6 +364,76 @@ after, Ruff and independent review. Main owns evaluation_render/test_evaluation_
 integration caller; no actual summary construction/wait/cancel/identity/visible behavior change.
 Production roughly-18, no owner addition. Synthetic integration persistence mocks are a separately
 declared test-quality cleanup, not silently mixed into this API migration.
+Same50passed12.06s migrated-before/11.95s after; same2upstream warnings. Independent actualdiff
+approved; production-19/testsnet-10, no cases removed. Commit hooks provide changed-file lint.
+
+**Pending explicit import-risk decision5E — provenance compatibility re-exports.** Independent full provenance925/
+integrity872 plus exact-hash270/ownership138/integrity81/contextconsumer190 retain bounded exact
+logical-C hashes, immutable sealing, schema/producer validation and surrounding cancellation fences.
+No redundant SHA claim. Eight eval.py noqa-F401 aliases have no real caller; only architecture
+compatibility tests and a guard requirement demand them. Remove those eight imports, exclusive
+re-export identity test and the guard's must-re-export block only. Preserve actual three context/
+producer class imports, domain owner's required definitions, forbidden record-local definitions and
+mandatory direct-owner production imports. Rename misleading compatibility fixture/local constant
+to record terminology and model minimal actual three imports in its fixture. Main reviewed exact
+guard body; worker may own eval.py/tests architecture helper/directtest only after baseline.
+Baseline ownership/exact-hash and actual record context before, same retained after with all negative
+ownership tests intact, Ruff and independent actualdiff review. No runtime schema/cancellation/
+publication behavior change; production-8, zero new owner/compatibility shell or new source guard.
+Baseline39passed8.09s (ownership/exact-hash/current context). Edit safety review rejected both initial
+attempt and one retry supplying the user's approved no-unknown-external-convenience policy; no files
+changed. Gate requires a fresh explicit decision after disclosure that external imports from eval.py
+would fail. User asked asynchronously; no reply yet. Preserve aliases and matching guard until then.
+Do not bypass the gate with a different editing tool. Continue independent authorized module work.
+
+**Completed bounded4N — real persistence in synthetic training integration.** Main fully read Study facade406
+and trainer/model integration233; both repeatedly suppress pyplot.savefig/torch.save/numpy.savetxt/
+os.makedirs, just like4E's retired test patches. Fixtures already use bounded real MNE data and
+temporary output. Remove only those FS patch scopes and exclusive patch import; retain all existing
+metrics/identity/append/stop/cleanup/parameter assertions and model/repeat cases. Reuse the existing
+assert_real_training_artifacts helper per actual record.target_path, including both repeats, so all
+trained outputs are safely reloadable. No optional flag/persistence owner or production change.
+Study MagicMock trainer isolation for facade dispatch stays justified. Main owns the two integration
+test modules after baseline; before/after full files and bounded missing-save fault, actual tmp output
+size check, Ruff and independent actualdiff review. Do not claim this synthetic facade path is the
+product command journey or GUI restart/reopen. Duplicate tiny dataset factory consolidation is a
+separate candidate; don't mix it with persistence evidence migration.
+
+4N worker released the two-file diff: test-only +105/-146 (net-41), all existing cases preserved.
+Main reviewed actual diff; full27passed13.88s after, against27passed12.74s before. Actual temporary
+outputs total122files/723462bytes; checkpoint and EvalRecord reload assertions execute per trained
+record. Omitted torch.save in-memory fault fails the exact real EEGNet case at safe checkpoint
+reload (ArtifactIntegrityError/EOF,1fail3.88s); no faulty source persisted. The first keyword fault
+selection collected no case, so only the corrected exact-node run is evidence. Initial Ruff found
+two import-order issues; import-only formatting and Ruff check/format recheck passed. Main non-author
+review approves the behavioral diff; architecture persistence
+claim is corrected. No mock-heavy delegation tests or existing training assertions were discarded.
+
+**Bounded5F — retire dormant automatic saliency scheduler.** Main and independent caller audit
+prove PostTrainingSaliencyAutomation is instantiated but never armed by production; its only active
+arm calls are exclusive compatibility tests. Remove the220line class, exclusive imports/service
+construction/callback/cancel/wait wiring and shutdown cancellation port; remove the dev native-stress
+script's dormant idle probe, retaining actual job/terminal-delivery waits. Owner delta is one legacy
+scheduler removed, zero new owner; no replacement shell. Preserve PostCommandSaliencyNotificationBoundary,
+explicit SaliencyCommand, PostTrainingSaliencyTarget and scoped target context, runtime cancellation,
+terminal publication/ack/retry/discard and timeout budgeting. Existing architecture already requires
+explicit Compute Saliency as sole product admission; no UI/public command/schema change is intended.
+First complete affected test reads and passing baseline. Remove only13 exclusive scheduler unit cases,
+armed-only observer case, submission-only timeout case and automatic-thread-start failure integration
+case. Migrate shared shutdown failure test to a live runtime cancellation failure and shared wait
+assertions to remaining real runtime/delivery owners; preserve explicit-command startup/cancel/stale
+and normal observer lifetime coverage. Approximate production-260, three production files plus one
+script; main final diff/LOC and independent non-author lifecycle review before commit. Focused same
+retained notification/observer/service/background/publication integration plus script evidence, Ruff
+and source call-site sweep are required. No automatic closure of module5 or handoff claim.
+
+**Module4 preview coordinator full audit.** Main read439source/341directtests: retain single-flight
+same-request sharing, latest queued draft replacement, exact generation/receipt refinement, shared
+OwnedWork cancellation, non-daemon worker admission/failure/close/retry and nonblocking diagnostics.
+Real threads/Events/registry assertions give direct evidence; model estimate callback is a justified
+external seam. Retained cache has one bounded completed result, not a second policy owner. No measured
+unnecessary waiting; waits are explicit ticket/lifecycle boundaries. Possible dead None branch and
+test-only worker identity convenience require separate caller/test disposition, not module closure.
 
 Completed2X–2AC are indexed below; their full scope/evidence remains in Git history.
 2AC found an existing shared-environment source hazard: Windows .pth adds the original checkout
