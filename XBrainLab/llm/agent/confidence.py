@@ -20,19 +20,8 @@ import re
 
 from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 
-
-def _collect_known_tools() -> frozenset[str]:
-    """Derive known tool names from the prompt-facing schema taxonomy.
-
-    Stage configuration controls what should be visible for the current
-    workflow. Confidence scoring still needs to recognize compatibility tools
-    that can appear in parser tests or legacy repair paths.
-    """
-    return AGENT_ACTION_CONTRACTS.tool_names()
-
-
 #: Tool names derived from the schema taxonomy.
-_KNOWN_TOOLS: frozenset[str] = _collect_known_tools()
+_KNOWN_TOOLS: frozenset[str] = AGENT_ACTION_CONTRACTS.tool_names()
 
 _HEDGE_PATTERN = re.compile(
     r"\b(i think|maybe|sorry|i'?m not sure|possibly|i believe)\b",

@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery: product branch `cleanup/module-quality`, HEAD `5cf7a6df`, 122 commits after baseline
+Git recovery: product branch `cleanup/module-quality`, HEAD `5132d43e`, 124 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -171,7 +171,7 @@ same7MNE/NumPy deprecation warnings. Fourteen stage/stale exact prompts/publicat
 133367bytes SHA256e5e84c01e0b44eac4ab4c8fe183969cc32adbeef90550c3b1d2eb22fb6f64872.
 Typed fixtures are parity evidence, not scientific workflow or real-model evidence. Independent actual
 diff/privacy review approved; main review and10file Ruff pass. Final unused test import/format changes
-verified18passed5.97s. Separate blocked6E/6G remain untouched. Ready for reversible commit, not handoff.
+verified18passed5.97s. Separate blocked6E/6G remain untouched. Committed337d94e7, not handoff.
 
 **Bounded6W — discard unused footer input construction.** Full status presenter/projection and direct
 footer tests trace one production caller: display_commands is immediately discarded, while projection
@@ -182,7 +182,7 @@ Owners stay the same pure presenter and backend publication; two production file
 no new owner/contract. Establish passing footer and full agent-presentation-service baseline, change
 only three direct test call signatures without changing assertions, rerun same tests, main actual diff
 review/lint, small reversible commit. Same35passed before0.52s/after0.50s; independent actual-diff review
-approved and lint passed. Production-4/testsnet-5, no cases removed. Ready for commit, not handoff.
+approved and lint passed. Production-4/testsnet-5, no cases removed. Committed5132d43e, not handoff.
 
 **Publication/turn audit.** Full main presentation199/turn_state141/direct121+63 retains typed view-only
 progress and exact admission/stop/terminal lease ownership. Independent coordinator251/direct149 and
@@ -191,6 +191,60 @@ Stored training handoff_generation is unread after admission; retain admission v
 bounded field-only cleanup decision. Manager/long-session evidence, not direct149 alone, protects
 stale/missing run identity and exactly-once transcript delivery. Tool definitions/authorized paths and
 remaining worker/runtime audit continue alongside inventory reconciliation.
+
+**Tool/path audit correction.** Full independent definitions1+116+65+159/base65/registry62/tools-init288
+and direct126+95 retain live schema providers and the18-tool projection. Full authorized_paths743/
+direct303 initially misclassified the whole path capability as orphan; main challenged verifier968's
+generic root branch and independent re-audit confirmed live scan/preview/recipe admission consumers.
+Retain authorize_existing_path and POSIX/Windows identity checks. Only retained-handle open/grant
+consumer absence is a retirement candidate; downstream backend IO protections were not examined in
+this bounded audit, so no end-to-end TOCTOU defect is established. Do not delete the whole capability.
+
+**Bounded6X — remove stateless indirection without policy change.** Full confidence91 and encoder712
+audit/caller search show _collect_known_tools only initializes _KNOWN_TOOLS and CHARS is only an alias
+used by encode_untrusted_context's default. Inline the actual contract tool_names call and use existing
+MAX_UNTRUSTED_CONTEXT_BYTES directly; remove stale compatibility comments, preserve max_chars keyword,
+exact8192-byte cap, all sanitization and scoring formula. Two production files, expected-14LOC, no new
+owner/class/contract or UI effect. Passing direct confidence+untrusted-context+assembler baseline,
+same retained cases after, lint/main diff review; no test removal. Rollback one small commit; continue
+worker fixture/remaining module audits after unchanged results, not handoff.
+6X verified104before7.05s/after7.16s, no cases removed; main actual diff review and Ruff passed.
+Productionnet-14. Also correct one stale assembler class-docstring phrase left by6V; prompt strings
+are unchanged. Commit next; no model/scoring/encoding/visible behavior claim beyond parity.
+
+**Bounded6Y — characterize actual owned-process initialization, remove only synchronous fallback.**
+Full worker1065, direct1058/runtime-selection189/correlation855 and timeout333/process245 audit finds
+initialize_agent's sole production constructor is LocalRuntimeProcessOwner (uses_owned_process=True).
+Migrate only initialization/frozen-launch/load-failure/retry fixtures to explicit owned-process-shaped
+doubles with real RuntimeLoadThread delivery. Establish passing baseline on unchanged production;
+preserve exact launch config/activation, LOADING->READY/FAILED, failed-owner close and fresh-owner retry,
+no settings reread and untyped rejection. Fault omission of failed-owner close must fail. Then remove
+only initialize_agent's unreachable synchronous load/ready/log branch; keep constructor/start-thread
+exception cleanup, owned async handlers, all generation/cancel/timeout/shutdown/switch behavior.
+One production file, expected negative LOC, no owner/public/UI change; tests own only two existing
+files, no new generic fixture platform. Identical retained worker/runtime/correlation/process/timeout
+suites, lint and independent actual lifecycle review before reversible commit. Continue phase audit
+after slice evidence; full model/native acceptance remains final-stage work, not this test seam.
+6Y migrated six initialization cases with real QObject/RuntimeLoadThread;110before15.43s/after15.37s.
+Omitting failed-owner close in memory makes both failure/retry cases fail(close_calls0!=1),0.38s.
+Productionnet-13; testsnet+99, no cases removed. Main caught and corrected double.close signature
+before baseline; seven-file Ruff passed after mechanical test formatting. Independent reviewer first
+confused worker's LocalRuntimeProcessOwner alias with child core.engine.LLMEngine, then checked actual
+binding/callers and withdrew the unreachable injection-only blocker. Approved for actual production
+owner; external monkeypatch/injection compatibility intentionally unsupported. Commit next, not handoff.
+
+**Bounded7B — remove unused shared UI query forwards.** Independent full capabilities1654/direct1610,
+renderer428/direct377 and runner431/direct509 audit retains existing publication/Qt owners. Main traces
+no caller for get_training_resource_preflight UI helper/Study adapter/type import or singular
+prepare_saliency_render_operation/helper/protocol/Study adapter; live views use variants. Remove only
+these UI-internal forwards from application_capabilities.py. Preserve backend service query methods,
+variant rendering, ownership/commit/cancel, native-stress fake and all resource admission checks.
+User authorized behavior-preserving UI deletion; no visible UI/schema change. One production file,
+expected-60LOC, no owner addition. Baseline full capabilities and saliency-render-work tests, identical
+retained cases after, lint and main nonauthor actual diff review; no test removals. Reversible commit
+then continue shared components; final data/native gates still required for integrated handoff.
+7B implemented-63productionLOC; same52before4.43s/after4.56s, no test changes. Main nonauthor actual
+diff/caller review and Ruff passed; resource admission/backend query and variants lifecycles remain.
 
 **Module6 initial full owner audit (not closure).** Independent full controller2949/attempt898/
 execution342/confirmation314/pending443 and respective direct confirmation154/pending560/execution151/

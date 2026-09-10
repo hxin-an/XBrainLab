@@ -75,7 +75,7 @@ class ContextAssembler:
     """Assembles the full context for the AI agent.
 
     Keeps host policy and capability-filtered action contracts in the system
-    message. Runtime state, recovery feedback, and RAG examples are encoded in
+    message. Runtime state and RAG examples are encoded in
     a separate bounded message whose values are explicitly untrusted data.
 
     Attributes:
