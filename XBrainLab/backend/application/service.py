@@ -3069,23 +3069,10 @@ class ApplicationService(Observable):
                     )
                 self._last_error = None
                 self._mutation_in_progress = False
-                after, refresh_error = self._state_after_command()
-                if refresh_error is not None or not after.state_reliable:
-                    verification_error = refresh_error or RuntimeError(
-                        "; ".join(after.read_errors)
-                        or "updated application state is unreliable",
-                    )
-                    return self._post_state_verification_failure_result(
-                        name=name,
-                        state=after,
-                        diagnostics=diagnostics,
-                        error=verification_error,
-                    )
-                return CommandResult.success_result(
-                    command_name=name.value,
+                return self._result_after_mutation(
+                    name=name,
+                    before=current_state,
                     message=message,
-                    state=after,
-                    changed_state=self._changed_state(current_state, after),
                     diagnostics=diagnostics,
                 )
             finally:
@@ -3323,23 +3310,10 @@ class ApplicationService(Observable):
                 # Publication delivery remains fenced until the verified result
                 # returns, but state capture must commit the new read model.
                 self._mutation_in_progress = False
-                after, refresh_error = self._state_after_command()
-                if refresh_error is not None or not after.state_reliable:
-                    verification_error = refresh_error or RuntimeError(
-                        "; ".join(after.read_errors)
-                        or "updated application state is unreliable",
-                    )
-                    return self._post_state_verification_failure_result(
-                        name=name,
-                        state=after,
-                        diagnostics=diagnostics,
-                        error=verification_error,
-                    )
-                return CommandResult.success_result(
-                    command_name=name.value,
+                return self._result_after_mutation(
+                    name=name,
+                    before=current_state,
                     message=message,
-                    state=after,
-                    changed_state=self._changed_state(current_state, after),
                     diagnostics=diagnostics,
                 )
             finally:
@@ -3502,23 +3476,10 @@ class ApplicationService(Observable):
                     )
                 self._last_error = None
                 self._mutation_in_progress = False
-                after, refresh_error = self._state_after_command()
-                if refresh_error is not None or not after.state_reliable:
-                    verification_error = refresh_error or RuntimeError(
-                        "; ".join(after.read_errors)
-                        or "updated application state is unreliable",
-                    )
-                    return self._post_state_verification_failure_result(
-                        name=name,
-                        state=after,
-                        diagnostics=diagnostics,
-                        error=verification_error,
-                    )
-                return CommandResult.success_result(
-                    command_name=name.value,
+                return self._result_after_mutation(
+                    name=name,
+                    before=current_state,
                     message=message,
-                    state=after,
-                    changed_state=self._changed_state(current_state, after),
                     diagnostics=diagnostics,
                 )
             finally:
@@ -4013,23 +3974,10 @@ class ApplicationService(Observable):
                 diagnostics=diagnostics,
             )
         self._last_error = None
-        after, refresh_error = self._state_after_command()
-        if refresh_error is not None or not after.state_reliable:
-            verification_error = refresh_error or RuntimeError(
-                "; ".join(after.read_errors)
-                or "updated application state is unreliable",
-            )
-            return self._post_state_verification_failure_result(
-                name=name,
-                state=after,
-                diagnostics=diagnostics,
-                error=verification_error,
-            )
-        return CommandResult.success_result(
-            command_name=name.value,
+        return self._result_after_mutation(
+            name=name,
+            before=before,
             message=message,
-            state=after,
-            changed_state=self._changed_state(before, after),
             diagnostics=diagnostics,
         )
 
@@ -4466,6 +4414,39 @@ class ApplicationService(Observable):
             return command_name(command).value in RECOVERY_COMMAND_NAMES
         except Exception:
             return False
+
+    def _result_after_mutation(
+        self,
+        *,
+        name: CommandName,
+        before: ApplicationStateSnapshot,
+        message: str,
+        diagnostics: dict[str, Any],
+    ) -> CommandResult:
+        """Verify a committed mutation before reporting success on any command route.
+
+        The caller retains admission and publication fencing, and ends mutation
+        capture before entering here so the new read model can be verified.
+        """
+        after, refresh_error = self._state_after_command()
+        if refresh_error is not None or not after.state_reliable:
+            verification_error = refresh_error or RuntimeError(
+                "; ".join(after.read_errors)
+                or "updated application state is unreliable",
+            )
+            return self._post_state_verification_failure_result(
+                name=name,
+                state=after,
+                diagnostics=diagnostics,
+                error=verification_error,
+            )
+        return CommandResult.success_result(
+            command_name=name.value,
+            message=message,
+            state=after,
+            changed_state=self._changed_state(before, after),
+            diagnostics=diagnostics,
+        )
 
     def _state_after_command(
         self,

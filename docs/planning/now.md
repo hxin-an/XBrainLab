@@ -105,5 +105,34 @@ absence of defects, scientific validity or all-dataset/model support.
 Fresh worktree created from merged main; original checkout is unchanged. Establish tracked-file
 inventory and bounded module investigations before production edits. Native test environment remains
 the existing Windows venv; confirm invocation and owned-process safety before running characterization.
-Main: command/runtime boundary and inventory integration. Worker assignments follow after this plan
-is committed; workers must not edit shared plan or run simultaneous heavy suites.
+Tracked inventory:1255 files grouped in ignored complete-audit/inventory.json, all explicitly marked
+enumerated-not-yet-reviewed. Workers audit tools/config and data-domain files; no source edits yet.
+Main owns command/runtime and integration tests; workers must not edit this plan or run heavy suites.
+
+First bounded core slice: four production command routes duplicate the same successful-mutation
+post-state verification/error policy (serialized, discovery, apply, preprocess/epoch). Consolidate only
+that policy into a private ApplicationService method, retaining caller-owned mutation/fence timing,
+special montage work, read-only behavior, cancellation and stale admission. No new owner/module/class;
+one production file, expected net deletion. Baseline existing real FIF Command journey plus new
+parameterized real-command successful/unreliable/error post-state evidence for these routes; retain
+existing unit publication/cancel/refresh tests. Independent reviewer checks fence/error timing and
+behavior evidence. Rollback is the single core source/test commit, not the full stage.
+
+Parallel bounded candidates (baseline first): data worker removes only Study.preprocess ->
+DataManager.preprocess and its test-only fake processor cases; current PreprocessStateService and
+dynamic processor registry remain. No in-project caller beyond delegation/tests was found; verify
+all dynamic/script/doc entrypoints before removal. Two production files, no new owner, net deletion.
+Tools worker removes orphan PyVista sphere probe and historical hardcoded Windows-to-WSL launcher
+walkthrough plus their dedicated tests/routing entries only after confirming retained native startup,
+render and launcher contracts cover current behavior. Do not remove current launchers/gates. No
+production change/new owner. Focused baseline covers both old helpers, artifact policy, runner,
+Study/DataManager and actual retained preprocess/launcher/native contracts. Independent commits.
+
+Core progress: real post-state characterization15passed before source edits (initial normalization
+label expectation was corrected, not counted as a defect). Shared verifier is independently reviewed,
+production+45/-64/net-19, no owner delta. Together with direct-preprocess deletion, native Command
+journeys/ApplicationService/Study/DataManager386passed27.84s. Data convenience deletion net-30
+production and-30 tests; formal prepared path retained. Tools first baseline124passed/1failed:
+Windows Git could not resolve WSL absolute worktree gitdir. Converted only this new worktree's .git
+pointer to relative form; both Git implementations resolve the same SHA. No source workaround or
+test waiver. Original failure retained; tool postchecks still pending.
