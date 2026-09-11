@@ -55,6 +55,323 @@ from tests.architecture_compliance import (
     check_visualization_saliency_publication_boundary,
 )
 
+EXPECTED_ARCHITECTURE_GUARD_CONTRACT = (
+    ("check_local_only_llm_runtime", "\nLocal-only LLM Runtime Violations Found:", {}),
+    ("check_backend_llm_imports", "\nBackend to LLM Import Violations Found:", {}),
+    (
+        "check_saliency_provenance_ownership",
+        "\nSaliency Provenance Ownership Violations Found:",
+        {},
+    ),
+    (
+        "check_saliency_artifact_integrity_ownership",
+        "\nSaliency Artifact Integrity Ownership Violations Found:",
+        {},
+    ),
+    (
+        "check_visualization_saliency_publication_boundary",
+        "\nVisualization Saliency Publication Violations Found:",
+        {},
+    ),
+    (
+        "check_application_state_module_boundaries",
+        "\nApplication State Module Boundary Violations Found:",
+        {},
+    ),
+    (
+        "check_application_service_ownership_boundaries",
+        "\nApplicationService Ownership Boundary Violations Found:",
+        {},
+    ),
+    (
+        "check_application_shutdown_lifecycle_ownership",
+        "\nApplication Shutdown Lifecycle Ownership Violations Found:",
+        {},
+    ),
+    (
+        "check_application_controller_boundary",
+        "\nApplication Controller Boundary Violations Found:",
+        {},
+    ),
+    (
+        "check_dataset_product_port_boundary",
+        "\nDataset Product Port Boundary Violations Found:",
+        {},
+    ),
+    (
+        "check_preprocess_product_port_boundary",
+        "\nPreprocess Product Port Boundary Violations Found:",
+        {},
+    ),
+    (
+        "check_visualization_product_port_boundary",
+        "\nVisualization Product Port Boundary Violations Found:",
+        {},
+    ),
+    (
+        "check_application_publication_lifecycle_port_boundary",
+        "\nApplication Publication Lifecycle Port Violations Found:",
+        {},
+    ),
+    (
+        "check_training_runtime_port_boundary",
+        "\nTraining Runtime Port Boundary Violations Found:",
+        {},
+    ),
+    (
+        "check_raw_mutation_atomicity_boundaries",
+        "\nRaw Mutation Atomicity Boundary Violations Found:",
+        {},
+    ),
+    (
+        "check_label_resource_admission_boundary",
+        "\nLabel Resource Admission Boundary Violations Found:",
+        {},
+    ),
+    (
+        "check_training_history_projection_boundary",
+        "\nTraining History Projection Boundary Violations Found:",
+        {},
+    ),
+    (
+        "check_dataset_detached_read_boundary",
+        "\nDataset Detached Read Boundary Violations Found:",
+        {},
+    ),
+    (
+        "check_dataset_split_publication_boundary",
+        "\nDataset Split Publication Boundary Violations Found:",
+        {},
+    ),
+    (
+        "check_epoch_dialog_publication_boundary",
+        "\nEpoch Dialog Publication Boundary Violations Found:",
+        {},
+    ),
+    (
+        "check_mutable_object_boundaries",
+        "\nMutable Object Boundary Violations Found:",
+        {"validate_allowlist": True},
+    ),
+    (
+        "check_montage_command_ownership",
+        "\nMontage Command Ownership Violations Found:",
+        {},
+    ),
+    (
+        "check_training_configuration_reset_ownership",
+        "\nTraining Configuration Reset Ownership Violations Found:",
+        {},
+    ),
+    (
+        "check_product_runtime_mock_dependencies",
+        "\nProduct Runtime Mock Dependency Violations Found:",
+        {},
+    ),
+    (
+        "check_concrete_llm_tool_result_contracts",
+        "\nConcrete LLM Tool Result Contract Violations Found:",
+        {},
+    ),
+    (
+        "check_mapped_real_tool_command_ownership",
+        "\nMapped Real Tool Command Ownership Violations Found:",
+        {},
+    ),
+    (
+        "check_typed_agent_confirmation_boundary",
+        "\nTyped Agent Confirmation Boundary Violations Found:",
+        {},
+    ),
+    (
+        "check_pending_interaction_compatibility_api",
+        "\nPending Interaction Compatibility API Violations Found:",
+        {},
+    ),
+    (
+        "check_agent_controller_lifecycle_aliases",
+        "\nAgent Controller Lifecycle Alias Violations Found:",
+        {},
+    ),
+    (
+        "check_agent_manager_publication_state_ownership",
+        "\nAgent Manager Publication State Ownership Violations Found:",
+        {},
+    ),
+    (
+        "check_agent_confirmation_contract_evidence",
+        "\nAgent Confirmation Contract Evidence Violations Found:",
+        {},
+    ),
+    (
+        "check_typed_montage_ui_handoff_boundary",
+        "\nTyped Montage UI Handoff Boundary Violations Found:",
+        {},
+    ),
+    (
+        "check_assistant_presentation_ownership",
+        "\nAssistant Presentation Ownership Violations Found:",
+        {},
+    ),
+    (
+        "check_llm_direct_study_state_reads",
+        "\nLLM Direct Study State Read Violations Found:",
+        {},
+    ),
+    (
+        "check_product_runtime_backend_facade_usage",
+        "\nProduct Runtime BackendFacade Usage Violations Found:",
+        {},
+    ),
+    (
+        "check_product_success_backend_facade_tests",
+        "\nProduct Success BackendFacade Test Violations Found:",
+        {},
+    ),
+    (
+        "check_backend_facade_test_usage",
+        "\nBackendFacade Test Usage Violations Found:",
+        {},
+    ),
+    (
+        "check_product_success_direct_study_state_tests",
+        "\nProduct Success Direct Study State Test Violations Found:",
+        {},
+    ),
+    (
+        "check_headless_verifier_direct_study_state",
+        "\nHeadless Verifier Direct Study State Violations Found:",
+        {},
+    ),
+    (
+        "check_product_success_controller_lookup_assertions",
+        "\nProduct Success Controller Lookup Assertion Violations Found:",
+        {},
+    ),
+    (
+        "check_ui_agent_worker_internal_access",
+        "\nUI Agent Worker Internal Access Violations Found:",
+        {},
+    ),
+    (
+        "check_assistant_runtime_selection_ownership",
+        "\nAssistant Runtime Selection Ownership Violations Found:",
+        {},
+    ),
+    (
+        "check_product_tool_envelope_boundary",
+        "\nProduct Tool Envelope Boundary Violations Found:",
+        {},
+    ),
+    (
+        "check_dataset_data_interpretation_action_ownership",
+        "\nDataset Data Interpretation Action Ownership Violations Found:",
+        {},
+    ),
+    (
+        "check_dataset_controller_compatibility_callers",
+        "\nDataset Controller Compatibility Caller Violations Found:",
+        {},
+    ),
+    (
+        "check_agent_resource_receipt_boundary",
+        "\nAgent Resource Receipt Boundary Violations Found:",
+        {},
+    ),
+    ("check_ui_controller_fallbacks", "\nUI Controller Fallback Violations Found:", {}),
+    (
+        "check_ui_controller_render_fallbacks",
+        "\nUI Controller Render Fallback Violations Found:",
+        {},
+    ),
+    (
+        "check_training_panel_history_fallback_scope",
+        "\nTraining History Fallback Scope Violations Found:",
+        {},
+    ),
+    (
+        "check_ui_direct_controller_mutations",
+        "\nUI Direct Controller Mutation Violations Found:",
+        {},
+    ),
+    (
+        "check_ui_legacy_mutation_helper_calls",
+        "\nUI Legacy Mutation Helper Call Violations Found:",
+        {},
+    ),
+    (
+        "check_ui_legacy_fallback_helper_scope",
+        "\nUI Legacy Fallback Helper Scope Violations Found:",
+        {},
+    ),
+    (
+        "check_ui_direct_backend_service_execute",
+        "\nUI Direct Backend Service Execute Violations Found:",
+        {},
+    ),
+    ("check_ui_direct_loader_apply", "\nUI Direct Loader Apply Violations Found:", {}),
+    (
+        "check_ui_direct_study_state_reads",
+        "\nUI Direct Study State Read Violations Found:",
+        {},
+    ),
+    (
+        "check_ui_controller_study_get_controller_fallbacks",
+        "\nUI Controller Study Fallback Violations Found:",
+        {},
+    ),
+    (
+        "check_ui_direct_study_get_controller_lookups",
+        "\nUI Direct Study Controller Lookup Violations Found:",
+        {},
+    ),
+    (
+        "check_ui_post_command_controller_echoes",
+        "\nUI Post-command Controller Echo Violations Found:",
+        {},
+    ),
+    (
+        "check_ui_capability_gated_controller_readiness",
+        "\nUI Capability-gated Controller Readiness Violations Found:",
+        {},
+    ),
+    (
+        "check_ui_post_command_local_refreshes",
+        "\nUI Post-command Local Refresh Violations Found:",
+        {},
+    ),
+    (
+        "check_ui_refresh_false_commands",
+        "\nUI No-refresh Command Violations Found:",
+        {},
+    ),
+    (
+        "check_ui_observer_direct_update_bridges",
+        "\nUI Observer Direct Refresh Violations Found:",
+        {},
+    ),
+    (
+        "check_primary_panel_product_bootstrap_boundary",
+        "\nPrimary Panel Product Bootstrap Boundary Violations Found:",
+        {},
+    ),
+    (
+        "check_primary_ui_publication_refresh_boundary",
+        "\nPrimary UI Publication Refresh Boundary Violations Found:",
+        {},
+    ),
+    (
+        "check_evaluation_publication_refresh_boundary",
+        "\nEvaluation Publication Refresh Boundary Violations Found:",
+        {},
+    ),
+    (
+        "check_visualization_publication_refresh_boundary",
+        "\nVisualization Publication Refresh Boundary Violations Found:",
+        {},
+    ),
+)
+
 
 def test_guard_diagnostic_path_is_repo_relative_posix_on_windows() -> None:
     root = PureWindowsPath("D:/a/XBrainLab/XBrainLab")
@@ -5048,6 +5365,108 @@ def broken(:
         assert "invalid Python syntax" in violations[0]
 
     assert architecture_compliance.check_architecture(str(tmp_path)) == 1
+
+
+def test_architecture_checker_runs_all_guards_in_order_with_special_arguments(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_ui_file(tmp_path, "class SafePanel(BasePanel):\n    pass\n")
+    calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
+
+    for name, _, _ in EXPECTED_ARCHITECTURE_GUARD_CONTRACT:
+
+        def guard(*args, _name=name, **kwargs):
+            calls.append((_name, args, kwargs))
+            return []
+
+        monkeypatch.setattr(architecture_compliance, name, guard)
+
+    assert architecture_compliance.check_architecture(str(tmp_path)) == 0
+    assert [(name, args, kwargs) for name, args, kwargs in calls] == [
+        (name, (tmp_path,), kwargs)
+        for name, _, kwargs in EXPECTED_ARCHITECTURE_GUARD_CONTRACT
+    ]
+    assert len(calls) == 66
+    assert calls[20][0] == "check_mutable_object_boundaries"
+    assert calls[20][2] == {"validate_allowlist": True}
+    assert (
+        capsys.readouterr()
+        .out.replace("\r\n", "\n")
+        .endswith("\nArchitecture compliant!\n")
+    )
+
+
+def test_architecture_checker_is_lazy_and_fails_fast(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_ui_file(tmp_path, "class SafePanel(BasePanel):\n    pass\n")
+    for failed_at, (expected_name, expected_heading, _) in enumerate(
+        EXPECTED_ARCHITECTURE_GUARD_CONTRACT
+    ):
+        calls: list[str] = []
+        with monkeypatch.context() as patch:
+            for index, (name, _, _) in enumerate(EXPECTED_ARCHITECTURE_GUARD_CONTRACT):
+
+                def guard(
+                    *_args,
+                    _name=name,
+                    _index=index,
+                    _calls=calls,
+                    _failed_at=failed_at,
+                    **_kwargs,
+                ):
+                    _calls.append(_name)
+                    if _index == _failed_at:
+                        return ["hostile fixture"]
+                    if _index > _failed_at:
+                        raise AssertionError("a skipped guard was invoked")
+                    return []
+
+                patch.setattr(architecture_compliance, name, guard)
+
+            assert architecture_compliance.check_architecture(str(tmp_path)) == 1
+        assert calls == [
+            name for name, _, _ in EXPECTED_ARCHITECTURE_GUARD_CONTRACT[: failed_at + 1]
+        ]
+        assert calls[-1] == expected_name
+        assert (
+            capsys.readouterr()
+            .out.replace("\r\n", "\n")
+            .endswith(f"{expected_heading}\n - hostile fixture\n")
+        )
+
+
+def test_application_service_ownership_reuses_only_special_parses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    special_paths = (
+        "XBrainLab/backend/application/service.py",
+        "XBrainLab/backend/study.py",
+        "XBrainLab/backend/application/pipeline_stage.py",
+    )
+    for relative_path in special_paths:
+        _write_product_file(tmp_path, relative_path, "pass\n")
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/backend/application/service.py",
+        "def invalid(:\n",
+    )
+    _write_product_file(tmp_path, "XBrainLab/backend/other.py", "pass\n")
+    original_parse = architecture_compliance._parse_python_file
+    parsed: list[Path] = []
+
+    def count_parse(path: Path):
+        parsed.append(path.relative_to(tmp_path))
+        return original_parse(path)
+
+    monkeypatch.setattr(architecture_compliance, "_parse_python_file", count_parse)
+
+    assert check_application_service_ownership_boundaries(tmp_path) == []
+    assert [parsed.count(Path(relative_path)) for relative_path in special_paths] == [
+        1,
+        1,
+        1,
+    ]
 
 
 def test_direct_study_state_guard_flags_product_ui_read(tmp_path):
