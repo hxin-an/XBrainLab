@@ -103,11 +103,85 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery checkpoint: product branch `cleanup/module-quality`, HEAD `f14423fe`, 173 commits after baseline
+Git recovery checkpoint: product branch `cleanup/module-quality`, HEAD `af7f9079`, 174 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
 **Current work — developer docs/config truth and remaining scripts; module2–6 closure gaps and explicit decisions remain open.**
+
+**Bounded8Q — retire the explicitly user-approved one-time MOABB downloader.** On2026-09-11 the
+user authorized deletion of the one-time download script and reiterated the final Windows handoff
+endpoint. Main full CLI366/storage294/registry430, package entry points and direct storage115 tests;
+repository/config/docs search finds fetch_plan used only by the fetch subcommand, and download_file/
+cached_file_is_valid only by that retired path and two exclusive tests. Remove fetch parser/dispatch/
+handler, download functions and HTTP/SSL/bounded-copy-only imports, plus those two tests
+and their response fixture. No replacement downloader or compatibility shell. Preserve plan/build/
+load_validated_plan/cache-integrity/atomic JSON paths because moabb_ui_evidence.cli uses them before
+Qt startup; preserve registry assets, source metadata, original downloaded data and journeys.
+Owners: one-time download executor1→0, live validation/product/UI owners unchanged. Two script files,
+one directly related test file, deletion-only production scope; no visible UI change or dependency
+installation. Establish direct storage baseline and retained parser/real-file characterization;
+repeat after, verify CLI rejects fetch while plan/validate/run-resume remain, caller search and
+independent actual-diff review. Use existing Windows runtime if approved for this newly authorized
+slice; do not retry or bypass the previously rejected6AA command. Persist any execution limitation
+without substituting synthetic checks for native/pytest evidence. Git-reversible; proceed to remaining
+module work after this slice, not manual delivery before stage gates pass.
+Original Windows baseline14pass0.17s; stronger retained real-file/parser characterization21pass0.17s.
+Independent pre-diff review corrected the proposed CHUNK_SIZE removal: retain it because live
+_hash_file still uses it. CLI help must no longer advertise fetch. New authorized8Q execution and
+independent reviewers succeeded; the earlier quota restriction is historical, not a current blanket
+execution failure. Product6AA still needs its own baseline before editing.
+Result: retired only fetch/download executor and two exclusive HTTP tests/fixture; retained suite20
+plus11adjacent UI evidence contract cases31pass0.42s. Ruff/format and independent actual-diff/caller
+review pass after correcting the stale pre-retirement inventory wording. Script+3/-138/net-135;
+test+62/-62/net0 with real-file and CLI coverage replacing downloader-only cases. No original data,
+cache, registry, source-diverse gate or native UI workflow was removed; no actual capture claim.
+
+**Bounded6AA — remove unused handoff-resolution convenience projections.** Main full typed handoff687/
+direct642, host exact-status callers and repository search find resolution.suggestions/routed unused,
+is_verified_completion only in four tests. Retain request.suggestions (live GUI consumer), all DTO
+fields/correlation/session transitions/status enum and distinct WorkflowSurfaceOutcome helpers.
+Delete only those three resolution properties; use exact returned status in the direct terminal test
+and retain existing exact pending/deferred/failed status assertions in host tests. No case removed or
+public Assistant action/navigation/copy change. Existing UI-internal authorization suffices; no UI
+source edit. Same direct+host baseline before/after, Ruff/caller check and independent actual-diff
+review; production deletion only, live owners unchanged. Stop this slice after evidence then continue
+remaining module audits, not final handoff. Git-reversible, no compatibility shell.
+
+Recovered execution: the first6AA baseline request was rejected before execution due to an approval
+reviewer usage limit. After newly authorized8Q focused execution and independent review both
+succeeded, the same approved Windows6AA baseline was resumed normally:94pass0.78s. No alternate
+runner/sandbox bypass, environment creation or rejected result was counted as passing evidence.
+
+Remaining read-only findings (not implemented or counted as verified removals):
+- Assistant model settings belongs to module6, not training module4. Independent full source1564/
+  tests1402 read retains config persistence, download lifecycle and manager activation ownership.
+  get_config is a one-test convenience; get_result remains the BaseDialog contract. A possible
+  cross-selection download terminal-message ambiguity needs characterization before any visible fix.
+- Mock tools remain live through the evaluation registry; their simulated training is not real
+  training evidence. Main full mock source/test audit finds three MockWorkflowState convenience
+  mutators and epochs_ready with no callers; preserve live prerequisite fields and formal schemas.
+  Any removal needs its own passing baseline and reviewed bounded slice after execution resumes.
+- Walkthrough validator source1305 has an independent full read. Preserve its artifact/source/state
+  checks; current test-file reread coverage is recorded separately from historical full-file review.
+- MOABB script package markers/CLI/registry/storage and registry/storage tests fully read (1454lines).
+  CLI plan/validate/run-resume and the separate UI evidence workflow remain live;8Q retires fetch and
+  its two downloader-only tests under explicit user authorization. New real-file cache validation
+  retains valid/missing/size/hash checks without HTTP mocks. Download retry/forced-replacement
+  evidence is no longer a requirement for this retired capability. Package-level registry reexports have
+  no located caller and remain a bounded removal candidate, not yet changed. Resume provenance
+  must be checked against the remaining evidence/product owner before judging CLI reuse complete.
+
+Size checkpoint at af7f9079 versus4770b049: scripts25changed files,+410/-1369/net-959;
+tests197changed files,+6389/-7906/net-1517. These are physical diff counts, not execution coverage,
+file-audit completion or a claim that all remaining architecture is clean.
+
+Inventory qualification: the approved retained-vendor group contains79tracked legacy files; actual
+catalog57symbols/49modelleaves and18supportleaves/attribution assets match manifests and dynamic leaf
+factories. This is a responsibility/disposition audit, not full per-line model review. Provenance
+tests verify pinned upstream hashes, not exact adapted local bytes; family/runtime checks remain
+necessary. Package markers retain import identity without adding runtime policy. Do not report these
+group dispositions as newly deep-read production files or as proof that all architecture is clean.
 
 **Bounded6Z — retire unused tool-result bridge and repair failure-test reachability.** Main full
 result_contract423/direct538 and repo-wide caller search find tool_result_from_command only exercised

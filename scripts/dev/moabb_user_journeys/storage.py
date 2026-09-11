@@ -1,17 +1,13 @@
-"""Resource-bounded planning, download, and cache verification."""
+"""Resource-bounded planning and existing-cache verification."""
 
 from __future__ import annotations
 
 import hashlib
 import json
 import shutil
-import ssl
-import urllib.request
-from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, BinaryIO
-from urllib.parse import urlparse
+from typing import Any
 
 from .registry import (
     DEFAULT_REGISTRY_PATH,
@@ -140,78 +136,6 @@ def load_validated_plan(
     return plan
 
 
-def fetch_plan(
-    plan: dict[str, Any],
-    *,
-    force: bool = False,
-    opener: Callable[..., Any] = urllib.request.urlopen,
-) -> dict[str, Any]:
-    """Fetch a validated plan serially and verify every byte boundary."""
-    data_root = Path(plan["data_root"]).resolve()
-    remaining = sum(
-        int(item["size_bytes"])
-        for item in plan["files"]
-        if force or not cached_file_is_valid(item)
-    )
-    free_bytes = shutil.disk_usage(data_root.parent).free
-    minimum_after = int(plan["minimum_free_space_after_fetch_bytes"])
-    if free_bytes - remaining < minimum_after:
-        raise OSError("Insufficient free space for remaining downloads and headroom.")
-
-    receipts: list[dict[str, Any]] = []
-    for item in plan["files"]:
-        destination = Path(item["cache_path"])
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        reused = not force and cached_file_is_valid(item)
-        if not reused:
-            download_file(item, opener=opener)
-        receipt = validate_cached_file(item)
-        receipt["reused"] = reused
-        receipts.append(receipt)
-    return {
-        "schema_version": "1.0.0",
-        "plan_id": plan["plan_id"],
-        "registry_sha256": plan["registry_sha256"],
-        "completed_at": utc_now(),
-        "downloaded_or_reused_bytes": sum(item["size_bytes"] for item in receipts),
-        "files": receipts,
-    }
-
-
-def download_file(
-    item: dict[str, Any],
-    *,
-    opener: Callable[..., Any] = urllib.request.urlopen,
-) -> None:
-    """Stream one file with an exact upper bound and atomic install."""
-    url = str(item["url"])
-    _require_https(url)
-    destination = Path(item["cache_path"])
-    temporary = destination.with_name(f"{destination.name}.part")
-    temporary.unlink(missing_ok=True)
-    request = urllib.request.Request(  # noqa: S310 - _require_https rejects other schemes.
-        url,
-        headers={"User-Agent": "XBrainLab/1.0"},
-    )
-    context = ssl.create_default_context()
-    expected_size = int(item["size_bytes"])
-    try:
-        response = opener(request, context=context, timeout=120)
-        with response, temporary.open("wb") as handle:
-            final_url = response.geturl() if hasattr(response, "geturl") else url
-            _require_https(final_url)
-            _copy_bounded(response, handle, max_bytes=expected_size)
-        if temporary.stat().st_size != expected_size:
-            raise ValueError(
-                f"Downloaded size mismatch for {destination.name}: "
-                f"expected {expected_size}, got {temporary.stat().st_size}"
-            )
-        _validate_checksum(temporary, item["checksum"])
-        temporary.replace(destination)
-    finally:
-        temporary.unlink(missing_ok=True)
-
-
 def validate_plan_cache(plan: dict[str, Any]) -> dict[str, Any]:
     """Validate all selected files and return immutable evidence fields."""
     files = [validate_cached_file(item) for item in plan["files"]]
@@ -222,14 +146,6 @@ def validate_plan_cache(plan: dict[str, Any]) -> dict[str, Any]:
         "validated_at": utc_now(),
         "files": files,
     }
-
-
-def cached_file_is_valid(item: dict[str, Any]) -> bool:
-    try:
-        validate_cached_file(item)
-    except (FileNotFoundError, ValueError):
-        return False
-    return True
 
 
 def validate_cached_file(item: dict[str, Any]) -> dict[str, Any]:
@@ -250,20 +166,6 @@ def validate_cached_file(item: dict[str, Any]) -> dict[str, Any]:
         "expected_checksum": dict(item["checksum"]),
         "sha256": _hash_file(path, "sha256"),
     }
-
-
-def _copy_bounded(source: BinaryIO, target: BinaryIO, *, max_bytes: int) -> None:
-    total = 0
-    while True:
-        chunk = source.read(CHUNK_SIZE)
-        if not chunk:
-            return
-        total += len(chunk)
-        if total > max_bytes:
-            raise ValueError(
-                f"Download exceeded declared size boundary ({max_bytes} bytes)"
-            )
-        target.write(chunk)
 
 
 def _validate_checksum(path: Path, checksum: dict[str, str]) -> None:
@@ -287,8 +189,3 @@ def _hash_file(path: Path, algorithm: str) -> str:
 def _canonical_sha256(payload: dict[str, Any]) -> str:
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()
-
-
-def _require_https(url: str) -> None:
-    if urlparse(url).scheme != "https":
-        raise ValueError(f"Dataset download is not HTTPS: {url}")
