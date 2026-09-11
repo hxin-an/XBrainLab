@@ -103,6 +103,37 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
+**2026-09-11 manual failure: Subject split stops after the first run.** Final b6f1e191 manual
+acceptance FAILED; no merge. The native run log at20:06 records15datasets and15plans, followed by
+checkpoint export failing at filesystem_identity._open_windows_artifact_descriptor/CreateFileW with
+WinError3; repeated starts reproduce the same failure. This is not evidence of a split-count defect.
+Investigate relative/long Windows artifact paths using disposable native fixtures, not user output.
+Expected outcome: every admitted subject/fold plan can persist and reopen its checkpoints and complete
+in sequence; an actual IO failure remains fail-closed. Add a real safe-store round-trip regression
+matching the nested manual-run path and atomic temporary suffix, then fix only the existing filesystem
+owner if reproduced. Preserve identity leases, no-follow/reparse/hardlink checks, atomic replacement,
+output namespace and existing results. No UI/source split semantics change, registry edit, environment
+creation, shortening identifiers or deleting user runs. Backend-only repair needs no new UI approval.
+Focused evidence: native artifact round trip plus existing identity/store rejection cases and actual
+multi-plan training persistence; independent review of the Windows IO safety delta. Then same-head CI
+and applicable source-diverse/platform gates, followed by an affected-flow Windows retest handoff.
+Stop only at that handoff or a genuine new decision/resource blocker; do not reuse b6 acceptance.
+Native RED: two actual checkpoint round trips (absolute/relative) fail5.75s with the same CreateFileW
+WinError3 when the ordinary target fits260characters but the atomic temporary exceeds it. One initial
+diagnostic command had a quoting SyntaxError and supplied no evidence. Fix Win32 IO spelling only:
+absolute normalized extended paths at the existing native create/read and Windows replace/unlink
+boundaries, preserving logical path identity checks. Verify UNC/already-extended spelling separately;
+no untrusted leaf resolution, weaker reparse handling or unsafe fallback. Reviewer independently checks
+this precise filesystem boundary while main implements and validates the real native side effects.
+Final native focused68passed/12platform-inapplicable skips14.99s, including actual3subjects×5folds
+EEGNet CPU training to completion, every checkpoint tensor reloaded, long-leaf read/write, interrupted
+serialization cleanup and real Windows hardlink rejection. Independent actual-diff review approves
+identity/no-follow/atomic guarantees. One existing owner, production1file +20/-2/net18; no public/UI
+contract change. Freeze this repair, obtain same-head CI/source-diverse/platform results and exact-source
+native15fold evidence, then launch the updated Windows GUI for only split/training/result-reopen retest.
+Assistant model/prompt/tool contracts are untouched: retain prior b6 bounded model/native evidence with
+its actual SHA and known limits, do not relabel it or rerun unrelated model inference.
+
 **2026-09-11 approved bounded Assistant repair.** User explicitly authorized fixing the two failed
 response paths and continuing through Windows manual handoff ("授權 做到手冊再給我", understood from
 the preceding request as 手測). This supersedes the authority blocker below only for these paths:

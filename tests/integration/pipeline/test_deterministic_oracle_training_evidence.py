@@ -13,6 +13,7 @@ from pathlib import Path
 
 import mne
 import numpy as np
+import pytest
 import torch
 
 from XBrainLab.backend.dataset import (
@@ -35,6 +36,8 @@ from XBrainLab.backend.training import (
     TrainingPlanHolder,
 )
 from XBrainLab.backend.training.record import RecordKey, TrainRecordKey
+from XBrainLab.backend.training.record.artifact_store import load_model_state_dict
+from XBrainLab.backend.training_state_contract import TrainingOutcomeState
 
 SOURCE_EVENT_CODES = {
     "left-hand imagery": 11,
@@ -136,6 +139,70 @@ def _generate_exact_split(epochs: Epochs):
     datasets = DatasetGenerator(epochs, config).prepare_result()
     assert len(datasets) == 1
     return datasets[0]
+
+
+@pytest.mark.platform_contract
+def test_individual_subject_folds_finish_and_reload_from_nested_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The first checkpoint must not abort the remaining subject/fold queue."""
+    source = _build_oracle_epochs(tmp_path)
+    recordings = []
+    for subject in ("01", "02", "03"):
+        raw = Raw(str(tmp_path / f"sub-{subject}-epo.fif"), source.get_mne())
+        raw.set_subject_name(subject)
+        raw.set_session_name("01")
+        recordings.append(raw)
+    epochs = Epochs(recordings)
+    config = DataSplittingConfig(
+        TrainingType.IND,
+        True,
+        [],
+        [DataSplitter(SplitByType.TRIAL, "5", SplitUnit.KFOLD, True)],
+    )
+    datasets = DatasetGenerator(epochs, config).prepare_result()
+    assert len(datasets) == 15
+    monkeypatch.chdir(tmp_path)
+    output = tmp_path / ("o" * (145 - len(str(tmp_path)) - 1))
+    option = TrainingOption(
+        output_dir=str(output.relative_to(tmp_path)),
+        optim=torch.optim.Adam,
+        optim_params={},
+        use_cpu=True,
+        gpu_idx=None,
+        epoch=1,
+        bs=4,
+        lr=0.001,
+        checkpoint_epoch=0,
+        evaluation_option=TrainingEvaluation.LAST_EPOCH,
+        repeat_num=1,
+        seed=1729,
+    )
+    holders = [
+        TrainingPlanHolder(
+            ModelHolder(EEGNet, {"f1": 2, "f2": 4, "d": 1}), dataset, option, {}
+        )
+        for dataset in datasets
+    ]
+    trainer = Trainer(holders)
+
+    trainer.job()
+
+    assert trainer.get_terminal_outcome().state is TrainingOutcomeState.COMPLETED
+    assert all(holder.error is None and holder.is_finished() for holder in holders)
+    for holder in holders:
+        record = holder.train_record_list[0]
+        assert record.target_path is not None
+        directory = Path(record.target_path)
+        checkpoint = directory / "Epoch-1-model"
+        assert len(str(checkpoint.absolute())) + 38 > 260
+        loaded = load_model_state_dict(checkpoint)
+        assert loaded
+        for name, value in record.model.state_dict().items():
+            assert torch.equal(loaded[name], value.cpu())
+        assert (directory / "record").is_file()
+        assert not list(directory.glob("*.tmp"))
 
 
 def _assert_finite_history(

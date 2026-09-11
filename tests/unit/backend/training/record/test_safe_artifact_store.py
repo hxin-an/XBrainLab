@@ -29,6 +29,7 @@ from XBrainLab.backend.training.record.artifact_store import (
     ArtifactStoreError,
     load_model_state_dict,
     read_json_npz_artifact,
+    save_model_state_dict,
     write_json_npz_artifact,
 )
 from XBrainLab.backend.utils import set_seed
@@ -49,6 +50,54 @@ class _ReplacingDirectoryIdentity:
 
 def _read_manifest(path: Path) -> dict[str, object]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+@pytest.mark.platform_contract
+@pytest.mark.parametrize("relative", [False, True])
+def test_checkpoint_round_trip_when_atomic_temporary_crosses_windows_max_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    relative: bool,
+) -> None:
+    # The handoff output directory fits MAX_PATH, but the private atomic suffix
+    # makes the temporary checkpoint exceed it. Exercise actual native IO.
+    directory = tmp_path / ("d" * (225 - len(str(tmp_path)) - 1))
+    directory.mkdir()
+    monkeypatch.chdir(tmp_path)
+    target = directory / "best_val_accuracy_model"
+    if relative:
+        target = target.relative_to(tmp_path)
+    assert len(str(target.absolute())) < 260
+    assert len(str(artifact_store_module._temporary_path(target).absolute())) > 260
+    state = {"weight": torch.tensor([1.0, 2.0])}
+
+    save_model_state_dict(state, target)
+    loaded = load_model_state_dict(target)
+
+    assert torch.equal(loaded["weight"], state["weight"])
+    assert {entry.name for entry in directory.iterdir()} == {target.name}
+
+    # A longer published leaf also exercises the native read path, not just
+    # creation of a long temporary followed by publication to a short target.
+    long_target = target.with_name("model-" + "x" * 48)
+    assert len(str(long_target.absolute())) > 260
+    save_model_state_dict(state, long_target)
+    assert torch.equal(load_model_state_dict(long_target)["weight"], state["weight"])
+
+    # Failed serialization must clean up the long private temporary and keep
+    # the previously published checkpoint unchanged.
+    with (
+        patch.object(
+            artifact_store_module.torch, "save", side_effect=OSError("write failed")
+        ),
+        pytest.raises(OSError, match="write failed"),
+    ):
+        save_model_state_dict({"weight": torch.tensor([3.0])}, target)
+    assert torch.equal(load_model_state_dict(target)["weight"], state["weight"])
+    assert {entry.name for entry in directory.iterdir()} == {
+        target.name,
+        long_target.name,
+    }
 
 
 def test_artifact_write_revalidates_before_opening_replaced_directory(
@@ -219,7 +268,6 @@ def test_model_checkpoint_symlink_is_rejected(tmp_path: Path) -> None:
 
 
 @pytest.mark.platform_contract
-@pytest.mark.skipif(os.name != "posix", reason="POSIX no-follow artifact contract")
 def test_model_checkpoint_hardlink_is_rejected(tmp_path: Path) -> None:
     store = tmp_path / "store"
     store.mkdir()

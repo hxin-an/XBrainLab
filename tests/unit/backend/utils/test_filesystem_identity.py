@@ -24,6 +24,19 @@ class _FakeHandle:
         self.closed = True
 
 
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        (r"C:\runs\fold\..\model", r"\\?\C:\runs\model"),
+        (r"\\server\share\runs\model", r"\\?\UNC\server\share\runs\model"),
+        (r"\\?\C:\runs\model", r"\\?\C:\runs\model"),
+        (r"\\?\UNC\server\share\model", r"\\?\UNC\server\share\model"),
+    ],
+)
+def test_windows_io_spelling_preserves_drive_and_unc_namespaces(path, expected):
+    assert filesystem_identity._windows_extended_path(path) == expected
+
+
 def test_directory_snapshot_rejects_same_path_replacement(tmp_path: Path) -> None:
     target = tmp_path / "output"
     target.mkdir()
