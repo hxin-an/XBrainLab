@@ -2962,22 +2962,6 @@ class TestDatasetSidebar:
         qtbot.addWidget(sb)
         return sb
 
-    def test_update_sidebar_uses_backend_smart_parse_capability(self, qtbot):
-        from XBrainLab.backend.study import Study
-        from XBrainLab.ui.panels.dataset.sidebar import DatasetSidebar
-
-        panel = _make_panel_mock()
-        panel.main_window.study = Study()
-        sb = DatasetSidebar(panel)
-        qtbot.addWidget(sb)
-
-        sb.update_sidebar()
-
-        assert not sb.smart_parse_btn.isEnabled()
-        assert "Load raw data before applying smart parse." in (
-            sb.smart_parse_btn.toolTip()
-        )
-
     def test_update_sidebar_prefers_backend_capabilities_over_stale_lock(
         self,
         qtbot,
@@ -3001,10 +2985,6 @@ class TestDatasetSidebar:
         )
         assert sb.reload_recipe_btn.toolTip() == (
             "Review a saved import recipe before applying it"
-        )
-        assert sb.smart_parse_btn.isEnabled()
-        assert sb.smart_parse_btn.toolTip() == (
-            "Auto-extract Subject/Session from filenames"
         )
 
     def test_open_channel_selection_uses_backend_preprocess_capability(self, qtbot):

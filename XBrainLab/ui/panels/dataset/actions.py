@@ -1,7 +1,7 @@
 """Action handler for dataset panel operations.
 
-Provides logic for importing EEG data files, applying labels,
-running smart parse, and managing event filtering.
+Provides logic for importing EEG data files, applying labels, and managing
+event filtering.
 """
 
 from collections.abc import Callable
@@ -16,10 +16,8 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.application.commands import (
-    ApplySmartParseCommand,
     CommandName,
     MetadataUpdate,
-    QueryStateCommand,
     RemoveFilesCommand,
     UpdateMetadataCommand,
 )
@@ -63,7 +61,6 @@ from XBrainLab.ui.status import show_status_message
 DataInterpretationPreviewDialog: Any | None = None
 BidsSubjectSelectionDialog: Any | None = None
 EegSourceChooserDialog: Any | None = None
-SmartParserDialog: Any | None = None
 
 _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE = (
     "Data interpretation availability is unavailable right now."
@@ -117,17 +114,6 @@ def _eeg_source_chooser_dialog_class():
     )
 
     return EegSourceChooserDialog
-
-
-def _smart_parser_dialog_class():
-    patched = globals()["SmartParserDialog"]
-    if patched is not None:
-        return patched
-    from XBrainLab.ui.dialogs.dataset.smart_parser_dialog import (  # noqa: PLC0415
-        SmartParserDialog,
-    )
-
-    return SmartParserDialog
 
 
 class DatasetActionHandler:
@@ -280,156 +266,6 @@ class DatasetActionHandler:
 
     def _recipe_save_block_reason(self) -> str | None:
         return self._data_interpretation._recipe_save_block_reason()
-
-    def open_smart_parser(self):
-        """Open the smart-parser dialog to auto-extract metadata from filenames.
-
-        Blocked if the dataset is locked or no data is loaded.
-        """
-        review_context = get_command_review_context(
-            self.panel,
-            CommandName.APPLY_SMART_PARSE,
-        )
-        if review_context is None and has_real_application_context(self.panel):
-            show_warning(
-                self.panel,
-                "Smart Parse Blocked",
-                _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
-            )
-            return
-        smart_parse_capability = (
-            getattr(review_context, "capability", None)
-            if review_context is not None
-            else get_command_capability(
-                self.panel,
-                CommandName.APPLY_SMART_PARSE,
-            )
-        )
-        if review_context is not None and smart_parse_capability is None:
-            show_warning(
-                self.panel,
-                "Smart Parse Blocked",
-                _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
-            )
-            return
-        if smart_parse_capability is not None and not smart_parse_capability.enabled:
-            show_warning(
-                self.panel,
-                "Smart Parse Blocked",
-                blocked_reason(
-                    smart_parse_capability,
-                    "Load raw data before applying smart parse.",
-                ),
-            )
-            return
-
-        if smart_parse_capability is None:
-            show_warning(
-                self.panel,
-                "Smart Parse Blocked",
-                _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
-            )
-            return
-
-        reviewed_generation = (
-            review_context.publication_generation
-            if review_context is not None
-            else None
-        )
-        filepaths = self._smart_parse_filenames(
-            expected_publication_generation=reviewed_generation,
-        )
-        if filepaths is None:
-            return
-        if not filepaths:
-            show_warning(self.panel, "Warning", "No data loaded.")
-            return
-        dialog_class = _smart_parser_dialog_class()
-        dialog = dialog_class(filepaths, self.panel)
-        if dialog.exec():
-            results = dialog.get_result()
-            if reviewed_generation is None:
-                result = execute_application_command(
-                    self.panel,
-                    ApplySmartParseCommand(results=results),
-                )
-            else:
-                result = execute_application_command(
-                    self.panel,
-                    ApplySmartParseCommand(results=results),
-                    expected_publication_generation=reviewed_generation,
-                )
-            if result is None:
-                show_warning(
-                    self.panel,
-                    "Smart Parse Blocked",
-                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
-                )
-                return
-            elif result.failed:
-                if is_stale_publication_result(result):
-                    show_warning(
-                        self.panel,
-                        "Review Smart Parse Again",
-                        result.message,
-                    )
-                else:
-                    show_error(self.panel, "Error", result.message)
-                return
-            else:
-                count = int(result.diagnostics.get("success_count", 0))
-            self._show_status(f"Updated {count} files")
-
-    def _smart_parse_filenames(
-        self,
-        *,
-        expected_publication_generation: int | None = None,
-    ) -> list[str] | None:
-        if expected_publication_generation is None:
-            result = execute_application_command(
-                self.panel,
-                QueryStateCommand(query="data_lists"),
-            )
-        else:
-            result = execute_application_command(
-                self.panel,
-                QueryStateCommand(query="data_lists"),
-                expected_publication_generation=expected_publication_generation,
-            )
-        if result is None:
-            show_warning(
-                self.panel,
-                "Smart Parse Blocked",
-                _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
-            )
-            return None
-        if result.failed:
-            title = (
-                "Review Smart Parse Again"
-                if is_stale_publication_result(result)
-                else "Smart Parse Blocked"
-                if result.recoverable
-                else "Smart Parse Failed"
-            )
-            show_warning(
-                self.panel,
-                title,
-                result.message,
-            )
-            return None
-        diagnostics = getattr(result, "diagnostics", {}) or {}
-        rows = diagnostics.get("raw_rows")
-        if not isinstance(rows, list):
-            return []
-        filepaths: list[str] = []
-        for row in rows:
-            if not isinstance(row, dict):
-                return []
-            filepath = str(row.get("filepath") or "").strip()
-            if not filepath:
-                return []
-            filepaths.append(filepath)
-        return filepaths
 
     def show_context_menu(self, pos):
         menu = QMenu(self.panel)

@@ -35,7 +35,6 @@ def test_init_ui(sidebar):
     assert not hasattr(sidebar, "import_folder_btn")
     assert not hasattr(sidebar, "import_bids_btn")
     assert isinstance(sidebar.reload_recipe_btn, QPushButton)
-    assert isinstance(sidebar.smart_parse_btn, QPushButton)
     assert isinstance(sidebar.chan_select_btn, QPushButton)
     assert isinstance(sidebar.electrode_layout_btn, QPushButton)
     assert not hasattr(sidebar, "electrode_layout_status")
@@ -590,7 +589,6 @@ def test_update_sidebar_missing_publication_fails_closed(
         widget.chan_select_btn: (
             "Channel selection availability is unavailable right now."
         ),
-        widget.smart_parse_btn: "Smart parse availability is unavailable right now.",
     }
     for button, tooltip in expected.items():
         assert button.isEnabled() is False
@@ -618,7 +616,6 @@ def test_deferred_startup_real_study_missing_publication_fails_closed(qtbot):
         widget.chan_select_btn: (
             "Channel selection availability is unavailable right now."
         ),
-        widget.smart_parse_btn: "Smart parse availability is unavailable right now.",
     }
     for button, tooltip in expected.items():
         assert button.isEnabled() is False
@@ -935,12 +932,8 @@ def test_button_connections(sidebar):
     # Verify connections call action handler
     sidebar.import_btn.setEnabled(True)
     sidebar.reload_recipe_btn.setEnabled(True)
-    sidebar.smart_parse_btn.setEnabled(True)
     sidebar.import_btn.click()
     sidebar.panel.action_handler.import_data.assert_called_once()
 
     sidebar.reload_recipe_btn.click()
     sidebar.panel.action_handler.reload_interpretation_recipe.assert_called_once()
-
-    sidebar.smart_parse_btn.click()
-    sidebar.panel.action_handler.open_smart_parser.assert_called_once()

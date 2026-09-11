@@ -75,9 +75,6 @@ _CHANNELS_CHANGED_MESSAGE = (
 _DATASET_CHANGED_MESSAGE = (
     "Nothing was applied. Review the latest dataset and try again."
 )
-_SMART_PARSE_AVAILABILITY_UNAVAILABLE = (
-    "Smart parse availability is unavailable right now."
-)
 _LABEL_IMPORT_AVAILABILITY_UNAVAILABLE = (
     "Label import availability is unavailable right now."
 )
@@ -120,7 +117,6 @@ class DatasetSidebar(QWidget):
         info_panel: ``AggregateInfoPanel`` displaying summary statistics.
         import_btn: Button to import EEG data files.
         reload_recipe_btn: Button to reload a saved import recipe.
-        smart_parse_btn: Hidden compatibility button to auto-extract metadata.
         chan_select_btn: Button to open channel selection dialog.
 
     """
@@ -220,14 +216,6 @@ class DatasetSidebar(QWidget):
         self.import_cancel_btn.setEnabled(False)
         self.ops_layout.addWidget(self.import_cancel_btn, 2, 0)
 
-        self.smart_parse_btn = QPushButton("Smart Parse Metadata", self.ops_group)
-        self.smart_parse_btn.setToolTip("Auto-extract Subject/Session from filenames")
-        self.smart_parse_btn.setStyleSheet(_DATASET_SIDEBAR_BUTTON_STYLE)
-        self.smart_parse_btn.clicked.connect(
-            self.panel.action_handler.open_smart_parser,
-        )
-        self.smart_parse_btn.setVisible(False)
-
         layout.addWidget(self.ops_group)
         layout.addSpacing(Stylesheets.SIDEBAR_GROUP_GAP)
 
@@ -263,7 +251,6 @@ class DatasetSidebar(QWidget):
             self.import_btn,
             self.reload_recipe_btn,
             self.import_cancel_btn,
-            self.smart_parse_btn,
             self.chan_select_btn,
             self.electrode_layout_btn,
         )
@@ -478,7 +465,6 @@ class DatasetSidebar(QWidget):
         unavailable_actions = {
             self.import_btn: _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
             self.reload_recipe_btn: _RECIPE_RELOAD_AVAILABILITY_UNAVAILABLE,
-            self.smart_parse_btn: _SMART_PARSE_AVAILABILITY_UNAVAILABLE,
             self.chan_select_btn: _CHANNEL_SELECTION_AVAILABILITY_UNAVAILABLE,
         }
         for button, tooltip in unavailable_actions.items():
@@ -515,11 +501,6 @@ class DatasetSidebar(QWidget):
             )
             preprocess_capability = (
                 capabilities.get(CommandName.PREPROCESS)
-                if capabilities is not None
-                else None
-            )
-            smart_parse_capability = (
-                capabilities.get(CommandName.APPLY_SMART_PARSE)
                 if capabilities is not None
                 else None
             )
@@ -646,20 +627,6 @@ class DatasetSidebar(QWidget):
                             f"{layout.positioned_channel_count}/"
                             f"{layout.channel_count} EEG channels positioned."
                         )
-
-            if smart_parse_capability is not None:
-                self.smart_parse_btn.setEnabled(smart_parse_capability.enabled)
-                self.smart_parse_btn.setToolTip(
-                    "Auto-extract Subject/Session from filenames"
-                    if smart_parse_capability.enabled
-                    else blocked_reason(
-                        smart_parse_capability,
-                        "Load raw data before applying smart parse.",
-                    ),
-                )
-            else:
-                self.smart_parse_btn.setEnabled(False)
-                self.smart_parse_btn.setToolTip(_SMART_PARSE_AVAILABILITY_UNAVAILABLE)
 
             self._fit_action_labels()
 

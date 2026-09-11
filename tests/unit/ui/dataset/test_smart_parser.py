@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from XBrainLab.ui.dialogs.dataset import SmartParserDialog
+from XBrainLab.ui.dialogs.dataset.smart_parser_dialog import SmartParserDialog
 
 
 @pytest.fixture

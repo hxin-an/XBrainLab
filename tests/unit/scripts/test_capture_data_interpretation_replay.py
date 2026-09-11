@@ -229,34 +229,21 @@ def test_dataset_sidebar_state_records_button_tooltips(qtbot) -> None:
         pass
 
     sidebar = SidebarStub()
-    smart_parse_btn: QPushButton | None = None
     for name, text in {
         "import_btn": "Import Data",
         "reload_recipe_btn": "Reload Import Recipe",
         "import_label_btn": "Add labels",
-        "smart_parse_btn": "Smart Parse Metadata",
         "chan_select_btn": "Channel Selection",
     }.items():
         button = QPushButton(text)
         qtbot.addWidget(button)
         setattr(sidebar, name, button)
-        if name == "smart_parse_btn":
-            smart_parse_btn = button
-
-    assert smart_parse_btn is not None
-    smart_parse_btn.setEnabled(False)
-    smart_parse_btn.setToolTip("Load raw data before applying smart parse.")
 
     state = dataset_sidebar_state(sidebar)
 
     assert state["import_source"]["text"] == "Import Data"
     assert "import_folder" not in state
     assert "import_bids" not in state
-    assert state["smart_parse"] == {
-        "text": "Smart Parse Metadata",
-        "enabled": False,
-        "tooltip": "Load raw data before applying smart parse.",
-    }
 
 
 def test_table_state_records_rows_and_resize_modes(qtbot) -> None:
