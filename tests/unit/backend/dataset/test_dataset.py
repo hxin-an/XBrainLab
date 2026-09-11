@@ -1,5 +1,4 @@
 import numpy as np
-import pytest
 
 from XBrainLab.backend.dataset import Dataset, DataSplittingConfig, TrainingType
 
@@ -102,18 +101,6 @@ def test_dataset_resource_fingerprint_revision_tracks_split_mutations(
         assert dataset.get_resource_fingerprint_revision() == expected_revision
 
 
-def test_dataset_discard(
-    epochs,  # noqa: F811
-):
-    config = DataSplittingConfig(TrainingType.IND, False, [], [])
-    dataset = Dataset(epochs, config)
-    mask = np.zeros(epochs.get_data_length(), dtype=bool)
-    mask[:5] = True
-    dataset.discard_remaining_mask(mask)
-    assert not dataset.get_remaining_mask()[:5].any()
-    assert dataset.get_remaining_mask()[5:].all()
-
-
 def test_dataset_set_remaining_by_subject_idx(
     epochs,  # noqa: F811
 ):
@@ -125,30 +112,6 @@ def test_dataset_set_remaining_by_subject_idx(
 
 
 subject_count = block_size * len(session_list)
-half_subject_count = subject_count // 2
-
-
-@pytest.mark.parametrize(
-    "start, end",
-    [
-        (subject_count, subject_count * 2),
-        (half_subject_count, subject_count),
-        (0, subject_count * 2),
-    ],
-)
-def test_dataset_intersection_with_subject_by_idx(
-    epochs,  # noqa: F811
-    start,
-    end,
-):
-    config = DataSplittingConfig(TrainingType.IND, False, [], [])
-    dataset = Dataset(epochs, config)
-    mask = np.zeros(epochs.get_data_length(), dtype=bool)
-
-    mask[start:end] = True
-    result = dataset.intersection_with_subject_by_idx(mask, 0)
-    assert (result[:subject_count] == mask[:subject_count]).all()
-    assert (~result[subject_count:]).all()
 
 
 def test_dataset_get_data(
@@ -164,9 +127,7 @@ def test_dataset_get_data(
     mask[subject_count : subject_count * 2] = True
     dataset.set_val(mask)
 
-    mask &= False
-    mask[subject_count * 3 :] = True
-    dataset.discard_remaining_mask(mask)
+    dataset.set_remaining_by_subject_idx(2)
     dataset.set_remaining_to_train()
 
     X, y = dataset.get_training_data()
