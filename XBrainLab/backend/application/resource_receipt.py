@@ -91,8 +91,12 @@ class ResourceReceiptAuthority(Generic[_T]):
         candidate_id: str | None = None,
         configuration_fingerprint: str | None = None,
         preflight_fingerprint: str | None = None,
-    ) -> ResourceConfirmationChallenge:
-        """Issue one bounded challenge for an exact caller-owned scope."""
+    ) -> ResourceReceiptRecord[_T]:
+        """Store and return one challenge with its caller-owned preflight payload.
+
+        Issuance is not authorization: later peek/consume still verifies the
+        scope, expiry and one-shot lifetime before the caller starts any effect.
+        """
         scope = _text(scope_fingerprint)
         if not scope:
             raise ValueError("scope_fingerprint is required")
@@ -115,12 +119,13 @@ class ResourceReceiptAuthority(Generic[_T]):
                 configuration_fingerprint=_optional_text(configuration_fingerprint),
                 preflight_fingerprint=_optional_text(preflight_fingerprint),
             )
-            self._records[challenge.challenge_id] = ResourceReceiptRecord(
+            record = ResourceReceiptRecord(
                 challenge=challenge,
                 payload=payload,
                 created_at=self._clock(),
             )
-            return challenge
+            self._records[challenge.challenge_id] = record
+            return record
 
     def pending(
         self,

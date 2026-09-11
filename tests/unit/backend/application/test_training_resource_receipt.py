@@ -254,3 +254,29 @@ def test_changed_training_scope_cannot_reuse_warning_receipt(mutate) -> None:
     new_challenge = refreshed.value.diagnostics["resource_preflight"]
     assert new_challenge["confirmation_token"] != old_challenge["confirmation_token"]
     assert new_challenge["scope_fingerprint"] != old_challenge["scope_fingerprint"]
+
+
+def test_tokenless_training_confirmation_keeps_pending_challenge_but_cannot_run():
+    context, _dataset = _context()
+    authority = receipt_module.TrainingResourceReceiptAuthority()
+    preflight = authority.annotate(TrainCommand(), context, _warning_preflight())
+    with pytest.raises(ResourceConfirmationRequiredError) as initial:
+        authority.authorize(TrainCommand(), preflight)
+    token = initial.value.diagnostics["resource_preflight"]["confirmation_token"]
+
+    with pytest.raises(ResourceConfirmationRequiredError) as tokenless:
+        authority.authorize(TrainCommand(resource_preflight_confirmed=True), preflight)
+    assert (
+        tokenless.value.diagnostics["resource_preflight"]["confirmation_token"] == token
+    )
+
+    approved = TrainCommand(
+        resource_preflight_confirmed=True,
+        resource_preflight_token=token,
+    )
+    assert authority.authorize(approved, preflight) is True
+    with pytest.raises(ResourceConfirmationRequiredError) as replayed:
+        authority.authorize(approved, preflight)
+    assert (
+        replayed.value.diagnostics["resource_preflight"]["confirmation_token"] != token
+    )

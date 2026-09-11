@@ -167,7 +167,8 @@ import-boundary, Analysis, all ApplicationService, architecture unit and real FI
 Cached construction is protected by existing command serialization, not a claimed general thread-safe
 cached_property. Other lazy wrappers keep their distinct cold-state/reset responsibilities.
 Data deletion pre-baseline481passed4.16s; worker removed19 dedicated test functions/22cases, preserving
-getter assertions via set_remaining_by_subject_idx(2). Post-baseline pending. Counts are not summed
+getter assertions via set_remaining_by_subject_idx(2). Post-baseline587passed6.97s, including receipt
+characterization before its production edit. Counts are not summed
 across overlapping runs and do not establish final-candidate acceptance.
 
 Receipt slice decision (independently reviewed): retain each domain authorize policy and outer lock.
@@ -180,3 +181,26 @@ Expired/cleared/mismatched tokens still fail at later peek/consume before effect
 the artificial immediate-peek expiry/race failure, not authorization expiry. Five production files,
 net deletion; independently review actual diff and exact confirmation/TTL/replay/candidate tests.
 First establish passing base/wrapper/real-Command resource tests and confirmed/no-token distinctions.
+
+Receipt postchecks and next training baseline:163passed6.84s in ignored
+complete-audit/receipts-after-training-baseline. Includes base authority, training/saliency admission,
+Analysis, real import/resource-publication/Assistant receipt workflows and the four training deletion
+baseline modules. Independent actual-diff receipt review approved; production+13/-47/net-34, no public
+authorization policy changed.
+
+Next training deletion: TrainingStateService.get_progress_text/get_formatted_history/
+get_missing_requirements have no consumers; ApplicationService injects TrainingStateReadModel into
+StateSnapshotService. Delete those three dead projections and two TrainingProductPort declarations,
+retaining live resolver, read-model and lifecycle methods. Delete unused backend/evaluation Metric
+package and its dedicated two tests after checked exports/dynamic/script/doc references. No new owner;
+worker owns only service/contract/package/tests. Baseline passed above; verify remaining three modules
+after deletion, then independent integration review of actual diff. This does not change split behavior.
+Training deletion actual diff reviewed: production-76/tests-15, no owner added;114tests passed10.29s
+across live training service/read-model/snapshot and current primary UI publication baseline.
+
+Next UI slice: five panels duplicate publication type/revision validation. Characterize existing five
+validators in current UI tests before sharing a pure helper in existing application_publication_renderer.
+Keep each panel's stale/duplicate/relevance/queue/render policy and visible behavior unchanged. No new
+state/owner/module. Current publication tests protect lifecycle; add only uncovered scalar-validation
+cases rather than replace real callback evidence. UI worker owns tests then scoped panel/helper edits;
+main serializes native baseline/postchecks. Roll back independently if publication behavior differs.

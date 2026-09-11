@@ -1167,6 +1167,9 @@ def test_analysis_service_rejects_tokenless_saliency_confirmation(
         lambda *_args, **_kwargs: _saliency_preflight("warning"),
     )
 
+    with pytest.raises(ResourceConfirmationRequiredError) as initial:
+        service.handle_saliency(SaliencyCommand(method="Gradient"))
+
     with pytest.raises(ResourceConfirmationRequiredError) as raised:
         service.handle_saliency(
             SaliencyCommand(
@@ -1177,6 +1180,7 @@ def test_analysis_service_rejects_tokenless_saliency_confirmation(
 
     challenge = _resource_challenge(raised.value)
     assert challenge.command_name == "saliency"
+    assert challenge.challenge_id != _resource_challenge(initial.value).challenge_id
     assert visualization.params is None
     assert visualization.saliency_set_calls == 0
 

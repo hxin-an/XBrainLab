@@ -123,25 +123,13 @@ class DataInterpretationResourceReceiptAuthority:
         preflight_fingerprint: str,
         candidate_id: str | None,
     ) -> _InterpretationPreflightReceipt:
-        challenge = self._authority.issue(
+        return self._authority.issue(
             payload=preflight,
             scope_fingerprint=scope_fingerprint,
             candidate_id=candidate_id,
             configuration_fingerprint=configuration_fingerprint,
             preflight_fingerprint=preflight_fingerprint,
         )
-        receipt = self._authority.peek(
-            challenge.challenge_id,
-            scope_fingerprint=scope_fingerprint,
-            candidate_id=candidate_id,
-            configuration_fingerprint=configuration_fingerprint,
-            preflight_fingerprint=preflight_fingerprint,
-        )
-        if receipt is None:  # pragma: no cover - issue and lookup share one lock
-            raise RuntimeError(
-                "Issued interpretation resource challenge was not stored."
-            )
-        return receipt
 
     @staticmethod
     def _confirmation_error(

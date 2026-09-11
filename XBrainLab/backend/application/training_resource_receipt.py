@@ -155,21 +155,12 @@ class TrainingResourceReceiptAuthority:
         preflight: ResourcePreflightResult,
     ) -> _TrainingPreflightReceipt:
         diagnostics = preflight.diagnostics
-        challenge = self._authority.issue(
+        return self._authority.issue(
             scope_fingerprint=str(diagnostics["scope_fingerprint"]),
             payload=preflight,
             configuration_fingerprint=str(diagnostics["configuration_fingerprint"]),
             preflight_fingerprint=str(diagnostics["preflight_fingerprint"]),
         )
-        receipt = self._authority.peek(
-            challenge.challenge_id,
-            scope_fingerprint=challenge.scope_fingerprint,
-            configuration_fingerprint=challenge.configuration_fingerprint,
-            preflight_fingerprint=challenge.preflight_fingerprint,
-        )
-        if receipt is None:  # pragma: no cover - issue and lookup share one lock
-            raise RuntimeError("Issued training resource challenge was not stored.")
-        return receipt
 
     @staticmethod
     def _confirmation_error(
