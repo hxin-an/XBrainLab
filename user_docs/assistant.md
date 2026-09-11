@@ -1,7 +1,7 @@
 # Use the Assistant
 
 The optional Assistant can answer questions and request supported XBrainLab actions. It
-uses a fixed local Granite model and does not send the workflow to a cloud model.
+uses a supported local Granite model and does not send the workflow to a cloud model.
 
 The Assistant is a second way to reach the same desktop workflow. It does not replace
 the Dataset, Preprocess, Training, Evaluation, or Visualization controls.

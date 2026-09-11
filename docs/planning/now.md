@@ -117,6 +117,12 @@ boundaries. No product/model/prompt change or site redesign. Existing user-site 
 and independent wording review; strict MkDocs build still requires the absent existing dependency or
 same-head CI, no installation authorized. Case-study registry assets remain exact-byte provenance,
 not downloader code; all unverified evidence qualifications remain. Continue stage cleanup afterward.
+Result: existing user-site source/IA/link/claim validator passes in Windows; independent one-word
+diff review approves. No strict MkDocs or rendered-site claim. Main full reusable-guidance audit also
+finds the same Validation link twice in thesis context navigation; remove only the duplicate link,
+preserving research context and canonical evidence authority, then run the existing guidance audit.
+Guidance audit returns ok=true/errors[]; independent duplicate-link diff review approves. Docs-only
+changes do not establish a new product/model or rendered-site baseline.
 
 **Bounded6AB — remove unreachable mock-only state conveniences.** Full mock source105/47/84/40,
 direct155, registry assembly and evaluator caller trace retain the live mock tool mode and its18
