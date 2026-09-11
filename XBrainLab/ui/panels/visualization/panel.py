@@ -103,6 +103,10 @@ from XBrainLab.ui.interaction_outcome import (
     reserve_interaction_continuation,
 )
 from XBrainLab.ui.owned_operation_presenter import OwnedOperationPresenter
+from XBrainLab.ui.panel_navigation import (
+    VISUALIZATION_TAB_3D_PLOT,
+    VISUALIZATION_TAB_SPECTROGRAM,
+)
 from XBrainLab.ui.product_language import fold_display_label, run_display_label
 from XBrainLab.ui.status import show_status_message
 from XBrainLab.ui.styles.stylesheets import Stylesheets
@@ -1251,7 +1255,7 @@ class VisualizationPanel(BasePanel):
         self._refresh_control_layout_for_width()
         self._position_transform_controls(self._controls_layout_mode or "narrow")
         method = self.method_combo.currentText()
-        if self.tabs.currentIndex() == 1:
+        if self.tabs.currentIndex() == VISUALIZATION_TAB_SPECTROGRAM:
             self.abs_check.setEnabled(False)
             self.abs_check.setToolTip(
                 "Spectrograms display attribution magnitude by definition."
@@ -1456,7 +1460,10 @@ class VisualizationPanel(BasePanel):
                 ),
             )
             return
-        if self.tabs.currentIndex() != 3 and not selected_coverage.complete:
+        if (
+            self.tabs.currentIndex() != VISUALIZATION_TAB_3D_PLOT
+            and not selected_coverage.complete
+        ):
             if self._should_surface_automatic_status(
                 automatic_status,
                 method_name,
@@ -3409,7 +3416,7 @@ class VisualizationPanel(BasePanel):
     ) -> str:
         """Project only computed methods that can reach the active renderer."""
         self._current_saliency_coverage = dict(coverage)
-        allow_partial = self.tabs.currentIndex() == 3
+        allow_partial = self.tabs.currentIndex() == VISUALIZATION_TAB_3D_PLOT
         current_method = self.method_combo.currentText()
         renderable_methods = [
             method

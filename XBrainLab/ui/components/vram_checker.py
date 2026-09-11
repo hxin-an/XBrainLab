@@ -12,15 +12,15 @@ from typing import TYPE_CHECKING
 
 from XBrainLab.llm.agent.runtime_state import AssistantRuntimeSnapshot
 from XBrainLab.ui.components.modal_presentation import AlertSeverity, show_alert
+from XBrainLab.ui.panel_navigation import (
+    PANEL_VISUALIZATION,
+    VISUALIZATION_TAB_3D_PLOT,
+)
 
 if TYPE_CHECKING:
     from typing import Any
 
 logger = logging.getLogger(__name__)
-
-# Panel / tab indices must stay in sync with agent_manager constants
-VIZ_TAB_3D_PLOT = 3
-PANEL_VISUALIZATION = 4
 
 
 class VRAMConflictChecker:
@@ -52,7 +52,7 @@ class VRAMConflictChecker:
             index: Newly selected tab index.
 
         """
-        if index == VIZ_TAB_3D_PLOT:
+        if index == VISUALIZATION_TAB_3D_PLOT:
             self.check(switching_to_3d=True)
 
     def check(
@@ -118,7 +118,7 @@ class VRAMConflictChecker:
         ):
             return switching_to_3d
         return switching_to_3d or (
-            current_tab() == VIZ_TAB_3D_PLOT
+            current_tab() == VISUALIZATION_TAB_3D_PLOT
             and not is_hidden()
             and current_panel() == PANEL_VISUALIZATION
         )

@@ -109,10 +109,18 @@ from XBrainLab.ui.components.vram_checker import VRAMConflictChecker
 from XBrainLab.ui.components.workflow_ui_handoff_host import WorkflowUiHandoffHost
 from XBrainLab.ui.core.observer_bridge import QtObserverBridge
 from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
+from XBrainLab.ui.panel_navigation import (
+    PANEL_DATASET,
+    PANEL_EVALUATION,
+    PANEL_PREPROCESS,
+    PANEL_TRAINING,
+    PANEL_VISUALIZATION,
+    VISUALIZATION_TAB_3D_PLOT,
+    VISUALIZATION_TAB_SALIENCY_MAP,
+    VISUALIZATION_TAB_SPECTROGRAM,
+    VISUALIZATION_TAB_TOPOGRAPHIC_MAP,
+)
 from XBrainLab.ui.styles.stylesheets import Stylesheets
-
-VIZ_TAB_3D_PLOT = 3
-"""Index of the 3D Plot tab in the visualization panel."""
 
 _CHAT_PRUNE_NOTICE = (
     "Older messages were removed from this view to keep the conversation responsive."
@@ -129,13 +137,6 @@ class AssistantTurnAdmissionResult:
     def accepted(self) -> bool:
         return self.correlation is not None
 
-
-# Panel indices in the main window stack
-PANEL_DATASET = 0
-PANEL_PREPROCESS = 1
-PANEL_TRAINING = 2
-PANEL_EVALUATION = 3
-PANEL_VISUALIZATION = 4
 
 _ASSISTANT_CONTROLLER_UI_SIGNALS = (
     "response_presentation_ready",
@@ -2141,11 +2142,11 @@ class AgentManager(QObject):
         """
         # Map panel index to view mode mapping
         view_map = {
-            4: {  # Visualization Panel
-                "saliency_map": 0,
-                "spectrogram": 1,
-                "topographic_map": 2,
-                "3d_plot": VIZ_TAB_3D_PLOT,
+            PANEL_VISUALIZATION: {
+                "saliency_map": VISUALIZATION_TAB_SALIENCY_MAP,
+                "spectrogram": VISUALIZATION_TAB_SPECTROGRAM,
+                "topographic_map": VISUALIZATION_TAB_TOPOGRAPHIC_MAP,
+                "3d_plot": VISUALIZATION_TAB_3D_PLOT,
             },
             # Future: Add Preprocess or Evaluation panels if they have tabs
         }
