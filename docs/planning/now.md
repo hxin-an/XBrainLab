@@ -109,6 +109,14 @@ old session IDs and plan text do not prove a process is running. No manual candi
 
 **Current work — developer docs/config truth and remaining scripts; module2–6 closure gaps and explicit decisions remain open.**
 
+**Bounded6AH — characterize the retained final Assistant result byte cap.** Main and independent
+actual projection/caller audit retain _fit_public_tool_payload: restoring required contract fields
+after bounded global projection can increase the final envelope size. No actual to_payload byte-cap
+test was found. Add a small real ToolCommandResult result with bounded large fields; assert final
+compact JSON UTF-8 size, contract shape and privacy without mocking production projection. A process-
+local bypass fault must fail the actual cap assertion before claiming useful protection; keep normal
+surface tests. Tests only, no cap/public contract/prompt change, no new policy or control plane.
+
 **Bounded8T — prevent resumed journey evidence from acquiring newer provenance.** Main and
 independent full CLI334/evidence463 find _run_resume builds current source/environment metadata
 then reuses old completed rows based only on registry/profile. Bind reuse to identical clean source
@@ -119,6 +127,11 @@ execution/fixture provisioning. Observe RED before source fix, then identical gr
 evidence/cache tests, Ruff and independent provenance review. The separate Qt/site evidence path
 does not use this resume branch; do not overstate it as a site-publication bypass. One script fix,
 not a product contract change, followed by continued stage work.
+Observed first8test command failed before exercising resume because fixture used actual Windows Git
+against a WSL-linked worktree; not RED evidence. Narrow synthetic Git seam plus actual attempt1
+checkpoint corrected the fixture. Then7mismatch cases fail on wrongful reuse/1allowedsubset passes
+0.41s; same8pass0.30s after fix; full evidence/registry/storage39pass9.42s. Ruff and independent
+actual-diff review pass. Retain existing cache validation; no stronger raw-data-content claim added.
 
 **Bounded6AG — retire unused post-admission path handles, preserve live admission safety.** Full
 authorized_paths743/direct303 independent security audit and main grant/Windows lease/caller trace
@@ -136,6 +149,15 @@ Replace only retired post-admission lease test after the stronger baseline; keep
 Windows final escape/failure and actual generic-root verifier admission protection. Focused before/
 after + bounded no-op admission-guard fault, Ruff/type boundary and independent actual-diff security
 review. One source file deletion-only, separate reversible commit;6E/6G denied scopes untouched.
+Strengthened Windows baseline12pass/2POSIXskip6.22s recreates both root and target so missing target
+cannot mask admission failure. Exact process-local no-op lease-match fault produces DID NOT RAISE
+0.33s, proving the retained guard is protected; no fault persisted. After cleanup12pass/2POSIXskip,
+native replacement and actual wrong-kind/normal/verifier behavior retained; POSIX is not claimed run.
+Independent review required a separate target-only replacement while root remains stable. Parameterized
+the actual native case:13pass/2POSIXskip6.08s. Bypassing only target admission (root still checked)
+makes the exact target case fail DID NOT RAISE0.31s. Root and distinct-target checks now have separate
+mutation evidence. Ruff passes; production+15/-205/net-190, no owner added or live safety removed.
+Broader live verifier111pass6.32s; independent final review confirms target-only gap closed.
 
 **Bounded6AF — remove unused intent and prompt-result convenience projections.** Independent full
 intent935/policy215 and main changed graph/three actual test callers confirm target_command,
