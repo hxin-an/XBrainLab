@@ -265,19 +265,16 @@ def run_walkthrough(
 def collect_executed_tools(metrics: Any) -> list[dict[str, Any]]:
     """Collect completed tool executions from the controller metrics tracker."""
     tools: list[dict[str, Any]] = []
-    for turn in getattr(metrics, "_completed_turns", []) or []:
-        for execution in getattr(turn, "tool_executions", []) or []:
-            tools.append(
-                {
-                    "name": str(getattr(execution, "name", "")),
-                    "success": bool(getattr(execution, "success", False)),
-                    "duration_ms": round(
-                        float(getattr(execution, "duration_ms", 0.0)),
-                        3,
-                    ),
-                    "error": getattr(execution, "error", None),
-                }
-            )
+    turn = getattr(metrics, "last_completed_turn", None)
+    for execution in getattr(turn, "tool_executions", []) or []:
+        tools.append(
+            {
+                "name": str(getattr(execution, "name", "")),
+                "success": bool(getattr(execution, "success", False)),
+                "duration_ms": round(float(getattr(execution, "duration_ms", 0.0)), 3),
+                "error": getattr(execution, "error", None),
+            }
+        )
     return tools
 
 

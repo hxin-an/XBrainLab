@@ -16,10 +16,12 @@ from scripts.dev.capture_chatpanel_local_workflow_walkthrough import (
     _build_post_close_evidence,
     _has_unpainted_main_surface,
     _prepare_isolated_settings,
+    _record_latest_completed_tools,
     _runtime_summary,
     _turn_contract_failure,
     render_markdown,
 )
+from XBrainLab.llm.agent.metrics import AgentMetricsTracker
 from XBrainLab.llm.core.config import LLMConfig
 
 
@@ -27,6 +29,30 @@ def test_default_output_uses_dev_artifact_namespace() -> None:
     assert DEFAULT_OUTPUT_DIR == (
         ROOT / "build" / "dev-artifacts" / "chatpanel-local-workflow"
     )
+
+
+def test_terminal_tool_capture_keeps_two_turn_aggregate_and_failure_evidence() -> None:
+    metrics = AgentMetricsTracker()
+    state = {"executed_tools": [], "observed_turn_ids": set()}
+    first = metrics.start_turn()
+    first.record_tool("switch_panel", True, 1.0)
+    metrics.finish_turn()
+    assert _record_latest_completed_tools(state, metrics) == [
+        {"name": "switch_panel", "success": True, "duration_ms": 1.0, "error": None}
+    ]
+    assert _record_latest_completed_tools(state, metrics) == []
+
+    second = metrics.start_turn()
+    second.record_tool("apply_bandpass_filter", False, 2.0, "blocked")
+    assert _record_latest_completed_tools(state, metrics) == []
+    metrics.finish_turn()
+    captured = _record_latest_completed_tools(state, metrics)
+    assert captured[0]["name"] == "apply_bandpass_filter"
+    assert captured[0]["success"] is False
+    assert [tool["name"] for tool in state["executed_tools"]] == [
+        "switch_panel",
+        "apply_bandpass_filter",
+    ]
 
 
 def test_unattended_capture_detects_setup_without_clicking_it() -> None:

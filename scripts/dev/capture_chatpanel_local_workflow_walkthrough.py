@@ -144,6 +144,7 @@ def run_workflow(
         "turns": [],
         "visible_messages": [],
         "executed_tools": [],
+        "observed_turn_ids": set(),
         "send_button_text": "",
         "send_button_enabled": False,
         "input_enabled": False,
@@ -180,7 +181,7 @@ def run_workflow(
                 state["send_button_enabled"] = panel.send_btn.isEnabled()
                 state["input_enabled"] = panel.input_field.isEnabled()
             if controller is not None:
-                state["executed_tools"] = collect_executed_tools(controller.metrics)
+                _record_latest_completed_tools(state, controller.metrics)
             state["chat_processing"] = bool(manager.chat_controller.is_processing)
             state["controller_processing"] = bool(
                 controller and getattr(controller, "is_processing", False)
@@ -323,24 +324,18 @@ def run_workflow(
             fail("Assistant controls were not ready before sending a prompt.")
             return
         before_messages = len(collect_visible_messages(panel))
-        before_tools = len(
-            collect_executed_tools(manager.agent_controller.metrics)
-            if manager.agent_controller is not None
-            else []
-        )
         prompt = DEFAULT_PROMPTS[index]
         panel.input_field.setText(prompt)
         panel.send_btn.click()
         QTimer.singleShot(
             1000,
-            lambda: wait_for_turn(index, prompt, before_messages, before_tools),
+            lambda: wait_for_turn(index, prompt, before_messages),
         )
 
     def wait_for_turn(
         index: int,
         prompt: str,
         before_messages: int,
-        before_tools: int,
     ) -> None:
         if time.monotonic() - started_at > timeout_seconds:
             fail(f"Timed out after {timeout_seconds} seconds.")
@@ -378,12 +373,11 @@ def run_workflow(
             if _has_runtime_error_text(assistant_texts):
                 fail("Visible assistant text reported a local runtime error.")
                 return
-            executed_tools = (
-                collect_executed_tools(controller.metrics)
-                if controller is not None
+            new_tools = (
+                _record_latest_completed_tools(state, controller.metrics)
+                if controller
                 else []
             )
-            new_tools = executed_tools[before_tools:]
             contract_failure = _turn_contract_failure(
                 index,
                 assistant_texts[-1],
@@ -398,14 +392,14 @@ def run_workflow(
                     index,
                     prompt,
                     assistant_texts[-1],
-                    new_tools,
+                    list(new_tools),
                 ),
             )
             return
 
         QTimer.singleShot(
             1000,
-            lambda: wait_for_turn(index, prompt, before_messages, before_tools),
+            lambda: wait_for_turn(index, prompt, before_messages),
         )
 
     def capture_completed_turn(
@@ -431,6 +425,7 @@ def run_workflow(
                 "prompt": prompt,
                 "assistant_text": assistant_text,
                 "new_tool_count": len(new_tools),
+                "executed_tools": new_tools,
                 "screenshot": str(screenshot_path),
             }
         )
@@ -536,6 +531,22 @@ def _prepare_isolated_settings(path: Path) -> None:
     )
     if not config.save_to_file(str(resolved)):
         raise RuntimeError("Could not create isolated Assistant settings.")
+
+
+def _record_latest_completed_tools(
+    state: dict[str, Any],
+    metrics: Any,
+) -> list[dict[str, Any]]:
+    """Persist one terminal turn's tools before any capture validation can fail."""
+    turn = getattr(metrics, "last_completed_turn", None)
+    turn_id = str(getattr(turn, "turn_id", ""))
+    observed = state["observed_turn_ids"]
+    if not turn_id or turn_id in observed:
+        return []
+    observed.add(turn_id)
+    tools = collect_executed_tools(metrics)
+    state["executed_tools"].extend(tools)
+    return tools
 
 
 def render_markdown(payload: dict[str, Any]) -> str:

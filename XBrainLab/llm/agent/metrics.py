@@ -141,13 +141,13 @@ class AgentMetricsTracker:
     def __init__(self) -> None:
         self.conversation_id: str = uuid.uuid4().hex[:12]
         self._current_turn: TurnMetrics | None = None
-        self._completed_turns: list[TurnMetrics] = []
+        self._last_completed_turn: TurnMetrics | None = None
 
     def start_turn(self) -> TurnMetrics:
         """Begin a new turn, finalizing any in-progress turn."""
         if self._current_turn is not None and self._current_turn.end_time <= 0:
             self._current_turn.finalize()
-            self._completed_turns.append(self._current_turn)
+            self._last_completed_turn = self._current_turn
         self._current_turn = TurnMetrics(conversation_id=self.conversation_id)
         return self._current_turn
 
@@ -156,7 +156,7 @@ class AgentMetricsTracker:
         if self._current_turn is None:
             return None
         self._current_turn.finalize()
-        self._completed_turns.append(self._current_turn)
+        self._last_completed_turn = self._current_turn
         turn = self._current_turn
         self._current_turn = None
         return turn
@@ -166,19 +166,12 @@ class AgentMetricsTracker:
         return self._current_turn
 
     @property
-    def total_turns(self) -> int:
-        return len(self._completed_turns)
-
-    @property
-    def total_estimated_tokens(self) -> int:
-        """Sum of estimated input+output tokens across all completed turns."""
-        return sum(
-            t.estimated_input_tokens + t.estimated_output_tokens
-            for t in self._completed_turns
-        )
+    def last_completed_turn(self) -> TurnMetrics | None:
+        """Return the latest finalized turn without retaining session history."""
+        return self._last_completed_turn
 
     def reset(self) -> None:
         """Reset the tracker for a new conversation session."""
         self.conversation_id = uuid.uuid4().hex[:12]
         self._current_turn = None
-        self._completed_turns = []
+        self._last_completed_turn = None
