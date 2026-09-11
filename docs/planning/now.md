@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery checkpoint: product branch `cleanup/module-quality`, HEAD `02d64fa1`, 186 commits after baseline
+Git recovery checkpoint: product branch `cleanup/module-quality`, HEAD `1e214d1f`, 189 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -111,11 +111,23 @@ old session IDs and plan text do not prove a process is running. No manual candi
 
 **Bounded6AH — characterize the retained final Assistant result byte cap.** Main and independent
 actual projection/caller audit retain _fit_public_tool_payload: restoring required contract fields
-after bounded global projection can increase the final envelope size. No actual to_payload byte-cap
+after node-exhausted global projection can increase the final envelope size. No actual to_payload byte-cap
 test was found. Add a small real ToolCommandResult result with bounded large fields; assert final
-compact JSON UTF-8 size, contract shape and privacy without mocking production projection. A process-
+compact JSON UTF-8 size and contract shape without mocking production projection. A process-
 local bypass fault must fail the actual cap assertion before claiming useful protection; keep normal
 surface tests. Tests only, no cap/public contract/prompt change, no new policy or control plane.
+Initial oversized multibyte fixture passed even under bypass, so it was replaced, not counted as
+mutation protection. Main rejected a reviewer deletion proof that overlooked node-only exhaustion.
+Measured real two-text/nested-null state produces262152bytes after contract restoration against262144
+cap; actual26surface tests pass8.18s, process-only bypass fails the exact byte assertion1.66s.
+No source fault persisted. Independent non-author final review and Ruff pass; production unchanged.
+
+**Remaining stage closure review.** Reconcile all file dispositions with actual Git (not surviving
+owner names), then review cross-module admission/publication/error/lifecycle boundaries against
+current/target architecture. Main and independent review must separate closed internal cleanup from
+explicit UI/retirement decisions and missing same-source validation. No new generic hardening or
+second audit platform. At1e214d1f tracked production+338/-7729/net-7391; scripts+447/-1546/net-1099;
+tests+6989/-8255/net-1266. These are Git text deltas, not coverage or percentage-quality evidence.
 
 **Bounded8T — prevent resumed journey evidence from acquiring newer provenance.** Main and
 independent full CLI334/evidence463 find _run_resume builds current source/environment metadata

@@ -1,5 +1,6 @@
 """Target Assistant application-surface ownership and failure contracts."""
 
+import json
 from dataclasses import replace
 from pathlib import Path
 
@@ -15,6 +16,9 @@ from XBrainLab.backend.application.state import ApplicationStateSnapshot
 from XBrainLab.backend.application.view_publication import ApplicationViewPublication
 from XBrainLab.backend.load_data.raw import Raw
 from XBrainLab.backend.study import Study
+from XBrainLab.backend.utils.public_diagnostics import (
+    PUBLIC_DIAGNOSTIC_MAX_OUTPUT_BYTES,
+)
 from XBrainLab.llm.action_contracts import (
     AGENT_ACTION_CONTRACTS,
     AgentExecutionKind,
@@ -209,6 +213,52 @@ def test_start_training_preserves_backend_confirmation_boundary() -> None:
     assert result.ok is False
     assert result.error_type == "precondition"
     assert "Save a valid data splitting specification" in result.message
+
+
+def test_tool_command_payload_keeps_final_public_envelope_bounded_and_safe() -> None:
+    # Exhaust the node budget near the byte cap. Restoring omitted contract
+    # fields must not grow the final JSON beyond the public output limit.
+    result = ToolCommandResult(
+        ok=True,
+        tool_name="query_state",
+        message="ready",
+        state={
+            "left": "x" * 125_880,
+            "right": "y" * 125_880,
+            "nodes": [[None for _ in range(255)] for _ in range(8)],
+        },
+    )
+
+    payload = result.to_payload()
+    serialized = json.dumps(
+        payload,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+    assert len(serialized) <= PUBLIC_DIAGNOSTIC_MAX_OUTPUT_BYTES
+    assert set(payload) == {
+        "ok",
+        "tool_name",
+        "command_name",
+        "message",
+        "error_type",
+        "error_code",
+        "recovery_action",
+        "recoverable",
+        "blocked_reason",
+        "state",
+        "capability",
+        "diagnostics",
+        "changed_state",
+        "raw_result",
+    }
+    assert type(payload["ok"]) is bool
+    assert type(payload["tool_name"]) is str
+    assert type(payload["message"]) is str
+    assert type(payload["recoverable"]) is bool
+    assert type(payload["diagnostics"]) is dict
+    assert type(payload["changed_state"]) is dict
 
 
 def test_stale_publication_exposes_only_navigation() -> None:
