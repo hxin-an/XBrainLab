@@ -9,8 +9,8 @@ from PyQt6.QtCore import QObject, QTimer
 
 from XBrainLab.backend.application import (
     APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
-    ApplicationViewPublication,
 )
+from XBrainLab.backend.application.view_publication import ApplicationViewPublication
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.utils.observer import ObserverDeliveryStatus
 from XBrainLab.ui.core.observer_bridge import QtObserverBridge

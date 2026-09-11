@@ -6399,3 +6399,182 @@ def test_visualization_publication_guard_allows_typed_identity_storage(
     )
 
     assert check_visualization_saliency_publication_boundary(tmp_path) == []
+
+
+def _assert_current_guard_rejects_hostile_source(
+    monkeypatch: pytest.MonkeyPatch,
+    guard,
+    relative_path: str,
+    mutate_source,
+    expected_fragment: str,
+) -> None:
+    """Exercise one real guard against its current source and one illegal variant."""
+    root_dir = Path(__file__).resolve().parents[2]
+    assert guard(root_dir) == []
+
+    target = (root_dir / relative_path).resolve()
+    original_read_text = Path.read_text
+
+    def read_text(path: Path, *args, **kwargs) -> str:
+        source = original_read_text(path, *args, **kwargs)
+        if path.resolve() == target:
+            return mutate_source(source)
+        return source
+
+    monkeypatch.setattr(Path, "read_text", read_text)
+
+    assert any(expected_fragment in item for item in guard(root_dir))
+
+
+def test_local_only_llm_runtime_guard_rejects_remote_runtime_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _assert_current_guard_rejects_hostile_source(
+        monkeypatch,
+        architecture_compliance.check_local_only_llm_runtime,
+        "XBrainLab/backend/application/commands.py",
+        lambda source: f"{source}\nremote_runtime = APIBackend\n",
+        "forbidden local-only runtime token 'APIBackend'",
+    )
+
+
+def test_saliency_provenance_guard_rejects_duplicate_provenance_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _assert_current_guard_rejects_hostile_source(
+        monkeypatch,
+        architecture_compliance.check_saliency_provenance_ownership,
+        "XBrainLab/backend/training/record/eval.py",
+        lambda source: f"{source}\nclass SaliencyArtifactContext:\n    pass\n",
+        "defines saliency provenance",
+    )
+
+
+def test_saliency_artifact_integrity_guard_rejects_ui_policy_use(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _assert_current_guard_rejects_hostile_source(
+        monkeypatch,
+        architecture_compliance.check_saliency_artifact_integrity_ownership,
+        "XBrainLab/ui/main_window.py",
+        lambda source: (
+            f"{source}\n"
+            "def _illegal_saliency_manifest_policy():\n"
+            "    return build_saliency_artifact_manifest\n"
+        ),
+        "manifest/integrity policy belongs to training persistence",
+    )
+
+
+def test_application_state_module_guard_rejects_ui_projector_import(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _assert_current_guard_rejects_hostile_source(
+        monkeypatch,
+        architecture_compliance.check_application_state_module_boundaries,
+        "XBrainLab/ui/main_window.py",
+        lambda source: (
+            "from XBrainLab.backend.application.saliency_coverage "
+            "import SaliencyCoverageProjector\n"
+            f"{source}"
+        ),
+        "UI must consume published saliency coverage",
+    )
+
+
+def test_publication_lifecycle_guard_rejects_controller_adapter_import(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _assert_current_guard_rejects_hostile_source(
+        monkeypatch,
+        architecture_compliance.check_application_publication_lifecycle_port_boundary,
+        "XBrainLab/backend/application/application_publication_lifecycle.py",
+        lambda source: (
+            "from XBrainLab.backend.controller_adapters "
+            "import TrainingControllerAdapter\n"
+            f"{source}"
+        ),
+        "imports controller_adapters",
+    )
+
+
+def test_raw_mutation_atomicity_guard_rejects_non_atomic_label_apply(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _assert_current_guard_rejects_hostile_source(
+        monkeypatch,
+        architecture_compliance.check_raw_mutation_atomicity_boundaries,
+        "XBrainLab/backend/services/label_import_service.py",
+        lambda source: source.replace(
+            "self._apply_label_operations_atomically(",
+            "self.apply_labels_to_single_file(",
+        ),
+        "must delegate to the atomic copy/commit helper",
+    )
+
+
+def test_mutable_object_boundary_guard_rejects_new_ui_domain_storage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _assert_current_guard_rejects_hostile_source(
+        monkeypatch,
+        architecture_compliance.check_mutable_object_boundaries,
+        "XBrainLab/ui/main_window.py",
+        lambda source: (
+            f"{source}\n"
+            "class _IllegalBoundaryStorage:\n"
+            "    def retain(self, record):\n"
+            "        self.current_record = record\n"
+        ),
+        "backend domain object storage is not allowlisted",
+    )
+
+
+def test_training_history_fallback_guard_rejects_unguarded_history_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _assert_current_guard_rejects_hostile_source(
+        monkeypatch,
+        architecture_compliance.check_training_panel_history_fallback_scope,
+        "XBrainLab/ui/panels/training/panel.py",
+        lambda source: source.replace(
+            "    def _history_for_render(self):\n",
+            "    def _history_for_render(self):\n"
+            "        self._compatibility_history_for_render()\n",
+            1,
+        ),
+        "reads controller history outside the explicit result-is-None",
+    )
+
+
+def test_evaluation_publication_refresh_guard_rejects_broad_controller_port(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _assert_current_guard_rejects_hostile_source(
+        monkeypatch,
+        architecture_compliance.check_evaluation_publication_refresh_boundary,
+        "XBrainLab/ui/panels/evaluation/panel.py",
+        lambda source: source.replace(
+            "        action_port: EvaluationActionPort | None = None,\n",
+            "        action_port: EvaluationActionPort | None = None,\n"
+            "        controller=None,\n",
+            1,
+        ),
+        "constructor accepts broad parameters: controller",
+    )
+
+
+def test_mutable_object_boundary_guard_rejects_payload_invocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _assert_current_guard_rejects_hostile_source(
+        monkeypatch,
+        architecture_compliance.check_mutable_object_boundaries,
+        "XBrainLab/ui/main_window.py",
+        lambda source: (
+            f"{source}\n"
+            "def _illegal_mutable_payload_use(result):\n"
+            "    return result.local_payload\n"
+        ),
+        "local_payload use is not allowlisted",
+    )
