@@ -32,9 +32,6 @@ from XBrainLab.backend.controller.chat_controller import (
     ChatController,
     ChatMessagePresentationKind,
 )
-from XBrainLab.backend.training_state_contract import (
-    TrainingOutcomeState,
-)
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.config import AppConfig
 from XBrainLab.debug.tool_debug_mode import ToolDebugMode
@@ -1630,17 +1627,6 @@ class AgentManager(QObject):
     ) -> None:
         """Translate one verified Assistant-started run into one terminal notice."""
         coordinator = self._application_publication_coordinator
-        watch = coordinator.snapshot().training_watch
-        outcome = publication.state.training.terminal_outcome
-        if (
-            watch is not None
-            and outcome.is_terminal
-            and (watch.run is None or outcome.run != watch.run)
-        ):
-            logger.warning(
-                "Ignored Assistant training terminal without the current run identity"
-            )
-            return
         notice = coordinator.observe_training_publication(publication)
         if notice is None:
             return
@@ -1653,21 +1639,7 @@ class AgentManager(QObject):
         )
         if notice is None:
             return False
-        copy = {
-            TrainingOutcomeState.COMPLETED: (
-                "Training completed. Results are ready in Evaluation.",
-                AssistantResponseKind.TOOL_RESULT,
-            ),
-            TrainingOutcomeState.FAILED: (
-                "Training failed. Review the Training panel, adjust the "
-                "configuration, and try again.",
-                AssistantResponseKind.ERROR,
-            ),
-            TrainingOutcomeState.CANCELLED: (
-                "Training was cancelled.",
-                AssistantResponseKind.CANCELLED,
-            ),
-        }.get(notice.outcome)
+        copy = self._presentation.training_terminal_presentation(notice.outcome)
         if copy is None:
             self._application_publication_coordinator.complete_terminal_notice(notice)
             self._assistant_training_terminal_retry_timer.stop()

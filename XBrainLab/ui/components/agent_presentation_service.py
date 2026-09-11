@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from enum import Enum
 
+from XBrainLab.backend.training_state_contract import TrainingOutcomeState
 from XBrainLab.llm.agent.assistant_activity import (
     AssistantTurnActivity,
     AssistantTurnActivityPhase,
 )
+from XBrainLab.llm.agent.response_presentation import AssistantResponseKind
 from XBrainLab.ui.components.workflow_surface_router import (
     WorkflowSurfaceOutcome,
     WorkflowSurfaceStatus,
@@ -164,6 +166,27 @@ class AgentPresentationService:
     def status_refresh_error() -> str:
         """Return stable copy for a failed backend-status refresh."""
         return "Workflow status could not be refreshed. Try again."
+
+    @staticmethod
+    def training_terminal_presentation(
+        outcome: TrainingOutcomeState,
+    ) -> tuple[str, AssistantResponseKind] | None:
+        """Classify the one visible terminal message for an Assistant-started run."""
+        return {
+            TrainingOutcomeState.COMPLETED: (
+                "Training completed. Results are ready in Evaluation.",
+                AssistantResponseKind.TOOL_RESULT,
+            ),
+            TrainingOutcomeState.FAILED: (
+                "Training failed. Review the Training panel, adjust the "
+                "configuration, and try again.",
+                AssistantResponseKind.ERROR,
+            ),
+            TrainingOutcomeState.CANCELLED: (
+                "Training was cancelled.",
+                AssistantResponseKind.CANCELLED,
+            ),
+        }.get(outcome)
 
     @staticmethod
     def _runtime_issue(message: str) -> _RuntimeIssue:

@@ -22,11 +22,13 @@ from XBrainLab.backend.application.view_publication import (
 from XBrainLab.backend.application.workflow_projection import (
     build_workflow_projection,
 )
+from XBrainLab.backend.training_state_contract import TrainingOutcomeState
 from XBrainLab.llm.agent.assistant_activity import (
     AssistantDecisionOwner,
     AssistantTurnActivity,
     AssistantTurnActivityPhase,
 )
+from XBrainLab.llm.agent.response_presentation import AssistantResponseKind
 from XBrainLab.ui.components.agent_presentation_service import (
     AgentPresentationService,
 )
@@ -181,6 +183,37 @@ def test_regular_assistant_copy_is_not_reclassified() -> None:
     )
 
     assert visible == "I need a folder path before I can list files."
+
+
+@pytest.mark.parametrize(
+    ("outcome", "expected"),
+    (
+        (
+            TrainingOutcomeState.COMPLETED,
+            (
+                "Training completed. Results are ready in Evaluation.",
+                AssistantResponseKind.TOOL_RESULT,
+            ),
+        ),
+        (
+            TrainingOutcomeState.FAILED,
+            (
+                "Training failed. Review the Training panel, adjust the "
+                "configuration, and try again.",
+                AssistantResponseKind.ERROR,
+            ),
+        ),
+        (
+            TrainingOutcomeState.CANCELLED,
+            (
+                "Training was cancelled.",
+                AssistantResponseKind.CANCELLED,
+            ),
+        ),
+    ),
+)
+def test_training_terminal_presentation_preserves_typed_copy(outcome, expected) -> None:
+    assert AgentPresentationService.training_terminal_presentation(outcome) == expected
 
 
 @pytest.mark.parametrize(

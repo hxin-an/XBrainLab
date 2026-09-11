@@ -130,6 +130,80 @@ def test_training_terminal_keeps_exact_assistant_run_until_rendered() -> None:
     assert state.training_watch is None
 
 
+@pytest.mark.parametrize(
+    ("outcome", "published_run"),
+    (
+        (TrainingOutcomeState.FAILED, None),
+        (
+            TrainingOutcomeState.CANCELLED,
+            TrainingRunIdentity(trainer_id="trainer-1", run_id=3),
+        ),
+    ),
+    ids=("missing-identity", "stale-identity"),
+)
+def test_training_terminal_requires_the_watched_run_identity(
+    outcome: TrainingOutcomeState,
+    published_run: TrainingRunIdentity | None,
+) -> None:
+    coordinator = AssistantApplicationPublicationCoordinator()
+    watched_run = TrainingRunIdentity(trainer_id="trainer-1", run_id=2)
+    running = replace(
+        ApplicationStateSnapshot.empty(),
+        pipeline_stage="training",
+        training=TrainingStateSnapshot(
+            has_trainer=True,
+            is_running=True,
+            terminal_outcome=TrainingTerminalOutcome(
+                state=TrainingOutcomeState.RUNNING,
+                run=watched_run,
+            ),
+        ),
+        active_training=ActiveTrainingSnapshot(
+            has_trainer=True,
+            is_running=True,
+        ),
+    )
+    terminal = replace(
+        running,
+        pipeline_stage="dataset_ready",
+        training=replace(
+            running.training,
+            is_running=False,
+            terminal_outcome=TrainingTerminalOutcome(
+                state=outcome,
+                run=published_run,
+            ),
+        ),
+        active_training=replace(running.active_training, is_running=False),
+    )
+    result = ToolCommandResult(
+        ok=True,
+        tool_name="start_training",
+        command_name="train",
+        message="Training started.",
+        state=running.to_dict(),
+        diagnostics={"training_handoff_generation": 7},
+    )
+
+    assert coordinator.begin_training_watch(
+        result,
+        AssistantTurnCorrelation(generation=4, turn_id=12),
+    )
+    watch_before = coordinator.snapshot().training_watch
+    assert watch_before is not None
+    publication = ApplicationViewPublication(
+        generation=8,
+        revision=80,
+        state=terminal,
+        capabilities=build_capability_policy(terminal),
+    )
+
+    assert coordinator.observe_training_publication(publication) is None
+    snapshot = coordinator.snapshot()
+    assert snapshot.training_watch == watch_before
+    assert snapshot.pending_training_terminal is None
+
+
 @pytest.mark.parametrize("generation", [None, True, 0, -1, "7"])
 def test_training_watch_rejects_untyped_handoff_identity(generation) -> None:
     coordinator = AssistantApplicationPublicationCoordinator()
