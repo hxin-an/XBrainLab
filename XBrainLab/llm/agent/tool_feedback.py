@@ -89,37 +89,6 @@ def summarize_tool_result(
     text = message.strip()
     lower_text = text.lower()
 
-    if tool_name == "list_files":
-        if not success and "directory is required" in lower_text:
-            return (
-                "I need a folder path before I can list files. Choose a folder "
-                "in the app or paste the path here."
-            )
-        if not success and "does not exist" in lower_text:
-            return (
-                "I could not find that folder. Choose another folder or paste a "
-                "valid path."
-            )
-        if not success and "system directories" in lower_text:
-            return (
-                "I cannot browse protected system folders. Choose a project or "
-                "EEG data folder instead."
-            )
-        files = (
-            [str(item) for item in projection.raw_result]
-            if isinstance(projection.raw_result, list)
-            else None
-        )
-        if success and files is not None:
-            if not files:
-                return (
-                    "I did not find files in that folder. Choose another folder "
-                    "or import EEG data to begin."
-                )
-            preview = ", ".join(files[:5])
-            suffix = "" if len(files) <= 5 else f", and {len(files) - 5} more"
-            return f"I found {len(files)} item(s): {preview}{suffix}."
-
     if not success:
         reason = (projection.blocked_reason or projection.message or "").strip()
         if result.error_type == "precondition":

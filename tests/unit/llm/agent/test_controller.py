@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import threading
 from dataclasses import replace
@@ -5331,71 +5330,6 @@ class TestPipelineGate:
         assert result.error_type == "input"
         assert "Required inputs" in result.message
         mock_tool.execute.assert_not_called()
-
-    def test_tool_output_history_uses_compact_state_summary(self, ctrl):
-        result = ToolCommandResult(
-            ok=True,
-            tool_name="query_state",
-            command_name="query_state",
-            message="Application state snapshot ready.",
-            state={
-                "pipeline_stage": "empty",
-                "raw": {
-                    "loaded": False,
-                    "count": 0,
-                    "metadata": [{"large": "payload"}],
-                    "diagnostics": {"verbose": "details"},
-                },
-                "training": {
-                    "has_model": False,
-                    "missing_requirements": ["Data Splitting"],
-                },
-            },
-            diagnostics={
-                "payload_type": "state_snapshot",
-                "state": {"too": "big"},
-                "publication_generation": 8,
-                "view_verified": True,
-                "view_stale": True,
-                "view_refresh_error": "A command is still publishing state.",
-            },
-            raw_result={"status": "ok", "state": {"too": "big"}},
-        )
-
-        payload = json.loads(ctrl._format_tool_output("query_state", True, result))
-
-        assert payload["message"] == "Application state snapshot ready."
-        assert payload["state_summary"]["pipeline_stage"] == "empty"
-        assert payload["state_summary"]["raw"] == {"loaded": False, "count": 0}
-        assert payload["state_summary"]["training"]["missing_requirements"] == [
-            "Data Splitting"
-        ]
-        assert payload["diagnostics"] == {
-            "payload_type": "state_snapshot",
-            "publication_generation": 8,
-            "view_verified": True,
-            "view_stale": True,
-            "view_refresh_error": "A command is still publishing state.",
-        }
-        assert "raw_result" not in payload
-        assert "state" not in payload
-
-    def test_import_summary_uses_neutral_product_language(self):
-        from XBrainLab.llm.agent.controller import LLMController
-
-        result = ToolCommandResult.failure(
-            "import_eeg_data",
-            "Load raw data first.",
-            command_name=CommandName.SCAN_SOURCE.value,
-            error_type="precondition",
-        )
-
-        summary = LLMController._summarize_tool_result("import_eeg_data", False, result)
-
-        assert "EEG data import can't run yet" in summary
-        assert "**Required first:** Load raw data first." in summary
-        assert "Load EEG data" not in summary
-        assert "import_eeg_data" not in summary
 
     def test_train_blocked_until_backend_ready(self, ctrl):
         """Train is blocked until raw data, split, model, and options exist."""

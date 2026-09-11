@@ -91,7 +91,6 @@ from .tool_attempt_coordinator import (
     ToolAttemptFeedback,
     ToolAttemptRequest,
 )
-from .tool_call_normalizer import normalize_tool_call
 from .tool_execution_coordinator import (
     ToolExecutionCoordinator,
     ToolExecutionOutcome,
@@ -1285,22 +1284,11 @@ class LLMController(QObject):
         self,
         command_result: Any,
     ) -> tuple[str, dict[str, Any]] | None:
-        """Normalize one model response and enforce the per-turn host limit."""
+        """Preserve one model proposal and enforce the per-turn host limit."""
         parsed_commands = (
             command_result if isinstance(command_result, list) else [command_result]
         )
-        latest_user_text = self._latest_user_request_text()
-        normalized_commands = [
-            normalize_tool_call(
-                cmd,
-                params,
-                latest_user_text=latest_user_text,
-                published_tool_names=(
-                    self._turn_orchestrator.active_publication.tool_names
-                ),
-            )
-            for cmd, params in parsed_commands
-        ]
+        normalized_commands = [(cmd, dict(params)) for cmd, params in parsed_commands]
         selection = self._tool_attempt_coordinator.select_proposal(
             normalized_commands,
             execution_count=self._tool_attempt_session.execution_count,
@@ -1543,7 +1531,7 @@ class LLMController(QObject):
         cmd = decision.command_name
         success, result = outcome.success, outcome.result
         self._tool_attempt_session.record_summary(
-            self._summarize_tool_result(cmd, success, result),
+            summarize_tool_result(cmd, success, result),
             self._tool_result_response_kind(success, result),
         )
         resource_boundary = self._tool_attempt_coordinator.resource_confirmation(
@@ -1556,7 +1544,7 @@ class LLMController(QObject):
                 self._request_tool_confirmation(resource_boundary, context)
                 self._append_history(
                     "user",
-                    f"Tool Output: {self._format_tool_output(cmd, success, result)}",
+                    f"Tool Output: {format_tool_output(cmd, success, result)}",
                 )
             else:
                 blocked_result = cast(ToolCommandResult, resource_boundary.result)
@@ -1569,7 +1557,7 @@ class LLMController(QObject):
         requested_ui = self._handle_tool_result_logic(result, success)
         self._append_history(
             "user",
-            f"Tool Output: {self._format_tool_output(cmd, success, result)}",
+            f"Tool Output: {format_tool_output(cmd, success, result)}",
         )
         return success, result, requested_ui
 
@@ -1581,7 +1569,7 @@ class LLMController(QObject):
         feedback: ToolAttemptFeedback = ToolAttemptFeedback.SYSTEM_REJECTION,
     ) -> None:
         """Present one typed blocked or failed attempt and finish the turn."""
-        user_message = self._summarize_tool_result(command_name, False, result)
+        user_message = summarize_tool_result(command_name, False, result)
         response_kind = self._tool_result_response_kind(False, result)
         blocked = response_kind is AssistantResponseKind.BLOCKED
         logger.warning(
@@ -1605,7 +1593,7 @@ class LLMController(QObject):
             kind=response_kind,
         )
         history_message = (
-            f"Tool Output: {self._format_tool_output(command_name, False, result)}"
+            f"Tool Output: {format_tool_output(command_name, False, result)}"
             if feedback is ToolAttemptFeedback.TOOL_OUTPUT
             else f"System: Tool call REJECTED: {result.message}"
         )
@@ -2213,24 +2201,6 @@ class LLMController(QObject):
         # policy decides that the turn is terminal. Publishing here would show
         # a failure bubble before a corrected retry succeeds.
         return False
-
-    @staticmethod
-    def _summarize_tool_result(
-        command_name: str,
-        success: bool,
-        result: ToolCommandResult | UiRequest,
-    ) -> str:
-        """Compatibility wrapper around the assistant feedback policy."""
-        return summarize_tool_result(command_name, success, result)
-
-    @staticmethod
-    def _format_tool_output(
-        command_name: str,
-        success: bool,
-        result: ToolCommandResult | UiRequest,
-    ) -> str:
-        """Compatibility wrapper around compact local-model feedback."""
-        return format_tool_output(command_name, success, result)
 
     def _on_runtime_error(self, error_msg: object) -> None:
         """Handle model/runtime errors only when no generation owns work."""
