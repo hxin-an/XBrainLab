@@ -535,12 +535,17 @@ def test_real_deferred_failure_preserves_logs_without_publishing_dossier(
     )
     monkeypatch.setattr(runner, "_FINAL_GATE_IDS", (final.check_id,))
     evidence_root = repo / "build" / "handoff-evidence" / sha
+    inert_cache_root = (
+        Path(r"D:\XBrainLabCache\handoff-manifest-synthetic")
+        if sys.platform == "win32"
+        else Path("/mnt/d/XBrainLabCache/handoff-manifest-synthetic")
+    )
 
     result = runner.run_handoff_manifest(
         repo_root=repo,
         evidence_root=evidence_root,
-        model_cache_dir=tmp_path / "models",
-        rag_cache_dir=tmp_path / "rag",
+        model_cache_dir=inert_cache_root / "models",
+        rag_cache_dir=inert_cache_root / "rag",
         expected_branch=branch,
         require_upstream=False,
     )

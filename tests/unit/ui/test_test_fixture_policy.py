@@ -41,7 +41,6 @@ print(json.dumps({
 """
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="Windows test-environment contract")
 @pytest.mark.parametrize(
     ("scenario", "expected_platform", "expected_font_directory"),
     [
@@ -77,6 +76,8 @@ def test_conftest_windows_offscreen_font_default_is_environment_scoped(
     loaded_environment = json.loads(result.stdout)
 
     assert loaded_environment["platform"] == expected_platform
+    if scenario == "default" and sys.platform != "win32":
+        expected_font_directory = None
     if expected_font_directory is None:
         assert loaded_environment["fontdir"] is None
     else:

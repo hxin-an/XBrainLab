@@ -5602,6 +5602,11 @@ def test_prepared_apply_warning_receipt_authorizes_one_actual_materialization(
         "check_import_resource_preflight",
         warning_preflight,
     )
+    monkeypatch.setattr(
+        data_interpretation_service,
+        "_stat_change_time_is_reliable",
+        lambda: False,
+    )
 
     warning = service.execute(
         ApplyInterpretationCommand(candidate_id=candidate_id, confirmed=True)
@@ -5661,6 +5666,11 @@ def test_prepared_apply_warning_receipt_cannot_bypass_later_blocking_preflight(
         "check_import_resource_preflight",
         current_preflight,
     )
+    monkeypatch.setattr(
+        data_interpretation_service,
+        "_stat_change_time_is_reliable",
+        lambda: False,
+    )
     warning = service.execute(
         ApplyInterpretationCommand(candidate_id=candidate_id, confirmed=True)
     )
@@ -5717,6 +5727,11 @@ def test_prepared_apply_warning_receipt_is_bound_to_exact_candidate_scope(
         data_interpretation_service,
         "check_import_resource_preflight",
         lambda paths: _apply_resource_preflight("warning", paths),
+    )
+    monkeypatch.setattr(
+        data_interpretation_service,
+        "_stat_change_time_is_reliable",
+        lambda: False,
     )
     warning = service.execute(
         ApplyInterpretationCommand(candidate_id=first_candidate_id, confirmed=True)
@@ -5786,6 +5801,11 @@ def test_prepared_apply_preflight_includes_admitted_external_label_carrier(
         data_interpretation_service,
         "check_import_resource_preflight",
         blocking_preflight,
+    )
+    monkeypatch.setattr(
+        data_interpretation_service,
+        "_stat_change_time_is_reliable",
+        lambda: False,
     )
 
     rejected = service.execute(
@@ -5947,6 +5967,11 @@ def test_prepared_apply_rejects_stale_warning_receipt_before_materialization(
         "check_import_resource_preflight",
         lambda paths: _apply_resource_preflight("warning", paths),
     )
+    monkeypatch.setattr(
+        data_interpretation_service,
+        "_stat_change_time_is_reliable",
+        lambda: False,
+    )
     warning = service.execute(
         ApplyInterpretationCommand(candidate_id=candidate_id, confirmed=True)
     )
@@ -5989,6 +6014,11 @@ def test_prepared_apply_blocking_preflight_never_materializes_data(
         data_interpretation_service,
         "check_import_resource_preflight",
         lambda paths: _apply_resource_preflight("blocking", paths),
+    )
+    monkeypatch.setattr(
+        data_interpretation_service,
+        "_stat_change_time_is_reliable",
+        lambda: False,
     )
 
     rejected = service.execute(
