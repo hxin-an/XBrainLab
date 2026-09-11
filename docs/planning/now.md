@@ -103,11 +103,28 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery checkpoint: product branch `cleanup/module-quality`, HEAD `2b1f56fd`, 175 commits after baseline
+Git recovery checkpoint: product branch `cleanup/module-quality`, HEAD `f477019f`, 180 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
 **Current work — developer docs/config truth and remaining scripts; module2–6 closure gaps and explicit decisions remain open.**
+
+**Bounded7O — narrow AppConfig to its actual resource/release responsibility.** Main and independent
+full config74/direct73, icon-render36 and whole-tree caller/config audit find only icon lookup is a
+runtime consumer; importantly VERSION is a real Commitizen version_files target and must remain.
+Remove unused APP_NAME, 3D directory, platform-font/default-size and BIDS regex constants plus their
+six exclusive self-assertion tests. Retain frozen/dev BASE_DIR/resources/icons/get_icon_path and
+VERSION/FALLBACK/pyproject/Commitizen equality. Strengthen get_icon_path against the real settings.svg
+asset and retain actual QIcon pixel render before removing three redundant path-composition tests.
+Original/stronger same direct+icon baseline before, retained after, Ruff and independent actual-diff
+review. No resource/font/UI behavior change, release configuration edit or new owner/module. One
+production file deletion-first; test baseline reduction must distinguish six retired-only cases and
+three replaced assertions. Git-reversible isolated commit, then continue stage work.
+Result: original13pass0.08s and strengthened13pass0.08s before source edits (recovered run observed),
+retained4pass0.05s afterward; Ruff/format and independent actual-diff/caller/release review pass.
+Nine collected cases removed: six obsolete-only, three path composition assertions replaced by
+the actual shipped SVG assertion. Existing QIcon pixel test retained. No UI/font/release behavior
+change; Git-reversible constants/test cleanup, not final stage acceptance.
 
 **Bounded6AD — retire the unused standalone debug executor, not live diagnostic walkthrough.** Main
 and independent full executor562/direct101 plus shared test387/72/caller audit finds no production,
