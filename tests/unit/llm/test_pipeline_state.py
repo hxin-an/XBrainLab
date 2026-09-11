@@ -1,4 +1,4 @@
-"""Tests for the stage-specific Assistant prompt configuration."""
+"""Tests for the stage-specific Assistant tool configuration."""
 
 from __future__ import annotations
 
@@ -16,51 +16,6 @@ EXPECTED_STAGE_LABELS = {
     PipelineStage.DATASET_READY: "Dataset Ready",
     PipelineStage.TRAINING: "Training In Progress",
     PipelineStage.TRAINED: "Trained",
-}
-
-EXPECTED_STAGE_PROMPT_MARKERS = {
-    PipelineStage.EMPTY: (
-        "## Current Stage: Empty (No Data)",
-        "EEG data import guide",
-        "Data Interpretation",
-        "source path",
-    ),
-    PipelineStage.DATA_LOADED: (
-        "## Current Stage: Data Loaded",
-        "EEG preprocessing guide",
-        "Raw EEG data is available",
-        "epoching",
-    ),
-    PipelineStage.PREPROCESSED: (
-        "## Current Stage: Preprocessed",
-        "EEG epoching guide",
-        "Ready for EEG epoching",
-        "target event",
-        "epoch window",
-    ),
-    PipelineStage.EPOCH_READY: (
-        "## Current Stage: EEG Epochs Ready",
-        "EEG dataset generation guide",
-        "epoch data is available",
-        "split strategy",
-    ),
-    PipelineStage.DATASET_READY: (
-        "## Current Stage: Dataset Ready",
-        "EEG model training guide",
-        "training dataset is ready",
-        "model and training settings",
-    ),
-    PipelineStage.TRAINING: (
-        "## Current Stage: Training In Progress",
-        "training job is currently running",
-        "Do not start another run",
-    ),
-    PipelineStage.TRAINED: (
-        "## Current Stage: Trained",
-        "EEG results & iteration",
-        "Completed training results",
-        "retraining",
-    ),
 }
 
 EXPECTED_TARGET_TOOLS = {
@@ -136,21 +91,6 @@ def test_active_retraining_hides_compute_saliency_even_with_finished_history() -
     assert "compute_saliency" not in STAGE_CONFIG[stage]["tools"]
 
 
-def test_stage_prompts_do_not_publish_a_second_tool_truth():
-    tool_literals = {
-        f"'{tool_name}'"
-        for config in STAGE_CONFIG.values()
-        for tool_name in config["tools"]
-    }
-
-    for config in STAGE_CONFIG.values():
-        prompt = config["system_prompt"]
-        assert not tool_literals.intersection(
-            literal for literal in tool_literals if literal in prompt
-        )
-        assert "backend-published action contracts below are authoritative" in prompt
-
-
 def test_stage_config_matches_the_approved_target_ledger() -> None:
     assert {
         stage: set(config["tools"]) for stage, config in STAGE_CONFIG.items()
@@ -167,22 +107,10 @@ class TestStageConfig:
         for stage in PipelineStage:
             assert stage in STAGE_CONFIG, f"Missing config for {stage}"
 
-    def test_every_config_has_tools_and_system_prompt(self):
+    def test_every_config_has_tools(self):
         for stage, config in STAGE_CONFIG.items():
             assert "tools" in config, f"{stage}: missing 'tools'"
-            assert "system_prompt" in config, f"{stage}: missing 'system_prompt'"
             assert isinstance(config["tools"], list)
-            assert isinstance(config["system_prompt"], str)
-
-    def test_every_system_prompt_matches_stage_contract(self):
-        for stage, markers in EXPECTED_STAGE_PROMPT_MARKERS.items():
-            prompt = STAGE_CONFIG[stage]["system_prompt"]
-            assert prompt.startswith("You are XBrainLab Assistant"), stage
-            assert (
-                "backend-published action contracts below are authoritative" in prompt
-            )
-            for marker in markers:
-                assert marker in prompt, f"{stage}: missing prompt marker {marker!r}"
 
     def test_switch_panel_available_in_all_stages(self):
         for stage, config in STAGE_CONFIG.items():
@@ -210,11 +138,6 @@ class TestStageConfig:
         assert "select_model" not in tools
         assert "start_training" not in tools
 
-    def test_data_loaded_prompt_allows_preprocessing_or_epoching(self):
-        prompt = STAGE_CONFIG[PipelineStage.DATA_LOADED]["system_prompt"]
-        assert "ready for preprocessing or EEG epoching" in prompt
-        assert "must complete before EEG epoching" not in prompt
-
     def test_preprocessed_has_epoching_but_not_dataset_generation(self):
         tools = STAGE_CONFIG[PipelineStage.PREPROCESSED]["tools"]
         assert "select_channels" not in tools
@@ -231,20 +154,6 @@ class TestStageConfig:
         assert "configure_dataset_split" in tools
         assert "create_epochs" not in tools
         assert "select_model" in tools
-
-    def test_stage_prompts_do_not_present_legacy_data_entry_as_primary(self):
-        for stage in (
-            PipelineStage.EMPTY,
-            PipelineStage.DATA_LOADED,
-            PipelineStage.PREPROCESSED,
-            PipelineStage.EPOCH_READY,
-        ):
-            prompt = STAGE_CONFIG[stage]["system_prompt"]
-            assert "'load_data'" not in prompt
-            assert "'attach_labels'" not in prompt
-            assert (
-                "backend-published action contracts below are authoritative" in prompt
-            )
 
     def test_dataset_ready_has_training_but_no_preprocess(self):
         tools = STAGE_CONFIG[PipelineStage.DATASET_READY]["tools"]

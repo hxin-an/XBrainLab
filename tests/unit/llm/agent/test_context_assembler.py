@@ -1452,7 +1452,6 @@ def test_assembler_filtering():
             {
                 PipelineStage.EMPTY: {
                     "tools": ["import_eeg_data"],
-                    "system_prompt": "You are XBrainLab Assistant.\ntest stage prompt",
                 }
             },
         ),

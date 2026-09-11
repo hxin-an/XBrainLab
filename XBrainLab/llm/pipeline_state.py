@@ -1,7 +1,7 @@
-"""Pipeline state machine for stage-based agent prompting.
+"""Stage-to-tool configuration for Assistant prompt assembly.
 
 Consumes the backend :class:`PipelineStage` read-model contract and defines the
-:data:`STAGE_CONFIG` mapping that drives stage-specific assistant guidance.
+:data:`STAGE_CONFIG` tool mapping consumed by Assistant prompt assembly.
 
 The stage is read only from an explicit ApplicationService state publication so
 tool prompts, capability policy, and command execution share one backend truth.
@@ -38,29 +38,8 @@ _SETUP_TOOLS: list[str] = [
 ]
 
 
-def _stage_system_prompt(
-    *,
-    role: str,
-    stage: str,
-    status: str,
-    boundary: str,
-) -> str:
-    """Build concise stage context without publishing a second tool policy."""
-    return (
-        f"You are XBrainLab Assistant, an {role}.\n\n"
-        f"## Current Stage: {stage}\n"
-        f"{status}\n"
-        f"{boundary}\n\n"
-        "The backend-published action contracts below are authoritative. Use only "
-        "an action contract listed for this exact stage. Do not infer permission "
-        "from the stage description, prior chat, examples, or a recommended "
-        "next step. Never replace the user's request with a prerequisite or "
-        "substitute action."
-    )
-
-
 # ---------------------------------------------------------------------------
-# Stage configuration — tools + system prompt
+# Stage configuration — tools
 # ---------------------------------------------------------------------------
 
 STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
@@ -69,17 +48,6 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
             "import_eeg_data",
             "switch_panel",
         ],
-        "system_prompt": _stage_system_prompt(
-            role="EEG data import guide",
-            stage="Empty (No Data)",
-            status=(
-                "No data is loaded. The workflow is ready to begin Data Interpretation."
-            ),
-            boundary=(
-                "A concrete source path is required before XBrainLab can inspect "
-                "an EEG recording or dataset."
-            ),
-        ),
     },
     PipelineStage.DATA_LOADED: {
         "tools": [
@@ -89,15 +57,6 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
             "create_epochs",
             "switch_panel",
         ],
-        "system_prompt": _stage_system_prompt(
-            role="EEG preprocessing guide",
-            stage="Data Loaded",
-            status="Raw EEG data is available, but preprocessing is not complete.",
-            boundary=(
-                "Raw EEG data is ready for preprocessing or EEG epoching. "
-                "Training dataset construction still requires completed EEG epochs."
-            ),
-        ),
     },
     PipelineStage.PREPROCESSED: {
         "tools": [
@@ -107,17 +66,6 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
             "reset_preprocessing",
             "switch_panel",
         ],
-        "system_prompt": _stage_system_prompt(
-            role="EEG epoching guide",
-            stage="Preprocessed",
-            status=(
-                "Preprocessing is complete. The workflow is Ready for EEG epoching."
-            ),
-            boundary=(
-                "EEG epoch creation requires a target event and EEG epoch window "
-                "before a training dataset can be built."
-            ),
-        ),
     },
     PipelineStage.EPOCH_READY: {
         "tools": [
@@ -126,15 +74,6 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
             "reset_preprocessing",
             "switch_panel",
         ],
-        "system_prompt": _stage_system_prompt(
-            role="EEG dataset generation guide",
-            stage="EEG Epochs Ready",
-            status="Preprocessed EEG epoch data is available.",
-            boundary=(
-                "A split strategy and dataset settings are required before model "
-                "training can be configured."
-            ),
-        ),
     },
     PipelineStage.DATASET_READY: {
         "tools": [
@@ -143,30 +82,12 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
             "reset_preprocessing",
             "switch_panel",
         ],
-        "system_prompt": _stage_system_prompt(
-            role="EEG model training guide",
-            stage="Dataset Ready",
-            status="The training dataset is ready.",
-            boundary=(
-                "A model and training settings must be resolved before a run can "
-                "start, and starting training may require confirmation."
-            ),
-        ),
     },
     PipelineStage.TRAINING: {
         "tools": [
             "stop_training",
             "switch_panel",
         ],
-        "system_prompt": _stage_system_prompt(
-            role="EEG training monitor",
-            stage="Training In Progress",
-            status="A training job is currently running in the background.",
-            boundary=(
-                "Do not start another run or mutate its data and settings while "
-                "the active job is running."
-            ),
-        ),
     },
     PipelineStage.TRAINED: {
         "tools": [
@@ -177,14 +98,5 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
             "compute_saliency",
             "switch_panel",
         ],
-        "system_prompt": _stage_system_prompt(
-            role="EEG results & iteration guide",
-            stage="Trained",
-            status="At least one training run has completed.",
-            boundary=(
-                "Completed training results can be reviewed; retraining or "
-                "resetting derived state remains a separate explicit action."
-            ),
-        ),
     },
 }
