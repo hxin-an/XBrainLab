@@ -132,8 +132,6 @@ class TrainingProductPort(Protocol):
     ) -> bool: ...
     def wait_until_restart_safe(self, *, timeout: float | None = None) -> bool: ...
     def cancel_terminal_notification_waits(self, reason: str) -> None: ...
-    def get_progress_text(self) -> str: ...
-    def get_formatted_history(self) -> list[dict[str, Any]]: ...
     def subscribe_training_started(
         self,
         callback: TrainingLifecycleCallback,
@@ -534,59 +532,8 @@ class TrainingStateService(Observable):
             raise RuntimeError("Trainer does not support startup rollback snapshots")
         restore(startup_snapshot)
 
-    def get_progress_text(self) -> str:
-        trainer = self._study.trainer
-        if trainer is None or not hasattr(trainer, "get_progress_text"):
-            return ""
-        try:
-            progress = trainer.get_progress_text()
-        except Exception:
-            return ""
-        return str(progress or "")
-
-    def get_formatted_history(self) -> list[dict[str, Any]]:
-        trainer = self._study.trainer
-        if not trainer:
-            return []
-
-        history: list[dict[str, Any]] = []
-        holders = trainer.get_training_plan_holders()
-        for plan_idx, plan in enumerate(holders):
-            group_id = plan_idx + 1
-            model_name = plan.model_holder.target_model.__name__
-            is_active_plan = trainer.is_running() and trainer.current_idx == plan_idx
-            for run_idx, record in enumerate(plan.get_plans()):
-                history.append(
-                    {
-                        "plan": plan,
-                        "record": record,
-                        "group_name": f"Group {group_id}",
-                        "run_name": f"{run_idx + 1}",
-                        "model_name": model_name,
-                        "is_active": is_active_plan,
-                        "is_current_run": (
-                            is_active_plan
-                            and plan.get_training_repeat() == record.repeat
-                        ),
-                    }
-                )
-        return history
-
     def validate_ready(self) -> bool:
         return self.has_datasets() and self.has_model() and self.has_training_option()
-
-    def get_missing_requirements(self) -> list[str]:
-        missing: list[str] = []
-        if not self.has_datasets():
-            missing.append(DATA_SPLITTING_REQUIREMENT)
-        if not self.has_model():
-            missing.append("Model Selection")
-        if not self.has_training_option():
-            missing.append("Training Settings")
-        return resolve_training_missing_requirements(
-            missing,
-            data_splitting_ready=self.has_datasets(),
-        )
 
     def has_loaded_data(self) -> bool:
         return bool(self._study.loaded_data_list)
