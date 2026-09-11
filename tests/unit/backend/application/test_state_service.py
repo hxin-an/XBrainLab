@@ -278,7 +278,14 @@ class _TrainingController:
 
     def get_formatted_history(self) -> list[dict[str, Any]]:
         plan = object()
-        record = type("Record", (), {"epoch": 2})()
+        record = type(
+            "Record",
+            (),
+            {
+                "epoch": 2,
+                "get_saved_evaluation_record": staticmethod(lambda _split: None),
+            },
+        )()
         return [
             {
                 "plan": plan,
@@ -440,6 +447,12 @@ class _FinishedRun:
     def is_finished(self) -> bool:
         return True
 
+    def get_eval_record(self) -> Any:
+        return self.eval_record
+
+    def get_saliency_eval_record(self) -> Any:
+        return self.eval_record
+
 
 class _Plan:
     def __init__(self, runs: list[Any]) -> None:
@@ -455,10 +468,16 @@ class _BrokenPlan:
 
 
 class _BrokenRun:
-    eval_record = None
-
     def is_finished(self) -> bool:
         raise RuntimeError("run completion unavailable")
+
+    @staticmethod
+    def get_eval_record() -> None:
+        return None
+
+    @staticmethod
+    def get_saliency_eval_record() -> None:
+        return None
 
 
 class _BrokenEvalRecordRun:
@@ -468,6 +487,13 @@ class _BrokenEvalRecordRun:
     @property
     def eval_record(self) -> Any:
         raise RuntimeError("evaluation record unavailable")
+
+    def get_eval_record(self) -> Any:
+        return self.eval_record
+
+    @staticmethod
+    def get_saliency_eval_record() -> None:
+        return None
 
 
 class _EvaluationControllerWithPlans:

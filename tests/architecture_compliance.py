@@ -20,6 +20,7 @@ import os
 import sys
 import tomllib
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path, PurePath
 
 from packaging.requirements import Requirement
@@ -643,611 +644,293 @@ MUTABLE_OBJECT_BOUNDARY_DEBT_ALLOWLIST = (
 )
 
 
+def _architecture_guard_sequence():
+    """Return the ordered lazy architecture guards and diagnostics."""
+    return (
+        (check_local_only_llm_runtime, "\nLocal-only LLM Runtime Violations Found:"),
+        (check_backend_llm_imports, "\nBackend to LLM Import Violations Found:"),
+        (
+            check_saliency_provenance_ownership,
+            "\nSaliency Provenance Ownership Violations Found:",
+        ),
+        (
+            check_saliency_artifact_integrity_ownership,
+            "\nSaliency Artifact Integrity Ownership Violations Found:",
+        ),
+        (
+            check_visualization_saliency_publication_boundary,
+            "\nVisualization Saliency Publication Violations Found:",
+        ),
+        (
+            check_application_state_module_boundaries,
+            "\nApplication State Module Boundary Violations Found:",
+        ),
+        (
+            check_application_service_ownership_boundaries,
+            "\nApplicationService Ownership Boundary Violations Found:",
+        ),
+        (
+            check_application_shutdown_lifecycle_ownership,
+            "\nApplication Shutdown Lifecycle Ownership Violations Found:",
+        ),
+        (
+            check_application_controller_boundary,
+            "\nApplication Controller Boundary Violations Found:",
+        ),
+        (
+            check_dataset_product_port_boundary,
+            "\nDataset Product Port Boundary Violations Found:",
+        ),
+        (
+            check_preprocess_product_port_boundary,
+            "\nPreprocess Product Port Boundary Violations Found:",
+        ),
+        (
+            check_visualization_product_port_boundary,
+            "\nVisualization Product Port Boundary Violations Found:",
+        ),
+        (
+            check_application_publication_lifecycle_port_boundary,
+            "\nApplication Publication Lifecycle Port Violations Found:",
+        ),
+        (
+            check_training_runtime_port_boundary,
+            "\nTraining Runtime Port Boundary Violations Found:",
+        ),
+        (
+            check_raw_mutation_atomicity_boundaries,
+            "\nRaw Mutation Atomicity Boundary Violations Found:",
+        ),
+        (
+            check_label_resource_admission_boundary,
+            "\nLabel Resource Admission Boundary Violations Found:",
+        ),
+        (
+            check_training_history_projection_boundary,
+            "\nTraining History Projection Boundary Violations Found:",
+        ),
+        (
+            check_dataset_detached_read_boundary,
+            "\nDataset Detached Read Boundary Violations Found:",
+        ),
+        (
+            check_dataset_split_publication_boundary,
+            "\nDataset Split Publication Boundary Violations Found:",
+        ),
+        (
+            check_epoch_dialog_publication_boundary,
+            "\nEpoch Dialog Publication Boundary Violations Found:",
+        ),
+        (
+            partial(check_mutable_object_boundaries, validate_allowlist=True),
+            "\nMutable Object Boundary Violations Found:",
+        ),
+        (
+            check_montage_command_ownership,
+            "\nMontage Command Ownership Violations Found:",
+        ),
+        (
+            check_training_configuration_reset_ownership,
+            "\nTraining Configuration Reset Ownership Violations Found:",
+        ),
+        (
+            check_product_runtime_mock_dependencies,
+            "\nProduct Runtime Mock Dependency Violations Found:",
+        ),
+        (
+            check_concrete_llm_tool_result_contracts,
+            "\nConcrete LLM Tool Result Contract Violations Found:",
+        ),
+        (
+            check_mapped_real_tool_command_ownership,
+            "\nMapped Real Tool Command Ownership Violations Found:",
+        ),
+        (
+            check_typed_agent_confirmation_boundary,
+            "\nTyped Agent Confirmation Boundary Violations Found:",
+        ),
+        (
+            check_pending_interaction_compatibility_api,
+            "\nPending Interaction Compatibility API Violations Found:",
+        ),
+        (
+            check_agent_controller_lifecycle_aliases,
+            "\nAgent Controller Lifecycle Alias Violations Found:",
+        ),
+        (
+            check_agent_manager_publication_state_ownership,
+            "\nAgent Manager Publication State Ownership Violations Found:",
+        ),
+        (
+            check_agent_confirmation_contract_evidence,
+            "\nAgent Confirmation Contract Evidence Violations Found:",
+        ),
+        (
+            check_typed_montage_ui_handoff_boundary,
+            "\nTyped Montage UI Handoff Boundary Violations Found:",
+        ),
+        (
+            check_assistant_presentation_ownership,
+            "\nAssistant Presentation Ownership Violations Found:",
+        ),
+        (
+            check_llm_direct_study_state_reads,
+            "\nLLM Direct Study State Read Violations Found:",
+        ),
+        (
+            check_product_runtime_backend_facade_usage,
+            "\nProduct Runtime BackendFacade Usage Violations Found:",
+        ),
+        (
+            check_product_success_backend_facade_tests,
+            "\nProduct Success BackendFacade Test Violations Found:",
+        ),
+        (
+            check_backend_facade_test_usage,
+            "\nBackendFacade Test Usage Violations Found:",
+        ),
+        (
+            check_product_success_direct_study_state_tests,
+            "\nProduct Success Direct Study State Test Violations Found:",
+        ),
+        (
+            check_headless_verifier_direct_study_state,
+            "\nHeadless Verifier Direct Study State Violations Found:",
+        ),
+        (
+            check_product_success_controller_lookup_assertions,
+            "\nProduct Success Controller Lookup Assertion Violations Found:",
+        ),
+        (
+            check_ui_agent_worker_internal_access,
+            "\nUI Agent Worker Internal Access Violations Found:",
+        ),
+        (
+            check_assistant_runtime_selection_ownership,
+            "\nAssistant Runtime Selection Ownership Violations Found:",
+        ),
+        (
+            check_product_tool_envelope_boundary,
+            "\nProduct Tool Envelope Boundary Violations Found:",
+        ),
+        (
+            check_dataset_data_interpretation_action_ownership,
+            "\nDataset Data Interpretation Action Ownership Violations Found:",
+        ),
+        (
+            check_dataset_controller_compatibility_callers,
+            "\nDataset Controller Compatibility Caller Violations Found:",
+        ),
+        (
+            check_agent_resource_receipt_boundary,
+            "\nAgent Resource Receipt Boundary Violations Found:",
+        ),
+        (check_ui_controller_fallbacks, "\nUI Controller Fallback Violations Found:"),
+        (
+            check_ui_controller_render_fallbacks,
+            "\nUI Controller Render Fallback Violations Found:",
+        ),
+        (
+            check_training_panel_history_fallback_scope,
+            "\nTraining History Fallback Scope Violations Found:",
+        ),
+        (
+            check_ui_direct_controller_mutations,
+            "\nUI Direct Controller Mutation Violations Found:",
+        ),
+        (
+            check_ui_legacy_mutation_helper_calls,
+            "\nUI Legacy Mutation Helper Call Violations Found:",
+        ),
+        (
+            check_ui_legacy_fallback_helper_scope,
+            "\nUI Legacy Fallback Helper Scope Violations Found:",
+        ),
+        (
+            check_ui_direct_backend_service_execute,
+            "\nUI Direct Backend Service Execute Violations Found:",
+        ),
+        (check_ui_direct_loader_apply, "\nUI Direct Loader Apply Violations Found:"),
+        (
+            check_ui_direct_study_state_reads,
+            "\nUI Direct Study State Read Violations Found:",
+        ),
+        (
+            check_ui_controller_study_get_controller_fallbacks,
+            "\nUI Controller Study Fallback Violations Found:",
+        ),
+        (
+            check_ui_direct_study_get_controller_lookups,
+            "\nUI Direct Study Controller Lookup Violations Found:",
+        ),
+        (
+            check_ui_post_command_controller_echoes,
+            "\nUI Post-command Controller Echo Violations Found:",
+        ),
+        (
+            check_ui_capability_gated_controller_readiness,
+            "\nUI Capability-gated Controller Readiness Violations Found:",
+        ),
+        (
+            check_ui_post_command_local_refreshes,
+            "\nUI Post-command Local Refresh Violations Found:",
+        ),
+        (check_ui_refresh_false_commands, "\nUI No-refresh Command Violations Found:"),
+        (
+            check_ui_observer_direct_update_bridges,
+            "\nUI Observer Direct Refresh Violations Found:",
+        ),
+        (
+            check_primary_panel_product_bootstrap_boundary,
+            "\nPrimary Panel Product Bootstrap Boundary Violations Found:",
+        ),
+        (
+            check_primary_ui_publication_refresh_boundary,
+            "\nPrimary UI Publication Refresh Boundary Violations Found:",
+        ),
+        (
+            check_evaluation_publication_refresh_boundary,
+            "\nEvaluation Publication Refresh Boundary Violations Found:",
+        ),
+        (
+            check_visualization_publication_refresh_boundary,
+            "\nVisualization Publication Refresh Boundary Violations Found:",
+        ),
+    )
+
+
 def check_architecture(root_dir: str) -> int:
-    """Verify architecture compliance rules for the UI layer.
-
-    Scans every ``*.py`` file under ``<root_dir>/XBrainLab/ui`` and
-    checks the following rules:
-
-    1. UI panels should not import from other panels (cross-panel
-       imports), except sidebars/dialogs within the same module.
-    2. UI panels (``panels/*/panel.py``) should inherit from
-       ``BasePanel``.
-    3. UI panels should not access ``self.main_window.study`` directly
-       — the Controller should be used instead.
-    4. Dialogs should inherit from ``BaseDialog``.
-
-    Args:
-        root_dir: Absolute path to the project root directory that
-            contains the ``XBrainLab/`` package.
-
-    Returns:
-        ``0`` if all checks pass, ``1`` if any violation is detected or
-        the UI directory is missing.
-    """
+    """Run the UI checks, then the ordered fail-fast architecture guards."""
     print(f"Checking architecture compliance in {root_dir}...")
-
     ui_dir = Path(root_dir) / "XBrainLab" / "ui"
     if not ui_dir.exists():
         print(f"UI directory not found: {ui_dir}")
         return 1
 
     violations = []
-
-    # Critical Check: BasePanel inheritance
     for panel_file in ui_dir.glob("panels/*/panel.py"):
-        with open(panel_file, encoding="utf-8") as f:
-            content = f.read()
-            if "class" in content and "BasePanel" not in content:
-                violations.append(f"{panel_file.name} does not inherit from BasePanel")
-
-    # Critical Check: Direct Study Access
+        content = panel_file.read_text(encoding="utf-8")
+        if "class" in content and "BasePanel" not in content:
+            violations.append(f"{panel_file.name} does not inherit from BasePanel")
     for py_file in ui_dir.rglob("*.py"):
-        with open(py_file, encoding="utf-8") as f:
-            content = f.read()
-            if (
-                "self.main_window.study" in content
-                and "main_window.py" not in py_file.name
-            ):
-                violations.append(
-                    f"{py_file.relative_to(root_dir)} accesses self.main_window.study directy"
-                )
-
+        content = py_file.read_text(encoding="utf-8")
+        if "self.main_window.study" in content and "main_window.py" not in py_file.name:
+            violations.append(
+                f"{py_file.relative_to(root_dir)} accesses self.main_window.study directy"
+            )
     if violations:
         print("\nArchitecture Violations Found:")
-        for v in violations:
-            print(f" - {v}")
-        return 1
-
-    llm_violations = check_local_only_llm_runtime(Path(root_dir))
-    if llm_violations:
-        print("\nLocal-only LLM Runtime Violations Found:")
-        for violation in llm_violations:
-            print(f" - {violation}")
-        return 1
-
-    backend_llm_import_violations = check_backend_llm_imports(Path(root_dir))
-    if backend_llm_import_violations:
-        print("\nBackend to LLM Import Violations Found:")
-        for violation in backend_llm_import_violations:
-            print(f" - {violation}")
-        return 1
-
-    saliency_provenance_violations = check_saliency_provenance_ownership(Path(root_dir))
-    if saliency_provenance_violations:
-        print("\nSaliency Provenance Ownership Violations Found:")
-        for violation in saliency_provenance_violations:
-            print(f" - {violation}")
-        return 1
-
-    saliency_integrity_violations = check_saliency_artifact_integrity_ownership(
-        Path(root_dir)
-    )
-    if saliency_integrity_violations:
-        print("\nSaliency Artifact Integrity Ownership Violations Found:")
-        for violation in saliency_integrity_violations:
-            print(f" - {violation}")
-        return 1
-
-    visualization_saliency_violations = (
-        check_visualization_saliency_publication_boundary(Path(root_dir))
-    )
-    if visualization_saliency_violations:
-        print("\nVisualization Saliency Publication Violations Found:")
-        for violation in visualization_saliency_violations:
-            print(f" - {violation}")
-        return 1
-
-    application_state_violations = check_application_state_module_boundaries(
-        Path(root_dir)
-    )
-    if application_state_violations:
-        print("\nApplication State Module Boundary Violations Found:")
-        for violation in application_state_violations:
-            print(f" - {violation}")
-        return 1
-
-    application_service_ownership_violations = (
-        check_application_service_ownership_boundaries(Path(root_dir))
-    )
-    if application_service_ownership_violations:
-        print("\nApplicationService Ownership Boundary Violations Found:")
-        for violation in application_service_ownership_violations:
-            print(f" - {violation}")
-        return 1
-
-    application_shutdown_violations = check_application_shutdown_lifecycle_ownership(
-        Path(root_dir)
-    )
-    if application_shutdown_violations:
-        print("\nApplication Shutdown Lifecycle Ownership Violations Found:")
-        for violation in application_shutdown_violations:
-            print(f" - {violation}")
-        return 1
-
-    application_controller_violations = check_application_controller_boundary(
-        Path(root_dir)
-    )
-    if application_controller_violations:
-        print("\nApplication Controller Boundary Violations Found:")
-        for violation in application_controller_violations:
-            print(f" - {violation}")
-        return 1
-
-    dataset_product_port_violations = check_dataset_product_port_boundary(
-        Path(root_dir)
-    )
-    if dataset_product_port_violations:
-        print("\nDataset Product Port Boundary Violations Found:")
-        for violation in dataset_product_port_violations:
-            print(f" - {violation}")
-        return 1
-
-    preprocess_product_port_violations = check_preprocess_product_port_boundary(
-        Path(root_dir)
-    )
-    if preprocess_product_port_violations:
-        print("\nPreprocess Product Port Boundary Violations Found:")
-        for violation in preprocess_product_port_violations:
-            print(f" - {violation}")
-        return 1
-
-    visualization_product_port_violations = check_visualization_product_port_boundary(
-        Path(root_dir)
-    )
-    if visualization_product_port_violations:
-        print("\nVisualization Product Port Boundary Violations Found:")
-        for violation in visualization_product_port_violations:
-            print(f" - {violation}")
-        return 1
-
-    publication_lifecycle_port_violations = (
-        check_application_publication_lifecycle_port_boundary(Path(root_dir))
-    )
-    if publication_lifecycle_port_violations:
-        print("\nApplication Publication Lifecycle Port Violations Found:")
-        for violation in publication_lifecycle_port_violations:
-            print(f" - {violation}")
-        return 1
-
-    training_runtime_violations = check_training_runtime_port_boundary(Path(root_dir))
-    if training_runtime_violations:
-        print("\nTraining Runtime Port Boundary Violations Found:")
-        for violation in training_runtime_violations:
-            print(f" - {violation}")
-        return 1
-
-    raw_mutation_atomicity_violations = check_raw_mutation_atomicity_boundaries(
-        Path(root_dir)
-    )
-    if raw_mutation_atomicity_violations:
-        print("\nRaw Mutation Atomicity Boundary Violations Found:")
-        for violation in raw_mutation_atomicity_violations:
-            print(f" - {violation}")
-        return 1
-
-    label_resource_violations = check_label_resource_admission_boundary(Path(root_dir))
-    if label_resource_violations:
-        print("\nLabel Resource Admission Boundary Violations Found:")
-        for violation in label_resource_violations:
-            print(f" - {violation}")
-        return 1
-
-    training_history_violations = check_training_history_projection_boundary(
-        Path(root_dir),
-    )
-    if training_history_violations:
-        print("\nTraining History Projection Boundary Violations Found:")
-        for violation in training_history_violations:
-            print(f" - {violation}")
-        return 1
-
-    dataset_read_violations = check_dataset_detached_read_boundary(Path(root_dir))
-    if dataset_read_violations:
-        print("\nDataset Detached Read Boundary Violations Found:")
-        for violation in dataset_read_violations:
-            print(f" - {violation}")
-        return 1
-
-    dataset_split_violations = check_dataset_split_publication_boundary(Path(root_dir))
-    if dataset_split_violations:
-        print("\nDataset Split Publication Boundary Violations Found:")
-        for violation in dataset_split_violations:
-            print(f" - {violation}")
-        return 1
-
-    epoch_dialog_violations = check_epoch_dialog_publication_boundary(Path(root_dir))
-    if epoch_dialog_violations:
-        print("\nEpoch Dialog Publication Boundary Violations Found:")
-        for violation in epoch_dialog_violations:
-            print(f" - {violation}")
-        return 1
-
-    mutable_object_boundary_violations = check_mutable_object_boundaries(
-        Path(root_dir),
-        validate_allowlist=True,
-    )
-    if mutable_object_boundary_violations:
-        print("\nMutable Object Boundary Violations Found:")
-        for violation in mutable_object_boundary_violations:
-            print(f" - {violation}")
-        return 1
-
-    montage_command_ownership_violations = check_montage_command_ownership(
-        Path(root_dir)
-    )
-    if montage_command_ownership_violations:
-        print("\nMontage Command Ownership Violations Found:")
-        for violation in montage_command_ownership_violations:
-            print(f" - {violation}")
-        return 1
-
-    training_reset_ownership_violations = check_training_configuration_reset_ownership(
-        Path(root_dir)
-    )
-    if training_reset_ownership_violations:
-        print("\nTraining Configuration Reset Ownership Violations Found:")
-        for violation in training_reset_ownership_violations:
-            print(f" - {violation}")
-        return 1
-
-    runtime_mock_violations = check_product_runtime_mock_dependencies(Path(root_dir))
-    if runtime_mock_violations:
-        print("\nProduct Runtime Mock Dependency Violations Found:")
-        for violation in runtime_mock_violations:
-            print(f" - {violation}")
-        return 1
-
-    tool_result_contract_violations = check_concrete_llm_tool_result_contracts(
-        Path(root_dir)
-    )
-    if tool_result_contract_violations:
-        print("\nConcrete LLM Tool Result Contract Violations Found:")
-        for violation in tool_result_contract_violations:
-            print(f" - {violation}")
-        return 1
-
-    real_tool_command_ownership_violations = check_mapped_real_tool_command_ownership(
-        Path(root_dir)
-    )
-    if real_tool_command_ownership_violations:
-        print("\nMapped Real Tool Command Ownership Violations Found:")
-        for violation in real_tool_command_ownership_violations:
-            print(f" - {violation}")
-        return 1
-
-    typed_confirmation_violations = check_typed_agent_confirmation_boundary(
-        Path(root_dir)
-    )
-    if typed_confirmation_violations:
-        print("\nTyped Agent Confirmation Boundary Violations Found:")
-        for violation in typed_confirmation_violations:
-            print(f" - {violation}")
-        return 1
-
-    pending_interaction_compatibility_violations = (
-        check_pending_interaction_compatibility_api(Path(root_dir))
-    )
-    if pending_interaction_compatibility_violations:
-        print("\nPending Interaction Compatibility API Violations Found:")
-        for violation in pending_interaction_compatibility_violations:
-            print(f" - {violation}")
-        return 1
-
-    controller_lifecycle_alias_violations = check_agent_controller_lifecycle_aliases(
-        Path(root_dir)
-    )
-    if controller_lifecycle_alias_violations:
-        print("\nAgent Controller Lifecycle Alias Violations Found:")
-        for violation in controller_lifecycle_alias_violations:
-            print(f" - {violation}")
-        return 1
-
-    manager_publication_state_violations = (
-        check_agent_manager_publication_state_ownership(Path(root_dir))
-    )
-    if manager_publication_state_violations:
-        print("\nAgent Manager Publication State Ownership Violations Found:")
-        for violation in manager_publication_state_violations:
-            print(f" - {violation}")
-        return 1
-
-    confirmation_evidence_violations = check_agent_confirmation_contract_evidence(
-        Path(root_dir)
-    )
-    if confirmation_evidence_violations:
-        print("\nAgent Confirmation Contract Evidence Violations Found:")
-        for violation in confirmation_evidence_violations:
-            print(f" - {violation}")
-        return 1
-
-    montage_handoff_violations = check_typed_montage_ui_handoff_boundary(Path(root_dir))
-    if montage_handoff_violations:
-        print("\nTyped Montage UI Handoff Boundary Violations Found:")
-        for violation in montage_handoff_violations:
-            print(f" - {violation}")
-        return 1
-
-    presentation_ownership_violations = check_assistant_presentation_ownership(
-        Path(root_dir)
-    )
-    if presentation_ownership_violations:
-        print("\nAssistant Presentation Ownership Violations Found:")
-        for violation in presentation_ownership_violations:
-            print(f" - {violation}")
-        return 1
-
-    llm_study_state_violations = check_llm_direct_study_state_reads(Path(root_dir))
-    if llm_study_state_violations:
-        print("\nLLM Direct Study State Read Violations Found:")
-        for violation in llm_study_state_violations:
-            print(f" - {violation}")
-        return 1
-
-    facade_usage_violations = check_product_runtime_backend_facade_usage(Path(root_dir))
-    if facade_usage_violations:
-        print("\nProduct Runtime BackendFacade Usage Violations Found:")
-        for violation in facade_usage_violations:
-            print(f" - {violation}")
-        return 1
-
-    facade_test_violations = check_product_success_backend_facade_tests(Path(root_dir))
-    if facade_test_violations:
-        print("\nProduct Success BackendFacade Test Violations Found:")
-        for violation in facade_test_violations:
-            print(f" - {violation}")
-        return 1
-
-    facade_test_usage_violations = check_backend_facade_test_usage(Path(root_dir))
-    if facade_test_usage_violations:
-        print("\nBackendFacade Test Usage Violations Found:")
-        for violation in facade_test_usage_violations:
-            print(f" - {violation}")
-        return 1
-
-    product_success_study_state_violations = (
-        check_product_success_direct_study_state_tests(Path(root_dir))
-    )
-    if product_success_study_state_violations:
-        print("\nProduct Success Direct Study State Test Violations Found:")
-        for violation in product_success_study_state_violations:
-            print(f" - {violation}")
-        return 1
-
-    headless_verifier_study_state_violations = (
-        check_headless_verifier_direct_study_state(Path(root_dir))
-    )
-    if headless_verifier_study_state_violations:
-        print("\nHeadless Verifier Direct Study State Violations Found:")
-        for violation in headless_verifier_study_state_violations:
-            print(f" - {violation}")
-        return 1
-
-    controller_lookup_test_violations = (
-        check_product_success_controller_lookup_assertions(Path(root_dir))
-    )
-    if controller_lookup_test_violations:
-        print("\nProduct Success Controller Lookup Assertion Violations Found:")
-        for violation in controller_lookup_test_violations:
-            print(f" - {violation}")
-        return 1
-
-    worker_internal_violations = check_ui_agent_worker_internal_access(Path(root_dir))
-    if worker_internal_violations:
-        print("\nUI Agent Worker Internal Access Violations Found:")
-        for violation in worker_internal_violations:
-            print(f" - {violation}")
-        return 1
-
-    runtime_selection_violations = check_assistant_runtime_selection_ownership(
-        Path(root_dir)
-    )
-    if runtime_selection_violations:
-        print("\nAssistant Runtime Selection Ownership Violations Found:")
-        for violation in runtime_selection_violations:
-            print(f" - {violation}")
-        return 1
-
-    tool_envelope_boundary_violations = check_product_tool_envelope_boundary(
-        Path(root_dir)
-    )
-    if tool_envelope_boundary_violations:
-        print("\nProduct Tool Envelope Boundary Violations Found:")
-        for violation in tool_envelope_boundary_violations:
-            print(f" - {violation}")
-        return 1
-
-    interpretation_action_ownership_violations = (
-        check_dataset_data_interpretation_action_ownership(Path(root_dir))
-    )
-    if interpretation_action_ownership_violations:
-        print("\nDataset Data Interpretation Action Ownership Violations Found:")
-        for violation in interpretation_action_ownership_violations:
-            print(f" - {violation}")
-        return 1
-
-    dataset_compatibility_violations = check_dataset_controller_compatibility_callers(
-        Path(root_dir)
-    )
-    if dataset_compatibility_violations:
-        print("\nDataset Controller Compatibility Caller Violations Found:")
-        for violation in dataset_compatibility_violations:
-            print(f" - {violation}")
-        return 1
-
-    resource_receipt_boundary_violations = check_agent_resource_receipt_boundary(
-        Path(root_dir)
-    )
-    if resource_receipt_boundary_violations:
-        print("\nAgent Resource Receipt Boundary Violations Found:")
-        for violation in resource_receipt_boundary_violations:
-            print(f" - {violation}")
-        return 1
-
-    fallback_violations = check_ui_controller_fallbacks(Path(root_dir))
-    if fallback_violations:
-        print("\nUI Controller Fallback Violations Found:")
-        for violation in fallback_violations:
-            print(f" - {violation}")
-        return 1
-
-    render_fallback_violations = check_ui_controller_render_fallbacks(Path(root_dir))
-    if render_fallback_violations:
-        print("\nUI Controller Render Fallback Violations Found:")
-        for violation in render_fallback_violations:
-            print(f" - {violation}")
-        return 1
-
-    training_history_fallback_violations = check_training_panel_history_fallback_scope(
-        Path(root_dir)
-    )
-    if training_history_fallback_violations:
-        print("\nTraining History Fallback Scope Violations Found:")
-        for violation in training_history_fallback_violations:
-            print(f" - {violation}")
-        return 1
-
-    direct_controller_mutation_violations = check_ui_direct_controller_mutations(
-        Path(root_dir)
-    )
-    if direct_controller_mutation_violations:
-        print("\nUI Direct Controller Mutation Violations Found:")
-        for violation in direct_controller_mutation_violations:
-            print(f" - {violation}")
-        return 1
-
-    legacy_helper_call_violations = check_ui_legacy_mutation_helper_calls(
-        Path(root_dir)
-    )
-    if legacy_helper_call_violations:
-        print("\nUI Legacy Mutation Helper Call Violations Found:")
-        for violation in legacy_helper_call_violations:
-            print(f" - {violation}")
-        return 1
-
-    legacy_fallback_scope_violations = check_ui_legacy_fallback_helper_scope(
-        Path(root_dir)
-    )
-    if legacy_fallback_scope_violations:
-        print("\nUI Legacy Fallback Helper Scope Violations Found:")
-        for violation in legacy_fallback_scope_violations:
-            print(f" - {violation}")
-        return 1
-
-    backend_execute_violations = check_ui_direct_backend_service_execute(Path(root_dir))
-    if backend_execute_violations:
-        print("\nUI Direct Backend Service Execute Violations Found:")
-        for violation in backend_execute_violations:
-            print(f" - {violation}")
-        return 1
-
-    loader_apply_violations = check_ui_direct_loader_apply(Path(root_dir))
-    if loader_apply_violations:
-        print("\nUI Direct Loader Apply Violations Found:")
-        for violation in loader_apply_violations:
-            print(f" - {violation}")
-        return 1
-
-    study_state_violations = check_ui_direct_study_state_reads(Path(root_dir))
-    if study_state_violations:
-        print("\nUI Direct Study State Read Violations Found:")
-        for violation in study_state_violations:
-            print(f" - {violation}")
-        return 1
-
-    controller_study_violations = check_ui_controller_study_get_controller_fallbacks(
-        Path(root_dir)
-    )
-    if controller_study_violations:
-        print("\nUI Controller Study Fallback Violations Found:")
-        for violation in controller_study_violations:
-            print(f" - {violation}")
-        return 1
-
-    study_controller_lookup_violations = check_ui_direct_study_get_controller_lookups(
-        Path(root_dir)
-    )
-    if study_controller_lookup_violations:
-        print("\nUI Direct Study Controller Lookup Violations Found:")
-        for violation in study_controller_lookup_violations:
-            print(f" - {violation}")
-        return 1
-
-    controller_echo_violations = check_ui_post_command_controller_echoes(Path(root_dir))
-    if controller_echo_violations:
-        print("\nUI Post-command Controller Echo Violations Found:")
-        for violation in controller_echo_violations:
-            print(f" - {violation}")
-        return 1
-
-    capability_readiness_violations = check_ui_capability_gated_controller_readiness(
-        Path(root_dir)
-    )
-    if capability_readiness_violations:
-        print("\nUI Capability-gated Controller Readiness Violations Found:")
-        for violation in capability_readiness_violations:
-            print(f" - {violation}")
-        return 1
-
-    refresh_violations = check_ui_post_command_local_refreshes(Path(root_dir))
-    if refresh_violations:
-        print("\nUI Post-command Local Refresh Violations Found:")
-        for violation in refresh_violations:
-            print(f" - {violation}")
-        return 1
-
-    refresh_false_violations = check_ui_refresh_false_commands(Path(root_dir))
-    if refresh_false_violations:
-        print("\nUI No-refresh Command Violations Found:")
-        for violation in refresh_false_violations:
-            print(f" - {violation}")
-        return 1
-
-    observer_refresh_violations = check_ui_observer_direct_update_bridges(
-        Path(root_dir)
-    )
-    if observer_refresh_violations:
-        print("\nUI Observer Direct Refresh Violations Found:")
-        for violation in observer_refresh_violations:
-            print(f" - {violation}")
-        return 1
-
-    primary_bootstrap_violations = check_primary_panel_product_bootstrap_boundary(
-        Path(root_dir)
-    )
-    if primary_bootstrap_violations:
-        print("\nPrimary Panel Product Bootstrap Boundary Violations Found:")
-        for violation in primary_bootstrap_violations:
-            print(f" - {violation}")
-        return 1
-
-    primary_publication_violations = check_primary_ui_publication_refresh_boundary(
-        Path(root_dir)
-    )
-    if primary_publication_violations:
-        print("\nPrimary UI Publication Refresh Boundary Violations Found:")
-        for violation in primary_publication_violations:
-            print(f" - {violation}")
-        return 1
-
-    evaluation_refresh_violations = check_evaluation_publication_refresh_boundary(
-        Path(root_dir)
-    )
-    if evaluation_refresh_violations:
-        print("\nEvaluation Publication Refresh Boundary Violations Found:")
-        for violation in evaluation_refresh_violations:
-            print(f" - {violation}")
-        return 1
-
-    visualization_refresh_violations = check_visualization_publication_refresh_boundary(
-        Path(root_dir)
-    )
-    if visualization_refresh_violations:
-        print("\nVisualization Publication Refresh Boundary Violations Found:")
-        for violation in visualization_refresh_violations:
+        for violation in violations:
             print(f" - {violation}")
         return 1
 
+    for guard, heading in _architecture_guard_sequence():
+        violations = guard(Path(root_dir))
+        if violations:
+            print(heading)
+            for violation in violations:
+                print(f" - {violation}")
+            return 1
     print("\nArchitecture compliant!")
     return 0
 
@@ -3439,12 +3122,23 @@ def check_application_service_ownership_boundaries(root_dir: Path) -> list[str]:
     """Keep service creation/cache ownership at the application runtime boundary."""
     violations: list[str] = []
     product_dir = root_dir / "XBrainLab"
+    special_paths = (
+        Path("XBrainLab/backend/application/service.py"),
+        Path("XBrainLab/backend/study.py"),
+        Path("XBrainLab/backend/application/pipeline_stage.py"),
+    )
+    special_trees = {
+        relative_path: _parse_python_file(root_dir / relative_path)
+        for relative_path in special_paths
+    }
     if product_dir.exists():
         for py_file in product_dir.rglob("*.py"):
             relative_path = py_file.relative_to(root_dir)
             if relative_path in APPLICATION_SERVICE_CACHE_OWNER_FILES:
                 continue
-            tree = _parse_python_file(py_file)
+            tree = special_trees.get(relative_path)
+            if relative_path not in special_trees:
+                tree = _parse_python_file(py_file)
             if tree is None:
                 continue
             for node in ast.walk(tree):
@@ -3471,8 +3165,8 @@ def check_application_service_ownership_boundaries(root_dir: Path) -> list[str]:
                         "get_application_service()."
                     )
 
-    service_path = root_dir / "XBrainLab" / "backend" / "application" / "service.py"
-    service_tree = _parse_python_file(service_path)
+    service_path = root_dir / special_paths[0]
+    service_tree = special_trees[special_paths[0]]
     if service_tree is not None:
         violations.extend(
             f"{service_path.relative_to(root_dir)}:"
@@ -3499,8 +3193,8 @@ def check_application_service_ownership_boundaries(root_dir: Path) -> list[str]:
                 and method.name == "__new__"
             )
 
-    study_path = root_dir / "XBrainLab" / "backend" / "study.py"
-    study_tree = _parse_python_file(study_path)
+    study_path = root_dir / special_paths[1]
+    study_tree = special_trees[special_paths[1]]
     if study_tree is not None:
         violations.extend(
             f"{study_path.relative_to(root_dir)}:"
@@ -3510,10 +3204,8 @@ def check_application_service_ownership_boundaries(root_dir: Path) -> list[str]:
             if _imports_application_service_runtime(node)
         )
 
-    pipeline_path = (
-        root_dir / "XBrainLab" / "backend" / "application" / "pipeline_stage.py"
-    )
-    pipeline_tree = _parse_python_file(pipeline_path)
+    pipeline_path = root_dir / special_paths[2]
+    pipeline_tree = special_trees[special_paths[2]]
     if pipeline_tree is not None:
         violations.extend(
             f"{pipeline_path.relative_to(root_dir)}:"

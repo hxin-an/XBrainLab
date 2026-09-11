@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import time
+from collections.abc import Mapping
 from contextlib import nullcontext
 from copy import deepcopy
 from math import isclose, isfinite
@@ -1462,6 +1463,54 @@ class TrainRecord:
         """
         return self.eval_record
 
+    def get_available_evaluation_splits(self) -> list[str]:
+        """Return saved split names, with legacy primary-only fallback."""
+        records = getattr(self, "evaluation_records", None)
+        if isinstance(records, dict):
+            saved = {
+                self._evaluation_split(split)
+                for split, record in records.items()
+                if record is not None
+                and self._evaluation_split(split) in EVALUATION_SPLITS
+            }
+            if saved:
+                return sorted(saved)
+        primary_split = self._evaluation_split(
+            getattr(self.eval_record, "evaluation_split", None)
+        )
+        return [primary_split] if primary_split in EVALUATION_SPLITS else []
+
+    def get_saved_evaluation_record(self, split: str) -> EvalRecord | None:
+        """Return a matching saved sidecar record without primary fallback."""
+        normalized_split = self._evaluation_split(split)
+        if normalized_split not in EVALUATION_SPLITS:
+            return None
+        records = getattr(self, "evaluation_records", None)
+        if not isinstance(records, Mapping):
+            return None
+        record = records.get(normalized_split)
+        if getattr(record, "evaluation_split", None) != normalized_split:
+            return None
+        return record
+
+    def get_evaluation_record_for_split(self, split: str) -> EvalRecord | None:
+        """Return a saved split, or a primary record matching the request."""
+        normalized_split = self._evaluation_split(split)
+        records = getattr(self, "evaluation_records", None)
+        record = records.get(normalized_split) if isinstance(records, Mapping) else None
+        if (
+            self._evaluation_split(getattr(record, "evaluation_split", None))
+            == normalized_split
+        ):
+            return record
+        primary_record = self.get_eval_record()
+        if (
+            self._evaluation_split(getattr(primary_record, "evaluation_split", None))
+            == normalized_split
+        ):
+            return primary_record
+        return None
+
     def get_saliency_eval_record(self) -> EvalRecord | None:
         """Return the split record containing saliency without changing metrics."""
         evaluation_records = self._evaluation_record_store()
@@ -1488,3 +1537,8 @@ class TrainRecord:
             ):
                 return candidate
         return self.eval_record
+
+    @staticmethod
+    def _evaluation_split(value: object) -> str:
+        """Normalize a persisted evaluation split without admitting unknown values."""
+        return str(value or "unknown").strip().casefold()

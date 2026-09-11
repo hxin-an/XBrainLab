@@ -117,6 +117,9 @@ class _Run:
     def get_saliency_eval_record(self) -> _Record:
         return self.record
 
+    def get_evaluation_record_for_split(self, split: str) -> _Record | None:
+        return self.record if self.record.evaluation_split == split else None
+
     def is_finished(self) -> bool:
         return True
 

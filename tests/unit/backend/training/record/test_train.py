@@ -1,6 +1,7 @@
 import os
 import shutil
 from pathlib import Path
+from types import MappingProxyType
 from unittest.mock import patch
 
 import numpy as np
@@ -465,3 +466,139 @@ def test_split_prediction_records_round_trip_with_primary_split(
         assert loaded.evaluation_split == split
         np.testing.assert_array_equal(loaded.label, np.array([index]))
     assert restored.eval_record is restored.evaluation_records["test"]
+
+
+def test_eval_artifact_load_preserves_primary_base_and_split_sidecars(
+    tmp_path,
+    dataset,  # noqa: F811
+    training_option,  # noqa: F811
+    model_holder,  # noqa: F811
+):
+    """Characterize real artifact precedence before result-read migration."""
+    seed = set_seed(0)
+
+    def new_record(path: Path) -> TrainRecord:
+        with patch.object(TrainRecord, "init_dir"):
+            result = TrainRecord(
+                0,
+                dataset,
+                model_holder.get_model({}),
+                training_option,
+                seed,
+            )
+        result.target_path = str(path)
+        result._artifact_io_path = str(path)
+        return result
+
+    def eval_for(split: str, label: int) -> EvalRecord:
+        return EvalRecord(
+            np.array([label]),
+            np.array([[0.9, 0.1]]),
+            {},
+            {},
+            {},
+            {},
+            {},
+            evaluation_split=split,
+        )
+
+    three_split_path = tmp_path / "three-split"
+    three_split_path.mkdir()
+    original = new_record(three_split_path)
+    original.set_evaluation_records(
+        {
+            "training": eval_for("training", 0),
+            "validation": eval_for("validation", 1),
+            "test": eval_for("test", 2),
+        },
+        primary_split="validation",
+    )
+    original.export_checkpoint()
+
+    restored = new_record(three_split_path)
+    restored.load()
+    assert restored.eval_record is restored.evaluation_records["validation"]
+    assert set(restored.evaluation_records) == {"training", "validation", "test"}
+
+    base_only_path = tmp_path / "base-only"
+    base_only_path.mkdir()
+    base_only = new_record(base_only_path)
+    base_only.eval_record = eval_for("test", 3)
+    base_only.eval_record.export(str(base_only_path))
+    restored = new_record(base_only_path)
+    restored.load()
+    assert restored.eval_record.evaluation_split == "test"
+    assert restored.evaluation_records["test"] is restored.eval_record
+
+    conflicting_path = tmp_path / "conflicting"
+    conflicting_path.mkdir()
+    primary_base = eval_for("test", 4)
+    primary_base.export(str(conflicting_path))
+    eval_for("test", 5).export(str(conflicting_path), artifact_basename="eval-test")
+    restored = new_record(conflicting_path)
+    restored.load()
+    np.testing.assert_array_equal(restored.eval_record.label, np.array([4]))
+    np.testing.assert_array_equal(
+        restored.evaluation_records["test"].label, np.array([5])
+    )
+
+
+def test_evaluation_result_queries_preserve_primary_split_and_saliency(
+    train_record,
+):
+    def eval_for(
+        split: str,
+        label: int,
+        *,
+        gradient: dict[int, np.ndarray] | None = None,
+    ) -> EvalRecord:
+        return EvalRecord(
+            np.array([label]),
+            np.array([[0.9, 0.1]]),
+            gradient or {},
+            {},
+            {},
+            {},
+            {},
+            evaluation_split=split,
+        )
+
+    primary = eval_for("validation", 0)
+    train_record.set_evaluation_records(
+        {
+            "training": eval_for("training", 1),
+            "validation": primary,
+            "test": eval_for("test", 2),
+        },
+        primary_split="validation",
+    )
+
+    assert train_record.get_eval_record() is primary
+    assert train_record.get_available_evaluation_splits() == [
+        "test",
+        "training",
+        "validation",
+    ]
+    assert train_record.get_saved_evaluation_record("test").evaluation_split == "test"
+    assert train_record.get_evaluation_record_for_split("validation") is primary
+    train_record.evaluation_records["test"] = eval_for("validation", 3)
+    assert train_record.get_saved_evaluation_record("test") is None
+    assert train_record.get_evaluation_record_for_split("test") is None
+
+    uppercase_test = eval_for("TEST", 4)
+    train_record.evaluation_records = MappingProxyType({"test": uppercase_test})
+    assert train_record.get_saved_evaluation_record("test") is None
+    assert train_record.get_evaluation_record_for_split("test") is uppercase_test
+
+    train_record.evaluation_records = {}
+    assert train_record.get_saved_evaluation_record("validation") is None
+    assert train_record.get_evaluation_record_for_split("validation") is primary
+    saliency = eval_for(
+        "test",
+        5,
+        gradient={0: np.ones((1, 1, 1), dtype=np.float32)},
+    )
+    train_record._replace_saliency_evaluation_record(saliency)
+
+    assert train_record.get_eval_record() is primary
+    assert train_record.get_saliency_eval_record() is saliency

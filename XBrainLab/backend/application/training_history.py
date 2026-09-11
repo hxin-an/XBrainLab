@@ -368,11 +368,8 @@ def _metric_sources(
 
 def _final_test_metrics(record: Any) -> dict[str, list[float]]:
     """Return the completed held-out test summary without exposing live objects."""
-    evaluation_records = getattr(record, "evaluation_records", None)
-    if not isinstance(evaluation_records, Mapping):
-        return {}
-    test_record = evaluation_records.get("test")
-    if test_record is None or getattr(test_record, "evaluation_split", None) != "test":
+    test_record = record.get_saved_evaluation_record("test")
+    if test_record is None:
         return {}
     get_accuracy = getattr(test_record, "get_acc", None)
     if not callable(get_accuracy):

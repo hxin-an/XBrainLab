@@ -85,6 +85,12 @@ class _Run:
     def is_finished(self) -> bool:
         return self._finished
 
+    def get_eval_record(self) -> _EvalRecord | None:
+        return self.eval_record
+
+    def get_available_evaluation_splits(self) -> list[str]:
+        return sorted(self.evaluation_records)
+
     @staticmethod
     def get_name() -> str:
         return "Repeat-0"
@@ -466,6 +472,11 @@ def test_analysis_service_publishes_only_admitted_cross_fold_runs() -> None:
             evaluation_records={"test": record},
             is_finished=lambda: True,
             get_name=lambda: "Repeat-0",
+            get_eval_record=lambda: record,
+            get_available_evaluation_splits=lambda: ["test"],
+            get_evaluation_record_for_split=lambda split: record
+            if split == "test"
+            else None,
         )
         return SimpleNamespace(
             dataset=dataset,
@@ -531,6 +542,11 @@ def test_analysis_service_keeps_appended_fold_round_summaries_independent() -> N
                 evaluation_records={"test": record},
                 is_finished=lambda: True,
                 get_name=lambda: "Repeat-0",
+                get_eval_record=lambda record=record: record,
+                get_available_evaluation_splits=lambda: ["test"],
+                get_evaluation_record_for_split=lambda split, record=record: record
+                if split == "test"
+                else None,
             )
             plans.append(
                 SimpleNamespace(

@@ -7051,6 +7051,7 @@ def test_training_history_query_returns_detached_json_rows(monkeypatch):
     )
     record.get_epoch = lambda: record.epoch
     record.is_finished = lambda: False
+    record.get_saved_evaluation_record = lambda _split: None
     source_row = {
         "plan": plan,
         "record": record,
@@ -8809,7 +8810,12 @@ def test_evaluate_command_returns_typed_service_backed_summary():
     run = MagicMock()
     run.is_finished.return_value = True
     run.get_name.return_value = "Repeat-0"
-    run.eval_record.evaluation_split = "test"
+    eval_record = SimpleNamespace(evaluation_split="test")
+    run.get_eval_record.return_value = eval_record
+    run.get_available_evaluation_splits.return_value = ["test"]
+    run.get_evaluation_record_for_split.side_effect = (
+        lambda split: eval_record if split == "test" else None
+    )
     run.class_weighting = _off_class_weighting()
     plan = MagicMock()
     plan.get_name.return_value = "Plan A"
