@@ -182,6 +182,17 @@ controller retry dispatch/new-turn reset, hostile context and evaluator parity. 
 approves actual diff. Production5files +41/-43/net-2, zero owner delta; script changes only keep the
 evaluator on the product request path, frozen cases/thresholds untouched. Freeze this repair with normal
 hooks, then exact-head81model/native evidence and CI. This is not yet final handoff or Stable promotion.
+Exact0ffd88d6 full81run143.27s fixes split_before_epochs_en and select_channels_before_data_en,
+retains36/36positive and10/10+5/5origin guards, but introduces ambiguous_en_alt: a broad desired outcome
+is turned into an unsolicited bandpass proposal with invented cutoffs. Host blocks all side effects
+and asks for cutoffs, but that wrong-action clarification still fails the unchanged baseline. Do not
+accept the new ID. Direct regression repair clarifies existing Rule3/4: parameter collection applies
+only after the user requests a specific operation; an unspecified operation needs an operation-choice
+question, not assumed preprocessing/cutoff collection. No Host intent grammar or new routing owner.
+Retain0ffd evidence; revalidate both native questions and full81 before pushing the next candidate.
+Reviewer narrowed the operation-choice rule to ambiguous action requests only, preserving ordinary
+informational answers.71focused policy/request tests passed6.17s before that narrowing; final wording
+and frozen model/native evidence are next. No new failure is accepted or reclassified.
 
 **Exact candidate ecb68e3f — final evidence / bounded authority question.**204commits after4770,
 PR134 draft pushed, manual Windows checkout clean at ecb68e3f764150c828beae753f95d439d18af356 with

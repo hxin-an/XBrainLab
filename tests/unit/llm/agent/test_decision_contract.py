@@ -41,6 +41,13 @@ def test_prompt_policy_describes_typed_clarification_for_user_responses() -> Non
     blocked_rule = instructions.split("2. ", 1)[1].split("3. ", 1)[0]
     assert "parameters containing only message" in blocked_rule
     assert "prerequisite" in blocked_rule
+    assert (
+        "user requested exactly one callable direct preprocessing action"
+        in instructions
+    )
+    assert "ask which operation the user wants" in instructions
+    assert "For an ambiguous action request" in instructions
+    assert "If no specific operation was requested" not in instructions
 
 
 def test_prompt_policy_contains_no_evaluator_answer_fields() -> None:
