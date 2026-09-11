@@ -193,6 +193,13 @@ Retain0ffd evidence; revalidate both native questions and full81 before pushing 
 Reviewer narrowed the operation-choice rule to ambiguous action requests only, preserving ordinary
 informational answers.71focused policy/request tests passed6.17s before that narrowing; final wording
 and frozen model/native evidence are next. No new failure is accepted or reclassified.
+0ffd CI exposed one missed integration assertion expecting format correction in untrusted context
+(test_strict_recovery_execution_boundary); actual three generations/two retries/zero executions all
+passed before that assertion. Migrate the assertion to fixed system-only correction on both retries,
+retaining all exhaustion/safety outcomes; focused same-class search found no other old channel claim.
+Include this tests-only migration before the next exact-source model/native run; do not rerun0ffd CI.
+Final narrowed policy plus both strict-recovery execution integration cases pass73/73 in6.50s;
+independent reviewer approves both the policy narrowing and system-only assertion migration.
 
 **Exact candidate ecb68e3f — final evidence / bounded authority question.**204commits after4770,
 PR134 draft pushed, manual Windows checkout clean at ecb68e3f764150c828beae753f95d439d18af356 with
