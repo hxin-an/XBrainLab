@@ -109,6 +109,28 @@ old session IDs and plan text do not prove a process is running. No manual candi
 
 **Current work — developer docs/config truth and remaining scripts; module2–6 closure gaps and explicit decisions remain open.**
 
+**Bounded6AD — retire the unused standalone debug executor, not live diagnostic walkthrough.** Main
+and independent full executor562/direct101 plus shared test387/72/caller audit finds no production,
+script, dynamic registration or CLI consumer. Actual --tool-debug runs ToolDebugMode through the
+normal ChatPanel/controller/Command lifecycle. Remove the unused executor module and its private
+admission/evidence/wrapping classes; remove only its7direct tests,2shared tests and6executor-dependent
+adapter cases. Keep real registry and direct compute-saliency UiRequest tests, ToolDebugMode lifecycle,
+run.py CWD/profile tests and actual command coordinator/product-flow protection. Remove only the
+retired file from the public-log source guard, keeping all other boundaries/assertions. Clarify seven
+implementation-named docs references as actual tool execution, not a new owner; evaluator's public
+tool_executor_called field and scoring semantics stay unchanged. User authorized removal of unused
+whole capabilities/exclusive tests and unsupported external Python conveniences. Production owner
+delta: standalone debug admission/execution1→0, live owners unchanged; one production module-562,
+no replacement facade, public tool/schema/UI change or model experiment. Baseline direct/shared/
+privacy/live CLI/coordinator cases before, identical retained cases after, Ruff/caller/docs checks and
+independent actual-diff review. Git-reversible isolated commit, then continue stage audit; no manual
+candidate or full model/data evidence claim from this slice.
+Result: original87pass7.01s; same retained72pass6.26s after removing15executor-exclusive collected
+cases. Production-562/tests-175; Ruff/format, zero stale class/module callers, main full diff and
+independent actual-diff/privacy/caller/docs review pass. Evaluator fields and live walkthrough
+profiles/launch path remain unchanged. Deleted source/tests are recoverable from this isolated Git
+commit; no user data/model/cache was deleted and no replacement control layer was introduced.
+
 **Bounded9X — align Assistant user-guide model wording with the live catalog.** Independent full user
 guide/case/manifest/style audit and main guide73/catalog constants/specs/current truth read find
 assistant.md claims one fixed Granite model despite two supported local choices. Replace only

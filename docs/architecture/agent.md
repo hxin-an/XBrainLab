@@ -481,7 +481,7 @@ Historical Phi evaluation artifacts are not current product or thesis evidence. 
 host-assisted或`121/121` reports不得作為current Granite accuracy。Current v12 evidence在同一candidate
 source分開保存50-case core、24-case precision與7-case clarification；81-case `total`只表示inventory
 completeness，嚴格promotion只讀獨立`candidate_gate.passed`，不把它宣稱成單一accuracy。舊v7 artifact
-只保留歷史checkpoint，且verified execution boundary仍不等於真ToolExecutor side effect或產品ready。
+只保留歷史checkpoint，且verified execution boundary仍不等於真tool execution side effect或產品ready。
 
 ## 架構評斷
 

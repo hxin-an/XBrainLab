@@ -28,7 +28,6 @@ PUBLIC_LOG_BOUNDARIES = (
     "XBrainLab/llm/agent/parser.py",
     "XBrainLab/llm/agent/rag_lifecycle.py",
     "XBrainLab/llm/core/engine.py",
-    "XBrainLab/debug/tool_executor.py",
     "XBrainLab/debug/tool_debug_mode.py",
     "XBrainLab/llm/tools/__init__.py",
     "XBrainLab/ui/components/assistant_runtime_lifecycle.py",

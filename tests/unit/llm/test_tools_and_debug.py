@@ -54,41 +54,6 @@ class TestGetAllTools:
             get_all_tools("bad")
 
 
-# --- tool_executor.py ---
-class TestToolExecutor:
-    def test_execute_unknown_tool(self):
-        from XBrainLab.debug.tool_executor import ToolExecutor
-        from XBrainLab.llm.tools.application_surface import ToolCommandResult
-
-        executor = ToolExecutor(study=MagicMock())
-        result = executor.execute("nonexistent_tool", {})
-        assert isinstance(result, ToolCommandResult)
-        assert result.ok is False
-        assert result.error_type == "input"
-        assert result.tool_name == "unknown_debug_tool"
-        assert result.message == "The requested debug tool is unavailable."
-
-    def test_partial_training_debug_call_fails_without_backend_mutation(self):
-        from XBrainLab.backend.application import get_application_service
-        from XBrainLab.backend.study import Study
-        from XBrainLab.debug.tool_executor import ToolExecutor
-        from XBrainLab.llm.tools.application_surface import ToolCommandResult
-
-        study = Study()
-        service = get_application_service(study)
-        before = service.get_state().training
-
-        result = ToolExecutor(study).execute(
-            "configure_training",
-            {"model_name": "EEGNet", "epoch": 10},
-        )
-
-        assert isinstance(result, ToolCommandResult)
-        assert result.ok is False
-        assert result.error_type == "input"
-        assert service.get_state().training == before
-
-
 # --- tool_debug_mode.py ---
 class TestToolDebugMode:
     def test_loads_reserved_response_without_registering_it_as_a_tool(
