@@ -17,6 +17,7 @@ from XBrainLab.backend.dataset.split_audit import (
     blocking_split_audit_issues,
     materialization_digest,
     split_preview_rows,
+    split_protocols_for_config,
 )
 
 from .errors import PreconditionError
@@ -485,12 +486,12 @@ class DatasetSplitPreviewPublisher:
         dataset: Any,
         generator_factory: Callable[[Any], Any],
         get_publication: Callable[[], ApplicationViewPublication],
-        config_factory: Callable[[dict[str, Any]], Any] | None = None,
+        config_factory: Callable[[dict[str, Any]], Any],
     ) -> None:
         self._dataset = dataset
         self._generator_factory = generator_factory
         self._get_publication = get_publication
-        self._config_factory = config_factory or _canonical_config_from_payload
+        self._config_factory = config_factory
         self._active_lock = Lock()
         self._generation_lock = Lock()
         self._active: dict[str, _ActivePreview] = {}
@@ -573,15 +574,7 @@ class DatasetSplitPreviewPublisher:
                             "Dataset split preview was cancelled.",
                             diagnostics={"request_id": request.request_id},
                         )
-                    from .dataset_generation_service import (  # noqa: PLC0415
-                        DatasetGenerationCommandService,
-                    )
-
-                    protocols = (
-                        DatasetGenerationCommandService._split_protocols_for_config(
-                            config
-                        )
-                    )
+                    protocols = split_protocols_for_config(config)
                     audit = audit_dataset_splits(
                         datasets,
                         protocol=protocols["test"],
@@ -845,14 +838,6 @@ def _detach_generator_epoch_evidence(generator: Any, epoch_data: Any) -> None:
     except (AttributeError, TypeError):
         # The state snapshot still protects custom generators that cannot be rebound.
         return
-
-
-def _canonical_config_from_payload(payload: dict[str, Any]) -> Any:
-    from .dataset_generation_service import (  # noqa: PLC0415
-        DatasetGenerationCommandService,
-    )
-
-    return DatasetGenerationCommandService.config_from_payload(payload)
 
 
 def _rules_from_payload(raw: Any) -> tuple[DatasetSplitRule, ...]:

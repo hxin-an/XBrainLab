@@ -455,6 +455,14 @@ class _LazyDatasetGenerationCommandService:
     def handle_clear_datasets(self, command: Command) -> HandlerResult:
         return self._service().handle_clear_datasets(command)
 
+    def config_from_payload(self, payload: dict[str, Any]) -> Any:
+        """Parse a split preview without constructing the lazy command service."""
+        from .dataset_generation_service import (  # noqa: PLC0415
+            DatasetGenerationCommandService,
+        )
+
+        return DatasetGenerationCommandService.config_from_payload(payload)
+
 
 class _LazyTrainingCommandService:
     """Defer torch/model/training imports until training commands run."""
@@ -760,6 +768,7 @@ class ApplicationService(Observable):
             dataset=self.dataset_state,
             generator_factory=self.study.get_datasets_generator,
             get_publication=self._committed_view_publication,
+            config_factory=self.dataset_generation.config_from_payload,
         )
         self.query_state_commands = QueryStateCommandService(
             dataset=self.dataset_state,

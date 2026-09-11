@@ -19,9 +19,31 @@ from XBrainLab.backend.utils.logger import logger
 
 from .dataset import Dataset
 from .epochs import EpochWindowProvenance, is_opaque_source_recording_id
+from .option import SplitByType, ValSplitByType
 
 EPOCH_WINDOW_INTERVAL_SEMANTICS = "half-open [start, end) samples"
 MAX_DIAGNOSTIC_INDICES = 100
+
+
+def split_protocols_for_config(config: Any) -> dict[str, str]:
+    """Describe the requested audit scope for each enabled split rule."""
+    test_rule = next(rule for rule in config.test_splitter_list if rule.is_option)
+    protocols = {"test": _split_protocol_for_rule(test_rule)}
+    validation_rule = next(
+        (rule for rule in config.val_splitter_list if rule.is_option), None
+    )
+    if validation_rule is not None:
+        protocols["validation"] = _split_protocol_for_rule(validation_rule)
+    return protocols
+
+
+def _split_protocol_for_rule(rule: Any) -> str:
+    split_type = getattr(rule, "split_type", None)
+    if split_type in {SplitByType.SUBJECT, ValSplitByType.SUBJECT}:
+        return "subject-wise"
+    if split_type in {SplitByType.SESSION, ValSplitByType.SESSION}:
+        return "session-wise"
+    return "trial-wise"
 
 
 @dataclass(frozen=True)
