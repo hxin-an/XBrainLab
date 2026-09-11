@@ -137,7 +137,7 @@ unchanged-production characterization, Ruff and independent test-quality review;
 required for tests-only characterization. Separate test files from8S, no production writes.
 Result: original4filename tests retained;2new filename cases and4CUDA cases, final10pass2.94s using
 actual installed torch.OutOfMemoryError without GPU allocation. External cache operations alone
-are stubbed. Production unchanged, tests+63net; Ruff/format and independent test-quality review
+are stubbed. Production unchanged, tests+60net; Ruff/format and independent test-quality review
 pass. This closes the stated utility evidence gaps, not actual GPU/resource performance validation.
 
 **Bounded8S — remove unused MOABB evidence conveniences.** Main full evidence481/direct598 and

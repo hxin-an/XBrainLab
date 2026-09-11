@@ -36,22 +36,14 @@ class TestFilenameParser:
         assert sess == "-"
 
     def test_parse_by_folder(self):
-        # Mock path
         filepath = "/data/Subject01/Session02/data.gdf"
 
-        # Note: parse_by_folder uses os.path.dirname, so we need full paths
-        # or at least relative dirs
         sub, sess = FilenameParser.parse_by_folder(filepath)
-        # Logic: parent=Session02 (contains 'ses'?), grandparent=Subject01
-        # 'Session02' doesn't contain 'ses' (case sensitive? code says .lower())
-        # "Session02".lower() -> "session02" -> contains "ses" -> True
         assert sub == "Subject01"
         assert sess == "Session02"
 
-        # Test simple parent
         filepath_simple = "/data/Subject01/data.gdf"
         sub, sess = FilenameParser.parse_by_folder(filepath_simple)
-        # parent=Subject01 (no 'ses') -> sub=Subject01, sess=-
         assert sub == "Subject01"
         assert sess == "-"
 
@@ -66,3 +58,21 @@ class TestFilenameParser:
         sub, sess = FilenameParser.parse_by_fixed_position(filename, 10, 3, 20, 1)
         assert sub == "-"
         assert sess == "-"
+
+    def test_parse_by_regex_handles_invalid_and_missing_numeric_groups(self):
+        invalid = FilenameParser.parse_by_regex("sub-01.gdf", "(", 1, 2)
+        missing = FilenameParser.parse_by_regex("sub-01.gdf", r"sub-(\d+)", 1, 2)
+
+        assert invalid == ("-", "-")
+        assert missing == ("01", "-")
+
+    def test_parse_by_named_regex_handles_partial_and_no_match(self):
+        partial = FilenameParser.parse_by_named_regex(
+            "sub-01.gdf", r"sub-(?P<subject>\d+)"
+        )
+        no_match = FilenameParser.parse_by_named_regex(
+            "recording.gdf", r"sub-(?P<subject>\d+)_ses-(?P<session>\d+)"
+        )
+
+        assert partial == ("01", "-")
+        assert no_match == ("-", "-")
