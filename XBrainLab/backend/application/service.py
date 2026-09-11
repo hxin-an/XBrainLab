@@ -5,9 +5,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import replace
+from functools import cached_property
 from threading import Lock, RLock, Thread, current_thread
 from time import monotonic
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from XBrainLab.backend.services.dataset_state_service import (
     DatasetProductPort,
@@ -105,7 +106,6 @@ from .errors import (
 )
 from .evaluation_render import (
     EvaluationModelSummary,
-    EvaluationModelSummaryPreparation,
     EvaluationRenderPublication,
     EvaluationRenderPublisher,
     EvaluationRenderRequest,
@@ -175,7 +175,6 @@ from .training_resource_preview_coordinator import (
 )
 from .training_runtime import (
     StudyTrainingRuntime,
-    TrainingProjectionReadPort,
     TrainingRuntimePort,
 )
 from .training_snapshot import (
@@ -191,6 +190,9 @@ from .view_publication import (
     ApplicationViewPublication,
     InterpretationReviewIdentity,
 )
+
+if TYPE_CHECKING:
+    from .analysis_service import AnalysisCommandService
 
 HandlerResult = str | tuple[str, dict[str, Any]]
 _ObserverCleanup = tuple[Callable[..., Any], tuple[Any, ...]]
@@ -559,69 +561,6 @@ class _LazyTrainingCommandService:
         return self._service().handle_clear_training_history(command)
 
 
-class _LazyAnalysisCommandService:
-    """Defer NumPy/visualization analysis service until analysis commands run."""
-
-    def __init__(
-        self,
-        *,
-        training_runtime: TrainingProjectionReadPort,
-        visualization: Any,
-        get_state: Callable[[], ApplicationStateSnapshot],
-    ) -> None:
-        self.training_runtime = training_runtime
-        self.visualization = visualization
-        self._get_state = get_state
-        self._service_instance: Any | None = None
-
-    def _service(self) -> Any:
-        if self._service_instance is None:
-            from .analysis_service import AnalysisCommandService  # noqa: PLC0415
-
-            self._service_instance = AnalysisCommandService(
-                training_runtime=self.training_runtime,
-                visualization=self.visualization,
-                get_state=self._get_state,
-            )
-        return self._service_instance
-
-    def handle_evaluate(self, command: Command) -> HandlerResult:
-        return self._service().handle_evaluate(command)
-
-    def prepare_evaluate(
-        self,
-        command: Command,
-    ) -> tuple[
-        tuple[str, dict[str, Any]],
-        EvaluationModelSummaryPreparation | None,
-    ]:
-        return self._service().prepare_evaluate(command)
-
-    def build_prepared_model_summary(
-        self,
-        preparation: EvaluationModelSummaryPreparation,
-    ) -> EvaluationModelSummary:
-        return self._service().build_prepared_model_summary(preparation)
-
-    def complete_prepared_evaluate(
-        self,
-        result: tuple[str, dict[str, Any]],
-        command: EvaluateCommand,
-        model_summary: EvaluationModelSummary,
-    ) -> tuple[str, dict[str, Any]]:
-        return self._service().complete_prepared_evaluate(
-            result,
-            command,
-            model_summary,
-        )
-
-    def handle_visualize(self, command: Command) -> HandlerResult:
-        return self._service().handle_visualize(command)
-
-    def handle_saliency(self, command: Command) -> HandlerResult:
-        return self._service().handle_saliency(command)
-
-
 class ApplicationService(Observable):
     """Command spine composed from Study-owned domain ports."""
 
@@ -827,11 +766,6 @@ class ApplicationService(Observable):
             state_builder=self.state_snapshot,
             get_state=self.get_state,
         )
-        self.analysis = _LazyAnalysisCommandService(
-            training_runtime=self.training_runtime,
-            visualization=self.visualization,
-            get_state=self.get_state,
-        )
         self.lifecycle = LifecycleCommandService(
             dataset=self.dataset,
             training_commands=self.training_commands,
@@ -875,6 +809,17 @@ class ApplicationService(Observable):
         )
         self._command_handlers = self._build_command_handlers()
         self.publication_lifecycle.start()
+
+    @cached_property
+    def analysis(self) -> AnalysisCommandService:
+        """Create the real analysis owner only when an analysis route is used."""
+        from .analysis_service import AnalysisCommandService  # noqa: PLC0415
+
+        return AnalysisCommandService(
+            training_runtime=self.training_runtime,
+            visualization=self.visualization,
+            get_state=self.get_state,
+        )
 
     def _wait_for_synchronous_training_quiescence(self, timeout: float) -> bool:
         return self.synchronous_training_lifecycle.wait_until_quiescent(timeout=timeout)
@@ -4627,9 +4572,15 @@ class ApplicationService(Observable):
             CommandName.CLEAR_TRAINING_HISTORY: (
                 self.training_commands.handle_clear_training_history
             ),
-            CommandName.EVALUATE: self.analysis.handle_evaluate,
-            CommandName.VISUALIZE: self.analysis.handle_visualize,
-            CommandName.SALIENCY: self.analysis.handle_saliency,
+            CommandName.EVALUATE: lambda command: self.analysis.handle_evaluate(
+                command
+            ),
+            CommandName.VISUALIZE: lambda command: self.analysis.handle_visualize(
+                command
+            ),
+            CommandName.SALIENCY: lambda command: self.analysis.handle_saliency(
+                command
+            ),
             CommandName.APPLY_MONTAGE: self._handle_apply_montage,
             CommandName.RESET_PREPROCESS: self.lifecycle.handle_reset_preprocess,
             CommandName.RESET_SESSION: self.lifecycle.handle_reset_session,

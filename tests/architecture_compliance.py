@@ -3953,47 +3953,6 @@ def check_montage_command_ownership(root_dir: Path) -> list[str]:
     service_tree = _parse_python_file(service_path)
     montage_routes: list[str] = []
     if service_tree is not None:
-        lazy_analysis_class = next(
-            (
-                node
-                for node in service_tree.body
-                if isinstance(node, ast.ClassDef)
-                and node.name == "_LazyAnalysisCommandService"
-            ),
-            None,
-        )
-        if lazy_analysis_class is not None:
-            lazy_method_names = {
-                node.name
-                for node in lazy_analysis_class.body
-                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-            }
-            if "handle_apply_montage" in lazy_method_names:
-                violations.append(
-                    "_LazyAnalysisCommandService owns handle_apply_montage; "
-                    "montage commands must route directly to ApplicationService."
-                )
-            lazy_constructor = next(
-                (
-                    node
-                    for node in lazy_analysis_class.body
-                    if isinstance(node, ast.FunctionDef) and node.name == "__init__"
-                ),
-                None,
-            )
-            if lazy_constructor is not None and any(
-                argument.arg == "preprocess"
-                for argument in [
-                    *lazy_constructor.args.posonlyargs,
-                    *lazy_constructor.args.args,
-                    *lazy_constructor.args.kwonlyargs,
-                ]
-            ):
-                violations.append(
-                    "The lazy analysis wrapper depends on preprocess; montage "
-                    "mutation wiring belongs to ApplicationService."
-                )
-
         for node in ast.walk(service_tree):
             if not isinstance(node, ast.Dict):
                 continue

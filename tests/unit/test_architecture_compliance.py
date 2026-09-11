@@ -2778,13 +2778,6 @@ class PreprocessCommandService:
         tmp_path,
         "XBrainLab/backend/application/service.py",
         """
-class _LazyAnalysisCommandService:
-    def __init__(self, *, preprocess):
-        self.preprocess = preprocess
-
-    def handle_apply_montage(self, command):
-        return self._service().handle_apply_montage(command)
-
 def handlers(self):
     return {
         CommandName.APPLY_MONTAGE: self.analysis.handle_apply_montage,
@@ -2799,13 +2792,6 @@ def handlers(self):
     )
     assert any(
         "depends on the preprocess mutation controller" in item for item in violations
-    )
-    assert any(
-        "_LazyAnalysisCommandService owns handle_apply_montage" in item
-        for item in violations
-    )
-    assert any(
-        "lazy analysis wrapper depends on preprocess" in item for item in violations
     )
     assert any("current owner(s): analysis" in item for item in violations)
 

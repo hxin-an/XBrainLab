@@ -132,7 +132,51 @@ Core progress: real post-state characterization15passed before source edits (ini
 label expectation was corrected, not counted as a defect). Shared verifier is independently reviewed,
 production+45/-64/net-19, no owner delta. Together with direct-preprocess deletion, native Command
 journeys/ApplicationService/Study/DataManager386passed27.84s. Data convenience deletion net-30
-production and-30 tests; formal prepared path retained. Tools first baseline124passed/1failed:
+production (actual net-29 after import replacement) and-30 tests; formal prepared path retained. Tools first baseline124passed/1failed:
 Windows Git could not resolve WSL absolute worktree gitdir. Converted only this new worktree's .git
 pointer to relative form; both Git implementations resolve the same SHA. No source workaround or
-test waiver. Original failure retained; tool postchecks still pending.
+test waiver. Original failure retained; tool postchecks plus import-boundary baseline86passed7.22s.
+
+Next core slice: remove forwarding-only _LazyAnalysisCommandService (six methods plus constructor)
+in favor of one cached real AnalysisCommandService property on the existing application owner.
+Three handler entries resolve the property only when invoked; state/query/reset startup must not
+import analysis/training stacks. Preserve all six real analysis APIs and resource receipt identity.
+Unlike analysis, other lazy wrappers also own cold-state/reset behavior and are not blanket-deleted.
+No new owner/public API; service.py net deletion, architecture guard removes only the retired wrapper
+specific checks, keeping actual analysis dependency and montage-routing rules with hostile fixtures.
+Baseline: import-boundary tests pass, direct application386tests already pass; verify both after and
+real FIF/analysis/saliency callers. Roll back this slice independently. Tools worker owns guard/tests.
+
+Next data deletion: remove unreachable EditEventName/EditEventId capability/package exports and
+dedicated tests, unused DataType export, and Dataset.intersection_with_subject_by_idx /
+discard_remaining_mask. All have no Command/UI/Assistant/script/config entry; processor registry
+lookup checked. Preserve current reviewed event editing/import/class semantics and mask mutation
+revision. Replace the remaining dataset getter test's obsolete setup with existing set_train rather
+than deleting its still-useful array/label assertions. Baseline preprocessor/dataset/load tests plus
+prepared-state tests; main runs serial native evidence before worker edits. No new production owner.
+
+Docs consolidation slice: backend.md mixes historical chronology with stale current-gap claims
+(old controller adapters and never-completed acceptance wording). Tools worker may consolidate that
+existing page against current source, retain necessary state/receipt/persistence/privacy boundaries,
+remove historical repetition rather than create a second history page. Do not edit target/contracts,
+invent stage acceptance, or claim source-diverse/native automation proves human/scientific acceptance.
+Main reviews actual doc diff and validates affected documentation when it joins final candidate.
+
+Lazy analysis source/guard change independently reviewed;620native tests passed57.02s including
+import-boundary, Analysis, all ApplicationService, architecture unit and real FIF Command journeys.
+Cached construction is protected by existing command serialization, not a claimed general thread-safe
+cached_property. Other lazy wrappers keep their distinct cold-state/reset responsibilities.
+Data deletion pre-baseline481passed4.16s; worker removed19 dedicated test functions/22cases, preserving
+getter assertions via set_remaining_by_subject_idx(2). Post-baseline pending. Counts are not summed
+across overlapping runs and do not establish final-candidate acceptance.
+
+Receipt slice decision (independently reviewed): retain each domain authorize policy and outer lock.
+Training and apply-import reuse pending on confirmed/no-token; preview/review/reload and Saliency
+issue a fresh challenge in that case. Existing ResourceReceiptAuthority already owns atomic storage.
+Change its internal issue return to the just-stored ResourceReceiptRecord and migrate exactly four
+production issue-then-peek callers; remove redundant second reads/impossible empty-record checks.
+No extra issue_record convenience API, owner or policy framework; public challenge JSON unchanged.
+Expired/cleared/mismatched tokens still fail at later peek/consume before effects. This also removes
+the artificial immediate-peek expiry/race failure, not authorization expiry. Five production files,
+net deletion; independently review actual diff and exact confirmation/TTL/replay/candidate tests.
+First establish passing base/wrapper/real-Command resource tests and confirmed/no-token distinctions.
