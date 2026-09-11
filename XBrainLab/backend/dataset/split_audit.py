@@ -1,13 +1,11 @@
-"""Audit helpers for train/validation/test split artifacts."""
+"""Leakage audits and materialization evidence for dataset splits."""
 
 from __future__ import annotations
 
 import json
-import platform
 from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass, field
 from hashlib import sha256
-from pathlib import Path
 from typing import Any, cast
 
 import numpy as np
@@ -24,9 +22,6 @@ from .epochs import EpochWindowProvenance, is_opaque_source_recording_id
 
 EPOCH_WINDOW_INTERVAL_SEMANTICS = "half-open [start, end) samples"
 MAX_DIAGNOSTIC_INDICES = 100
-MAX_PROVENANCE_RECORDS = 100
-MAX_PROVENANCE_SOURCE_SUMMARIES = 50
-MAX_SELECTION_EVIDENCE_RECORDS = 100
 
 
 @dataclass(frozen=True)
@@ -54,15 +49,6 @@ class SplitAuditResult:
             "dataset_count": self.dataset_count,
             "issues": [asdict(issue) for issue in self.issues],
         }
-
-
-def split_indices(dataset: Dataset) -> dict[str, list[int]]:
-    """Return sorted train/validation/test indices for one dataset."""
-    return {
-        "train": _mask_indices(dataset.train_mask),
-        "validation": _mask_indices(dataset.val_mask),
-        "test": _mask_indices(dataset.test_mask),
-    }
 
 
 def materialization_digest(datasets: Iterable[Dataset]) -> str:
@@ -263,91 +249,8 @@ def audit_dataset_splits(
     )
 
 
-def build_split_artifact(
-    datasets: list[Dataset],
-    *,
-    seed: int | None = None,
-    repeat: int | None = None,
-    protocol: str = "trial-wise",
-    extra_config: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Build a JSON-serializable split artifact for rerun and audit."""
-    audit = audit_dataset_splits(datasets, protocol=protocol)
-    return {
-        "schema_version": 1,
-        "protocol": protocol,
-        "seed": seed,
-        "repeat": repeat,
-        "audit": audit.to_dict(),
-        "environment": {
-            "python": platform.python_version(),
-            "platform": platform.platform(),
-        },
-        "config": extra_config or {},
-        "datasets": [
-            {
-                "name": dataset.get_name(),
-                "selected": bool(dataset.is_selected),
-                "indices": split_indices(dataset),
-                "counts": {
-                    "train": int(dataset.get_train_len()),
-                    "validation": int(dataset.get_val_len()),
-                    "test": int(dataset.get_test_len()),
-                },
-                "groups": _dataset_group_summary(dataset),
-                "epoch_window_provenance": _epoch_window_provenance_artifact(
-                    dataset,
-                ),
-                "trial_selection_evidence": _trial_selection_evidence_artifact(
-                    dataset,
-                ),
-            }
-            for dataset in datasets
-        ],
-    }
-
-
-def write_split_artifact(
-    datasets: list[Dataset],
-    path: str | Path,
-    *,
-    seed: int | None = None,
-    repeat: int | None = None,
-    protocol: str = "trial-wise",
-    extra_config: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Write a split artifact and return the emitted payload."""
-    payload = build_split_artifact(
-        datasets,
-        seed=seed,
-        repeat=repeat,
-        protocol=protocol,
-        extra_config=extra_config,
-    )
-    target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-    return payload
-
-
 def _mask_indices(mask: np.ndarray) -> list[int]:
     return [int(idx) for idx in np.where(mask)[0]]
-
-
-def _dataset_group_summary(dataset: Dataset) -> dict[str, dict[str, list[int]]]:
-    epoch_data = dataset.get_epoch_data()
-    result: dict[str, dict[str, list[int]]] = {}
-    for split_name, mask in (
-        ("train", dataset.train_mask),
-        ("validation", dataset.val_mask),
-        ("test", dataset.test_mask),
-    ):
-        result[split_name] = {
-            "subjects": _unique_ints(epoch_data.get_subject_list_by_mask(mask)),
-            "sessions": _unique_ints(epoch_data.get_session_list_by_mask(mask)),
-            "labels": _unique_ints(epoch_data.get_label_list_by_mask(mask)),
-        }
-    return result
 
 
 def _unique_ints(values: np.ndarray) -> list[int]:
@@ -390,161 +293,6 @@ def _is_valid_epoch_window(value: Any) -> bool:
         and np.isfinite(value.epoch_sfreq)
         and value.epoch_sfreq > 0
     )
-
-
-def _epoch_window_provenance_artifact(dataset: Dataset) -> dict[str, Any]:
-    provenance, reported_count = _epoch_window_provenance(dataset)
-    records: list[dict[str, Any]] = []
-    records_digest = sha256()
-    source_ids: set[str] = set()
-    source_summaries: dict[str, dict[str, Any]] = {}
-    record_count = 0
-    verified_count = 0
-    unverified_count = 0
-    missing_count = 0
-    missing_indices: list[int] = []
-    unverified_indices: list[int] = []
-    for index, item in enumerate(provenance):
-        if item is None:
-            missing_count += 1
-            if len(missing_indices) < MAX_DIAGNOSTIC_INDICES:
-                missing_indices.append(index)
-            continue
-
-        record = {"epoch_index": index, **asdict(item)}
-        encoded = json.dumps(
-            record,
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode("utf-8")
-        records_digest.update(len(encoded).to_bytes(8, "big"))
-        records_digest.update(encoded)
-        record_count += 1
-        if len(records) < MAX_PROVENANCE_RECORDS:
-            records.append(record)
-        if item.source_coordinates_verified:
-            verified_count += 1
-        else:
-            unverified_count += 1
-            if len(unverified_indices) < MAX_DIAGNOSTIC_INDICES:
-                unverified_indices.append(index)
-
-        source_ids.add(item.source_recording_id)
-        if (
-            item.source_recording_id not in source_summaries
-            and len(source_summaries) < MAX_PROVENANCE_SOURCE_SUMMARIES
-        ):
-            source_summaries[item.source_recording_id] = {
-                "source_recording_id": item.source_recording_id,
-                "record_count": 0,
-                "verified_count": 0,
-                "window_start_sample": item.window_start_sample,
-                "window_end_sample_exclusive": item.window_end_sample_exclusive,
-            }
-        summary = source_summaries.get(item.source_recording_id)
-        if summary is not None:
-            summary["record_count"] += 1
-            summary["verified_count"] += int(item.source_coordinates_verified)
-            summary["window_start_sample"] = min(
-                summary["window_start_sample"],
-                item.window_start_sample,
-            )
-            summary["window_end_sample_exclusive"] = max(
-                summary["window_end_sample_exclusive"],
-                item.window_end_sample_exclusive,
-            )
-
-    if missing_count == 0 and unverified_count == 0:
-        status = "complete"
-    elif record_count == 0:
-        status = "missing"
-    elif missing_count == 0 and verified_count == 0:
-        status = "unverified"
-    else:
-        status = "partial"
-    return {
-        "status": status,
-        "interval_semantics": EPOCH_WINDOW_INTERVAL_SEMANTICS,
-        "epoch_count": len(provenance),
-        "reported_count": reported_count,
-        "available_count": verified_count,
-        "record_count": record_count,
-        "records_emitted": len(records),
-        "records_truncated": len(records) < record_count,
-        "records_sha256": records_digest.hexdigest(),
-        "verified_count": verified_count,
-        "unverified_count": unverified_count,
-        "unverified_indices": unverified_indices,
-        "unverified_indices_truncated": len(unverified_indices) < unverified_count,
-        "missing_count": missing_count,
-        "missing_indices": missing_indices,
-        "missing_indices_truncated": len(missing_indices) < missing_count,
-        "source_count": len(source_ids),
-        "source_summaries": list(source_summaries.values()),
-        "source_summaries_truncated": len(source_summaries) < len(source_ids),
-        "atomic_group_summary": _atomic_group_summary(dataset, len(provenance)),
-        "records": records,
-    }
-
-
-def _atomic_group_summary(dataset: Dataset, epoch_count: int) -> dict[str, Any]:
-    getter = getattr(dataset.get_epoch_data(), "get_trial_group_list", None)
-    if not callable(getter):
-        return {"available": False, "reason": "group provenance unavailable"}
-    try:
-        groups = np.asarray(getter(), dtype=np.int64)
-    except Exception:
-        logger.debug("Failed to read atomic trial groups", exc_info=True)
-        return {"available": False, "reason": "group provenance unreadable"}
-    if groups.ndim != 1 or len(groups) != epoch_count:
-        return {"available": False, "reason": "group count mismatch"}
-    _, counts = np.unique(groups, return_counts=True)
-    group_digest = sha256(groups.astype("<i8", copy=False).tobytes()).hexdigest()
-    return {
-        "available": True,
-        "group_count": len(counts),
-        "non_singleton_group_count": int(np.sum(counts > 1)),
-        "largest_group_size": int(counts.max()) if len(counts) else 0,
-        "group_ids_sha256": group_digest,
-    }
-
-
-def _trial_selection_evidence_artifact(dataset: Dataset) -> dict[str, Any]:
-    epoch_data = dataset.get_epoch_data()
-    getter = getattr(epoch_data, "get_trial_selection_evidence", None)
-    if not callable(getter):
-        return {
-            "record_count": 0,
-            "records_emitted": 0,
-            "records_truncated": False,
-            "records": [],
-        }
-    try:
-        raw_records = getter()
-        all_records = list(raw_records) if isinstance(raw_records, Iterable) else []
-    except Exception:
-        logger.debug("Failed to read trial selection evidence", exc_info=True)
-        all_records = []
-    dropped_getter = getattr(
-        epoch_data,
-        "get_trial_selection_evidence_dropped",
-        None,
-    )
-    raw_dropped = dropped_getter() if callable(dropped_getter) else 0
-    if isinstance(raw_dropped, int):
-        dropped = raw_dropped
-    elif isinstance(raw_dropped, np.integer):
-        dropped = int(cast(np.integer[Any], raw_dropped).item())
-    else:
-        dropped = 0
-    records = all_records[-MAX_SELECTION_EVIDENCE_RECORDS:]
-    record_count = dropped + len(all_records)
-    return {
-        "record_count": record_count,
-        "records_emitted": len(records),
-        "records_truncated": len(records) < record_count,
-        "records": records,
-    }
 
 
 def _epoch_window_leakage_issues(

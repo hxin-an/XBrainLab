@@ -264,8 +264,8 @@ agent tool-call benchmark 有可重跑的 EEG 工作環境，但不是 thesis �
 - environment info：Python、platform、XBrainLab commit、torch/cuda/mne 版本。
 
 目前 seed helper 在 `XBrainLab/backend/utils/seed.py`，training record 會保存 seed 與 random
-state。正式 thesis runner 仍需要把 commit hash、dependency versions 和 split artifact 一起
-寫入同一個 artifact directory。
+state。未來另行建立正式 thesis runner 時，仍須將 commit hash、dependency versions 和
+可重建的 split membership 證據寫入同一個 artifact directory。
 
 ## EEG Pipeline Metrics
 
@@ -290,79 +290,30 @@ one-vs-rest 設定。所有 metrics 要同時保存 machine-readable JSON 和 hu
 - ablation：沒有 agent assistance 的 manual workflow vs agent-assisted workflow，僅用於工具使用效率
   或 workflow completion，不得混入 EEG classification metrics。
 
-baseline 必須使用同一份 split artifact，不可各自重新抽 split。
+baseline 必須使用相同且已記錄的 split membership，不可各自重新抽 split。
 
-## EEG Split Artifact Schema
+## EEG Split Evidence 與 Rerun 限制
 
-split artifact schema 版本目前是 `1`，JSON schema 放在：
+目前產品在 dataset preview／materialization 使用
+`XBrainLab/backend/dataset/split_audit.py` 的實際資料洩漏與來源座標檢查。
+未使用的 thesis split artifact builder／writer、v1 JSON schema 與專屬 validator CLI 已退役；
+目前沒有對應的產品 export／artifact rerun 入口，也不能將舊 validator 通過當作完整
+schema、provenance 或可重現性證據。既有結果檔讀取與 dataset runtime audit 不受此退役影響。
 
-```text
-docs/validation/split_artifact_schema.json
-```
+若未來另行建立 EEG pipeline experiment，仍須保存並驗證以下證據；這是研究要求，
+不是目前已實作的輸出格式或命令：
 
-code entrypoint：
+- 固定資料來源／identity、protocol、seed、repeat、train／validation／test membership，
+  並以實際資料重驗 class、group 與 epoch-window leakage。
+- 固定 preprocessing、model、optimizer 與環境版本，保存 metrics、log 與模型摘要。
+- 重建相同 membership 後重跑 train／evaluate，比對結果及 source／environment identity。
 
-```text
-XBrainLab/backend/dataset/split_audit.py
-scripts/dev/validate_split_artifact.py
-```
-
-最小 artifact 欄位：
-
-- `schema_version`
-- `protocol`
-- `seed`
-- `repeat`
-- `audit`
-- `environment`
-- `config`
-- `datasets[].indices.train`
-- `datasets[].indices.validation`
-- `datasets[].indices.test`
-- `datasets[].counts`
-- `datasets[].groups`
-
-審計命令：
+未閉合上述 provenance、audit 與重跑證據的 EEG experiment，不得宣稱已具可重現的
+thesis domain-workflow evidence。Runtime focused regression 可用：
 
 ```bash
-poetry run -- python scripts/dev/validate_split_artifact.py build/dev-artifacts/thesis/splits.json
+poetry run -- pytest --capture=sys tests/unit/backend/dataset/test_split_audit.py -q
 ```
-
-目前相關 tests：
-
-```bash
-poetry run -- pytest --capture=sys \
-  tests/unit/backend/dataset/test_split_audit.py \
-  tests/unit/scripts/test_validate_split_artifact.py -q
-```
-
-## Rerun 與 Audit
-
-EEG pipeline experiment artifact directory 應長成：
-
-```text
-build/dev-artifacts/thesis/<run_id>/
-  split_artifact.json
-  config.json
-  metrics.json
-  metrics.md
-  confusion_matrix.csv
-  train.log
-  model_summary.txt
-  environment.json
-```
-
-重跑流程：
-
-1. 讀 `split_artifact.json`，驗證 schema 和 audit。
-2. 讀 `config.json`，固定 seed、dataset path、preprocess、model、optimizer。
-3. 重建同一 train/validation/test indices。
-4. 重跑 train/evaluate。
-5. 比對 metrics schema、run log、model summary 和 environment。
-
-如果 split artifact audit 失敗，該 EEG pipeline run 不能被引用為 domain workflow evidence。
-
-## Current Gap
 
 舊121-case deterministic／primary／fallback artifacts屬superseded provenance，不能作為Stable v2
 或thesis-candidate current evidence。Current產品層只有v12 separated evaluator evidence：50-case core、

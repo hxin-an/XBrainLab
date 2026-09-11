@@ -15,14 +15,10 @@ from XBrainLab.backend.dataset import (
     Dataset,
     DataSplittingConfig,
     Epochs,
-    EpochWindowProvenance,
     TrainingType,
 )
 from XBrainLab.backend.dataset.split_audit import (
     audit_dataset_splits,
-    build_split_artifact,
-    split_indices,
-    write_split_artifact,
 )
 from XBrainLab.backend.load_data import Raw
 
@@ -132,20 +128,6 @@ def _recording_window_dataset(
     )
 
 
-def test_split_indices_are_json_ready():
-    dataset = _dataset(
-        [True, False, True],
-        [False, True, False],
-        [False, False, False],
-    )
-
-    assert split_indices(dataset) == {
-        "train": [0, 2],
-        "validation": [1],
-        "test": [],
-    }
-
-
 def test_audit_dataset_splits_detects_overlap():
     dataset = _dataset(
         [True, True, False],
@@ -211,31 +193,28 @@ def test_trial_wise_audit_rejects_cross_split_overlapping_epoch_windows():
     assert issue.indices == [0, 1]
 
 
-def test_overlap_diagnostics_and_artifact_do_not_publish_source_paths(tmp_path):
+def test_overlap_diagnostics_do_not_publish_source_paths(tmp_path):
     source_path = tmp_path / "participant-007-private-source.fif"
     dataset = _recording_window_dataset(
         [100, 150, 400],
         filepath=str(source_path),
     )
 
-    payload = build_split_artifact([dataset], protocol="trial-wise")
+    payload = audit_dataset_splits([dataset], protocol="trial-wise").to_dict()
     serialized = json.dumps(payload, sort_keys=True)
 
     assert str(source_path) not in serialized
     assert source_path.name not in serialized
     issue = next(
         issue
-        for issue in payload["audit"]["issues"]
+        for issue in payload["issues"]
         if issue["details"].get("kind") == "epoch_window_overlap"
     )
     source_id = issue["details"]["overlaps"][0]["source_recording_id"]
     assert re.fullmatch(r"path-sha256:[0-9a-f]{64}", source_id)
-    evidence = payload["datasets"][0]["epoch_window_provenance"]
-    assert evidence["records"][0]["source_recording_id"] == source_id
-    assert evidence["source_summaries"][0]["source_recording_id"] == source_id
 
 
-def test_artifact_drops_legacy_nonopaque_source_paths(tmp_path):
+def test_audit_rejects_legacy_nonopaque_source_paths(tmp_path):
     source_path = tmp_path / "participant-legacy-private-source.fif"
     dataset = _recording_window_dataset([100, 250, 400])
     epoch_data = dataset.get_epoch_data()
@@ -244,18 +223,15 @@ def test_artifact_drops_legacy_nonopaque_source_paths(tmp_path):
         for item in epoch_data.get_epoch_window_provenance()
     )
 
-    payload = build_split_artifact([dataset], protocol="trial-wise")
+    payload = audit_dataset_splits([dataset], protocol="trial-wise").to_dict()
     serialized = json.dumps(payload, sort_keys=True)
-    evidence = payload["datasets"][0]["epoch_window_provenance"]
 
     assert str(source_path) not in serialized
     assert source_path.name not in serialized
-    assert evidence["record_count"] == 0
-    assert evidence["missing_count"] == 3
-    assert evidence["records"] == []
+    assert payload["ok"] is False
     warning = next(
         issue
-        for issue in payload["audit"]["issues"]
+        for issue in payload["issues"]
         if issue["details"].get("kind") == "missing_epoch_window_provenance"
     )
     assert warning["details"]["missing_count"] == 3
@@ -451,11 +427,6 @@ def test_trial_wise_audit_blocks_unverified_epoch_array_coordinates():
     assert issue.details["missing_count"] == 0
     assert issue.details["unverified_count"] == 6
     assert issue.details["unavailable_count"] == 6
-    evidence = build_split_artifact([dataset])["datasets"][0]["epoch_window_provenance"]
-    assert evidence["status"] == "unverified"
-    assert evidence["record_count"] == 6
-    assert evidence["verified_count"] == 0
-    assert evidence["unverified_count"] == 6
 
 
 def test_subject_wise_audit_keeps_unknown_coordinates_non_blocking() -> None:
@@ -475,78 +446,6 @@ def test_subject_wise_audit_keeps_unknown_coordinates_non_blocking() -> None:
     assert result.ok is True
     assert issue.severity == "warning"
     assert issue.details["protocol"] == "subject-wise"
-
-
-def test_split_artifact_contains_compact_epoch_window_evidence():
-    dataset = _recording_window_dataset([100, 250, 400])
-
-    payload = build_split_artifact([dataset], protocol="trial-wise")
-
-    evidence = payload["datasets"][0]["epoch_window_provenance"]
-    assert evidence["status"] == "complete"
-    assert evidence["interval_semantics"] == "half-open [start, end) samples"
-    assert evidence["available_count"] == 3
-    assert evidence["missing_count"] == 0
-    assert evidence["records"][0]["epoch_index"] == 0
-    assert evidence["records"][0]["event_sample"] == 100
-    assert evidence["records"][0]["window_start_sample"] == 100
-    assert evidence["records"][0]["window_end_sample_exclusive"] == 200
-    assert "data" not in evidence
-    assert "data" not in evidence["records"][0]
-
-
-def test_split_artifact_caps_large_epoch_provenance_records():
-    epoch_count = 5_000
-    provenance = tuple(
-        EpochWindowProvenance(
-            source_recording_id=f"path-sha256:{'a' * 64}",
-            event_sample=index * 100,
-            window_start_sample=index * 100,
-            window_end_sample_exclusive=(index + 1) * 100,
-            source_sfreq=100.0,
-            epoch_sfreq=100.0,
-            tmin_seconds=0.0,
-            tmax_seconds=0.99,
-            source_coordinates_verified=True,
-        )
-        for index in range(epoch_count)
-    )
-    labels = np.arange(epoch_count) % 2
-    epoch_data = SimpleNamespace(
-        get_subject_list_by_mask=lambda mask: np.zeros(epoch_count, dtype=int)[mask],
-        get_session_list_by_mask=lambda mask: np.zeros(epoch_count, dtype=int)[mask],
-        get_label_list_by_mask=lambda mask: labels[mask],
-        get_epoch_window_provenance=lambda: provenance,
-        get_trial_group_list=lambda: np.arange(epoch_count),
-        get_trial_selection_evidence=list,
-    )
-    train_mask = np.zeros(epoch_count, dtype=bool)
-    val_mask = np.zeros(epoch_count, dtype=bool)
-    test_mask = np.zeros(epoch_count, dtype=bool)
-    train_mask[:3_000] = True
-    val_mask[3_000:4_000] = True
-    test_mask[4_000:] = True
-    dataset = SimpleNamespace(
-        train_mask=train_mask,
-        val_mask=val_mask,
-        test_mask=test_mask,
-        is_selected=True,
-        get_name=lambda: "large-split",
-        get_train_len=lambda: int(train_mask.sum()),
-        get_val_len=lambda: int(val_mask.sum()),
-        get_test_len=lambda: int(test_mask.sum()),
-        get_epoch_data=lambda: epoch_data,
-    )
-
-    evidence = build_split_artifact([cast(Dataset, dataset)])["datasets"][0][
-        "epoch_window_provenance"
-    ]
-
-    assert evidence["record_count"] == epoch_count
-    assert evidence["records_emitted"] <= 100
-    assert len(evidence["records"]) == evidence["records_emitted"]
-    assert evidence["records_truncated"] is True
-    assert evidence["records_sha256"]
 
 
 def test_audit_dataset_splits_blocks_missing_class_coverage():
@@ -716,34 +615,3 @@ def test_pair_scoped_trial_protocol_rejects_atomic_group_leakage():
         "trial groups overlap between train and test" in issue.message
         for issue in result.issues
     )
-
-
-def test_build_and_write_split_artifact(tmp_path):
-    dataset = _dataset(
-        [True, True, False, False, False, False],
-        [False, False, True, True, False, False],
-        [False, False, False, False, True, True],
-    )
-    artifact_path = tmp_path / "splits.json"
-
-    payload = write_split_artifact(
-        [dataset],
-        artifact_path,
-        seed=7,
-        repeat=1,
-        protocol="subject-wise",
-        extra_config={"split_unit": "subject"},
-    )
-
-    assert artifact_path.exists()
-    assert payload == build_split_artifact(
-        [dataset],
-        seed=7,
-        repeat=1,
-        protocol="subject-wise",
-        extra_config={"split_unit": "subject"},
-    )
-    assert payload["schema_version"] == 1
-    assert payload["audit"]["ok"] is True
-    assert payload["datasets"][0]["indices"]["test"] == [4, 5]
-    assert payload["datasets"][0]["groups"]["train"]["subjects"] == [0]

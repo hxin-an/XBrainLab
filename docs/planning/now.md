@@ -148,6 +148,54 @@ after removing eight uncalled eval.py alias imports and one exclusive re-export 
 domain owner, three genuinely used record types, schema/hash/sealing/cancellation behavior and all
 negative ownership/import guards remain. Independent actualdiff/caller review and Ruff pass.
 Production-8, no owner added; old imports of those aliases now fail as explicitly disclosed.
+
+**Resumed5F/6G execution scope.** Re-read graphs confirm5F also owns the now-exclusive runtime port
+and TrainingManager submission-failure forwarder. Actual5F ceiling is five production files plus
+one native-stress script, not the historical three-file estimate; delete only scheduler/submission
+failure chain and exclusive fixtures, preserve command/target/cancel/terminal/delivery owners. Owner
+delta-1 scheduler, expected production deletion-only around350lines; no new module/class/receipt.
+Worker5F initially prepares only the declared graph; fresh baseline then migrated-test passing baseline
+must precede source retirement. Worker6G owns disjoint tools/coordinator and exclusive tests/guard
+after fresh18-tool payload digest and surface/realflow baseline. Main owns6E/plan/commits and actual
+diff review. Both workers stay read-only during hooks; no overlapping architecture guard writer.
+For6G use agent-toolcall-designer checks: runtime compatibility removal only, same backend admission,
+exact names/order/descriptions/schema/confirmation and no altered public membership or model prompt.
+Fresh5F baseline585pass45.19s. Concurrent6G baseline collected340, with201pass/139setup errors after
+its shared pytest temporary root disappeared while5F finished; this is environment interference,
+not a product RED or valid baseline. Both sessions ended; rerun6G with a unique per-run
+XBRAINLAB_TEST_TMPDIR and use distinct roots for every concurrent pytest job from now on. No gate
+assertion/timeout/retention rule changed. Initial18-tool digest169558e0df13cd02d242d8949628f1d30c299e427d9172d07367d505747a9e42
+was confirmed by the isolated rerun:340pass/6warnings73.65s, after which6G source retirement began.
+5F migrated retained tests566pass/640warnings37.66s against unchanged production before scheduler
+deletion.6E fresh91pass1.24s, retained87pass0.85s; all seven full prompt hashes match before/after,
+and pre-deletion sentinel substitution changed none. Review/lint and small commits follow.
+
+**Resumed split-artifact retirement.** The authorized old output/CLI/schema chain has no live
+producer or configured/dynamic caller. Remove build/write/split_indices convenience APIs and exports,
+their exclusive group/provenance/selection renderers/constants, validator CLI/schema/direct tests.
+Keep audit_dataset_splits, materialization_digest, preview rows, epoch-window validation, diagnostic
+bounds/privacy, group/class leakage, actual dataset publication/receipt/rollback and stored data.
+Two production files, one script and related tests/docs; expected production around-260LOC, no owner
+added. First baseline direct audit/validator plus dataset generation and split application boundary;
+migrate privacy/invalid-source tests to actual audit.to_dict() and keep their assertions against the
+live diagnostic owner, then verify unchanged production before deleting artifact-only tests/source.
+Truth-sync thesis protocol to label future reproducible EEG evidence requirements as requirements,
+not an existing export/rerun product capability. No replacement schema/exporter or scientific claim.
+Independent actual-diff/data review, retained focused tests and doc links required before commit.
+Result:48baseline4.57s,44migrated-on-original4.29s,42retained-after4.42s; deleted four artifact-only
+domain cases and two validator-only cases, preserved actual diagnostic privacy/invalid-source tests.
+Production-258, script-123, no owner added. Independent review approved runtime/test deletion and
+requested one adjacent future-runner wording correction, now applied; no scientific evidence claim.
+
+**Resumed retirements verified.**5F retained566pass/640warnings35.98s after source deletion; independent
+lifecycle review confirms explicit target, cancellation, staging/publication, retry/discard and
+shutdown remain. Production-359 and script-3; one dormant owner removed.6G retained332pass/6warnings
+70.42s with the exact same18-tool digest; independent actual routing review approved. Its architecture
+guard/test deletion was policy-rejected, so those files were restored intact and remain a safety
+check against future legacy-adapter reintroduction. No retry or indirect removal; eight exclusive
+adapter cases retired.6E independent actual-diff review approved; production-104, four exclusive
+prose cases retired, seven full prompt digests unchanged. All20 changed retained Python files pass
+Ruff after formatting/import cleanup. These are focused results, not final same-source gates.
 Actual Git inventory1264 tracked files now all have dispositions; the audit has1299 unique rows,
 including35 retired paths for traceability. Static/binary/generated groups are not line-by-line source
 review claims. Forty-two stale candidate rows were reconciled to actual stage commits/callers and one
@@ -157,8 +205,8 @@ At product/test source bf231298, installed Basedpyright1.39.2 observes0 diagnost
 unchanged0 baseline; whole Ruff check passes and1111files are formatted. Current test delta is
 net-1216 (the previously reported-1266 was before the50-line6AH regression); production/scripts stay
 net-7391/-1099. No full coverage, same-head CI, source-diverse, native/model or handoff PASS claimed.
-Next: obtain the already-requested explicit four visible-UI repairs and five retirement-group decisions
-(interval onset, floating remap label, zero metrics, device adapter;5E/5F/6E/6G/split artifacts), resolve
+Next: complete the now-authorized5F/6E/6G/split-artifact retirements after the four verified visible
+repairs and5E commits; resolve
 9O metadata-only lock refresh and8J first-paint evidence, then final source freeze/gates. Do not repeat
 rejected deletions indirectly, reopen compaction or ask for an intermediate merge/manual test.
 
