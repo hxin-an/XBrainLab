@@ -83,7 +83,7 @@ product evidence claim boundary。讀本頁時先看下方「目前距離目標�
 
 | File | 用途 |
 | --- | --- |
-| [backend.md](backend.md) | backend command spine、controllers、legacy removal 詳細現況。 |
+| [backend.md](backend.md) | backend command spine、state/publication、data/result、artifact/privacy current boundary。 |
 | [ui.md](ui.md) | PyQt panels、refresh、observer boundary。 |
 | [agent.md](agent.md) | in-app assistant、local-only runtime、tool calls。 |
 | [data_pipeline.md](data_pipeline.md) | EEG import / preprocess / dataset / training pipeline。 |

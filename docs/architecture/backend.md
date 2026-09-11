@@ -1,866 +1,172 @@
-# Backend 目前架構
+# Backend architecture
 
-最後更新：`2026-09-09`
+最後更新：`2026-09-11`
 
-## 快速讀法
+這份文件說明目前 source 的 backend 邊界與責任，不是功能清單、歷史改造紀錄或本次施工的
+驗收紀錄。可對外宣稱的產品能力以 [current.md](../current.md) 為準；正在施工的範圍、
+next step 與 stop condition 以 [planning/now.md](../planning/now.md) 為準；exact-source
+evidence、CI 與手測的含義以 [validation README](../validation/README.md) 為準。
 
-如果只想知道現在 backend 離 target 多遠，先看這裡；下面的「驗證範圍與歷史脈絡」
-保留重構時間線，但不是讀本頁的第一入口。
+## Boundary in short
 
-| 問題 | 目前答案 |
+```text
+Desktop UI / Local Assistant / approved scripts
+                 |
+          typed Command and query API
+                 |
+ ApplicationService: admission, command envelope, lifecycle, publication
+                 |
+ Study-owned domain ports and focused application services
+                 |
+ dataset, preprocessing, split/training, results and visualization state
+```
+
+`ApplicationService` 是 GUI、Assistant 與受支援 scripts 共用的產品 command spine。它不是第二
+個 dataset 或 training state owner：`Study` 的 domain ports 仍保存可變資料與 domain operations，
+而 application layer 決定 command 是否可進入、如何以同一 error/result envelope 回覆，以及何時
+把一致的 view publication 交給外界。lower-level `Study`/manager tests 可以直接建構 domain
+objects，但產品 UI mutation 不能繞過這條 spine。
+
+產品入口不得建立自己的 capability policy、confirmation authority、async lifecycle 或可變 state。
+Assistant 的 tool contract 也只能經過相同 command/query boundary；已退役的 MCP executable
+surface 不在 current architecture 內。
+
+## Current responsibilities
+
+| Area | Current owner and boundary |
 | --- | --- |
-| backend 主入口是什麼？ | `ApplicationService / Command API`。UI high-value actions、assistant、headless scripts 都應從這裡進 backend。 |
-| `BackendFacade` 還是不是架構的一部分？ | 不是。module 已刪除，architecture guard 會擋 product runtime 和 product-success tests 重新 import / construct。 |
-| `ApplicationService` 是不是 god object？ | 已從早期 god-object 形狀拆成 focused services；目前主要負責 dispatch、capability / confirmation gate、state/result envelope。 |
-| UI 是否完全不碰 controllers？ | Product MainWindow wiring 不使用 controller bundle；controllers 仍存在於 outer adapters、standalone/mock compatibility 與少數 lower-level utilities。 |
-| product success 應該怎麼證明？ | 用 command result、`QueryStateCommand` / state snapshot、typed diagnostics、UI-visible state、exact event/epoch/split/history evidence；不要用 facade、controller compatibility、direct mutable `Study` state、generic non-empty / no-crash assertion。 |
-| UI 和 assistant 同時下 command 怎麼辦？ | mutation lock 由 `Study` 擁有，只包 admission / committed-state transition。已遷移的 import、preprocess 與 epoch 重工作先在 detached state 準備，再以 generation / revision / content guard 短暫取得 lock 提交；readers 在 mutation 期間立即回最後一份已驗證 publication。 |
-| 長工作如何取消與關閉？ | `OwnedWorkRegistry` 在 command lock 外配置 operation ID，保存 kind / phase / stage / progress 與 cancel intent；UI 的 Cancel、Training Stop 和 close fencing 先走 control path，再由 cooperative checkpoints 或 runtime owner 收斂 terminal receipt。 |
-
-## Current Target Gap
-
-| Area | 已接近 target | 剩餘距離 |
-| --- | --- | --- |
-| Command spine | load / preprocess / epoch / split specification / training-time materialization / train / evaluate / visualize / saliency / reset / Data Interpretation 都有 command or query truth。 | 要持續防止新 wrapper、direct manager mutation、direct service bypass 回流；retained optional adapters 不是 active roadmap。 |
-| Focused services | Data Interpretation、analysis、training、dataset generation、lifecycle、data table、preprocess、state/query 都已從 `ApplicationService` 拆出；training resource preview 與 BIDS montage preparation 各有 application-owned coordinator，saliency method policy 由 `backend.application.saliency_policy` 共用。Training preview 使用 service-owned registry，不另建 coordinator-local operation truth。 | focused service 間仍要靠 tests/guard 維持邊界，避免把 orchestration、UI policy 或 controller/context 探測塞回單一檔。 |
-| BIDS discovery | `BidsDatasetIndex` 是 formal BIDS root、nested-root resolution、subject catalog、selected recordings 與 sidecar inventory 的共用 immutable source；session cache / process registry 只重用仍 current 的 bounded index。 | 不是 full BIDS inheritance / validator，也不替使用者決定 event/class semantics。 |
-| Work ownership | Import review/apply、preprocess、epoch、interactive training、evaluation、explicit saliency 與 render 都可綁一個 backend operation identity；重 CPU/IO preparation 使用 checkpoint，commit 前再驗證 current generation。 | 第三方 loader / model call 內部不一定有細粒度 checkpoint；多資料集真人流程與 Windows native close 尚未完成。 |
-| Evaluation / training preview lifecycle | Model Summary 在既有 async `EvaluateCommand` operation 內，對 plan/run collection、input metadata/model construction、input shape、torchinfo/fallback 和 publication 放 cooperative checkpoints。Training preview 對 estimator/model/GPU/batch refinement 使用同一 service registry，identical clients 共用 single-flight operation。 | Cancellation 是 cooperative；未返回的 third-party model、torchinfo 或 GPU query 不能被 Python checkpoint 強制中斷。 |
-| State truth | `StateSnapshotService` 建立 snapshot；`ApplicationViewPublication` 原子綁定 snapshot 與 capability policy。一般 `QueryStateCommand(state)`、product UI readers、assistant、headless preflight 共用這個 view。背景 resource / montage 結果只有在 generation 仍 current 時才可更新 publication。 | Refresh single-truth 仍需獨立 exact-commit source guard與 product workflow evidence；少數 lower-level tests 的 direct `Study` access也不能當 product smoke。 |
-| Result boundary | Product `CommandResult` 只包含 detached state、changed-state、typed error 與 JSON-safe diagnostics；`runtime` / `local_payload` fields 和 command `include_objects` opt-in 已物理移除。Dataset、Preprocess、training history、Evaluation 與 Visualization 使用 generation-bound detached rows/publications。 | 少數 lower-level presentation utilities 仍直接接收 domain objects；它們不能重新接回 product command result，也不能當 ApplicationService workflow evidence。 |
-| UI boundary | Product action method 不可直接呼叫 controller compatibility helper；MainWindow 以 typed ports materialize 五個 panels，Training progress 由 narrow transient port 傳遞。 | Standalone/mock compatibility signatures 仍存在；不是 repo-wide controller removal，refresh exact closure 也需獨立驗證。 |
-| Evidence | exact-evidence stack 已替換多個 generic non-empty product smokes。 | human Windows desktop acceptance 和長時間 local-model session 仍缺人工 evidence。 |
-
-## 驗證範圍與歷史脈絡
-
-狀態：`partially-verified`
-
-這份文件已對照目前 source code：
-
-- `XBrainLab/backend/application/*.py`
-- `XBrainLab/backend/runtime.py`
-- `XBrainLab/backend/study.py`
-- `XBrainLab/backend/data_manager.py`
-- `XBrainLab/backend/training_manager.py`
-- `XBrainLab/backend/controller/*.py`
-- `XBrainLab/ui/main_window.py`
-- `XBrainLab/llm/tools/real/*.py`
-- `XBrainLab/llm/pipeline_state.py`
-
-目前的 authoritative mutation / publication boundary 是 `ApplicationService`。它組合
-Study-owned domain ports，負責 command admission、confirmation、owned-work 與 publication；
-領域處理由 Data Interpretation、preprocess、dataset generation、training、analysis、lifecycle
-和 data-table services 承接。這不代表大型 service 已沒有過度耦合：跨 owner 的 transaction、
-resource admission 與非同步完成順序仍需實際 workflow evidence，不能只以拆檔數宣稱乾淨。
-
-Data Interpretation 的 scan、candidate、review、recipe、label carrier 與 session state 有各自
-模組；`DataInterpretationCommandService` 協調 review/apply，`DataInterpretationApplyService`
-套用已審查的 metadata / labels。UI 與 headless 共用 `data_interpretation_choice_schema.py`，
-包含檔案 remap、carrier choices 與 metadata overrides，不另建第二份 admission policy。
-
-`LoadDataCommand`、`AttachLabelsCommand`、`PreviewLabelImportCommand`、`ImportLabelsCommand`
-及其 compatibility service 已退役。新匯入使用 scan/review/validate/apply；既有 recipe 的
-`label_imports` 仍可 reload、重新審查並 apply。內部 `LabelImportPlan` 仍服務 canonical apply
-的 recipe record，不是 post-load public mutation 入口。舊命令不能藉 headless opt-in 恢復。
-
-以下保留的日期段落只提供演進背景，不作 active dispatch 或新的驗收證據。
-
-2026-05-11 legacy command spine cleanup removed `BackendFacade` from product runtime
-packages. `get_application_service(study)` now owns Study-scoped `ApplicationService`
-reuse, and UI capability helpers, AgentManager, LLMController, real agent tools,
-and current dev walkthrough scripts enter the backend through
-`ApplicationService / Command API` directly. 2026-05-12 physical removal then deleted
-`XBrainLab/backend/facade.py` and the facade compatibility-only test files; architecture
-compliance now rejects any test that imports or constructs `BackendFacade`.
-
-2026-05-12 zero-legacy runtime cleanup tightened the evidence boundary: product-success
-IO and pipeline integration tests now execute `ApplicationService` command sequences
-instead of `BackendFacade` or direct `Study.train(...)`, and architecture compliance
-rejects `BackendFacade` usage in product-success integration suites. The dataset split
-blocker was traced to the Data Splitting dialog defaulting test/validation splitters to
-`Disable`; the dialog now defaults both to trial splits and an ApplicationService
-regression proves generated train/val/test splits unlock `TRAIN` readiness. `TrainCommand`
-also now passes `append` and `interactive` through `TrainingCommandService` to
-`TrainingStateService`, so synchronous test/product smoke training does not bypass the
-command contract.
-
-2026-07-11 training-selection hardening separated checkpoint selection from final test
-evaluation. `EpochRunner` accepts only train and validation loaders; validation loss,
-validation accuracy, validation AUC, or last epoch select the checkpoint. The test loader is
-used once only after that choice is fixed. Undefined AUC is represented as `None` and skipped by
-best-model tracking rather than being converted to a ranking value of `0.0`. Final `EvalRecord`
-also stores whether its data came from test, validation, or training fallback. Saliency settings
-may be saved before training, but recomputation is restricted to finished records so it cannot
-open the test split before checkpoint selection is complete.
-
-After checkpoint selection, each completed run persists separate inference records for every
-non-empty `training`, `validation`, and `test` loader. `EvaluationRenderRequest` binds one exact
-plan/run-or-aggregate/split identity. A single run never reads another run's predictions, and an
-aggregate is available only when every completed run has the requested split; aggregation pools
-only those same-split predictions before computing the existing metrics. The legacy `eval`
-artifact remains the primary held-out record for compatibility and saliency, while additional
-records use split-qualified artifacts.
-
-`TrainRecord` owns primary (`get_eval_record`), available-split, exact stored-only,
-requested-split and saliency result queries. Application analysis, Evaluation render,
-state and history consume these queries instead of interpreting the raw storage map.
-History requires an exact saved test record; Evaluation may fall back to a matching
-primary. Loading a base `eval` plus a same-split sidecar keeps the base primary and the
-sidecar named result distinct. This changes no artifact format or publication owner.
-
-2026-07-11 non-blocking view/lifecycle hardening added `ApplicationViewPublication` as the
-shared read model for UI, assistant, and headless preflight. A reader opportunistically rebuilds
-and atomically publishes state/capabilities when the Study command lock is idle, so background
-training completion is visible. If a mutation owns the lock, the reader returns the last verified
-generation immediately. Mutable object-bearing queries remain serialized. A mutation is no longer
-reported successful when its post-state cannot be verified; the result fails closed and records that
-the command effect may already have applied.
-
-Follow-up command-spine hardening on 2026-05-12 fixed three product-runtime contract
-gaps. UI command execution now suppresses controller observer-driven refresh while
-`ApplicationService.execute(...)` is running, so synchronous controller notifications wait for
-the returned `CommandResult.changed_state` refresh scope instead of causing a stale duplicate UI
-refresh first. Read-only commands that product UI may call with `refresh=False`
-(`QueryStateCommand`, `EvaluateCommand`, `VisualizeCommand`, and no-parameter
-`SaliencyCommand`) no longer clear `last_error`, keeping those queries state-preserving.
-Unsupported command objects passed to `ApplicationService.execute(...)` now return a structured
-`unsupported_command` failure `CommandResult` instead of leaking a raw Python exception. The
-architecture guard now also rejects UI code that bypasses `execute_application_command()` by
-calling `get_application_service(...).execute(...)` directly.
-
-2026-07-12 pipeline-stage ownership cleanup removed the unused `Study.pipeline_stage` property.
-`compute_pipeline_stage(...)` accepts only a caller-supplied `ApplicationViewPublication`; a
-missing, invalid, or unknown publication fails closed to `EMPTY` without importing or calling the
-application runtime. The preprocess epoch dialog now reads `epoch_handoff` through
-`ApplicationUiRuntime.get_view_publication()` instead of inspecting `Study._application_service` or
-calling blocking `get_state()`. Architecture compliance protects the private service cache,
-`Study -> application.runtime` direction, and the no-service-locator pipeline-stage boundary.
-
-## 一句話架構
-
-XBrainLab backend 目前是以 `Study` 作為中心狀態容器，`DataManager` 和
-`TrainingManager` 分別承接資料生命週期與訓練生命週期。Product UI、assistant 和 current
-headless scripts 透過 `ApplicationService / Command API` 進入同一個 command layer；controllers
-只保留為外層 standalone/test compatibility adapters。
-
-## 實際分層
-
-```text
-PyQt product panels
-  |
-  +--> narrow query / publication / action / transient ports
-  |       |
-  |       +--> ApplicationService.execute(...) for import / label / metadata / preprocess / epoch / split / query / train / reset / montage
-  |       +--> revisioned ApplicationViewPublication for state render
-  |       +--> TrainingTransientProgressPort for progress ticks only
-  |
-  v
-Study
-  |
-  +-- DataManager
-  |     +-- loaded_data_list
-  |     +-- preprocessed_data_list
-  |     +-- epoch_data
-  |     +-- datasets
-  |
-  +-- TrainingManager
-        +-- model_holder
-        +-- training_option
-        +-- trainer
-        +-- saliency_params
-
-Assistant real tools / headless scripts
-  |
-  v
-ApplicationService / Command API
-  |
-  +--> DataInterpretationCommandService
-  |       +--> scanner / candidate builder / review service / recipe state
-  |       +--> DataInterpretationSessionState for lifecycle stores / snapshot truth
-  |       +--> DataInterpretationApplyService
-  |               +--> reviewed metadata apply / reviewed label carrier apply
-  |
-  +--> AnalysisCommandService
-  |       +--> evaluation summary / visualization readiness / saliency setup
-  |
-  +--> BidsMontagePreparationCoordinator
-  |       +--> BIDS/manual geometry lifecycle; ApplicationService-owned command projection
-  |
-  +--> TrainingCommandService
-  |       +--> model config / training option config / train-stop lifecycle / history cleanup
-  |
-  +--> DatasetGenerationCommandService
-  |       +--> saved split specification / deferred materialization / split audit / rollback / dataset cleanup
-  |
-  +--> LifecycleCommandService
-  |       +--> reset preprocess / reset session / new session / dependent-state cleanup
-  |
-  +--> DataTableCommandService
-  |       +--> metadata update / smart parse / remove files
-  |
-  +--> PreprocessCommandService
-  |       +--> preprocessing operations / create_epoch
-  |
-  +--> StateSnapshotService / QueryStateCommandService
-          +--> state snapshot assembly / query_state diagnostics
-  |
-  v
-Study-owned manager/domain ports
-plus detached TrainingProjectionReadPort for Evaluation catalog/render
-
-Headless automation
-  |
-  v
-backend.application.automation
-  |
-  v
-ApplicationService.execute(...)
-
-UI / Agent readiness decisions
-  |
-  v
-ApplicationService.get_capabilities()
-```
-
-## 入口判斷
-
-### UI 入口
-
-UI 不是透過 `BackendFacade` 操作 backend。
-
-`XBrainLab/ui/main_window.py` 以 typed ports materialize 五個 product panels，不再建立或注入
-compatibility controller bundle。Dataset / Preprocess 使用 application publication/query port；
-Training 使用 query、publication、action 和 transient-progress ports；Evaluation /
-Visualization 使用 detached query/publication/action ports。State-changing render 由
-revisioned publication 提交，Training transient port 只承載 progress tick。
-
-Controllers 仍存在於 standalone/test compatibility constructors 和外層 adapters，但 real
-`Study` product context 若缺少 typed publication/capability 必須 fail closed，不可自行回到
-controller tree。
-
-第一批 UI-facing decision 已改讀 ApplicationService capability policy：
-
-- Dataset import readiness 先讀 Data Interpretation review state / capability，blocked reason 由 backend policy 產生。
-- Preprocess sidebar 的 filtering / resample / rereference / normalize readiness 先讀
-  `preprocess` capability。
-- Epoching readiness 先讀 `create_epoch` capability。
-- Training sidebar 的 Start Training enabled / tooltip / click-time guard 先讀 `train`
-  capability，不再自己重寫一套 dataset/model/training option 判斷。
-- Chat panel / AgentManager 的 compact backend diagnostics，以及 Preprocess epoch dialog 的
-  `epoch_handoff`，都讀同一份 `ApplicationViewPublication`；UI helper 不自行拼接 state / capability
-  或檢查 private service cache。
-
-同一批 high-value execution 也已接 service-backed command adapter：
-
-- Dataset import 使用 Data Interpretation scan/review/validate/apply；沒有 direct-load fallback。
-- Session reset command 仍受 confirmation gate 管控，但 Dataset 不提供 Reset Session button。
-- Preprocess filtering / resample / rereference / normalize 使用 `PreprocessCommand`。
-- Preprocess reset 使用 `ResetPreprocessCommand(confirmed=True)`；successful service result 不再
-  落回 `PreprocessController.reset_preprocess()`。
-- Channel selection 使用 `PreprocessCommand(SELECT_CHANNELS)`。
-- Epoching 使用 `CreateEpochCommand`。
-- Split / model / training setting dialog submit 使用 `SaveDatasetSplitCommand` /
-  `ConfigureTrainingCommand`。
-- Re-split 前清 datasets 使用 `ClearDatasetsCommand(confirmed=True)`；Clear History 會先做
-  user confirmation，再使用 `ClearTrainingHistoryCommand(confirmed=True)`。
-- Evaluation / visualization / saliency query 使用 `EvaluateCommand` /
-  `VisualizeCommand` / `SaliencyCommand`。
-- Training start / stop 使用 `TrainCommand` / `StopTrainingCommand`。
-- New session 使用 `NewSessionCommand`，有 state 時仍受 confirmation policy 管控。
-- Metadata table edit / batch edit 使用 `UpdateMetadataCommand`。
-- Smart parse 使用 `ApplySmartParseCommand`。
-- Remove files 使用 `RemoveFilesCommand`。
-- External labels 在 Data Import wizard 的 reviewed carrier choices 中套用；隱藏的 post-load label dialog 已移除。
-- Agent montage confirmation 使用 `ApplyMontageCommand`。
-- Info panel state refresh 使用 `QueryStateCommand(data_lists)`。
-
-UI 測試中的 mock `Study` 仍走 explicit controller compatibility，避免 unit test 用不完整 mock state
-誤觸真 ApplicationService policy。architecture guard 現在要求這些 fallback 只能出現在
-明確的 legacy / fallback helper，不可藏在 product action method 裡；MainWindow 的 panel
-bootstrap controller lookup 也只允許透過 named quarantine helper。
-
-仍保留 controller / UI-request path 包含：
-
-- mock / unit-test compatibility fallback。
-- montage picker 的 human-in-the-loop UI request；真正 apply 已走 `ApplyMontageCommand`。
-- panel read-only refresh / population，例如 tables、plots、combo box contents。
-
-### Assistant / headless 入口
-
-Assistant real tools、LLMController 和 dev walkthrough scripts 現在直接使用
-`get_application_service(study)` 或自己持有的 `ApplicationService` session。
-`BackendFacade` 不再存在；assistant / headless 入口不保留舊方法名稱或舊回傳形狀。
-
-`XBrainLab.backend.application.automation` 是 headless adapter。它輸出
-`ApplicationService` command schema 和 live capability / autonomy
-policy，並將 JSON payload 驗證後轉成 typed command 再呼叫 `ApplicationService.execute()`。
-Schema 只列目前正式命令；舊 direct-load / post-load label aliases 和 legacy opt-in 已移除。
-
-Historical boundary: MCP stdio／HTTP package、schema projection、CLI、capture與tests已從executable
-source退役；舊transport provenance只存在Git history。任何未來adapter都需要新的public
-contract／security decision，且仍必須delegate through
-`backend.application.automation`／`ApplicationService`，不得建立第二份state、capability或workflow truth。
-
-`ApplicationService` 現在直接組合同一個 `Study` 擁有的 focused product ports：
-
-- `dataset_state_service`
-- `preprocess_state_service`
-- `training_state_service`
-- `visualization_state_service`
-
-沒有 production/script/dynamic caller 的 `Study.get_controller` 與三個 EEG controller adapters
-已移除。`ChatController` 仍服務 Assistant conversation state，不在這個退役範圍。
-
-Evaluation product path 不建立 `EvaluationControllerAdapter`，而是由
-`TrainingProjectionReadPort` 產生 serializable catalog、generation-bound detached render
-publication 與 model summary。
-
-`XBrainLab/llm/tools/real/dataset_real.py`、`preprocess_real.py`、`training_real.py` 和
-`analysis_real.py` 也已改成 command-backed real tools。Mapped workflow tools 由
-`LLMController` 透過 `execute_application_tool_command(...)` 直接執行 ApplicationService
-command 並回傳 `ToolCommandResult.from_command_result(...)`；read-only tools 也從 command
-query result 取得 state truth。
-
-結論：`BackendFacade` module 已物理移除，不能再被描述成 non-product wrapper、
-compatibility target 或 agent/tool runtime 入口。新邏輯應進 `ApplicationService` 下的
-focused command service / handler；UI 目前仍是 service-first migration 的中間狀態，
-尚未完整完成。
-
-### Data Interpretation command baseline
-
-2026-05-04 第一個 Goal 1 backend slice 新增：
-
-- `XBrainLab/backend/application/data_interpretation.py`
-- `ScanSourceCommand`
-- `PreviewInterpretationCommand`
-- `ValidateInterpretationCommand`
-- `ApplyInterpretationCommand`
-- `SaveInterpretationRecipeCommand`
-- `ReloadInterpretationRecipeCommand`
-
-這批 command 由 `ApplicationService` dispatch / gate，實作與 in-memory lifecycle state
-目前位在 `DataInterpretationCommandService`，並回傳 typed diagnostics：
-
-- `ScanResult`：掃描 file / folder / BIDS-EEG source / recipe，列出 EEG files、label
-  carriers、BIDS summary 和 subject / session / task / run metadata provenance。
-- `InterpretationCandidate`：根據 scan result 和 optional choices 建立候選解讀。
-- `InterpretationPreview`：提供 file count、label carrier count、metadata preview、
-  warnings、confirmation items 和 downstream impact。
-- `ValidationDecision`：只使用 `safe`、`needs_confirmation`、`blocked`，不使用不可審查的
-  confidence score。
-- `AppliedInterpretation`：確認後呼叫既有 dataset import path 載入 selected EEG files，
-  並記錄 label carriers / metadata / confirmations / recipe trace。
-- `ImportRecipe`：可寫成 JSON；reload recipe 會重新 scan / preview / validate，不會直接 apply。
-
-`ApplicationStateSnapshot` 現在包含 `interpretation` section，`CapabilityPolicy` 也包含
-Data Interpretation commands 的 `can_auto_execute`、`requires_confirmation`、
-`decision_boundary`、`continue_allowed_after_success`、`retry_limit`、`stop_after_success`、
-`blocks_downstream_until_confirmed` 等 autonomy 欄位。UI import wizard 與 agent tool
-taxonomy 都以這套 Data Interpretation command sequence 作為產品資料入口。
-
-### Reviewed data / training decision contracts
-
-目前 working candidate 把下游設定綁回 reviewed import 與 backend-owned provenance：
-
-- `BidsDatasetIndex` 對明確選取的 formal BIDS root 做一次 bounded walk，解析 nested root，
-  建立 subject catalog、selected-subject projection、recording entities 和 events / channels /
-  electrodes / coordsystem / JSON sidecar inventory；scan、review、apply、EEGLAB dependency preflight
-  與 montage preparation 只接受仍 current 的 index。
-- Small JSON / CSV / TSV parsing 由 `ParsedContentCache` 以 complete source bytes SHA-256、
-  parser ID、schema version 和 value kind 綁定 immutable result。LRU 同時限制 entries、retained
-  bytes 與單檔 bytes；Windows path binding 不以 `ctime` 當 freshness 證據。
-- BIDS label-field recommendation 由 `data_interpretation_label_carriers.py` 聚合 selected
-  `events.tsv` runs 的 bounded row profiles、欄位 coverage、sidecar `Levels`、observed values 與
-  cross-run consistency。任一 selected table 的 row / byte inspection 被截斷，或 evidence 不足時，
-  都不產生自動推薦；explicit selection 優先，recommendation 仍須由使用者 review。
-- `epoch_context.py` 只在每段 recording timing hint 可讀、reviewed `epoch_handoff` 可用，且 label
-  source / placement 相符時發布 available context。任何缺漏、malformed payload、hint read failure
-  或 mismatch 都 fail closed。Duration / event-locked mode 來自 handoff 綁定的 applied timing
-  evidence；dialog 不建立第二套 fallback truth。
-- `SaveDatasetSplitCommand` 只保存 typed specification、epoch revision、fingerprint 與 preview
-  receipt。`TrainCommand` 才要求 `DatasetGenerationCommandService` materialize masks、執行 leakage /
-  coverage audit，再進 resource preflight；失敗時保留先前 dataset / trainer / training state。
-- `TrainingRecommendationService` 依 detached epoch shape、split summary、selected model family 和
-  device metadata 產生 deterministic conservative defaults。`training_submission.py` 只接受 trusted
-  host 附加 per-field edited provenance，重新推薦時只保留這些 manual fields。
-- Import discovery/apply、preprocess 與 epoch 的 heavy IO / copy / MNE construction 在 detached
-  preparation 執行；短 commit boundary 重新驗證 session generation、source identity、revision /
-  fingerprint 與 cancel intent，失敗或 stale 時保留原 committed state。
-- Electrode layout 的唯一 geometry owner 是 `BidsMontagePreparationCoordinator`；
-  `ApplicationService` 在 command lock 下驗證並發布 manual/BIDS layout，再將結果投影到
-  `Epochs`。layout 是 `channel → electrode → position` mapping，不能 slice 或 reorder Epoch
-  channel axis。同一 import 已發布的 ready BIDS snapshot 可跨 manual override 保留並由 explicit
-  restore command 回復，不重新讀 source；new import／reset 與 generation fence 會使舊 snapshot
-  失效。manual apply／explicit BIDS restore 必須完整覆蓋 Select Channels 保留的 channel，
-  使用唯一有效電極且符合頭皮圖幾何條件；驗證在 mutation 前完成。匯入來源的 partial metadata
-  仍可保留，但不開放空間圖，也不在 render 時偷偷裁切 channel；3D 另須符合三維幾何條件。
-- Training terminal path 只發布 metrics。只有 explicit `SaliencyCommand`（由 visible
-  `Compute Saliency` action 觸發）才建立 exact completed-run target 並排程 attribution；
-  generation 或所捕捉的 result identity 不符時不得發布。資料流程變更由正式 Command API 的
-  既有 mutation boundary 阻擋或取消工作；設定未來訓練不修改目前 holder 的 model/options。
-  Saliency Settings 只暫存待套用參數，重新開啟仍顯示該草稿；Compute／Recompute 才提交。
-  每批只執行草稿／已套用設定指定的方法；初次未設定時使用Gradient與Gradient × Input。
-  所有已完成subject／fold／run共用本次選擇，顯示中的Method不覆蓋設定。
-  每個新EvalRecord在既有publication之前合併相容的未選方法，直接重用其封存陣列與
-  method參數／noise seed／manifest entries，不重算或重掃舊payload；只重建合併manifest的
-  metadata digest。所選方法必須有完整新輸出，不能拿舊結果補缺。跨fold只pool該方法
-  參數一致的結果，不把最近一次job設定當成所有保留方法的參數。
-  同方法僅保存最新成功結果，不建立歷史版本。正在計算時
-  新命令由既有 configuration admission 拒絕，不取消原工作或改走同步重算。
-  UI 以當次 operation/generation 接受進度與完成，不將自己的 publication 當成設定過期。
-  失敗／取消保留先前結果與重試設定；計算完成後的繪圖失敗不改寫計算成功狀態。
-- 完成的 saliency 由既有 `EvalRecord` 封存：獨立的 immutable bytes 保存結果陣列，公開讀取只
-  建立不暴露內部 ndarray 的輕量檢視；metadata 以 defensive copy 保持原有序列化型別。
-  每批 Compute／Recompute 對每份共用 EEG 只計算一次完整來源指紋，供原有 artifact context
-  使用；同批 folds 共用，工作結束即釋放，不做逐 fold 前後掃描或跨工作快取。Artifact load
-  保留完整來源與結果內容驗證，磁碟 JSON／NPZ schema 不變。Detached display
-  重用封存的 EEG fingerprint，不重掃 EEG／saliency payload；仍驗證 exact model state、split
-  masks、run/config identity 與 class/channel/window/montage metadata。未封存或不相容的結果
-  不走此讀取路徑。繞過正式入口直接修改原始 EEG numeric buffer，不屬於 compute/display
-  執行期間的變更偵測承諾；每次新 compute 仍建立當批來源指紋，load 仍比對完整來源。
-  ModelHolder 的有效 channel-context 選擇由 model construction 與 producer identity 共用：
-  只有實際接收 `chs_info` 的 direct／catalog factory 保留該 metadata，避免未使用座標的模型
-  在訓練後首次補上完整 montage 時被誤判為不同模型。不放寬既有 layout replacement 或
-  真正使用 channel context 的模型身分限制，也不重新背書不相容的舊 artifacts。
-  Recompute 產生新 record，成功後才由原有 publication owner 替換，
-  不另建 cache、revision owner 或全域唯讀 EEG 層。
-- `ModelCatalog`是model identity、provider、factory、license、task與dataset-context availability的唯一
-  owner。Pinned Braindecode 1.6.1 metadata discovery不載入`braindecode.models` barrel；checked provider
-  正常時投影61個upstream contracts，其中54個符合目前classification workflow。Provider不存在、版本不符或
-  import preflight失敗時，UI可列57個permissive local recovery contracts，但只有符合相同dataset contract的
-  models可選。Upstream `braindecode.*`與local `legacy.braindecode.*`是不同stable identity，construction／
-  training failure不會改走另一provider。
-- `ModelHolder`、`TrainRecord`與saliency producer identity保存exact model ID、provider與source revision。
-  Identified／model-backed reopen遇到identity缺漏、malformed或不符時fail closed；identityless舊safe record
-  只允許在current identity同樣unknown時讀取statistics，仍不得rebind、re-export成某個provider。同一目錄的
-  checkpoint／evaluation不得被目前選定的provider重新標記。Legacy source只包含逐symbol確認的
-  BSD-3-Clause、MIT或Apache-2.0 closure，不載入installed Braindecode，也不包含Hub/download、CC BY-NC或
-  patent-linked code。
-- Timed hyperparameter search、trial orchestration、pruning 和 automatic model selection 沒有
-  command / service / tool contract；它們只在 roadmap，不能從 recommended-defaults surface 推論
-  已實作。
-
-### Agent command surface
-
-Agent 現在不再只靠 `pipeline_state.py` 的 stage table 決定工具可用性。
-
-新增 `XBrainLab/llm/tools/application_surface.py`，將 agent tool names 對映到
-ApplicationService command names：
-
-| Agent tool | Application command |
-| --- | --- |
-| `review_interpretation` / `preview_interpretation` / `apply_interpretation` / `save_interpretation_recipe` | 同名 Data Interpretation commands |
-| `apply_standard_preprocess` / `apply_bandpass_filter` / `apply_notch_filter` / `resample_data` / `normalize_data` / `set_reference` / `select_channels` | `preprocess` |
-| `set_montage` | `apply_montage` capability + UI confirmation request |
-| `epoch_data` | `create_epoch` |
-| `configure_dataset_split` | `configure_dataset_split` |
-| `set_model` / `configure_training` | `configure_training` |
-| `start_training` | `train` |
-
-`list_files`、`get_dataset_info`、`switch_panel` 是 read-only / UI routing tools；
-其中 `get_dataset_info` 會依 state 判斷是否已有 raw data。
-
-`ContextAssembler` 現在使用 ApplicationService policy 決定可列出的 tools，並在 prompt
-中放 blocked command reason。`LLMController._execute_tool_no_loop()` 在真正執行前也會
-重新讀 capability policy；因此 prompt 與 execution guard 使用同一個 backend policy。
-
-tool execution 後寫回 conversation history 的 `Tool Output` 已改為結構化 JSON payload：
-`ok`、`tool_name`、`message`、`raw_result`。UI side effects 仍暫時保留 `Request:` 字串
-協定，後續要改成 typed request。
-
-2026-05-02 product audit follow-up 後，這個 structured `Tool Output` 不再直接進第一層
-ChatPanel transcript。`LLMController` 會把 `ToolCommandResult` 轉成產品語言：missing folder
-會要求使用者提供 folder/path，empty file list 會顯示空狀態，backend precondition 會顯示
-可修正的 blocked reason。raw schema error、Python list、tool name、backend command name、
-snake_case command 只留在 history / diagnostics / logs。
-
-Mapped agent workflow tools 會優先直接執行 ApplicationService command，包含
-Data Interpretation、preprocess tools、`epoch_data`、
-`configure_dataset_split`、`set_model`、`configure_training`、`start_training`。
-舊 direct-load tool definition 已移除；產品 policy 與 executor
-一律要求走 `scan_source -> preview_interpretation ->
-validate_interpretation -> apply_interpretation`。這避免把 identity-bound 授權目錄重新
-展開成普通字串後再開檔。`set_montage` 和
-`switch_panel` 仍是 UI request path；`set_montage` 的 capability 由 `apply_montage` policy
-決定，confirmation 後的 apply 走 `ApplyMontageCommand`。`list_files` / `get_dataset_info`
-仍是 read-only / inspection tools，但現在也會經 typed result normalization，避免 legacy
-`"Error: ..."` 或 `[]` 被誤當成功 visible response。
-
-### Script / headless path
-
-Headless script 應使用 `ApplicationService`、`get_application_service(study)`，或
-`backend.application.automation.execute_automation_payload()`。不要在 script 裡直接重建
-readiness 判斷；需要狀態或 blocked reason 時使用 `ApplicationService.get_state()` /
-`get_capabilities()`。
-
-### Application Service / Command API
-
-第一版位置：
-
-- `XBrainLab/backend/application/commands.py`
-- `XBrainLab/backend/application/analysis_service.py`
-- `XBrainLab/backend/application/state.py`
-- `XBrainLab/backend/application/capabilities.py`
-- `XBrainLab/backend/application/data_interpretation.py`
-- `XBrainLab/backend/application/data_interpretation_apply.py`
-- `XBrainLab/backend/application/data_interpretation_candidate.py`
-- `XBrainLab/backend/application/data_interpretation_formats.py`
-- `XBrainLab/backend/application/data_interpretation_label_carriers.py`
-- `XBrainLab/backend/application/data_interpretation_metadata.py`
-- `XBrainLab/backend/application/data_interpretation_recipe.py`
-- `XBrainLab/backend/application/data_interpretation_review.py`
-- `XBrainLab/backend/application/data_interpretation_scan.py`
-- `XBrainLab/backend/application/data_interpretation_service.py`
-- `XBrainLab/backend/application/data_table_service.py`
-- `XBrainLab/backend/application/dataset_generation_service.py`
-- `XBrainLab/backend/application/lifecycle_service.py`
-- `XBrainLab/backend/application/preprocess_service.py`
-- `XBrainLab/backend/application/results.py`
-- `XBrainLab/backend/application/state_service.py`
-- `XBrainLab/backend/application/training_service.py`
-- `XBrainLab/backend/application/errors.py`
-- `XBrainLab/backend/application/service.py`
-
-目前已提供：
-
-- `ApplicationService.get_state()`：委派 `StateSnapshotService` 回傳可序列化 state snapshot，包含
-  raw/preprocessed/epoch/dataset/training/evaluation/visualization、active dataset /
-  training、interpretation、`last_error` 和 diagnostics。
-- `ApplicationService.get_capabilities()`：由 backend state 產生 capability policy，
-  阻擋缺前置條件的 command，例如沒有 raw data 不能 preprocess、epoch/dataset 後不能
-  套用新的 interpretation、沒有 dataset/model/training option 不能 train。
-- `ApplicationService.get_view_publication()`：原子回傳同一 generation 的 state 與 capability；
-  command lock 空閒時先刷新，lock 忙碌時不等待並回最後一份已驗證 publication。
-- `ApplicationService.execute(command)`：回傳 `CommandResult`，包含
-  status、command name、message、changed state、error type、recoverable 和 diagnostics。
-- `begin_owned_operation(command)` / `execute(..., operation_id=...)`：
-  先配置 lock-independent identity，再以 exact command kind / identity single-claim 執行；
-  terminal replay、kind mismatch 或 command mismatch 會 fail closed。
-- `cancel_owned_operation(operation_id)` / `get_owned_operation(operation_id)`：
-  不取得 shared command lock 即可送出 cancel intent 與讀取 immutable snapshot。Training /
-  Saliency 另把 cancel 轉交其 native runtime owner；其他流程在 bounded checkpoints 回應。
-- 已接上的核心 commands：
-  `scan_source`、`preview_interpretation`、`validate_interpretation`、
-  `apply_interpretation`、`save_interpretation_recipe`、`reload_interpretation_recipe`、
-  `update_metadata`、`apply_smart_parse`、
-  `remove_files`、preprocess operations、`create_epoch`、`configure_dataset_split`、
-  `clear_datasets`、`configure_training`、`train`、`stop_training`、
-  `clear_training_history`、`apply_montage`、`reset_preprocess`、`reset_session`、
-  `new_session`。
-- service-backed query / setup commands：
-  `evaluate`、`visualize`、`saliency`、`query_state`。它們回傳 typed summary diagnostics；
-  `saliency` 也能設定 saliency params。
-- `evaluate`、`visualize`、`saliency` 的 handler 實作位置現在是
-  `AnalysisCommandService`。
-- confirmed `apply_montage` 由 `ApplicationService` 在 command lock 下協調
-  `BidsMontagePreparationCoordinator`；它驗證 channel/electrode/position mapping，發布有效
-  geometry，並只投影 position metadata 到既有 Epoch axes。
-- State snapshot assembly 和 `query_state` diagnostics 的實作位置現在是
-  `StateSnapshotService` / `QueryStateCommandService`。`ApplicationService` 仍提供
-  strict/fresh `get_state()` / `get_capabilities()` 給 command 內部驗證；一般 state query 與
-  product read surface 使用 publication，避免長 mutation 卡住 GUI。
-- `configure_training`、`train`、`stop_training`、`clear_training_history` 和 reset-time
-  training config clear 的 handler 實作位置現在是 `TrainingCommandService`。它 owns model
-  holder 建立、optimizer / device / evaluation option resolve、training option snapshot 和
-  training lifecycle notification；`ApplicationService` 只做 dispatch、policy gate 和 result
-  envelope。
-- `train` 的 long-running confirmation 由 `command_gate.py` 在 `ApplicationService.execute()`
-  前檢查；UI / agent / headless adapter 只有在人類確認後才傳 `TrainCommand(confirmed=True)`。
-- UI Training sidebar 的 Clear History action 會透過 `ClearTrainingHistoryCommand` 進入
-  `TrainingCommandService`；沒有可用 command context 時 fail closed。
-- `configure_dataset_split`、deferred split materialization、`clear_datasets`、split audit、rollback
-  和 `DatasetStateSnapshot` 的 split lifecycle / summary 實作位置現在是
-  `DatasetGenerationCommandService`。Confirm 只保存 specification；`train` 才準備並驗證 candidate。
-  `ApplicationService` 的 reset preprocess rollback 只委派到這個 service 的 state restore
-  helper，不再自己操作 dataset generator / trainer rollback 細節。
-- UI Training sidebar 重新 split 前的 destructive dataset cleanup 會透過
-  `ClearDatasetsCommand` 進入 `DatasetGenerationCommandService`；successful service result 不再
-  落回 `TrainingController.clean_datasets()`。
-- `reset_preprocess`、`reset_session`、`new_session`、downstream rollback 和 reset-time
-  dependent-state clear 的實作位置現在是 `LifecycleCommandService`。它會委派到
-  `DatasetGenerationCommandService` 和 `TrainingCommandService`，避免 reset path 在
-  `ApplicationService` 裡重建第二套 lifecycle truth。
-- 舊 direct-load / post-load label aliases 及其 compatibility service 已移除；新 Data
-  Interpretation 主線由 `DataInterpretationCommandService` 協調。
-- `update_metadata`、`apply_smart_parse` 和 `remove_files` 的實作位置現在是
-  `DataTableCommandService`。它 owns loaded-data table mutation diagnostics；`ApplicationService`
-  只做 dispatch、policy gate 和 result envelope。
-- Preprocessing operations 和 `create_epoch` 的實作位置現在是 `PreprocessCommandService`。
-  它 owns preprocess controller calls、standard batch preprocessing、channel selection delegate；
-  epoch commit 後由 `ApplicationService` 重投影已發布的 electrode-layout metadata。
-- UI Preprocess reset action 會透過 `ResetPreprocessCommand` 進入 lifecycle service；只有
-  `execute_application_command()` 回傳 `None` 的 mock / compatibility adapter 情境才回到 controller
-  fallback。
-- Data Interpretation command handlers 實作位置現在是
-  `DataInterpretationCommandService`。它 orchestration scan / preview / validate / apply /
-  recipe commands；scan/candidate/preview/validation/applied/recipe in-memory state、latest-id
-  resolver、snapshot 和 recipe label import state 更新在 `DataInterpretationSessionState`；
-  reviewed metadata apply 與 reviewed label carrier apply 則在 `DataInterpretationApplyService`。
-  `ApplicationService` 不再直接承接這些 workflow 細節。
-- `apply_interpretation` capability 也會套用 raw-edit blockers；若 active session 已有 epoch、
-  generated dataset、trainer 或 locked raw data，UI / agent 必須先 reset / new session，
-  不能把新的 Data Interpretation 直接套進既有 downstream pipeline。
-- Data Interpretation format capability matrix 實作位置現在是
-  `data_interpretation_formats.py`。它 owns GDF、EDF / BDF、EEGLAB、BrainVision、FIF、MAT、
-  CSV / TSV、TXT、BIDS events 和 XDF / LSL 的 supported / needs-review / blocked 邊界。
-- Data Interpretation metadata resolution 實作位置現在是
-  `data_interpretation_metadata.py`。它 owns subject / session / task / run field resolution、
-  BIDS entity aggregation、filename-rule confirmation boundary 和 recipe metadata rehydration。
-- Data Interpretation recipe serialization 實作位置現在是
-  `data_interpretation_recipe.py`。它 owns `ImportRecipe`、JSON load / write、serialized metadata
-  rehydration 和 applied interpretation to recipe conversion；`data_interpretation.py` 只 re-export
-  public names so existing service / application imports remain stable。
-- Data Interpretation label carrier planner 實作位置現在是
-  `data_interpretation_label_carriers.py`。它 owns label carrier choice normalization、MAT variable
-  discovery、CSV / TSV / BIDS events column discovery、anchor candidates、time model defaults、
-  granularity defaults 和 review reason generation。
-- Data Interpretation review payload / validator 實作位置現在是
-  `data_interpretation_review.py`。它 owns `InterpretationPreview` / `ValidationDecision`、
-  candidate-to-preview serialization，以及 safe / needs-confirmation / blocked decision boundary。
-- Data Interpretation scanner 實作位置現在是 `data_interpretation_scan.py`。它 owns
-  `ScanResult`、source path scanning、source kind classification、BIDS root detection、candidate
-  file traversal、label carrier discovery、scan warnings 和 blocked reason assembly。
-- Data Interpretation candidate builder 實作位置現在是 `data_interpretation_candidate.py`。它
-  owns `InterpretationCandidate`、scan + user choices to candidate conversion、metadata overrides、
-  event/class mapping、label-carrier choice trace 和 candidate recipe trace。
-
-2026-05-02 product blocker 盤點結論：
-
-- `hello` no-response 問題主要發生在 chat / agent visible-output boundary，不是
-  `ApplicationService` command contract 本身。
-- `ApplicationService` / `CapabilityPolicy` 仍是 UI / Agent shared decision 的正確入口。
-- `ApplicationService` 仍是 command spine，但不應重新吸收 workflow logic；新增 workflow 應
-  優先放在 focused command service / handler，再由 `ApplicationService.execute()` 統一 gate
-  與包 result。
-- backend query command 已從 future placeholder 推進成 service-backed summary / setup
-  result；完整 interactive evaluation / visualization workflow 仍要由 UI walkthrough 驗收。
-- `evaluate` / `clear_training_history` capability 以 actual training plan history 為準；
-  trainer object 存在但 history 已清空時不再啟用這兩個 command。
-- training-time split materialization 和 audit 共用 rollback boundary；audit blocking issue
-  或 apply 中途例外都不應覆寫既有 datasets / dataset generator / trainer。
-- error boundary 對 command result 已足夠支撐 UI 顯示 blocked reason；UI / agent 必須把它
-  轉成 visible user feedback，而不是只記在 diagnostics。
-
-### Training artifact filesystem boundary
-
-Training/evaluation persistence 只透過
-`XBrainLab/backend/training/record/artifact_store.py` 寫入或讀取 versioned JSON manifest、
-non-pickle NPZ 與 tensor-only checkpoint。`filesystem_identity.py` 在一次 bounded artifact IO
-期間保留 output directory identity；POSIX leaf access 使用 directory-descriptor-relative
-`O_NOFOLLOW` / exclusive create，Windows leaf access 使用 native reparse-point handle。兩個平台
-都拒絕 non-regular entry 與多重 hardlink，publication 使用同一 retained parent identity 內的
-atomic replace。這個 contract 防止 artifact leaf substitution，但不能取代真人 NTFS
-junction/reparse acceptance；使用者另外選取的 pretrained weight 與 source EEG reader 屬各自的
-admission boundary，不應被誤稱為 training artifact persistence。
-
-### Public diagnostic / log privacy boundary
-
-`XBrainLab/backend/utils/public_diagnostics.py` 是 logs、exception/result messages、assistant
-feedback 與 UI interaction outcomes 的共同 privacy boundary。預設 `PUBLIC` disclosure：
-
-- 完整 POSIX / Windows / UNC 私人路徑只保留可辨識的 basename（若其中有 BIDS / subject token
-  會再遮罩）和 `[PATH_REF:...]`；parent directories 不進 log 或 user-visible message。
-- `subject_id` / `participant` / `patient` 與 BIDS `sub-*` 會變成 `[SUBJECT_REF:...]`。reference
-  使用 process-local random HMAC key，同一 app process 內穩定，restart 後刻意不可關聯，也不能
-  從低熵 subject id 反查原值。
-- NUL、ANSI escape、Unicode format/control characters 會在輸出前移除或壓成空白。default
-  logs、developer detail 與 compact status event 強制使用 `SINGLE_LINE`，避免 exception /
-  dataset metadata 製造額外 log lines；rich presentation 只允許 normalized LF，CR 和其他
-  control characters 不會保留。
-- `CommandResult.message` / `error_message`、`ApplicationError` / `XBrainLabError`、
-  `InteractionOutcome`、assistant delivery/result/presentation 都走這個 boundary。原始
-  `CommandResult.diagnostics` 仍保留在 process 內供 UI workflow 使用，不以刪資料方式換取
-  privacy。
-- `CommandResult.to_dict()` 是 local functional adapter contract，不能當公開 diagnostics；
-  export / support output 必須用 `CommandResult.to_public_dict()`。Agent 對 model/history 的
-  `ToolCommandResult.to_payload()` 也會做 recursive public projection。
-- default `XBrainLab` rotating file / console handlers 在 record 傳給其他 handler 前 redaction，
-  exception traceback 也只保留 safe basename、line / exception type 與已遮罩 detail。source
-  guard 禁止 product modules 另裝 `FileHandler` / `StreamHandler` 或設 `propagate=False` 繞過
-  central handler。
-
-Detailed diagnostics 不是 settings 或 UI toggle。只有受控診斷程式碼明確傳入
-`DiagnosticDisclosure.DETAILED` 才可開啟；這個 mode 仍套用相同 layout/control policy 並移除
-credentials 與 email，但可能保存完整 private path / subject identifier。使用政策是
-local-only、最短必要時間、使用者審閱與同意後才可分享，完成診斷後刪除，不可自動上傳。
-
-Default retention 是 active `5 MiB` 加 `5` 個 rotating backups（nominal upper bound 約
-`30 MiB`）。POSIX log directory / file 每次建立或 reopen 都驗證為目前使用者擁有的
-`0700` / `0600`。Windows 以同一個 opened file object 套用並 read-back 驗證 protected DACL：
-目錄只有目前使用者的 inheritable full-control ACE，active log、marker 與每個 rotating backup
-只有目前使用者的 non-inheritable full-control ACE。任何 Win32 API、owner、DACL、ACE、reparse
-point 或 read-back 驗證失敗都會停用 file sink，只保留已遮罩的 console logging。
-
-Windows ACL boundary 不宣稱能限制 Administrator / SYSTEM、同帳號惡意程式，或取代 ancestor
-junction race 的 SEC-06 containment gate。Packaged launcher、非 NTFS volume 與第二個標準帳號的
-實際拒絕測試仍屬 Windows acceptance。Detailed log 不可放到 shared / network location。
-
-UI source guard 會拒絕 catch-all exception 或 worker callback error 直接進
-`QMessageBox` / status sink；unexpected error 只顯示穩定可操作文案，完整 exception 先經
-central public-diagnostic boundary 後才可寫入 default diagnostics。少數 mock-only controller
-compatibility path 顯示的是固定的 public unavailable message，不是 backend exception detail。
-
-重要邊界：
-
-- product command 透過 `Study`-owned focused services / domain ports 執行；不建立 controller registry。
-- Data Interpretation 的 lifecycle truth 目前在 `DataInterpretationSessionState`，並由
-  `DataInterpretationCommandService` 作為 command boundary 協調；UI、agent 和
-  automation 仍必須透過 `ApplicationService.execute()` 進入，不可直接建立第二套
-  interpretation state。
-- Analysis / visualization readiness truth 目前在 `AnalysisCommandService`，但 capability
-  exposure 仍由 `ApplicationService.get_capabilities()` 產生。
-- `BackendFacade` module 已物理移除；product runtime、tests 和文件都不得把它恢復成
-  wrapper、compatibility target 或可 instantiate 的 abstraction。
-- `get_application_service(study)` 會重用掛在同一個 `Study` 上的 `ApplicationService`。這是
-  Data Interpretation lifecycle 的必要邊界，否則 `scan_source` 產生的 scan state 會在下一個
-  `preview_interpretation` tool call 因重新建立 service 而遺失。
-- `application_surface.py` 是 agent tool-name 與 ApplicationService command-name 的 adapter；
-  read-only / compatibility tools 必須回到 command query / typed formatter，不可讓 legacy string
-  result 直接進 transcript。
-- `set_montage` 保留既有 public tool identifier，仍是 UI confirmation request path；handoff
-  指向 Dataset 的 `Electrode Layout` entry。tool availability 讀 `apply_montage` capability，
-  confirmation 後由 `ApplyMontageCommand` 讓 `ApplicationService` / BIDS coordinator 實際發布
-  channel-to-electrode position mapping。
-- `reset_session` 仍是 internal backend lifecycle command；它目前代表清掉 active backend
-  session：raw / preprocess / epoch / dataset / trainer / model option / saliency config 都會失效。
-  Desktop UI 與 Assistant 不發布這個操作，automation / internal integration 仍可直接使用 typed
-  command。
-- `new_session` 目前是同一個 single-backend session 的 lifecycle boundary，不是 multi-document
-  project shell；它清掉目前 state 後回傳 `single_session_backend=True` diagnostics。
-
-## 核心物件責任
-
-### Study
-
-`Study` 是中心 domain state container。
-
-目前責任：
-
-- 建立 `DataManager`。
-- 建立 `TrainingManager`。
-- 提供舊屬性相容層，例如 `study.loaded_data_list` 實際委派到 `study.data_manager.loaded_data_list`。
-- 提供清理 cascade，例如清 raw data 時也清 datasets / trainer。
-- 擁有 application service cache slot 與 command lock；service/runtime lifecycle owner 負責讀寫
-  cache。`Study` 本身不 import application runtime，也不暴露 `pipeline_stage` property。
-
-這些 properties 委派同一份 manager state，並非第二份資料副本；domain services 仍有實際 caller，
-不能只因 forwarding 外觀就刪除。Product UI 不透過它們讀取 mutable workflow state。
-
-### DataManager
-
-`DataManager` 管資料生命週期。
-
-目前責任：
-
-- raw data list
-- preprocessed data list
-- epoch data
-- generated datasets
-- dataset generator
-- dataset lock / unlock
-- loaded data backup
-- preprocess reset
-- dataset cleanup
-
-重要行為：
-
-- `set_loaded_data_list()` 會同步建立初始 `preprocessed_data_list` copy。
-- `set_preprocessed_data_list()` 會清掉 datasets，並在資料已 epoch 時建立 `Epochs`。
-- `clean_raw_data()` 會清 raw / preprocess / epoch / datasets。
-
-### TrainingManager
-
-`TrainingManager` 管訓練生命週期。
-
-目前責任：
-
-- model holder
-- training option
-- trainer
-- saliency params
-- training plan generation
-- training start / stop
-- trainer cleanup
-
-重要行為：
-
-- `generate_plan()` 需要 datasets、training option、model holder 都存在。
-- `train()` 只負責叫現有 trainer 執行；沒有 trainer 會 raise。
-- `set_training_option()` 和 `set_model_holder()` 目前不清 trainer，因為要保留 multi-experiment history。
-
-## 主要資料流
-
-### Import
-
-```text
-UI Data Import / Assistant / headless
-  -> ApplicationService: scan/review -> preview/validate -> apply_interpretation
-  -> DataInterpretationCommandService / DataInterpretationApplyService
-  -> DatasetProductPort / admitted loaders
-  -> atomic domain commit and application publication
-```
-
-### Preprocess
-
-```text
-UI PreprocessPanel or agent real tool
-  -> ApplicationService.execute(PreprocessCommand(...))
-  -> PreprocessCommandService
-  -> copy current study.preprocessed_data_list
-  -> processor.data_preprocess(...)
-  -> Study.set_preprocessed_data_list(...)
-  -> DataManager.set_preprocessed_data_list(...)
-```
-
-這裡已經有避免 in-place 修改 UI 正在讀取資料的設計：controller 先 copy，再 atomic swap list reference。
-
-### Dataset / Training
-
-```text
-ApplicationService.execute(SaveDatasetSplitCommand(...))
-  -> DatasetGenerationCommandService
-  -> validate preview receipt and epoch revision
-  -> save typed split specification / fingerprint
-  -> no dataset masks or training tensors materialized
-
-ApplicationService.execute(TrainCommand(...))
-  -> DatasetGenerationCommandService.prepare_saved_split_candidate()
-  -> materialize masks and audit leakage / coverage without publishing partial state
-  -> TrainingCommandService resource preflight
-  -> commit verified split and start training
-```
-
-UI 透過 typed application actions 保存 split / model / training options；lower-level training
-execution 仍可委派既有 controller / manager，但不以 controller state 建立第二份 product truth。
-
-## Runtime Truth
-
-目前比較可信的 runtime truth 來源：
-
-- `Study` live state
-- `DataManager` data lifecycle state
-- `TrainingManager` training lifecycle state
-- `ApplicationViewPublication.state.pipeline_stage` 與同 generation capability policy
-- application publication／training transient events（通知，不是另一份獨立 state）
-
-不應依賴：
-
-- UI display text
-- chat wording
-- legacy docs
-- 退役的 `AQ-*` / `Prep Gate` / `Repair Loop` task systems
-- 舊絕對路徑
-
-## 已驗證事實
-
-- `ApplicationService` is the authoritative command-admission, confirmation, owned-work and publication boundary; focused services own domain mutation.
-- `DataInterpretationCommandService` / `DataInterpretationApplyService` own scan, review, apply and recipe-state orchestration; historical `label_imports` recipes remain replayable.
-- `Study`, `DataManager`, and `TrainingManager` retain live domain state. Study-owned state services supply the domain ports directly, without EEG controller adapters.
-- Product panels, assistant and headless automation enter through typed application commands, queries and publications. MainWindow navigation may refresh its selected panel; command/observer compatibility refresh routing has been removed.
-- Native third-party cancellation and Windows/native teardown require separate evidence. This boundary description is not proof that every module is defect-free.
-
-## Current boundary
-
-`BackendFacade`, direct-load/post-load label commands, their compatibility service, and legacy headless opt-in are retired. Do not reintroduce them as a compatibility target.
-
-New work must preserve one command spine: UI, Assistant, and scripts request typed commands; `ApplicationService` admits and publishes; focused services and Study-owned domain ports perform the workflow. Read-only data uses published state or typed query results. Tests isolate external/native seams without establishing a second product workflow.
+| Command admission and result envelope | `backend/application/service.py:ApplicationService` serializes product commands, maps failures to `CommandResult`, owns confirmation/admission boundaries and exposes read APIs. Its command handlers compose focused services instead of duplicating their mutations. |
+| State, capabilities and publication | `StateSnapshotService` builds serializable state from domain ports; `ApplicationViewCoordinator` commits coherent revisions; `ApplicationPublicationLifecycle` and `ApplicationViewEventPublisher` publish them. `get_state()` takes the command lock and strictly rebuilds state; `get_capabilities()` reads the effective policy from a publication; `get_view_publication()` returns committed truth and may only recover an unusable publication when a safe try-lock permits it. |
+| Query-only access | `ApplicationService` owns the non-blocking published `state` and `data_summary` fast paths. `QueryStateCommandService` handles the other typed queries (lists, label targets, diagnostics, suggestions and history) after the command spine obtains its try-lock; a busy mutable-object query returns a recoverable retry result, never an independent UI cache. |
+| Import and data interpretation | `DataInterpretationCommandService` owns scan, review, preview, validation, recipe and apply orchestration; `DataInterpretationApplyService` performs reviewed metadata/label application. `DataInterpretationSessionState` carries the staged review session, while the command spine retains admission and result policy. |
+| Preprocess, epoch and montage | `PreprocessCommandService` owns preprocessing commands and pipeline invalidation. `BidsMontagePreparationCoordinator` prepares BIDS montage promotion and only commits through the application publication boundary. |
+| Split and training | Dataset generation first materializes and audits a saved split as an unpublished candidate. Training then admits resources for that candidate, commits the verified split and starts training; failures preserve or restore the earlier publication. Training configuration, preview receipts and terminal lifecycle stay scoped to this workflow. |
+| Evaluation, visualization and saliency | `AnalysisCommandService` owns those analysis commands. Detached render publishers/work controllers publish only against an admitted, current training/publication boundary. |
+| Reset, close and cancellation | `LifecycleCommandService`, `ApplicationShutdownLifecycleCoordinator`, `OwnedWorkRegistry` and the synchronous-training coordinator own reset/close/terminal-delivery seams. No view owns worker lifetime. |
+
+The table names ownership, not a promise that every class is small. `ApplicationService` remains an
+integration point with substantial composition responsibility; new behavior should first reuse the
+focused owner above, and must not turn it into a second policy or state layer.
+
+## State, publication and lifecycle contracts
+
+- A product mutation is admitted under the application command boundary. Downstream-replacing work
+  captures pipeline identity and either commits a coherent replacement or restores/marks the result as
+  failed; it does not expose a half-applied dataset/training transition as success.
+- The view publication combines a state snapshot, training read boundary and revision/generation.
+  Published state and data-summary queries consume committed truth without waiting on a mutation. Other
+  object-bearing queries must acquire the command try-lock or fail recoverably; `get_state()` is the
+  strict refresh API, not an interchangeable non-blocking reader.
+- Detached preparation and rendering check freshness at their commit boundary. Cancellation is owned and
+  cooperative: the registry can request cancellation and close waits only for defined quiescence points;
+  third-party numerical work cannot be promised instantaneous interruption.
+- Close is idempotent and fences further command admission before releasing observers and runtime-owned
+  work. A closed service returns a stable rejection rather than silently reconstructing application state.
+- Training start does not publish a merely previewed split. Candidate preparation, resource confirmation,
+  materialization and rollback diagnostics preserve the distinction between a rejected candidate and a
+  committed run.
+
+## Data and result semantics
+
+Import is a reviewed workflow, not arbitrary file mutation:
+
+1. Source discovery and resource admission establish the selected files and bounded reader scope.
+2. Preview/validation produce a reviewed interpretation candidate, including explicit label and metadata
+   decisions. Content/path identity checks prevent an accepted review from being applied to changed input.
+3. Apply updates admitted loaded EEG carriers and uses atomic/rollback-aware label operations. A failed
+   rollback is reported as unknown state instead of being presented as a safe retry.
+4. Preprocess/epoch replacement invalidates downstream training through the pipeline transaction.
+
+Formal BIDS selection and reviewed non-BIDS mapping use the same product boundary, but this is not a full
+BIDS validator and does not imply support for every proprietary format. Event, label, epoch and scientific
+interpretation limits remain product limits in [current.md](../current.md), not backend guarantees.
+
+Split planning records the allocation/audit used by Train. The train path materializes that saved
+candidate before resource preflight, then commits it only when admission succeeds; it does not treat a UI
+preview as a result. Each completed run persists separate inference records for non-empty training,
+validation and test loaders after checkpoint selection. An evaluation/render request binds one exact
+plan/run-or-aggregate/split identity: a run never borrows another run's predictions, and an aggregate pools
+only the requested split across its eligible completed runs.
+
+`TrainRecord` owns result selection rather than exposing its raw storage map. The legacy primary `eval`
+record remains the held-out compatibility/saliency record; split-qualified sidecars remain distinct.
+`get_saved_evaluation_record()` returns only an exact stored split, while
+`get_evaluation_record_for_split()` may use a matching primary record. Training history requires the exact
+saved test record; Evaluation may use a matching primary fallback. Analysis, state and render code use
+these named queries, preserving both artifact format and publication ownership. Evaluation, visualization
+and saliency publish detached artifacts only when their source identity is current; their numerical or
+scientific validity is outside this architecture contract.
+
+## Persistence and artifact filesystem boundary
+
+Training/evaluation persistence passes through `training/record/artifact_store.py`, not arbitrary object
+pickles. Its versioned JSON manifest, non-pickle NPZ and tensor-only checkpoint formats are part of the
+current artifact contract. The training record/result-query rules above select a record; they do not waive
+artifact identity or integrity checks.
+
+- One bounded IO operation retains and rechecks the full output-directory identity. A changed or substituted
+  parent fails the operation rather than redirecting publication.
+- POSIX artifact leaves are opened directory-descriptor-relative with `O_NOFOLLOW`; Windows uses native
+  reparse-point-safe handles. Both reject non-regular and multi-hardlink leaves.
+- Temporary leaves are exclusively created and a verified retained parent performs the atomic replacement.
+  Readers use the same trusted-parent/regular-leaf checks, so a leaf substitution cannot be accepted between
+  validation and publication.
+- Source/training/result identity is validated before a result is considered current. This protection is
+  distinct from the admission boundary for a user-selected pretrained weight or EEG source reader.
+- Generated validation evidence belongs under ignored `build/` locations described in
+  [validation README](../validation/README.md), not as product authority.
+
+This is a bounded artifact filesystem contract, not a claim that Windows NTFS junction/reparse behavior has
+received every real-machine acceptance scenario.
+
+## Public diagnostic and log privacy boundary
+
+`backend/utils/public_diagnostics.py` is the shared boundary for public logs, exception/result messages,
+Assistant feedback and UI interaction outcomes. Public projection redacts full POSIX, Windows and UNC paths
+to a display basename plus an opaque path reference, masks subject/participant/patient and BIDS `sub-*`
+identifiers with process-local non-reversible references, removes controls/escape sequences, and bounds
+recursive structured values. Product modules must not install a bypass file/stream handler or show raw
+backend exceptions directly in a UI sink.
+
+`CommandResult.to_internal_dict()` is the detached in-process projection. `to_dict()` is the compatibility
+public-safe projection and delegates to `to_public_dict()`; exports, support output and Assistant payloads
+must retain that public projection rather than expose internal diagnostics. Detailed disclosure is an
+explicit controlled diagnostic mode, never a settings/UI toggle; it remains local-only, needs user review
+before sharing, and must be removed after diagnosis. It is not an automatic-upload channel.
+
+The default logger redacts before console/file delivery and uses bounded rotation: active `5 MiB` plus five
+backups (about `30 MiB` nominal maximum). POSIX log directories/files are revalidated owner-only (`0700` /
+`0600`). On Windows, the opened directory and each active/marker/backup log receive and read back a
+current-user-only protected DACL; failure of owner/DACL/ACE/reparse verification disables the file sink and
+keeps only redacted console logging. This does not claim protection from Administrator/SYSTEM, same-account
+malware, ancestor-junction races, non-NTFS behavior or a substitute for Windows native acceptance. Detailed
+logs must not be placed on shared or network locations.
+
+## Artifact and diagnostic limits
+
+The boundaries above prevent specified accidental disclosure/substitution paths; they do not establish
+zero data leakage, a deployment security certification, or a complete platform security review.
+
+## Current limits and change rules
+
+- This is a desktop source baseline, not a signed installer, full clinical workflow, complete BIDS
+  implementation, arbitrary-data/model guarantee or scientific certification. See
+  [current.md](../current.md) for the supported product surface and limitations.
+- Automated unit/source/integration evidence proves bounded contracts. It does not replace real-data
+  diversity evidence, Windows native interaction, or user manual acceptance. A fresh product-source
+  candidate follows the applicable exact-source process in [validation README](../validation/README.md);
+  its currently pending work is recorded only in [planning/now.md](../planning/now.md).
+- Existing domain controllers/adapters may remain behind `Study` ports or in low-level tests where they
+  express domain operations. They are not a permitted alternate product command surface, and no retired
+  facade/controller compatibility layer should be reintroduced merely for old callers.
+- New backend abstractions need at least two real production callers or a necessary unsafe/external seam.
+  They must remove duplicated policy in the same change and preserve the command spine, state publication,
+  cancellation and privacy contracts above.
+
+## Related architecture references
+
+- [Architecture overview](README.md) provides the cross-layer map.
+- [Data layer](data_pipeline.md) describes source/import/storage boundaries.
+- [Assistant architecture](agent.md) describes the Assistant contract and its command-spine use.
+- [Frontend architecture](ui.md) describes how views consume publication rather than own backend
+  state.
