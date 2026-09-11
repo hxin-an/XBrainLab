@@ -1631,7 +1631,7 @@ def test_assembler_does_not_publish_host_inferred_blockers():
     assert blockers == {}
 
 
-def test_prompt_policy_read_result_serializes_one_successful_publication() -> None:
+def test_prompt_policy_read_result_projects_one_successful_publication() -> None:
     from XBrainLab.llm.agent.prompt_policy import read_prompt_policy
 
     state = _state()
@@ -1645,20 +1645,20 @@ def test_prompt_policy_read_result_serializes_one_successful_publication() -> No
         runtime=_ApplicationRuntimeFake(publication),
     )
 
-    payload = json.loads(json.dumps(result.to_prompt_payload()))
-
-    assert payload["backend_generation"] == 17
-    assert payload["publication_error"] is None
-    assert payload["published_tools"] == [
-        "configure_training",
-        "import_eeg_data",
-        "select_model",
-        "switch_panel",
-    ]
-    assert payload["blocked_reasons"]["create_epochs"] == (
+    assert result.backend_generation == 17
+    assert result.publication_error is None
+    assert result.published_tools == frozenset(
+        {
+            "configure_training",
+            "import_eeg_data",
+            "select_model",
+            "switch_panel",
+        }
+    )
+    assert result.blocked_reason_map()["create_epochs"] == (
         "Load raw data before creating EEG epochs."
     )
-    assert payload["blocked_reasons"]["start_training"].startswith(
+    assert result.blocked_reason_map()["start_training"].startswith(
         "Load raw data before training."
     )
 
@@ -1704,32 +1704,29 @@ def test_prompt_policy_publication_exception_is_fail_closed_and_safe() -> None:
     )
 
     result = read_prompt_policy(object(), runtime=runtime)
-    serialized = json.dumps(result.to_prompt_payload())
 
     assert result.published_tools == frozenset()
     assert result.blocked_reasons == ()
     assert result.publication_error is not None
     assert result.publication_error.code == "publication_read_failed"
     assert "temporarily unavailable" in result.publication_error.message
-    assert "secret backend path" not in serialized
-    assert "Traceback" not in serialized
+    assert "secret backend path" not in result.publication_error.message
+    assert "Traceback" not in result.publication_error.message
 
 
-def test_prompt_policy_invalid_publication_type_is_serializable_and_fail_closed() -> (
-    None
-):
+def test_prompt_policy_invalid_publication_type_is_fail_closed() -> None:
     from XBrainLab.llm.agent.prompt_policy import read_prompt_policy
 
     runtime = MagicMock()
     runtime.get_view_publication.return_value = object()
 
     result = read_prompt_policy(object(), runtime=runtime)
-    payload = result.to_prompt_payload()
 
     assert result.publication is None
     assert result.published_tools == frozenset()
-    assert payload["backend_generation"] is None
-    assert payload["publication_error"]["code"] == "publication_read_failed"
+    assert result.backend_generation is None
+    assert result.publication_error is not None
+    assert result.publication_error.code == "publication_read_failed"
 
     registry = ToolRegistry()
     registry.register(_NamedTool("scan_source"))

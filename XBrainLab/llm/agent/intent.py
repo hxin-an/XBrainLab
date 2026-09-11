@@ -26,15 +26,6 @@ class BlockedExplanationIntent:
     def target_intent(self) -> str | None:
         return self.target_intents[0] if len(self.target_intents) == 1 else None
 
-    @property
-    def target_command(self) -> CommandName | None:
-        intent = self.target_intent
-        return command_for_intent(intent) if intent is not None else None
-
-    @property
-    def ambiguous(self) -> bool:
-        return len(self.target_intents) != 1
-
 
 def resolve_blocked_explanation_intent(
     text: str,
@@ -649,15 +640,6 @@ def _blocked_target_intents(clause: str) -> tuple[str, ...]:
 def command_for_intent(intent: str) -> CommandName | None:
     """Return the backend command represented by an inferred intent."""
     return INTENT_TO_COMMAND.get(intent)
-
-
-def path_label_for_intent(intent: str) -> str | None:
-    """Return the user-facing path label implied by an intent."""
-    if intent == "scan_source":
-        return "source path"
-    if intent == "reload_interpretation_recipe":
-        return "recipe path"
-    return None
 
 
 def _is_explanatory_no_tool_request(normalized: str) -> bool:

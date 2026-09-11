@@ -103,11 +103,57 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery checkpoint: product branch `cleanup/module-quality`, HEAD `f477019f`, 180 commits after baseline
+Git recovery checkpoint: product branch `cleanup/module-quality`, HEAD `02d64fa1`, 186 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
 **Current work — developer docs/config truth and remaining scripts; module2–6 closure gaps and explicit decisions remain open.**
+
+**Bounded8T — prevent resumed journey evidence from acquiring newer provenance.** Main and
+independent full CLI334/evidence463 find _run_resume builds current source/environment metadata
+then reuses old completed rows based only on registry/profile. Bind reuse to identical clean source
+SHA, runner execution metadata and data root; different subset argv remains allowed. No new schema,
+receipt, owner, download or actual EEG/model run. Add real manifest read/write/resume regression
+with source/environment/data-root mismatch and unchanged subset reuse; isolate only external product
+execution/fixture provisioning. Observe RED before source fix, then identical green, existing MOABB
+evidence/cache tests, Ruff and independent provenance review. The separate Qt/site evidence path
+does not use this resume branch; do not overstate it as a site-publication bypass. One script fix,
+not a product contract change, followed by continued stage work.
+
+**Bounded6AG — retire unused post-admission path handles, preserve live admission safety.** Full
+authorized_paths743/direct303 independent security audit and main grant/Windows lease/caller trace
+show no runtime consumer for open_authorized_path/OpenedAuthorizedPath/AuthorizedPath.grant.
+Verifier uses the admitted string only. Initial proposal to remove Windows snapshot construction
+was rejected by main: it also performs live anti-replacement/ancestor identity validation. Preserve
+the real retain_directory_identity lease and _require_directory_lease_matches calls for root and
+distinct target directories; replace only its unused snapshot return with no-output validation.
+Retain all POSIX no-follow descriptor walking and final containment/kind checks. Remove unused
+post-admission open/grant DTOs/helpers, return the original string after unchanged admission checks;
+no backend IO, public tool, confirmation or downstream TOCTOU claim changes, owner delta0.
+Before source edits strengthen real normal/wrong-kind admission and a Windows-only actual renamed/
+recreated root regression (wrap only final-identity resolution timing, use real retained lease).
+Replace only retired post-admission lease test after the stronger baseline; keep POSIX symlink,
+Windows final escape/failure and actual generic-root verifier admission protection. Focused before/
+after + bounded no-op admission-guard fault, Ruff/type boundary and independent actual-diff security
+review. One source file deletion-only, separate reversible commit;6E/6G denied scopes untouched.
+
+**Bounded6AF — remove unused intent and prompt-result convenience projections.** Independent full
+intent935/policy215 and main changed graph/three actual test callers confirm target_command,
+ambiguous and path_label_for_intent are uncalled; both to_prompt_payload methods only serve three
+serializer tests. Actual assembler consumes policy fields/blocked_reason_map/backend_generation.
+Retain target_intents/target_intent, all classification/RAG suppression and exact prompt text. Migrate
+the three tests to actual returned fields/public safe error message while retaining real assembler
+unavailable-state/no-tool prompt assertions; passing baseline before deletion and same suite after.
+No test cases removed, new policy owner, model/prompt treatment, schema/tool/confirmation change or
+6E stage-prose/history scope. Ruff/independent actual-diff review and Git-reversible two-file cleanup;
+continue authorized stage work afterward. No UI modification or new approval needed for unused
+Python conveniences under the user's explicit scope.
+The first baseline command included nonexistent test_intent.py and collected no tests; this is a
+selector error, not RED evidence. Corrected to the actual full ContextAssembler suite, which covers
+real policy projection/RAG context and unavailable-state prompt behavior; no invented direct suite.
+Observed corrected Windows baseline57pass7.34s and identical retained after57pass7.11s. Production
+deletes34 lines across two files; no test cases removed. Independent actual-diff review confirms no
+runtime prompt/classification/tool registry change and retained real assembled unavailable prompt.
 
 **Bounded6AE — remove unused Assistant UI conveniences/stored projection.** Full suggestion card167,
 dispatcher532, publication coordinator251 and actual call/test trace identify set_subtitle with no

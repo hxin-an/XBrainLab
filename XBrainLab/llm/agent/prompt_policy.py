@@ -129,9 +129,6 @@ class PromptPolicyReadError:
     code: PromptPolicyErrorCode
     message: str = _POLICY_UNAVAILABLE_MESSAGE
 
-    def to_prompt_payload(self) -> dict[str, str]:
-        return {"code": self.code, "message": self.message}
-
 
 @dataclass(frozen=True)
 class PromptPolicyReadResult:
@@ -160,19 +157,6 @@ class PromptPolicyReadResult:
 
     def blocked_reason_map(self) -> dict[str, str]:
         return dict(self.blocked_reasons)
-
-    def to_prompt_payload(self) -> dict[str, Any]:
-        return {
-            "policy_applies": self.policy_applies,
-            "backend_generation": self.backend_generation,
-            "published_tools": sorted(self.published_tools),
-            "blocked_reasons": dict(self.blocked_reasons),
-            "publication_error": (
-                self.publication_error.to_prompt_payload()
-                if self.publication_error is not None
-                else None
-            ),
-        }
 
 
 def read_prompt_policy(
