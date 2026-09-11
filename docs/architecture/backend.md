@@ -44,6 +44,12 @@ surface 不在 current architecture 內。
 | Evaluation, visualization and saliency | `AnalysisCommandService` owns those analysis commands. Detached render publishers/work controllers publish only against an admitted, current training/publication boundary. |
 | Reset, close and cancellation | `LifecycleCommandService`, `ApplicationShutdownLifecycleCoordinator`, `OwnedWorkRegistry` and the synchronous-training coordinator own reset/close/terminal-delivery seams. No view owns worker lifetime. |
 
+Epoch dialog setup and command execution share the validated setup builder in `PreprocessCommandService`.
+The existing montage coordinator normalizes and validates a manual override before selection;
+`ApplicationService` retains lock/admission, trainer freeze/no-op, live Epoch projection and publication.
+`DatasetStateService` owns the preprocessed-first/loaded-fallback detached summary row selection used by
+initial and subsequent view publications; consumers do not rebuild that selection policy.
+
 The table names ownership, not a promise that every class is small. `ApplicationService` remains an
 integration point with substantial composition responsibility; new behavior should first reuse the
 focused owner above, and must not turn it into a second policy or state layer.

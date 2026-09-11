@@ -1,6 +1,6 @@
 # UI 目前架構
 
-最後更新：`2026-09-08`
+最後更新：`2026-09-12`
 
 ## 範圍
 
@@ -147,17 +147,14 @@ hyperparameter search、trial progress 或 automatic model-selection contract，
 
 ### Assistant refresh 與 UI request
 
-- `One Step` 每次最多執行一個可執行 command；`Workflow` 可繼續到真正需要 confirmation、
-  `decision_needed` 或既有 UI dialog 的邊界。
-- assistant command 開始時由 `AgentManager` 呼叫 shared observer suppression；完成後只依
-  `ToolCommandResult.changed_state` 的 serialized scope 刷新，不另外維護第二套 panel truth。
+- 每個 Assistant turn 只有一個 bounded action／response；typed activity 與 terminal feedback
+  不代替 workflow truth。Panel state 只由 matching revisioned `ApplicationViewPublication` render。
 - montage、Data Import、epoch、split、training setting、saliency setting 等人類決策沿用既有 UI
   surface。UI request 打開後 workflow 停在明確 waiting state，不在 chat 裡重做第二套表單。
 - MainWindow 關閉時若 assistant worker 尚未安全停止，會拒絕第一次 close 並重試 teardown；
   不會在仍存活的 QThread 上直接銷毀 worker/QTimer。
 - QThreadPool command 的 result/error 綁到 owner-child QObject receiver；owner 被 Qt 刪除時 queued
-  delivery 自動斷線。獨立 cleanup receiver 保留到 terminal `finished`，才解除 observer
-  suppression、busy state 與 active-worker ownership，避免 pytest-qt/WSLg teardown 的 native crash。
+  delivery 自動斷線。獨立 cleanup receiver 保留到 terminal `finished`，才解除 busy state 與 active-worker ownership，避免 pytest-qt/WSLg teardown 的 native crash。
 - worker thread 結束時由 Qt owner-thread lifecycle 執行 `deleteLater()`；UI 只讀 controller 發布的
   runtime snapshot，不再讀 worker/engine internals。architecture guard 保護這條邊界。
 
@@ -239,35 +236,31 @@ Assistant 不是直接塞在 `MainWindow` 內部，而是由 `AgentManager` 管�
 `MainWindow.init_agent()` 建立 `AgentManager(self, self.study)`，再呼叫
 `agent_manager.init_ui()`。
 
+訓練 terminal 的有效 run identity 與待呈現通知由既有 publication coordinator 擁有，
+只有完整且精確匹配的 run 可接受 terminal；呈現文案與種類由 presentation service 提供。
+AgentManager 保留 Qt timers、實際渲染與成功後的交付確認，渲染失敗不能消耗通知。
+
 `AgentManager` 目前負責：
 
 - 建立 `ChatController()` 作為 chat UI-side state。
 - lazy 建立 `LLMController(self.study)`。
 - 建立 `ChatPanel` 與 `QDockWidget`。
-- 串接 chat panel signals：送出訊息、停止生成、切換 model、切換 execution mode、新對話。
+- 串接 chat panel signals：送出訊息、停止生成、模型設定、新對話。
 - 串接 LLM controller signals：response、status、error、human interaction、streaming chunk、processing finished 等。
 - 處理 assistant 要求的 UI interaction，例如切換 panel、開 montage picker、危險操作 confirmation。
 - Montage apply 使用 command / reviewed UI handoff，不建立 preprocess controller fallback。
 - 刷新 chat product status 時讀 backend state / capability snapshot；若 capability snapshot
   缺少某些 command，該 command 會被視為 unavailable，而不是讓 UI status 變成 debug error。
-- 第一次打開 chat dock 或第一次啟用 local runtime 時，會先顯示 first-run consent；
-  使用者知道 GPU/CPU resource、download estimate、cache status 後，才能 Enable /
-  Download / Use existing cache / Later / Disable。若 runtime unavailable，dock 仍保持可見並在
-  chat history / status summary 顯示原因。
+- 首次啟用只在 dock 顯示 inline setup：選定模型與估計 VRAM；cache ready 時提供
+  `Enable Assistant`，缺 cache 時提供 `Set up model` 與唯一 `Assistant Settings` 入口。
+  不建立 first-run modal、不隨 app startup 自動載入模型；runtime unavailable 時 dock 仍可開。
 
 換句話說，`AgentManager` 是 UI 和 assistant runtime 之間的 adapter / wiring layer；
 它不是 backend 狀態的 source-of-truth。
 
-### 2026-05-02 Chat Product Correction
+### Chat product contract
 
-人工驗收發現 ChatPanel 不能只算「有 dock、有 signal、有 baseline」：
-
-- 使用者輸入 `hello` 曾出現 no-response，代表 normal chat path 沒有產品級 gate。
-- 舊 ChatPanel 視覺仍像 debug dock：status 被塞在底部小字，空狀態缺乏下一步指引，
-  bubble 和 composer 不足以讓第一次使用者理解 assistant 能做什麼。
-- UI baseline 沒抓到這件事，因為 baseline 只比對像素和尺寸，不驗證互動是否有回覆。
-
-本輪收斂後，ChatPanel 的 product contract 是：
+ChatPanel 只呈現 typed runtime／turn／response state，不自行推測 backend readiness。
 
 - chat panel 內不再顯示 `Conversation` 標題、第二條 status footer、developer mode /
   step behavior controls 或第二個 options menu。對話區第一視覺是 empty state / transcript。
@@ -290,27 +283,9 @@ Assistant 不是直接塞在 `MainWindow` 內部，而是由 `AgentManager` 管�
   單字斷裂。
 - normal message、empty response、worker error、local unavailable 都必須在 transcript 中形成
   可見結果，不能只更新 status label。
-- `tests/integration/ui/test_product_walkthrough.py` 已新增 assistant click-through layout
-  regression，覆蓋 header / status / controls 不重疊、command diagnostics 不污染主 UI、
-  user bubble 不截字、composer / Send button fit，以及五個 panel navigation 基本控制。
-- `scripts/dev/capture_ui_baseline.py` 會產出 ignored `build/dev-artifacts/ui-baseline/*.png` live captures
-  與exact-source `ui-baseline-evidence.json`，並比對 `tests/baselines/ui/` approved baseline；缺圖、
-  source/reference hash drift、尺寸差異或超出pixel threshold都fail closed。top-level captures是local
-  generated output，不再tracked；approved reference不由capture自動改寫。
-- `scripts/dev/run_app_polish_ui_dpi_gate.py` 只接受Windows + Qt `windows` platform，依序建立
-  100/125/150% app-polish evidence。每個scale沿用`capture_ui_polish_surfaces.py`的visible-control、
-  text-fit、primary action、geometry、scroll與consecutive-frame contract；aggregate拒絕缺scale、
-  observed DPR不符或stale source。這是automated Windows-runtime evidence，不等於真人DPI/多螢幕驗收。
 
-目前仍未完成的 UI product evidence：
-
-- Windows Desktop shortcut 人工 click-through 到 assistant 對話還沒完成。
-- Montage picker / matching 與其他需要真人確認的 UI request 仍須適用的 native walkthrough；
-  隱藏 post-load label dialog 已移除，external labels 由 Data Import review/apply 處理。
-- Guarded UI product smokes / real-tools evidence 已不再以 direct mutable `Study` state read
-  作為成功證據；其他 integration suites 的 fixture/setup 型 direct state access 還需要分批判讀，
-  不能一概當作 product acceptance。
-- reset / new session 的 destructive confirmation 還需要完整 product walkthrough。
+Pixel／DPI／native walkthrough 與 exact-source／manual acceptance 的要求統一由
+[驗證契約](../validation/README.md)擁有；widget 測試不等於真人 workflow 通過。
 
 ## Aggregate Info 更新
 

@@ -1,6 +1,6 @@
 # Data Pipeline Architecture
 
-最後更新：`2026-08-13`
+最後更新：`2026-09-12`
 
 ## 可信度
 
@@ -181,7 +181,6 @@ preprocess 由 application command/state services 協調 processor classes。
 - rereference
 - normalize
 - channel selection
-- edit event
 - time epoch
 - window epoch
 - export
@@ -343,72 +342,17 @@ Tiny synthetic training integration、checked-in GDF training smoke 與 successf
 - 一般本機 public fixture tests 可因未下載資料而 skip；required CI 先 fetch／verify，strict matrix 和 required pytest runner 不接受必要 fixture 缺失。Gate 定義不代表目前 source 已通過。
 - training smoke 目前看的是流程閉環和 metrics 存在，不看 scientific performance。
 
-## Data Import UX Redesign Gap Audit
+## Reviewed import scope and label evidence
 
-這段是 2026-05-10 對照新版 Data Import UX target 後的 backend / UI audit。它描述目前
-Data Import wizard baseline 和仍未完成的產品化差距，不是新增目標態。
+Reviewed import separates scan location from selected EEG scope and persists label-source choices
+in the recipe. External carrier pairing is shared by validation, apply and wizard review through
+`data_interpretation_pairing.py`; ambiguous or incomplete mapping blocks import rather than skipping
+selected recordings. Label placement distinguishes event order, time, interval and event-code modes.
 
-### 目前已有支撐
+BIDS field recommendations inspect bounded selected-run coverage, values, sidecar semantics and
+cross-run consistency; truncated or insufficient evidence cannot authorize an automatic choice.
+Explicit review remains authoritative. `Continue without labels` preserves raw inspection and
+preprocessing but publishes a non-supervised-ready handoff instead of manufacturing class semantics.
 
-- Data Interpretation 已有 `scan -> preview -> validate -> apply -> recipe` command lifecycle。
-- `scan_source_path()` 能掃單一 file、regular folder、strict BIDS folder，並找到 supported EEG files。
-- 單一 EEG file scan 不會把 sibling EEG file 自動納入 selected scope；但會從同資料夾和
-  `label/`、`labels/`、`event/`、`events/` 近鄰子資料夾找同 stem label carrier。
-- label carrier discovery 目前支援 `.mat`、`.csv`、`.tsv`、`.txt` 和 BIDS `events.tsv`。
-- label carrier planner 能從 MAT variables、CSV / TSV headers、BIDS events columns 推出
-  label field / anchor candidates，並保存到 candidate / recipe choices。
-- Strict BIDS label-field recommendation 不是固定偏好 `trial_type` 或 `value`。Planner 會在
-  bounded row / byte limits 內逐一 profile selected runs，聚合欄位 coverage、non-empty / multi-value
-  coverage、observed values、sidecar `Levels` 和 cross-run consistency；任一 selected table 的
-  row / byte inspection 被截斷，或 evidence 不足時，都不自動推薦，explicit user selection 優先。
-  Public payload 保存 reason code 與 bounded facts，完整 evidence
-  留在 detail review。
-- Strict BIDS folder import 會把 selected-scope `events.tsv` 當作 BIDS label/timing source並保留
-  detected columns。`events.json` 是否存在與 selected label field 是否有可用 `Levels` 是兩個不同的
-  structured facts；缺少 class semantics 會要求 review。missing onset / duration 仍會產生 warning 或
-  blocked placement review；這仍不是 full BIDS inheritance / validator support。
-- label carrier planner 也會為 active label carriers 建立 placement evidence：EEG event order、
-  label time、label interval、label event code 四種模式各有可審查 review；目前 active
-  `placement_review` 會保存到 candidate，供 UI / agent / recipe 使用。
-- `data_interpretation_pairing.py` 是 external label carrier 對 selected EEG file 的共用 policy：
-  candidate validation、apply mapping 與 wizard 即時 review 都讀同一個 resolver。單一 EEG / 單一
-  carrier 可自動配對；多檔必須能以唯一 stem 或明確 target 完整覆蓋，partial mapping 會在 import
-  前 blocked。Strict BIDS 也遵守同一規則；目前只認實際 run-specific carrier，不宣稱 events
-  inheritance。
-- multi-file UI 會以 common parent scan，並透過 `choices.selected_eeg_files` 限定實際 import
-  scope；preview payload 已開始區分 selected scope 和 scan location。
-- `ScanSourceCommand.label_sources` 可帶入 EEG source 之外的 label / event file 或 folder；
-  `scan_source_path()` 會合併 auto-discovered 和 user-added carriers，並保留 carrier source。
-- preview / validation payload 已輸出 `action_items`，每項包含 `target_step`、`issue`、`impact`、
-  `next_action` 和 `severity`，供 UI、agent、headless 讀同一份 command result。
-- import dialog 目前以 `QStackedWidget` step panels 呈現，一次只顯示一個 task panel：
-  Choose EEG Data、Load Labels、Review Metadata、Match Labels、Review and Import。
-- Dataset sidebar 主要入口已收斂為 `Import Data`。薄 chooser 只保存 detached selection；
-  Continue 後 backend typed classification 將 formal BIDS 導向 subject selector，generic folder
-  與 files 導向普通 label-file flow。`Reload recipe` 仍是獨立 reuse action。
-- apply path 能在完整且唯一的 file pairing 下自動套 label：timestamp labels、sample-index
-  anchored MAT labels、trial-order sequence labels；不再默默跳過未配到 label 的 selected EEG。
-- metadata edit、smart parse、remove files 已有 `DataTableCommandService` command path。
-
-### 2026-05-10 已交付 slice
-
-| Target UX need | Current implementation | Remaining boundary |
-| --- | --- | --- |
-| Attach label file / folder independent from EEG source | `ScanSourceCommand.label_sources`、dialog `Add label file` / `Add label folder`、service rescan loop、recipe `label_sources` preservation。 | Label source add currently rescans and reopens the wizard with the attached source; later polish can keep the user on the same visual step after rescan. |
-| Selected scope vs scan location | dialog shows selected scope separately from scan location in source summary cards; candidate metadata is filtered by selected EEG files. | More screenshot evidence is still useful for multi-file fixture walkthroughs. |
-| Match Labels task-oriented UI | 第一層分成 label source、file pairing、label values、placement task panel、class names、check；不再把 `Anchor` / `Time` / `Granularity` / `Role` / `Label unit` 當主 UI。Strict BIDS 顯示實際 EEG / `events.tsv` pairing，並以 selected-run row/sidecar evidence、coverage 與 consistency 提供保守 label-field recommendation；不再重複顯示獨立 BIDS review card。 | Recommendation 仍需 review；advanced event/class diagnostics live in the detailed import report instead of the first-layer task panel. |
-| Mainstream label placement evidence | backend preview 會依資料結構支援 EEG event order、label time、label interval、label event code；UI 讀 `placement_reviews` 顯示 check，而不是靠前端硬猜。Blocked placement review 現在會成為 candidate blocker，不會只變成 confirmation。 | 仍不宣稱 full BIDS；BIDS inheritance、跨 datatype 和更複雜 run-level semantics 需要另外確認。 |
-| Actionable Review and Import checklist | preview / validation emits structured action items; UI renders only blockers / required decisions as first-layer cards with issue、impact、next action and target step. | `View import report` exposes report-only warnings、format capability、recipe trace and remap selectors; it is secondary detail, not the first-layer review layout. |
-| Import without labels / limited mode | `Continue without labels` is saved in choices and produces an authoritative `supervised_ready=false` handoff with structured blockers. Dataset/training capability policy consumes that handoff, so raw inspection/preprocessing can continue while supervised dataset/training remains blocked. | This does not infer missing class semantics or promise supervised readiness for unsupported sidecars. |
-| UI / agent / headless alignment | ApplicationService, tool definitions, real/mock tools, and state snapshot use the same extended command surface. | Broader tool-call eval waits until product stabilization. Retired MCP transports are not part of this boundary. |
-
-### Remaining gaps
-
-| Target UX need | Current gap | 實作方向 |
-| --- | --- | --- |
-| Metadata review step + Smart Parse | dialog button opens the Smart Parser helper and writes overrides into choices, but parser rule provenance is still basic. | Record parser rule / manual edit provenance more explicitly in recipe trace. |
-| Internal event semantics | internal EEG events 已有 candidate label events / not-used events / coverage / evidence preview；response、comment、artifact、boundary 類 markers 不會預設當 class label。PhysioNet-style `T1` / `T2` run-dependent semantics 會產生 review warning。 | Class semantics 仍要靠 sidecar、recipe、preset 或使用者確認；epoch anchor / response / artifact 的 downstream contract 還要和 epoch UI 對齊。 |
-| Wizard polish | Current implementation is a task-oriented step-panel dialog with step-specific cards, left-side Cancel and right-side navigation/apply. Exact-source screenshots are generated under ignored handoff evidence. | Human Windows desktop acceptance is still needed; offscreen screenshots are product evidence but not release approval. |
-| Grouped checklist hierarchy | action items are structured and rendered as target-step review cards. | Very long review text may still need a detail drawer or row expansion after human walkthrough. |
-
-目前施工與下一個切片只由 [Now](../planning/now.md)擁有；本頁的已知邊界不構成新的實作授權。
+Future UX／provenance work belongs to the [data interpretation target](../target/data_interpretation_system.md)
+and active work to [Now](../planning/now.md), not a dated delivered-slice table in current architecture.

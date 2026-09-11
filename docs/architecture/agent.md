@@ -1,6 +1,6 @@
 # Agent 目前架構
 
-最後更新：`2026-09-11`
+最後更新：`2026-09-12`
 
 ## 範圍
 
@@ -55,7 +55,7 @@ Study / managers / domain state
 
 | 區域 | 目前責任 |
 | --- | --- |
-| `XBrainLab/ui/chat/` | chat panel、使用者輸入、模型 / 執行模式 UI。 |
+| `XBrainLab/ui/chat/` | chat panel、使用者輸入與 local runtime setup／model UI。 |
 | `XBrainLab/ui/components/agent_manager.py` | UI 和 assistant 的 composition/presentation adapter；組合窄 lifecycle、dispatcher、publication 與既有 UI handoff owners。 |
 | `XBrainLab/ui/components/assistant_command_dispatcher.py` | assistant controller thread ownership、queued shutdown、timeout retry 與 lifecycle cleanup。 |
 | `XBrainLab/ui/components/assistant_runtime_lifecycle.py` | local runtime activation、terminal close、recoverable error 與 immutable runtime state。 |
@@ -78,7 +78,7 @@ Study / managers / domain state
 它負責：
 
 - 發出使用者訊息。
-- 發出停止生成、模型切換、執行模式切換等 signal。
+- 發出停止生成與模型設定等 signal。
 - 顯示 local runtime 狀態；model menu 不再提供 Gemini/API 產品選項。
 - debug 模式下可觸發測試用 tool command。
 
@@ -93,7 +93,7 @@ Study / managers / domain state
 - 透過 runtime lifecycle 與 command dispatcher 建立、啟動及關閉 `LLMController`，而不是直接擁有 worker process 細節。
 - 將 chat panel 的 typed turn 交給 dispatcher，並將 assistant presentation、activity 與錯誤狀態送回 UI。
 - 透過既有 UI handoff host 處理 switch panel、montage、設定與 confirmation，不在 chat 裡建立第二套 workflow form。
-- 透過 `LLMConfig.normalize_backend_mode()` 把 UI label 對齊 runtime key。
+- 由 runtime lifecycle 將選定模型解析為 immutable `AssistantRuntimeLaunchSpec`，不以 UI label 判斷 runtime identity。
 - 以 `ApplicationViewPublication.revision` 確認 GUI 已套用哪一份 backend state；只有 matching
   revision acknowledgement 後，才接收該 publication 保留的 terminal lifecycle event。
 
@@ -103,6 +103,13 @@ request 打開後 workflow 會停止並顯示 waiting state，不會繼續猜測
 ### 3. LLMController
 
 `LLMController` 是 agent turn 的組合層；mutable lifecycle 已有明確 owner。
+
+工具 handoff 的名稱／command／decision fields 驗證與 request 建構由既有 `ui_handoff` 模組
+依 canonical registry 完成；controller 只發送有效的 typed request。`ToolAttemptCoordinator`
+由自己的 decision/context 建立 confirmation risk、參數與 publication generation；
+`ConversationHistory` 選出排除 host feedback 的最近 human request。RAG result 的
+cancelled／turn-id／waiting 接受條件由 `AssistantTurnOrchestrator` 決定，controller 仍保留
+Qt processing／closing admission。這些內部責任移交不新增工具或改變 confirmation policy。
 
 它負責：
 
@@ -137,13 +144,6 @@ UI 不可直接讀 `AgentWorker.engine` 或 generation thread。worker 只發出
 
 這一層目前同時包含 agent orchestration 和一部分 workflow policy。所有 mapped workflow
 command 仍由同一個 Study-scoped ApplicationService lock 序列化，避免 UI 與 assistant 同時 mutation。
-
-### 執行模式
-
-產品沒有execution-mode selector，也沒有Host推導的step-by-step／continuation scope。每個user turn
-由Granite輸出一個strict decision envelope；Host只驗證、要求必要confirmation、執行一個approved
-action並顯示trusted terminal。成功、blocked、cancelled或failed都結束turn，下一步必須由使用者再發
-一則訊息。
 
 ### Prompt state projection
 
@@ -223,8 +223,8 @@ Runtime policy：
   immutable catalog spec；本機 settings 不能放寬 remote-code trust。
 - `LLMConfig` 會把舊 `INFERENCE_MODE=api` 或 settings 裡的 Gemini/API mode 讀成 `local`。
 - `LLMEngine` 只會 instantiate `LocalBackend`；product package 已移除 remote backend modules。
-- `AgentWorker.reinitialize_agent(...)` 只接受 `allowed_local_model_ids()` 裡的本地模型或 generic
-  `Local`，其他模型名稱會 fail closed，不會 fallback 到 remote backend。
+- `AgentWorker.reinitialize_agent(...)` 只接受 lifecycle 已解析的 `AssistantRuntimeLaunchSpec`；
+  raw model name／generic alias 會 fail closed，不會改用 remote backend。
 - `ModelSettingsDialog` 只保留 local model install/delete/activate 和 generation parameters，不再有
   remote key verification UI。
 - `tests/architecture_compliance.py` 會靜態掃描 product path，禁止 remote backend class / key env path
@@ -238,85 +238,23 @@ Runtime policy：
 
 `LLMConfig` 和 `AssistantRuntimeSelection` 是 runtime truth。UI 顯示文字不能當成真實 backend 狀態。
 
-目前只宣稱Granite固定正向selection suite、bounded no-action checkpoint與bounded direct-input
-clarification continuation。Host保留strict schema、stage/publication、capability與confirmation
-verification，不做intent narrowing、選tool或自動continuation；跨輪receipt最多接納兩次parameter
-reply，只累積latest user text可驗證的值，每輪仍須由模型提出同一exact tool並重新驗證。這種
-工程evidence不能替代真人workflow或thesis accuracy，也不能把歷史`117/117`、`121/121`或Phi
-candidate分數移植成Granite claim；3B目前維持36/36 positive、10/10 direct parameter-origin、5/5
-missing-parameter host guard、5/5 final clarification continuation與20/24 final no-action outcomes；
-clarification raw第一發為0/5且各需1–2次format recovery，未達24/24 no-action所以不是handoff-ready。
+Assistant 的已接受 bounded baseline 與 promotion 限制由[目前狀態](../current.md)及
+[有效決策](../decisions/README.md)擁有；本頁不複製歷史分數或推論目前 cache 狀態。
+Host receipt／format recovery 不等於模型自主正確，也不取代真人 workflow 或 thesis evidence。
 4-bit loading 仍是 optional path；`accelerate` / `bitsandbytes` 不是預設產品啟動硬需求。
 
 Gemini/API 不再列為產品驗證目標；default dependencies 不包含 remote SDK。若歷史研究需要遠端
 fixture，必須放在明確 optional legacy path，不能被 product code import。
 
-### Chat Response Reliability Boundary
+### Response and presentation boundary
 
-2026-05-02 人工驗收暴露出 agent/UI 邊界問題：local runtime smoke 通過，不代表
-`ChatPanel -> AgentManager -> LLMController -> AgentWorker -> LLMEngine -> ChatPanel`
-的 user-visible flow 一定可用。
-
-已確認的可靠性缺口：
-
-- 普通自然語言回覆只靠 streaming chunk 顯示；如果模型回空字串，舊邏輯會 finalize turn，
-  但 transcript 沒有 assistant bubble。
-- 若模型只輸出 tool-call JSON 且 tool 成功，raw JSON 會被隱藏，single mode 會 stop after
-  success；舊邏輯可能沒有任何可見 tool summary。
-- worker error / local unavailable 需要變成 chat transcript 中的 visible message，不可只停在
-  status update。
-- deterministic tool-call eval 不覆蓋普通 `hello` 這種 no-tool response path。
-
-本輪修正後的 agent product contract：
-
-- greeting與一般問答使用strict `respond_to_user` envelope，不執行替代工具。
-- empty response 會發出 visible error，並讓 UI 回 idle。
-- tool-only successful turn 會產生 user-facing visible summary。
-- ApplicationService blocked command 會立即發出 shared blocked reason，但 transcript 不顯示
-  raw tool name、backend command name 或 snake_case command。
-- 缺少direct preprocess參數時使用`respond_to_user`精確詢問，不發明值、不改走GUI。
-- tool error 會分成 input / precondition / runtime 等 product-level bucket；developer detail
-  只留在 structured history / diagnostics / logs。
-- busy re-entry 不會默默吃掉使用者輸入；UI 會提示 assistant still processing。
-- tests 必須覆蓋 normal response、empty response、worker error、local unavailable first-open、
-  missing argument、empty tool result、state-gated command、successful command summary。
-
-### Agent Panel Product UI Contract
-
-`ChatPanel` 只呈現 typed runtime / turn / response state，不自行推測 backend readiness：
-
-- `AgentManager` header 將 runtime 與 turn state投影成 accessibility description、tooltip 與
-  typed panel state；header 不顯示額外綠色／橘色 status badge。窄 dock 固定保留產品標題、
-  New chat、Settings、Close。
-- message area 擁有 loading、empty、transcript、activity 與 confirmation card；failure只呈現
-  typed bubble，不附帶可執行的suggested-next-step按鈕；
-  composer 固定在底部 layout，不用 absolute positioning。Panel 不顯示 execution-mode selector。
-- setting change 與高風險 action 使用 transient `AssistantConfirmationCard`。Card 持有原始
-  `AgentConfirmationRequest`，Apply / Cancel 產生同 identity 的 typed
-  `AgentConfirmationResolution`，不從顯示文字重建 command。
-- action card 隱藏空對話狀態並佔用 transcript 流程；長到 12 列的設定仍由 message area
-  垂直捲動，尾端不放 expanding spacer，確保 Cancel / Apply 在 320 px dock 可到達。
-- current value 只讀同 generation、`state_reliable` 的 `ApplicationViewPublication`；publication
-  generation 不同時會提示重新驗證，不從 panel widget 或 `Study` internals 建第二份狀態。
-- `ApplicationViewEventPublisher` 將 terminal training lifecycle 綁定 publication revision。若
-  Qt queued delivery 尚未確認該 revision，event 會保留；`QtObserverBridge` 回報 matching revision
-  後才重試，避免 UI state 與 assistant terminal message 倒序或遺失。
-- action 完成後，GUI 同步仍由 `application_command_completed -> changed_state -> shared refresh`
-  處理；card 不直接寫 Training / Dataset widget。
-- transcript 只有接近尾端時自動跟隨；使用者向上閱讀後，新訊息不可強制拉到底部。
-- user / assistant bubble 使用同一個 content-aware 寬度契約，最大寬度受 viewport 限制；
-  panel resize、streaming 和 100/125/150% scale 都要重新計算換行與高度。長 path / URL 可在
-  word boundary 之外斷行，code block 自己水平捲動，不讓整個 transcript 產生 horizontal overflow。
-- composer 是固定於底部的兩欄 layout：可增高的多行輸入使用剩餘寬度，Send / Stop action
-  使用穩定 geometry。空輸入、loading、waiting 和 running state 只改 action semantics／enabled
-  state，不讓按鈕與輸入框跳位。
-- empty state 與 durable transcript 必須互斥；判斷依 message ownership，而不是 Qt
-  `isVisible()`。即使 dock 暫時隱藏、背景收到 runtime refresh 或 confirmation cleanup，
-  重新開啟後也不可把 suggestion empty state 插回既有對話。
-- confirmation card 是 transient UI lease，不寫入 chat history；new chat、terminal turn 和 close
-  都會清除，避免過期 action 在下一個 turn 可執行。
-- runtime teardown 仍透過 Qt signal 與 event loop 收斂；focused gate 量測
-  `AgentManager.close()` 返回 latency 與清理期間 GUI heartbeat，不以固定布林值宣稱 non-blocking。
+普通回覆、空回覆、worker failure、blocked action 與 successful tool 都必須有 typed visible
+terminal；diagnostic detail 不洩漏到 transcript。Confirmation card 保留 exact request identity，
+不從顯示文字重建參數；Stop／New Chat／Close 不得沿用過期批准。
+Workflow panels 只 render revisioned `ApplicationViewPublication`，command-result signal 只管理
+Assistant activity／terminal ownership，不以 `changed_state` 另建 repaint 路徑。
+Chat 的 widget、scroll、輸入與 inline setup 契約見[UI 架構](ui.md#chat-product-contract)；
+真模型、native capture 與人工驗收要求見[驗證契約](../validation/README.md)。
 
 ### 5. Tools
 
@@ -436,85 +374,19 @@ working copy本身不代表已preprocess：`preprocessed.operations`為空時sta
 direct preprocess成功後才是`preprocessed`。Epoch後進入`epoch_ready`，split、model與training
 settings全部完成後才是`dataset_ready`。
 
-## 目前可信判斷
+## Evidence and architectural limits
 
-已對照 source code 的部分：
+Source／focused tests 支持 strict parser、published action admission、Command spine、correlated
+confirmation／handoff 與 owned runtime cleanup 的 bounded contract，不直接證明任意模型回答、
+RAG 語意品質、所有資料流程或 Windows 真人操作。每次 candidate 的成功與限制應依
+[驗證契約](../validation/README.md)判定；舊 source 的 artifact 不能當作新 source 的通過。
 
-- chat UI、agent manager、controller、worker、engine、tool registry 都存在。
-- registry精確發布18個approved target tools；retired wrappers在adapter前fail closed。
-- direct tools進`ApplicationService.execute(...)`；GUI tools進既有correlated handoff owner。
-- `LLMController`會做strict parser、stage/publication verification、capability、confirmation與單一tool
-  turn limit；Host不做intent narrowing或自動continuation，只由既有PendingInteraction保存bounded
-  direct-input receipt，供最多兩輪parameter reply重新選擇同一action。
-- `pipeline_state.py`使用ApplicationService publication的workflow stage。
-- runtime backend selection 已由 structured config 管理，不應再用 UI label 判斷。
+仍需保留的架構限制：
 
-已在本輪 runtime 驗證的部分：
-
-- local model catalog、download preflight 和 health-check script 存在。
-- active cache的3B與2B都通過exact revision／completeness inspection；3B真產品引擎的structured
-  no-action turn首輪通過，峰值allocated／reserved為`6,771.76 / 6,872.00 MiB`，關閉後已釋放。
-- 最新已完成的Granite 3B exact-model artifact仍是v7：36 positive＋14 challenge diagnostics＋24
-  precision＋5 clarification；Final checkpoint為36/36 positive、10/10 direct parameter-origin、5/5
-  missing-parameter host guard、20/24 precision與5/5 clarification continuation。Current v8 source改為
-  7條production-controller clarification trajectories、總計81 cases；任何v8分數claim都必須綁定同一
-  exact candidate source的新report，不得移植v7分數。
-- local runtime unavailable 時，chat panel 會保持可開並顯示原因；未acknowledged的first-run setup只在
-  Assistant Dock內出現，不建立blocking dialog。
-- no-model diagnostic runtime可走真ChatPanel、MainWindow、ApplicationService與tool correlation，
-  但manifest/automated test不等於三份真人walkthrough已完成。
-- product-flow tests 覆蓋 normal chat response、empty response、worker error、local unavailable、
-  blocked command feedback、assistant click-through layout。
-
-尚未在本輪完整驗證的部分：
-
-- RAG corpus 的品質和可用性。
-- 長時間、多步 tool-call loop 在真實使用者 workflow 中是否穩定。
-- agent 操作完整資料 pipeline 的端到端正確性。
-- 真 Windows launcher / human desktop acceptance。
-- 長時間真人桌面 session、跨重啟 cache lifecycle 與 frozen Granite benchmark。
-- 24/24 no-action promotion gate、真model safe E2E與三份真人frontend walkthrough尚未在同一candidate
-  source閉合。
-- Windows native layout、dialog interaction與完整PhysioNet CPU workflow仍需要使用者手測。
-
-Historical Phi evaluation artifacts are not current product or thesis evidence. Superseded raw、
-host-assisted或`121/121` reports不得作為current Granite accuracy。Current v12 evidence在同一candidate
-source分開保存50-case core、24-case precision與7-case clarification；81-case `total`只表示inventory
-completeness，嚴格promotion只讀獨立`candidate_gate.passed`，不把它宣稱成單一accuracy。舊v7 artifact
-只保留歷史checkpoint，且verified execution boundary仍不等於真tool execution side effect或產品ready。
-
-## 架構評斷
-
-目前設計是「可工作的中間狀態」。
-
-好的地方：
-
-- UI thread 和 LLM generation 已經分開。
-- assistant 有 workflow stage awareness。
-- real tools 沒有繞過 backend，而是經過 ApplicationService command / query result。
-- mapped workflow tools 已可直接用 ApplicationService command result，不必只解析 legacy 字串。
-- Data Interpretation 的 backend lifecycle 已從 `ApplicationService` 拆到 focused service，
-  agent tool surface 不需要知道該 internal boundary，只依賴同一份 command result / state snapshot。
-- destructive / long-running 操作有 confirmation 機制。
-- runtime 已開始用 structured config 管理，而不是靠 UI label 判斷。
-
-主要問題 / 明確邊界：
-
-- local-only runtime 已是 product path；remote runtime 若日後作歷史 fixture，必須保持 optional 且
-  product code 不 import。
-- `BackendFacade` 已移除；若重新加入 wrapper，agent 會回到分裂 workflow truth。
-- 舊 UI request 相容路徑仍有字串協定；新 workflow handoff / interaction outcome 已有 typed
-  contract，但不能宣稱所有 UI side effect 都完成 typed migration。
-- `CommandParser`驗證模型產生的strict JSON text envelope；它不是host-native structured tool calling，
-  但不掃描prose或接受wrapper。
-- strict envelope、publication/stage verification、capability與confirmation守住目前product
-  contract；模型selection仍必須由v12分離的case evidence與獨立`candidate_gate.passed`，以及真人safe
-  E2E驗證。
-- `AgentManager` 已抽出 presentation、runtime lifecycle、workflow handoff 與 montage coordinator，
-  但仍是偏大的 Qt orchestrator，後續應按責任切片而不是新增 fallback。
-- RAG 已接入 controller，但本輪尚未驗證資料來源和品質。
-- Confirmation risk 仍以 `destructive` 布林值和文字種類描述，尚未成為 setting change、costly
-  operation、irreversible action 等 typed semantic policy。
+- `LLMController` 與 `AgentManager` 仍是偏大的 composition／callback 集中點。後續抽取必須
+  對應既有責任與真實 callers；不能只搬移行數或新增另一個控制層。
+- Strict JSON envelope 是模型生成文字的驗證邊界，不是模型自主語意正確的保證。
+- RAG process ownership 與安全 admission 不證明 corpus／retrieval 的科學或語意品質。
 
 ## Approved target reference
 
@@ -525,11 +397,5 @@ checkpoint，不把任一固定模型或deterministic host guards宣稱為安全
 
 ## 文件狀態
 
-這份文件目前是 `v0.7.0 bounded product baseline`。
-
-它已對照主要source code、18-tool boundary、no-model diagnostic contract與使用者真人workflow acceptance；
-這些證據不證明安全零容忍、任意長時間session、所有dataset／平台或thesis-grade accuracy。
-
-local-only runtime cleanup 已對齊 product source：remote backend modules、remote key handling、
-model settings remote UI 和 product remote switch path 已移除；剩餘驗證重點是長時間 local model
-UI walkthrough、RAG 品質和真實多步 workflow。
+本頁描述 current source boundary；產品版本與已接受能力以[目前狀態](../current.md)為準。
+不在架構文件保存當次 cache、runtime 量測或 candidate 完成狀態。
