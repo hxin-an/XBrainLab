@@ -17,7 +17,6 @@ from XBrainLab.llm.action_contracts import (
     AGENT_ACTION_CONTRACTS,
     AgentExecutionKind,
 )
-from XBrainLab.llm.tools import bind_real_tool_execution_context
 from XBrainLab.llm.tools.application_surface import (
     APPLICATION_COMMAND_TOOLS,
     TOOL_TO_COMMAND,
@@ -178,23 +177,11 @@ class ToolExecutionCoordinator:
                     _raise_invalid_application_result(
                         "Mapped application command returned no result"
                     )
-                if contract is not None and contract.execution_kind not in {
-                    AgentExecutionKind.READ_ONLY,
-                    AgentExecutionKind.UI_REQUEST,
-                }:
+                if contract.execution_kind is not AgentExecutionKind.UI_REQUEST:
                     _raise_invalid_application_result(
                         "Tool execution kind cannot use direct execution"
                     )
-                direct_execution_host = self.host.study
-                if (
-                    contract is not None
-                    and contract.execution_kind is AgentExecutionKind.READ_ONLY
-                ):
-                    direct_execution_host = bind_real_tool_execution_context(
-                        self.host.study,
-                        runtime,
-                    )
-                raw_result = tool.execute(direct_execution_host, **params)
+                raw_result = tool.execute(self.host.study, **params)
 
             execution_result: ToolCommandResult | UiRequest
             if type(raw_result) is UiRequest:

@@ -16,9 +16,8 @@ class BaseTool(ABC):
     Subclasses must provide concrete implementations for :pyattr:`name`,
     :pyattr:`description`, :pyattr:`parameters`, and :meth:`execute`.
 
-    Tool availability is governed by
-    :data:`~XBrainLab.llm.pipeline_state.STAGE_CONFIG` (not per-tool
-    state checks).
+    Backend capability policy governs tool availability; definitions do not
+    own per-tool state checks.
     """
 
     @property
