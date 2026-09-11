@@ -426,9 +426,7 @@ STUDY_TRAINING_COMPATIBILITY_FIELDS = frozenset(
     {"trainer", "model_holder", "training_option", "saliency_params"}
 )
 SALIENCY_PROVENANCE_OWNER = Path("XBrainLab/backend/training/saliency_provenance.py")
-SALIENCY_PROVENANCE_COMPATIBILITY_MODULE = Path(
-    "XBrainLab/backend/training/record/eval.py"
-)
+SALIENCY_RECORD_MODULE = Path("XBrainLab/backend/training/record/eval.py")
 SALIENCY_ARTIFACT_INTEGRITY_OWNER = Path(
     "XBrainLab/backend/training/saliency_artifact_integrity.py"
 )
@@ -1351,7 +1349,7 @@ def check_saliency_provenance_ownership(root_dir: Path) -> list[str]:
     """Keep saliency provenance in its domain module, not evaluation persistence."""
     violations: list[str] = []
     owner_path = root_dir / SALIENCY_PROVENANCE_OWNER
-    compatibility_path = root_dir / SALIENCY_PROVENANCE_COMPATIBILITY_MODULE
+    record_path = root_dir / SALIENCY_RECORD_MODULE
 
     owner_tree = _parse_python_file(owner_path)
     if owner_tree is None:
@@ -1369,35 +1367,18 @@ def check_saliency_provenance_ownership(root_dir: Path) -> list[str]:
                 f"{', '.join(sorted(missing_names))}."
             )
 
-    compatibility_tree = _parse_python_file(compatibility_path)
-    if compatibility_tree is None:
-        violations.append(
-            f"{SALIENCY_PROVENANCE_COMPATIBILITY_MODULE} is missing or invalid."
-        )
+    record_tree = _parse_python_file(record_path)
+    if record_tree is None:
+        violations.append(f"{SALIENCY_RECORD_MODULE} is missing or invalid.")
     else:
         forbidden_names = (
             SALIENCY_PROVENANCE_PUBLIC_NAMES | SALIENCY_PROVENANCE_PRIVATE_DEFINITIONS
-        ) & _top_level_bound_names(compatibility_tree)
+        ) & _top_level_bound_names(record_tree)
         if forbidden_names:
             violations.append(
-                f"{SALIENCY_PROVENANCE_COMPATIBILITY_MODULE} defines saliency "
+                f"{SALIENCY_RECORD_MODULE} defines saliency "
                 f"provenance owned by {SALIENCY_PROVENANCE_OWNER}: "
                 f"{', '.join(sorted(forbidden_names))}."
-            )
-
-        compatibility_exports = {
-            alias.name
-            for node in compatibility_tree.body
-            if isinstance(node, ast.ImportFrom)
-            and _is_saliency_provenance_owner_import(node.module)
-            for alias in node.names
-        }
-        missing_exports = SALIENCY_PROVENANCE_PUBLIC_NAMES - compatibility_exports
-        if missing_exports:
-            violations.append(
-                f"{SALIENCY_PROVENANCE_COMPATIBILITY_MODULE} must explicitly "
-                "re-export compatibility names: "
-                f"{', '.join(sorted(missing_exports))}."
             )
 
     product_root = root_dir / "XBrainLab"
@@ -1406,7 +1387,7 @@ def check_saliency_provenance_ownership(root_dir: Path) -> list[str]:
             relative_path = py_file.relative_to(root_dir)
             if relative_path in {
                 SALIENCY_PROVENANCE_OWNER,
-                SALIENCY_PROVENANCE_COMPATIBILITY_MODULE,
+                SALIENCY_RECORD_MODULE,
             }:
                 continue
             tree = _parse_python_file(py_file)

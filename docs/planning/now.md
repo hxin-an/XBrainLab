@@ -108,6 +108,46 @@ Git recovery checkpoint: product branch `cleanup/module-quality`, HEAD `bf231298
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
 **Checkpoint — authorized internal cleanup reviewed through6AH; explicit decisions prevent final freeze.**
+**2026-09-11 authorization update.** In direct response to the preceding explicit request naming
+four visible repairs and the five retirement groups (including loss of corresponding old Python/CLI
+entry points), the user instructed "繼續做". Proceed with precisely those listed corrections and
+retirements; this is not general UI redesign, a changed formal18-tool/Command contract, new download
+permission, handoff acceptance or merge approval. Earlier no-reply/pending paragraphs below are
+historical evidence of the rejected attempts, superseded for these exact decisions only.
+Start with test-first UI/domain fixes in two non-overlapping groups: import readiness/remap label and
+training zero-metric/device adapter. Main owns integration/plan, focused actual Windows runs and
+small commits; workers initially write regression tests only. Observe each intended RED before source
+fix, then identical retained/adjacent tests and native screenshots/walkthrough without asking for
+intermediate handtest. Keep the backend readiness owner, wizard label parent/layout, table renderer
+and existing typed recommendation adapter; no second readiness/state owner or unrelated copy/layout.
+In parallel main resumes5E with fresh owner/exact-hash/context baseline, exact eight-alias deletion
+and corresponding exclusive guard/test retirement. Preserve real schema/hash/cancellation/ownership
+tests. Continue5F/6E/6G/split artifacts afterward under their bounded steps below. Stop each slice at
+verified source/evidence and continue the stage; only final applicable same-source gates precede
+one Windows manual handoff.
+
+**Authorized repair evidence — import and training.** Four reported defects reproduced before
+source changes: actual TSV preview ready instead of needs_review and parentless Qt confirmation label
+(2fail2.06s); zero metrics N/A and concrete adapter TypeError (2fail6.27s; stronger CPU/blank case
+3fail6.36s). Fixes retain existing placement status owner, add the label to the review layout, reuse
+the optional metric reader and pass existing prospective_device through Protocol/concrete adapter.
+Initial extra expectations were corrected, not production policy: strict BIDS independently rejects
+the fixture's nonnumeric onset; empty Study legitimately supplies a starting recommendation. The
+device test now compares actual runtime/service DTOs and requires backend invalid-device rejection,
+with service finally-close. Full training/UI65pass7.15s; corrected import/domain/UI206pass12.45s.
+One pre-existing fixed126px clipping test failed identically on original layout0.79s; actual font-
+metric-derived clipping preserves all original tooltip/fit assertions and passes original0.63s.
+Both independent actual-diff reviews and Ruff pass. Native Windows isolated example captures show
+0.0000/0.00% versus N/A, and remap label visible inside dialog at20,158 (not a top-level window).
+Main inspected both PNGs under build/dev-artifacts/module-quality-audit/approved-ui-repairs; no
+clipping of the changed elements, no user data/settings changed, and owned preview widgets closed.
+These are focused examples, not real EEG import/training or final Windows manual acceptance.
+
+**Resumed5E result.** Fresh owner/exact-hash/record-context39pass9.17s before; retained38pass8.94s
+after removing eight uncalled eval.py alias imports and one exclusive re-export identity test. The
+domain owner, three genuinely used record types, schema/hash/sealing/cancellation behavior and all
+negative ownership/import guards remain. Independent actualdiff/caller review and Ruff pass.
+Production-8, no owner added; old imports of those aliases now fail as explicitly disclosed.
 Actual Git inventory1264 tracked files now all have dispositions; the audit has1299 unique rows,
 including35 retired paths for traceability. Static/binary/generated groups are not line-by-line source
 review claims. Forty-two stale candidate rows were reconciled to actual stage commits/callers and one

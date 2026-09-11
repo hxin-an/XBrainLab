@@ -25,17 +25,9 @@ from ..saliency_artifact_integrity import (
     verify_saliency_artifact_manifest,
 )
 from ..saliency_provenance import (
-    SALIENCY_CONTEXT_SCHEMA_VERSION,  # noqa: F401 - compatibility re-export
-    SALIENCY_PRODUCER_SCHEMA_VERSION,  # noqa: F401 - compatibility re-export
     SaliencyArtifactContext,
     SaliencyContextError,
     SaliencyProducerIdentity,
-    canonicalize_saliency_identity,  # noqa: F401 - compatibility re-export
-    describe_saliency_array,  # noqa: F401 - compatibility re-export
-    fingerprint_saliency_epoch_data,  # noqa: F401 - compatibility re-export
-    fingerprint_saliency_identity,  # noqa: F401 - compatibility re-export
-    fingerprint_saliency_model_state,  # noqa: F401 - compatibility re-export
-    fingerprint_saliency_split_mask,  # noqa: F401 - compatibility re-export
 )
 from .artifact_store import (
     EVALUATION_RECORD_ARTIFACT_TYPE,
