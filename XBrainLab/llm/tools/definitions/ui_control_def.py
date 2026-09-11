@@ -155,5 +155,21 @@ class BaseSwitchPanelTool(BaseTool):
             "additionalProperties": False,
         }
 
-    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
-        raise NotImplementedError
+    def execute(
+        self,
+        study: Any,
+        panel_name: str | None = None,
+        view_mode: str | None = None,
+        **kwargs: Any,
+    ) -> ToolResult | UiRequest:
+        """Return a typed request; only the existing UI host applies the effect."""
+        if panel_name is None:
+            return ToolResult(
+                ok=False,
+                message="A panel name is required.",
+                error_type="input",
+            )
+        return UiRequest(
+            kind=UiRequestKind.SWITCH_PANEL,
+            params={"panel": panel_name, "view_mode": view_mode},
+        )

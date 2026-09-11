@@ -13,7 +13,11 @@ from __future__ import annotations
 from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 
 from .base import BaseTool
-from .definitions.ui_control_def import ApplicationCommandTool, WorkflowHandoffTool
+from .definitions.ui_control_def import (
+    ApplicationCommandTool,
+    BaseSwitchPanelTool,
+    WorkflowHandoffTool,
+)
 from .mock.preprocess_mock import (
     MockBandPassFilterTool,
     MockNormalizeTool,
@@ -26,7 +30,6 @@ from .mock.training_mock import (
     MockStartTrainingTool,
     MockStopTrainingTool,
 )
-from .mock.ui_control_mock import MockSwitchPanelTool
 
 _TARGET_GUI_HANDOFF_DESCRIPTIONS = {
     "import_eeg_data": "Open Import EEG Data for the user to review and apply.",
@@ -93,7 +96,6 @@ def _build_real_tools() -> list[BaseTool]:
         BaseStartTrainingTool,
         BaseStopTrainingTool,
     )
-    from .real.ui_control_real import RealSwitchPanelTool
 
     return [
         *_target_gui_handoff_tools(),
@@ -105,7 +107,7 @@ def _build_real_tools() -> list[BaseTool]:
         BaseStartTrainingTool(),
         BaseStopTrainingTool(),
         *_target_lifecycle_tools(),
-        RealSwitchPanelTool(),
+        BaseSwitchPanelTool(),
     ]
 
 
@@ -136,7 +138,7 @@ def get_all_tools(mode: str = "mock") -> list[BaseTool]:
             MockStartTrainingTool(workflow_state),
             MockStopTrainingTool(workflow_state),
             *_target_lifecycle_tools(),
-            MockSwitchPanelTool(),
+            BaseSwitchPanelTool(),
         ]
     elif mode == "real":
         tools = _build_real_tools()

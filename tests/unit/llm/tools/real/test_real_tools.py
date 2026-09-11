@@ -3,7 +3,7 @@
 import pytest
 
 from XBrainLab.llm.tools import get_all_tools
-from XBrainLab.llm.tools.result_contract import UiRequest, UiRequestKind
+from XBrainLab.llm.tools.result_contract import ToolResult, UiRequest, UiRequestKind
 
 
 def _tool(name: str):
@@ -36,8 +36,10 @@ def test_gui_decision_tools_are_parameter_free_handoffs(tool_name: str) -> None:
     assert result.params["tool_name"] == tool_name
 
 
-def test_switch_panel_preserves_requested_visualization_subview() -> None:
-    result = _tool("switch_panel").execute(
+@pytest.mark.parametrize("mode", ("real", "mock"))
+def test_switch_panel_preserves_requested_visualization_subview(mode: str) -> None:
+    tool = next(tool for tool in get_all_tools(mode) if tool.name == "switch_panel")
+    result = tool.execute(
         object(),
         panel_name="visualization",
         view_mode="spectrogram",
@@ -49,6 +51,18 @@ def test_switch_panel_preserves_requested_visualization_subview() -> None:
         "panel": "visualization",
         "view_mode": "spectrogram",
     }
+
+
+@pytest.mark.parametrize("mode", ("real", "mock"))
+def test_switch_panel_without_a_panel_returns_input_failure(mode: str) -> None:
+    tool = next(tool for tool in get_all_tools(mode) if tool.name == "switch_panel")
+
+    result = tool.execute(object())
+
+    assert isinstance(result, ToolResult)
+    assert result.ok is False
+    assert result.error_type == "input"
+    assert result.message == "A panel name is required."
 
 
 def test_normalization_schema_rejects_unsupported_method() -> None:
