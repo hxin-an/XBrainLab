@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from threading import Condition, RLock, Thread, current_thread
 from time import monotonic
 from typing import Any, cast
@@ -17,6 +17,7 @@ from .bids_montage_preparation import (
     admit_bids_montage_resources,
     prepare_bids_montage,
 )
+from .montage_capability import montage_layout_issues
 from .montage_preparation_lifecycle import (
     EffectiveMontage,
     ManualMontageOverride,
@@ -203,31 +204,51 @@ class BidsMontagePreparationCoordinator:
             )
         return self.start(requests)
 
-    def select_manual_values(
+    def build_manual_override(
         self,
         *,
         name: str,
+        selected_channel_names: Iterable[str],
         channel_names: Iterable[str],
-        positions: Iterable[Iterable[float]],
+        positions: Sequence[Sequence[float]],
         electrode_names: Iterable[str] | None = None,
-    ) -> MontagePreparationSnapshot:
-        """Normalize one confirmed manual selection under montage ownership."""
-        rows: list[tuple[float, float, float]] = []
-        for raw_row in positions:
-            row = tuple(raw_row)
-            if len(row) != 3:
-                raise ValueError("Manual montage positions must contain x, y, and z.")
-            rows.append((float(row[0]), float(row[1]), float(row[2])))
-        normalized_channel_names = tuple(channel_names)
-        normalized_electrode_names = tuple(electrode_names or normalized_channel_names)
-        return self.select_manual(
-            ManualMontageOverride(
-                name=name or "Manual montage",
-                channel_names=normalized_channel_names,
-                electrode_names=normalized_electrode_names,
-                positions_m=tuple(rows),
-                coordinate_frame="head",
+    ) -> ManualMontageOverride:
+        """Build one validated manual layout before it becomes authoritative."""
+        raw_positions = tuple(positions)
+        normalized_channel_names = tuple(str(value) for value in channel_names)
+        normalized_electrode_names = tuple(
+            str(value)
+            for value in (
+                normalized_channel_names if electrode_names is None else electrode_names
             )
+        )
+        if any(
+            value != value.strip()
+            for value in (*normalized_channel_names, *normalized_electrode_names)
+        ):
+            raise ValueError(
+                "Electrode layout names cannot have surrounding whitespace."
+            )
+        issues = montage_layout_issues(
+            tuple(selected_channel_names),
+            normalized_channel_names,
+            normalized_electrode_names,
+            raw_positions,
+        )
+        if issues:
+            raise ValueError(
+                "Electrode layout must cover every selected channel with unique "
+                f"topographic geometry. {issues[0][1]}"
+            )
+        rows = tuple(
+            (float(row[0]), float(row[1]), float(row[2])) for row in raw_positions
+        )
+        return ManualMontageOverride(
+            name=name or "Manual montage",
+            channel_names=normalized_channel_names,
+            electrode_names=normalized_electrode_names,
+            positions_m=rows,
+            coordinate_frame="head",
         )
 
     def promote_result(
