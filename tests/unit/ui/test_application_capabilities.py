@@ -260,6 +260,29 @@ def test_application_runtime_unsubscribe_uses_existing_service_during_shutdown(
     )
 
 
+@pytest.mark.parametrize("device", ("cpu", " "))
+def test_study_runtime_accepts_prospective_training_device(device: str) -> None:
+    study = Study()
+    service = get_application_service(study)
+    runtime = application_capabilities._StudyApplicationUiRuntime(study)
+    try:
+        if device.strip():
+            recommendation = runtime.get_training_recommendation(
+                prospective_device=device,
+            )
+            assert recommendation == service.get_training_recommendation(
+                prospective_device=device,
+            )
+        else:
+            with pytest.raises(
+                PreconditionError,
+                match="Prospective training device is invalid",
+            ):
+                runtime.get_training_recommendation(prospective_device=device)
+    finally:
+        service.close()
+
+
 def test_ui_publication_helper_returns_one_full_application_publication(qtbot):
     widget = QWidget()
     qtbot.addWidget(widget)

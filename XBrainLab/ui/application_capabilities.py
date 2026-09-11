@@ -220,6 +220,7 @@ class TrainingQueryPort(Protocol):
         expected_publication_generation: int | None = None,
         prospective_model_name: str | None = None,
         prospective_model_params: dict[str, Any] | None = None,
+        prospective_device: str | None = None,
     ) -> TrainingRecommendation:
         """Return the backend-owned starting point for Training Setting."""
         ...
@@ -699,11 +700,13 @@ class _StudyApplicationUiRuntime:
         expected_publication_generation: int | None = None,
         prospective_model_name: str | None = None,
         prospective_model_params: dict[str, Any] | None = None,
+        prospective_device: str | None = None,
     ) -> TrainingRecommendation:
         return self._service().get_training_recommendation(
             expected_publication_generation=expected_publication_generation,
             prospective_model_name=prospective_model_name,
             prospective_model_params=prospective_model_params,
+            prospective_device=prospective_device,
         )
 
     def get_training_resource_preview(

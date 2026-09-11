@@ -323,13 +323,13 @@ class TrainingHistoryTable(QTableWidget):
 
             train_loss = get_last(TrainRecordKey.LOSS, train_metrics)
             train_acc = get_last(TrainRecordKey.ACC, train_metrics)
-            val_loss = get_last(RecordKey.LOSS, validation_metrics)
-            val_acc = get_last(RecordKey.ACC, validation_metrics)
+            val_loss = get_last_optional(RecordKey.LOSS, validation_metrics)
+            val_acc = get_last_optional(RecordKey.ACC, validation_metrics)
             test_acc = get_last_optional(RecordKey.ACC, test_metrics)
             lr = get_last(TrainRecordKey.LR, train_metrics)
 
-            val_loss_str = f"{val_loss:.4f}" if val_loss != 0 else "N/A"
-            val_acc_str = f"{val_acc:.2f}%" if val_acc != 0 else "N/A"
+            val_loss_str = f"{val_loss:.4f}" if val_loss is not None else "N/A"
+            val_acc_str = f"{val_acc:.2f}%" if val_acc is not None else "N/A"
             test_acc_str = (
                 f"{test_acc:.2f}%"
                 if test_acc is not None
