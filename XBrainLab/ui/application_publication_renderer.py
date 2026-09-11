@@ -24,6 +24,16 @@ PANEL_PUBLICATION_RENDER_RECOVERY_INTERVAL_MS = 500
 DESKTOP_PUBLICATION_RENDER_MAX_ATTEMPTS = PANEL_PUBLICATION_RENDER_MAX_ATTEMPTS + 5
 
 
+def is_valid_application_view_publication(publication: object) -> bool:
+    """Accept only a publication with a positive, non-boolean revision."""
+    return (
+        isinstance(publication, ApplicationViewPublication)
+        and not isinstance(publication.revision, bool)
+        and isinstance(publication.revision, int)
+        and publication.revision >= 1
+    )
+
+
 class ApplicationPublicationRenderLedger(QObject):
     """Coalesce panel publications and commit revisions only after rendering."""
 

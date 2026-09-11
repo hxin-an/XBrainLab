@@ -61,6 +61,7 @@ from XBrainLab.ui.application_capabilities import (
 )
 from XBrainLab.ui.application_publication_renderer import (
     ApplicationPublicationRenderLedger,
+    is_valid_application_view_publication,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 from XBrainLab.ui.components.presentation import ElidingComboBox, ResponsiveControlsBar
@@ -267,7 +268,7 @@ class EvaluationPanel(BasePanel):
         publication: object,
     ) -> bool:
         """Render each valid application publication revision at most once."""
-        if not self._valid_application_publication(publication):
+        if not is_valid_application_view_publication(publication):
             logger.error("Ignored malformed Evaluation application publication.")
             return False
         typed_publication = cast(ApplicationViewPublication, publication)
@@ -499,19 +500,9 @@ class EvaluationPanel(BasePanel):
                 exc_info=True,
             )
             return None
-        if not self._valid_application_publication(publication):
+        if not is_valid_application_view_publication(publication):
             return None
         return cast(ApplicationViewPublication, publication)
-
-    @staticmethod
-    def _valid_application_publication(publication: object) -> bool:
-        if not isinstance(publication, ApplicationViewPublication):
-            return False
-        return (
-            not isinstance(publication.revision, bool)
-            and isinstance(publication.revision, int)
-            and publication.revision >= 1
-        )
 
     def _record_application_revision(
         self,

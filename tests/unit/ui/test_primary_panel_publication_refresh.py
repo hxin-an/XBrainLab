@@ -22,6 +22,9 @@ from XBrainLab.backend.utils.observer import Observable
 from XBrainLab.ui.application_capabilities import (
     execute_application_command,
 )
+from XBrainLab.ui.application_publication_renderer import (
+    is_valid_application_view_publication,
+)
 from XBrainLab.ui.panels.dataset.panel import DatasetPanel
 from XBrainLab.ui.panels.preprocess.panel import PreprocessPanel
 from XBrainLab.ui.panels.training.panel import TrainingPanel
@@ -64,6 +67,37 @@ def _make_primary_panel(panel_kind: str, port: _PublicationPort) -> Any:
 def _publish_revision(port: _PublicationPort, revision: int) -> None:
     port.publication = replace(port.publication, revision=revision)
     port.notify(APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT, port.publication)
+
+
+def test_application_view_publication_validator_has_structural_contract() -> None:
+    """Revision shape admission is shared; queue ordering remains panel-owned."""
+    baseline = _PublicationPort().publication
+    stale_revision = max(1, baseline.revision - 1)
+
+    assert is_valid_application_view_publication(baseline) is True
+    assert (
+        is_valid_application_view_publication(
+            replace(baseline, revision=baseline.revision),
+        )
+        is True
+    )
+    assert (
+        is_valid_application_view_publication(
+            replace(baseline, revision=stale_revision),
+        )
+        is True
+    )
+    assert (
+        is_valid_application_view_publication(replace(baseline, revision=True)) is False
+    )
+    assert is_valid_application_view_publication(replace(baseline, revision=0)) is False
+    assert (
+        is_valid_application_view_publication(replace(baseline, revision=-1)) is False
+    )
+    assert (
+        is_valid_application_view_publication(replace(baseline, revision="1")) is False
+    )
+    assert is_valid_application_view_publication(object()) is False
 
 
 @pytest.mark.parametrize("panel_kind", _PRIMARY_PANEL_KINDS)

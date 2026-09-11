@@ -88,6 +88,7 @@ from XBrainLab.ui.application_capabilities import (
 )
 from XBrainLab.ui.application_publication_renderer import (
     ApplicationPublicationRenderLedger,
+    is_valid_application_view_publication,
 )
 from XBrainLab.ui.components.modal_presentation import (
     AlertSeverity,
@@ -363,7 +364,7 @@ class VisualizationPanel(BasePanel):
         publication: object,
     ) -> bool:
         """Queue at most one render for each relevant monotonic revision."""
-        if not self._valid_application_publication(publication):
+        if not is_valid_application_view_publication(publication):
             logger.error("Ignored malformed Visualization application publication.")
             return False
         typed_publication = cast(ApplicationViewPublication, publication)
@@ -3557,7 +3558,7 @@ class VisualizationPanel(BasePanel):
         publication: ApplicationViewPublication,
     ) -> bool:
         """Accept only a verified, isolated Application read publication."""
-        if not self._valid_application_publication(publication):
+        if not is_valid_application_view_publication(publication):
             self._clear_application_view_publication(
                 invalidate_render_publications=True,
             )
@@ -3695,16 +3696,6 @@ class VisualizationPanel(BasePanel):
         self._saliency_interaction_continuation = None
         if continuation is not None:
             continuation.start(lambda: outcome)
-
-    @staticmethod
-    def _valid_application_publication(publication: object) -> bool:
-        if not isinstance(publication, ApplicationViewPublication):
-            return False
-        return (
-            not isinstance(publication.revision, bool)
-            and isinstance(publication.revision, int)
-            and publication.revision >= 1
-        )
 
     def _record_application_publication(
         self,
