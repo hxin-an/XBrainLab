@@ -329,7 +329,8 @@ criteria in the active plan. Cumulative diff size does not trigger intermediate 
 individual slices still undergo complexity review. Final same-source checks, independent integration
 review and human acceptance remain mandatory. This exception does not authorize contract changes.
 
-跨多個bounded slices的產品重建可以先在temporary integration branch組裝，但該branch不是產品
+未採用上述使用者核准之單一階段PR例外時，跨多個bounded slices的產品重建可先在temporary
+integration branch組裝，但該branch不是產品
 baseline、release source或manual-acceptance對象：
 
 - 每個slice仍需focused evidence、clean/explained source、PR與所有applicable non-skipped checks

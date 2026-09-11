@@ -109,6 +109,18 @@ old session IDs and plan text do not prove a process is running. No manual candi
 
 **Current work — developer docs/config truth and remaining scripts; module2–6 closure gaps and explicit decisions remain open.**
 
+**Bounded9Y — disambiguate the approved stage exception in validation guidance.** Main full
+validation read finds the explicit one-integration-PR exception immediately followed by unqualified
+multi-PR instructions requiring a PR per slice. Scope those latter instructions to product rebuilds
+without the approved stage exception. No gate, public contract, manual acceptance or merge rule is
+weakened; stage still needs final exact-source CI and independent review. One prose qualifier, no
+new planning/control document. Guidance audit, independent wording review and same-head docs CI;
+local strict MkDocs remains unavailable without dependency installation (not authorized). Continue
+remaining inventory and blockers, not an intermediate manual-test request.
+Result: existing guidance audit check --format json returns ok=true/errors=[]; independent actual
+wording review approved. No gate registry or runtime edits. Strict docs build remains same-head CI
+evidence still to obtain, not claimed from the source audit.
+
 **Bounded8R — report failed deferred gates before dossier persistence.** Full runner424/direct465
 and independent recorder1489 audit finds failed prerequisites/parallel lanes reach success-only
 record validation before the explicit failure return; real missing-artifact failure raises an
