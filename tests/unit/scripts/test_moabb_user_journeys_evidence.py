@@ -286,8 +286,8 @@ def test_showcase_requires_actual_device_curve_and_held_out_metric(
     assert showcase_quality_complete(evidence) is False
 
     evidence["model"]["actual_device"] = "cpu"
-    for method in evidence["saliency"]["methods"]:
-        path = tmp_path / f"{method.replace(' ', '-')}.npz"
+    for index, method in enumerate(evidence["saliency"]["methods"]):
+        path = tmp_path / f"saliency-{index}.npz"
         path.write_bytes(method.encode())
         evidence["saliency"]["artifacts"].append(
             artifact_record(

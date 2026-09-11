@@ -109,6 +109,67 @@ old session IDs and plan text do not prove a process is running. No manual candi
 
 **Current work — developer docs/config truth and remaining scripts; module2–6 closure gaps and explicit decisions remain open.**
 
+**Bounded6AE — remove unused Assistant UI conveniences/stored projection.** Full suggestion card167,
+dispatcher532, publication coordinator251 and actual call/test trace identify set_subtitle with no
+callers, is_queued projection only asserted beside real no-thread/affinity checks, and unread
+AssistantTrainingAttemptSession.handoff_generation. Remove only those methods/stored field; keep
+constructor subtitle/accessibility/render/click behavior, live dispatcher _queued state/transport,
+and positive-integer training_handoff_generation admission validation. Before source changes extend
+the existing rejected-handoff case across None/bool/zero/negative/string, then passing actual Qt
+suggestion/dispatcher-threading/coordinator baseline; afterward identical retained tests, Ruff and
+independent async/admission actual-diff review. No authoritative owner change, training generation
+contract/public diagnostics mutation or visible UI change; existing UI-internal authorization applies.
+Three production files, deletion only, no new owner/module. Independent review before commit and
+continue remaining candidates/final integration, not an intermediate handoff.
+Result: strengthened41cases pass8.67s before source edits and same41pass8.84s after. No collected
+test removed (one redundant queue flag assertion removed); malformed-generation cases increased
+by4. Production deletion-only-13; Ruff/format and independent async/admission actual-diff review
+pass. Visible copy/layout and backend diagnostic/generation contracts unchanged.
+
+**Bounded9Z — close shared utility behavior-test gaps.** Full CUDA helper38 and filename parser204/
+direct68 audit identifies uncharacterized external cache-release failure and invalid/partial regex
+paths. Keep both live owners and production behavior unchanged. Extend direct tests for CUDA typed/
+message OOM classification, unavailable cache/no release and availability/release failure isolation
+using narrow external CUDA stubs (not a GPU performance claim); add actual filename regex invalid,
+missing numeric/named group and no-match cases, removing misleading mock/folder comments. No UI
+or data semantic change, generic source guard, environment/GPU/model download. Focused existing
+unchanged-production characterization, Ruff and independent test-quality review; no artificial RED
+required for tests-only characterization. Separate test files from8S, no production writes.
+Result: original4filename tests retained;2new filename cases and4CUDA cases, final10pass2.94s using
+actual installed torch.OutOfMemoryError without GPU allocation. External cache operations alone
+are stubbed. Production unchanged, tests+63net; Ruff/format and independent test-quality review
+pass. This closes the stated utility evidence gaps, not actual GPU/resource performance validation.
+
+**Bounded8S — remove unused MOABB evidence conveniences.** Main full evidence481/direct598 and
+package marker5 read, plus whole-tree caller/config/doc search, finds no caller for private
+_row_has_held_out_metric or package-level registry reexports. Live quality acceptance reads actual
+held-out evaluations through evaluate_quality_acceptance/showcase_quality_complete; keep those
+strict metric/provenance/artifact checks and direct registry imports unchanged. Remove only the
+unused helper and two convenience reexports; retain importable package marker, registry assets,
+plan/cache/UI evidence entrypoints and raw data. No HTTP/download/runtime/manifest/schema change,
+no owner added or exclusive test deletion. Run current evidence+registry+storage tests before/after,
+Ruff and independent actual-diff/caller review; one Git-reversible script slice, then continue stage.
+First Windows baseline30pass/1fail14.08s: existing test builds a filename from saliency method
+"Gradient * Input", producing forbidden '*' on Windows before evaluating the evidence contract.
+Repair only test-owned artifact filenames with numeric indices, preserve exact method metadata and
+all integrity assertions. Observe repaired31baseline before deleting source; no product name/filename
+or saliency contract change. This directly blocks focused evidence and belongs to this slice.
+Result: repaired31baseline pass9.56s, identical31pass9.68s after deleting22script lines. All test
+cases/method metadata/quality thresholds retained; tests only+2/-2 portable paths. Ruff/format and
+independent actual-diff/caller review pass. Resume provenance remains a separate assessment, not
+silently closed by helper deletion.
+
+**Early integrated static checkpoint.** With whole-file dispositions populated and source at
+1aee34a9 (183 reversible stage commits), run the existing whole-project Basedpyright regression
+runner and Ruff checks once in the sole Windows environment. This directly checks deleted API
+callers/type boundaries after accumulated refactors; no same-source CI exists to reuse. Keep the
+empty diagnostic baseline immutable and verify actual PyQt dependency resolution. This is early
+integration evidence, not final exact-source CI, full coverage, native/real-model evidence or manual
+handoff. Resolve concrete regressions in bounded slices; do not weaken analyzer configuration.
+Result: pinned Basedpyright1.39.2 with actual PyQt dependency probe observes0diagnostics against
+immutable0baseline; whole-tree Ruff passes and1110files already formatted. This checkpoint covers
+production1aee34a9 before subsequent6AE edits; final same-head integrated evidence still required.
+
 **Bounded9Y — disambiguate the approved stage exception in validation guidance.** Main full
 validation read finds the explicit one-integration-PR exception immediately followed by unqualified
 multi-PR instructions requiring a PR per slice. Scope those latter instructions to product rebuilds

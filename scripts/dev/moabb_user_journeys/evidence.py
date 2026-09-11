@@ -402,24 +402,6 @@ def _contains_multi_point_curve(rows: list[Any]) -> bool:
     return False
 
 
-def _row_has_held_out_metric(row: Any) -> bool:
-    if not isinstance(row, dict):
-        return False
-    test_accuracy = row.get("test_accuracy")
-    if isinstance(test_accuracy, list):
-        return any(value is not None for value in test_accuracy)
-    metrics = row.get("metrics")
-    if not isinstance(metrics, dict):
-        return False
-    test = metrics.get("test")
-    if not isinstance(test, dict):
-        return False
-    return any(
-        isinstance(values, list) and any(value is not None for value in values)
-        for values in test.values()
-    )
-
-
 def _compare_metric(value: Any, threshold: Any, *, operator: str) -> bool:
     if isinstance(value, bool) or isinstance(threshold, bool):
         return False
