@@ -162,6 +162,7 @@ class TestTrainingPanelRealUsage:
         mock_record.repeat = 0
         mock_record.is_finished.return_value = False
         mock_record.get_epoch.return_value = 1
+        mock_record.get_saved_evaluation_record.return_value = None
         mock_record.train = {
             "loss": [0.5],
             "accuracy": [0.8],

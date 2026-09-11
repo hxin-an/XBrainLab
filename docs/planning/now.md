@@ -136,3 +136,13 @@ and tests must not change during
 commit hooks; hooks temporarily stash unstaged work. CI/PR owns live gate status, not this plan or
 older local counts. The remaining endpoint is one Windows handoff and new manual acceptance;
 the original dirty checkout, user settings and shared environment remain protected.
+
+CI follow-through: first candidate `a63301d5` fails eight backend and one UI unit tests: legacy
+test doubles in `test_application_service.py`, `test_saliency_render.py` and
+`test_training_result_presentation.py` lack the semantic result queries, or MagicMock invents
+a saved test result. Real integration shards, source-diverse data, static checks and walkthrough
+passed. Repair only these directly affected fixtures, prefer concrete result records, retain all
+observable assertions, then run focused native tests and new exact-head CI. No production fallback
+or UI change is authorized by this finding; final Windows handoff remains the endpoint.
+The three fixture files are repaired:336 backend and7 UI native tests pass. Production source is
+unchanged from the first candidate; a new exact-head CI run is still required, not a waiver.
