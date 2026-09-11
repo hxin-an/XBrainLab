@@ -905,21 +905,12 @@ class StateSnapshotService:
                     read_errors.append(f"{run_context}.is_finished: {exc}")
                     is_finished = False
                 try:
-                    eval_record = getattr(run, "eval_record", None)
+                    eval_record = run.get_eval_record()
                 except Exception as exc:
                     read_errors.append(f"{run_context}.eval_record: {exc}")
                     eval_record = None
                 try:
-                    saliency_record_getter = getattr(
-                        type(run),
-                        "get_saliency_eval_record",
-                        None,
-                    )
-                    saliency_record = (
-                        saliency_record_getter(run)
-                        if callable(saliency_record_getter)
-                        else eval_record
-                    )
+                    saliency_record = run.get_saliency_eval_record()
                 except Exception as exc:
                     read_errors.append(f"{run_context}.saliency_record: {exc}")
                     saliency_record = eval_record

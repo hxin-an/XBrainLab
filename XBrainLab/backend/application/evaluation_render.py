@@ -844,23 +844,7 @@ class EvaluationRenderPublisher:
 
     @staticmethod
     def _record_for_split(run: Any, split: str) -> Any | None:
-        records = getattr(run, "evaluation_records", None)
-        if isinstance(records, Mapping):
-            record = records.get(split)
-            record_split = (
-                str(getattr(record, "evaluation_split", None) or "unknown")
-                .strip()
-                .casefold()
-            )
-            if record is not None and record_split == split:
-                return record
-        legacy_record = getattr(run, "eval_record", None)
-        legacy_split = (
-            str(getattr(legacy_record, "evaluation_split", None) or "unknown")
-            .strip()
-            .casefold()
-        )
-        return legacy_record if legacy_split == split else None
+        return run.get_evaluation_record_for_split(split)
 
     @staticmethod
     def _split_unavailable_error(message: str) -> PreconditionError:

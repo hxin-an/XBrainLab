@@ -19,6 +19,7 @@ def test_failed_training_history_row_detaches_its_failure_detail() -> None:
     record = MagicMock()
     record.get_epoch.return_value = 0
     record.is_finished.return_value = False
+    record.get_saved_evaluation_record.return_value = None
     record.train = {}
     record.val = {}
 
@@ -52,6 +53,7 @@ def test_completed_training_history_row_does_not_publish_stale_failure_detail() 
     record = MagicMock()
     record.get_epoch.return_value = 1
     record.is_finished.return_value = True
+    record.get_saved_evaluation_record.return_value = None
     record.train = {}
     record.val = {}
 
@@ -81,23 +83,31 @@ def test_completed_training_history_row_publishes_detached_final_test_accuracy()
     plan = MagicMock()
     plan.get_training_status.return_value = "Done"
     plan.option.epoch = 1
-    record = MagicMock()
-    record.get_epoch.return_value = 1
-    record.is_finished.return_value = True
+
+    class _CompletedRecord:
+        def get_epoch(self) -> int:
+            return 1
+
+        @staticmethod
+        def is_finished() -> bool:
+            return True
+
+        def get_saved_evaluation_record(self, split: str) -> EvalRecord | None:
+            return self._test_record if split == "test" else None
+
+    record = _CompletedRecord()
     record.train = {}
     record.val = {}
-    record.evaluation_records = {
-        "test": EvalRecord(
-            label=np.asarray([0, 1]),
-            output=np.asarray([[0.9, 0.1], [0.2, 0.8]]),
-            gradient={},
-            gradient_input={},
-            smoothgrad={},
-            smoothgrad_sq={},
-            vargrad={},
-            evaluation_split="test",
-        )
-    }
+    record._test_record = EvalRecord(
+        label=np.asarray([0, 1]),
+        output=np.asarray([[0.9, 0.1], [0.2, 0.8]]),
+        gradient={},
+        gradient_input={},
+        smoothgrad={},
+        smoothgrad_sq={},
+        vargrad={},
+        evaluation_split="test",
+    )
 
     rows = project_training_history_rows(
         [
@@ -126,6 +136,7 @@ def test_training_history_detaches_requested_and_resolved_class_weighting() -> N
     record = MagicMock()
     record.get_epoch.return_value = 1
     record.is_finished.return_value = True
+    record.get_saved_evaluation_record.return_value = None
     record.train = {}
     record.val = {}
     record.class_weighting = {

@@ -125,6 +125,14 @@ class _Run:
     def is_finished(self) -> bool:
         return self.finished
 
+    def get_evaluation_record_for_split(self, split: str) -> _EvalRecord | None:
+        record = self.evaluation_records.get(split)
+        if record is not None and record.evaluation_split == split:
+            return record
+        if self.eval_record is not None and self.eval_record.evaluation_split == split:
+            return self.eval_record
+        return None
+
     def get_name(self) -> str:
         return f"Repeat-{self.repeat}"
 

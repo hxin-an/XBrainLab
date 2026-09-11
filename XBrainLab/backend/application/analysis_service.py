@@ -189,7 +189,7 @@ class AnalysisCommandService:
                         "finished": run_finished,
                         "evaluation_split": str(
                             getattr(
-                                getattr(run, "eval_record", None),
+                                run.get_eval_record(),
                                 "evaluation_split",
                                 None,
                             )
@@ -581,27 +581,7 @@ class AnalysisCommandService:
 
     @staticmethod
     def _run_evaluation_splits(run: Any) -> list[str]:
-        records = getattr(run, "evaluation_records", None)
-        if isinstance(records, dict):
-            saved = {
-                str(split).strip().casefold()
-                for split, record in records.items()
-                if record is not None
-                and str(split).strip().casefold() in {"training", "validation", "test"}
-            }
-            if saved:
-                return sorted(saved)
-        legacy_record = getattr(run, "eval_record", None)
-        if legacy_record is None:
-            return []
-        legacy_split = (
-            str(getattr(legacy_record, "evaluation_split", None) or "unknown")
-            .strip()
-            .casefold()
-        )
-        return (
-            [legacy_split] if legacy_split in {"training", "validation", "test"} else []
-        )
+        return list(run.get_available_evaluation_splits())
 
     @classmethod
     def _json_safe(cls, value: Any) -> Any:
