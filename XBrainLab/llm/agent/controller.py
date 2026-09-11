@@ -953,7 +953,10 @@ class LLMController(QObject):
             )
             return False
         try:
-            request = self.assembler.get_generation_request(self.history)
+            request = self.assembler.get_generation_request(
+                self.history,
+                format_recovery=self._tool_attempt_session.retry_count > 0,
+            )
             request = request.correlated(self._turn_orchestrator.begin_generation())
             messages = request.to_model_messages()
             self._active_response_contract = request.response_contract
@@ -1243,9 +1246,6 @@ class LLMController(QObject):
             self._tool_attempt_session.record_format_retry(
                 decision.recovery_attempts_after
             )
-            if decision.message is None:
-                raise RuntimeError("Format retry decision is missing recovery context")
-            self.assembler.add_context(decision.message.content)
             self.status_update.emit("Invalid assistant action, retrying...")
             self._generate_response()
             return True

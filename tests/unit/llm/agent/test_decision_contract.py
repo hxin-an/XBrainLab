@@ -33,7 +33,14 @@ def test_prompt_policy_describes_typed_clarification_for_user_responses() -> Non
 
     for text in (instructions, recovery):
         assert "missing_inputs" in text
+        assert "parameters containing only message" in text
+        assert "with message only" not in text
         assert "command, tool, name, arguments, or reasons" not in text
+    assert "missing_inputs shape in rule 3" in instructions
+    assert "missing_inputs shape in rule 2" not in instructions
+    blocked_rule = instructions.split("2. ", 1)[1].split("3. ", 1)[0]
+    assert "parameters containing only message" in blocked_rule
+    assert "prerequisite" in blocked_rule
 
 
 def test_prompt_policy_contains_no_evaluator_answer_fields() -> None:
@@ -105,7 +112,7 @@ def test_prompt_policy_defers_multi_action_requests_without_execution() -> None:
     prompt = StrictToolResponsePromptPolicy().decision_instructions().lower()
 
     assert "multi-action request" in prompt
-    assert "respond_to_user with message only" in prompt
+    assert "respond_to_user with parameters containing only message" in prompt
 
 
 def test_prompt_policy_forbids_unverified_completion_claims() -> None:

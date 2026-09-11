@@ -1636,7 +1636,7 @@ class TestOnGenerationFinished:
         ctrl._generate_response.assert_called_once()
         assert ctrl._tool_attempt_session.retry_count == 1
         assert expected.message is not None
-        ctrl.assembler.add_context.assert_called_once_with(expected.message.content)
+        ctrl.assembler.add_context.assert_not_called()
 
     def test_prose_prefixed_broken_tool_marker_retries_without_streaming(self, ctrl):
         ctrl.current_response = 'Sure, I will check.\n{"tool_name":'
@@ -1687,7 +1687,7 @@ class TestOnGenerationFinished:
                 assert ctrl.is_processing is True
 
         assert ctrl._generate_response.call_count == retry_limit
-        assert ctrl.assembler.add_context.call_count == retry_limit
+        ctrl.assembler.add_context.assert_not_called()
         ctrl._process_tool_calls.assert_not_called()
 
     def test_prose_prefixed_tool_response_is_rejected_without_execution(self, ctrl):

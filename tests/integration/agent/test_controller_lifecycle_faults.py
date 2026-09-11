@@ -597,12 +597,12 @@ def test_prompt_assembly_failure_emits_one_terminal_and_releases_runtime_lease(
     original_get_generation_request = controller.assembler.get_generation_request
     request_build_count = 0
 
-    def _fail_once(history):
+    def _fail_once(history, *, format_recovery=False):
         nonlocal request_build_count
         request_build_count += 1
         if request_build_count == 1:
             raise RuntimeError("fault injection: prompt assembly failed")
-        return original_get_generation_request(history)
+        return original_get_generation_request(history, format_recovery=format_recovery)
 
     monkeypatch.setattr(
         controller.assembler,

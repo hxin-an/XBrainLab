@@ -50,7 +50,6 @@ from scripts.dev.run_stable_assistant_model_eval import (
     score_raw_precision_response,
     target_tool_registry,
 )
-from XBrainLab.chat_contract import MODEL_UNTRUSTED_CONTEXT_BOUNDARY_MESSAGE
 from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 from XBrainLab.llm.agent.controller import LLMController
 from XBrainLab.llm.agent.strict_envelope_recovery import (
@@ -1920,7 +1919,8 @@ def test_trajectory_retries_format_error_with_product_policy_and_scores_final() 
         "recovered_plain_text",
     ]
     assert len(generated_messages) == 2
-    assert "FORMAT CORRECTION REQUIRED" in generated_messages[1][1]["content"]
+    assert "FORMAT CORRECTION REQUIRED" in generated_messages[1][0]["content"]
+    assert "FORMAT CORRECTION REQUIRED" not in generated_messages[1][1]["content"]
     assert generated_messages[1][-1] == {
         "role": "user",
         "content": case.user_input,
@@ -1946,7 +1946,8 @@ def test_trajectory_exhaustion_is_visible_safe_failure_after_two_retries() -> No
     assert trajectory.final_score.passed is False
     assert trajectory.final_score.failure_type == "output_format"
     assert len(generated_messages) == 3
-    assert generated_messages[2][1]["content"].count("FORMAT CORRECTION REQUIRED") == 2
+    assert generated_messages[2][0]["content"].count("FORMAT CORRECTION REQUIRED") == 1
+    assert "FORMAT CORRECTION REQUIRED" not in generated_messages[2][1]["content"]
     assert [attempt.recovery_action for attempt in trajectory.attempts] == [
         "retry_format",
         "retry_format",
@@ -2344,12 +2345,9 @@ def test_positive_and_challenge_first_turns_use_product_context_and_boundary() -
         assert [message["role"] for message in processed_messages] == [
             "system",
             "user",
-            "assistant",
             "user",
         ]
-        assert (
-            processed_messages[2]["content"] == MODEL_UNTRUSTED_CONTEXT_BOUNDARY_MESSAGE
-        )
+        assert processed_messages == raw_messages
 
 
 def test_format_recovery_keeps_production_state_and_runtime_context_boundary() -> None:
@@ -2368,7 +2366,9 @@ def test_format_recovery_keeps_production_state_and_runtime_context_boundary() -
 
     assert [message["role"] for message in messages] == ["system", "user", "user"]
     assert '"type":"state_card"' in messages[1]["content"]
-    assert '"type":"runtime_context"' in messages[1]["content"]
+    assert '"type":"runtime_context"' not in messages[1]["content"]
+    assert "FORMAT CORRECTION REQUIRED" in messages[0]["content"]
+    assert "Return one exact JSON decision envelope." not in messages[0]["content"]
     assert messages[-1] == {"role": "user", "content": case.user_input}
     processed_messages = LocalBackend(LLMConfig())._process_messages_for_template(
         messages
@@ -2376,10 +2376,9 @@ def test_format_recovery_keeps_production_state_and_runtime_context_boundary() -
     assert [message["role"] for message in processed_messages] == [
         "system",
         "user",
-        "assistant",
         "user",
     ]
-    assert processed_messages[2]["content"] == MODEL_UNTRUSTED_CONTEXT_BOUNDARY_MESSAGE
+    assert processed_messages == messages
 
 
 def test_precision_exact_unavailable_call_uses_backend_reason_at_attempt_boundary() -> (

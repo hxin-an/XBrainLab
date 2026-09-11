@@ -103,6 +103,126 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
+**2026-09-11 approved bounded Assistant repair.** User explicitly authorized fixing the two failed
+response paths and continuing through Windows manual handoff ("授權 做到手冊再給我", understood from
+the preceding request as 手測). This supersedes the authority blocker below only for these paths:
+out-of-stage split and ordinary GUI workflow-status explanation. Necessary existing prompt/response
+flow corrections are permitted; keep pinned model/revision,18-tool/public schema, admission/confirmation,
+strict parsing, retry budget and all acceptance thresholds. No model/RAG experiments or new owner.
+First capture the exact real GUI assembled request/raw shape using existing bounded private diagnostics,
+compare current source/contract to identify the contradiction, and retain ecb failures as RED evidence.
+Add focused prompt/request/controller regressions for the diagnosed defect, implement deletion/reuse-
+first in the current owner, verify current non-action and action/clarification safety cases, and review
+the actual diff independently. Then freeze one new exact head, run required real-model/native GUI and
+same-head CI (reuse unaffected focused evidence), and launch Windows GUI+same PowerShell log with the
+consolidated checklist. No intermediate manual test/merge request; only handoff-ready or a genuine
+new authority/resource blocker is the endpoint. Plan and uncommitted prior evidence updates remain owned
+by main. No UI layout/copy source changes planned; authorized response repair is the visible outcome.
+Diagnostic original51.76s reproduces the GUI failure with private existing prompt capture enabled;
+all three raw responses are ordinary English sentences rather than JSON. Actual publication is empty,
+not unavailable, so the retired unavailable-publication prose is not this cause. Model follows the
+one-sentence request but omits its envelope despite generic schema instructions. Repair existing final
+output reminder with an explicit no-action envelope shape and clarify that sentence-length requests
+apply to parameters.message; keep the latest user text unchanged and do not force a specific answer.
+Correct rule9's erroneous rule2 reference to the actual typed-clarification rule3, and make unavailable
+action blocker message-only explicit. Two existing prompt owners, no new owner/module; only prompt text
+changes, parser/registry/retry/schemas unchanged. Direct request/policy tests must fail before edits;
+real exact GUI and frozen81cases remain necessary behavioral proof, not phrase assertions alone.
+Repair1:215focused pass13.24s and independent diff review approve, but native GUI44.61s still fails
+with three bare sentences; not fixed and not committed/promoted. Captured transport includes a
+host-inserted assistant-role plain-text context acknowledgment after the system output contract.
+Inspect its existing shared owner/two consumers; next bounded correction clarifies in that same
+acknowledgment that the following user text is a request (not a reply) and its response must follow
+the system JSON envelope, including brief answers inside parameters.message. Preserve the existing
+untrusted/authorization restrictions and alternating role topology; no new message/control owner.
+Add a discriminating existing real-template projection assertion before editing; run byte-budget,
+template/parser/security adjacent tests and identical native journey. This is a measured prompt-repair
+iteration, not evidence that the acknowledgment is proven sole cause or a license for wider changes.
+Repair2:249focused pass13.94s but native43.97s still fails all three response formats. Remove the
+ineffective acknowledgment suffix along with the artificial acknowledgment itself only after template
+compatibility review: actual pinned4.0 chat_template.jinja renders consecutive user messages without
+alternation checks; official pinned3.3 tokenizer_config.json (707f574c...,9930bytes read-only, no weights)
+does likewise. Both current supported native-system templates can preserve separate context/request
+user messages without fabricating an assistant response. Keep generic same-role merging/legacy
+system handling, current system untrusted policy and host admission. Remove the now-unused shared
+acknowledgment constant and phantom byte-budget allowance; migrate actual template/evaluator tests to
+system/context-user/request-user with exact unchanged contents. Native model behavior still requires
+validation; template compatibility does not prove model accuracy or lower-memory model acceptance.
+Repair3 native45.27s still fails the informational envelope; focused248pass/one old topology
+assertion needs migration. Independent trust/compatibility review approves deletion, but no behavioral
+success claimed. Actual retry prompt reveals a concrete authority mismatch: controller stores its
+fixed FORMAT CORRECTION instruction in untrusted runtime_context, which system explicitly says cannot
+carry instructions. Next repair uses the existing retry counter to request the fixed recovery policy
+inside the existing system message, before byte/token admission. Never promote context/model strings
+to system authority; no new state owner, retries or parser changes. Migrate evaluator projections to
+the same assembler flag, preserve first-generation/raw versus recovered outcome, and prove system
+placement, unchanged latest request, next-turn reset and hostile-context isolation before real GUI.
+Repair4 native44.58s still fails; captured system now includes the fixed correction, so channel repair
+alone does not establish usable recovery. Next bounded correction addresses the existing opening role:
+it calls the model an EEG workflow guide but omits that raw output is consumed by a JSON parser, not
+shown directly. State that transport role at the opening, retaining the existing decision catalog,
+system authority and exact latest request. This remains the same two-defect repair, not a new model
+experiment; success still requires unchanged native questions and full frozen81cases.
+Repair5 native44.73s still bare prose. Stop adding wording without a discriminator. The pinned
+model's official JSON example uses a formal output schema; current catalog contains only individual
+input schemas plus prose/example envelopes. Read-only bounded diagnosis will compare the captured
+exact request against the same request with the existing root envelope expressed as a JSON Schema
+(no tools/parameters/state changed), using the same installed engine and greedy512-token policy.
+No model download, constrained decoder, answer prefill or parser rescue; retain both raw outputs.
+Diagnostic15.89s: captured control and added root schema both return bare prose; no schema addition
+will be shipped. Diagnostic17.19s: minimal transport emits JSON but wrong content/stage, while the
+unchanged full captured prompt with only "with/use message only" changed to "with/use parameters
+containing only message" emits the correct empty/respond_to_user/message envelope. This isolates
+ambiguous field scope in existing rules, not basic model JSON incapability. Apply that exact scope
+correction in decision/recovery policy; unchanged native questions and full81cases still required.
+Repair6 passes the unchanged native two-turn/deactivation journey46.92s: first answer one generation,
+second answer one existing format retry, no tools or mutations; controller/dispatcher/threads released.
+Main visually reviewed the final native transcript. Same565focused cases pass25.35s, including real
+controller retry dispatch/new-turn reset, hostile context and evaluator parity. Independent reviewer
+approves actual diff. Production5files +41/-43/net-2, zero owner delta; script changes only keep the
+evaluator on the product request path, frozen cases/thresholds untouched. Freeze this repair with normal
+hooks, then exact-head81model/native evidence and CI. This is not yet final handoff or Stable promotion.
+
+**Exact candidate ecb68e3f — final evidence / bounded authority question.**204commits after4770,
+PR134 draft pushed, manual Windows checkout clean at ecb68e3f764150c828beae753f95d439d18af356 with
+the existing installed environment. Independent942..ecb delta/inventory closure approved. Main plan
+updates after this freeze are uncommitted progress only, not a new validated candidate. No handoff/merge.
+Same-head offline81-case model evaluation183.45s again fails bounded gate on split_before_epochs_en
+beyond the three accepted IDs;36positive/10explicit-origin/5missing-origin pass. First clarification
+contains non-admissible pending-action inputs, both recovery envelopes fail, no confirmation/tool/UI
+handoff/mutation. Preserve d8 and ecb failures; no retry-until-green, allowed-list/threshold change.
+Current native GUI/deactivation capture51.42s independently fails first explanatory prompt after three
+invalid structured responses; user-visible terminal error, no tool execution. Deactivation/re-enable,
+cache preservation and final runtime/dispatcher/thread cleanup all pass. Exact runtime/cache identity
+matches pinned Granite4.0-micro. Main inspected its native ready PNG; full two-turn journey NOT passed.
+RAG strict10checks/3known queries pass14.27s at exact clean ecb. Existing owned-process trees all exited.
+Exact ecb native preprocessing8cycles and render12cycles pass; render is intentionally Windows-native
+offscreen, actual3D skipped. No3D-interactive claim. Final CI source-diverse/default/DPI/docs/static/
+most platform/shards passed; Linux-unit-rest and Windows-product-lifecycle plus aggregate still pending
+at08:09UTC. Fetch actual final CI outcomes next; do not duplicate equivalent full local regression.
+Main asked asynchronously for explicit authorization to repair exactly the two Assistant failing paths,
+including necessary existing prompt/response flow adjustments, keeping model/18-tools/safety/gates
+unchanged and no RAG experiments. No answer yet; current stage excludes prompt/model experiments.
+Continue unaffected checks and read-only diagnosis, then request decision if still missing. Do not
+launch a manual acceptance candidate or silently accept either newly observed failure. Consolidated
+draft manual checklist lives in ignored build/handoff-evidence/<ecb-full-SHA>/manual-checklist.md.
+Read-only final diagnosis: the d8 and ecb split-case payloads are identical, with structured profile
+512tokens/greedy/two recovery attempts. Independent GUI review confirms same structured generation
+profile, unchanged walkthrough prompt and no proven runtime/config plumbing bug. GUI raw envelopes
+were not retained, so malformed shape/cause cannot be claimed. Real GUI assembled context differs
+from evaluator synthetic cases; removed unavailable-publication prose could matter only if that
+unrecorded condition applied. Do not claim either cleanup causality or random-model variation without
+evidence. Prompt/parser acceptance/retry/model changes remain outside current approval.
+Final CI34577058477 completed/success at08:12:13UTC; exact PR134 base4770b049/head ecb68e3f rechecked.
+All24non-skipped checks are completed/success (three intentional workflow-routing/deploy skips).
+Full Linux aggregate and unchanged85%line/branch-data gate pass, as do source-diverse datasets,
+WindowsDPI/defaultvisual, human-like journey, static/docs and Windows/macOS native/platform gates.
+CI success does not cancel the two local Assistant failures. No local native process remains; no
+manual acceptance app launched. Only necessary new Assistant repair authority is outstanding.
+Canonical aggregate reports line86.97% (80593/92672) and branch72.49% (21445/29584); the displayed83%
+coverage.py total combines lines/branches and is not the line-only85%gate. PR134 checkpoint comment
+records successful CI plus both failed local Assistant gates, pending manual acceptance/no merge.
+
 **Bounded8U — retire obsolete Assistant tool-chain capture.** Final entrypoint review reopens the
 script inventory: capture_chatpanel_local_tool_chain_walkthrough expects scan_source, preview_interpretation
 and validate_interpretation, none exposed by the current formal18-tool registry. No configured CI/Poe/

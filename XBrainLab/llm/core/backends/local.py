@@ -18,10 +18,7 @@ from XBrainLab.backend.application.resource_guard import (
     is_cuda_oom_error,
     release_cuda_cache,
 )
-from XBrainLab.chat_contract import (
-    LOCAL_MODEL_INPUT_TOO_LONG_MESSAGE,
-    MODEL_UNTRUSTED_CONTEXT_BOUNDARY_MESSAGE,
-)
+from XBrainLab.chat_contract import LOCAL_MODEL_INPUT_TOO_LONG_MESSAGE
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.generation import ResolvedGenerationOptions
 from XBrainLab.llm.core.model_catalog import (
@@ -346,15 +343,15 @@ class LocalBackend:
 
         1. **No system role support** — merges system messages into the
            first user message.
-        2. **Strict user/assistant alternation** — merges consecutive
-           same-role messages.
+        2. **Consecutive roles** — merges ordinary same-role messages, but
+           native Granite templates keep untrusted context and request separate.
 
         Args:
             messages: List of message dicts with ``role`` and ``content``.
 
         Returns:
-            A new message list with system content merged and strict
-            alternation enforced.
+            A new message list preserving native system/context boundaries
+            and merging legacy or ordinary same-role content.
 
         """
         if not messages:
@@ -393,8 +390,7 @@ class LocalBackend:
                     {"role": "user", "content": f"[Instructions]\n{system_content}"},
                 )
 
-        # Step 3: Ensure strict user/assistant alternation
-        # Merge consecutive messages with the same role
+        # Step 3: Keep native context/request boundaries; merge ordinary repeats.
         if not filtered:
             return filtered
 
@@ -406,12 +402,8 @@ class LocalBackend:
                     and msg.get("role") == "user"
                     and self._is_untrusted_context_message(result[-1])
                 ):
-                    result.append(
-                        {
-                            "role": "assistant",
-                            "content": MODEL_UNTRUSTED_CONTEXT_BOUNDARY_MESSAGE,
-                        }
-                    )
+                    # Both supported Granite templates accept consecutive user
+                    # roles. Do not fabricate a prose assistant response here.
                     result.append(msg)
                     continue
                 # Same role - merge content

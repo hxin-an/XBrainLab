@@ -178,6 +178,57 @@ def test_controller_prompt_generation(controller: LLMController) -> None:
     assert msgs[2] == {"role": "user", "content": "Hello"}
 
 
+def test_format_retry_dispatch_uses_system_policy_and_resets_for_next_turn(
+    controller: LLMController,
+    qtbot,
+) -> None:
+    from XBrainLab.llm.agent.prompt_policy import STRICT_TOOL_RESPONSE_PROMPT_POLICY
+
+    controller._sig_dispatch_generation.disconnect()
+    controller._turn_orchestrator.host_turn_generation = 1
+    controller._turn_orchestrator.host_turn_id = 1
+    controller.is_processing = True
+    controller.metrics.start_turn()
+    controller._append_history("user", "Describe the current workflow.")
+    dispatched = []
+    controller._sig_dispatch_generation.connect(dispatched.append)
+    correction = STRICT_TOOL_RESPONSE_PROMPT_POLICY.recovery_instructions()
+
+    assert controller._generate_response() is True
+    assert correction not in dispatched[0].to_model_messages()[0]["content"]
+    controller.current_response = "A bare sentence instead of the required envelope."
+    controller._on_generation_finished(dispatched[0].generation_id, [])
+
+    assert len(dispatched) == 2
+    retry = dispatched[1].to_model_messages()
+    assert retry[0]["content"].endswith(correction)
+    assert correction not in retry[1]["content"]
+    assert retry[-1] == dispatched[0].to_model_messages()[-1]
+    assert controller.assembler.context_notes == []
+    assert controller._tool_attempt_session.retry_count == 1
+    controller.current_response = json.dumps(
+        {
+            "workflow_stage": controller.assembler.latest_tool_publication.workflow_stage,
+            "tool_name": "respond_to_user",
+            "parameters": {"message": "The workflow is awaiting input."},
+        }
+    )
+    controller._on_generation_finished(dispatched[1].generation_id, [])
+
+    assert controller.is_processing is False
+    assert len(dispatched) == 2
+    acknowledgement = controller.handle_user_turn(
+        AssistantTurnRequest(
+            correlation=AssistantTurnCorrelation(generation=2, turn_id=2),
+            text="Explain what preprocessing prepares data for.",
+        )
+    )
+    assert acknowledgement.phase is AssistantTurnDeliveryPhase.ACCEPTED
+    qtbot.waitUntil(lambda: len(dispatched) == 3, timeout=2_000)
+    assert controller._tool_attempt_session.retry_count == 0
+    assert correction not in dispatched[2].to_model_messages()[0]["content"]
+
+
 def test_direct_uncorrelated_user_input_fails_closed(
     controller: LLMController,
     qtbot,
