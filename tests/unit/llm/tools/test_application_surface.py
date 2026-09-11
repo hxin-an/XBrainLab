@@ -139,6 +139,7 @@ def test_application_command_builders_match_declared_owner(
         "configure_dataset_split",
         "select_model",
         "configure_training",
+        "compute_saliency",
         "switch_panel",
     ),
 )
