@@ -50,8 +50,8 @@ UI/test files and root settings. Worktree/branch/source facts come from Git, not
 | 4 Models/training | Catalog, resource preflight, settings, stop/rerun, history/checkpoints | Reviewed/reconciled; authorized zero-metric/device fixes verified fbf2f50d; final evidence remains |
 | 5 Evaluation/saliency/views | Read/publication, SmoothGrad/recompute, four views, stale work/render lifecycle | Reviewed/reconciled;5E aliases and5F dormant scheduler retired9ddc44ee/1a4bbfa8; explicit lifecycle verified; final evidence remains |
 | 6 Assistant/chat | Tool adapters, turns/confirmation/execution, model/RAG lifecycle and shutdown | Reviewed through6AH;6E/6G retiredecf71cc1/053dda75 with exact prompt/tool equality; original safety guard retained; final evidence remains |
-| 7 Shared desktop/runtime | Shell/navigation, shared components, configuration, errors/logging/start/close | Shell/navigation/shared owners reviewed; Qt config routing fixed and dispositions reconciled; native first-paint8J/final closure evidence remain |
-| 8 Scripts/dev/CI | Launch/setup, Poe/hooks, runners, walkthroughs/evaluators/reports and artifacts | Tracked script/walkthrough dispositions reconciled;8R exit semantics/8T resume provenance fixed;8J/native and same-head gates remain |
+| 7 Shared desktop/runtime | Shell/navigation, shared components, configuration, errors/logging/start/close | Owners reviewed; Qt config routing and native first-paint8J fixed; final same-source closure remains |
+| 8 Scripts/dev/CI | Launch/setup, Poe/hooks, runners, walkthroughs/evaluators/reports and artifacts | Dispositions reconciled;8R exit/8T resume/8J frame evidence fixed; integrated CI fixture repairs and final gates remain |
 | 9 Cross-module tests/docs | Shared fixtures/guards, dependencies, canonical truth/navigation and coverage gaps | All tracked paths accounted;9O exact offline lock refresh verified; final strict docs/coverage/evidence remain |
 
 Each module includes its callers, tests and related scripts. Domain UI belongs to its domain module;
@@ -103,11 +103,11 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery checkpoint: product branch `cleanup/module-quality`, HEAD `2d7b43a0`, 198 commits after baseline
+Git recovery checkpoint: product branch `cleanup/module-quality`, HEAD `d8dcef26`, 200 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
-**Checkpoint — authorized repairs/retirements and9O verified;8J evidence still prevents final freeze.**
+**Checkpoint —8J repaired; PR134 integrated CI repairs and final model/native evidence in progress.**
 **2026-09-11 authorization update.** In direct response to the preceding explicit request naming
 four visible repairs and the five retirement groups (including loss of corresponding old Python/CLI
 entry points), the user instructed "繼續做". Proceed with precisely those listed corrections and
@@ -259,6 +259,78 @@ before-grab PNGs: settings button complete, no changed copy/function. Owned proc
 These are focused native examples, not real-model readiness or final same-head CI/manual acceptance.
 Next freeze the reviewed source and create the single stage PR; run required same-head CI and only
 CI-uncovered local Assistant/native evidence. Original failure artifacts remain for comparison.
+
+**Integrated candidate d8dcef26 / PR134.** Pushed the single draft stage PR with exact base4770b049;
+200small commits, clean source. Native manual checkout prepared at the same SHA with existing shared
+Python and exact installed direct-lock dependencies; deployed D-cache manual launcher hashes match
+the retained infrastructure source. Model/cache preflight is gpu-ready, pinned Granite4.0-micro
+cache6,815,495,237bytes, embedding ready, no downloads/new environment. Same-head CI is running;
+docs/lint/default-visual and Windows/macOS product smoke passed so far, not the full set. Bounded
+offline real-model evaluation is running against the frozen manual checkout under an owned process
+timeout; later changed source requires fresh exact-head evidence.
+
+**CI repair — POSIX wrong-kind error classification.** macOS platform-core-contracts job103179649989
+fails one actual file-requested-as-directory case (151pass/2Windows-onlyskips): O_DIRECTORY rejects
+with ENOTDIR before fstat and generic OSError wrapping hides the intended directory requirement.
+Do not remove O_DIRECTORY: on platforms without O_PATH this could open/block on special files before
+kind validation. Preserve all descriptor/no-follow/containment/cleanup owners and flags. Normalize
+NotADirectoryError at the existing admission error boundary to a private-path-free directory-component
+requirement; retain existing mismatch assertion and add actual non-directory ancestor rejection.
+One production file, no new owner/API; expected+4LOC. Verify actual POSIX rejection before/after,
+native Windows adjacent admission/verifier suite, independent security review, then fresh CI.
+This is an in-scope cross-platform gate repair, not permission to weaken checks or change UI/tool policy.
+Actual Linux stdlib component probe (real POSIX filesystem, direct source-module load because no
+Linux pytest/product environment is installed) reproduces final+ancestor refusal message2fail and
+same2pass after normalization. Existing native Windows admission suite13pass/3POSIXskips5.89s; flags
+and Windows branch unchanged. Independent security review approves preserving directory-only opens.
+
+**CI fixture repairs.** Linux integration-rest exposes a stale navigation double: list.append cannot
+accept the real switch_page on_ready/on_failed callbacks. Keep actual AgentManager/controller/signal
+topology and model-engine external isolation; model asynchronous readiness with a captured callback,
+assert no dialog/terminal before readiness, then invoke readiness and retain exact one-outcome/terminal
+checks. No production routing fallback. Linux backend six prepared-apply tests inject resource results
+after a cached SAFE preview, so reliable POSIX ctime correctly bypasses that new probe. Worker owns
+only the affected test fixtures: explicitly select the existing non-reusable stat capability when
+testing fresh apply admission; retain real receipt/warning/blocking assertions and separate safe-reuse
+tests. CI provides actual RED; focused native tests then next Linux CI provide corrected evidence.
+Do not alter resource/cache policy or weaken gate expectations.
+Two further fixture/selection gaps: four synthetic deferred-manifest failure cases supply ordinary
+Linux tmp model paths despite the retained D-mounted cache contract; use inert platform-valid D paths
+only (these synthetic commands do not use model/RAG storage), keep real execution/log/no-dossier
+assertions and the cache guard. Four Windows font-policy cases intentionally skip on Linux, which
+the mandatory root-contract attestation rejects. Run the same real conftest subprocess cases on
+all platforms: preserve every Windows expectation and explicitly verify no Windows-font injection
+on non-Windows, including override preservation. No new allowed-skip category or production change.
+
+**Real-model checkpoint limitation.** d8 bounded offline evaluation completed81cases and owned tree
+exited.36/36positive,10/10explicit-origin,5/5missing-origin passed; strict bounded gate fails because
+split_before_epochs_en adds a fourth failure beyond the three accepted case IDs. No execution or
+mutation occurred for this case; malformed clarification/recovery safely exhausted. Attribution is
+not established: unchanged source since the run is not proof against regression versus4770baseline.
+Read-only relevant baseline diff/accepted evidence comparison continues; no model/prompt/RAG
+experiment, expanded allowed-failure list or Stable promotion authorized.
+Relevant4770-to-d8 review finds no change to the evaluator's used strict parser/recovery policy;
+retired parser conveniences and unpopulated recovery feedback were not this execution path. No prior
+accepted raw-output artifact is available locally, so causality remains qualified. Final-source
+required rerun must retain this failed report; do not retry unchanged source until green.
+
+**CI repair verification.** Prepared-apply selection29pass (including retained safe reuse); corrected
+manifest/font suites16pass. Initial asynchronous handoff fixture asserted only a terminal outcome,
+but the real asynchronous host also reports DEFERRED_TO_UI progress; fixture now requires exactly
+that progress while no dialog/terminal exists, followed by one completed outcome and one terminal.
+Its original create_epoch correlation is retained (for_decision omits a separate public tool name).
+Independent actual-diff/security review approves all fixes. Added POSIX-only ancestor case uses the
+existing platform_contract classification; no allowed-skip policy changed. Full native runtime run
+stalled after8cases and reached its180s bound without a stack; exact owned child36604 was identified
+and stopped, launcher35080 exited naturally, subsequent exact scan empty. No user process touched.
+Isolated cancel case1pass8.26s; full same-source sequence with15s per-test stack diagnostics under
+existing Job Object supervisor16pass17.23s, no stderr, owned tree exited. Cause of first stall remains
+unproven; do not call it a reproduced product loop or omit it from evidence. No timeout extended,
+test skipped or speculative production reflow change made. All further native jobs use the existing
+owned-process supervisor. First integrated CI otherwise passed static/docs/visual/DPI/public multi-
+dataset/Windows+macOS product and startup/platform-lifecycle/human-like gates; repaired shards and
+aggregate must pass again on the new exact head. Continue through that verification and local native/
+Assistant gaps before any manual handoff.
 
 **Bounded6AH — characterize the retained final Assistant result byte cap.** Main and independent
 actual projection/caller audit retain _fit_public_tool_payload: restoring required contract fields

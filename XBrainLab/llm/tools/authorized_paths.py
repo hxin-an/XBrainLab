@@ -140,6 +140,10 @@ def authorize_existing_path(
         _require_contained_final_identity(target_identity, root_identity)
     except AuthorizedPathError:
         raise
+    except NotADirectoryError as exc:
+        raise AuthorizedPathError(
+            "Filesystem identity requires a directory for a path component."
+        ) from exc
     except (FilesystemIdentityError, OSError, ValueError) as exc:
         raise AuthorizedPathError(
             "Filesystem identity could not be established safely."

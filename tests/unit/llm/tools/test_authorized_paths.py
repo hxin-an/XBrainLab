@@ -114,6 +114,25 @@ def test_actual_file_and_directory_kind_mismatches_are_rejected(
         )
 
 
+@pytest.mark.platform_contract
+@pytest.mark.skipif(os.name != "posix", reason="POSIX directory-only open refusal")
+def test_actual_non_directory_ancestor_is_rejected(tmp_path: Path) -> None:
+    selected = tmp_path / "selected"
+    selected.mkdir()
+    ancestor = selected / "not-a-directory"
+    ancestor.write_bytes(b"unchanged source")
+
+    with pytest.raises(
+        AuthorizedPathError, match="requires a directory for a path component"
+    ):
+        authorize_existing_path(
+            ancestor / "child",
+            authorized_root=selected,
+            expected_kind="directory",
+        )
+    assert ancestor.read_bytes() == b"unchanged source"
+
+
 def test_windows_final_identity_rejects_junction_like_escape(monkeypatch) -> None:
     selected = ntpath.normcase(ntpath.normpath(r"C:\Data\Selected"))
     escaped = ntpath.normcase(ntpath.normpath(r"D:\Private\secret.edf"))
