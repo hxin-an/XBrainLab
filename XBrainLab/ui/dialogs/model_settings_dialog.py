@@ -1550,15 +1550,6 @@ class ModelSettingsDialog(BaseDialog):
                     disconnect_runtime(self._on_assistant_runtime_snapshot_changed)
             self._runtime_observer_attached = False
 
-    def get_config(self):
-        """Return the current LLM configuration.
-
-        Returns:
-            The LLMConfig instance with the current settings.
-
-        """
-        return self.config
-
     def get_result(self):
         """Return the configured local assistant settings."""
-        return self.get_config()
+        return self.config
