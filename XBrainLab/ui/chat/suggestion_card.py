@@ -156,10 +156,3 @@ class AssistantSuggestionCard(QPushButton):
     def subtitle(self) -> str:
         """Return the supporting copy shown under the title."""
         return self._subtitle
-
-    def set_subtitle(self, subtitle: str) -> None:
-        """Update the supporting copy without rebuilding the prompt row."""
-        self._subtitle = str(subtitle)
-        self.subtitle_label.setText(self._subtitle)
-        self.setAccessibleDescription(self._subtitle)
-        self.setToolTip(f"{self._title}\n{self._subtitle}")

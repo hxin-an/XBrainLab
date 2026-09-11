@@ -570,7 +570,6 @@ def test_dispatcher_rejects_invalid_contract_before_starting_command_thread(qtbo
         assert leaked_threads == []
         assert controller.thread() is app.thread()
         assert dispatcher.command_thread is None
-        assert dispatcher.is_queued is False
     finally:
         for thread in leaked_threads:
             thread.quit()

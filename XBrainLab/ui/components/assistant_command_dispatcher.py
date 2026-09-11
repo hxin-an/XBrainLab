@@ -258,10 +258,6 @@ class AssistantCommandDispatcher(QObject):
         return self._command_thread
 
     @property
-    def is_queued(self) -> bool:
-        return self._queued
-
-    @property
     def state(self) -> AssistantCommandDispatcherState:
         return self._state
 
