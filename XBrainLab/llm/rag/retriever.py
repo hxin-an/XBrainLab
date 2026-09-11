@@ -344,7 +344,7 @@ class RAGRetriever:
         to pure semantic search.
 
         This method performs embedding and vector search synchronously. The
-        controller uses ``RAGRetrieverLifecycle`` to run it off the GUI thread.
+        production controller runs it in an isolated RAG process.
 
         Args:
             query: The user's input text to find similar examples for.

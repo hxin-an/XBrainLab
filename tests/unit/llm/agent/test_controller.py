@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import threading
 from dataclasses import replace
 from typing import Any, cast
 from unittest.mock import MagicMock, call, patch
@@ -508,41 +507,10 @@ def _use_rag_probe(ctrl: Any, *, accept: bool = True) -> _RAGLifecycleProbe:
     return lifecycle
 
 
-class _BlockingRAGRetriever:
-    def __init__(self) -> None:
-        self.started = threading.Event()
-        self.release = threading.Event()
-        self.closed = False
-
-    def initialize(self) -> None:
-        return None
-
-    def get_similar_examples(
-        self,
-        query: str,
-        *,
-        allowed_tool_names: frozenset[str] | None = None,
-    ) -> str:
-        del allowed_tool_names
-        self.started.set()
-        self.release.wait(timeout=2)
-        return "RAG info"
-
-    def close(self) -> None:
-        self.closed = True
-        self.release.set()
-
-
 def _make_real_signal_controller(
-    rag_retriever: Any,
-    *,
-    rag_lifecycle: Any | None = None,
+    rag_lifecycle: Any,
 ) -> Any:
     from PyQt6.QtCore import QObject
-
-    from XBrainLab.llm.agent.rag_lifecycle import RAGRetrieverLifecycle
-
-    lifecycle = rag_lifecycle or RAGRetrieverLifecycle(rag_retriever)
 
     with (
         patch("XBrainLab.llm.agent.controller.ToolRegistry"),
@@ -554,7 +522,7 @@ def _make_real_signal_controller(
     ):
         from XBrainLab.llm.agent.controller import LLMController
 
-        controller = LLMController(MagicMock(), rag_lifecycle=lifecycle)
+        controller = LLMController(MagicMock(), rag_lifecycle=rag_lifecycle)
         assert isinstance(controller, QObject)
         return controller
 
@@ -1087,28 +1055,38 @@ class TestHandleUserInput:
 
 
 def test_handle_user_input_does_not_block_qt_event_loop_during_rag(qtbot):
-    from PyQt6.QtCore import QEventLoop, QTimer
+    from PyQt6.QtCore import QTimer
 
-    rag = _BlockingRAGRetriever()
-    ctrl = _make_real_signal_controller(rag)
+    from tests.unit.llm.agent.test_rag_process_lifecycle import _stuck_worker
+    from XBrainLab.llm.agent.rag_process_lifecycle import (
+        ProcessRAGRetrieverLifecycle,
+    )
+
+    lifecycle = ProcessRAGRetrieverLifecycle(
+        process_target=_stuck_worker,
+        retrieval_timeout_seconds=5.0,
+        shutdown_wait_seconds=0.5,
+    )
+    ctrl = _make_real_signal_controller(lifecycle)
     ctrl._generate_response = MagicMock()
+    ticks: list[bool] = []
+    tick = QTimer()
+    tick.setInterval(1)
+    tick.timeout.connect(lambda: ticks.append(True))
+    tick.start()
+    try:
+        _submit_user_turn(ctrl, "do something")
 
-    _submit_user_turn(ctrl, "do something")
-
-    assert rag.started.wait(timeout=2)
-    assert not rag.release.is_set()
-    ctrl._generate_response.assert_not_called()
-
-    processed = []
-    loop = QEventLoop()
-    QTimer.singleShot(0, lambda: processed.append(True))
-    QTimer.singleShot(0, loop.quit)
-    loop.exec()
-    assert processed == [True]
-
-    rag.release.set()
-    qtbot.waitUntil(lambda: ctrl._generate_response.call_count == 1, timeout=2_000)
-    ctrl._generate_response.assert_called_once()
+        qtbot.waitUntil(
+            lambda: bool(ticks) and ctrl._generate_response.call_count == 0,
+            timeout=2_000,
+        )
+        assert lifecycle.has_active_process is True
+        ctrl._generate_response.assert_not_called()
+    finally:
+        tick.stop()
+        assert lifecycle.close() is True
+        assert lifecycle.has_active_process is False
 
 
 # --- _on_chunk_received ---
@@ -2438,10 +2416,7 @@ class TestClose:
         retriever = MagicMock()
         lifecycle = MagicMock(retriever=retriever)
         lifecycle.close.return_value = True
-        controller = _make_real_signal_controller(
-            MagicMock(),
-            rag_lifecycle=lifecycle,
-        )
+        controller = _make_real_signal_controller(lifecycle)
         controller.worker_thread.isRunning.return_value = False
 
         assert controller.close() is True

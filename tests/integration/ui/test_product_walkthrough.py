@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import patch
 
 import mne
@@ -56,7 +57,7 @@ from XBrainLab.backend.training import (
 )
 from XBrainLab.backend.training.record import EvalRecord, RecordKey, TrainRecordKey
 from XBrainLab.llm.agent.controller import LLMController
-from XBrainLab.llm.agent.rag_lifecycle import RAGRetrieverLifecycle
+from XBrainLab.llm.agent.rag_process_lifecycle import ProcessRAGRetrieverLifecycle
 from XBrainLab.llm.agent.response_presentation import AssistantResponsePresentation
 from XBrainLab.llm.agent.runtime_state import (
     AssistantRuntimePhase,
@@ -208,23 +209,30 @@ class _ImportEegToolWorker(AgentWorker):
         self.generation_finished.emit(generation_id, [])
 
 
-class _EmptyRagRetriever:
-    """Return no examples while retaining the real RAG lifecycle boundary."""
+class _EmptyRagLifecycle:
+    """Deterministic no-context RAG seam for this product walkthrough."""
 
-    def initialize(self) -> None:
-        return
+    def start(self) -> bool:
+        return True
 
-    def get_similar_examples(
+    def retrieve(
         self,
-        query: str,
+        turn_id,
+        query,
+        callback,
         *,
-        allowed_tool_names: frozenset[str] | None = None,
-    ) -> str:
-        del query, allowed_tool_names
-        return ""
+        allowed_tool_names=None,
+    ) -> bool:
+        del allowed_tool_names
+        callback(turn_id, query, "", "")
+        return True
 
-    def close(self) -> None:
-        return
+    def cancel_retrieval(self, turn_id: int) -> bool:
+        del turn_id
+        return False
+
+    def close(self) -> bool:
+        return True
 
 
 def _click(qtbot, button) -> None:
@@ -740,7 +748,7 @@ def test_model_import_action_opens_typed_product_surface_directly(
     with patch("XBrainLab.llm.agent.controller.AgentWorker", _ImportEegToolWorker):
         controller = LLMController(
             test_app.study,
-            rag_lifecycle=RAGRetrieverLifecycle(_EmptyRagRetriever()),
+            rag_lifecycle=cast(ProcessRAGRetrieverLifecycle, _EmptyRagLifecycle()),
         )
     runtime = _ReadyAssistantIntegrationRuntime(controller)
     manager = AgentManager(

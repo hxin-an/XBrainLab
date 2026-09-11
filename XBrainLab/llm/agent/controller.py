@@ -65,7 +65,6 @@ from .pending_interaction import (
     PendingInteractionCoordinator,
     PendingWorkflowHandoffDecision,
 )
-from .rag_lifecycle import RAGLifecycleRetriever, RAGRetrieverLifecycle
 from .rag_process_lifecycle import ProcessRAGRetrieverLifecycle
 from .response_presentation import (
     AssistantPanelNavigationRequest,
@@ -244,7 +243,6 @@ class LLMController(QObject):
         registry: Tool registry holding all registered tools.
         assembler: Context assembler for building system prompts.
         verifier: Verification layer for validating tool calls.
-        rag_retriever: RAG retriever for augmenting prompts with examples.
         worker_thread: Background QThread running the AgentWorker.
         worker: AgentWorker performing LLM inference.
         history: List of message dicts representing conversation history.
@@ -285,9 +283,7 @@ class LLMController(QObject):
         self,
         study,
         *,
-        rag_lifecycle: (
-            RAGRetrieverLifecycle | ProcessRAGRetrieverLifecycle | None
-        ) = None,
+        rag_lifecycle: ProcessRAGRetrieverLifecycle | None = None,
     ) -> None:
         """Initializes the LLMController.
 
@@ -417,14 +413,6 @@ class LLMController(QObject):
     def shutdown_in_progress(self) -> bool:
         """Return whether asynchronous worker ownership is still being released."""
         return self._closing and not self._closed
-
-    @property
-    def rag_retriever(self) -> RAGLifecycleRetriever:
-        """Expose the lifecycle-owned retriever for diagnostics and compatibility."""
-        retriever = self._rag_lifecycle.retriever
-        if retriever is None:
-            raise RuntimeError("Production RAG is owned by an isolated process.")
-        return retriever
 
     @property
     def pending_interactions(self) -> PendingInteractionCoordinator:
