@@ -109,6 +109,25 @@ old session IDs and plan text do not prove a process is running. No manual candi
 
 **Current work — developer docs/config truth and remaining scripts; module2–6 closure gaps and explicit decisions remain open.**
 
+**Bounded8R — report failed deferred gates before dossier persistence.** Full runner424/direct465
+and independent recorder1489 audit finds failed prerequisites/parallel lanes reach success-only
+record validation before the explicit failure return; real missing-artifact failure raises an
+infrastructure error instead of the structured gate-failure result. Existing orchestration tests
+mock persistence and miss this boundary. Add a real temporary clean Git repo/child command/recorder
+regression for prerequisite and parallel failures, including exit-zero/missing required artifact.
+Move existing failure inspection ahead of deferred persistence; keep raw child logs and attempted
+IDs, do not publish an incomplete deferred dossier or run final gates. Successful batch persistence,
+serial handling, exact-source/artifact verification and all required gates stay unchanged. No new
+validation mode, owner, dependency or UI change. Observe RED before source edits, then same tests
+and adjacent real recorder tests, Ruff and independent actual-diff review. One isolated reversible
+script repair, continue inventory/integrated gates afterward; not handoff-ready at slice completion.
+Result: four real Git/child/recorder regressions fail before source change with the exact deferred
+persistence exception (3.49s); full manifest/recorder pair after change52pass/2skip73.20s. Both skips
+are existing POSIX process-group contracts on Windows, not represented as passing Linux evidence.
+Ruff/format and independent actual-diff review pass. Script+11/-11/net0, tests+96 for four real
+failure cases; no recorder/validator/gate weakening. Partial deferred batches leave raw diagnostics,
+not an incomplete dossier; all-success batch behavior remains covered by existing real persistence.
+
 **Bounded7O — narrow AppConfig to its actual resource/release responsibility.** Main and independent
 full config74/direct73, icon-render36 and whole-tree caller/config audit find only icon lookup is a
 runtime consumer; importantly VERSION is a real Commitizen version_files target and must remain.

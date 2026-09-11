@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 from threading import Barrier
 from types import MappingProxyType
@@ -7,6 +10,7 @@ from typing import Any
 
 import pytest
 
+import scripts.dev.handoff_evidence_recorder as recorder
 import scripts.dev.run_handoff_validation_manifest as runner
 from scripts.dev.handoff_gate_spec import GateSpec
 
@@ -463,3 +467,95 @@ def test_failed_parallel_lane_prevents_final_gate_and_dossier_verification(
     assert "dashboard-gate" not in executed
     assert verified is False
     assert result["reason"] == "lane-a: lane failed"
+
+
+@pytest.mark.parametrize("lane", ["prerequisite", "parallel"])
+@pytest.mark.parametrize("failure", ["return-code", "missing-artifact"])
+def test_real_deferred_failure_preserves_logs_without_publishing_dossier(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, lane: str, failure: str
+) -> None:
+    git = shutil.which("git")
+    assert git is not None
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def git_run(*args: str) -> str:
+        return subprocess.run(  # noqa: S603 - resolved Git, test-owned repository/args.
+            [git, *args], cwd=repo, check=True, capture_output=True, text=True
+        ).stdout.strip()
+
+    git_run("init", "-q")
+    git_run("config", "user.email", "test@example.com")
+    git_run("config", "user.name", "Test")
+    (repo / ".gitignore").write_text("build/\n", encoding="utf-8")
+    (repo / "module.py").write_text("VALUE = 1\n", encoding="utf-8")
+    git_run("add", ".")
+    git_run("commit", "-qm", "initial")
+    sha = git_run("rev-parse", "HEAD")
+    branch = git_run("branch", "--show-current")
+    failing = GateSpec(
+        check_id="failing-gate",
+        section="1",
+        argv=(
+            sys.executable,
+            "-c",
+            "print('gate diagnostic'); raise SystemExit(1)"
+            if failure == "return-code"
+            else "print('gate diagnostic')",
+        ),
+        timeout_seconds=30,
+        required_artifact_paths=("required.json",)
+        if failure == "missing-artifact"
+        else (),
+    )
+    final = GateSpec(
+        check_id="final-gate",
+        section="8",
+        argv=(sys.executable, "-c", "print('must not run')"),
+        timeout_seconds=30,
+    )
+    specs = MappingProxyType({spec.check_id: spec for spec in (failing, final)})
+    check_ids = tuple(specs)
+    for module in (runner, recorder):
+        monkeypatch.setattr(module, "HANDOFF_GATE_SPECS", specs)
+        monkeypatch.setattr(
+            module, "HANDOFF_RELEASE_PROFILES", MappingProxyType({"handoff": check_ids})
+        )
+    monkeypatch.setattr(runner, "handoff_profile_check_ids", lambda _profile: check_ids)
+    monkeypatch.setattr(runner, "_SERIAL_GATE_IDS", ())
+    monkeypatch.setattr(
+        runner,
+        "_DEFERRED_PREREQUISITE_IDS",
+        (failing.check_id,) if lane == "prerequisite" else (),
+    )
+    monkeypatch.setattr(
+        runner,
+        "_POST_REGRESSION_LANES",
+        ((failing.check_id,),) if lane == "parallel" else (),
+    )
+    monkeypatch.setattr(runner, "_FINAL_GATE_IDS", (final.check_id,))
+    evidence_root = repo / "build" / "handoff-evidence" / sha
+
+    result = runner.run_handoff_manifest(
+        repo_root=repo,
+        evidence_root=evidence_root,
+        model_cache_dir=tmp_path / "models",
+        rag_cache_dir=tmp_path / "rag",
+        expected_branch=branch,
+        require_upstream=False,
+    )
+
+    assert result["ok"] is False
+    assert result["dossier_verified"] is False
+    assert result["completed_check_ids"] == [failing.check_id]
+    assert result["reason"].startswith("failing-gate: ")
+    assert ("required.json" if failure == "missing-artifact" else "1") in result[
+        "reason"
+    ]
+    logs = evidence_root / "logs"
+    assert (
+        logs / "section-1-failing-gate.stdout.log"
+    ).read_text().strip() == "gate diagnostic"
+    assert (logs / "section-1-failing-gate.stderr.log").is_file()
+    assert not (logs / "section-8-final-gate.stdout.log").exists()
+    assert not (evidence_root / "handoff-evidence.json").exists()
