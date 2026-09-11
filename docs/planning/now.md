@@ -109,6 +109,39 @@ old session IDs and plan text do not prove a process is running. No manual candi
 
 **Current work — developer docs/config truth and remaining scripts; module2–6 closure gaps and explicit decisions remain open.**
 
+**Bounded9X — align Assistant user-guide model wording with the live catalog.** Independent full user
+guide/case/manifest/style audit and main guide73/catalog constants/specs/current truth read find
+assistant.md claims one fixed Granite model despite two supported local choices. Replace only
+"fixed" with "supported"; retain local-only, no-cloud, no-silent-runtime-fallback and one-action
+boundaries. No product/model/prompt change or site redesign. Existing user-site source/link validator
+and independent wording review; strict MkDocs build still requires the absent existing dependency or
+same-head CI, no installation authorized. Case-study registry assets remain exact-byte provenance,
+not downloader code; all unverified evidence qualifications remain. Continue stage cleanup afterward.
+
+**Bounded6AB — remove unreachable mock-only state conveniences.** Full mock source105/47/84/40,
+direct155, registry assembly and evaluator caller trace retain the live mock tool mode and its18
+formal schemas. Remove only MockWorkflowState.epochs_ready and its three uncalled mutators
+mark_data_loaded/mark_epochs_ready/reset_preprocess. Live prerequisite fields and missing-training
+policy stay. Replace the unused MagicMock Study fixture with a plain object to make any accidental
+Study dependency visible; mock tests remain simulation evidence, not real EEG/training evidence.
+Passing original/stronger plain-object characterization before state deletion, identical retained
+tests after, Ruff and independent actual-diff/caller review. One production file, no owner addition
+or public tool change; no UI source. Independent Git-reversible commit, then continue stage work.
+
+**Bounded6AC — retire model-settings get_config forwarding convenience.** Independent full dialog1564/
+direct1402 and main exact get_result/BaseDialog/caller trace find get_config only used by get_result
+and one exclusive convenience test. Preserve live BaseDialog.get_result contract and same self.config
+object; remove get_config and return self.config directly from get_result. Migrate the existing test
+to get_result identity, passing before and after. No download/settings/runtime/visible UI behavior
+change; existing UI-internal cleanup authorization applies. One production file, no owner addition;
+Ruff, direct dialog suite and independent actual-diff review. Separate Git-reversible commit; the
+uncharacterized cross-selection terminal-message question is outside this convenience deletion.
+
+6AB/6AC validation: original combined80pass23.96s; stronger plain-object mock fixture and formal
+get_result identity80pass6.44s before source deletion; same80pass6.41s after. No cases removed.
+Ruff/format and independent actual-diff/caller review approve both.6AB production-20/tests net-2;
+6AC production net-9/tests net0. Timing differences are not a measured application speedup.
+
 **Bounded8Q — retire the explicitly user-approved one-time MOABB downloader.** On2026-09-11 the
 user authorized deletion of the one-time download script and reiterated the final Windows handoff
 endpoint. Main full CLI366/storage294/registry430, package entry points and direct storage115 tests;
