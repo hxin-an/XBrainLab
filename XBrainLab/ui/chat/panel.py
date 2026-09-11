@@ -1839,7 +1839,9 @@ class ChatPanel(QWidget):
     def _complete_chat_reflow(self) -> None:
         """Commit shared geometry after surfaces and bubbles have been fitted."""
         self._sync_content_alignment()
+        self.chat_layout.activate()
         self.chat_content_widget.updateGeometry()
+        QApplication.sendEvent(self.scroll_area, QEvent(QEvent.Type.LayoutRequest))
         if self._shows_empty_state_only():
             self._scroll_empty_state_to_top()
 

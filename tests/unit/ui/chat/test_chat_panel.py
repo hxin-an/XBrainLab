@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtCore import QEvent, QMimeData, QPoint, QRect, QSize, Qt
+from PyQt6.QtCore import QEvent, QMimeData, QObject, QPoint, QRect, QSize, Qt
 from PyQt6.QtGui import QFont, QGuiApplication, QInputMethodEvent
 from PyQt6.QtWidgets import (
     QApplication,
@@ -70,6 +70,35 @@ def chat_panel(qtbot):
 
 
 class TestChatPanelInit:
+    def test_first_paint_keeps_runtime_settings_inside_narrow_panel(self, qtbot):
+        from XBrainLab.ui.chat.panel import ChatPanel
+
+        panel = ChatPanel()
+        qtbot.addWidget(panel)
+        panel.resize(320, 520)
+        observed = []
+
+        class FirstPaintBounds(QObject):
+            def eventFilter(self, watched, event):
+                if event.type() is QEvent.Type.Paint and not observed:
+                    observed.append(
+                        [
+                            QRect(widget.mapTo(panel, QPoint()), widget.size())
+                            for widget in (panel.runtime_state_widget, panel.setup_btn)
+                        ]
+                    )
+                return False
+
+        probe = FirstPaintBounds(panel)
+        panel.installEventFilter(probe)
+        panel.show()
+        qtbot.waitUntil(lambda: bool(observed))
+        panel.removeEventFilter(probe)
+
+        assert panel.setup_btn.text() == "Open Assistant Settings"
+        for bounds in observed[0]:
+            assert panel.rect().contains(bounds), bounds
+
     def test_assistant_base_palette_uses_main_gui_theme_tokens(self) -> None:
         from XBrainLab.ui.chat.styles import (
             ASSISTANT_ACCENT,

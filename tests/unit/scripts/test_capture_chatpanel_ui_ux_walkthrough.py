@@ -598,6 +598,87 @@ def test_product_panel_does_not_expose_legacy_mode_selector(qapp) -> None:
     qapp.processEvents()
 
 
+def test_first_paint_contract_requires_runtime_surface_containment(qapp) -> None:
+    panel = ChatPanel()
+    panel.resize(320, 520)
+    panel.show()
+    qapp.processEvents()
+
+    try:
+        evidence = walkthrough_module._first_paint_panel_state(
+            panel,
+            surface="standalone",
+        )
+
+        runtime_geometry = evidence["panel_relative_geometry"]["runtime_surface"]
+        assert evidence["checks"]["runtime_surface_inside_panel"] is True
+        assert runtime_geometry["inside_panel_on_all_sides"] is True
+
+        horizontal = panel.scroll_area.horizontalScrollBar()
+        assert horizontal.maximum() == 0
+        panel.runtime_state_widget.move(panel.width() + 1, 12)
+
+        overflow = walkthrough_module._first_paint_panel_state(
+            panel,
+            surface="standalone",
+        )
+
+        assert horizontal.maximum() == 0
+        assert overflow["checks"]["runtime_surface_inside_panel"] is False
+        assert (
+            overflow["panel_relative_geometry"]["runtime_surface"][
+                "inside_panel_on_all_sides"
+            ]
+            is False
+        )
+    finally:
+        panel.close()
+        panel.deleteLater()
+        qapp.processEvents()
+
+
+def test_first_paint_capture_records_its_own_geometry_boundary(
+    qapp, tmp_path, monkeypatch
+) -> None:
+    panel = ChatPanel()
+    panel.resize(320, 520)
+    capture_frame = walkthrough_module._capture_immediate_widget_frame
+
+    def capture_after_geometry_change(*args, **kwargs):
+        panel.runtime_state_widget.move(panel.width() + 1, 12)
+        return capture_frame(*args, **kwargs)
+
+    monkeypatch.setattr(
+        walkthrough_module,
+        "_capture_immediate_widget_frame",
+        capture_after_geometry_change,
+    )
+
+    try:
+        evidence = walkthrough_module._observe_first_paint(
+            qapp,
+            panel,
+            panel,
+            tmp_path / "first-paint-boundary.png",
+            surface="standalone",
+            show=panel.show,
+            required_content_widgets={"composer": panel.input_widget},
+        )
+
+        assert evidence["captured_frame_geometry_observation"] == "after_widget_grab"
+        assert evidence["checks"]["runtime_surface_inside_panel"] is True
+        assert evidence["captured_frame_checks"]["no_horizontal_scroll"] is True
+        assert (
+            evidence["captured_frame_checks"]["runtime_surface_inside_panel"] is False
+        )
+        assert evidence["checks"]["captured_frame_geometry_ready"] is False
+        assert evidence["passed"] is False
+    finally:
+        panel.close()
+        panel.deleteLater()
+        qapp.processEvents()
+
+
 def test_send_button_renders_its_visible_command_text(qapp) -> None:
     panel = ChatPanel()
     panel.resize(320, 520)

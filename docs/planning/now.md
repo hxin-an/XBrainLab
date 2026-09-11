@@ -229,15 +229,36 @@ before the subsequent native capture it has already settled to323px/content323px
 gate's geometry and image are not guaranteed to represent the same frame. Overall gate remains
 failed; no weakened assertion or artificial pre-observation settle was applied.
 
-**New8J visible-repair authority pending.** The four previously authorized UI repairs do not cover
+**New8J visible repair authorized.** The four previously authorized UI repairs did not cover
 this newly confirmed clipping. Main explicitly requested permission for bounded first-show width/
 layout synchronization, preserving copy/functions/normal layout, plus corresponding honest frame
-evidence. No reply yet; do not edit visible UI on an assumed approval. Continue unaffected9O commit
-and read-only diagnosis. Existing panel show/resize/reflow and capture owners remain the candidates;
+evidence. The user explicitly replied "同意" to that exact request on2026-09-11. Proceed with this
+bounded repair and then final integration gates;9O is committed78900414,199commits after baseline.
+Main owns panel regression/source; one non-overlapping worker owns capture evidence regression/source.
+Existing panel show/resize/reflow and capture owners remain the candidates;
 no new state machine/timer/control layer. If authorized, first reproduce actual first-frame clipping,
 fix only the existing width/layout owner and frame correspondence, then retain strict320px checks,
 run adjacent reflow tests, inspect native before/after images and obtain independent review before
-final source freeze. Until then this is a genuine authority blocker, not a manual-test candidate.
+final source freeze. No authority blocker remains for this repair; still no manual-test candidate.
+
+**8J repair result.** Native first-paint regression reproduces actual runtime QRect59,12,296,176
+outside320px panel (1failed0.82s). Activating the child layout alone still fails: measured content
+width564px while viewport320px; flushing posted scroll-area requests has no effect. The existing
+reflow convergence now activates chat_layout and synchronously sends LayoutRequest to QScrollArea,
+letting its widget-resizable owner recompute content geometry. Production+2, no owner/timer/state
+added. Same direct regression plus capture checks3pass6.60s; full chat/history/scroll/capture174pass
+34.23s, final stronger capture-time geometry-change case within174pass35.32s. Missing runtime-bound
+gate originally reproduces KeyError1fail6.36s; real moved-surface/hmax0 and prepaint-valid/postgrab-
+invalid cases now reject clipping without weakening320px checks. Capture narrative distinguishes
+strict pre-handler geometry from a later widget.grab and its post-grab geometry; it no longer claims
+they are the same presented frame. Independent panel lifecycle review finds no synchronous reflow
+recursion; existing coalesced scrollbar timer/history guards remain.
+Native owned diagnostic under first-paint-native-repaired passes the complete walkthrough; first
+standalone/dock content width320px,hmax0,runtime right308px. Main visually inspected both native
+before-grab PNGs: settings button complete, no changed copy/function. Owned process tree exited.
+These are focused native examples, not real-model readiness or final same-head CI/manual acceptance.
+Next freeze the reviewed source and create the single stage PR; run required same-head CI and only
+CI-uncovered local Assistant/native evidence. Original failure artifacts remain for comparison.
 
 **Bounded6AH — characterize the retained final Assistant result byte cap.** Main and independent
 actual projection/caller audit retain _fit_public_tool_payload: restoring required contract fields

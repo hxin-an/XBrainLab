@@ -1390,6 +1390,7 @@ def _widget_panel_geometry(
 def _panel_relative_geometry(panel: ChatPanel) -> dict[str, Any]:
     """Collect the hard geometry gate for persistent assistant controls."""
     return {
+        "runtime_surface": _widget_panel_geometry(panel, panel.runtime_state_widget),
         "composer": _widget_panel_geometry(panel, panel.input_field),
         "send": _widget_panel_geometry(panel, panel.send_btn),
     }
@@ -1397,6 +1398,22 @@ def _panel_relative_geometry(panel: ChatPanel) -> dict[str, Any]:
 
 def _geometry_inside(record: dict[str, Any] | None) -> bool:
     return bool(record and record.get("inside_panel_on_all_sides"))
+
+
+def _panel_surface_geometry_checks(
+    panel: ChatPanel,
+) -> tuple[dict[str, Any], dict[str, bool]]:
+    """Return the observable bounds shared by first-paint and grab evidence."""
+    horizontal = panel.scroll_area.horizontalScrollBar()
+    geometry = _panel_relative_geometry(panel)
+    return geometry, {
+        "no_horizontal_scroll": bool(
+            horizontal is not None and horizontal.maximum() == 0
+        ),
+        "runtime_surface_inside_panel": _geometry_inside(geometry["runtime_surface"]),
+        "composer_inside_panel": _geometry_inside(geometry["composer"]),
+        "send_inside_panel": _geometry_inside(geometry["send"]),
+    }
 
 
 def _dpi_content_widgets(
@@ -1835,7 +1852,7 @@ def _capture_immediate_widget_frame(
     *,
     required_content_widgets: Mapping[str, QWidget],
 ) -> dict[str, Any]:
-    """Save the already-painted backing store without a settle/retry loop."""
+    """Save a widget-grab frame without a settle/retry loop."""
     pixmap = widget.grab()
     if pixmap.isNull() or not pixmap.save(str(output_path)):
         raise RuntimeError(f"Could not save immediate frame {output_path}.")
@@ -1890,9 +1907,8 @@ def _scaled_child_regions(
 
 def _first_paint_panel_state(panel: ChatPanel, *, surface: str) -> dict[str, Any]:
     """Read the narrow idle contract while the first paint event is dispatched."""
-    horizontal = panel.scroll_area.horizontalScrollBar()
     runtime_phase = str(getattr(getattr(panel, "_runtime_phase", None), "value", ""))
-    geometry = _panel_relative_geometry(panel)
+    geometry, geometry_checks = _panel_surface_geometry_checks(panel)
     manual_mode_selector_present = any(
         hasattr(panel, name)
         for name in ("mode_selector_widget", "ask_mode_btn", "workflow_mode_btn")
@@ -1907,12 +1923,8 @@ def _first_paint_panel_state(panel: ChatPanel, *, surface: str) -> dict[str, Any
         "composer_disabled": not panel.input_field.isEnabled(),
         "send_visible": panel.send_btn.isVisibleTo(panel),
         "send_disabled": not panel.send_btn.isEnabled(),
-        "no_horizontal_scroll": bool(
-            horizontal is not None and horizontal.maximum() == 0
-        ),
         "visible_text_fits": not text_overflow,
-        "composer_inside_panel": _geometry_inside(geometry["composer"]),
-        "send_inside_panel": _geometry_inside(geometry["send"]),
+        **geometry_checks,
     }
     return {
         "surface": surface,
@@ -1939,7 +1951,7 @@ def _observe_first_paint(
     show: Callable[[], None],
     required_content_widgets: Mapping[str, QWidget],
 ) -> dict[str, Any]:
-    """Observe one real first paint and then save its completed backing store."""
+    """Observe pre-handler first-paint geometry, then record a later widget grab."""
     probe = _FirstPaintProbe(
         lambda: _first_paint_panel_state(panel, surface=surface),
     )
@@ -1961,16 +1973,23 @@ def _observe_first_paint(
         output_path,
         required_content_widgets=required_content_widgets,
     )
+    captured_frame_geometry, captured_frame_checks = _panel_surface_geometry_checks(
+        panel,
+    )
     evidence.update(capture)
+    # QWidget.grab() may dispatch a repaint, so this is deliberately distinct
+    # from the strict pre-handler first-paint observation above.
+    evidence["captured_frame_geometry_observation"] = "after_widget_grab"
+    evidence["captured_frame_geometry"] = captured_frame_geometry
+    evidence["captured_frame_checks"] = captured_frame_checks
     evidence["file"] = output_path.name
     checks = cast(dict[str, bool], evidence["checks"])
     # Native Qt backends may dispatch more than one invalidation paint in the
     # same event turn. The probe still samples the first one; requiring a
     # globally singular paint would make the evidence backend-dependent.
     checks["observation_captured_first_paint"] = evidence.get("paint_event_index") == 1
-    checks["first_paint_render_content_ready"] = bool(
-        capture["render_content"]["passed"]
-    )
+    checks["post_grab_render_content_ready"] = bool(capture["render_content"]["passed"])
+    checks["captured_frame_geometry_ready"] = all(captured_frame_checks.values())
     evidence["passed"] = all(checks.values())
     return evidence
 
@@ -3463,8 +3482,9 @@ def capture_walkthrough(
     first_paint_contract = {
         "target_width": 320,
         "observation_boundary": (
-            "State and geometry sampled inside the first ChatPanel paint event; "
-            "the backing store is saved immediately afterward without the settle helper."
+            "State and geometry are sampled before the first ChatPanel paint handler; "
+            "the separately labeled QWidget.grab artifact and its geometry are observed "
+            "afterward and are not asserted to be the same presented frame."
         ),
         "standalone": standalone_first_paint,
         "real_dock": dock_first_paint,
@@ -3578,10 +3598,13 @@ def render_readme(payload: dict[str, Any]) -> str:
             "",
             "## First Paint",
             "",
-            "The standalone ChatPanel and the real MainWindow dock are both sampled "
-            "inside their first 320 px ChatPanel paint event, before the layout-settle "
-            "helper runs. The assistant activity state must already be visible while "
-            "its composer and Send action remain disabled for the idle runtime.",
+            "The standalone ChatPanel and the real MainWindow dock both record strict "
+            "320 px geometry inside the first ChatPanel paint event, before the "
+            "layout-settle helper runs. Their separately labeled `QWidget.grab()` "
+            "artifacts and geometry are captured afterward, so they are not claimed "
+            "to be the same presented frame. The assistant activity state must already "
+            "be visible while its composer and Send action remain disabled for the idle "
+            "runtime.",
             "",
             f"- first-paint contract passed: "
             f"`{payload['first_paint_320_contract']['passed']}`",
