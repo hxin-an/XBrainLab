@@ -853,6 +853,7 @@ class DataInterpretationPreviewDialog(
                 "Review what will be imported before applying.",
             )
         )
+        review_panel_layout.addWidget(self.confirmation_label)
         self.review_actions_panel = QWidget()
         self.review_actions_panel.setObjectName("DataImportActionItemsPanel")
         self.review_actions_layout = QVBoxLayout(self.review_actions_panel)

@@ -4682,7 +4682,9 @@ def test_data_interpretation_preview_dialog_tables_shrink_without_overflow(qtbot
         strict=True,
     ):
         label.setText(full_text)
-        label.setFixedWidth(126)
+        label.setFixedWidth(
+            max(1, label.fontMetrics().horizontalAdvance(full_text) // 2),
+        )
     dialog._compact_clipped_step_labels()
 
     assert [label.toolTip() for label in dialog.step_labels] == dialog._step_titles
@@ -6818,6 +6820,8 @@ def test_data_interpretation_preview_dialog_returns_label_carrier_remap(qtbot):
     )
     assert "replacement label/event carrier" in dialog.confirmation_label.text()
     assert "cannot be applied" not in dialog.confirmation_label.text()
+    assert dialog.confirmation_label.parentWidget() is not None
+    assert dialog.isAncestorOf(dialog.confirmation_label)
 
     details = _tree_text(dialog.review_tree)
     assert "Recipe label file" in details
