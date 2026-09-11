@@ -121,6 +121,28 @@ entrypoint-isolation parameter retired. Initial after invocation had a temporary
 SyntaxError, no test result; corrected invocation and owned tree cleanup succeeded. Independent
 actual-diff review approves identical geometry reuse and no live caller loss. Scripts net-593,
 tests-109, production unchanged. Current source inventory1255tracked plus44retired remains1299rows.
+Commit0851b962 accidentally used a nonexistent command-local hooks path; main immediately ran all
+configured pre-commit checks against exact HEAD~1..HEAD, all applicable hooks passed. No persistent
+Git hook configuration changed; subsequent commits use normal hooks without override.
+
+**CI cancellation evidence repair.** Exact942 CI now passes all other applicable jobs, but backend
+has3755pass/1fail: explicit saliency cancel elapsed0.331s exceeds an arbitrary0.1s assertion. Actual
+service/manager path uses wait=False and never joins the evaluator; independent read agrees elapsed
+includes shared-runner scheduling and does not isolate blocking. Replace only this test's timing
+heuristic with a test-owned cancellation thread and existing watchdog: cancellation must return while
+the evaluator remains Event-blocked, publish cancel_requested/CANCELLING before release, then become
+CANCELLED after cleanup with the original evaluation preserved. Always release/join owned work in
+finally. Keep current watchdog and adjacent real saliency publication/cancellation tests; do not relax
+latency constants, skip a case or change production. Verify normal behavior plus a process-local
+blocking-cancellation fault rejected by the strengthened assertion; independent actual-diff review
+and focused tests precede a separate test-only commit and fresh integrated CI.
+Result:30selected saliency/real accumulation cases pass13.34s. Process-local blocking-cancel fault
+fails the exact compute_finished ordering assertion1fail10.33s; evaluator watchdog expiry cannot
+masquerade as nonblocking success, and owned tree exits. No fault source persisted. Independent
+actual-diff review approves cleanup/order/terminal/original-result identity protection; test net+30,
+production unchanged. Earlier942 native stress completed8preprocess and12render cycles with owned
+cleanup; render script intentionally forces offscreen and skips actual3D, not native interactive3D
+acceptance. Those artifacts remain942 checkpoints, not final-new-head evidence.
 
 Git recovery checkpoint: product branch `cleanup/module-quality`, HEAD `d8dcef26`, 200 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;

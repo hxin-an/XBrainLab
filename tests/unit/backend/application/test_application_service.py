@@ -9514,7 +9514,7 @@ def test_explicit_saliency_compute_runs_outside_shared_command_lock() -> None:
 
 
 def test_explicit_saliency_operation_cancel_is_immediate_and_terminal() -> None:
-    service, trainer, _holder, _record, _old_eval_record = _saliency_recompute_service()
+    service, trainer, _holder, record, old_eval_record = _saliency_recompute_service()
     run = TrainingRunIdentity(
         trainer_id=trainer.get_state_snapshot_identity(),
         run_id=1,
@@ -9525,6 +9525,10 @@ def test_explicit_saliency_operation_cancel_is_immediate_and_terminal() -> None:
     )
     compute_started = Event()
     release_compute = Event()
+    compute_finished = Event()
+    cancel_returned = Event()
+    cancel_results = []
+    cancel_errors = []
     command = SaliencyCommand(
         method="Gradient",
         params={
@@ -9536,24 +9540,50 @@ def test_explicit_saliency_operation_cancel_is_immediate_and_terminal() -> None:
 
     def evaluate(*_args, **_kwargs):
         compute_started.set()
-        assert release_compute.wait(timeout=THREAD_WATCHDOG_SECONDS)
-        return MagicMock()
+        try:
+            assert release_compute.wait(timeout=THREAD_WATCHDOG_SECONDS)
+            return MagicMock()
+        finally:
+            compute_finished.set()
+
+    def cancel():
+        try:
+            cancel_results.append(
+                service.cancel_owned_operation(operation.operation_id)
+            )
+        except BaseException as exc:
+            cancel_errors.append(exc)
+        finally:
+            cancel_returned.set()
 
     with patch.object(Evaluator, "evaluate_with_saliency", side_effect=evaluate):
-        result = service.execute(command, operation_id=operation.operation_id)
-
-        assert result.ok is True
-        assert result.diagnostics["operation_phase"] == "running"
-        assert compute_started.wait(timeout=THREAD_WATCHDOG_SECONDS)
-        started_at = time.monotonic()
-        assert service.cancel_owned_operation(operation.operation_id) is True
-        assert time.monotonic() - started_at < 0.1
-        release_compute.set()
-        assert service.owned_work.wait_for_idle(timeout=THREAD_WATCHDOG_SECONDS)
+        cancel_thread = Thread(target=cancel)
+        try:
+            result = service.execute(command, operation_id=operation.operation_id)
+            assert result.ok is True
+            assert result.diagnostics["operation_phase"] == "running"
+            assert compute_started.wait(timeout=THREAD_WATCHDOG_SECONDS)
+            cancel_thread.start()
+            assert cancel_returned.wait(timeout=THREAD_WATCHDOG_SECONDS)
+            assert cancel_errors == []
+            assert cancel_results == [True]
+            assert not release_compute.is_set()
+            assert not compute_finished.is_set()
+            snapshot = service.get_owned_operation(operation.operation_id)
+            assert snapshot.phase is OwnedWorkPhase.CANCELLING
+            assert snapshot.cancel_requested is True
+        finally:
+            release_compute.set()
+            if cancel_thread.ident is not None:
+                cancel_thread.join(timeout=THREAD_WATCHDOG_SECONDS)
+            assert not cancel_thread.is_alive()
+            assert service.wait_for_background_tasks(timeout=THREAD_WATCHDOG_SECONDS)
+            assert service.owned_work.wait_for_idle(timeout=THREAD_WATCHDOG_SECONDS)
 
     assert service.get_owned_operation(operation.operation_id).phase is (
         OwnedWorkPhase.CANCELLED
     )
+    assert record.eval_record is old_eval_record
 
 
 def test_saliency_configuration_is_blocked_while_training_but_query_remains_usable():
