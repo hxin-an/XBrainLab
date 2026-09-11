@@ -356,27 +356,6 @@ action回歸、crash、資料損失、跨New Chat／Stop／Close繼承receipt或
 通過後回報日期、完整SHA、實測範圍與Windows輸入法；只有同一SHA的明確通過回報、已知限制接受與merge
 批准，才能完成PR／merge。
 
-若要讓真 Granite 經由可見的 ChatPanel 執行 Data Interpretation 的
-scan → preview → validate，使用：
-
-先在正常產品的 Assistant Settings 選好 Granite 4.0 Micro 3B，確認模型cache完整並完成一次
-`Enable Assistant`。Capture不會代替使用者同意啟用，也不會覆寫model selection；若仍顯示inline setup，
-它會fail closed並要求先回Settings完成設定。
-
-```bash
-MNE_DONTWRITE_HOME=true \
-HF_HUB_OFFLINE=1 \
-TRANSFORMERS_OFFLINE=1 \
-timeout 10m prlimit --core=0 -- \
-  poetry run python scripts/dev/capture_chatpanel_local_tool_chain_walkthrough.py \
-  --output-dir build/dev-artifacts/chatpanel-local-tool-chain
-```
-
-這個命令需要可見的 Qt display。Capture 在自有暫存設定目錄中執行並沿用目前支援的模型設定，
-不清除正常使用的主視窗位置與大小；結束後釋放該暫存目錄。開始前仍沿用產品既有的設定載入／
-退役模型正規化政策，不代表所有舊設定都完全唯讀。Transcript、JSON 和 screenshots 寫入
-`build/dev-artifacts/`。它只檢查三個指定 action，不代表全部 18 個 action 都完成端到端驗證。
-
 ## 準備交付候選版本 { #handoff }
 
 一般 PR 依[驗證契約](../validation/README.md#daily-checks-and-pr-delivery)核對同一 exact commit 的

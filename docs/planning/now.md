@@ -103,6 +103,25 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
+**Bounded8U — retire obsolete Assistant tool-chain capture.** Final entrypoint review reopens the
+script inventory: capture_chatpanel_local_tool_chain_walkthrough expects scan_source, preview_interpretation
+and validate_interpretation, none exposed by the current formal18-tool registry. No configured CI/Poe/
+handoff consumer exists. Remove that obsolete CLI, four exclusive tests, its config-isolation parameter/
+fixture branch and obsolete developer command. Preserve all actual Data Interpretation backend/UI
+commands and current local Assistant captures. Visualization's sole helper import can use the already
+imported local_walkthrough module: identical screen-origin movement and1280x800 size, no new helper,
+owner or production change. Establish the original five-script-suite baseline; after deletion run the
+four retained suites, Ruff and independent actual-diff/caller review. Correct stale inventory retention
+instead of counting the obsolete trajectory as model evidence. Git-reversible separate small commit,
+then refresh exact-source CI/manual checkout and finish final native/current-model evidence; no manual
+handoff until applicable gates pass. User's whole-unused-capability retirement authorization applies;
+no UI source, public tool membership, model/prompt change or new approval is needed.
+Result: original113pass10.96s, retained108pass10.37s; exactly four obsolete direct cases plus one
+entrypoint-isolation parameter retired. Initial after invocation had a temporary command quoting
+SyntaxError, no test result; corrected invocation and owned tree cleanup succeeded. Independent
+actual-diff review approves identical geometry reuse and no live caller loss. Scripts net-593,
+tests-109, production unchanged. Current source inventory1255tracked plus44retired remains1299rows.
+
 Git recovery checkpoint: product branch `cleanup/module-quality`, HEAD `d8dcef26`, 200 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.

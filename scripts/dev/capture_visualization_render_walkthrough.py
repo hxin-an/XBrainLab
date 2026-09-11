@@ -32,10 +32,10 @@ from PyQt6.QtCore import QBuffer, QEventLoop, QIODevice, QTimer
 from PyQt6.QtGui import QColor, QPixmap
 from PyQt6.QtWidgets import QApplication, QLabel, QMessageBox, QScrollArea, QWidget
 
-from scripts.dev.capture_chatpanel_local_tool_chain_walkthrough import (
+from scripts.dev.capture_chatpanel_local_walkthrough import (
     _set_baseline_window_geometry,
+    is_nearly_black,
 )
-from scripts.dev.capture_chatpanel_local_walkthrough import is_nearly_black
 from scripts.dev.capture_config import isolated_capture_config
 from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
     collect_source_identity,

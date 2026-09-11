@@ -37,7 +37,6 @@ def capture_tmp(monkeypatch, tmp_path):
     [
         ("capture_ui_baseline", False),
         ("capture_chatpanel_local_walkthrough", True),
-        ("capture_chatpanel_local_tool_chain_walkthrough", True),
         ("capture_chatpanel_local_workflow_walkthrough", True),
         ("capture_visualization_render_walkthrough", False),
         ("capture_human_like_product_walkthrough", False),
@@ -79,10 +78,6 @@ def test_main_isolates_preferences_before_gui_and_restores_host_on_failure(
             return {"classification": "cpu-fallback"}
 
         monkeypatch.setattr(module, "classify_runtime", classify)
-    if module_name == "capture_chatpanel_local_tool_chain_walkthrough":
-        monkeypatch.setattr(
-            module, "write_synthetic_raw_fif", lambda: tmp_path / "source.fif"
-        )
     if module_name in (
         "capture_ui_baseline",
         "capture_human_like_product_walkthrough",
