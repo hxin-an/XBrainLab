@@ -63,11 +63,11 @@ These measurements are not native/platform acceptance or an overall CI speedup c
 | --- | --- | --- |
 | Import/recipe | Success/reload; failure preserves prior data, labels and metadata | Existing evidence mapping; final gates pending |
 | Preprocess/epoch | Transforms/rejection, event/class/window semantics, stale prepare rejection | Existing evidence mapping; final gates pending |
-| Split/train | Formal Command path, exact subject/fold count, all real checkpoints completed/reloaded | Interactive multi-plan gap investigation pending |
-| Stop/restart | Real Stop, terminal identity, old work cannot overwrite new round, restart saves | Focused real workflow evidence pending |
-| Evaluation/readback | Three splits, validation primary, base-only/base-sidecar, exact run/aggregate | A characterization pending |
-| Saliency/views | Gradient/SmoothGrad, recompute/cancel/select, atomic batch, retained old result, four views | Existing evidence mapping/fault witness pending |
-| Runtime/tools | Native launch/settings isolation/close, callback release, honest exits/rerun | B characterization/final native gates pending |
+| Split/train | Formal Command path, exact subject/fold count, all real checkpoints completed/reloaded | New real 3-subject/5-fold Command workflow passes |
+| Stop/restart | Real Stop, terminal identity, old work cannot overwrite new round, restart saves | Stop after first saved plan; append 15 plans; 16 saved results pass |
+| Evaluation/readback | Three splits, validation primary, base-only/base-sidecar, exact run/aggregate | A characterization and selected-run persisted-array equality pass |
+| Saliency/views | Gradient/SmoothGrad, recompute/cancel/select, atomic batch, retained old result, four views | Real Qt/lifecycle suite passes; partial-batch and stale-terminal faults detected |
+| Runtime/tools | Native launch/settings isolation/close, callback release, honest exits/rerun | Native close/callback tests pass; final candidate launch remains required |
 
 Important success paths may not mock admission, trainer, saving or loading and claim end-to-end proof.
 External isolation and deliberate fault injection remain valid. Wrong split, omitted checkpoint, stale
@@ -110,6 +110,29 @@ a required outcome. UI/public-contract changes need explicit approval while inde
 
 ### Current step
 
-Plan persisted before implementation. Next: A/B characterization, C evidence mapping and existing native
-test invocation. Original checkout dirty UI/test edits and root settings stay untouched. No current
-implementation/test PASS claimed.
+Plan committed before implementation. Original checkout dirty UI/test edits and root settings remain
+untouched. Native baseline: existing Command/FIF and deterministic persistence3passed9.14s; A real
+artifact characterization2passed4.66s before source edits. Core reader migration independently reviewed;
+214 direct tests pass. Existing primary API reused, no new owner, five production files net+6LOC.
+Native Command/Qt/saliency adjacent evidence160passed77.44s includes the new multi-plan workflow and
+exact selected persisted-array equality. Earlier fixture failures and hook-found late binding were fixed,
+not waived. Final CI still required; local counts are scoped evidence, not product certification.
+
+B legacy dispatcher removed. Reviewer rejected self-referential dispatch expectations; independent
+literal original66-guard contract now replaces them and caught a real changed heading, now restored.
+285 native tests cover the full checker unit suite, final analysis fixtures and exact multi-plan flow.
+WSL same-workload
+ownership measurements:458->455parses;3.656305->3.666912s; peak43480->41168KiB. This supports removal
+of three redundant parses and bounded memory, not overall speedup or native/platform acceptance.
+
+Process-only fault witnesses detect omitted model checkpoints, wrong-split labels, incomplete saliency
+publication and out-of-order old terminals. The first wrong-split probe failed on a fixture interface,
+so it was corrected and rerun to fail on the actual wrong labels; that initial probe is not evidence.
+Independent original-guard contract also detects omitted/reordered guards. Faulty source is not saved.
+
+Final callable-list simplification is independently reviewed; its three contract tests pass. Freeze
+the candidate, verify exact-head CI/source-diverse/platform gates and launch Windows. Runtime source
+and tests must not change during
+commit hooks; hooks temporarily stash unstaged work. CI/PR owns live gate status, not this plan or
+older local counts. The remaining endpoint is one Windows handoff and new manual acceptance;
+the original dirty checkout, user settings and shared environment remain protected.

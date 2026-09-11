@@ -101,6 +101,13 @@ only those same-split predictions before computing the existing metrics. The leg
 artifact remains the primary held-out record for compatibility and saliency, while additional
 records use split-qualified artifacts.
 
+`TrainRecord` owns primary (`get_eval_record`), available-split, exact stored-only,
+requested-split and saliency result queries. Application analysis, Evaluation render,
+state and history consume these queries instead of interpreting the raw storage map.
+History requires an exact saved test record; Evaluation may fall back to a matching
+primary. Loading a base `eval` plus a same-split sidecar keeps the base primary and the
+sidecar named result distinct. This changes no artifact format or publication owner.
+
 2026-07-11 non-blocking view/lifecycle hardening added `ApplicationViewPublication` as the
 shared read model for UI, assistant, and headless preflight. A reader opportunistically rebuilds
 and atomically publishes state/capabilities when the Study command lock is idle, so background
