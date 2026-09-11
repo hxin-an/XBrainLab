@@ -45,14 +45,14 @@ UI/test files and root settings. Worktree/branch/source facts come from Git, not
 | Module | Includes | Status |
 | --- | --- | --- |
 | 1 Command/state spine | Admission, capabilities, confirmation, publication, owned work, shared domain ports | Responsibility review closed at 1247cf7c; native 178 passed; domain branches explicitly remain modules 2–6 |
-| 2 Import/interpretation | Loaders, BIDS, labels/classes, channel/montage, metadata, recipes, related UI | Audited core reviewed; not closed: two confirmed visible defects await authorization; inventory reconciliation in progress |
-| 3 Preprocess/epoch/split | Processing, copies, invalidation, preview/materialization, related UI/tools | 3A–3U reviewed; documented split-artifact decision and final inventory/closure review remain open |
-| 4 Models/training | Catalog, resource preflight, settings, stop/rerun, history/checkpoints | Core/model/resource/record/UI audit substantially complete; final inventory, convenience retirement and two visible decisions remain open |
-| 5 Evaluation/saliency/views | Read/publication, SmoothGrad/recompute, four views, stale work/render lifecycle | Core/attribution/3D/publication integration fully read; script/inventory reconciliation and two explicit retirement decisions remain open |
-| 6 Assistant/chat | Tool adapters, turns/confirmation/execution, model/RAG lifecycle and shutdown | Core/runtime/RAG/controller/chat source and major tests deeply audited; adapters/helpers/inventory and explicit retirement decisions remain open |
-| 7 Shared desktop/runtime | Shell/navigation, shared components, configuration, errors/logging/start/close | Shell/navigation/shared owners reviewed7A–7N; actual Qt config routing fixed9K; inventory and module closure review open |
-| 8 Scripts/dev/CI | Launch/setup, Poe/hooks, runners, walkthroughs/evaluators/reports and artifacts | Launch/setup/CI/runners/reviewer-capture reviewed; remaining scripts/walkthrough/inventory open |
-| 9 Cross-module tests/docs | Shared fixtures/guards, dependencies, canonical truth/navigation and coverage gaps | Fonts/RNG/VRAM/weight/refresh/settings evidence strengthened9A–9L; docs/deps/remaining fixtures and full coverage evidence open |
+| 2 Import/interpretation | Loaders, BIDS, labels/classes, channel/montage, metadata, recipes, related UI | Core/callers reviewed and file dispositions reconciled; closure blocked by two visible defects awaiting authorization and final evidence |
+| 3 Preprocess/epoch/split | Processing, copies, invalidation, preview/materialization, related UI/tools | 3A–3U reviewed, live generator/publication/recovery retained; split-artifact retirement decision and final evidence remain |
+| 4 Models/training | Catalog, resource preflight, settings, stop/rerun, history/checkpoints | Core/model/resource/record/UI reviewed, stale convenience candidates reconciled; two visible decisions and final evidence remain |
+| 5 Evaluation/saliency/views | Read/publication, SmoothGrad/recompute, four views, stale work/render lifecycle | Core/attribution/3D/publication/scripts reviewed and dispositions reconciled; two explicit retirement decisions and final evidence remain |
+| 6 Assistant/chat | Tool adapters, turns/confirmation/execution, model/RAG lifecycle and shutdown | Reviewed through6AH; unused projections/path grants removed, real final cap retained with mutation proof;6E/6G decisions and final evidence remain |
+| 7 Shared desktop/runtime | Shell/navigation, shared components, configuration, errors/logging/start/close | Shell/navigation/shared owners reviewed; Qt config routing fixed and dispositions reconciled; native first-paint8J/final closure evidence remain |
+| 8 Scripts/dev/CI | Launch/setup, Poe/hooks, runners, walkthroughs/evaluators/reports and artifacts | Tracked script/walkthrough dispositions reconciled;8R exit semantics/8T resume provenance fixed;8J/native and same-head gates remain |
+| 9 Cross-module tests/docs | Shared fixtures/guards, dependencies, canonical truth/navigation and coverage gaps | All tracked paths accounted, static/vendor groups qualified;9O resolver metadata blocked; final strict docs/coverage/evidence remain |
 
 Each module includes its callers, tests and related scripts. Domain UI belongs to its domain module;
 shared UI belongs to module 7. Script infrastructure has a separate complete review in module 8.
@@ -103,11 +103,24 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery checkpoint: product branch `cleanup/module-quality`, HEAD `1e214d1f`, 189 commits after baseline
+Git recovery checkpoint: product branch `cleanup/module-quality`, HEAD `bf231298`, 190 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
-**Current work — developer docs/config truth and remaining scripts; module2–6 closure gaps and explicit decisions remain open.**
+**Checkpoint — authorized internal cleanup reviewed through6AH; explicit decisions prevent final freeze.**
+Actual Git inventory1264 tracked files now all have dispositions; the audit has1299 unique rows,
+including35 retired paths for traceability. Static/binary/generated groups are not line-by-line source
+review claims. Forty-two stale candidate rows were reconciled to actual stage commits/callers and one
+new CUDA test row added. No bare unassigned tracked path remains; this does not close UI decisions,
+unrun gates or scientifically validate all EEG/model behavior.
+At product/test source bf231298, installed Basedpyright1.39.2 observes0 diagnostics against the
+unchanged0 baseline; whole Ruff check passes and1111files are formatted. Current test delta is
+net-1216 (the previously reported-1266 was before the50-line6AH regression); production/scripts stay
+net-7391/-1099. No full coverage, same-head CI, source-diverse, native/model or handoff PASS claimed.
+Next: obtain the already-requested explicit four visible-UI repairs and five retirement-group decisions
+(interval onset, floating remap label, zero metrics, device adapter;5E/5F/6E/6G/split artifacts), resolve
+9O metadata-only lock refresh and8J first-paint evidence, then final source freeze/gates. Do not repeat
+rejected deletions indirectly, reopen compaction or ask for an intermediate merge/manual test.
 
 **Bounded6AH — characterize the retained final Assistant result byte cap.** Main and independent
 actual projection/caller audit retain _fit_public_tool_payload: restoring required contract fields
