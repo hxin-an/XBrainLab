@@ -103,7 +103,7 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery checkpoint: product branch `cleanup/module-quality`, HEAD `af7f9079`, 174 commits after baseline
+Git recovery checkpoint: product branch `cleanup/module-quality`, HEAD `2b1f56fd`, 175 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
@@ -152,6 +152,8 @@ Recovered execution: the first6AA baseline request was rejected before execution
 reviewer usage limit. After newly authorized8Q focused execution and independent review both
 succeeded, the same approved Windows6AA baseline was resumed normally:94pass0.78s. No alternate
 runner/sandbox bypass, environment creation or rejected result was counted as passing evidence.
+Result: same94pass0.73s after; no collected case removed. Ruff/format and independent actual-diff/
+caller/terminal-contract review pass. Production-18, tests+1/-4/net-3; no owner or UI source change.
 
 Remaining read-only findings (not implemented or counted as verified removals):
 - Assistant model settings belongs to module6, not training module4. Independent full source1564/

@@ -402,7 +402,6 @@ def test_unmaterialized_modal_handoff_defers_without_touching_placeholder() -> N
     outcome = host.open(request)
 
     assert outcome.status is WorkflowUiHandoffResolutionStatus.COMMAND_PENDING
-    assert outcome.is_verified_completion is False
     assert host.active_request is request
     assert len(navigation_calls) == 1
     assert navigation_calls[0][0] == 1
@@ -629,7 +628,6 @@ def test_panel_only_handoff_defers_to_manual_ui_without_claiming_completion() ->
     )
 
     assert outcome.status is WorkflowUiHandoffResolutionStatus.DEFERRED_TO_UI
-    assert outcome.is_verified_completion is False
     assert outcome.command_name == "evaluate"
     assert host.active_request is None
     assert window.navigation_calls == [3]
@@ -939,7 +937,6 @@ def test_failed_modal_outcome_is_preserved_without_claiming_completion() -> None
     outcome = host.open(WorkflowUiHandoffRequest.for_decision("create_epoch"))
 
     assert outcome.status is WorkflowUiHandoffResolutionStatus.FAILED
-    assert outcome.is_verified_completion is False
     assert outcome.message == "Epoch settings could not be opened."
 
 

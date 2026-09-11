@@ -336,7 +336,7 @@ def test_navigation_handoff_terminates_without_verified_completion(
     assert transition is WorkflowUiHandoffTransitionStatus.TERMINATED
     assert session.status is WorkflowUiHandoffSessionStatus.TERMINAL
     assert session.terminal_resolution is resolution
-    assert resolution.is_verified_completion is False
+    assert resolution.status is status
 
 
 def test_correlated_handoff_session_stays_pending_until_terminal_callback() -> None:
