@@ -45,14 +45,14 @@ UI/test files and root settings. Worktree/branch/source facts come from Git, not
 | Module | Includes | Status |
 | --- | --- | --- |
 | 1 Command/state spine | Admission, capabilities, confirmation, publication, owned work, shared domain ports | Responsibility review closed at 1247cf7c; native 178 passed; domain branches explicitly remain modules 2–6 |
-| 2 Import/interpretation | Loaders, BIDS, labels/classes, channel/montage, metadata, recipes, related UI | Core/callers reviewed and file dispositions reconciled; closure blocked by two visible defects awaiting authorization and final evidence |
-| 3 Preprocess/epoch/split | Processing, copies, invalidation, preview/materialization, related UI/tools | 3A–3U reviewed, live generator/publication/recovery retained; split-artifact retirement decision and final evidence remain |
-| 4 Models/training | Catalog, resource preflight, settings, stop/rerun, history/checkpoints | Core/model/resource/record/UI reviewed, stale convenience candidates reconciled; two visible decisions and final evidence remain |
-| 5 Evaluation/saliency/views | Read/publication, SmoothGrad/recompute, four views, stale work/render lifecycle | Core/attribution/3D/publication/scripts reviewed and dispositions reconciled; two explicit retirement decisions and final evidence remain |
-| 6 Assistant/chat | Tool adapters, turns/confirmation/execution, model/RAG lifecycle and shutdown | Reviewed through6AH; unused projections/path grants removed, real final cap retained with mutation proof;6E/6G decisions and final evidence remain |
+| 2 Import/interpretation | Loaders, BIDS, labels/classes, channel/montage, metadata, recipes, related UI | Reviewed/reconciled; authorized onset/remap fixes verified c697e4b8 with native captures; final evidence remains |
+| 3 Preprocess/epoch/split | Processing, copies, invalidation, preview/materialization, related UI/tools | Reviewed3A–3U; unused split-artifact chain retired2d7b43a0; real leakage/publication/rollback retained; final evidence remains |
+| 4 Models/training | Catalog, resource preflight, settings, stop/rerun, history/checkpoints | Reviewed/reconciled; authorized zero-metric/device fixes verified fbf2f50d; final evidence remains |
+| 5 Evaluation/saliency/views | Read/publication, SmoothGrad/recompute, four views, stale work/render lifecycle | Reviewed/reconciled;5E aliases and5F dormant scheduler retired9ddc44ee/1a4bbfa8; explicit lifecycle verified; final evidence remains |
+| 6 Assistant/chat | Tool adapters, turns/confirmation/execution, model/RAG lifecycle and shutdown | Reviewed through6AH;6E/6G retiredecf71cc1/053dda75 with exact prompt/tool equality; original safety guard retained; final evidence remains |
 | 7 Shared desktop/runtime | Shell/navigation, shared components, configuration, errors/logging/start/close | Shell/navigation/shared owners reviewed; Qt config routing fixed and dispositions reconciled; native first-paint8J/final closure evidence remain |
 | 8 Scripts/dev/CI | Launch/setup, Poe/hooks, runners, walkthroughs/evaluators/reports and artifacts | Tracked script/walkthrough dispositions reconciled;8R exit semantics/8T resume provenance fixed;8J/native and same-head gates remain |
-| 9 Cross-module tests/docs | Shared fixtures/guards, dependencies, canonical truth/navigation and coverage gaps | All tracked paths accounted, static/vendor groups qualified;9O resolver metadata blocked; final strict docs/coverage/evidence remain |
+| 9 Cross-module tests/docs | Shared fixtures/guards, dependencies, canonical truth/navigation and coverage gaps | All tracked paths accounted;9O exact offline lock refresh verified; final strict docs/coverage/evidence remain |
 
 Each module includes its callers, tests and related scripts. Domain UI belongs to its domain module;
 shared UI belongs to module 7. Script infrastructure has a separate complete review in module 8.
@@ -103,11 +103,11 @@ whole-suite human retesting. Merge only after explicit final-source acceptance a
 
 ### Current slice / next step
 
-Git recovery checkpoint: product branch `cleanup/module-quality`, HEAD `bf231298`, 190 commits after baseline
+Git recovery checkpoint: product branch `cleanup/module-quality`, HEAD `2d7b43a0`, 198 commits after baseline
 `4770b049`. Original checkout UI/test/settings dirt remains protected. Recheck Git after reboot;
 old session IDs and plan text do not prove a process is running. No manual candidate or merge request.
 
-**Checkpoint — authorized internal cleanup reviewed through6AH; explicit decisions prevent final freeze.**
+**Checkpoint — authorized repairs/retirements and9O verified;8J evidence still prevents final freeze.**
 **2026-09-11 authorization update.** In direct response to the preceding explicit request naming
 four visible repairs and the five retirement groups (including loss of corresponding old Python/CLI
 entry points), the user instructed "繼續做". Proceed with precisely those listed corrections and
@@ -196,8 +196,8 @@ check against future legacy-adapter reintroduction. No retry or indirect removal
 adapter cases retired.6E independent actual-diff review approved; production-104, four exclusive
 prose cases retired, seven full prompt digests unchanged. All20 changed retained Python files pass
 Ruff after formatting/import cleanup. These are focused results, not final same-source gates.
-Actual Git inventory1264 tracked files now all have dispositions; the audit has1299 unique rows,
-including35 retired paths for traceability. Static/binary/generated groups are not line-by-line source
+Actual Git inventory1257 tracked files now all have dispositions; the audit has1299 unique rows,
+including42 retired paths for traceability. Static/binary/generated groups are not line-by-line source
 review claims. Forty-two stale candidate rows were reconciled to actual stage commits/callers and one
 new CUDA test row added. No bare unassigned tracked path remains; this does not close UI decisions,
 unrun gates or scientifically validate all EEG/model behavior.
@@ -205,10 +205,39 @@ At product/test source bf231298, installed Basedpyright1.39.2 observes0 diagnost
 unchanged0 baseline; whole Ruff check passes and1111files are formatted. Current test delta is
 net-1216 (the previously reported-1266 was before the50-line6AH regression); production/scripts stay
 net-7391/-1099. No full coverage, same-head CI, source-diverse, native/model or handoff PASS claimed.
-Next: complete the now-authorized5F/6E/6G/split-artifact retirements after the four verified visible
-repairs and5E commits; resolve
-9O metadata-only lock refresh and8J first-paint evidence, then final source freeze/gates. Do not repeat
+At2d7b43a0 the unchanged Basedpyright1.39.2 gate again observes0diagnostics against0 baseline.
+Whole architecture guard, Ruff/1105formatted files, user-site source/navigation and guidance audits
+pass. Stage code totals versus4770b049:production+376/-8734/net-8358, scripts+447/-1672/net-1225,
+tests+7169/-9259/net-2090. These totals do not measure correctness or scientific coverage.
+Next: resolve8J first-paint evidence, then final source freeze/gates. Do not repeat
 rejected deletions indirectly, reopen compaction or ask for an intermediate merge/manual test.
+Independent integration closure review finds0missing paths and exactly42retired rows matching Git;
+no live deleted-module/API caller or additional command/publication/lifecycle blocker found. This
+does not replace final CI/data/native/model evidence.9O reviewed, ready small commit.
+8J resumed diagnostics initially failed on sandbox/quoting and diagnostic-only nonexistent geometry
+key; stale JSON is not evidence. Main identified exact owned WindowsPython28196/launcher11228 via
+decoded probe payload, stopped28196, and verified both exited (launcher exited naturally). No user
+process stopped. Main used the existing owned-process Job Object supervisor plus existing capture
+wrappers (no source changes), recording first-paint geometry and native window pixels before
+QWidget.grab under isolated preferences. The65s-bounded diagnostic completed with owned_tree_exited
+true; no preview process remains. Evidence is under
+build/dev-artifacts/module-quality-audit/first-paint-native-main/diagnostic.json and adjacent PNGs.
+Main inspected the native images: standalone320px runtime surface extends to355px, clipping the
+Open Assistant Settings button. Its horizontal maximum is0, so the existing standalone check misses
+the clipped surface. Real dock pre-paint geometry has content564px/viewport320px/horizontal maximum244;
+before the subsequent native capture it has already settled to323px/content323px/maximum0. Thus the
+gate's geometry and image are not guaranteed to represent the same frame. Overall gate remains
+failed; no weakened assertion or artificial pre-observation settle was applied.
+
+**New8J visible-repair authority pending.** The four previously authorized UI repairs do not cover
+this newly confirmed clipping. Main explicitly requested permission for bounded first-show width/
+layout synchronization, preserving copy/functions/normal layout, plus corresponding honest frame
+evidence. No reply yet; do not edit visible UI on an assumed approval. Continue unaffected9O commit
+and read-only diagnosis. Existing panel show/resize/reflow and capture owners remain the candidates;
+no new state machine/timer/control layer. If authorized, first reproduce actual first-frame clipping,
+fix only the existing width/layout owner and frame correspondence, then retain strict320px checks,
+run adjacent reflow tests, inspect native before/after images and obtain independent review before
+final source freeze. Until then this is a genuine authority blocker, not a manual-test candidate.
 
 **Bounded6AH — characterize the retained final Assistant result byte cap.** Main and independent
 actual projection/caller audit retain _fit_public_tool_payload: restoring required contract fields
@@ -917,6 +946,23 @@ Independent diff review approved. Ruff required combined with-context/style form
 rerun2passed7.26s and lint/format pass. Production unchanged, no test removed, one parameter case added.
 
 **Bounded9O — retire two unconsumed direct dependencies, preserve external reader requirements.**
+Resumed bounded method: installed Poetry2.3.4 can solve entirely from existing locked package metadata
+when each in-memory repository retains original PyPI PRIMARY / pytorch-cpu and pytorch-cu130 EXPLICIT
+priority. A flat-priority experiment incorrectly collapsed three generic Torch records and changed
+CUDA markers even on unchanged root; rejected without write. Priority-preserving independent control
+has identical full package records; reduced-root comparison removes exactly dotenv1.2.1/qdarkstyle3.2.3.
+Main repeats control/candidate exact keyed-record comparison (all fields), forbids all network, checks
+only two pyproject declarations changed, then uses official Locker writer once. Abort on any surviving
+version/source/marker/group/dependency/extras/file hash drift. No manual lock edits/install/newenv/cache
+payloads. Verify official lock freshness, denied-import startup tests and independent resulting diff.
+Result: sequential control/candidate initially shared mutable Poetry packages and restored the two
+removed records; full-record guard aborted before write. Fresh Factory/Locker/root/packages/pool per
+solve fixes this verified harness isolation error. One sandbox read-only file-open rejection made no
+lock change; the same guarded official writer under normal escalation succeeds.217->215 exact records,
+only dotenv/qdarkstyle removed, all surviving fields unchanged; poetry check --lock --strict passes.
+43real config/startup/MainWindow/shutdown tests pass12.05s with imports of both packages denied.
+Independent exact diff/record comparison and freshness review approves. No downloads/installs,
+environment changes or actual disk-reclamation claim. The earlier unresolved attempts below are history.
 Independent full pyproject314 plus package/lock/caller audit finds no product/script/test/dynamic theme
 or environment loader for qdarkstyle and python-dotenv. Main verified the removed comments-only .env
 template was not a loader. Keep pymatreader: installed MNE EEGLAB reader invokes it for supported

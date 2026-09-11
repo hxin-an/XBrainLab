@@ -4732,21 +4732,6 @@ files = [
 six = ">=1.5"
 
 [[package]]
-name = "python-dotenv"
-version = "1.2.1"
-description = "Read key-value pairs from a .env file and set them as environment variables"
-optional = false
-python-versions = ">=3.9"
-groups = ["main"]
-files = [
-    {file = "python_dotenv-1.2.1-py3-none-any.whl", hash = "sha256:b81ee9561e9ca4004139c6cbba3a238c32b03e4894671e181b671e8cb8425d61"},
-    {file = "python_dotenv-1.2.1.tar.gz", hash = "sha256:42667e897e16ab0d66954af0e60a9caa94f0fd4ecf3aaf6d2d260eec1aa36ad6"},
-]
-
-[package.extras]
-cli = ["click (>=5.0)"]
-
-[[package]]
 name = "pytz"
 version = "2025.2"
 description = "World timezone definitions, modern and historical"
@@ -4929,26 +4914,6 @@ files = [
 
 [package.dependencies]
 pyyaml = "*"
-
-[[package]]
-name = "qdarkstyle"
-version = "3.2.3"
-description = "The most complete dark/light style sheet for C++/Python and Qt applications"
-optional = false
-python-versions = "*"
-groups = ["main"]
-files = [
-    {file = "QDarkStyle-3.2.3-py2.py3-none-any.whl", hash = "sha256:ea980ee426d594909cf1058306832af71ff6cbad6f69237b036d1550635aefbc"},
-    {file = "QDarkStyle-3.2.3.tar.gz", hash = "sha256:0c0b7f74a6e92121008992b369bab60468157db1c02cd30d64a5e9a3b402f1ae"},
-]
-
-[package.dependencies]
-qtpy = ">=2"
-
-[package.extras]
-develop = ["qtsass", "watchdog"]
-docs = ["sphinx", "sphinx-rtd-theme"]
-example = ["pyqt5", "pyside2"]
 
 [[package]]
 name = "qdrant-client"
@@ -7322,4 +7287,4 @@ cuda = ["torch", "torchaudio", "torchvision"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.13"
-content-hash = "6ba38381eb0f3212ab4e52e75b397f68db831efbea15e6640b9ddbfb3ceba245"
+content-hash = "face5ee1b7e1015a8d8949391eed95ea5a749c7a812663f018a9ddecdc5dd45b"
