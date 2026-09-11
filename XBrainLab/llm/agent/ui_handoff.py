@@ -11,6 +11,7 @@ from XBrainLab.backend.application.commands import CommandName
 from XBrainLab.backend.application.view_publication import (
     InterpretationReviewIdentity,
 )
+from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS, AgentExecutionKind
 
 from .assistant_activity import AssistantDecisionOwner
 
@@ -383,6 +384,42 @@ def workflow_ui_handoff_route_for(
     else:
         return None
     return _WORKFLOW_UI_HANDOFF_ROUTES_BY_COMMAND.get(normalized)
+
+
+def build_tool_workflow_handoff(
+    params: Mapping[str, object],
+) -> WorkflowUiHandoffRequest | None:
+    """Validate an untrusted tool request against the registered UI contract."""
+    tool_name = params.get("tool_name")
+    contract = (
+        AGENT_ACTION_CONTRACTS.contract_for(tool_name)
+        if type(tool_name) is str and tool_name
+        else None
+    )
+    try:
+        command = CommandName(params.get("command"))
+    except (TypeError, ValueError):
+        return None
+    fields = params.get("decision_fields")
+    if (
+        contract is None
+        or contract.execution_kind is not AgentExecutionKind.UI_REQUEST
+        or contract.action is not command
+        or type(fields) is not tuple
+        or fields != contract.ui_decision_fields
+        or workflow_ui_handoff_route_for(command) is None
+    ):
+        return None
+    route = workflow_ui_handoff_route_for(command)
+    if route is not None and route.surface_kind is WorkflowUiHandoffSurfaceKind.ACTION:
+        return WorkflowUiHandoffRequest.for_action(
+            command, tool_name=contract.canonical_tool
+        )
+    return WorkflowUiHandoffRequest.for_decision(
+        command,
+        tool_name=contract.canonical_tool,
+        decision_fields=contract.ui_decision_fields,
+    )
 
 
 @dataclass(frozen=True)

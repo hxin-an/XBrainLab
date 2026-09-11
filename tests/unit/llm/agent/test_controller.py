@@ -160,7 +160,9 @@ def _begin_confirmation(
     decision: ToolAttemptDecision,
     request: AgentConfirmationRequest | None = None,
 ) -> PendingConfirmation:
-    paired_request = request or ctrl._build_confirmation_request(decision)
+    paired_request = (
+        request or ctrl._tool_attempt_coordinator.build_confirmation_request(decision)
+    )
     return _pending_session(ctrl).begin_confirmation(decision, paired_request)
 
 
@@ -295,7 +297,7 @@ def _evaluate_policy(
             confidence=0.9,
             publication=ctrl._turn_orchestrator.active_publication,
             latest_user_text=(
-                ctrl._latest_user_request_text() if text is None else text
+                ctrl._conversation.latest_user_request_text() if text is None else text
             ),
         )
     )

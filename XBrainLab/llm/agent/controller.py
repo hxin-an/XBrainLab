@@ -17,12 +17,8 @@ from PyQt6 import sip
 from PyQt6.QtCore import QObject, QThread, QTimer, pyqtSignal, pyqtSlot
 
 from XBrainLab.backend.application import CommandName, get_application_service
-from XBrainLab.backend.application.view_publication import (
-    InterpretationReviewIdentity,
-)
 from XBrainLab.llm.action_contracts import (
     AGENT_ACTION_CONTRACTS,
-    AgentExecutionKind,
 )
 from XBrainLab.llm.core.runtime_selection import AssistantRuntimeLaunchSpec
 from XBrainLab.llm.tools import AVAILABLE_TOOLS
@@ -39,7 +35,7 @@ from XBrainLab.llm.tools.result_contract import (
     safe_unexpected_failure,
 )
 from XBrainLab.llm.tools.tool_registry import ToolRegistry
-from XBrainLab.product_language import ASSISTANT_CANCELLED_MESSAGE, tool_action_label
+from XBrainLab.product_language import ASSISTANT_CANCELLED_MESSAGE
 
 from .assembler import ContextAssembler, PromptToolPublication
 from .assistant_activity import (
@@ -50,10 +46,8 @@ from .assistant_activity import (
 )
 from .confidence import estimate_confidence
 from .confirmation import (
-    AgentConfirmationRequest,
     AgentConfirmationResolution,
     AgentConfirmationResolutionStatus,
-    AgentConfirmationRisk,
 )
 from .conversation import ConversationHistory
 from .decision_contract import MODEL_RESPONSE_TOOL_NAME
@@ -120,6 +114,7 @@ from .ui_handoff import (
     WorkflowUiHandoffResolution,
     WorkflowUiHandoffResolutionStatus,
     WorkflowUiHandoffSurfaceKind,
+    build_tool_workflow_handoff,
     workflow_ui_handoff_route_for,
 )
 from .verifier import (
@@ -515,43 +510,9 @@ class LLMController(QObject):
         if not isinstance(payload, AssistantTurnRequest):
             raise TypeError("Assistant user turn must use AssistantTurnRequest.")
         try:
-            if not self.accepts_commands:
-                logger.warning(
-                    "Rejected turn %s because controller shutdown has started",
-                    redact_public_text(payload.turn_id),
-                )
-                self.turn_finished.emit(
-                    AssistantTurnTerminal(
-                        correlation=payload.correlation,
-                        outcome="rejected_closing",
-                    )
-                )
-                return AssistantTurnDeliveryAcknowledgement(
-                    correlation=payload.correlation,
-                    phase=AssistantTurnDeliveryPhase.REJECTED,
-                    message="Assistant controller is closing.",
-                )
-            if (
-                self._turn_orchestrator.has_active_host_turn
-                or self.is_processing
-                or self.pending_interactions.has_pending
-            ):
-                logger.warning(
-                    "Rejected turn %s because controller turn %s is still active",
-                    redact_public_text(payload.turn_id),
-                    self._turn_orchestrator.host_turn_id,
-                )
-                self.turn_finished.emit(
-                    AssistantTurnTerminal(
-                        correlation=payload.correlation,
-                        outcome="rejected_busy",
-                    )
-                )
-                return AssistantTurnDeliveryAcknowledgement(
-                    correlation=payload.correlation,
-                    phase=AssistantTurnDeliveryPhase.REJECTED,
-                    message="Assistant controller is busy.",
-                )
+            rejection = self._reject_unavailable_host_turn(payload)
+            if rejection is not None:
+                return rejection
             self._turn_orchestrator.bind_host_turn(payload)
             self._handle_admitted_user_input(payload.text)
         except Exception as exc:
@@ -570,6 +531,38 @@ class LLMController(QObject):
         return AssistantTurnDeliveryAcknowledgement(
             correlation=payload.correlation,
             phase=AssistantTurnDeliveryPhase.ACCEPTED,
+        )
+
+    def _reject_unavailable_host_turn(
+        self,
+        request: AssistantTurnRequest | AssistantDebugToolRequest,
+    ) -> AssistantTurnDeliveryAcknowledgement | None:
+        """Apply the same host admission to conversational and diagnostic turns."""
+        if not self.accepts_commands:
+            reason = "closing"
+        elif (
+            self._turn_orchestrator.has_active_host_turn
+            or self.is_processing
+            or self.pending_interactions.has_pending
+        ):
+            reason = "busy"
+        else:
+            return None
+        logger.warning(
+            "Rejected turn %s because controller is %s",
+            redact_public_text(request.turn_id),
+            reason,
+        )
+        self.turn_finished.emit(
+            AssistantTurnTerminal(
+                correlation=request.correlation,
+                outcome=f"rejected_{reason}",
+            )
+        )
+        return AssistantTurnDeliveryAcknowledgement(
+            correlation=request.correlation,
+            phase=AssistantTurnDeliveryPhase.REJECTED,
+            message=f"Assistant controller is {reason}.",
         )
 
     def _finish_turn_delivery_error(
@@ -802,75 +795,6 @@ class LLMController(QObject):
         self._execute_tool_attempt(decision)
         return True
 
-    def _workflow_ui_handoff_request(
-        self,
-        command_name: CommandName | str,
-        *,
-        tool_name: str = "",
-        decision_fields: Any = (),
-        suggested_values: Any = None,
-        publication: Any | None = None,
-    ) -> WorkflowUiHandoffRequest:
-        """Build one handoff, binding import review to published domain identity."""
-        command = (
-            command_name
-            if isinstance(command_name, CommandName)
-            else CommandName(str(command_name).strip().lower())
-        )
-        identity = None
-        if command is CommandName.APPLY_INTERPRETATION:
-            current_publication = publication
-            if current_publication is None:
-                try:
-                    current_publication = get_application_service(
-                        self.study
-                    ).get_view_publication()
-                except Exception as exc:
-                    safe_unexpected_failure(
-                        logger,
-                        exc,
-                        boundary="assistant_controller",
-                        operation="bind_data_import_review_identity",
-                    )
-            interpretation = getattr(
-                getattr(current_publication, "state", None),
-                "interpretation",
-                None,
-            )
-            generation = getattr(current_publication, "generation", None)
-            scan_id = getattr(interpretation, "latest_scan_id", None)
-            candidate_id = getattr(interpretation, "latest_candidate_id", None)
-            if (
-                type(generation) is int
-                and generation >= 0
-                and isinstance(scan_id, str)
-                and scan_id.strip()
-                and isinstance(candidate_id, str)
-                and candidate_id.strip()
-                and bool(getattr(current_publication, "usable", False))
-            ):
-                identity = InterpretationReviewIdentity(
-                    publication_generation=generation,
-                    scan_id=scan_id,
-                    candidate_id=candidate_id,
-                )
-        route = workflow_ui_handoff_route_for(command)
-        if (
-            route is not None
-            and route.surface_kind is WorkflowUiHandoffSurfaceKind.ACTION
-        ):
-            return WorkflowUiHandoffRequest.for_action(
-                command,
-                tool_name=tool_name,
-            )
-        return WorkflowUiHandoffRequest.for_decision(
-            command,
-            tool_name=tool_name,
-            decision_fields=decision_fields,
-            suggested_values=suggested_values,
-            interpretation_identity=identity,
-        )
-
     def _begin_rag_turn(self) -> int:
         """Open a new RAG turn token before asynchronous retrieval starts."""
         return self._turn_orchestrator.begin_rag_turn()
@@ -902,14 +826,7 @@ class LLMController(QObject):
         error: str,
     ) -> None:
         """Start generation only for the still-current user turn."""
-        if (
-            turn_id != self._turn_orchestrator.active_rag_turn_id
-            or not self._turn_orchestrator.waiting_for_rag
-            or not self.is_processing
-            or self._turn_orchestrator.cancelled
-            or self._closing
-            or self._closed
-        ):
+        if not self.is_processing or self._closing or self._closed:
             return
 
         if not self._turn_orchestrator.accept_rag_result(turn_id):
@@ -1155,7 +1072,7 @@ class LLMController(QObject):
             command_name=action,
             missing_inputs=missing_inputs,
             question=envelope.message,
-            original_user_text=self._latest_user_request_text(),
+            original_user_text=self._conversation.latest_user_request_text(),
             publication=publication,
         )
         if receipt is None:
@@ -1312,7 +1229,7 @@ class LLMController(QObject):
 
         cmd, params = command
         repeated = self._tool_attempt_session.record_tool_proposal(cmd, params)
-        latest_user_text = self._latest_user_request_text()
+        latest_user_text = self._conversation.latest_user_request_text()
         publication = self._turn_orchestrator.active_publication
         return self._tool_attempt_coordinator.evaluate(
             ToolAttemptRequest(
@@ -1381,7 +1298,9 @@ class LLMController(QObject):
     ) -> None:
         """Pause one proposal at its backend or tool confirmation boundary."""
         cmd = decision.command_name
-        request = self._build_confirmation_request(decision, context)
+        request = self._tool_attempt_coordinator.build_confirmation_request(
+            decision, context
+        )
         self.pending_interactions.begin_confirmation(decision, request)
         self.status_update.emit(f"Waiting for confirmation: {cmd}")
         self._publish_activity(
@@ -1391,45 +1310,6 @@ class LLMController(QObject):
             decision_owner=AssistantDecisionOwner.CONFIRMATION_CARD,
         )
         self.confirmation_requested.emit(request)
-
-    def _build_confirmation_request(
-        self,
-        decision: ToolAttemptDecision,
-        context: ToolAvailabilityContext | None = None,
-    ) -> AgentConfirmationRequest:
-        """Build the typed request paired with one confirmation decision."""
-        cmd = decision.command_name
-        # Keep the prompt-time generation on the request. Resolution re-reads a
-        # fresh context and ApplicationService performs the final locked check.
-        tool_context = context
-        if tool_context is None and isinstance(
-            decision.context,
-            ToolAvailabilityContext,
-        ):
-            tool_context = decision.context
-        label = tool_action_label(cmd)
-        availability = tool_context.availability if tool_context is not None else None
-        high_impact = decision.confirmation_kind == "setting_change"
-        risk = AgentConfirmationRisk.from_policy(
-            command_name=cmd,
-            destructive=bool(availability and availability.destructive),
-            high_impact=high_impact,
-            long_running=bool(availability and availability.long_running),
-            decision_boundary=(
-                availability.decision_boundary if availability is not None else None
-            ),
-        )
-        return AgentConfirmationRequest.for_action(
-            command_name=cmd,
-            params=decision.params,
-            action_label=label,
-            description=decision.message
-            or (decision.tool.description if decision.tool else label),
-            destructive=risk.destructive,
-            publication_generation=(tool_context.generation if tool_context else None),
-            confirmation_kind=decision.confirmation_kind,
-            risk=risk,
-        )
 
     def _execute_tool_attempt(
         self,
@@ -2054,19 +1934,6 @@ class LLMController(QObject):
             application_runtime=application_runtime,
         )
 
-    def _latest_user_request_text(self) -> str:
-        """Return the most recent human request, excluding tool/system feedback."""
-        for message in reversed(self.history):
-            if message.get("role") != "user":
-                continue
-            content = str(message.get("content", "")).strip()
-            if not content:
-                continue
-            if content.startswith(("System:", "Tool Output:")):
-                continue
-            return content
-        return ""
-
     def _handle_tool_result_logic(
         self,
         result: ToolCommandResult | UiRequest,
@@ -2085,39 +1952,14 @@ class LLMController(QObject):
         """
         if isinstance(result, UiRequest):
             if result.kind is UiRequestKind.WORKFLOW_HANDOFF:
-                tool_name = result.params.get("tool_name")
-                command_name = result.params.get("command")
-                decision_fields = result.params.get("decision_fields")
-                public_tool_name = tool_name if type(tool_name) is str else ""
-                contract = (
-                    AGENT_ACTION_CONTRACTS.contract_for(public_tool_name)
-                    if public_tool_name
-                    else None
-                )
-                try:
-                    command = CommandName(command_name)
-                except (TypeError, ValueError):
-                    command = None
-                valid = bool(
-                    contract is not None
-                    and contract.execution_kind is AgentExecutionKind.UI_REQUEST
-                    and contract.action is command
-                    and type(decision_fields) is tuple
-                    and decision_fields == contract.ui_decision_fields
-                    and command is not None
-                    and workflow_ui_handoff_route_for(command) is not None
-                )
-                if not valid:
+                workflow_request = build_tool_workflow_handoff(result.params)
+                if workflow_request is None:
                     self._publish_response(
                         "That XBrainLab settings surface is not available.",
                         kind=AssistantResponseKind.BLOCKED,
                     )
                     return False
-                workflow_request = self._workflow_ui_handoff_request(
-                    command,
-                    tool_name=public_tool_name,
-                    decision_fields=decision_fields,
-                )
+                command = workflow_request.command
                 self.pending_interactions.begin_workflow_handoff(workflow_request)
                 route = (
                     workflow_ui_handoff_route_for(command)
@@ -2692,34 +2534,9 @@ class LLMController(QObject):
         if not isinstance(payload, AssistantDebugToolRequest):
             raise TypeError("Assistant debug turns must use AssistantDebugToolRequest.")
         try:
-            if not self.accepts_commands:
-                self.turn_finished.emit(
-                    AssistantTurnTerminal(
-                        correlation=payload.correlation,
-                        outcome="rejected_closing",
-                    )
-                )
-                return AssistantTurnDeliveryAcknowledgement(
-                    correlation=payload.correlation,
-                    phase=AssistantTurnDeliveryPhase.REJECTED,
-                    message="Assistant controller is closing.",
-                )
-            if (
-                self._turn_orchestrator.has_active_host_turn
-                or self.is_processing
-                or self.pending_interactions.has_pending
-            ):
-                self.turn_finished.emit(
-                    AssistantTurnTerminal(
-                        correlation=payload.correlation,
-                        outcome="rejected_busy",
-                    )
-                )
-                return AssistantTurnDeliveryAcknowledgement(
-                    correlation=payload.correlation,
-                    phase=AssistantTurnDeliveryPhase.REJECTED,
-                    message="Assistant controller is busy.",
-                )
+            rejection = self._reject_unavailable_host_turn(payload)
+            if rejection is not None:
+                return rejection
             self._turn_orchestrator.bind_correlation(payload.correlation)
             self._execute_admitted_debug_tool(
                 payload.tool_name,

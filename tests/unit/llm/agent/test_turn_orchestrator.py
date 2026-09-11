@@ -99,6 +99,17 @@ def test_invalidating_rag_turn_makes_the_queued_result_stale() -> None:
     assert lifecycle.active_rag_turn_id is None
 
 
+def test_cancelled_rag_result_cannot_consume_pending_turn_or_start_generation() -> None:
+    lifecycle = AssistantTurnOrchestrator()
+    turn_id = lifecycle.begin_rag_turn()
+    lifecycle.request_cancellation()
+
+    assert lifecycle.accept_rag_result(turn_id) is False
+    assert lifecycle.active_rag_turn_id == turn_id
+    assert lifecycle.waiting_for_rag is True
+    assert lifecycle.active_generation_id is None
+
+
 def test_tool_attempt_session_resets_all_user_turn_state() -> None:
     session = AssistantToolAttemptSession()
     session.retry_count = 2

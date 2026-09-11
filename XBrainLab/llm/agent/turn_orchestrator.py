@@ -89,7 +89,11 @@ class AssistantTurnOrchestrator:
         return active_turn_id
 
     def accept_rag_result(self, turn_id: int) -> bool:
-        if turn_id != self.active_rag_turn_id or not self.waiting_for_rag:
+        if (
+            self.cancelled
+            or turn_id != self.active_rag_turn_id
+            or not self.waiting_for_rag
+        ):
             return False
         self.active_rag_turn_id = None
         self.waiting_for_rag = False

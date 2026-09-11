@@ -22,9 +22,35 @@ from XBrainLab.llm.agent.ui_handoff import (
     WorkflowUiHandoffSessionStatus,
     WorkflowUiHandoffSurfaceKind,
     WorkflowUiHandoffTransitionStatus,
+    build_tool_workflow_handoff,
     workflow_ui_handoff_route_for,
     workflow_ui_handoff_routes,
 )
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"tool_name": "unknown_tool"},
+        {"tool_name": 3},
+        {"tool_name": "apply_bandpass_filter"},
+        {"command": "train"},
+        {"command": None},
+        {"decision_fields": ["model"]},
+        {"decision_fields": ("training_options",)},
+    ],
+)
+def test_handoff_contract_rejects_forged_tool_command_or_fields(override) -> None:
+    params = {
+        "tool_name": "select_model",
+        "command": "configure_training",
+        "decision_fields": ("model",),
+    }
+    request = build_tool_workflow_handoff(params)
+    assert request is not None
+    assert request.command is CommandName.CONFIGURE_TRAINING
+    assert request.decision_fields == ("model",)
+    assert build_tool_workflow_handoff({**params, **override}) is None
 
 
 def test_workflow_handoff_route_descriptors_preserve_existing_ui_taxonomy() -> None:
