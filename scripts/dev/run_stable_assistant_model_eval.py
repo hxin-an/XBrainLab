@@ -29,6 +29,7 @@ from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 from XBrainLab.llm.agent.assembler import ContextAssembler, PromptToolPublication
 from XBrainLab.llm.agent.context_encoding import decode_untrusted_context
 from XBrainLab.llm.agent.controller import LLMController
+from XBrainLab.llm.agent.conversation import ConversationHistory
 from XBrainLab.llm.agent.parser import (
     CommandParser,
     ToolEnvelopeParseResult,
@@ -909,7 +910,7 @@ class _EvaluatorControllerHarness:
         self._tool_attempt_session = AssistantToolAttemptSession()
         self._strict_envelope_recovery_policy = DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY
         self._pending_interactions = PendingInteractionCoordinator()
-        self._history: list[dict[str, str]] = []
+        self._conversation = ConversationHistory()
         self.presentations: list[str] = []
         self.metrics = _EvaluatorMetrics()
         self.status_update = _EvaluatorSignal()
@@ -941,10 +942,10 @@ class _EvaluatorControllerHarness:
 
     @property
     def history(self) -> list[dict[str, str]]:
-        return self._history
+        return self._conversation.messages
 
     def _append_history(self, role: str, content: str) -> None:
-        self._history.append({"role": role, "content": content})
+        self._conversation.append(role, content)
 
     def _publish_response(self, text: str, **_kwargs: Any) -> None:
         """Record a trusted controller presentation without creating a Qt event."""
@@ -1043,9 +1044,6 @@ class _EvaluatorControllerHarness:
             payload.update(self._observed_terminal)
             payload["kind"] = kind
         self._observed_terminal = payload
-
-    def _latest_user_request_text(self) -> str:
-        return LLMController._latest_user_request_text(self)  # type: ignore[arg-type]
 
     def _remaining_tool_input_question(self, receipt: AssistantToolInputReceipt) -> str:
         return LLMController._remaining_tool_input_question(receipt)

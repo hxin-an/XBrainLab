@@ -54,10 +54,24 @@ required; approved post-merge Git cleanup is the final stage operation. Known fa
 green. Do not claim ideal architecture or zero defects. Only a genuine new authority/resource blocker or
 explicit user pause stops in-scope progress before handoff.
 
-Current next step: make small reviewed commits and freeze the
-integrated candidate; obtain same-head CI and missing native Assistant evidence, then one Windows
-handoff. No PR/manual acceptance exists for this source yet. All extension source groups have passed
-independent review; final gates, not additional speculative cleanup, are the remaining pre-handoff work.
+Current next step: repair the evaluator harness defect found by final native inference, then freeze the
+corrected integration head and obtain same-head CI/native evidence before one Windows handoff.
+PR #136 is open; #133 is closed as selectively superseded, with its unique history retained. No manual
+acceptance exists for this candidate. Final gates, not speculative cleanup, are the remaining work.
+
+Candidate 9c4af2f5: clean 27-commit integration pushed; docs/lint CI passed and remaining checks started.
+The existing offline Granite runtime is GPU-ready with one 6.82 GB model cache. Its real 81-case model
+gate failed on case 1 before a completed score: `_EvaluatorControllerHarness` lacks `_conversation`.
+The evaluator delegates real controller methods but still owns an old list/history helper; E3 moved
+selection to ConversationHistory. Repair only that script's fixture wiring using the existing history
+owner and delete its stale private forwarding method. Preserve frozen cases/scoring/admission/no-side-
+effect boundaries; no model/prompt/public contract/UI change. Reproduce with existing actual evaluator
+trajectory tests, then run the evaluator script test file and real-model gate after source freeze.
+The failed native artifact remains under the old exact SHA. No compatibility shell in production.
+Evaluator repair: existing normal-execution and typed/origin-guard trajectory tests reproduced two target
+failures. The full evaluator file now passes 73 tests/6.94s with the real controller delegation retained;
+independent actual-diff review approved and found no other reference to the removed E3 private methods.
+Next: commit the script-only repair, push the corrected candidate and rerun its required native gate.
 
 Latest closure evidence: optional-RAG launcher and adjacent temp cleanup 85 passed/17.30s; corrected
 architecture witnesses and existing guard suite 256 passed/38.08s; renderer import and actual revision/
