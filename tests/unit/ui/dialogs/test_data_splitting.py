@@ -15,38 +15,6 @@ from tests.unit.ui.data_split_test_support import (
 from XBrainLab.backend.study import Study
 
 
-class TestDrawRegion:
-    def test_reset(self):
-        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import DrawRegion
-
-        r = DrawRegion(100, 50)
-        r.from_canvas[0, 0] = 1
-        r.reset()
-        assert r.from_canvas[0, 0] == 0
-
-    def test_set_to_accepts_partial_ratio(self):
-        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import DrawRegion
-
-        region = DrawRegion(5, 5)
-        region.set_from(0, 0)
-        region.set_to(3, 3, 0.2, 0.8)
-
-        assert region.to_canvas.sum() > 0
-
-    def test_set_to_ref_uses_existing_region(self):
-        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import DrawRegion
-
-        reference = DrawRegion(5, 5)
-        reference.set_from(0, 0)
-        reference.set_to(5, 5, 0, 1)
-        region = DrawRegion(5, 5)
-        region.set_from(0, 0)
-
-        region.set_to_ref(3, 3, reference)
-
-        assert region.to_canvas.sum() > 0
-
-
 class TestPreviewCanvas:
     def test_adjacent_color_blocks_do_not_leave_background_gaps(self, qtbot):
         from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (

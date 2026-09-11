@@ -21,9 +21,6 @@ from XBrainLab.llm.tools.result_contract import redact_public_text
 UNTRUSTED_CONTEXT_SCHEMA = "xbrainlab.untrusted_context.v1"
 UNTRUSTED_CONTEXT_TRUST = "untrusted"
 MAX_UNTRUSTED_CONTEXT_BYTES = 8_192
-# Compatibility name for existing bounded-context callers. The value is now
-# interpreted as serialized UTF-8 bytes, not Python characters.
-MAX_UNTRUSTED_CONTEXT_CHARS = MAX_UNTRUSTED_CONTEXT_BYTES
 MIN_UNTRUSTED_CONTEXT_BYTES = 256
 MAX_UNTRUSTED_CONTEXT_ITEMS = 8
 MAX_UNTRUSTED_STRING_CHARS = 1_024
@@ -244,7 +241,7 @@ def _redact_public_text_preserving_context_separators(text: str) -> str:
 def encode_untrusted_context(
     items: Sequence[UntrustedContextItem],
     *,
-    max_chars: int = MAX_UNTRUSTED_CONTEXT_CHARS,
+    max_chars: int = MAX_UNTRUSTED_CONTEXT_BYTES,
     max_items: int = MAX_UNTRUSTED_CONTEXT_ITEMS,
     max_string_chars: int = MAX_UNTRUSTED_STRING_CHARS,
 ) -> str:

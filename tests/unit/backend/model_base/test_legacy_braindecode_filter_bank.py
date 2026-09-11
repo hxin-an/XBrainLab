@@ -5,8 +5,6 @@ import importlib
 import pytest
 import torch
 
-from XBrainLab.backend.model_base.legacy_braindecode import models as legacy_models
-
 _FILTER_BANK_MODELS = (
     ("fbcnet", "FBCNet"),
     ("fbmsnet", "FBMSNet"),
@@ -82,7 +80,12 @@ def test_local_filter_bank_strictly_loads_upstream_state_and_matches_output(
 ) -> None:
     upstream_module = importlib.import_module(f"braindecode.models.{module_name}")
     upstream_class = getattr(upstream_module, class_name)
-    legacy_class = getattr(legacy_models, class_name)
+    legacy_class = getattr(
+        importlib.import_module(
+            f"XBrainLab.backend.model_base.legacy_braindecode.models.{module_name}"
+        ),
+        class_name,
+    )
     kwargs, input_shape = _model_case(class_name)
 
     torch.manual_seed(83)
@@ -108,11 +111,19 @@ def test_local_filter_bank_strictly_loads_upstream_state_and_matches_output(
     torch.testing.assert_close(actual, expected, rtol=1e-6, atol=1e-7)
 
 
-@pytest.mark.parametrize("class_name", ("FBCNet", "IFNet"))
+@pytest.mark.parametrize(
+    ("module_name", "class_name"), (("fbcnet", "FBCNet"), ("ifnet", "IFNet"))
+)
 def test_local_filter_bank_representatives_support_finite_backward(
+    module_name: str,
     class_name: str,
 ) -> None:
-    model_class = getattr(legacy_models, class_name)
+    model_class = getattr(
+        importlib.import_module(
+            f"XBrainLab.backend.model_base.legacy_braindecode.models.{module_name}"
+        ),
+        class_name,
+    )
     kwargs, input_shape = _model_case(class_name)
     model = model_class(**kwargs).train()
     inputs = torch.randn(*input_shape, generator=torch.Generator().manual_seed(97))

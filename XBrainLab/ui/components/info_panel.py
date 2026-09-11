@@ -3,7 +3,7 @@
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from PyQt6.QtCore import QEvent, QRect, Qt, pyqtSignal
+from PyQt6.QtCore import QEvent, QRect, Qt
 from PyQt6.QtGui import QShowEvent
 from PyQt6.QtWidgets import (
     QAbstractScrollArea,
@@ -27,7 +27,6 @@ INFO_TABLE_FRAME_BUFFER = 6
 INFO_GROUP_VERTICAL_BUFFER = 42
 INFO_KEY_COLUMN_PADDING = 16
 INFO_VALUE_COLUMN_PADDING = 16
-INFO_TABLE_HORIZONTAL_BUFFER = 0
 INFO_PANEL_MIN_WIDTH = 200
 
 _SUMMARY_KEYS = (
@@ -121,8 +120,6 @@ class AggregateInfoPanel(QGroupBox):
         row_map: Dictionary mapping metric names to table row indices.
 
     """
-
-    presentation_changed = pyqtSignal()
 
     def __init__(self, parent=None):
         """Initialize the aggregate info panel.
@@ -245,7 +242,6 @@ class AggregateInfoPanel(QGroupBox):
             and hasattr(self, "table")
         ):
             self._refresh_table_metrics()
-            self.presentation_changed.emit()
 
     def showEvent(self, event: QShowEvent | None) -> None:  # noqa: N802
         """Restore deterministic column geometry when a hidden page returns."""
@@ -262,34 +258,6 @@ class AggregateInfoPanel(QGroupBox):
     def has_data(self) -> bool:
         """Return whether this presentation currently contains dataset metrics."""
         return self._has_data
-
-    def minimum_readable_table_width(self) -> int:
-        """Return the width needed by the currently visible key/value cells."""
-        metrics = self.table.fontMetrics()
-        visible_rows = [
-            row
-            for row in range(self.table.rowCount())
-            if not self.table.isRowHidden(row)
-        ]
-        if not visible_rows:
-            return 0
-        key_width = max(
-            metrics.horizontalAdvance(item.text())
-            for row in visible_rows
-            if (item := self.table.item(row, 0)) is not None
-        )
-        value_width = max(
-            metrics.horizontalAdvance(item.text())
-            for row in visible_rows
-            if (item := self.table.item(row, 1)) is not None
-        )
-        return (
-            key_width
-            + INFO_KEY_COLUMN_PADDING
-            + value_width
-            + INFO_VALUE_COLUMN_PADDING
-            + INFO_TABLE_HORIZONTAL_BUFFER
-        )
 
     def _refresh_table_metrics(self) -> None:
         """Keep the accepted fixed 13-row summary readable at the active font."""
@@ -585,7 +553,6 @@ class AggregateInfoPanel(QGroupBox):
             available_count += int(available)
         self._has_data = available_count > 0
         self._refresh_table_metrics()
-        self.presentation_changed.emit()
 
     @staticmethod
     def _available_text(value: object) -> str:
@@ -623,4 +590,3 @@ class AggregateInfoPanel(QGroupBox):
                     item.setToolTip("-")
         self._has_data = False
         self._refresh_table_metrics()
-        self.presentation_changed.emit()

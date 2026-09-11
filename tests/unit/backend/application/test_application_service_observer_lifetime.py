@@ -8,7 +8,7 @@ from weakref import ref
 
 import pytest
 
-from XBrainLab.backend.application import ApplicationService, get_application_service
+from XBrainLab.backend.application import get_application_service
 from XBrainLab.backend.application.commands import QueryStateCommand
 from XBrainLab.backend.application.runtime import application_service_initialized
 from XBrainLab.backend.study import Study
@@ -67,34 +67,6 @@ def test_runtime_service_cache_releases_only_after_explicit_close() -> None:
     assert _observer_count(training_events, "training_updated") == 0
     assert _observer_count(training_events, "training_stopped") == 0
     assert _observer_count(saliency_events, _SALIENCY_TERMINAL_EVENT) == 0
-
-
-def test_close_unsubscribes_armed_automation_and_releases_service() -> None:
-    study = Study()
-    training_events = study.training_state_service
-    saliency_events = study.training_manager._saliency_lifecycle_events
-    service = ApplicationService(study)
-    service.post_training_saliency.arm()
-    service_ref = ref(service)
-
-    assert _observer_count(training_events, "training_stopped") == 1
-    assert _observer_count(training_events, "training_terminal_published") == 1
-    assert _observer_count(saliency_events, _SALIENCY_TERMINAL_EVENT) == 1
-
-    service.close()
-
-    assert _observer_count(training_events, "training_started") == 0
-    assert _observer_count(training_events, "training_updated") == 0
-    assert _observer_count(training_events, "training_stopped") == 0
-    assert _observer_count(training_events, "training_terminal_published") == 0
-    assert _observer_count(saliency_events, _SALIENCY_TERMINAL_EVENT) == 0
-
-    del service
-    gc.collect()
-
-    assert service_ref() is None
-    training_events.notify("training_stopped")
-    assert service_ref() is None
 
 
 def test_close_releases_runtime_cache_for_a_fresh_service() -> None:

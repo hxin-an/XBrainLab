@@ -350,6 +350,10 @@ def _validate_stage_product_facts(
             or not isinstance(stage.get("route_semantics_match"), bool)
         ):
             return False, "evaluation held-out render facts are incomplete."
+        if stage["route_semantics_match"] != (
+            set(expected_labels) == set(observed_labels)
+        ):
+            return False, "evaluation route semantics contradict recorded class labels."
         return True, ""
     if "saliency" not in commands:
         return False, "saliency command trace is incomplete."

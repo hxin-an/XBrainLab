@@ -9,9 +9,6 @@ from .split_audit import (
     SplitAuditIssue,
     SplitAuditResult,
     audit_dataset_splits,
-    build_split_artifact,
-    split_indices,
-    write_split_artifact,
 )
 
 __all__ = [
@@ -28,7 +25,4 @@ __all__ = [
     "TrainingType",
     "ValSplitByType",
     "audit_dataset_splits",
-    "build_split_artifact",
-    "split_indices",
-    "write_split_artifact",
 ]

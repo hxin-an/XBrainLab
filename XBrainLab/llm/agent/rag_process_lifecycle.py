@@ -127,29 +127,6 @@ class ProcessRAGRetrieverLifecycle:
         self._pending: _PendingRetrieval | None = None
 
     @property
-    def is_initializing(self) -> bool:
-        with self._lock:
-            process = self._process
-            return bool(process is not None and process.is_alive() and not self._ready)
-
-    @property
-    def initializer_thread_daemon(self) -> bool:
-        with self._lock:
-            process = self._process
-            return bool(process is not None and process.daemon)
-
-    @property
-    def is_retrieving(self) -> bool:
-        with self._lock:
-            return self._pending is not None
-
-    @property
-    def retrieval_thread_daemon(self) -> bool:
-        with self._lock:
-            monitor = self._monitor_thread
-            return bool(monitor is not None and monitor.daemon)
-
-    @property
     def has_active_process(self) -> bool:
         with self._lock:
             process = self._process

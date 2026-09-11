@@ -736,6 +736,10 @@ def test_capture_readme_can_be_written_outside_tracked_artifacts(tmp_path) -> No
     readme = (tmp_path / "README.md").read_text(encoding="utf-8")
     assert "App Polish Screenshots" in readme
     assert "human desktop acceptance" in readme
+    assert all(f"`{filename}`" in readme for filename in APP_POLISH_SURFACES)
+    assert "(820 x 470 requested; scroll fallback)" in readme
+    assert "environment: PyQt offscreen capture" not in readme
+    assert "platform and requested scale: see `app-polish-evidence.json`" in readme
 
 
 def test_capture_publish_replaces_manifest_only_after_screenshot_and_readme(

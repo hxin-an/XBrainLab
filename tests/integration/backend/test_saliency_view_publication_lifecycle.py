@@ -856,66 +856,6 @@ def test_scheduler_thread_start_failure_publishes_failed_view_and_events_once(
     assert saliency_events == ["saliency_changed"]
 
 
-@pytest.mark.parametrize("failure_point", ["construct", "start"])
-def test_submission_thread_failure_publishes_failed_view_and_events_once(
-    monkeypatch,
-    failure_point: str,
-) -> None:
-    service, trainer, _holder, _record, _initial_eval_record = (
-        _completed_training_service()
-    )
-    application_events: list[TrainingLifecycleEvent] = []
-    saliency_events: list[str] = []
-
-    class _SubmissionFailureThread:
-        def __init__(self, *args, **kwargs) -> None:
-            del args, kwargs
-            if failure_point == "construct":
-                raise RuntimeError("thread construction failed")
-
-        def start(self) -> None:
-            if failure_point == "start":
-                raise RuntimeError("thread start failed")
-
-        def join(self, timeout=None) -> None:
-            del timeout
-            raise AssertionError("an unstarted submission must not be joined")
-
-    service.training.subscribe(
-        "training_analysis_published",
-        application_events.append,
-    )
-    service.visualization.subscribe(
-        "saliency_changed",
-        lambda: saliency_events.append("saliency_changed"),
-    )
-    service.post_training_saliency.arm(append=False)
-    trainer.run(interact=False)
-    monkeypatch.setattr(
-        "XBrainLab.backend.application.post_training_saliency.Thread",
-        _SubmissionFailureThread,
-    )
-
-    service.training.notify("training_stopped")
-    service.training.notify("training_stopped")
-
-    assert service.wait_for_background_tasks(timeout=_THREAD_WATCHDOG_SECONDS)
-    publication = service.get_view_publication()
-    status = publication.state.visualization.post_training_saliency
-    assert status.phase is PostTrainingSaliencyPhase.FAILED
-    assert status.error_code == (
-        PostTrainingSaliencyScheduleReason.THREAD_START_FAILED.value
-    )
-    assert status.run == trainer.get_terminal_outcome().run
-    assert len(application_events) == 1
-    assert application_events[0].publication_generation == publication.generation
-    assert saliency_events == ["saliency_changed"]
-
-    assert service.execute(QueryStateCommand()).state == publication.state
-    assert len(application_events) == 1
-    assert saliency_events == ["saliency_changed"]
-
-
 def test_worker_terminal_notification_survives_get_state_prepublish_race(
     monkeypatch,
 ) -> None:

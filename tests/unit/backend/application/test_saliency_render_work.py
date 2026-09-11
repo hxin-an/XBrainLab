@@ -189,7 +189,7 @@ def test_saliency_render_cancel_during_normalization_terminalizes_and_retries(
 def test_cross_fold_pool_cancel_after_store_read_discards_partial_result() -> None:
     registry = OwnedWorkRegistry()
     scheduled = registry.begin(OwnedWorkKind.RENDER, cancellable=True)
-    registry.start(scheduled.operation_id)
+    registry.claim_start(scheduled.operation_id)
     entered = threading.Event()
     release = threading.Event()
 
@@ -246,7 +246,7 @@ def test_cross_fold_pool_cancel_after_store_read_discards_partial_result() -> No
     assert registry.snapshot(scheduled.operation_id).phase is OwnedWorkPhase.CANCELLED
 
     retry = registry.begin(OwnedWorkKind.RENDER, cancellable=True)
-    registry.start(retry.operation_id)
+    registry.claim_start(retry.operation_id)
     with registry.bind(retry.operation_id):
         pooled = _pool_cross_fold_saliency(
             (
@@ -271,7 +271,7 @@ def test_cross_fold_pool_cancel_after_store_read_discards_partial_result() -> No
 def test_single_fold_class_copy_observes_cancel_after_array_copy() -> None:
     registry = OwnedWorkRegistry()
     scheduled = registry.begin(OwnedWorkKind.RENDER, cancellable=True)
-    registry.start(scheduled.operation_id)
+    registry.claim_start(scheduled.operation_id)
     entered = threading.Event()
     release = threading.Event()
 

@@ -363,9 +363,10 @@ def test_confirmation_cannot_hide_an_unexpected_domain_mutation(
     before = service.get_view_publication()
 
     def mutate_then_require_confirmation(_command: Command) -> str:
-        count, errors = service.dataset.import_files([str(eeg_path)])
-        assert count == 1
-        assert errors == []
+        prepared = service.dataset.prepare_replacement_import([str(eeg_path)])
+        assert prepared.success_count == 1
+        assert prepared.errors == ()
+        service.dataset.commit_prepared_import(prepared)
         raise ResourceConfirmationRequiredError(
             _warning_import_preflight([str(eeg_path)])
         )

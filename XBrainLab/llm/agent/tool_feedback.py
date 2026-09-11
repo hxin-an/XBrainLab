@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
-from dataclasses import dataclass
 from typing import Any
 
 from XBrainLab.llm.tools.application_surface import ToolCommandResult
@@ -24,94 +23,6 @@ _INTERPRETATION_DECISION_SUMMARIES: dict[str, str] = {
     ),
     "blocked": "Data interpretation needs changes before it can be applied.",
 }
-
-
-@dataclass(frozen=True)
-class ToolRecoveryFeedback:
-    """Small, instruction-isolated failure payload for one model retry."""
-
-    tool_name: str
-    command_name: str | None
-    error_type: str | None
-    message: str
-    blocked_reason: str | None
-    guidance: str
-
-    def to_prompt_payload(self) -> dict[str, Any]:
-        command_name = _safe_optional_feedback_text(
-            self.command_name,
-            field_name="Tool recovery command name",
-            limit=100,
-        )
-        payload: dict[str, Any] = {
-            "schema": "xbrainlab.tool_recovery.v1",
-            "tool_name": _safe_feedback_text(self.tool_name, limit=100),
-            "command_name": command_name,
-            "error_type": (
-                _safe_feedback_text(self.error_type, limit=80)
-                if self.error_type
-                else None
-            ),
-            "message": _safe_feedback_text(self.message, limit=500),
-            "blocked_reason": (
-                _safe_feedback_text(self.blocked_reason, limit=500)
-                if self.blocked_reason
-                else None
-            ),
-            "recoverable": True,
-            "guidance": _safe_feedback_text(self.guidance, limit=300),
-        }
-        return payload
-
-
-def build_recovery_feedback(
-    command_name: str,
-    result: ToolCommandResult | UiRequest,
-) -> ToolRecoveryFeedback | None:
-    """Build retry context only for typed, recoverable command failures."""
-    command_name = _require_exact_feedback_text(
-        command_name,
-        field_name="Tool feedback command name",
-    )
-    if not isinstance(result, ToolCommandResult) or result.ok or not result.recoverable:
-        return None
-    result_tool_name = _require_exact_feedback_text(
-        result.tool_name,
-        field_name="Tool result name",
-    )
-    result_command_name = _require_exact_optional_feedback_text(
-        result.command_name,
-        field_name="Tool result command name",
-    )
-    projection = public_safe_result_projection(
-        message=result.message,
-        blocked_reason=result.blocked_reason,
-        raw_result=result.raw_result,
-        state=result.state,
-        capability=result.capability,
-        diagnostics=result.diagnostics,
-    )
-    guidance_by_error = {
-        "input": "Correct only the named input, or ask the user for that input.",
-        "precondition": (
-            "Do not substitute a different tool. Explain the blocker or wait for "
-            "the required workflow state."
-        ),
-        "tool_not_published": (
-            "Use only a tool published in the current Available Tools block."
-        ),
-    }
-    return ToolRecoveryFeedback(
-        tool_name=result_tool_name or command_name,
-        command_name=result_command_name,
-        error_type=result.error_type,
-        message=projection.message,
-        blocked_reason=projection.blocked_reason,
-        guidance=guidance_by_error.get(
-            result.error_type or "",
-            "Use the runtime error details to make one corrected proposal.",
-        ),
-    )
 
 
 def _safe_feedback_text(value: str, *, limit: int) -> str:
@@ -141,21 +52,6 @@ def _require_exact_optional_feedback_text(
     if value is None:
         return None
     return _require_exact_feedback_text(value, field_name=field_name)
-
-
-def _safe_optional_feedback_text(
-    value: object,
-    *,
-    field_name: str,
-    limit: int,
-) -> str | None:
-    exact_value = _require_exact_optional_feedback_text(
-        value,
-        field_name=field_name,
-    )
-    if exact_value is None:
-        return None
-    return _safe_feedback_text(exact_value, limit=limit)
 
 
 def summarize_tool_result(

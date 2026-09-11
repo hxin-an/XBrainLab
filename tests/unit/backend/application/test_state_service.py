@@ -48,7 +48,6 @@ from XBrainLab.backend.application.training_runtime import (
     TrainingConfigurationSnapshot,
     TrainingRuntimeContext,
 )
-from XBrainLab.backend.application.training_service import TrainingCommandService
 from XBrainLab.backend.application.training_submission import (
     attach_training_submission_provenance,
 )
@@ -498,16 +497,10 @@ def _snapshot_service(
         training=training,
         training_runtime=cast(Any, training_runtime),
         evaluation=_EvaluationController(),
-        visualization=object(),
         dataset_generation=DatasetGenerationCommandService(
             study=study,
             training=object(),
             has_trainer=training_runtime.has_trainer,
-        ),
-        training_commands=TrainingCommandService(
-            training=object(),
-            training_runtime=cast(Any, training_runtime),
-            get_state=lambda: cast(ApplicationStateSnapshot, None),
         ),
         saliency_coverage_projector=(
             saliency_coverage_projector or SaliencyCoverageProjector()
@@ -563,6 +556,31 @@ def test_state_snapshot_service_builds_workflow_snapshot() -> None:
     assert state.visualization.saliency_configured is True
     assert state.interpretation.has_scan_result is True
     assert state.active_dataset.has_epoch_data is True
+
+
+@pytest.mark.parametrize("display_name", [None, "", "Catalog display name"])
+def test_state_snapshot_preserves_model_identity_and_detaches_configuration(
+    display_name: str | None,
+) -> None:
+    service = _snapshot_service()
+    runtime = cast(_TrainingRuntime, service.training_runtime)
+    holder = SimpleNamespace(
+        target_model=type("LegacyModel", (), {}),
+        display_name=display_name,
+        model_params_map={"dropout": 0.25},
+    )
+    runtime._configuration = replace(runtime._configuration, model_holder=holder)
+
+    snapshot = service.build()
+
+    assert snapshot.state_reliable
+    assert snapshot.training.model_name == (display_name or "LegacyModel")
+    assert snapshot.training.model_params == {"dropout": 0.25}
+    holder.model_params_map["dropout"] = 0.5
+    assert snapshot.training.model_params == {"dropout": 0.25}
+    snapshot.training.model_params["dropout"] = 0.75
+    assert holder.model_params_map == {"dropout": 0.5}
+    assert service.build().training.model_params == {"dropout": 0.5}
 
 
 def test_state_snapshot_projects_partial_bids_geometry_without_hiding_channels() -> (
@@ -1074,7 +1092,6 @@ def test_trainer_without_finished_results_preserves_terminal_outcome_without_tra
     service = _snapshot_service()
     service.study.trainer = _StableTrainer()
     controller = _TerminalTrainingController(terminal_outcome)
-    service.training = controller
     service.training_state = controller
     cast(_TrainingRuntime, service.training_runtime).training = controller
 
@@ -1089,7 +1106,6 @@ def test_prior_finished_result_remains_available_after_later_training_failure() 
     service = _snapshot_service()
     service.study.trainer = _StableTrainer()
     controller = _TerminalTrainingController(TrainingOutcomeState.FAILED)
-    service.training = controller
     service.training_state = controller
     cast(_TrainingRuntime, service.training_runtime).training = controller
     service.evaluation_state = _EvaluationControllerWithPlans(
@@ -1381,7 +1397,7 @@ def test_authoritative_controller_read_failure_fails_state_and_publication_close
 
 def test_training_progress_failure_is_explicitly_optional_diagnostic() -> None:
     state_builder = _snapshot_service()
-    state_builder.training = _BrokenTrainingProgressController()
+    state_builder.training_state = _BrokenTrainingProgressController()
 
     state = state_builder.build()
 
@@ -1914,7 +1930,6 @@ def test_published_data_summary_preserves_live_summary_schema() -> None:
 def test_query_state_service_returns_readonly_summaries() -> None:
     state_builder = _snapshot_service()
     query = QueryStateCommandService(
-        study=state_builder.study,
         dataset=state_builder.dataset,
         state_builder=state_builder,
         get_state=state_builder.build,
@@ -2011,7 +2026,6 @@ def test_query_state_service_returns_readonly_summaries() -> None:
 def test_query_state_service_rejects_duplicate_state_publication_route() -> None:
     state_builder = _snapshot_service()
     query = QueryStateCommandService(
-        study=state_builder.study,
         dataset=state_builder.dataset,
         state_builder=state_builder,
         get_state=state_builder.build,
@@ -2028,7 +2042,6 @@ def test_training_history_query_does_not_build_full_state_snapshot() -> None:
         raise AssertionError("training_history should not build the full state")
 
     query = QueryStateCommandService(
-        study=state_builder.study,
         dataset=state_builder.dataset,
         state_builder=state_builder,
         get_state=fail_get_state,

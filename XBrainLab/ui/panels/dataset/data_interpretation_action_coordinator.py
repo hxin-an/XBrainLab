@@ -445,18 +445,6 @@ class DataInterpretationActionCoordinator:
                 message,
             )
             return InteractionOutcome.blocked(message)
-        if scan_capability is None and self._bindings.has_real_application_context(
-            self.panel
-        ):
-            self._bindings.show_warning(
-                self.panel,
-                "Interpretation Blocked",
-                _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
-            )
-            return InteractionOutcome.blocked(
-                _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE
-            )
-
         if scan_capability is None:
             self._bindings.show_warning(
                 self.panel,
@@ -506,26 +494,13 @@ class DataInterpretationActionCoordinator:
             )
             if outcome is not None:
                 return outcome
-            if scan_capability is not None:
-                message = "Data Interpretation command service is unavailable."
-                self._bindings.show_error(
-                    self.panel,
-                    "Interpretation unavailable",
-                    message,
-                )
-                return InteractionOutcome.failed(message)
-            if self._bindings.has_real_application_context(self.panel):
-                self._bindings.show_warning(
-                    self.panel,
-                    "Interpretation Blocked",
-                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
-                )
-                return InteractionOutcome.blocked(
-                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
-                )
-            return InteractionOutcome.blocked(
-                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
+            message = "Data Interpretation command service is unavailable."
+            self._bindings.show_error(
+                self.panel,
+                "Interpretation unavailable",
+                message,
             )
+            return InteractionOutcome.failed(message)
         except Exception:
             message = self._bindings.present_unexpected_error(
                 self.panel,
@@ -581,7 +556,7 @@ class DataInterpretationActionCoordinator:
             scan=scan,
             preview=preview,
             candidate=candidate,
-            candidate_id=self._optional_payload_id(candidate, "candidate_id"),
+            candidate_id=optional_payload_id(candidate, "candidate_id"),
             decision=decision,
             publication_generation=published_review.identity.publication_generation,
         )
@@ -816,7 +791,7 @@ class DataInterpretationActionCoordinator:
         def _handle_catalog_result(result) -> InteractionOutcome:
             if self._result_failed(result, "BIDS subject discovery failed"):
                 return self._interaction_failure_outcome(result, result.message)
-            catalog = self._diagnostic_payload(result, "bids_subject_catalog")
+            catalog = diagnostic_payload(result, "bids_subject_catalog")
             return self._present_bids_subject_catalog(source_path, catalog)
 
         self._show_status("Reading BIDS subject catalog...")
@@ -913,7 +888,7 @@ class DataInterpretationActionCoordinator:
         """Run the Data Interpretation command sequence for selected files."""
         source_path, choices = self._interpretation_source_and_choices(filepaths)
         if initial_choices:
-            choices = self._merge_interpretation_choices(
+            choices = merge_interpretation_choices(
                 choices,
                 dict(initial_choices),
             )
@@ -1013,7 +988,7 @@ class DataInterpretationActionCoordinator:
             if isinstance(raw_dialog_choices, dict)
             else {}
         )
-        updated_choices = self._merge_interpretation_choices(
+        updated_choices = merge_interpretation_choices(
             choices,
             dialog_choices,
         )
@@ -1047,7 +1022,7 @@ class DataInterpretationActionCoordinator:
                         "Dataset import blocked · Review the import settings"
                     )
                 return InteractionOutcome.blocked(
-                    self._decision_reason(review_state.decision)
+                    decision_reason(review_state.decision)
                 )
 
             if continuation_choices != comparison_choices:
@@ -1440,7 +1415,7 @@ class DataInterpretationActionCoordinator:
             _terminal(InteractionOutcome.failed(message))
 
         scan = dict(review_state.scan)
-        scan_id = self._optional_payload_id(scan, "scan_id")
+        scan_id = optional_payload_id(scan, "scan_id")
         if scan_id is None:
             message = (
                 "The Data Import scan identity is unavailable. Reopen the source "
@@ -1480,7 +1455,7 @@ class DataInterpretationActionCoordinator:
                         validation_result.message,
                     )
                 )
-            decision = self._diagnostic_payload(
+            decision = diagnostic_payload(
                 validation_result,
                 "validation_decision",
             )
@@ -1540,9 +1515,9 @@ class DataInterpretationActionCoordinator:
                         preview_result.message,
                     )
                 )
-            preview = self._diagnostic_payload(preview_result, "preview")
-            candidate = self._diagnostic_payload(preview_result, "candidate")
-            candidate_id = self._optional_payload_id(candidate, "candidate_id")
+            preview = diagnostic_payload(preview_result, "preview")
+            candidate = diagnostic_payload(preview_result, "candidate")
+            candidate_id = optional_payload_id(candidate, "candidate_id")
             try:
                 preview_state = self._review_state_from_parts(
                     scan=scan,
@@ -1833,7 +1808,7 @@ class DataInterpretationActionCoordinator:
     ) -> InteractionOutcome:
         """Apply one reviewed candidate and continue to optional recipe saving."""
         candidate_id = (
-            self._optional_payload_id(review_state.decision, "candidate_id")
+            optional_payload_id(review_state.decision, "candidate_id")
             or review_state.candidate_id
         )
 
@@ -1964,13 +1939,13 @@ class DataInterpretationActionCoordinator:
             if bool(dialog_result.get("save_recipe", False)):
                 if not self._save_interpretation_recipe(
                     on_complete=_finish,
-                    expected_scan_id=self._optional_payload_id(
+                    expected_scan_id=optional_payload_id(
                         review_state.scan,
                         "scan_id",
                     ),
                     expected_candidate_id=review_state.candidate_id,
-                    expected_interpretation_id=self._optional_payload_id(
-                        self._diagnostic_payload(
+                    expected_interpretation_id=optional_payload_id(
+                        diagnostic_payload(
                             apply_result,
                             "applied_interpretation",
                         ),
@@ -2120,12 +2095,12 @@ class DataInterpretationActionCoordinator:
         self,
         review_result,
     ) -> _InterpretationReviewState:
-        candidate = self._diagnostic_payload(review_result, "candidate")
+        candidate = diagnostic_payload(review_result, "candidate")
         return self._review_state_from_parts(
-            scan=self._diagnostic_payload(review_result, "scan_result"),
-            preview=self._diagnostic_payload(review_result, "preview"),
+            scan=diagnostic_payload(review_result, "scan_result"),
+            preview=diagnostic_payload(review_result, "preview"),
             candidate=candidate,
-            decision=self._diagnostic_payload(review_result, "validation_decision"),
+            decision=diagnostic_payload(review_result, "validation_decision"),
         )
 
     def _review_state_from_parts(
@@ -2136,8 +2111,8 @@ class DataInterpretationActionCoordinator:
         candidate: dict[str, Any],
         decision: dict[str, Any],
     ) -> _InterpretationReviewState:
-        scan_id = self._optional_payload_id(scan, "scan_id")
-        candidate_id = self._optional_payload_id(candidate, "candidate_id")
+        scan_id = optional_payload_id(scan, "scan_id")
+        candidate_id = optional_payload_id(candidate, "candidate_id")
         if scan_id is None or candidate_id is None:
             raise PreconditionError(
                 "The Data Import review identity could not be verified. Refresh the "
@@ -2360,13 +2335,6 @@ class DataInterpretationActionCoordinator:
         return source_path, {"selected_eeg_files": list(filepaths)}
 
     @staticmethod
-    def _merge_interpretation_choices(
-        base: dict[str, Any],
-        updates: dict[str, Any],
-    ) -> dict[str, Any]:
-        return merge_interpretation_choices(base, updates)
-
-    @staticmethod
     def _choices_after_label_source_change(
         choices: dict[str, Any],
     ) -> dict[str, Any]:
@@ -2386,15 +2354,3 @@ class DataInterpretationActionCoordinator:
         ):
             result.pop(key, None)
         return result
-
-    @staticmethod
-    def _diagnostic_payload(result, key: str) -> dict:
-        return diagnostic_payload(result, key)
-
-    @staticmethod
-    def _optional_payload_id(payload: dict, key: str) -> str | None:
-        return optional_payload_id(payload, key)
-
-    @staticmethod
-    def _decision_reason(decision: dict) -> str:
-        return decision_reason(decision)

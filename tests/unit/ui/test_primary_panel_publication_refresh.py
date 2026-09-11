@@ -80,6 +80,10 @@ def test_primary_panel_commits_revision_only_after_render_succeeds(
         panel._last_application_revision
     )
 
+    # Retain the no-publication observation window for every primary panel.
+    qtbot.wait(25)
+    assert rendered_ledger_during_render == []
+
     _publish_revision(port, revision)
 
     assert panel._last_application_revision == 0
@@ -203,6 +207,7 @@ def test_primary_panel_coalesces_pending_revisions_to_newest(
 
     _publish_revision(port, first_revision)
     _publish_revision(port, newest_revision)
+    _publish_revision(port, newest_revision)
 
     assert renders == []
     qtbot.waitUntil(lambda: renders == [newest_revision])
@@ -282,25 +287,6 @@ def test_primary_panel_cleanup_cancels_scheduled_render_retry(
     assert render_attempts == [revision]
     assert not panel._application_refresh_timer.isActive()
     assert panel._application_render_ledger.pending_publication is None
-
-
-def test_dataset_state_render_is_driven_only_by_application_publication(qtbot) -> None:
-    controller = Observable()
-    port = _PublicationPort()
-    panel = DatasetPanel(publication_port=port)
-    qtbot.addWidget(panel)
-    renders: list[int] = []
-    cast(Any, panel).update_panel = lambda: renders.append(port.publication.revision)
-
-    controller.notify("data_changed")
-    qtbot.wait(25)
-    assert renders == []
-
-    port.notify(APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT, port.publication)
-    port.notify(APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT, port.publication)
-
-    assert renders == []
-    qtbot.waitUntil(lambda: renders == [port.publication.revision])
 
 
 def test_dataset_query_failure_stays_pending_until_rows_can_be_rendered(
@@ -397,24 +383,6 @@ def test_dataset_retryable_query_failure_preserves_visible_rows_without_error_lo
 
     assert panel._application_render_ledger.pending_publication is None
     assert panel.empty_state_title.text() == "No EEG data loaded"
-
-
-def test_preprocess_state_render_is_driven_only_by_application_publication(
-    qtbot,
-) -> None:
-    port = _PublicationPort()
-    panel = PreprocessPanel(publication_port=port)
-    qtbot.addWidget(panel)
-    renders: list[int] = []
-    cast(Any, panel).update_panel = lambda: renders.append(port.publication.revision)
-
-    qtbot.wait(25)
-    assert renders == []
-
-    port.notify(APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT, port.publication)
-
-    assert renders == []
-    qtbot.waitUntil(lambda: renders == [port.publication.revision])
 
 
 def test_preprocess_render_uses_queued_publication_for_filtering_readiness(

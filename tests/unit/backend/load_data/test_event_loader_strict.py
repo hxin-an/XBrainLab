@@ -53,7 +53,8 @@ def test_event_loader_raw_no_events_raises_error():
         loader.create_event(mapping)
 
 
-def test_event_loader_raw_mismatch_raises():
+@pytest.mark.parametrize("labels", [[1], [1, 2, 3]], ids=("too-few", "too-many"))
+def test_event_loader_raw_mismatch_raises(labels):
     """Label rows must not be silently truncated against EEG events."""
     raw_mne = _generate_mne_raw()
     raw = Raw("test.fif", raw_mne)
@@ -64,11 +65,44 @@ def test_event_loader_raw_mismatch_raises():
     raw.set_event(events, event_id)
 
     loader = EventLoader(raw)
-    loader.label_list = [1, 2, 3]  # 3 labels vs 2 events
+    loader.label_list = labels
     mapping = {1: "A", 2: "B", 3: "C"}
 
     with pytest.raises(ValueError, match="Label count does not match"):
         loader.create_event(mapping)
+
+    np.testing.assert_array_equal(raw.get_event_list()[0], events)
+    assert raw.get_event_list()[1] == event_id
+
+
+@pytest.mark.parametrize("as_array", [False, True], ids=("list", "numpy"))
+def test_sequence_apply_preserves_selected_rows_and_source_until_commit(as_array):
+    raw_mne = _generate_mne_raw(first_samp=500)
+    raw = Raw("sequence.fif", raw_mne)
+    original_events = np.array(
+        [[510, 4, 7], [520, 5, 8], [530, 6, 7], [540, 7, 8], [550, 8, 7]]
+    )
+    original_ids = {"trial": 7, "other": 8}
+    raw.set_event(original_events.copy(), original_ids.copy())
+    labels = np.array([769, 770, 769]) if as_array else [769, 770, 769]
+    loader = EventLoader(raw)
+    loader.label_list = labels
+
+    events, event_id = loader.create_event(
+        {769: "Left", 770: "Right"}, selected_event_ids=[7]
+    )
+
+    assert events is not None
+    np.testing.assert_array_equal(events, [[510, 4, 769], [530, 6, 770], [550, 8, 769]])
+    assert event_id == {"Left": 769, "Right": 770}
+    np.testing.assert_array_equal(raw.get_event_list()[0], original_events)
+    assert raw.get_event_list()[1] == original_ids
+    np.testing.assert_array_equal(labels, [769, 770, 769])
+
+    loader.apply()
+
+    np.testing.assert_array_equal(raw.get_event_list()[0], events)
+    assert raw.get_event_list()[1] == event_id
 
 
 def test_event_loader_empty_labels_raises():

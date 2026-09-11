@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from scripts.dev.fetch_public_eeg_fixtures import resolve_public_fixture_dir
 from XBrainLab.backend.application import (
     ApplicationService,
     ApplyInterpretationCommand,
@@ -20,13 +21,7 @@ from XBrainLab.backend.application import (
     ValidateInterpretationCommand,
 )
 
-OPENNEURO_P300_ROOT = (
-    Path(__file__).resolve().parents[2]
-    / "fixtures"
-    / "data"
-    / "public"
-    / "openneuro-ds003061-p300"
-)
+OPENNEURO_P300_ROOT = resolve_public_fixture_dir() / "openneuro-ds003061-p300"
 ALL_SUBJECTS = ("001", "002", "003")
 RUNS = (1, 2, 3)
 P300_CLASS_VALUES = (

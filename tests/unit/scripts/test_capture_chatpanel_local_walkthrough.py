@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 from scripts.dev.capture_chatpanel_local_walkthrough import (
     VisibleMessage,
     collect_executed_tools,
     has_raw_debug_text,
     render_markdown,
 )
+from XBrainLab.llm.agent.metrics import AgentMetricsTracker
 
 
 def test_has_raw_debug_text_flags_tool_syntax() -> None:
@@ -99,26 +98,39 @@ def test_render_markdown_includes_visible_transcript() -> None:
 
 
 def test_collect_executed_tools_reads_completed_turn_metrics() -> None:
-    metrics = SimpleNamespace(
-        _completed_turns=[
-            SimpleNamespace(
-                tool_executions=[
-                    SimpleNamespace(
-                        name="query_state",
-                        success=True,
-                        duration_ms=1.23456,
-                        error=None,
-                    )
-                ]
-            )
-        ]
-    )
+    metrics = AgentMetricsTracker()
+
+    assert collect_executed_tools(metrics) == []
+
+    unfinished = metrics.start_turn()
+    unfinished.record_tool("ignored", True, 9.0)
+    assert collect_executed_tools(metrics) == []
+
+    completed = metrics.start_turn()
+    completed.record_tool("resample_data", True, 1.23456)
+    completed.record_tool("set_reference", False, 2.0, "invalid reference")
+    metrics.finish_turn()
 
     assert collect_executed_tools(metrics) == [
         {
-            "name": "query_state",
+            "name": "ignored",
+            "success": True,
+            "duration_ms": 9.0,
+            "error": None,
+        },
+        {
+            "name": "resample_data",
             "success": True,
             "duration_ms": 1.235,
             "error": None,
-        }
+        },
+        {
+            "name": "set_reference",
+            "success": False,
+            "duration_ms": 2.0,
+            "error": "invalid reference",
+        },
     ]
+
+    metrics.reset()
+    assert collect_executed_tools(metrics) == []

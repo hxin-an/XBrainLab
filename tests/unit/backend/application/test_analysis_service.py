@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
+import torch
 
 from XBrainLab.backend.application import saliency_resource
 from XBrainLab.backend.application.analysis_service import (
@@ -32,6 +33,7 @@ from XBrainLab.backend.application.resource_guard import (
     ResourcePreflightResult,
 )
 from XBrainLab.backend.application.resource_preflight import ResourcePreflightView
+from XBrainLab.backend.application.saliency_policy import normalize_saliency_params
 from XBrainLab.backend.application.state import (
     ActiveDatasetSnapshot,
     ActiveTrainingSnapshot,
@@ -48,6 +50,9 @@ from XBrainLab.backend.application.state import (
     VisualizationStateSnapshot,
 )
 from XBrainLab.backend.application.training_runtime import TrainingRuntimeContext
+from XBrainLab.backend.services.visualization_state_service import (
+    VisualizationStateService,
+)
 from XBrainLab.backend.training_manager import (
     PostTrainingSaliencyTarget,
     TrainingManager,
@@ -105,10 +110,10 @@ class _ShapeOnlyArray:
 
 class _EpochData:
     def __init__(self, shape: tuple[int, int, int] = (8, 2, 16)) -> None:
-        self._data = _ShapeOnlyArray(shape)
+        self._data: _ShapeOnlyArray | np.ndarray = _ShapeOnlyArray(shape)
         self._labels = np.zeros(shape[0], dtype=np.int64)
 
-    def get_data(self) -> _ShapeOnlyArray:
+    def get_data(self) -> _ShapeOnlyArray | np.ndarray:
         return self._data
 
     def get_label_list(self) -> np.ndarray:
@@ -180,13 +185,14 @@ class _TrainingRuntime:
         *,
         datasets: tuple[_Dataset, ...] | None = None,
         training_option: _TrainingOption | None = None,
+        model_holder: Any | None = None,
         is_training: bool = False,
     ) -> None:
         self._plans = plans
         self._resource_context = TrainingRuntimeContext(
             datasets=datasets or (_Dataset(),),
             training_option=training_option or _TrainingOption(),
-            model_holder=_ModelHolder(),
+            model_holder=model_holder or _ModelHolder(),
         )
         self._is_training = is_training
 
@@ -976,6 +982,113 @@ def test_analysis_service_rejects_oversized_saliency_before_evaluator(
                 params={"nt_samples": 512},
             ),
         )
+
+
+def test_analysis_service_recomputes_actual_warning_preflight_before_receipt_consume(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exercise real admission/storage without starting an attribution job."""
+
+    class TinyTorchModelHolder:
+        target_model = torch.nn.Linear
+
+        @staticmethod
+        def get_model(_args: dict[str, Any]) -> torch.nn.Linear:
+            return torch.nn.Linear(32, 2)
+
+    dataset = _Dataset((8, 2, 16))
+    dataset._epoch_data._data = np.zeros((8, 2, 16), dtype=np.float32)
+    holder = TinyTorchModelHolder()
+    option = _TrainingOption(batch_size=2)
+    command_params = {
+        "nt_samples": 2,
+        "nt_samples_batch_size": 1,
+        "stdevs": 0.1,
+    }
+    expected_params, _requested_method = normalize_saliency_params(
+        "SmoothGrad",
+        command_params,
+    )
+    estimate = saliency_resource.estimate_saliency_resources(
+        [dataset],
+        option,
+        holder,
+        expected_params,
+    )
+    required = estimate["estimated_ram_working_set_bytes"]
+    assert estimate["model_parameter_bytes"] == (32 * 2 + 2) * 4
+    probes: list[None] = []
+
+    def warning_ram_status() -> dict[str, int]:
+        probes.append(None)
+        available = required * 10 // 7
+        return {
+            "available_bytes": available,
+            "total_bytes": available * 2,
+            "used_bytes": available,
+        }
+
+    monkeypatch.setattr(
+        saliency_resource.ResourceChecker,
+        "get_system_ram_status",
+        staticmethod(warning_ram_status),
+    )
+    runtime = _TrainingRuntime(
+        [],
+        datasets=(dataset,),
+        training_option=option,
+        model_holder=holder,
+    )
+    manager = TrainingManager()
+    visualization = VisualizationStateService(manager)
+    notifications: list[str] = []
+    visualization.subscribe("saliency_changed", lambda: notifications.append("changed"))
+    service = AnalysisCommandService(
+        training_runtime=runtime,
+        visualization=visualization,
+        get_state=lambda: _state(has_trainer=True, finished_runs=1),
+    )
+
+    with pytest.raises(ResourceConfirmationRequiredError) as raised:
+        service.handle_saliency(
+            SaliencyCommand(method="SmoothGrad", params=command_params)
+        )
+
+    challenge = _resource_challenge(raised.value)
+    assert probes == [None]
+    assert manager.get_saliency_params() is None
+    assert notifications == []
+
+    _message, diagnostics = _expect_payload(
+        service.handle_saliency(
+            SaliencyCommand(
+                method="SmoothGrad",
+                params=command_params,
+                resource_preflight_confirmed=True,
+                resource_preflight_token=challenge.challenge_id,
+            )
+        )
+    )
+
+    assert probes == [None, None]
+    assert diagnostics["resource_preflight"]["risk_level"] == "warning"
+    assert diagnostics["resource_preflight"]["confirmation_receipt_reused"] is True
+    assert manager.get_saliency_params() == expected_params
+    assert notifications == ["changed"]
+
+    with pytest.raises(ResourceConfirmationRequiredError):
+        service.handle_saliency(
+            SaliencyCommand(
+                method="SmoothGrad",
+                params=command_params,
+                resource_preflight_confirmed=True,
+                resource_preflight_token=challenge.challenge_id,
+            )
+        )
+
+    assert probes == [None, None, None]
+    assert manager.get_saliency_params() == expected_params
+    assert notifications == ["changed"]
 
 
 @pytest.mark.parametrize("risk_level", ["warning", "unknown"])

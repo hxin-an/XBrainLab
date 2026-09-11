@@ -1,5 +1,7 @@
 from dataclasses import replace
 
+import pytest
+
 from XBrainLab.backend.application.capabilities import build_capability_policy
 from XBrainLab.backend.application.state import (
     ActiveTrainingSnapshot,
@@ -128,7 +130,8 @@ def test_training_terminal_keeps_exact_assistant_run_until_rendered() -> None:
     assert state.training_watch is None
 
 
-def test_training_watch_rejects_untyped_handoff_identity() -> None:
+@pytest.mark.parametrize("generation", [None, True, 0, -1, "7"])
+def test_training_watch_rejects_untyped_handoff_identity(generation) -> None:
     coordinator = AssistantApplicationPublicationCoordinator()
     result = ToolCommandResult(
         ok=True,
@@ -136,7 +139,7 @@ def test_training_watch_rejects_untyped_handoff_identity() -> None:
         command_name="train",
         message="Training started.",
         state={"training": {"finished_run_count": 0}},
-        diagnostics={},
+        diagnostics={"training_handoff_generation": generation},
     )
 
     assert (

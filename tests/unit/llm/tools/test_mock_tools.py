@@ -1,7 +1,5 @@
 """Behavior contracts for the Stable v2 Assistant mock registry."""
 
-from unittest.mock import MagicMock
-
 import pytest
 
 from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
@@ -23,7 +21,7 @@ from XBrainLab.llm.tools.result_contract import ToolResult, UiRequest
 
 @pytest.fixture
 def study():
-    return MagicMock()
+    return object()
 
 
 @pytest.mark.parametrize(

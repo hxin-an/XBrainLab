@@ -66,6 +66,7 @@ from scripts.dev.app_polish_capture_contract import (
     build_source_bound_capture_session,
     validate_source_bound_capture_session,
 )
+from scripts.dev.capture_config import isolated_capture_config
 from scripts.dev.capture_data_interpretation_replay import (
     LABEL_PATH,
     SOURCE_DIR,
@@ -386,47 +387,48 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    output_dir = Path(args.output_dir)
-    run_id = _new_artifact_run_id()
-    staging_dir = _artifact_staging_dir(output_dir, run_id)
-    staging_dir.mkdir(parents=True, exist_ok=False)
-    capture_started_at = datetime.now(UTC)
-    source_identity_at_start = collect_source_identity(ROOT, refresh=True)
-    app = QApplication(sys.argv)
-    app.setStyle("Fusion")
-    payload = capture_walkthrough(app, staging_dir)
-    source_identity_at_completion = collect_source_identity(ROOT, refresh=True)
-    published_dir = publish_artifact_run(
-        staging_dir=staging_dir,
-        output_dir=output_dir,
-        payload=payload,
-        run_id=run_id,
-        source_identity_at_start=source_identity_at_start,
-        source_identity_at_completion=source_identity_at_completion,
-        capture_started_at=capture_started_at,
-    )
-    integrity_ok, integrity_reason = validate_walkthrough_payload(
-        payload,
-        require_files=True,
-    )
-    if not integrity_ok and payload.get("status") == "passed":
-        payload["status"] = "failed"
-        payload["failure_reason"] = integrity_reason
-        summary = dict(payload.get("pass_fail_summary", {}))
-        summary["passed"] = False
-        summary["failed_checks"] = [
-            integrity_reason,
-            *[
-                str(item)
-                for item in summary.get("failed_checks", [])
-                if str(item) != integrity_reason
-            ],
-        ]
-        payload["pass_fail_summary"] = summary
-        write_artifacts(published_dir, payload)
-    print(f"Wrote {published_dir / JSON_ARTIFACT}")
-    print(f"Wrote {published_dir / MD_ARTIFACT}")
-    return 0 if payload["status"] == "passed" and integrity_ok else 1
+    with isolated_capture_config():
+        output_dir = Path(args.output_dir)
+        run_id = _new_artifact_run_id()
+        staging_dir = _artifact_staging_dir(output_dir, run_id)
+        staging_dir.mkdir(parents=True, exist_ok=False)
+        capture_started_at = datetime.now(UTC)
+        source_identity_at_start = collect_source_identity(ROOT, refresh=True)
+        app = QApplication(sys.argv)
+        app.setStyle("Fusion")
+        payload = capture_walkthrough(app, staging_dir)
+        source_identity_at_completion = collect_source_identity(ROOT, refresh=True)
+        published_dir = publish_artifact_run(
+            staging_dir=staging_dir,
+            output_dir=output_dir,
+            payload=payload,
+            run_id=run_id,
+            source_identity_at_start=source_identity_at_start,
+            source_identity_at_completion=source_identity_at_completion,
+            capture_started_at=capture_started_at,
+        )
+        integrity_ok, integrity_reason = validate_walkthrough_payload(
+            payload,
+            require_files=True,
+        )
+        if not integrity_ok and payload.get("status") == "passed":
+            payload["status"] = "failed"
+            payload["failure_reason"] = integrity_reason
+            summary = dict(payload.get("pass_fail_summary", {}))
+            summary["passed"] = False
+            summary["failed_checks"] = [
+                integrity_reason,
+                *[
+                    str(item)
+                    for item in summary.get("failed_checks", [])
+                    if str(item) != integrity_reason
+                ],
+            ]
+            payload["pass_fail_summary"] = summary
+            write_artifacts(published_dir, payload)
+        print(f"Wrote {published_dir / JSON_ARTIFACT}")
+        print(f"Wrote {published_dir / MD_ARTIFACT}")
+        return 0 if payload["status"] == "passed" and integrity_ok else 1
 
 
 def _new_artifact_run_id() -> str:
@@ -930,8 +932,6 @@ def _run_walkthrough_steps(
         phases,
         "data_interpretation_select_source",
         screenshots["source_selection"],
-        dialog,
-        service,
         {
             "active_step": active_dialog_step(dialog),
             "selected_source": sanitize_path(str(source_path)),
@@ -1251,8 +1251,6 @@ def _run_walkthrough_steps(
         phases,
         "data_interpretation_apply",
         screenshots["applied"],
-        window,
-        service,
         {
             "validation": command_summary(reviewed_validation),
             "applied": command_summary(apply_confirmed),
@@ -1265,8 +1263,6 @@ def _run_walkthrough_steps(
         phases,
         "data_interpretation_save_recipe",
         screenshots["applied"],
-        window,
-        service,
         {"recipe": command_summary(save_recipe)},
     )
     reload_dialog = DataInterpretationPreviewDialog(
@@ -1425,8 +1421,6 @@ def _run_walkthrough_steps(
         phases,
         "dataset_generation",
         screenshots["dataset_ready"],
-        window.training_panel,
-        service,
         {
             "dataset": command_summary(dataset),
             "split_handoff": split_handoff,
@@ -1990,8 +1984,6 @@ def append_phase_alias(
     phases: list[dict[str, Any]],
     phase: str,
     screenshot: str,
-    widget: QWidget,
-    service: ApplicationService,
     notes: dict[str, Any],
 ) -> None:
     """Append an additional acceptance phase backed by an existing screenshot."""

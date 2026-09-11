@@ -57,6 +57,28 @@ class _StreamingEngine:
         yield from self._chunks
 
 
+class _OwnedProcessEngine:
+    """Small process-owner seam for real RuntimeLoadThread delivery."""
+
+    uses_owned_process = True
+
+    def __init__(self, config, error: Exception | None = None) -> None:
+        self.config = config
+        self.error = error
+        self.load_calls = 0
+        self.close_calls = 0
+
+    def load_model(self) -> None:
+        self.load_calls += 1
+        if self.error is not None:
+            raise self.error
+
+    def close(self, *, wait_timeout: float = 5.0) -> bool:
+        del wait_timeout
+        self.close_calls += 1
+        return True
+
+
 @dataclass(frozen=True)
 class _ActivationRequest(AssistantRuntimeLaunchSpec):
     activation_id: int = 0
@@ -205,6 +227,23 @@ def worker():
         w._release_generation_thread(generation_thread)
 
 
+@pytest.fixture
+def owned_worker(qtbot):
+    """A real QObject worker for process-owned runtime-load delivery."""
+    from XBrainLab.llm.agent.worker import AgentWorker
+
+    instance = AgentWorker()
+    yield instance
+    thread = instance.runtime_load_thread
+    if thread is not None:
+        qtbot.waitUntil(lambda: instance.runtime_load_thread is None, timeout=2_000)
+    if instance.engine is not None:
+        instance._close_engine(instance.engine)
+        instance.engine = None
+    instance.deleteLater()
+    qtbot.wait(0)
+
+
 class TestAgentWorkerSignalContract:
     def test_exposes_only_correlated_generation_signals(self, worker):
         worker_type = type(worker)
@@ -223,21 +262,22 @@ class TestInitializeAgent:
         worker.initialize_agent(_launch_spec())
         worker.log.emit.assert_not_called()
 
-    def test_loads_model(self, worker):
+    def test_loads_model(self, owned_worker, qtbot):
         spec = _launch_spec()
-        with patch("XBrainLab.llm.agent.worker.LLMEngine") as MockEng:
-            engine = MockEng.return_value
-            worker.initialize_agent(spec)
-            engine.load_model.assert_called_once()
-            assert worker.engine is engine
-            snapshots = [
-                call.args[0]
-                for call in worker.runtime_snapshot_changed.emit.call_args_list
-            ]
-            assert snapshots[0].phase is AssistantRuntimePhase.LOADING
-            assert snapshots[-1].phase is AssistantRuntimePhase.READY
-            assert snapshots[-1].initialized is True
-            assert snapshots[-1].model_id == spec.model_id
+        engine = _OwnedProcessEngine(spec.build_config())
+        snapshots = []
+        owned_worker.runtime_snapshot_changed.connect(snapshots.append)
+        with patch("XBrainLab.llm.agent.worker.LLMEngine", return_value=engine):
+            owned_worker.initialize_agent(spec)
+            qtbot.waitUntil(
+                lambda: owned_worker.runtime_load_thread is None, timeout=2_000
+            )
+        assert engine.load_calls == 1
+        assert owned_worker.engine is engine
+        assert snapshots[0].phase is AssistantRuntimePhase.LOADING
+        assert snapshots[-1].phase is AssistantRuntimePhase.READY
+        assert snapshots[-1].initialized is True
+        assert snapshots[-1].model_id == spec.model_id
 
     def test_runtime_snapshot_redacts_model_selection_details(self, worker):
         private_path = "/home/alice/private/models/local"
@@ -259,12 +299,18 @@ class TestInitializeAgent:
         assert "[REDACTED_PATH]" in public_output
         assert "[REDACTED_SECRET]" in public_output
 
-    def test_initialize_agent_uses_frozen_spec_settings(self, worker):
+    def test_initialize_agent_uses_frozen_spec_settings(self, owned_worker, qtbot):
         spec = _launch_spec()
-        with patch("XBrainLab.llm.agent.worker.LLMEngine") as MockEng:
-            worker.initialize_agent(spec)
+        engine = _OwnedProcessEngine(spec.build_config())
+        with patch(
+            "XBrainLab.llm.agent.worker.LLMEngine", return_value=engine
+        ) as factory:
+            owned_worker.initialize_agent(spec)
+            qtbot.waitUntil(
+                lambda: owned_worker.runtime_load_thread is None, timeout=2_000
+            )
 
-        launch_config = MockEng.call_args.args[0]
+        launch_config = factory.call_args.args[0]
         assert launch_config is not spec.settings
         assert launch_config.model_name == spec.model_id
         assert launch_config.temperature == spec.settings.temperature
@@ -279,7 +325,7 @@ class TestInitializeAgent:
         assert "launch spec" in snapshot.error
         worker.error.emit.assert_called_once()
 
-    def test_initialize_agent_logs_cpu_fallback_note(self, worker):
+    def test_initialize_agent_logs_cpu_fallback_note(self, owned_worker, qtbot):
         spec = _launch_spec(
             ready_message=(
                 "Local runtime ready. GPU execution is unavailable in this "
@@ -287,17 +333,17 @@ class TestInitializeAgent:
                 "4-bit loading."
             )
         )
-        with patch("XBrainLab.llm.agent.worker.LLMEngine") as MockEng:
-            engine = MockEng.return_value
-
-            worker.initialize_agent(spec)
-
-            assert (
-                worker.log.emit.call_args_list[0]
-                .args[0]
-                .startswith("Local runtime ready. GPU execution is unavailable")
+        engine = _OwnedProcessEngine(spec.build_config())
+        logs = []
+        owned_worker.log.connect(logs.append)
+        with patch("XBrainLab.llm.agent.worker.LLMEngine", return_value=engine):
+            owned_worker.initialize_agent(spec)
+            qtbot.waitUntil(
+                lambda: owned_worker.runtime_load_thread is None, timeout=2_000
             )
-            engine.load_model.assert_called_once()
+
+        assert logs[0].startswith("Local runtime ready. GPU execution is unavailable")
+        assert engine.load_calls == 1
 
     def test_error_on_failure(self, worker):
         with patch(
@@ -307,52 +353,73 @@ class TestInitializeAgent:
             worker.initialize_agent(_launch_spec())
             worker.error.emit.assert_called_once()
 
-    def test_load_failure_releases_engine_and_retry_can_succeed(self, worker):
+    def test_load_failure_releases_engine_and_retry_can_succeed(
+        self, owned_worker, qtbot
+    ):
         spec = _launch_spec()
-        failed_engine = MagicMock()
-        failed_engine.load_model.side_effect = RuntimeError("load failed")
-        working_engine = MagicMock()
+        failed_engine = _OwnedProcessEngine(
+            spec.build_config(), RuntimeError("load failed")
+        )
+        working_engine = _OwnedProcessEngine(spec.build_config())
         with (
             patch(
                 "XBrainLab.llm.agent.worker.LLMEngine",
                 side_effect=[failed_engine, working_engine],
             ),
         ):
-            worker.initialize_agent(spec)
-            assert worker.engine is None
-            failed_engine.close.assert_called_once()
+            owned_worker.initialize_agent(spec)
+            qtbot.waitUntil(
+                lambda: owned_worker.runtime_load_thread is None, timeout=2_000
+            )
+            assert owned_worker.engine is None
+            assert failed_engine.close_calls == 1
 
-            worker.initialize_agent(spec)
+            owned_worker.initialize_agent(spec)
+            qtbot.waitUntil(
+                lambda: owned_worker.runtime_load_thread is None, timeout=2_000
+            )
 
-        assert worker.engine is working_engine
-        working_engine.load_model.assert_called_once()
+        assert owned_worker.engine is working_engine
+        assert working_engine.load_calls == 1
 
-    def test_recoverable_model_oom_publishes_retryable_runtime_failure(self, worker):
+    def test_recoverable_model_oom_publishes_retryable_runtime_failure(
+        self, owned_worker, qtbot
+    ):
         spec = _launch_spec()
-        failed_engine = MagicMock()
-        failed_engine.load_model.side_effect = LocalRuntimeLoadError(
-            "Local model loading ran out of GPU memory. Close other GPU "
-            "applications and retry.",
-            error_code="precondition",
-            recoverable=True,
+        failed_engine = _OwnedProcessEngine(
+            spec.build_config(),
+            LocalRuntimeLoadError(
+                "Local model loading ran out of GPU memory. Close other GPU "
+                "applications and retry.",
+                error_code="precondition",
+                recoverable=True,
+            ),
         )
-        working_engine = MagicMock()
+        working_engine = _OwnedProcessEngine(spec.build_config())
+        snapshots = []
+        owned_worker.runtime_snapshot_changed.connect(snapshots.append)
         with patch(
             "XBrainLab.llm.agent.worker.LLMEngine",
             side_effect=[failed_engine, working_engine],
         ):
-            worker.initialize_agent(spec)
-            failed_snapshot = worker.runtime_snapshot_changed.emit.call_args.args[0]
+            owned_worker.initialize_agent(spec)
+            qtbot.waitUntil(
+                lambda: owned_worker.runtime_load_thread is None, timeout=2_000
+            )
+            failed_snapshot = snapshots[-1]
 
-            worker.initialize_agent(spec)
+            owned_worker.initialize_agent(spec)
+            qtbot.waitUntil(
+                lambda: owned_worker.runtime_load_thread is None, timeout=2_000
+            )
 
         assert failed_snapshot.phase is AssistantRuntimePhase.FAILED
         assert failed_snapshot.initialized is False
         assert "GPU memory" in failed_snapshot.error
         assert "retry" in failed_snapshot.error.lower()
-        failed_engine.close.assert_called_once()
-        working_engine.load_model.assert_called_once()
-        ready_snapshot = worker.runtime_snapshot_changed.emit.call_args.args[0]
+        assert failed_engine.close_calls == 1
+        assert working_engine.load_calls == 1
+        ready_snapshot = snapshots[-1]
         assert ready_snapshot.phase is AssistantRuntimePhase.READY
 
 

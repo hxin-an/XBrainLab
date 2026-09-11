@@ -19,9 +19,10 @@ from pathlib import Path
 from typing import Any
 
 from PIL import Image
-from PyQt6.QtCore import QPoint, QSettings, QSize, QTimer
+from PyQt6.QtCore import QPoint, QSize, QTimer
 from PyQt6.QtWidgets import QApplication
 
+from scripts.dev.capture_config import isolated_capture_config
 from scripts.dev.inspect_local_assistant_runtime import classify_runtime
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.ui.chat.message_bubble import MessageBubble
@@ -86,10 +87,10 @@ def main() -> int:
         print(payload["status"])
         return 2
 
-    app = QApplication(sys.argv)
-    app.setStyle("Fusion")
-
-    payload = run_walkthrough(app, output_dir, args.prompt, args.timeout_seconds)
+    with isolated_capture_config(config):
+        app = QApplication(sys.argv)
+        app.setStyle("Fusion")
+        payload = run_walkthrough(app, output_dir, args.prompt, args.timeout_seconds)
     _write_artifacts(output_dir, payload)
     print(f"Wrote {output_dir / JSON_ARTIFACT}")
     print(f"Wrote {output_dir / MD_ARTIFACT}")
@@ -106,7 +107,6 @@ def run_walkthrough(
     from XBrainLab.backend.study import Study
     from XBrainLab.ui.main_window import MainWindow
 
-    _clear_saved_main_window_geometry()
     study = Study()
     window = MainWindow(study)
     _set_baseline_window_geometry(window)
@@ -484,12 +484,6 @@ def _assistant_setup_required(panel: Any) -> bool:
 def _load_capture_config() -> LLMConfig:
     config = LLMConfig.load_from_file() or LLMConfig()
     return config
-
-
-def _clear_saved_main_window_geometry() -> None:
-    settings = QSettings("XBrainLab", "XBrainLab")
-    settings.remove("main_window/geometry")
-    settings.sync()
 
 
 def _set_baseline_window_geometry(window: Any) -> None:

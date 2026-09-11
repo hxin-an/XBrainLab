@@ -29,9 +29,6 @@ class LabelSourceState:
     def label_sources_changed(self) -> bool:
         return self.extra_sources != self.initial_sources
 
-    def clear_skip(self) -> None:
-        self.skip_labels = False
-
     def mark_skip(self) -> None:
         self.skip_labels = True
 

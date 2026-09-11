@@ -7,8 +7,6 @@ from pathlib import Path
 import pytest
 import torch
 
-from XBrainLab.backend.model_base.legacy_braindecode import models as legacy_models
-
 _ATTENTION_MODELS = (
     ("atcnet", "ATCNet"),
     ("attentionbasenet", "AttentionBaseNet"),
@@ -156,7 +154,12 @@ def test_local_attention_strictly_loads_upstream_state_and_matches_output(
 ) -> None:
     upstream_module = importlib.import_module(f"braindecode.models.{module_name}")
     upstream_class = getattr(upstream_module, class_name)
-    legacy_class = getattr(legacy_models, class_name)
+    legacy_class = getattr(
+        importlib.import_module(
+            f"XBrainLab.backend.model_base.legacy_braindecode.models.{module_name}"
+        ),
+        class_name,
+    )
     kwargs = _model_kwargs(class_name)
 
     torch.manual_seed(151)
@@ -181,11 +184,24 @@ def test_local_attention_strictly_loads_upstream_state_and_matches_output(
     torch.testing.assert_close(actual, expected, rtol=1e-6, atol=1e-7)
 
 
-@pytest.mark.parametrize("class_name", ("AttentionBaseNet", "MVPFormer", "TCFormer"))
+@pytest.mark.parametrize(
+    ("module_name", "class_name"),
+    (
+        ("attentionbasenet", "AttentionBaseNet"),
+        ("mvpformer", "MVPFormer"),
+        ("tcformer", "TCFormer"),
+    ),
+)
 def test_local_attention_representatives_support_finite_backward(
+    module_name: str,
     class_name: str,
 ) -> None:
-    model_class = getattr(legacy_models, class_name)
+    model_class = getattr(
+        importlib.import_module(
+            f"XBrainLab.backend.model_base.legacy_braindecode.models.{module_name}"
+        ),
+        class_name,
+    )
     model = model_class(**_model_kwargs(class_name)).train()
     inputs = torch.randn(2, 4, 256, generator=torch.Generator().manual_seed(163))
 
@@ -202,7 +218,11 @@ def test_local_attention_representatives_support_finite_backward(
 
 
 def test_local_steegformer_never_downloads_channel_metadata() -> None:
-    source_path = Path(legacy_models.__file__).parent / "steegformer.py"
+    source_path = Path(
+        importlib.import_module(
+            "XBrainLab.backend.model_base.legacy_braindecode.models.steegformer"
+        ).__file__
+    )
     source = source_path.read_text(encoding="utf-8")
 
     for forbidden_surface in (
@@ -216,7 +236,9 @@ def test_local_steegformer_never_downloads_channel_metadata() -> None:
         assert forbidden_surface not in source
 
     with pytest.raises(ValueError, match="chan_pos_idx"):
-        legacy_models.STEEGFormer(
+        importlib.import_module(
+            "XBrainLab.backend.model_base.legacy_braindecode.models.steegformer"
+        ).STEEGFormer(
             **_model_kwargs("STEEGFormer"),
             chs_info=[{"ch_name": name} for name in ("C3", "C4", "Cz", "Fz")],
         )

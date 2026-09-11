@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import hashlib
 import os
 import stat
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -17,16 +16,9 @@ from .data_interpretation_path_identity import (
 from .data_interpretation_resource_reader import AdmittedResourceReader
 from .errors import PreconditionError
 from .label_resource_reader import AdmittedLabelResourceReader
-from .label_resource_receipt import LabelResourceReceiptAuthority
 from .owned_work import owned_work_checkpoint
-from .resource_guard import check_import_resource_preflight
 from .resource_label_estimation import SUPPORTED_EXTERNAL_LABEL_EXTENSIONS
-from .resource_receipt import (
-    fingerprint_resource_preflight,
-    fingerprint_resource_scope,
-)
 
-LABEL_CONTENT_HASH_CHUNK_BYTES = 1024 * 1024
 NPY_MAGIC = b"\x93NUMPY"
 NPY_SUPPORTED_VERSIONS = frozenset({(1, 0), (2, 0), (3, 0)})
 
@@ -68,7 +60,6 @@ class AdmittedLabelResourceSession:
     reader: AdmittedLabelResourceReader
     specs: tuple[LabelResourceSpec, ...]
     resource_preflight: dict[str, Any]
-    _content_identities: tuple[dict[str, Any], ...]
 
     def load(self, path: str) -> Any:
         key = _path_key(path)
@@ -84,90 +75,6 @@ class AdmittedLabelResourceSession:
         raise PreconditionError(
             f"Label resource was not admitted for this command: {path}.",
             diagnostics={"code": "label_resource_not_admitted", "path": key},
-        )
-
-    def assert_current(self, *, purpose: str) -> None:
-        """Verify that every admitted file still has its preview identity."""
-        _assert_content_identities_current(
-            self._content_identities,
-            purpose=purpose,
-        )
-        self.reader.assert_current(
-            [spec.path for spec in self.specs],
-            purpose=purpose,
-        )
-
-
-class LabelResourceAdmissionService:
-    """Preflight, bind, authorize, and expose one bounded label reader."""
-
-    def __init__(self, *, command_name: str) -> None:
-        self.command_name = str(command_name)
-        self._receipts = LabelResourceReceiptAuthority(command_name=command_name)
-
-    def admit(
-        self,
-        specs: Iterable[LabelResourceSpec],
-        *,
-        confirmed: bool,
-        token: str | None,
-        configuration: Mapping[str, Any] | None = None,
-    ) -> AdmittedLabelResourceSession:
-        """Return a bounded parser session or fail before parser entry."""
-        normalized_specs = _normalized_specs(specs)
-        paths = [spec.path for spec in normalized_specs]
-        _inspect_label_resource_paths(paths)
-        preflight = check_import_resource_preflight(paths)
-        self._receipts.enforce_blocking(token=token, preflight=preflight)
-        resource_reader = AdmittedResourceReader.from_resource_preflight(
-            paths,
-            preflight,
-        )
-        admitted_reader = AdmittedLabelResourceReader(
-            resource_reader,
-            admitted_specs={
-                _path_key(spec.path): spec.to_scope() for spec in normalized_specs
-            },
-        )
-        content_identities = [
-            _content_identity(path, reader=admitted_reader) for path in paths
-        ]
-        configuration_fingerprint = fingerprint_resource_scope(
-            {
-                "command": self.command_name,
-                "configuration": dict(configuration or {}),
-                "label_specs": [spec.to_scope() for spec in normalized_specs],
-            }
-        )
-        preflight_fingerprint = fingerprint_resource_preflight(preflight)
-        scope_fingerprint = fingerprint_resource_scope(
-            {
-                "command": self.command_name,
-                "configuration_fingerprint": configuration_fingerprint,
-                "content_identities": content_identities,
-            }
-        )
-        receipt_reused = self._receipts.authorize(
-            confirmed=confirmed,
-            token=token,
-            preflight=preflight,
-            scope_fingerprint=scope_fingerprint,
-            configuration_fingerprint=configuration_fingerprint,
-            preflight_fingerprint=preflight_fingerprint,
-        )
-        diagnostics = {
-            **preflight.to_diagnostics(),
-            "configuration_fingerprint": configuration_fingerprint,
-            "preflight_fingerprint": preflight_fingerprint,
-            "scope_fingerprint": scope_fingerprint,
-            "confirmation_receipt_reused": receipt_reused,
-            "parser_admission": admitted_reader.diagnostics(),
-        }
-        return AdmittedLabelResourceSession(
-            reader=admitted_reader,
-            specs=normalized_specs,
-            resource_preflight=diagnostics,
-            _content_identities=tuple(content_identities),
         )
 
 
@@ -198,14 +105,15 @@ def session_from_resource_preflight(
             _path_key(spec.path): spec.to_scope() for spec in normalized_specs
         },
     )
-    content_identities: list[dict[str, Any]] = []
     for index, path in enumerate(paths):
         owned_work_checkpoint(
             f"Verifying reviewed label resource {index + 1} of {resource_count}",
             completed=index,
             total=resource_count,
         )
-        content_identities.append(_content_identity(path, reader=admitted_reader))
+        # Keep the exact admission guard without reading a discarded payload hash.
+        with admitted_reader.open_binary(path, purpose="label content identity"):
+            pass
     owned_work_checkpoint(
         "Reviewed label resources admitted",
         completed=resource_count,
@@ -218,36 +126,7 @@ def session_from_resource_preflight(
             **resource_preflight.to_diagnostics(),
             "parser_admission": admitted_reader.diagnostics(),
         },
-        _content_identities=tuple(content_identities),
     )
-
-
-def specs_from_paths(
-    paths: Iterable[str],
-    *,
-    configs: Mapping[str, Mapping[str, Any]] | None = None,
-    sequence_only: bool = False,
-) -> tuple[LabelResourceSpec, ...]:
-    """Build parser specs from public command paths and plain config maps."""
-    normalized_configs = {
-        _path_key(path): dict(value)
-        for path, value in (configs or {}).items()
-        if isinstance(value, Mapping)
-    }
-    result: list[LabelResourceSpec] = []
-    for path in paths:
-        key = _path_key(path)
-        config = normalized_configs.get(key, {})
-        result.append(
-            LabelResourceSpec(
-                path=_path_value(path),
-                label_field=_optional_text(config.get("label_field")),
-                anchor=_optional_text(config.get("anchor")),
-                duration_field=_optional_text(config.get("duration_field")),
-                sequence_only=bool(config.get("sequence_only", sequence_only)),
-            )
-        )
-    return tuple(result)
 
 
 def _normalized_specs(
@@ -326,101 +205,6 @@ def _inspect_label_resource_paths(paths: Iterable[str]) -> None:
                             "format": ".npy",
                         },
                     )
-
-
-def _content_identity(
-    path: str,
-    *,
-    reader: AdmittedLabelResourceReader,
-) -> dict[str, Any]:
-    digest = hashlib.sha256()
-    total = 0
-    with reader.open_binary(path, purpose="label content identity") as handle:
-        while chunk := handle.read(LABEL_CONTENT_HASH_CHUNK_BYTES):
-            digest.update(chunk)
-            total += len(chunk)
-    return {
-        "path": _path_value(path),
-        "file_bytes": total,
-        "sha256": digest.hexdigest(),
-    }
-
-
-def _assert_content_identities_current(
-    expected_identities: Iterable[Mapping[str, Any]],
-    *,
-    purpose: str,
-) -> None:
-    for expected in expected_identities:
-        path = _path_value(str(expected.get("path") or ""))
-        expected_bytes = int(expected.get("file_bytes") or 0)
-        observed = _current_content_identity(path, expected_bytes=expected_bytes)
-        if observed["file_bytes"] == expected_bytes and observed[
-            "sha256"
-        ] == expected.get("sha256"):
-            continue
-        changed_fields = []
-        if observed["file_bytes"] != expected_bytes:
-            changed_fields.append("file_bytes")
-        if observed["sha256"] != expected.get("sha256"):
-            changed_fields.append("sha256")
-        raise PreconditionError(
-            f"A selected label file changed after resource admission: {path}.",
-            diagnostics={
-                "code": "interpretation_resource_changed_after_admission",
-                "path": path,
-                "purpose": purpose,
-                "parse_started": False,
-                "admitted_bytes": expected_bytes,
-                "observed_bytes": observed["file_bytes"],
-                "changed_fields": changed_fields,
-            },
-        )
-
-
-def _current_content_identity(
-    path: str,
-    *,
-    expected_bytes: int,
-) -> dict[str, Any]:
-    digest = hashlib.sha256()
-    total = 0
-    try:
-        with open(path, "rb") as handle:
-            file_stat = os.fstat(handle.fileno())
-            if not stat.S_ISREG(file_stat.st_mode):
-                raise PreconditionError(
-                    f"A selected label path is not a regular file: {path}.",
-                    diagnostics={
-                        "code": "interpretation_resource_changed_after_admission",
-                        "path": path,
-                        "parse_started": False,
-                    },
-                )
-            observed_bytes = max(int(file_stat.st_size), 0)
-            read_limit = min(observed_bytes, max(expected_bytes, 0))
-            while total < read_limit:
-                chunk = handle.read(
-                    min(LABEL_CONTENT_HASH_CHUNK_BYTES, read_limit - total)
-                )
-                if not chunk:
-                    break
-                digest.update(chunk)
-                total += len(chunk)
-    except OSError as exc:
-        raise PreconditionError(
-            f"A selected label file is unavailable during commit: {path}.",
-            diagnostics={
-                "code": "interpretation_resource_changed_after_admission",
-                "path": path,
-                "parse_started": False,
-            },
-        ) from exc
-    return {
-        "path": _path_value(path),
-        "file_bytes": observed_bytes,
-        "sha256": digest.hexdigest() if total == observed_bytes else "",
-    }
 
 
 def _path_key(path: str | Path) -> str:

@@ -1397,6 +1397,6 @@ class TestRejectAndClose:
         assert created.local_action_btn.text() == "Delete"
         assert created._runtime_observer_attached is False
 
-    def test_get_config(self, dialog):
-        cfg = dialog.get_config()
+    def test_get_result(self, dialog):
+        cfg = dialog.get_result()
         assert cfg is dialog.config

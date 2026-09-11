@@ -15,8 +15,10 @@ class _BlockingRetriever:
         self.initialize_finished = threading.Event()
         self.close_calls = 0
         self.allowed_tool_names: frozenset[str] | None = None
+        self.worker: threading.Thread | None = None
 
     def initialize(self) -> None:
+        self.worker = threading.current_thread()
         self.started.set()
         self.release.wait(timeout=2)
         self.initialize_finished.set()
@@ -28,6 +30,7 @@ class _BlockingRetriever:
         allowed_tool_names: frozenset[str] | None = None,
     ) -> str:
         self.allowed_tool_names = allowed_tool_names
+        self.worker = threading.current_thread()
         self.started.set()
         self.release.wait(timeout=2)
         return "features"
@@ -48,7 +51,8 @@ def test_lifecycle_close_fences_and_joins_owned_initializer_thread() -> None:
 
     assert retriever.initialize_finished.is_set()
     assert retriever.close_calls >= 1
-    assert not lifecycle.is_initializing
+    assert retriever.worker is not None
+    assert not retriever.worker.is_alive()
 
 
 def test_lifecycle_does_not_restart_after_close() -> None:
@@ -67,8 +71,10 @@ class _StuckRetriever:
         self.started = threading.Event()
         self.release = threading.Event()
         self.close_calls = 0
+        self.worker: threading.Thread | None = None
 
     def initialize(self) -> None:
+        self.worker = threading.current_thread()
         self.started.set()
         self.release.wait()
 
@@ -79,6 +85,7 @@ class _StuckRetriever:
         allowed_tool_names: frozenset[str] | None = None,
     ) -> str:
         del allowed_tool_names
+        self.worker = threading.current_thread()
         self.started.set()
         self.release.wait()
         return "features"
@@ -93,17 +100,20 @@ def test_lifecycle_close_is_bounded_when_initializer_does_not_return() -> None:
 
     assert lifecycle.start()
     assert retriever.started.wait(timeout=2)
-    assert lifecycle.initializer_thread_daemon is True
+    try:
+        assert retriever.worker is not None
+        assert retriever.worker.daemon is True
 
-    started = time.monotonic()
-    assert lifecycle.close() is False
-    elapsed = time.monotonic() - started
+        started = time.monotonic()
+        assert lifecycle.close() is False
+        elapsed = time.monotonic() - started
 
-    assert elapsed < 0.5
-    assert retriever.close_calls == 1
-    assert lifecycle.is_initializing
-
-    retriever.release.set()
+        assert elapsed < 0.5
+        assert retriever.close_calls == 1
+        assert retriever.worker.is_alive()
+    finally:
+        retriever.release.set()
+        lifecycle.close()
 
 
 def test_lifecycle_retrieval_close_is_bounded_and_daemon_owned() -> None:
@@ -113,19 +123,21 @@ def test_lifecycle_retrieval_close_is_bounded_and_daemon_owned() -> None:
 
     assert lifecycle.retrieve(7, "query", lambda *args: callbacks.append(args))
     assert retriever.started.wait(timeout=2)
-    assert lifecycle.is_retrieving
-    assert lifecycle.retrieval_thread_daemon is True
+    try:
+        assert retriever.worker is not None
+        assert retriever.worker.is_alive()
+        assert retriever.worker.daemon is True
 
-    started = time.monotonic()
-    assert lifecycle.close() is False
-    elapsed = time.monotonic() - started
+        started = time.monotonic()
+        assert lifecycle.close() is False
+        elapsed = time.monotonic() - started
 
-    assert elapsed < 0.5
-    assert retriever.close_calls == 1
-    assert callbacks == []
-
-    retriever.release.set()
-    time.sleep(0.05)
+        assert elapsed < 0.5
+        assert retriever.close_calls == 1
+        assert callbacks == []
+    finally:
+        retriever.release.set()
+        lifecycle.close()
     assert callbacks == []
 
 

@@ -13,9 +13,10 @@ from XBrainLab.backend.application.data_interpretation_label_carriers import (
     build_label_carrier_plan,
 )
 from XBrainLab.backend.application.label_resource_admission import (
-    LabelResourceAdmissionService,
     LabelResourceSpec,
+    session_from_resource_preflight,
 )
+from XBrainLab.backend.application.resource_guard import check_import_resource_preflight
 from XBrainLab.backend.load_data.raw import Raw
 from XBrainLab.backend.services.label_import_service import (
     LabelImportService,
@@ -39,7 +40,7 @@ class _RealLabelDataset:
         mapping: dict[object, str],
         selected_event_names: set[str] | None = None,
     ) -> int:
-        return self.label_import.apply_labels_batch(
+        return self.label_import.apply_labels_batch_checked(
             target_files,
             label_map,
             file_mapping,
@@ -95,14 +96,11 @@ def test_generic_timestamp_apply_keeps_semantic_annotations_and_class_only_event
     dataset = _RealLabelDataset([raw])
     service = DataInterpretationApplyService(
         dataset,
-        data_filename=lambda item: item.get_filename(),
         data_filepath=lambda item: item.get_filepath(),
         record_label_import=lambda **_kwargs: None,
     )
 
-    label_resources = LabelResourceAdmissionService(
-        command_name="test_apply_interpretation"
-    ).admit(
+    label_resources = session_from_resource_preflight(
         [
             LabelResourceSpec(
                 path=str(labels),
@@ -110,8 +108,7 @@ def test_generic_timestamp_apply_keeps_semantic_annotations_and_class_only_event
                 anchor="onset",
             )
         ],
-        confirmed=False,
-        token=None,
+        check_import_resource_preflight([str(labels)]),
     )
 
     result = service.apply_label_carriers(candidate, label_resources)
@@ -190,13 +187,10 @@ def test_numeric_bids_preview_decisions_apply_through_admitted_pandas_reader(
     )
     service = DataInterpretationApplyService(
         _RealLabelDataset([raw]),
-        data_filename=lambda item: item.get_filename(),
         data_filepath=lambda item: item.get_filepath(),
         record_label_import=lambda **_kwargs: None,
     )
-    label_resources = LabelResourceAdmissionService(
-        command_name="test_apply_interpretation"
-    ).admit(
+    label_resources = session_from_resource_preflight(
         [
             LabelResourceSpec(
                 path=str(events),
@@ -205,8 +199,7 @@ def test_numeric_bids_preview_decisions_apply_through_admitted_pandas_reader(
                 duration_field="duration",
             )
         ],
-        confirmed=False,
-        token=None,
+        check_import_resource_preflight([str(events)]),
     )
 
     result = service.apply_label_carriers(candidate, label_resources)
@@ -271,13 +264,10 @@ def test_bids_apply_preserves_na_like_categories_and_excludes_canonical_na(
     )
     service = DataInterpretationApplyService(
         _RealLabelDataset([raw]),
-        data_filename=lambda item: item.get_filename(),
         data_filepath=lambda item: item.get_filepath(),
         record_label_import=lambda **_kwargs: None,
     )
-    label_resources = LabelResourceAdmissionService(
-        command_name="test_apply_interpretation"
-    ).admit(
+    label_resources = session_from_resource_preflight(
         [
             LabelResourceSpec(
                 path=str(events),
@@ -286,8 +276,7 @@ def test_bids_apply_preserves_na_like_categories_and_excludes_canonical_na(
                 duration_field="duration",
             )
         ],
-        confirmed=False,
-        token=None,
+        check_import_resource_preflight([str(events)]),
     )
 
     loaded_rows = label_resources.load(str(events))
@@ -325,20 +314,16 @@ def test_bids_epoch_duration_stats_include_only_class_rows() -> None:
         },
     }
 
-    stats = DataInterpretationApplyService._duration_stats_from_bids_review(plan)
-
-    assert stats == {
-        "row_count": 1,
-        "value_counts": {"1.5": 1},
-        "numeric_count": 1,
-        "min": 1.5,
-        "max": 1.5,
-    }
-
     evidence = DataInterpretationApplyService._bids_duration_epoch_evidence(plan)
 
     assert evidence == {
-        "duration_stats": stats,
+        "duration_stats": {
+            "row_count": 1,
+            "value_counts": {"1.5": 1},
+            "numeric_count": 1,
+            "min": 1.5,
+            "max": 1.5,
+        },
         "placement_event_count": 1,
         "unknown_duration_count": 0,
         "unknown_duration_rows": [],

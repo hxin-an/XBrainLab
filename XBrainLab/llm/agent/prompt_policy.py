@@ -56,8 +56,25 @@ class StrictToolResponsePromptPolicy:
     def decision_instructions(
         self,
         workflow_stage: str = "<exact backend workflow_stage>",
+        *,
+        include_preprocessing_guidance: bool = True,
     ) -> str:
         """Return the strict decision contract without Host intent routing."""
+        missing_values = (
+            "3. If the user requested exactly one callable direct preprocessing "
+            "action but omitted required values, use respond_to_user to ask only "
+            "for those values. "
+            if include_preprocessing_guidance
+            else "3. If exactly one callable direct preprocessing action is missing "
+            "required values, use respond_to_user to ask only for those values. "
+        )
+        operation_choice = (
+            " For an ambiguous action request that does not name a specific "
+            "operation, ask which operation the user wants; do not choose one "
+            "or collect its parameters."
+            if include_preprocessing_guidance
+            else ""
+        )
         return (
             "STRICT RESPONSE CONTRACT - DECISION ORDER (decide silently):\n"
             "1. First identify the exact action requested by meaning. Only call it "
@@ -65,15 +82,16 @@ class StrictToolResponsePromptPolicy:
             "required value. Tool and function names are internal: never tell the "
             "user or a later assistant to call one.\n"
             "2. If the exact requested action is unavailable, use respond_to_user "
-            "with the listed blocker. A prerequisite named in a blocker is not a "
+            "with parameters containing only message explaining the listed blocker. "
+            "A prerequisite named in a blocker is not a "
             "user request: do not perform a prerequisite or substitute action.\n"
-            "3. If exactly one callable direct preprocessing action is missing "
-            "required values, use respond_to_user to ask only for those values. "
+            f"{missing_values}"
             "Include pending_action and missing_inputs only for that exact action.\n"
-            "4. Use respond_to_user with message only for information, a negated, "
+            "4. Use respond_to_user with parameters containing only message for "
+            "information, a negated, "
             "ambiguous, or multi-action request. Never call a prerequisite, "
             "substitute, or retired alias. Tool availability does not make it "
-            "relevant to the user's request.\n"
+            f"relevant to the user's request.{operation_choice}\n"
             "5. Required values must come from the latest user request or verified "
             "state. Never invent paths, settings, labels, IDs, or file names.\n"
             "6. Host confirmation is separate. For a complete enabled action, "
@@ -93,8 +111,9 @@ class StrictToolResponsePromptPolicy:
             "top-level fields. Copy workflow_stage as "
             + workflow_stage
             + ". Never wrap it in tool-call, tool_call, action, or function. For "
-            "respond_to_user use message only, except the typed pending_action and "
-            "missing_inputs shape in rule 2. workflow_stage acknowledges the backend "
+            "respond_to_user use parameters containing only message, except the "
+            "typed pending_action and "
+            "missing_inputs shape in rule 3. workflow_stage acknowledges the backend "
             "publication; it does not grant permission.\n"
             "The first non-whitespace character must be { and the last must be }. "
             "Never use a Markdown code fence or prose outside the object."
@@ -109,7 +128,8 @@ class StrictToolResponsePromptPolicy:
             '{"workflow_stage":"<exact backend workflow_stage>",'
             '"tool_name":"<name>","parameters":{...}}. '
             "Use an exact enabled tool with only its supported parameters, or "
-            "respond_to_user with message only, or the typed pending_action and "
+            "respond_to_user with parameters containing only message, or the typed "
+            "pending_action and "
             "missing_inputs clarification shape for an exact direct preprocessing "
             "action. Copy workflow_stage exactly. Add no prose or code fence: "
             "begin with { and end with }. Never wrap it in tool-call, tool_call, "
@@ -128,9 +148,6 @@ class PromptPolicyReadError:
 
     code: PromptPolicyErrorCode
     message: str = _POLICY_UNAVAILABLE_MESSAGE
-
-    def to_prompt_payload(self) -> dict[str, str]:
-        return {"code": self.code, "message": self.message}
 
 
 @dataclass(frozen=True)
@@ -160,19 +177,6 @@ class PromptPolicyReadResult:
 
     def blocked_reason_map(self) -> dict[str, str]:
         return dict(self.blocked_reasons)
-
-    def to_prompt_payload(self) -> dict[str, Any]:
-        return {
-            "policy_applies": self.policy_applies,
-            "backend_generation": self.backend_generation,
-            "published_tools": sorted(self.published_tools),
-            "blocked_reasons": dict(self.blocked_reasons),
-            "publication_error": (
-                self.publication_error.to_prompt_payload()
-                if self.publication_error is not None
-                else None
-            ),
-        }
 
 
 def read_prompt_policy(

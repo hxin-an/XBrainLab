@@ -297,9 +297,6 @@ class DataSplitterHolder(DataSplitter):
         """
         self.value_var = val
 
-    def to_thread(self):
-        """Prepare the splitter state for background thread usage."""
-
 
 class DataSplittingPreviewDialog(BaseDialog):
     """Dialog for previewing and confirming data splitting results.

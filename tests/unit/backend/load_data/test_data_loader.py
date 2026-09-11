@@ -12,19 +12,14 @@ from .test_raw import _generate_mne, _set_event
 def test_raw_data_loader():
     raw = Raw("tests/0.fif", _generate_mne(500, ["Fp1", "Fp2", "F3", "F4"], "eeg"))
     assert len(RawDataLoader()) == 0
-    # no event check removed
-    # with pytest.raises(ValueError):
-    #     RawDataLoader([raw])
-    # with event
+    assert RawDataLoader([raw])[0] is raw
     _set_event(raw)
     assert len(RawDataLoader([raw])) == 1
-    # check empty list creation
-    assert len(RawDataLoader()) == 0
 
 
 def test_raw_data_loader_validate():
     with pytest.raises(ValueError):
-        assert RawDataLoader().validate()
+        RawDataLoader().validate()
 
 
 def _generate_epoch(name, raw_mne, duration):
@@ -60,10 +55,8 @@ def test_raw_data_loader_append():
     assert len(raw_data_loader) == 1
     raw_data_loader.append(raw_2)
     assert len(raw_data_loader) == 2
-
-    assert raw_data_loader.get_loaded_raw("empty") is None
-    assert raw_data_loader.get_loaded_raw("tests/1.fif") == raw_1
-    assert raw_data_loader.get_loaded_raw("tests/2.fif") == raw_2
+    assert raw_data_loader[0] is raw_1
+    assert raw_data_loader[1] is raw_2
 
 
 def test_raw_data_loader_allows_mixed_sampling_rates_before_resampling() -> None:
@@ -113,6 +106,8 @@ def test_raw_data_loader_append_error():
 
     with pytest.raises(DataMismatchError, match=r".*duration inconsistent.*"):
         raw_data_loader.append(raw_miss_duration)
+    assert len(raw_data_loader) == 1
+    assert raw_data_loader[0] is raw_1
 
 
 def test_raw_data_loader_rejects_swapped_channel_identity() -> None:
@@ -154,3 +149,5 @@ def test_apply():
 
     lab = Study()
     RawDataLoader([raw]).apply(lab)
+    assert len(lab.loaded_data_list) == 1
+    assert lab.loaded_data_list[0] is raw

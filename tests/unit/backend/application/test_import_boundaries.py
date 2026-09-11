@@ -46,7 +46,22 @@ def test_application_package_root_is_contract_light() -> None:
             "XBrainLab.backend.model_base",
         )
 
+        import XBrainLab.backend.application as application
+
+        assert application.__all__ == sorted(set(application.__all__))
+        assert "CommandName" in application.__all__
+        assert "ApplicationService" in application.__all__
+        assert "ApplicationService" not in vars(application)
+        try:
+            application.not_an_application_export
+        except AttributeError:
+            pass
+        else:
+            raise AssertionError("Unknown application exports must raise AttributeError")
+
         from XBrainLab.backend.application import CommandName, QueryStateCommand
+
+        assert vars(application)["CommandName"] is CommandName
 
         assert CommandName.QUERY_STATE.value == "query_state"
         assert QueryStateCommand().name == CommandName.QUERY_STATE

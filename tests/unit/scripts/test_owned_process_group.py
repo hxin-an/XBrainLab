@@ -3,8 +3,12 @@ from __future__ import annotations
 import io
 import os
 import signal
+import subprocess
+import sys
+import time
 from types import SimpleNamespace
 
+import psutil
 import pytest
 
 from scripts.dev import owned_process_bootstrap, owned_process_group
@@ -386,3 +390,54 @@ def test_terminate_and_collect_never_uses_unbounded_communicate(monkeypatch) -> 
     assert communicate_timeouts == [0.01, 0.01]
     assert stdout == "partial stdout"
     assert stderr == "partial stderr"
+
+
+@pytest.mark.platform_contract
+@pytest.mark.skipif(os.name != "nt", reason="requires native Windows Job Objects")
+@pytest.mark.parametrize("parent_exits", [False, True])
+def test_native_windows_owner_reaps_descendant_after_parent_lifecycle(
+    tmp_path, parent_exits
+) -> None:
+    child_pid_path = tmp_path / "owned-child.pid"
+    source = (
+        "import pathlib, subprocess, sys, time; "
+        "child = subprocess.Popen([sys.executable, '-c', "
+        "'import time; time.sleep(30)'], stdin=subprocess.DEVNULL, "
+        "stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); "
+        "print('child started', flush=True); "
+        "ready = pathlib.Path(sys.argv[1]); "
+        "ready.with_suffix('.tmp').write_text(str(child.pid)); "
+        "ready.with_suffix('.tmp').replace(ready); "
+        + ("" if parent_exits else "time.sleep(30)")
+    )
+    process, owner = owned_process_group.spawn_owned_process(
+        [sys.executable, "-c", source, str(child_pid_path)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        deadline = time.monotonic() + 10
+        while not child_pid_path.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert child_pid_path.exists(), "Owned child did not report startup"
+        child = psutil.Process(int(child_pid_path.read_text(encoding="utf-8")))
+        assert child.is_running()
+        if parent_exits:
+            stdout, stderr = process.communicate(timeout=10)
+            assert process.returncode == 0
+            assert owner.wait_for_exit(0) is False
+            owner.close()
+        else:
+            assert process.poll() is None
+            stdout, stderr = owned_process_group.terminate_and_collect(
+                process, owner, grace_seconds=2
+            )
+        child.wait(timeout=5)
+        assert not child.is_running()
+        assert owner.wait_for_exit(2) is True
+        assert stdout.strip() == "child started"
+        assert not stderr
+    finally:
+        owner.close()
+        process.wait(timeout=5)

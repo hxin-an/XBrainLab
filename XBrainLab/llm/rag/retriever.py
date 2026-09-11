@@ -123,10 +123,9 @@ class RAGRetriever:
             local_vectorstore = self._auto_initialize(
                 local_client,
                 local_embeddings,
-                publish=False,
             )
             self._require_verified_vectorstore(local_vectorstore)
-            local_bm25_index = self._build_bm25_index(publish=False)
+            local_bm25_index = self._build_bm25_index()
 
         except Exception as e:
             logger.error("Failed to init RAGRetriever: %s", e)
@@ -219,29 +218,10 @@ class RAGRetriever:
             embeddings=embeddings,
         )
 
-    def _collection_exists(self, client: QdrantClient | None = None) -> bool:
-        """Checks whether the RAG collection exists in Qdrant.
-
-        Returns:
-            ``True`` if the collection is present, ``False`` otherwise.
-
-        """
-        target_client = client or self.client
-        if not target_client:
-            return False
-        try:
-            cols = target_client.get_collections().collections
-            return any(c.name == RAGConfig.COLLECTION_NAME for c in cols)
-        except Exception:
-            logger.debug("Failed to check Qdrant collection existence", exc_info=True)
-            return False
-
     def _auto_initialize(
         self,
-        client: QdrantClient | None = None,
-        embeddings: HuggingFaceEmbeddings | None = None,
-        *,
-        publish: bool = True,
+        client: QdrantClient,
+        embeddings: HuggingFaceEmbeddings,
     ) -> Qdrant | None:
         """Auto-indexes from the bundled ``gold_set.json`` via RAGIndexer.
 
@@ -255,27 +235,20 @@ class RAGRetriever:
             logger.warning("Gold set not found: %s", gold_set_path)
             return None
 
-        target_client = client or self.client
-        target_embeddings = embeddings or self.embeddings
-        if target_client is None or target_embeddings is None:
-            logger.warning("RAG auto-init skipped: client or embeddings missing.")
-            return None
         try:
             logger.info("Delegating auto-initialization to RAGIndexer...")
             indexer = RAGIndexer(
-                client=target_client,
-                embeddings=target_embeddings,
+                client=client,
+                embeddings=embeddings,
             )
             try:
                 docs = indexer.load_gold_set(str(gold_set_path))
                 if docs:
                     indexer.index_data(docs)
                     vectorstore = self._create_vectorstore(
-                        target_client,
-                        target_embeddings,
+                        client,
+                        embeddings,
                     )
-                    if publish:
-                        self.vectorstore = vectorstore
                     return vectorstore
             finally:
                 indexer.close()
@@ -283,7 +256,7 @@ class RAGRetriever:
             logger.error("RAG auto-init failed: %s", e)
         return None
 
-    def _build_bm25_index(self, *, publish: bool = True) -> BM25Index | None:
+    def _build_bm25_index(self) -> BM25Index | None:
         """Builds the in-memory BM25 index from the bundled gold-set.
 
         Falls back gracefully if the gold-set file is missing — hybrid
@@ -299,8 +272,6 @@ class RAGRetriever:
         try:
             idx = BM25Index()
             idx.build_from_json(gold_set_path)
-            if publish:
-                self.bm25_index = idx
             logger.info("BM25 index ready (%d docs).", idx.doc_count)
         except Exception as e:
             logger.error("BM25 index build failed: %s", e)
@@ -308,7 +279,7 @@ class RAGRetriever:
         else:
             return idx
 
-    def close(self, *, wait: bool = False) -> None:
+    def close(self) -> None:
         """Closes the Qdrant client connection and releases resources."""
         close_now: QdrantClient | None = None
         with self._lifecycle:
@@ -328,7 +299,6 @@ class RAGRetriever:
 
         if close_now is not None:
             self._close_client(close_now)
-        _ = wait
 
     def _acquire_retrieval_lease(self) -> _RetrievalLease | None:
         """Fence-aware snapshot for one retrieval without holding the lock."""

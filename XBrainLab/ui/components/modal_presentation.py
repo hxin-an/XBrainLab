@@ -376,16 +376,6 @@ def ask_confirmation(
     return dialog.exec() == dialog.DialogCode.Accepted
 
 
-def show_information(parent: Any, title: str, message: str) -> None:
-    """Present a compact informational acknowledgement."""
-    show_alert(
-        parent,
-        severity=AlertSeverity.INFORMATION,
-        title=title,
-        message=message,
-    )
-
-
 def show_warning(parent: Any, title: str, message: str) -> None:
     """Present a compact warning acknowledgement."""
     show_alert(

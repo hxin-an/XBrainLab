@@ -771,7 +771,6 @@ CI_REQUIRED_MANIFEST_SHA256 = "f7bb9c3938cdaad72cc6843ee6ba1c22d403ff5ec6c5432fc
 TEACHER_PREFLIGHT_GROUP_NAMES = frozenset(
     {
         *CI_REQUIRED_GROUP_NAMES,
-        OPENNEURO_P300_NAME,
         "chbmit-chb01",
         "sleep-edfx-st7011",
     }

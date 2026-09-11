@@ -450,6 +450,8 @@ def _interval_review(carrier: dict[str, Any]) -> dict[str, Any]:
             }
         )
         return review
+    if review.get("status") != "ready":
+        return review
     status = "ready" if label_rows in {None, duration_numeric} else "needs_review"
     start = str(review.get("time_field") or "")
     review.update(

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from PyQt6.QtCore import QSettings
 
 from scripts.dev import run_native_platform_product_smoke as smoke
 
@@ -44,6 +46,27 @@ def test_isolated_environment_returns_all_owned_paths(monkeypatch, tmp_path) -> 
 
     assert set(resolved) == set(smoke.REQUIRED_ISOLATED_ENV)
     assert all(path.startswith(str(root.resolve())) for path in resolved.values())
+
+
+def test_native_smoke_rejects_actual_preferences_outside_config_before_window_creation(
+    monkeypatch, tmp_path, qapp
+) -> None:
+    from XBrainLab.ui import qt_settings
+
+    root = tmp_path / "Native 測試"
+    _set_isolated_environment(monkeypatch, root)
+    outside_file = tmp_path / "outside.ini"
+    settings = QSettings(str(outside_file), QSettings.Format.IniFormat)
+    assert Path(settings.fileName()) == outside_file
+    monkeypatch.setattr(qt_settings, "application_settings", lambda: settings)
+
+    with pytest.raises(ValueError, match="escapes"):
+        smoke.run_native_product_smoke(
+            expected_platform="must-not-reach-platform-check",
+            expected_isolated_root=root,
+        )
+
+    assert not outside_file.exists()
 
 
 @pytest.mark.parametrize(

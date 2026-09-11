@@ -1,59 +1,11 @@
 #!/usr/bin/env python3
-"""Capture Match Labels placement-mode screenshots for review."""
+"""Build deterministic Match Labels placement-mode capture fixtures."""
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 from typing import Any
 
-from PIL import Image
-from PyQt6.QtCore import QSize
-from PyQt6.QtWidgets import QApplication, QWidget
-
 from XBrainLab.ui.dialogs.dataset import DataInterpretationPreviewDialog
-
-ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_OUTPUT_DIR = (
-    ROOT
-    / "build"
-    / "dev-artifacts"
-    / "data-import-wizard-steps"
-    / "match-label-placement-modes"
-)
-WINDOW_SIZE = QSize(1220, 1320)
-
-
-MODE_OUTPUTS = {
-    "eeg_event": "eeg-event-order-full.png",
-    "time_field": "label-time-full.png",
-    "interval": "label-interval-full.png",
-    "event_code": "label-event-code-full.png",
-}
-
-
-def main() -> int:
-    app = QApplication.instance() or QApplication(sys.argv)
-    DEFAULT_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    for method, filename in MODE_OUTPUTS.items():
-        path = DEFAULT_OUTPUT_DIR / filename
-        dialog = build_dialog(method)
-        dialog.resize(WINDOW_SIZE)
-        dialog.show()
-        app.processEvents()
-        if dialog.size() != WINDOW_SIZE:
-            raise RuntimeError(
-                "Placement-mode capture needs a 1220x1320 virtual screen. "
-                "Run it with QT_QPA_PLATFORM=xcb xvfb-run -a -s "
-                "'-screen 0 1600x1400x24'."
-            )
-        dialog._go_to_step(dialog._step_titles.index("Match Labels"))
-        app.processEvents()
-        dialog.repaint()
-        app.processEvents()
-        capture_widget(dialog, path)
-        dialog.close()
-    return 0
 
 
 def build_dialog(method: str) -> DataInterpretationPreviewDialog:
@@ -291,30 +243,3 @@ def placement_reviews() -> dict[str, dict[str, Any]]:
             "summary": "All 4 label event codes match EEG events.",
         },
     }
-
-
-def capture_widget(widget: QWidget, output_path: Path) -> None:
-    pixmap = widget.grab()
-    if pixmap.isNull():
-        raise RuntimeError(f"Could not grab {output_path}.")
-    if not pixmap.save(str(output_path)):
-        raise RuntimeError(f"Could not save {output_path}.")
-    if is_nearly_black(output_path):
-        raise RuntimeError(f"Screenshot is nearly black: {output_path}.")
-
-
-def is_nearly_black(path: Path) -> bool:
-    with Image.open(path) as image:
-        rgb = image.convert("RGB")
-        histogram = rgb.histogram()
-    total_pixels = sum(histogram[:256])
-    bright_pixels = 0
-    for value in range(16, 256):
-        bright_pixels += histogram[value]
-        bright_pixels += histogram[256 + value]
-        bright_pixels += histogram[512 + value]
-    return total_pixels == 0 or bright_pixels < total_pixels * 0.01
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

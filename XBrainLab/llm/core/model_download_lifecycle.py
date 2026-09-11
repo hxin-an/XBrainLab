@@ -98,11 +98,6 @@ class ModelCacheCleanupResult:
             return "Model files were removed."
         return "No model files needed removal."
 
-    @property
-    def message(self) -> str:
-        """Compatibility alias for the safe public message."""
-        return self.public_message
-
 
 @dataclass(frozen=True)
 class ModelStatusInspectionRequest:

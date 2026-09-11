@@ -143,6 +143,69 @@ def test_setup_logger(temp_log_dir):
         handler.close()
 
 
+@pytest.mark.parametrize("encoding", ["cp950", "ascii", "utf-8"])
+@pytest.mark.parametrize("console_first", [False, True])
+def test_console_encoding_preserves_private_metrics_and_utf8_file(
+    tmp_path,
+    monkeypatch,
+    encoding,
+    console_first,
+) -> None:
+    from XBrainLab.llm.agent import metrics
+
+    log_file = tmp_path / "console-encoding.log"
+    output = io.BytesIO()
+    failures = []
+    private_path = "/srv/private/subject-17/sub-P001_events.tsv"
+    private_value = "hf_super_secret"
+    with (
+        io.TextIOWrapper(
+            output, encoding=encoding, errors="strict", newline="", write_through=True
+        ) as stream,
+        monkeypatch.context() as patch,
+    ):
+        patch.setattr(logger_module.sys, "stdout", stream)
+        patch.setattr(
+            logging.Handler,
+            "handleError",
+            lambda _self, record: failures.append(record),
+        )
+        configured = setup_logger(
+            name=f"XBrainLab.ConsoleEncoding.{uuid.uuid4()}", log_file=log_file
+        )
+        patch.setattr(metrics, "logger", configured)
+        if console_first:
+            configured.handlers.reverse()
+        try:
+            tracker = metrics.AgentMetricsTracker()
+            turn = tracker.start_turn()
+            turn.input_chars = 400
+            turn.output_chars = 200
+            turn.record_tool(
+                "apply_filter",
+                False,
+                1.0,
+                f"Unavailable ≈ {private_path} token={private_value}",
+            )
+            tracker.finish_turn()
+            console_bytes = output.getvalue()
+        finally:
+            for handler in list(configured.handlers):
+                configured.removeHandler(handler)
+                handler.close()
+
+    file_text = log_file.read_bytes().decode("utf-8")
+    assert not failures
+    assert "in_tok≈100 out_tok≈50" in file_text
+    assert "Unavailable ≈" in file_text
+    assert "[REDACTED_PATH]" in file_text
+    assert private_path not in file_text
+    assert "sub-P001" not in file_text
+    assert private_value not in file_text
+    assert file_text.count("\n") == 2
+    assert console_bytes == file_text.encode(encoding, errors="backslashreplace")
+
+
 def test_setup_logger_default_uses_per_user_state_directory(
     temp_log_dir,
     monkeypatch,

@@ -88,7 +88,7 @@ def test_multi_recording_preprocess_reports_progress_and_stops_at_checkpoint(raw
     def run_preprocess() -> None:
         try:
             with registry.bind(operation.operation_id):
-                registry.start(operation.operation_id)
+                registry.claim_start(operation.operation_id)
                 CancellablePreprocessor(rows).data_preprocess()
         except OwnedOperationCancelledError as exc:
             cancellation_errors.append(exc)
@@ -147,7 +147,7 @@ def test_independent_recordings_use_at_most_two_workers_and_keep_order(raw):
     def run_preprocess() -> None:
         try:
             with registry.bind(operation.operation_id):
-                registry.start(operation.operation_id)
+                registry.claim_start(operation.operation_id)
                 result.extend(ParallelPreprocessor(rows).data_preprocess())
                 registry.complete(operation.operation_id)
         except BaseException as exc:
@@ -196,7 +196,7 @@ def test_parallel_preprocess_cancellation_stops_unscheduled_recordings(raw):
     def run_preprocess() -> None:
         try:
             with registry.bind(operation.operation_id):
-                registry.start(operation.operation_id)
+                registry.claim_start(operation.operation_id)
                 ParallelPreprocessor(rows).data_preprocess()
         except BaseException as exc:
             errors.append(exc)

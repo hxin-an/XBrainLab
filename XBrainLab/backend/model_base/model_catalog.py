@@ -27,7 +27,6 @@ from XBrainLab.backend.model_base.braindecode_catalog import (
 from XBrainLab.backend.model_catalog_contract import (
     BRAINDECODE_MODEL_IDS,
     DEFAULT_MODEL_ID,
-    TRAINING_MODEL_NAMES,
 )
 
 ModelFactory = Callable[..., Any]
@@ -362,11 +361,6 @@ _PARAMETER_LABELS = {
 def default_model_id() -> str:
     """Return the product default architecture."""
     return DEFAULT_MODEL_ID
-
-
-def model_command_names() -> tuple[str, ...]:
-    """Return stable command values plus compatible legacy local names."""
-    return TRAINING_MODEL_NAMES
 
 
 def braindecode_provider_status() -> BraindecodeProviderStatus:

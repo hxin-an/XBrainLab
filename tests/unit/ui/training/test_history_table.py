@@ -96,6 +96,28 @@ def test_update_history_populates_rows(history_table):
     assert history_table.item(0, 6).text() == "0.80%"  # Train Acc
 
 
+def test_validation_zero_metrics_are_not_rendered_as_unavailable(history_table):
+    zero_metrics = _history_row(run_name="Zero validation")
+    missing_metrics = _history_row(run_name="Missing validation")
+    zero_metrics["metrics"]["validation"] = {
+        "loss": [0.0],
+        "accuracy": [0.0],
+        "auc": [],
+    }
+    missing_metrics["metrics"]["validation"] = {
+        "loss": [],
+        "accuracy": [],
+        "auc": [],
+    }
+
+    history_table.update_history([zero_metrics, missing_metrics])
+
+    assert history_table.item(0, 7).text() == "0.0000"
+    assert history_table.item(0, 8).text() == "0.00%"
+    assert history_table.item(1, 7).text() == "N/A"
+    assert history_table.item(1, 8).text() == "N/A"
+
+
 def test_finished_history_uses_completed_product_status(history_table):
     history_table.update_history(
         [

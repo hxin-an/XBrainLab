@@ -7,12 +7,11 @@ import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 import XBrainLab.llm.core.config as config_module
 from XBrainLab.llm.core.config import LLMConfig
-from XBrainLab.llm.core.model_catalog import (
-    MIN_MODEL_WEIGHT_BYTES,
-    model_snapshot_path,
-)
+from XBrainLab.llm.core.model_catalog import model_snapshot_path
 
 
 def _settings_payload(model_name: str) -> dict[str, object]:
@@ -32,14 +31,20 @@ def _settings_payload(model_name: str) -> dict[str, object]:
     }
 
 
-def _write_complete_model_cache(cache_dir: Path, model_id: str) -> Path:
+def _write_complete_model_cache(
+    cache_dir: Path, model_id: str, monkeypatch: pytest.MonkeyPatch
+) -> Path:
+    # Readiness uses real artifacts; model-size policy has separate catalog tests.
+    weight = b"x" * 1024
+    monkeypatch.setattr(
+        "XBrainLab.llm.core.model_catalog.MIN_MODEL_WEIGHT_BYTES", len(weight)
+    )
     snapshot = model_snapshot_path(str(cache_dir), model_id)
     assert snapshot is not None
     snapshot.mkdir(parents=True)
     (snapshot / "config.json").write_text("{}", encoding="utf-8")
     (snapshot / "tokenizer_config.json").write_text("{}", encoding="utf-8")
-    with (snapshot / "model.safetensors").open("wb") as stream:
-        stream.truncate(MIN_MODEL_WEIGHT_BYTES)
+    (snapshot / "model.safetensors").write_bytes(weight)
     return snapshot
 
 
@@ -377,7 +382,7 @@ class TestSaveAndLoad:
 
 class TestPerUserSettingsBoundary:
     def test_windows_uses_roaming_app_data(self, tmp_path):
-        from XBrainLab.llm.core.config_paths import user_settings_path
+        from XBrainLab.platform_paths import user_settings_path
 
         roaming = tmp_path / "AppData" / "Roaming"
 
@@ -390,7 +395,7 @@ class TestPerUserSettingsBoundary:
         assert path == roaming / "XBrainLab" / "settings.json"
 
     def test_linux_uses_xdg_config_home(self, tmp_path):
-        from XBrainLab.llm.core.config_paths import user_settings_path
+        from XBrainLab.platform_paths import user_settings_path
 
         xdg_home = tmp_path / "xdg"
 
@@ -403,7 +408,7 @@ class TestPerUserSettingsBoundary:
         assert path == xdg_home / "xbrainlab" / "settings.json"
 
     def test_wsl_uses_linux_per_user_config_boundary(self, tmp_path):
-        from XBrainLab.llm.core.config_paths import user_settings_path
+        from XBrainLab.platform_paths import user_settings_path
 
         home = tmp_path / "wsl-home"
 
@@ -416,7 +421,7 @@ class TestPerUserSettingsBoundary:
         assert path == home / ".config" / "xbrainlab" / "settings.json"
 
     def test_explicit_config_directory_override_has_priority(self, tmp_path):
-        from XBrainLab.llm.core.config_paths import user_settings_path
+        from XBrainLab.platform_paths import user_settings_path
 
         override = tmp_path / "isolated-config"
 
@@ -432,7 +437,7 @@ class TestPerUserSettingsBoundary:
         assert path == override / "settings.json"
 
     def test_relative_override_is_anchored_to_user_home(self, tmp_path):
-        from XBrainLab.llm.core.config_paths import user_settings_path
+        from XBrainLab.platform_paths import user_settings_path
 
         home = tmp_path / "home"
 
@@ -445,7 +450,7 @@ class TestPerUserSettingsBoundary:
         assert path == home / "isolated-config" / "settings.json"
 
     def test_relative_xdg_config_home_is_ignored(self, tmp_path):
-        from XBrainLab.llm.core.config_paths import user_settings_path
+        from XBrainLab.platform_paths import user_settings_path
 
         home = tmp_path / "home"
 
@@ -660,10 +665,10 @@ class TestLocalRuntimeReadiness:
                 "bitsandbytes",
             ]
 
-    def test_local_backend_status_message_ready(self, tmp_path):
+    def test_local_backend_status_message_ready(self, tmp_path, monkeypatch):
         cfg = LLMConfig()
         cache_dir = tmp_path / "models"
-        _write_complete_model_cache(cache_dir, cfg.model_name)
+        _write_complete_model_cache(cache_dir, cfg.model_name, monkeypatch)
         cfg.cache_dir = str(cache_dir)
         cfg.device = "cpu"
         with patch(
@@ -703,10 +708,12 @@ class TestLocalRuntimeReadiness:
         assert "accelerate, bitsandbytes" in message
         assert "enable local startup" in message
 
-    def test_local_backend_status_message_warns_about_cpu_fallback(self, tmp_path):
+    def test_local_backend_status_message_warns_about_cpu_fallback(
+        self, tmp_path, monkeypatch
+    ):
         cfg = LLMConfig()
         cache_dir = tmp_path / "models"
-        _write_complete_model_cache(cache_dir, cfg.model_name)
+        _write_complete_model_cache(cache_dir, cfg.model_name, monkeypatch)
         cfg.cache_dir = str(cache_dir)
         cfg.device = "cuda"
         cfg.load_in_4bit = True

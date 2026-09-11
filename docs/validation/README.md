@@ -208,7 +208,7 @@ Assistant candidate必須在同一clean/explained exact source依序閉合下列
    Host safety gate要求10/10 direct preprocess value-origin checks；direct Host clarification admission另要求5/5
    exact direct receipts。Host 不以英文 action／intent grammar 或 import positive-origin rescue 改寫 raw/product
    outcome。product no-action gate要求24/24
-   product outcomes沒有confirmation、GUI handoff、ApplicationService／ToolExecutor execution或state mutation；
+   product outcomes沒有confirmation、GUI handoff、ApplicationService／tool execution或state mutation；
    product clarification gate要求7/7 final verified execute-boundary。任何no-action product outcome的上述
    side effect都fail closed。
    v12 evaluator必須分開記錄first raw generation、每次production strict-envelope recovery／follow-up raw
@@ -228,7 +228,7 @@ Assistant candidate必須在同一clean/explained exact source依序閉合下列
    generic filter selection、bounded bandpass collect-then-sort與correction fail-closed restart都必須經真controller
    pending lifecycle。所有trajectory仍須經相同parser、schema、publication、capability與attempt policy得到
    7/7 final verified execute-boundary；receipt 收齊後必須零額外 LLM/RAG generation。raw第一發與最多兩次format recovery分開保存。這個gate不取代24/24
-   precision，也不等於ToolExecutor已產生真side effect。
+   precision，也不等於tool execution已產生真side effect。
    真model run使用product RAG時，evaluator必須經`ProcessRAGRetrieverLifecycle`與同一個
    `ContextAssembler`取得allowed tools；每次retrieval記錄protocol、sequence、query、allowed tools、
    returned／assembled item IDs、context hash與status。`empty`只表示ready product retriever沒有eligible
@@ -323,7 +323,14 @@ Stage驗收另有一個硬邊界：匯入建立的working raw copy不算preproce
 
 ### Staged product rebuild
 
-跨多個bounded slices的產品重建可以先在temporary integration branch組裝，但該branch不是產品
+An explicitly user-approved modular cleanup stage may use one integration PR with independently
+reviewed, reversible commits instead of a PR per slice. Record that exception and its module closure
+criteria in the active plan. Cumulative diff size does not trigger intermediate manual acceptance;
+individual slices still undergo complexity review. Final same-source checks, independent integration
+review and human acceptance remain mandatory. This exception does not authorize contract changes.
+
+未採用上述使用者核准之單一階段PR例外時，跨多個bounded slices的產品重建可先在temporary
+integration branch組裝，但該branch不是產品
 baseline、release source或manual-acceptance對象：
 
 - 每個slice仍需focused evidence、clean/explained source、PR與所有applicable non-skipped checks

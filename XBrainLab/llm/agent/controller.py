@@ -74,7 +74,6 @@ from .response_presentation import (
     AssistantResponsePresentation,
     interaction_outcome_kind,
     interaction_outcome_message,
-    panel_target_for_command,
     user_facing_generation_error,
 )
 from .runtime_state import AssistantRuntimePhase, AssistantRuntimeSnapshot
@@ -378,7 +377,6 @@ class LLMController(QObject):
         self._strict_envelope_recovery_policy = DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY
 
         # Tool Failure Loop Protection
-        self._max_tool_failures = 3
         self._max_loop_breaks = 3
 
         # The model proposes commands; this deterministic policy boundary owns
@@ -608,7 +606,6 @@ class LLMController(QObject):
             ("metrics", self.metrics.finish_turn),
             ("pending interactions", self.pending_interactions.clear),
             ("RAG context", self.assembler.clear_context),
-            ("recovery feedback", self.assembler.clear_recovery_feedback),
         )
         for label, cleanup in cleanup_steps:
             self._run_turn_setup_cleanup(label, cleanup)
@@ -744,7 +741,6 @@ class LLMController(QObject):
         self._turn_orchestrator.reset_for_user_turn()
         self.pending_interactions.clear_workflow_handoff()
         self.pending_interactions.activate_tool_input()
-        self.assembler.clear_recovery_feedback()
 
     def _collect_active_tool_input_reply(self, text: str) -> bool:
         """Resolve one bounded receipt reply before any RAG/model dispatch."""
@@ -957,7 +953,10 @@ class LLMController(QObject):
             )
             return False
         try:
-            request = self.assembler.get_generation_request(self.history)
+            request = self.assembler.get_generation_request(
+                self.history,
+                format_recovery=self._tool_attempt_session.retry_count > 0,
+            )
             request = request.correlated(self._turn_orchestrator.begin_generation())
             messages = request.to_model_messages()
             self._active_response_contract = request.response_contract
@@ -1247,9 +1246,6 @@ class LLMController(QObject):
             self._tool_attempt_session.record_format_retry(
                 decision.recovery_attempts_after
             )
-            if decision.message is None:
-                raise RuntimeError("Format retry decision is missing recovery context")
-            self.assembler.add_context(decision.message.content)
             self.status_update.emit("Invalid assistant action, retrying...")
             self._generate_response()
             return True
@@ -1621,13 +1617,6 @@ class LLMController(QObject):
         self._finalize_turn_after_tool("blocked" if blocked else "failed")
 
     @staticmethod
-    def _panel_target_for_command(
-        command_name: str,
-    ) -> AssistantPanelTarget | None:
-        """Map a blocked backend/tool action to one existing product surface."""
-        return panel_target_for_command(command_name)
-
-    @staticmethod
     def _tool_result_response_kind(
         success: bool,
         result: ToolCommandResult | UiRequest,
@@ -1652,7 +1641,6 @@ class LLMController(QObject):
         """Finish after one executed command failure without model continuation."""
         del autonomy
         self._tool_attempt_session.record_failure()
-        self.assembler.clear_recovery_feedback()
         self._finalize_turn_after_tool(self._terminal_outcome_for_result(False, result))
 
     def _handle_tool_success(
@@ -1664,7 +1652,6 @@ class LLMController(QObject):
     ) -> None:
         """Finish after one trusted tool result; each user turn owns one action."""
         del autonomy, after_confirmation
-        self.assembler.clear_recovery_feedback()
         self._tool_attempt_session.record_success()
         logger.info(
             "Assistant completed one action for this turn: %s",

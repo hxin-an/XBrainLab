@@ -1,4 +1,4 @@
-"""Coverage tests for ChatPanel - 59 uncovered lines."""
+"""Behavioral tests for the chat transcript, controls and Qt layout lifecycle."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtCore import QEvent, QMimeData, QPoint, QRect, QSize, Qt
+from PyQt6.QtCore import QEvent, QMimeData, QObject, QPoint, QRect, QSize, Qt
 from PyQt6.QtGui import QFont, QGuiApplication, QInputMethodEvent
 from PyQt6.QtWidgets import (
     QApplication,
@@ -70,6 +70,35 @@ def chat_panel(qtbot):
 
 
 class TestChatPanelInit:
+    def test_first_paint_keeps_runtime_settings_inside_narrow_panel(self, qtbot):
+        from XBrainLab.ui.chat.panel import ChatPanel
+
+        panel = ChatPanel()
+        qtbot.addWidget(panel)
+        panel.resize(320, 520)
+        observed = []
+
+        class FirstPaintBounds(QObject):
+            def eventFilter(self, watched, event):
+                if event.type() is QEvent.Type.Paint and not observed:
+                    observed.append(
+                        [
+                            QRect(widget.mapTo(panel, QPoint()), widget.size())
+                            for widget in (panel.runtime_state_widget, panel.setup_btn)
+                        ]
+                    )
+                return False
+
+        probe = FirstPaintBounds(panel)
+        panel.installEventFilter(probe)
+        panel.show()
+        qtbot.waitUntil(lambda: bool(observed))
+        panel.removeEventFilter(probe)
+
+        assert panel.setup_btn.text() == "Open Assistant Settings"
+        for bounds in observed[0]:
+            assert panel.rect().contains(bounds), bounds
+
     def test_assistant_base_palette_uses_main_gui_theme_tokens(self) -> None:
         from XBrainLab.ui.chat.styles import (
             ASSISTANT_ACCENT,
@@ -226,6 +255,33 @@ class TestChatPanelInit:
         assert chat_panel.input_field.text() == prompts[0].property("assistantPrompt")
         assert chat_panel.send_btn.isEnabled()
         assert emitted == []
+
+    @pytest.mark.parametrize("width", [400, 620, 900])
+    def test_reflow_keeps_suggestion_rows_without_rebuilding_layout(
+        self,
+        chat_panel,
+        qtbot,
+        width,
+    ) -> None:
+        chat_panel.resize(width, 900)
+        chat_panel.show()
+        qtbot.wait(20)
+        layout = chat_panel.suggestion_prompt_layout
+        buttons = chat_panel.suggestion_prompt_buttons
+        before = [button.geometry().getRect() for button in buttons]
+
+        with (
+            patch.object(layout, "removeWidget", wraps=layout.removeWidget) as remove,
+            patch.object(layout, "addWidget", wraps=layout.addWidget) as add,
+        ):
+            for _ in range(5):
+                chat_panel._reflow_chat_content()
+            qtbot.wait(10)
+
+        assert [layout.itemAt(i).widget() for i in range(layout.count())] == buttons
+        assert [button.geometry().getRect() for button in buttons] == before
+        assert remove.call_count == 0
+        assert add.call_count == 0
 
     def test_empty_state_copy_and_prompts_ignore_backend_stage(
         self,

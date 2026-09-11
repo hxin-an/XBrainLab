@@ -7,13 +7,10 @@ import ntpath
 import os
 import re
 import stat
-from collections.abc import Iterator
-from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol, cast
 
 from XBrainLab.backend.utils.filesystem_identity import (
-    DirectoryIdentitySnapshot,
     FilesystemIdentityError,
     StableDirectoryIdentity,
     retain_directory_identity,
@@ -37,42 +34,6 @@ class FilesystemIdentity:
     final_path: str
     object_id: tuple[int, int]
     kind: PathKind
-
-
-@dataclass(frozen=True, slots=True)
-class _AuthorizedPathGrant:
-    root_path: str
-    root_identity: FilesystemIdentity
-    target_identity: FilesystemIdentity
-    root_directory_snapshot: DirectoryIdentitySnapshot | None = None
-    target_directory_snapshot: DirectoryIdentitySnapshot | None = None
-
-
-class AuthorizedPath(str):
-    """String-compatible path carrying a host-created filesystem grant."""
-
-    grant: _AuthorizedPathGrant
-
-    def __new__(
-        cls,
-        value: str,
-        *,
-        grant: _AuthorizedPathGrant,
-    ) -> AuthorizedPath:
-        instance = str.__new__(cls, value)
-        instance.grant = grant
-        return instance
-
-    @property
-    def admitted_kind(self) -> PathKind:
-        """Kind observed when the host admitted this path."""
-        return self.grant.target_identity.kind
-
-
-class DirectoryEntries(Iterator[os.DirEntry[str]], Protocol):
-    """Closable directory iterator returned by ``os.scandir``."""
-
-    def close(self) -> None: ...
 
 
 class _WindowsDllLoader(Protocol):
@@ -110,25 +71,6 @@ def _windows_error(error_code: int) -> OSError:
 
 
 @dataclass(slots=True)
-class OpenedAuthorizedPath:
-    """Revalidated path retained for one bounded file-tool operation."""
-
-    identity: FilesystemIdentity
-    _descriptor: int | None = None
-
-    def scandir(self) -> DirectoryEntries:
-        """Enumerate the retained directory identity where the OS supports it."""
-        if self.identity.kind != "directory":
-            raise AuthorizedPathError("Authorized filesystem identity is not a folder.")
-        path_or_fd: str | int = (
-            self._descriptor
-            if self._descriptor is not None
-            else self.identity.final_path
-        )
-        return cast(DirectoryEntries, os.scandir(path_or_fd))
-
-
-@dataclass(slots=True)
 class _OpenedPosixIdentity:
     identity: FilesystemIdentity
     descriptor: int
@@ -145,8 +87,8 @@ def authorize_existing_path(
     *,
     authorized_root: str | os.PathLike[str],
     expected_kind: PathKind | None = None,
-) -> AuthorizedPath:
-    """Bind an existing path to an authorized root's final identity."""
+) -> str:
+    """Admit an existing path beneath an authorized root's final identity."""
     target_text = os.fspath(path)
     root_text = os.fspath(authorized_root)
     platform = _path_platform(target_text)
@@ -154,8 +96,6 @@ def authorize_existing_path(
         raise AuthorizedPathError(
             "Filesystem identity does not match the authorized root platform."
         )
-    root_directory_snapshot: DirectoryIdentitySnapshot | None = None
-    target_directory_snapshot: DirectoryIdentitySnapshot | None = None
     try:
         target_lexical = _normalize_lexical_path(target_text, platform)
         root_lexical = _normalize_lexical_path(root_text, platform)
@@ -173,18 +113,18 @@ def authorize_existing_path(
             )
             if _native_windows_runtime():
                 if root_identity.kind == "directory":
-                    root_directory_snapshot = _admit_windows_directory_snapshot(
+                    _admit_windows_directory_identity(
                         root_lexical,
                         root_identity,
                     )
-                if target_identity.kind == "directory":
-                    if target_lexical == root_lexical:
-                        target_directory_snapshot = root_directory_snapshot
-                    else:
-                        target_directory_snapshot = _admit_windows_directory_snapshot(
-                            target_lexical,
-                            target_identity,
-                        )
+                if (
+                    target_identity.kind == "directory"
+                    and target_lexical != root_lexical
+                ):
+                    _admit_windows_directory_identity(
+                        target_lexical,
+                        target_identity,
+                    )
         else:
             root, target = _open_posix_pair(
                 root_lexical,
@@ -200,120 +140,16 @@ def authorize_existing_path(
         _require_contained_final_identity(target_identity, root_identity)
     except AuthorizedPathError:
         raise
+    except NotADirectoryError as exc:
+        raise AuthorizedPathError(
+            "Filesystem identity requires a directory for a path component."
+        ) from exc
     except (FilesystemIdentityError, OSError, ValueError) as exc:
         raise AuthorizedPathError(
             "Filesystem identity could not be established safely."
         ) from exc
 
-    return AuthorizedPath(
-        target_text,
-        grant=_AuthorizedPathGrant(
-            root_path=root_text,
-            root_identity=root_identity,
-            target_identity=target_identity,
-            root_directory_snapshot=root_directory_snapshot,
-            target_directory_snapshot=target_directory_snapshot,
-        ),
-    )
-
-
-@contextmanager
-def open_authorized_path(
-    path: str | os.PathLike[str],
-    *,
-    expected_kind: PathKind | None = None,
-) -> Iterator[OpenedAuthorizedPath]:
-    """Revalidate a host grant and retain the admitted target for immediate IO."""
-    if not isinstance(path, AuthorizedPath):
-        raise AuthorizedPathError(
-            "Assistant file access is missing an identity-bound authorization."
-        )
-
-    grant = path.grant
-    target_text = os.fspath(path)
-    try:
-        platform = grant.target_identity.platform
-        target_lexical = _normalize_lexical_path(target_text, platform)
-        root_lexical = _normalize_lexical_path(grant.root_path, platform)
-        _require_lexically_contained(target_lexical, root_lexical, platform)
-    except AuthorizedPathError:
-        raise
-    except (OSError, ValueError) as exc:
-        raise AuthorizedPathError(
-            "Filesystem identity could not be re-established safely."
-        ) from exc
-
-    if platform == "windows":
-        with ExitStack() as leases:
-            try:
-                if _native_windows_runtime():
-                    snapshot = _require_windows_directory_snapshot(grant)
-                    leases.enter_context(
-                        retain_directory_identity(
-                            snapshot.path,
-                            expected=snapshot,
-                        )
-                    )
-                root_kind = (
-                    expected_kind if target_lexical == root_lexical else "directory"
-                )
-                root_identity = _resolve_windows_identity(
-                    root_lexical,
-                    expected_kind=root_kind,
-                )
-                target_identity = _resolve_windows_identity(
-                    target_lexical,
-                    expected_kind=expected_kind,
-                )
-                _require_unchanged_identity(root_identity, grant.root_identity)
-                _require_unchanged_identity(target_identity, grant.target_identity)
-                _require_contained_final_identity(target_identity, root_identity)
-            except AuthorizedPathError:
-                raise
-            except (FilesystemIdentityError, OSError, ValueError) as exc:
-                raise AuthorizedPathError(
-                    "Filesystem identity could not be re-established safely."
-                ) from exc
-            yield OpenedAuthorizedPath(identity=target_identity)
-        return
-
-    root: _OpenedPosixIdentity | None = None
-    target: _OpenedPosixIdentity | None = None
-    try:
-        root, target = _open_posix_pair(
-            root_lexical,
-            target_lexical,
-            expected_kind=expected_kind,
-        )
-        _require_unchanged_identity(root.identity, grant.root_identity)
-        _require_unchanged_identity(target.identity, grant.target_identity)
-        _require_contained_final_identity(target.identity, root.identity)
-    except AuthorizedPathError:
-        if target is not None:
-            target.close()
-        if root is not None:
-            root.close()
-        raise
-    except (OSError, ValueError) as exc:
-        if target is not None:
-            target.close()
-        if root is not None:
-            root.close()
-        raise AuthorizedPathError(
-            "Filesystem identity could not be re-established safely."
-        ) from exc
-    if root is None or target is None:  # pragma: no cover - defensive narrowing
-        raise AuthorizedPathError(
-            "Filesystem identity could not be re-established safely."
-        )
-    try:
-        yield OpenedAuthorizedPath(
-            identity=target.identity,
-            _descriptor=target.descriptor,
-        )
-    finally:
-        target.close()
-        root.close()
+    return target_text
 
 
 def _path_platform(path: str) -> PathPlatform:
@@ -372,29 +208,8 @@ def _require_contained_final_identity(
         raise AuthorizedPathError("Resolved target is outside the authorized root.")
 
 
-def _require_unchanged_identity(
-    current: FilesystemIdentity,
-    admitted: FilesystemIdentity,
-) -> None:
-    if current != admitted:
-        raise AuthorizedPathError(
-            "Filesystem identity changed after authorization; access was blocked."
-        )
-
-
 def _native_windows_runtime() -> bool:
     return os.name == "nt"
-
-
-def _require_windows_directory_snapshot(
-    grant: _AuthorizedPathGrant,
-) -> DirectoryIdentitySnapshot:
-    snapshot = grant.target_directory_snapshot or grant.root_directory_snapshot
-    if snapshot is None:
-        raise AuthorizedPathError(
-            "Windows directory access is missing a retained identity."
-        )
-    return snapshot
 
 
 def _require_directory_lease_matches(
@@ -410,14 +225,13 @@ def _require_directory_lease_matches(
         )
 
 
-def _admit_windows_directory_snapshot(
+def _admit_windows_directory_identity(
     path: str,
     admitted: FilesystemIdentity,
-) -> DirectoryIdentitySnapshot:
-    """Bind a Windows directory snapshot while anti-replacement handles are held."""
+) -> None:
+    """Verify a Windows directory identity while anti-replacement handles are held."""
     with retain_directory_identity(path) as lease:
         _require_directory_lease_matches(lease, admitted)
-        return lease.snapshot()
 
 
 def _posix_open_flags(*, directory: bool) -> int:

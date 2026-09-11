@@ -232,7 +232,7 @@ class TestTimeEpoch:
         def run_epoch() -> None:
             try:
                 with registry.bind(operation.operation_id):
-                    registry.start(operation.operation_id)
+                    registry.claim_start(operation.operation_id)
                     CancellableTimeEpoch(rows).data_preprocess(
                         None,
                         ["Event1"],

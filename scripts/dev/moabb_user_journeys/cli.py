@@ -21,7 +21,6 @@ from .registry import (
 from .storage import (
     build_plan,
     default_plan_path,
-    fetch_plan,
     load_validated_plan,
     utc_now,
     validate_plan_cache,
@@ -34,7 +33,7 @@ RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m scripts.dev.moabb_user_journeys",
-        description="Plan, fetch, validate, and resume MOABB-backed product journeys.",
+        description="Plan, validate, and resume MOABB-backed journeys with existing data.",
     )
     parser.add_argument(
         "--registry",
@@ -47,14 +46,6 @@ def build_parser() -> argparse.ArgumentParser:
     plan = subparsers.add_parser("plan", help="Write a no-download resource plan.")
     _add_dataset_selection(plan)
     plan.add_argument("--output", type=Path)
-
-    fetch = subparsers.add_parser(
-        "fetch", help="Fetch the exact validated plan serially."
-    )
-    _add_dataset_selection(fetch)
-    fetch.add_argument("--plan", type=Path)
-    fetch.add_argument("--force", action="store_true")
-    fetch.add_argument("--output", type=Path)
 
     validate = subparsers.add_parser(
         "validate", help="Verify cache integrity and optionally review product import."
@@ -84,8 +75,6 @@ def main(argv: list[str] | None = None) -> int:
     registry = load_registry(registry_path)
     if args.action == "plan":
         return _plan(args, registry, registry_path)
-    if args.action == "fetch":
-        return _fetch(args, registry, registry_path)
     if args.action == "validate":
         return _validate(args, registry, registry_path)
     if args.action == "run-resume":
@@ -123,27 +112,6 @@ def _plan(
             "expected_download_bytes": payload["expected_download_bytes"],
             "max_download_bytes": payload["max_download_bytes"],
             "serial_downloads": payload["serial_downloads"],
-        }
-    )
-    return 0
-
-
-def _fetch(
-    args: argparse.Namespace,
-    registry: dict[str, Any],
-    registry_path: Path,
-) -> int:
-    plan = _load_plan(args, registry, registry_path)
-    receipt = fetch_plan(plan, force=args.force)
-    output = (args.output or _evidence_root(registry) / "fetch-receipt.json").resolve()
-    write_json_atomic(output, receipt)
-    _print_summary(
-        {
-            "action": "fetch",
-            "path": str(output),
-            "plan_id": plan["plan_id"],
-            "file_count": len(receipt["files"]),
-            "bytes": receipt["downloaded_or_reused_bytes"],
         }
     )
     return 0
@@ -223,7 +191,7 @@ def _run_resume(
     for dataset in selected:
         dataset_id = dataset["id"]
         prior = existing_by_id.get(dataset_id)
-        if not args.force and _can_reuse(prior, existing, plan, args.profile):
+        if not args.force and _can_reuse(prior, existing, manifest):
             manifest["datasets"].append(prior)
             continue
         checkpoint = _read_json(run_root / dataset_id / "checkpoint.json") or {}
@@ -326,15 +294,32 @@ def _finish_manifest(manifest: dict[str, Any], profile: str) -> None:
 def _can_reuse(
     prior: dict[str, Any] | None,
     existing: dict[str, Any] | None,
-    plan: dict[str, Any],
-    profile: str,
+    current: dict[str, Any],
 ) -> bool:
     if prior is None or prior.get("failures"):
         return False
-    runner = (existing or {}).get("runner", {})
+    existing = existing or {}
+    application = existing.get("application", {})
+    current_application = current["application"]
+    runner = existing.get("runner", {})
     return (
-        runner.get("registry_sha256") == plan["registry_sha256"]
-        and runner.get("execution_profile") == profile
+        bool(application.get("git_sha"))
+        and application.get("git_sha") == current_application["git_sha"]
+        and application.get("dirty_paths") == current_application["dirty_paths"] == []
+        and all(
+            runner.get(key) == current["runner"][key]
+            for key in (
+                "registry_sha256",
+                "registry_profile",
+                "moabb_release",
+                "execution_profile",
+                "python",
+                "platform",
+                "dependencies",
+            )
+        )
+        and existing.get("resource_policy", {}).get("data_root")
+        == current["resource_policy"]["data_root"]
     )
 
 

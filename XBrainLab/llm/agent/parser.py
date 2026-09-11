@@ -9,10 +9,6 @@ from enum import Enum
 from typing import Any, TypeAlias
 
 from XBrainLab.backend.application.pipeline_stage import PipelineStage
-from XBrainLab.backend.utils.logger import logger
-from XBrainLab.llm.tools.result_contract import (
-    safe_unexpected_failure,
-)
 
 from .decision_contract import MODEL_RESPONSE_TOOL_NAME, ModelDecision
 
@@ -145,7 +141,7 @@ def _reject_non_standard_json(value: str) -> None:
 
 
 class CommandParser:
-    """Parse strict product envelopes and explicitly tolerant diagnostics."""
+    """Parse strict product envelopes."""
 
     @staticmethod
     def parse_product(text: str) -> ToolEnvelopeParseResult:
@@ -324,140 +320,8 @@ class CommandParser:
         )
 
     @staticmethod
-    def parse(text: str) -> list[ToolCommand] | None:
-        """Return a product command only when the strict envelope is valid."""
-
-        result = CommandParser.parse_product(text)
-        if result.status is not ToolEnvelopeStatus.VALID:
-            return None
-        return list(result.commands)
-
-    @staticmethod
-    def parse_diagnostic(text: str) -> list[ToolCommand] | None:
-        """Recover legacy model output for offline migration/diagnostics only.
-
-        Product execution and strict evaluation must never call this method.
-        """
-
-        decoder = json.JSONDecoder()
-        cursor = 0
-        found_commands: list[ToolCommand] = []
-        try:
-            while True:
-                start_idx = text.find("{", cursor)
-                if start_idx == -1:
-                    break
-                try:
-                    data, end_idx = decoder.raw_decode(text[start_idx:])
-                except json.JSONDecodeError:
-                    cursor = start_idx + 1
-                    continue
-                found_commands.extend(CommandParser._extract_diagnostic_commands(data))
-                cursor = start_idx + end_idx
-        except Exception as exc:
-            safe_unexpected_failure(
-                logger,
-                exc,
-                boundary="diagnostic_command_parser",
-                operation="parse_compatibility_output",
-            )
-            return None
-
-        if found_commands:
-            return found_commands
-        partial_command = CommandParser._extract_partial_json_command(text)
-        if partial_command is not None:
-            return [partial_command]
-        bare_command = CommandParser._extract_bare_command(text)
-        if bare_command is not None:
-            return [bare_command]
-        return None
-
-    @staticmethod
     def _looks_like_tool_attempt(text: str) -> bool:
         if text.startswith(("{", "[", "```")) or _TOOL_MARKER.search(text):
             return True
         command = re.split(r"[\s:]+", text, maxsplit=1)[0]
         return command in _BARE_COMMANDS
-
-    @staticmethod
-    def _extract_diagnostic_commands(data: Any) -> list[ToolCommand]:
-        if isinstance(data, list):
-            commands: list[ToolCommand] = []
-            for item in data:
-                commands.extend(CommandParser._extract_diagnostic_commands(item))
-            return commands
-        if not isinstance(data, dict):
-            return []
-
-        function_call = data.get("function")
-        if isinstance(function_call, dict):
-            return CommandParser._extract_diagnostic_single(function_call)
-        tool_call = data.get("tool_call")
-        if isinstance(tool_call, dict):
-            return CommandParser._extract_diagnostic_commands(tool_call)
-        tool_calls = data.get("tool_calls")
-        if isinstance(tool_calls, list):
-            return CommandParser._extract_diagnostic_commands(tool_calls)
-        return CommandParser._extract_diagnostic_single(data)
-
-    @staticmethod
-    def _extract_diagnostic_single(data: dict[str, Any]) -> list[ToolCommand]:
-        command = (
-            data.get("tool_name")
-            or data.get("command")
-            or data.get("name")
-            or data.get("tool")
-        )
-        parameters = data.get("parameters")
-        if parameters is None:
-            parameters = data.get("arguments")
-        if parameters is None and any(
-            key in data
-            for key in (
-                "reason",
-                "reasons",
-                "blocked_reason",
-                "requires_confirmation",
-                "decision_boundary",
-            )
-        ):
-            parameters = {}
-        if isinstance(parameters, str):
-            try:
-                decoded_parameters = json.loads(parameters)
-            except json.JSONDecodeError:
-                decoded_parameters = None
-            if isinstance(decoded_parameters, dict):
-                parameters = decoded_parameters
-        if isinstance(command, str) and command.strip().lower() in _NO_TOOL_SENTINELS:
-            return []
-        if isinstance(command, str) and isinstance(parameters, dict):
-            return [(command, parameters)]
-        return []
-
-    @staticmethod
-    def _extract_bare_command(text: str) -> ToolCommand | None:
-        stripped = text.strip()
-        if not stripped:
-            return None
-        command = re.split(r"[\s:]+", stripped, maxsplit=1)[0]
-        rest = stripped[len(command) :]
-        if command in _BARE_COMMANDS and (
-            not rest or rest.startswith(("\n", "\r", ":", "(", "{"))
-        ):
-            return command, {}
-        return None
-
-    @staticmethod
-    def _extract_partial_json_command(text: str) -> ToolCommand | None:
-        match = re.search(
-            r'"(?:tool_name|name)"\s*:\s*"([A-Za-z0-9_]+)"',
-            text,
-        )
-        if not match:
-            return None
-        command = match.group(1)
-        if command in _BARE_COMMANDS:
-            return command, {}
-        return None

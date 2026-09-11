@@ -1,7 +1,7 @@
-"""Tests for LabelImportService covering all public methods.
+"""Tests for LabelImportService's retained label-application boundaries.
 
-Targets: apply_labels_batch, apply_labels_sequence, apply_labels_to_single_file,
-_force_apply_single, get_epoch_count_for_file.
+Targets: apply_labels_batch_checked, apply_labels_to_single_file, and
+get_epoch_count_for_file.
 """
 
 from unittest.mock import MagicMock, patch
@@ -11,13 +11,13 @@ import numpy as np
 import pytest
 
 from XBrainLab.backend.load_data.raw import Raw
+from XBrainLab.backend.services.label_import_errors import AtomicLabelApplyError
 from XBrainLab.backend.services.label_import_service import LabelImportService
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
 def _make_data_mock(filepath="/data/sub01.set", is_raw=True, epoch_length=0):
     """Create a mock data (Raw) object."""
     data = MagicMock()
@@ -236,11 +236,11 @@ class TestApplyLabelsToSingleFile:
 
 
 # ---------------------------------------------------------------------------
-# apply_labels_batch
+# apply_labels_batch_checked
 # ---------------------------------------------------------------------------
 
 
-class TestApplyLabelsBatch:
+class TestApplyLabelsBatchChecked:
     def test_timestamp_batch_rolls_back_all_files_when_late_row_fails(
         self,
         service,
@@ -260,23 +260,25 @@ class TestApplyLabelsBatch:
             )
             raw.set_event(np.array([[25, 0, 9]]), {"original": 9})
 
-        result = service.apply_labels_batch(
-            [first, second],
-            {
-                "first.csv": [{"onset": 1.0, "duration": 0.0, "label": "left"}],
-                "second.csv": [
-                    {"onset": 1.0, "duration": 0.0, "label": "left"},
-                    {"onset": 3.0, "duration": 0.0, "label": "left"},
-                ],
-            },
-            {
-                first.get_filepath(): "first.csv",
-                second.get_filepath(): "second.csv",
-            },
-            {"left": "Left hand"},
-        )
+        with pytest.raises(AtomicLabelApplyError) as raised:
+            service.apply_labels_batch_checked(
+                [first, second],
+                {
+                    "first.csv": [{"onset": 1.0, "duration": 0.0, "label": "left"}],
+                    "second.csv": [
+                        {"onset": 1.0, "duration": 0.0, "label": "left"},
+                        {"onset": 3.0, "duration": 0.0, "label": "left"},
+                    ],
+                },
+                {
+                    first.get_filepath(): "first.csv",
+                    second.get_filepath(): "second.csv",
+                },
+                {"left": "Left hand"},
+            )
 
-        assert result == 0
+        assert raised.value.phase == "preparation"
+        assert isinstance(raised.value.cause, ValueError)
         for raw in (first, second):
             assert raw.is_labels_imported() is False
             assert raw.get_mne().annotations.description.tolist() == ["acquisition"]
@@ -303,20 +305,22 @@ class TestApplyLabelsBatch:
             )
             raw.set_event(np.array([[25, 0, 9]]), {"original": 9})
 
-        result = service.apply_labels_batch(
-            [first, second],
-            {
-                "first.csv": [{"onset": 1.0, "duration": 0.0, "label": "left"}],
-                "second.mat": [1],
-            },
-            {
-                first.get_filepath(): "first.csv",
-                second.get_filepath(): "second.mat",
-            },
-            {"left": "Left", 1: "Right"},
-        )
+        with pytest.raises(AtomicLabelApplyError) as raised:
+            service.apply_labels_batch_checked(
+                [first, second],
+                {
+                    "first.csv": [{"onset": 1.0, "duration": 0.0, "label": "left"}],
+                    "second.mat": [1],
+                },
+                {
+                    first.get_filepath(): "first.csv",
+                    second.get_filepath(): "second.mat",
+                },
+                {"left": "Left", 1: "Right"},
+            )
 
-        assert result == 0
+        assert raised.value.phase == "preparation"
+        assert isinstance(raised.value.cause, ValueError)
         for raw in (first, second):
             assert raw.is_labels_imported() is False
             assert raw.get_mne().annotations.description.tolist() == ["acquisition"]
@@ -339,7 +343,7 @@ class TestApplyLabelsBatch:
         mapping = {1: "A", 2: "B"}
 
         with patch.object(service, "apply_labels_to_single_file") as mock_apply:
-            result = service.apply_labels_batch(
+            result = service.apply_labels_batch_checked(
                 [data1, data2], label_map, file_mapping, mapping
             )
             assert result == 2
@@ -349,7 +353,7 @@ class TestApplyLabelsBatch:
         data = _make_data_mock("/data/sub01.gdf")
 
         with patch.object(service, "apply_labels_to_single_file") as mock_apply:
-            result = service.apply_labels_batch(
+            result = service.apply_labels_batch_checked(
                 [data],
                 {"labels.mat": np.asarray([1, 2, 1])},
                 {"/data/sub01.gdf": "labels.mat"},
@@ -368,11 +372,14 @@ class TestApplyLabelsBatch:
         mapping = {1: "A"}
 
         with patch.object(service, "apply_labels_to_single_file") as mock_apply:
-            result = service.apply_labels_batch(
-                [data1, data2], label_map, file_mapping, mapping
-            )
-            assert result == 0
+            with pytest.raises(AtomicLabelApplyError) as raised:
+                service.apply_labels_batch_checked(
+                    [data1, data2], label_map, file_mapping, mapping
+                )
             mock_apply.assert_not_called()
+
+        assert raised.value.phase == "preparation"
+        assert isinstance(raised.value.cause, ValueError)
 
     def test_batch_late_preparation_error_rolls_back_the_whole_batch(self, service):
         data1 = _make_data_mock("/data/sub01.set")
@@ -387,11 +394,15 @@ class TestApplyLabelsBatch:
             "apply_labels_to_single_file",
             side_effect=[None, RuntimeError("fail")],
         ) as mock_apply:
-            result = service.apply_labels_batch(
-                [data1, data2], label_map, file_mapping, mapping
-            )
-            assert result == 0
+            with pytest.raises(AtomicLabelApplyError) as raised:
+                service.apply_labels_batch_checked(
+                    [data1, data2], label_map, file_mapping, mapping
+                )
             assert mock_apply.call_count == 2
+
+        assert raised.value.phase == "preparation"
+        assert isinstance(raised.value.cause, RuntimeError)
+        assert str(raised.value.cause) == "fail"
 
     def test_batch_commit_failure_restores_every_target(self, service):
         info = mne.create_info(["Cz"], sfreq=100.0, ch_types="eeg")
@@ -426,8 +437,9 @@ class TestApplyLabelsBatch:
                 "_replace_raw_label_state",
                 side_effect=fail_second_commit,
             ),
+            pytest.raises(AtomicLabelApplyError) as raised,
         ):
-            result = service.apply_labels_batch(
+            service.apply_labels_batch_checked(
                 targets,
                 {"first.mat": [1], "second.mat": [2]},
                 {
@@ -437,7 +449,9 @@ class TestApplyLabelsBatch:
                 {1: "left", 2: "right"},
             )
 
-        assert result == 0
+        assert raised.value.phase == "commit"
+        assert isinstance(raised.value.cause, RuntimeError)
+        assert str(raised.value.cause) == "second commit failed"
         assert commit_calls == 4
         for target in targets:
             assert target.is_labels_imported() is False
@@ -447,204 +461,17 @@ class TestApplyLabelsBatch:
 
     def test_batch_no_match(self, service):
         data1 = _make_data_mock("/data/sub01.set")
-        result = service.apply_labels_batch([data1], {}, {}, {})
-        assert result == 0
+        with pytest.raises(AtomicLabelApplyError) as raised:
+            service.apply_labels_batch_checked([data1], {}, {}, {})
+
+        assert raised.value.phase == "preparation"
+        assert isinstance(raised.value.cause, ValueError)
 
     def test_batch_label_file_not_in_map(self, service):
         data1 = _make_data_mock("/data/sub01.set")
         file_mapping = {"/data/sub01.set": "missing.txt"}
-        result = service.apply_labels_batch([data1], {}, file_mapping, {})
-        assert result == 0
+        with pytest.raises(AtomicLabelApplyError) as raised:
+            service.apply_labels_batch_checked([data1], {}, file_mapping, {})
 
-
-# ---------------------------------------------------------------------------
-# apply_labels_sequence
-# ---------------------------------------------------------------------------
-
-
-class TestApplyLabelsSequence:
-    def test_exact_match(self, service):
-        d1 = _make_data_mock("/data/sub01.set")
-        d2 = _make_data_mock("/data/sub02.set")
-        labels = list(range(6))  # 6 labels total
-        mapping = {i: str(i) for i in range(6)}
-
-        # Patch epoch counts: 3 for each file = 6 total
-        with (
-            patch.object(service, "get_epoch_count_for_file", return_value=3),
-            patch.object(service, "apply_labels_to_single_file") as mock_apply,
-        ):
-            result = service.apply_labels_sequence([d1, d2], labels, mapping)
-            assert result == 2
-            assert mock_apply.call_count == 2
-            # Check first call got labels [0,1,2], second got [3,4,5]
-            assert mock_apply.call_args_list[0][0][1] == [0, 1, 2]
-            assert mock_apply.call_args_list[1][0][1] == [3, 4, 5]
-
-    def test_mismatch_no_force(self, service):
-        d1 = _make_data_mock("/data/sub01.set")
-        labels = [1, 2, 3]
-        mapping = {1: "A"}
-
-        with patch.object(service, "get_epoch_count_for_file", return_value=10):
-            result = service.apply_labels_sequence([d1], labels, mapping)
-            assert result == 0
-
-    def test_late_preparation_failure_does_not_commit_any_sequence_target(
-        self,
-        service,
-    ):
-        targets = [
-            _make_data_mock("/data/sub01.set"),
-            _make_data_mock("/data/sub02.set"),
-        ]
-        with (
-            patch.object(
-                service,
-                "get_epoch_count_for_file",
-                side_effect=[1, 1, 1, 1],
-            ),
-            patch.object(
-                service,
-                "apply_labels_to_single_file",
-                side_effect=[None, RuntimeError("second target failed")],
-            ),
-            patch.object(service, "_replace_raw_label_state") as replace_state,
-        ):
-            result = service.apply_labels_sequence(
-                targets,
-                [1, 2],
-                {1: "left", 2: "right"},
-            )
-
-        assert result == 0
-        replace_state.assert_not_called()
-
-    def test_force_import(self, service):
-        d1 = _make_data_mock("/data/sub01.set")
-        labels = list(range(5))
-        mapping = {i: str(i) for i in range(5)}
-
-        with (
-            patch.object(service, "get_epoch_count_for_file", side_effect=[10, 5]),
-            patch.object(service, "_force_apply_single") as mock_force,
-        ):
-            result = service.apply_labels_sequence(
-                [d1], labels, mapping, force_import=True
-            )
-            assert result == 1
-            mock_force.assert_called_once()
-
-    def test_force_import_fallback_epochs(self, service):
-        d1 = _make_data_mock("/data/sub01.set")
-        labels = list(range(200))
-        mapping = {i: str(i) for i in range(200)}
-
-        # get_epoch_count_for_file returns 0 for force mode (None filter)
-        # so it uses fallback of 100
-        with (
-            patch.object(service, "get_epoch_count_for_file", side_effect=[0, 0]),
-            patch.object(service, "_force_apply_single") as mock_force,
-        ):
-            result = service.apply_labels_sequence(
-                [d1], labels, mapping, force_import=True
-            )
-            assert result == 1
-            # Should use first 100 labels (fallback)
-            call_labels = mock_force.call_args[0][1]
-            assert len(call_labels) == 100
-
-    def test_force_import_not_enough_labels(self, service):
-        d1 = _make_data_mock("/data/sub01.set")
-        labels = [1, 2]  # only 2 labels
-        mapping = {1: "A", 2: "B"}
-
-        with (
-            patch.object(service, "get_epoch_count_for_file", side_effect=[0, 0]),
-            patch.object(service, "_force_apply_single") as mock_force,
-        ):
-            # With fallback=100, current_idx + 100 > 2, so skip
-            result = service.apply_labels_sequence(
-                [d1], labels, mapping, force_import=True
-            )
-            assert result == 0
-            mock_force.assert_not_called()
-
-    def test_zero_epochs_zero_labels(self, service):
-        d1 = _make_data_mock("/data/sub01.set")
-        labels = []
-        mapping = {}
-
-        with patch.object(service, "get_epoch_count_for_file", return_value=0):
-            result = service.apply_labels_sequence([d1], labels, mapping)
-            # label_count == total_epochs == 0, but total_epochs > 0 check fails
-            assert result == 0
-
-    def test_skip_zero_epoch_files(self, service):
-        d1 = _make_data_mock("/data/sub01.set")
-        d2 = _make_data_mock("/data/sub02.set")
-        labels = [1, 2, 3]
-        mapping = {1: "A", 2: "B", 3: "C"}
-
-        # d1 has 0 epochs, d2 has 3 epochs -> total 3 == len(labels)
-        with (
-            patch.object(service, "get_epoch_count_for_file", side_effect=[0, 3, 0, 3]),
-            patch.object(service, "apply_labels_to_single_file") as mock_apply,
-        ):
-            result = service.apply_labels_sequence([d1, d2], labels, mapping)
-            assert result == 2  # Both files processed
-            # Only d2 actually calls apply (n > 0)
-            assert mock_apply.call_count == 1
-
-
-# ---------------------------------------------------------------------------
-# _force_apply_single
-# ---------------------------------------------------------------------------
-
-
-class TestForceApplySingle:
-    def test_raw_requires_explicit_target(self, service):
-        data = _make_data_mock()
-        labels = [1, 2, 3]
-        mapping = {1: "A", 2: "B", 3: "C"}
-
-        with patch(
-            "XBrainLab.backend.services.label_import_service.EventLoader"
-        ) as MockLoader:
-            mock_loader = MockLoader.return_value
-            with pytest.raises(ValueError, match="explicit target EEG event"):
-                service._force_apply_single(data, labels, mapping)
-
-            MockLoader.assert_not_called()
-            mock_loader.create_event.assert_not_called()
-            mock_loader.apply.assert_not_called()
-            data.set_labels_imported.assert_not_called()
-
-    def test_with_filter(self, service):
-        data = _make_data_mock()
-        labels = [1, 2]
-        mapping = {1: "A", 2: "B"}
-
-        with patch(
-            "XBrainLab.backend.services.label_import_service.EventLoader"
-        ) as MockLoader:
-            mock_loader = MockLoader.return_value
-            service._force_apply_single(data, labels, mapping, {"EventA"})
-
-            call_kwargs = mock_loader.create_event.call_args[1]
-            assert call_kwargs["selected_event_ids"] == [1]
-
-    def test_not_raw(self, service):
-        data = _make_data_mock(is_raw=False)
-        labels = [1, 2]
-        mapping = {1: "A", 2: "B"}
-
-        with patch(
-            "XBrainLab.backend.services.label_import_service.EventLoader"
-        ) as MockLoader:
-            mock_loader = MockLoader.return_value
-            service._force_apply_single(data, labels, mapping, {"EventA"})
-
-            # Not raw -> selected_ids remains None
-            call_kwargs = mock_loader.create_event.call_args[1]
-            assert call_kwargs["selected_event_ids"] is None
+        assert raised.value.phase == "preparation"
+        assert isinstance(raised.value.cause, ValueError)

@@ -1,5 +1,6 @@
 import datetime
 import time
+from pathlib import Path
 from threading import Event
 from unittest.mock import Mock, patch
 
@@ -692,7 +693,7 @@ def test_training_plan_holder_keeps_saliency_empty_until_configured(
         saliency_params=None,
     )
 
-    assert holder.get_saliency_params() == {}
+    assert holder.saliency_params == {}
 
 
 def test_saliency_producer_identity_is_stable_for_same_training_run(base_holder):
@@ -1082,6 +1083,14 @@ def test_training_plan_ids_do_not_collide_within_one_second(
         second = TrainingPlanHolder(model_holder, dataset, training_option, {})
 
     assert first.plan_id != second.plan_id
+    first_path = Path(first.get_plans()[0].target_path)
+    second_path = Path(second.get_plans()[0].target_path)
+    assert first_path.is_dir()
+    assert second_path.is_dir()
+    assert first_path != second_path
+    assert first_path.name == second_path.name == "Repeat-0"
+    assert first_path.parent.name == f"FakeModel_{first.plan_id}"
+    assert second_path.parent.name == f"FakeModel_{second.plan_id}"
 
 
 @pytest.mark.timeout(10)

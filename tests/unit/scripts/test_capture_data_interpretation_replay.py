@@ -557,6 +557,42 @@ def test_request_window_close_waits_for_deferred_product_shutdown(qtbot) -> None
     assert timed_out == []
 
 
+def test_request_window_close_times_out_once_when_widget_rejects_close(qtbot) -> None:
+    class RejectingCloseWidget(QWidget):
+        def __init__(self) -> None:
+            super().__init__()
+            self.close_attempts = 0
+
+        def closeEvent(self, event) -> None:
+            self.close_attempts += 1
+            event.ignore()
+
+    widget = RejectingCloseWidget()
+    qtbot.addWidget(widget)
+    widget.show()
+    closed: list[bool] = []
+    timed_out: list[bool] = []
+    fence_reached: list[bool] = []
+
+    try:
+        request_window_close(
+            widget,
+            on_closed=lambda: closed.append(True),
+            on_timeout=lambda: timed_out.append(True),
+            timeout_ms=0,
+        )
+        qtbot.waitUntil(lambda: timed_out == [True], timeout=1_000)
+        QTimer.singleShot(50, lambda: fence_reached.append(True))
+        qtbot.waitUntil(lambda: fence_reached == [True], timeout=1_000)
+
+        assert closed == []
+        assert timed_out == [True]
+        assert widget.isVisible()
+        assert widget.close_attempts == 1
+    finally:
+        widget.hide()
+
+
 def table_item(text: str) -> QTableWidgetItem:
     return QTableWidgetItem(text)
 

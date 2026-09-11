@@ -432,11 +432,6 @@ def model_cache_complete(cache_dir: str, repo_id: str) -> bool:
     return _model_artifacts_complete(snapshot, cache_root=Path(cache_dir))
 
 
-def model_cache_exists(cache_dir: str, repo_id: str) -> bool:
-    """Compatibility alias for complete, startup-usable cache truth."""
-    return model_cache_complete(cache_dir, repo_id)
-
-
 def _requires_samefile_hardlink_fallback() -> bool:
     """Return whether file metadata needs a same-file identity fallback."""
     return os.name == "nt"

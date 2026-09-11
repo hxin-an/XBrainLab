@@ -130,6 +130,39 @@ def test_dashboard_registers_public_bids_visible_ui_wizard_format_matrix(
     assert matrix["validator"] is dashboard.validate_required_pytest_matrix
 
 
+@pytest.mark.parametrize(
+    ("key", "nodes"),
+    [
+        ("ui_dialog_acceptance", ("tests/integration/ui/test_dialog_acceptance.py",)),
+        (
+            "ui_product_walkthrough",
+            (
+                "tests/integration/ui/test_product_walkthrough.py",
+                "tests/integration/ui/test_data_import_wizard_runtime.py",
+            ),
+        ),
+    ],
+)
+def test_ui_integration_checks_preserve_exact_attested_selection(
+    monkeypatch, key, nodes
+):
+    checks = {}
+
+    def record_check(**kwargs):
+        checks[kwargs["key"]] = kwargs
+        return SimpleNamespace(**kwargs)
+
+    monkeypatch.setattr(dashboard, "run_check", record_check)
+    dashboard.build_checks()
+
+    check = checks[key]
+    assert check["ui"] is True
+    assert check["validator"] is dashboard.validate_required_pytest_matrix
+    assert dashboard._dashboard_pytest_attestation_contract(
+        shlex.split(check["command"], posix=os.name != "nt")
+    ) == (REQUIRED_PYTEST_RUNNER_ID, ("--capture=sys", *nodes, "-q"))
+
+
 def test_handoff_dashboard_registers_manifest_before_strict_public_gates(
     monkeypatch,
 ):
@@ -991,7 +1024,7 @@ def test_run_check_reports_bounded_timeout(monkeypatch):
     assert "partial output" in result.output_excerpt
 
 
-def test_run_check_requires_wrapper_completion_attestation(monkeypatch):
+def test_run_check_requires_runner_completion_attestation(monkeypatch):
     command = (
         f"{dashboard.POETRY} run -- python -m "
         "scripts.dev.run_required_pytest_gate -- tests/example.py -q"

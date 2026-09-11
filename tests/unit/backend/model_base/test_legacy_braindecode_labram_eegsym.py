@@ -6,8 +6,6 @@ from pathlib import Path
 import pytest
 import torch
 
-from XBrainLab.backend.model_base.legacy_braindecode import models as legacy_models
-
 _LABRAM_EEGSYM_MODELS = (
     ("labram", "Labram", False),
     ("labram", "InterpolatedLaBraM", True),
@@ -73,7 +71,12 @@ def test_local_labram_eegsym_strictly_loads_upstream_state_and_matches_output(
     upstream_class = getattr(
         importlib.import_module(f"braindecode.models.{module_name}"), class_name
     )
-    legacy_class = getattr(legacy_models, class_name)
+    legacy_class = getattr(
+        importlib.import_module(
+            f"XBrainLab.backend.model_base.legacy_braindecode.models.{module_name}"
+        ),
+        class_name,
+    )
     kwargs, inputs = _model_case(class_name, upstream_class)
 
     torch.manual_seed(401)
@@ -96,8 +99,12 @@ def test_local_labram_eegsym_strictly_loads_upstream_state_and_matches_output(
     torch.testing.assert_close(actual, expected, rtol=1e-6, atol=1e-7)
 
 
-@pytest.mark.parametrize("class_name", ("Labram", "EEGSym"))
-def test_local_labram_eegsym_supports_finite_backward(class_name: str) -> None:
+@pytest.mark.parametrize(
+    ("module_name", "class_name"), (("labram", "Labram"), ("eegsym", "EEGSym"))
+)
+def test_local_labram_eegsym_supports_finite_backward(
+    module_name: str, class_name: str
+) -> None:
     upstream_class = getattr(
         importlib.import_module(
             "braindecode.models.labram"
@@ -107,7 +114,12 @@ def test_local_labram_eegsym_supports_finite_backward(class_name: str) -> None:
         class_name,
     )
     kwargs, inputs = _model_case(class_name, upstream_class)
-    model = getattr(legacy_models, class_name)(**kwargs).train()
+    model = getattr(
+        importlib.import_module(
+            f"XBrainLab.backend.model_base.legacy_braindecode.models.{module_name}"
+        ),
+        class_name,
+    )(**kwargs).train()
 
     model(inputs).square().mean().backward()
 
@@ -120,9 +132,12 @@ def test_local_labram_eegsym_supports_finite_backward(class_name: str) -> None:
 
 
 def test_local_labram_eegsym_has_no_remote_loader_surface() -> None:
-    model_root = Path(legacy_models.__file__).parent
     for module_name in ("labram", "eegsym"):
-        source = (model_root / f"{module_name}.py").read_text(encoding="utf-8")
+        source = Path(
+            importlib.import_module(
+                f"XBrainLab.backend.model_base.legacy_braindecode.models.{module_name}"
+            ).__file__
+        ).read_text(encoding="utf-8")
         for forbidden_surface in (
             "Hugging Face Hub",
             "HuggingFace",

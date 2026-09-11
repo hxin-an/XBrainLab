@@ -81,9 +81,6 @@ class CapabilityPolicyUnavailableError(RuntimeError):
     """Raised when no application runtime can provide capability policy."""
 
 
-CapabilityPolicyUnavailable = CapabilityPolicyUnavailableError
-
-
 class HostAuthorizedToolParameter(str):
     """Marker for values created by host policy rather than model JSON."""
 
@@ -1617,13 +1614,6 @@ def _optional_str(value: Any) -> str | None:
     return text or None
 
 
-def _optional_str_list(value: Any) -> list[str] | None:
-    if not isinstance(value, (list, tuple)):
-        return None
-    normalized = [str(item).strip() for item in value if str(item).strip()]
-    return list(dict.fromkeys(normalized)) or None
-
-
 def _optional_float(value: Any) -> float | None:
     if value is None:
         return None
@@ -1643,42 +1633,6 @@ def _boolean_param(
     default: bool = False,
 ) -> bool:
     return normalize_strict_boolean(name, params.get(name, default))
-
-
-def enabled_tool_names(
-    study: Any,
-    *,
-    publication: ApplicationViewPublication | None = None,
-    runtime: ApplicationToolRuntime | None = None,
-) -> list[str]:
-    """Return tool names that are currently available to the agent."""
-    return [
-        tool_name
-        for tool_name, availability in build_agent_tool_policy(
-            study,
-            publication=publication,
-            runtime=runtime,
-        ).items()
-        if availability.enabled
-    ]
-
-
-def blocked_tool_reasons(
-    study: Any,
-    *,
-    publication: ApplicationViewPublication | None = None,
-    runtime: ApplicationToolRuntime | None = None,
-) -> dict[str, str]:
-    """Return blocked tool names and reasons for prompt diagnostics."""
-    return {
-        _blocked_prompt_name(availability): availability.reason_text
-        for availability in build_agent_tool_policy(
-            study,
-            publication=publication,
-            runtime=runtime,
-        ).values()
-        if not availability.enabled and availability.reasons
-    }
 
 
 def _from_capability(
@@ -1704,10 +1658,6 @@ def _from_capability(
             capability.blocks_downstream_until_confirmed
         ),
     )
-
-
-def _blocked_prompt_name(availability: ToolAvailability) -> str:
-    return availability.command_name or availability.tool_name
 
 
 def _command_name_for_tool(tool_name: str) -> str | None:

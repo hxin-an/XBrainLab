@@ -1,7 +1,7 @@
 """Sidebar widget for the preprocessing panel with operations and execution controls."""
 
 from collections.abc import Callable
-from typing import Any, cast
+from typing import Any
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
@@ -56,6 +56,7 @@ from XBrainLab.ui.dialogs.preprocess import (
 )
 from XBrainLab.ui.interaction_outcome import InteractionOutcome
 from XBrainLab.ui.owned_operation_presenter import OwnedOperationPresenter
+from XBrainLab.ui.panels.preprocess.data_query import query_preprocess_data_rows
 from XBrainLab.ui.status import show_status_message
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
@@ -507,7 +508,6 @@ class PreprocessSidebar(QWidget):
         command: PreprocessCommand | CreateEpochCommand,
         *,
         blocked_title: str,
-        failure_prefix: str,
         on_success: Callable[[Any], None],
         expected_publication_generation: int | None = None,
         stale_review_title: str | None = None,
@@ -598,7 +598,6 @@ class PreprocessSidebar(QWidget):
                 self._execute_preprocess_command(
                     command,
                     blocked_title="Filtering Blocked",
-                    failure_prefix="Filtering failed",
                     on_success=lambda result: self._show_preprocess_success(
                         result,
                         "Filtering applied.",
@@ -609,15 +608,8 @@ class PreprocessSidebar(QWidget):
 
     def _current_sampling_rate_hz(self) -> float | None:
         """Return the lowest loaded rate so validation is safe for every file."""
-        query_candidate = getattr(self.panel, "_query_preprocess_data_rows", None)
-        if not callable(query_candidate):
-            return None
-        query = cast(
-            Callable[[], tuple[list[dict[str, Any]], list[dict[str, Any]]] | None],
-            query_candidate,
-        )
         try:
-            rendered = query()
+            rendered = query_preprocess_data_rows(self.panel)
         except Exception:
             return None
         if not rendered or not rendered[0]:
@@ -663,7 +655,6 @@ class PreprocessSidebar(QWidget):
                         rate=rate,
                     ),
                     blocked_title="Resampling Blocked",
-                    failure_prefix="Resample failed",
                     on_success=lambda result: self._show_preprocess_success(
                         result,
                         "Resampling applied.",
@@ -703,7 +694,6 @@ class PreprocessSidebar(QWidget):
                         else None,
                     ),
                     blocked_title="Re-reference Blocked",
-                    failure_prefix="Re-reference failed",
                     on_success=lambda result: self._show_preprocess_success(
                         result,
                         "Re-reference applied.",
@@ -735,7 +725,6 @@ class PreprocessSidebar(QWidget):
                         method=method,
                     ),
                     blocked_title="Normalization Blocked",
-                    failure_prefix="Normalization failed",
                     on_success=lambda result: self._show_preprocess_success(
                         result,
                         result.message,
@@ -811,7 +800,6 @@ class PreprocessSidebar(QWidget):
                 confirmation_receipt=dialog.get_confirmation_receipt(),
             ),
             blocked_title="Create EEG Epochs Blocked",
-            failure_prefix="Creating EEG epochs failed",
             on_success=self._handle_epoch_command_success,
             expected_publication_generation=(dialog_context.publication_generation),
             stale_review_title="Review EEG Epoch Setup Again",

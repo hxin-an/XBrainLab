@@ -16,7 +16,7 @@ from .utils.logger import logger
 
 if TYPE_CHECKING:
     from .dataset import Dataset, DatasetGenerator, DataSplittingConfig, Epochs
-    from .load_data import Raw, RawDataLoader
+    from .load_data import Raw
     from .preprocessor import PreprocessBase
     from .training import ModelHolder, Trainer, TrainingOption
     from .training_state_contract import PostTrainingSaliencyScheduleOutcome
@@ -153,11 +153,6 @@ class Study:
     def saliency_params(self, value: dict | None) -> None:
         self.training_manager.saliency_params = value
 
-    # step 1 - load data
-    def get_raw_data_loader(self) -> RawDataLoader:
-        """Get the raw data loader instance from DataManager."""
-        return self.data_manager.get_raw_data_loader()
-
     def backup_loaded_data(self) -> None:
         """Backup the currently loaded data list via DataManager."""
         self.data_manager.backup_loaded_data()
@@ -291,11 +286,6 @@ class Study:
         """Return whether training is currently running."""
         return self.training_manager.is_training()
 
-    # step 6 - evaluation
-    def export_output_csv(self, filepath: str, plan_name: str, real_plan_name: str):
-        """Export model inference output to csv file via TrainingManager."""
-        self.training_manager.export_output_csv(filepath, plan_name, real_plan_name)
-
     # step 7 - visualization
     def set_channels(self, chs: list[str], positions: list[tuple]) -> None:
         """Set channels and positions for visualization."""
@@ -312,10 +302,6 @@ class Study:
             )
         self.epoch_data.set_channels(chs, positions)
 
-    def get_saliency_params(self) -> dict | None:
-        """Return parameters for saliency computation via TrainingManager."""
-        return self.training_manager.get_saliency_params()
-
     def set_saliency_params(
         self,
         saliency_params,
@@ -330,25 +316,9 @@ class Study:
         """Lock dataset via DataManager."""
         self.data_manager.lock_dataset()
 
-    def unlock_dataset(self) -> None:
-        """Unlock dataset via DataManager."""
-        self.data_manager.unlock_dataset()
-
     def is_locked(self) -> bool:
         """Check if dataset is locked via DataManager."""
         return self.data_manager.is_locked()
-
-    def has_raw_data(self) -> bool:
-        """Return whether raw data or downstream state exists (pure query)."""
-        return self.data_manager.has_raw_data() or self.has_trainer()
-
-    def has_datasets(self) -> bool:
-        """Return whether datasets or a trainer exist (pure query)."""
-        return self.data_manager.has_datasets() or self.has_trainer()
-
-    def has_trainer(self) -> bool:
-        """Return whether a trainer is configured (pure query)."""
-        return self.training_manager.has_trainer()
 
     def clean_raw_data(self, force_update: bool = True) -> None:
         """Clean raw data and all downstream state including trainer."""

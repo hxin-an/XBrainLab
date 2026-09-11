@@ -26,7 +26,6 @@ def test_dataset(
     dataset = Dataset(epochs, config)
     dataset.set_name("test")
     assert dataset.get_name() == "test"
-    assert dataset.get_ori_name() == "test"
 
     assert dataset.get_all_trial_numbers() == (0, 0, 0)
     assert dataset.get_treeview_row_info() == ("O", "test", 0, 0, 0)
@@ -72,7 +71,7 @@ def test_dataset_set_test_mask(
     # set train
     dataset.set_remaining_to_train()
     assert not dataset.has_set_empty()
-    np.logical_not(dataset.get_remaining_mask()).all()
+    assert not dataset.get_remaining_mask().any()
 
     assert dataset.get_train_len() == (total - 9)
     assert dataset.get_val_len() == 6
@@ -135,7 +134,6 @@ half_subject_count = subject_count // 2
         (subject_count, subject_count * 2),
         (half_subject_count, subject_count),
         (0, subject_count * 2),
-        (subject_count, subject_count * 2),
     ],
 )
 def test_dataset_intersection_with_subject_by_idx(

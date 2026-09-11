@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from XBrainLab.backend.application.data_interpretation_metadata import (
-    DATASET_DESCRIPTION_MAX_BYTES,
+    BIDS_METADATA_READ_BUDGET_BYTES,
     FileMetadataResolution,
     MetadataFieldResolution,
     bids_summary,
@@ -88,7 +88,7 @@ def test_bids_summary_bounds_dataset_description_materialization(
     description = tmp_path / "dataset_description.json"
     description.write_text("{}", encoding="utf-8")
     with description.open("ab") as handle:
-        handle.truncate(DATASET_DESCRIPTION_MAX_BYTES + 1)
+        handle.truncate(BIDS_METADATA_READ_BUDGET_BYTES + 1)
     original_read_text = Path.read_text
 
     def _guarded_read_text(path: Path, *args, **kwargs):

@@ -310,17 +310,21 @@ Visualization 的 visible `Compute Saliency` 會送出 explicit `SaliencyCommand
 目前 selection。Normalize、All Folds 與 plot preparation 仍各自執行 bounded cancel / stale checks；
 這不代表 attribution 的 scientific validity 已驗證。
 
-目前 tiny smoke 和 checked-in real-data smoke 都會 patch file outputs，例如 `torch.save`、`numpy.savetxt`、`matplotlib.pyplot.savefig`，避免測試污染 workspace。
+Tiny synthetic training integration、checked-in GDF training smoke 與 successful OOM retry
+會在測試暫存目錄實際寫出 checkpoint／record／evaluation，並透過正式安全讀取入口重讀。
+這些證據涵蓋 persistence，不代表 GUI 關閉後重新開啟結果或完整 user-facing command journey。
 
 ## Evidence Matrix
 
-| Evidence | 目前狀態 | 代表意思 | 不代表 |
+| Evidence | 驗證入口 | 代表意思 | 不代表 |
 | --- | --- | --- | --- |
-| Real-data IO integration | `PASS` in fast dashboard | 多格式 real fixtures 可 import。 | 完整 training / thesis reproducibility。 |
+| Real-data IO integration | `tests/integration/io/test_io_integration.py`；dashboard 有對應 gate | 驗證所選 real fixtures 的多格式 import。 | 當前 source 已通過、完整 training / thesis reproducibility。 |
 | Checked-in GDF+MAT dataset generation | tests exist | A01T/A02T/A03T 可 attach labels、preprocess、epoch、generate dataset。 | 所有資料集來源都正確。 |
 | Checked-in GDF+MAT training smoke | tests exist | A01T/A02T/A03T 可 one-epoch training smoke。 | accuracy 有意義或 protocol 可發表。 |
-| Public cross-source workflow smoke | local-only tests exist | PhysioNet EDF、BBCI GDF 走 training smoke；SCCN EEGLAB、tiny CNT 保留為 import/preprocess boundary，沒有足夠 reviewed classes 時明確阻止 supervised epoch。 | fixture 一定存在於乾淨 clone，或 thesis-grade reproducibility 完成。 |
-| Tiny E2E pipeline smoke | `2 passed in 7.54s` on 2026-05-01 | synthetic / Study train cycle 有基本閉環。 | real-world data 全面可信。 |
+| Public cross-source workflow smoke | Downloaded fixtures; required CI and local tests | PhysioNet EDF、BBCI GDF 走 training smoke；SCCN EEGLAB、tiny CNT 保留為 import/preprocess boundary，沒有足夠 reviewed classes 時明確阻止 supervised epoch。 | fixture 一定存在於乾淨 clone，或 thesis-grade reproducibility 完成。 |
+| Tiny E2E pipeline smoke | synthetic / Study training integration tests | 驗證最小 train cycle 與暫存 artifact 重讀。 | real-world data 全面可信。 |
+
+這是證據種類與邊界，不是當前測試結果；同版本執行要求由[驗證契約](../validation/README.md)擁有。
 
 ## 目前可信結論
 
@@ -328,7 +332,7 @@ Visualization 的 visible `Compute Saliency` 會送出 explicit `SaliencyCommand
 - `ApplicationService / Command API` 能跑多格式 import path；`BackendFacade` module 已移除，
   guard 會擋 product runtime 重新引入。
 - checked-in GDF+MAT fixtures 已有 dataset generation 和 one-epoch training smoke tests。
-- public fixtures 的 cross-source evidence 屬於 local-only evidence，不能當成 checked-in baseline；tiny CNT 不再被宣稱可支撐 class-balanced training smoke。
+- public fixtures 不隨 Git 提供；required CI 先驗證 pinned manifest，再執行 strict cross-source gate。本機也可執行，但不能當成 checked-in baseline；tiny CNT 不支撐 class-balanced training smoke。
 - pipeline 已有工程 smoke，但還不是 thesis validation。
 
 ## 目前風險
@@ -336,7 +340,7 @@ Visualization 的 visible `Compute Saliency` 會送出 explicit `SaliencyCommand
 - label/event correctness 是 data pipeline 的關鍵風險，不應只看 import 成功。
 - `Epochs` 會 normalization event IDs 並影響 input `Raw`，後續重構要釐清 ownership。
 - `DatasetGenerator` 支援多種 split，但文件還沒逐一映射到正式 thesis protocol。
-- public fixture tests 可能因資料未下載而 skip，不能被寫成 always-on CI evidence。
+- 一般本機 public fixture tests 可因未下載資料而 skip；required CI 先 fetch／verify，strict matrix 和 required pytest runner 不接受必要 fixture 缺失。Gate 定義不代表目前 source 已通過。
 - training smoke 目前看的是流程閉環和 metrics 存在，不看 scientific performance。
 
 ## Data Import UX Redesign Gap Audit
@@ -407,22 +411,4 @@ Data Import wizard baseline 和仍未完成的產品化差距，不是新增目�
 | Wizard polish | Current implementation is a task-oriented step-panel dialog with step-specific cards, left-side Cancel and right-side navigation/apply. Exact-source screenshots are generated under ignored handoff evidence. | Human Windows desktop acceptance is still needed; offscreen screenshots are product evidence but not release approval. |
 | Grouped checklist hierarchy | action items are structured and rendered as target-step review cards. | Very long review text may still need a detail drawer or row expansion after human walkthrough. |
 
-### 建議下一個 backend slice
-
-不要先大改整個 importer。下一個有效切片應是：
-
-1. 補 event extraction summary，讓 internal GDF / BIDS events 的 class cues 更容易人工確認。
-2. 把 metadata Smart Parse provenance 寫進 recipe trace。
-3. 補 screenshot / walkthrough artifact：EEG files 在 `eeg/`、labels 在 sibling `labels/`，使用者能
-   attach labels 並完成 preview / validate / apply。
-
-## 後續重構前要做
-
-1. 把 import / label / preprocess / epoch / dataset / training 的 command boundary 畫清楚。
-2. 決定哪些 data pipeline operation 要進 Application Service / Command API。
-3. 定義 dataset testing 在穩定化階段的 scope：
-   - checked-in fixtures
-   - local-only public fixtures
-   - optional downloaded fixtures
-   - thesis experiments
-4. 把 real-data IO、dataset generation、training smoke、reproducibility 分開記錄，不混成一個「支援資料集」claim。
+目前施工與下一個切片只由 [Now](../planning/now.md)擁有；本頁的已知邊界不構成新的實作授權。

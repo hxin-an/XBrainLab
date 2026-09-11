@@ -279,21 +279,8 @@ class AgentWorker(QObject):
             self.log.emit("Loading AI Model...")
 
             candidate_engine = LLMEngine(config)
-            if getattr(candidate_engine, "uses_owned_process", False) is True:
-                self.engine = candidate_engine
-                self._start_runtime_load(candidate_engine)
-                return
-            candidate_engine.load_model()
             self.engine = candidate_engine
-            self._publish_runtime(
-                AssistantRuntimePhase.READY,
-                activation_id=activation_id,
-            )
-
-            self.log.emit(
-                f"AI Model Loaded: {redact_public_text(launch_spec.model_id)}"
-            )
-            logger.info("Local Agent initialized successfully")
+            self._start_runtime_load(candidate_engine)
         except Exception as exc:
             failure_message = _runtime_load_failure_message(exc)
             close = getattr(candidate_engine, "close", None)

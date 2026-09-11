@@ -116,7 +116,6 @@ def test_scan_command_can_publish_lightweight_bids_catalog(tmp_path: Path) -> No
     _write_bids_dataset(tmp_path)
     service = DataInterpretationCommandService(
         object(),
-        data_filename=lambda data: str(data),
         data_filepath=lambda data: str(data),
     )
 
@@ -139,7 +138,6 @@ def test_review_command_materializes_only_selected_bids_subject(tmp_path: Path) 
     _write_bids_dataset(tmp_path)
     service = DataInterpretationCommandService(
         object(),
-        data_filename=lambda data: str(data),
         data_filepath=lambda data: str(data),
     )
 

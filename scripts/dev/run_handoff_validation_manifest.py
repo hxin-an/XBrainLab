@@ -217,6 +217,17 @@ def run_handoff_manifest(
         for check_id in required_check_ids
         if check_id in deferred_by_id
     ]
+    completed.extend(str(record["check_id"]) for record in ordered_deferred)
+    for record in ordered_deferred:
+        if not record.get("passed"):
+            return _failed_result(
+                str(record["check_id"]),
+                record=record,
+                completed=completed,
+                required_check_ids=required_check_ids,
+                release_profile=release_profile,
+            )
+
     persist_handoff_records(
         repo_root=root,
         evidence_root=output_root,
@@ -229,17 +240,6 @@ def run_handoff_manifest(
         manifest_source_identity=manifest_source_identity,
         release_profile=release_profile,
     )
-    completed.extend(str(record["check_id"]) for record in ordered_deferred)
-    for record in ordered_deferred:
-        if not record.get("passed"):
-            return _failed_result(
-                str(record["check_id"]),
-                record=record,
-                completed=completed,
-                required_check_ids=required_check_ids,
-                release_profile=release_profile,
-            )
-
     for check_id in final_gate_ids:
         record = record_gate(check_id, defer_dossier_update=False)
         completed.append(check_id)

@@ -36,6 +36,7 @@ from XBrainLab.backend.training_state_contract import (
     TrainingOutcomeState,
 )
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.config import AppConfig
 from XBrainLab.debug.tool_debug_mode import ToolDebugMode
 from XBrainLab.llm.agent.assistant_activity import (
     AssistantDecisionOwner,
@@ -108,7 +109,6 @@ from XBrainLab.ui.components.vram_checker import VRAMConflictChecker
 from XBrainLab.ui.components.workflow_ui_handoff_host import WorkflowUiHandoffHost
 from XBrainLab.ui.core.observer_bridge import QtObserverBridge
 from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
-from XBrainLab.ui.styles.icons import Icons
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 VIZ_TAB_3D_PLOT = 3
@@ -471,7 +471,7 @@ class AgentManager(QObject):
 
         # Settings is a direct action; dock controls have their own buttons.
         self.settings_btn = QPushButton()
-        settings_icon = QIcon(Icons.SETTINGS.path)
+        settings_icon = QIcon(AppConfig.get_icon_path("settings.svg"))
         if settings_icon.isNull():
             settings_icon = title_style.standardIcon(
                 QStyle.StandardPixmap.SP_FileDialogDetailedView

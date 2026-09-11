@@ -264,21 +264,6 @@ class Stylesheets:
             color: {Theme.TEXT_SECONDARY};
         }}
 
-        /* Card Widget */
-        QFrame#CardWidget {{
-            background-color: {Theme.BACKGROUND_MID};
-            border: 1px solid {Theme.BACKGROUND_LIGHT};
-            border-radius: 8px;
-        }}
-        QLabel#CardTitle {{
-            font-size: 12pt;
-            font-weight: bold;
-            color: {Theme.TEXT_PRIMARY};
-            padding-bottom: 10px;
-            border-bottom: 1px solid {Theme.BACKGROUND_LIGHT};
-            margin-bottom: 5px;
-        }}
-
         /* ScrollBar */
         QScrollBar:vertical {{
             border: none;

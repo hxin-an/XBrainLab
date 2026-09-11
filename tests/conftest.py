@@ -5,6 +5,7 @@
 
 import logging
 import os
+import sys
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, NoReturn
@@ -27,6 +28,13 @@ repo_root = Path(__file__).resolve().parents[1]
 test_temp_root = configure_test_temp_root(repo_root)
 matplotlib_cache_dir = matplotlib_cache_root(test_temp_root)
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+if (
+    sys.platform == "win32"
+    and os.environ["QT_QPA_PLATFORM"].strip().lower() == "offscreen"
+):
+    windows_fonts = Path(os.environ.get("SYSTEMROOT", r"C:\Windows")) / "Fonts"
+    if windows_fonts.is_dir():
+        os.environ.setdefault("QT_QPA_FONTDIR", str(windows_fonts))
 os.environ.setdefault("MPLBACKEND", "Agg")
 os.environ["MPLCONFIGDIR"] = str(matplotlib_cache_dir)
 os.makedirs(matplotlib_cache_dir, exist_ok=True)
@@ -40,7 +48,54 @@ try:
 except ImportError:
     matplotlib = None
 import pytest
+from PyQt6.QtCore import QSettings
 from PyQt6.QtWidgets import QDialog, QMessageBox
+
+from XBrainLab.platform_paths import user_config_dir
+
+
+@pytest.fixture(autouse=True)
+def isolate_product_qt_settings(request, monkeypatch):
+    """Keep real Qt serialization, but never use the product's native user store."""
+    original_init = QSettings.__init__
+
+    def isolated_init(self, *args, **kwargs):
+        application = None
+        if (
+            len(args) == 2
+            and args[0] == "XBrainLab"
+            and isinstance(args[1], str)
+            and not kwargs
+        ):
+            application = args[1]
+        elif (
+            len(args) == 2
+            and isinstance(args[0], str)
+            and args[1] == QSettings.Format.IniFormat
+            and not kwargs
+        ):
+            candidate = Path(args[0])
+            if (
+                candidate.parent == user_config_dir() / "qt-settings"
+                and candidate.name
+                in {"XBrainLab.ini", "MontagePicker.ini", "SmartParser.ini"}
+                and not candidate.is_relative_to(request.getfixturevalue("tmp_path"))
+            ):
+                application = candidate.stem
+
+        if application is not None:
+            # Resolve lazily; preserve explicit paths already owned by this test.
+            path = (
+                request.getfixturevalue("tmp_path")
+                / "qt-settings"
+                / f"{application}.ini"
+            )
+            original_init(self, str(path), QSettings.Format.IniFormat)
+        else:
+            original_init(self, *args, **kwargs)
+
+    # Patch the class method so aliases imported before fixture setup are covered.
+    monkeypatch.setattr(QSettings, "__init__", isolated_init)
 
 
 def _unexpected_modal(*_args: Any, **_kwargs: Any) -> NoReturn:

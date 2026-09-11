@@ -11,7 +11,6 @@ from PyQt6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QComboBox,
-    QDialogButtonBox,
     QFileDialog,
     QFrame,
     QGridLayout,
@@ -396,7 +395,6 @@ class DataInterpretationPreviewDialog(
         self.event_layout: QVBoxLayout
         self.scroll_area: QScrollArea
         self.step_stack: QStackedWidget
-        self.button_box: QDialogButtonBox
         self.back_button: QPushButton
         self.next_button: QPushButton
         self.cancel_button: QPushButton
@@ -684,9 +682,8 @@ class DataInterpretationPreviewDialog(
         self._fit_tree_columns(
             self.file_tree,
             (260, 110, 120, 150, 70),
-            stretch_column=0,
         )
-        self._fit_compact_tree_height(self.file_tree, min_height=86, max_height=160)
+        self._fit_compact_tree_height(self.file_tree, min_height=86)
         complete_count, missing_fields = self._metadata_completion_counts()
         missing_fields = self._metadata_required_missing_fields(missing_fields)
         metadata_table_card = QFrame()
@@ -765,12 +762,10 @@ class DataInterpretationPreviewDialog(
         self._fit_tree_columns(
             self.label_carrier_tree,
             (190, 145, 150, 175, 135, 150),
-            stretch_column=5,
         )
         self._fit_compact_tree_height(
             self.label_carrier_tree,
             min_height=92,
-            max_height=150,
         )
         self.label_carrier_tree.setVisible(False)
 
@@ -858,6 +853,7 @@ class DataInterpretationPreviewDialog(
                 "Review what will be imported before applying.",
             )
         )
+        review_panel_layout.addWidget(self.confirmation_label)
         self.review_actions_panel = QWidget()
         self.review_actions_panel.setObjectName("DataImportActionItemsPanel")
         self.review_actions_layout = QVBoxLayout(self.review_actions_panel)
@@ -890,7 +886,6 @@ class DataInterpretationPreviewDialog(
         self._fit_tree_columns(
             self.review_tree,
             (135, 220, 315, 245),
-            stretch_column=3,
         )
         self.review_tree.setTextElideMode(Qt.TextElideMode.ElideNone)
         self.review_tree.setWordWrap(True)
@@ -956,7 +951,6 @@ class DataInterpretationPreviewDialog(
         self.next_button.setStyleSheet(self._primary_button_style())
         self.next_button.clicked.connect(self._go_next_step)
 
-        self.button_box = QDialogButtonBox(self)
         self.apply_button = QPushButton(
             "Apply Remap"
             if self.decision == "blocked" and self._has_remap_options()
@@ -1092,23 +1086,6 @@ class DataInterpretationPreviewDialog(
             )
             layout.addWidget(detail_label)
         return card
-
-    @staticmethod
-    def _summary_line(label: str, value: str) -> QFrame:
-        row = QFrame()
-        row.setObjectName("DataImportSummaryLine")
-        layout = QHBoxLayout(row)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
-        label_widget = QLabel(label)
-        label_widget.setObjectName("DataImportSummaryLabel")
-        value_widget = QLabel(value)
-        value_widget.setObjectName("DataImportSummaryValue")
-        value_widget.setWordWrap(True)
-        layout.addWidget(label_widget)
-        layout.addStretch()
-        layout.addWidget(value_widget)
-        return row
 
     def _build_label_source_mode_card(self, layout: QVBoxLayout) -> None:
         row = QHBoxLayout()
@@ -1288,7 +1265,7 @@ class DataInterpretationPreviewDialog(
         )
         if not uses_external_value_editor:
             self._populate_event_tree()
-        self._fit_tree_columns(self.event_tree, (220, 150, 420), stretch_column=2)
+        self._fit_tree_columns(self.event_tree, (220, 150, 420))
         self._fit_event_tree_height()
         if self._label_source_mode() == "internal_events":
             self._build_internal_event_rules_view()
@@ -1515,24 +1492,6 @@ class DataInterpretationPreviewDialog(
             or item.text(0)
         )
 
-    def _inline_rule_control(self, label: str, selector: QComboBox) -> QFrame:
-        frame = QFrame()
-        frame.setObjectName("DataImportInlineRuleControl")
-        frame.setMinimumWidth(370)
-        layout = QHBoxLayout(frame)
-        layout.setContentsMargins(8, 5, 8, 5)
-        layout.setSpacing(7)
-        title = QLabel(label)
-        title.setObjectName("DataImportRuleLabel")
-        layout.addWidget(title)
-        selector.setFixedWidth(250)
-        selector.setSizePolicy(
-            QSizePolicy.Policy.Fixed,
-            QSizePolicy.Policy.Fixed,
-        )
-        layout.addWidget(selector)
-        return frame
-
     def _refresh_pairing_status(self) -> None:
         for eeg_file, selector in getattr(self, "_eeg_label_widgets", {}).items():
             expected_key = self._label_key_for_eeg(eeg_file)
@@ -1608,33 +1567,6 @@ class DataInterpretationPreviewDialog(
             for name in self._selected_eeg_file_names()
             if self._label_key_for_eeg(name)
         )
-
-    def _matched_label_pair_count(self) -> int:
-        return sum(
-            1
-            for item, _original in self._label_carrier_items
-            if self._label_carrier_choice_text(
-                "target_file",
-                self._label_carrier_item_text(item, 1),
-            )
-        )
-
-    def _unmatched_eeg_file_names(self) -> list[str]:
-        eeg_files = self._selected_eeg_file_names()
-        matched = {
-            Path(
-                self._label_carrier_choice_text(
-                    "target_file",
-                    self._label_carrier_item_text(item, 1),
-                )
-            ).name
-            for item, _original in self._label_carrier_items
-            if self._label_carrier_choice_text(
-                "target_file",
-                self._label_carrier_item_text(item, 1),
-            )
-        }
-        return [name for name in eeg_files if name not in matched]
 
     def _unassigned_label_file_names(self) -> list[str]:
         result: list[str] = []
@@ -2184,15 +2116,6 @@ class DataInterpretationPreviewDialog(
             else:
                 folder_keys.add(key)
         return file_keys, folder_keys
-
-    def _is_auto_label_source_duplicate(self, source: str) -> bool:
-        key = self._normalized_label_source_key(source)
-        if not key:
-            return False
-        auto_file_keys, auto_folder_keys = self._auto_label_source_keys()
-        if self._looks_like_file(source):
-            return key in auto_file_keys
-        return key in auto_folder_keys
 
     def _is_label_carrier_excluded(self, carrier_path: str) -> bool:
         key = self._normalized_label_source_key(carrier_path)
@@ -3242,10 +3165,7 @@ class DataInterpretationPreviewDialog(
         self,
         tree: QTreeWidget,
         widths: tuple[int, ...],
-        *,
-        stretch_column: int,  # retained for call-site readability
     ) -> None:
-        _ = stretch_column
         tree.setTextElideMode(Qt.TextElideMode.ElideRight)
         tree.setWordWrap(False)
         tree.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -3374,7 +3294,6 @@ class DataInterpretationPreviewDialog(
         self._fit_compact_tree_height(
             self.file_tree,
             min_height=90,
-            max_height=260,
             row_height_extra=2,
         )
 
@@ -3384,7 +3303,6 @@ class DataInterpretationPreviewDialog(
         self._fit_compact_tree_height(
             self.label_carrier_tree,
             min_height=96,
-            max_height=220,
             row_height_extra=2,
         )
 
@@ -3394,8 +3312,6 @@ class DataInterpretationPreviewDialog(
         self._fit_compact_tree_height(
             self.event_tree,
             min_height=72,
-            max_height=210,
-            max_visible_rows=6,
             row_height_extra=1,
         )
         if hasattr(self, "event_group"):
@@ -3410,17 +3326,11 @@ class DataInterpretationPreviewDialog(
         tree: QTreeWidget,
         *,
         min_height: int,
-        max_height: int,
-        max_visible_rows: int = 5,
         row_height_extra: int = 0,
     ) -> None:
-        _ = max_height
         tree.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         row_count = max(1, tree.topLevelItemCount())
-        visible_rows = row_count
-        row_heights = [
-            tree.sizeHintForRow(index) for index in range(min(row_count, visible_rows))
-        ]
+        row_heights = [tree.sizeHintForRow(index) for index in range(row_count)]
         positive_row_heights = [height for height in row_heights if height > 0]
         row_height = (
             max(positive_row_heights) + row_height_extra
@@ -3430,7 +3340,7 @@ class DataInterpretationPreviewDialog(
         header = tree.header()
         header_height = header.height() if header is not None else 28
         frame_padding = tree.frameWidth() * 2
-        target_height = header_height + (visible_rows * row_height) + frame_padding + 4
+        target_height = header_height + (row_count * row_height) + frame_padding + 4
         bounded_height = max(target_height, min_height)
         tree.setMinimumHeight(bounded_height)
         tree.setMaximumHeight(bounded_height)
@@ -3573,27 +3483,6 @@ class DataInterpretationPreviewDialog(
             parts.append(f"{complete_count} complete")
         parts.append(f"Missing {missing_text}")
         return " · ".join(parts)
-
-    @staticmethod
-    def _metadata_missing_hint(missing_fields: set[str]) -> str:
-        if not missing_fields:
-            return ""
-        ordered = [
-            field.capitalize()
-            for field in ("subject", "session", "task", "run")
-            if field in missing_fields
-        ]
-        field_text = ", ".join(ordered)
-        verb = "is" if len(ordered) == 1 else "are"
-        return f"{field_text} {verb} missing. Double-click a cell to edit it."
-
-    def _label_source_summary_text(self) -> str:
-        carriers = self.label_carrier_tree.topLevelItemCount()
-        if carriers <= 0:
-            return "Internal events or no labels"
-        if self._extra_label_sources:
-            return "Detected and loaded separately"
-        return "Detected near EEG"
 
     def _source_selection_text(self) -> str:
         selection = str(self.preview.get("source_selection") or "").strip()
@@ -3982,16 +3871,6 @@ class DataInterpretationPreviewDialog(
                     ],
                 ),
             )
-
-    @staticmethod
-    def _field_text(value: Any) -> str:
-        if not isinstance(value, dict):
-            return ""
-        resolved = value.get("value")
-        decision = value.get("decision")
-        if resolved in (None, ""):
-            return str(decision or "missing")
-        return f"{resolved} ({decision})" if decision else str(resolved)
 
     @staticmethod
     def _field_value(value: Any) -> str:

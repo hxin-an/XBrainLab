@@ -7,6 +7,7 @@ from typing import cast
 import numpy as np
 import pytest
 
+from XBrainLab.backend.application import saliency_render
 from XBrainLab.backend.application.errors import PreconditionError
 from XBrainLab.backend.application.saliency_render import (
     SaliencyCrossFoldIdentity,
@@ -206,10 +207,14 @@ def _fold_holders(
 
 def _manual_geometry_publisher(
     positions: tuple[tuple[float, float, float], ...],
+    *,
+    values: tuple[np.ndarray, np.ndarray] | None = None,
 ) -> tuple[SaliencyRenderPublisher, SaliencyRunIdentity]:
     epoch_data = _EpochDataWithManualGeometry(positions)
     record = _Record(
-        (
+        values
+        if values is not None
+        else (
             np.ones((1, 4, 4), dtype=np.float32),
             np.full((1, 4, 4), 2.0, dtype=np.float32),
         )
@@ -242,6 +247,51 @@ def _manual_geometry_publisher(
         capture_training_boundary=lambda: boundary,
     )
     return publisher, SaliencyRunIdentity(SaliencyPlanIdentity(0), 0)
+
+
+@pytest.mark.parametrize("normalize", [False, True])
+@pytest.mark.parametrize("scale", [0.0, 2.0])
+def test_single_run_render_preserves_values_and_detaches_source(
+    monkeypatch: pytest.MonkeyPatch,
+    normalize: bool,
+    scale: float,
+) -> None:
+    values = (
+        np.full((1, 4, 4), -scale, dtype=np.float32),
+        np.full((1, 4, 4), scale / 2, dtype=np.float32),
+    )
+    publisher, identity = _manual_geometry_publisher((), values=values)
+    copied_bytes: list[int] = []
+    original_copy = saliency_render._copy_array_readonly
+
+    def counted_copy(value: np.ndarray) -> np.ndarray:
+        copied_bytes.append(value.nbytes)
+        return original_copy(value)
+
+    monkeypatch.setattr(saliency_render, "_copy_array_readonly", counted_copy)
+
+    render = publisher.publish(
+        SaliencyRenderRequest(
+            publication_generation=4,
+            run=identity,
+            method="Gradient",
+            normalize=normalize,
+        )
+    )
+
+    assert render.data.normalized is normalize
+    assert sum(copied_bytes) == (
+        0 if normalize else sum(value.nbytes for value in values)
+    )
+    for index, source in enumerate(values):
+        result = render.data.saliency_by_class[index]
+        expected = source / scale if normalize and scale else source
+        np.testing.assert_array_equal(result, expected)
+        assert result.dtype == np.float32
+        assert not result.flags.writeable
+        assert not np.shares_memory(result, source)
+        source.fill(999)
+        assert not np.any(result == 999)
 
 
 def test_cross_fold_choices_require_matching_verified_runs_and_split() -> None:

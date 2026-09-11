@@ -8,7 +8,7 @@
 下載指令：
 
 ```bash
-/home/administrator/.local/bin/poetry run -- python scripts/dev/fetch_public_eeg_fixtures.py
+poetry run -- python scripts/dev/fetch_public_eeg_fixtures.py
 ```
 
 下載器會驗證公開檔案的 SHA-256，避免 0-byte 或 partial download 被誤當成可用 fixture。
@@ -49,8 +49,8 @@ timeout 1800s prlimit --core=0 -- poetry run -- python \
 ```
 
 - pinned manifest 共 `277,106,963 bytes`，程式內硬上限為 `320 MiB`
-- profile 總共 10 個 fixture groups：既有 required CI 的 7 組，加上三個獨立資料模型：
-  - OpenNeuro ds003061：真實三個 run 的 BIDS / EEGLAB P300，配對三個 `events.tsv`
+- profile 總共 10 個 fixture groups：保留 required CI 的 8 組（含 OpenNeuro ds003061
+  三個 BIDS / EEGLAB P300 runs 與配對 `events.tsv`），再加入兩個獨立資料模型：
   - CHB-MIT chb01：臨床長時間 EDF、seizure sidecar 與人類可讀 summary
   - Sleep-EDF ST7011：PSG EDF 與獨立 EDF+ hypnogram
 - backend runner 會經真實 `ApplicationService` 跑 scan、preview、validate、apply 與
@@ -76,7 +76,8 @@ poetry run python scripts/dev/fetch_public_eeg_fixtures.py \
 ```
 
 - exact pinned profile：`68` files、`569,171,066 bytes`
-- BIDS root：`tests/fixtures/data/public/openneuro-ds003061-p300/`
+- 未設定 `XBRAINLAB_DATA_DIR` 時的 BIDS root：`tests/fixtures/data/public/openneuro-ds003061-p300/`；
+  有設定時位於該 data root 的 `datasets/public-fixtures/openneuro-ds003061-p300/`
 - 手測時選擇 `Import Data` → `Choose folder…`，subject selector 應列出
   `001`、`002`、`003`
 - 這個 profile 不屬於 required CI 或 teacher-preflight，不會增加一般 CI 下載量
@@ -121,6 +122,11 @@ training smoke；因此 required fixtures 缺失時不能顯示綠燈。
     sidecars
   - Type: compact downloaded folder-level BIDS-EEG import, metadata, label
     placement, recipe, and epoch handoff coverage
+- `openneuro-ds003061-p300/`
+  - Source: OpenNeuro ds003061, pinned version 1.1.2
+  - Format: three EEGLAB runs for `sub-001` with BIDS event/channel sidecars
+  - Type: required-CI P300 import, reviewed label placement and epoch handoff coverage;
+    the additional `sub-002` / `sub-003` files belong only to `p300-multisubject`
 
 ## Pinned source facts
 
@@ -169,8 +175,8 @@ SCCN 的 `rt` / `square` 缺少 public protocol class ground truth；CNT 的可�
 可重跑命令：
 
 ```bash
-/home/administrator/.local/bin/poetry run -- python scripts/dev/run_public_cross_source_training_smoke.py --format markdown
-/home/administrator/.local/bin/poetry run -- python scripts/dev/run_public_cross_source_training_smoke.py --format json --strict
+poetry run -- python scripts/dev/run_public_cross_source_training_smoke.py --format markdown
+poetry run -- python scripts/dev/run_public_cross_source_training_smoke.py --format json --strict
 ```
 
 目前仍停在 import/facade breadth 的 fixture 是：

@@ -314,7 +314,6 @@ def test_close_fences_in_flight_initialize_and_prevents_resource_republish():
         patch("langchain_huggingface.HuggingFaceEmbeddings"),
         patch("qdrant_client.QdrantClient", _FakeClient),
         patch("langchain_qdrant.Qdrant", return_value=object()),
-        patch.object(RAGRetriever, "_collection_exists", return_value=True),
         patch.object(RAGRetriever, "_build_bm25_index", return_value=None),
         patch.object(RAGConfig, "embedding_cache_ready", return_value=True),
     ):

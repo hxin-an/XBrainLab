@@ -40,7 +40,6 @@ from XBrainLab.ui.interaction_outcome import (
 def _main_window() -> Any:
     status_bar = MagicMock()
     window = SimpleNamespace(
-        switch_page=MagicMock(),
         statusBar=MagicMock(return_value=status_bar),
         dataset_panel=SimpleNamespace(
             action_handler=SimpleNamespace(
@@ -101,6 +100,19 @@ def _main_window() -> Any:
             ),
         ),
     )
+    window.navigation_calls = []
+    window.navigation_callbacks = []
+    window.navigation_error = None
+
+    def switch_page(index: int, *, on_ready, on_failed) -> bool:
+        window.navigation_calls.append(index)
+        window.navigation_callbacks.append((on_ready, on_failed))
+        if window.navigation_error is not None:
+            raise window.navigation_error
+        on_ready(None)
+        return True
+
+    window.switch_page = switch_page
     return window
 
 
@@ -212,7 +224,7 @@ def test_current_data_import_navigates_to_backend_projected_stage(
 
     assert outcome.status is WorkflowUiHandoffResolutionStatus.DEFERRED_TO_UI
     assert outcome.command_name == expected_command.value
-    window.switch_page.assert_called_once_with(0)
+    assert window.navigation_calls == [0]
     window.dataset_panel.action_handler.import_data.assert_not_called()
     window.dataset_panel.action_handler.review_current_import.assert_not_called()
 
@@ -323,7 +335,7 @@ def test_stale_open_data_import_action_does_not_route_to_non_import_workflow() -
 
     assert outcome.status is WorkflowUiHandoffResolutionStatus.FAILED
     assert outcome.message == "There is no pending Data Import step to open."
-    window.switch_page.assert_not_called()
+    assert window.navigation_calls == []
     window.dataset_panel.action_handler.import_data.assert_not_called()
     window.dataset_panel.action_handler.review_current_import.assert_not_called()
 
@@ -363,7 +375,7 @@ def test_completed_modal_routes_through_concrete_epoch_adapter() -> None:
     assert outcome.request_id == request.request_id
     assert outcome.command_name == "create_epoch"
     assert outcome.decision_fields == ("epoch_window",)
-    window.switch_page.assert_called_once_with(1)
+    assert window.navigation_calls == [1]
     window.preprocess_panel.sidebar.open_epoching.assert_called_once_with()
     window.statusBar.return_value.showMessage.assert_called_with(
         "Opened Preprocess panel."
@@ -375,8 +387,8 @@ def test_unmaterialized_modal_handoff_defers_without_touching_placeholder() -> N
     window = _main_window()
     navigation_calls = []
 
-    def _switch_page(index: int, *, on_ready=None) -> bool:
-        navigation_calls.append((index, on_ready))
+    def _switch_page(index: int, *, on_ready, on_failed) -> bool:
+        navigation_calls.append((index, on_ready, on_failed))
         return False
 
     window.switch_page = _switch_page
@@ -390,11 +402,11 @@ def test_unmaterialized_modal_handoff_defers_without_touching_placeholder() -> N
     outcome = host.open(request)
 
     assert outcome.status is WorkflowUiHandoffResolutionStatus.COMMAND_PENDING
-    assert outcome.is_verified_completion is False
     assert host.active_request is request
     assert len(navigation_calls) == 1
     assert navigation_calls[0][0] == 1
     assert callable(navigation_calls[0][1])
+    assert callable(navigation_calls[0][2])
     window.statusBar.return_value.showMessage.assert_called_with(
         "Opening Preprocess..."
     )
@@ -547,7 +559,7 @@ def test_host_owns_modal_route_table_and_outcome_conversion(
     outcome = host.open(request)
 
     assert outcome.status is expected_status
-    window.switch_page.assert_called_once_with(panel_index)
+    assert window.navigation_calls == [panel_index]
     if command_name == "saliency":
         window.visualization_panel.compute_saliency.assert_called_once_with()
         window.visualization_panel.sidebar.set_saliency.assert_not_called()
@@ -579,7 +591,7 @@ def test_apply_interpretation_handoff_opens_current_review_at_target_step(
     )
 
     assert outcome.status is WorkflowUiHandoffResolutionStatus.COMPLETED
-    window.switch_page.assert_called_once_with(0)
+    assert window.navigation_calls == [0]
     window.dataset_panel.action_handler.review_current_import.assert_called_once_with(
         initial_step=expected_step,
         expected_identity=identity,
@@ -616,10 +628,9 @@ def test_panel_only_handoff_defers_to_manual_ui_without_claiming_completion() ->
     )
 
     assert outcome.status is WorkflowUiHandoffResolutionStatus.DEFERRED_TO_UI
-    assert outcome.is_verified_completion is False
     assert outcome.command_name == "evaluate"
     assert host.active_request is None
-    window.switch_page.assert_called_once_with(3)
+    assert window.navigation_calls == [3]
 
 
 def test_epoch_handoff_retains_request_until_correlated_terminal_completion() -> None:
@@ -847,7 +858,7 @@ def test_montage_handoff_uses_existing_dialog_and_preserves_agent_suggestion() -
 
     assert outcome.status is WorkflowUiHandoffResolutionStatus.COMPLETED
     assert outcome.suggested_values == request.suggested_values
-    window.switch_page.assert_called_once_with(0)
+    assert window.navigation_calls == [0]
     window.dataset_panel.sidebar.open_electrode_layout.assert_called_once_with(
         default_montage="standard_1020",
         warning="Review channel identities.",
@@ -862,7 +873,7 @@ def test_montage_handoff_uses_existing_dialog_and_preserves_agent_suggestion() -
 
 def test_montage_navigation_failure_returns_correlated_failed_resolution() -> None:
     window = _main_window()
-    window.switch_page.side_effect = RuntimeError("private navigation detail")
+    window.navigation_error = RuntimeError("private navigation detail")
     host = WorkflowUiHandoffHost(window)
     request = WorkflowUiHandoffRequest.for_decision("apply_montage")
 
@@ -926,7 +937,6 @@ def test_failed_modal_outcome_is_preserved_without_claiming_completion() -> None
     outcome = host.open(WorkflowUiHandoffRequest.for_decision("create_epoch"))
 
     assert outcome.status is WorkflowUiHandoffResolutionStatus.FAILED
-    assert outcome.is_verified_completion is False
     assert outcome.message == "Epoch settings could not be opened."
 
 

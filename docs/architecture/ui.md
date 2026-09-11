@@ -58,7 +58,7 @@ Windows native acceptance。
 初始化流程主要在 `XBrainLab/ui/main_window.py`：
 
 1. 建立 top bar，加入五個 navigation buttons：Dataset、Preprocess、Training、Evaluation、Visualization。
-2. 建立 `InfoPanelService(self.study)`，讓後續 sidebar 中的 aggregate info panel 可以註冊更新。
+2. 建立 `InfoPanelService()`，讓後續 sidebar 中的 aggregate info panel 可以註冊更新。
 3. 建立 `QStackedWidget`。
 4. 呼叫 `init_panels()` 建立五個 lazy placeholders；panel 在第一次開啟時才 materialize。
 5. 呼叫 `init_agent()` 建立 assistant dock 與相關 signal wiring。
@@ -91,8 +91,7 @@ Training product progress 由 transient port、五個 product panels 的 state s
 port。Async command 的 `on_result` callback 只能處理 result message、
 status 或錯誤顯示；不可在 callback 裡呼叫 `update_panel()`、`update_info()`、
 `mark_refresh_dirty()` 等本地 state render refresh。`MainWindow.update_info_panel()` 現在委派到 `InfoPanelService.notify_all()`，
-它重播已發布 rows 給已註冊 sidebar aggregate panels；只在沒有
-`info_service` 的 injected / compatibility context 下才 fallback 到 direct `info_panel.update_info()`。
+它重播已發布 rows 給已註冊 sidebar aggregate panels，不另設 direct widget refresh fallback。
 
 ## Controller 與 application context
 
@@ -315,8 +314,8 @@ Assistant 不是直接塞在 `MainWindow` 內部，而是由 `AgentManager` 管�
 
 ## Aggregate Info 更新
 
-`MainWindow` 建立單一 `InfoPanelService(self.study)`，各 `AggregateInfoPanel` 以 weak listener
-註冊。Service 只 render/replay `ApplicationViewPublication.data_summary_rows`，不另發
+`MainWindow` 建立單一 `InfoPanelService()`，各 `AggregateInfoPanel` 以 weak listener
+註冊。Service 不持有 Study，只 render/replay `ApplicationViewPublication.data_summary_rows`，不另發
 `QueryStateCommand(data_lists)`，也不訂閱 controller events。沒有 usable publication 時
 呈現空的 fail-closed summary；deleted Qt listener 會被移除，其他 render failure 則回報失敗，
 讓 owning publication renderer 決定是否提交 revision / retry。

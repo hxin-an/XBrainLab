@@ -8,7 +8,7 @@ import pytest
 import torch
 from torch import nn
 
-from XBrainLab.backend.model_base.legacy_braindecode import models as legacy_models
+from XBrainLab.backend.model_base.legacy_braindecode.models import reve
 
 
 class _OfflinePositionBank(nn.Module):
@@ -51,7 +51,7 @@ def test_local_reve_strictly_loads_upstream_state_and_matches_output(
 
     torch.manual_seed(439)
     upstream = upstream_module.REVE(**kwargs).eval()
-    legacy = legacy_models.REVE(**kwargs).eval()
+    legacy = reve.REVE(**kwargs).eval()
 
     upstream_state = upstream.state_dict()
     legacy_state = legacy.state_dict()
@@ -71,7 +71,7 @@ def test_local_reve_strictly_loads_upstream_state_and_matches_output(
 
 def test_local_reve_supports_finite_backward() -> None:
     kwargs, inputs, positions = _model_case()
-    model = legacy_models.REVE(**kwargs).train()
+    model = reve.REVE(**kwargs).train()
 
     model(inputs, pos=positions).square().mean().backward()
 
@@ -89,13 +89,11 @@ def test_local_reve_channel_name_lookup_fails_closed_without_local_positions() -
     kwargs["n_chans"] = 2
 
     with pytest.raises(RuntimeError, match="explicit channel positions"):
-        legacy_models.REVE(**kwargs)
+        reve.REVE(**kwargs)
 
 
 def test_local_reve_has_no_remote_or_cache_loader_surface() -> None:
-    source = (Path(legacy_models.__file__).parent / "reve.py").read_text(
-        encoding="utf-8"
-    )
+    source = Path(reve.__file__).read_text(encoding="utf-8")
     for forbidden_surface in (
         "Hugging Face Hub",
         "HuggingFace",

@@ -9,7 +9,7 @@ unrelated workflow-surface router is isolated while its parallel slice changes.
 from __future__ import annotations
 
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from threading import Event, Lock
@@ -891,7 +891,15 @@ def test_pending_agent_decision_resolves_through_real_ui_handoff_signal(
     ) as harness:
         _release_initial_load(qtbot, harness)
         opened = Event()
+        navigation_requested = Event()
         switched_pages: list[int] = []
+        ready_callbacks: list[Callable[[object], None]] = []
+
+        def switch_page(page: int, *, on_ready, on_failed) -> bool:
+            switched_pages.append(page)
+            ready_callbacks.append(on_ready)
+            navigation_requested.set()
+            return False
 
         def open_epoching() -> InteractionOutcome:
             opened.set()
@@ -901,7 +909,7 @@ def test_pending_agent_decision_resolves_through_real_ui_handoff_signal(
         main_window.preprocess_panel = SimpleNamespace(
             sidebar=SimpleNamespace(open_epoching=open_epoching)
         )
-        main_window.switch_page = switched_pages.append
+        main_window.switch_page = switch_page
         request = WorkflowUiHandoffRequest.for_decision(
             "create_epoch",
             decision_fields=("target_event", "epoch_window"),
@@ -926,15 +934,23 @@ def test_pending_agent_decision_resolves_through_real_ui_handoff_signal(
 
         controller.workflow_ui_handoff_requested.emit(request)
 
+        _wait_for_event(qtbot, navigation_requested)
+        qtbot.waitUntil(lambda: len(outcome_spy) >= 1, timeout=WATCHDOG_MS)
+        assert not opened.is_set()
+        assert len(outcome_spy) == 1
+        assert outcome_spy[0][0].status is AgentInteractionStatus.DEFERRED_TO_UI
+        assert len(terminal_spy) == 0
+        assert controller.pending_interactions.workflow_handoff is not None
+        ready_callbacks[0](main_window.preprocess_panel)
         _wait_for_event(qtbot, opened)
         qtbot.waitUntil(
             lambda: controller.pending_interactions.workflow_handoff is None,
             timeout=WATCHDOG_MS,
         )
-        qtbot.waitUntil(lambda: len(outcome_spy) == 1, timeout=WATCHDOG_MS)
+        qtbot.waitUntil(lambda: len(outcome_spy) >= 2, timeout=WATCHDOG_MS)
         assert switched_pages == [1]
-        assert len(outcome_spy) == 1
-        assert outcome_spy[0][0] == AgentInteractionOutcome(
+        assert len(outcome_spy) == 2
+        assert outcome_spy[1][0] == AgentInteractionOutcome(
             status=AgentInteractionStatus.COMPLETED_IN_UI,
             command_name="create_epoch",
             request_id=request.request_id,

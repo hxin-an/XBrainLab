@@ -48,34 +48,6 @@ class RAGRetrieverLifecycle:
         self._retrieval_turn_id: int | None = None
         self._cancelled_turns: set[int] = set()
 
-    @property
-    def is_initializing(self) -> bool:
-        """Return whether the owned initializer thread is still running."""
-        with self._lock:
-            thread = self._init_thread
-        return bool(thread and thread.is_alive())
-
-    @property
-    def initializer_thread_daemon(self) -> bool:
-        """Return whether the owned initializer cannot block process exit."""
-        with self._lock:
-            thread = self._init_thread
-        return bool(thread and thread.daemon)
-
-    @property
-    def is_retrieving(self) -> bool:
-        """Return whether an owned retrieval worker is still running."""
-        with self._lock:
-            thread = self._retrieval_thread
-        return bool(thread and thread.is_alive())
-
-    @property
-    def retrieval_thread_daemon(self) -> bool:
-        """Return whether the owned retrieval worker cannot block process exit."""
-        with self._lock:
-            thread = self._retrieval_thread
-        return bool(thread and thread.daemon)
-
     def start(self) -> bool:
         """Start initialization exactly once while the lifecycle is open."""
         with self._lock:

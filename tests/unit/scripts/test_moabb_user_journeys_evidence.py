@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
+from scripts.dev.moabb_user_journeys import cli as journey_cli
+from scripts.dev.moabb_user_journeys import evidence as journey_evidence
 from scripts.dev.moabb_user_journeys.cli import _finish_manifest
 from scripts.dev.moabb_user_journeys.evidence import (
     artifact_record,
+    build_manifest,
     empty_dataset_evidence,
     evaluate_quality_acceptance,
     persist_training_curves,
@@ -26,6 +30,7 @@ from scripts.dev.moabb_user_journeys.registry import (
     load_registry,
     materialize_dataset,
 )
+from scripts.dev.moabb_user_journeys.storage import write_json_atomic
 
 
 class _Result:
@@ -227,6 +232,213 @@ def _dataset() -> dict[str, Any]:
     )
 
 
+def _resume_manifest(
+    *,
+    monkeypatch: pytest.MonkeyPatch,
+    app_sha: str,
+    dirty_paths: list[str],
+    data_root: Path,
+    command: list[str],
+) -> dict[str, Any]:
+    """Build synthetic provenance around the real manifest shape for resume tests."""
+    monkeypatch.setattr(
+        journey_evidence,
+        "_git_output",
+        lambda *args: "f" * 40 if args == ("rev-parse", "HEAD") else "",
+    )
+    manifest = build_manifest(
+        run_id="resume-fixture",
+        registry={"profile_id": "fixture-profile", "moabb_release": {"commit": "x"}},
+        plan={
+            "registry_sha256": "fixture-registry",
+            "data_root": str(data_root),
+            "expected_download_bytes": 0,
+            "max_download_bytes": 1,
+            "serial_downloads": True,
+        },
+        command=command,
+        execution_profile="smoke",
+    )
+    manifest["application"] = {
+        "git_sha": app_sha,
+        "baseline_sha": "fixture-baseline",
+        "dirty_paths": dirty_paths,
+    }
+    manifest["runner"] = {
+        "registry_sha256": "fixture-registry",
+        "registry_profile": "fixture-profile",
+        "moabb_release": {"commit": "fixture-moabb"},
+        "execution_profile": "smoke",
+        "python": "fixture-python",
+        "platform": "fixture-platform",
+        "dependencies": {"mne": "fixture-mne", "torch": "fixture-torch"},
+        "command": command,
+    }
+    manifest["resource_policy"] = {
+        "data_root": str(data_root),
+        "expected_download_bytes": 0,
+        "max_download_bytes": 1,
+        "serial_downloads": True,
+    }
+    return manifest
+
+
+def _run_resume_with_existing_manifest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    prior: dict[str, Any],
+    current: dict[str, Any],
+) -> tuple[int, list[int], dict[str, Any]]:
+    """Exercise resume through its real JSON boundary without product execution."""
+    dataset = _dataset()
+    prior_dataset = empty_dataset_evidence(
+        dataset,
+        source_artifacts=[],
+        execution_profile="smoke",
+        attempt=1,
+        previous_failure=None,
+    )
+    prior["datasets"] = [prior_dataset]
+    prior["status"] = "completed"
+    manifest_path = tmp_path / "runs" / "resume-fixture" / "evidence-manifest.json"
+    write_json_atomic(manifest_path, prior)
+    write_json_atomic(
+        manifest_path.parent / dataset["id"] / "checkpoint.json",
+        {"attempt": 1},
+    )
+
+    plan = {
+        "registry_sha256": "fixture-registry",
+        "data_root": current["resource_policy"]["data_root"],
+        "files": [],
+    }
+    replay_attempts: list[int] = []
+
+    def replay_dataset(*_args: Any, **kwargs: Any) -> dict[str, Any]:
+        replay_attempts.append(kwargs["attempt"])
+        replayed = deepcopy(prior_dataset)
+        replayed["resume"] = {
+            "attempt": kwargs["attempt"],
+            "strategy": "replay_from_source",
+            "previous_failure": None,
+        }
+        return replayed
+
+    monkeypatch.setattr(journey_cli, "_load_plan", lambda *_args: plan)
+    monkeypatch.setattr(journey_cli, "validate_plan_cache", lambda _plan: {"files": []})
+    monkeypatch.setattr(journey_cli, "_evidence_root", lambda _registry: tmp_path)
+    monkeypatch.setattr(journey_cli, "select_datasets", lambda *_args: [dataset])
+    monkeypatch.setattr(journey_cli, "build_manifest", lambda **_kwargs: current)
+    monkeypatch.setattr(
+        journey_cli, "materialize_dataset", lambda item, **_kwargs: item
+    )
+    monkeypatch.setattr(journey_cli, "run_dataset_journey", replay_dataset)
+
+    result = journey_cli._run_resume(
+        SimpleNamespace(
+            run_id="resume-fixture",
+            profile="smoke",
+            force=False,
+            confirm_resource_plan=False,
+            fail_fast=False,
+            dataset_ids=[dataset["id"]],
+        ),
+        {"resource_policy": {"evidence_root": "build/fixture"}},
+        tmp_path / "registry.json",
+    )
+    return (
+        result,
+        replay_attempts,
+        json.loads(manifest_path.read_text(encoding="utf-8")),
+    )
+
+
+@pytest.mark.parametrize(
+    "mismatch",
+    [
+        "source_sha",
+        "prior_dirty",
+        "current_dirty",
+        "dependencies",
+        "python",
+        "platform",
+        "data_root",
+    ],
+)
+def test_run_resume_replays_when_prior_provenance_differs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mismatch: str,
+) -> None:
+    prior = _resume_manifest(
+        monkeypatch=monkeypatch,
+        app_sha="a" * 40,
+        dirty_paths=[],
+        data_root=tmp_path / "data",
+        command=["run-resume", "--dataset", "first"],
+    )
+    current = _resume_manifest(
+        monkeypatch=monkeypatch,
+        app_sha="a" * 40,
+        dirty_paths=[],
+        data_root=tmp_path / "data",
+        command=["run-resume", "--dataset", "second"],
+    )
+    if mismatch == "source_sha":
+        current["application"]["git_sha"] = "b" * 40
+    elif mismatch == "prior_dirty":
+        prior["application"]["dirty_paths"] = ["XBrainLab/changed.py"]
+    elif mismatch == "current_dirty":
+        current["application"]["dirty_paths"] = ["XBrainLab/changed.py"]
+    elif mismatch == "data_root":
+        current["resource_policy"]["data_root"] = str(tmp_path / "other-data")
+    else:
+        current["runner"][mismatch] = f"different-{mismatch}"
+
+    result, replay_attempts, manifest = _run_resume_with_existing_manifest(
+        tmp_path,
+        monkeypatch,
+        prior=prior,
+        current=current,
+    )
+
+    assert result == 0
+    assert replay_attempts == [2]
+    assert manifest["datasets"][0]["resume"]["attempt"] == 2
+
+
+def test_run_resume_reuses_clean_matching_provenance_for_subset_command(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prior = _resume_manifest(
+        monkeypatch=monkeypatch,
+        app_sha="a" * 40,
+        dirty_paths=[],
+        data_root=tmp_path / "data",
+        command=["run-resume", "--dataset", "first"],
+    )
+    current = _resume_manifest(
+        monkeypatch=monkeypatch,
+        app_sha="a" * 40,
+        dirty_paths=[],
+        data_root=tmp_path / "data",
+        command=["run-resume", "--dataset", "second"],
+    )
+
+    result, replay_attempts, manifest = _run_resume_with_existing_manifest(
+        tmp_path,
+        monkeypatch,
+        prior=prior,
+        current=current,
+    )
+
+    assert result == 0
+    assert replay_attempts == []
+    assert manifest["datasets"][0]["resume"]["attempt"] == 1
+
+
 def test_smoke_manifest_can_complete_workflow_but_quality_stays_pending() -> None:
     evidence = empty_dataset_evidence(
         _dataset(),
@@ -286,8 +498,8 @@ def test_showcase_requires_actual_device_curve_and_held_out_metric(
     assert showcase_quality_complete(evidence) is False
 
     evidence["model"]["actual_device"] = "cpu"
-    for method in evidence["saliency"]["methods"]:
-        path = tmp_path / f"{method.replace(' ', '-')}.npz"
+    for index, method in enumerate(evidence["saliency"]["methods"]):
+        path = tmp_path / f"saliency-{index}.npz"
         path.write_bytes(method.encode())
         evidence["saliency"]["artifacts"].append(
             artifact_record(

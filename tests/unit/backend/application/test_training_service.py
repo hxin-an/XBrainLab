@@ -344,7 +344,7 @@ def test_training_service_configures_model_and_options() -> None:
 
     assert model_message == "Model configured: EEGNet."
     assert training.model_holder is not None
-    assert service.model_name(training.model_holder) == "EEGNet (XBrainLab)"
+    assert training.model_holder.display_name == "EEGNet (XBrainLab)"
     assert option_message == "Training configured."
     assert training.training_option is not None
     generated_seed = training.training_option.seed
@@ -667,7 +667,7 @@ def test_training_service_maps_case_insensitive_model_without_facade() -> None:
 
     assert message == "Model configured: EEGNET."
     assert training.model_holder is not None
-    assert service.model_name(training.model_holder) == "EEGNet (XBrainLab)"
+    assert training.model_holder.display_name == "EEGNet (XBrainLab)"
 
 
 def test_training_service_rejects_unknown_model_without_facade() -> None:

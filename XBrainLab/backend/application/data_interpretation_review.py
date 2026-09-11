@@ -263,7 +263,7 @@ def _build_action_items(candidate: Any) -> list[dict[str, str]]:
                 issue=reason,
                 impact="This import cannot be applied until the issue is fixed.",
                 next_action="Fix this item before importing.",
-                target_step=_target_step_for_text(reason),
+                target_step=target_step_for_interpretation_text(reason),
                 severity="blocked",
             )
             for reason in blocked_reasons
@@ -284,7 +284,7 @@ def _build_action_items(candidate: Any) -> list[dict[str, str]]:
                     "Open the target step and resolve or confirm this item "
                     "before import."
                 ),
-                target_step=_target_step_for_text(warning),
+                target_step=target_step_for_interpretation_text(warning),
                 severity="warning",
             )
             for warning in _unique_strings(getattr(candidate, "warnings", []))
@@ -329,7 +329,7 @@ def _build_action_items(candidate: Any) -> list[dict[str, str]]:
 
 def _confirmation_action_item(confirmation: str) -> dict[str, str]:
     """Describe one review choice in terms of its concrete workflow consequence."""
-    target_step = _target_step_for_text(confirmation)
+    target_step = target_step_for_interpretation_text(confirmation)
     impact, next_action = _confirmation_guidance(
         confirmation,
         target_step=target_step,
@@ -503,10 +503,6 @@ def target_step_for_interpretation_text(text: str) -> str:
     return "Review and Import"
 
 
-def _target_step_for_text(text: str) -> str:
-    return target_step_for_interpretation_text(text)
-
-
 def _unique_strings(values: Any) -> list[str]:
     if not isinstance(values, list):
         return []
@@ -668,10 +664,10 @@ def _recipe_reload_diff_rows(
     if recipe is None and scan is None and candidate is None:
         return []
     rows: list[dict[str, str]] = []
-    saved_files = _path_values(
+    saved_files = _raw_paths(
         getattr(recipe, "selected_eeg_files", []) if recipe is not None else []
     )
-    current_files = _path_values(
+    current_files = _raw_paths(
         getattr(scan, "eeg_files", [])
         if scan is not None
         else getattr(candidate, "selected_eeg_files", [])
@@ -685,16 +681,16 @@ def _recipe_reload_diff_rows(
         )
     )
 
-    saved_carriers = _path_values(
+    saved_carriers = _raw_paths(
         getattr(recipe, "label_carriers", []) if recipe is not None else []
     )
     if not saved_carriers and recipe is not None:
-        saved_carriers = _path_values(
+        saved_carriers = _raw_paths(
             item.get("path")
             for item in getattr(recipe, "label_carrier_plan", [])
             if isinstance(item, dict)
         )
-    current_carriers = _path_values(
+    current_carriers = _raw_paths(
         getattr(scan, "label_carriers", [])
         if scan is not None
         else getattr(candidate, "label_carriers", [])
@@ -805,17 +801,6 @@ def _path_diff_row(
         "status": "Matched",
         "detail": detail,
     }
-
-
-def _path_values(values: Any) -> list[str]:
-    result: list[str] = []
-    for value in values or []:
-        text = str(value or "").strip()
-        if not text:
-            continue
-        if text not in result:
-            result.append(text)
-    return result
 
 
 def _display_paths(values: list[str]) -> list[str]:

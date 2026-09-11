@@ -13,6 +13,10 @@ def test_wsl_launcher_does_not_persist_untrusted_child_output() -> None:
     assert 'Write-LauncherLine "Process arguments:' not in source
     assert 'Write-LauncherConsoleLine "Process arguments:' in source
     assert "Write-LauncherConsoleLine $line" in source
+    assert (
+        "Python stdout/stderr are shown in this terminal, not saved in the launcher log."
+        in source
+    )
 
 
 def test_wsl_launcher_bounds_retained_log_files() -> None:

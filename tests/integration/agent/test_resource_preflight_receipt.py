@@ -16,6 +16,7 @@ from XBrainLab.backend.application import training_service as training_service_m
 from XBrainLab.backend.application.resource_guard import ResourcePreflightResult
 from XBrainLab.backend.application.resource_preflight import (
     RESOURCE_PREFLIGHT_SCHEMA_VERSION,
+    ResourceConfirmationChallenge,
     ResourcePreflightView,
 )
 from XBrainLab.backend.application.training_runtime import (
@@ -31,7 +32,6 @@ from XBrainLab.backend.training_state_contract import (
 )
 from XBrainLab.llm.agent.tool_attempt_coordinator import (
     ApplicationToolContextSource,
-    ResourcePreflightReceipt,
     ToolAttemptAction,
     ToolAttemptCoordinator,
     ToolAttemptDecision,
@@ -44,7 +44,7 @@ from XBrainLab.llm.tools.application_surface import (
 
 def _required_receipt(
     pending: ToolAttemptDecision,
-) -> ResourcePreflightReceipt:
+) -> ResourceConfirmationChallenge:
     receipt = pending.resource_preflight_receipt
     assert receipt is not None
     return receipt
@@ -265,7 +265,7 @@ def test_agent_start_training_rejects_stale_receipt_before_execution(
     assert refreshed is not None
     assert refreshed.action is ToolAttemptAction.CONFIRMATION_REQUIRED
     new_receipt = _required_receipt(refreshed)
-    assert new_receipt.token != old_receipt.token
+    assert new_receipt.challenge_id != old_receipt.challenge_id
     assert new_receipt.scope_fingerprint != old_receipt.scope_fingerprint
     if change == "configuration":
         assert (

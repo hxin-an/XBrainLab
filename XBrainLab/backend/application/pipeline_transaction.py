@@ -125,17 +125,6 @@ class PipelineStateTransaction:
             ),
         )
 
-    def prepare_raw_replacement(self) -> None:
-        """Detach only data references so an import can be committed or rolled back."""
-        data_manager = self._study.data_manager
-        data_manager.loaded_data_list = []
-        data_manager.backup_loaded_data_list = None
-        data_manager.preprocessed_data_list = []
-        data_manager.epoch_data = None
-        data_manager.datasets = []
-        data_manager.dataset_generator = None
-        data_manager.dataset_locked = False
-
     def restore(self, snapshot: PipelineStateSnapshot) -> None:
         """Restore previously captured data without rewriting training runtime."""
         data_manager = self._study.data_manager

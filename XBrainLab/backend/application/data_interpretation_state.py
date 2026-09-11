@@ -187,51 +187,6 @@ class DataInterpretationSessionState:
             and self._session_revision == identity.session_revision
         )
 
-    def restore_session_state(
-        self,
-        checkpoint: InterpretationSessionCheckpoint,
-    ) -> None:
-        """Atomically replace all review/session records from a detached result."""
-        if not isinstance(checkpoint, InterpretationSessionCheckpoint):
-            raise TypeError("checkpoint must be InterpretationSessionCheckpoint")
-        scans = deepcopy(checkpoint.scans)
-        candidates = deepcopy(checkpoint.candidates)
-        previews = deepcopy(checkpoint.previews)
-        validation_decisions = deepcopy(checkpoint.validation_decisions)
-        applied_interpretations = deepcopy(checkpoint.applied_interpretations)
-        recipes = deepcopy(checkpoint.recipes)
-        self._session_revision = max(
-            self._session_revision,
-            checkpoint.session_revision,
-        )
-        self._advance_session_revision()
-        self._session_generation = checkpoint.session_generation
-        self._scan_results = scans
-        self._candidates = candidates
-        self._previews = previews
-        self._validation_decisions = validation_decisions
-        self._applied_interpretations = applied_interpretations
-        self._recipes = recipes
-        self._latest_scan_id = checkpoint.latest_scan_id
-        self._latest_candidate_id = checkpoint.latest_candidate_id
-        self._latest_preview_id = checkpoint.latest_preview_id
-        self._latest_interpretation_id = checkpoint.latest_interpretation_id
-        self._latest_recipe_id = checkpoint.latest_recipe_id
-        self._latest_recipe_path = checkpoint.latest_recipe_path
-        self._interpretation_counter = checkpoint.interpretation_counter
-
-    def session_checkpoint_is_current(
-        self,
-        checkpoint: InterpretationSessionCheckpoint,
-    ) -> bool:
-        """Check detached ownership without copying or comparing lifecycle payloads."""
-        if not isinstance(checkpoint, InterpretationSessionCheckpoint):
-            raise TypeError("checkpoint must be InterpretationSessionCheckpoint")
-        return (
-            self._session_generation == checkpoint.session_generation
-            and self._session_revision == checkpoint.session_revision
-        )
-
     def stage_session_state(self) -> InterpretationSessionCheckpoint:
         """Detach the complete session dictionaries for an ownership transfer."""
         checkpoint = InterpretationSessionCheckpoint(
@@ -364,16 +319,6 @@ class DataInterpretationSessionState:
         """Store an applied interpretation as downstream workflow truth."""
         self._applied_interpretations[applied.interpretation_id] = applied
         self._latest_interpretation_id = applied.interpretation_id
-        self._advance_session_revision()
-
-    def discard_applied(self, interpretation_id: str) -> None:
-        """Remove an applied interpretation that failed during post-load apply."""
-        self._applied_interpretations.pop(interpretation_id, None)
-        if self._latest_interpretation_id == interpretation_id:
-            self._latest_interpretation_id = next(
-                reversed(self._applied_interpretations),
-                None,
-            )
         self._advance_session_revision()
 
     def record_recipe(

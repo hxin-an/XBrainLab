@@ -438,9 +438,8 @@ def test_info_panel_row_height_tracks_larger_application_font(qtbot):
     assert panel.table.rowHeight(0) >= required_height
 
 
-def test_update_info_no_data(panel, qtbot):
-    with qtbot.waitSignal(panel.presentation_changed, timeout=100):
-        panel.update_info(loaded_data_list=[], preprocessed_data_list=[])
+def test_update_info_no_data(panel):
+    panel.update_info(loaded_data_list=[], preprocessed_data_list=[])
     assert panel.has_data is False
     assert panel.table.isHidden() is False
     assert all(
@@ -518,10 +517,9 @@ def test_product_info_panel_has_no_live_eeg_domain_reader_calls():
     assert forbidden_readers.isdisjoint(attribute_calls | dynamic_getattr_names)
 
 
-def test_update_info_loaded_rows(panel, qtbot):
+def test_update_info_loaded_rows(panel):
     row = _detached_row()
-    with qtbot.waitSignal(panel.presentation_changed, timeout=100):
-        panel.update_info(loaded_data_list=[row])
+    panel.update_info(loaded_data_list=[row])
 
     assert panel.table.item(panel.row_map["Type"], 1).text() == "Continuous EEG"
     assert panel.table.item(panel.row_map["EEG files"], 1).text() == "1"

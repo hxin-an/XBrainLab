@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import time
 from pathlib import Path
-from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -13,6 +12,7 @@ import pytest
 from tests.integration.data_interpretation_support import (
     import_recording_through_interpretation,
 )
+from tests.integration.training_artifact_support import assert_real_training_artifacts
 from XBrainLab.backend.application import (
     ApplicationService,
     ApplyInterpretationCommand,
@@ -409,15 +409,9 @@ def _configure_training(service: ApplicationService, output_dir: Path) -> None:
 
 def _configure_and_train(service: ApplicationService, output_dir: Path):
     _configure_training(service, output_dir)
-    with (
-        patch("matplotlib.pyplot.savefig"),
-        patch("torch.save"),
-        patch("numpy.savetxt"),
-        patch("os.makedirs"),
-    ):
-        train_result = service.execute(
-            TrainCommand(confirmed=True, interactive=False),
-        )
+    train_result = service.execute(
+        TrainCommand(confirmed=True, interactive=False),
+    )
     assert train_result.ok is True
     assert train_result.diagnostics["split_preparation"]["materialized"] is True
     assert train_result.diagnostics["split_preparation"]["split_audit"]["ok"] is True
@@ -430,6 +424,7 @@ def _configure_and_train(service: ApplicationService, output_dir: Path):
     )
     assert history.ok is True
     assert history.diagnostics["row_count"] == 1
+    assert_real_training_artifacts(output_dir)
     return history.diagnostics["rows"][0]
 
 
@@ -578,15 +573,10 @@ def test_cuda_oom_job_failure_is_visible_and_training_can_restart(
     assert "CUDA out of memory during training" in terminal_outcome.detail
 
     monkeypatch.undo()
-    with (
-        patch("matplotlib.pyplot.savefig"),
-        patch("torch.save"),
-        patch("numpy.savetxt"),
-        patch("os.makedirs"),
-    ):
-        retry = service.execute(
-            TrainCommand(confirmed=True, interactive=False, append=False)
-        )
+    retry = service.execute(
+        TrainCommand(confirmed=True, interactive=False, append=False)
+    )
     assert retry.ok
     assert retry.diagnostics["split_preparation"]["cache_reused"] is True
     assert retry.state.training.finished_run_count == 1
+    assert_real_training_artifacts(tmp_path / "oom-recovery-output")

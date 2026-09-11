@@ -6,153 +6,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from XBrainLab.backend.application.data_interpretation_review import (
-    target_step_for_interpretation_text,
-)
-
 ReviewRow = tuple[str, str, str, str]
-
-_STEP_ORDER = {
-    "Choose EEG Data": 0,
-    "Load Labels": 1,
-    "Review Metadata": 2,
-    "Match Labels": 3,
-    "Review and Import": 4,
-}
-
-
-def build_review_rows(
-    *,
-    preview: dict[str, Any],
-    validation_decision: dict[str, Any],
-    scan_result: dict[str, Any],
-) -> list[ReviewRow]:
-    """Build task-oriented review rows from backend preview/review payloads."""
-    rows: list[ReviewRow] = []
-    rows.extend(
-        action_item_rows(
-            preview.get("action_items") or validation_decision.get("action_items")
-        )
-    )
-    if not rows:
-        rows.extend(
-            _legacy_review_rows(
-                preview=preview,
-                validation_decision=validation_decision,
-            )
-        )
-    rows.extend(recipe_reload_rows(preview.get("recipe_reload_summary")))
-    format_capabilities = preview.get("format_capabilities") or scan_result.get(
-        "format_capabilities"
-    )
-    rows.extend(format_capability_rows(format_capabilities))
-    return compact_review_rows(rows)
-
-
-def build_primary_review_rows(
-    *,
-    preview: dict[str, Any],
-    validation_decision: dict[str, Any],
-) -> list[ReviewRow]:
-    """Build the first-layer review items that require user action."""
-    decision = str(validation_decision.get("decision") or "").strip().lower()
-    action_items = primary_action_item_rows(
-        preview.get("action_items") or validation_decision.get("action_items")
-    )
-    if action_items:
-        return compact_review_rows(action_items)
-
-    rows = _legacy_review_rows(
-        preview=preview,
-        validation_decision=validation_decision,
-        include_warnings=False,
-    )
-    if decision == "blocked":
-        rows = [row for row in rows if row[1] == "Cannot import yet"]
-    elif decision == "safe":
-        rows = []
-    return compact_review_rows(rows)
-
-
-def _legacy_review_rows(
-    *,
-    preview: dict[str, Any],
-    validation_decision: dict[str, Any],
-    include_warnings: bool = True,
-) -> list[ReviewRow]:
-    rows: list[ReviewRow] = []
-    warnings = unique_strings(preview.get("warnings"))
-    confirmations = unique_strings(
-        [
-            *(preview.get("confirmation_items") or []),
-            *(validation_decision.get("required_confirmations") or []),
-        ]
-    )
-    blocked = unique_strings(
-        validation_decision.get("blocked_reasons") or preview.get("blocked_reasons")
-    )
-    groups = [
-        ("Required choice", "Confirm", confirmations),
-        ("Cannot import yet", "Fix first", blocked),
-    ]
-    if include_warnings:
-        groups.insert(0, ("Possible issue", "Check", warnings))
-    for label, status, values in groups:
-        rows.extend(
-            (target_step_for_review_text(item), label, item, status) for item in values
-        )
-    return rows
-
-
-def unique_strings(values: Any) -> list[str]:
-    if not isinstance(values, list):
-        return []
-    result: list[str] = []
-    for value in values:
-        text = str(value)
-        if text and text not in result:
-            result.append(text)
-    return result
-
-
-def action_item_rows(values: Any) -> list[ReviewRow]:
-    if not isinstance(values, list):
-        return []
-    rows: list[ReviewRow] = []
-    for value in values:
-        if not isinstance(value, dict):
-            continue
-        target_step = str(value.get("target_step") or "Review and Import")
-        rows.append(
-            (
-                target_step,
-                str(value.get("issue") or "Review item"),
-                str(value.get("impact") or ""),
-                str(value.get("next_action") or ""),
-            )
-        )
-    return sorted(rows, key=lambda row: (_STEP_ORDER.get(row[0], 99), row[1]))
-
-
-def primary_action_item_rows(values: Any) -> list[ReviewRow]:
-    if not isinstance(values, list):
-        return []
-    rows: list[ReviewRow] = []
-    for value in values:
-        if not isinstance(value, dict):
-            continue
-        severity = str(value.get("severity") or "needs_confirmation").strip().lower()
-        if severity not in {"blocked", "needs_confirmation"}:
-            continue
-        rows.append(
-            (
-                str(value.get("target_step") or "Review and Import"),
-                str(value.get("issue") or "Review item"),
-                str(value.get("impact") or ""),
-                str(value.get("next_action") or ""),
-            )
-        )
-    return sorted(rows, key=lambda row: (_STEP_ORDER.get(row[0], 99), row[1]))
 
 
 def compact_review_rows(rows: list[ReviewRow]) -> list[ReviewRow]:
@@ -181,21 +35,6 @@ def is_metadata_review_row(row: ReviewRow) -> bool:
     target_step, issue, _impact, next_action = row
     text = " ".join((target_step, issue, next_action)).lower()
     return target_step == "Review Metadata" or "metadata" in text
-
-
-def metadata_required_fields_complete(
-    *,
-    row_count: int,
-    missing_fields: dict[str, int] | set[str],
-    required_fields: set[str] | None = None,
-) -> bool:
-    """Return whether metadata review has no missing required fields."""
-    if row_count <= 0:
-        return False
-    required = required_fields or {"subject"}
-    if isinstance(missing_fields, set):
-        return not (required & missing_fields)
-    return not {field for field in required if int(missing_fields.get(field) or 0) > 0}
 
 
 def is_optional_metadata_review_row(row: ReviewRow) -> bool:
@@ -354,10 +193,6 @@ def review_grouped_impact_text(files: list[str], details: list[str]) -> str:
     if details:
         text = f"{text}\n" + "\n".join(details)
     return text
-
-
-def target_step_for_review_text(text: str) -> str:
-    return target_step_for_interpretation_text(text)
 
 
 def format_capability_rows(values: Any) -> list[ReviewRow]:

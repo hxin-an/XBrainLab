@@ -26,8 +26,8 @@ def test_init(metric_tab):
     assert metric_tab.canvas.isHidden()
 
 
-def test_update_plot(metric_tab):
-    metric_tab.update_plot(1, 0.5, 0.6)
+def test_set_series_shows_metric_curves(metric_tab):
+    metric_tab.set_series([1], [0.5], [0.6])
     assert len(metric_tab.epochs) == 1
     assert metric_tab.epochs[0] == 1
     assert metric_tab.train_vals[0] == 0.5
@@ -75,8 +75,8 @@ def test_empty_plot_uses_dark_theme_text(metric_tab):
     assert metric_tab.ax.yaxis.label.get_color() == Theme.TEXT_MUTED
 
 
-def test_clear(metric_tab):
-    metric_tab.update_plot(1, 0.5, 0.6)
+def test_clear_then_new_series(metric_tab):
+    metric_tab.set_series([1], [0.5], [0.6])
     metric_tab.clear()
 
     assert len(metric_tab.epochs) == 0
@@ -90,9 +90,15 @@ def test_clear(metric_tab):
     assert metric_tab.empty_state_label.isVisibleTo(metric_tab)
     assert metric_tab.canvas.isHidden()
 
+    metric_tab.set_series([1], [0.8], [0.7])
+    assert metric_tab.epochs == [1]
+    assert metric_tab.train_vals == [0.8]
+    assert metric_tab.val_vals == [0.7]
+    assert len(metric_tab.ax.lines) == 2
+
 
 def test_close_releases_canvas_and_cancels_pending_draw(metric_tab, qtbot):
-    metric_tab.update_plot(1, 0.5, 0.6)
+    metric_tab.set_series([1], [0.5], [0.6])
     old_canvas = metric_tab.canvas
     old_figure = metric_tab.fig
     old_canvas.draw_idle()

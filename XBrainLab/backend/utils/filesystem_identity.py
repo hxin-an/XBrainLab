@@ -6,6 +6,7 @@ import ctypes
 import errno
 import hashlib
 import importlib
+import ntpath
 import os
 import re
 import stat
@@ -295,6 +296,11 @@ class StableDirectoryIdentity:
                 src_dir_fd=self._directory_fd,
                 dst_dir_fd=self._directory_fd,
             )
+        elif self._windows:
+            os.replace(
+                _windows_extended_path(source_path),
+                _windows_extended_path(target_path),
+            )
         else:
             os.replace(source_path, target_path)
         self.assert_matches(target_path.parent)
@@ -311,6 +317,8 @@ class StableDirectoryIdentity:
         try:
             if self._directory_fd is not None:
                 os.unlink(name, dir_fd=self._directory_fd)
+            elif self._windows:
+                os.unlink(_windows_extended_path(candidate))
             else:
                 candidate.unlink()
         except FileNotFoundError:
@@ -430,6 +438,16 @@ def _path_key(path: str) -> str:
     return os.path.normcase(os.path.normpath(path))
 
 
+def _windows_extended_path(path: str | os.PathLike[str]) -> str:
+    """Spell an admitted Win32 path without resolving its leaf."""
+    absolute = ntpath.abspath(os.fspath(path))
+    if absolute.startswith("\\\\?\\"):
+        return absolute
+    if absolute.startswith("\\\\"):
+        return "\\\\?\\UNC\\" + absolute[2:]
+    return "\\\\?\\" + absolute
+
+
 def _directory_chain(path: str) -> tuple[Path, ...]:
     target = Path(path)
     return tuple(reversed((target, *target.parents)))
@@ -492,7 +510,7 @@ def _open_windows_directory_handle(
     if not prevent_replacement:
         share_mode |= file_share_delete
     handle = create_file(
-        str(path),
+        _windows_extended_path(path),
         file_read_attributes,
         share_mode,
         None,
@@ -674,7 +692,7 @@ def _open_windows_artifact_descriptor(
     )
     create_file.restype = wintypes.HANDLE
     handle = create_file(
-        str(path),
+        _windows_extended_path(path),
         generic_write if create_new else generic_read,
         0 if create_new else file_share_read,
         None,

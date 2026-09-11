@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from XBrainLab.backend.data_manager import DataManager
-from XBrainLab.backend.load_data import Raw, RawDataLoader
+from XBrainLab.backend.load_data import Raw
 from XBrainLab.backend.preprocessor import PreprocessBase
 
 
@@ -48,10 +48,6 @@ class TestInit:
         assert dm.dataset_generator is None
         assert dm.dataset_locked is False
         assert dm.backup_loaded_data_list is None
-
-    def test_get_raw_data_loader(self, dm):
-        loader = dm.get_raw_data_loader()
-        assert isinstance(loader, RawDataLoader)
 
 
 # ---------------------------------------------------------------------------
@@ -97,6 +93,25 @@ class TestBackup:
 
     def test_backup_empty_is_none(self, dm):
         dm.backup_loaded_data()
+        assert dm.backup_loaded_data_list is None
+
+    def test_replacing_raw_data_invalidates_old_undo_backup(self, dm, raw_data):
+        dm.set_loaded_data_list(raw_data, force_update=True)
+        dm.backup_loaded_data()
+        replacement = Raw(
+            "replacement.fif",
+            mne.io.RawArray(
+                np.zeros((1, 256)),
+                mne.create_info(["Pz"], sfreq=256, ch_types="eeg"),
+                verbose="ERROR",
+            ),
+        )
+
+        dm.set_loaded_data_list([replacement], force_update=True)
+        dm.reset_preprocess(force_update=True)
+
+        assert dm.loaded_data_list == [replacement]
+        assert dm.preprocessed_data_list == [replacement]
         assert dm.backup_loaded_data_list is None
 
 

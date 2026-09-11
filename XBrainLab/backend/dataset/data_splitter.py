@@ -108,22 +108,6 @@ class DataSplitter:
             ]
         return float(self.value_var)
 
-    def get_raw_value(self) -> str:
-        """Get the raw string value.
-
-        Returns:
-            The raw string value of this splitter.
-
-        Raises:
-            ValueError: If the splitter is invalid or value_var is None.
-
-        """
-        if not self.is_valid():
-            raise ValueError("Splitter is not valid")
-        if self.value_var is None:
-            raise ValueError("value_var cannot be None")
-        return self.value_var
-
     def get_split_unit(self) -> SplitUnit | None:
         """Get the split unit.
 
@@ -132,26 +116,6 @@ class DataSplitter:
 
         """
         return self.split_unit
-
-    def get_split_unit_repr(self) -> str:
-        """Get a string representation of the split unit.
-
-        Returns:
-            String in the form ``"SplitUnit.NAME"`` or ``"None"``.
-
-        """
-        if self.split_unit is None:
-            return "None"
-        return f"{self.split_unit.__class__.__name__}.{self.split_unit.name}"
-
-    def get_split_type_repr(self) -> str:
-        """Get a string representation of the split type.
-
-        Returns:
-            String in the form ``"SplitByType.NAME"``.
-
-        """
-        return f"{self.split_type.__class__.__name__}.{self.split_type.name}"
 
 
 class DataSplittingConfig:
@@ -202,12 +166,3 @@ class DataSplittingConfig:
 
         """
         return self.val_splitter_list, self.test_splitter_list
-
-    def get_train_type_repr(self) -> str:
-        """Get a string representation of the training type.
-
-        Returns:
-            String in the form ``"TrainingType.NAME"``.
-
-        """
-        return f"{self.train_type.__class__.__name__}.{self.train_type.name}"

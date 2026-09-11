@@ -1,17 +1,19 @@
 """Study facade and TrainingManager integration contracts.
 
-Covers: Study.generate_plan, train, stop_training, export_output_csv,
+Covers: Study.generate_plan, train, stop_training,
 clean cascade, append plan, saliency propagation, and error paths. The tests
 construct facade state directly; they are not product-workflow evidence.
 """
 
-from unittest.mock import MagicMock, patch
+from pathlib import Path
+from unittest.mock import MagicMock
 
 import mne
 import numpy as np
 import pytest
 import torch
 
+from tests.integration.training_artifact_support import assert_real_training_artifacts
 from XBrainLab.backend.dataset import Dataset, DataSplittingConfig, Epochs, TrainingType
 from XBrainLab.backend.load_data import Raw
 from XBrainLab.backend.model_base import EEGNet, SCCNet
@@ -93,14 +95,6 @@ def _make_option(tmp_path, epoch=1, repeat=1):
     )
 
 
-_FS_PATCHES = (
-    patch("matplotlib.pyplot.savefig"),
-    patch("torch.save"),
-    patch("numpy.savetxt"),
-    patch("os.makedirs"),
-)
-
-
 # ---------------------------------------------------------------------------
 # Tests: Study → TrainingManager integration
 # ---------------------------------------------------------------------------
@@ -172,15 +166,9 @@ class TestStudyGeneratePlan:
         return study
 
     def test_generate_plan_creates_trainer(self, ready_study):
-        with (
-            _FS_PATCHES[0],
-            _FS_PATCHES[1],
-            _FS_PATCHES[2],
-            _FS_PATCHES[3],
-        ):
-            ready_study.generate_plan(force_update=True)
-            assert ready_study.trainer is not None
-            assert ready_study.has_trainer()
+        ready_study.generate_plan(force_update=True)
+        assert ready_study.trainer is not None
+        assert ready_study.training_manager.has_trainer()
 
     def test_generate_plan_no_datasets_raises(self, tmp_path):
         study = Study()
@@ -209,14 +197,11 @@ class TestStudyTrainCycle:
 
     def _run_training(self, study):
         """Generate plan and run synchronously via trainer.job()."""
-        with (
-            _FS_PATCHES[0],
-            _FS_PATCHES[1],
-            _FS_PATCHES[2],
-            _FS_PATCHES[3],
-        ):
-            study.generate_plan(force_update=True)
-            study.trainer.job()
+        study.generate_plan(force_update=True)
+        study.trainer.job()
+        for plan in study.trainer.get_training_plan_holders():
+            for record in plan.train_record_list:
+                assert_real_training_artifacts(Path(record.target_path))
 
     def test_full_cycle_eegnet(self, tmp_path):
         study = Study()
@@ -286,30 +271,24 @@ class TestAppendPlan:
         study.set_training_option(_make_option(tmp_path))
         study.set_model_holder(ModelHolder(EEGNet, {}))
 
-        with (
-            _FS_PATCHES[0],
-            _FS_PATCHES[1],
-            _FS_PATCHES[2],
-            _FS_PATCHES[3],
-        ):
-            study.generate_plan(force_update=True)
-            first_round = study.trainer.get_training_plan_holders()
-            assert len(first_round) == 2
-            first_round_ids = {holder.training_round_id for holder in first_round}
-            assert len(first_round_ids) == 1
-            first_round_id = next(iter(first_round_ids))
-            assert first_round_id
-            study.generate_plan(append=True)
-            both_rounds = study.trainer.get_training_plan_holders()
-            assert len(both_rounds) == 4
-            assert {holder.training_round_id for holder in both_rounds[:2]} == {
-                first_round_id
-            }
-            second_round_ids = {holder.training_round_id for holder in both_rounds[2:]}
-            assert len(second_round_ids) == 1
-            second_round_id = next(iter(second_round_ids))
-            assert second_round_id
-            assert second_round_id != first_round_id
+        study.generate_plan(force_update=True)
+        first_round = study.trainer.get_training_plan_holders()
+        assert len(first_round) == 2
+        first_round_ids = {holder.training_round_id for holder in first_round}
+        assert len(first_round_ids) == 1
+        first_round_id = next(iter(first_round_ids))
+        assert first_round_id
+        study.generate_plan(append=True)
+        both_rounds = study.trainer.get_training_plan_holders()
+        assert len(both_rounds) == 4
+        assert {holder.training_round_id for holder in both_rounds[:2]} == {
+            first_round_id
+        }
+        second_round_ids = {holder.training_round_id for holder in both_rounds[2:]}
+        assert len(second_round_ids) == 1
+        second_round_id = next(iter(second_round_ids))
+        assert second_round_id
+        assert second_round_id != first_round_id
 
 
 class TestCleanCascade:
@@ -385,40 +364,16 @@ class TestSaliencyPropagation:
         study.set_training_option(_make_option(tmp_path))
         study.set_model_holder(ModelHolder(EEGNet, {}))
 
-        with (
-            _FS_PATCHES[0],
-            _FS_PATCHES[1],
-            _FS_PATCHES[2],
-            _FS_PATCHES[3],
-        ):
-            study.generate_plan(force_update=True)
-            params = {
-                "SmoothGrad": {"nt_samples": 5},
-                "SmoothGrad_Squared": {"nt_samples": 5},
-                "VarGrad": {"nt_samples": 5},
-            }
-            study.set_saliency_params(params)
+        study.generate_plan(force_update=True)
+        params = {
+            "SmoothGrad": {"nt_samples": 5},
+            "SmoothGrad_Squared": {"nt_samples": 5},
+            "VarGrad": {"nt_samples": 5},
+        }
+        study.set_saliency_params(params)
 
-            # Saliency params should be stored
-            assert study.get_saliency_params() == params
-            # And propagated to plan holders
-            for plan in study.trainer.get_training_plan_holders():
-                assert plan.saliency_params == params
-
-
-class TestExportOutputCsv:
-    """Study.export_output_csv delegates to TrainingManager."""
-
-    def test_no_trainer_raises(self):
-        study = Study()
-        with pytest.raises(ValueError, match="No valid training plan"):
-            study.export_output_csv("out.csv", "p", "rp")
-
-    def test_no_eval_record_raises(self):
-        study = Study()
-        study.trainer = MagicMock()
-        plan = MagicMock()
-        plan.get_eval_record.return_value = None
-        study.trainer.get_real_training_plan.return_value = plan
-        with pytest.raises(ValueError, match="No evaluation record"):
-            study.export_output_csv("out.csv", "p", "rp")
+        # Saliency params are stored by the retained manager owner.
+        assert study.training_manager.get_saliency_params() == params
+        # And propagated to plan holders
+        for plan in study.trainer.get_training_plan_holders():
+            assert plan.saliency_params == params

@@ -86,10 +86,11 @@ def test_pipeline_snapshot_and_restore_do_not_touch_training_manager() -> None:
     original_trainer = study.training_manager.trainer
 
     snapshot = transaction.capture()
-    transaction.prepare_raw_replacement()
+    study.data_manager.loaded_data_list = ["replacement raw"]
     study.training_manager.trainer = "changed outside data transaction"
     transaction.restore(snapshot)
 
+    assert study.data_manager.loaded_data_list == ["raw"]
     assert not hasattr(snapshot, "trainer")
     assert study.training_manager.trainer == "changed outside data transaction"
     assert study.training_manager.trainer is not original_trainer

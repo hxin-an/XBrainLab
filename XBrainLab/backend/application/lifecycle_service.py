@@ -25,25 +25,17 @@ class LifecycleCommandService:
     def __init__(
         self,
         *,
-        study: Any,
         dataset: DatasetLifecyclePort,
-        preprocess: Any,
-        training: Any,
         training_commands: Any,
         interpretation: Any,
         get_state: Callable[[], ApplicationStateSnapshot],
-        pipeline_transaction: PipelineStateTransaction | None = None,
+        pipeline_transaction: PipelineStateTransaction,
     ) -> None:
-        self.study = study
         self.dataset = dataset
-        self.preprocess = preprocess
-        self.training = training
         self.training_commands = training_commands
         self.interpretation = interpretation
         self._get_state = get_state
-        self._pipeline_transaction = pipeline_transaction or PipelineStateTransaction(
-            study
-        )
+        self._pipeline_transaction = pipeline_transaction
 
     def handle_reset_preprocess(self, command: Command) -> HandlerResult:
         if not isinstance(command, ResetPreprocessCommand):
@@ -73,20 +65,14 @@ class LifecycleCommandService:
         if not isinstance(command, ResetSessionCommand):
             raise TypeError("Invalid command for reset_session")
         self.dataset.clean_dataset()
-        self._clear_training_configuration()
-        self._clear_interpretation_state()
+        self.training_commands.clear_configuration()
+        self.interpretation.clear()
         return "Session reset."
 
     def handle_new_session(self, command: Command) -> HandlerResult:
         if not isinstance(command, NewSessionCommand):
             raise TypeError("Invalid command for new_session")
         self.dataset.clean_dataset()
-        self._clear_training_configuration()
-        self._clear_interpretation_state()
-        return "New session started.", {"single_session_backend": True}
-
-    def _clear_training_configuration(self) -> None:
         self.training_commands.clear_configuration()
-
-    def _clear_interpretation_state(self) -> None:
         self.interpretation.clear()
+        return "New session started.", {"single_session_backend": True}

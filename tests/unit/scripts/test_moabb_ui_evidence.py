@@ -165,6 +165,42 @@ def test_unverified_placeholder_can_never_qualify_site(tmp_path: Path) -> None:
     assert "UNVERIFIED" in reason
 
 
+@pytest.mark.parametrize(
+    ("observed", "claimed_match", "valid"),
+    [
+        (["T1", "T2"], True, False),
+        (["left", "right"], False, False),
+        (["right", "left"], True, True),
+    ],
+    ids=["false-positive", "false-negative", "order-independent"],
+)
+def test_evaluation_route_flag_agrees_with_recorded_labels(
+    tmp_path: Path, observed, claimed_match: bool, valid: bool
+) -> None:
+    original = _manifest(tmp_path)
+    evaluation = original["datasets"][0]["stages"]["evaluation"]
+    evaluation["observed_class_labels"] = observed
+    evaluation["route_semantics_match"] = claimed_match
+    manifest = build_capture_manifest(
+        run_id=original["run_id"],
+        registry_sha256=original["registry"]["sha256"],
+        registry_profile=original["registry"]["profile_id"],
+        plan_id=original["plan_id"],
+        application_source=original["application_source"],
+        qt_platform="offscreen",
+        datasets=original["datasets"],
+    )
+
+    ok, reason = validate_capture_manifest(manifest, output_dir=tmp_path)
+
+    assert ok is valid
+    if valid:
+        assert manifest["site_qualification"]["eligible"] is True
+        assert reason == ""
+    else:
+        assert "evaluation route semantics contradict recorded class labels" in reason
+
+
 def test_missing_exact_source_file_fails_closed(tmp_path: Path) -> None:
     manifest = _manifest(tmp_path)
     source_path = Path(manifest["datasets"][1]["exact_source"]["files"][0]["path"])

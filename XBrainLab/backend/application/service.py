@@ -127,7 +127,6 @@ from .owned_work import (
 )
 from .pipeline_stage import pipeline_stage_readiness_summary
 from .pipeline_transaction import PipelineStateTransaction
-from .post_training_saliency import PostTrainingSaliencyAutomation
 from .preprocess_preparation import (
     ApplicationPreprocessBoundary,
     PreprocessMutationPlan,
@@ -180,16 +179,7 @@ from .training_runtime import (
     TrainingRuntimePort,
 )
 from .training_snapshot import (
-    model_name as snapshot_model_name,
-)
-from .training_snapshot import (
-    model_params_snapshot as build_model_params_snapshot,
-)
-from .training_snapshot import (
     model_signal_context_snapshot as build_model_signal_context_snapshot,
-)
-from .training_snapshot import (
-    training_option_snapshot as build_training_option_snapshot,
 )
 from .view_event_publisher import (
     ApplicationViewEventPublisher,
@@ -302,7 +292,6 @@ class _LazyDataInterpretationCommandService:
 
             self._service_instance = DataInterpretationCommandService(
                 self.dataset,
-                data_filename=StateSnapshotService.data_filename,
                 data_filepath=StateSnapshotService.data_filepath,
                 pipeline_transaction=self.pipeline_transaction,
             )
@@ -431,11 +420,6 @@ class _LazyDatasetGenerationCommandService:
             )
         return self._service_instance
 
-    def active_split_summary(self, datasets: list[Any]) -> dict[str, Any]:
-        if not datasets:
-            return {}
-        return self._service().active_split_summary(datasets)
-
     def dataset_split_state(self, datasets: list[Any]) -> dict[str, Any]:
         if self._service_instance is None:
             return {
@@ -520,18 +504,6 @@ class _LazyTrainingCommandService:
         self._configuration_reset.clear()
         self._recommendation.clear()
 
-    @staticmethod
-    def model_name(model_holder: Any) -> str | None:
-        return snapshot_model_name(model_holder)
-
-    @staticmethod
-    def model_params_snapshot(model_holder: Any) -> dict[str, Any]:
-        return build_model_params_snapshot(model_holder)
-
-    @staticmethod
-    def training_option_snapshot(option: Any) -> dict[str, Any]:
-        return build_training_option_snapshot(option)
-
     def get_resource_preflight(self) -> ResourcePreflightResult:
         return self._service().get_resource_preflight()
 
@@ -544,17 +516,6 @@ class _LazyTrainingCommandService:
 
     def handle_configure_training(self, command: Command) -> HandlerResult:
         return self._service().handle_configure_training(command)
-
-    def handle_train(
-        self,
-        command: Command,
-        *,
-        defer_synchronous_completion: bool = False,
-    ) -> HandlerResult:
-        return self._service().handle_train(
-            command,
-            defer_synchronous_completion=defer_synchronous_completion,
-        )
 
     def resolve_train_preflight(
         self,
@@ -709,7 +670,6 @@ class ApplicationService(Observable):
         self.preprocess_commands = PreprocessCommandService(
             preprocess=self.preprocess,
             dataset=self.dataset,
-            get_state=self.get_state,
             pipeline_transaction=self.pipeline_transaction,
         )
         self.dataset_generation = _LazyDatasetGenerationCommandService(
@@ -752,9 +712,7 @@ class ApplicationService(Observable):
             training=self.training_state,
             training_runtime=self.training_runtime,
             evaluation=self.evaluation_state,
-            visualization=self.visualization,
             dataset_generation=self.dataset_generation,
-            training_commands=self.training_commands,
             interpretation=self.interpretation,
             saliency_coverage_projector=self.saliency_coverage_projector,
             training_recommendation=self.training_recommendation,
@@ -865,7 +823,6 @@ class ApplicationService(Observable):
             get_publication=self._committed_view_publication,
         )
         self.query_state_commands = QueryStateCommandService(
-            study=self.study,
             dataset=self.dataset_state,
             state_builder=self.state_snapshot,
             get_state=self.get_state,
@@ -876,23 +833,11 @@ class ApplicationService(Observable):
             get_state=self.get_state,
         )
         self.lifecycle = LifecycleCommandService(
-            study=self.study,
             dataset=self.dataset,
-            preprocess=self.preprocess,
-            training=self.training,
             training_commands=self.training_commands,
             interpretation=self.interpretation,
             get_state=self.get_state,
             pipeline_transaction=self.pipeline_transaction,
-        )
-        self.post_training_saliency = PostTrainingSaliencyAutomation(
-            training=self.training,
-            get_state=self.get_state,
-            configure_saliency=self._configure_post_training_saliency,
-            publish_submission_failure=(
-                self.training_runtime.publish_saliency_submission_failure
-            ),
-            read_terminal_outcome=self.training_runtime.terminal_outcome,
         )
         self.shutdown_lifecycle = ApplicationShutdownLifecycleCoordinator(
             command_admission_lock=self._command_admission_lock,
@@ -903,7 +848,6 @@ class ApplicationService(Observable):
             training=self.training,
             training_runtime=self.training_runtime,
             dataset_split_preview=self.dataset_split_preview,
-            post_training_saliency=self.post_training_saliency,
             publication_lifecycle=self.publication_lifecycle,
             refresh_training_publication=self._refresh_training_publication_strict,
             committed_view_publication=self._committed_view_publication,
@@ -1006,19 +950,6 @@ class ApplicationService(Observable):
         if self.shutdown_lifecycle.snapshot().closed:
             raise RuntimeError(_CLOSED_SERVICE_MESSAGE)
 
-    def _configure_post_training_saliency(
-        self,
-        params: dict[str, object],
-    ) -> CommandResult:
-        """Run the recommended baseline through the normal command boundary."""
-        result = self.execute(SaliencyCommand(method="Gradient", params=params))
-        if result.failed:
-            logger.warning(
-                "Automatic post-training saliency failed: %s",
-                result.message,
-            )
-        return result
-
     def _handle_train_with_saved_split(self, command: Command) -> HandlerResult:
         """Admit candidate resources before publishing the saved data split."""
         if not isinstance(command, TrainCommand):
@@ -1055,7 +986,6 @@ class ApplicationService(Observable):
                 defer_synchronous_completion=not command.interactive,
             )
         except Exception as exc:
-            self.post_training_saliency.cancel()
             if split_preparation is not None:
                 try:
                     self.dataset_generation.restore_committed_candidate(candidate)
@@ -1105,7 +1035,6 @@ class ApplicationService(Observable):
             )
         finally:
             candidate_discarded = self.dataset_generation.discard_prepared_split()
-        self.post_training_saliency.cancel()
         return (
             "Training preparation discarded.",
             {
@@ -1720,8 +1649,6 @@ class ApplicationService(Observable):
         if not self.training_publications.wait_for_training_delivery(
             timeout=remaining()
         ):
-            return False
-        if not self.post_training_saliency.wait_for_idle(timeout=remaining()):
             return False
         if not self.training_runtime.wait_for_saliency_job(timeout=remaining()):
             return False
@@ -2487,6 +2414,15 @@ class ApplicationService(Observable):
         """Whether observers must wait for the active command to verify its view."""
         return self._mutation_in_progress or self._publication_delivery_fence_depth > 0
 
+    def _release_publication_delivery_fence(self) -> None:
+        """Release one command-owned publication delivery fence."""
+        self._publication_delivery_fence_depth -= 1
+        if self._publication_delivery_fence_depth < 0:
+            self._publication_delivery_fence_depth = 0
+            raise RuntimeError(
+                "Application publication delivery fence became unbalanced."
+            )
+
     def _publish_view_changed(
         self,
         publication: ApplicationViewPublication,
@@ -2805,12 +2741,7 @@ class ApplicationService(Observable):
                         read_only=True,
                     )
             finally:
-                self._publication_delivery_fence_depth -= 1
-                if self._publication_delivery_fence_depth < 0:
-                    self._publication_delivery_fence_depth = 0
-                    raise RuntimeError(
-                        "Application publication delivery fence became unbalanced."
-                    )
+                self._release_publication_delivery_fence()
 
         summary: EvaluationModelSummary | None = None
         summary_error: Exception | None = None
@@ -2929,12 +2860,7 @@ class ApplicationService(Observable):
                     },
                 )
             finally:
-                self._publication_delivery_fence_depth -= 1
-                if self._publication_delivery_fence_depth < 0:
-                    self._publication_delivery_fence_depth = 0
-                    raise RuntimeError(
-                        "Application publication delivery fence became unbalanced."
-                    )
+                self._release_publication_delivery_fence()
 
     @staticmethod
     def _stale_evaluation_summary_result(
@@ -3054,7 +2980,7 @@ class ApplicationService(Observable):
                     current_state=current_state,
                     publication=current_publication,
                 ):
-                    return self._detached_interpretation_discovery_failure_result(
+                    return self._detached_prepare_failure_result(
                         command=command,
                         error=exc,
                         publication=current_publication,
@@ -3164,12 +3090,7 @@ class ApplicationService(Observable):
                 )
             finally:
                 self._mutation_in_progress = False
-                self._publication_delivery_fence_depth -= 1
-                if self._publication_delivery_fence_depth < 0:
-                    self._publication_delivery_fence_depth = 0
-                    raise RuntimeError(
-                        "Application publication delivery fence became unbalanced."
-                    )
+                self._release_publication_delivery_fence()
 
     def _interpretation_discovery_boundary_matches(
         self,
@@ -3184,19 +3105,14 @@ class ApplicationService(Observable):
             and self.interpretation.discovery_plan_is_current(plan)
         )
 
-    def _detached_interpretation_discovery_failure_result(
+    def _detached_prepare_failure_result(
         self,
         *,
-        command: (
-            ScanSourceCommand
-            | ReviewInterpretationCommand
-            | PreviewInterpretationCommand
-            | ValidateInterpretationCommand
-        ),
+        command: Command,
         error: Exception,
         publication: ApplicationViewPublication,
     ) -> CommandResult:
-        """Bind a detached scan failure to current concurrently committed truth."""
+        """Bind a detached prepare failure to current committed truth."""
         app_error = map_exception(error)
         message = str(app_error)
         diagnostics = {
@@ -3337,7 +3253,7 @@ class ApplicationService(Observable):
                     or current_publication.state != plan.application.state
                     or current_state != current_publication.state
                 ):
-                    return self._detached_apply_prepare_failure_result(
+                    return self._detached_prepare_failure_result(
                         command=command,
                         error=exc,
                         publication=current_publication,
@@ -3428,12 +3344,7 @@ class ApplicationService(Observable):
                 )
             finally:
                 self._mutation_in_progress = False
-                self._publication_delivery_fence_depth -= 1
-                if self._publication_delivery_fence_depth < 0:
-                    self._publication_delivery_fence_depth = 0
-                    raise RuntimeError(
-                        "Application publication delivery fence became unbalanced."
-                    )
+                self._release_publication_delivery_fence()
 
     @staticmethod
     def _uses_prepared_preprocess(command: Command | Any) -> bool:
@@ -3529,7 +3440,7 @@ class ApplicationService(Observable):
                     current_state=current_state,
                     publication=current_publication,
                 ):
-                    return self._detached_preprocess_prepare_failure_result(
+                    return self._detached_prepare_failure_result(
                         command=command,
                         error=exc,
                         publication=current_publication,
@@ -3612,12 +3523,7 @@ class ApplicationService(Observable):
                 )
             finally:
                 self._mutation_in_progress = False
-                self._publication_delivery_fence_depth -= 1
-                if self._publication_delivery_fence_depth < 0:
-                    self._publication_delivery_fence_depth = 0
-                    raise RuntimeError(
-                        "Application publication delivery fence became unbalanced."
-                    )
+                self._release_publication_delivery_fence()
 
     @staticmethod
     def _reviewed_channel_selection_boundary_matches(
@@ -3708,40 +3614,6 @@ class ApplicationService(Observable):
         )
         return normalized_expected == current
 
-    def _detached_preprocess_prepare_failure_result(
-        self,
-        *,
-        command: PreprocessCommand | CreateEpochCommand,
-        error: Exception,
-        publication: ApplicationViewPublication,
-    ) -> CommandResult:
-        """Bind detached prepare failure to current concurrently committed truth."""
-        app_error = map_exception(error)
-        message = str(app_error)
-        diagnostics = {
-            **app_error.diagnostics,
-            "exception_type": safe_exception_type_name(error),
-            "handler_error_type": app_error.error_type.value,
-            "handler_error_message": message,
-            "handler_error_recoverable": app_error.recoverable,
-            "detached_prepare_failed_after_concurrent_change": True,
-            "state_preserved": True,
-            "publication_generation": publication.generation,
-            "publication_revision": publication.revision,
-        }
-        if app_error.error_type is ErrorType.CANCELLED:
-            diagnostics["control_flow_outcome"] = True
-        return CommandResult.failure_result(
-            command_name=command_name(command).value,
-            message=message,
-            state=publication.state,
-            changed_state=ChangedState(),
-            error_type=app_error.error_type,
-            recoverable=app_error.recoverable,
-            error_message=message,
-            diagnostics=diagnostics,
-        )
-
     @staticmethod
     def _stale_prepared_preprocess_result(
         *,
@@ -3772,40 +3644,6 @@ class ApplicationService(Observable):
                 "current_publication_revision": publication.revision,
                 "publication_usable": publication.usable,
             },
-        )
-
-    def _detached_apply_prepare_failure_result(
-        self,
-        *,
-        command: ApplyInterpretationCommand,
-        error: Exception,
-        publication: ApplicationViewPublication,
-    ) -> CommandResult:
-        """Bind a detached failure to current truth after another command won."""
-        app_error = map_exception(error)
-        message = str(app_error)
-        diagnostics = {
-            **app_error.diagnostics,
-            "exception_type": safe_exception_type_name(error),
-            "handler_error_type": app_error.error_type.value,
-            "handler_error_message": message,
-            "handler_error_recoverable": app_error.recoverable,
-            "detached_prepare_failed_after_concurrent_change": True,
-            "state_preserved": True,
-            "publication_generation": publication.generation,
-            "publication_revision": publication.revision,
-        }
-        if app_error.error_type is ErrorType.CANCELLED:
-            diagnostics["control_flow_outcome"] = True
-        return CommandResult.failure_result(
-            command_name=self._owned_work_command_identity(command),
-            message=message,
-            state=publication.state,
-            changed_state=ChangedState(),
-            error_type=app_error.error_type,
-            recoverable=app_error.recoverable,
-            error_message=message,
-            diagnostics=diagnostics,
         )
 
     @staticmethod
@@ -3900,12 +3738,7 @@ class ApplicationService(Observable):
                 else:
                     result = self._execute_serialized(command)
             finally:
-                self._publication_delivery_fence_depth -= 1
-                if self._publication_delivery_fence_depth < 0:
-                    self._publication_delivery_fence_depth = 0
-                    raise RuntimeError(
-                        "Application publication delivery fence became unbalanced."
-                    )
+                self._release_publication_delivery_fence()
         return result
 
     def _expected_publication_rejection(

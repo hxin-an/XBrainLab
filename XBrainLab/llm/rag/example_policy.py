@@ -69,22 +69,6 @@ def tool_calls_from_metadata(metadata: dict[str, Any] | None) -> list[dict[str, 
     return [item for item in parsed if isinstance(item, dict)]
 
 
-def tool_name_from_call(call: dict[str, Any]) -> str:
-    """Return the best-effort tool name from known RAG tool-call shapes."""
-    raw_name = (
-        call.get("tool_name")
-        or call.get("name")
-        or call.get("tool")
-        or call.get("command")
-    )
-    if raw_name:
-        return str(raw_name)
-    function = call.get("function")
-    if isinstance(function, dict):
-        return str(function.get("name") or "")
-    return ""
-
-
 def prompt_tool_call_from_metadata(
     metadata: dict[str, Any] | None,
 ) -> dict[str, Any] | None:

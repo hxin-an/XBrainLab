@@ -438,8 +438,6 @@ class PreviewWidget(QWidget):
             PREVIEW_RENDER_FAILED_MESSAGE,
         )
         self.preview_stack.addWidget(self.unavailable_state)
-        # Compatibility alias for older tests and callers.
-        self.locked_status_label = self.locked_state_detail
         plot_layout.addWidget(self.preview_stack)
         self.plot_group.setLayout(plot_layout)
 
@@ -902,7 +900,7 @@ class PreviewWidget(QWidget):
             "unavailable": self.unavailable_state,
         }.get(state, self.empty_state)
         self.preview_stack.setCurrentWidget(target)
-        self.locked_status_label.setVisible(state == "locked")
+        self.locked_state_detail.setVisible(state == "locked")
 
     def clear_plot_data(self):
         """Clear plotted data without deleting PyQtGraph graphics items."""

@@ -17,7 +17,6 @@ from XBrainLab.llm.agent.context_encoding import (
     encode_untrusted_context,
     sanitize_untrusted_text,
 )
-from XBrainLab.llm.agent.tool_feedback import ToolRecoveryFeedback
 from XBrainLab.llm.tools.tool_registry import ToolRegistry
 
 _CONTEXT_SCHEMA = "xbrainlab.untrusted_context.v1"
@@ -567,16 +566,6 @@ def test_context_data_is_separate_structured_source_labelled_and_sanitized() -> 
     )
     assembler = ContextAssembler(ToolRegistry(), Study())
     assembler.add_context(_rag_context(text=malicious))
-    assembler.set_recovery_feedback(
-        ToolRecoveryFeedback(
-            tool_name="get_dataset_info",
-            command_name=None,
-            error_type="input",
-            message=malicious,
-            blocked_reason=malicious,
-            guidance=malicious,
-        )
-    )
 
     messages = assembler.get_messages(
         [{"role": "user", "content": "Show dataset information."}]
@@ -615,7 +604,6 @@ def test_context_data_is_separate_structured_source_labelled_and_sanitized() -> 
         "state_reliable": True,
         "raw_count": 0,
     }
-    assert items_by_type["tool_recovery"]["source"] == {"kind": "assistant_tool_result"}
     assert items_by_type["rag_example"]["source"] == {
         "kind": "xbrainlab_bundled_gold_set",
         "id": "gold-17",

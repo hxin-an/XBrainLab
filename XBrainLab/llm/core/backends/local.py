@@ -1,8 +1,4 @@
-"""HuggingFace Transformers local inference backend.
-
-Implements the ``BaseBackend`` interface for on-device inference using
-HuggingFace ``transformers`` with optional 4-bit quantization.
-"""
+"""HuggingFace Transformers local inference backend."""
 
 import gc
 import hashlib
@@ -22,10 +18,7 @@ from XBrainLab.backend.application.resource_guard import (
     is_cuda_oom_error,
     release_cuda_cache,
 )
-from XBrainLab.chat_contract import (
-    LOCAL_MODEL_INPUT_TOO_LONG_MESSAGE,
-    MODEL_UNTRUSTED_CONTEXT_BOUNDARY_MESSAGE,
-)
+from XBrainLab.chat_contract import LOCAL_MODEL_INPUT_TOO_LONG_MESSAGE
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.generation import ResolvedGenerationOptions
 from XBrainLab.llm.core.model_catalog import (
@@ -33,8 +26,6 @@ from XBrainLab.llm.core.model_catalog import (
     local_model_policy_error,
     local_model_spec,
 )
-
-from .base import BaseBackend
 
 logger = logging.getLogger("XBrainLab.LLM.Local")
 
@@ -52,7 +43,7 @@ class _GenerationLease:
     thread: Thread | None = None
 
 
-class LocalBackend(BaseBackend):
+class LocalBackend:
     """HuggingFace Transformers backend for local inference.
 
     Loads a causal language model with optional 4-bit quantization and
@@ -88,7 +79,7 @@ class LocalBackend(BaseBackend):
 
     @staticmethod
     def _write_capture_file(path: Path, content: str) -> None:
-        path.write_text(content, encoding="utf-8")
+        path.write_bytes(content.encode("utf-8"))
 
     def _start_prompt_capture(
         self,
@@ -205,7 +196,7 @@ class LocalBackend(BaseBackend):
         )
 
     def load(self):
-        """Downloads (if necessary) and loads the model and tokenizer.
+        """Loads the configured local model and tokenizer.
 
         Uses 4-bit quantization when ``config.load_in_4bit`` is enabled,
         otherwise falls back to float16 on CUDA or full precision on CPU.
@@ -352,15 +343,15 @@ class LocalBackend(BaseBackend):
 
         1. **No system role support** — merges system messages into the
            first user message.
-        2. **Strict user/assistant alternation** — merges consecutive
-           same-role messages.
+        2. **Consecutive roles** — merges ordinary same-role messages, but
+           native Granite templates keep untrusted context and request separate.
 
         Args:
             messages: List of message dicts with ``role`` and ``content``.
 
         Returns:
-            A new message list with system content merged and strict
-            alternation enforced.
+            A new message list preserving native system/context boundaries
+            and merging legacy or ordinary same-role content.
 
         """
         if not messages:
@@ -399,8 +390,7 @@ class LocalBackend(BaseBackend):
                     {"role": "user", "content": f"[Instructions]\n{system_content}"},
                 )
 
-        # Step 3: Ensure strict user/assistant alternation
-        # Merge consecutive messages with the same role
+        # Step 3: Keep native context/request boundaries; merge ordinary repeats.
         if not filtered:
             return filtered
 
@@ -412,12 +402,8 @@ class LocalBackend(BaseBackend):
                     and msg.get("role") == "user"
                     and self._is_untrusted_context_message(result[-1])
                 ):
-                    result.append(
-                        {
-                            "role": "assistant",
-                            "content": MODEL_UNTRUSTED_CONTEXT_BOUNDARY_MESSAGE,
-                        }
-                    )
+                    # Both supported Granite templates accept consecutive user
+                    # roles. Do not fabricate a prose assistant response here.
                     result.append(msg)
                     continue
                 # Same role - merge content

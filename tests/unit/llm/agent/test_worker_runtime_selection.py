@@ -19,6 +19,21 @@ from XBrainLab.llm.core.runtime_selection import (
 )
 
 
+class _OwnedProcessEngine:
+    uses_owned_process = True
+
+    def __init__(self, config) -> None:
+        self.config = config
+        self.load_calls = 0
+
+    def load_model(self) -> None:
+        self.load_calls += 1
+
+    def close(self, *, wait_timeout: float = 5.0) -> bool:
+        del wait_timeout
+        return True
+
+
 def _generation_request(text: str) -> AssistantGenerationRequest:
     request = AssistantGenerationRequest.from_messages(
         [{"role": "user", "content": text}],
@@ -47,6 +62,21 @@ def worker():
     generation_thread = instance.generation_thread
     if generation_thread is not None:
         instance._release_generation_thread(generation_thread)
+
+
+@pytest.fixture
+def owned_worker(qtbot):
+    from XBrainLab.llm.agent.worker import AgentWorker
+
+    instance = AgentWorker()
+    yield instance
+    if instance.runtime_load_thread is not None:
+        qtbot.waitUntil(lambda: instance.runtime_load_thread is None, timeout=2_000)
+    if instance.engine is not None:
+        instance._close_engine(instance.engine)
+        instance.engine = None
+    instance.deleteLater()
+    qtbot.wait(0)
 
 
 def _launch_spec(
@@ -78,7 +108,8 @@ def _launch_spec(
 
 
 def test_worker_initializes_only_from_the_exact_launch_spec(
-    worker,
+    owned_worker,
+    qtbot,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     model_id = LLMConfig.default_local_model_id()
@@ -91,17 +122,18 @@ def test_worker_initializes_only_from_the_exact_launch_spec(
         ),
         patch("XBrainLab.llm.agent.worker.LLMEngine") as engine_class,
     ):
-        worker.initialize_agent(spec)
+        engine = _OwnedProcessEngine(spec.build_config())
+        engine_class.return_value = engine
+        snapshots = []
+        owned_worker.runtime_snapshot_changed.connect(snapshots.append)
+        owned_worker.initialize_agent(spec)
+        qtbot.waitUntil(lambda: owned_worker.runtime_load_thread is None, timeout=2_000)
 
-    engine = engine_class.return_value
     launch_config = engine_class.call_args.args[0]
     assert launch_config.model_name == spec.model_id
     assert launch_config.inference_mode == spec.backend_mode
-    engine.load_model.assert_called_once_with()
-    assert worker.engine is engine
-    snapshots = [
-        call.args[0] for call in worker.runtime_snapshot_changed.emit.call_args_list
-    ]
+    assert engine.load_calls == 1
+    assert owned_worker.engine is engine
     assert snapshots[0].phase is AssistantRuntimePhase.LOADING
     assert snapshots[-1].phase is AssistantRuntimePhase.READY
     assert snapshots[-1].model_id == spec.model_id

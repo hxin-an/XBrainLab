@@ -25,7 +25,6 @@ class PreprocessPlotter:
 
     def __init__(self, widget: PreviewWidget) -> None:
         self.widget = widget
-        self._plot_generation = 0
         self._is_plotting = False
 
     @staticmethod
@@ -71,28 +70,9 @@ class PreprocessPlotter:
             )
         return frequencies, power, original_frequencies, original_power
 
-    def _frequency_tab_active(self) -> bool:
-        tabs = getattr(self.widget, "plot_tabs", None)
-        current_index = getattr(tabs, "currentIndex", None)
-        if not callable(current_index):
-            return False
-        value = current_index()
-        if not isinstance(value, (int, str)):
-            return False
-        return int(value) == 1
-
     def _show_preview_unavailable(self, message: str) -> None:
         logger.warning("Preprocess preview data unavailable: %s", message)
-        show_unavailable_message = getattr(
-            self.widget,
-            "show_unavailable_message",
-            None,
-        )
-        if callable(show_unavailable_message):
-            show_unavailable_message(message)
-            return
-        self.widget.plot_time.setTitle("Preview unavailable")
-        self.widget.plot_freq.setTitle("Preview unavailable")
+        self.widget.show_unavailable_message(message)
 
     def plot_sample_data(
         self,
@@ -111,8 +91,6 @@ class PreprocessPlotter:
         self,
         publication: PreprocessRenderPublication | None,
     ) -> None:
-        self._plot_generation += 1
-        plot_generation = self._plot_generation
         self.widget.clear_plot_data()
         if publication is None:
             return
@@ -156,20 +134,18 @@ class PreprocessPlotter:
             else:
                 self.widget.plot_time.enableAutoRange(axis="y")
 
-            show_markers = getattr(self.widget, "show_time_event_markers", None)
-            if callable(show_markers):
-                show_markers(
-                    [
-                        (
-                            event.onset_seconds,
-                            event.label,
-                            event.duration_seconds,
-                        )
-                        for event in data.events
-                    ]
-                )
+            self.widget.show_time_event_markers(
+                [
+                    (
+                        event.onset_seconds,
+                        event.label,
+                        event.duration_seconds,
+                    )
+                    for event in data.events
+                ]
+            )
 
-            if self._frequency_tab_active():
+            if self.widget.plot_tabs.currentIndex() == 1:
                 self.widget.plot_freq.setTitle("Calculating PSD...")
                 result = self._calc_psd_task(
                     current_microvolts,
@@ -177,7 +153,7 @@ class PreprocessPlotter:
                     original_microvolts,
                     (original.sampling_frequency if original is not None else None),
                 )
-                self._apply_psd_result(result, channel_name, plot_generation)
+                self._apply_psd_result(result, channel_name)
         except Exception as error:
             logger.error("Plotting failed: %s", error, exc_info=True)
             self._show_preview_unavailable(PREVIEW_RENDER_FAILED_MESSAGE)
@@ -186,11 +162,8 @@ class PreprocessPlotter:
         self,
         result: tuple[Any, Any, Any, Any],
         channel_name: str,
-        plot_generation: int,
     ) -> None:
-        """Apply PSD arrays to persistent PyQtGraph curves on the UI thread."""
-        if plot_generation != self._plot_generation:
-            return
+        """Apply the synchronously calculated PSD within the guarded UI render."""
         frequencies, power, original_frequencies, original_power = result
         if original_frequencies is not None and original_power is not None:
             self.widget.freq_original_curve.setData(

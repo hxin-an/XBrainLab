@@ -1,6 +1,3 @@
-import os
-from unittest.mock import patch
-
 import mne
 import numpy as np
 import pytest
@@ -71,15 +68,15 @@ def test_edit_event_name_epoch(epoch):
     # all match
     processor.data_preprocess({"a": "a", "b": "b", "c": "c", "d": "e"})
     result = processor.get_preprocessed_data_list()[0]
-    assert epoch.get_event_name_list_str() == "a,b,c,d"
-    assert result.get_event_name_list_str() == "a,b,c,e"
+    assert list(epoch.get_event_list()[1]) == ["a", "b", "c", "d"]
+    assert list(result.get_event_list()[1]) == ["a", "b", "c", "e"]
     assert result.get_preprocess_history()[0] == "Update 1 event names"
 
     # miss at new event
     processor.data_preprocess({"a": "a", "b": "b", "e": "f"})
     result = processor.get_preprocessed_data_list()[0]
-    assert epoch.get_event_name_list_str() == "a,b,c,d"
-    assert result.get_event_name_list_str() == "a,b,c,f"
+    assert list(epoch.get_event_list()[1]) == ["a", "b", "c", "d"]
+    assert list(result.get_event_list()[1]) == ["a", "b", "c", "f"]
     assert result.get_preprocess_history()[1] == "Update 1 event names"
 
 
@@ -120,30 +117,6 @@ def test_edit_event_id_epoch(epoch):
     merged_key = next(k for k, v in event_id.items() if v == 5)
     assert "c" in merged_key and "d" in merged_key
     assert result.get_preprocess_history()[0] == "Update event ids"
-
-
-# export
-# export
-@pytest.mark.parametrize("target_str", ["raw", "epoch"])
-def test_export(target_str, request):
-    target = request.getfixturevalue(target_str)
-    # to ensure history is not empty
-    processor2 = preprocessor.ChannelSelection([target])
-    processor2.data_preprocess(["Fp1", "Fp2"])
-
-    processor = preprocessor.Export(processor2.get_preprocessed_data_list())
-
-    with patch("scipy.io.savemat") as mocked_savemat:
-        processor.data_preprocess("tests/test_data")
-
-        args, _ = mocked_savemat.call_args
-
-        expected_path = os.path.join("tests/test_data", "Sub-0_Sess-0.mat")
-        assert args[0] == expected_path
-        assert "x" in args[1]
-        if target_str == "epoch":
-            assert "y" in args[1]
-        assert "history" in args[1]
 
 
 # filtering
@@ -238,7 +211,7 @@ def test_time_epoch_without_baseline(annotated_raw):
         baseline=None, selected_event_names=["a", "b", "c", "d"], tmin=0, tmax=1
     )
     result = processor.get_preprocessed_data_list()[0]
-    assert result.get_event_name_list_str() == "a,b,c,d"
+    assert list(result.get_event_list()[1]) == ["a", "b", "c", "d"]
     assert result.get_mne().get_data().shape == (4, 2, 2)
     assert np.allclose(
         result.get_mne().get_data(),
@@ -262,7 +235,7 @@ def test_time_epoch_with_baseline(annotated_raw):
         baseline=(-1, 0), selected_event_names=["a", "b", "c", "d"], tmin=0, tmax=1
     )
     result = processor.get_preprocessed_data_list()[0]
-    assert result.get_event_name_list_str() == "a,b,c,d"
+    assert list(result.get_event_list()[1]) == ["a", "b", "c", "d"]
     assert result.get_mne().get_data().shape == (4, 2, 2)
     assert np.allclose(
         result.get_mne().get_data(),
@@ -283,7 +256,7 @@ def test_window_epoch(annotated_raw):
     processor = preprocessor.WindowEpoch([annotated_raw])
     processor.data_preprocess(duration=2, overlap=1)
     result = processor.get_preprocessed_data_list()[0]
-    assert result.get_event_name_list_str() == "a"
+    assert list(result.get_event_list()[1]) == ["a"]
     assert result.get_mne().get_data().shape == (9, 2, 2)
     assert np.allclose(
         result.get_mne().get_data(),

@@ -53,8 +53,6 @@ def query_preprocess_render(
         raise PreprocessRenderDataUnavailableError(
             PREPROCESS_RENDER_DATA_UNAVAILABLE_MESSAGE,
         ) from error
-    if publication is None:
-        return None
     return publication
 
 

@@ -50,7 +50,7 @@ def test_owned_work_registry_publishes_identity_progress_and_terminal_state() ->
     registry = OwnedWorkRegistry()
 
     operation = registry.begin(OwnedWorkKind.IMPORT_REVIEW, cancellable=True)
-    running = registry.start(operation.operation_id)
+    running = registry.claim_start(operation.operation_id)
     updated = registry.update(
         operation.operation_id,
         stage="Scanning BIDS recordings",
@@ -81,7 +81,9 @@ def test_apply_is_the_exact_cancellable_import_materialization_operation() -> No
 
 def test_apply_materialization_source_keeps_checkpoints_and_final_admission() -> None:
     dataset_tree = ast.parse(
-        textwrap.dedent(inspect.getsource(DatasetStateService.import_files))
+        textwrap.dedent(
+            inspect.getsource(DatasetStateService.prepare_replacement_import)
+        )
     )
     import_calls = [
         node for node in ast.walk(dataset_tree) if isinstance(node, ast.Call)
@@ -91,11 +93,6 @@ def test_apply_materialization_source_keeps_checkpoints_and_final_admission() ->
         for node in import_calls
         if isinstance(node.func, ast.Attribute) and node.func.attr == "load"
     )
-    materialize_call = next(
-        node
-        for node in import_calls
-        if isinstance(node.func, ast.Attribute) and node.func.attr == "apply"
-    )
     import_checkpoint_lines = [
         node.lineno
         for node in import_calls
@@ -103,16 +100,16 @@ def test_apply_materialization_source_keeps_checkpoints_and_final_admission() ->
     ]
 
     assert any(line < load_call.lineno for line in import_checkpoint_lines)
-    assert any(
-        load_call.lineno < line < materialize_call.lineno
-        for line in import_checkpoint_lines
+    assert any(line > load_call.lineno for line in import_checkpoint_lines)
+    assert not any(
+        isinstance(node.func, ast.Attribute) and node.func.attr == "apply"
+        for node in import_calls
     )
-    assert any(line > materialize_call.lineno for line in import_checkpoint_lines)
 
     apply_tree = ast.parse(
         textwrap.dedent(
             inspect.getsource(
-                DataInterpretationCommandService.handle_apply_interpretation
+                DataInterpretationCommandService.prepare_apply_interpretation
             )
         )
     )
@@ -126,7 +123,6 @@ def test_apply_materialization_source_keeps_checkpoints_and_final_admission() ->
         and isinstance(node.args[0], ast.Constant)
     }
     assert {
-        "Loading reviewed EEG recordings",
         "Binding reviewed source identity",
         "Applying reviewed channel metadata",
         "Recording interpreted dataset state",
@@ -134,25 +130,47 @@ def test_apply_materialization_source_keeps_checkpoints_and_final_admission() ->
         "Applying reviewed label carriers",
         "Recording reviewed epoch hints",
     } <= checkpoint_stages
-    commit_admission = next(
-        node
-        for node in apply_calls
-        if isinstance(node.func, ast.Name)
-        and node.func.id == "owned_work_commit_boundary"
-    )
     label_verification = next(
         node
         for node in apply_calls
         if isinstance(node.func, ast.Attribute)
         and node.func.attr == "_ensure_label_apply_succeeded"
     )
-    pipeline_commit = next(
+    prepared_result = next(
         node
         for node in apply_calls
-        if isinstance(node.func, ast.Attribute)
-        and node.func.attr == "commit_pipeline_invalidation"
+        if isinstance(node.func, ast.Name)
+        and node.func.id == "PreparedInterpretationApply"
     )
-    assert label_verification.lineno < commit_admission.lineno < pipeline_commit.lineno
+    assert label_verification.lineno < prepared_result.lineno
+    assert not any(
+        isinstance(node.func, ast.Name) and node.func.id == "owned_work_commit_boundary"
+        for node in apply_calls
+    )
+
+    commit_tree = ast.parse(
+        textwrap.dedent(
+            inspect.getsource(
+                DataInterpretationCommandService.commit_prepared_apply_interpretation
+            )
+        )
+    )
+    commit_calls = [
+        node for node in ast.walk(commit_tree) if isinstance(node, ast.Call)
+    ]
+    commit_admission = next(
+        node
+        for node in commit_calls
+        if isinstance(node.func, ast.Name)
+        and node.func.id == "owned_work_commit_boundary"
+    )
+    pipeline_commit = next(
+        node
+        for node in commit_calls
+        if isinstance(node.func, ast.Attribute)
+        and node.func.attr == "commit_pipeline_replacement"
+    )
+    assert commit_admission.lineno < pipeline_commit.lineno
 
 
 @pytest.mark.parametrize(
@@ -197,7 +215,7 @@ def test_cancellation_is_lock_independent_and_reaches_bound_operation() -> None:
 
     def worker() -> None:
         with registry.bind(operation.operation_id):
-            registry.start(operation.operation_id)
+            registry.claim_start(operation.operation_id)
             command_lock_held.set()
             assert release_command_lock.wait(timeout=2.0)
             with pytest.raises(OwnedOperationCancelledError):
@@ -232,7 +250,7 @@ def test_non_cancellable_and_terminal_operations_reject_cancel() -> None:
 def test_commit_boundary_rejects_prior_cancel_and_closes_cancel_admission() -> None:
     registry = OwnedWorkRegistry()
     cancelled = registry.begin(OwnedWorkKind.PREPROCESS, cancellable=True)
-    registry.start(cancelled.operation_id)
+    registry.claim_start(cancelled.operation_id)
     assert registry.cancel(cancelled.operation_id) is True
 
     with (
@@ -243,7 +261,7 @@ def test_commit_boundary_rejects_prior_cancel_and_closes_cancel_admission() -> N
 
     admitted = registry.begin(OwnedWorkKind.PREPROCESS, cancellable=True)
     with registry.bind(admitted.operation_id):
-        registry.start(admitted.operation_id)
+        registry.claim_start(admitted.operation_id)
         snapshot = owned_work_commit_boundary("Publishing preprocessed EEG data")
 
     assert snapshot is not None
@@ -254,7 +272,7 @@ def test_commit_boundary_rejects_prior_cancel_and_closes_cancel_admission() -> N
 def test_complete_terminalizes_late_cancel_request_as_cancelled() -> None:
     registry = OwnedWorkRegistry()
     operation = registry.begin(OwnedWorkKind.EVALUATION, cancellable=True)
-    registry.start(operation.operation_id)
+    registry.claim_start(operation.operation_id)
 
     assert registry.cancel(operation.operation_id) is True
     terminal = registry.complete(operation.operation_id)

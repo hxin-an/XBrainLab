@@ -4,7 +4,6 @@ import inspect
 import re
 from pathlib import Path
 
-import pytest
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -3124,6 +3123,7 @@ def test_load_labels_next_requests_rescan_for_new_label_source(qtbot, monkeypatc
     assert result["label_sources_changed"] is True
     assert result["label_sources"] == ["/tmp/external-labels"]
     assert result["resume_step"] == "Review Metadata"
+    assert dialog.scan_result.get("label_carriers") is None
 
 
 def test_data_interpretation_preview_dialog_can_open_at_resume_step(qtbot):
@@ -3144,41 +3144,6 @@ def test_data_interpretation_preview_dialog_can_open_at_resume_step(qtbot):
     assert dialog.step_stack.currentIndex() == 2
     assert _visible_group_titles(dialog) == ["Review Metadata"]
     assert dialog.next_button.text() == "Next: Match Labels"
-
-
-def test_load_labels_next_returns_sources_for_outer_review_rerun(
-    qtbot,
-    monkeypatch,
-):
-    dialog = DataInterpretationPreviewDialog(
-        parent=None,
-        scan_result={
-            "source_path": "/tmp/source",
-            "eeg_files": ["/tmp/source/A01T.gdf"],
-        },
-        preview={"summary": "Found 1 EEG file(s)."},
-        validation_decision={"decision": "safe"},
-    )
-    qtbot.addWidget(dialog)
-    dialog.show()
-    _show_step(dialog, "Load Labels")
-    qtbot.wait(0)
-    monkeypatch.setattr(
-        "XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog.QFileDialog.getExistingDirectory",
-        lambda *_args, **_kwargs: "/tmp/external-labels",
-    )
-
-    dialog.add_label_folder_btn.click()
-    qtbot.wait(0)
-    dialog.next_button.click()
-    qtbot.wait(0)
-
-    assert dialog.result() == QDialog.DialogCode.Accepted
-    result = dialog.get_result()
-    assert result["label_sources_changed"] is True
-    assert result["label_sources"] == ["/tmp/external-labels"]
-    assert result["resume_step"] == "Review Metadata"
-    assert dialog.scan_result.get("label_carriers") is None
 
 
 def test_data_interpretation_preview_dialog_rejects_duplicate_label_sources(
@@ -4539,48 +4504,6 @@ def test_bids_preset_uses_compact_actionable_first_layer(qtbot):
     )
 
 
-@pytest.mark.parametrize(
-    ("sidecar_present", "warnings", "expected"),
-    [
-        (True, ["events.json sidecar is missing."], "Found"),
-        (False, [], "Missing"),
-    ],
-)
-def test_bids_events_json_status_uses_structured_preview_field(
-    qtbot,
-    sidecar_present,
-    warnings,
-    expected,
-):
-    events_path = "/tmp/source/sub-01_task-mi_events.tsv"
-    dialog = DataInterpretationPreviewDialog(
-        parent=None,
-        scan_result={
-            "source_path": "/tmp/source",
-            "source_kind": "bids",
-            "eeg_files": ["/tmp/source/sub-01_task-mi_eeg.vhdr"],
-            "label_carriers": [events_path],
-            "bids": {"is_bids": True, "events_files": [events_path]},
-        },
-        preview={
-            "label_carrier_preview": [
-                {
-                    "path": events_path,
-                    "name": "sub-01_task-mi_events.tsv",
-                    "format": "BIDS events",
-                    "selected_label_field": "trial_type",
-                    "events_json_sidecar_present": sidecar_present,
-                    "warnings": warnings,
-                }
-            ]
-        },
-        validation_decision=_validation_decision("safe"),
-    )
-    qtbot.addWidget(dialog)
-
-    assert dialog._bids_events_json_text() == expected
-
-
 def test_bids_review_blocks_when_one_selected_run_has_no_events_tsv(qtbot):
     eeg_1 = "/tmp/source/sub-01_task-mi_run-01_raw.fif"
     eeg_2 = "/tmp/source/sub-01_task-mi_run-02_raw.fif"
@@ -4759,7 +4682,9 @@ def test_data_interpretation_preview_dialog_tables_shrink_without_overflow(qtbot
         strict=True,
     ):
         label.setText(full_text)
-        label.setFixedWidth(126)
+        label.setFixedWidth(
+            max(1, label.fontMetrics().horizontalAdvance(full_text) // 2),
+        )
     dialog._compact_clipped_step_labels()
 
     assert [label.toolTip() for label in dialog.step_labels] == dialog._step_titles
@@ -6895,6 +6820,8 @@ def test_data_interpretation_preview_dialog_returns_label_carrier_remap(qtbot):
     )
     assert "replacement label/event carrier" in dialog.confirmation_label.text()
     assert "cannot be applied" not in dialog.confirmation_label.text()
+    assert dialog.confirmation_label.parentWidget() is not None
+    assert dialog.isAncestorOf(dialog.confirmation_label)
 
     details = _tree_text(dialog.review_tree)
     assert "Recipe label file" in details

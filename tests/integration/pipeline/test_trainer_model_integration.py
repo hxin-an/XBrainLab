@@ -5,19 +5,20 @@ real model execution and metrics, not the user-facing import-to-visualization
 command workflow.
 """
 
+from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
 
 import mne
 import numpy as np
 import pytest
 import torch
 
+from tests.integration.training_artifact_support import assert_real_training_artifacts
 from XBrainLab.backend.application.evaluation_render import (
     EvaluationPlanIdentity,
     EvaluationRunIdentity,
     EvaluationSummaryIdentity,
-    build_evaluation_model_summary,
+    build_evaluation_model_summary_result,
 )
 from XBrainLab.backend.dataset import Dataset, DataSplittingConfig, Epochs, TrainingType
 from XBrainLab.backend.load_data import Raw
@@ -109,54 +110,49 @@ class TestTrainerModelIntegration:
             repeat_num=1,
         )
 
-        with (
-            patch("matplotlib.pyplot.savefig"),
-            patch("torch.save"),
-            patch("numpy.savetxt"),
-            patch("os.makedirs"),
-        ):
-            plan = TrainingPlanHolder(holder, dataset, option, {})
-            trainer = Trainer([plan])
-            trainer.job()
+        plan = TrainingPlanHolder(holder, dataset, option, {})
+        trainer = Trainer([plan])
+        trainer.job()
 
-            assert len(plan.train_record_list) == 1
-            record = plan.train_record_list[0]
+        assert len(plan.train_record_list) == 1
+        record = plan.train_record_list[0]
 
-            # Metrics should exist
-            assert RecordKey.LOSS in record.train
-            assert RecordKey.ACC in record.train
-            assert RecordKey.AUC in record.train
+        # Metrics should exist
+        assert RecordKey.LOSS in record.train
+        assert RecordKey.ACC in record.train
+        assert RecordKey.AUC in record.train
 
-            # Loss should be list of floats
-            losses = record.train[RecordKey.LOSS]
-            assert len(losses) == 2  # 2 epochs
-            for loss in losses:
-                assert isinstance(loss, float)
-                assert loss >= 0
+        # Loss should be list of floats
+        losses = record.train[RecordKey.LOSS]
+        assert len(losses) == 2  # 2 epochs
+        for loss in losses:
+            assert isinstance(loss, float)
+            assert loss >= 0
 
-            # Accuracy should be between 0 and 100 (percentage)
-            accs = record.train[RecordKey.ACC]
-            for acc in accs:
-                assert 0.0 <= acc <= 100.0
+        # Accuracy should be between 0 and 100 (percentage)
+        accs = record.train[RecordKey.ACC]
+        for acc in accs:
+            assert 0.0 <= acc <= 100.0
 
-            aucs = record.train[RecordKey.AUC]
-            assert len(aucs) == 2
-            assert all(np.isfinite(auc) for auc in aucs)
+        aucs = record.train[RecordKey.AUC]
+        assert len(aucs) == 2
+        assert all(np.isfinite(auc) for auc in aucs)
 
-            # Eval record should exist
-            assert record.eval_record is not None
+        # Eval record should exist
+        assert record.eval_record is not None
+        assert_real_training_artifacts(Path(record.target_path))
 
-            plan_identity = EvaluationPlanIdentity(plan_index=0)
-            summary = build_evaluation_model_summary(
-                SimpleNamespace(training_plan_holders=lambda: (plan,)),
-                EvaluationSummaryIdentity(
-                    plan=plan_identity,
-                    run=EvaluationRunIdentity(plan=plan_identity, run_index=0),
-                ),
-            )
-            assert "=== Run: Repeat-0 ===" in summary
-            assert "EEGNet" in summary
-            assert "Total params" in summary
+        plan_identity = EvaluationPlanIdentity(plan_index=0)
+        summary = build_evaluation_model_summary_result(
+            SimpleNamespace(training_plan_holders=lambda: (plan,)),
+            EvaluationSummaryIdentity(
+                plan=plan_identity,
+                run=EvaluationRunIdentity(plan=plan_identity, run_index=0),
+            ),
+        )
+        assert "=== Run: Repeat-0 ===" in summary.text
+        assert "EEGNet" in summary.text
+        assert "Total params" in summary.text
 
     def test_sccnet_model(self, synthetic_dataset, tmp_path):
         """Pipeline also works with SCCNet model."""
@@ -179,20 +175,15 @@ class TestTrainerModelIntegration:
             repeat_num=1,
         )
 
-        with (
-            patch("matplotlib.pyplot.savefig"),
-            patch("torch.save"),
-            patch("numpy.savetxt"),
-            patch("os.makedirs"),
-        ):
-            plan = TrainingPlanHolder(holder, dataset, option, {})
-            trainer = Trainer([plan])
-            trainer.job()
+        plan = TrainingPlanHolder(holder, dataset, option, {})
+        trainer = Trainer([plan])
+        trainer.job()
 
-            assert len(plan.train_record_list) == 1
-            record = plan.train_record_list[0]
-            assert RecordKey.LOSS in record.train
-            assert record.eval_record is not None
+        assert len(plan.train_record_list) == 1
+        record = plan.train_record_list[0]
+        assert RecordKey.LOSS in record.train
+        assert record.eval_record is not None
+        assert_real_training_artifacts(Path(record.target_path))
 
 
 class TestMultiRepeatTraining:
@@ -217,17 +208,12 @@ class TestMultiRepeatTraining:
             repeat_num=2,
         )
 
-        with (
-            patch("matplotlib.pyplot.savefig"),
-            patch("torch.save"),
-            patch("numpy.savetxt"),
-            patch("os.makedirs"),
-        ):
-            plan = TrainingPlanHolder(holder, dataset, option, {})
-            trainer = Trainer([plan])
-            trainer.job()
+        plan = TrainingPlanHolder(holder, dataset, option, {})
+        trainer = Trainer([plan])
+        trainer.job()
 
-            assert len(plan.train_record_list) == 2
-            for record in plan.train_record_list:
-                assert RecordKey.LOSS in record.train
-                assert record.eval_record is not None
+        assert len(plan.train_record_list) == 2
+        for record in plan.train_record_list:
+            assert RecordKey.LOSS in record.train
+            assert record.eval_record is not None
+            assert_real_training_artifacts(Path(record.target_path))

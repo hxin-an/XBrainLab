@@ -42,7 +42,6 @@ def test_splitter_accepts_interior_values_for_every_enum_and_unit(
 
     assert splitter.is_valid()
     assert splitter.get_value() == expected_value
-    assert splitter.get_raw_value() == value_var
 
 
 @pytest.mark.parametrize(
@@ -81,8 +80,6 @@ def test_splitter_rejects_empty_and_out_of_range_values(
     assert not splitter.is_valid()
     with pytest.raises(ValueError):
         splitter.get_value()
-    with pytest.raises(ValueError):
-        splitter.get_raw_value()
 
 
 @pytest.mark.parametrize("split_type", [SplitByType.SESSION, ValSplitByType.SESSION])
@@ -102,8 +99,6 @@ def test_splitter_rejects_missing_value_for_every_unit(split_type, split_unit):
     assert not splitter.is_valid()
     with pytest.raises(ValueError):
         splitter.get_value()
-    with pytest.raises(ValueError):
-        splitter.get_raw_value()
 
 
 @pytest.mark.parametrize("split_type", [SplitByType.TRIAL, ValSplitByType.TRIAL])
@@ -112,7 +107,6 @@ def test_manual_splitter_preserves_trailing_whitespace_parse_contract(split_type
 
     assert splitter.is_valid()
     assert splitter.get_value() == [2]
-    assert splitter.get_raw_value() == "2 "
 
 
 @pytest.mark.parametrize("split_unit", [*list(SplitUnit), "test"])
@@ -137,8 +131,6 @@ def test_splitter_getter():
     splitter = DataSplitter(split_type, value_var, split_unit, is_option)
 
     assert splitter.get_split_unit() == split_unit
-    assert splitter.get_split_type_repr() == "SplitByType.SESSION"
-    assert splitter.get_split_unit_repr() == "SplitUnit.KFOLD"
 
 
 def test_config():
@@ -156,4 +148,3 @@ def test_config():
     assert config.test_splitter_list == test_splitter_list
 
     assert config.get_splitter_option() == (val_splitter_list, test_splitter_list)
-    assert config.get_train_type_repr() == "TrainingType.FULL"

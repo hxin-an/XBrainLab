@@ -97,38 +97,6 @@ class PreprocessStateReadPort(Protocol):
 class PreprocessProductPort(PreprocessStateReadPort, Protocol):
     """Complete preprocess command surface owned by a Study."""
 
-    def apply_filter(
-        self,
-        l_freq: float | None,
-        h_freq: float | None,
-        notch_freqs: Sequence[float] | None = None,
-    ) -> bool: ...
-
-    def apply_resample(self, rate: float) -> bool: ...
-    def apply_normalization(self, method: str) -> bool: ...
-    def apply_rereference(self, channels: str | list[str]) -> bool: ...
-    def apply_standard_pipeline(
-        self,
-        *,
-        l_freq: float,
-        h_freq: float,
-        notch_freq: float | None = None,
-        rate: float | None = None,
-        ref_channels: str | list[str] | None = None,
-        normalization: str | None = None,
-    ) -> bool: ...
-
-    def apply_epoching(
-        self,
-        baseline: list[float] | tuple[float | None, float | None] | None,
-        selected_events: Mapping[str, int] | Sequence[str] | None,
-        tmin: float,
-        tmax: float,
-        allow_boundary_drop: bool = False,
-        *,
-        event_label_aliases_by_source: Sequence[Mapping[str, str]] | None = None,
-    ) -> bool: ...
-
     def apply_montage(
         self,
         mapped_channels: list[str],
@@ -224,16 +192,6 @@ class PreprocessStateService(Observable):
     def get_runtime_diagnostics(self) -> dict[str, Any]:
         return collect_runtime_diagnostics(self.study.preprocessed_data_list)
 
-    def apply_filter(
-        self,
-        l_freq: float | None,
-        h_freq: float | None,
-        notch_freqs: Sequence[float] | None = None,
-    ) -> bool:
-        return self.commit_prepared(
-            self.prepare_filter(l_freq, h_freq, notch_freqs),
-        )
-
     def prepare_filter(
         self,
         l_freq: float | None,
@@ -248,18 +206,12 @@ class PreprocessStateService(Observable):
             progress_stage="Filtering EEG recordings",
         )
 
-    def apply_resample(self, rate: float) -> bool:
-        return self.commit_prepared(self.prepare_resample(rate))
-
     def prepare_resample(self, rate: float) -> PreparedPreprocessData:
         return self._prepare_processor(
             self._processor("Resample"),
             rate,
             progress_stage="Resampling EEG recordings",
         )
-
-    def apply_rereference(self, channels: str | list[str]) -> bool:
-        return self.commit_prepared(self.prepare_rereference(channels))
 
     def prepare_rereference(
         self,
@@ -271,35 +223,11 @@ class PreprocessStateService(Observable):
             progress_stage="Rereferencing EEG recordings",
         )
 
-    def apply_normalization(self, method: str) -> bool:
-        return self.commit_prepared(self.prepare_normalization(method))
-
     def prepare_normalization(self, method: str) -> PreparedPreprocessData:
         return self._prepare_processor(
             self._processor("Normalize"),
             norm=method,
             progress_stage="Normalizing EEG recordings",
-        )
-
-    def apply_standard_pipeline(
-        self,
-        *,
-        l_freq: float,
-        h_freq: float,
-        notch_freq: float | None = None,
-        rate: float | None = None,
-        ref_channels: str | list[str] | None = None,
-        normalization: str | None = None,
-    ) -> bool:
-        return self.commit_prepared(
-            self.prepare_standard_pipeline(
-                l_freq=l_freq,
-                h_freq=h_freq,
-                notch_freq=notch_freq,
-                rate=rate,
-                ref_channels=ref_channels,
-                normalization=normalization,
-            )
         )
 
     def prepare_standard_pipeline(
@@ -368,27 +296,6 @@ class PreprocessStateService(Observable):
         return PreparedPreprocessData(
             source_identity=source_identity,
             data=tuple(working_list),
-        )
-
-    def apply_epoching(
-        self,
-        baseline: list[float] | tuple[float | None, float | None] | None,
-        selected_events: Mapping[str, int] | Sequence[str] | None,
-        tmin: float,
-        tmax: float,
-        allow_boundary_drop: bool = False,
-        *,
-        event_label_aliases_by_source: Sequence[Mapping[str, str]] | None = None,
-    ) -> bool:
-        return self.commit_prepared(
-            self.prepare_epoching(
-                baseline,
-                selected_events,
-                tmin,
-                tmax,
-                allow_boundary_drop,
-                event_label_aliases_by_source=event_label_aliases_by_source,
-            )
         )
 
     def prepare_epoching(

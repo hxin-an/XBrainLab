@@ -62,10 +62,6 @@ class ValidationReviewContract:
         return not self.contract_errors and self.decision is not None
 
     @property
-    def action_targets(self) -> frozenset[str]:
-        return frozenset(item.target_step for item in self.action_items)
-
-    @property
     def blocking_action_targets(self) -> frozenset[str]:
         return frozenset(
             item.target_step for item in self.action_items if item.severity == "blocked"

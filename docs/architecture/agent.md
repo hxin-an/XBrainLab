@@ -1,6 +1,6 @@
 # Agent 目前架構
 
-最後更新：`2026-08-24`
+最後更新：`2026-09-11`
 
 ## 範圍
 
@@ -190,34 +190,26 @@ apply與recipe lifecycle仍由既有Data Interpretation/ApplicationService owner
 - Qwen、DeepSeek、Yi、GLM、Baichuan、InternLM、MiniCPM 等模型不列入 product / legacy 選型。
 - 優先考慮非中國來源、授權清楚、可本地部署的模型。
 
-2026-08-24 local runtime truth：
+模型選擇與 exact revision 由[有效決策](../decisions/README.md)及 immutable catalog 擁有：
+Granite 4.0 Micro 3B 是 primary，Granite 3.3 2B 是明確的 lower-memory selection；任一選定模型
+不可用時不 silent fallback。磁碟上存在其他模型不代表 product support，Settings 只發布支援清單。
 
-| role | model | provider | estimated download | cache status | smoke |
-| --- | --- | --- | ---: | --- | --- |
-| primary | `ibm-granite/granite-4.0-micro` | IBM | 6.82 GB | exact revision cached | product `LLMEngine` structured turn PASS；peak allocated 6,771.76 MiB |
-| lower-memory | `ibm-granite/granite-3.3-2b-instruct` | IBM | 5.08 GB | exact revision cached | selectable；既有supported selection不被改寫 |
-| diagnostic cache only | `mistralai/Ministral-3-3B-Instruct-2512-BF16` | Mistral AI | 7.73 GB exact allow-list | cached but not selectable | product Transformers不支援`ministral3` text config；配置階段fail closed，VRAM allocation 0 |
+`platform_paths` 擁有 per-user config 與 model cache 路徑；`LLMConfig` 預設使用該 owner，
+不是每個 checkout 自帶一份模型。Windows 預設設定為 `%APPDATA%\XBrainLab\settings.json`、
+模型 cache 為 `%LOCALAPPDATA%\XBrainLab\models`。`XBRAINLAB_CONFIG_DIR` 與
+`XBRAINLAB_MODEL_CACHE_DIR` 可分別覆寫；catalog 在選定 cache 下驗證 pinned snapshot 與容量。
+舊 repo-root 設定只用於既有一次性匯入，不是正常寫入位置。環境操作方式見
+[本機環境](../developer/local-setup.md)。
 
-每個 checkout 的已下載模型相容 cache 預設位於：
+WSL launcher 有自己的部署路徑選擇：若存在舊 Granite cache 就沿用，否則選 repo 所在 Windows
+磁碟的 `XBrainLabCache/models`，RAG 使用 `XBrainLabCache/rag`；也支援其明定的 cache-root override。
+這不是 Windows native bootstrap 或一般 Python 啟動的預設路徑，不新增 model selection／quota owner。
 
-```text
-XBrainLab/llm/core/models
-```
+Cache 大小與 runtime 量測是 path/source-scoped evidence，不能由架構文件證明目前機器已安裝哪些
+模型。引用量測時仍需記錄 cache path、full SHA、dirty state 與 model revision；歷史數值從 Git／
+原始 evidence 追溯，不作為目前 runtime 狀態。
 
-產品 launcher 不依賴 Python 的 WSL-home default。它在啟動前明確設定模型與 RAG cache：
-既有 canonical cache 可直接沿用，新安裝則使用 repo 所在 Windows 磁碟的
-`XBrainLabCache/models` 與 `XBrainLabCache/rag`。這是 deployment/runtime policy；模型選擇、
-quota 與 snapshot 驗證仍由 application-side catalog contract 決定。
-
-Model cache facts are path-scoped. 本次產品scanner在active cache量到3B `6,815,496,013` bytes、2B
-`5,071,897,896` bytes、diagnostic-only Ministral `7,732,474,788` bytes，總量`19,619,868,697` bytes；仍低於原本
-20 GB policy，沒有使用使用者另給的10 GB diagnostic緩衝。Runtime evidence仍必須記錄selected cache
-path、branch、full SHA、dirty state與model revision後才能引用。Granite 4.0 Micro 3B是exact primary，
-Granite 3.3 2B只作明確lower-memory selection；任一selection unavailable都不silent fallback。Ministral
-cache不代表product support，Settings不發布它。Phi仍不可選，也不會成為fallback。
-舊 Qwen cache 已刪除，catalog / architecture guards 會阻止被禁用來源重新進入 product path。
-
-新增 runtime policy：
+Runtime policy：
 
 - `XBrainLab/llm/core/model_catalog.py` 是 local model allow-list / block-list / size policy 的單一來源。
 - 下載前必須通過 `plan_model_download()`，限制單模型 10GB、總 cache 20GB。
@@ -489,7 +481,7 @@ Historical Phi evaluation artifacts are not current product or thesis evidence. 
 host-assisted或`121/121` reports不得作為current Granite accuracy。Current v12 evidence在同一candidate
 source分開保存50-case core、24-case precision與7-case clarification；81-case `total`只表示inventory
 completeness，嚴格promotion只讀獨立`candidate_gate.passed`，不把它宣稱成單一accuracy。舊v7 artifact
-只保留歷史checkpoint，且verified execution boundary仍不等於真ToolExecutor side effect或產品ready。
+只保留歷史checkpoint，且verified execution boundary仍不等於真tool execution side effect或產品ready。
 
 ## 架構評斷
 

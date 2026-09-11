@@ -283,7 +283,7 @@ class _DeferredMainWindow:
             )
         )
 
-    def switch_page(self, index: int, *, on_ready=None) -> bool:
+    def switch_page(self, index: int, *, on_ready=None, on_failed=None) -> bool:
         self.navigation_calls.append(index)
         if on_ready is not None:
             self.callbacks[index].append(on_ready)

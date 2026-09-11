@@ -1154,6 +1154,44 @@ def test_build_interpretation_candidate_reviews_bids_interval_placement(tmp_path
     assert review["summary"] == "2 interval rows using onset and duration."
 
 
+def test_bids_interval_preview_keeps_partial_nonnumeric_onset_under_review(tmp_path):
+    events = tmp_path / "sub-01_task-mi_events.tsv"
+    events.write_text(
+        "onset\tduration\ttrial_type\n0.0\t1.0\tleft\nnot-a-number\t1.0\tright\n",
+        encoding="utf-8",
+    )
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-partial-interval-onset",
+        scan=_scan(
+            label_carriers=[str(events)],
+            bids={"is_bids": True, "events_files": [str(events)]},
+        ),
+        choices={
+            "label_carrier_choices": {
+                str(events): {
+                    "label_field": "trial_type",
+                    "anchor": "onset",
+                    "duration_field": "duration",
+                    "placement_method": "interval",
+                }
+            }
+        },
+    )
+
+    preview = build_interpretation_preview(
+        preview_id="preview-partial-interval-onset",
+        candidate=candidate,
+    )
+    review = preview.label_carrier_preview[0]["placement_review"]
+
+    assert review["method"] == "interval"
+    assert review["status"] == "needs_review"
+    assert review["numeric_rows"] == 1
+    assert review["duration_numeric_rows"] == 2
+    assert any("Confirm label placement" in item for item in preview.confirmation_items)
+
+
 def test_build_interpretation_candidate_blocks_empty_selection():
     candidate = build_interpretation_candidate(
         candidate_id="candidate-1",

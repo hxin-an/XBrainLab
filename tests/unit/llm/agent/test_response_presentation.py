@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pytest
 
-from XBrainLab.backend.application import CommandName
 from XBrainLab.chat_contract import MAX_CHAT_MESSAGE_CONTENT_LENGTH
 from XBrainLab.llm.agent.interaction import (
     AgentInteractionOutcome,
@@ -17,7 +16,6 @@ from XBrainLab.llm.agent.response_presentation import (
     AssistantResponsePresentation,
     interaction_outcome_kind,
     interaction_outcome_message,
-    panel_target_for_command,
     user_facing_generation_error,
 )
 from XBrainLab.llm.agent.turn import AssistantTurnCorrelation
@@ -128,22 +126,6 @@ def test_generation_error_copy_is_actionable_without_raw_details(
     assert expected in visible
     assert raw_error not in visible
     assert "/private/cache" not in visible
-
-
-@pytest.mark.parametrize("command_name", ["set_montage", "apply_montage"])
-def test_montage_commands_share_dataset_surface_truth(command_name: str) -> None:
-    assert panel_target_for_command(command_name) is AssistantPanelTarget.DATASET
-
-
-def test_panel_routing_accepts_typed_canonical_command_identity() -> None:
-    assert (
-        panel_target_for_command(CommandName.CREATE_EPOCH)
-        is AssistantPanelTarget.PREPROCESS
-    )
-    assert (
-        panel_target_for_command(CommandName.APPLY_MONTAGE)
-        is AssistantPanelTarget.DATASET
-    )
 
 
 def test_response_presentation_requires_exact_turn_generation_correlation() -> None:

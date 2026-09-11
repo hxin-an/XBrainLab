@@ -9,15 +9,9 @@ import pytest
 from XBrainLab.backend.application.errors import PreconditionError
 from XBrainLab.backend.application.training_runtime import StudyTrainingRuntime
 from XBrainLab.backend.exceptions import StaleTrainingPipelineMutationError
-from XBrainLab.backend.training_manager import (
-    PostTrainingSaliencyTarget,
-    PostTrainingSaliencyTerminalDeliveryState,
-)
+from XBrainLab.backend.training_manager import PostTrainingSaliencyTerminalDeliveryState
 from XBrainLab.backend.training_state_contract import (
     PostTrainingSaliencyPhase,
-    PostTrainingSaliencyScheduleDisposition,
-    PostTrainingSaliencyScheduleOutcome,
-    PostTrainingSaliencyScheduleReason,
     PostTrainingSaliencyStatus,
     TrainingOutcomeState,
     TrainingPipelineMutationBoundary,
@@ -134,32 +128,6 @@ class _TrainingManager:
             yield
         finally:
             self.calls.append(("defer_exit", stage))
-
-    def publish_post_training_saliency_submission_failure(
-        self,
-        target: PostTrainingSaliencyTarget,
-        error: BaseException,
-    ) -> PostTrainingSaliencyScheduleOutcome:
-        self.calls.append(("submission_failure", target, error))
-        reason = PostTrainingSaliencyScheduleReason.THREAD_START_FAILED
-        message = str(error)
-        status = PostTrainingSaliencyStatus(
-            phase=PostTrainingSaliencyPhase.FAILED,
-            generation=self.status.generation + 1,
-            run=target.run,
-            training_generation=7,
-            methods=("Gradient",),
-            error_code=reason.value,
-            message=message,
-            diagnostic_type=type(error).__name__,
-        )
-        self.status = status
-        return PostTrainingSaliencyScheduleOutcome(
-            disposition=PostTrainingSaliencyScheduleDisposition.REJECTED,
-            reason=reason,
-            message=message,
-            status=status,
-        )
 
     def wait_for_saliency_job(self, timeout: float | None = None) -> bool:
         self.calls.append(("wait_job", timeout))
@@ -311,23 +279,12 @@ def test_training_runtime_forwards_saliency_lifecycle_without_changing_identity(
     def stage(_status: PostTrainingSaliencyStatus) -> bool:
         return True
 
-    failure = RuntimeError("submission failed")
-
     assert runtime.saliency_status() is manager.status
     assert runtime.saliency_delivery_state() is manager.delivery_state
     runtime.subscribe_saliency_terminal(callback)
     runtime.unsubscribe_saliency_terminal(callback)
     with runtime.defer_saliency_terminal(stage):
         manager.calls.append(("inside",))
-    target = PostTrainingSaliencyTarget(
-        run=TrainingRunIdentity(trainer_id="runtime-port", run_id=1),
-        finished_runs_before=0,
-        finished_runs_after=1,
-        append=True,
-    )
-    submission = runtime.publish_saliency_submission_failure(target, failure)
-    assert submission.disposition is (PostTrainingSaliencyScheduleDisposition.REJECTED)
-    assert submission.status.phase is PostTrainingSaliencyPhase.FAILED
     assert runtime.wait_for_saliency_job(timeout=0.5) is True
     runtime.cancel_saliency_job()
     assert runtime.wait_for_saliency_delivery(timeout=0.75) is True
@@ -342,7 +299,6 @@ def test_training_runtime_forwards_saliency_lifecycle_without_changing_identity(
         ("defer_enter", stage),
         ("inside",),
         ("defer_exit", stage),
-        ("submission_failure", target, failure),
         ("wait_job", 0.5),
         ("cancel_job",),
         ("wait_delivery", 0.75),

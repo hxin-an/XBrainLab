@@ -23,7 +23,6 @@ from XBrainLab.ui.dialogs.preprocess.common import (
     configure_preprocess_dialog_layout,
     create_preprocess_section,
     create_preprocess_switch,
-    fit_preprocess_dialog_to_content,
 )
 
 
@@ -45,7 +44,7 @@ class FilteringDialog(BaseDialog):
         self.validation_label: QLabel
         self.ok_button: QPushButton
         super().__init__(parent, title="Filtering", width=520, height=360)
-        fit_preprocess_dialog_to_content(self, minimum_width=520)
+        self.fit_to_content(minimum_width=520)
 
     def init_ui(self) -> None:
         self.setStyleSheet(
@@ -263,7 +262,7 @@ class FilteringDialog(BaseDialog):
         self.validation_label.setText(error)
         self.validation_label.setVisible(bool(error))
         self.ok_button.setEnabled(not error)
-        fit_preprocess_dialog_to_content(self, minimum_width=520)
+        self.fit_to_content(minimum_width=520)
 
     def accept(self) -> None:
         error = self._validation_error()

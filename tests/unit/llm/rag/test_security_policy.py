@@ -246,11 +246,19 @@ def test_embedding_download_checks_quota_before_network(tmp_path: Path) -> None:
 
 def test_oversized_partial_embedding_cache_is_blocked_before_network(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Exercise the real size scan without retaining a multi-GB fake weight on NTFS.
+    monkeypatch.setattr(rag_downloader, "MAX_SINGLE_MODEL_DOWNLOAD_GB", 100 / 1e9)
     model_root = RAGConfig.embedding_snapshot_path(tmp_path).parent.parent
     model_root.mkdir(parents=True)
-    with (model_root / "partial.bin").open("wb") as stream:
-        stream.truncate(10_100_000_000)
+    (model_root / "partial.bin").write_bytes(b"x" * 101)
+
+    plan = plan_rag_embedding_download(tmp_path)
+    assert plan.current_cache_bytes == 101
+    assert plan.max_single_model_bytes == 100
+    assert plan.ok is False
+    assert "already above" in plan.message
 
     with patch(
         "XBrainLab.llm.rag.downloader.snapshot_download",
@@ -261,6 +269,7 @@ def test_oversized_partial_embedding_cache_is_blocked_before_network(
         )
 
     assert result.ok is False
+    assert "already above" in result.message
     assert "per-artifact limit" in result.message
     snapshot_download.assert_not_called()
 

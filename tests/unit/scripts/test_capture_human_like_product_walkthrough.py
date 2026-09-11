@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+import tempfile
 from collections.abc import Mapping
+from contextlib import nullcontext
 from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
@@ -178,13 +180,61 @@ def _admit_walkthrough_turn(
     return request
 
 
-def test_assistant_settings_isolation_builds_a_complete_pinned_model_snapshot() -> None:
-    with isolated_assistant_settings() as isolation:
+@pytest.mark.parametrize("capture_fails", [False, True])
+def test_assistant_settings_isolation_builds_a_complete_pinned_model_snapshot(
+    monkeypatch, tmp_path, capture_fails
+) -> None:
+    host_path = tmp_path / "host" / "settings.json"
+    legacy_path = tmp_path / "legacy-settings.json"
+    assert LLMConfig().save_to_file(str(host_path))
+    host_bytes = host_path.read_bytes()
+    legacy_path.write_bytes(b"untouched legacy settings")
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    monkeypatch.setattr(
+        LLMConfig, "_default_settings_path", staticmethod(lambda: str(host_path))
+    )
+    monkeypatch.setattr(
+        LLMConfig, "_legacy_settings_path", staticmethod(lambda: str(legacy_path))
+    )
+    original_bindings = {
+        name: LLMConfig.__dict__[name]
+        for name in (
+            "_default_settings_path",
+            "_legacy_settings_path",
+            "load_from_file",
+        )
+    }
+
+    expected_exit = (
+        pytest.raises(RuntimeError, match="capture failed")
+        if capture_fails
+        else nullcontext()
+    )
+    with expected_exit, isolated_assistant_settings() as isolation:
         config = LLMConfig.load_from_file()
 
         assert config is not None
         assert config.cache_dir == str(isolation.cache_root)
         assert config.has_local_model_cache(PRIMARY_LOCAL_MODEL_ID) is True
+        assert LLMConfig._default_settings_path() == str(isolation.settings_path)
+        assert isolation.settings_path.is_file()
+        assert isolation.settings_path.is_relative_to(tmp_path)
+        assert config.save_to_file()
+        assert host_path.read_bytes() == host_bytes
+        if capture_fails:
+            raise RuntimeError("capture failed")
+
+    assert host_path.read_bytes() == host_bytes
+    assert legacy_path.read_bytes() == b"untouched legacy settings"
+    assert not isolation.cache_root.exists()
+    assert not isolation.settings_path.parent.exists()
+    assert LLMConfig._default_settings_path() == str(host_path)
+    assert all(
+        LLMConfig.__dict__[name] is binding
+        for name, binding in original_bindings.items()
+    )
+    if not capture_fails:
+        assert isolation.evidence["host_config_unchanged"] is True
 
 
 def test_rotated_x_tick_overlap_uses_anchor_spacing_not_axis_aligned_bounds() -> None:
@@ -980,6 +1030,42 @@ def test_byte_identical_logical_states_use_declared_phase_aliases() -> None:
 def test_product_walkthrough_screenshot_manifest_excludes_eval_dashboard() -> None:
     assert "eval_dashboard" not in SCREENSHOT_NAMES
     assert "20-eval-dashboard.png" not in SCREENSHOT_NAMES.values()
+
+
+@pytest.mark.parametrize("failure", [None, "undeclared", "missing", "mismatch"])
+def test_phase_alias_preserves_observations_and_rejects_unbacked_aliases(failure):
+    source = {
+        "phase": "data_source_selection",
+        "screenshot": "source.png",
+        "visible_text": ["Source"],
+        "button_state": [{"text": "Next", "enabled": True}],
+        "workflow_state": {"loaded": False},
+    }
+    phases = [] if failure == "missing" else [source]
+    original = deepcopy(phases)
+    phase = (
+        "unknown" if failure == "undeclared" else "data_interpretation_select_source"
+    )
+    screenshot = "other.png" if failure == "mismatch" else "source.png"
+    notes = {"active_step": "Select Source"}
+    expected = pytest.raises(RuntimeError) if failure else nullcontext()
+    with expected:
+        walkthrough_module.append_phase_alias(phases, phase, screenshot, notes)
+    if failure:
+        assert phases == original
+        return
+    assert phases == [
+        source,
+        {
+            **source,
+            "phase": phase,
+            "alias_of": "data_source_selection",
+            "notes": notes,
+        },
+    ]
+    alias = phases[-1]
+    for key in ("visible_text", "button_state", "workflow_state"):
+        assert alias[key] is not source[key]
 
 
 @pytest.mark.parametrize("mutation", ["reordered", "duplicate"])
@@ -2606,6 +2692,28 @@ def test_capture_frame_readiness_rejects_large_local_unpainted_region(tmp_path) 
             screenshot,
             (480, 0, 760, 520),
             surface_name="Workflow sidebar",
+        )
+
+
+@pytest.mark.parametrize("black_tile", [False, True])
+def test_capture_readiness_preserves_dark_theme_and_small_black_tile_rejection(
+    tmp_path, black_tile
+) -> None:
+    screenshot = tmp_path / "dark-theme.png"
+    image = Image.new("RGB", (192, 192), "#252a30")
+    if black_tile:
+        # Only 1/64 of the image is black: below the global ratio threshold.
+        ImageDraw.Draw(image).rectangle((0, 0, 23, 23), fill="#000000")
+    image.save(screenshot)
+
+    expectation = (
+        pytest.raises(RuntimeError, match="unpainted block")
+        if black_tile
+        else nullcontext()
+    )
+    with expectation:
+        _assert_region_has_no_unpainted_block(
+            screenshot, (0, 0, 192, 192), surface_name="Dark theme"
         )
 
 

@@ -438,45 +438,6 @@ def _has_nonempty_saliency_value(value: Any) -> bool:
         return False
 
 
-_DEFAULT_PROJECTOR = SaliencyCoverageProjector()
-
-
-def saliency_coverage_for_eval_record(
-    eval_record: Any,
-    *,
-    label_items: Iterable[tuple[object, object]] | None = None,
-) -> list[SaliencyMethodCoverageSnapshot]:
-    """Compatibility helper for callers migrating to the projector."""
-    return _DEFAULT_PROJECTOR.project_eval_record(
-        eval_record,
-        label_items=label_items,
-    )
-
-
-def saliency_method_coverage(
-    eval_record: Any,
-    method: str,
-    *,
-    label_items: Iterable[tuple[object, object]] | None = None,
-) -> SaliencyMethodCoverageSnapshot:
-    """Compatibility helper for callers migrating to the projector."""
-    return _DEFAULT_PROJECTOR.project_method(
-        eval_record,
-        method,
-        label_items=label_items,
-    )
-
-
-def saliency_label_items_from_epoch(
-    epoch_data: Any,
-) -> list[tuple[object, object]]:
-    """Compatibility helper for callers migrating to the projector."""
-    return _DEFAULT_PROJECTOR.label_items_from_epoch(epoch_data)
-
-
 __all__ = [
     "SaliencyCoverageProjector",
-    "saliency_coverage_for_eval_record",
-    "saliency_label_items_from_epoch",
-    "saliency_method_coverage",
 ]

@@ -13,18 +13,11 @@ from XBrainLab.ui.components.info_panel_service import InfoPanelService
 
 
 @pytest.fixture
-def study() -> Study:
-    return Study()
+def service():
+    return InfoPanelService()
 
 
-@pytest.fixture
-def service(study):
-    return InfoPanelService(study)
-
-
-def test_service_initialization(service, study):
-    assert service.study == study
-    assert service._observes_controller_events is False
+def test_service_initialization(service):
     assert service._latest_publication is None
     assert not hasattr(service, "dataset_bridge")
     assert not hasattr(service, "preprocess_bridge")
@@ -52,7 +45,7 @@ def test_notify_all_replays_latest_publication_without_second_state_query():
         application_service.get_view_publication(),
         data_summary_rows=({"filename": "publication.edf"},),
     )
-    service = InfoPanelService(study)
+    service = InfoPanelService()
     panel = MagicMock()
     service._listeners.add(panel)
 
@@ -79,7 +72,7 @@ def test_missing_publication_rows_fail_closed_without_second_state_query():
         application_service.get_view_publication(),
         data_summary_rows=None,
     )
-    service = InfoPanelService(study)
+    service = InfoPanelService()
     panel = MagicMock()
     service._listeners.add(panel)
 
@@ -94,23 +87,18 @@ def test_missing_publication_rows_fail_closed_without_second_state_query():
         application_service.close()
 
 
-def test_absent_publication_fails_closed_without_state_query():
-    study = Study()
-    study.get_controller = MagicMock(
-        side_effect=AssertionError("missing publication must not read controller truth")
-    )
-    service = InfoPanelService(study)
-    panel = MagicMock()
+def test_absent_publication_fails_closed_without_state_query(qtbot):
+    from XBrainLab.ui.components.info_panel import AggregateInfoPanel
+
+    service = InfoPanelService()
+    panel = AggregateInfoPanel()
+    qtbot.addWidget(panel)
 
     service.register(panel)
     service.notify_all()
 
-    study.get_controller.assert_not_called()
-    assert panel.update_info.call_count == 2
-    panel.update_info.assert_called_with(
-        loaded_data_list=[],
-        preprocessed_data_list=[],
-    )
+    assert not panel.has_data
+    assert panel.table.item(panel.row_map["EEG files"], 1).text() == "-"
 
 
 def test_deleted_qobject_runtime_error_is_terminal_cleanup():
@@ -122,7 +110,7 @@ def test_deleted_qobject_runtime_error_is_terminal_cleanup():
 
     study = Study()
     application_service = ApplicationService(study)
-    service = InfoPanelService(study)
+    service = InfoPanelService()
     publication = application_service.get_view_publication()
     panel = DeletedAggregatePanel()
     service._listeners.add(panel)
@@ -210,14 +198,12 @@ def test_weak_ref_cleanup(service):
 
     panel = MockPanel()
     service.register(panel)
-
+    reference = weakref.ref(panel)
     assert panel in service._listeners
 
     del panel
-    # Force gc if needed, but WeakSet should handle it
-    # note: locally 'panel' is gone, but we can't easily assert weakref collection in simple sync test without gc.collect()
-    # But we can check that it IS a WeakSet
-    assert isinstance(service._listeners, weakref.WeakSet)
+    assert reference() is None
+    assert not service._listeners
 
 
 @pytest.mark.parametrize(

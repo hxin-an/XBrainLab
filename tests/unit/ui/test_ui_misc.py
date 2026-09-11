@@ -164,13 +164,6 @@ class TestDatasetActionHandler:
         )
         return h
 
-    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
-    def test_import_data_without_product_review_is_blocked(self, mock_mb, handler):
-        outcome = handler.import_data()
-
-        assert outcome.status is InteractionStatus.BLOCKED
-        mock_mb.assert_called_once()
-
     def test_typed_generic_folder_classification_enters_existing_review(
         self,
         handler,
@@ -265,19 +258,6 @@ class TestDatasetActionHandler:
 
         assert _dataset_dialog_start_directory() == str(tmp_path / "datasets")
         assert _dataset_dialog_start_directory(prefer_bids=True) == str(bids_root)
-
-    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
-    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
-    def test_import_data_without_command_service_is_blocked(
-        self,
-        mock_mb,
-        mock_fd,
-        handler,
-    ):
-        mock_fd.getOpenFileNames.return_value = (["/a.set"], "")
-        handler.import_data()
-        mock_mb.assert_called_once()
-        assert mock_mb.call_args.args[1] == "Interpretation Blocked"
 
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
@@ -431,13 +411,16 @@ class TestDatasetActionHandler:
         )
         mock_mb.assert_not_called()
 
-    def test_import_data_blocks_real_study_when_scan_capability_is_unavailable(
+    @pytest.mark.parametrize("real_study", [False, True])
+    def test_import_data_blocks_before_choosing_without_scan_capability(
         self,
         handler,
+        real_study,
     ):
         from XBrainLab.backend.study import Study
 
-        handler.panel.study = Study()
+        if real_study:
+            handler.panel.study = Study()
 
         with (
             patch(
@@ -725,17 +708,6 @@ class TestDatasetActionHandler:
         }
 
     @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
-    def test_on_import_finished_success(self, mock_mb, handler):
-        handler.on_import_finished(2, [])
-        handler.panel.update_panel.assert_not_called()
-        mock_mb.assert_not_called()
-
-    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
-    def test_on_import_finished_errors(self, mock_mb, handler):
-        handler.on_import_finished(1, ["err1", "err2"])
-        mock_mb.assert_called_once()
-
-    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     def test_open_smart_parser_without_product_review_is_blocked(
         self,
         mock_mb,
@@ -1005,11 +977,6 @@ class TestDatasetActionHandler:
         mock_mb.assert_called_once()
         assert mock_mb.call_args.args[1] == "Smart Parse Blocked"
         assert "Load raw data before applying smart parse." in mock_mb.call_args.args[2]
-
-    def test_on_import_finished_many_errors(self, handler):
-        with patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_mb:
-            handler.on_import_finished(0, [f"err{i}" for i in range(15)])
-            mock_mb.assert_called_once()
 
 
 # ====================================================================

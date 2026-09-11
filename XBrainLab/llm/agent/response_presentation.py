@@ -11,7 +11,6 @@ from XBrainLab.backend.utils.public_diagnostics import (
     public_diagnostic_text,
 )
 from XBrainLab.chat_contract import MAX_CHAT_MESSAGE_CONTENT_LENGTH, bounded_chat_string
-from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 from XBrainLab.product_language import tool_action_label
 
 from .interaction import AgentInteractionOutcome, AgentInteractionStatus
@@ -81,70 +80,12 @@ class AssistantPanelNavigationRequest:
         object.__setattr__(self, "view_mode", normalized)
 
 
-_DATASET_PANEL_COMMANDS = frozenset(
-    {
-        CommandName.SCAN_SOURCE,
-        CommandName.REVIEW_INTERPRETATION,
-        CommandName.PREVIEW_INTERPRETATION,
-        CommandName.VALIDATE_INTERPRETATION,
-        CommandName.APPLY_INTERPRETATION,
-        CommandName.SAVE_INTERPRETATION_RECIPE,
-        CommandName.RELOAD_INTERPRETATION_RECIPE,
-        CommandName.UPDATE_METADATA,
-        CommandName.APPLY_SMART_PARSE,
-        CommandName.REMOVE_FILES,
-        CommandName.RESET_SESSION,
-        CommandName.NEW_SESSION,
-    }
-)
-_PREPROCESS_PANEL_COMMANDS = frozenset(
-    {
-        CommandName.PREPROCESS,
-        CommandName.CREATE_EPOCH,
-        CommandName.RESET_PREPROCESS,
-    }
-)
-_TRAINING_PANEL_COMMANDS = frozenset(
-    {
-        CommandName.CONFIGURE_DATASET_SPLIT,
-        CommandName.CLEAR_DATASETS,
-        CommandName.CONFIGURE_TRAINING,
-        CommandName.TRAIN,
-        CommandName.STOP_TRAINING,
-        CommandName.CLEAR_TRAINING_HISTORY,
-    }
-)
-
-_COMMAND_PANEL_TARGETS: dict[CommandName, AssistantPanelTarget] = {
-    **dict.fromkeys(_DATASET_PANEL_COMMANDS, AssistantPanelTarget.DATASET),
-    **dict.fromkeys(_PREPROCESS_PANEL_COMMANDS, AssistantPanelTarget.PREPROCESS),
-    **dict.fromkeys(_TRAINING_PANEL_COMMANDS, AssistantPanelTarget.TRAINING),
-    CommandName.EVALUATE: AssistantPanelTarget.EVALUATION,
-    CommandName.APPLY_MONTAGE: AssistantPanelTarget.DATASET,
-    CommandName.VISUALIZE: AssistantPanelTarget.VISUALIZATION,
-    CommandName.SALIENCY: AssistantPanelTarget.VISUALIZATION,
-}
-
-
 def _command_identifier(command_identity: str | CommandName) -> str:
     if isinstance(command_identity, CommandName):
         return command_identity.value
     if type(command_identity) is not str:
         return ""
     return command_identity.strip().lower()
-
-
-def _canonical_command_identity(
-    command_identity: str | CommandName,
-) -> CommandName | None:
-    identifier = _command_identifier(command_identity)
-    if not identifier:
-        return None
-    try:
-        return CommandName(identifier)
-    except ValueError:
-        contract = AGENT_ACTION_CONTRACTS.contract_for(identifier)
-        return contract.command if contract is not None else None
 
 
 def user_facing_generation_error(raw_error: object) -> str:
@@ -172,18 +113,6 @@ def user_facing_generation_error(raw_error: object) -> str:
     return (
         "The assistant could not complete the request. Try again. Technical "
         "details were written to the application log."
-    )
-
-
-def panel_target_for_command(
-    command_name: str | CommandName,
-) -> AssistantPanelTarget | None:
-    """Return one shared product-surface target for backend and tool names."""
-    canonical_command = _canonical_command_identity(command_name)
-    return (
-        _COMMAND_PANEL_TARGETS.get(canonical_command)
-        if canonical_command is not None
-        else None
     )
 
 

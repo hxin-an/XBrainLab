@@ -398,7 +398,6 @@ def test_preprocess_async_exception_is_private_and_logged(
         outcome = sidebar._execute_preprocess_command(
             MagicMock(),
             blocked_title="Filtering Blocked",
-            failure_prefix="Filtering failed",
             on_success=MagicMock(),
         )
 
@@ -433,7 +432,6 @@ def test_preprocess_unscheduled_product_command_returns_stable_blocked_outcome(
     outcome = sidebar._execute_preprocess_command(
         MagicMock(),
         blocked_title="Filtering Blocked",
-        failure_prefix="Filtering failed",
         on_success=MagicMock(),
     )
 

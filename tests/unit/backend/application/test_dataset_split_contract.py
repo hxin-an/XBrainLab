@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pytest
 
-from XBrainLab.backend.application.commands import SaveDatasetSplitCommand
 from XBrainLab.backend.application.dataset_generation_service import (
     DatasetGenerationCommandService,
 )
@@ -173,23 +172,6 @@ def test_cross_validation_requires_kfold_test_and_non_manual_validation() -> Non
     with pytest.raises(ValueError, match="K Fold"):
         DatasetGenerationCommandService.config_from_payload(
             _payload(is_cross_validation=True)
-        )
-
-
-def test_legacy_none_uses_a_usable_full_trial_default_but_empty_payload_is_not_legacy() -> (
-    None
-):
-    legacy = DatasetGenerationCommandService._build_data_splitting_config(
-        SaveDatasetSplitCommand(split_config=None),
-    )
-
-    assert legacy.train_type.value == "Full Data"
-    assert legacy.test_splitter_list[0].split_type.value == "By Trial"
-    DatasetGenerationCommandService._validate_split_config(legacy)
-
-    with pytest.raises(ValueError, match="train_type is required"):
-        DatasetGenerationCommandService._build_data_splitting_config(
-            SaveDatasetSplitCommand(split_config={}),
         )
 
 

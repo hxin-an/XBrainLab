@@ -17,10 +17,6 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
-from XBrainLab.llm.core.config_paths import (
-    legacy_repo_settings_path,
-    user_settings_path,
-)
 from XBrainLab.llm.core.model_catalog import (
     allowed_local_model_ids,
     default_local_model_id,
@@ -28,7 +24,11 @@ from XBrainLab.llm.core.model_catalog import (
     model_cache_candidates,
     model_cache_complete,
 )
-from XBrainLab.platform_paths import user_model_cache_dir
+from XBrainLab.platform_paths import (
+    SETTINGS_FILENAME,
+    user_model_cache_dir,
+    user_settings_path,
+)
 
 
 def _cuda_available() -> bool:
@@ -343,7 +343,7 @@ class LLMConfig:
     @staticmethod
     def _legacy_settings_path() -> str:
         """Return the old repo path used only for one-time migration."""
-        return str(legacy_repo_settings_path())
+        return str(Path(__file__).resolve().parents[3] / SETTINGS_FILENAME)
 
     def save_to_file(self, filepath: str | None = None) -> bool:
         """Saves non-sensitive configuration to a JSON file.

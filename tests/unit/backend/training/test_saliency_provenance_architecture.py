@@ -3,8 +3,6 @@ from pathlib import Path
 from tests.architecture_compliance import (
     check_saliency_provenance_ownership,
 )
-from XBrainLab.backend.training import saliency_provenance
-from XBrainLab.backend.training.record import eval as eval_module
 
 _OWNER_SOURCE = """
 SALIENCY_CONTEXT_SCHEMA_VERSION = 3
@@ -29,16 +27,11 @@ def fingerprint_saliency_split_mask(value):
     return value
 """
 
-_COMPATIBILITY_SOURCE = """
+_RECORD_SOURCE = """
 from ..saliency_provenance import (
-    SALIENCY_CONTEXT_SCHEMA_VERSION as SALIENCY_CONTEXT_SCHEMA_VERSION,
-    SALIENCY_PRODUCER_SCHEMA_VERSION as SALIENCY_PRODUCER_SCHEMA_VERSION,
-    SaliencyArtifactContext as SaliencyArtifactContext,
-    SaliencyContextError as SaliencyContextError,
-    SaliencyProducerIdentity as SaliencyProducerIdentity,
-    fingerprint_saliency_epoch_data as fingerprint_saliency_epoch_data,
-    fingerprint_saliency_model_state as fingerprint_saliency_model_state,
-    fingerprint_saliency_split_mask as fingerprint_saliency_split_mask,
+    SaliencyArtifactContext,
+    SaliencyContextError,
+    SaliencyProducerIdentity,
 )
 
 class EvalRecord:
@@ -61,7 +54,7 @@ def _write_valid_owners(root: Path) -> None:
     _write(
         root,
         "XBrainLab/backend/training/record/eval.py",
-        _COMPATIBILITY_SOURCE,
+        _RECORD_SOURCE,
     )
 
 
@@ -69,7 +62,7 @@ def test_guard_rejects_provenance_definitions_in_eval(tmp_path: Path) -> None:
     _write_valid_owners(tmp_path)
     eval_path = tmp_path / "XBrainLab/backend/training/record/eval.py"
     eval_path.write_text(
-        _COMPATIBILITY_SOURCE
+        _RECORD_SOURCE
         + """
 
 def _bounded_array_descriptor(value):
@@ -88,7 +81,7 @@ class SaliencyArtifactContext:
     assert "SaliencyArtifactContext" in violations[0]
 
 
-def test_guard_rejects_product_imports_from_compatibility_module(
+def test_guard_rejects_product_provenance_imports_from_record_module(
     tmp_path: Path,
 ) -> None:
     _write_valid_owners(tmp_path)
@@ -106,7 +99,7 @@ def test_guard_rejects_product_imports_from_compatibility_module(
     assert "must import saliency provenance" in violations[0]
 
 
-def test_guard_allows_explicit_re_exports_and_direct_domain_imports(
+def test_guard_allows_record_types_and_direct_domain_imports(
     tmp_path: Path,
 ) -> None:
     _write_valid_owners(tmp_path)
@@ -131,8 +124,3 @@ def test_repository_saliency_provenance_boundary() -> None:
     root_dir = Path(__file__).resolve().parents[4]
 
     assert check_saliency_provenance_ownership(root_dir) == []
-
-
-def test_eval_module_compatibility_re_exports_owner_symbols() -> None:
-    for name in saliency_provenance.__all__:
-        assert getattr(eval_module, name) is getattr(saliency_provenance, name)

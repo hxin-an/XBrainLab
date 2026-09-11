@@ -19,7 +19,6 @@ class AssistantTrainingAttemptSession:
     """Typed identity for one training job admitted through the Assistant."""
 
     initial_finished_run_count: int
-    handoff_generation: int
     run: TrainingRunIdentity | None
     correlation: AssistantTurnCorrelation
 
@@ -147,7 +146,6 @@ class AssistantApplicationPublicationCoordinator:
             initial_finished_run_count=self._non_negative_int(
                 training.get("finished_run_count")
             ),
-            handoff_generation=handoff_generation,
             run=self._serialized_training_run(
                 outcome.get("run") if isinstance(outcome, dict) else None
             ),

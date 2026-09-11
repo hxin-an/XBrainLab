@@ -13,7 +13,6 @@ from XBrainLab.ui.components.modal_presentation import (
     ask_confirmation,
     show_alert,
     show_error,
-    show_information,
     show_warning,
 )
 
@@ -412,12 +411,10 @@ def test_severity_facades_delegate_to_shared_modal(monkeypatch):
         _show_alert,
     )
 
-    show_information(None, "Saved", "The file was saved.")
     show_warning(None, "Review", "Review the selected values.")
     show_error(None, "Failed", "The operation failed.")
 
     assert [call["severity"] for call in calls] == [
-        AlertSeverity.INFORMATION,
         AlertSeverity.WARNING,
         AlertSeverity.CRITICAL,
     ]

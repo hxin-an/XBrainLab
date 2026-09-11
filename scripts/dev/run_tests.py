@@ -131,7 +131,6 @@ PLATFORM_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
         "process-and-launcher-contracts",
         (
             "tests/unit/scripts/test_active_checkout.py",
-            "tests/unit/scripts/test_bounded_qt_shutdown.py",
             "tests/unit/scripts/test_capture_windows_launcher_walkthrough.py",
             "tests/unit/scripts/test_handoff_evidence_recorder.py",
             "tests/unit/scripts/test_native_process_safety.py",

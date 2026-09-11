@@ -271,19 +271,6 @@ class TrainingRecommendationService:
             self._configuration_submission_pending = frozenset(edited_fields)
             self._configuration_submission_refinements = tuple(refinements)
 
-    def cached_for_context(
-        self,
-        context: TrainingRecommendationContext,
-    ) -> TrainingRecommendation | None:
-        """Project a matching cached result without running recommendation logic."""
-        context_key = _detached_context_key(context)
-        with self._lock:
-            if self._configuration_submission_pending is not None:
-                return None
-            if self._context_key != context_key:
-                return None
-            return self._current
-
     def for_state_snapshot(
         self,
         context: TrainingRecommendationContext,

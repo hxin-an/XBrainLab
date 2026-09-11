@@ -751,7 +751,7 @@ class TrainingPanel(BasePanel):
             self.current_plotting_row,
         )
         self._rendered_history_rows = list(rows)
-        self.history_table.update_table(rows)
+        self.history_table.update_history(rows)
         preferred_row = self._select_preferred_plot_row(
             rows,
             force_active=force_active,

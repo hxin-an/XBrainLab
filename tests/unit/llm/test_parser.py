@@ -15,9 +15,6 @@ def test_product_parser_accepts_one_complete_strict_envelope():
     assert result.workflow_stage == "empty"
     assert result.commands == (("import_eeg_data", {"file_paths": ["/data/A.gdf"]}),)
     assert result.error == ""
-    assert CommandParser.parse(text) == [
-        ("import_eeg_data", {"file_paths": ["/data/A.gdf"]})
-    ]
 
 
 def test_product_parser_classifies_adjacent_complete_objects_without_commands():
@@ -97,7 +94,6 @@ def test_product_parser_rejects_tool_call_wrapper_even_when_inner_shape_is_valid
     assert result.status is ToolEnvelopeStatus.FORMAT_ERROR
     assert result.commands == ()
     assert "exactly workflow_stage, tool_name, and parameters" in result.error
-    assert CommandParser.parse(text) is None
 
 
 def test_product_parser_rejects_wrapped_respond_to_user_envelope():
@@ -121,7 +117,6 @@ def test_product_parser_rejects_plain_text_at_strict_action_boundary():
     assert result.status is ToolEnvelopeStatus.FORMAT_ERROR
     assert result.commands == ()
     assert "JSON object" in result.error
-    assert CommandParser.parse("Just a normal conversation response.") is None
 
 
 def test_product_parser_preserves_model_owned_blocked_message():
@@ -300,6 +295,7 @@ def test_product_parser_rejects_parameter_explanation_at_action_boundary():
             '{"workflow_stage":"empty","tool_name":"none","parameters":{}}',
             "normal text",
         ),
+        ("evaluate\nBlocked reasons: None.", "entire response"),
     ],
 )
 def test_product_parser_rejects_non_contract_tool_outputs(text, error_fragment):
@@ -308,25 +304,41 @@ def test_product_parser_rejects_non_contract_tool_outputs(text, error_fragment):
     assert result.status is ToolEnvelopeStatus.FORMAT_ERROR
     assert result.commands == ()
     assert error_fragment in result.error
-    assert CommandParser.parse(text) is None
 
 
 @pytest.mark.parametrize(
-    "text",
+    ("text", "error_fragment"),
     [
-        '{"tool_name":"import_eeg_data"}',
-        '{"tool_name":"","parameters":{}}',
-        '{"tool_name":42,"parameters":{}}',
-        '{"tool_name":"import_eeg_data","parameters":null}',
-        '{"tool_name":"import_eeg_data","parameters":"{}"}',
+        (
+            '{"workflow_stage":false,"tool_name":"import_eeg_data","parameters":{}}',
+            "workflow_stage must be an exact backend stage value.",
+        ),
+        (
+            '{"workflow_stage":"empty","tool_name":"","parameters":{}}',
+            "tool_name must be a non-empty string.",
+        ),
+        (
+            '{"workflow_stage":"empty","tool_name":42,"parameters":{}}',
+            "tool_name must be a non-empty string.",
+        ),
+        (
+            '{"workflow_stage":"empty","tool_name":"import_eeg_data",'
+            '"parameters":null}',
+            "parameters must be a JSON object.",
+        ),
+        (
+            '{"workflow_stage":"empty","tool_name":"import_eeg_data",'
+            '"parameters":"{}"}',
+            "parameters must be a JSON object.",
+        ),
     ],
 )
-def test_product_parser_rejects_invalid_envelope_field_types(text):
+def test_product_parser_rejects_invalid_envelope_field_types(text, error_fragment):
     result = CommandParser.parse_product(text)
 
     assert result.status is ToolEnvelopeStatus.FORMAT_ERROR
     assert result.commands == ()
-    assert result.error
+    assert result.error == error_fragment
 
 
 @pytest.mark.parametrize(
@@ -367,24 +379,3 @@ def test_product_parser_rejects_non_contract_tool_call_wrappers(text):
     assert result.status is ToolEnvelopeStatus.FORMAT_ERROR
     assert result.commands == ()
     assert result.error
-    assert CommandParser.parse(text) is None
-
-
-def test_diagnostic_parser_is_explicitly_tolerant_for_legacy_artifacts():
-    text = (
-        "Legacy model output:\n```json\n"
-        '{"command":"import_eeg_data","arguments":{"file_paths":["/data/A.gdf"]}}'
-        "\n```"
-    )
-
-    assert CommandParser.parse_diagnostic(text) == [
-        ("import_eeg_data", {"file_paths": ["/data/A.gdf"]})
-    ]
-
-
-def test_diagnostic_parser_never_changes_product_parser_result():
-    text = "evaluate\nBlocked reasons: None."
-
-    assert CommandParser.parse_diagnostic(text) == [("evaluate", {})]
-    assert CommandParser.parse_product(text).status is ToolEnvelopeStatus.FORMAT_ERROR
-    assert CommandParser.parse(text) is None

@@ -346,10 +346,6 @@ class SaliencySpectrogramMapViz(Visualizer):
     channels, producing one subplot per class label.
     """
 
-    @staticmethod
-    def _describe_values(values: np.ndarray) -> dict[str, float | int]:
-        return _describe_values(values)
-
     @classmethod
     def _build_shared_display_scale(
         cls,

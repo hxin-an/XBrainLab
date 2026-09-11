@@ -113,10 +113,6 @@ class Raw:
         """Return runtime signals recorded during load or processing."""
         return self.runtime_signals.copy()
 
-    def has_runtime_signals(self) -> bool:
-        """Return whether any runtime signals have been recorded."""
-        return bool(self.runtime_signals)
-
     def set_runtime_detail(self, name: str, detail: Any) -> None:
         """Store structured runtime detail for later diagnostics."""
         validate_type(name, str, "name")
@@ -148,15 +144,6 @@ class Raw:
         if identity is None:
             return None
         return normalize_source_content_identity(identity)
-
-    def has_runtime_detail(self, name: str) -> bool:
-        """Return whether a named structured runtime detail exists."""
-        validate_type(name, str, "name")
-        return name in self.runtime_details
-
-    def has_gdf_duplicate_channel_detail(self) -> bool:
-        """Return whether GDF duplicate-channel ambiguity detail is recorded."""
-        return self.has_runtime_detail("gdf_duplicate_channel_names")
 
     def get_gdf_duplicate_channel_detail(self) -> dict[str, Any] | None:
         """Return GDF duplicate-channel ambiguity detail, if recorded.
@@ -447,42 +434,6 @@ class Raw:
         """Return whether the data has event."""
         _, event_id = self.get_event_list()
         return bool(event_id)
-
-    def has_event_str(self) -> str:
-        """Return whether the data has event in string format."""
-        if self.has_event():
-            return "yes"
-        return "no"
-
-    def get_event_name_list_str(self) -> str:
-        """Return the event name list in string format. Separated by comma."""
-        if not self.has_event():
-            return "None"
-        _, event_id = self.get_event_list()
-        return ",".join([str(e) for e in event_id])
-
-    # misc
-    def get_row_info(self) -> tuple[str, str, str, int, float, int, str]:
-        """Return the information of the raw data for displaying in the UI table.
-
-        Returns: (
-            Filename, subject name, session name, number of channels,
-            sample frequency, number of epochs, whether the data has event
-        )
-        """
-        channel = self.get_nchan()
-        sfreq = self.get_sfreq()
-        epochs = self.get_epochs_length()
-        has_event = self.has_event_str()
-        return (
-            self.get_filename(),
-            self.get_subject_name(),
-            self.get_session_name(),
-            channel,
-            sfreq,
-            epochs,
-            has_event,
-        )
 
     def copy(self) -> Raw:
         """Create a deep copy of the Raw object for thread-safe operations.

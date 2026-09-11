@@ -35,18 +35,6 @@ class RawDataLoader(list):
         if raw_data_list:
             self.validate()
 
-    def get_loaded_raw(self, filepath: str) -> Raw | None:
-        """Return the loaded raw data with the given filepath.
-
-        Args:
-            filepath: Filepath of the raw data.
-
-        """
-        for raw_data in self:
-            if filepath == raw_data.get_filepath():
-                return raw_data
-        return None
-
     def validate(self) -> None:
         """Validate the loaded raw data consistency.
 
@@ -57,11 +45,6 @@ class RawDataLoader(list):
         for i in range(len(self)):
             raw_data = self[i]
             self.check_loaded_data_consistency(raw_data, idx=0)
-            # _, event_id = raw_data.get_event_list()
-            # if not event_id:
-            #     raise ValueError(
-            #         f"No label has been loaded for {raw_data.get_filename()}"
-            #     )
         if len(self) == 0:
             raise ValueError("No dataset has been loaded")
 

@@ -349,7 +349,6 @@ def test_service_reuses_resolved_nested_index_between_catalog_and_selection(
     monkeypatch.setattr(index_module, "build_bids_dataset_index", _counted_build)
     service = DataInterpretationCommandService(
         cast(Any, object()),
-        data_filename=lambda data: str(data),
         data_filepath=lambda data: str(data),
     )
 
@@ -490,7 +489,6 @@ def test_service_reuses_current_index_and_invalidates_after_sidecar_change(
     monkeypatch.setattr(index_module, "build_bids_dataset_index", _counted_build)
     service = DataInterpretationCommandService(
         cast(Any, object()),
-        data_filename=lambda data: str(data),
         data_filepath=lambda data: str(data),
     )
 

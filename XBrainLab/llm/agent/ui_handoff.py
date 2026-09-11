@@ -570,24 +570,6 @@ class WorkflowUiHandoffResolution:
         """Return the stable ApplicationService command identifier."""
         return self.command.value
 
-    @property
-    def suggestions(self) -> dict[str, str]:
-        """Return the exact suggestions associated with this resolution."""
-        return dict(self.suggested_values)
-
-    @property
-    def routed(self) -> bool:
-        """Return whether the host reached a real product surface."""
-        return self.status not in {
-            WorkflowUiHandoffResolutionStatus.UNAVAILABLE,
-            WorkflowUiHandoffResolutionStatus.FAILED,
-        }
-
-    @property
-    def is_verified_completion(self) -> bool:
-        """Return whether the product surface verified the requested mutation."""
-        return self.status is WorkflowUiHandoffResolutionStatus.COMPLETED
-
     def matches(self, request: object) -> bool:
         """Return whether this result belongs to the exact typed request."""
         return bool(

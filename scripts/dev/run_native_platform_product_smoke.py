@@ -91,14 +91,15 @@ def run_native_product_smoke(
     from PyQt6.QtGui import QGuiApplication
     from PyQt6.QtWidgets import QApplication
 
-    qsettings_root = isolated_root / "qt settings"
-    qsettings_root.mkdir(parents=True, exist_ok=True)
-    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
-    QSettings.setPath(
-        QSettings.Format.IniFormat,
-        QSettings.Scope.UserScope,
-        str(qsettings_root),
+    from XBrainLab.ui.qt_settings import application_settings
+
+    settings = application_settings()
+    qsettings_root = _resolved_child(
+        Path(settings.fileName()).parent,
+        Path(isolated_environment["XBRAINLAB_CONFIG_DIR"]),
     )
+    if settings.format() != QSettings.Format.IniFormat:
+        raise ValueError("Native smoke requires isolated INI preferences.")
 
     app = QApplication.instance()
     if not isinstance(app, QApplication):

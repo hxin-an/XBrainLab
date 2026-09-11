@@ -950,15 +950,6 @@ class TrainingPlanHolder:
         """
         return self.train_record_list
 
-    def get_saliency_params(self) -> dict:
-        """Return the saliency computation parameters.
-
-        Returns:
-            Dictionary of saliency method parameters.
-
-        """
-        return self.saliency_params
-
     @staticmethod
     def _qualified_type_name(value: object) -> str:
         target = value if isinstance(value, type) else value.__class__

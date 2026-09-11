@@ -56,6 +56,35 @@ class TestDrawRegionSetTo:
         assert r.from_canvas[3, 3] == 0
         assert r.to_canvas[3, 3] == 0
 
+    def test_set_to_preserves_exact_fractional_boundaries(self):
+        r = DrawRegion(4, 3)
+
+        r.set_from(1, 1)
+        r.set_to(3, 3, from_w=0.2, to_w=0.8)
+
+        np.testing.assert_array_equal(
+            r.from_canvas,
+            np.array(
+                [
+                    [0.0, 0.0, 0.0],
+                    [0.0, 0.2, 0.2],
+                    [0.0, 0.2, 0.2],
+                    [0.0, 0.0, 0.0],
+                ]
+            ),
+        )
+        np.testing.assert_array_equal(
+            r.to_canvas,
+            np.array(
+                [
+                    [0.0, 0.0, 0.0],
+                    [0.0, 0.8, 0.8],
+                    [0.0, 0.8, 0.8],
+                    [0.0, 0.0, 0.0],
+                ]
+            ),
+        )
+
 
 class TestDrawRegionSetToRef:
     def test_copies_from_reference(self):
@@ -69,31 +98,6 @@ class TestDrawRegionSetToRef:
         # should copy ref's values in [1:3, 1:3]
         np.testing.assert_array_equal(r.from_canvas[1:3, 1:3], 5)
         np.testing.assert_array_equal(r.to_canvas[1:3, 1:3], 15)
-
-
-class TestDrawRegionChangeTo:
-    def test_updates_coords_only(self):
-        r = DrawRegion(4, 4)
-        r.set_from(0, 0)
-        r.set_to(2, 2, from_w=1, to_w=2)
-        old_from = r.from_canvas.copy()
-        old_to = r.to_canvas.copy()
-        r.change_to(3, 3)
-        assert r.to_x == 3
-        assert r.to_y == 3
-        # canvas data unchanged
-        np.testing.assert_array_equal(r.from_canvas, old_from)
-        np.testing.assert_array_equal(r.to_canvas, old_to)
-
-
-class TestDrawRegionDecreaseWTail:
-    def test_shrink_tail(self):
-        r = DrawRegion(4, 4)
-        r.set_from(0, 0)
-        r.set_to(2, 2, from_w=0, to_w=10)
-        r.decrease_w_tail(0.5)
-        # to_canvas = (10 - 0) * 0.5 + 0 = 5
-        np.testing.assert_array_equal(r.to_canvas[0:2, 0:2], 5)
 
 
 class TestDrawRegionDecreaseWHead:
@@ -127,7 +131,7 @@ class TestDrawRegionCopy:
 
 
 class TestDrawRegionMask:
-    def test_mask_adjusts_canvas(self):
+    def test_mask_replaces_only_overlapped_canvas_and_keeps_source_unchanged(self):
         main = DrawRegion(4, 4)
         main.set_from(0, 0)
         main.set_to(3, 3, from_w=0, to_w=10)
@@ -136,13 +140,25 @@ class TestDrawRegionMask:
         mask_region.set_from(1, 1)
         mask_region.set_to(3, 3, from_w=2, to_w=8)
 
-        # Save original to_canvas for comparison
-        original_to = main.to_canvas.copy()
+        source_from = mask_region.from_canvas.copy()
+        source_to = mask_region.to_canvas.copy()
 
         main.mask(mask_region)
-        # The mask should have modified the to_canvas in the masked region
-        # Unmasked cells (row 0 or col 0) should remain 10
-        assert main.to_canvas[0, 0] == 10.0
-        # The masked sub-region [1:3, 1:3] should have been adjusted
-        # (values reduced where mask from_canvas != to_canvas)
-        assert not np.array_equal(main.to_canvas, original_to)
+
+        np.testing.assert_array_equal(
+            main.from_canvas,
+            np.zeros((4, 4)),
+        )
+        np.testing.assert_array_equal(
+            main.to_canvas,
+            np.array(
+                [
+                    [10.0, 10.0, 10.0, 0.0],
+                    [10.0, 2.0, 2.0, 0.0],
+                    [10.0, 2.0, 2.0, 0.0],
+                    [0.0, 0.0, 0.0, 0.0],
+                ]
+            ),
+        )
+        np.testing.assert_array_equal(mask_region.from_canvas, source_from)
+        np.testing.assert_array_equal(mask_region.to_canvas, source_to)

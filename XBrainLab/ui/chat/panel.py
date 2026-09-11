@@ -22,7 +22,6 @@ from PyQt6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QSpacerItem,
-    QStyle,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -633,7 +632,6 @@ class ChatPanel(QWidget):
             button = AssistantSuggestionCard(
                 title,
                 subtitle,
-                icon=QStyle.StandardPixmap.SP_ArrowForward,
                 accent="blue",
                 parent=self.suggestion_prompt_widget,
             )
@@ -644,7 +642,7 @@ class ChatPanel(QWidget):
                 )
             )
             self.suggestion_prompt_buttons.append(button)
-        self._layout_suggestion_prompts(1)
+            self.suggestion_prompt_layout.addWidget(button)
         empty_layout.addWidget(self.suggestion_prompt_widget)
 
         return empty
@@ -661,14 +659,6 @@ class ChatPanel(QWidget):
             return
         self.input_field.setText(prompt)
         self.input_field.setFocus(Qt.FocusReason.ShortcutFocusReason)
-
-    def _layout_suggestion_prompts(self, columns: int) -> None:
-        """Keep recommendation rows in one scan-friendly vertical sequence."""
-        del columns
-        for button in self.suggestion_prompt_buttons:
-            self.suggestion_prompt_layout.removeWidget(button)
-        for button in self.suggestion_prompt_buttons:
-            self.suggestion_prompt_layout.addWidget(button)
 
     def show_confirmation_request(
         self,
@@ -1783,7 +1773,6 @@ class ChatPanel(QWidget):
                 + 8
             )
             self.empty_state_widget.updateGeometry()
-            self._layout_suggestion_prompts(2 if container_width >= 520 else 1)
 
         if not self.runtime_state_widget.isHidden():
             for button in (self.retry_runtime_btn, self.setup_btn):
@@ -1850,7 +1839,9 @@ class ChatPanel(QWidget):
     def _complete_chat_reflow(self) -> None:
         """Commit shared geometry after surfaces and bubbles have been fitted."""
         self._sync_content_alignment()
+        self.chat_layout.activate()
         self.chat_content_widget.updateGeometry()
+        QApplication.sendEvent(self.scroll_area, QEvent(QEvent.Type.LayoutRequest))
         if self._shows_empty_state_only():
             self._scroll_empty_state_to_top()
 
@@ -2065,17 +2056,6 @@ class ChatPanel(QWidget):
             bubble.set_presentation_kind(record.presentation_kind)
         if bubble is not None and schedule_reflow:
             self._schedule_reflow()
-
-    def _render_message(self, text: str, is_user: bool) -> None:
-        """Compatibility helper that uses safe default typed presentation."""
-        record = ChatMessageRecord.from_history_value(
-            {
-                "role": "user" if is_user else "assistant",
-                "content": text,
-            }
-        )
-        if record is not None:
-            self._render_message_record(record)
 
     def _clear_ui(self, *, cancel_history_rebuild: bool = True):
         """Remove all message bubbles from the chat layout."""

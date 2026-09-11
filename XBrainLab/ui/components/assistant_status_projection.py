@@ -117,7 +117,6 @@ def build_assistant_status_projection(
         execution_controls=workflow.execution_controls,
     )
     recommended_label = command_label(recommended) if recommended else None
-    display_labels = [recommended_label] if recommended_label else []
 
     return AssistantStatusProjection(
         publication_generation=publication.generation,
@@ -144,7 +143,6 @@ def build_assistant_status_projection(
         ),
         footer_hint=assistant_footer_hint(
             stage,
-            display_labels,
             blocked_reason,
         ),
     )

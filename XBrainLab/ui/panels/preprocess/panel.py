@@ -25,7 +25,6 @@ from XBrainLab.ui.application_publication_renderer import (
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.panels.preprocess.data_query import (
     PreprocessRenderDataUnavailableError,
-    query_preprocess_data_rows,
     query_preprocess_render,
 )
 from XBrainLab.ui.panels.preprocess.history_widget import HistoryWidget
@@ -297,8 +296,3 @@ class PreprocessPanel(BasePanel):
             self.preview_widget.show_unavailable_message(str(error))
             return None
         return publication
-
-    def _query_preprocess_data_rows(
-        self,
-    ) -> tuple[list[dict], list[dict]] | None:
-        return query_preprocess_data_rows(self)

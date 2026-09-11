@@ -1,4 +1,4 @@
-"""Coverage tests for AgentManager - 129 uncovered lines."""
+"""Behavioral tests for AgentManager's UI-facing lifecycle contracts."""
 
 from __future__ import annotations
 
@@ -2202,13 +2202,6 @@ class TestAgentManagerMethods:
 
         agent_mgr.chat_controller.add_agent_message.assert_not_called()
 
-    def test_set_model(self, agent_mgr):
-        model_id = LLMConfig.default_local_model_id()
-
-        agent_mgr.set_model(model_id)
-
-        agent_mgr._assistant_runtime.switch_model.assert_called_once_with(model_id)
-
     def test_set_model_preserves_approved_local_model_identifier(self, agent_mgr):
         model_id = LLMConfig.default_local_model_id()
 
@@ -2933,9 +2926,32 @@ class TestAgentManagerMethods:
 
         agent_mgr._assistant_runtime.active_local_runtime_blocks_model_deletion.assert_called_once_with()
 
-    def test_on_processing_state_changed(self, agent_mgr):
-        agent_mgr.chat_panel = MagicMock()
+    def test_on_processing_state_changed_forwards_to_real_ready_chat_panel(
+        self,
+        agent_mgr,
+        qtbot,
+    ) -> None:
+        from XBrainLab.ui.chat.panel import ChatPanel
+
+        panel = ChatPanel()
+        qtbot.addWidget(panel)
+        panel.set_runtime_state("ready")
+        panel.input_field.setText("Continue")
+        agent_mgr.chat_panel = panel
+
         agent_mgr.on_processing_state_changed(True)
+
+        assert panel.is_processing is True
+        assert panel.send_btn.text() == "Working"
+        assert panel.send_btn.isEnabled() is False
+        assert panel.input_field.isEnabled() is False
+
+        agent_mgr.on_processing_state_changed(False)
+
+        assert panel.is_processing is False
+        assert panel.send_btn.text() == "Send"
+        assert panel.send_btn.isEnabled() is True
+        assert panel.input_field.isEnabled() is True
 
     def test_toggle_first_open(self, agent_mgr):
         agent_mgr._assistant_runtime.initialized = False
@@ -3239,13 +3255,6 @@ class TestAgentManagerMethods:
             "**Assistant unavailable**: The selected local model is missing from "
             "the model cache. Open assistant settings to install or select a model."
         )
-
-    def test_toggle_already_visible(self, agent_mgr):
-        agent_mgr._assistant_runtime.initialized = True
-        agent_mgr.chat_dock = MagicMock()
-        agent_mgr.chat_dock.isVisible.return_value = True
-        agent_mgr.toggle()
-        agent_mgr.chat_dock.close.assert_called()
 
     def test_toggle_show(self, agent_mgr):
         agent_mgr._assistant_runtime.initialized = True

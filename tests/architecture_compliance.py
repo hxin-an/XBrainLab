@@ -426,9 +426,7 @@ STUDY_TRAINING_COMPATIBILITY_FIELDS = frozenset(
     {"trainer", "model_holder", "training_option", "saliency_params"}
 )
 SALIENCY_PROVENANCE_OWNER = Path("XBrainLab/backend/training/saliency_provenance.py")
-SALIENCY_PROVENANCE_COMPATIBILITY_MODULE = Path(
-    "XBrainLab/backend/training/record/eval.py"
-)
+SALIENCY_RECORD_MODULE = Path("XBrainLab/backend/training/record/eval.py")
 SALIENCY_ARTIFACT_INTEGRITY_OWNER = Path(
     "XBrainLab/backend/training/saliency_artifact_integrity.py"
 )
@@ -496,9 +494,6 @@ QUERY_STATE_SERVICE_OWNER = Path("XBrainLab/backend/application/query_state_serv
 SALIENCY_COVERAGE_PUBLIC_NAMES = frozenset(
     {
         "SaliencyCoverageProjector",
-        "saliency_coverage_for_eval_record",
-        "saliency_label_items_from_epoch",
-        "saliency_method_coverage",
     }
 )
 SALIENCY_COVERAGE_COMPATIBILITY_NAMES = frozenset(
@@ -627,38 +622,6 @@ MUTABLE_OBJECT_BOUNDARY_DEBT_ALLOWLIST = (
     MutableObjectBoundaryDebt(
         "XBrainLab/ui/components/assistant_runtime_lifecycle.py",
         "AssistantRuntimeLifecycle.__init__",
-        MUTABLE_BOUNDARY_UI_DOMAIN_STORAGE,
-        "assignment",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/components/info_panel_service.py",
-        "InfoPanelService.__init__",
-        MUTABLE_BOUNDARY_UI_DOMAIN_STORAGE,
-        "assignment",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/components/plot_figure_window.py",
-        "PlotFigureWindow.__init__",
-        MUTABLE_BOUNDARY_UI_DOMAIN_STORAGE,
-        "assignment",
-        2,
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/components/plot_figure_window.py",
-        "PlotFigureWindow.on_plan_select",
-        MUTABLE_BOUNDARY_UI_DOMAIN_STORAGE,
-        "assignment",
-        2,
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/components/plot_figure_window.py",
-        "PlotFigureWindow.on_real_plan_select",
-        MUTABLE_BOUNDARY_UI_DOMAIN_STORAGE,
-        "assignment",
-    ),
-    MutableObjectBoundaryDebt(
-        "XBrainLab/ui/components/plot_figure_window.py",
-        "PlotFigureWindow.update_loop",
         MUTABLE_BOUNDARY_UI_DOMAIN_STORAGE,
         "assignment",
     ),
@@ -1386,7 +1349,7 @@ def check_saliency_provenance_ownership(root_dir: Path) -> list[str]:
     """Keep saliency provenance in its domain module, not evaluation persistence."""
     violations: list[str] = []
     owner_path = root_dir / SALIENCY_PROVENANCE_OWNER
-    compatibility_path = root_dir / SALIENCY_PROVENANCE_COMPATIBILITY_MODULE
+    record_path = root_dir / SALIENCY_RECORD_MODULE
 
     owner_tree = _parse_python_file(owner_path)
     if owner_tree is None:
@@ -1404,35 +1367,18 @@ def check_saliency_provenance_ownership(root_dir: Path) -> list[str]:
                 f"{', '.join(sorted(missing_names))}."
             )
 
-    compatibility_tree = _parse_python_file(compatibility_path)
-    if compatibility_tree is None:
-        violations.append(
-            f"{SALIENCY_PROVENANCE_COMPATIBILITY_MODULE} is missing or invalid."
-        )
+    record_tree = _parse_python_file(record_path)
+    if record_tree is None:
+        violations.append(f"{SALIENCY_RECORD_MODULE} is missing or invalid.")
     else:
         forbidden_names = (
             SALIENCY_PROVENANCE_PUBLIC_NAMES | SALIENCY_PROVENANCE_PRIVATE_DEFINITIONS
-        ) & _top_level_bound_names(compatibility_tree)
+        ) & _top_level_bound_names(record_tree)
         if forbidden_names:
             violations.append(
-                f"{SALIENCY_PROVENANCE_COMPATIBILITY_MODULE} defines saliency "
+                f"{SALIENCY_RECORD_MODULE} defines saliency "
                 f"provenance owned by {SALIENCY_PROVENANCE_OWNER}: "
                 f"{', '.join(sorted(forbidden_names))}."
-            )
-
-        compatibility_exports = {
-            alias.name
-            for node in compatibility_tree.body
-            if isinstance(node, ast.ImportFrom)
-            and _is_saliency_provenance_owner_import(node.module)
-            for alias in node.names
-        }
-        missing_exports = SALIENCY_PROVENANCE_PUBLIC_NAMES - compatibility_exports
-        if missing_exports:
-            violations.append(
-                f"{SALIENCY_PROVENANCE_COMPATIBILITY_MODULE} must explicitly "
-                "re-export compatibility names: "
-                f"{', '.join(sorted(missing_exports))}."
             )
 
     product_root = root_dir / "XBrainLab"
@@ -1441,7 +1387,7 @@ def check_saliency_provenance_ownership(root_dir: Path) -> list[str]:
             relative_path = py_file.relative_to(root_dir)
             if relative_path in {
                 SALIENCY_PROVENANCE_OWNER,
-                SALIENCY_PROVENANCE_COMPATIBILITY_MODULE,
+                SALIENCY_RECORD_MODULE,
             }:
                 continue
             tree = _parse_python_file(py_file)
@@ -1865,63 +1811,29 @@ def check_raw_mutation_atomicity_boundaries(root_dir: Path) -> list[str]:
     )
 
     label_tree = _parse_python_file(label_service_path)
-    batch_wrapper = _class_method_node(
+    method = _class_method_node(
         label_tree,
         "LabelImportService",
-        "apply_labels_batch",
+        "apply_labels_batch_checked",
     )
-    batch_wrapper_calls = _resolved_function_call_names(batch_wrapper, label_tree)
-    if (
-        not {
-            "apply_labels_batch_checked",
-            "_apply_label_operations_atomically",
-        }
-        & batch_wrapper_calls
-    ):
+    calls = _resolved_function_call_names(method, label_tree)
+    if "_apply_label_operations_atomically" not in calls:
         violations.append(
             "XBrainLab/backend/services/label_import_service.py "
-            "apply_labels_batch() must delegate to the checked atomic batch path."
+            "apply_labels_batch_checked() must delegate to the atomic copy/commit helper."
         )
-    forbidden_wrapper_calls = {
-        "apply_labels_to_single_file",
-        "_force_apply_single",
-    } & batch_wrapper_calls
-    if forbidden_wrapper_calls:
+    forbidden = {"apply_labels_to_single_file", "_force_apply_single"} & calls
+    if forbidden:
         violations.append(
             "XBrainLab/backend/services/label_import_service.py "
-            "apply_labels_batch() directly mutates label targets via "
-            f"{', '.join(sorted(forbidden_wrapper_calls))}."
+            "apply_labels_batch_checked() directly mutates label targets via "
+            f"{', '.join(sorted(forbidden))}."
         )
-    if _UNRESOLVED_CALLABLE_ORIGIN in batch_wrapper_calls:
+    if _UNRESOLVED_CALLABLE_ORIGIN in calls:
         violations.append(
             "XBrainLab/backend/services/label_import_service.py "
-            "apply_labels_batch() cannot prove callable construction is atomic."
+            "apply_labels_batch_checked() cannot prove callable construction is atomic."
         )
-
-    for method_name in ("apply_labels_batch_checked", "apply_labels_sequence"):
-        method = _class_method_node(
-            label_tree,
-            "LabelImportService",
-            method_name,
-        )
-        calls = _resolved_function_call_names(method, label_tree)
-        if "_apply_label_operations_atomically" not in calls:
-            violations.append(
-                "XBrainLab/backend/services/label_import_service.py "
-                f"{method_name}() must delegate to the atomic copy/commit helper."
-            )
-        forbidden = {"apply_labels_to_single_file", "_force_apply_single"} & calls
-        if forbidden:
-            violations.append(
-                "XBrainLab/backend/services/label_import_service.py "
-                f"{method_name}() directly mutates label targets via "
-                f"{', '.join(sorted(forbidden))}."
-            )
-        if _UNRESOLVED_CALLABLE_ORIGIN in calls:
-            violations.append(
-                "XBrainLab/backend/services/label_import_service.py "
-                f"{method_name}() cannot prove callable construction is atomic."
-            )
     return violations
 
 
@@ -2002,6 +1914,7 @@ def check_label_resource_admission_boundary(root_dir: Path) -> list[str]:
                     _check_label_ui_owner_boundary(relative=relative, tree=tree)
                 )
             if is_ui_module:
+                module_aliases, symbol_aliases = _label_import_bindings(tree)
                 imports_admission_owner = any(
                     isinstance(node, ast.ImportFrom)
                     and str(node.module or "").endswith(
@@ -2013,6 +1926,7 @@ def check_label_resource_admission_boundary(root_dir: Path) -> list[str]:
                             "AdmittedLabelResourceSession",
                             "LabelResourceAdmissionService",
                             "AdmittedLabelResourceReader",
+                            "session_from_resource_preflight",
                         }
                         for alias in node.names
                     )
@@ -2020,7 +1934,7 @@ def check_label_resource_admission_boundary(root_dir: Path) -> list[str]:
                 )
                 if imports_admission_owner:
                     violations.append(
-                        f"{relative_posix} imports LabelResourceAdmissionService or its "
+                        f"{relative_posix} imports a label admission owner or its "
                         "materialized session; UI must use an ApplicationService "
                         "preview command."
                     )
@@ -2033,8 +1947,23 @@ def check_label_resource_admission_boundary(root_dir: Path) -> list[str]:
                     )
                     if isinstance(target, ast.Name)
                     and isinstance(node.value, ast.Call)
-                    and isinstance(node.value.func, ast.Attribute)
-                    and node.value.func.attr == "admit"
+                    and (
+                        (
+                            isinstance(node.value.func, ast.Attribute)
+                            and node.value.func.attr == "admit"
+                        )
+                        or _label_qualified_name(
+                            node.value.func,
+                            module_aliases=module_aliases,
+                            symbol_aliases=symbol_aliases,
+                        )
+                        in {
+                            "XBrainLab.backend.application.label_resource_admission."
+                            "session_from_resource_preflight",
+                            "XBrainLab.backend.application.label_resource_admission."
+                            "AdmittedLabelResourceSession",
+                        }
+                    )
                 }
                 for node in ast.walk(tree):
                     if (
@@ -2095,12 +2024,12 @@ def check_label_resource_admission_boundary(root_dir: Path) -> list[str]:
     )
     interpretation_tree = _parse_python_file(interpretation_service)
     if interpretation_tree is not None:
-        handle_apply = _class_method_node(
+        prepare_apply = _class_method_node(
             interpretation_tree,
             "DataInterpretationCommandService",
-            "handle_apply_interpretation",
+            "prepare_apply_interpretation",
         )
-        calls = _function_calls_in_order(handle_apply)
+        calls = _function_calls_in_order(prepare_apply)
         preflight_lines = [
             line for line, name in calls if name == "_resolve_apply_resource_preflight"
         ]
@@ -3341,36 +3270,7 @@ def check_application_state_module_boundaries(root_dir: Path) -> list[str]:
         if "QueryStateCommandService" in state_names:
             violations.append(
                 f"QueryStateCommandService is owned by {QUERY_STATE_SERVICE_OWNER}; "
-                f"{APPLICATION_STATE_SERVICE_MODULE} may only re-export it."
-            )
-
-        saliency_compatibility_exports = {
-            alias.name
-            for node in state_service_tree.body
-            if isinstance(node, ast.ImportFrom)
-            and _application_module_matches(node.module, "saliency_coverage")
-            for alias in node.names
-        }
-        missing_saliency_exports = (
-            SALIENCY_COVERAGE_COMPATIBILITY_NAMES - saliency_compatibility_exports
-        )
-        if missing_saliency_exports:
-            violations.append(
-                f"{APPLICATION_STATE_SERVICE_MODULE} must explicitly re-export "
-                "compatibility names from saliency_coverage: "
-                f"{', '.join(sorted(missing_saliency_exports))}."
-            )
-
-        query_compatibility_exported = any(
-            isinstance(node, ast.ImportFrom)
-            and _application_module_matches(node.module, "query_state_service")
-            and any(alias.name == "QueryStateCommandService" for alias in node.names)
-            for node in state_service_tree.body
-        )
-        if not query_compatibility_exported:
-            violations.append(
-                f"{APPLICATION_STATE_SERVICE_MODULE} must explicitly re-export "
-                "QueryStateCommandService from query_state_service."
+                f"{APPLICATION_STATE_SERVICE_MODULE} must not define it."
             )
 
         for node in ast.walk(state_service_tree):
@@ -3432,7 +3332,10 @@ def check_application_state_module_boundaries(root_dir: Path) -> list[str]:
                         f"must point to {QUERY_STATE_SERVICE_OWNER}."
                     )
 
-                ui_policy_imports = imported_names & SALIENCY_COVERAGE_PUBLIC_NAMES
+                ui_policy_imports = imported_names & (
+                    SALIENCY_COVERAGE_PUBLIC_NAMES
+                    | SALIENCY_COVERAGE_COMPATIBILITY_NAMES
+                )
                 imports_saliency_owner = _application_module_matches(
                     node.module,
                     "saliency_coverage",
@@ -4193,7 +4096,6 @@ class _StudyTrainingAliasVisitor(ast.NodeVisitor):
     def __init__(self, relative_path: Path) -> None:
         self.relative_path = relative_path
         self.violations: list[str] = []
-        self._function_stack: list[str] = []
         self._study_alias_scopes: list[set[str]] = [set()]
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
@@ -4206,19 +4108,15 @@ class _StudyTrainingAliasVisitor(ast.NodeVisitor):
         self,
         node: ast.FunctionDef | ast.AsyncFunctionDef,
     ) -> None:
-        self._function_stack.append(node.name)
         aliases = set(self._study_alias_scopes[-1])
         aliases.update(self._function_study_aliases(node))
         self._study_alias_scopes.append(aliases)
         self.generic_visit(node)
         self._study_alias_scopes.pop()
-        self._function_stack.pop()
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
-        if (
-            node.attr in STUDY_TRAINING_COMPATIBILITY_FIELDS
-            and self._is_study_root(node.value)
-            and not self._legacy_pipeline_exemption()
+        if node.attr in STUDY_TRAINING_COMPATIBILITY_FIELDS and self._is_study_root(
+            node.value
         ):
             self._record(node, node.attr)
         self.generic_visit(node)
@@ -4231,7 +4129,6 @@ class _StudyTrainingAliasVisitor(ast.NodeVisitor):
             and self._is_study_root(node.args[0])
             and isinstance(node.args[1], ast.Constant)
             and node.args[1].value in STUDY_TRAINING_COMPATIBILITY_FIELDS
-            and not self._legacy_pipeline_exemption()
         ):
             self._record(node, str(node.args[1].value))
         self.generic_visit(node)
@@ -4240,15 +4137,6 @@ class _StudyTrainingAliasVisitor(ast.NodeVisitor):
         if isinstance(node, ast.Name):
             return node.id == "study" or node.id in self._study_alias_scopes[-1]
         return isinstance(node, ast.Attribute) and node.attr in {"study", "_study"}
-
-    def _legacy_pipeline_exemption(self) -> bool:
-        if (
-            self.relative_path
-            != Path("XBrainLab/backend/application/pipeline_stage.py")
-            or not self._function_stack
-        ):
-            return False
-        return self._function_stack[-1] == "_legacy_study_pipeline_stage"
 
     def _record(self, node: ast.AST, field_name: str) -> None:
         self.violations.append(
@@ -5232,10 +5120,7 @@ def check_epoch_dialog_publication_boundary(root_dir: Path) -> list[str]:
     sidebar_path = Path("XBrainLab/ui/panels/preprocess/sidebar.py")
     dialog_path = Path("XBrainLab/ui/dialogs/preprocess/epoching_dialog.py")
     inspected_paths = [*sorted(product_dir.rglob("*.py"))]
-    capture_paths = (
-        root_dir / "scripts/dev/capture_epoching_dialog.py",
-        root_dir / "scripts/dev/capture_ui_polish_surfaces.py",
-    )
+    capture_paths = (root_dir / "scripts/dev/capture_ui_polish_surfaces.py",)
     inspected_paths.extend(path for path in capture_paths if path.exists())
 
     def record(relative: str, line: int, kind: str, message: str) -> None:

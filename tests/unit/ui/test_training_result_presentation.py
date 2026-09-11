@@ -28,7 +28,7 @@ from XBrainLab.backend.training_state_contract import (
     TrainingStateToken,
 )
 from XBrainLab.ui.panels.evaluation.panel import EvaluationPanel
-from XBrainLab.ui.panels.training.panel import MetricTab, TrainingPanel
+from XBrainLab.ui.panels.training.panel import TrainingPanel
 from XBrainLab.ui.panels.visualization.panel import VisualizationPanel
 
 
@@ -399,35 +399,6 @@ class TestTrainingWorkflowWithUI:
         assert progress_item is not None
         assert progress_item.text() == "5/10"
 
-    def test_metric_tab_accumulates_history(self, qtbot):
-        """Test that MetricTab correctly accumulates training history."""
-
-        tab = MetricTab("Accuracy", color="#4CAF50")
-        qtbot.addWidget(tab)
-
-        # Simulate multiple epoch updates
-        tab.update_plot(1, 0.7, 0.6)
-        assert len(tab.epochs) == 1
-        assert len(tab.train_vals) == 1
-        assert len(tab.val_vals) == 1
-
-        tab.update_plot(2, 0.75, 0.65)
-        assert len(tab.epochs) == 2
-        assert tab.epochs == [1, 2]
-        assert tab.train_vals == [0.7, 0.75]
-        assert tab.val_vals == [0.6, 0.65]
-
-        # Clear should reset history completely
-        tab.clear()
-        assert len(tab.epochs) == 0, "Epochs should be cleared"
-        assert len(tab.train_vals) == 0, "Train values should be cleared"
-        assert len(tab.val_vals) == 0, "Val values should be cleared"
-
-        # After clear, should be able to accumulate again
-        tab.update_plot(1, 0.8, 0.7)
-        assert len(tab.epochs) == 1
-        assert tab.epochs == [1]
-
     def test_update_loop_handles_string_metrics(self, qtbot, real_training_option):
         """Test that update_loop handles string metrics from trainer correctly."""
 
@@ -492,26 +463,3 @@ class TestTrainingWorkflowWithUI:
         assert panel.tab_loss.train_vals == [0.5]
         assert panel.tab_loss.val_vals == [0.6]
         assert isinstance(panel.tab_acc.val_vals[0], float)
-
-    def test_metric_tab_only_shows_one_point_initially(self, qtbot):
-        """Test that plots show proper line progression, not just one point."""
-
-        tab = MetricTab("Accuracy", color="#4CAF50")
-        qtbot.addWidget(tab)
-
-        # First epoch - should show one point
-        tab.update_plot(1, 0.7, 0.6)
-        assert len(tab.epochs) == 1
-
-        # Second epoch - should now show a line
-        tab.update_plot(2, 0.75, 0.65)
-        assert len(tab.epochs) == 2
-
-        # Third epoch - line should continue
-        tab.update_plot(3, 0.78, 0.68)
-        assert len(tab.epochs) == 3
-
-        # Verify data is accumulated correctly
-        assert tab.epochs == [1, 2, 3]
-        assert len(tab.train_vals) == 3
-        assert len(tab.val_vals) == 3

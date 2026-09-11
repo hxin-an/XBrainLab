@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from XBrainLab.backend.utils.filesystem_identity import DirectoryIdentitySnapshot
+from XBrainLab.backend.utils.filesystem_identity import FilesystemEntryIdentity
 from XBrainLab.llm.agent.verifier import PathProvenanceVerifier
 from XBrainLab.llm.tools import authorized_paths
 from XBrainLab.llm.tools.application_surface import (
@@ -14,18 +14,19 @@ from XBrainLab.llm.tools.application_surface import (
     execute_application_tool_command,
 )
 from XBrainLab.llm.tools.authorized_paths import (
-    AuthorizedPath,
     AuthorizedPathError,
     FilesystemIdentity,
     PathKind,
     authorize_existing_path,
-    open_authorized_path,
 )
 
 
 class _FakeDirectoryLease:
     def __init__(self) -> None:
         self.active = False
+        self.entries = (
+            FilesystemEntryIdentity(path=r"C:\Data\Selected", device=3, file_id=11),
+        )
 
     def __enter__(self):
         self.active = True
@@ -66,7 +67,7 @@ def test_posix_containment_rejects_lexical_descendant_symlink_escape(
 
 
 @pytest.mark.parametrize("target_kind", ("file", "directory"))
-def test_normal_contained_file_and_folder_keep_stable_identity(
+def test_normal_contained_file_and_folder_are_admitted(
     tmp_path: Path,
     target_kind: PathKind,
 ) -> None:
@@ -84,12 +85,52 @@ def test_normal_contained_file_and_folder_keep_stable_identity(
         expected_kind=target_kind,
     )
 
-    assert isinstance(authorized, AuthorizedPath)
-    with open_authorized_path(authorized, expected_kind=target_kind) as opened:
-        assert opened.identity.kind == target_kind
-        assert os.path.normcase(opened.identity.final_path) == os.path.normcase(
-            str(target.resolve())
+    assert type(authorized) is str
+    assert authorized == str(target)
+
+
+@pytest.mark.parametrize(
+    ("actual_kind", "expected_kind"),
+    (("file", "directory"), ("directory", "file")),
+)
+def test_actual_file_and_directory_kind_mismatches_are_rejected(
+    tmp_path: Path,
+    actual_kind: PathKind,
+    expected_kind: PathKind,
+) -> None:
+    selected = tmp_path / "selected"
+    selected.mkdir()
+    target = selected / "candidate"
+    if actual_kind == "file":
+        target.touch()
+    else:
+        target.mkdir()
+
+    with pytest.raises(AuthorizedPathError, match=f"requires a {expected_kind}"):
+        authorize_existing_path(
+            target,
+            authorized_root=selected,
+            expected_kind=expected_kind,
         )
+
+
+@pytest.mark.platform_contract
+@pytest.mark.skipif(os.name != "posix", reason="POSIX directory-only open refusal")
+def test_actual_non_directory_ancestor_is_rejected(tmp_path: Path) -> None:
+    selected = tmp_path / "selected"
+    selected.mkdir()
+    ancestor = selected / "not-a-directory"
+    ancestor.write_bytes(b"unchanged source")
+
+    with pytest.raises(
+        AuthorizedPathError, match="requires a directory for a path component"
+    ):
+        authorize_existing_path(
+            ancestor / "child",
+            authorized_root=selected,
+            expected_kind="directory",
+        )
+    assert ancestor.read_bytes() == b"unchanged source"
 
 
 def test_windows_final_identity_rejects_junction_like_escape(monkeypatch) -> None:
@@ -146,7 +187,7 @@ def test_windows_identity_resolution_failure_is_closed(monkeypatch) -> None:
         )
 
 
-def test_windows_normal_contained_identity_is_revalidated(monkeypatch) -> None:
+def test_windows_normal_contained_final_identity_is_admitted(monkeypatch) -> None:
     selected = ntpath.normcase(ntpath.normpath(r"C:\Data\Selected"))
     target = ntpath.normcase(ntpath.normpath(r"C:\Data\Selected\sub-01"))
     resolved_root = ntpath.normcase(ntpath.normpath(r"D:\ActualData"))
@@ -175,12 +216,11 @@ def test_windows_normal_contained_identity_is_revalidated(monkeypatch) -> None:
         expected_kind="directory",
     )
 
-    with open_authorized_path(authorized, expected_kind="directory") as opened:
-        assert opened.identity.final_path == resolved_target
-        assert opened.identity.object_id == (3, 11)
+    assert type(authorized) is str
+    assert authorized == target
 
 
-def test_native_windows_directory_lease_spans_the_bounded_operation(
+def test_native_windows_directory_lease_is_checked_during_admission(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     selected = ntpath.normcase(ntpath.normpath(r"C:\Data\Selected"))
@@ -190,12 +230,16 @@ def test_native_windows_directory_lease_spans_the_bounded_operation(
         object_id=(3, 11),
         kind="directory",
     )
-    snapshot = DirectoryIdentitySnapshot(
-        path=selected,
-        entries=(),
-        windows=True,
-    )
     lease = _FakeDirectoryLease()
+    checked: list[tuple[bool, FilesystemIdentity]] = []
+    require_match = authorized_paths._require_directory_lease_matches
+
+    def _check_held_lease(
+        admitted_lease: _FakeDirectoryLease,
+        admitted_identity: FilesystemIdentity,
+    ) -> None:
+        checked.append((admitted_lease.active, admitted_identity))
+        require_match(admitted_lease, admitted_identity)  # type: ignore[arg-type]
 
     monkeypatch.setattr(authorized_paths, "_native_windows_runtime", lambda: True)
     monkeypatch.setattr(
@@ -205,13 +249,13 @@ def test_native_windows_directory_lease_spans_the_bounded_operation(
     )
     monkeypatch.setattr(
         authorized_paths,
-        "_admit_windows_directory_snapshot",
-        lambda _path, _identity: snapshot,
+        "retain_directory_identity",
+        lambda _path, *, expected=None: lease,
     )
     monkeypatch.setattr(
         authorized_paths,
-        "retain_directory_identity",
-        lambda _path, *, expected=None: lease,
+        "_require_directory_lease_matches",
+        _check_held_lease,
     )
 
     authorized = authorize_existing_path(
@@ -220,11 +264,58 @@ def test_native_windows_directory_lease_spans_the_bounded_operation(
         expected_kind="directory",
     )
 
+    assert type(authorized) is str
+    assert authorized == selected
+    assert checked == [(True, identity)]
     assert lease.active is False
-    with open_authorized_path(authorized, expected_kind="directory") as opened:
-        assert lease.active is True
-        assert opened.identity == identity
-    assert lease.active is False
+
+
+@pytest.mark.platform_contract
+@pytest.mark.skipif(os.name != "nt", reason="native Windows identity regression")
+@pytest.mark.parametrize("replace_root", (True, False), ids=("root", "target"))
+def test_native_windows_replaced_directory_is_rejected_during_admission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    replace_root: bool,
+) -> None:
+    selected = tmp_path / "selected"
+    target = selected / "sub-01"
+    target.mkdir(parents=True)
+    replaced_directory = selected if replace_root else target
+    displaced_directory = tmp_path / "displaced-directory"
+    target_lexical = os.path.normcase(os.path.normpath(str(target)))
+    resolve_identity = authorized_paths._resolve_windows_identity
+    replaced = False
+
+    def _resolve_then_replace_root(
+        path: str,
+        *,
+        expected_kind: PathKind | None,
+    ) -> FilesystemIdentity:
+        nonlocal replaced
+        identity = resolve_identity(path, expected_kind=expected_kind)
+        if not replaced and os.path.normcase(os.path.normpath(path)) == target_lexical:
+            replaced_directory.rename(displaced_directory)
+            replaced_directory.mkdir()
+            if replace_root:
+                target.mkdir()
+            replaced = True
+        return identity
+
+    monkeypatch.setattr(
+        authorized_paths,
+        "_resolve_windows_identity",
+        _resolve_then_replace_root,
+    )
+
+    with pytest.raises(AuthorizedPathError, match="changed during authorization"):
+        authorize_existing_path(
+            target,
+            authorized_root=selected,
+            expected_kind="directory",
+        )
+
+    assert replaced is True
 
 
 def test_verifier_uses_final_windows_identity_for_selected_root(
@@ -265,6 +356,29 @@ def test_verifier_uses_final_windows_identity_for_selected_root(
 
     assert result.is_valid is False
     assert type(params["directory"]) is str
+
+
+def test_verifier_authorizes_generic_path_within_selected_root(tmp_path: Path) -> None:
+    selected = tmp_path / "selected"
+    source = selected / "recording.edf"
+    source.parent.mkdir()
+    source.touch()
+    params = {"source_path": str(source)}
+
+    result = PathProvenanceVerifier().validate(
+        "scan_source",
+        params,
+        latest_user_text="Scan the selected source",
+        state={
+            "interpretation": {
+                "source_path": str(selected),
+                "source_kind": "folder",
+            }
+        },
+    )
+
+    assert result.is_valid is True
+    assert params["source_path"] == str(source)
 
 
 class _UnregisteredToolRejectingRuntime:

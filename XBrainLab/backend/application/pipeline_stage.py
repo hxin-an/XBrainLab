@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
-
-from XBrainLab.backend.utils.logger import logger
 
 from .commands import CommandName
 from .state import (
@@ -223,104 +220,9 @@ def pipeline_stage_from_snapshot(
 
 
 def compute_pipeline_stage(
-    study: Any,
-    *,
-    publication: ApplicationViewPublication | None = None,
-) -> PipelineStage:
-    """Derive stage from an explicit publication or a compatibility double."""
-    if study is None:
-        return PipelineStage.EMPTY
-
-    if _is_real_product_study(study):
-        return _published_pipeline_stage(publication)
-
-    return _legacy_study_pipeline_stage(study)
-
-
-def _is_real_product_study(study: Any) -> bool:
-    """Distinguish a real Study (including subclasses) from spec-based mocks."""
-    from XBrainLab.backend.study import Study  # noqa: PLC0415
-
-    return isinstance(study, Study) and issubclass(type(study), Study)
-
-
-def _legacy_study_pipeline_stage(study: Any) -> PipelineStage:
-    """Adapt Study-shaped compatibility doubles to the backend stage contract."""
-    trainer = getattr(study, "trainer", None)
-    is_running = getattr(trainer, "is_running", None)
-    datasets = getattr(study, "datasets", None)
-    return derive_pipeline_stage(
-        has_raw_data=bool(getattr(study, "loaded_data_list", None)),
-        has_preprocessed_data=bool(
-            getattr(study, "preprocessed_data_list", None),
-        ),
-        has_epoch_data=getattr(study, "epoch_data", None) is not None,
-        has_datasets=bool(datasets),
-        has_saved_split=bool(datasets),
-        has_model=getattr(study, "model_holder", None) is not None,
-        has_training_option=getattr(study, "training_option", None) is not None,
-        has_trainer=trainer is not None,
-        is_training=bool(is_running()) if callable(is_running) else False,
-        finished_run_count=_legacy_finished_run_count(trainer),
-    )
-
-
-def _legacy_finished_run_count(trainer: Any) -> int:
-    """Read completed-run evidence from compatibility doubles only."""
-    if trainer is None:
-        return 0
-    get_holders = getattr(trainer, "get_training_plan_holders", None)
-    if not callable(get_holders):
-        return 0
-    try:
-        holder_values = get_holders()
-    except Exception:
-        return 0
-    if not isinstance(holder_values, Iterable) or isinstance(
-        holder_values,
-        (str, bytes),
-    ):
-        return 0
-    holders = list(holder_values)
-
-    finished = 0
-    for holder in holders:
-        get_runs = getattr(holder, "get_plans", None)
-        if not callable(get_runs):
-            continue
-        try:
-            run_values = get_runs()
-        except Exception as exc:
-            logger.debug(
-                "Compatibility training holder did not expose readable runs: %s",
-                exc,
-            )
-            continue
-        if not isinstance(run_values, Iterable) or isinstance(
-            run_values,
-            (str, bytes),
-        ):
-            continue
-        runs = list(run_values)
-        for run in runs:
-            is_finished = getattr(run, "is_finished", None)
-            if not callable(is_finished):
-                continue
-            try:
-                finished += int(bool(is_finished()))
-            except Exception as exc:
-                logger.debug(
-                    "Compatibility training run did not expose completion state: %s",
-                    exc,
-                )
-                continue
-    return finished
-
-
-def _published_pipeline_stage(
     publication: ApplicationViewPublication | None,
 ) -> PipelineStage:
-    """Read a real Study stage only from a caller-supplied publication."""
+    """Read a workflow stage only from a caller-supplied publication."""
     if not isinstance(publication, ApplicationViewPublication):
         return PipelineStage.EMPTY
     return pipeline_stage_from_snapshot(publication.state) or PipelineStage.EMPTY

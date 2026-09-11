@@ -1,4 +1,4 @@
-"""Coverage tests for llm/tools/__init__.py, backend_resolver.py, and debug modules."""
+"""Tool registration, debug execution and shared runtime utility regressions."""
 
 from __future__ import annotations
 
@@ -52,77 +52,6 @@ class TestGetAllTools:
 
         with pytest.raises(ValueError, match="Unknown tool mode"):
             get_all_tools("bad")
-
-
-# --- backend_resolver.py ---
-class TestBackendResolver:
-    def test_get_model_class(self):
-        from XBrainLab.backend.model_base.EEGNet import EEGNet
-        from XBrainLab.backend.model_base.SCCNet import SCCNet
-        from XBrainLab.llm.tools.real.backend_resolver import (
-            BackendClassRegistry as ToolRegistry,
-        )
-
-        assert ToolRegistry.get_model_class("EEGNet") is EEGNet
-        assert ToolRegistry.get_model_class("sccnet") is SCCNet
-        assert ToolRegistry.get_model_class("unknown") is None
-
-    def test_get_preprocessor_class(self):
-        from XBrainLab.backend.preprocessor.filtering import Filtering
-        from XBrainLab.llm.tools.real.backend_resolver import (
-            BackendClassRegistry as ToolRegistry,
-        )
-
-        assert ToolRegistry.get_preprocessor_class("bandpass") is Filtering
-        assert ToolRegistry.get_preprocessor_class("unknown") is None
-
-    def test_get_optimizer_class(self):
-        import torch
-
-        from XBrainLab.llm.tools.real.backend_resolver import (
-            BackendClassRegistry as ToolRegistry,
-        )
-
-        assert ToolRegistry.get_optimizer_class("adam") is torch.optim.Adam
-        assert ToolRegistry.get_optimizer_class("sgd") is torch.optim.SGD
-        assert ToolRegistry.get_optimizer_class("adamw") is torch.optim.AdamW
-        # Fallback returns Adam
-        assert ToolRegistry.get_optimizer_class("unknown") is torch.optim.Adam
-
-
-# --- tool_executor.py ---
-class TestToolExecutor:
-    def test_execute_unknown_tool(self):
-        from XBrainLab.debug.tool_executor import ToolExecutor
-        from XBrainLab.llm.tools.application_surface import ToolCommandResult
-
-        executor = ToolExecutor(study=MagicMock())
-        result = executor.execute("nonexistent_tool", {})
-        assert isinstance(result, ToolCommandResult)
-        assert result.ok is False
-        assert result.error_type == "input"
-        assert result.tool_name == "unknown_debug_tool"
-        assert result.message == "The requested debug tool is unavailable."
-
-    def test_partial_training_debug_call_fails_without_backend_mutation(self):
-        from XBrainLab.backend.application import get_application_service
-        from XBrainLab.backend.study import Study
-        from XBrainLab.debug.tool_executor import ToolExecutor
-        from XBrainLab.llm.tools.application_surface import ToolCommandResult
-
-        study = Study()
-        service = get_application_service(study)
-        before = service.get_state().training
-
-        result = ToolExecutor(study).execute(
-            "configure_training",
-            {"model_name": "EEGNet", "epoch": 10},
-        )
-
-        assert isinstance(result, ToolCommandResult)
-        assert result.ok is False
-        assert result.error_type == "input"
-        assert service.get_state().training == before
 
 
 # --- tool_debug_mode.py ---

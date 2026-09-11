@@ -1,55 +1,36 @@
-import contextlib
-from unittest.mock import MagicMock
+"""Real preview controls coalesce updates without replacing product signal wiring."""
 
-from XBrainLab.ui.panels.preprocess.panel import PreprocessPanel
+import pytest
+from PyQt6.QtTest import QSignalSpy
 
-
-def test_slider_debouncing(qtbot):
-    """Test that slider changes are debounced via PreviewWidget."""
-    panel = PreprocessPanel()
-    qtbot.addWidget(panel)
-
-    # Access timer via preview_widget
-    preview = panel.preview_widget
-
-    # Mock the plotter method
-    panel.plotter.plot_sample_data = MagicMock()
-
-    # Disconnect and reconnect to mock
-    with contextlib.suppress(TypeError):
-        preview.plot_timer.timeout.disconnect()
-    preview.plot_timer.timeout.connect(panel.plotter.plot_sample_data)
-
-    # Simulate rapid slider changes via preview_widget
-    preview._on_time_slider_changed(10)
-    preview._on_time_slider_changed(20)
-    preview._on_time_slider_changed(30)
-
-    # Verify plot NOT called immediately
-    assert panel.plotter.plot_sample_data.call_count == 0
-
-    # Wait for timer (50ms + buffer)
-    qtbot.wait(100)
-
-    # Verify plot called ONCE (debounced)
-    assert panel.plotter.plot_sample_data.call_count == 1
+from XBrainLab.ui.panels.preprocess.preview_widget import PreviewWidget
 
 
-def test_spinbox_debouncing(qtbot):
-    """Test that spinbox changes are debounced via PreviewWidget."""
-    panel = PreprocessPanel()
-    qtbot.addWidget(panel)
+@pytest.mark.parametrize("control_name", ["slider", "spin"])
+def test_time_controls_debounce_real_plot_requests_and_stop_on_shutdown(
+    qtbot, control_name
+):
+    preview = PreviewWidget()
+    qtbot.addWidget(
+        preview, before_close_func=lambda owned: owned.prepare_for_shutdown()
+    )
+    requests = QSignalSpy(preview.request_plot_update)
+    control = preview.time_slider if control_name == "slider" else preview.time_spin
+    scale = 10 if control_name == "slider" else 1
 
-    preview = panel.preview_widget
+    for seconds in (1, 2, 3):
+        control.setValue(seconds * scale)
 
-    panel.plotter.plot_sample_data = MagicMock()
-    with contextlib.suppress(TypeError):
-        preview.plot_timer.timeout.disconnect()
-    preview.plot_timer.timeout.connect(panel.plotter.plot_sample_data)
+    assert preview.time_slider.value() == 30
+    assert preview.time_spin.value() == 3.0
+    assert len(requests) == 0
+    qtbot.waitUntil(lambda: len(requests) == 1, timeout=1_000)
+    assert not preview.plot_timer.isActive()
 
-    preview._on_time_spin_changed(1.0)
-    preview._on_time_spin_changed(2.0)
-
-    assert panel.plotter.plot_sample_data.call_count == 0
-    qtbot.wait(100)
-    assert panel.plotter.plot_sample_data.call_count == 1
+    control.setValue(4 * scale)
+    assert preview.plot_timer.isActive()
+    preview.prepare_for_shutdown()
+    assert not preview.plot_timer.isActive()
+    control.setValue(5 * scale)
+    assert not preview.plot_timer.isActive()
+    assert len(requests) == 1

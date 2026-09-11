@@ -988,23 +988,6 @@ class ResourceChecker:
         )
 
     @staticmethod
-    def estimate_training_vram(
-        datasets: Iterable[Any],
-        training_option: Any,
-        model_holder: Any | None = None,
-    ) -> dict[str, Any]:
-        """Estimate per-step GPU peak memory for the current training setup."""
-        estimate = estimate_training_resources(
-            datasets,
-            training_option,
-            model_holder=model_holder,
-        )
-        return {
-            "estimated_vram_bytes": estimate["estimated_gpu_batch_working_set_bytes"],
-            **estimate,
-        }
-
-    @staticmethod
     def get_gpu_vram_status(gpu_idx: int | None = None) -> dict[str, Any]:
         """Return CUDA memory status for a device, or unknown values."""
         try:
@@ -1191,11 +1174,10 @@ class ResourceChecker:
 
     @staticmethod
     def check_training_config_safe(
-        datasets: Iterable[Any],
+        estimate: dict[str, Any],
         training_option: Any,
-        model_holder: Any | None = None,
     ) -> ResourceCheckResult:
-        """Return whether the current training config fits available VRAM."""
+        """Check a current training estimate against freshly queried VRAM."""
         if training_option is None:
             return ResourceCheckResult(
                 required_memory_bytes=None,
@@ -1221,11 +1203,12 @@ class ResourceChecker:
                 details={"uses_cpu": True},
             )
 
-        estimate = ResourceChecker.estimate_training_vram(
-            datasets,
-            training_option,
-            model_holder,
-        )
+        estimate = {
+            "estimated_vram_bytes": estimate["estimated_gpu_batch_working_set_bytes"],
+            **estimate,
+        }
+        # Preserve cancellation after the RAM query without repeating estimation.
+        owned_work_checkpoint("Training preview model parameters ready")
         gpu_idx = _gpu_index(training_option)
         vram = ResourceChecker.get_gpu_vram_status(gpu_idx)
         if vram.get("available_bytes") is None:
@@ -1294,15 +1277,15 @@ def check_training_resource_preflight(
 ) -> ResourcePreflightResult:
     """Return resource issues before a training run starts."""
     dataset_list = list(datasets or [])
-    dataset_result = _training_dataset_ram_check(
+    estimate = estimate_training_resources(
         dataset_list,
         training_option,
-        model_holder,
+        model_holder=model_holder,
     )
+    dataset_result = _training_dataset_ram_check(estimate)
     vram_result = ResourceChecker.check_training_config_safe(
-        dataset_list,
+        estimate,
         training_option,
-        model_holder,
     )
 
     diagnostics = {
@@ -1789,15 +1772,8 @@ def release_cuda_cache() -> None:
 
 
 def _training_dataset_ram_check(
-    datasets: Iterable[Any],
-    training_option: Any,
-    model_holder: Any | None,
+    estimate: dict[str, Any],
 ) -> ResourceCheckResult:
-    estimate = estimate_training_resources(
-        datasets,
-        training_option,
-        model_holder=model_holder,
-    )
     ram = ResourceChecker.get_system_ram_status()
     required_ram = int(estimate["estimated_ram_working_set_bytes"] or 0)
     return _memory_check_result(

@@ -78,8 +78,8 @@ def test_runtime_details_roundtrip_and_copy(raw):
         },
     )
 
-    assert raw.has_runtime_detail("gdf_duplicate_channel_names") is True
-    assert raw.has_gdf_duplicate_channel_detail() is True
+    assert raw.get_runtime_detail("gdf_duplicate_channel_names") is not None
+    assert raw.get_gdf_duplicate_channel_detail() is not None
     detail = raw.get_gdf_duplicate_channel_detail()
     assert detail == {
         "generated_bases": ["EEG"],
@@ -107,8 +107,8 @@ def _set_event(raw):
 
 def test_set_event(raw):
     _set_event(raw)
-    assert raw.has_event_str() == "yes"
-    assert raw.get_event_name_list_str() == "a,b,c,d"
+    assert raw.has_event() is True
+    assert list(raw.get_event_list()[1]) == ["a", "b", "c", "d"]
     # check event
     events, event_id = raw.get_event_list()
     assert len(events) == 4
@@ -146,16 +146,6 @@ def test_mne_raw_info(mne_raw, raw):
     assert raw.get_epoch_duration() == base_fs * base_duration
     assert raw.is_raw()
 
-    assert raw.get_row_info() == (
-        "sub-01_ses-01_task-rest_eeg.fif",
-        "0",
-        "0",
-        4,
-        base_fs,
-        1,
-        "no",
-    )
-
 
 def test_mne_raw_2_info(mne_raw_2, raw):
     raw.set_mne(mne_raw_2)
@@ -168,16 +158,6 @@ def test_mne_raw_2_info(mne_raw_2, raw):
     assert raw.get_epoch_duration() == 50 * base_duration
     assert raw.is_raw()
 
-    assert raw.get_row_info() == (
-        "sub-01_ses-01_task-rest_eeg.fif",
-        "0",
-        "0",
-        2,
-        50,
-        1,
-        "no",
-    )
-
 
 # original
 # set_event
@@ -185,8 +165,8 @@ def test_mne_raw_2_info(mne_raw_2, raw):
 
 # raw without event
 def test_raw_empty_event(raw):
-    assert raw.has_event_str() == "no"
-    assert raw.get_event_name_list_str() == "None"
+    assert raw.has_event() is False
+    assert list(raw.get_event_list()[1]) == []
     events, event_id = raw.get_event_list()
     assert len(events) == 0
     assert len(event_id) == 0
@@ -224,8 +204,8 @@ def stim_raw(mne_raw_stim):
 
 
 def test_raw_stim_event(stim_raw):
-    assert stim_raw.has_event_str() == "yes"
-    assert stim_raw.get_event_name_list_str() == "1,2,3"
+    assert stim_raw.has_event() is True
+    assert list(stim_raw.get_event_list()[1]) == ["1", "2", "3"]
     events, event_id = stim_raw.get_event_list()
     assert len(events) == 3
     assert len(event_id) == 3
@@ -324,8 +304,8 @@ def annot_raw(mne_raw_annot):
 
 
 def test_raw_annotation_event(annot_raw):
-    assert annot_raw.has_event_str() == "yes"
-    assert annot_raw.get_event_name_list_str() == "a,b,c"
+    assert annot_raw.has_event() is True
+    assert list(annot_raw.get_event_list()[1]) == ["a", "b", "c"]
     events, event_id = annot_raw.get_event_list()
     assert len(events) == 3
     assert len(event_id) == 3
@@ -370,20 +350,10 @@ def test_mne_epoch_info(mne_epoch, epoch):
     assert epoch.get_epoch_duration() == base_fs * 0.1 + 1
     assert not epoch.is_raw()
 
-    assert epoch.get_row_info() == (
-        "sub-01_ses-01_task-rest_eeg.fif",
-        "0",
-        "0",
-        2,
-        base_fs,
-        4,
-        "yes",
-    )
-
 
 def test_epoch(epoch):
-    assert epoch.has_event_str() == "yes"
-    assert epoch.get_event_name_list_str() == "a,b,c,d"
+    assert epoch.has_event() is True
+    assert list(epoch.get_event_list()[1]) == ["a", "b", "c", "d"]
     events, event_id = epoch.get_event_list()
     assert len(events) == 4
     assert len(event_id) == 4
@@ -420,8 +390,8 @@ def test_set_mne_after_set_event_1(mne_raw_2, target, request):
     test_set_event(target)
     target.set_mne(mne_raw_2)
 
-    assert target.has_event_str() == "yes"
-    assert target.get_event_name_list_str() == "a,b,c,d"
+    assert target.has_event() is True
+    assert list(target.get_event_list()[1]) == ["a", "b", "c", "d"]
     events, event_id = target.get_event_list()
     assert len(events) == 4
     assert len(event_id) == 4
@@ -433,29 +403,38 @@ def test_set_mne_after_set_event_2(mne_epoch, target, request):
     test_set_event(target)
     target.set_mne(mne_epoch)
 
-    assert target.has_event_str() == "yes"
-    assert target.get_event_name_list_str() == "a,b,c,d"
+    assert target.has_event() is True
+    assert list(target.get_event_list()[1]) == ["a", "b", "c", "d"]
     events, event_id = target.get_event_list()
     assert len(events) == 4
     assert len(event_id) == 4
 
 
-def test_set_mne_consistency(mne_epoch, raw):
-    np.array([[1, 0, 1], [2, 0, 2]])
-    # raw.set_event(events, event_id)
-    # with pytest.raises(AssertionError):
-    #     raw.set_mne(mne_epoch)
-
-
 @pytest.mark.parametrize("target", ["raw", "epoch"])
-def test_set_mne_and_wipe_events_1(mne_raw_2, target, request):
+@pytest.mark.parametrize("attach_events", [False, True])
+def test_set_mne_and_wipe_events_1(mne_raw_2, target, attach_events, request):
     target = request.getfixturevalue(target)
+    target.get_event_list()
+    if attach_events:
+        target.set_event(
+            np.array([[1, 0, 9]] * target.get_epochs_length()), {"imported": 9}
+        )
     target.set_mne_and_wipe_events(mne_raw_2)
+    assert target.get_event_list()[1] == {}
     test_mne_raw_2_info(mne_raw_2, target)
 
 
 @pytest.mark.parametrize("target", ["raw", "epoch"])
-def test_set_mne_and_wipe_events_2(mne_epoch, target, request):
+@pytest.mark.parametrize("attach_events", [False, True])
+def test_set_mne_and_wipe_events_2(mne_epoch, target, attach_events, request):
+    replacement = mne_epoch.copy()
+    expected_event_ids = dict(replacement.event_id)
     target = request.getfixturevalue(target)
-    target.set_mne_and_wipe_events(mne_epoch)
-    test_mne_epoch_info(mne_epoch, target)
+    target.get_event_list()
+    if attach_events:
+        target.set_event(
+            np.array([[1, 0, 9]] * target.get_epochs_length()), {"imported": 9}
+        )
+    target.set_mne_and_wipe_events(replacement)
+    assert target.get_event_list()[1] == expected_event_ids
+    test_mne_epoch_info(replacement, target)

@@ -241,8 +241,13 @@ def test_malformed_tool_envelopes_stop_after_two_retries_without_execution(
             and "Never use a Markdown code fence" in messages[0]["content"]
             for messages in worker.messages[1:]
         )
-        assert "FORMAT CORRECTION REQUIRED" in worker.messages[1][1]["content"]
-        assert "one JSON object" in worker.messages[1][1]["content"]
+        assert "FORMAT CORRECTION REQUIRED" not in worker.messages[0][0]["content"]
+        assert all(
+            messages[0]["content"].count("FORMAT CORRECTION REQUIRED") == 1
+            and "FORMAT CORRECTION REQUIRED" not in messages[1]["content"]
+            for messages in worker.messages[1:]
+        )
+        assert "one JSON object" in worker.messages[1][0]["content"]
     finally:
         close_controller_and_wait(controller, qtbot)
 

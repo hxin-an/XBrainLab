@@ -473,7 +473,7 @@ def build_interpretation_candidate(
     confirmation_items = sorted(set(confirmation_items))
     if not selected_files:
         blocked_reasons.append("No EEG files were selected for interpretation.")
-    missing_selected_files = _selected_files_missing_from_scan(
+    missing_selected_files = _paths_missing_from_scan(
         selected_files,
         scan.eeg_files,
     )
@@ -1145,13 +1145,6 @@ def _event_code_sort_key(value: str) -> tuple[int, int | str]:
 
 def _path_key(path: str) -> str:
     return str(Path(path).expanduser())
-
-
-def _selected_files_missing_from_scan(
-    selected_files: list[str],
-    scanned_files: list[str],
-) -> list[str]:
-    return _paths_missing_from_scan(selected_files, scanned_files)
 
 
 def _resolve_selected_files_to_scan(

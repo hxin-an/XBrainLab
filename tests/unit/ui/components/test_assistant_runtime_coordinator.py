@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+import pytest
+
 from XBrainLab.llm.agent.runtime_state import (
     AssistantRuntimePhase,
     AssistantRuntimeSnapshot,
@@ -120,14 +122,28 @@ def test_runtime_coordinator_rejects_untyped_payload_without_losing_truth():
     assert published == [trusted]
 
 
-def test_runtime_coordinator_rejects_inconsistent_typed_snapshot():
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"phase": "ready", "initialized": True},
+        {"phase": AssistantRuntimePhase.READY, "initialized": False},
+        {"phase": AssistantRuntimePhase.IDLE, "initialized": True},
+        {"activation_id": False},
+        {"activation_id": -1},
+        {"activation_id": "7"},
+    ],
+)
+def test_runtime_coordinator_rejects_inconsistent_typed_snapshot(fields):
     published: list[AssistantRuntimeSnapshot] = []
     coordinator = AssistantRuntimeCoordinator(published.append)
     invalid_ready = AssistantRuntimeSnapshot(
-        phase=AssistantRuntimePhase.READY,
-        initialized=False,
-        backend_mode="local",
-        model_id="model",
+        **{
+            "phase": AssistantRuntimePhase.READY,
+            "initialized": True,
+            "backend_mode": "local",
+            "model_id": "model",
+            **fields,
+        }
     )
 
     accepted = coordinator.accept_worker_snapshot(invalid_ready)

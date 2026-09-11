@@ -14,7 +14,6 @@ import numpy as np
 
 from XBrainLab.backend.load_data.raw import Raw
 from XBrainLab.backend.utils import validate_type
-from XBrainLab.backend.utils.logger import logger
 
 _MNE_EXCLUDED_CLASS_PREFIXES = ("bad", "edge")
 _MNE_ANNOTATION_TIME_TOLERANCE_SECONDS = 1e-6
@@ -592,100 +591,6 @@ class EventLoader:
             return [best_id]
         return []
 
-    def align_sequence(
-        self,
-        seq_eeg: list[int],
-        seq_label: list[int],
-    ) -> tuple[list[int], list[int]]:
-        """Align EEG trigger sequence with label sequence.
-
-        Currently uses simple truncation to the shorter sequence length.
-        Full LCS/DTW alignment may be implemented in the future.
-
-        Args:
-            seq_eeg: List of EEG trigger indices or codes.
-            seq_label: List of label indices or codes.
-
-        Returns:
-            Tuple of (eeg_indices, label_indices) representing matched
-            positions in both sequences.
-
-        """
-        n = len(seq_eeg)
-        m = len(seq_label)
-
-        # If perfect match in count, assume 1-to-1 (optimization)
-        if n == m:
-            return list(range(n)), list(range(m))
-
-        # DP Table for LCS
-        # We are matching "items". But what defines a match?
-        # In this context, we assume any EEG trigger *could* be any Label.
-        # But we want to maximize the number of assignments while preserving order.
-        # This is equivalent to finding the longest common subsequence if we
-        # treat all items as "matchable".
-        # But if all items match, LCS length is min(N, M).
-        # And we just pick the first min(N, M)?
-        # NO. If we have [A, B, C] and [A, X, B, C], we want to match A-A, B-B,
-        # C-C.
-        # But here we don't know "A" or "B". We only have "Trigger" and "Label".
-        # Unless we use time intervals? But Sequence Mode has no time info for
-        # labels.
-
-        # If we have NO content info, we can only assume 1-to-1 mapping.
-        # The only question is: do we skip elements from EEG (noise) or Labels
-        # (missing)?
-        # Usually EEG has extra triggers (noise).
-        # So we assume N >= M.
-        # We want to find M indices in EEG that "best fit".
-        # Without time, "best fit" is undefined unless we assume uniform
-        # distribution?
-        # Or we just take the first M?
-
-        # However, if we have *some* content info (e.g. trigger codes), we can
-        # use it.
-        # But `seq_eeg` passed here are just indices or codes?
-        # The signature says List[int].
-        # If they are codes, we can match codes!
-        # But usually Labels are 1, 2, 3 and Triggers are 255, 255, 255 (start
-        # trial).
-        # So codes don't match.
-
-        # If codes don't match, we can't use LCS based on content.
-        # We can only use LCS if we have a "translation" or if we assume generic
-        # matching.
-        # If generic matching, we just match 1-to-1.
-
-        # The spec says "LCS/DTW heuristic".
-        # If we assume the user provided `selected_event_ids`, we filtered EEG to
-        # only relevant triggers.
-        # So `seq_eeg` contains only "Trial Start" triggers.
-        # So they are all identical in meaning.
-        # So we can't distinguish them by content.
-
-        # Heuristic Alignment Strategy:
-        # If N (triggers) != M (labels), we assume the first N items correspond to the
-        # labels, or align based on count if best-id heuristic used.
-        # This implementation defaults to simple list alignment/truncation as a robust
-        # fallback.
-        # as implementing full DTW on timestamps requires more changes.
-
-        # Given the constraints and current state, simple truncation (or "first
-        # N") is the most robust default when no content matching is possible.
-        # LCS is only useful if we have a sequence of *different* labels and
-        # *different* triggers that should correspond.
-        # e.g. EEG: [1, 2, 1, 3], Label: [A, B, A, C]. Map 1->A, 2->B, 3->C.
-        # Then we can align [1, 2, 1, 3] with [A, B, A, C].
-        # But here we usually map "Trigger 255" -> "Label X".
-        # So EEG is [255, 255, 255, 255]. Label is [A, B, A, C].
-        # We can't align.
-
-        # So, I will stick to the current logic (Truncation) but clean up the code
-        # and ensure `align_sequence` is actually used.
-
-        limit = min(n, m)
-        return list(range(limit)), list(range(limit))
-
     def create_event(
         self,
         event_name_map: dict[Any, str],
@@ -783,43 +688,17 @@ class EventLoader:
                 f"{len(filtered_eeg_events)} selected EEG event(s).",
             )
 
-        # Align
-        # We pass indices to align_sequence (dummy for now as we don't use content)
-        eeg_indices, label_indices = self.align_sequence(
-            list(range(len(filtered_eeg_events))),
-            list(range(len(labels))),
-        )
-
-        if len(eeg_indices) < len(filtered_eeg_events) or len(label_indices) < len(
-            labels
-        ):
-            logger.warning(
-                "Alignment truncated: EEG=%d, Label=%d -> %d matches.",
-                len(filtered_eeg_events),
-                len(labels),
-                len(eeg_indices),
-            )
-
-        # Create new events
-        count = len(eeg_indices)
-        new_events = np.zeros((count, 3), dtype=int)
-
-        # Use aligned indices
-        # filtered_eeg_events[eeg_indices] gives the matched EEG events
-        # labels[label_indices] gives the matched labels
-
-        # Note: eeg_indices and label_indices are lists of indices into the
-        # respective arrays
-        new_events[:, 0] = filtered_eeg_events[eeg_indices, 0]  # Timestamps
-        new_events[:, 1] = filtered_eeg_events[eeg_indices, 1]  # Previous val
-        aligned_labels = [_normalize_label_value(labels[idx]) for idx in label_indices]
+        # Count validation guarantees a one-to-one mapping in reviewed order.
+        new_events = np.zeros((len(labels), 3), dtype=int)
+        new_events[:, :2] = filtered_eeg_events[:, :2]
+        normalized_labels = [_normalize_label_value(label) for label in labels]
 
         label_to_code: dict[Any, int] = {}
         code_to_name: dict[int, str] = {}
         used_codes: set[int] = set()
         next_code = 1
 
-        for row_index, label in enumerate(aligned_labels):
+        for row_index, label in enumerate(normalized_labels):
             if label in label_to_code:
                 code = label_to_code[label]
             else:

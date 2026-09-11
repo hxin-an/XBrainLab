@@ -1,4 +1,4 @@
-"""State snapshot service and compatibility exports for the command spine."""
+"""State snapshot projection for the application command spine."""
 
 from __future__ import annotations
 
@@ -31,13 +31,7 @@ from .montage_capability import (
     project_montage_geometry,
 )
 from .pipeline_stage import pipeline_stage_from_snapshots
-from .query_state_service import HandlerResult, QueryStateCommandService
-from .saliency_coverage import (
-    SaliencyCoverageProjector,
-    saliency_coverage_for_eval_record,
-    saliency_label_items_from_epoch,
-    saliency_method_coverage,
-)
+from .saliency_coverage import SaliencyCoverageProjector
 from .serialization import serialize_json_value
 from .state import (
     ActiveDatasetSnapshot,
@@ -62,15 +56,13 @@ from .training_recommendation import (
     TrainingRecommendationService,
 )
 from .training_runtime import TrainingStateReadPort
-
-__all__ = [
-    "HandlerResult",
-    "QueryStateCommandService",
-    "StateSnapshotService",
-    "saliency_coverage_for_eval_record",
-    "saliency_label_items_from_epoch",
-    "saliency_method_coverage",
-]
+from .training_snapshot import (
+    model_name as snapshot_model_name,
+)
+from .training_snapshot import (
+    model_params_snapshot,
+    training_option_snapshot,
+)
 
 _BACKGROUND_SNAPSHOT_ATTEMPTS = 3
 
@@ -87,13 +79,9 @@ class StateSnapshotService:
         training: Any,
         training_runtime: TrainingStateReadPort,
         evaluation: Any,
-        visualization: Any,
         dataset_generation: Any,
-        training_commands: Any,
         interpretation: Any,
         saliency_coverage_projector: SaliencyCoverageProjector,
-        training_state: Any | None = None,
-        evaluation_state: Any | None = None,
         training_recommendation: TrainingRecommendationService | None = None,
         montage_snapshot_provider: Callable[[], Any] | None = None,
         effective_montage_provider: Callable[[], Any] | None = None,
@@ -102,14 +90,10 @@ class StateSnapshotService:
         self.study = study
         self.dataset = dataset
         self.preprocess = preprocess
-        self.training = training
         self.training_runtime = training_runtime
-        self.training_state = training_state or training
-        self.evaluation = evaluation
-        self.evaluation_state = evaluation_state or evaluation
-        self.visualization = visualization
+        self.training_state = training
+        self.evaluation_state = evaluation
         self.dataset_generation = dataset_generation
-        self.training_commands = training_commands
         self.interpretation = interpretation
         self.saliency_coverage_projector = saliency_coverage_projector
         self.training_recommendation = training_recommendation
@@ -319,11 +303,9 @@ class StateSnapshotService:
             active_split_summary=dict(split_state["active_split_summary"]),
             last_split_attempt=dict(split_state["last_split_attempt"]),
         )
-        model_name = self.training_commands.model_name(model_holder)
-        model_params = self.training_commands.model_params_snapshot(model_holder)
-        training_option_values = self.training_commands.training_option_snapshot(
-            training_option,
-        )
+        model_name = snapshot_model_name(model_holder)
+        model_params = model_params_snapshot(model_holder)
+        training_option_values = training_option_snapshot(training_option)
         recommendation = self._training_recommendation(
             epoch=epoch,
             dataset=dataset,
@@ -356,7 +338,7 @@ class StateSnapshotService:
             finished_run_count=evaluation.finished_runs,
             read_generation=training_read_generation,
             progress_message=self._read_optional_string(
-                getattr(self.training, "get_progress_text", None),
+                getattr(self.training_state, "get_progress_text", None),
                 label="training.progress",
             ),
             terminal_outcome=self._training_terminal_outcome(),
@@ -591,14 +573,14 @@ class StateSnapshotService:
         model_name = (
             prospective_model_name
             if prospective_model_name is not None
-            else self.training_commands.model_name(model_holder)
+            else snapshot_model_name(model_holder)
         )
         model_params = (
             dict(prospective_model_params or {})
             if prospective_model_name is not None
-            else self.training_commands.model_params_snapshot(model_holder)
+            else model_params_snapshot(model_holder)
         )
-        option_values = self.training_commands.training_option_snapshot(training_option)
+        option_values = training_option_snapshot(training_option)
         if prospective_device is not None:
             option_values = {**option_values, "device": prospective_device}
         context = self._training_recommendation_context(
@@ -1137,16 +1119,6 @@ class StateSnapshotService:
             return [str(ch) for ch in epoch_data.get_mne().ch_names]
         except Exception:
             return []
-
-    @staticmethod
-    def _montage_available(epoch_data: Any) -> bool:
-        if epoch_data is None:
-            return False
-        return bool(getattr(epoch_data, "channel_position", None))
-
-    @staticmethod
-    def _channel_positions_available(epoch_data: Any) -> bool:
-        return StateSnapshotService._montage_available(epoch_data)
 
     @staticmethod
     def _montage_positions(epoch_data: Any) -> list[list[float]]:

@@ -719,25 +719,6 @@ class TrainingManager:
             return ""
         return str(progress or "")
 
-    # --- Evaluation Helpers ---
-
-    def export_output_csv(self, filepath: str, plan_name: str, real_plan_name: str):
-        """Export model inference output to csv file.
-
-        Args:
-            filepath: Path to save the CSV.
-            plan_name: Name of the plan.
-            real_plan_name: Real name of the plan.
-
-        """
-        if not self.trainer:
-            raise ValueError("No valid training plan is generated")
-        plan = self.trainer.get_real_training_plan(plan_name, real_plan_name)
-        record = plan.get_eval_record()
-        if not record:
-            raise ValueError("No evaluation record for this training plan")
-        record.export_csv(filepath)
-
     # --- Saliency ---
 
     def get_saliency_params(self) -> dict | None:
@@ -872,68 +853,6 @@ class TrainingManager:
             or self.trainer is not trainer
         ):
             raise StaleSaliencyUpdateError
-
-    def publish_post_training_saliency_submission_failure(
-        self,
-        target: PostTrainingSaliencyTarget,
-        error: BaseException,
-    ) -> PostTrainingSaliencyScheduleOutcome:
-        """Publish a typed terminal generation when command submission cannot start."""
-        if not isinstance(target, PostTrainingSaliencyTarget):
-            raise TypeError("post-training saliency target is invalid")
-        with self._training_pipeline_lock:
-            trainer = self.trainer
-            training_generation = 0
-            if trainer is not None:
-                try:
-                    token = trainer.get_state_snapshot_token()
-                    if isinstance(token, TrainingStateToken):
-                        training_generation = token.generation
-                except Exception:
-                    logger.debug(
-                        "Could not read training generation for saliency "
-                        "submission failure",
-                        exc_info=True,
-                    )
-
-            with self._saliency_job_lock:
-                request_generation = self._saliency_request_sequence + 1
-                cancellation_epoch = self._saliency_cancellation_epoch
-                admitted_generation = (
-                    self._admit_post_training_saliency_request_locked(
-                        target=target,
-                        trainer=trainer,
-                        training_generation=training_generation,
-                        request_generation=request_generation,
-                        cancellation_epoch=cancellation_epoch,
-                    )
-                    if trainer is not None
-                    else None
-                )
-                if admitted_generation is None:
-                    outcome = self._terminal_schedule_outcome_locked(
-                        target,
-                        request_generation=request_generation,
-                        methods=tuple(sorted(_BASELINE_SALIENCY_METHODS)),
-                        disposition=PostTrainingSaliencyScheduleDisposition.STALE,
-                        reason=PostTrainingSaliencyScheduleReason.REQUEST_SUPERSEDED,
-                        training_generation=training_generation,
-                    )
-                else:
-                    outcome = self._terminal_schedule_outcome_locked(
-                        target,
-                        request_generation=admitted_generation,
-                        methods=tuple(sorted(_BASELINE_SALIENCY_METHODS)),
-                        disposition=PostTrainingSaliencyScheduleDisposition.REJECTED,
-                        reason=PostTrainingSaliencyScheduleReason.THREAD_START_FAILED,
-                        training_generation=training_generation,
-                        diagnostic_type=type(error).__name__,
-                    )
-        if admitted_generation is not None:
-            self._complete_post_training_saliency_request(admitted_generation)
-        target.publish_schedule_outcome(outcome)
-        self._publish_terminal_schedule_outcome(outcome)
-        return outcome
 
     def _schedule_post_training_saliency(
         self,

@@ -43,6 +43,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from scripts.dev.capture_config import isolated_capture_config
 from scripts.dev.ui_navigation import open_workflow_panel
 from XBrainLab.backend.application import (
     ApplyInterpretationCommand,
@@ -1320,9 +1321,10 @@ def main(argv: list[str] | None = None) -> int:
     if not output_dir.is_absolute():
         output_dir = ROOT / output_dir
     set_artifact_dir(output_dir)
-    app = QApplication([sys.argv[0]])
-    app.setStyle("Fusion")
-    return capture_replay(app)
+    with isolated_capture_config():
+        app = QApplication([sys.argv[0]])
+        app.setStyle("Fusion")
+        return capture_replay(app)
 
 
 if __name__ == "__main__":

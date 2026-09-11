@@ -805,19 +805,6 @@ class TrainRecord:
             )
         ) and self.eval_record is not None
 
-    def append_record(self, val: Any, arr: list) -> None:
-        """Internal function for appending a value to a statistic array
-
-        Fill the array with None if the data is not available before the current epoch
-
-        Args:
-            val: Value to be appended
-            arr: Array to be appended
-
-        """
-        with self._state_mutation():
-            self._append_record(val, arr)
-
     def _append_record(self, val: Any, arr: list) -> None:
         """Append one value while the caller owns the mutation interval."""
         while len(arr) < self.epoch:
@@ -1172,50 +1159,6 @@ class TrainRecord:
                     )
                     if loaded is not None:
                         self.evaluation_records[split] = loaded
-
-    def get_model_output(self) -> str:
-        """Return a formatted string summary of the training history.
-
-        Returns:
-            A multi-line string containing epoch count, best performance
-            metrics, and last-epoch statistics.
-
-        """
-        lines = []
-        lines.append(f"=== Training Summary for {self.get_name()} ===")
-        lines.append(f"Total Training Epochs: {self.epoch}")
-
-        # Best Performance
-        lines.append("\n[Best Performance]")
-        for key, val in self.best_record.items():
-            if "epoch" in key:
-                continue
-            epoch_key = key + "_epoch"
-            epoch_val = self.best_record.get(epoch_key, "-")
-            formatted = "N/A" if val is None else f"{val:.4f}"
-            lines.append(f"  {key}: {formatted} (Training epoch {epoch_val or '-'})")
-
-        # Last training-epoch statistics
-        lines.append("\n[Last Training Epoch Statistics]")
-        if self.epoch > 0:
-            idx = -1
-
-            def get_val(d, k):
-                return d[k][idx] if len(d[k]) > 0 else "N/A"
-
-            def fmt(val, p=4):
-                if isinstance(val, (int, float)):
-                    return f"{val:.{p}f}"
-                return str(val)
-
-            lines.append(f"  Train Loss: {fmt(get_val(self.train, RecordKey.LOSS))}")
-            lines.append(f"  Train Acc:  {fmt(get_val(self.train, RecordKey.ACC), 2)}%")
-            lines.append(f"  Val Loss:   {fmt(get_val(self.val, RecordKey.LOSS))}")
-            lines.append(f"  Val Acc:    {fmt(get_val(self.val, RecordKey.ACC), 2)}%")
-        else:
-            lines.append("  No training data available.")
-
-        return "\n".join(lines)
 
     # figure
     def get_loss_figure(

@@ -15,22 +15,17 @@ def test_guard_rejects_direct_partial_label_batch_mutation(tmp_path: Path) -> No
     label_service.write_text(
         """
 class LabelImportService:
-    def apply_labels_batch(self, targets):
+    def apply_labels_batch_checked(self, targets):
         for target in targets:
             self.apply_labels_to_single_file(target, [], {})
-
-    def apply_labels_sequence(self, targets):
-        for target in targets:
-            self._force_apply_single(target, [], {})
 """,
         encoding="utf-8",
     )
 
     violations = check_raw_mutation_atomicity_boundaries(tmp_path)
 
-    assert any("apply_labels_batch() directly mutates" in item for item in violations)
     assert any(
-        "apply_labels_sequence() directly mutates" in item for item in violations
+        "apply_labels_batch_checked() directly mutates" in item for item in violations
     )
 
 
@@ -59,20 +54,20 @@ def test_guard_rejects_transitive_callable_alias_to_raw_label_mutation(
     label_service.write_text(
         f"""{import_block}
 class LabelImportService:
-    def apply_labels_batch(self, target):
+    def apply_labels_batch_checked(self, target):
         first = {first_binding}
         second = first
         second(target, [], {{}})
 
-    def apply_labels_sequence(self, targets):
-        self._apply_label_operations_atomically(targets)
 """,
         encoding="utf-8",
     )
 
     violations = check_raw_mutation_atomicity_boundaries(tmp_path)
 
-    assert any("apply_labels_batch() directly mutates" in item for item in violations)
+    assert any(
+        "apply_labels_batch_checked() directly mutates" in item for item in violations
+    )
 
 
 @pytest.mark.parametrize(
@@ -129,18 +124,18 @@ def test_guard_rejects_unpack_and_namedexpr_callable_alias_mutation_matrix(
     label_service.write_text(
         f"""
 class LabelImportService:
-    def apply_labels_batch(self, target):
+    def apply_labels_batch_checked(self, target):
 {mutation_body}
 
-    def apply_labels_sequence(self, targets):
-        self._apply_label_operations_atomically(targets)
 """,
         encoding="utf-8",
     )
 
     violations = check_raw_mutation_atomicity_boundaries(tmp_path)
 
-    assert any("apply_labels_batch() directly mutates" in item for item in violations)
+    assert any(
+        "apply_labels_batch_checked() directly mutates" in item for item in violations
+    )
 
 
 def test_guard_preserves_precise_atomic_callable_unpack_binding(
@@ -151,15 +146,13 @@ def test_guard_preserves_precise_atomic_callable_unpack_binding(
     label_service.write_text(
         """
 class LabelImportService:
-    def apply_labels_batch(self, targets):
+    def apply_labels_batch_checked(self, targets):
         first, other = (
             self._apply_label_operations_atomically,
             self.apply_labels_to_single_file,
         )
         first(targets)
 
-    def apply_labels_sequence(self, targets):
-        self._apply_label_operations_atomically(targets)
 """,
         encoding="utf-8",
     )
@@ -167,10 +160,10 @@ class LabelImportService:
     violations = check_raw_mutation_atomicity_boundaries(tmp_path)
 
     assert not any(
-        "apply_labels_batch() directly mutates" in item for item in violations
+        "apply_labels_batch_checked() directly mutates" in item for item in violations
     )
     assert not any(
-        "apply_labels_batch() must delegate to the atomic" in item
+        "apply_labels_batch_checked() must delegate to the atomic" in item
         for item in violations
     )
 
@@ -241,7 +234,7 @@ def test_guard_rejects_callable_construction_raw_mutation_bypasses(
     label_service.write_text(
         f"""
 class LabelImportService:
-    def apply_labels_batch(
+    def apply_labels_batch_checked(
         self,
         target,
         mutation_name="apply_labels_to_single_file",
@@ -249,8 +242,6 @@ class LabelImportService:
         self._apply_label_operations_atomically([])
 {mutation_body}
 
-    def apply_labels_sequence(self, targets):
-        self._apply_label_operations_atomically(targets)
 """,
         encoding="utf-8",
     )
@@ -258,7 +249,7 @@ class LabelImportService:
     violations = check_raw_mutation_atomicity_boundaries(tmp_path)
 
     assert any(
-        "apply_labels_batch()" in item and expected_fragment in item
+        "apply_labels_batch_checked()" in item and expected_fragment in item
         for item in violations
     )
 
@@ -298,18 +289,16 @@ def test_guard_accepts_provably_atomic_callable_construction(
     label_service.write_text(
         f"""
 class LabelImportService:
-    def apply_labels_batch(self, targets):
+    def apply_labels_batch_checked(self, targets):
 {atomic_binding}
 
-    def apply_labels_sequence(self, targets):
-        self._apply_label_operations_atomically(targets)
 """,
         encoding="utf-8",
     )
 
     violations = check_raw_mutation_atomicity_boundaries(tmp_path)
 
-    assert not any("apply_labels_batch()" in item for item in violations)
+    assert not any("apply_labels_batch_checked()" in item for item in violations)
 
 
 def test_guard_rejects_mapping_subscript_callable_raw_mutation(
@@ -320,7 +309,7 @@ def test_guard_rejects_mapping_subscript_callable_raw_mutation(
     label_service.write_text(
         """
 class LabelImportService:
-    def apply_labels_batch(self, target):
+    def apply_labels_batch_checked(self, target):
         factories = {
             "unsafe": self.apply_labels_to_single_file,
             "atomic": self._apply_label_operations_atomically,
@@ -329,8 +318,6 @@ class LabelImportService:
         self._apply_label_operations_atomically([])
         mutate(target, [], {})
 
-    def apply_labels_sequence(self, targets):
-        self._apply_label_operations_atomically(targets)
 """,
         encoding="utf-8",
     )
@@ -338,7 +325,7 @@ class LabelImportService:
     violations = check_raw_mutation_atomicity_boundaries(tmp_path)
 
     assert any(
-        "apply_labels_batch()" in item and "directly mutates" in item
+        "apply_labels_batch_checked()" in item and "directly mutates" in item
         for item in violations
     )
 
@@ -351,7 +338,7 @@ def test_guard_preserves_precise_atomic_mapping_subscript_binding(
     label_service.write_text(
         """
 class LabelImportService:
-    def apply_labels_batch(self, targets):
+    def apply_labels_batch_checked(self, targets):
         factories = {
             "unsafe": self.apply_labels_to_single_file,
             "atomic": self._apply_label_operations_atomically,
@@ -359,15 +346,13 @@ class LabelImportService:
         mutate = factories["atomic"]
         mutate(targets)
 
-    def apply_labels_sequence(self, targets):
-        self._apply_label_operations_atomically(targets)
 """,
         encoding="utf-8",
     )
 
     violations = check_raw_mutation_atomicity_boundaries(tmp_path)
 
-    assert not any("apply_labels_batch()" in item for item in violations)
+    assert not any("apply_labels_batch_checked()" in item for item in violations)
 
 
 @pytest.mark.parametrize(
@@ -393,7 +378,7 @@ def test_guard_rejects_mutated_mapping_subscript_callable_raw_mutation(
     label_service.write_text(
         f"""
 class LabelImportService:
-    def apply_labels_batch(self, targets):
+    def apply_labels_batch_checked(self, targets):
         factories = {{
             "selected": self._apply_label_operations_atomically,
         }}
@@ -401,8 +386,6 @@ class LabelImportService:
         mutate = factories["selected"]
         mutate(targets)
 
-    def apply_labels_sequence(self, targets):
-        self._apply_label_operations_atomically(targets)
 """,
         encoding="utf-8",
     )
@@ -410,7 +393,7 @@ class LabelImportService:
     violations = check_raw_mutation_atomicity_boundaries(tmp_path)
 
     assert any(
-        "apply_labels_batch()" in item and "directly mutates" in item
+        "apply_labels_batch_checked()" in item and "directly mutates" in item
         for item in violations
     )
 

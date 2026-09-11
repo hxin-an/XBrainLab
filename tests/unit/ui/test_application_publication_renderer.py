@@ -212,7 +212,7 @@ def test_aggregate_render_runtime_error_does_not_acknowledge_revision(qtbot) -> 
 
     study = Study()
     service = ApplicationService(study)
-    info_service = InfoPanelService(study)
+    info_service = InfoPanelService()
     panel = BrokenAggregatePanel()
     info_service._listeners.add(panel)
     initial = service.get_view_publication()

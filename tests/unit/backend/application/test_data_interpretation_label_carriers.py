@@ -6,11 +6,13 @@ import XBrainLab.backend.application.data_interpretation_label_carriers as label
 from XBrainLab.backend.application.data_interpretation_bids_resources import (
     BidsEventsJsonReader,
 )
+from XBrainLab.backend.application.data_interpretation_event_values import (
+    derive_class_views,
+)
 from XBrainLab.backend.application.data_interpretation_label_carriers import (
     _bids_label_field_profile,
     _bids_label_field_recommendation,
     build_label_carrier_plan,
-    infer_class_map_from_label_carrier_plan,
     normalize_label_carrier_choices,
 )
 
@@ -318,7 +320,7 @@ def test_infer_class_map_from_tabular_label_carrier_plan(tmp_path):
         },
     )
 
-    assert infer_class_map_from_label_carrier_plan(plan) == {
+    assert derive_class_views(plan)[0] == {
         "left": "left",
         "right": "right",
     }
@@ -341,7 +343,7 @@ def test_bids_events_json_levels_are_suggestions_not_classes(tmp_path):
         {events.name: {"label_field": "trial_type", "anchor": "onset"}},
     )
 
-    assert infer_class_map_from_label_carrier_plan(plan) == {}
+    assert derive_class_views(plan)[0] == {}
     assert plan[0]["events_json_sidecar_present"] is True
     assert plan[0]["value_decisions"]["left"]["suggested_name"] == "Left hand"
     assert plan[0]["value_decisions"]["right"]["suggested_name"] == "Right hand"
@@ -982,7 +984,7 @@ def test_inherited_bids_levels_are_suggestions_not_classes(tmp_path):
         {events.name: {"label_field": "trial_type", "anchor": "onset"}},
     )
 
-    assert infer_class_map_from_label_carrier_plan(plan) == {}
+    assert derive_class_views(plan)[0] == {}
     assert plan[0]["value_decisions"]["left"]["suggested_name"] == "Left hand"
     assert plan[0]["value_decisions"]["right"]["suggested_name"] == "Right hand"
 
@@ -1005,7 +1007,7 @@ def test_infer_class_map_from_mat_label_carrier_plan(tmp_path):
         {labels.name: {"label_field": "classlabel", "anchor": "cue_onset"}},
     )
 
-    assert infer_class_map_from_label_carrier_plan(plan) == {
+    assert derive_class_views(plan)[0] == {
         "1": "1",
         "2": "2",
     }

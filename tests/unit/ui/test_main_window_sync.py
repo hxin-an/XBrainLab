@@ -72,12 +72,6 @@ def main_window(mock_study, qtbot):
         return window
 
 
-def test_switch_page_updates_dataset_panel(main_window):
-    """Test switching to Dataset panel (Index 0) calls update_panel."""
-    main_window.switch_page(0)
-    main_window.dataset_panel.update_panel.assert_called_once()
-
-
 def test_workflow_state_snapshot_is_detached_from_visible_publication(
     main_window,
 ) -> None:
@@ -126,30 +120,6 @@ def test_workflow_state_snapshot_rejects_shell_only_pending_revision(
         pytest.raises(RuntimeError, match="has not acknowledged current truth"),
     ):
         main_window.workflow_state_snapshot()
-
-
-def test_switch_page_updates_preprocess_panel(main_window):
-    """Test switching to Preprocess panel (Index 1) calls update_panel."""
-    main_window.switch_page(1)
-    main_window.preprocess_panel.update_panel.assert_called_once()
-
-
-def test_switch_page_updates_training_panel(main_window):
-    """Test switching to Training panel (Index 2) calls update_panel."""
-    main_window.switch_page(2)
-    main_window.training_panel.update_panel.assert_called_once()
-
-
-def test_switch_page_updates_evaluation_panel(main_window):
-    """Test switching to Evaluation panel (Index 3) calls update_panel."""
-    main_window.switch_page(3)
-    main_window.evaluation_panel.update_panel.assert_called_once()
-
-
-def test_switch_page_updates_visualization_panel(main_window):
-    """Test switching to Visualization panel (Index 4) calls update_panel."""
-    main_window.switch_page(4)
-    main_window.visualization_panel.update_panel.assert_called_once()
 
 
 def test_switch_page_checks_only_active_nav_button(main_window):
@@ -556,7 +526,8 @@ def test_product_shell_repeated_hide_show_keeps_fixed_right_dock_and_heartbeat(
     assert len(heartbeats) == 20
 
 
-def test_switch_page_only_updates_target_panel(main_window):
+@pytest.mark.parametrize("index", range(5))
+def test_switch_page_only_updates_target_panel(main_window, index):
     """Only the selected panel should be refreshed for a page switch."""
     panels = [
         main_window.dataset_panel,
@@ -566,10 +537,11 @@ def test_switch_page_only_updates_target_panel(main_window):
         main_window.visualization_panel,
     ]
 
-    main_window.switch_page(2)
+    main_window.switch_page(index)
 
-    main_window.training_panel.update_panel.assert_called_once()
-    for panel in (p for p in panels if p is not main_window.training_panel):
+    target = panels[index]
+    target.update_panel.assert_called_once()
+    for panel in (p for p in panels if p is not target):
         panel.update_panel.assert_not_called()
 
 
@@ -1601,7 +1573,7 @@ def test_desktop_renderer_recovers_from_long_panel_deferral_without_false_error(
     panel._application_render_ledger = ledger
     main_window.dataset_panel = panel
     main_window._loaded_panel_indices.add(0)
-    main_window.info_service = InfoPanelService(study)
+    main_window.info_service = InfoPanelService()
     renderer = DesktopApplicationPublicationRenderer(
         service=service,
         render_publication=main_window._render_application_view_publication,
@@ -2068,6 +2040,8 @@ def test_update_info_panel_uses_info_service(main_window):
 
 def test_main_window_delegates_info_refresh_to_coordinator(mock_study, qtbot):
     """Product MainWindow should not double-subscribe aggregate info refresh."""
+    from XBrainLab.ui.components.info_panel import AggregateInfoPanel
+
     with (
         patch("XBrainLab.ui.main_window.MainWindow.init_panels"),
         patch("XBrainLab.ui.main_window.MainWindow.init_agent"),
@@ -2078,8 +2052,20 @@ def test_main_window_delegates_info_refresh_to_coordinator(mock_study, qtbot):
         window = MainWindow(mock_study)
 
     qtbot.addWidget(window)
-    assert window.info_service.study is mock_study
-    assert window.info_service._observes_controller_events is False
+    panel = AggregateInfoPanel(window)
+    state = ApplicationStateSnapshot.empty()
+    publication = ApplicationViewPublication(
+        generation=1,
+        state=state,
+        capabilities=build_capability_policy(state),
+        data_summary_rows=({"is_raw": True, "n_channels": 22},),
+    )
+    assert window.info_service.render_publication(publication)
+    window.update_info_panel()
+
+    assert panel.table.item(panel.row_map["EEG files"], 1).text() == "1"
+    assert panel.table.item(panel.row_map["Channels"], 1).text() == "22"
+    mock_study.get_controller.assert_not_called()
 
 
 def test_init_panels_never_resolves_workflow_controllers(
@@ -2093,7 +2079,6 @@ def test_init_panels_never_resolves_workflow_controllers(
         patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
         patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
         patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
-        patch("XBrainLab.ui.main_window.InfoPanelService"),
         patch(
             "XBrainLab.ui.main_window._load_panel_class",
             side_effect=lambda _module, class_name: (
@@ -2141,7 +2126,6 @@ def test_primary_panel_materializes_with_publication_port_only(
         patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
         patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
         patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
-        patch("XBrainLab.ui.main_window.InfoPanelService"),
         patch(
             "XBrainLab.ui.main_window.application_ui_runtime",
             return_value=runtime,
@@ -2193,7 +2177,6 @@ def test_training_materializes_with_narrow_typed_ports_only(mock_study, qtbot):
         patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
         patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
         patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
-        patch("XBrainLab.ui.main_window.InfoPanelService"),
         patch(
             "XBrainLab.ui.main_window.application_ui_runtime",
             return_value=runtime,
@@ -2243,7 +2226,6 @@ def test_evaluation_materializes_without_compatibility_controller_access(
         patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
         patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
         patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
-        patch("XBrainLab.ui.main_window.InfoPanelService"),
         patch(
             "XBrainLab.ui.main_window.application_ui_runtime",
             return_value=runtime,
@@ -2285,7 +2267,6 @@ def test_visualization_materializes_with_narrow_application_ports(
         patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
         patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
         patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
-        patch("XBrainLab.ui.main_window.InfoPanelService"),
         patch(
             "XBrainLab.ui.main_window.application_ui_runtime",
             return_value=runtime,

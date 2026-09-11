@@ -12,6 +12,9 @@ from unittest.mock import MagicMock, call, patch
 import pytest
 
 from XBrainLab.backend.application import CommandName
+from XBrainLab.backend.application.resource_preflight import (
+    ResourceConfirmationChallenge,
+)
 from XBrainLab.backend.application.state import ApplicationStateSnapshot
 from XBrainLab.llm.agent.assembler import PromptToolPublication
 from XBrainLab.llm.agent.assistant_activity import (
@@ -43,7 +46,6 @@ from XBrainLab.llm.agent.runtime_state import (
     AssistantRuntimeSnapshot,
 )
 from XBrainLab.llm.agent.tool_attempt_coordinator import (
-    ResourcePreflightReceipt,
     ToolAttemptAction,
     ToolAttemptDecision,
     ToolAttemptFeedback,
@@ -359,7 +361,7 @@ def _pending_decision(
     context: Any | None = None,
     command_confirmation: bool = True,
     confirmation_kind: str | None = None,
-    resource_preflight_receipt: ResourcePreflightReceipt | None = None,
+    resource_preflight_receipt: ResourceConfirmationChallenge | None = None,
 ) -> ToolAttemptDecision:
     return ToolAttemptDecision(
         action=ToolAttemptAction.CONFIRMATION_REQUIRED,
@@ -443,9 +445,9 @@ def _pending_training_resource_confirmation(
     assert pending.result.capability is None
     assert pending.result.diagnostics == {"resource_preflight": resource_preflight}
     receipt = pending.resource_preflight_receipt
-    assert isinstance(receipt, ResourcePreflightReceipt)
+    assert isinstance(receipt, ResourceConfirmationChallenge)
     assert receipt.command_name == "start_training"
-    assert receipt.token == resource_preflight["confirmation_token"]
+    assert receipt.challenge_id == resource_preflight["confirmation_token"]
     assert receipt.candidate_id is None
     assert (
         receipt.configuration_fingerprint
@@ -1096,8 +1098,6 @@ def test_handle_user_input_does_not_block_qt_event_loop_during_rag(qtbot):
 
     assert rag.started.wait(timeout=2)
     assert not rag.release.is_set()
-    assert ctrl._rag_lifecycle.is_retrieving
-    assert ctrl._rag_lifecycle.retrieval_thread_daemon is True
     ctrl._generate_response.assert_not_called()
 
     processed = []
@@ -1636,7 +1636,7 @@ class TestOnGenerationFinished:
         ctrl._generate_response.assert_called_once()
         assert ctrl._tool_attempt_session.retry_count == 1
         assert expected.message is not None
-        ctrl.assembler.add_context.assert_called_once_with(expected.message.content)
+        ctrl.assembler.add_context.assert_not_called()
 
     def test_prose_prefixed_broken_tool_marker_retries_without_streaming(self, ctrl):
         ctrl.current_response = 'Sure, I will check.\n{"tool_name":'
@@ -1687,7 +1687,7 @@ class TestOnGenerationFinished:
                 assert ctrl.is_processing is True
 
         assert ctrl._generate_response.call_count == retry_limit
-        assert ctrl.assembler.add_context.call_count == retry_limit
+        ctrl.assembler.add_context.assert_not_called()
         ctrl._process_tool_calls.assert_not_called()
 
     def test_prose_prefixed_tool_response_is_rejected_without_execution(self, ctrl):
@@ -2199,7 +2199,6 @@ class TestProcessToolCalls:
 
         ctrl._process_tool_calls([("cmd", {})], '{"tool_name":"cmd"}')
 
-        ctrl.assembler.set_recovery_feedback.assert_not_called()
         ctrl._generate_response.assert_not_called()
         ctrl._finalize_turn_after_tool.assert_called_once_with("failed")
 
@@ -2238,7 +2237,6 @@ class TestProcessToolCalls:
         ctrl._process_tool_calls([("cmd", {})], "json")
 
         ctrl._generate_response.assert_not_called()
-        ctrl.assembler.set_recovery_feedback.assert_not_called()
         ctrl._finalize_turn_after_tool.assert_called_once()
 
     def test_nonrecoverable_unreliable_failure_finishes_turn_without_retry(
@@ -3808,7 +3806,7 @@ class TestOnUserConfirmed:
                 {"candidate_id": "candidate-1"},
                 context=context,
                 confirmation_kind="resource_preflight",
-                resource_preflight_receipt=ResourcePreflightReceipt(
+                resource_preflight_receipt=ResourceConfirmationChallenge(
                     challenge_id="receipt-1",
                     command_name="apply_interpretation",
                     candidate_id="candidate-1",
@@ -3886,7 +3884,7 @@ class TestOnUserConfirmed:
                 context=context,
                 command_confirmation=False,
                 confirmation_kind="resource_preflight",
-                resource_preflight_receipt=ResourcePreflightReceipt(
+                resource_preflight_receipt=ResourceConfirmationChallenge(
                     challenge_id=token,
                     command_name=command_name,
                     candidate_id=candidate_id,
@@ -3989,9 +3987,7 @@ class TestOnUserConfirmed:
         refreshed = ctrl.pending_interactions.confirmation_decision
         assert isinstance(refreshed, ToolAttemptDecision)
         assert refreshed.resource_preflight_receipt is not None
-        assert (
-            refreshed.resource_preflight_receipt.token == "training-receipt-2"  # noqa: S105 - opaque test receipt
-        )
+        assert refreshed.resource_preflight_receipt.challenge_id == "training-receipt-2"
         ctrl._handle_tool_result_logic.assert_not_called()
         ctrl._handle_tool_success.assert_not_called()
 
@@ -4057,9 +4053,7 @@ class TestOnUserConfirmed:
         assert pending.context is context
         assert pending.params == {"candidate_id": "candidate-2"}
         assert pending.resource_preflight_receipt is not None
-        assert (
-            pending.resource_preflight_receipt.token == "receipt-2"  # noqa: S105 - opaque test receipt
-        )
+        assert pending.resource_preflight_receipt.challenge_id == "receipt-2"
         refreshed_request = ctrl.pending_interactions.confirmation_request
         assert isinstance(refreshed_request, AgentConfirmationRequest)
         assert refreshed_request.command_name == "apply_interpretation"
@@ -5240,14 +5234,14 @@ class TestPipelineGate:
 
     def test_unavailable_capability_policy_fails_closed(self, ctrl):
         from XBrainLab.llm.tools.application_surface import (
-            CapabilityPolicyUnavailable,
+            CapabilityPolicyUnavailableError,
             ToolAvailability,
             ToolAvailabilityContext,
         )
 
         _set_context_reader(
             ctrl,
-            side_effect=CapabilityPolicyUnavailable("policy missing"),
+            side_effect=CapabilityPolicyUnavailableError("policy missing"),
         )
         result = ctrl._tool_attempt_coordinator.context_for("apply_bandpass_filter")
 

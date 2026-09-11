@@ -291,13 +291,12 @@ class _ProductRAGCaseMessages:
         )
         if context:
             assembler.add_context(context)
-        for message in recovery_messages:
-            assembler.add_context(message)
         messages = assembler.get_messages(
             [
                 {"role": "assistant", "content": receipt.question},
                 {"role": "user", "content": case.reply},
-            ]
+            ],
+            format_recovery=bool(recovery_messages),
         )
         self._record_assembled_context(rag_case, evidence, messages)
         return messages
@@ -970,12 +969,17 @@ class _EvaluatorControllerHarness:
 
     def _generate_response(self) -> bool:
         """Record a controller-requested retry; the evaluator owns model I/O."""
-        if not self.assembler.context_notes:
+        if self._tool_attempt_session.retry_count <= 0:
             raise RuntimeError(
-                "Controller format retry did not publish recovery context."
+                "Controller format retry did not record a recovery attempt."
             )
+        request = self.assembler.get_generation_request(
+            self.history, format_recovery=True
+        )
         self._recovery_generation_requested = True
-        self._recovery_context = self.assembler.context_notes[-1]
+        self._recovery_context = request.to_model_messages()[0]["content"].rsplit(
+            "\n", 1
+        )[-1]
         return True
 
     def _handle_tool_envelope_failure(
@@ -1491,9 +1495,10 @@ def _case_projection(
     assembler, publication = _case_assembler(case, registry)
     if rag_context:
         assembler.add_context(rag_context)
-    for message in recovery_messages:
-        assembler.add_context(message)
-    messages = assembler.get_messages([{"role": "user", "content": case.user_input}])
+    messages = assembler.get_messages(
+        [{"role": "user", "content": case.user_input}],
+        format_recovery=bool(recovery_messages),
+    )
     if isinstance(
         case, TargetEvalCase
     ) and not assembler.latest_tool_publication.permits(case.expected_tool):
@@ -1527,13 +1532,12 @@ def build_clarification_messages(
         _PublicationBackedEvaluatorStudy(),
         application_runtime=_EvaluatorApplicationRuntime(publication),
     )
-    for message in recovery_messages:
-        assembler.add_context(message)
     messages = assembler.get_messages(
         [
             {"role": "assistant", "content": receipt.question},
             {"role": "user", "content": case.reply},
-        ]
+        ],
+        format_recovery=bool(recovery_messages),
     )
     return messages, assembler.latest_tool_publication, publication
 

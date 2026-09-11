@@ -100,7 +100,7 @@ def test_preprocess_state_service_preserves_atomic_standard_pipeline() -> None:
     service.subscribe("preprocess_changed", lambda: notifications.append("changed"))
 
     try:
-        service.apply_standard_pipeline(
+        service.prepare_standard_pipeline(
             l_freq=4,
             h_freq=40,
             rate=128,
@@ -169,7 +169,7 @@ def test_standard_pipeline_late_failure_preserves_live_raw_data() -> None:
     service.subscribe("preprocess_changed", lambda: notifications.append("changed"))
 
     with pytest.raises(RuntimeError, match="late preprocessing failure"):
-        service.apply_standard_pipeline(l_freq=4.0, h_freq=40.0, rate=128.0)
+        service.prepare_standard_pipeline(l_freq=4.0, h_freq=40.0, rate=128.0)
 
     assert study.preprocessed_data_list is original
     assert original[0] is raw
@@ -194,7 +194,7 @@ def test_preprocess_state_service_commits_and_publishes_once() -> None:
     )
     service.subscribe("preprocess_changed", lambda: notifications.append("changed"))
 
-    assert service.apply_standard_pipeline(
+    prepared = service.prepare_standard_pipeline(
         l_freq=4,
         h_freq=40,
         notch_freq=60,
@@ -202,6 +202,7 @@ def test_preprocess_state_service_commits_and_publishes_once() -> None:
         ref_channels="average",
         normalization="z score",
     )
+    assert service.commit_prepared(prepared) is True
 
     assert len(study.commits) == 1
     assert study.preprocessed_data_list[0].history == [
@@ -329,12 +330,14 @@ def test_channel_selection_prepare_is_structurally_publication_free() -> None:
     [
         (
             OwnedWorkKind.PREPROCESS,
-            lambda service: service.apply_filter(4.0, 40.0),
+            lambda service: service.commit_prepared(service.prepare_filter(4.0, 40.0)),
             False,
         ),
         (
             OwnedWorkKind.EPOCH,
-            lambda service: service.apply_epoching(None, None, -0.1, 0.5),
+            lambda service: service.commit_prepared(
+                service.prepare_epoching(None, None, -0.1, 0.5)
+            ),
             True,
         ),
     ],
@@ -391,7 +394,7 @@ def test_cancellation_before_commit_preserves_state_and_can_retry(
     def run_cancelled_attempt() -> None:
         try:
             with registry.bind(operation.operation_id):
-                registry.start(operation.operation_id)
+                registry.claim_start(operation.operation_id)
                 invoke(service)
         except OwnedOperationCancelledError as exc:
             cancellation_errors.append(exc)
@@ -421,7 +424,7 @@ def test_cancellation_before_commit_preserves_state_and_can_retry(
     should_block.clear()
     retry = registry.begin(operation_kind, cancellable=True)
     with registry.bind(retry.operation_id):
-        registry.start(retry.operation_id)
+        registry.claim_start(retry.operation_id)
         assert invoke(service) is True
         registry.complete(retry.operation_id)
 
@@ -482,8 +485,9 @@ def test_cancel_after_commit_admission_is_rejected_and_commit_completes(
     def _run() -> None:
         try:
             with registry.bind(operation.operation_id):
-                registry.start(operation.operation_id)
-                assert service.apply_filter(4.0, 40.0) is True
+                registry.claim_start(operation.operation_id)
+                prepared = service.prepare_filter(4.0, 40.0)
+                assert service.commit_prepared(prepared) is True
                 registry.complete(operation.operation_id)
         except BaseException as exc:
             thread_errors.append(exc)

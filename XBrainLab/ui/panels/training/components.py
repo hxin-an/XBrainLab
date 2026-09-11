@@ -127,23 +127,6 @@ class MetricTab(QWidget):
         self.val_vals = []
         self.test_vals = []
 
-    def update_plot(self, epoch, train_val, val_val, test_val=None):
-        """Append a new data point and redraw the plot.
-
-        Args:
-            epoch: The epoch number (1-based).
-            train_val: Training metric value for this epoch.
-            val_val: Validation metric value for this epoch.
-            test_val: Optional test metric published for this epoch.
-
-        """
-        self.epochs.append(epoch)
-        self.train_vals.append(train_val)
-        self.val_vals.append(val_val)
-        if test_val is not None:
-            self.test_vals.append(test_val)
-        self._draw_series()
-
     def set_series(self, epochs, train_vals, val_vals, test_vals=None):
         """Replace the full metric series and redraw once."""
         self.epochs = list(epochs)

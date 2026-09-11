@@ -1,11 +1,9 @@
-"""Unit tests for Icons enum."""
-
-from unittest.mock import patch
+"""Render checks for the actual Assistant settings icon."""
 
 from PyQt6.QtCore import QSize
 from PyQt6.QtGui import QIcon
 
-from XBrainLab.ui.styles.icons import Icons
+from XBrainLab.config import AppConfig
 
 
 def _visible_icon_pixels(icon: QIcon) -> list[tuple[int, int, int, int, int]]:
@@ -18,39 +16,10 @@ def _visible_icon_pixels(icon: QIcon) -> list[tuple[int, int, int, int, int]]:
     ]
 
 
-class TestIconsEnum:
-    def test_members_exist(self):
-        assert Icons.LOGO.value == "logo.png"
-        assert Icons.PLAY.value == "play.svg"
-        assert Icons.STOP.value == "stop.svg"
-        assert Icons.SETTINGS.value == "settings.svg"
-        assert Icons.REFRESH.value == "refresh.svg"
-        assert Icons.SAVE.value == "save.svg"
-        assert Icons.TRASH.value == "trash.svg"
-
-    def test_path_property(self):
-        with patch(
-            "XBrainLab.config.AppConfig.get_icon_path",
-            side_effect=lambda name: f"/icons/{name}",
-        ):
-            assert Icons.LOGO.path == "/icons/logo.png"
-            assert Icons.PLAY.path == "/icons/play.svg"
-
-    def test_get_static_method(self):
-        with patch(
-            "XBrainLab.config.AppConfig.get_icon_path",
-            side_effect=lambda name: f"/mock/{name}",
-        ):
-            result = Icons.get(Icons.TRASH)
-            assert result == "/mock/trash.svg"
-
-    def test_all_members_are_strings(self):
-        for icon in Icons:
-            assert isinstance(icon.value, str)
-
+class TestSettingsIcon:
     def test_settings_icon_is_padded_and_balanced_at_toolbar_size(self, qapp):
         del qapp
-        pixels = _visible_icon_pixels(QIcon(Icons.SETTINGS.path))
+        pixels = _visible_icon_pixels(QIcon(AppConfig.get_icon_path("settings.svg")))
         assert pixels
         xs = [pixel[0] for pixel in pixels]
         ys = [pixel[1] for pixel in pixels]

@@ -622,25 +622,3 @@ class Trainer:
             holders = list(self.training_plan_holders)
         for holder in holders:
             holder.clear_interrupt()
-
-    def get_real_training_plan(self, plan_name: str, real_plan_name: str):
-        """Retrieve a specific :class:`TrainRecord` from a named plan holder.
-
-        Args:
-            plan_name: The name of the :class:`TrainingPlanHolder`.
-            real_plan_name: The name of the :class:`TrainRecord` within the holder.
-
-        Returns:
-            The matching :class:`TrainRecord` instance.
-
-        Raises:
-            ValueError: If the plan holder or the train record cannot be found.
-
-        """
-        for holder in self.get_training_plan_holders():
-            if holder.get_name() == plan_name:
-                for plan in holder.get_plans():
-                    if plan.get_name() == real_plan_name:
-                        return plan
-                raise ValueError(f"Cannot find real plan {real_plan_name}")
-        raise ValueError(f"Cannot find training plan {plan_name}")

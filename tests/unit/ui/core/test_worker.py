@@ -7,7 +7,7 @@ from XBrainLab.ui.core.worker import PythonThreadWorker, Worker, WorkerSignals
 
 
 class TestWorkerSignals:
-    """WorkerSignals should declare four pyqtSignals."""
+    """WorkerSignals declares terminal and result delivery signals."""
 
     def test_has_finished_signal(self):
         ws = WorkerSignals()
@@ -20,10 +20,6 @@ class TestWorkerSignals:
     def test_has_result_signal(self):
         ws = WorkerSignals()
         assert callable(ws.result.connect)
-
-    def test_has_progress_signal(self):
-        ws = WorkerSignals()
-        assert callable(ws.progress.connect)
 
 
 def test_python_thread_worker_daemon_is_explicit_and_opt_in():
@@ -164,11 +160,3 @@ class TestWorker:
 
         w = Worker(lambda: None)
         assert isinstance(w, QRunnable)
-
-    def test_progress_signal_emits(self, qtbot):
-        """progress signal can be emitted and received externally."""
-        values = []
-        w = Worker(lambda: None)
-        w.signals.progress.connect(values.append)
-        w.signals.progress.emit(50)
-        assert values == [50]

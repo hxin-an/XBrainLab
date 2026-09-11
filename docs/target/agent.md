@@ -337,7 +337,7 @@ Visible result使用既有Assistant bubble與confirmation card：
 ## Diagnostic walkthrough target
 
 `--tool-debug` 必須能在完全不建立或載入Granite的情況下使用正常ChatPanel、MainWindow、
-ApplicationService、ToolExecutor、confirmation與UI correlation。
+ApplicationService、實際tool execution、confirmation與UI correlation。
 
 - Debug launch顯示slim banner／step progress；normal launch不變。
 - Enter只peek目前step；前一步terminal、無pending interaction且navigation idle後才commit並前進。
@@ -391,7 +391,7 @@ deterministic boundary evidence，不改 81-case denominator。
 - 36個positive全部得到exact final tool＋parameters，且五個direct preprocess的值都能從latest user
   request驗證；完整值不新增confirmation。
 - 五個 missing-parameter cases 的 first raw model response（理想為直接 `respond_to_user` 並指出缺少欄位）
-  必須逐 case 完整報告；若模型提出 tool，parameter-origin guard仍必須確保零ApplicationService／ToolExecutor
+  必須逐 case 完整報告；若模型提出 tool，parameter-origin guard仍必須確保零ApplicationService／tool
   execution，但該Host rescue不得回填 raw-model accuracy。
 - Clarification gate固定為7條production trajectory：五種direct-preprocess bounded form 證明 user evidence
   收齊後以 receipt 的同一 exact model-selected tool、fresh publication與receipt-reconstructed parameters執行；generic filter先選
@@ -404,14 +404,14 @@ deterministic boundary evidence，不改 81-case denominator。
   `24/24` raw precision或`7/7` raw clarification作本次candidate gate。Host safety gate要求10/10
   direct preprocess value-origin checks；direct Host clarification admission另要求5/5 exact receipts；controller unit/integration另覆蓋cancel、
   topic switch、stale receipt、different tool、partial reply與multi-action。
-- Precision gate要求24/24 product outcomes沒有confirmation、GUI handoff、ApplicationService／ToolExecutor
+- Precision gate要求24/24 product outcomes沒有confirmation、GUI handoff、ApplicationService／tool
   execution或state mutation。五個缺參數direct tools可由既有parameter-origin guard轉成具體追問；
   out-of-stage的精確requested tool可由既有publication／capability boundary安全阻擋。General、negated、
   ambiguous與multi-action不得以任何substitute tool進入執行路徑。Raw model選擇另行記錄，不冒充產品結果。
 - Direct Host clarification admission gate要求5/5 exact direct receipts；product clarification要求7/7 verified
   execution boundary。proven adjacent-complete-object multiple output 的 focused probe 必須是零 execution、零
   confirmation、零 UI handoff。81-case 中所有 no-action row 與上述
-  focused probe 的 confirmation、GUI handoff、ApplicationService／ToolExecutor execution或state mutation都使
+  focused probe 的 confirmation、GUI handoff、ApplicationService／tool execution或state mutation都使
   product gate fail closed。
 - 同一訊息要求多個mutation時一律用`respond_to_user`請使用者選擇第一個要執行的action；本回合不部分
   執行，也不在下一回合自動continuation。

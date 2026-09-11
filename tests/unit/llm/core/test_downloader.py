@@ -2,12 +2,14 @@ import multiprocessing
 import queue as stdlib_queue
 import threading
 import time
+from functools import partial
 from pathlib import Path
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from XBrainLab.llm.core import model_catalog
 from XBrainLab.llm.core.downloader import (
     DOWNLOAD_CONSUMPTION_POLL_INTERVAL_SEC,
     MODEL_DOWNLOAD_INACTIVITY_DIAGNOSTIC,
@@ -561,46 +563,70 @@ class TestRunDownloadTask:
     def test_post_download_single_model_limit_is_enforced(
         self,
         tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         q = multiprocessing.Queue()
         cache_dir = tmp_path / "models"
+        monkeypatch.setattr(model_catalog, "MIN_MODEL_WEIGHT_BYTES", 1)
+        monkeypatch.setattr(
+            "XBrainLab.llm.core.downloader.validate_downloaded_model_cache",
+            partial(
+                model_catalog.validate_downloaded_model_cache,
+                max_single_model_gb=100 / 1e9,
+            ),
+        )
 
         def download_snapshot(**_kwargs) -> str:
-            return str(_write_hf_snapshot(cache_dir, weight_bytes=10_100_000_000))
+            return str(_write_hf_snapshot(cache_dir, weight_bytes=101))
 
         with patch(
             "XBrainLab.llm.core.downloader.snapshot_download",
             side_effect=download_snapshot,
-        ):
+        ) as snapshot_download:
             run_download_task(PRIMARY_MODEL_ID, str(cache_dir), q)
 
         messages = _drain_queue(q)
 
+        assert model_catalog.model_cache_complete(str(cache_dir), PRIMARY_MODEL_ID)
+        assert model_catalog.cache_usage_bytes(str(cache_dir)) == 105
+        snapshot_download.assert_called_once()
         assert any("per-model limit" in str(payload) for _, payload in messages)
         assert all(kind != "finished" for kind, _payload in messages)
 
     def test_post_download_total_cache_limit_is_enforced(
         self,
         tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         q = multiprocessing.Queue()
         cache_dir = tmp_path / "models"
+        monkeypatch.setattr(model_catalog, "MIN_MODEL_WEIGHT_BYTES", 1)
+        monkeypatch.setattr(
+            "XBrainLab.llm.core.downloader.validate_downloaded_model_cache",
+            partial(
+                model_catalog.validate_downloaded_model_cache,
+                max_single_model_gb=200 / 1e9,
+                max_total_cache_gb=200 / 1e9,
+            ),
+        )
 
         def download_snapshot(**_kwargs) -> str:
             other = cache_dir / "unrelated-cache.bin"
             other.parent.mkdir(parents=True, exist_ok=True)
-            with other.open("wb") as stream:
-                stream.truncate(20_100_000_000)
-            return str(_write_hf_snapshot(cache_dir))
+            other.write_bytes(b"x" * 101)
+            return str(_write_hf_snapshot(cache_dir, weight_bytes=101))
 
         with patch(
             "XBrainLab.llm.core.downloader.snapshot_download",
             side_effect=download_snapshot,
-        ):
+        ) as snapshot_download:
             run_download_task(PRIMARY_MODEL_ID, str(cache_dir), q)
 
         messages = _drain_queue(q)
 
+        assert model_catalog.model_cache_complete(str(cache_dir), PRIMARY_MODEL_ID)
+        assert model_catalog.cache_usage_bytes(str(cache_dir)) == 206
+        snapshot_download.assert_called_once()
         assert any("total cache limit" in str(payload) for _, payload in messages)
         assert all(kind != "finished" for kind, _payload in messages)
 
@@ -803,7 +829,7 @@ class TestDownloadWorker:
         validate.assert_called_once_with(
             PRIMARY_MODEL_ID,
             "/cache",
-            "/cache/pinned-snapshot",
+            str(Path("/cache/pinned-snapshot")),
         )
         assert worker._pending_terminal_kind == "finished"
         assert worker._pending_terminal_payload == "/cache/pinned-snapshot"

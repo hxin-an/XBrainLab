@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from threading import Event, Thread
+from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock
 
@@ -122,7 +123,8 @@ def test_command_gate_rejects_non_boolean_resource_preflight_confirmation(
     invalid_confirmation: object,
 ) -> None:
     service = ApplicationService(Study())
-    service.dataset.import_files = MagicMock(return_value=(0, []))
+    load = MagicMock()
+    service.dataset._raw_factory_provider = lambda: SimpleNamespace(load=load)
 
     result = service.execute(
         ApplyInterpretationCommand(
@@ -138,7 +140,7 @@ def test_command_gate_rejects_non_boolean_resource_preflight_confirmation(
     assert result.diagnostics["confirmation_field"] == "resource_preflight_confirmed"
     assert result.diagnostics["expected_type"] == "boolean"
     assert result.diagnostics["received_type"] == type(invalid_confirmation).__name__
-    service.dataset.import_files.assert_not_called()
+    load.assert_not_called()
 
 
 def test_expected_publication_is_checked_after_command_lock_acquisition() -> None:

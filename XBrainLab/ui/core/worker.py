@@ -21,14 +21,12 @@ class WorkerSignals(QObject):
         error: Emitted with ``(exctype, value, formatted_traceback)``
             on failure.
         result: Emitted with the return value of the callback function.
-        progress: Emitted with an ``int`` indicating percentage progress.
 
     """
 
     finished = pyqtSignal()
     error = pyqtSignal(tuple)
     result = pyqtSignal(object)
-    progress = pyqtSignal(int)
 
 
 def _run_worker_task(worker: Any) -> None:

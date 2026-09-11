@@ -583,6 +583,56 @@ def test_application_commit_callback_owns_generation_publication() -> None:
         coordinator.close()
 
 
+def test_failed_refresh_retains_candidate_for_one_successful_retry() -> None:
+    refresh_attempts: list[str] = []
+    promotions: list[bool] = []
+    coordinator: BidsMontagePreparationCoordinator
+
+    def refresh_candidate() -> None:
+        refresh_attempts.append("refresh")
+        if len(refresh_attempts) == 1:
+            raise RuntimeError("temporary publication refresh failure")
+
+    def commit(work, result) -> None:
+        promotions.append(
+            coordinator.promote_result(
+                work,
+                result,
+                refresh_candidate=refresh_candidate,
+            )
+        )
+
+    coordinator = BidsMontagePreparationCoordinator(
+        prepare=lambda recordings, *, generation, **_kwargs: _ready(
+            recordings,
+            generation=generation,
+        ),
+        admit=_empty_receipt,
+        commit_publication=commit,
+    )
+    try:
+        pending = coordinator.start((_request("/tmp/sub-01_eeg.fif"),))
+
+        assert pending.state == "pending"
+        assert coordinator.wait_for_idle(timeout=2.0)
+        assert promotions == [False]
+        assert refresh_attempts == ["refresh"]
+        assert coordinator.has_pending_promotion is True
+        assert coordinator.snapshot().state == "pending"
+        assert coordinator.effective_montage() is None
+
+        assert coordinator.retry_promotion(refresh_candidate=refresh_candidate) is True
+        assert refresh_attempts == ["refresh", "refresh"]
+        assert coordinator.has_pending_promotion is False
+        assert coordinator.snapshot().state == "ready"
+        assert coordinator.effective_montage() is not None
+        assert coordinator.retry_promotion(refresh_candidate=refresh_candidate) is False
+        assert refresh_attempts == ["refresh", "refresh"]
+        assert promotions == [False]
+    finally:
+        coordinator.close()
+
+
 def test_close_discards_running_result_without_callback() -> None:
     started = Event()
     release = Event()

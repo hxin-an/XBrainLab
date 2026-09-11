@@ -18,10 +18,6 @@ from XBrainLab.backend.utils.observer import Observable, ObserverDeliveryStatus
 from XBrainLab.ui.core.observer_bridge import QtObserverBridge
 
 
-class MockObservable(Observable):
-    pass
-
-
 def test_observer_bridge_has_no_blocking_queued_connection() -> None:
     assert "BlockingQueuedConnection" not in getsource(QtObserverBridge)
 
@@ -31,7 +27,7 @@ def test_observer_bridge_emission(qtbot):
     Test that QtObserverBridge correctly connects to an Observable
     and emits a Qt signal when the Observable notifies.
     """
-    observable = MockObservable()
+    observable = Observable()
     bridge = QtObserverBridge(observable, "test_event")
 
     # Mock slot to verify signal emission
@@ -53,7 +49,7 @@ def test_observer_bridge_emission(qtbot):
 
 def test_observer_bridge_connect_to(qtbot):
     """Test the connect_to helper method."""
-    observable = MockObservable()
+    observable = Observable()
     bridge = QtObserverBridge(observable, "test_event")
 
     received_args = []
@@ -72,7 +68,7 @@ def test_observer_bridge_connect_to(qtbot):
 
 
 def test_publication_delivery_retries_same_revision_after_qt_render_failure(qtbot):
-    observable = MockObservable()
+    observable = Observable()
     bridge = QtObserverBridge(
         observable,
         "view_publication_changed",
@@ -110,7 +106,7 @@ def test_publication_delivery_retries_same_revision_after_qt_render_failure(qtbo
 
 
 def test_background_publication_is_acknowledged_only_after_qt_render(qtbot):
-    observable = MockObservable()
+    observable = Observable()
     bridge = QtObserverBridge(
         observable,
         "view_publication_changed",
@@ -153,7 +149,7 @@ def test_background_publication_is_acknowledged_only_after_qt_render(qtbot):
 
 
 def test_background_publication_without_render_consumer_stays_unacknowledged(qtbot):
-    observable = MockObservable()
+    observable = Observable()
     bridge = QtObserverBridge(
         observable,
         "view_publication_changed",
@@ -188,7 +184,7 @@ def test_background_publication_without_render_consumer_stays_unacknowledged(qtb
 
 
 def test_acknowledgement_bridge_rejects_missing_or_false_slot_result() -> None:
-    observable = MockObservable()
+    observable = Observable()
     bridge = QtObserverBridge(
         observable,
         "view_publication_changed",
@@ -209,7 +205,7 @@ def test_acknowledgement_bridge_rejects_missing_or_false_slot_result() -> None:
 
 
 def test_acknowledgement_bridge_accepts_only_explicit_true_slot_result() -> None:
-    observable = MockObservable()
+    observable = Observable()
     bridge = QtObserverBridge(
         observable,
         "view_publication_changed",
@@ -224,7 +220,7 @@ def test_acknowledgement_bridge_accepts_only_explicit_true_slot_result() -> None
 
 
 def test_acknowledgement_bridge_preserves_explicit_deferred_delivery() -> None:
-    observable = MockObservable()
+    observable = Observable()
     bridge = QtObserverBridge(
         observable,
         "view_publication_changed",
@@ -246,7 +242,7 @@ def test_acknowledgement_bridge_preserves_explicit_deferred_delivery() -> None:
 
 
 def test_ordinary_bridge_does_not_acknowledge_view_publication() -> None:
-    observable = MockObservable()
+    observable = Observable()
     bridge = QtObserverBridge(observable, "view_publication_changed")
     bridge.connect_to(lambda _publication: True)
     state = ApplicationStateSnapshot.empty()
@@ -269,7 +265,7 @@ def test_ordinary_bridge_does_not_acknowledge_view_publication() -> None:
 
 
 def test_observer_bridge_connect_to_dispatches_background_event_on_qt_thread(qtbot):
-    observable = MockObservable()
+    observable = Observable()
     bridge = QtObserverBridge(observable, "test_event")
     received = []
     gui_thread = current_thread()
@@ -288,7 +284,7 @@ def test_observer_bridge_connect_to_dispatches_background_event_on_qt_thread(qtb
 
 def test_observer_bridge_cleanup():
     """Test that cleanup unsubscribes from the observable."""
-    observable = MockObservable()
+    observable = Observable()
     bridge = QtObserverBridge(observable, "test_event")
 
     assert "test_event" in observable._observers
@@ -300,7 +296,7 @@ def test_observer_bridge_cleanup():
 
 
 def test_observer_bridge_cleanup_ignores_late_backend_events(qtbot):
-    observable = MockObservable()
+    observable = Observable()
     bridge = QtObserverBridge(observable, "test_event")
     slot = MagicMock()
     bridge.connect_to(slot)
@@ -313,7 +309,7 @@ def test_observer_bridge_cleanup_ignores_late_backend_events(qtbot):
 
 
 def test_observer_bridge_cleanup_and_qobject_destruction_unsubscribe_once(qtbot):
-    observable = MockObservable()
+    observable = Observable()
     observable.unsubscribe = MagicMock(wraps=observable.unsubscribe)
     bridge = QtObserverBridge(observable, "test_event")
 
@@ -330,7 +326,7 @@ def test_observer_bridge_cleanup_and_qobject_destruction_unsubscribe_once(qtbot)
 
 
 def test_observer_bridge_deleted_object_ignores_late_backend_events(qtbot):
-    observable = MockObservable()
+    observable = Observable()
     bridge = QtObserverBridge(observable, "test_event")
     slot = MagicMock()
     bridge.connect_to(slot)
@@ -346,7 +342,7 @@ def test_observer_bridge_deleted_object_ignores_late_backend_events(qtbot):
 def test_observer_bridge_parent_destruction_unsubscribes_and_releases_bridge(
     qtbot,
 ):
-    observable = MockObservable()
+    observable = Observable()
     parent = QObject()
     bridge = QtObserverBridge(observable, "test_event", parent)
     bridge_ref = ref(bridge)
@@ -372,7 +368,7 @@ def test_observer_bridge_parent_destruction_unsubscribes_and_releases_bridge(
 def test_observer_bridge_parent_destruction_unsubscribes_with_live_wrapper(
     qtbot,
 ):
-    observable = MockObservable()
+    observable = Observable()
     observable.unsubscribe = MagicMock(wraps=observable.unsubscribe)
     parent = QObject()
     bridge = QtObserverBridge(observable, "test_event", parent)
@@ -387,7 +383,7 @@ def test_observer_bridge_parent_destruction_unsubscribes_with_live_wrapper(
 def test_parent_destruction_does_not_run_weakref_finalizer_inside_qt_teardown(
     qtbot,
 ):
-    observable = MockObservable()
+    observable = Observable()
     parent = QObject()
     bridge = QtObserverBridge(observable, "test_event", parent)
     finalizer = bridge._observer_finalizer

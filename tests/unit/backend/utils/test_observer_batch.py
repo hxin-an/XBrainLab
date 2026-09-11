@@ -81,12 +81,12 @@ class TestBatchNotifications:
         # batch_notifications should still flush pending events
         assert calls == ["fired"]
 
-    def test_batch_depth_reset_after_error(self, obs):
-        """Ensure batch depth returns to 0 after exception."""
+    def test_notifications_resume_after_batch_error(self, obs):
+        """An exceptional batch must not defer later notifications."""
         with pytest.raises(RuntimeError), obs.batch_notifications():
             raise RuntimeError("err")
 
-        assert obs._batch_depth == 0
+        assert obs.notifications_deferred is False
 
         # Normal notifications should work
         calls = []
