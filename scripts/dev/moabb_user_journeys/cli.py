@@ -191,7 +191,7 @@ def _run_resume(
     for dataset in selected:
         dataset_id = dataset["id"]
         prior = existing_by_id.get(dataset_id)
-        if not args.force and _can_reuse(prior, existing, plan, args.profile):
+        if not args.force and _can_reuse(prior, existing, manifest):
             manifest["datasets"].append(prior)
             continue
         checkpoint = _read_json(run_root / dataset_id / "checkpoint.json") or {}
@@ -294,15 +294,32 @@ def _finish_manifest(manifest: dict[str, Any], profile: str) -> None:
 def _can_reuse(
     prior: dict[str, Any] | None,
     existing: dict[str, Any] | None,
-    plan: dict[str, Any],
-    profile: str,
+    current: dict[str, Any],
 ) -> bool:
     if prior is None or prior.get("failures"):
         return False
-    runner = (existing or {}).get("runner", {})
+    existing = existing or {}
+    application = existing.get("application", {})
+    current_application = current["application"]
+    runner = existing.get("runner", {})
     return (
-        runner.get("registry_sha256") == plan["registry_sha256"]
-        and runner.get("execution_profile") == profile
+        bool(application.get("git_sha"))
+        and application.get("git_sha") == current_application["git_sha"]
+        and application.get("dirty_paths") == current_application["dirty_paths"] == []
+        and all(
+            runner.get(key) == current["runner"][key]
+            for key in (
+                "registry_sha256",
+                "registry_profile",
+                "moabb_release",
+                "execution_profile",
+                "python",
+                "platform",
+                "dependencies",
+            )
+        )
+        and existing.get("resource_policy", {}).get("data_root")
+        == current["resource_policy"]["data_root"]
     )
 
 
