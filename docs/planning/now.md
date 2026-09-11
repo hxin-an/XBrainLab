@@ -213,6 +213,16 @@ Focused76cases pass1.23s with exact decision-policy text parity (empty=0ffd; cal
 The same data_loaded state covers unregistered, registered/backend-disabled and published-enabled
 preprocessing; no stage inference or second admission owner. Full same-head model/native gates remain
 required: text parity alone is not model evidence. Freeze this bounded fix, then run those gates and CI.
+Exact8e6582c6 passes81model145.02s, native two-turn/deactivation46.22s and RAG13.11s; main inspected
+the final native screenshot. CI34585805991 finds one stale assembler-composition assertion (941pass,
+1fail) which compares the empty workflow to the now preprocessing-enabled default policy projection.
+Update only that test to explicitly expect the no-preprocessing projection; preserve the complete
+canonical composition assertion and surrounding trust/tool checks. All decision_instructions callers
+were searched; other direct policy tests intentionally exercise its default-enabled contract. No
+production repair or gate change. Run stage/context/decision/recovery focused tests and review the
+test-only diff, then freeze exact final source, rerun required source-bound native/model evidence and CI.
+Corrected focused selection90/90 passes6.61s; independent reviewer approves unchanged full canonical
+composition and trust/publication checks. Production unchanged from8e6582c6; no threshold/skip changes.
 
 **Exact candidate ecb68e3f — final evidence / bounded authority question.**204commits after4770,
 PR134 draft pushed, manual Windows checkout clean at ecb68e3f764150c828beae753f95d439d18af356 with

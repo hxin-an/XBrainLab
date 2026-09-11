@@ -156,7 +156,10 @@ class TestStageBasedFiltering:
         )
 
         assert (
-            STRICT_TOOL_RESPONSE_PROMPT_POLICY.decision_instructions("empty") in prompt
+            STRICT_TOOL_RESPONSE_PROMPT_POLICY.decision_instructions(
+                "empty", include_preprocessing_guidance=False
+            )
+            in prompt
         )
         assert "backend-stage-published action contracts" in prompt
         assert "Workflow Decision Context" not in prompt
