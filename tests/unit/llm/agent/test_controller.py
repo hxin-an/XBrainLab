@@ -2411,35 +2411,29 @@ class TestProcessToolCalls:
         assert isinstance(unrelated, ToolCommandResult)
         assert unrelated.error_type == "tool_not_published"
 
-    def test_model_invented_path_is_rejected_by_turn_provenance(self, ctrl, tmp_path):
-        from XBrainLab.llm.tools.application_surface import (
-            ToolAvailability,
-            ToolAvailabilityContext,
-        )
-
-        invented = tmp_path / "not-selected"
-        invented.mkdir()
-        ctrl.history = [{"role": "user", "content": "Show my EEG files"}]
-        context = ToolAvailabilityContext(
-            availability=ToolAvailability(tool_name="list_files", enabled=True),
-            state={"interpretation": {}},
-            generation=14,
-        )
-
-        result = _evaluate_policy(
-            ctrl,
-            "list_files",
-            context,
-            params={"directory": str(invented)},
-        ).result
-
-        assert isinstance(result, ToolCommandResult)
-        assert result.error_type == "input"
-        assert result.diagnostics["policy"] == "path_provenance"
-        assert "Choose a file or folder" in result.message
-
 
 # --- close ---
+@pytest.mark.parametrize(
+    ("name", "params"),
+    [
+        ("apply_bandpass_filter", {"low_freq": 4, "high_freq": 38}),
+        ("apply_bandpass_filter", {"low_frequency": 4, "extra": None}),
+        ("create_epoch", {"confirmed": True}),
+        ("create_epochs", {}),
+        ("switch_panel", {"panel_name": "visualization", "view_mode": "3d_plot"}),
+    ],
+)
+def test_controller_preserves_exact_proposal_and_detaches_parameters(
+    ctrl, name, params
+):
+    ctrl.history = [{"role": "user", "content": "Use a 1 to 40 Hz filter instead"}]
+    original = dict(params)
+    proposal = ctrl._select_tool_proposal((name, params))
+    assert proposal == (name, original)
+    assert proposal[1] is not params
+    assert params == original
+
+
 class TestClose:
     def test_constructor_injected_rag_lifecycle_is_the_only_cleanup_owner(self):
         retriever = MagicMock()

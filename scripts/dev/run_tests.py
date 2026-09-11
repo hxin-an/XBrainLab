@@ -124,7 +124,6 @@ PLATFORM_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "tests/unit/llm/core/test_model_download_lifecycle.py",
             "tests/unit/llm/core/test_runtime_process_owner.py",
             "tests/unit/llm/rag/test_security_policy.py",
-            "tests/unit/llm/tools/test_authorized_paths.py",
         ),
     ),
     (

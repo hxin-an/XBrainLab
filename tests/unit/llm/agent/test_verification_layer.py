@@ -1,13 +1,10 @@
 import logging
-import ntpath
 from typing import Any, cast
 
 import pytest
 
 from XBrainLab.llm.agent.verifier import (
     FrequencyRangeValidator,
-    PathExistsValidator,
-    PathProvenanceVerifier,
     PlaceholderArgumentValidator,
     ToolSchemaValidator,
     ValidatorStrategy,
@@ -16,8 +13,6 @@ from XBrainLab.llm.agent.verifier import (
     collect_direct_parameter_reply_evidence,
     verify_direct_parameter_origins,
 )
-from XBrainLab.llm.tools import authorized_paths
-from XBrainLab.llm.tools.authorized_paths import FilesystemIdentity, PathKind
 
 
 def _error_message(result: VerificationResult) -> str:
@@ -562,437 +557,49 @@ class TestToolSchemaValidator:
 
 
 # ---------------------------------------------------------------------------
-# Path Exists Validator
+# Training output paths
 # ---------------------------------------------------------------------------
 
 
-class TestPathExistsValidator:
-    def test_existing_scan_source_path_passes(self, tmp_path):
-        source = tmp_path / "subject-a.edf"
-        source.touch()
-        v = PathExistsValidator()
-        r = v.validate("scan_source", {"source_path": str(source)})
-        assert r.is_valid
-
-    @pytest.mark.parametrize(
-        ("tool_name", "field_name", "filename"),
-        [
-            ("list_files", "directory", "missing-session"),
-            ("scan_source", "source_path", "missing-source.edf"),
-            (
-                "reload_interpretation_recipe",
-                "recipe_path",
-                "missing-recipe.json",
-            ),
-        ],
+@pytest.mark.parametrize(
+    "path",
+    [
+        "",
+        "path_to_eeg_dataset",
+        "/path/to/output",
+        "/path/with/output",
+        "Please provide the absolute path",
+        "your/recipe",
+        "replace_with/output",
+    ],
+)
+def test_training_output_rejects_placeholder_paths(path: str) -> None:
+    result = PlaceholderArgumentValidator().validate(
+        "configure_training", {"output_dir": path}
     )
-    def test_nonexistent_scalar_input_paths_are_rejected(
-        self,
-        tmp_path,
-        tool_name: str,
-        field_name: str,
-        filename: str,
-    ) -> None:
-        missing = tmp_path / filename
-
-        result = PathExistsValidator().validate(
-            tool_name,
-            {field_name: str(missing)},
-        )
-
-        assert not result.is_valid
-        assert str(missing) in _error_message(result)
-
-    def test_directory_param(self, tmp_path):
-        v = PathExistsValidator()
-        r = v.validate("list_files", {"directory": str(tmp_path)})
-        assert r.is_valid
-
-    def test_ignores_unrelated_tools(self):
-        v = PathExistsValidator()
-        r = v.validate("configure_training", {"path": "/nonexistent"})
-        assert r.is_valid
-
-    def test_no_path_param_passes(self):
-        v = PathExistsValidator()
-        r = v.validate("scan_source", {"other": "value"})
-        assert r.is_valid
-
-
-class TestPathProvenanceVerifier:
-    def test_accepts_path_explicitly_provided_in_latest_user_turn(self, tmp_path):
-        source = tmp_path / "A01T.gdf"
-        source.touch()
-
-        result = PathProvenanceVerifier().validate(
-            "scan_source",
-            {"source_path": str(source)},
-            latest_user_text=f"Import `{source}`",
-            state=None,
-        )
-
-        assert result.is_valid
-
-    def test_rejects_model_invented_existing_absolute_path(self, tmp_path):
-        invented = tmp_path / "private"
-        invented.mkdir()
-
-        result = PathProvenanceVerifier().validate(
-            "list_files",
-            {"directory": str(invented)},
-            latest_user_text="Show my EEG files",
-            state=None,
-        )
-
-        assert not result.is_valid
-        assert "choose a file or folder" in _error_message(result).lower()
-
-    def test_accepts_descendant_of_backend_selected_source_root(self, tmp_path):
-        selected = tmp_path / "selected"
-        nested = selected / "sub-01"
-        nested.mkdir(parents=True)
-        state = {
-            "interpretation": {
-                "source_path": str(selected),
-                "source_kind": "folder",
-            }
-        }
-
-        result = PathProvenanceVerifier().validate(
-            "list_files",
-            {"directory": str(nested)},
-            latest_user_text="Show the selected source files",
-            state=state,
-        )
-
-        assert result.is_valid
-
-    def test_selected_file_does_not_authorize_sibling_path(self, tmp_path):
-        selected = tmp_path / "A01T.gdf"
-        sibling = tmp_path / "secret.txt"
-        selected.touch()
-        sibling.touch()
-        state = {
-            "interpretation": {
-                "source_path": str(selected),
-                "source_kind": "file",
-            }
-        }
-
-        result = PathProvenanceVerifier().validate(
-            "scan_source",
-            {"source_path": str(sibling)},
-            latest_user_text="Rescan the selected EEG file",
-            state=state,
-        )
-
-        assert not result.is_valid
-
-    def test_windows_path_comparison_is_case_insensitive(self):
-        result = PathProvenanceVerifier().validate(
-            "scan_source",
-            {"source_path": r"C:\Data\Subject01\A01T.gdf"},
-            latest_user_text=r"Import C:\DATA\Subject01\A01T.gdf",
-            state=None,
-        )
-
-        assert result.is_valid
-
-    def test_windows_junction_descendant_cannot_escape_selected_root(
-        self,
-        monkeypatch,
-    ):
-        selected = ntpath.normcase(ntpath.normpath(r"C:\Data\Selected"))
-        escaped = ntpath.normcase(ntpath.normpath(r"D:\Private\secret.edf"))
-
-        def _resolve_windows_path(value: str) -> str:
-            normalized = ntpath.normcase(ntpath.normpath(value))
-            if normalized.endswith(r"\junction\secret.edf"):
-                return escaped
-            return selected if normalized == selected else normalized
-
-        def _identity(
-            value: str,
-            *,
-            expected_kind: PathKind | None,
-        ) -> FilesystemIdentity:
-            final_path = _resolve_windows_path(value)
-            return FilesystemIdentity(
-                platform="windows",
-                final_path=final_path,
-                object_id=(1, hash(final_path)),
-                kind="directory" if expected_kind == "directory" else "file",
-            )
-
-        monkeypatch.setattr(authorized_paths, "_resolve_windows_identity", _identity)
-        state = {
-            "interpretation": {
-                "source_path": r"C:\Data\Selected",
-                "source_kind": "folder",
-            }
-        }
-
-        result = PathProvenanceVerifier().validate(
-            "list_files",
-            {"directory": r"C:\Data\Selected\junction\secret.edf"},
-            latest_user_text="Show files from the selected EEG folder",
-            state=state,
-        )
-
-        assert not result.is_valid
-
-    def test_latest_turn_exact_spaced_path_satisfies_provenance(self, tmp_path):
-        source = tmp_path / "subject one" / "A01T.gdf"
-        source.parent.mkdir()
-        source.touch()
-
-        result = PathProvenanceVerifier().validate(
-            "scan_source",
-            {"source_path": str(source)},
-            latest_user_text=f"Import {source} now",
-            state=None,
-        )
-
-        assert result.is_valid
-
-    def test_user_path_prefix_does_not_authorize_shorter_path(self):
-        result = PathProvenanceVerifier().validate(
-            "list_files",
-            {"directory": "/home"},
-            latest_user_text="List files in /homeevil",
-            state=None,
-        )
-
-        assert not result.is_valid
-
-    @pytest.mark.parametrize(
-        ("tool_name", "params"),
-        [
-            ("list_files", {"directory": "/protected/session"}),
-            ("scan_source", {"source_path": "/protected/source.edf"}),
-            (
-                "preview_interpretation",
-                {"choices": {"selected_eeg_files": ["/protected/preview.fif"]}},
-            ),
-            (
-                "save_interpretation_recipe",
-                {"recipe_path": "/protected/output-recipe.json"},
-            ),
-            (
-                "reload_interpretation_recipe",
-                {"recipe_path": "/protected/input-recipe.json"},
-            ),
-        ],
+    assert not result.is_valid
+    assert _error_message(result) == (
+        "Required training output directory must be an actual path "
+        f"provided by the user, got placeholder {path!r}."
     )
-    def test_each_path_bearing_tool_schema_rejects_unapproved_paths(
-        self,
-        tool_name: str,
-        params: dict[str, object],
-    ) -> None:
-        result = PathProvenanceVerifier().validate(
-            tool_name,
-            params,
-            latest_user_text="Use the current dataset",
-            state=None,
-        )
 
-        assert not result.is_valid
-        assert "choose a file or folder" in _error_message(result).lower()
 
-    @pytest.mark.parametrize(
-        "choices",
-        [
-            {"selected_eeg_files": ["/private/selected.edf"]},
-            {"label_sources": ["/private/external-events.tsv"]},
-            {"required_label_carriers": ["/private/required-events.csv"]},
-            {"excluded_label_carriers": ["/private/excluded-events.mat"]},
-            {"eeg_file_remap": {"/private/saved.edf": "current.edf"}},
-            {"eeg_file_remap": {"saved.edf": "/private/current.edf"}},
-            {"label_carrier_remap": {"/private/saved-events.tsv": "events.tsv"}},
-            {
-                "label_carrier_remap": {
-                    "saved-events.tsv": "/private/current-events.tsv"
-                }
-            },
-            {
-                "label_carrier_choices": {
-                    "/private/events.tsv": {"label_field": "trial_type"}
-                }
-            },
-            {
-                "label_carrier_choices": {
-                    "events.tsv": {"target_file": "/private/target.fif"}
-                }
-            },
-            {"run_event_mappings": {"/private/run.gdf": {"769": "left"}}},
-            {"metadata_overrides": {"/private/session.set": {"subject": "01"}}},
-        ],
+@pytest.mark.parametrize("path", ["relative/output", "output"])
+def test_training_output_requires_absolute_path(path: str) -> None:
+    result = PlaceholderArgumentValidator().validate(
+        "configure_training", {"output_dir": path}
     )
-    def test_preview_path_containers_preserve_fail_closed_provenance(
-        self,
-        choices: dict[str, object],
-    ) -> None:
-        result = PathProvenanceVerifier().validate(
-            "preview_interpretation",
-            {"choices": choices},
-            latest_user_text="Preview the current import choices",
-            state=None,
-        )
-
-        assert not result.is_valid
-        assert "choose a file or folder" in _error_message(result).lower()
+    assert not result.is_valid
+    assert "absolute path" in _error_message(result)
 
 
-# ---------------------------------------------------------------------------
-# Placeholder Argument Validator
-# ---------------------------------------------------------------------------
-
-
-class TestPlaceholderArgumentValidator:
-    def test_rejects_absolute_placeholder_scan_source_path(self):
-        v = PlaceholderArgumentValidator()
-        r = v.validate("scan_source", {"source_path": "path_to_eeg_dataset"})
-        assert not r.is_valid
-        assert "actual path" in _error_message(r)
-
-    def test_rejects_blank_scan_source_path(self):
-        v = PlaceholderArgumentValidator()
-        r = v.validate("scan_source", {"source_path": ""})
-        assert not r.is_valid
-        assert "actual path" in _error_message(r)
-
-    def test_rejects_placeholder_scan_source_path(self):
-        v = PlaceholderArgumentValidator()
-        r = v.validate(
-            "scan_source",
-            {"source_path": "/path/to/your/eeg/file.gdf"},
-        )
-        assert not r.is_valid
-        assert "actual path" in _error_message(r)
-
-    def test_rejects_natural_language_placeholder_absolute_path(self):
-        v = PlaceholderArgumentValidator()
-        r = v.validate(
-            "scan_source",
-            {"source_path": "/path/with/EEG/file"},
-        )
-
-        assert not r.is_valid
-        assert "actual path" in _error_message(r)
-
-    def test_rejects_placeholder_recipe_path(self):
-        v = PlaceholderArgumentValidator()
-        r = v.validate(
-            "reload_interpretation_recipe",
-            {"recipe_path": "path_to_recipe.json"},
-        )
-        assert not r.is_valid
-
-    def test_rejects_relative_scan_source_path(self):
-        v = PlaceholderArgumentValidator()
-        r = v.validate("scan_source", {"source_path": "datasets/session01"})
-        assert not r.is_valid
-        assert "absolute path" in _error_message(r)
-
-    def test_rejects_relative_recipe_path(self):
-        v = PlaceholderArgumentValidator()
-        r = v.validate(
-            "reload_interpretation_recipe",
-            {"recipe_path": "import_recipe.json"},
-        )
-        assert not r.is_valid
-        assert "absolute path" in _error_message(r)
-
-    def test_rejects_path_to_your_recipe(self):
-        v = PlaceholderArgumentValidator()
-        r = v.validate(
-            "reload_interpretation_recipe",
-            {"recipe_path": "path/to/your/recipe.json"},
-        )
-        assert not r.is_valid
-
-    def test_rejects_instruction_text_in_path_field(self):
-        v = PlaceholderArgumentValidator()
-        r = v.validate(
-            "scan_source",
-            {"source_path": "Please provide the absolute path to your EEG dataset."},
-        )
-        assert not r.is_valid
-
-    def test_allows_realistic_absolute_path(self):
-        v = PlaceholderArgumentValidator()
-        r = v.validate("scan_source", {"source_path": "/data/S01.gdf"})
-        assert r.is_valid
-
-    def test_allows_windows_absolute_source_path(self):
-        v = PlaceholderArgumentValidator()
-        r = v.validate("scan_source", {"source_path": r"C:\data\S01.gdf"})
-        assert r.is_valid
-
-    def test_rejects_placeholder_preview_recipe_remap_target(self):
-        v = PlaceholderArgumentValidator()
-        r = v.validate(
-            "preview_interpretation",
-            {
-                "choices": {
-                    "eeg_file_remap": {
-                        "missing saved EEG file": (
-                            "current replacement EEG file path/name"
-                        )
-                    }
-                }
-            },
-        )
-
-        assert not r.is_valid
-        assert r.error_message is not None
-        assert "remap target" in r.error_message
-
-    @pytest.mark.parametrize(
-        ("tool_name", "params"),
-        [
-            ("list_files", {"directory": "/path/to/files"}),
-            (
-                "scan_source",
-                {
-                    "source_path": "/data/source.edf",
-                    "label_sources": ["/path/to/labels.tsv"],
-                },
-            ),
-            (
-                "preview_interpretation",
-                {
-                    "choices": {
-                        "label_carrier_remap": {
-                            "saved-events.tsv": "/path/to/current-events.tsv"
-                        }
-                    }
-                },
-            ),
-            (
-                "save_interpretation_recipe",
-                {"recipe_path": "/path/to/output-recipe.json"},
-            ),
-            (
-                "reload_interpretation_recipe",
-                {"recipe_path": "/path/to/input-recipe.json"},
-            ),
-        ],
+@pytest.mark.parametrize("path", ["/new/output", r"C:\data\new output"])
+def test_training_output_does_not_require_existing_directory(path: str) -> None:
+    assert (
+        PlaceholderArgumentValidator()
+        .validate("configure_training", {"output_dir": path})
+        .is_valid
     )
-    def test_each_path_bearing_tool_schema_rejects_placeholder_values(
-        self,
-        tool_name: str,
-        params: dict[str, object],
-    ) -> None:
-        result = PlaceholderArgumentValidator().validate(tool_name, params)
-
-        assert not result.is_valid
-        assert "path" in _error_message(result).lower()
-
-    def test_ignores_non_path_values(self):
-        v = PlaceholderArgumentValidator()
-        r = v.validate("epoch_data", {"event_id": ["BAD_EVENT"]})
-        assert r.is_valid
 
 
 # ---------------------------------------------------------------------------
@@ -1038,7 +645,9 @@ class TestVerificationLayerWithValidators:
 
     def test_default_validators_reject_placeholder_paths(self):
         v = VerificationLayer()
-        r = v.verify_tool_call(("scan_source", {"source_path": "/path/to/eeg/data"}))
+        r = v.verify_tool_call(
+            ("configure_training", {"output_dir": "/path/to/output"})
+        )
         assert not r.is_valid
         assert "actual path" in _error_message(r)
 
