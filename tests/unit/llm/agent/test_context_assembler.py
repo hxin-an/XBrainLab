@@ -6,6 +6,7 @@ import pytest
 
 from XBrainLab.backend.application import Command, CommandResult
 from XBrainLab.backend.application.capabilities import build_capability_policy
+from XBrainLab.backend.application.commands import CommandName
 from XBrainLab.backend.application.state import (
     ActiveDatasetSnapshot,
     ActiveTrainingSnapshot,
@@ -448,6 +449,60 @@ def test_action_catalog_ends_with_action_first_reminder() -> None:
     assert contracts.rstrip().endswith(
         "never explain that the user should call an internal tool or function."
     )
+
+
+@pytest.mark.parametrize(
+    ("registered", "backend_enabled"), [(False, True), (True, False), (True, True)]
+)
+def test_operation_choice_guidance_follows_published_tools_not_stage(
+    registered,
+    backend_enabled,
+):
+    state = _state(
+        pipeline_stage="data_loaded",
+        raw=RawStateSnapshot(loaded=True, count=1),
+        active_dataset=ActiveDatasetSnapshot(has_raw_data=True),
+    )
+    capabilities = build_capability_policy(state)
+    if not backend_enabled:
+        command = CommandName.PREPROCESS.value
+        capabilities = replace(
+            capabilities,
+            capabilities={
+                **capabilities.capabilities,
+                command: replace(
+                    capabilities.get(command),
+                    enabled=False,
+                    reasons=["Preprocessing is unavailable in this publication."],
+                ),
+            },
+        )
+    publication = ApplicationViewPublication(
+        generation=82,
+        state=state,
+        capabilities=capabilities,
+    )
+    registry = ToolRegistry()
+    registry.register(_NamedTool("select_channels"))
+    registry.register(_NamedTool("switch_panel"))
+    if registered:
+        registry.register(_NamedTool("apply_bandpass_filter"))
+    assembler = ContextAssembler(
+        registry,
+        Study(),
+        application_runtime=_ApplicationRuntimeFake(publication),
+    )
+
+    prompt = assembler.build_system_prompt("Explain the current workflow.")
+
+    publish_preprocessing = registered and backend_enabled
+    assert assembler.latest_tool_publication.workflow_stage == "data_loaded"
+    assert (
+        "apply_bandpass_filter" in assembler.latest_tool_publication.tool_names
+    ) is publish_preprocessing
+    assert ("ask which operation the user wants" in prompt) is publish_preprocessing
+    assert '"name": "respond_to_user"' in prompt
+    assert "information, a negated, ambiguous, or multi-action request" in prompt
 
 
 def test_prompt_policy_consolidation_preserves_publication_and_decision_contracts() -> (

@@ -37,6 +37,7 @@ from .turn import (
     AssistantGenerationRequest,
     AssistantResponseContract,
 )
+from .verifier import DIRECT_PARAMETER_TOOLS
 
 _MAX_CONTEXT_NOTES = 4
 _MAX_HISTORY_INPUT_ROWS = 64
@@ -406,7 +407,10 @@ Action Contract Catalog (input definitions, never an output array):
 
         prompt = self._ACTION_SYSTEM_PROMPT
         prompt += "\n" + STRICT_TOOL_RESPONSE_PROMPT_POLICY.decision_instructions(
-            workflow_stage
+            workflow_stage,
+            include_preprocessing_guidance=any(
+                name in DIRECT_PARAMETER_TOOLS for name in allowed_tools
+            ),
         )
         prompt += self._TOOL_BLOCK_TEMPLATE.format(
             tools_str=tools_str,

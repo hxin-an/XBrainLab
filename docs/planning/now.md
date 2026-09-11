@@ -200,6 +200,19 @@ retaining all exhaustion/safety outcomes; focused same-class search found no oth
 Include this tests-only migration before the next exact-source model/native run; do not rerun0ffd CI.
 Final narrowed policy plus both strict-recovery execution integration cases pass73/73 in6.50s;
 independent reviewer approves both the policy narrowing and system-only assertion migration.
+Exacta5f41f5b bounded81gate passes144.48s, with only existing ambiguous_en/generic_filter_selection
+failures; no new IDs,36positive/10+5origin intact. RAG passes13s. Native43.78s regresses to three invalid
+envelopes on the informational first turn, so do not push/handoff. The operation/parameter-specific
+guidance changed even the empty workflow where no direct preprocessing action is callable. Scope
+that guidance using the backend-published callable set and existing DIRECT_PARAMETER_TOOLS identity:
+when such actions are published, keep the tested operation-choice wording; otherwise keep the prior
+general hypothetical Rule3/4 text. No stage whitelist, user-text routing, new capability owner or
+compatibility runtime. Verify exact empty prompt equality to0ffd and available-preprocess equality to
+a5f, plus publication-driven toggle tests, full81 and native journey on the final exact source.
+Focused76cases pass1.23s with exact decision-policy text parity (empty=0ffd; callable-preprocessing=a5f).
+The same data_loaded state covers unregistered, registered/backend-disabled and published-enabled
+preprocessing; no stage inference or second admission owner. Full same-head model/native gates remain
+required: text parity alone is not model evidence. Freeze this bounded fix, then run those gates and CI.
 
 **Exact candidate ecb68e3f — final evidence / bounded authority question.**204commits after4770,
 PR134 draft pushed, manual Windows checkout clean at ecb68e3f764150c828beae753f95d439d18af356 with

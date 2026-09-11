@@ -56,8 +56,25 @@ class StrictToolResponsePromptPolicy:
     def decision_instructions(
         self,
         workflow_stage: str = "<exact backend workflow_stage>",
+        *,
+        include_preprocessing_guidance: bool = True,
     ) -> str:
         """Return the strict decision contract without Host intent routing."""
+        missing_values = (
+            "3. If the user requested exactly one callable direct preprocessing "
+            "action but omitted required values, use respond_to_user to ask only "
+            "for those values. "
+            if include_preprocessing_guidance
+            else "3. If exactly one callable direct preprocessing action is missing "
+            "required values, use respond_to_user to ask only for those values. "
+        )
+        operation_choice = (
+            " For an ambiguous action request that does not name a specific "
+            "operation, ask which operation the user wants; do not choose one "
+            "or collect its parameters."
+            if include_preprocessing_guidance
+            else ""
+        )
         return (
             "STRICT RESPONSE CONTRACT - DECISION ORDER (decide silently):\n"
             "1. First identify the exact action requested by meaning. Only call it "
@@ -68,17 +85,13 @@ class StrictToolResponsePromptPolicy:
             "with parameters containing only message explaining the listed blocker. "
             "A prerequisite named in a blocker is not a "
             "user request: do not perform a prerequisite or substitute action.\n"
-            "3. If the user requested exactly one callable direct preprocessing "
-            "action but omitted required values, use respond_to_user to ask only "
-            "for those values. "
+            f"{missing_values}"
             "Include pending_action and missing_inputs only for that exact action.\n"
             "4. Use respond_to_user with parameters containing only message for "
             "information, a negated, "
             "ambiguous, or multi-action request. Never call a prerequisite, "
             "substitute, or retired alias. Tool availability does not make it "
-            "relevant to the user's request. For an ambiguous action request that "
-            "does not name a specific operation, ask which operation the user wants; "
-            "do not choose one or collect its parameters.\n"
+            f"relevant to the user's request.{operation_choice}\n"
             "5. Required values must come from the latest user request or verified "
             "state. Never invent paths, settings, labels, IDs, or file names.\n"
             "6. Host confirmation is separate. For a complete enabled action, "
