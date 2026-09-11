@@ -1267,9 +1267,6 @@ def _exercise_active_render_close(
                 "training_delivery_idle": lambda: application_service.training_publications.wait_for_training_delivery(
                     timeout=0.0
                 ),
-                "post_training_saliency_idle": lambda: application_service.post_training_saliency.wait_for_idle(
-                    timeout=0.0
-                ),
                 "saliency_job_idle": lambda: application_service.training_runtime.wait_for_saliency_job(
                     timeout=0.0
                 ),

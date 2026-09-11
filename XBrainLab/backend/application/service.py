@@ -127,7 +127,6 @@ from .owned_work import (
 )
 from .pipeline_stage import pipeline_stage_readiness_summary
 from .pipeline_transaction import PipelineStateTransaction
-from .post_training_saliency import PostTrainingSaliencyAutomation
 from .preprocess_preparation import (
     ApplicationPreprocessBoundary,
     PreprocessMutationPlan,
@@ -840,15 +839,6 @@ class ApplicationService(Observable):
             get_state=self.get_state,
             pipeline_transaction=self.pipeline_transaction,
         )
-        self.post_training_saliency = PostTrainingSaliencyAutomation(
-            training=self.training,
-            get_state=self.get_state,
-            configure_saliency=self._configure_post_training_saliency,
-            publish_submission_failure=(
-                self.training_runtime.publish_saliency_submission_failure
-            ),
-            read_terminal_outcome=self.training_runtime.terminal_outcome,
-        )
         self.shutdown_lifecycle = ApplicationShutdownLifecycleCoordinator(
             command_admission_lock=self._command_admission_lock,
             command_lock=self._command_lock,
@@ -858,7 +848,6 @@ class ApplicationService(Observable):
             training=self.training,
             training_runtime=self.training_runtime,
             dataset_split_preview=self.dataset_split_preview,
-            post_training_saliency=self.post_training_saliency,
             publication_lifecycle=self.publication_lifecycle,
             refresh_training_publication=self._refresh_training_publication_strict,
             committed_view_publication=self._committed_view_publication,
@@ -961,19 +950,6 @@ class ApplicationService(Observable):
         if self.shutdown_lifecycle.snapshot().closed:
             raise RuntimeError(_CLOSED_SERVICE_MESSAGE)
 
-    def _configure_post_training_saliency(
-        self,
-        params: dict[str, object],
-    ) -> CommandResult:
-        """Run the recommended baseline through the normal command boundary."""
-        result = self.execute(SaliencyCommand(method="Gradient", params=params))
-        if result.failed:
-            logger.warning(
-                "Automatic post-training saliency failed: %s",
-                result.message,
-            )
-        return result
-
     def _handle_train_with_saved_split(self, command: Command) -> HandlerResult:
         """Admit candidate resources before publishing the saved data split."""
         if not isinstance(command, TrainCommand):
@@ -1010,7 +986,6 @@ class ApplicationService(Observable):
                 defer_synchronous_completion=not command.interactive,
             )
         except Exception as exc:
-            self.post_training_saliency.cancel()
             if split_preparation is not None:
                 try:
                     self.dataset_generation.restore_committed_candidate(candidate)
@@ -1060,7 +1035,6 @@ class ApplicationService(Observable):
             )
         finally:
             candidate_discarded = self.dataset_generation.discard_prepared_split()
-        self.post_training_saliency.cancel()
         return (
             "Training preparation discarded.",
             {
@@ -1675,8 +1649,6 @@ class ApplicationService(Observable):
         if not self.training_publications.wait_for_training_delivery(
             timeout=remaining()
         ):
-            return False
-        if not self.post_training_saliency.wait_for_idle(timeout=remaining()):
             return False
         if not self.training_runtime.wait_for_saliency_job(timeout=remaining()):
             return False

@@ -28,10 +28,6 @@ class _DatasetPreviewCancellationPort(Protocol):
     def cancel_all(self) -> int: ...
 
 
-class _PostTrainingSaliencyCancellationPort(Protocol):
-    def cancel(self) -> None: ...
-
-
 @dataclass(frozen=True, slots=True)
 class ApplicationShutdownSnapshot:
     """One atomic read of application command-admission lifecycle state."""
@@ -54,7 +50,6 @@ class ApplicationShutdownLifecycleCoordinator:
         training: _TrainingTerminalWaitCancellationPort,
         training_runtime: TrainingRuntimePort,
         dataset_split_preview: _DatasetPreviewCancellationPort,
-        post_training_saliency: _PostTrainingSaliencyCancellationPort,
         publication_lifecycle: ApplicationPublicationLifecycle,
         refresh_training_publication: Callable[[], ApplicationStateSnapshot],
         committed_view_publication: Callable[[], ApplicationViewPublication],
@@ -66,7 +61,6 @@ class ApplicationShutdownLifecycleCoordinator:
         self._training = training
         self._training_runtime = training_runtime
         self._dataset_split_preview = dataset_split_preview
-        self._post_training_saliency = post_training_saliency
         self._publication_lifecycle = publication_lifecycle
         self._refresh_training_publication = refresh_training_publication
         self._committed_view_publication = committed_view_publication
@@ -184,14 +178,7 @@ class ApplicationShutdownLifecycleCoordinator:
                 self._closing = False
 
     def cancel_close_automation(self) -> None:
-        """Stop nonessential post-training automation after close commits."""
-        try:
-            self._post_training_saliency.cancel()
-        except Exception:
-            logger.debug(
-                "Could not cancel post-training saliency automation during close",
-                exc_info=True,
-            )
+        """Stop owned saliency work after close commits."""
         try:
             self._training_runtime.cancel_saliency_job()
         except Exception:
@@ -219,7 +206,6 @@ class ApplicationShutdownLifecycleCoordinator:
                 self._shutdown_fence_generation += 1
             self._dataset_split_preview.cancel_all()
             try:
-                self._post_training_saliency.cancel()
                 self._training_runtime.cancel_saliency_job()
             except Exception:
                 logger.exception("Could not cancel background saliency during shutdown")

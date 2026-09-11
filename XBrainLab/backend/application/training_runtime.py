@@ -10,8 +10,6 @@ from typing import Any, Protocol
 
 from XBrainLab.backend.exceptions import StaleTrainingPipelineMutationError
 from XBrainLab.backend.training_manager import (
-    PostTrainingSaliencyScheduleOutcome,
-    PostTrainingSaliencyTarget,
     PostTrainingSaliencyTerminalDeliveryState,
 )
 from XBrainLab.backend.training_state_contract import (
@@ -153,12 +151,6 @@ class PostTrainingSaliencyRuntimePort(Protocol):
         stage: SaliencyTerminalCallback | None = None,
     ) -> AbstractContextManager[None]: ...
 
-    def publish_saliency_submission_failure(
-        self,
-        target: PostTrainingSaliencyTarget,
-        error: BaseException,
-    ) -> PostTrainingSaliencyScheduleOutcome: ...
-
     def wait_for_saliency_job(self, *, timeout: float | None = None) -> bool: ...
 
     def cancel_saliency_job(self) -> None: ...
@@ -255,12 +247,6 @@ class _TrainingManagerRuntimePort(Protocol):
         self,
         stage: SaliencyTerminalCallback | None = None,
     ) -> AbstractContextManager[None]: ...
-
-    def publish_post_training_saliency_submission_failure(
-        self,
-        target: PostTrainingSaliencyTarget,
-        error: BaseException,
-    ) -> PostTrainingSaliencyScheduleOutcome: ...
 
     def wait_for_saliency_job(self, timeout: float | None = None) -> bool: ...
 
@@ -543,16 +529,6 @@ class StudyTrainingRuntime:
         stage: SaliencyTerminalCallback | None = None,
     ) -> AbstractContextManager[None]:
         return self._manager.defer_post_training_saliency_terminal_notifications(stage)
-
-    def publish_saliency_submission_failure(
-        self,
-        target: PostTrainingSaliencyTarget,
-        error: BaseException,
-    ) -> PostTrainingSaliencyScheduleOutcome:
-        return self._manager.publish_post_training_saliency_submission_failure(
-            target,
-            error,
-        )
 
     def wait_for_saliency_job(self, *, timeout: float | None = None) -> bool:
         return bool(self._manager.wait_for_saliency_job(timeout=timeout))

@@ -2737,14 +2737,12 @@ def test_shutdown_fence_blocks_mutations_until_cancelled() -> None:
     assert resumed.ok is True
 
 
-def test_shutdown_fence_cancels_automatic_saliency_without_waiting() -> None:
+def test_shutdown_fence_cancels_live_saliency_without_waiting() -> None:
     service = ApplicationService(Study())
-    service.post_training_saliency.cancel = MagicMock()
     service.training_runtime.cancel_saliency_job = MagicMock()
 
     service.request_shutdown_fence()
 
-    service.post_training_saliency.cancel.assert_called_once_with()
     service.training_runtime.cancel_saliency_job.assert_called_once_with()
 
 
@@ -2757,7 +2755,6 @@ def test_shutdown_fence_does_not_wait_for_saliency_terminal_reconciliation() -> 
     service.publication_lifecycle.pending_saliency_terminal = MagicMock(
         return_value=pending_terminal
     )
-    service.post_training_saliency.cancel = MagicMock()
     service.training_runtime.cancel_saliency_job = MagicMock(
         side_effect=(
             lambda: service.publication_lifecycle.reconcile_pending_saliency_terminal()
@@ -2792,18 +2789,16 @@ def test_shutdown_fence_does_not_wait_for_saliency_terminal_reconciliation() -> 
     service.training_runtime.cancel_saliency_job.assert_called_once_with()
 
 
-def test_close_releases_saliency_delivery_when_automation_cancel_fails() -> None:
+def test_close_releases_saliency_delivery_when_runtime_cancel_fails() -> None:
     service = ApplicationService(Study())
-    service.post_training_saliency.cancel = MagicMock(
-        side_effect=RuntimeError("automation cancel failed")
+    service.training_runtime.cancel_saliency_job = MagicMock(
+        side_effect=RuntimeError("runtime cancel failed")
     )
-    service.training_runtime.cancel_saliency_job = MagicMock()
     service.training_runtime.discard_saliency_delivery = MagicMock()
 
     service.close()
 
     assert service.is_closed is True
-    service.post_training_saliency.cancel.assert_called_once_with()
     service.training_runtime.cancel_saliency_job.assert_called_once_with()
     service.training_runtime.discard_saliency_delivery.assert_called_once_with()
 
@@ -10198,7 +10193,6 @@ def test_training_commits_split_without_scheduling_saliency() -> None:
     service.dataset_generation.commit_prepared_split = MagicMock(
         return_value=split_preparation
     )
-    service.post_training_saliency = MagicMock()
     preflight = ResourcePreflightResult(issues=(), diagnostics={})
     service.training_commands.resolve_train_preflight = MagicMock(
         return_value=(preflight, False)
@@ -10226,11 +10220,9 @@ def test_training_commits_split_without_scheduling_saliency() -> None:
         receipt_reused=False,
         defer_synchronous_completion=True,
     )
-    service.post_training_saliency.arm.assert_not_called()
-    service.post_training_saliency.cancel.assert_not_called()
 
 
-def test_wait_for_background_tasks_waits_for_submission_then_saliency_job() -> None:
+def test_wait_for_background_tasks_waits_for_saliency_job() -> None:
     service = ApplicationService(Study())
     call_order: list[str] = []
     service.training.wait_for_terminal_notification = MagicMock(
@@ -10243,9 +10235,6 @@ def test_wait_for_background_tasks_waits_for_submission_then_saliency_job() -> N
     )
     service.training_publications.wait_for_training_delivery = MagicMock(
         side_effect=lambda timeout=None: call_order.append("training_terminal") or True,
-    )
-    service.post_training_saliency.wait_for_idle = MagicMock(
-        side_effect=lambda timeout=None: call_order.append("submission") or True,
     )
     service.training_runtime.wait_for_saliency_job = MagicMock(
         side_effect=lambda timeout=None: call_order.append("saliency") or True,
@@ -10269,7 +10258,6 @@ def test_wait_for_background_tasks_waits_for_submission_then_saliency_job() -> N
         "monitor_terminal:23",
         "terminal_reconcile",
         "training_terminal",
-        "submission",
         "saliency",
         "manager_terminal",
         "saliency_terminal",
@@ -10282,16 +10270,12 @@ def test_wait_for_background_tasks_waits_for_submission_then_saliency_job() -> N
             "timeout"
         ]
     )
-    submission_timeout = service.post_training_saliency.wait_for_idle.call_args.kwargs[
-        "timeout"
-    ]
     saliency_timeout = service.training_runtime.wait_for_saliency_job.call_args.kwargs[
         "timeout"
     ]
     assert (
         0.0
         <= saliency_timeout
-        <= submission_timeout
         <= training_terminal_timeout
         <= monitor_terminal_timeout
         <= 1.0
@@ -10329,16 +10313,6 @@ def test_wait_for_background_tasks_rejects_persistent_terminal_reconciliation_fa
     assert service.wait_for_background_tasks(timeout=1.0) is False
 
     assert reconcile.call_count == 2
-
-
-def test_wait_for_background_tasks_stops_when_submission_does_not_finish() -> None:
-    service = ApplicationService(Study())
-    service.post_training_saliency.wait_for_idle = MagicMock(return_value=False)
-    service.training_runtime.wait_for_saliency_job = MagicMock(return_value=True)
-
-    assert service.wait_for_background_tasks(timeout=0.0) is False
-
-    service.training_runtime.wait_for_saliency_job.assert_not_called()
 
 
 def test_synchronous_train_waits_for_application_background_tasks() -> None:
