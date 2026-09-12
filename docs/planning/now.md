@@ -29,8 +29,9 @@ folder, shim, forwarding entrypoint, replacement control plane or additional aut
 UI permission covers invisible deletion of unreachable folder/BIDS routes and tests/guards only;
 keep actual Import Data file/folder/BIDS/recipe behavior, layout and copy.
 Minimal prompt correction is allowed for ambiguous_en and generic_filter_selection: fixed model and
-revision, tool contracts, RAG, frozen 81 cases and scorer; no Host semantic rescue. At most two candidate
-prompt revisions. Unresolved required cases are a decision blocker, not completion.
+revision, tool contracts, RAG, frozen 81 cases and scorer; no Host semantic rescue. On 2026-09-12 the
+user explicitly authorized two additional prompt revisions after candidates 1 and 2 failed: candidates
+3 and 4 only. Unresolved required cases after this renewed budget are a decision blocker, not completion.
 User approved this one-stage PR cumulatively exceeding 1,500 production LOC if necessary. Each slice
 still receives complexity review: deletion candidates, owners before/after, +/-/net LOC and rollback.
 
@@ -48,11 +49,11 @@ still receives complexity review: deletion candidates, owners before/after, +/-/
 3. **Dataset unused routes [implemented/reviewed; integration pending]**: characterize real Import Data paths, delete unused folder/BIDS
    delegates and exclusively reachable implementation/tests/required facade guards. Retain real BIDS
    subject selection. Run identical characterization and relevant architecture negative fixtures.
-4. **Assistant registry/terminal/ambiguity [registry/terminal implemented; ambiguity blocked at two-candidate limit]**: evaluator uses real registry metadata with its
+4. **Assistant registry/terminal/ambiguity [registry/terminal implemented; candidates 3–4 authorized]**: evaluator uses real registry metadata with its
    existing execution-suppressed harness; prove schema/description/membership parity before removing mock
    execution capability and exclusive tests. Navigation metrics finish on matching terminal only;
    cover success/failure/stale/duplicate callbacks and real UI callback boundary. Correct two ambiguity
-   cases within two prompt candidates; run full frozen evaluation without positive/provenance regression.
+   cases within the renewed two-candidate budget; run full frozen evaluation without positive/provenance regression.
    Separate raw-model and product scores; model evaluation does not prove real command execution.
 5. **Tooling/test quality/scan cost [implemented; cache optimization rejected]**: remove unused remote SDK dependency group and regenerate
    lock without unrelated upgrades; remove dead integration-branch CI triggers/exclusive tests and broken
@@ -131,12 +132,28 @@ still proposes one action from each two-action request; two direct clarification
 message-only without the required Host receipt. Do not conflate missing-origin safety with direct
 clarification admission. Both raw reports remain under build/dev-artifacts/candidate1 and candidate2.
 
-BLOCKED: both authorized prompt candidates are exhausted and neither meets the no-regression outcome.
-No third candidate, model/RAG/Host/scorer change, lowered gate, manual delivery or merge is authorized.
-Need user decision on a new bounded prompt-repair budget or explicitly deferring that outcome and
-rolling back both prompt experiments. Other implementation slices are committed/reviewed; exact-source
-CI is still pending, not the reason work is blocked. Native real-model journey/manual launch has not
-run because this source fails the required model gate. The unexecuted disposable probe was removed.
+RESUMED by explicit user authorization: two additional prompt candidates, no model/RAG/Host/scorer/
+frozen-case changes. Review actual assembled prompt and prior raw decisions before candidate 3; prefer
+clarifying the existing decision sequence over accumulating repeated rules. Existing failed frozen runs
+are the behavioral RED baseline. Update focused prompt contract tests for the intended invariant, then
+run full 81-case evaluation on each clean candidate. Acceptance still requires the original ambiguity
+fixes without product/positive/provenance/clarification regressions. Stop for a new decision if candidate 4
+also fails; never silently roll back the outcome, lower gates or deliver the failing source.
+Other implementation slices remain committed/reviewed. CI at e2c2310e revealed a scripts-shard failure;
+inspect exact failure and repair only an in-scope regression or validation-fixture defect. Static quality,
+source-diverse data, UI visuals, Windows source smoke and most shards passed; final source still needs
+all applicable gates. Native real-model journey/manual launch has not run. No new visible UI authorization.
+
+Candidate 3 hypothesis: tokenizer-only product-RAG dossier for multi_en_alt shows 2,501 input tokens
+against 7,680 available, with no context dropped. Rules precede the catalog and its final "choose it now"
+reminder. Move the unchanged strict decision instructions after the catalog so the final system-level
+instructions include ambiguity/multi-action/missing-value distinctions. No new prompt text or policy.
+Change only assembler placement and the directly relevant ordering characterization; full frozen model
+evaluation, not that text assertion, determines whether the hypothesis works.
+Candidate 3 ordering assertion: 1 targeted RED before the move, then 151 prompt/assembler/evaluator/
+export tests passed. CI scripts regression is the new capture_config import preceding native core guard;
+move only that import behind the guard. Two existing safety tests were RED; safety/order plus stress
+isolation success/failure are now 4 passed. No guard was weakened and no new test-only workaround added.
 
 Shared environment editable .pth exposed old scripts namespace: tests use process-only path exclusion,
 not environment edits. New worktree .git pointer is relative so WSL and native Windows Git agree.
@@ -144,9 +161,9 @@ Broad Assistant check: 1,425 passed, 30 failed, 2 skipped; all failures were fak
 snapshot paths exceeding Windows MAX_PATH. Short owned temporary root rerun: 166 passed, 5 same-path
 failures, 2 skipped. Fresh shorter basetemp for the remaining RAG security file: 29 passed, 2 POSIX-only
 skips. No product change or weakened assertion was needed; overlapping counts are not a unique total.
-Next: obtain the required scope decision above before further prompt work or final handoff. PR #140
-remains a draft integration vehicle, not a manual-testing or merge request. CI may continue independently;
-its success would not resolve the model blocker. No final gates/manual acceptance yet.
+Next: candidate 3 prompt diagnosis/correction and scripts CI failure diagnosis, then frozen evaluation,
+candidate 4 only if necessary, and final exact-source CI/native handoff. PR #140 remains a draft integration
+vehicle, not a manual-testing or merge request. No final gates/manual acceptance yet.
 
 三核心責任重構已完成 Windows GUI／English Assistant 手測，並經使用者明確同意合併
 [PR #138](https://github.com/hxin-an/XBrainLab/pull/138)。不再把該階段的施工切片或 pending gates
