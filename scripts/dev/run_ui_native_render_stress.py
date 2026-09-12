@@ -17,7 +17,6 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 
-from scripts.dev.capture_config import isolated_capture_config
 from scripts.dev.native_process_safety import disable_core_dumps
 
 _NATIVE_PROCESS_SAFETY = disable_core_dumps()
@@ -28,6 +27,8 @@ if (
     raise RuntimeError(
         "Native render stress refused to load Qt because RLIMIT_CORE=0 failed."
     )
+
+from scripts.dev.capture_config import isolated_capture_config
 
 
 def _native_qt_platform(platform_name: str) -> str:
