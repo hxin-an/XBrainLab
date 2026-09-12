@@ -154,11 +154,17 @@ def test_real_controller_close_completes_from_worker_and_thread_signals(qtbot) -
     from XBrainLab.backend.study import Study
     from XBrainLab.llm.agent.controller import LLMController
 
-    class _RagLifecycle:
-        retriever = object()
-
+    class _Retriever:
         def __init__(self) -> None:
             self.close_calls = 0
+
+        def close(self) -> None:
+            self.close_calls += 1
+
+    class _RagLifecycle:
+        def __init__(self) -> None:
+            self.close_calls = 0
+            self.retriever = _Retriever()
 
         def close(self) -> bool:
             self.close_calls += 1
@@ -186,6 +192,7 @@ def test_real_controller_close_completes_from_worker_and_thread_signals(qtbot) -
     assert controller.worker is None
     assert controller.close() is True
     assert rag_lifecycle.close_calls == 1
+    assert rag_lifecycle.retriever.close_calls == 0
     if worker is not None:
         qtbot.waitUntil(lambda: sip.isdeleted(worker), timeout=2_000)
 
@@ -326,6 +333,86 @@ def test_real_qt_shutdown_fences_late_rag_stop_and_new_typed_turn(qtbot) -> None
         close_controller_and_wait(controller, qtbot)
 
     assert worker is not None
+    qtbot.waitUntil(lambda: sip.isdeleted(worker), timeout=2_000)
+    qtbot.waitUntil(
+        lambda: sip.isdeleted(thread) or not thread.isRunning(),
+        timeout=2_000,
+    )
+
+
+def test_real_qt_shutdown_supersedes_a_pending_worker_stop_ack(qtbot) -> None:
+    """A real worker's delayed cancellation acknowledgement cannot reopen shutdown."""
+    from tests.qt_lifecycle import close_controller_and_wait
+    from XBrainLab.backend.study import Study
+    from XBrainLab.llm.agent.controller import LLMController
+    from XBrainLab.llm.agent.rag_process_lifecycle import ProcessRAGRetrieverLifecycle
+    from XBrainLab.llm.agent.turn import (
+        AssistantGenerationStopAcknowledgement,
+        AssistantTurnCorrelation,
+        AssistantTurnDeliveryPhase,
+        AssistantTurnRequest,
+        AssistantTurnTerminal,
+    )
+    from XBrainLab.llm.agent.worker import AgentWorker
+
+    rag_lifecycle = _DeferredRagLifecycle([True])
+    controller = LLMController(
+        Study(),
+        rag_lifecycle=cast(ProcessRAGRetrieverLifecycle, rag_lifecycle),
+    )
+    worker = controller.worker
+    thread = controller.worker_thread
+    pending_stop_acks: list[AssistantGenerationStopAcknowledgement] = []
+    terminals: list[AssistantTurnTerminal] = []
+    ack_capture_connected = False
+    controller_stop_slot_disconnected = False
+    controller.turn_finished.connect(terminals.append)
+
+    try:
+        assert isinstance(worker, AgentWorker)
+        assert worker.thread() is thread
+        controller._sig_dispatch_generation.disconnect()
+        accepted = controller.handle_user_turn(
+            AssistantTurnRequest(
+                correlation=AssistantTurnCorrelation(generation=1, turn_id=1),
+                text="Explain alpha rhythms.",
+            )
+        )
+        assert accepted.phase is AssistantTurnDeliveryPhase.ACCEPTED
+        rag_lifecycle.deliver_latest_result()
+        generation_id = controller._turn_orchestrator.active_generation_id
+        assert generation_id is not None
+
+        worker.generation_stop_finished.disconnect(
+            controller._on_generation_stop_finished
+        )
+        controller_stop_slot_disconnected = True
+        worker.generation_stop_finished.connect(pending_stop_acks.append)
+        ack_capture_connected = True
+        controller.stop_generation()
+        qtbot.waitUntil(lambda: bool(pending_stop_acks), timeout=2_000)
+        assert controller.is_processing is True
+        assert pending_stop_acks == [
+            AssistantGenerationStopAcknowledgement(
+                generation_id=generation_id,
+                stopped=True,
+            )
+        ]
+
+        assert controller.close() is False
+        controller._on_generation_stop_finished(pending_stop_acks[0])
+        assert [terminal.outcome for terminal in terminals] == ["shutdown_cancelled"]
+        assert controller.is_processing is False
+    finally:
+        if ack_capture_connected:
+            worker.generation_stop_finished.disconnect(pending_stop_acks.append)
+        if controller_stop_slot_disconnected:
+            worker.generation_stop_finished.connect(
+                controller._on_generation_stop_finished
+            )
+        rag_lifecycle.permit_final_cleanup()
+        close_controller_and_wait(controller, qtbot)
+
     qtbot.waitUntil(lambda: sip.isdeleted(worker), timeout=2_000)
     qtbot.waitUntil(
         lambda: sip.isdeleted(thread) or not thread.isRunning(),
