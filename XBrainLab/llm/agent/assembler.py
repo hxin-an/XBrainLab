@@ -406,18 +406,18 @@ Action Contract Catalog (input definitions, never an output array):
         self._latest_context_items = tuple(context_items)
 
         prompt = self._ACTION_SYSTEM_PROMPT
+        prompt += "\n" + STRICT_TOOL_RESPONSE_PROMPT_POLICY.decision_instructions(
+            workflow_stage,
+            include_preprocessing_guidance=any(
+                name in DIRECT_PARAMETER_TOOLS for name in allowed_tools
+            ),
+        )
         prompt += self._TOOL_BLOCK_TEMPLATE.format(
             tools_str=tools_str,
             availability_note=(
                 "Only the listed workflow actions are available at this stage."
                 if allowed_tools
                 else "No executable workflow actions are available at this stage."
-            ),
-        )
-        prompt += "\n" + STRICT_TOOL_RESPONSE_PROMPT_POLICY.decision_instructions(
-            workflow_stage,
-            include_preprocessing_guidance=any(
-                name in DIRECT_PARAMETER_TOOLS for name in allowed_tools
             ),
         )
 

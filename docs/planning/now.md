@@ -2,218 +2,132 @@
 
 最後更新：`2026-09-12`
 
-## Active
+## Active — Quality baseline closure
 
-## Quality baseline closure — approved implementation
+One approved integration PR, small reversible commits, one final native Windows GUI / English
+Assistant manual acceptance. A commit, compaction or pending CI is not completion. No merge without
+exact-source manual acceptance and explicit approval. This file is the sole active plan.
 
-User approved one finite integration PR with small reversible commits and one final native Windows
-GUI / English Assistant manual acceptance. Do not stop after a slice, compaction or pending CI.
-This file is the sole active plan; update next action and blockers here, not in another worklog.
+### Current decision, outcome and boundaries
 
-### Problems, outcomes and authorization
+User approved withdrawing all four failed prompt experiments, retaining cleanup/metrics/safety fixes,
+and planning Assistant reliability separately. This explicitly defers the original ambiguity-fix outcome;
+it does not claim those limitations are fixed or change the frozen evaluator/acceptance threshold.
+No fifth prompt experiment, model/RAG/Host/schema change, new environment/download, visible UI change,
+storage cleanup or merge is authorized by this adjustment.
 
-Independent review confirmed unsafe Poe clean deleting durable output/runs, destructive MOABB capture
---force, two stress scripts leaking native settings, malformed setup JSON shape crashes, navigation
-metrics ending only on the next turn, and two bounded Assistant ambiguity failures. Reachability review
-identified unused CLI automation, Dataset convenience routes, mock tool execution and stale tooling.
-Measured architecture guards repeat expensive scans. Inventory/AST coverage is not deep-read coverage.
+Preserve original-checkout user edits/settings, datasets, shared environments/model/RAG caches and
+retained evidence. Git owns branch/source/dirty/worktree identity. Product/claim boundaries remain in
+`docs/current.md` and `docs/validation/README.md`. Approved cumulative stage complexity exception remains;
+individual slices still require deletion-first review and no additional authoritative owner.
 
-Physically remove approved unused capabilities and fix confirmed defects with behavioral evidence.
-Preserve typed Command/query ownership and visible workflows; no zero-defect or Stable model claim.
-Latest fetched main is the starting baseline. Original checkout edits, root settings.json, datasets,
-shared environments/caches and retained handoff evidence are protected. No downloads, new environments,
-WSL compaction, broad cleanup or termination of unrelated processes.
+### Retained scope and evidence
 
-User explicitly approved JSON headless CLI and exclusive Python adapter/export retirement. No legacy
-folder, shim, forwarding entrypoint, replacement control plane or additional authoritative owner.
-UI permission covers invisible deletion of unreachable folder/BIDS routes and tests/guards only;
-keep actual Import Data file/folder/BIDS/recipe behavior, layout and copy.
-Minimal prompt correction is allowed for ambiguous_en and generic_filter_selection: fixed model and
-revision, tool contracts, RAG, frozen 81 cases and scorer; no Host semantic rescue. On 2026-09-12 the
-user explicitly authorized two additional prompt revisions after candidates 1 and 2 failed: candidates
-3 and 4 only. Unresolved required cases after this renewed budget are a decision blocker, not completion.
-User approved this one-stage PR cumulatively exceeding 1,500 production LOC if necessary. Each slice
-still receives complexity review: deletion candidates, owners before/after, +/-/net LOC and rollback.
+- Physically retired JSON CLI, exclusive automation adapter and six convenience exports; no shim/legacy
+  replacement. Valuable confirmation/split/manual-training protection uses typed Commands. Baseline
+  108 passed; retained Command/import-boundary suite 103 passed. Independent review found no caller
+  left behind. Unknown external convenience API users intentionally unsupported.
+- Deleted unreachable Dataset folder/BIDS delegates; actual Import Data folder/BIDS catalog/subject
+  selection retained. Focused 281 and active-path subset 78 passed; guards/negative fixtures match seven
+  actual facades. UI authorization covers invisible deletion only, no layout/copy changes.
+- Product/evaluator share formal 18-tool metadata; mock execution/state and exclusive tests removed.
+  Evaluator still stops at execution boundary. Metadata parity and 213 baseline tests passed; consumer
+  suite 292 passed. Matching navigation terminal now finishes metrics immediately: two pre-fix RED
+  cases and 15 passing tests include real Manager/Controller callbacks and worker cleanup.
+- Removed unsafe Poe clean and MOABB --force; existing capture directories rejected. Both native stress
+  scripts isolate settings. Windows setup tolerates malformed JSON shapes without rewriting settings.
+  Original-function retrospective check: 9 expected failures, 3 unaffected passes; current combined
+  safety/prompt/evaluator check 198 passed. Not a claim that original implementation was test-first.
+- Removed unused remote SDK group/seven exclusive packages, obsolete CI branch triggers and broken
+  wheel test entrypoints; real repo test commands/gates retained. Lock check passed, no retained version
+  changes/installations. Four weak seed tests mapped to 9 passing RNG replay/input-integrity tests.
+  AST cache rejected: ~1.2s saved for ~161 MB extra peak memory. No runtime acceleration claim.
+- CI exposed capture_config import before native core guard in Linux scripts and Windows/macOS
+  lifecycle jobs. Import moved behind same fail-closed guard: two existing tests RED, then 4 safety/
+  order/isolation tests passed. Independent diagnosis confirmed one shared cause. No weakened gate.
 
-### Authorized slices and focused acceptance
+Counts overlap, not a unique total. Broad Windows Assistant run: 1,425 passed, 30 fake-cache MAX_PATH
+failures. Short owned temp paths resolved them (166 passes, then 29 RAG-security passes; two POSIX skips),
+without product/assertion changes. Exclude the old editable checkout's scripts namespace only within the
+test process; never edit shared .pth. Source environment matches the candidate lock without installation.
 
-1. **CLI retirement [implemented/reviewed; integration pending]**: delete headless JSON CLI, application automation adapter and six
-   exports, plus exclusive tests. First establish passing characterization; migrate unique confirmation,
-   interpretation and deferred split/training protection to typed Commands. Check dynamic registration,
-   exports, scripts, docs and tests. Preserve admission/mutation/publication owners.
-2. **Safety/setup/isolation [implemented/reviewed; integration pending]**: remove unsafe Poe clean task; remove destructive MOABB --force,
-   reject all existing capture output directories and require fresh runs. Reuse isolated capture config
-   in both native stress scripts. Normalize malformed setup JSON shapes to existing default without
-   rewriting settings or changing valid model selection. Red/green tests cover results preservation,
-   rejected overwrites and configuration restoration on success/failure.
-3. **Dataset unused routes [implemented/reviewed; integration pending]**: characterize real Import Data paths, delete unused folder/BIDS
-   delegates and exclusively reachable implementation/tests/required facade guards. Retain real BIDS
-   subject selection. Run identical characterization and relevant architecture negative fixtures.
-4. **Assistant registry/terminal/ambiguity [registry/terminal implemented; blocked after candidate 4]**: evaluator uses real registry metadata with its
-   existing execution-suppressed harness; prove schema/description/membership parity before removing mock
-   execution capability and exclusive tests. Navigation metrics finish on matching terminal only;
-   cover success/failure/stale/duplicate callbacks and real UI callback boundary. Correct two ambiguity
-   cases within the renewed two-candidate budget; run full frozen evaluation without positive/provenance regression.
-   Separate raw-model and product scores; model evaluation does not prove real command execution.
-5. **Tooling/test quality/scan cost [implemented; cache optimization rejected]**: remove unused remote SDK dependency group and regenerate
-   lock without unrelated upgrades; remove dead integration-branch CI triggers/exclusive tests and broken
-   packaged test-* entries, retaining repo commands and necessary gates. Remove only mapped duplicate
-   tests with replacement evidence. Optimize repeated guard reading/parsing with before/after measurements,
-   unchanged scope and negative diagnostics; no general AST framework, weakened gate or unmeasured
-   complexity. Revert optimization without reproducible benefit.
-6. **Integration/review/handoff [pending]**: non-author review of physical deletion, safety/state and
-   behavioral test quality, then reconcile checklist against actual diff and evidence. Update only changed
-   canonical truth/decisions. Applicable exact-commit handoff registry: required CI, source-diverse data,
-   platform/native UI and Assistant. Prior green evidence cannot substitute. Report production/scripts/tests
-   +/-/net separately, actual deep-read coverage and limitations.
+### Prompt withdrawal — implementation now
 
-Commits are independent rollback units. Validate shared seams early with focused checks; do not repeat
-equivalent full local regression already supplied by same-head CI. Native tests use timeouts, POSIX core
-disabled, existing Windows environment and isolated settings. Unrelated review findings do not expand scope.
+Four full frozen 81-case runs failed despite focused tests and independent code review. Each retained
+36/36 positives and 10/10 + 5/5 origin safety. Product no-action / clarification outcomes:
+candidate 1 23/24 + 7/7; candidate 2 22/24 + 4/7; candidate 3 23/24 + 3/7; candidate 4 22/24 + 6/7.
+Each introduced regressions. Tokenizer inspection ruled out truncation for the examined multi-action
+case (2,501/7,680 tokens); this does not prove every possible prompt must fail.
+Reports remain in ignored `build/dev-artifacts/candidate1` through `candidate4`; source identities,
+hashes, failures and review details are retained in Git history/PR #140, not active dispatch.
 
-### Handoff and stop condition
+1. Restore `prompt_policy.py` text and `assembler.py` placement exactly to main; restore only exclusive
+   experiment assertions. Preserve tests' single-registry migration and all cleanup/metrics/safety fixes.
+   Callers, typed Commands, publication/admission owners and visible UI remain unchanged.
+2. Verify exact main equality for both production files; run the same prompt/assembler/evaluator/export
+   tests and adjacent navigation/registry protection. Previously passing 151 tests are characterization;
+   do not invent a RED test for an approved withdrawal.
+3. Commit/push the bounded withdrawal and verify the restored prompt on the clean exact candidate with
+   the unchanged frozen bounded model gate. Prior accepted evidence is not a fresh run; disclose known
+   baseline limitations instead of renaming them fixes.
+4. Complete same-head CI (source-diverse/platform/visual evidence), independent scope review and
+   missing native Assistant journey evidence. Reuse CI instead of equivalent full local regression.
+5. Launch native Windows with one PowerShell log, give restart command and one manual checklist
+   (import/preprocess, subject multi-plan training, stop/rerun, reopen results, Saliency/SmoothGrad,
+   English Assistant). Confirm response, hand back; do not monitor user operations or merge.
 
-After all work, required reviews and gates pass, launch native Windows app with one PowerShell log and
-give restart command plus one checklist: import/preprocess, subject split/multiple plans, stop/rerun,
-result reopening, Saliency/SmoothGrad and English Assistant clarification/execution. Confirm response,
-then hand back without monitoring. No per-slice manual handoff. New authority or unavailable necessary
-resources can block; compaction and pending CI are not completion. Merge only after explicit exact-source
-manual acceptance and merge approval; afterward remove only owned disposable stage worktree/artifacts,
-preserving data, shared environments and necessary evidence.
+Stop condition: revised cleanup scope and applicable gates complete, then one manual handoff; or
+genuine new authority/resource blocker. Known ambiguity limitations are explicitly deferred, not fixed.
+Rollback alone is not final integration acceptance.
 
-### Next action / checkpoint
+### Next action
 
-CLI retirement committed: baseline 108 passed; retained/migrated Command and import boundary suite
-103 passed. Independent deletion review found no missed internal callers. Production adapter/API
-deletion: +2/-800; CLI script -242. Unknown external Python consumers intentionally unsupported.
+Authorized withdrawal is implemented: both production files and the decision-contract test match main;
+the context-assembler test differs only by its retained single-registry migration. Focused restored prompt/
+assembler/evaluator/export plus Controller/navigation/registry checks: 428 passed (one third-party MNE
+deprecation warning). Independent withdrawal review confirmed byte equality, retained cleanup and no
+contract/scope expansion; no blocker. Next: commit/push, exact-source bounded model run
+and applicable CI/native evidence, then one integrated handoff. No fresh model/CI acceptance yet.
+The next Assistant work below is a planning proposal, not permission for new product changes.
 
-Dataset unreachable routes implemented and reviewed by root: production +2/-94; active Folder/BIDS
-flow retained. Focused 281 passed and active-path subset 78 passed. Guards updated with their negative
-fixtures, not weakened to keep obsolete facades.
+## Candidate — Assistant reliability repair plan (not active implementation)
 
-Safety/setup/isolation implemented; reviewer found no blocker. Initial agent did not obtain pre-fix RED;
-root subsequently loaded original functions from Git in memory: 9 targeted failures for malformed JSON,
-removed --force and stress settings leakage, 3 unaffected cases passed. Current-source combined safety/
-prompt/evaluator check 198 passed, including output sentinel preservation and stress exception cleanup.
-This is retrospective regression-sensitivity evidence, not a claim of test-first execution.
+Goal: reliable selection and parameter-collection continuity with no unexpected workflow side effects.
+LOC, static pass, literal prompt assertions or one improved score are not completion criteria.
 
-Registry consolidation: prechange 18-tool name/description/schema/confirmation parity passed and
-213 baseline tests passed; postchange tools/evaluator/consumer suite 292 passed. Independent review
-found no lost product contract or execution-suppression boundary. Navigation metrics: 2 pre-fix RED
-cases; 15 focused tests pass including real Manager/Controller diagnostic navigation and physical
-worker cleanup, with no model load.
+1. **Mechanism audit before choosing a fix.** Trace baseline/retained failures from full rendered input/
+   RAG through raw output, parser, capability/provenance, typed receipt, GUI terminal and visible response.
+   Separate intent errors, missing clarification fields, invalid/stale admission and evaluator assumptions.
+   Reproduce a bounded set through normal ChatPanel with real execution, using no patient data.
+   No Host intent guessing or new model experiments in this diagnostic phase.
+2. **Approve a repair boundary.** Select one evidence-backed hypothesis and existing owner. Explicitly
+   decide behavior for unspecified/multiple actions, missing/partial values, correction/cancel and
+   unavailable tools. Tool/schema/confirmation/visible-flow or model/RAG changes require separate
+   approval; current source/tests do not ratify target. A larger model is neither proven necessary nor
+   authorized. No generic evaluator platform, control plane or parallel state owner.
+3. **Separate development and acceptance.** Keep frozen 81/scorer unchanged as regression evidence.
+   Before implementation, define supplementary development cases and disjoint reviewer-owned holdout
+   by failure family. Never tune on the holdout or shrink its denominator; disclose prior exposure to
+   frozen cases. Reuse existing runners, review any necessary bounded extension, and agree a candidate/
+   resource budget before execution. Do not repeatedly add two more prompt attempts after failure.
+4. **Implement/review one coherent repair.** Prefer deletion/reuse; test failing observable behavior
+   through actual owners, then passing behavior. Mock external inference only in unit tests; real-model/
+   native evidence cannot substitute fake generation or preapproved GUI terminals. Independent reviewer
+   checks mechanism, meaningful tests, complexity and scope, not only summary.
+5. **One integrated acceptance.** Require 36/36 positive, 10/10 explicit origin, 5/5 missing guards,
+   5/5 direct clarification admission, 24/24 product no-action and 7/7 clarification. Holdout must show
+   zero unexpected execution/confirmation/navigation/mutation and correct authorized continuations.
+   Separate raw-model/Host/product outcomes. Then same-source normal ChatPanel→GUI→Command journey,
+   relevant cancel/stale cleanup, applicable CI and one final Windows GUI/English Assistant acceptance.
+   No Stable/generalized-safety claim from bounded cases alone. Unsupported mechanism or exhausted
+   budget means a documented decision checkpoint, not weaker gates or automatic extra prompt edits.
 
-Scan-cost investigation complete; no AST cache retained. Per-call parse reuse reduced ~864 parses to
-279, but independent fresh-process measurement found baseline ~5.01s / 62.5 MB peak versus cached
-~3.83s / 223.6 MB peak. The ~161 MB peak increase outweighs ~1.2s saved; discard that optimization
-and its cache-only test, preserve original scan coverage/implementation. Other measured guard had no
-repeated parse worth changing. Four weak seed checks are covered by the existing 9 passing actual
-RNG replay/input-integrity tests and removed. This stage does not claim runtime speed improvement.
-
-Tooling deletion and lock regeneration completed; no packages installed or environments created.
-Removed seven exclusive remote SDK/transitive packages, no remaining package versions changed.
-Prompt candidate 1 moves explicit ambiguity guidance before tool selection; focused tests pass.
-Independent review found one obsolete literal prompt assertion; it now checks the replacement
-ambiguity rule precedes tool selection and forbids premature pending-action collection.
-Candidate 1 real model evaluation completed on clean b38b729c: frozen 81 cases, positive 36/36,
-explicit origin 10/10, missing origin 5/5, product precision 23/24, clarification 7/7. The original
-ambiguous_en and generic_filter_selection now pass, but multi_en_alt newly calls set_reference for a
-two-action request. Bounded gate fails; original report retained under build/dev-artifacts/candidate1.
-Candidate 2 (final authorized prompt attempt): put the existing multi-action no-execution rule before
-single-action selection. No Host, registry, model, RAG, frozen cases or scorer changes. Focused prompt
-contract test must preserve this ordering, followed by the full frozen 81 evaluation and same-head CI.
-Independent final diff review found no code blocker or missed retired caller; automatic gates remain open.
-
-Candidate 2 completed on clean cc3c77560c2708fd814c1b355d9f899f4f3f3597: frozen 81/81,
-positive 36/36, explicit/missing origin 10/10 and 5/5, but direct clarification admission 3/5,
-product no-action 22/24 and clarification execution boundary 4/7. Bounded gate failed on multi_en,
-multi_en_alt, clarify_bandpass_en, clarify_notch_en and partial_bandpass_accumulation. Raw model
-still proposes one action from each two-action request; two direct clarification starts now return
-message-only without the required Host receipt. Do not conflate missing-origin safety with direct
-clarification admission. Both raw reports remain under build/dev-artifacts/candidate1 and candidate2.
-
-RESUMED by explicit user authorization: two additional prompt candidates, no model/RAG/Host/scorer/
-frozen-case changes. Review actual assembled prompt and prior raw decisions before candidate 3; prefer
-clarifying the existing decision sequence over accumulating repeated rules. Existing failed frozen runs
-are the behavioral RED baseline. Update focused prompt contract tests for the intended invariant, then
-run full 81-case evaluation on each clean candidate. Acceptance still requires the original ambiguity
-fixes without product/positive/provenance/clarification regressions. Stop for a new decision if candidate 4
-also fails; never silently roll back the outcome, lower gates or deliver the failing source.
-Other implementation slices remain committed/reviewed. CI at e2c2310e revealed a scripts-shard failure;
-inspect exact failure and repair only an in-scope regression or validation-fixture defect. Static quality,
-source-diverse data, UI visuals, Windows source smoke and most shards passed; final source still needs
-all applicable gates. Native real-model journey/manual launch has not run. No new visible UI authorization.
-
-Candidate 3 hypothesis: tokenizer-only product-RAG dossier for multi_en_alt shows 2,501 input tokens
-against 7,680 available, with no context dropped. Rules precede the catalog and its final "choose it now"
-reminder. Move the unchanged strict decision instructions after the catalog so the final system-level
-instructions include ambiguity/multi-action/missing-value distinctions. No new prompt text or policy.
-Change only assembler placement and the directly relevant ordering characterization; full frozen model
-evaluation, not that text assertion, determines whether the hypothesis works.
-Candidate 3 ordering assertion: 1 targeted RED before the move, then 151 prompt/assembler/evaluator/
-export tests passed. CI scripts regression is the new capture_config import preceding native core guard;
-move only that import behind the guard. Two existing safety tests were RED; safety/order plus stress
-isolation success/failure are now 4 passed. No guard was weakened and no new test-only workaround added.
-
-Candidate 3 full frozen run on clean 72063a50a9b2f9e285639ff336686b8e29d8dbd0 failed:
-positive 36/36, origin 10/10 and 5/5, direct clarification admission 3/5, product no-action 23/24,
-clarification 3/7. The remaining multi-action response executes the first step; bandpass/notch questions
-omit the required typed clarification fields. Generic filter selection also asks a message-only follow-up
-without a receipt. Preserve build/dev-artifacts/candidate3 report/log; ordering alone did not fix the gap.
-Candidate 4 (last renewed attempt) keeps the ordering and existing contracts, clarifies that one tool per
-reply does not permit the first step of a multi-action request, and replaces the vague rule-3 field sentence
-with explicit required-field meanings and the message-only distinction. No example answers or frozen-case
-text, no Host/schema changes. Focused contract protection followed by the full unchanged 81-case run.
-Candidate 4 focused evidence: 1 RED / 10 unaffected passes before wording change; after the change,
-151 prompt/assembler/evaluator/export tests pass. Shared native Windows environment verified against
-the current lock without installing or changing anything. Independent review confirmed third-candidate
-prompt-only placement and fourth-candidate consistency with unchanged schema/Host admission. No code
-blocker found; actual model outcome remains unknown before the fixed-source run.
-
-Candidate 4 completed on clean 46aa5575b5f6ebb462798ea18d07fb13124f8d69; all 81 frozen cases
-and file hashes match. Positive 36/36; origin safety 10/10 and 5/5; direct clarification admission 4/5;
-product no-action 22/24; clarification execution boundary 6/7. Bounded gate FAILED on multi_en,
-multi_en_alt and clarify_notch_en. The original ambiguity cases now pass, but these regressions prevent
-acceptance. Multi-action requests still propose their first action; the notch question lacks typed fields
-and therefore creates no Host receipt. This is not a context truncation, registry or missing-model problem.
-Reports retained under build/dev-artifacts/candidate3 and candidate4; full stdout/stderr logs also retained.
-Report SHA-256: candidate3 007a8c9c09c6f82fb4a9d155704fb5a7155ae40c8352624a4dfdc17b5dcb0af1;
-candidate4 a0c76ce24f66561281c12e3e3d6b3ef41dffb23c3eedffe024093c479a6a913b.
-
-BLOCKED: renewed two-candidate budget is exhausted, with no passing candidate. No fifth prompt, changed
-model/RAG/Host/schema/scorer, weakened acceptance or automatic deferral is authorized. Recommend user
-decision on rolling back the four failed prompt experiments while retaining verified cleanup/metrics/
-safety fixes, and defining Assistant reliability as a separate bounded repair. Do not perform that rollback
-or declare the stage complete without approval. Native real-model journey and manual launch have not run.
-CI for 46aa5575 continues independently (no failures observed at checkpoint; several jobs pending), but
-even all-green CI would not resolve this model blocker. Keep the draft PR unmerged and not handoff-ready.
-
-Shared environment editable .pth exposed old scripts namespace: tests use process-only path exclusion,
-not environment edits. New worktree .git pointer is relative so WSL and native Windows Git agree.
-Broad Assistant check: 1,425 passed, 30 failed, 2 skipped; all failures were fake Hugging Face
-snapshot paths exceeding Windows MAX_PATH. Short owned temporary root rerun: 166 passed, 5 same-path
-failures, 2 skipped. Fresh shorter basetemp for the remaining RAG security file: 29 passed, 2 POSIX-only
-skips. No product change or weakened assertion was needed; overlapping counts are not a unique total.
-Next: obtain the scope decision above. PR #140 remains a draft integration vehicle, not a manual-testing
-or merge request. This docs-only blocker checkpoint is committed locally; defer its push until the next
-authorized change to avoid restarting pending exact-candidate CI merely for a status update. The PR body
-records the same blocker. No final gates/manual acceptance yet.
-
-三核心責任重構已完成 Windows GUI／English Assistant 手測，並經使用者明確同意合併
-[PR #138](https://github.com/hxin-an/XBrainLab/pull/138)。不再把該階段的施工切片或 pending gates
-當作 active dispatch；實作、review、驗證與驗收紀錄由合併 PR、Git history 和 exact-source evidence 保存。
-
-`main` 仍是唯一產品基線；當前 SHA、branch、dirty state 與 worktree inventory 從 Git 取得，
-不從這份文件推定。原始 checkout 的使用者修改、本機設定、原始資料與共用環境不屬於本輪清理。
+This proposal does not block the explicitly revised cleanup scope or certify Assistant readiness.
+New implementation begins only after diagnostic outcome, scope and budget are approved.
 
 ## 已合併基準的邊界
 
-- 三核心保留正式 Command／publication、Qt runtime coordination 與 UI composition 責任，
-  不以核心行數仍大判定必須繼續拆分；目前責任邊界見
-  [Backend](../architecture/backend.md)、[Assistant](../architecture/agent.md) 與
-  [UI](../architecture/ui.md)。
-- Assistant 維持已接受的 bounded baseline，不宣稱 Stable promotion 或零缺陷；
-  產品與證據限制見 [Current](../current.md) 和 [Validation](../validation/README.md)。
-- Panel navigation metrics 缺口已納入本輪，依上方施工與驗證狀態追蹤。
-
-其他方向見 [Roadmap](roadmap.md)，不自動擴大以上已授權施工範圍。
+三核心責任重構已經 Windows GUI／English Assistant 手測並同意合併
+[PR #138](https://github.com/hxin-an/XBrainLab/pull/138)。`main` 是唯一產品基線；舊證據不代替新 source
+驗證。責任邊界見 `docs/architecture/`；Assistant 保留已接受的 bounded baseline 限制，不宣稱 Stable
+或零缺陷。其他候選方向見 [Roadmap](roadmap.md)。

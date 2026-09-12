@@ -46,32 +46,7 @@ def test_prompt_policy_describes_typed_clarification_for_user_responses() -> Non
         in instructions
     )
     assert "ask which operation the user wants" in instructions
-    selection_rule = instructions.split("1. ", 1)[1].split("2. ", 1)[0]
-    assert "Broad processing requests and unspecified filtering" in selection_rule
-    assert (
-        "Use message only, without pending_action or missing_inputs" in selection_rule
-    )
-    assert "Do not choose channel selection, a default filter" in selection_rule
-    assert selection_rule.index("ask which operation") < selection_rule.index(
-        "Only call it"
-    )
-    assert "Do not execute any part of a multi-action request" in selection_rule
-    assert selection_rule.index("which single operation") < selection_rule.index(
-        "Only call it"
-    )
-    assert "does not permit executing the first step" in selection_rule
-    missing_rule = instructions.split("3. ", 1)[1].split("4. ", 1)[0]
-    assert (
-        "all three fields: message, pending_action, and missing_inputs" in missing_rule
-    )
-    assert "pending_action is the exact requested action name" in missing_rule
-    assert (
-        "missing_inputs is an array of its missing required parameter names"
-        in missing_rule
-    )
-    assert (
-        "A message-only question cannot start this parameter collection" in missing_rule
-    )
+    assert "For an ambiguous action request" in instructions
     assert "If no specific operation was requested" not in instructions
 
 

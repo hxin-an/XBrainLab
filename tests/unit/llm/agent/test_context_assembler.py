@@ -538,17 +538,10 @@ def test_prompt_policy_consolidation_preserves_publication_and_decision_contract
     assert '"name": "switch_panel"' in prompt
     assert '"name": "respond_to_user"' in prompt
     assert "tool_input_clarification" not in prompt
-    assert (
+    assert prompt.rstrip().endswith(
         "For a clear enabled action, choose it now; never explain that the user "
         "should call an internal tool or function.\n"
         "Only the listed workflow actions are available at this stage."
-    ) in prompt
-    decision_position = prompt.index("STRICT RESPONSE CONTRACT - DECISION ORDER")
-    assert prompt.count("STRICT RESPONSE CONTRACT - DECISION ORDER") == 1
-    assert decision_position > prompt.index("Final output reminder:")
-    assert decision_position > prompt.index("Fallback response contract:")
-    assert prompt.rstrip().endswith(
-        "Never use a Markdown code fence or prose outside the object."
     )
     assert "Never claim that an action completed" in prompt
 
