@@ -12,6 +12,7 @@ from typing import Any, cast
 from unittest.mock import MagicMock, call, patch
 
 import pytest
+from PyQt6 import sip
 from PyQt6.QtCore import QObject, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QMainWindow,
@@ -3291,6 +3292,7 @@ class TestAgentManagerMethods:
 
     def test_debug_tool_flow_surfaces_backend_blocked_result(self, qtbot):
         """UI -> agent -> backend command flow reports shared blocked reason."""
+        from tests.qt_lifecycle import close_controller_and_wait
         from XBrainLab.backend.study import Study
         from XBrainLab.llm.agent.controller import LLMController
         from XBrainLab.ui.components.agent_manager import AgentManager
@@ -3300,27 +3302,25 @@ class TestAgentManagerMethods:
         qtbot.addWidget(main_window)
         study = Study()
 
-        with (
-            patch("XBrainLab.llm.agent.controller.AgentWorker") as MockWorker,
-            patch("XBrainLab.llm.agent.controller.QThread") as MockThread,
-            patch("XBrainLab.llm.agent.controller.LLMController.initialize"),
-        ):
-            MockWorker.return_value.generation_thread = None
-            MockThread.return_value.isRunning.return_value = False
-
+        with patch("XBrainLab.llm.agent.controller.LLMController.initialize"):
             controller = LLMController(study)
-            runtime = _ReadyTestRuntime(controller)
-            manager = cast(
-                Any,
-                AgentManager(
-                    main_window,
-                    study,
-                    runtime_lifecycle=cast(AssistantRuntimeLifecycle, runtime),
-                ),
-            )
-            manager.init_ui()
-            assert manager.chat_panel is not None
+            worker = controller.worker
+            worker_thread = controller.worker_thread
+            assert worker is not None
+            manager_ready = False
             try:
+                runtime = _ReadyTestRuntime(controller)
+                manager = cast(
+                    Any,
+                    AgentManager(
+                        main_window,
+                        study,
+                        runtime_lifecycle=cast(AssistantRuntimeLifecycle, runtime),
+                    ),
+                )
+                manager.init_ui()
+                manager_ready = True
+                assert manager.chat_panel is not None
                 manager.start_system()
                 submission = manager._assistant_turn_state.begin_submission()
                 correlation = AssistantTurnCorrelation(
@@ -3344,7 +3344,18 @@ class TestAgentManagerMethods:
                     )
                 )
             finally:
-                manager.close()
+                if manager_ready:
+                    manager.close()
+                close_controller_and_wait(controller, qtbot)
+                qtbot.waitUntil(
+                    lambda: sip.isdeleted(worker),
+                    timeout=2_000,
+                )
+                qtbot.waitUntil(
+                    lambda: sip.isdeleted(worker_thread)
+                    or not worker_thread.isRunning(),
+                    timeout=2_000,
+                )
 
         messages = [message["content"] for message in manager.chat_controller.messages]
         visible = "\n".join(messages)

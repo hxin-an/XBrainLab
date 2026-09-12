@@ -139,10 +139,8 @@ _DIRECT_ACTION_PANEL_TARGETS = {
 logger = logging.getLogger(__name__)
 
 
-WORKER_GENERATION_SHUTDOWN_WAIT_MS = 2000
 WORKER_SHUTDOWN_RETRY_INTERVAL_MS = 100
 WORKER_SHUTDOWN_TIMEOUT_MS = 5000
-_QT_THREAD_TYPE = QThread
 
 _BLOCKED_TOOL_ERROR_TYPES = frozenset(
     {
@@ -2059,13 +2057,10 @@ class LLMController(QObject):
 
         self._closing = True
         self._prepare_shutdown_once()
-        worker = cast(Any, getattr(self, "worker", None))
+        worker = self.worker
         if worker is None:
             self._request_worker_thread_exit()
             return self._closed and self._rag_shutdown_clean
-
-        if not isinstance(worker, QObject):
-            return self._close_non_qobject_worker(worker)
 
         if sip.isdeleted(worker):
             self._request_worker_thread_exit()
@@ -2098,25 +2093,6 @@ class LLMController(QObject):
                     "controller shutdown will remain pending."
                 )
 
-    def _close_non_qobject_worker(self, worker: Any) -> bool:
-        """Keep lightweight test doubles retryable without a Qt signal contract."""
-        try:
-            result = worker.shutdown(wait_ms=WORKER_GENERATION_SHUTDOWN_WAIT_MS)
-        except Exception as exc:
-            safe_unexpected_failure(
-                logger,
-                exc,
-                boundary="assistant_controller_shutdown",
-                operation="close_non_qobject_worker",
-            )
-            self._shutdown_phase = _ControllerShutdownPhase.OPEN
-            return False
-        if result is False:
-            self._shutdown_phase = _ControllerShutdownPhase.OPEN
-            return False
-        self._request_worker_thread_exit()
-        return self._closed and self._rag_shutdown_clean
-
     @pyqtSlot()
     def _request_worker_shutdown(self) -> None:
         """Queue one worker-owned cleanup attempt without entering a nested loop."""
@@ -2125,8 +2101,8 @@ class LLMController(QObject):
             return
         if self._shutdown_phase is not _ControllerShutdownPhase.WORKER_STOPPING:
             return
-        worker = cast(Any, getattr(self, "worker", None))
-        if worker is None or not isinstance(worker, QObject) or sip.isdeleted(worker):
+        worker = self.worker
+        if worker is None or sip.isdeleted(worker):
             self._request_worker_thread_exit()
             return
         try:
@@ -2155,13 +2131,7 @@ class LLMController(QObject):
             return
         self._shutdown_phase = _ControllerShutdownPhase.THREAD_STOPPING
         self._shutdown_retry_timer.stop()
-        thread = cast(Any, getattr(self, "worker_thread", None))
-        if not isinstance(thread, _QT_THREAD_TYPE):
-            quit_thread = getattr(thread, "quit", None)
-            if callable(quit_thread):
-                quit_thread()
-            self._finalize_shutdown()
-            return
+        thread = self.worker_thread
         if sip.isdeleted(thread):
             self._finalize_shutdown()
             return
@@ -2202,8 +2172,8 @@ class LLMController(QObject):
             WORKER_SHUTDOWN_TIMEOUT_MS,
         )
         self._shutdown_timeout_timer.stop()
-        worker = cast(Any, getattr(self, "worker", None))
-        if isinstance(worker, QObject) and not sip.isdeleted(worker):
+        worker = self.worker
+        if worker is not None and not sip.isdeleted(worker):
             self._disconnect_worker_callbacks(
                 worker,
                 preserve_shutdown_terminal=True,

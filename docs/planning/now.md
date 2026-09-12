@@ -37,11 +37,11 @@ LOC quota or coverage-denominator manipulation. Update the bounded slice record 
 
 | Batch | Required result | Status |
 | --- | --- | --- |
-| A Map | Every responsibility and direct consumer assigned, retain/migrate/delete rationale and baselines | Mapped; final disposition review pending |
-| B Backend | Workflow/composition and monitoring separation; shared lock/admission/publication preserved | B1/B2 committed; B3 validated |
-| C Controller | Non-Qt proposal/interaction/terminal decisions in explicit owners; real harnesses migrated | C1/C2 committed; C3 baseline passed |
+| A Map | Every responsibility and direct consumer assigned, retain/migrate/delete rationale and baselines | Complete; independent cross-boundary review passed |
+| B Backend | Workflow/composition and monitoring separation; shared lock/admission/publication preserved | B1/B2/B3 committed and reviewed |
+| C Controller | Non-Qt proposal/interaction/terminal decisions in explicit owners; real harnesses migrated | C1/C2 committed; C3 implemented and validated |
 | D UI host | Concrete presentation separated; no duplicate runtime/publication/turn decisions | D1/D2/D3 committed and reviewed |
-| E Integration | Independent boundary review, same-source gates, one Windows GUI/Assistant handoff | Not started |
+| E Integration | Independent boundary review, same-source gates, one Windows GUI/Assistant handoff | Review complete; final CI/native model gates next |
 
 At most two non-overlapping workers; main owns common boundaries, source identity, plan and integration.
 High-risk data/locking/cancellation/publication/Qt shutdown changes require independent nonauthor review.
@@ -81,11 +81,13 @@ permission; bounded cleanup follows. No zero-defect or Stable Assistant claim.
 
 Source: build/dev-artifacts/core-responsibility, from merged main 6fbc5d5c. Original dirty checkout,
 accepted complete-baseline app/evidence, user settings/data and shared caches remain protected.
-B3 has passed independent review and its identical characterization/adjacent tests. Commit B3, then
-remove C3's test-only shutdown alternatives and migrate the one UI debug fixture to a real worker.
-Additional real pending-Stop acknowledgement and sole RAG lifecycle cleanup-owner witnesses passed
-before deletion. Then final disposition/diff review, same-head CI and missing native Assistant evidence.
-Responsibility maps are in ignored core-audit. No candidate PR.
+All planned implementation and independent boundary reviews are complete. Commit C3 and canonical
+architecture truth sync, push one integrated candidate and open its PR. Follow exact-head CI through
+all non-skipped success, verifying source-diverse/platform/UI artifacts. Run the missing real bounded
+Assistant baseline and normal ChatPanel journey using the shared native Windows environment/caches.
+Then open the exact clean candidate with manual_windows.ps1, verify response and deliver one GUI/English
+Assistant checklist/restart command. No new manual acceptance or merge permission has been received.
+Responsibility maps are in ignored core-audit; final retained groups and evidence limits are below.
 
 ### B1: delete method-by-method lazy proxy classes
 
@@ -248,7 +250,31 @@ review and canonical same-head integration gates, not another open-ended audit.
 
 C2 committed a55233f0; D3 97b7ba64; next-boundary characterization e8b82ac8. D3 fixture corrected by
 clearing its inherited debug.side_effect; 158 focused cases passed/22.07s. B3 final owner transfer is
-production +35/-35/net 0 across three existing files after formatting; no added authority. Independent
+production +36/-36/net 0 across three existing files after formatting; no added authority. Independent
 review found no blocker. evaluation-owner-post-shutdown-ack-baseline passed 428 cases/37.24s, including
 the same real target substitutions/concurrent catalog cases, pending/unavailable target removal and
 the additional real Qt Stop-ack/RAG cleanup-owner characterization. C3 production is still unchanged.
+
+### Final implementation disposition
+
+C3 removes only test-double shutdown alternatives: production +6/-36/net -30; existing real None/deleted
+worker, RAG retry, timeout and zero-time native-exit fences remain. Deleted mock-close cases map to the
+passing real Qt witnesses, and the real Manager debug fixture now has exception-safe native cleanup.
+Independent C3 review found no blocker. native-shutdown-post-integration passed 542 cases/98.60s;
+core-final-typing passed with zero baseline/observed/new diagnostics (Basedpyright 1.39.2). All changed
+Python files passed Ruff. These are focused immutable-source runs, not final CI/native-model evidence.
+
+Final cross-boundary review found no further in-scope transfer/deletion requirement. Retained:
+
+- ApplicationService: shared admission/locks, coherent publication/recovery, result envelope and distinct
+  two-phase workflow coordination; the four freshness rules are not a generic interchangeable transaction.
+- LLMController: Qt composition, prompt/RAG/generation callbacks and terminal delivery; existing attempt,
+  execution, interaction and turn owners hold their policy/state without a Controller-shaped collaborator.
+- AgentManager: runtime/signal composition, transcript mutation/replay, navigation, concrete interaction
+  transport and Qt parent teardown; dock/projections/staging no longer live redundantly in the host.
+
+Current core lengths are 4,189/2,608/1,847 versus 4,640/2,711/2,136 at the base: core -843 lines.
+Core plus satellites is production +900/-1,155/net -255; tests are intentionally stronger, not constrained
+to shrink. Size is not a clean-architecture or zero-defect claim. Model inference, arbitrary data,
+scientific correctness and hung OS/native-process behavior are not proved by focused tests. One final
+same-source Windows/Assistant handoff remains mandatory; do not stop at this implementation checkpoint.
