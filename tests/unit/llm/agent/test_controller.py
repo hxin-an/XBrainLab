@@ -49,7 +49,10 @@ from XBrainLab.llm.agent.tool_attempt_coordinator import (
     ToolAttemptFeedback,
     ToolAttemptRequest,
 )
-from XBrainLab.llm.agent.tool_execution_coordinator import ToolExecutionOutcome
+from XBrainLab.llm.agent.tool_execution_coordinator import (
+    ToolExecutionCoordinator,
+    ToolExecutionOutcome,
+)
 from XBrainLab.llm.agent.turn import (
     AssistantDebugToolRequest,
     AssistantGenerationEvent,
@@ -113,6 +116,25 @@ def _submit_user_turn(ctrl: Any, text: str) -> AssistantTurnCorrelation:
     )
     ctrl.handle_user_turn(AssistantTurnRequest(correlation=correlation, text=text))
     return correlation
+
+
+def _use_execution_study(ctrl: Any, study: object) -> None:
+    """Replace the fixture's explicitly composed study dependency."""
+    ctrl.study = study
+    _compose_tool_executor(ctrl)
+
+
+def _compose_tool_executor(ctrl: Any) -> None:
+    """Bind the real execution owner after replacing fixture collaborators."""
+    ctrl._tool_execution_coordinator = ToolExecutionCoordinator(
+        ctrl.study,
+        ctrl.registry,
+        ctrl.metrics,
+        block_policy=ctrl._tool_attempt_coordinator,
+        emit_status=ctrl.status_update.emit,
+        emit_application_command_started=ctrl.application_command_started.emit,
+        emit_application_command_completed=ctrl.application_command_completed.emit,
+    )
 
 
 def _tool_outcome(
@@ -562,7 +584,8 @@ def ctrl():
 
         study = MagicMock()
 
-        # Pre-set signal mocks on the class so __init__ can .connect() them
+        # Replace observable outputs after real QObject composition, then rebind
+        # the execution owner's explicit callbacks to those fixture outputs.
         signal_names = [
             "response_presentation_ready",
             "generation_event",
@@ -588,6 +611,7 @@ def ctrl():
         c = LLMController(study)
         for name in signal_names:
             setattr(c, name, MagicMock())
+        _compose_tool_executor(c)
         # Most controller unit tests isolate a later boundary. They use an
         # explicit publication mock so the new publication gate does not hide
         # the behavior under test; dedicated tests above exercise fail-closed
@@ -633,11 +657,7 @@ def test_host_admission_no_longer_blocks_model_before_stage_verification(ctrl):
 def test_missing_decision_is_selected_by_model_before_ui_handoff(ctrl):
     rag = _use_rag_probe(ctrl)
     ctrl._generate_response = MagicMock()
-    publication = MagicMock()
-
-    with patch("XBrainLab.llm.agent.controller.get_application_service") as get_service:
-        get_service.return_value.get_view_publication.return_value = publication
-        _submit_user_turn(ctrl, "Create epochs now.")
+    _submit_user_turn(ctrl, "Create epochs now.")
 
     assert len(rag.requests) == 1
     ctrl._generate_response.assert_not_called()
@@ -650,11 +670,7 @@ def test_state_question_goes_through_strict_model_response_contract(ctrl):
     ctrl._execute_tool_attempt = MagicMock()
     ctrl._generate_response = MagicMock()
     rag = _use_rag_probe(ctrl)
-    publication = MagicMock()
-
-    with patch("XBrainLab.llm.agent.controller.get_application_service") as get_service:
-        get_service.return_value.get_view_publication.return_value = publication
-        _submit_user_turn(ctrl, "What is ready now?")
+    _submit_user_turn(ctrl, "What is ready now?")
 
     assert len(rag.requests) == 1
     ctrl._generate_response.assert_not_called()
@@ -3598,7 +3614,7 @@ class TestExecuteDebugTool:
         registry = ToolRegistry()
         for tool in get_all_tools("real"):
             registry.register(tool)
-        ctrl.study = study
+        _use_execution_study(ctrl, study)
         ctrl.registry = registry
         ctrl._turn_orchestrator.host_turn_generation = None
         ctrl._turn_orchestrator.host_turn_id = None
@@ -3655,7 +3671,7 @@ class TestExecuteDebugTool:
         registry = ToolRegistry()
         for tool in get_all_tools("real"):
             registry.register(tool)
-        ctrl.study = study
+        _use_execution_study(ctrl, study)
         ctrl.registry = registry
         ctrl._turn_orchestrator.host_turn_generation = None
         ctrl._turn_orchestrator.host_turn_id = None
@@ -3692,7 +3708,7 @@ class TestExecuteDebugTool:
         registry = ToolRegistry()
         for tool in get_all_tools("real"):
             registry.register(tool)
-        ctrl.study = Study()
+        _use_execution_study(ctrl, Study())
         ctrl.registry = registry
         ctrl._turn_orchestrator.host_turn_generation = None
         ctrl._turn_orchestrator.host_turn_id = None
@@ -4100,7 +4116,7 @@ class TestOnUserConfirmed:
             )
         )
         assert configured.ok is True
-        ctrl.study = study
+        _use_execution_study(ctrl, study)
         prompt_context = application_surface.get_application_context(
             study,
             "start_training",
@@ -4961,7 +4977,7 @@ class TestProcessToolCallsConfirmation:
 
         study = Study()
         service = get_application_service(study)
-        ctrl.study = study
+        _use_execution_study(ctrl, study)
         publication_generation = service.get_view_publication().generation
         attempt_context = _tool_context_with_generation(
             "start_training",
@@ -5147,7 +5163,7 @@ class TestPipelineGate:
         service.state_snapshot.build = MagicMock(return_value=loaded)
         service.get_state()
         published = service.get_view_publication()
-        ctrl.study = study
+        _use_execution_study(ctrl, study)
         from XBrainLab.llm.agent.tool_attempt_coordinator import (
             ApplicationToolContextSource,
         )
@@ -5234,7 +5250,7 @@ class TestPipelineGate:
         """Execution still obeys ApplicationService after host policy approval."""
         from XBrainLab.backend.study import Study
 
-        ctrl.study = Study()
+        _use_execution_study(ctrl, Study())
         mock_tool = MagicMock()
         ctrl.registry.get_tool.return_value = mock_tool
 
@@ -5261,7 +5277,7 @@ class TestPipelineGate:
         """An unregistered command never reaches the registry implementation."""
         from XBrainLab.backend.study import Study
 
-        ctrl.study = Study()
+        _use_execution_study(ctrl, Study())
         mock_tool = MagicMock()
         mock_tool.execute.side_effect = AssertionError(
             "unregistered path should not run"
@@ -5287,7 +5303,7 @@ class TestPipelineGate:
         """Real Study mapped tools must not bypass ApplicationService on bad args."""
         from XBrainLab.backend.study import Study
 
-        ctrl.study = Study()
+        _use_execution_study(ctrl, Study())
         raw = MagicMock()
         ctrl.study.data_manager.loaded_data_list = [raw]
         ctrl.study.data_manager.preprocessed_data_list = []
@@ -5312,7 +5328,7 @@ class TestPipelineGate:
         """Train is blocked until raw data, split, model, and options exist."""
         from XBrainLab.backend.study import Study
 
-        ctrl.study = Study()
+        _use_execution_study(ctrl, Study())
         mock_tool = MagicMock()
         ctrl.registry.get_tool.return_value = mock_tool
 

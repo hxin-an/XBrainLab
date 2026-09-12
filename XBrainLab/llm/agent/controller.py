@@ -16,7 +16,7 @@ from typing import Any, cast
 from PyQt6 import sip
 from PyQt6.QtCore import QObject, QThread, QTimer, pyqtSignal, pyqtSlot
 
-from XBrainLab.backend.application import CommandName, get_application_service
+from XBrainLab.backend.application import CommandName
 from XBrainLab.llm.action_contracts import (
     AGENT_ACTION_CONTRACTS,
 )
@@ -209,23 +209,6 @@ class _BestEffortGenerationObservers:
             )
 
 
-class _ExpectedPublicationApplicationRuntime:
-    """Immutable tool runtime binding execution to one reviewed publication."""
-
-    def __init__(self, service: Any, generation: int) -> None:
-        self._service = service
-        self._generation = generation
-
-    def get_view_publication(self) -> Any:
-        return self._service.get_view_publication()
-
-    def execute(self, command: Any) -> Any:
-        return self._service.execute(
-            command,
-            expected_publication_generation=self._generation,
-        )
-
-
 class LLMController(QObject):
     """Central controller for the LLM agent.
 
@@ -377,8 +360,13 @@ class LLMController(QObject):
             context_source=ApplicationToolContextSource(self.study),
         )
         self._tool_execution_coordinator = ToolExecutionCoordinator(
-            self,
+            self.study,
+            self.registry,
+            self.metrics,
             block_policy=self._tool_attempt_coordinator,
+            emit_status=self.status_update.emit,
+            emit_application_command_started=self.application_command_started.emit,
+            emit_application_command_completed=self.application_command_completed.emit,
         )
         self._initialize_shutdown_lifecycle()
 
@@ -1907,7 +1895,6 @@ class LLMController(QObject):
         tool_context = context or self._tool_attempt_coordinator.context_for(
             command_name
         )
-        application_runtime = None
         bound_generation = expected_publication_generation
         generation_required = (
             command_name in APPLICATION_COMMAND_TOOLS
@@ -1921,17 +1908,11 @@ class LLMController(QObject):
                 "Backend publication generation is unavailable; execution is "
                 "blocked until workflow state can be verified.",
             )
-        elif bound_generation is not None:
-            service = get_application_service(self.study)
-            application_runtime = _ExpectedPublicationApplicationRuntime(
-                service,
-                bound_generation,
-            )
         return self._tool_execution_coordinator.execute(
             command_name,
             params,
             context=tool_context,
-            application_runtime=application_runtime,
+            expected_publication_generation=bound_generation,
         )
 
     def _handle_tool_result_logic(
