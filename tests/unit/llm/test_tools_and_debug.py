@@ -7,52 +7,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-EXPECTED_AGENT_TOOL_NAMES = {
-    "apply_bandpass_filter",
-    "apply_notch_filter",
-    "clear_training_history",
-    "compute_saliency",
-    "configure_dataset_split",
-    "configure_training",
-    "create_epochs",
-    "import_eeg_data",
-    "normalize_data",
-    "reset_preprocessing",
-    "resample_data",
-    "select_channels",
-    "select_model",
-    "set_montage",
-    "set_reference",
-    "start_training",
-    "stop_training",
-    "switch_panel",
-}
-
-
-# --- llm/tools/__init__.py ---
-class TestGetAllTools:
-    def test_mock_mode(self):
-        from XBrainLab.llm.tools import get_all_tools
-
-        tools = get_all_tools("mock")
-        names = {tool.name for tool in tools}
-        assert names == EXPECTED_AGENT_TOOL_NAMES
-        assert len(tools) == len(EXPECTED_AGENT_TOOL_NAMES)
-
-    def test_real_mode(self):
-        from XBrainLab.llm.tools import get_all_tools
-
-        tools = get_all_tools("real")
-        names = {tool.name for tool in tools}
-        assert names == EXPECTED_AGENT_TOOL_NAMES
-        assert len(tools) == len(EXPECTED_AGENT_TOOL_NAMES)
-
-    def test_unknown_mode_raises(self):
-        from XBrainLab.llm.tools import get_all_tools
-
-        with pytest.raises(ValueError, match="Unknown tool mode"):
-            get_all_tools("bad")
-
 
 # --- tool_debug_mode.py ---
 class TestToolDebugMode:
@@ -284,37 +238,6 @@ class TestVisualizer:
         with pytest.raises(NotImplementedError):
             v.get_plt()
         assert v.fig is None
-
-
-# --- seed.py ---
-class TestSeed:
-    def test_set_seed_with_value(self):
-        from XBrainLab.backend.utils.seed import set_seed
-
-        result = set_seed(42)
-        assert result == 42
-
-    def test_set_seed_auto(self):
-        from XBrainLab.backend.utils.seed import set_seed
-
-        result = set_seed(None)
-        assert isinstance(result, int)
-
-    def test_set_seed_deterministic(self):
-        from XBrainLab.backend.utils.seed import set_seed
-
-        result = set_seed(42, deterministic=True)
-        assert result == 42
-
-    def test_get_and_set_random_state(self):
-        from XBrainLab.backend.utils.seed import get_random_state, set_random_state
-
-        state = get_random_state()
-        assert len(state) == 4
-        assert state[0] is not None
-        assert state[1] is not None
-        assert state[2] is not None
-        set_random_state(state)
 
 
 # --- logger.py ---

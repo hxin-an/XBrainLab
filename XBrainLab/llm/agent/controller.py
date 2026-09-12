@@ -2603,6 +2603,7 @@ class LLMController(QObject):
                 kind=AssistantResponseKind.ERROR,
             )
             outcome = "panel_navigation_failed"
+        self.metrics.finish_turn()
         self.status_update.emit("Ready" if success else "Panel unavailable")
         self.is_processing = False
         self._emit_processing_finished(outcome)

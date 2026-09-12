@@ -63,8 +63,7 @@ def test_registry_is_the_complete_runtime_and_prompt_boundary() -> None:
     )
 
     assert AGENT_ACTION_CONTRACTS.tool_names() == expected
-    assert {tool.name for tool in get_all_tools("mock")} == expected
-    assert {tool.name for tool in get_all_tools("real")} == expected
+    assert {tool.name for tool in get_all_tools()} == expected
     assert frozenset() == READ_ONLY_TOOLS
     assert expected == APPLICATION_COMMAND_TOOLS | UI_REQUEST_TOOLS
     assert frozenset() == APPLICATION_COMMAND_TOOLS & UI_REQUEST_TOOLS

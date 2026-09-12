@@ -161,7 +161,6 @@ def test_start_training_confirmation_reports_disabled_checkpoints() -> None:
     )
 
 
-@pytest.mark.parametrize("mode", ["real", "mock"])
 @pytest.mark.parametrize(
     ("path", "text", "expected"),
     [
@@ -190,9 +189,9 @@ def test_start_training_confirmation_reports_disabled_checkpoints() -> None:
         ("", "Configure training", ToolAttemptAction.VERIFICATION_BLOCKED),
     ],
 )
-def test_current_training_host_path_protection(mode, path, text, expected) -> None:
+def test_current_training_host_path_protection(path, text, expected) -> None:
     registry = ToolRegistry()
-    for tool in get_all_tools(mode):
+    for tool in get_all_tools():
         registry.register(tool)
     source = _ContextSource(
         {"interpretation": {"source_path": "/invented", "source_kind": "folder"}}
@@ -226,10 +225,9 @@ def test_current_training_host_path_protection(mode, path, text, expected) -> No
         assert decision.params["output_dir"] == path
 
 
-@pytest.mark.parametrize("mode", ["real", "mock"])
-def test_retired_file_tools_fail_at_current_prompt_admission(mode) -> None:
+def test_retired_file_tools_fail_at_current_prompt_admission() -> None:
     registry = ToolRegistry()
-    for tool in get_all_tools(mode):
+    for tool in get_all_tools():
         registry.register(tool)
     assembler = ContextAssembler(registry, Study())
     assembler.build_system_prompt()

@@ -1966,6 +1966,35 @@ class TestHandleToolResultLogic:
         ctrl.response_presentation_ready.emit.assert_not_called()
         ctrl.turn_finished.emit.assert_not_called()
 
+    @pytest.mark.parametrize("success", [True, False])
+    def test_switch_panel_terminal_finishes_active_metrics_turn(self, ctrl, success):
+        turn = ctrl.metrics.start_turn()
+        request = AssistantPanelNavigationRequest(
+            target=AssistantPanelTarget.TRAINING,
+            correlation=ctrl._active_turn_correlation(),
+        )
+
+        ctrl.on_panel_navigation_resolved(request, success=success)
+
+        assert ctrl.metrics.current_turn is None
+        assert ctrl.metrics.last_completed_turn is turn
+
+    def test_duplicate_navigation_terminal_cannot_finish_newer_metrics_turn(self, ctrl):
+        request = AssistantPanelNavigationRequest(
+            target=AssistantPanelTarget.TRAINING,
+            correlation=ctrl._active_turn_correlation(),
+        )
+        ctrl.metrics.start_turn()
+        ctrl.on_panel_navigation_resolved(request, success=True)
+        newer_correlation = AssistantTurnCorrelation(generation=2, turn_id=2)
+        ctrl._turn_orchestrator.bind_correlation(newer_correlation)
+        newer_turn = ctrl.metrics.start_turn()
+
+        ctrl.on_panel_navigation_resolved(request, success=True)
+
+        assert ctrl.metrics.current_turn is newer_turn
+        assert ctrl._active_turn_correlation() == newer_correlation
+
     @pytest.mark.parametrize(
         "params",
         [
@@ -3384,7 +3413,7 @@ class TestExecuteDebugTool:
         study = Study()
         service = get_application_service(study)
         registry = ToolRegistry()
-        for tool in get_all_tools("real"):
+        for tool in get_all_tools():
             registry.register(tool)
         _use_execution_study(ctrl, study)
         ctrl.registry = registry
@@ -3441,7 +3470,7 @@ class TestExecuteDebugTool:
         study = Study()
         service = get_application_service(study)
         registry = ToolRegistry()
-        for tool in get_all_tools("real"):
+        for tool in get_all_tools():
             registry.register(tool)
         _use_execution_study(ctrl, study)
         ctrl.registry = registry
@@ -3478,7 +3507,7 @@ class TestExecuteDebugTool:
         private_path.mkdir()
         (private_path / "events.tsv").write_text("fixture", encoding="utf-8")
         registry = ToolRegistry()
-        for tool in get_all_tools("real"):
+        for tool in get_all_tools():
             registry.register(tool)
         _use_execution_study(ctrl, Study())
         ctrl.registry = registry

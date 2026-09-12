@@ -272,8 +272,9 @@ Chat 的 widget、scroll、輸入與 inline setup 契約見[UI 架構](ui.md#cha
 
 `XBrainLab/llm/tools/real/` 是目前真的操作 app 的工具。
 
-`XBrainLab/llm/action_contracts.py`是目前model-facing contract的唯一source；real、mock、debug與
-prompt registry必須精確等於下列18個工具：
+`XBrainLab/llm/action_contracts.py`是目前model-facing contract的唯一source；product、debug、evaluator與
+prompt 共用同一份工具定義，registry必須精確等於下列18個工具。模擬工具與其獨立 workflow state
+已移除；evaluator沿用既有controller harness的執行阻擋，不呼叫工具：
 
 ```text
 import_eeg_data / select_channels / set_montage / create_epochs

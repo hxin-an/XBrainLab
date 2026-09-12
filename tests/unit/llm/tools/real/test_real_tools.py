@@ -7,7 +7,7 @@ from XBrainLab.llm.tools.result_contract import ToolResult, UiRequest, UiRequest
 
 
 def _tool(name: str):
-    return next(tool for tool in get_all_tools("real") if tool.name == name)
+    return next(tool for tool in get_all_tools() if tool.name == name)
 
 
 @pytest.mark.parametrize(
@@ -36,9 +36,8 @@ def test_gui_decision_tools_are_parameter_free_handoffs(tool_name: str) -> None:
     assert result.params["tool_name"] == tool_name
 
 
-@pytest.mark.parametrize("mode", ("real", "mock"))
-def test_switch_panel_preserves_requested_visualization_subview(mode: str) -> None:
-    tool = next(tool for tool in get_all_tools(mode) if tool.name == "switch_panel")
+def test_switch_panel_preserves_requested_visualization_subview() -> None:
+    tool = next(tool for tool in get_all_tools() if tool.name == "switch_panel")
     result = tool.execute(
         object(),
         panel_name="visualization",
@@ -53,9 +52,8 @@ def test_switch_panel_preserves_requested_visualization_subview(mode: str) -> No
     }
 
 
-@pytest.mark.parametrize("mode", ("real", "mock"))
-def test_switch_panel_without_a_panel_returns_input_failure(mode: str) -> None:
-    tool = next(tool for tool in get_all_tools(mode) if tool.name == "switch_panel")
+def test_switch_panel_without_a_panel_returns_input_failure() -> None:
+    tool = next(tool for tool in get_all_tools() if tool.name == "switch_panel")
 
     result = tool.execute(object())
 

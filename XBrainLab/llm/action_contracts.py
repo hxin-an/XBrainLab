@@ -191,7 +191,7 @@ class AgentActionContractRegistry:
         }
 
     def validate_registered_tool_names(self, tool_names: list[str]) -> None:
-        """Fail closed when a real/mock runtime drifts from this registry."""
+        """Fail closed when a runtime drifts from the approved tool names."""
         duplicates = _duplicates(tool_names)
         if duplicates:
             raise ValueError(

@@ -59,6 +59,7 @@ from XBrainLab.llm.core.backends.local import LocalBackend
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.model_catalog import local_model_spec
 from XBrainLab.llm.rag.config import RAGConfig
+from XBrainLab.llm.tools import get_all_tools
 
 EVALUATOR_POSITIVE_CASES = (
     Path(__file__).resolve().parents[3]
@@ -323,6 +324,31 @@ def test_target_cases_cover_each_approved_tool_twice() -> None:
     assert len(cases) == 36
     assert set(counts) == AGENT_ACTION_CONTRACTS.model_tool_names()
     assert set(counts.values()) == {2}
+
+
+def test_evaluator_uses_product_tool_definitions_without_a_second_registry() -> None:
+    actual = target_tool_registry().get_all_tools()
+    expected = get_all_tools()
+
+    assert [
+        (
+            type(tool),
+            tool.name,
+            tool.description,
+            tool.parameters,
+            tool.requires_confirmation,
+        )
+        for tool in actual
+    ] == [
+        (
+            type(tool),
+            tool.name,
+            tool.description,
+            tool.parameters,
+            tool.requires_confirmation,
+        )
+        for tool in expected
+    ]
 
 
 def test_each_positive_case_is_callable_from_its_production_fixture() -> None:

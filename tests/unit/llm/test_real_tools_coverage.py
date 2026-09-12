@@ -7,16 +7,14 @@ from XBrainLab.llm.tools.result_contract import UiRequest, UiRequestKind
 
 
 def test_real_registry_is_exactly_the_approved_target_surface() -> None:
-    tools = get_all_tools("real")
+    tools = get_all_tools()
 
     assert len(tools) == 18
     assert {tool.name for tool in tools} == AGENT_ACTION_CONTRACTS.tool_names()
 
 
 def test_compute_saliency_is_zero_parameter_confirmed_ui_action() -> None:
-    tool = next(
-        tool for tool in get_all_tools("real") if tool.name == "compute_saliency"
-    )
+    tool = next(tool for tool in get_all_tools() if tool.name == "compute_saliency")
 
     assert tool.parameters == {
         "type": "object",

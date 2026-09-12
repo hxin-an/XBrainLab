@@ -471,7 +471,7 @@ class ClarificationAdmission:
 def target_tool_registry() -> ToolRegistry:
     """Build the exact approved target registry used by the product runtime."""
     registry = ToolRegistry()
-    tools = get_all_tools("mock")
+    tools = get_all_tools()
     AGENT_ACTION_CONTRACTS.validate_registered_tool_names([tool.name for tool in tools])
     for tool in tools:
         registry.register(tool)
