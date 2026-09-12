@@ -48,7 +48,7 @@ still receives complexity review: deletion candidates, owners before/after, +/-/
 3. **Dataset unused routes [implemented/reviewed; integration pending]**: characterize real Import Data paths, delete unused folder/BIDS
    delegates and exclusively reachable implementation/tests/required facade guards. Retain real BIDS
    subject selection. Run identical characterization and relevant architecture negative fixtures.
-4. **Assistant registry/terminal/ambiguity [registry/terminal implemented; model evaluation pending]**: evaluator uses real registry metadata with its
+4. **Assistant registry/terminal/ambiguity [registry/terminal implemented; ambiguity blocked at two-candidate limit]**: evaluator uses real registry metadata with its
    existing execution-suppressed harness; prove schema/description/membership parity before removing mock
    execution capability and exclusive tests. Navigation metrics finish on matching terminal only;
    cover success/failure/stale/duplicate callbacks and real UI callback boundary. Correct two ambiguity
@@ -123,14 +123,30 @@ single-action selection. No Host, registry, model, RAG, frozen cases or scorer c
 contract test must preserve this ordering, followed by the full frozen 81 evaluation and same-head CI.
 Independent final diff review found no code blocker or missed retired caller; automatic gates remain open.
 
+Candidate 2 completed on clean cc3c77560c2708fd814c1b355d9f899f4f3f3597: frozen 81/81,
+positive 36/36, explicit/missing origin 10/10 and 5/5, but direct clarification admission 3/5,
+product no-action 22/24 and clarification execution boundary 4/7. Bounded gate failed on multi_en,
+multi_en_alt, clarify_bandpass_en, clarify_notch_en and partial_bandpass_accumulation. Raw model
+still proposes one action from each two-action request; two direct clarification starts now return
+message-only without the required Host receipt. Do not conflate missing-origin safety with direct
+clarification admission. Both raw reports remain under build/dev-artifacts/candidate1 and candidate2.
+
+BLOCKED: both authorized prompt candidates are exhausted and neither meets the no-regression outcome.
+No third candidate, model/RAG/Host/scorer change, lowered gate, manual delivery or merge is authorized.
+Need user decision on a new bounded prompt-repair budget or explicitly deferring that outcome and
+rolling back both prompt experiments. Other implementation slices are committed/reviewed; exact-source
+CI is still pending, not the reason work is blocked. Native real-model journey/manual launch has not
+run because this source fails the required model gate. The unexecuted disposable probe was removed.
+
 Shared environment editable .pth exposed old scripts namespace: tests use process-only path exclusion,
 not environment edits. New worktree .git pointer is relative so WSL and native Windows Git agree.
 Broad Assistant check: 1,425 passed, 30 failed, 2 skipped; all failures were fake Hugging Face
 snapshot paths exceeding Windows MAX_PATH. Short owned temporary root rerun: 166 passed, 5 same-path
 failures, 2 skipped. Fresh shorter basetemp for the remaining RAG security file: 29 passed, 2 POSIX-only
 skips. No product change or weakened assertion was needed; overlapping counts are not a unique total.
-Next: validate candidate 2 and complete PR #140 exact-source CI/native evidence. PR #140 is a draft
-integration vehicle, not a manual-testing or merge request. No final gates/manual acceptance yet.
+Next: obtain the required scope decision above before further prompt work or final handoff. PR #140
+remains a draft integration vehicle, not a manual-testing or merge request. CI may continue independently;
+its success would not resolve the model blocker. No final gates/manual acceptance yet.
 
 三核心責任重構已完成 Windows GUI／English Assistant 手測，並經使用者明確同意合併
 [PR #138](https://github.com/hxin-an/XBrainLab/pull/138)。不再把該階段的施工切片或 pending gates
