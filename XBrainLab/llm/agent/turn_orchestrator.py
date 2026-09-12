@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-from collections import deque
 from dataclasses import dataclass, field
 
 from .assembler import PromptToolPublication
@@ -242,16 +240,11 @@ class AssistantToolAttemptSession:
 
     retry_count: int = 0
     tool_failure_count: int = 0
-    loop_break_count: int = 0
     successful_tool_count: int = 0
     execution_count: int = 0
     visible_response_sent: bool = False
     last_tool_summary: str | None = None
     last_tool_summary_kind: AssistantResponseKind = AssistantResponseKind.MESSAGE
-    recent_tool_calls: deque[tuple[str, str]] = field(
-        default_factory=lambda: deque(maxlen=10),
-        repr=False,
-    )
 
     def begin_generation(self) -> None:
         """Reset presentation accounting for one newly dispatched generation."""
@@ -295,30 +288,6 @@ class AssistantToolAttemptSession:
         self.successful_tool_count += 1
         return self.successful_tool_count
 
-    def record_loop_break(self, *, limit: int) -> bool:
-        if limit < 1:
-            raise ValueError("Loop-break limit must be positive.")
-        self.loop_break_count += 1
-        return self.loop_break_count >= limit
-
-    def record_tool_proposal(
-        self,
-        command_name: str,
-        params: dict[str, object],
-        *,
-        repeat_limit: int = 3,
-    ) -> bool:
-        """Record one proposal and report a bounded same-signature loop."""
-        if repeat_limit < 2:
-            raise ValueError("Tool repeat limit must be at least two.")
-        try:
-            stable_params = json.dumps(params, sort_keys=True)
-        except (TypeError, ValueError):
-            stable_params = str(params)
-        signature = (command_name, stable_params)
-        self.recent_tool_calls.append(signature)
-        return sum(call == signature for call in self.recent_tool_calls) >= repeat_limit
-
     def arbitrate_terminal_response(
         self,
         default_summary: str,
@@ -349,13 +318,11 @@ class AssistantToolAttemptSession:
     def reset_for_user_turn(self) -> None:
         self.retry_count = 0
         self.tool_failure_count = 0
-        self.loop_break_count = 0
         self.successful_tool_count = 0
         self.execution_count = 0
         self.visible_response_sent = False
         self.last_tool_summary = None
         self.last_tool_summary_kind = AssistantResponseKind.MESSAGE
-        self.recent_tool_calls.clear()
 
 
 @dataclass(frozen=True)

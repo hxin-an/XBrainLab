@@ -98,7 +98,6 @@ LEGACY_AGENT_CONTROLLER_LIFECYCLE_ATTRIBUTES = frozenset(
         "_generation_id",
         "_last_tool_summary",
         "_last_tool_summary_kind",
-        "_loop_break_count",
         "_rag_turn_id",
         "_retry_count",
         "_stopping_generation_id",

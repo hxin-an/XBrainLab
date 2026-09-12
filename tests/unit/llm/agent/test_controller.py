@@ -49,7 +49,10 @@ from XBrainLab.llm.agent.tool_attempt_coordinator import (
     ToolAttemptFeedback,
     ToolAttemptRequest,
 )
-from XBrainLab.llm.agent.tool_execution_coordinator import ToolExecutionOutcome
+from XBrainLab.llm.agent.tool_execution_coordinator import (
+    ToolExecutionCoordinator,
+    ToolExecutionOutcome,
+)
 from XBrainLab.llm.agent.turn import (
     AssistantDebugToolRequest,
     AssistantGenerationEvent,
@@ -113,6 +116,25 @@ def _submit_user_turn(ctrl: Any, text: str) -> AssistantTurnCorrelation:
     )
     ctrl.handle_user_turn(AssistantTurnRequest(correlation=correlation, text=text))
     return correlation
+
+
+def _use_execution_study(ctrl: Any, study: object) -> None:
+    """Replace the fixture's explicitly composed study dependency."""
+    ctrl.study = study
+    _compose_tool_executor(ctrl)
+
+
+def _compose_tool_executor(ctrl: Any) -> None:
+    """Bind the real execution owner after replacing fixture collaborators."""
+    ctrl._tool_execution_coordinator = ToolExecutionCoordinator(
+        ctrl.study,
+        ctrl.registry,
+        ctrl.metrics,
+        block_policy=ctrl._tool_attempt_coordinator,
+        emit_status=ctrl.status_update.emit,
+        emit_application_command_started=ctrl.application_command_started.emit,
+        emit_application_command_completed=ctrl.application_command_completed.emit,
+    )
 
 
 def _tool_outcome(
@@ -562,7 +584,8 @@ def ctrl():
 
         study = MagicMock()
 
-        # Pre-set signal mocks on the class so __init__ can .connect() them
+        # Replace observable outputs after real QObject composition, then rebind
+        # the execution owner's explicit callbacks to those fixture outputs.
         signal_names = [
             "response_presentation_ready",
             "generation_event",
@@ -588,6 +611,7 @@ def ctrl():
         c = LLMController(study)
         for name in signal_names:
             setattr(c, name, MagicMock())
+        _compose_tool_executor(c)
         # Most controller unit tests isolate a later boundary. They use an
         # explicit publication mock so the new publication gate does not hide
         # the behavior under test; dedicated tests above exercise fail-closed
@@ -633,11 +657,7 @@ def test_host_admission_no_longer_blocks_model_before_stage_verification(ctrl):
 def test_missing_decision_is_selected_by_model_before_ui_handoff(ctrl):
     rag = _use_rag_probe(ctrl)
     ctrl._generate_response = MagicMock()
-    publication = MagicMock()
-
-    with patch("XBrainLab.llm.agent.controller.get_application_service") as get_service:
-        get_service.return_value.get_view_publication.return_value = publication
-        _submit_user_turn(ctrl, "Create epochs now.")
+    _submit_user_turn(ctrl, "Create epochs now.")
 
     assert len(rag.requests) == 1
     ctrl._generate_response.assert_not_called()
@@ -650,11 +670,7 @@ def test_state_question_goes_through_strict_model_response_contract(ctrl):
     ctrl._execute_tool_attempt = MagicMock()
     ctrl._generate_response = MagicMock()
     rag = _use_rag_probe(ctrl)
-    publication = MagicMock()
-
-    with patch("XBrainLab.llm.agent.controller.get_application_service") as get_service:
-        get_service.return_value.get_view_publication.return_value = publication
-        _submit_user_turn(ctrl, "What is ready now?")
+    _submit_user_turn(ctrl, "What is ready now?")
 
     assert len(rag.requests) == 1
     ctrl._generate_response.assert_not_called()
@@ -1018,19 +1034,6 @@ class TestHandleUserInput:
         assert len(lifecycle.requests) == 1
         ctrl.response_presentation_ready.emit.assert_not_called()
 
-    def test_new_user_turn_clears_previous_tool_loop_history(self, ctrl):
-        lifecycle = _use_rag_probe(ctrl)
-        ctrl._generate_response = MagicMock()
-        ctrl._tool_attempt_session.record_tool_proposal("query_state", {})
-        assert list(ctrl._tool_attempt_session.recent_tool_calls)
-
-        _submit_user_turn(ctrl, "show current state")
-
-        assert list(ctrl._tool_attempt_session.recent_tool_calls) == []
-        ctrl._generate_response.assert_not_called()
-        lifecycle.complete()
-        ctrl._generate_response.assert_called_once()
-
     def test_stop_while_waiting_for_rag_ignores_stale_result(self, ctrl):
         lifecycle = _use_rag_probe(ctrl)
         ctrl._generate_response = MagicMock()
@@ -1042,18 +1045,6 @@ class TestHandleUserInput:
         ctrl._generate_response.assert_not_called()
         ctrl.assembler.add_context.assert_not_called()
         assert not ctrl.is_processing
-
-    def test_close_while_waiting_for_rag_ignores_stale_result(self, ctrl):
-        lifecycle = _use_rag_probe(ctrl)
-        ctrl._generate_response = MagicMock()
-        ctrl.worker_thread.isRunning.return_value = False
-
-        _submit_user_turn(ctrl, "load data")
-        ctrl.close()
-        lifecycle.complete(features="stale RAG")
-
-        ctrl._generate_response.assert_not_called()
-        ctrl.assembler.add_context.assert_not_called()
 
 
 def test_handle_user_input_does_not_block_qt_event_loop_during_rag(qtbot):
@@ -1782,26 +1773,6 @@ class TestRuntimeErrors:
         ctrl.processing_finished.emit.assert_not_called()
 
 
-# --- _handle_loop_detected ---
-class TestHandleLoopDetected:
-    def test_increments_break_count(self, ctrl):
-        ctrl._generate_response = MagicMock()
-        ctrl._handle_loop_detected("test_tool")
-        assert ctrl._tool_attempt_session.loop_break_count == 1
-        ctrl._generate_response.assert_called_once()
-
-    def test_aborts_after_max(self, ctrl):
-        ctrl._tool_attempt_session.loop_break_count = 3
-        ctrl._handle_loop_detected("test_tool")
-
-        presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
-        assert presentation.kind is AssistantResponseKind.BLOCKED
-        assert "repeated the same action" in presentation.text
-        assert not hasattr(presentation, "actions")
-        assert not ctrl.is_processing
-        ctrl.processing_finished.emit.assert_called_once()
-
-
 # --- _execute_tool_no_loop ---
 class TestExecuteToolNoLoop:
     def test_unknown_tool(self, ctrl):
@@ -2413,171 +2384,6 @@ def test_controller_preserves_exact_proposal_and_detaches_parameters(
     assert params == original
 
 
-class TestClose:
-    def test_constructor_injected_rag_lifecycle_is_the_only_cleanup_owner(self):
-        retriever = MagicMock()
-        lifecycle = MagicMock(retriever=retriever)
-        lifecycle.close.return_value = True
-        controller = _make_real_signal_controller(lifecycle)
-        controller.worker_thread.isRunning.return_value = False
-
-        assert controller.close() is True
-
-        lifecycle.close.assert_called_once_with()
-        retriever.close.assert_not_called()
-
-    def test_close_stops_thread(self, ctrl):
-        worker = ctrl.worker
-        ctrl.worker_thread.isRunning.return_value = True
-        ctrl.close()
-        worker.shutdown.assert_called_once()
-        ctrl.worker_thread.quit.assert_called_once()
-        ctrl.worker_thread.wait.assert_not_called()
-
-    def test_close_rag_error_ignored(self, ctrl):
-        worker = ctrl.worker
-        ctrl._rag_lifecycle.close = MagicMock(side_effect=RuntimeError("x"))
-        ctrl.worker_thread.isRunning.return_value = False
-        ctrl.close()
-
-        ctrl._rag_lifecycle.close.assert_called_once()
-        worker.shutdown.assert_called_once()
-        ctrl.worker_thread.quit.assert_called_once()
-        ctrl.worker_thread.wait.assert_not_called()
-
-    def test_close_does_not_report_success_when_rag_process_is_still_alive(self, ctrl):
-        ctrl._rag_lifecycle.close = MagicMock(return_value=False)
-        worker = ctrl.worker
-        ctrl.worker.shutdown.return_value = True
-        ctrl.worker_thread.isRunning.return_value = False
-
-        assert ctrl.close() is False
-
-        ctrl._rag_lifecycle.close.assert_called_once()
-        worker.shutdown.assert_called_once()
-
-    def test_close_retries_pending_rag_cleanup_before_reporting_success(self, ctrl):
-        ctrl._rag_lifecycle.close = MagicMock(side_effect=[False, True])
-        worker = ctrl.worker
-        ctrl.worker.shutdown.return_value = True
-        ctrl.worker_thread.isRunning.return_value = False
-        terminals: list[tuple[bool, str]] = []
-        ctrl.shutdown_finished.connect(
-            lambda ok, message: terminals.append((ok, message))
-        )
-
-        assert ctrl.close() is False
-        assert terminals[-1][0] is False
-        assert "still pending" in terminals[-1][1]
-
-        assert ctrl.close() is True
-        assert terminals[-1] == (True, "")
-        assert ctrl._rag_lifecycle.close.call_count == 2
-
-    def test_close_returns_false_when_worker_shutdown_fails(self, ctrl):
-        ctrl._rag_lifecycle.close = MagicMock(return_value=True)
-        ctrl.worker.shutdown.return_value = False
-        ctrl.worker_thread.isRunning.return_value = False
-
-        assert ctrl.close() is False
-
-        ctrl._rag_lifecycle.close.assert_called_once()
-        ctrl.worker.shutdown.assert_called_once()
-        ctrl.worker_thread.quit.assert_not_called()
-
-    def test_failed_worker_shutdown_keeps_close_retryable_until_success(self, ctrl):
-        ctrl._rag_lifecycle.close = MagicMock(return_value=True)
-        worker = ctrl.worker
-        worker.shutdown.side_effect = [False, True]
-        ctrl.worker_thread.isRunning.return_value = False
-
-        assert ctrl.close() is False
-        assert ctrl._closed is False
-        assert ctrl.worker is worker
-
-        assert ctrl.close() is True
-        assert ctrl._closed is True
-        assert ctrl.worker is None
-        assert worker.shutdown.call_count == 2
-
-    def test_failed_close_rejects_new_commands_while_cleanup_is_retryable(self, ctrl):
-        ctrl._rag_lifecycle.close = MagicMock(return_value=True)
-        ctrl.worker.shutdown.side_effect = [False, True]
-        ctrl.worker_thread.isRunning.return_value = False
-
-        assert ctrl.close() is False
-        assert ctrl.accepts_commands is False
-
-        correlation = _submit_user_turn(ctrl, "after-close")
-
-        assert ctrl.is_processing is False
-        ctrl.turn_finished.emit.assert_called_with(
-            AssistantTurnTerminal(
-                correlation=correlation,
-                outcome="rejected_closing",
-            )
-        )
-        assert ctrl.close() is True
-
-    def test_close_never_waits_for_a_mock_thread_terminal(self, ctrl):
-        ctrl._rag_lifecycle.close = MagicMock(return_value=True)
-        worker = ctrl.worker
-        worker.shutdown.return_value = True
-        ctrl.worker_thread.isRunning.return_value = True
-
-        assert ctrl.close() is True
-        assert ctrl._closed is True
-        assert ctrl.worker is None
-        assert worker.shutdown.call_count == 1
-        ctrl.worker_thread.quit.assert_called_once()
-        ctrl.worker_thread.wait.assert_not_called()
-
-    def test_successful_close_is_terminal_and_idempotent(self, ctrl):
-        ctrl._rag_lifecycle.close = MagicMock(return_value=True)
-        worker = ctrl.worker
-        worker.shutdown.return_value = True
-        ctrl.worker_thread.isRunning.return_value = False
-
-        assert ctrl.close() is True
-        assert ctrl.close() is True
-
-        assert ctrl._closed is True
-        assert worker.shutdown.call_count == 1
-
-    def test_shutdown_supersedes_pending_stop_and_ignores_late_ack(self, ctrl):
-        ctrl._rag_lifecycle.close = MagicMock(return_value=True)
-        ctrl.worker.shutdown.return_value = True
-        ctrl.worker_thread.isRunning.return_value = False
-        ctrl.is_processing = True
-        ctrl._turn_orchestrator.host_turn_generation = 7
-        ctrl._turn_orchestrator.host_turn_id = 71
-        ctrl._turn_orchestrator.active_generation_id = 17
-
-        ctrl.stop_generation()
-        assert ctrl.close() is True
-
-        ctrl._on_generation_stop_finished(
-            AssistantGenerationStopAcknowledgement(
-                generation_id=17,
-                stopped=True,
-            )
-        )
-
-        assert ctrl.is_processing is False
-        assert ctrl._turn_orchestrator.active_generation_id is None
-        assert ctrl._turn_orchestrator.stopping_generation_id is None
-        ctrl.turn_finished.emit.assert_called_once_with(
-            AssistantTurnTerminal(
-                correlation=AssistantTurnCorrelation(
-                    generation=7,
-                    turn_id=71,
-                ),
-                outcome="shutdown_cancelled",
-            )
-        )
-        ctrl.response_presentation_ready.emit.assert_not_called()
-
-
 # --- stop_generation ---
 class TestStopGeneration:
     def test_stops_when_processing(self, ctrl):
@@ -2991,24 +2797,6 @@ def test_stop_terminal_clears_active_receipt_without_execution(ctrl):
     ctrl._complete_cancelled_turn()
 
     assert ctrl.pending_interactions.active_tool_input is None
-    ctrl._execute_tool_attempt.assert_not_called()
-
-
-def test_close_clears_waiting_receipt_without_execution(ctrl):
-    waiting = AssistantToolInputReceipt(
-        command_name="resample_data",
-        original_user_text="Resample the EEG data.",
-        question="What resampling rate should I use?",
-        publication_generation=7,
-        missing_inputs=("rate",),
-    )
-    ctrl.pending_interactions.begin_tool_input(waiting)
-    ctrl._execute_tool_attempt = MagicMock()
-    ctrl.worker = None
-
-    ctrl.close()
-
-    assert ctrl.pending_interactions.tool_input is None
     ctrl._execute_tool_attempt.assert_not_called()
 
 
@@ -3598,7 +3386,7 @@ class TestExecuteDebugTool:
         registry = ToolRegistry()
         for tool in get_all_tools("real"):
             registry.register(tool)
-        ctrl.study = study
+        _use_execution_study(ctrl, study)
         ctrl.registry = registry
         ctrl._turn_orchestrator.host_turn_generation = None
         ctrl._turn_orchestrator.host_turn_id = None
@@ -3655,7 +3443,7 @@ class TestExecuteDebugTool:
         registry = ToolRegistry()
         for tool in get_all_tools("real"):
             registry.register(tool)
-        ctrl.study = study
+        _use_execution_study(ctrl, study)
         ctrl.registry = registry
         ctrl._turn_orchestrator.host_turn_generation = None
         ctrl._turn_orchestrator.host_turn_id = None
@@ -3692,7 +3480,7 @@ class TestExecuteDebugTool:
         registry = ToolRegistry()
         for tool in get_all_tools("real"):
             registry.register(tool)
-        ctrl.study = Study()
+        _use_execution_study(ctrl, Study())
         ctrl.registry = registry
         ctrl._turn_orchestrator.host_turn_generation = None
         ctrl._turn_orchestrator.host_turn_id = None
@@ -4100,7 +3888,7 @@ class TestOnUserConfirmed:
             )
         )
         assert configured.ok is True
-        ctrl.study = study
+        _use_execution_study(ctrl, study)
         prompt_context = application_surface.get_application_context(
             study,
             "start_training",
@@ -4961,7 +4749,7 @@ class TestProcessToolCallsConfirmation:
 
         study = Study()
         service = get_application_service(study)
-        ctrl.study = study
+        _use_execution_study(ctrl, study)
         publication_generation = service.get_view_publication().generation
         attempt_context = _tool_context_with_generation(
             "start_training",
@@ -5147,7 +4935,7 @@ class TestPipelineGate:
         service.state_snapshot.build = MagicMock(return_value=loaded)
         service.get_state()
         published = service.get_view_publication()
-        ctrl.study = study
+        _use_execution_study(ctrl, study)
         from XBrainLab.llm.agent.tool_attempt_coordinator import (
             ApplicationToolContextSource,
         )
@@ -5234,7 +5022,7 @@ class TestPipelineGate:
         """Execution still obeys ApplicationService after host policy approval."""
         from XBrainLab.backend.study import Study
 
-        ctrl.study = Study()
+        _use_execution_study(ctrl, Study())
         mock_tool = MagicMock()
         ctrl.registry.get_tool.return_value = mock_tool
 
@@ -5261,7 +5049,7 @@ class TestPipelineGate:
         """An unregistered command never reaches the registry implementation."""
         from XBrainLab.backend.study import Study
 
-        ctrl.study = Study()
+        _use_execution_study(ctrl, Study())
         mock_tool = MagicMock()
         mock_tool.execute.side_effect = AssertionError(
             "unregistered path should not run"
@@ -5287,7 +5075,7 @@ class TestPipelineGate:
         """Real Study mapped tools must not bypass ApplicationService on bad args."""
         from XBrainLab.backend.study import Study
 
-        ctrl.study = Study()
+        _use_execution_study(ctrl, Study())
         raw = MagicMock()
         ctrl.study.data_manager.loaded_data_list = [raw]
         ctrl.study.data_manager.preprocessed_data_list = []
@@ -5312,7 +5100,7 @@ class TestPipelineGate:
         """Train is blocked until raw data, split, model, and options exist."""
         from XBrainLab.backend.study import Study
 
-        ctrl.study = Study()
+        _use_execution_study(ctrl, Study())
         mock_tool = MagicMock()
         ctrl.registry.get_tool.return_value = mock_tool
 

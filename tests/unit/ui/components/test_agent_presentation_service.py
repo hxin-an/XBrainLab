@@ -22,6 +22,7 @@ from XBrainLab.backend.application.view_publication import (
 from XBrainLab.backend.application.workflow_projection import (
     build_workflow_projection,
 )
+from XBrainLab.backend.controller.chat_controller import ChatMessagePresentationKind
 from XBrainLab.backend.training_state_contract import TrainingOutcomeState
 from XBrainLab.llm.agent.assistant_activity import (
     AssistantDecisionOwner,
@@ -183,6 +184,30 @@ def test_regular_assistant_copy_is_not_reclassified() -> None:
     )
 
     assert visible == "I need a folder path before I can list files."
+
+
+@pytest.mark.parametrize(
+    ("response_kind", "transcript_kind"),
+    (
+        (AssistantResponseKind.MESSAGE, ChatMessagePresentationKind.ASSISTANT),
+        (AssistantResponseKind.TOOL_RESULT, ChatMessagePresentationKind.TOOL_RESULT),
+        (
+            AssistantResponseKind.CLARIFICATION,
+            ChatMessagePresentationKind.CLARIFICATION,
+        ),
+        (AssistantResponseKind.BLOCKED, ChatMessagePresentationKind.ATTENTION),
+        (AssistantResponseKind.ERROR, ChatMessagePresentationKind.ERROR),
+        (AssistantResponseKind.CANCELLED, ChatMessagePresentationKind.CANCELLED),
+    ),
+)
+def test_chat_presentation_kind_preserves_typed_response_meaning(
+    response_kind,
+    transcript_kind,
+) -> None:
+    assert (
+        AgentPresentationService.chat_presentation_kind(response_kind)
+        is transcript_kind
+    )
 
 
 @pytest.mark.parametrize(

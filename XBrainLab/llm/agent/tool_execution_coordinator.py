@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, NoReturn, Protocol
 
+from XBrainLab.backend.application import get_application_service
 from XBrainLab.backend.utils.public_diagnostics import (
     PUBLIC_DIAGNOSTIC_TRUNCATED_MARKER,
     PUBLIC_DIAGNOSTIC_UNSUPPORTED_MARKER,
@@ -33,7 +35,9 @@ from XBrainLab.llm.tools.result_contract import (
     redact_public_text,
     safe_unexpected_failure,
 )
+from XBrainLab.llm.tools.tool_registry import ToolRegistry
 
+from .metrics import AgentMetricsTracker
 from .tool_feedback import summarize_tool_result
 
 logger = logging.getLogger(__name__)
@@ -69,13 +73,21 @@ class ToolExecutionOutcome:
     result: ToolCommandResult | UiRequest
 
 
-class ToolExecutionHost(Protocol):
-    study: Any
-    registry: Any
-    metrics: Any
-    status_update: Any
-    application_command_started: Any
-    application_command_completed: Any
+class _ExpectedPublicationApplicationRuntime:
+    """Immutable tool runtime binding execution to one reviewed publication."""
+
+    def __init__(self, service: Any, generation: int) -> None:
+        self._service = service
+        self._generation = generation
+
+    def get_view_publication(self) -> Any:
+        return self._service.get_view_publication()
+
+    def execute(self, command: Any) -> Any:
+        return self._service.execute(
+            command,
+            expected_publication_generation=self._generation,
+        )
 
 
 class ToolBlockPolicy(Protocol):
@@ -93,14 +105,22 @@ class ToolExecutionCoordinator:
 
     def __init__(
         self,
-        host: ToolExecutionHost,
+        study: Any,
+        registry: ToolRegistry,
+        metrics: AgentMetricsTracker,
         *,
         block_policy: ToolBlockPolicy,
-        application_runtime: ApplicationToolRuntime | None = None,
+        emit_status: Callable[[str], None],
+        emit_application_command_started: Callable[[], None],
+        emit_application_command_completed: Callable[[ToolCommandResult], None],
     ) -> None:
-        self.host = host
+        self.study = study
+        self.registry = registry
+        self.metrics = metrics
         self.block_policy = block_policy
-        self.application_runtime = application_runtime
+        self._emit_status = emit_status
+        self._emit_application_command_started = emit_application_command_started
+        self._emit_application_command_completed = emit_application_command_completed
 
     def execute(
         self,
@@ -108,18 +128,20 @@ class ToolExecutionCoordinator:
         params: dict[str, Any],
         *,
         context: ToolAvailabilityContext,
-        application_runtime: ApplicationToolRuntime | None = None,
+        expected_publication_generation: int | None = None,
     ) -> ToolExecutionOutcome:
         command_name = _public_tool_name(command_name)
         runtime = (
-            application_runtime
-            if application_runtime is not None
-            else self.application_runtime
+            _ExpectedPublicationApplicationRuntime(
+                get_application_service(self.study), expected_publication_generation
+            )
+            if expected_publication_generation is not None
+            else None
         )
-        tool = self.host.registry.get_tool(command_name)
+        tool = self.registry.get_tool(command_name)
         if tool is None:
             self._record(command_name, False, 0, "unknown tool")
-            self.host.status_update.emit(f"Unknown tool: {command_name}")
+            self._emit_status(f"Unknown tool: {command_name}")
             return ToolExecutionOutcome(
                 False,
                 ToolCommandResult.failure(
@@ -136,7 +158,7 @@ class ToolExecutionCoordinator:
                 "canonical action registry."
             )
             self._record(command_name, False, 0, message)
-            self.host.status_update.emit(message)
+            self._emit_status(message)
             return ToolExecutionOutcome(
                 False,
                 ToolCommandResult.failure(
@@ -153,7 +175,7 @@ class ToolExecutionCoordinator:
             blocked_result = self.block_policy.blocked_result(command_name, context)
             logger.warning(redact_public_text(blocked_result.message))
             self._record(command_name, False, 0, blocked_result.message)
-            self.host.status_update.emit(
+            self._emit_status(
                 summarize_tool_result(command_name, False, blocked_result)
             )
             return ToolExecutionOutcome(False, blocked_result)
@@ -161,11 +183,11 @@ class ToolExecutionCoordinator:
         started_at = time.monotonic()
         is_application_command = command_name in APPLICATION_COMMAND_TOOLS
         if is_application_command:
-            self.host.application_command_started.emit()
+            self._emit_application_command_started()
         terminal_result: ToolCommandResult | None = None
         try:
             raw_result = execute_application_tool_command(
-                self.host.study,
+                self.study,
                 command_name,
                 params,
                 availability=availability,
@@ -181,7 +203,7 @@ class ToolExecutionCoordinator:
                     _raise_invalid_application_result(
                         "Tool execution kind cannot use direct execution"
                     )
-                raw_result = tool.execute(self.host.study, **params)
+                raw_result = tool.execute(self.study, **params)
 
             execution_result: ToolCommandResult | UiRequest
             if type(raw_result) is UiRequest:
@@ -193,7 +215,7 @@ class ToolExecutionCoordinator:
                 success = True
             else:
                 normalized = normalize_tool_result(
-                    self.host.study,
+                    self.study,
                     command_name,
                     raw_result,
                     availability=availability,
@@ -223,7 +245,7 @@ class ToolExecutionCoordinator:
                 else "tool_request_failed",
             )
             if not success:
-                self.host.status_update.emit(
+                self._emit_status(
                     summarize_tool_result(command_name, success, execution_result)
                 )
             return ToolExecutionOutcome(success, execution_result)
@@ -245,7 +267,7 @@ class ToolExecutionCoordinator:
             if is_application_command:
                 terminal_result = result
             self._record(command_name, False, elapsed, failure.error_code)
-            self.host.status_update.emit(failure.message)
+            self._emit_status(failure.message)
             return ToolExecutionOutcome(False, result)
         finally:
             if is_application_command:
@@ -266,7 +288,7 @@ class ToolExecutionCoordinator:
                         is_application_command=True,
                         runtime=runtime,
                     )
-                self.host.application_command_completed.emit(terminal_result)
+                self._emit_application_command_completed(terminal_result)
 
     @staticmethod
     def _unexpected_failure_result(
@@ -324,6 +346,6 @@ class ToolExecutionCoordinator:
         elapsed_ms: float,
         error: str | None,
     ) -> None:
-        current_turn = self.host.metrics.current_turn
+        current_turn = self.metrics.current_turn
         if current_turn:
             current_turn.record_tool(command_name, success, elapsed_ms, error)

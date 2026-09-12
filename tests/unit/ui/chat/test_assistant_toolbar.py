@@ -11,14 +11,15 @@ import pytest
 from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtWidgets import QMainWindow
 
+from XBrainLab.ui.chat.assistant_dock import AssistantDockView
 from XBrainLab.ui.components.agent_manager import AgentManager
 
-AGENT_MANAGER_SOURCE = (
+ASSISTANT_DOCK_SOURCE = (
     Path(__file__).resolve().parents[4]
     / "XBrainLab"
     / "ui"
-    / "components"
-    / "agent_manager.py"
+    / "chat"
+    / "assistant_dock.py"
 )
 FORBIDDEN_TOOLBAR_GLYPHS = (
     "\N{VERTICAL ELLIPSIS}",
@@ -28,6 +29,12 @@ FORBIDDEN_TOOLBAR_GLYPHS = (
     "\N{LEFTWARDS ARROW}",
     "\N{RIGHTWARDS ARROW}",
 )
+
+
+def _assistant_dock(manager: AgentManager) -> AssistantDockView:
+    dock = manager.chat_dock
+    assert isinstance(dock, AssistantDockView)
+    return dock
 
 
 @pytest.fixture
@@ -44,7 +51,7 @@ def assistant_manager(qtbot) -> Any:
 
 
 def test_assistant_toolbar_source_has_no_options_menu_or_painted_icons() -> None:
-    source = AGENT_MANAGER_SOURCE.read_text(encoding="utf-8")
+    source = ASSISTANT_DOCK_SOURCE.read_text(encoding="utf-8")
 
     for glyph in FORBIDDEN_TOOLBAR_GLYPHS:
         assert f'QPushButton("{glyph}")' not in source
@@ -59,23 +66,24 @@ def test_assistant_toolbar_direct_buttons_have_one_accessible_contract(
 ) -> None:
     expected = (
         (
-            assistant_manager.new_conv_title_btn,
+            _assistant_dock(assistant_manager).new_conversation_button,
             "New chat",
             "Clear the assistant conversation without changing the EEG workflow.",
         ),
         (
-            assistant_manager.settings_btn,
+            _assistant_dock(assistant_manager).settings_button,
             "Assistant settings",
             "Open Assistant settings.",
         ),
         (
-            assistant_manager.close_btn,
+            _assistant_dock(assistant_manager).close_button,
             "Hide assistant",
             "Hide the Assistant panel without ending the conversation.",
         ),
     )
 
     for index, (button, accessible_name, accessible_description) in enumerate(expected):
+        assert button is not None
         if index == 0:
             assert button.text() == "+"
             assert button.icon().isNull()
@@ -89,10 +97,12 @@ def test_assistant_toolbar_direct_buttons_have_one_accessible_contract(
         assert button.accessibleDescription() == accessible_description
         assert button.focusPolicy() == Qt.FocusPolicy.StrongFocus
 
-    assert assistant_manager.settings_btn.isCheckable() is False
-    assert assistant_manager.settings_btn.isChecked() is False
-    assert assistant_manager.settings_btn.isDown() is False
-    assert "QPushButton:checked" not in assistant_manager.settings_btn.styleSheet()
+    settings_button = _assistant_dock(assistant_manager).settings_button
+    assert settings_button is not None
+    assert settings_button.isCheckable() is False
+    assert settings_button.isChecked() is False
+    assert settings_button.isDown() is False
+    assert "QPushButton:checked" not in settings_button.styleSheet()
     assert not hasattr(assistant_manager, "settings_menu")
     assert not hasattr(assistant_manager, "retry_title_btn")
 
@@ -101,7 +111,8 @@ def test_assistant_toolbar_narrow_layout_keeps_essential_actions_reachable(
     assistant_manager,
     qtbot,
 ) -> None:
-    title_bar = assistant_manager.assistant_header
+    title_bar = _assistant_dock(assistant_manager).title_bar
+    assert title_bar is not None
     title_bar.resize(320, 36)
     title_bar.show()
     title_bar.layout().setGeometry(title_bar.rect())
@@ -113,10 +124,11 @@ def test_assistant_toolbar_narrow_layout_keeps_essential_actions_reachable(
     assert title_bar.status_dot is None
 
     essential = (
-        assistant_manager.new_conv_title_btn,
-        assistant_manager.settings_btn,
-        assistant_manager.close_btn,
+        _assistant_dock(assistant_manager).new_conversation_button,
+        _assistant_dock(assistant_manager).settings_button,
+        _assistant_dock(assistant_manager).close_button,
     )
+    assert all(button is not None for button in essential)
     assert all(not button.isHidden() for button in essential)
     assert all(title_bar.rect().contains(button.geometry()) for button in essential)
     assert all(
@@ -135,15 +147,21 @@ def test_assistant_toolbar_buttons_trigger_their_own_actions(
     qtbot.wait(10)
 
     assistant_manager.chat_controller.add_user_message("hello")
-    assistant_manager.new_conv_title_btn.click()
+    new_conversation_button = _assistant_dock(assistant_manager).new_conversation_button
+    assert new_conversation_button is not None
+    new_conversation_button.click()
     assert assistant_manager.chat_controller.messages == []
 
     with patch.object(assistant_manager, "open_settings_dialog") as open_settings:
-        assistant_manager.settings_btn.click()
+        settings_button = _assistant_dock(assistant_manager).settings_button
+        assert settings_button is not None
+        settings_button.click()
     open_settings.assert_called_once_with()
 
     assert dock.isFloating() is False
     assert not hasattr(assistant_manager, "float_btn")
 
-    assistant_manager.close_btn.click()
+    close_button = _assistant_dock(assistant_manager).close_button
+    assert close_button is not None
+    close_button.click()
     assert dock.isHidden()

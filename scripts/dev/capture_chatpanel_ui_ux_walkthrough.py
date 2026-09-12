@@ -2521,9 +2521,12 @@ def _capture_main_window_dock_walkthrough(
         generation=live_submission.generation,
         turn_id=700,
     )
-    if not manager._assistant_turn_state.accept_admission(
-        live_submission,
-        live_correlation,
+    if (
+        manager._assistant_turn_state.complete_admission(
+            live_submission,
+            live_correlation,
+        )
+        is None
     ):
         raise RuntimeError("Could not admit the live response capture turn.")
     manager._handle_response_presentation(
@@ -2581,9 +2584,12 @@ def _capture_main_window_dock_walkthrough(
         generation=stopping_submission.generation,
         turn_id=stopping_turn_id,
     )
-    if not manager._assistant_turn_state.accept_admission(
-        stopping_submission,
-        stopping_correlation,
+    if (
+        manager._assistant_turn_state.complete_admission(
+            stopping_submission,
+            stopping_correlation,
+        )
+        is None
     ):
         raise RuntimeError("Could not admit the stopping capture turn.")
     manager.on_assistant_activity_changed(
@@ -2660,9 +2666,12 @@ def _capture_main_window_dock_walkthrough(
         generation=command_submission.generation,
         turn_id=702,
     )
-    if not manager._assistant_turn_state.accept_admission(
-        command_submission,
-        command_correlation,
+    if (
+        manager._assistant_turn_state.complete_admission(
+            command_submission,
+            command_correlation,
+        )
+        is None
     ):
         raise RuntimeError("Could not admit the command capture turn.")
     manager.on_assistant_activity_changed(

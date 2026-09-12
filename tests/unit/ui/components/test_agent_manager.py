@@ -12,6 +12,7 @@ from typing import Any, cast
 from unittest.mock import MagicMock, call, patch
 
 import pytest
+from PyQt6 import sip
 from PyQt6.QtCore import QObject, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QMainWindow,
@@ -111,9 +112,12 @@ def _admit_ui_turn(agent_mgr: Any, *, turn_id: int = 1) -> AssistantTurnCorrelat
         generation=submission.generation,
         turn_id=turn_id,
     )
-    assert agent_mgr._assistant_turn_state.accept_admission(
-        submission,
-        correlation,
+    assert (
+        agent_mgr._assistant_turn_state.complete_admission(
+            submission,
+            correlation,
+        )
+        is not None
     )
     return correlation
 
@@ -676,6 +680,25 @@ class TestAgentManagerMethods:
         lease = agent_mgr._assistant_turn_state.lease
         assert lease is not None
         assert lease == AssistantTurnCorrelation(generation=1, turn_id=1)
+
+    def test_debug_admission_without_correlation_releases_its_provisional_queue(
+        self,
+        agent_mgr,
+    ):
+        agent_mgr.chat_panel = MagicMock()
+        agent_mgr._assistant_runtime.debug.side_effect = None
+        agent_mgr._assistant_runtime.debug.return_value = RuntimeCommandAdmissionResult(
+            command_name="debug",
+            status=RuntimeCommandAdmissionStatus.ACCEPTED,
+        )
+
+        agent_mgr._handle_debug_tool_requested("inspect_state", {})
+
+        assert agent_mgr._assistant_turn_state.submission is None
+        assert agent_mgr._assistant_turn_state.lease is None
+        agent_mgr.chat_panel.reject_debug_step.assert_called_once_with(
+            "The diagnostic action could not be correlated. Try again."
+        )
 
     def test_rejected_runtime_submission_does_not_enter_processing(self, agent_mgr):
         agent_mgr.chat_panel = MagicMock()
@@ -3128,10 +3151,8 @@ class TestAgentManagerMethods:
     def test_init_ui_uses_fixed_right_product_dock_titlebar(self, qtbot):
         from PyQt6.QtWidgets import QDockWidget, QLabel
 
-        from XBrainLab.ui.components.agent_manager import (
-            AgentManager,
-            AssistantDockTitleBar,
-        )
+        from XBrainLab.ui.chat.assistant_dock import AssistantDockTitleBar
+        from XBrainLab.ui.components.agent_manager import AgentManager
 
         main_window = cast(Any, QMainWindow())
         main_window.ai_btn = MagicMock()
@@ -3157,40 +3178,44 @@ class TestAgentManagerMethods:
             "XBrainLab Assistant"
         )
         assert title.text() == "XBrainLab Assistant"
-        assert manager.assistant_header.status_badge is None
-        assert manager.assistant_header.status_indicator is None
-        assert manager.assistant_header.status_dot is None
-        manager.assistant_header.set_assistant_status("Local · Ready")
+        dock_view = manager.chat_dock
+        assert isinstance(dock_view, QDockWidget)
+        title_bar = dock_view.titleBarWidget()
+        assert isinstance(title_bar, AssistantDockTitleBar)
+        assert title_bar.status_badge is None
+        assert title_bar.status_indicator is None
+        assert title_bar.status_dot is None
+        title_bar.set_assistant_status("Local · Ready")
         assert title.toolTip() == "Local · Ready"
         assert title.accessibleDescription() == "Assistant status: Local · Ready"
-        assert manager.assistant_header.property("assistantState") == "ready"
+        assert title_bar.property("assistantState") == "ready"
         manager.chat_panel.retry_local_assistant_requested.emit()
         manager.retry_local_assistant.assert_called_once_with()
         for control in (
-            manager.new_conv_title_btn,
-            manager.settings_btn,
-            manager.close_btn,
+            dock_view.new_conversation_button,
+            dock_view.settings_button,
+            dock_view.close_button,
         ):
             assert control.width() >= 30
             assert control.height() >= 30
             assert control.focusPolicy() == Qt.FocusPolicy.StrongFocus
         assert not hasattr(manager, "retry_title_btn")
         assert not hasattr(manager, "settings_menu")
-        assert manager.close_btn.text() == ""
-        assert not manager.close_btn.icon().isNull()
-        assert manager.close_btn.accessibleName() == "Hide assistant"
-        assert manager.new_conv_title_btn.text() == "+"
-        assert manager.new_conv_title_btn.icon().isNull()
-        assert manager.new_conv_title_btn.toolTip() == "New chat"
-        assert manager.new_conv_title_btn.accessibleName() == "New chat"
+        assert dock_view.close_button.text() == ""
+        assert not dock_view.close_button.icon().isNull()
+        assert dock_view.close_button.accessibleName() == "Hide assistant"
+        assert dock_view.new_conversation_button.text() == "+"
+        assert dock_view.new_conversation_button.icon().isNull()
+        assert dock_view.new_conversation_button.toolTip() == "New chat"
+        assert dock_view.new_conversation_button.accessibleName() == "New chat"
         assert not hasattr(manager, "float_btn")
-        assert manager.settings_btn.text() == ""
-        assert not manager.settings_btn.icon().isNull()
-        assert manager.settings_btn.toolTip() == "Assistant settings"
-        assert manager.settings_btn.accessibleName() == "Assistant settings"
-        assert manager.settings_btn.isCheckable() is False
+        assert dock_view.settings_button.text() == ""
+        assert not dock_view.settings_button.icon().isNull()
+        assert dock_view.settings_button.toolTip() == "Assistant settings"
+        assert dock_view.settings_button.accessibleName() == "Assistant settings"
+        assert dock_view.settings_button.isCheckable() is False
         manager.chat_dock.show()
-        manager.close_btn.click()
+        dock_view.close_button.click()
         assert manager.chat_dock.isHidden()
 
     def test_fixed_right_dock_ignores_titlebar_double_click_and_reopens(self, qtbot):
@@ -3206,7 +3231,9 @@ class TestAgentManagerMethods:
         assert manager.chat_dock is not None
         main_window.show()
         manager.chat_dock.show()
-        qtbot.mouseDClick(manager.assistant_header, Qt.MouseButton.LeftButton)
+        title_bar = manager.chat_dock.titleBarWidget()
+        assert title_bar is not None
+        qtbot.mouseDClick(title_bar, Qt.MouseButton.LeftButton)
         qtbot.wait(10)
         assert manager.chat_dock.isFloating() is False
         manager.chat_dock.hide()
@@ -3265,6 +3292,7 @@ class TestAgentManagerMethods:
 
     def test_debug_tool_flow_surfaces_backend_blocked_result(self, qtbot):
         """UI -> agent -> backend command flow reports shared blocked reason."""
+        from tests.qt_lifecycle import close_controller_and_wait
         from XBrainLab.backend.study import Study
         from XBrainLab.llm.agent.controller import LLMController
         from XBrainLab.ui.components.agent_manager import AgentManager
@@ -3274,36 +3302,37 @@ class TestAgentManagerMethods:
         qtbot.addWidget(main_window)
         study = Study()
 
-        with (
-            patch("XBrainLab.llm.agent.controller.AgentWorker") as MockWorker,
-            patch("XBrainLab.llm.agent.controller.QThread") as MockThread,
-            patch("XBrainLab.llm.agent.controller.LLMController.initialize"),
-        ):
-            MockWorker.return_value.generation_thread = None
-            MockThread.return_value.isRunning.return_value = False
-
+        with patch("XBrainLab.llm.agent.controller.LLMController.initialize"):
             controller = LLMController(study)
-            runtime = _ReadyTestRuntime(controller)
-            manager = cast(
-                Any,
-                AgentManager(
-                    main_window,
-                    study,
-                    runtime_lifecycle=cast(AssistantRuntimeLifecycle, runtime),
-                ),
-            )
-            manager.init_ui()
-            assert manager.chat_panel is not None
+            worker = controller.worker
+            worker_thread = controller.worker_thread
+            assert worker is not None
+            manager_ready = False
             try:
+                runtime = _ReadyTestRuntime(controller)
+                manager = cast(
+                    Any,
+                    AgentManager(
+                        main_window,
+                        study,
+                        runtime_lifecycle=cast(AssistantRuntimeLifecycle, runtime),
+                    ),
+                )
+                manager.init_ui()
+                manager_ready = True
+                assert manager.chat_panel is not None
                 manager.start_system()
                 submission = manager._assistant_turn_state.begin_submission()
                 correlation = AssistantTurnCorrelation(
                     generation=submission.generation,
                     turn_id=1,
                 )
-                assert manager._assistant_turn_state.accept_admission(
-                    submission,
-                    correlation,
+                assert (
+                    manager._assistant_turn_state.complete_admission(
+                        submission,
+                        correlation,
+                    )
+                    is not None
                 )
                 manager.agent_controller._turn_orchestrator.host_turn_generation = None
                 manager.agent_controller._turn_orchestrator.host_turn_id = None
@@ -3315,7 +3344,18 @@ class TestAgentManagerMethods:
                     )
                 )
             finally:
-                manager.close()
+                if manager_ready:
+                    manager.close()
+                close_controller_and_wait(controller, qtbot)
+                qtbot.waitUntil(
+                    lambda: sip.isdeleted(worker),
+                    timeout=2_000,
+                )
+                qtbot.waitUntil(
+                    lambda: sip.isdeleted(worker_thread)
+                    or not worker_thread.isRunning(),
+                    timeout=2_000,
+                )
 
         messages = [message["content"] for message in manager.chat_controller.messages]
         visible = "\n".join(messages)
@@ -3690,7 +3730,7 @@ class TestAgentManagerProductChatFlow:
         manager.chat_dock.show()
         composer = manager.chat_panel.input_field
         new_chat_requests: list[bool] = []
-        manager.new_conv_title_btn.clicked.connect(
+        manager.chat_dock.new_conversation_button.clicked.connect(
             lambda _checked=False: new_chat_requests.append(True)
         )
         composer.setFocus()

@@ -546,7 +546,7 @@ def test_real_cross_split_preview_save_and_preparation_preserve_reviewed_members
 
     # Preview validates the canonical split contract but must not construct the
     # generation command service or mutate its saved/materialized state.
-    assert service.dataset_generation._service_instance is None
+    assert "dataset_generation" not in vars(service)
 
     saved = service.execute(
         SaveDatasetSplitCommand(
@@ -779,7 +779,7 @@ def test_preview_receipt_aggregate_evidence_rejects_tampering_after_many_rows() 
         dataset = _materialized_dataset(epoch)
         dataset.name = f"row-{index:02d}"
         datasets.append(dataset)
-    generation_service = service.dataset_generation._service()
+    generation_service = service.dataset_generation
     rows = split_preview_rows(
         datasets,
         test_rule=next(rule for rule in config.test_splitter_list if rule.is_option),
@@ -1459,7 +1459,7 @@ def test_real_deferred_start_failure_restores_saliency_and_pipeline_identities(
     assert previous_trainer is not None
     previous_dataset = service.study.datasets[0]
     previous_generator = service.study.data_manager.dataset_generator
-    dataset_generation = service.dataset_generation._service()
+    dataset_generation = service.dataset_generation
     previous_active_split = dataset_generation._active_split
     previous_split_summary = service.get_state().dataset.active_split_summary
     previous_record = previous_trainer.get_training_plan_holders()[0].get_plans()[0]

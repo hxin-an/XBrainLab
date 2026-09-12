@@ -2974,10 +2974,7 @@ def test_agent_coordinators_are_constructor_owned_without_lazy_fallback():
     assert "SessionField" not in controller_source
     assert "SessionField" not in turn_session_source
     assert "_tool_attempt_coordinator.reset_turn" not in controller_source
-    assert "_recent_tool_calls" not in attempt_source
     assert "def reset_turn" not in attempt_source
-    assert "record_tool_proposal" in turn_session_source
-    assert "self._tool_attempt_session.record_tool_proposal" in controller_source
     assert "context: ToolAvailabilityContext" in coordinator_source
     assert "_get_tool_attempt_context" not in coordinator_source
     attempt_class = next(

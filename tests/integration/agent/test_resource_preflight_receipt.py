@@ -135,7 +135,7 @@ def _training_receipt_runtime(
     )
     assert configured.ok is True
     probe = _TrainingProbe(service.training_runtime)
-    service.training_commands._service_instance = TrainingCommandService(
+    service.training_commands = TrainingCommandService(
         training=probe,
         training_runtime=probe,
         get_state=service.get_state,

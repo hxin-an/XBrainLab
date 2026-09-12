@@ -16,7 +16,7 @@ from typing import Any, cast
 from PyQt6 import sip
 from PyQt6.QtCore import QObject, QThread, QTimer, pyqtSignal, pyqtSlot
 
-from XBrainLab.backend.application import CommandName, get_application_service
+from XBrainLab.backend.application import CommandName
 from XBrainLab.llm.action_contracts import (
     AGENT_ACTION_CONTRACTS,
 )
@@ -139,10 +139,8 @@ _DIRECT_ACTION_PANEL_TARGETS = {
 logger = logging.getLogger(__name__)
 
 
-WORKER_GENERATION_SHUTDOWN_WAIT_MS = 2000
 WORKER_SHUTDOWN_RETRY_INTERVAL_MS = 100
 WORKER_SHUTDOWN_TIMEOUT_MS = 5000
-_QT_THREAD_TYPE = QThread
 
 _BLOCKED_TOOL_ERROR_TYPES = frozenset(
     {
@@ -207,23 +205,6 @@ class _BestEffortGenerationObservers:
                 boundary="assistant_controller",
                 operation="publish_generation_diagnostic",
             )
-
-
-class _ExpectedPublicationApplicationRuntime:
-    """Immutable tool runtime binding execution to one reviewed publication."""
-
-    def __init__(self, service: Any, generation: int) -> None:
-        self._service = service
-        self._generation = generation
-
-    def get_view_publication(self) -> Any:
-        return self._service.get_view_publication()
-
-    def execute(self, command: Any) -> Any:
-        return self._service.execute(
-            command,
-            expected_publication_generation=self._generation,
-        )
 
 
 class LLMController(QObject):
@@ -366,9 +347,6 @@ class LLMController(QObject):
         # Robustness State
         self._strict_envelope_recovery_policy = DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY
 
-        # Tool Failure Loop Protection
-        self._max_loop_breaks = 3
-
         # The model proposes commands; this deterministic policy boundary owns
         # publication, provenance, schema, capability, and confirmation.
         self._tool_attempt_coordinator = ToolAttemptCoordinator(
@@ -377,8 +355,13 @@ class LLMController(QObject):
             context_source=ApplicationToolContextSource(self.study),
         )
         self._tool_execution_coordinator = ToolExecutionCoordinator(
-            self,
+            self.study,
+            self.registry,
+            self.metrics,
             block_policy=self._tool_attempt_coordinator,
+            emit_status=self.status_update.emit,
+            emit_application_command_started=self.application_command_started.emit,
+            emit_application_command_completed=self.application_command_completed.emit,
         )
         self._initialize_shutdown_lifecycle()
 
@@ -1228,7 +1211,6 @@ class LLMController(QObject):
         logger.debug("Heuristic confidence: %.2f", confidence)
 
         cmd, params = command
-        repeated = self._tool_attempt_session.record_tool_proposal(cmd, params)
         latest_user_text = self._conversation.latest_user_request_text()
         publication = self._turn_orchestrator.active_publication
         return self._tool_attempt_coordinator.evaluate(
@@ -1238,7 +1220,6 @@ class LLMController(QObject):
                 confidence=confidence,
                 publication=publication,
                 latest_user_text=latest_user_text,
-                repeated=repeated,
                 single_proposal=single_proposal,
             )
         )
@@ -1260,11 +1241,8 @@ class LLMController(QObject):
         return receipt.question
 
     def _present_tool_attempt_boundary(self, decision: ToolAttemptDecision) -> bool:
-        """Present loop, block, validation, or confirmation boundaries."""
+        """Present block, validation, or confirmation boundaries."""
         cmd = decision.command_name
-        if decision.action is ToolAttemptAction.LOOP:
-            self._handle_loop_detected(cmd)
-            return True
         if decision.action is ToolAttemptAction.RESPOND:
             message = decision.message or "Please provide the required values."
             receipt = decision.tool_input_receipt
@@ -1820,50 +1798,6 @@ class LLMController(QObject):
             }[status]
         )
 
-    def _handle_loop_detected(self, cmd: str):
-        """Handles detection of a repeated tool-call loop.
-
-        Injects a system message into history informing the LLM of the
-        loop and re-triggers generation to break the cycle.
-
-        Args:
-            cmd: The tool name that was called repeatedly.
-
-        """
-        if self._tool_attempt_session.record_loop_break(limit=self._max_loop_breaks):
-            msg = (
-                f"System: Persistent loop detected for '{cmd}'. "
-                "Aborting to prevent infinite recursion."
-            )
-            self._append_history("user", msg)
-            visible_message = (
-                "The assistant stopped because it repeated the same action "
-                "without making progress. Check the current workflow before "
-                "trying a narrower request."
-            )
-            self._append_history("assistant", visible_message)
-            self._publish_response(
-                visible_message,
-                kind=AssistantResponseKind.BLOCKED,
-            )
-            self.metrics.finish_turn()
-            self.status_update.emit("Loop detected, aborting.")
-            self._publish_activity(
-                AssistantTurnActivityPhase.NEEDS_ATTENTION,
-                command_name=cmd,
-            )
-            self.is_processing = False
-            self._emit_processing_finished("loop_detected")
-            return
-
-        msg = (
-            f"System: Loop detected. You have called '{cmd}' "
-            "with these params multiple times. Stop."
-        )
-        self._append_history("user", msg)
-        self.status_update.emit("Loop detected, interrupting...")
-        self._generate_response()
-
     def _finalize_turn(self, response_text: str):
         """Finalizes the turn when no tool commands are present.
 
@@ -1907,7 +1841,6 @@ class LLMController(QObject):
         tool_context = context or self._tool_attempt_coordinator.context_for(
             command_name
         )
-        application_runtime = None
         bound_generation = expected_publication_generation
         generation_required = (
             command_name in APPLICATION_COMMAND_TOOLS
@@ -1921,17 +1854,11 @@ class LLMController(QObject):
                 "Backend publication generation is unavailable; execution is "
                 "blocked until workflow state can be verified.",
             )
-        elif bound_generation is not None:
-            service = get_application_service(self.study)
-            application_runtime = _ExpectedPublicationApplicationRuntime(
-                service,
-                bound_generation,
-            )
         return self._tool_execution_coordinator.execute(
             command_name,
             params,
             context=tool_context,
-            application_runtime=application_runtime,
+            expected_publication_generation=bound_generation,
         )
 
     def _handle_tool_result_logic(
@@ -2130,13 +2057,10 @@ class LLMController(QObject):
 
         self._closing = True
         self._prepare_shutdown_once()
-        worker = cast(Any, getattr(self, "worker", None))
+        worker = self.worker
         if worker is None:
             self._request_worker_thread_exit()
             return self._closed and self._rag_shutdown_clean
-
-        if not isinstance(worker, QObject):
-            return self._close_non_qobject_worker(worker)
 
         if sip.isdeleted(worker):
             self._request_worker_thread_exit()
@@ -2169,25 +2093,6 @@ class LLMController(QObject):
                     "controller shutdown will remain pending."
                 )
 
-    def _close_non_qobject_worker(self, worker: Any) -> bool:
-        """Keep lightweight test doubles retryable without a Qt signal contract."""
-        try:
-            result = worker.shutdown(wait_ms=WORKER_GENERATION_SHUTDOWN_WAIT_MS)
-        except Exception as exc:
-            safe_unexpected_failure(
-                logger,
-                exc,
-                boundary="assistant_controller_shutdown",
-                operation="close_non_qobject_worker",
-            )
-            self._shutdown_phase = _ControllerShutdownPhase.OPEN
-            return False
-        if result is False:
-            self._shutdown_phase = _ControllerShutdownPhase.OPEN
-            return False
-        self._request_worker_thread_exit()
-        return self._closed and self._rag_shutdown_clean
-
     @pyqtSlot()
     def _request_worker_shutdown(self) -> None:
         """Queue one worker-owned cleanup attempt without entering a nested loop."""
@@ -2196,8 +2101,8 @@ class LLMController(QObject):
             return
         if self._shutdown_phase is not _ControllerShutdownPhase.WORKER_STOPPING:
             return
-        worker = cast(Any, getattr(self, "worker", None))
-        if worker is None or not isinstance(worker, QObject) or sip.isdeleted(worker):
+        worker = self.worker
+        if worker is None or sip.isdeleted(worker):
             self._request_worker_thread_exit()
             return
         try:
@@ -2226,13 +2131,7 @@ class LLMController(QObject):
             return
         self._shutdown_phase = _ControllerShutdownPhase.THREAD_STOPPING
         self._shutdown_retry_timer.stop()
-        thread = cast(Any, getattr(self, "worker_thread", None))
-        if not isinstance(thread, _QT_THREAD_TYPE):
-            quit_thread = getattr(thread, "quit", None)
-            if callable(quit_thread):
-                quit_thread()
-            self._finalize_shutdown()
-            return
+        thread = self.worker_thread
         if sip.isdeleted(thread):
             self._finalize_shutdown()
             return
@@ -2273,8 +2172,8 @@ class LLMController(QObject):
             WORKER_SHUTDOWN_TIMEOUT_MS,
         )
         self._shutdown_timeout_timer.stop()
-        worker = cast(Any, getattr(self, "worker", None))
-        if isinstance(worker, QObject) and not sip.isdeleted(worker):
+        worker = self.worker
+        if worker is not None and not sip.isdeleted(worker):
             self._disconnect_worker_callbacks(
                 worker,
                 preserve_shutdown_terminal=True,
@@ -2626,7 +2525,6 @@ class LLMController(QObject):
             backend_generation=context.generation,
         )
         self._turn_orchestrator.set_active_publication(publication)
-        repeated = self._tool_attempt_session.record_tool_proposal(tool_name, params)
         decision = self._tool_attempt_coordinator.evaluate(
             ToolAttemptRequest(
                 command_name=tool_name,
@@ -2634,7 +2532,6 @@ class LLMController(QObject):
                 confidence=1.0,
                 publication=publication,
                 latest_user_text=authorization_text,
-                repeated=repeated,
                 enforce_direct_parameter_origins=False,
             )
         )

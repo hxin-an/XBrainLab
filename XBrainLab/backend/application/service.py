@@ -6,13 +6,10 @@ from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import replace
 from functools import cached_property
-from threading import Lock, RLock, Thread, current_thread
+from threading import Lock, RLock
 from time import monotonic
 from typing import TYPE_CHECKING, Any, cast
 
-from XBrainLab.backend.services.dataset_state_service import (
-    DatasetProductPort,
-)
 from XBrainLab.backend.services.preprocess_state_service import PreprocessProductPort
 from XBrainLab.backend.services.training_state_service import TrainingProductPort
 from XBrainLab.backend.services.visualization_state_service import (
@@ -25,7 +22,6 @@ from XBrainLab.backend.training_manager import (
     post_training_saliency_target,
 )
 from XBrainLab.backend.training_state_contract import (
-    PostTrainingSaliencyPhase,
     TrainingOutcomeState,
     TrainingReadBoundary,
     TrainingTerminalOutcome,
@@ -55,7 +51,6 @@ from .commands import (
     ApplySmartParseCommand,
     Command,
     CommandName,
-    ConfigureTrainingCommand,
     CreateEpochCommand,
     DiscardTrainingPreparationCommand,
     EvaluateCommand,
@@ -77,12 +72,10 @@ from .commands import (
 from .data_interpretation_apply_preparation import (
     ApplicationApplyBoundary,
     InterpretationApplyPlan,
-    PreparedInterpretationApply,
 )
 from .data_interpretation_discovery_preparation import (
     ApplicationDiscoveryBoundary,
     InterpretationDiscoveryPlan,
-    PreparedInterpretationDiscovery,
 )
 from .data_table_service import DataTableCommandService
 from .dataset_split_preview import (
@@ -161,6 +154,7 @@ from .synchronous_training_lifecycle import (
     SynchronousTrainingLifecycleCoordinator,
 )
 from .training_configuration_reset import TrainingConfigurationResetService
+from .training_operation_monitor import TrainingOperationMonitor
 from .training_recommendation import (
     TrainingRecommendation,
     TrainingRecommendationService,
@@ -171,7 +165,6 @@ from .training_resource_preview_coordinator import (
 )
 from .training_runtime import (
     StudyTrainingRuntime,
-    TrainingRuntimePort,
 )
 from .training_snapshot import (
     model_signal_context_snapshot as build_model_signal_context_snapshot,
@@ -189,6 +182,9 @@ from .view_publication import (
 
 if TYPE_CHECKING:
     from .analysis_service import AnalysisCommandService
+    from .data_interpretation_service import DataInterpretationCommandService
+    from .dataset_generation_service import DatasetGenerationCommandService
+    from .training_service import TrainingCommandService
 
 HandlerResult = str | tuple[str, dict[str, Any]]
 _ObserverCleanup = tuple[Callable[..., Any], tuple[Any, ...]]
@@ -211,8 +207,15 @@ class _LegacyRawMutationLifecycleCoordinator:
         RemoveFilesCommand,
     )
 
-    def __init__(self, interpretation: Any) -> None:
-        self._interpretation = interpretation
+    def __init__(self, get_interpretation: Callable[[], Any | None]) -> None:
+        self._get_interpretation = get_interpretation
+
+    def _invalidate(self) -> bool:
+        interpretation = self._get_interpretation()
+        return bool(
+            interpretation is not None
+            and interpretation.invalidate_for_legacy_raw_mutation()
+        )
 
     @classmethod
     def manages(cls, command: Command | Any) -> bool:
@@ -229,18 +232,18 @@ class _LegacyRawMutationLifecycleCoordinator:
             return diagnostics
         success_count = diagnostics.get("success_count")
         if isinstance(success_count, bool) or not isinstance(success_count, int):
-            self._interpretation.invalidate_for_legacy_raw_mutation()
+            self._invalidate()
             raise RuntimeError(
                 "Legacy raw mutation handlers must report an integer success_count."
             )
         if success_count < 0:
-            self._interpretation.invalidate_for_legacy_raw_mutation()
+            self._invalidate()
             raise RuntimeError(
                 "Legacy raw mutation handlers cannot report a negative success_count."
             )
         if success_count == 0:
             return diagnostics
-        invalidated = self._interpretation.invalidate_for_legacy_raw_mutation()
+        invalidated = self._invalidate()
         return {
             **diagnostics,
             "interpretation_lifecycle": {
@@ -267,302 +270,7 @@ class _LegacyRawMutationLifecycleCoordinator:
             return
         if isinstance(error, (TypeError, ValueError)):
             return
-        self._interpretation.invalidate_for_legacy_raw_mutation()
-
-
-class _LazyDataInterpretationCommandService:
-    """Defer Data Interpretation imports until an interpretation command runs."""
-
-    def __init__(
-        self,
-        dataset: DatasetProductPort,
-        pipeline_transaction: PipelineStateTransaction,
-    ) -> None:
-        self.dataset = dataset
-        self.pipeline_transaction = pipeline_transaction
-        self._service_instance: Any | None = None
-
-    def _service(self) -> Any:
-        if self._service_instance is None:
-            from .data_interpretation_service import (  # noqa: PLC0415
-                DataInterpretationCommandService,
-            )
-
-            self._service_instance = DataInterpretationCommandService(
-                self.dataset,
-                data_filepath=StateSnapshotService.data_filepath,
-                pipeline_transaction=self.pipeline_transaction,
-            )
-        return self._service_instance
-
-    def snapshot(self):
-        if self._service_instance is None:
-            from .state import InterpretationStateSnapshot  # noqa: PLC0415
-
-            return InterpretationStateSnapshot()
-        return self._service_instance.snapshot()
-
-    def current_review(self) -> dict[str, Any]:
-        return self._service().current_review()
-
-    def clear(self) -> None:
-        if self._service_instance is not None:
-            self._service_instance.clear()
-
-    def invalidate_for_legacy_raw_mutation(self) -> bool:
-        if self._service_instance is None:
-            return False
-        return bool(self._service_instance.invalidate_for_legacy_raw_mutation())
-
-    def begin_interpretation_discovery(
-        self,
-        command: (
-            ScanSourceCommand
-            | ReviewInterpretationCommand
-            | PreviewInterpretationCommand
-            | ValidateInterpretationCommand
-        ),
-        *,
-        application_boundary: ApplicationDiscoveryBoundary,
-    ) -> InterpretationDiscoveryPlan:
-        return self._service().begin_interpretation_discovery(
-            command,
-            application_boundary=application_boundary,
-        )
-
-    def prepare_interpretation_discovery(
-        self,
-        plan: InterpretationDiscoveryPlan,
-    ) -> PreparedInterpretationDiscovery:
-        return self._service().prepare_interpretation_discovery(plan)
-
-    def commit_prepared_interpretation_discovery(
-        self,
-        prepared: PreparedInterpretationDiscovery,
-    ) -> HandlerResult:
-        return self._service().commit_prepared_interpretation_discovery(prepared)
-
-    def discovery_plan_is_current(
-        self,
-        plan: InterpretationDiscoveryPlan,
-    ) -> bool:
-        return self._service().discovery_plan_is_current(plan)
-
-    def begin_apply_interpretation(
-        self,
-        command: ApplyInterpretationCommand,
-        *,
-        application_boundary: ApplicationApplyBoundary,
-    ) -> InterpretationApplyPlan:
-        return self._service().begin_apply_interpretation(
-            command,
-            application_boundary=application_boundary,
-        )
-
-    def prepare_apply_interpretation(
-        self,
-        plan: InterpretationApplyPlan,
-    ) -> PreparedInterpretationApply:
-        return self._service().prepare_apply_interpretation(plan)
-
-    def verify_prepared_apply_content(
-        self,
-        prepared: PreparedInterpretationApply,
-    ) -> PreparedInterpretationApply:
-        return self._service().verify_prepared_apply_content(prepared)
-
-    def commit_prepared_apply_interpretation(
-        self,
-        prepared: PreparedInterpretationApply,
-    ) -> HandlerResult:
-        return self._service().commit_prepared_apply_interpretation(prepared)
-
-    def handle_save_interpretation_recipe(self, command: Command) -> HandlerResult:
-        return self._service().handle_save_interpretation_recipe(command)
-
-    def handle_reload_interpretation_recipe(self, command: Command) -> HandlerResult:
-        return self._service().handle_reload_interpretation_recipe(command)
-
-
-class _LazyDatasetGenerationCommandService:
-    """Defer dataset-generation imports until dataset split commands run."""
-
-    def __init__(
-        self,
-        *,
-        study: Any,
-        training: Any,
-        has_trainer: Callable[[], bool],
-        pipeline_transaction: PipelineStateTransaction,
-        get_publication_generation: Callable[[], int],
-    ) -> None:
-        self.study = study
-        self.training = training
-        self.has_trainer = has_trainer
-        self.pipeline_transaction = pipeline_transaction
-        self.get_publication_generation = get_publication_generation
-        self._service_instance: Any | None = None
-
-    def _service(self) -> Any:
-        if self._service_instance is None:
-            from .dataset_generation_service import (  # noqa: PLC0415
-                DatasetGenerationCommandService,
-            )
-
-            self._service_instance = DatasetGenerationCommandService(
-                study=self.study,
-                training=self.training,
-                has_trainer=self.has_trainer,
-                pipeline_transaction=self.pipeline_transaction,
-                get_publication_generation=self.get_publication_generation,
-            )
-        return self._service_instance
-
-    def dataset_split_state(self, datasets: list[Any]) -> dict[str, Any]:
-        if self._service_instance is None:
-            return {
-                "split_spec_saved": False,
-                "split_specification": {},
-                "split_specification_fingerprint": None,
-                "split_epoch_revision": None,
-                "split_preview_summary": {},
-                "split_lifecycle": DatasetSplitLifecycle.UNCONFIGURED,
-                "split_materialized": False,
-                "active_split_summary": {},
-                "last_split_attempt": {},
-            }
-        return self._service().dataset_split_state(datasets)
-
-    def prepare_saved_split_candidate(self) -> Any:
-        return self._service().prepare_saved_split_candidate()
-
-    def commit_prepared_split(self, candidate: Any) -> dict[str, Any]:
-        return self._service().commit_prepared_split(candidate)
-
-    def discard_prepared_split(self) -> bool:
-        return self._service().discard_prepared_split()
-
-    def restore_committed_candidate(self, candidate: Any) -> None:
-        self._service().restore_committed_candidate(candidate)
-
-    def handle_save_dataset_split(self, command: Command) -> HandlerResult:
-        return self._service().handle_save_dataset_split(command)
-
-    def handle_clear_datasets(self, command: Command) -> HandlerResult:
-        return self._service().handle_clear_datasets(command)
-
-    def config_from_payload(self, payload: dict[str, Any]) -> Any:
-        """Parse a split preview without constructing the lazy command service."""
-        from .dataset_generation_service import (  # noqa: PLC0415
-            DatasetGenerationCommandService,
-        )
-
-        return DatasetGenerationCommandService.config_from_payload(payload)
-
-
-class _LazyTrainingCommandService:
-    """Defer torch/model/training imports until training commands run."""
-
-    def __init__(
-        self,
-        *,
-        training: Any,
-        training_runtime: TrainingRuntimePort,
-        get_state: Callable[[], ApplicationStateSnapshot],
-        configuration_reset: TrainingConfigurationResetService,
-        recommendation: TrainingRecommendationService,
-    ) -> None:
-        self.training = training
-        self.training_runtime = training_runtime
-        self._get_state = get_state
-        self._configuration_reset = configuration_reset
-        self._recommendation = recommendation
-        self._resource_refinement_provider: Callable[
-            [ConfigureTrainingCommand], tuple[Any, ...]
-        ] = lambda _command: ()
-        self._service_instance: Any | None = None
-
-    def _service(self) -> Any:
-        if self._service_instance is None:
-            from .training_service import TrainingCommandService  # noqa: PLC0415
-
-            self._service_instance = TrainingCommandService(
-                training=self.training,
-                training_runtime=self.training_runtime,
-                get_state=self._get_state,
-                recommendation=self._recommendation,
-                resource_refinement_provider=self._resource_refinement_provider,
-            )
-        return self._service_instance
-
-    def set_resource_refinement_provider(
-        self,
-        provider: Callable[[ConfigureTrainingCommand], tuple[Any, ...]],
-    ) -> None:
-        """Bind application-owned preview provenance before lazy construction."""
-        if self._service_instance is not None:
-            raise RuntimeError(
-                "Training refinement provider must be bound before first use."
-            )
-        self._resource_refinement_provider = provider
-
-    def clear_configuration(self) -> None:
-        self._configuration_reset.clear()
-        self._recommendation.clear()
-
-    def get_resource_preflight(self) -> ResourcePreflightResult:
-        return self._service().get_resource_preflight()
-
-    def get_resource_preview(
-        self,
-        request: TrainingResourcePreviewRequest,
-        context: TrainingResourcePreviewContext,
-    ) -> TrainingResourcePreviewResult:
-        return self._service().get_resource_preview(request, context)
-
-    def handle_configure_training(self, command: Command) -> HandlerResult:
-        return self._service().handle_configure_training(command)
-
-    def resolve_train_preflight(
-        self,
-        command: Command,
-        *,
-        datasets: Any,
-    ) -> tuple[ResourcePreflightResult, bool]:
-        return self._service().resolve_train_preflight(
-            command,
-            datasets=datasets,
-        )
-
-    def start_train_after_preflight(
-        self,
-        command: Command,
-        *,
-        preflight: ResourcePreflightResult,
-        receipt_reused: bool,
-        defer_synchronous_completion: bool = False,
-    ) -> HandlerResult:
-        return self._service().start_train_after_preflight(
-            command,
-            preflight=preflight,
-            receipt_reused=receipt_reused,
-            defer_synchronous_completion=defer_synchronous_completion,
-        )
-
-    def discard_train_preflight(self, token: str | None) -> None:
-        self._service().discard_train_preflight(token)
-
-    def complete_synchronous_training(
-        self,
-        expected_trainer_identity: str,
-    ) -> tuple[str, dict[str, Any]]:
-        return self._service().complete_synchronous_training(expected_trainer_identity)
-
-    def handle_stop_training(self, command: Command) -> HandlerResult:
-        return self._service().handle_stop_training(command)
-
-    def handle_clear_training_history(self, command: Command) -> HandlerResult:
-        return self._service().handle_clear_training_history(command)
+        self._invalidate()
 
 
 class ApplicationService(Observable):
@@ -591,8 +299,6 @@ class ApplicationService(Observable):
         self._last_error: ErrorSnapshot | None = None
         self._command_admission_lock = Lock()
         self.owned_work = OwnedWorkRegistry()
-        self._training_operation_lock = Lock()
-        self._training_operation_threads: dict[str, Thread] = {}
         self._synchronous_training_lifecycle_lock = (
             self.study._synchronous_training_lifecycle_lock
         )
@@ -602,12 +308,8 @@ class ApplicationService(Observable):
             self.study,
             training_runtime=self.training_runtime,
         )
-        self.interpretation = _LazyDataInterpretationCommandService(
-            self.dataset,
-            self.pipeline_transaction,
-        )
         self.legacy_raw_mutation_lifecycle = _LegacyRawMutationLifecycleCoordinator(
-            self.interpretation,
+            lambda: vars(self).get("interpretation"),
         )
         self.data_table = DataTableCommandService(dataset=self.dataset_state)
         self.preprocess_commands = PreprocessCommandService(
@@ -615,34 +317,17 @@ class ApplicationService(Observable):
             dataset=self.dataset,
             pipeline_transaction=self.pipeline_transaction,
         )
-        self.dataset_generation = _LazyDatasetGenerationCommandService(
-            study=self.study,
-            training=self.training,
-            has_trainer=self.training_runtime.has_trainer,
-            pipeline_transaction=self.pipeline_transaction,
-            get_publication_generation=(
-                lambda: self._committed_view_publication().generation
-            ),
-        )
+        self.training_recommendation = TrainingRecommendationService()
         self.training_configuration_reset = TrainingConfigurationResetService(
             training=self.training,
             training_runtime=self.training_runtime,
-        )
-        self.training_recommendation = TrainingRecommendationService()
-        self.training_commands = _LazyTrainingCommandService(
-            training=self.training,
-            training_runtime=self.training_runtime,
-            get_state=self.get_state,
-            configuration_reset=self.training_configuration_reset,
             recommendation=self.training_recommendation,
         )
         self.training_resource_preview = TrainingResourcePreviewCoordinator(
-            estimate=self.training_commands.get_resource_preview,
-            generation_is_current=(self._training_preview_generation_is_current),
+            estimate=lambda request,
+            context: self.training_commands.get_resource_preview(request, context),
+            generation_is_current=self._training_preview_generation_is_current,
             registry=self.owned_work,
-        )
-        self.training_commands.set_resource_refinement_provider(
-            self.training_resource_preview.refinements_for_configuration
         )
         self.saliency_coverage_projector = SaliencyCoverageProjector()
         self.bids_montage_preparation = BidsMontagePreparationCoordinator(
@@ -655,8 +340,12 @@ class ApplicationService(Observable):
             training=self.training_state,
             training_runtime=self.training_runtime,
             evaluation=self.evaluation_state,
-            dataset_generation=self.dataset_generation,
-            interpretation=self.interpretation,
+            dataset_split_state=self._dataset_split_state,
+            interpretation_snapshot=lambda: (
+                self.interpretation.snapshot()
+                if "interpretation" in vars(self)
+                else InterpretationStateSnapshot()
+            ),
             saliency_coverage_projector=self.saliency_coverage_projector,
             training_recommendation=self.training_recommendation,
             montage_snapshot_provider=self.bids_montage_preparation.snapshot,
@@ -764,7 +453,7 @@ class ApplicationService(Observable):
             dataset=self.dataset_state,
             generator_factory=self.study.get_datasets_generator,
             get_publication=self._committed_view_publication,
-            config_factory=self.dataset_generation.config_from_payload,
+            config_factory=self._dataset_config_from_payload,
         )
         self.query_state_commands = QueryStateCommandService(
             dataset=self.dataset_state,
@@ -773,8 +462,12 @@ class ApplicationService(Observable):
         )
         self.lifecycle = LifecycleCommandService(
             dataset=self.dataset,
-            training_commands=self.training_commands,
-            interpretation=self.interpretation,
+            clear_training_configuration=lambda: (
+                self.training_configuration_reset.clear()
+            ),
+            clear_interpretation=lambda: (
+                self.interpretation.clear() if "interpretation" in vars(self) else None
+            ),
             get_state=self.get_state,
             pipeline_transaction=self.pipeline_transaction,
         )
@@ -794,6 +487,11 @@ class ApplicationService(Observable):
                 self._wait_for_synchronous_training_quiescence
             ),
         )
+        self.training_operation_monitor = TrainingOperationMonitor(
+            training_runtime=self.training_runtime,
+            registry=self.owned_work,
+            shutdown_snapshot=self.shutdown_lifecycle.snapshot,
+        )
         self.synchronous_training_lifecycle = SynchronousTrainingLifecycleCoordinator(
             training_runtime=self.training_runtime,
             terminal_notifications=self.training,
@@ -801,7 +499,9 @@ class ApplicationService(Observable):
                 self._retry_synchronous_training_terminal_delivery
             ),
             command_lock=self._command_lock,
-            complete_training=(self.training_commands.complete_synchronous_training),
+            complete_training=lambda identity: (
+                self.training_commands.complete_synchronous_training(identity)
+            ),
             committed_publication=self._committed_view_publication,
             clear_last_error=self._clear_last_error,
             state_after_command=self._state_after_command,
@@ -814,6 +514,74 @@ class ApplicationService(Observable):
         )
         self._command_handlers = self._build_command_handlers()
         self.publication_lifecycle.start()
+
+    @cached_property
+    def interpretation(self) -> DataInterpretationCommandService:
+        """Construct the real interpretation owner only when a workflow needs it."""
+        from .data_interpretation_service import (  # noqa: PLC0415
+            DataInterpretationCommandService,
+        )
+
+        return DataInterpretationCommandService(
+            self.dataset,
+            data_filepath=StateSnapshotService.data_filepath,
+            pipeline_transaction=self.pipeline_transaction,
+        )
+
+    @cached_property
+    def dataset_generation(self) -> DatasetGenerationCommandService:
+        """Construct the split owner on first command, not on state reads."""
+        from .dataset_generation_service import (  # noqa: PLC0415
+            DatasetGenerationCommandService,
+        )
+
+        return DatasetGenerationCommandService(
+            study=self.study,
+            training=self.training,
+            has_trainer=self.training_runtime.has_trainer,
+            pipeline_transaction=self.pipeline_transaction,
+            get_publication_generation=lambda: (
+                self._committed_view_publication().generation
+            ),
+        )
+
+    @cached_property
+    def training_commands(self) -> TrainingCommandService:
+        """Construct the real training owner after its dependencies are composed."""
+        from .training_service import TrainingCommandService  # noqa: PLC0415
+
+        return TrainingCommandService(
+            training=self.training,
+            training_runtime=self.training_runtime,
+            get_state=self.get_state,
+            recommendation=self.training_recommendation,
+            resource_refinement_provider=self.training_resource_preview.refinements_for_configuration,
+        )
+
+    def _dataset_split_state(self, datasets: list[Any]) -> dict[str, Any]:
+        service = vars(self).get("dataset_generation")
+        if service is not None:
+            return service.dataset_split_state(datasets)
+        return {
+            "split_spec_saved": False,
+            "split_specification": {},
+            "split_specification_fingerprint": None,
+            "split_epoch_revision": None,
+            "split_preview_summary": {},
+            "split_lifecycle": DatasetSplitLifecycle.UNCONFIGURED,
+            "split_materialized": False,
+            "active_split_summary": {},
+            "last_split_attempt": {},
+        }
+
+    @staticmethod
+    def _dataset_config_from_payload(payload: dict[str, Any]) -> Any:
+        """Parse preview input without constructing mutable split lifecycle state."""
+        from .dataset_generation_service import (  # noqa: PLC0415
+            DatasetGenerationCommandService,
+        )
+
+        return DatasetGenerationCommandService.config_from_payload(payload)
 
     @cached_property
     def analysis(self) -> AnalysisCommandService:
@@ -1570,7 +1338,7 @@ class ApplicationService(Observable):
         ):
             return False
 
-        if not self._wait_for_owned_operation_monitors(timeout=remaining()):
+        if not self.training_operation_monitor.wait_until_idle(timeout=remaining()):
             return False
 
         if not self.bids_montage_preparation.wait_for_idle(timeout=remaining()):
@@ -1607,28 +1375,6 @@ class ApplicationService(Observable):
         return terminal_reconciled or (
             self.publication_lifecycle.publish_training_terminal_state()
         )
-
-    def _wait_for_owned_operation_monitors(self, *, timeout: float | None) -> bool:
-        """Join terminal monitor threads before reporting application idleness."""
-        deadline = None if timeout is None else monotonic() + max(0.0, timeout)
-        caller = current_thread()
-        while True:
-            with self._training_operation_lock:
-                monitors = tuple(self._training_operation_threads.items())
-            if not monitors:
-                return True
-            for operation_id, monitor in monitors:
-                if monitor is caller:
-                    return False
-                remaining = (
-                    None if deadline is None else max(0.0, deadline - monotonic())
-                )
-                monitor.join(timeout=remaining)
-                if monitor.is_alive():
-                    return False
-                with self._training_operation_lock:
-                    if self._training_operation_threads.get(operation_id) is monitor:
-                        self._training_operation_threads.pop(operation_id, None)
 
     def _committed_view_publication(self) -> ApplicationViewPublication:
         """Copy the internal publication without exposing mutable nested values."""
@@ -1808,19 +1554,24 @@ class ApplicationService(Observable):
                 and command.interactive
                 and result.diagnostics.get("training_trainer_identity")
             ):
-                snapshot = self._continue_interactive_training_operation(
+                snapshot = self.training_operation_monitor.start_training(
                     operation_id,
-                    command,
-                    result,
+                    str(result.diagnostics["training_trainer_identity"]),
+                    result.diagnostics.get("training_handoff_generation"),
                 )
             elif (
                 result.ok
                 and isinstance(command, SaliencyCommand)
                 and result.diagnostics.get("action") == "schedule"
             ):
-                snapshot = self._continue_scheduled_saliency_operation(
+                schedule = result.diagnostics.get("post_training_saliency_schedule")
+                status = schedule.get("status") if isinstance(schedule, dict) else None
+                generation = (
+                    status.get("generation") if isinstance(status, dict) else None
+                )
+                snapshot = self.training_operation_monitor.start_saliency(
                     operation_id,
-                    result,
+                    generation,
                 )
             elif result.ok:
                 snapshot = self.owned_work.complete(operation_id)
@@ -2053,191 +1804,6 @@ class ApplicationService(Observable):
             append=False,
             explicit=True,
         )
-
-    def _continue_scheduled_saliency_operation(
-        self,
-        operation_id: str,
-        result: CommandResult,
-    ) -> OwnedOperationSnapshot:
-        """Keep explicit saliency owned until generation-bound publication ends."""
-        schedule = result.diagnostics.get("post_training_saliency_schedule")
-        status = schedule.get("status") if isinstance(schedule, dict) else None
-        generation = status.get("generation") if isinstance(status, dict) else None
-        self.owned_work.update(
-            operation_id,
-            stage="Computing saliency",
-            message=f"Saliency generation {generation}",
-        )
-        thread = Thread(
-            target=self._monitor_owned_saliency,
-            args=(operation_id, generation),
-            name=f"xbrainlab-owned-saliency-{operation_id[:8]}",
-            daemon=True,
-        )
-        with self._training_operation_lock:
-            self._training_operation_threads[operation_id] = thread
-        try:
-            thread.start()
-        except BaseException as exc:
-            with self._training_operation_lock:
-                self._training_operation_threads.pop(operation_id, None)
-            return self.owned_work.fail(
-                operation_id,
-                message=public_exception_message(exc),
-            )
-        return self.owned_work.snapshot(operation_id)
-
-    def _monitor_owned_saliency(
-        self,
-        operation_id: str,
-        generation: object,
-    ) -> None:
-        """Track explicit saliency progress and terminal status without Qt."""
-        terminal_phase = OwnedWorkPhase.FAILED
-        terminal_message = "Saliency computation failed."
-        try:
-            if (
-                isinstance(generation, bool)
-                or not isinstance(generation, int)
-                or generation < 0
-            ):
-                terminal_message = "Saliency generation identity could not be verified."
-            else:
-                generation_matches = True
-                while not self.training_runtime.wait_for_saliency_job(timeout=0.25):
-                    status = self.training_runtime.saliency_status()
-                    if status.generation != generation:
-                        generation_matches = False
-                        break
-                    phase = status.phase
-                    self.owned_work.update(
-                        operation_id,
-                        stage=(
-                            "Cancelling saliency"
-                            if self.owned_work.snapshot(operation_id).cancel_requested
-                            else "Computing saliency"
-                            if phase is PostTrainingSaliencyPhase.RUNNING
-                            else "Preparing saliency"
-                        ),
-                        message=f"Saliency generation {generation}",
-                    )
-                if generation_matches:
-                    while True:
-                        shutdown = self.shutdown_lifecycle.snapshot()
-                        if shutdown.fenced or shutdown.closing or shutdown.closed:
-                            break
-                        if self.training_runtime.wait_for_saliency_delivery(
-                            timeout=0.25
-                        ):
-                            break
-                    status = self.training_runtime.saliency_status()
-                    generation_matches = status.generation == generation
-                if not generation_matches:
-                    terminal_message = (
-                        "Saliency generation identity could not be verified."
-                    )
-                elif status.phase is PostTrainingSaliencyPhase.SUCCEEDED:
-                    terminal_phase = OwnedWorkPhase.COMPLETED
-                    terminal_message = ""
-                elif status.phase is PostTrainingSaliencyPhase.CANCELLED:
-                    terminal_phase = OwnedWorkPhase.CANCELLED
-                    terminal_message = ""
-                else:
-                    terminal_message = status.message or "Saliency computation failed."
-        except BaseException as exc:
-            terminal_phase = OwnedWorkPhase.FAILED
-            terminal_message = public_exception_message(exc)
-        self._publish_monitored_owned_terminal(
-            operation_id,
-            phase=terminal_phase,
-            message=terminal_message,
-        )
-
-    def _continue_interactive_training_operation(
-        self,
-        operation_id: str,
-        command: TrainCommand,
-        result: CommandResult,
-    ) -> OwnedOperationSnapshot:
-        """Keep interactive Train owned until its exact terminal run publishes."""
-        trainer_identity = str(result.diagnostics["training_trainer_identity"])
-        handoff_generation = result.diagnostics.get("training_handoff_generation")
-        self.owned_work.update(
-            operation_id,
-            stage="Training model",
-            message=f"Training handoff {handoff_generation}",
-        )
-        thread = Thread(
-            target=self._monitor_owned_training,
-            args=(operation_id, trainer_identity, command.append),
-            name=f"xbrainlab-owned-training-{operation_id[:8]}",
-            daemon=True,
-        )
-        with self._training_operation_lock:
-            self._training_operation_threads[operation_id] = thread
-        try:
-            thread.start()
-        except BaseException as exc:
-            with self._training_operation_lock:
-                self._training_operation_threads.pop(operation_id, None)
-            return self.owned_work.fail(
-                operation_id,
-                message=public_exception_message(exc),
-            )
-        return self.owned_work.snapshot(operation_id)
-
-    def _monitor_owned_training(
-        self,
-        operation_id: str,
-        trainer_identity: str,
-        append: bool,
-    ) -> None:
-        """Publish terminal owned-work truth for one admitted trainer identity."""
-        terminal_phase = OwnedWorkPhase.FAILED
-        terminal_message = "Training did not complete successfully."
-        try:
-            self.training_runtime.wait_for_training_completion(
-                expected_trainer_identity=trainer_identity,
-                timeout=None,
-            )
-            outcome = self.training_runtime.terminal_outcome()
-            run = outcome.run
-            if run is None or run.trainer_id != trainer_identity:
-                terminal_message = "Training terminal identity could not be verified."
-            elif outcome.state is TrainingOutcomeState.COMPLETED:
-                terminal_phase = OwnedWorkPhase.COMPLETED
-                terminal_message = ""
-            elif outcome.state is TrainingOutcomeState.CANCELLED:
-                terminal_phase = OwnedWorkPhase.CANCELLED
-                terminal_message = ""
-            else:
-                terminal_message = (
-                    outcome.detail or "Training did not complete successfully."
-                )
-        except BaseException as exc:
-            terminal_phase = OwnedWorkPhase.FAILED
-            terminal_message = public_exception_message(exc)
-        finally:
-            del append
-        self._publish_monitored_owned_terminal(
-            operation_id,
-            phase=terminal_phase,
-            message=terminal_message,
-        )
-
-    def _publish_monitored_owned_terminal(
-        self,
-        operation_id: str,
-        *,
-        phase: OwnedWorkPhase,
-        message: str,
-    ) -> OwnedOperationSnapshot:
-        """Publish terminal truth only after its physical monitor is unowned."""
-        if phase is OwnedWorkPhase.COMPLETED:
-            return self.owned_work.complete(operation_id)
-        if phase is OwnedWorkPhase.CANCELLED:
-            return self.owned_work.finish_cancelled(operation_id)
-        return self.owned_work.fail(operation_id, message=message)
 
     def _owned_operation_cancelled_result(
         self,
@@ -2637,9 +2203,7 @@ class ApplicationService(Observable):
                             ),
                             read_only=True,
                         )
-                    prepared_result, preparation = self.analysis.prepare_evaluate(
-                        command
-                    )
+                    _, preparation = self.analysis.prepare_evaluate(command)
                     if preparation is None:
                         return self._handler_failure_result(
                             name,
@@ -2650,15 +2214,6 @@ class ApplicationService(Observable):
                             ),
                             read_only=True,
                         )
-                    identity = preparation.identity
-                    selected_plan = self.training_runtime.training_plan_holders()[
-                        identity.plan.plan_index
-                    ]
-                    selected_run = (
-                        selected_plan.get_plans()[identity.run.run_index]
-                        if identity.run is not None
-                        else None
-                    )
                     after_boundary = (
                         self.state_snapshot.capture_training_read_boundary()
                     )
@@ -2729,30 +2284,10 @@ class ApplicationService(Observable):
                         before_boundary=training_boundary,
                         current_boundary=current_boundary,
                     )
-                try:
-                    current_plans = self.training_runtime.training_plan_holders()
-                    current_plan = current_plans[identity.plan.plan_index]
-                    current_run = (
-                        current_plan.get_plans()[identity.run.run_index]
-                        if identity.run is not None
-                        else None
-                    )
-                    prepared_result, current_preparation = (
-                        self.analysis.prepare_evaluate(command)
-                    )
-                    target_unchanged = (
-                        current_plan is selected_plan
-                        and current_run is selected_run
-                        and current_preparation is not None
-                        and current_preparation.dataset is preparation.dataset
-                        and current_preparation.model_instance
-                        is preparation.model_instance
-                        and current_preparation.model_holder is preparation.model_holder
-                        and current_preparation.terminal == preparation.terminal
-                    )
-                except (IndexError, PreconditionError):
-                    target_unchanged = False
-                if not target_unchanged:
+                prepared_result = self.analysis.revalidate_prepared_evaluate(
+                    command, preparation
+                )
+                if prepared_result is None:
                     return self._stale_evaluation_summary_result(
                         before_publication=before_publication,
                         current_publication=current_publication,
@@ -4500,29 +4035,43 @@ class ApplicationService(Observable):
         """Bind serialized command handlers not handled by a detached route."""
         handlers: dict[CommandName, Callable[[Command], HandlerResult]] = {
             CommandName.SAVE_INTERPRETATION_RECIPE: (
-                self.interpretation.handle_save_interpretation_recipe
+                lambda command: self.interpretation.handle_save_interpretation_recipe(
+                    command
+                )
             ),
             CommandName.RELOAD_INTERPRETATION_RECIPE: (
-                self.interpretation.handle_reload_interpretation_recipe
+                lambda command: self.interpretation.handle_reload_interpretation_recipe(
+                    command
+                )
             ),
             CommandName.UPDATE_METADATA: self.data_table.handle_update_metadata,
             CommandName.APPLY_SMART_PARSE: self.data_table.handle_apply_smart_parse,
             CommandName.REMOVE_FILES: self.data_table.handle_remove_files,
             CommandName.PREPROCESS: self.preprocess_commands.handle_preprocess,
             CommandName.CONFIGURE_DATASET_SPLIT: (
-                self.dataset_generation.handle_save_dataset_split
+                lambda command: self.dataset_generation.handle_save_dataset_split(
+                    command
+                )
             ),
-            CommandName.CLEAR_DATASETS: self.dataset_generation.handle_clear_datasets,
+            CommandName.CLEAR_DATASETS: (
+                lambda command: self.dataset_generation.handle_clear_datasets(command)
+            ),
             CommandName.CONFIGURE_TRAINING: (
-                self.training_commands.handle_configure_training
+                lambda command: self.training_commands.handle_configure_training(
+                    command
+                )
             ),
             CommandName.TRAIN: self._handle_train_with_saved_split,
             CommandName.DISCARD_TRAINING_PREPARATION: (
                 self._handle_discard_training_preparation
             ),
-            CommandName.STOP_TRAINING: self.training_commands.handle_stop_training,
+            CommandName.STOP_TRAINING: (
+                lambda command: self.training_commands.handle_stop_training(command)
+            ),
             CommandName.CLEAR_TRAINING_HISTORY: (
-                self.training_commands.handle_clear_training_history
+                lambda command: self.training_commands.handle_clear_training_history(
+                    command
+                )
             ),
             CommandName.EVALUATE: lambda command: self.analysis.handle_evaluate(
                 command

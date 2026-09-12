@@ -384,9 +384,12 @@ def test_typed_response_signal_reaches_chat_without_raw_text_classification(qtbo
         manager.init_ui()
         manager.start_system()
         submission = manager._assistant_turn_state.begin_submission()
-        assert manager._assistant_turn_state.accept_admission(
-            submission,
-            correlation,
+        assert (
+            manager._assistant_turn_state.complete_admission(
+                submission,
+                correlation,
+            )
+            is not None
         )
         manager.assistant_runtime._active_turn = correlation
         controller.response_presentation_ready.emit(presentation)

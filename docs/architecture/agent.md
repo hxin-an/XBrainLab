@@ -61,7 +61,7 @@ Study / managers / domain state
 | `XBrainLab/ui/components/assistant_runtime_lifecycle.py` | local runtime activation、terminal close、recoverable error 與 immutable runtime state。 |
 | `XBrainLab/ui/components/assistant_application_publication_coordinator.py` | 將 revisioned application publication 與 training terminal notice 投影到 Assistant。 |
 | `XBrainLab/llm/agent/controller.py` | 組合 agent turn：context、parser、verification、confirmation 與 bounded tool execution；不再保存 writable lifecycle aliases。 |
-| `XBrainLab/llm/agent/turn_orchestrator.py` | `AssistantTurnOrchestrator` 擁有 host/RAG/generation/cancellation correlation；`AssistantToolAttemptSession` 擁有 request-scoped counters、visible feedback 與 repeated proposal history。 |
+| `XBrainLab/llm/agent/turn_orchestrator.py` | `AssistantTurnOrchestrator` 擁有 host/RAG/generation/cancellation correlation；`AssistantToolAttemptSession` 擁有 request-scoped counters 與 visible feedback。 |
 | `XBrainLab/llm/agent/rag_process_lifecycle.py` | RAG retriever subprocess 的啟動、timeout、終止與結果 ownership。 |
 | `XBrainLab/llm/agent/tool_execution_coordinator.py` | 執行單一已驗證 tool、套用 capability gate、正規化 command result、記錄 metrics 與發出 command lifecycle signal。 |
 | `XBrainLab/llm/agent/worker.py` | 背景 thread 中的 LLM 初始化、生成、timeout、model switch；只用 immutable runtime snapshot 對 UI 發布狀態。 |
@@ -134,9 +134,19 @@ Qt processing／closing admission。這些內部責任移交不新增工具或�
 
 Controller 不再透過 `_active_generation_id`、`_retry_count` 等 writable compatibility alias 保存
 第二份狀態。Host/RAG/generation/cancellation correlation 只在 `AssistantTurnOrchestrator`；format
-retry、tool failure/execution、visible response 與 repeated proposal history 只在
+retry、tool failure/execution 與 visible response 只在
 `AssistantToolAttemptSession`。Architecture gate 會以 AST 同時掃 production controller 與測試
 fixture，避免測試寫入無效 instance attribute 後產生假通過。
+
+`ToolExecutionCoordinator` 只接收 study、registry、metrics 與三個 lifecycle/status callbacks，
+不持有整個 Controller；它在既有 execution module 綁定 reviewed publication generation。
+Controller 保留 missing-generation 拒絕與 Qt delivery。有效 proposal 只執行一次、等待互動或
+結束回合；format retry 發生在有效 proposal 之前，因此舊 repeated-proposal history／loop-break
+分支已移除，不影響 strict-envelope retry 或 one-action admission。
+
+Controller shutdown 只使用實際 `AgentWorker`／`QThread` 的 acknowledgement、timeout/retry 與
+native-exit probe；不再提供專供非 QObject／QThread 測試替身使用的成功路徑。Worker 已釋放／
+刪除、RAG cleanup 未完成與晚到的 Stop acknowledgement 仍由原有 lifecycle fence 處理。
 
 UI 不可直接讀 `AgentWorker.engine` 或 generation thread。worker 只發出 model id、backend mode
 與 initialized 狀態的 snapshot；`AgentManager`、VRAM conflict check 和 model deletion preflight

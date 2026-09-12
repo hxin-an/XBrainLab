@@ -708,7 +708,7 @@ def test_repeated_preview_rehashes_same_size_carrier_after_stat_identity_change(
     command = PreviewInterpretationCommand(scan_id=scan_id)
     first = service.execute(command)
     assert first.ok
-    interpretation = service.interpretation._service()
+    interpretation = service.interpretation
     first_candidate = interpretation.state.resolve_candidate(None)
     first_row = next(
         row

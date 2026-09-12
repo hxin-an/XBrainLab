@@ -11,6 +11,7 @@ from collections.abc import Callable
 from typing import Any
 from unittest.mock import patch
 
+import pytest
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
 
 from tests.qt_lifecycle import close_controller_and_wait
@@ -28,6 +29,10 @@ from XBrainLab.llm.agent.turn import (
     AssistantGenerationStopRequest,
     AssistantTurnCorrelation,
     AssistantTurnRequest,
+)
+from XBrainLab.llm.agent.ui_handoff import (
+    WorkflowUiHandoffResolution,
+    WorkflowUiHandoffResolutionStatus,
 )
 from XBrainLab.llm.core.generation import GenerationProfile
 
@@ -158,8 +163,13 @@ class _RecordingExecutionCoordinator(ToolExecutionCoordinator):
 
     def __init__(self, controller: LLMController) -> None:
         super().__init__(
-            controller,
+            controller.study,
+            controller.registry,
+            controller.metrics,
             block_policy=controller._tool_attempt_coordinator,
+            emit_status=controller.status_update.emit,
+            emit_application_command_started=controller.application_command_started.emit,
+            emit_application_command_completed=controller.application_command_completed.emit,
         )
         self.commands: list[str] = []
 
@@ -169,14 +179,14 @@ class _RecordingExecutionCoordinator(ToolExecutionCoordinator):
         params: dict[str, Any],
         *,
         context,
-        application_runtime=None,
+        expected_publication_generation=None,
     ):
         self.commands.append(command_name)
         return super().execute(
             command_name,
             params,
             context=context,
-            application_runtime=application_runtime,
+            expected_publication_generation=expected_publication_generation,
         )
 
 
@@ -200,10 +210,18 @@ def _controller_with_script(
     return controller, worker, coordinator
 
 
-def _submit_user_turn(controller: LLMController, text: str) -> None:
+def _submit_user_turn(
+    controller: LLMController,
+    text: str,
+    *,
+    generation: int = 1,
+) -> None:
     controller.handle_user_turn(
         AssistantTurnRequest(
-            correlation=AssistantTurnCorrelation(generation=1, turn_id=1),
+            correlation=AssistantTurnCorrelation(
+                generation=generation,
+                turn_id=generation,
+            ),
             text=text,
         )
     )
@@ -274,5 +292,96 @@ def test_recovered_valid_envelope_reaches_real_execution_coordinator(
         assert handoff is not None
         assert handoff.command is CommandName.SCAN_SOURCE
         assert controller.is_processing is True
+    finally:
+        close_controller_and_wait(controller, qtbot)
+
+
+@pytest.mark.parametrize("malformed_count", (0, 2))
+def test_parsed_import_handoff_executes_once_despite_recovery_or_duplicate_finish(
+    qtbot,
+    malformed_count: int,
+) -> None:
+    """One parsed proposal cannot become a second tool execution in one turn."""
+    malformed = '```json\n{"tool_name":"import_eeg_data","parameters":{}}\n```'
+    valid = '{"workflow_stage":"empty","tool_name":"import_eeg_data","parameters":{}}'
+    controller, worker, coordinator = _controller_with_script(
+        [malformed] * malformed_count + [valid]
+    )
+    terminals = []
+    controller.turn_finished.connect(terminals.append)
+
+    try:
+        _submit_user_turn(controller, "Import EEG data.")
+        qtbot.waitUntil(
+            lambda: controller.pending_interactions.workflow_handoff is not None,
+            timeout=3_000,
+        )
+        handoff = controller.pending_interactions.workflow_handoff
+        assert handoff is not None
+        assert worker.generation_count == malformed_count + 1
+        assert coordinator.commands == ["import_eeg_data"]
+        assert controller._tool_attempt_session.execution_count == 1
+
+        # This is the real worker signal, replayed after its generation already
+        # reached a pending UI handoff. It must not parse or execute again.
+        worker.generation_finished.emit(malformed_count + 1, [])
+        qtbot.wait(20)
+        assert controller.pending_interactions.workflow_handoff is handoff
+        assert coordinator.commands == ["import_eeg_data"]
+        assert controller._tool_attempt_session.execution_count == 1
+        assert len(terminals) == 0
+
+        controller.on_workflow_ui_handoff_resolved(
+            WorkflowUiHandoffResolution.for_request(
+                handoff,
+                status=WorkflowUiHandoffResolutionStatus.CANCELLED,
+                message="Import was cancelled in the existing UI.",
+            )
+        )
+        qtbot.waitUntil(lambda: not controller.is_processing, timeout=3_000)
+        assert len(terminals) == 1
+        assert controller.pending_interactions.workflow_handoff is None
+        assert coordinator.commands == ["import_eeg_data"]
+    finally:
+        close_controller_and_wait(controller, qtbot)
+
+
+def test_same_import_action_in_three_fresh_turns_never_accumulates_a_loop(
+    qtbot,
+) -> None:
+    """Repeat across user turns is legal; each fresh turn still owns one action."""
+    valid = '{"workflow_stage":"empty","tool_name":"import_eeg_data","parameters":{}}'
+    controller, worker, coordinator = _controller_with_script([valid, valid, valid])
+    terminals = []
+    controller.turn_finished.connect(terminals.append)
+
+    try:
+        for generation in range(1, 4):
+            _submit_user_turn(
+                controller,
+                "Import EEG data.",
+                generation=generation,
+            )
+            qtbot.waitUntil(
+                lambda: controller.pending_interactions.workflow_handoff is not None,
+                timeout=3_000,
+            )
+            handoff = controller.pending_interactions.workflow_handoff
+            assert handoff is not None
+            assert coordinator.commands == ["import_eeg_data"] * generation
+            assert controller._tool_attempt_session.execution_count == 1
+
+            controller.on_workflow_ui_handoff_resolved(
+                WorkflowUiHandoffResolution.for_request(
+                    handoff,
+                    status=WorkflowUiHandoffResolutionStatus.CANCELLED,
+                    message="Import was cancelled in the existing UI.",
+                )
+            )
+            qtbot.waitUntil(lambda: not controller.is_processing, timeout=3_000)
+            assert len(terminals) == generation
+
+        assert worker.generation_count == 3
+        assert coordinator.commands == ["import_eeg_data"] * 3
     finally:
         close_controller_and_wait(controller, qtbot)
