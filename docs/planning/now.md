@@ -81,10 +81,15 @@ permission; bounded cleanup follows. No zero-defect or Stable Assistant claim.
 
 Source: build/dev-artifacts/core-responsibility, from merged main 6fbc5d5c. Original dirty checkout,
 accepted complete-baseline app/evidence, user settings/data and shared caches remain protected.
-All planned implementation and independent boundary reviews are complete. Commit C3 and canonical
-architecture truth sync, push one integrated candidate and open its PR. Follow exact-head CI through
-all non-skipped success, verifying source-diverse/platform/UI artifacts. Run the missing real bounded
-Assistant baseline and normal ChatPanel journey using the shared native Windows environment/caches.
+All planned implementation and independent boundary reviews are complete; PR #138 is open. Its first
+CI run 34671748877 found two missed constructor fixtures in test_training_configuration_reset.py:
+B1 added the required existing recommendation owner, but these two direct unit callers were not migrated.
+Production composition is correct. The fixtures now supply the real recommendation owner and observe
+reset/publication ordering and notification-failure cleanup; all 21 focused reset/recommendation/lifecycle
+cases passed on native Windows. Commit/push this test-only correction. No production
+fallback or optional dependency. Follow the new exact-head CI through all non-skipped success,
+verifying source-diverse/platform/UI artifacts. Run the missing real bounded Assistant baseline and
+normal ChatPanel journey using the shared native Windows environment/caches.
 Then open the exact clean candidate with manual_windows.ps1, verify response and deliver one GUI/English
 Assistant checklist/restart command. No new manual acceptance or merge permission has been received.
 Responsibility maps are in ignored core-audit; final retained groups and evidence limits are below.
@@ -278,3 +283,10 @@ Core plus satellites is production +900/-1,155/net -255; tests are intentionally
 to shrink. Size is not a clean-architecture or zero-defect claim. Model inference, arbitrary data,
 scientific correctness and hung OS/native-process behavior are not proved by focused tests. One final
 same-source Windows/Assistant handoff remains mandatory; do not stop at this implementation checkpoint.
+
+First candidate 93dd06d4 passed the 81-case bounded Assistant gate (36/36 positive; no new bounded
+failure IDs), not Stable promotion. Native ordinary-response/deactivation/re-enable/close passed via
+the existing isolated-settings profile. An initial unattended capture stopped before dialogue because
+isolated first-run acknowledgement was absent; preserve it as a setup failure, not product evidence.
+The missing normal model-led Import/Channels/Resample journey is being prepared as an ignored bounded
+Qt probe, without tracked runtime changes, fake generation or changes to user settings.
