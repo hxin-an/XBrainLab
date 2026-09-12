@@ -46,7 +46,15 @@ def test_prompt_policy_describes_typed_clarification_for_user_responses() -> Non
         in instructions
     )
     assert "ask which operation the user wants" in instructions
-    assert "For an ambiguous action request" in instructions
+    selection_rule = instructions.split("1. ", 1)[1].split("2. ", 1)[0]
+    assert "Broad processing requests and unspecified filtering" in selection_rule
+    assert (
+        "Use message only, without pending_action or missing_inputs" in selection_rule
+    )
+    assert "Do not choose channel selection, a default filter" in selection_rule
+    assert selection_rule.index("ask which operation") < selection_rule.index(
+        "Only call it"
+    )
     assert "If no specific operation was requested" not in instructions
 
 

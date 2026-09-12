@@ -69,15 +69,17 @@ class StrictToolResponsePromptPolicy:
             "required values, use respond_to_user to ask only for those values. "
         )
         operation_choice = (
-            " For an ambiguous action request that does not name a specific "
-            "operation, ask which operation the user wants; do not choose one "
-            "or collect its parameters."
+            " Broad processing requests and unspecified filtering do not identify "
+            "an exact operation: ask which operation the user wants, or which "
+            "filter type. Use message only, without pending_action or missing_inputs. "
+            "Do not choose channel selection, a default filter, or its parameters. "
             if include_preprocessing_guidance
             else ""
         )
         return (
             "STRICT RESPONSE CONTRACT - DECISION ORDER (decide silently):\n"
-            "1. First identify the exact action requested by meaning. Only call it "
+            "1. First identify the exact action requested by meaning."
+            f"{operation_choice} Only call it "
             "when that exact action is listed as callable and contains every "
             "required value. Tool and function names are internal: never tell the "
             "user or a later assistant to call one.\n"
@@ -91,7 +93,7 @@ class StrictToolResponsePromptPolicy:
             "information, a negated, "
             "ambiguous, or multi-action request. Never call a prerequisite, "
             "substitute, or retired alias. Tool availability does not make it "
-            f"relevant to the user's request.{operation_choice}\n"
+            "relevant to the user's request.\n"
             "5. Required values must come from the latest user request or verified "
             "state. Never invent paths, settings, labels, IDs, or file names.\n"
             "6. Host confirmation is separate. For a complete enabled action, "
