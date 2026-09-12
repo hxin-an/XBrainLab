@@ -120,6 +120,28 @@ class AnalysisCommandService:
         )
         return result, preparation
 
+    def revalidate_prepared_evaluate(
+        self,
+        command: EvaluateCommand,
+        preparation: EvaluationModelSummaryPreparation,
+    ) -> tuple[str, dict[str, Any]] | None:
+        """Return the fresh catalog only while the exact summary target remains."""
+        try:
+            result, current = self.prepare_evaluate(command)
+        except (IndexError, PreconditionError):
+            return None
+        if (
+            current is None
+            or current.selected_plan is not preparation.selected_plan
+            or current.selected_run is not preparation.selected_run
+            or current.dataset is not preparation.dataset
+            or current.model_instance is not preparation.model_instance
+            or current.model_holder is not preparation.model_holder
+            or current.terminal != preparation.terminal
+        ):
+            return None
+        return result
+
     @staticmethod
     def build_prepared_model_summary(
         preparation: EvaluationModelSummaryPreparation,

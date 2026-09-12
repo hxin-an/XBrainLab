@@ -174,6 +174,8 @@ class EvaluationModelSummaryPreparation:
     """Lightweight selected inputs captured before expensive model inspection."""
 
     identity: EvaluationSummaryIdentity
+    selected_plan: Any
+    selected_run: Any | None = None
     dataset: Any | None = None
     model_instance: Any | None = None
     model_holder: Any | None = None
@@ -942,6 +944,8 @@ def prepare_evaluation_model_summary(
         if not _run_finished(selected_run):
             return EvaluationModelSummaryPreparation(
                 identity=identity,
+                selected_plan=selected_plan,
+                selected_run=selected_run,
                 terminal=EvaluationModelSummary(status="pending"),
             )
 
@@ -956,18 +960,23 @@ def prepare_evaluation_model_summary(
         if model_instance is None:
             return EvaluationModelSummaryPreparation(
                 identity=identity,
+                selected_plan=selected_plan,
+                selected_run=selected_run,
                 terminal=EvaluationModelSummary(status="unavailable"),
             )
         get_name = getattr(selected_run, "get_name", None)
         run_name = str(get_name()) if callable(get_name) else "Selected run"
         return EvaluationModelSummaryPreparation(
             identity=identity,
+            selected_plan=selected_plan,
+            selected_run=selected_run,
             dataset=dataset,
             model_instance=model_instance,
             run_name=run_name,
         )
     return EvaluationModelSummaryPreparation(
         identity=identity,
+        selected_plan=selected_plan,
         dataset=dataset,
         model_holder=getattr(selected_plan, "model_holder", None),
     )

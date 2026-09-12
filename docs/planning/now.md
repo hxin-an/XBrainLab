@@ -37,10 +37,10 @@ LOC quota or coverage-denominator manipulation. Update the bounded slice record 
 
 | Batch | Required result | Status |
 | --- | --- | --- |
-| A Map | Every responsibility and direct consumer assigned, retain/migrate/delete rationale and baselines | In progress |
-| B Backend | Workflow/composition and monitoring separation; shared lock/admission/publication preserved | B1/B2 committed; B3 next |
-| C Controller | Non-Qt proposal/interaction/terminal decisions in explicit owners; real harnesses migrated | C1 committed; C2/C3 next |
-| D UI host | Concrete presentation separated; no duplicate runtime/publication/turn decisions | D1/D2 committed; D3 next |
+| A Map | Every responsibility and direct consumer assigned, retain/migrate/delete rationale and baselines | Mapped; final disposition review pending |
+| B Backend | Workflow/composition and monitoring separation; shared lock/admission/publication preserved | B1/B2 committed; B3 validated |
+| C Controller | Non-Qt proposal/interaction/terminal decisions in explicit owners; real harnesses migrated | C1/C2 committed; C3 baseline passed |
+| D UI host | Concrete presentation separated; no duplicate runtime/publication/turn decisions | D1/D2/D3 committed and reviewed |
 | E Integration | Independent boundary review, same-source gates, one Windows GUI/Assistant handoff | Not started |
 
 At most two non-overlapping workers; main owns common boundaries, source identity, plan and integration.
@@ -81,11 +81,11 @@ permission; bounded cleanup follows. No zero-defect or Stable Assistant claim.
 
 Source: build/dev-artifacts/core-responsibility, from merged main 6fbc5d5c. Original dirty checkout,
 accepted complete-baseline app/evidence, user settings/data and shared caches remain protected.
-C2 deletion and D3 admission-state transfer are implemented and independently reviewed. The new D3
-debug witness initially kept the fixture's side_effect, bypassing its no-correlation return_value.
-Corrected fixture plus adjacent state/Manager tests passed 158 cases/22.07s. All new B3 exact-target and C3 real-Qt shutdown
-characterizations passed, allowing those transfers next. Responsibility maps are in ignored core-audit.
-No candidate PR.
+B3 has passed independent review and its identical characterization/adjacent tests. Commit B3, then
+remove C3's test-only shutdown alternatives and migrate the one UI debug fixture to a real worker.
+Additional real pending-Stop acknowledgement and sole RAG lifecycle cleanup-owner witnesses passed
+before deletion. Then final disposition/diff review, same-head CI and missing native Assistant evidence.
+Responsibility maps are in ignored core-audit. No candidate PR.
 
 ### B1: delete method-by-method lazy proxy classes
 
@@ -245,3 +245,10 @@ B3's seven exact-target substitutions and refreshed-catalog cases passed against
 C3's real worker/thread RAG false/exception/retry and late-delivery fences also passed before deletion.
 C3 follows Controller deletion with its own passing pre-change witnesses. Then final disposition/diff
 review and canonical same-head integration gates, not another open-ended audit.
+
+C2 committed a55233f0; D3 97b7ba64; next-boundary characterization e8b82ac8. D3 fixture corrected by
+clearing its inherited debug.side_effect; 158 focused cases passed/22.07s. B3 final owner transfer is
+production +35/-35/net 0 across three existing files after formatting; no added authority. Independent
+review found no blocker. evaluation-owner-post-shutdown-ack-baseline passed 428 cases/37.24s, including
+the same real target substitutions/concurrent catalog cases, pending/unavailable target removal and
+the additional real Qt Stop-ack/RAG cleanup-owner characterization. C3 production is still unchanged.

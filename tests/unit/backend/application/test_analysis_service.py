@@ -679,6 +679,39 @@ def test_analysis_service_rejects_stale_model_summary_identity() -> None:
         )
 
 
+@pytest.mark.parametrize("finished", [False, True], ids=["pending", "unavailable"])
+def test_terminal_summary_revalidation_refreshes_catalog_but_rejects_removed_run(
+    finished: bool,
+) -> None:
+    run = _Run(finished=finished)
+    plan = _Plan("Selected", [run])
+    plans = [plan]
+    service, _visualization = _service(training_runtime=_TrainingRuntime(plans))
+    plan_identity = EvaluationPlanIdentity(plan_index=0)
+    command = EvaluateCommand(
+        summary_identity=EvaluationSummaryIdentity(
+            plan=plan_identity,
+            run=EvaluationRunIdentity(plan=plan_identity, run_index=0),
+        )
+    )
+    _, preparation = service.prepare_evaluate(command)
+    assert preparation is not None
+    assert preparation.terminal == EvaluationModelSummary(
+        status="unavailable" if finished else "pending"
+    )
+
+    plans.append(_Plan("Unrelated", [_Run(finished=False)]))
+    refreshed = service.revalidate_prepared_evaluate(command, preparation)
+    assert refreshed is not None
+    assert [entry["name"] for entry in refreshed[1]["plans"]] == [
+        "Selected",
+        "Unrelated",
+    ]
+
+    plan._runs.clear()
+    assert service.revalidate_prepared_evaluate(command, preparation) is None
+
+
 def test_analysis_service_reports_training_active_without_facade() -> None:
     plan_a = _Plan("Plan A", [_Run(finished=True)])
     plan_b = _Plan("Plan B", [_Run(finished=True)])

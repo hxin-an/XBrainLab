@@ -1,6 +1,6 @@
 # Backend architecture
 
-最後更新：`2026-09-11`
+最後更新：`2026-09-12`
 
 這份文件說明目前 source 的 backend 邊界與責任，不是功能清單、歷史改造紀錄或本次施工的
 驗收紀錄。可對外宣稱的產品能力以 [current.md](../current.md) 為準；正在施工的範圍、
@@ -45,6 +45,21 @@ surface 不在 current architecture 內。
 | Reset, close and cancellation | `LifecycleCommandService`, `ApplicationShutdownLifecycleCoordinator`, `OwnedWorkRegistry` and the synchronous-training coordinator own reset/close/terminal-delivery seams. No view owns worker lifetime. |
 
 Epoch dialog setup and command execution share the validated setup builder in `PreprocessCommandService`.
+Interpretation, dataset generation and training command services are cached lazily on first use;
+handler bindings and state/reset callbacks do not materialize those owners during cold queries.
+There is no method-by-method lazy proxy layer.
+
+`TrainingOperationMonitor` owns the physical monitor threads for admitted training and saliency work,
+including exact producer-generation matching and physical-exit joins. `OwnedWorkRegistry` remains the
+operation-state authority; `ApplicationService` retains admission, result decoration and background-wait
+ordering. A terminal operation snapshot does not by itself prove that its monitor thread has exited.
+
+For detached model summaries, `AnalysisCommandService` captures the exact plan/run and model inputs,
+then revalidates those identities and refreshes the result catalog. `ApplicationService` retains the
+two lock/admission boundaries, trainer/publication freshness, cancellation and final result envelope;
+model construction/inspection runs outside the command lock. Unrelated completed folds may refresh the
+catalog, but a substituted summary target cannot publish the old model text.
+
 The existing montage coordinator normalizes and validates a manual override before selection;
 `ApplicationService` retains lock/admission, trainer freeze/no-op, live Epoch projection and publication.
 `DatasetStateService` owns the preprocessed-first/loaded-fallback detached summary row selection used by
