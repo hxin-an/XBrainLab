@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from enum import Enum
 
+from XBrainLab.backend.application.view_publication import ApplicationViewPublication
+from XBrainLab.backend.controller.chat_controller import ChatMessagePresentationKind
 from XBrainLab.backend.training_state_contract import TrainingOutcomeState
 from XBrainLab.llm.agent.assistant_activity import (
     AssistantTurnActivity,
     AssistantTurnActivityPhase,
 )
+from XBrainLab.llm.agent.confirmation import AgentConfirmationRequest
 from XBrainLab.llm.agent.response_presentation import AssistantResponseKind
 from XBrainLab.ui.components.workflow_surface_router import (
     WorkflowSurfaceOutcome,
@@ -187,6 +190,102 @@ class AgentPresentationService:
                 AssistantResponseKind.CANCELLED,
             ),
         }.get(outcome)
+
+    @staticmethod
+    def chat_presentation_kind(
+        kind: AssistantResponseKind,
+    ) -> ChatMessagePresentationKind:
+        """Map one authoritative response meaning to transcript presentation."""
+        return {
+            AssistantResponseKind.TOOL_RESULT: ChatMessagePresentationKind.TOOL_RESULT,
+            AssistantResponseKind.CLARIFICATION: (
+                ChatMessagePresentationKind.CLARIFICATION
+            ),
+            AssistantResponseKind.ERROR: ChatMessagePresentationKind.ERROR,
+            AssistantResponseKind.BLOCKED: ChatMessagePresentationKind.ATTENTION,
+            AssistantResponseKind.CANCELLED: ChatMessagePresentationKind.CANCELLED,
+        }.get(kind, ChatMessagePresentationKind.ASSISTANT)
+
+    @classmethod
+    def confirmation_current_values(
+        cls,
+        request: AgentConfirmationRequest,
+        publication: ApplicationViewPublication,
+    ) -> tuple[dict[str, str] | None, bool]:
+        """Project one matching publication into a confirmation-card comparison."""
+        request_generation = request.publication_generation
+        if not getattr(publication, "usable", False) or not getattr(
+            publication.state, "state_reliable", False
+        ):
+            return None, False
+        if (
+            request_generation is not None
+            and publication.generation != request_generation
+        ):
+            return {}, True
+        if request_generation is None:
+            return None, False
+
+        training = publication.state.training
+        candidates: dict[str, object] = {}
+        if training.has_training_option:
+            candidates.update(training.training_option)
+            if "checkpoint_epoch" in candidates:
+                candidates["save_checkpoints_every"] = candidates["checkpoint_epoch"]
+        if training.has_model:
+            candidates.update(training.model_params)
+            if training.model_name:
+                candidates["model_name"] = training.model_name
+
+        display_values = {
+            str(key).replace("_", " ").strip().capitalize(): (
+                cls._confirmation_display_value(str(key), value)
+            )
+            for key, value in candidates.items()
+        }
+        requested_labels = {label for label, _value in request.parameter_rows}
+        if not requested_labels.issubset(display_values):
+            return None, False
+        return (
+            {
+                label: value
+                for label, value in display_values.items()
+                if label in requested_labels
+            },
+            False,
+        )
+
+    @classmethod
+    def _confirmation_display_value(cls, key: str, value: object) -> str:
+        """Normalize authoritative display aliases for proposal comparison."""
+        normalized_key = key.strip().casefold()
+        if isinstance(value, str):
+            normalized_value = " ".join(value.strip().casefold().split())
+            if normalized_key == "optimizer":
+                value = normalized_value
+            elif normalized_key == "device" and normalized_value.startswith("cuda:"):
+                value = "cuda"
+            elif normalized_key == "evaluation_option":
+                value = {
+                    "best validation loss": "val_loss",
+                    "best validation auc": "val_auc",
+                    "best validation performance": "val_acc",
+                    "last epoch": "last_epoch",
+                }.get(normalized_value, normalized_value)
+        return cls._display_ui_value(value)
+
+    @staticmethod
+    def _display_ui_value(value: object) -> str:
+        """Format safe snapshot values without exposing object representations."""
+        if value is None:
+            return "None"
+        if isinstance(value, bool):
+            return "True" if value else "False"
+        if isinstance(value, (str, int, float)):
+            return str(value)
+        if isinstance(value, (list, tuple)):
+            return ", ".join(str(item) for item in value[:8])
+        return "Configured"
 
     @staticmethod
     def _runtime_issue(message: str) -> _RuntimeIssue:

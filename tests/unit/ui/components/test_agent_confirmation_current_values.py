@@ -3,21 +3,12 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from typing import cast
-from unittest.mock import MagicMock
 
 from XBrainLab.backend.application.state import TrainingStateSnapshot
 from XBrainLab.llm.agent.confirmation import AgentConfirmationRequest
-from XBrainLab.ui.components.agent_manager import AgentManager
-
-
-class _ManagerProbe:
-    _display_ui_value = staticmethod(AgentManager._display_ui_value)
-
-    def __init__(self, publication: object) -> None:
-        self.application_service = SimpleNamespace(
-            get_view_publication=MagicMock(return_value=publication)
-        )
+from XBrainLab.ui.components.agent_presentation_service import (
+    AgentPresentationService,
+)
 
 
 def _request() -> AgentConfirmationRequest:
@@ -67,9 +58,10 @@ def _publication(*, reliable: bool = True) -> SimpleNamespace:
 
 
 def test_complete_current_values_require_every_proposed_setting() -> None:
-    probe = cast(AgentManager, _ManagerProbe(_publication()))
-
-    values, changed = AgentManager._confirmation_current_values(probe, _request())
+    values, changed = AgentPresentationService.confirmation_current_values(
+        _request(),
+        _publication(),
+    )
 
     assert values == {
         "Model name": "EEGNet",
@@ -89,13 +81,17 @@ def test_partial_or_unreliable_current_values_are_explicitly_unverified() -> Non
     partial = _publication()
     partial.state.training.training_option.pop("learning_rate")
 
-    partial_values, partial_changed = AgentManager._confirmation_current_values(
-        cast(AgentManager, _ManagerProbe(partial)),
-        _request(),
+    partial_values, partial_changed = (
+        AgentPresentationService.confirmation_current_values(
+            _request(),
+            partial,
+        )
     )
-    unreliable_values, unreliable_changed = AgentManager._confirmation_current_values(
-        cast(AgentManager, _ManagerProbe(_publication(reliable=False))),
-        _request(),
+    unreliable_values, unreliable_changed = (
+        AgentPresentationService.confirmation_current_values(
+            _request(),
+            _publication(reliable=False),
+        )
     )
 
     assert partial_values is None

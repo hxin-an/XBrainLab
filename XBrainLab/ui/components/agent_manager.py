@@ -19,7 +19,6 @@ from XBrainLab.backend.application import (
 )
 from XBrainLab.backend.controller.chat_controller import (
     ChatController,
-    ChatMessagePresentationKind,
 )
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.debug.tool_debug_mode import ToolDebugMode
@@ -893,7 +892,7 @@ class AgentManager(QObject):
             and hasattr(self.chat_panel, "show_notice")
         ):
             self.chat_panel.show_notice("")
-        kind = self._chat_presentation_kind(presentation)
+        kind = self._presentation.chat_presentation_kind(presentation.kind)
         visible_text = self._presentation.assistant_transcript_message(
             presentation.text
         )
@@ -903,23 +902,6 @@ class AgentManager(QObject):
         )
         if self._pending_prune_notice:
             self._show_low_priority_notice(_CHAT_PRUNE_NOTICE)
-
-    def _chat_presentation_kind(
-        self,
-        presentation: AssistantResponsePresentation,
-    ) -> ChatMessagePresentationKind:
-        """Map only the response's authoritative typed display meaning."""
-        if presentation.kind is AssistantResponseKind.TOOL_RESULT:
-            return ChatMessagePresentationKind.TOOL_RESULT
-        if presentation.kind is AssistantResponseKind.CLARIFICATION:
-            return ChatMessagePresentationKind.CLARIFICATION
-        if presentation.kind is AssistantResponseKind.ERROR:
-            return ChatMessagePresentationKind.ERROR
-        if presentation.kind is AssistantResponseKind.BLOCKED:
-            return ChatMessagePresentationKind.ATTENTION
-        if presentation.kind is AssistantResponseKind.CANCELLED:
-            return ChatMessagePresentationKind.CANCELLED
-        return ChatMessagePresentationKind.ASSISTANT
 
     def _handle_response_presentation(self, payload: object) -> None:
         """Render one typed response for its correlated turn."""
@@ -1886,80 +1868,7 @@ class AgentManager(QObject):
                 redact_public_text(exc),
             )
             return None, False
-
-        request_generation = request.publication_generation
-        if not getattr(publication, "usable", False) or not getattr(
-            publication.state, "state_reliable", False
-        ):
-            return None, False
-        if (
-            request_generation is not None
-            and publication.generation != request_generation
-        ):
-            return {}, True
-        if request_generation is None:
-            return None, False
-
-        training = publication.state.training
-        candidates: dict[str, object] = {}
-        if training.has_training_option:
-            candidates.update(training.training_option)
-            if "checkpoint_epoch" in candidates:
-                candidates["save_checkpoints_every"] = candidates["checkpoint_epoch"]
-        if training.has_model:
-            candidates.update(training.model_params)
-            if training.model_name:
-                candidates["model_name"] = training.model_name
-
-        display_values = {
-            str(key).replace("_", " ").strip().capitalize(): (
-                AgentManager._confirmation_display_value(str(key), value)
-            )
-            for key, value in candidates.items()
-        }
-        requested_labels = {label for label, _value in request.parameter_rows}
-        if not requested_labels.issubset(display_values):
-            return None, False
-        return (
-            {
-                label: value
-                for label, value in display_values.items()
-                if label in requested_labels
-            },
-            False,
-        )
-
-    @classmethod
-    def _confirmation_display_value(cls, key: str, value: object) -> str:
-        """Normalize authoritative display aliases for proposal comparison."""
-        normalized_key = key.strip().casefold()
-        if isinstance(value, str):
-            normalized_value = " ".join(value.strip().casefold().split())
-            if normalized_key == "optimizer":
-                value = normalized_value
-            elif normalized_key == "device" and normalized_value.startswith("cuda:"):
-                value = "cuda"
-            elif normalized_key == "evaluation_option":
-                value = {
-                    "best validation loss": "val_loss",
-                    "best validation auc": "val_auc",
-                    "best validation performance": "val_acc",
-                    "last epoch": "last_epoch",
-                }.get(normalized_value, normalized_value)
-        return cls._display_ui_value(value)
-
-    @staticmethod
-    def _display_ui_value(value: object) -> str:
-        """Format safe snapshot values without exposing object representations."""
-        if value is None:
-            return "None"
-        if isinstance(value, bool):
-            return "True" if value else "False"
-        if isinstance(value, (str, int, float)):
-            return str(value)
-        if isinstance(value, (list, tuple)):
-            return ", ".join(str(item) for item in value[:8])
-        return "Configured"
+        return self._presentation.confirmation_current_values(request, publication)
 
     def _switch_sub_view(self, panel_index, view_mode):
         """Switch to a specific tab or view within a panel.
