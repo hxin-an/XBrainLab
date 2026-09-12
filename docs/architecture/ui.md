@@ -236,6 +236,16 @@ Assistant 不是直接塞在 `MainWindow` 內部，而是由 `AgentManager` 管�
 `MainWindow.init_agent()` 建立 `AgentManager(self, self.study)`，再呼叫
 `agent_manager.init_ui()`。
 
+`AssistantDock`／`AssistantDockTitleBar` 擁有固定右側 dock 與標題控制元件的具體組裝，
+只透過 Qt signals 提交操作；AgentManager 保留 runtime 組合、snapshot replay 與接線順序。
+Confirmation 初值比較與 response kind 投影由既有 `AgentPresentationService` 處理，
+publication 讀取、confirmation identity、使用者決策傳遞與 card lifecycle 仍由 host 串接。
+
+`AssistantUiTurnStateMachine` 一併擁有 provisional submission、同步事件暫存、accepted activity
+與 prune notice lifetime。Admission 成功才交回不可變且有序的事件批次；較舊 submission 的
+完成／拒絕不能清掉較新的批次。AgentManager 仍先建立 transcript，再 replay 到具體 handlers，
+並在 terminal 呈現完成後按原順序釋放 presentation state。這不是第二套 backend turn authority。
+
 訓練 terminal 的有效 run identity 與待呈現通知由既有 publication coordinator 擁有，
 只有完整且精確匹配的 run 可接受 terminal；呈現文案與種類由 presentation service 提供。
 AgentManager 保留 Qt timers、實際渲染與成功後的交付確認，渲染失敗不能消耗通知。
