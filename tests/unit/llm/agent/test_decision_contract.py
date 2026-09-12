@@ -55,6 +55,10 @@ def test_prompt_policy_describes_typed_clarification_for_user_responses() -> Non
     assert selection_rule.index("ask which operation") < selection_rule.index(
         "Only call it"
     )
+    assert "Do not execute any part of a multi-action request" in selection_rule
+    assert selection_rule.index("which single operation") < selection_rule.index(
+        "Only call it"
+    )
     assert "If no specific operation was requested" not in instructions
 
 

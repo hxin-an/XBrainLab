@@ -114,7 +114,14 @@ Removed seven exclusive remote SDK/transitive packages, no remaining package ver
 Prompt candidate 1 moves explicit ambiguity guidance before tool selection; focused tests pass.
 Independent review found one obsolete literal prompt assertion; it now checks the replacement
 ambiguity rule precedes tool selection and forbids premature pending-action collection.
-Real model evaluation has NOT run yet (candidate 2 remains available only if needed).
+Candidate 1 real model evaluation completed on clean b38b729c: frozen 81 cases, positive 36/36,
+explicit origin 10/10, missing origin 5/5, product precision 23/24, clarification 7/7. The original
+ambiguous_en and generic_filter_selection now pass, but multi_en_alt newly calls set_reference for a
+two-action request. Bounded gate fails; original report retained under build/dev-artifacts/candidate1.
+Candidate 2 (final authorized prompt attempt): put the existing multi-action no-execution rule before
+single-action selection. No Host, registry, model, RAG, frozen cases or scorer changes. Focused prompt
+contract test must preserve this ordering, followed by the full frozen 81 evaluation and same-head CI.
+Independent final diff review found no code blocker or missed retired caller; automatic gates remain open.
 
 Shared environment editable .pth exposed old scripts namespace: tests use process-only path exclusion,
 not environment edits. New worktree .git pointer is relative so WSL and native Windows Git agree.
@@ -122,8 +129,8 @@ Broad Assistant check: 1,425 passed, 30 failed, 2 skipped; all failures were fak
 snapshot paths exceeding Windows MAX_PATH. Short owned temporary root rerun: 166 passed, 5 same-path
 failures, 2 skipped. Fresh shorter basetemp for the remaining RAG security file: 29 passed, 2 POSIX-only
 skips. No product change or weakened assertion was needed; overlapping counts are not a unique total.
-Next: commit reviewed slices, final static/integration check and exact-source frozen model evaluation,
-then one PR and applicable CI/native handoff evidence. No PR/final gates/manual acceptance yet.
+Next: validate candidate 2 and complete PR #140 exact-source CI/native evidence. PR #140 is a draft
+integration vehicle, not a manual-testing or merge request. No final gates/manual acceptance yet.
 
 三核心責任重構已完成 Windows GUI／English Assistant 手測，並經使用者明確同意合併
 [PR #138](https://github.com/hxin-an/XBrainLab/pull/138)。不再把該階段的施工切片或 pending gates

@@ -69,7 +69,10 @@ class StrictToolResponsePromptPolicy:
             "required values, use respond_to_user to ask only for those values. "
         )
         operation_choice = (
-            " Broad processing requests and unspecified filtering do not identify "
+            " Do not execute any part of a multi-action request. Instead, use "
+            "respond_to_user with parameters containing only message to ask "
+            "which single operation to perform first. "
+            "Broad processing requests and unspecified filtering do not identify "
             "an exact operation: ask which operation the user wants, or which "
             "filter type. Use message only, without pending_action or missing_inputs. "
             "Do not choose channel selection, a default filter, or its parameters. "
