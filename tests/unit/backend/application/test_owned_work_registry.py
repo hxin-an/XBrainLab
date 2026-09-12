@@ -732,14 +732,8 @@ def test_interactive_training_operation_stays_active_until_exact_run_completes(
         is OwnedWorkPhase.COMPLETED
     )
     assert service.wait_for_background_tasks(timeout=0.0) is False
-    with service._training_operation_lock:
-        monitor = service._training_operation_threads[operation.operation_id]
-    assert monitor.is_alive()
     release_monitor.set()
-    assert service._wait_for_owned_operation_monitors(timeout=1.0)
-    assert not monitor.is_alive()
-    with service._training_operation_lock:
-        assert operation.operation_id not in service._training_operation_threads
+    assert service.training_operation_monitor.wait_until_idle(timeout=1.0)
 
 
 def test_owned_saliency_monitor_rejects_mismatched_terminal_generation(
@@ -804,9 +798,86 @@ def test_owned_saliency_monitor_rejects_mismatched_terminal_generation(
     assert terminal.phase is OwnedWorkPhase.FAILED
     assert "generation" in terminal.message.lower()
     assert service.wait_for_background_tasks(timeout=0.0) is False
-    with service._training_operation_lock:
-        monitor = service._training_operation_threads[operation.operation_id]
-    assert monitor.is_alive()
     release_monitor.set()
-    assert service._wait_for_owned_operation_monitors(timeout=1.0)
-    assert not monitor.is_alive()
+    assert service.training_operation_monitor.wait_until_idle(timeout=1.0)
+
+
+def test_owned_saliency_monitor_start_failure_terminalizes_without_monitor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed monitor start cannot leave scheduled Saliency work active."""
+    service = ApplicationService(Study())
+    command = SaliencyCommand(method="Gradient", params={"profile": "recommended"})
+    operation = service.begin_owned_operation(command)
+    result = CommandResult.success_result(
+        command_name="saliency",
+        message="Saliency scheduled.",
+        state=service.get_state(),
+        changed_state=ChangedState(),
+        diagnostics={
+            "action": "schedule",
+            "post_training_saliency_schedule": {"status": {"generation": 9}},
+        },
+    )
+
+    class _FailingMonitorThread:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        def start(self) -> None:
+            raise RuntimeError("monitor start failed")
+
+    monkeypatch.setattr(service, "_execute_command", lambda *_args, **_kwargs: result)
+    monkeypatch.setattr(
+        "XBrainLab.backend.application.training_operation_monitor.Thread",
+        _FailingMonitorThread,
+    )
+
+    observed = service.execute(command, operation_id=operation.operation_id)
+
+    assert observed.ok
+    assert observed.diagnostics["operation_phase"] == "failed"
+    terminal = service.get_owned_operation(operation.operation_id)
+    assert terminal.phase is OwnedWorkPhase.FAILED
+    assert "monitor start failed" in terminal.message
+    assert service.training_operation_monitor.wait_until_idle(timeout=0.0)
+
+
+def test_owned_training_monitor_wait_rejects_its_own_thread(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An owned monitor must report busy rather than attempt to join itself."""
+    service = ApplicationService(Study())
+    command = TrainCommand(confirmed=True, interactive=True)
+    operation = service.begin_owned_operation(command)
+    result = CommandResult.success_result(
+        command_name="train",
+        message="Training started.",
+        state=service.get_state(),
+        changed_state=ChangedState(training_changed=True),
+        diagnostics={
+            "training_trainer_identity": "trainer-1",
+            "training_handoff_generation": 4,
+        },
+    )
+    self_wait_complete = Event()
+    self_wait_result: dict[str, bool] = {}
+
+    def monitor(operation_id: str, _trainer_identity: str) -> None:
+        self_wait_result["idle"] = service.training_operation_monitor.wait_until_idle(
+            timeout=1.0
+        )
+        service.owned_work.complete(operation_id)
+        self_wait_complete.set()
+
+    monkeypatch.setattr(service, "_execute_command", lambda *_args, **_kwargs: result)
+    monkeypatch.setattr(
+        service.training_operation_monitor, "_monitor_training", monitor
+    )
+
+    observed = service.execute(command, operation_id=operation.operation_id)
+
+    assert observed.ok
+    assert self_wait_complete.wait(timeout=_THREAD_WATCHDOG_SECONDS)
+    assert self_wait_result == {"idle": False}
+    assert service.training_operation_monitor.wait_until_idle(timeout=1.0)

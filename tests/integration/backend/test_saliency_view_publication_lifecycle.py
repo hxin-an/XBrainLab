@@ -727,8 +727,7 @@ def test_real_main_window_close_quiesces_active_owned_saliency_without_livelock(
     assert service.get_owned_operation(operation.operation_id).phase is (
         OwnedWorkPhase.CANCELLED
     )
-    with service._training_operation_lock:
-        assert service._training_operation_threads == {}
+    assert service.training_operation_monitor.wait_until_idle(timeout=0.0)
     assert application_command_registry().active_count(window) == 0
 
 

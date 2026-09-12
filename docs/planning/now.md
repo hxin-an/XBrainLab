@@ -81,9 +81,9 @@ permission; bounded cleanup follows. No zero-defect or Stable Assistant claim.
 
 Source: build/dev-artifacts/core-responsibility, from merged main 6fbc5d5c. Original dirty checkout,
 accepted complete-baseline app/evidence, user settings/data and shared caches remain protected.
-Commit validated B1 and D1 separately, then move concrete background monitoring out of the command
-entry and narrow Controller execution dependencies. Backend/Controller maps are in ignored core-audit;
-remaining groups still require disposition review. No candidate PR yet.
+Commit validated B2/C1/D2 separately, then delete unreachable repeated-proposal machinery and transfer
+UI admission staging to its existing owner. B3 evaluation revalidation and C3 test-only shutdown paths
+require characterization before changes. Responsibility maps are in ignored core-audit. No candidate PR.
 
 ### B1: delete method-by-method lazy proxy classes
 
@@ -119,3 +119,89 @@ in 74.36s, including lifecycle/reset/import receipts, real dock/walkthrough, tra
 and evaluator/product-flow fixtures. Independent B1 review found no blocker; its cold full-state-query
 advisory is covered by the expanded subprocess import test. B1 production +143/-363/net -220 across
 four files; D1 +186/-150/net +36 across two files. Full typing/integrated handoff remains pending.
+
+### B2: concrete training/saliency operation monitor
+
+Transfer the monitor lock/thread map, start/poll/terminal publication and physical join together into
+TrainingOperationMonitor in training_operation_monitor.py. Its only dependencies are TrainingRuntimePort,
+OwnedWorkRegistry and the shutdown snapshot callback. Service keeps admission, diagnostics extraction,
+result decoration and the existing background-wait order/deadline. Registry remains operation truth;
+physical thread lifecycle moves, never duplicates. Preserve exact trainer/saliency generation checks,
+0.25s delivery polling, shutdown-fence escape, start failure, self-join rejection and terminal/exit gap.
+Delete unused append threading argument. Estimated service -180–200, concrete seam +175–195, net near
+neutral; owner count unchanged by the transfer. Roll back service/monitor/tests as one commit.
+977-case run is the passing pre-change baseline for owned-work, application and saliency publication
+tests. Add missing observable start-failure/self-join witnesses before transfer; independent review
+must verify shutdown/publication/physical-exit ordering. No timing or cancellation-policy change.
+
+### D2: consolidate existing presentation projections
+
+Move confirmation current-value classification/formatting and response-to-transcript kind mapping from
+AgentManager into existing AgentPresentationService. Manager retains publication IO/error handling and
+exact confirmation lease/transport/card lifecycle; no new widget or state owner. Preserve all copy and
+fallback values. Delete host projection helpers and migrate high-mock probe fixtures to direct pure
+projection tests plus existing actual-manager confirmation/response tests. Estimated production
++90/-100/net -10 in two files; no new module/class. Roll back both owners and tests together.
+Run confirmation-current-values, presentation-service, action-card and chat-panel baseline before edits;
+existing manager/threading/walkthrough baselines already pass. Transcript admission/staging remains a
+separate required disposition after the Controller delivery boundary settles, not blanket retention.
+
+D2 characterization passed 202 cases/11.43s. Early whole-production Basedpyright gate after B1/D1
+passed with zero diagnostics (1.39.2); no debt-baseline update. B1 committed 6d7ec130; D1 a19abf1d.
+
+### C1: remove whole-Controller execution dependency
+
+ToolExecutionCoordinator receives only study, registry, metrics and three signal-emission callbacks,
+not ToolExecutionHost/self. The immutable reviewed-publication runtime moves from Controller into
+the existing execution module. Controller retains context admission and missing-generation rejection;
+coordinator binds the supplied generation without changing command-start/completion/error ordering.
+Delete the broad host Protocol and migrate real coordinator/evaluator integration seams together.
+No new owner or production module; existing execution owner absorbs its runtime adapter. Estimated
+production +45/-55/net -10 across two files. Revert those files and direct fixtures as one commit.
+Entire unit/llm/agent and lifecycle baseline plus the later strict-recovery/product-flow/evaluator
+baseline passed before edits. Verify real generation-bound execution, failure terminal, unknown and
+unclassified tools plus unchanged 18-tool surface. Wider delivery/worker disposition still required;
+do not replace the Controller with a 19-callback helper.
+
+C1/D2 post plus B2 new characterization: frozen native run completed 802 passed/3 failed (42.70s).
+All D2 and B2 cases passed, including both new pre-extraction lifecycle witnesses; C1 is not validated:
+two tests patch a removed Controller import and one fixture replaces completion signals after binding.
+Repair those fixtures without restoring the broad dependency; repeat the affected Controller evidence.
+B2 may now transfer its passing baseline. D2 actual production +98/-93/net +5; projection input typed
+as formal ApplicationViewPublication during main review. No handoff claim from this partial run.
+
+### C2: remove obsolete repeated-proposal retry machinery
+
+Reachability review found that strict format retries happen before any proposal is recorded; a valid
+proposal executes once, blocks, requests input or pauses at confirmation/UI, then terminalizes. New
+user/debug turns reset the session. Only the old loop handler itself requests generation after a valid
+proposal, and its threshold requires three proposals in the same turn. Characterize the real typed
+worker/controller path (format retry → one handoff → duplicate generation rejected → terminal;
+repeat on a new turn) before deletion. Retain one-action admission and strict-envelope retry limits.
+Then delete repeated flag/LOOP decision, recent-call JSON/deque state and loop-break counter/handler,
+plus exclusively private-loop fixtures; preserve actual one-action/recovery tests and their gates.
+No new module/state/owner or public tool change. Estimated production -70–110 across three files.
+Independent review must trace all generation continuation paths before declaring unreachable.
+Rollback this deletion/test slice separately from C1; do not use a LOC target as justification.
+
+### D3: complete UI admission staging in the existing turn owner
+
+Transfer provisional event queue and accepted activity/prune notice lifetime from AgentManager into
+AssistantUiTurnStateMachine, removing the host fields and begin/finish/defer wrappers together. Keep
+runtime submit/debug, ChatController transcript mutation, ordered replay to concrete handlers, panel
+rendering and exact confirmation/handoff transport in Manager. No new enum, receipt, module or generic
+effect interpreter. Complete admission returns an immutable ordered tuple batch (empty means accepted,
+None means rejected); superseded completion must not mutate a newer submission. Existing state remains
+sole lease/Stop authority; transfer activity/prune lifetime only with exact terminal/reset ordering.
+Estimated Manager -70–100, existing turn owner +100–130/net +20–30; authority count unchanged. Add direct
+state-owner queue/lifetime witnesses and retain actual Manager synchronous/rejected/stale/Stop/capacity
+tests. Run existing turn-state baseline first. Independent nonauthor review of reentrancy and terminal
+ordering required. Rollback owner/host/tests as one slice; no visible behavior change authorized here.
+
+B2/C1 post and next baselines: monitor-execution-post-next-baseline passed 761 cases/43.50s on frozen
+source. C1's three stale-fixture failures are fixed without compatibility imports/callback lookups;
+direct exception pairing/current-state recovery also passed. Independent C1 review found no blocker.
+Main independently reviewed B2's complete thread/generation/fence/physical-exit transfer; no blocker.
+Same run passed C2's three new real Qt transition cases and existing D3 turn-state/analysis/render tests.
+B2 production +234/-217/net +17 (two files including new concrete monitor); C1 +57/-54/net +3;
+D2 +101/-93/net +8 after explicit publication typing/formatting. Stage not complete.

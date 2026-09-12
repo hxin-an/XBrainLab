@@ -6,7 +6,7 @@ from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import replace
 from functools import cached_property
-from threading import Lock, RLock, Thread, current_thread
+from threading import Lock, RLock
 from time import monotonic
 from typing import TYPE_CHECKING, Any, cast
 
@@ -22,7 +22,6 @@ from XBrainLab.backend.training_manager import (
     post_training_saliency_target,
 )
 from XBrainLab.backend.training_state_contract import (
-    PostTrainingSaliencyPhase,
     TrainingOutcomeState,
     TrainingReadBoundary,
     TrainingTerminalOutcome,
@@ -155,6 +154,7 @@ from .synchronous_training_lifecycle import (
     SynchronousTrainingLifecycleCoordinator,
 )
 from .training_configuration_reset import TrainingConfigurationResetService
+from .training_operation_monitor import TrainingOperationMonitor
 from .training_recommendation import (
     TrainingRecommendation,
     TrainingRecommendationService,
@@ -299,8 +299,6 @@ class ApplicationService(Observable):
         self._last_error: ErrorSnapshot | None = None
         self._command_admission_lock = Lock()
         self.owned_work = OwnedWorkRegistry()
-        self._training_operation_lock = Lock()
-        self._training_operation_threads: dict[str, Thread] = {}
         self._synchronous_training_lifecycle_lock = (
             self.study._synchronous_training_lifecycle_lock
         )
@@ -488,6 +486,11 @@ class ApplicationService(Observable):
             wait_for_synchronous_training_quiescence=(
                 self._wait_for_synchronous_training_quiescence
             ),
+        )
+        self.training_operation_monitor = TrainingOperationMonitor(
+            training_runtime=self.training_runtime,
+            registry=self.owned_work,
+            shutdown_snapshot=self.shutdown_lifecycle.snapshot,
         )
         self.synchronous_training_lifecycle = SynchronousTrainingLifecycleCoordinator(
             training_runtime=self.training_runtime,
@@ -1335,7 +1338,7 @@ class ApplicationService(Observable):
         ):
             return False
 
-        if not self._wait_for_owned_operation_monitors(timeout=remaining()):
+        if not self.training_operation_monitor.wait_until_idle(timeout=remaining()):
             return False
 
         if not self.bids_montage_preparation.wait_for_idle(timeout=remaining()):
@@ -1372,28 +1375,6 @@ class ApplicationService(Observable):
         return terminal_reconciled or (
             self.publication_lifecycle.publish_training_terminal_state()
         )
-
-    def _wait_for_owned_operation_monitors(self, *, timeout: float | None) -> bool:
-        """Join terminal monitor threads before reporting application idleness."""
-        deadline = None if timeout is None else monotonic() + max(0.0, timeout)
-        caller = current_thread()
-        while True:
-            with self._training_operation_lock:
-                monitors = tuple(self._training_operation_threads.items())
-            if not monitors:
-                return True
-            for operation_id, monitor in monitors:
-                if monitor is caller:
-                    return False
-                remaining = (
-                    None if deadline is None else max(0.0, deadline - monotonic())
-                )
-                monitor.join(timeout=remaining)
-                if monitor.is_alive():
-                    return False
-                with self._training_operation_lock:
-                    if self._training_operation_threads.get(operation_id) is monitor:
-                        self._training_operation_threads.pop(operation_id, None)
 
     def _committed_view_publication(self) -> ApplicationViewPublication:
         """Copy the internal publication without exposing mutable nested values."""
@@ -1573,19 +1554,24 @@ class ApplicationService(Observable):
                 and command.interactive
                 and result.diagnostics.get("training_trainer_identity")
             ):
-                snapshot = self._continue_interactive_training_operation(
+                snapshot = self.training_operation_monitor.start_training(
                     operation_id,
-                    command,
-                    result,
+                    str(result.diagnostics["training_trainer_identity"]),
+                    result.diagnostics.get("training_handoff_generation"),
                 )
             elif (
                 result.ok
                 and isinstance(command, SaliencyCommand)
                 and result.diagnostics.get("action") == "schedule"
             ):
-                snapshot = self._continue_scheduled_saliency_operation(
+                schedule = result.diagnostics.get("post_training_saliency_schedule")
+                status = schedule.get("status") if isinstance(schedule, dict) else None
+                generation = (
+                    status.get("generation") if isinstance(status, dict) else None
+                )
+                snapshot = self.training_operation_monitor.start_saliency(
                     operation_id,
-                    result,
+                    generation,
                 )
             elif result.ok:
                 snapshot = self.owned_work.complete(operation_id)
@@ -1818,191 +1804,6 @@ class ApplicationService(Observable):
             append=False,
             explicit=True,
         )
-
-    def _continue_scheduled_saliency_operation(
-        self,
-        operation_id: str,
-        result: CommandResult,
-    ) -> OwnedOperationSnapshot:
-        """Keep explicit saliency owned until generation-bound publication ends."""
-        schedule = result.diagnostics.get("post_training_saliency_schedule")
-        status = schedule.get("status") if isinstance(schedule, dict) else None
-        generation = status.get("generation") if isinstance(status, dict) else None
-        self.owned_work.update(
-            operation_id,
-            stage="Computing saliency",
-            message=f"Saliency generation {generation}",
-        )
-        thread = Thread(
-            target=self._monitor_owned_saliency,
-            args=(operation_id, generation),
-            name=f"xbrainlab-owned-saliency-{operation_id[:8]}",
-            daemon=True,
-        )
-        with self._training_operation_lock:
-            self._training_operation_threads[operation_id] = thread
-        try:
-            thread.start()
-        except BaseException as exc:
-            with self._training_operation_lock:
-                self._training_operation_threads.pop(operation_id, None)
-            return self.owned_work.fail(
-                operation_id,
-                message=public_exception_message(exc),
-            )
-        return self.owned_work.snapshot(operation_id)
-
-    def _monitor_owned_saliency(
-        self,
-        operation_id: str,
-        generation: object,
-    ) -> None:
-        """Track explicit saliency progress and terminal status without Qt."""
-        terminal_phase = OwnedWorkPhase.FAILED
-        terminal_message = "Saliency computation failed."
-        try:
-            if (
-                isinstance(generation, bool)
-                or not isinstance(generation, int)
-                or generation < 0
-            ):
-                terminal_message = "Saliency generation identity could not be verified."
-            else:
-                generation_matches = True
-                while not self.training_runtime.wait_for_saliency_job(timeout=0.25):
-                    status = self.training_runtime.saliency_status()
-                    if status.generation != generation:
-                        generation_matches = False
-                        break
-                    phase = status.phase
-                    self.owned_work.update(
-                        operation_id,
-                        stage=(
-                            "Cancelling saliency"
-                            if self.owned_work.snapshot(operation_id).cancel_requested
-                            else "Computing saliency"
-                            if phase is PostTrainingSaliencyPhase.RUNNING
-                            else "Preparing saliency"
-                        ),
-                        message=f"Saliency generation {generation}",
-                    )
-                if generation_matches:
-                    while True:
-                        shutdown = self.shutdown_lifecycle.snapshot()
-                        if shutdown.fenced or shutdown.closing or shutdown.closed:
-                            break
-                        if self.training_runtime.wait_for_saliency_delivery(
-                            timeout=0.25
-                        ):
-                            break
-                    status = self.training_runtime.saliency_status()
-                    generation_matches = status.generation == generation
-                if not generation_matches:
-                    terminal_message = (
-                        "Saliency generation identity could not be verified."
-                    )
-                elif status.phase is PostTrainingSaliencyPhase.SUCCEEDED:
-                    terminal_phase = OwnedWorkPhase.COMPLETED
-                    terminal_message = ""
-                elif status.phase is PostTrainingSaliencyPhase.CANCELLED:
-                    terminal_phase = OwnedWorkPhase.CANCELLED
-                    terminal_message = ""
-                else:
-                    terminal_message = status.message or "Saliency computation failed."
-        except BaseException as exc:
-            terminal_phase = OwnedWorkPhase.FAILED
-            terminal_message = public_exception_message(exc)
-        self._publish_monitored_owned_terminal(
-            operation_id,
-            phase=terminal_phase,
-            message=terminal_message,
-        )
-
-    def _continue_interactive_training_operation(
-        self,
-        operation_id: str,
-        command: TrainCommand,
-        result: CommandResult,
-    ) -> OwnedOperationSnapshot:
-        """Keep interactive Train owned until its exact terminal run publishes."""
-        trainer_identity = str(result.diagnostics["training_trainer_identity"])
-        handoff_generation = result.diagnostics.get("training_handoff_generation")
-        self.owned_work.update(
-            operation_id,
-            stage="Training model",
-            message=f"Training handoff {handoff_generation}",
-        )
-        thread = Thread(
-            target=self._monitor_owned_training,
-            args=(operation_id, trainer_identity, command.append),
-            name=f"xbrainlab-owned-training-{operation_id[:8]}",
-            daemon=True,
-        )
-        with self._training_operation_lock:
-            self._training_operation_threads[operation_id] = thread
-        try:
-            thread.start()
-        except BaseException as exc:
-            with self._training_operation_lock:
-                self._training_operation_threads.pop(operation_id, None)
-            return self.owned_work.fail(
-                operation_id,
-                message=public_exception_message(exc),
-            )
-        return self.owned_work.snapshot(operation_id)
-
-    def _monitor_owned_training(
-        self,
-        operation_id: str,
-        trainer_identity: str,
-        append: bool,
-    ) -> None:
-        """Publish terminal owned-work truth for one admitted trainer identity."""
-        terminal_phase = OwnedWorkPhase.FAILED
-        terminal_message = "Training did not complete successfully."
-        try:
-            self.training_runtime.wait_for_training_completion(
-                expected_trainer_identity=trainer_identity,
-                timeout=None,
-            )
-            outcome = self.training_runtime.terminal_outcome()
-            run = outcome.run
-            if run is None or run.trainer_id != trainer_identity:
-                terminal_message = "Training terminal identity could not be verified."
-            elif outcome.state is TrainingOutcomeState.COMPLETED:
-                terminal_phase = OwnedWorkPhase.COMPLETED
-                terminal_message = ""
-            elif outcome.state is TrainingOutcomeState.CANCELLED:
-                terminal_phase = OwnedWorkPhase.CANCELLED
-                terminal_message = ""
-            else:
-                terminal_message = (
-                    outcome.detail or "Training did not complete successfully."
-                )
-        except BaseException as exc:
-            terminal_phase = OwnedWorkPhase.FAILED
-            terminal_message = public_exception_message(exc)
-        finally:
-            del append
-        self._publish_monitored_owned_terminal(
-            operation_id,
-            phase=terminal_phase,
-            message=terminal_message,
-        )
-
-    def _publish_monitored_owned_terminal(
-        self,
-        operation_id: str,
-        *,
-        phase: OwnedWorkPhase,
-        message: str,
-    ) -> OwnedOperationSnapshot:
-        """Publish terminal truth only after its physical monitor is unowned."""
-        if phase is OwnedWorkPhase.COMPLETED:
-            return self.owned_work.complete(operation_id)
-        if phase is OwnedWorkPhase.CANCELLED:
-            return self.owned_work.finish_cancelled(operation_id)
-        return self.owned_work.fail(operation_id, message=message)
 
     def _owned_operation_cancelled_result(
         self,
