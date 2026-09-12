@@ -36,7 +36,7 @@ def test_missing_direct_preprocess_parameters_are_typed_schema_failures() -> Non
 def test_zero_parameter_gui_handoff_rejects_model_choices() -> None:
     from XBrainLab.llm.tools import get_all_tools
 
-    tool = next(tool for tool in get_all_tools("real") if tool.name == "select_model")
+    tool = next(tool for tool in get_all_tools() if tool.name == "select_model")
     validator = ToolSchemaValidator({tool.name: tool.parameters})
 
     result = validator.validate("select_model", {"model_name": "EEGNet"})

@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
+from scripts.dev.moabb_ui_evidence import cli
 from scripts.dev.moabb_ui_evidence.contract import (
     ARTIFACT_TYPE,
     build_capture_manifest,
@@ -250,6 +251,48 @@ def test_output_path_must_remain_under_repo_build(tmp_path: Path) -> None:
     )
     with pytest.raises(ValueError, match="repo build"):
         require_build_output_path(tmp_path / "outside", repo_root=repo_root)
+
+
+def test_capture_cli_does_not_accept_force_overwrite() -> None:
+    with pytest.raises(SystemExit) as error:
+        cli.build_parser().parse_args(["--run-id", "new-run", "--force"])
+
+    assert error.value.code == 2
+
+
+def test_capture_cli_refuses_an_existing_output_directory(
+    monkeypatch, tmp_path: Path
+) -> None:
+    output_dir = tmp_path / "build" / "qt-captures" / "existing-run"
+    output_dir.mkdir(parents=True)
+    sentinel = output_dir / "retained-result.bin"
+    sentinel.write_bytes(b"must survive rejected capture")
+    monkeypatch.setattr(
+        cli,
+        "load_registry",
+        lambda _path: {"resource_policy": {"evidence_root": "build/evidence"}},
+    )
+    monkeypatch.setattr(cli, "load_validated_plan", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(cli, "validate_plan_cache", lambda _plan: {})
+    require_output = cli.require_build_output_path
+    monkeypatch.setattr(
+        cli,
+        "require_build_output_path",
+        lambda path: require_output(path, repo_root=tmp_path),
+    )
+
+    with pytest.raises(FileExistsError, match="choose a new run-id"):
+        cli.main(
+            [
+                "--run-id",
+                "existing-run",
+                "--plan",
+                str(tmp_path / "plan.json"),
+                "--output-dir",
+                str(output_dir),
+            ]
+        )
+    assert sentinel.read_bytes() == b"must survive rejected capture"
 
 
 def test_source_change_during_capture_prevents_site_qualification(

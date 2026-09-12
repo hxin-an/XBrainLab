@@ -57,8 +57,6 @@ def test_eeg_epoch_product_copy_does_not_regress_to_ambiguous_epoch_language() -
         root / "XBrainLab/llm/agent/controller.py",
         root / "XBrainLab/llm/pipeline_state.py",
         root / "XBrainLab/llm/tools/definitions/preprocess_def.py",
-        root / "XBrainLab/llm/tools/mock/preprocess_mock.py",
-        root / "XBrainLab/llm/tools/mock/training_mock.py",
         root / "XBrainLab/ui/dialogs/dataset/data_splitting_preview_dialog.py",
         root / "XBrainLab/ui/panels/dataset/panel.py",
     )

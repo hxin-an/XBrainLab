@@ -243,7 +243,7 @@ class TestDatasetActionHandler:
         assert outcome.status is InteractionStatus.ACCEPTED
         subjects.assert_called_once_with("/data/bids", catalog)
 
-    def test_dataset_folder_picker_prefers_existing_canonical_bids_root(
+    def test_dataset_picker_uses_existing_canonical_datasets_root(
         self,
         tmp_path,
         monkeypatch,
@@ -252,12 +252,10 @@ class TestDatasetActionHandler:
             _dataset_dialog_start_directory,
         )
 
-        bids_root = tmp_path / "datasets" / "bids"
-        bids_root.mkdir(parents=True)
+        (tmp_path / "datasets" / "bids").mkdir(parents=True)
         monkeypatch.setenv("XBRAINLAB_DATA_DIR", str(tmp_path))
 
         assert _dataset_dialog_start_directory() == str(tmp_path / "datasets")
-        assert _dataset_dialog_start_directory(prefer_bids=True) == str(bids_root)
 
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
@@ -440,30 +438,6 @@ class TestDatasetActionHandler:
             "Interpretation Blocked",
             "Data interpretation availability is unavailable right now.",
         )
-
-    def test_import_folder_uses_interpretation_review_result(
-        self,
-        handler,
-    ):
-        from XBrainLab.backend.study import Study
-
-        handler.panel.study = Study()
-
-        with (
-            patch("XBrainLab.ui.panels.dataset.actions.QFileDialog") as mock_fd,
-            patch.object(
-                handler._data_interpretation,
-                "_run_data_interpretation_import",
-                return_value=True,
-            ) as mock_interpret,
-            patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_mb,
-        ):
-            mock_fd.getExistingDirectory.return_value = "/tmp/bids-root"
-            handler.import_folder_source()
-
-        mock_fd.getExistingDirectory.assert_called_once()
-        mock_interpret.assert_called_once_with(["/tmp/bids-root"])
-        mock_mb.assert_not_called()
 
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.show_warning")

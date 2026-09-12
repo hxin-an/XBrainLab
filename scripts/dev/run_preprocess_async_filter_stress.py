@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from scripts.dev.capture_config import isolated_capture_config
 from scripts.dev.native_process_safety import disable_core_dumps
 
 _NATIVE_PROCESS_SAFETY = disable_core_dumps()
@@ -264,7 +265,8 @@ def main() -> int:
         parser.error(f"fixtures do not exist: {missing}")
     if args.cycles <= 0:
         parser.error("--cycles must be greater than zero")
-    result = run_stress(fixtures, args.cycles)
+    with isolated_capture_config():
+        result = run_stress(fixtures, args.cycles)
     print("PREPROCESS_ASYNC_FILTER_STRESS=" + json.dumps(result, sort_keys=True))
     return 0
 

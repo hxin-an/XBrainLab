@@ -148,6 +148,10 @@ def test_model_selection_reads_supported_setting_without_rewriting_it(
     [
         None,
         "not json",
+        "null",
+        "[]",
+        json.dumps({"local": None}),
+        json.dumps({"local": []}),
         json.dumps({"local": {"model_name": "microsoft/Phi-4-mini-instruct"}}),
     ],
 )
@@ -160,6 +164,10 @@ def test_model_selection_falls_back_to_product_default(
         settings.write_text(payload, encoding="utf-8")
 
     assert select_model_id(settings) == PRIMARY_LOCAL_MODEL_ID
+    if payload is not None:
+        assert settings.read_text(encoding="utf-8") == payload
+    else:
+        assert not settings.exists()
 
 
 def test_poetry_sync_uses_one_explicit_windows_variant() -> None:

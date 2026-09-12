@@ -28,6 +28,8 @@ if (
         "Native render stress refused to load Qt because RLIMIT_CORE=0 failed."
     )
 
+from scripts.dev.capture_config import isolated_capture_config
+
 
 def _native_qt_platform(platform_name: str) -> str:
     """Select the stable Qt plugin for native lifecycle coverage on each OS."""
@@ -1797,11 +1799,12 @@ def main() -> int:
         parser.error(f"fixture does not exist: {fixture}")
 
     try:
-        result = run_stress(
-            fixture=fixture,
-            cycles=args.cycles,
-            warmup_cycles=args.warmup_cycles,
-        )
+        with isolated_capture_config():
+            result = run_stress(
+                fixture=fixture,
+                cycles=args.cycles,
+                warmup_cycles=args.warmup_cycles,
+            )
     except Exception:
         traceback.print_exc(file=sys.stderr)
         return 1

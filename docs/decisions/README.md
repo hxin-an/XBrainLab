@@ -1,6 +1,6 @@
 # XBrainLab Decisions
 
-最後更新：`2026-09-06`
+最後更新：`2026-09-12`
 
 ## 這份文件的用途
 
@@ -18,8 +18,10 @@
 | 決策 | 狀態 | 說明 |
 | --- | --- | --- |
 | 穩定化優先 | active | 先讓既有 app 可跑、可測、可理解，再做 agent redesign。 |
+| Headless JSON command CLI 退役 | active | 使用者核准物理移除 CLI、專屬 automation adapter、便利匯出及專屬測試；仍有用途的行為測試改由 typed Command 保護。ApplicationService / Command/query 契約保留，受支援 scripts 直接使用該 spine；不留 legacy、相容空殼或替代 JSON 控制層。 |
+| Assistant 單一工具定義 | active | Product 與 evaluator 共用正式 registry；模擬 workflow state 與 mock tool execution 已移除。Evaluator 仍由既有 controller harness 在執行邊界停止，不藉工具定義收斂取得實際執行權限，18-tool public contract 不變。 |
 | app 內 assistant 是 workflow operator | active | 它不是外部 coding assistant，也不是普通聊天視窗。 |
-| assistant runtime local-only | active | 為了簡化開發、部署、隱私和驗證，assistant product runtime 已 local-only；remote backend modules 已從 product package 移除，`openai` / `google-genai` 只留 optional `legacy-remote-llm` dependency group。 |
+| assistant runtime local-only | active | 為了簡化開發、部署、隱私和驗證，assistant product runtime 已 local-only；remote backend modules、專屬 dependency group 與 `openai` / `google-genai` 已移除，不保留未使用的遠端 SDK。 |
 | Assistant tool surface 由 approved intent 決定 | active | Tool 不由 runtime inventory 或既有測試反推。名稱、membership、side effect、confirmation 與 visible result 必須先在 `docs/target/agent.md` 的 intent ledger 取得使用者核准；current model-facing projection 只描述現況。 |
 | Assistant Stable v2 target surface | active | Target intent ledger 已鎖定18個產品tools、backend-owned stage、strict三欄envelope、一回合一動作、thin Host與GUI completion terminal。Implementation只能投影該ledger；不得用Host heuristic、silent substitution、auto continuation或runtime fallback補模型決策。 |
 | Assistant Stable v2 staged promotion | active | Stable promotion先在暫時integration branch組裝；該branch不是產品基線。只有完整candidate在同一exact SHA通過工程證據、使用者手測並取得明確merge同意後，才可宣稱promotion或handoff-ready；source改變即使批准失效。 |

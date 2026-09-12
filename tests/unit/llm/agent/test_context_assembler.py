@@ -394,7 +394,7 @@ def test_action_catalog_ends_with_one_short_output_reminder() -> None:
     from XBrainLab.llm.tools import get_all_tools
 
     registry = ToolRegistry()
-    for tool in get_all_tools("mock"):
+    for tool in get_all_tools():
         registry.register(tool)
     assembler = ContextAssembler(registry, Study())
 

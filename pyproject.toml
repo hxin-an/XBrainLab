@@ -56,12 +56,6 @@ cuda = [
     "torchaudio (==2.11.0+cu130) ; sys_platform == 'win32'",
 ]
 
-[project.scripts]
-test-backend = "scripts.dev.run_tests:backend"
-test-ui = "scripts.dev.run_tests:ui"
-test-llm = "scripts.dev.run_tests:run_llm_tests"
-test-remote = "scripts.dev.run_tests:run_remote_tests"
-
 [tool.poetry.dependencies]
 # Explicit sources enrich the matching PEP 621 dependencies above. The three
 # markers are mutually exclusive for every supported target.
@@ -80,13 +74,6 @@ torchaudio = [
     { markers = "sys_platform == 'win32' and extra == 'cpu' and extra != 'cuda'", source = "pytorch-cpu" },
     { markers = "sys_platform == 'win32' and extra == 'cuda' and extra != 'cpu'", source = "pytorch-cu130" },
 ]
-
-[tool.poetry.group.legacy-remote-llm]
-optional = true
-
-[tool.poetry.group.legacy-remote-llm.dependencies]
-openai = "^2.15.0"
-google-genai = "^1.59.0"
 
 [tool.poetry.group.llm]
 optional = true
@@ -291,7 +278,6 @@ check = ["lint", "typecheck-fast", "test-unit", "check-architecture"]
 check-full = ["lint", "typecheck-fast", "mypy", "test-unit", "check-architecture"]
 
 # Utilities
-clean = { cmd = "rm -rf output __pycache__ .pytest_cache .ruff_cache .mypy_cache htmlcov .coverage", help = "Remove temporary files" }
 pre-commit-run = "pre-commit run --all-files"
 
 # Changelog (自動化)

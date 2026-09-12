@@ -25,7 +25,7 @@ def _live_tool_schema_validator() -> ToolSchemaValidator | None:
         )
         from XBrainLab.llm.tools import get_all_tools  # noqa: PLC0415
 
-        schemas = {tool.name: tool.parameters for tool in get_all_tools(mode="real")}
+        schemas = {tool.name: tool.parameters for tool in get_all_tools()}
         return ToolSchemaValidator(schemas)
     except Exception:
         logger.exception("RAG example policy could not load live tool schemas")

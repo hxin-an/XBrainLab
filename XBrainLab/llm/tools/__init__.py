@@ -1,11 +1,6 @@
-"""LLM tools package for the XBrainLab agent framework.
+"""Approved Assistant tools, lazily built from the single product registry.
 
-Provides mock and real tool implementations for dataset management,
-preprocessing, training, and UI control. Use ``get_all_tools`` to
-obtain the appropriate tool set based on the execution mode.
-
-Real-tool imports are deferred to ``get_all_tools(mode="real")`` to
-avoid pulling in heavy backend dependencies at package import time.
+Package import stays lightweight; tool definitions are imported on first use.
 """
 
 from __future__ import annotations
@@ -17,18 +12,6 @@ from .definitions.ui_control_def import (
     ApplicationCommandTool,
     BaseSwitchPanelTool,
     WorkflowHandoffTool,
-)
-from .mock.preprocess_mock import (
-    MockBandPassFilterTool,
-    MockNormalizeTool,
-    MockNotchFilterTool,
-    MockRereferenceTool,
-    MockResampleTool,
-)
-from .mock.state import MockWorkflowState
-from .mock.training_mock import (
-    MockStartTrainingTool,
-    MockStopTrainingTool,
 )
 
 _TARGET_GUI_HANDOFF_DESCRIPTIONS = {
@@ -83,8 +66,8 @@ def _target_lifecycle_tools() -> list[BaseTool]:
     ]
 
 
-def _build_real_tools() -> list[BaseTool]:
-    """Lazily instantiate the approved real registry definitions."""
+def get_all_tools() -> list[BaseTool]:
+    """Lazily instantiate and validate the approved product tool definitions."""
     from .definitions.preprocess_def import (
         BaseBandPassFilterTool,
         BaseNormalizeTool,
@@ -97,7 +80,7 @@ def _build_real_tools() -> list[BaseTool]:
         BaseStopTrainingTool,
     )
 
-    return [
+    tools = [
         *_target_gui_handoff_tools(),
         BaseBandPassFilterTool(),
         BaseNotchFilterTool(),
@@ -109,42 +92,6 @@ def _build_real_tools() -> list[BaseTool]:
         *_target_lifecycle_tools(),
         BaseSwitchPanelTool(),
     ]
-
-
-def get_all_tools(mode: str = "mock") -> list[BaseTool]:
-    """Create and return all tool instances for the given execution mode.
-
-    Args:
-        mode: Execution mode — ``'mock'`` for simulated tools or
-            ``'real'`` for backend-integrated tools.
-
-    Returns:
-        A list of ``BaseTool`` instances appropriate for the
-        requested mode.
-
-    Raises:
-        ValueError: If *mode* is not ``'mock'`` or ``'real'``.
-
-    """
-    if mode == "mock":
-        workflow_state = MockWorkflowState()
-        tools = [
-            *_target_gui_handoff_tools(),
-            MockBandPassFilterTool(workflow_state),
-            MockNotchFilterTool(workflow_state),
-            MockResampleTool(workflow_state),
-            MockRereferenceTool(workflow_state),
-            MockNormalizeTool(workflow_state),
-            MockStartTrainingTool(workflow_state),
-            MockStopTrainingTool(workflow_state),
-            *_target_lifecycle_tools(),
-            BaseSwitchPanelTool(),
-        ]
-    elif mode == "real":
-        tools = _build_real_tools()
-    else:
-        raise ValueError(f"Unknown tool mode: {mode}")
-
     AGENT_ACTION_CONTRACTS.validate_registered_tool_names([tool.name for tool in tools])
     return tools
 
@@ -158,6 +105,6 @@ def __getattr__(name: str):
     if name == "AVAILABLE_TOOLS":
         global _AVAILABLE_TOOLS
         if _AVAILABLE_TOOLS is None:
-            _AVAILABLE_TOOLS = get_all_tools(mode="real")
+            _AVAILABLE_TOOLS = get_all_tools()
         return _AVAILABLE_TOOLS
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import pytest
 
+from XBrainLab.backend.application import ApplicationService, ConfigureTrainingCommand
 from XBrainLab.backend.application.resource_guard import TrainingResourceRefinement
 from XBrainLab.backend.application.serialization import serialize_json_value
 from XBrainLab.backend.application.state import TrainingStateSnapshot
@@ -14,6 +15,38 @@ from XBrainLab.backend.application.training_recommendation import (
     TrainingRecommendationService,
     TrainingSettingProvenance,
 )
+from XBrainLab.backend.application.training_submission import (
+    attach_training_submission_provenance,
+)
+from XBrainLab.backend.study import Study
+
+
+def test_command_preserves_all_five_explicit_manual_training_values() -> None:
+    service = ApplicationService(Study())
+    command = attach_training_submission_provenance(
+        ConfigureTrainingCommand(
+            epoch=17,
+            batch_size=3,
+            learning_rate=0.02,
+            optimizer="SGD",
+            evaluation_option="Best validation loss",
+            device="cpu",
+        ),
+        frozenset(TrainingRecommendationField),
+    )
+
+    result = service.execute(command)
+    recommendation = service.get_training_recommendation()
+
+    assert result.ok is True
+    assert recommendation.values.to_mapping() == {
+        TrainingRecommendationField.EPOCHS: 17,
+        TrainingRecommendationField.BATCH_SIZE: 3,
+        TrainingRecommendationField.LEARNING_RATE: 0.02,
+        TrainingRecommendationField.OPTIMIZER: "SGD",
+        TrainingRecommendationField.EVALUATION_STRATEGY: "Best validation loss",
+    }
+    assert recommendation.manual_fields == tuple(TrainingRecommendationField)
 
 
 @dataclass

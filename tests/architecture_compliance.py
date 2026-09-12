@@ -6402,8 +6402,6 @@ def check_dataset_data_interpretation_action_ownership(
     facade_methods = (
         "import_data",
         "review_current_import",
-        "import_folder_source",
-        "import_bids_source",
         "reload_interpretation_recipe",
         "_execute_interpretation_command_async",
         "_interaction_failure_outcome",
@@ -6654,7 +6652,7 @@ def check_dataset_data_interpretation_action_ownership(
         if owns_extra_delegate:
             violations.append(
                 f"{actions_relative}:{method.lineno} exposes extra interpretation "
-                f"delegate {method_name}; only the nine compatibility facades are allowed."
+                f"delegate {method_name}; only the seven compatibility facades are allowed."
             )
 
     for method_name in facade_methods:

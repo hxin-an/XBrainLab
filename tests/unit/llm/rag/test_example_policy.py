@@ -76,7 +76,7 @@ def test_gold_set_exactly_covers_every_approved_action_with_live_schemas() -> No
     from XBrainLab.llm.tools import get_all_tools
 
     items = json.loads(_GOLD_SET_PATH.read_text(encoding="utf-8"))
-    schemas = {tool.name: tool.parameters for tool in get_all_tools(mode="mock")}
+    schemas = {tool.name: tool.parameters for tool in get_all_tools()}
     validator = ToolSchemaValidator(schemas)
     covered: set[str] = set()
 

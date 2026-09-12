@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from XBrainLab.backend.application.commands import CommandName
 from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 from XBrainLab.llm.tools import get_all_tools
@@ -24,11 +22,8 @@ _TARGET_GUI_HANDOFFS = {
 }
 
 
-@pytest.mark.parametrize("mode", ("mock", "real"))
-def test_target_gui_tools_are_zero_parameter_typed_handoffs(
-    mode: str,
-) -> None:
-    tools = {tool.name: tool for tool in get_all_tools(mode)}
+def test_target_gui_tools_are_zero_parameter_typed_handoffs() -> None:
+    tools = {tool.name: tool for tool in get_all_tools()}
 
     for tool_name, (command, decision_fields) in _TARGET_GUI_HANDOFFS.items():
         tool = tools[tool_name]
@@ -67,5 +62,4 @@ def test_target_runtime_and_model_projection_are_the_approved_eighteen() -> None
 
     assert AGENT_ACTION_CONTRACTS.tool_names() == approved
     assert AGENT_ACTION_CONTRACTS.model_tool_names() == approved
-    for mode in ("mock", "real"):
-        assert {tool.name for tool in get_all_tools(mode)} == approved
+    assert {tool.name for tool in get_all_tools()} == approved

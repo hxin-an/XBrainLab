@@ -214,12 +214,6 @@ class DatasetActionHandler:
             expected_identity=expected_identity,
         )
 
-    def import_folder_source(self):
-        return self._data_interpretation.import_folder_source()
-
-    def import_bids_source(self):
-        return self._data_interpretation.import_bids_source()
-
     def reload_interpretation_recipe(self):
         return self._data_interpretation.reload_interpretation_recipe()
 
