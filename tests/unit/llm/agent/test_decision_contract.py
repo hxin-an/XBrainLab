@@ -59,6 +59,19 @@ def test_prompt_policy_describes_typed_clarification_for_user_responses() -> Non
     assert selection_rule.index("which single operation") < selection_rule.index(
         "Only call it"
     )
+    assert "does not permit executing the first step" in selection_rule
+    missing_rule = instructions.split("3. ", 1)[1].split("4. ", 1)[0]
+    assert (
+        "all three fields: message, pending_action, and missing_inputs" in missing_rule
+    )
+    assert "pending_action is the exact requested action name" in missing_rule
+    assert (
+        "missing_inputs is an array of its missing required parameter names"
+        in missing_rule
+    )
+    assert (
+        "A message-only question cannot start this parameter collection" in missing_rule
+    )
     assert "If no specific operation was requested" not in instructions
 
 

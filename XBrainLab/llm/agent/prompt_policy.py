@@ -69,7 +69,9 @@ class StrictToolResponsePromptPolicy:
             "required values, use respond_to_user to ask only for those values. "
         )
         operation_choice = (
-            " Do not execute any part of a multi-action request. Instead, use "
+            " Do not execute any part of a multi-action request. One tool per "
+            "response does not permit executing the first step of a multi-step "
+            "request. Instead, use "
             "respond_to_user with parameters containing only message to ask "
             "which single operation to perform first. "
             "Broad processing requests and unspecified filtering do not identify "
@@ -91,7 +93,11 @@ class StrictToolResponsePromptPolicy:
             "A prerequisite named in a blocker is not a "
             "user request: do not perform a prerequisite or substitute action.\n"
             f"{missing_values}"
-            "Include pending_action and missing_inputs only for that exact action.\n"
+            "For this case, parameters must contain all three fields: message, "
+            "pending_action, and missing_inputs. pending_action is the exact "
+            "requested action name; missing_inputs is an array of its missing "
+            "required parameter names. A message-only question cannot start this "
+            "parameter collection. Use these fields only for that exact action.\n"
             "4. Use respond_to_user with parameters containing only message for "
             "information, a negated, "
             "ambiguous, or multi-action request. Never call a prerequisite, "

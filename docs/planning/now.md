@@ -155,6 +155,21 @@ export tests passed. CI scripts regression is the new capture_config import prec
 move only that import behind the guard. Two existing safety tests were RED; safety/order plus stress
 isolation success/failure are now 4 passed. No guard was weakened and no new test-only workaround added.
 
+Candidate 3 full frozen run on clean 72063a50a9b2f9e285639ff336686b8e29d8dbd0 failed:
+positive 36/36, origin 10/10 and 5/5, direct clarification admission 3/5, product no-action 23/24,
+clarification 3/7. The remaining multi-action response executes the first step; bandpass/notch questions
+omit the required typed clarification fields. Generic filter selection also asks a message-only follow-up
+without a receipt. Preserve build/dev-artifacts/candidate3 report/log; ordering alone did not fix the gap.
+Candidate 4 (last renewed attempt) keeps the ordering and existing contracts, clarifies that one tool per
+reply does not permit the first step of a multi-action request, and replaces the vague rule-3 field sentence
+with explicit required-field meanings and the message-only distinction. No example answers or frozen-case
+text, no Host/schema changes. Focused contract protection followed by the full unchanged 81-case run.
+Candidate 4 focused evidence: 1 RED / 10 unaffected passes before wording change; after the change,
+151 prompt/assembler/evaluator/export tests pass. Shared native Windows environment verified against
+the current lock without installing or changing anything. Independent review confirmed third-candidate
+prompt-only placement and fourth-candidate consistency with unchanged schema/Host admission. No code
+blocker found; actual model outcome remains unknown before the fixed-source run.
+
 Shared environment editable .pth exposed old scripts namespace: tests use process-only path exclusion,
 not environment edits. New worktree .git pointer is relative so WSL and native Windows Git agree.
 Broad Assistant check: 1,425 passed, 30 failed, 2 skipped; all failures were fake Hugging Face
