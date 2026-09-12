@@ -523,23 +523,17 @@ def _snapshot_service(
         training=training,
         training_runtime=cast(Any, training_runtime),
         evaluation=_EvaluationController(),
-        dataset_generation=DatasetGenerationCommandService(
+        dataset_split_state=DatasetGenerationCommandService(
             study=study,
             training=object(),
             has_trainer=training_runtime.has_trainer,
-        ),
+        ).dataset_split_state,
         saliency_coverage_projector=(
             saliency_coverage_projector or SaliencyCoverageProjector()
         ),
-        interpretation=type(
-            "Interpretation",
-            (),
-            {
-                "snapshot": lambda self: InterpretationStateSnapshot(
-                    has_scan_result=True
-                )
-            },
-        )(),
+        interpretation_snapshot=lambda: InterpretationStateSnapshot(
+            has_scan_result=True
+        ),
         montage_snapshot_provider=montage_snapshot_provider,
         effective_montage_provider=effective_montage_provider,
         bids_restore_available_provider=bids_restore_available_provider,
@@ -769,7 +763,7 @@ def test_state_and_explicit_recommendation_do_not_read_dataset_payload() -> None
     state_builder.study.datasets = [
         SimpleNamespace(name="detached-summary-only", get_epoch_data=get_epoch_data)
     ]
-    state_builder.dataset_generation = SimpleNamespace(
+    state_builder._dataset_split_state = SimpleNamespace(
         dataset_split_state=lambda _datasets: {
             "split_spec_saved": True,
             "split_specification": {},
@@ -786,7 +780,7 @@ def test_state_and_explicit_recommendation_do_not_read_dataset_payload() -> None
             },
             "last_split_attempt": {},
         },
-    )
+    ).dataset_split_state
     state_builder.training_recommendation = TrainingRecommendationService()
 
     recommendation_service = state_builder.training_recommendation

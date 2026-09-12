@@ -211,7 +211,7 @@ def _pending_receipt(
     runtime: _ImportRuntime,
     challenge: ResourceConfirmationChallenge,
 ) -> Any | None:
-    interpretation = runtime.service.interpretation._service()
+    interpretation = runtime.service.interpretation
     return interpretation._import_preflight_receipts.peek(
         challenge.challenge_id,
         scope_fingerprint=challenge.scope_fingerprint,

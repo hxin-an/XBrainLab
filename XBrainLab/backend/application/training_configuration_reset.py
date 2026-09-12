@@ -6,6 +6,7 @@ from typing import Any
 
 from XBrainLab.backend.utils.logger import logger
 
+from .training_recommendation import TrainingRecommendationService
 from .training_runtime import TrainingConfigurationControlPort
 
 
@@ -17,9 +18,11 @@ class TrainingConfigurationResetService:
         *,
         training: Any,
         training_runtime: TrainingConfigurationControlPort,
+        recommendation: TrainingRecommendationService,
     ) -> None:
         self.training = training
         self.training_runtime = training_runtime
+        self._recommendation = recommendation
 
     def clear(self) -> None:
         """Reset the active configuration and publish one configuration change."""
@@ -28,3 +31,4 @@ class TrainingConfigurationResetService:
             self.training.notify("config_changed")
         except Exception:
             logger.debug("Training config reset notification failed", exc_info=True)
+        self._recommendation.clear()

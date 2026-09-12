@@ -21,7 +21,7 @@ from XBrainLab.backend.study import Study
 
 
 def _record_review(service: ApplicationService, suffix: str) -> None:
-    interpretation = service.interpretation._service()
+    interpretation = service.interpretation
     state = interpretation.state
     scan = ScanResult(
         scan_id=f"scan-{suffix}",

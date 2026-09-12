@@ -94,6 +94,7 @@ def test_state_and_capability_queries_do_not_load_training_stack() -> None:
             "XBrainLab.backend.application.training_service",
             "XBrainLab.backend.application.analysis_service",
             "XBrainLab.backend.application.dataset_generation_service",
+            "XBrainLab.backend.application.data_interpretation_service",
             "XBrainLab.backend.training",
             "XBrainLab.backend.model_base",
         )
@@ -111,6 +112,7 @@ def test_state_and_capability_queries_do_not_load_training_stack() -> None:
         study = Study()
         baseline = set(sys.modules)
         service = get_application_service(study)
+        service.get_state()
         service.get_capabilities()
         service.execute(QueryStateCommand(query="state"))
         loaded = bad_new_modules(baseline)
@@ -153,7 +155,7 @@ def test_session_reset_does_not_materialize_training_stack() -> None:
             )
         )
         assert result.ok, result.message
-        assert service.training_commands._service_instance is None
+        assert "training_commands" not in vars(service)
         assert not loaded, loaded
         print("PASS")
         """,

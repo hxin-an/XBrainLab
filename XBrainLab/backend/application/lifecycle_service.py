@@ -26,14 +26,14 @@ class LifecycleCommandService:
         self,
         *,
         dataset: DatasetLifecyclePort,
-        training_commands: Any,
-        interpretation: Any,
+        clear_training_configuration: Callable[[], None],
+        clear_interpretation: Callable[[], None],
         get_state: Callable[[], ApplicationStateSnapshot],
         pipeline_transaction: PipelineStateTransaction,
     ) -> None:
         self.dataset = dataset
-        self.training_commands = training_commands
-        self.interpretation = interpretation
+        self._clear_training_configuration = clear_training_configuration
+        self._clear_interpretation = clear_interpretation
         self._get_state = get_state
         self._pipeline_transaction = pipeline_transaction
 
@@ -65,14 +65,14 @@ class LifecycleCommandService:
         if not isinstance(command, ResetSessionCommand):
             raise TypeError("Invalid command for reset_session")
         self.dataset.clean_dataset()
-        self.training_commands.clear_configuration()
-        self.interpretation.clear()
+        self._clear_training_configuration()
+        self._clear_interpretation()
         return "Session reset."
 
     def handle_new_session(self, command: Command) -> HandlerResult:
         if not isinstance(command, NewSessionCommand):
             raise TypeError("Invalid command for new_session")
         self.dataset.clean_dataset()
-        self.training_commands.clear_configuration()
-        self.interpretation.clear()
+        self._clear_training_configuration()
+        self._clear_interpretation()
         return "New session started.", {"single_session_backend": True}

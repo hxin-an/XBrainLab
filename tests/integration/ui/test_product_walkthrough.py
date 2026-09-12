@@ -19,7 +19,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-import XBrainLab.backend.application.service as application_service_module
+import XBrainLab.backend.application.training_service as training_service_module
 from tests.qt_lifecycle import close_controller_and_wait
 from XBrainLab.backend.application import (
     APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
@@ -1058,7 +1058,7 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
         )
 
     monkeypatch.setattr(
-        application_service_module._LazyTrainingCommandService,
+        training_service_module.TrainingCommandService,
         "start_train_after_preflight",
         fake_start_train_after_preflight,
     )

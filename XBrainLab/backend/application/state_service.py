@@ -79,8 +79,8 @@ class StateSnapshotService:
         training: Any,
         training_runtime: TrainingStateReadPort,
         evaluation: Any,
-        dataset_generation: Any,
-        interpretation: Any,
+        dataset_split_state: Callable[[list[Any]], dict[str, Any]],
+        interpretation_snapshot: Callable[[], InterpretationStateSnapshot],
         saliency_coverage_projector: SaliencyCoverageProjector,
         training_recommendation: TrainingRecommendationService | None = None,
         montage_snapshot_provider: Callable[[], Any] | None = None,
@@ -93,8 +93,8 @@ class StateSnapshotService:
         self.training_runtime = training_runtime
         self.training_state = training
         self.evaluation_state = evaluation
-        self.dataset_generation = dataset_generation
-        self.interpretation = interpretation
+        self._dataset_split_state = dataset_split_state
+        self._interpretation_snapshot = interpretation_snapshot
         self.saliency_coverage_projector = saliency_coverage_projector
         self.training_recommendation = training_recommendation
         self.montage_snapshot_provider = montage_snapshot_provider
@@ -284,7 +284,7 @@ class StateSnapshotService:
             event_ids=self._epoch_event_ids(epoch_data),
             channel_names=self._epoch_channel_names(epoch_data),
         )
-        split_state = self.dataset_generation.dataset_split_state(datasets)
+        split_state = self._dataset_split_state(datasets)
         dataset = DatasetStateSnapshot(
             available=bool(datasets),
             count=len(datasets),
@@ -765,9 +765,6 @@ class StateSnapshotService:
         getter = getattr(self.training_state, "get_formatted_history", None)
         rows = list(cast(Callable[[], Any], getter)() or []) if callable(getter) else []
         return project_training_history_rows(rows)
-
-    def _interpretation_snapshot(self) -> InterpretationStateSnapshot:
-        return self.interpretation.snapshot()
 
     @staticmethod
     def _raw_formats(raw_data: list[Any]) -> list[str]:

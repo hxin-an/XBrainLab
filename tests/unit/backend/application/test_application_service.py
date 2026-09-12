@@ -1168,7 +1168,7 @@ def test_lazy_training_service_import_configures_after_epoch_preparation() -> No
     service.get_state()
     publication = service.get_view_publication()
 
-    assert service.training_commands._service_instance is None
+    assert "training_commands" not in vars(service)
 
     configured = service.execute(
         ConfigureTrainingCommand(
@@ -1187,7 +1187,7 @@ def test_lazy_training_service_import_configures_after_epoch_preparation() -> No
     assert configured.state.training.model_name == "EEGNet (XBrainLab)"
     assert configured.state.training.training_option is not None
     assert configured.state.training.training_option["batch_size"] == 2
-    assert service.training_commands._service_instance is not None
+    assert "training_commands" in vars(service)
     service.close()
 
 
@@ -1223,7 +1223,7 @@ def test_start_admission_rejects_stale_early_stopping_without_validation() -> No
     service.study.datasets = []
 
     with pytest.raises(PreconditionError, match="validation split"):
-        service.training_commands._service()._validate_early_stopping_admission()
+        service.training_commands._validate_early_stopping_admission()
     service.close()
 
 
@@ -2987,7 +2987,7 @@ def test_apply_interpretation_rolls_back_when_metadata_apply_raises(
     imported_raw.get_filename.return_value = eeg_path.name
     imported_raw.get_filepath.return_value = str(eeg_path)
 
-    interpretation = service.interpretation._service()
+    interpretation = service.interpretation
     _use_test_raw_factory(service, cast(Raw, imported_raw))
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(
@@ -3054,7 +3054,7 @@ def test_apply_retirement_failure_restores_pipeline_and_training_history(
         SaveInterpretationRecipeCommand(recipe_path=str(recipe_path))
     )
     assert saved.ok
-    interpretation = service.interpretation._service()
+    interpretation = service.interpretation
     previous_recipe = interpretation.state.resolve_recipe(None).to_dict()
     previous_interpretation_id = applied.state.interpretation.latest_interpretation_id
     trainer = Trainer([])
@@ -3379,7 +3379,7 @@ def test_apply_interpretation_cancel_preserves_real_study_and_can_retry(
         for publication in publications[publications_before_apply:]
     )
 
-    interpretation = service.interpretation._service()
+    interpretation = service.interpretation
     original_label_verification = interpretation._ensure_label_apply_succeeded
     ready_to_commit = Event()
     release_commit_admission = Event()
@@ -3580,7 +3580,7 @@ def test_apply_resource_admission_runs_without_holding_command_lock(
             _blocking_preflight,
         )
     else:
-        interpretation = service.interpretation._service()
+        interpretation = service.interpretation
         original_label_admission = interpretation._admitted_reviewed_label_resources
 
         def _blocking_label_admission(candidate, preflight):
@@ -3638,7 +3638,7 @@ def test_apply_commit_rejects_same_value_interpretation_revision_change(
     )
     candidate_id = preview.diagnostics["candidate"]["candidate_id"]
     assert service.execute(ValidateInterpretationCommand(candidate_id=candidate_id)).ok
-    interpretation = service.interpretation._service()
+    interpretation = service.interpretation
     original_prepare = interpretation.prepare_apply_interpretation
 
     def _mutate_same_value_after_prepare(plan):
@@ -4227,7 +4227,7 @@ def test_validate_cancel_after_commit_admission_is_rejected_and_success_publishe
     command = ValidateInterpretationCommand(
         candidate_id=preview.diagnostics["candidate"]["candidate_id"]
     )
-    interpretation = service.interpretation._service()
+    interpretation = service.interpretation
     original_publish = interpretation.state.publish_staged_session_state
     commit_started = Event()
     release_commit = Event()
@@ -5281,7 +5281,7 @@ def test_apply_interpretation_rehashes_content_before_short_commit_admission(
     )
     candidate_id = preview.diagnostics["candidate"]["candidate_id"]
     assert service.execute(ValidateInterpretationCommand(candidate_id=candidate_id)).ok
-    candidate = service.interpretation._service().state.resolve_candidate(candidate_id)
+    candidate = service.interpretation.state.resolve_candidate(candidate_id)
     identity_row = next(
         item
         for item in candidate.content_identity["files"]
@@ -5304,7 +5304,7 @@ def test_apply_interpretation_rehashes_content_before_short_commit_admission(
         classmethod(lambda _cls, _path, **_kwargs: untrusted_stat_boundary),
     )
 
-    interpretation = service.interpretation._service()
+    interpretation = service.interpretation
     original_prepare = interpretation.prepare_apply_interpretation
     preparation_ready = Event()
     release_preparation = Event()
@@ -5582,7 +5582,7 @@ def test_prepared_apply_rejects_label_content_changed_before_or_during_detached_
     if mutation_phase == "before_apply":
         _mutate_file_same_size(label_path)
     else:
-        interpretation = service.interpretation._service()
+        interpretation = service.interpretation
         original_detached_copy = interpretation.apply_service.detached_copy
 
         def detached_copy(*args: Any, **kwargs: Any) -> Any:
@@ -6278,7 +6278,7 @@ def test_failed_replacement_restores_raw_interpretation_and_recipe(
         ),
     )
     service.execute(ValidateInterpretationCommand())
-    interpretation = service.interpretation._service()
+    interpretation = service.interpretation
     original_detached_copy = interpretation.apply_service.detached_copy
 
     def _failing_detached_copy(*args, **kwargs):
@@ -6869,7 +6869,7 @@ def test_session_reset_uses_one_training_configuration_owner_regardless_of_lazin
     manager.set_training_option(_valid_training_option())
     manager.saliency_params = {"SmoothGrad": {"nt_samples": 5}}
     if materialize_training_service:
-        service.training_commands._service()
+        assert service.training_commands is not None
 
     reset_owner = service.training_configuration_reset
     original_clear = reset_owner.clear
@@ -6889,9 +6889,7 @@ def test_session_reset_uses_one_training_configuration_owner_regardless_of_lazin
     assert manager.model_holder is None
     assert manager.training_option is None
     assert manager.saliency_params is None
-    assert (service.training_commands._service_instance is not None) is (
-        materialize_training_service
-    )
+    assert ("training_commands" in vars(service)) is (materialize_training_service)
 
 
 def test_state_read_failure_marks_the_entire_ui_state_unknown() -> None:
@@ -8164,17 +8162,13 @@ def test_apply_interpretation_blocks_mixed_label_placement_modes(
     service.execute(ValidateInterpretationCommand())
     state_before = service.get_state()
     loaded_before = service.study.data_manager.loaded_data_list
-    applied_before = (
-        service.interpretation._service().state.resolve_applied_interpretation()
-    )
+    applied_before = service.interpretation.state.resolve_applied_interpretation()
     assert loaded_before == [sentinel_raw]
     assert state_before.interpretation.has_applied_interpretation is True
     apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
     state_after = service.get_state()
     loaded_after = service.study.data_manager.loaded_data_list
-    applied_after = (
-        service.interpretation._service().state.resolve_applied_interpretation()
-    )
+    applied_after = service.interpretation.state.resolve_applied_interpretation()
 
     assert apply_result.failed is True
     assert apply_result.error_type == ErrorType.VALIDATION
@@ -11308,7 +11302,7 @@ def test_deferred_dataset_replacement_failure_restores_previous_training_state(
             issues=[],
         ),
     )
-    service.dataset_generation.pipeline_transaction.publish_datasets = MagicMock(
+    service.pipeline_transaction.publish_datasets = MagicMock(
         side_effect=fail_after_partial_publication,
     )
 

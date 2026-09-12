@@ -212,8 +212,8 @@ def _service() -> tuple[
     return (
         LifecycleCommandService(
             dataset=dataset,
-            training_commands=training_commands,
-            interpretation=interpretation,
+            clear_training_configuration=training_commands.clear_configuration,
+            clear_interpretation=interpretation.clear,
             get_state=_state,
             pipeline_transaction=PipelineStateTransaction(study),
         ),
