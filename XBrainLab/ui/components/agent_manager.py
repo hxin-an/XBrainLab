@@ -71,7 +71,6 @@ from XBrainLab.ui.chat.presentation import (
 from XBrainLab.ui.chat.turn_state import (
     AssistantUiTurnPhase,
     AssistantUiTurnStateMachine,
-    AssistantUiTurnSubmission,
 )
 from XBrainLab.ui.components.agent_presentation_service import (
     AgentPresentationService,
@@ -240,7 +239,6 @@ class AgentManager(QObject):
         self.chat_controller.processing_state_changed.connect(
             self.on_processing_state_changed,
         )
-        self._pending_prune_notice = False
         self._runtime_unavailable_notice: str | None = None
         self._assistant_status_projection: AssistantStatusProjection | None = None
         self._application_command_in_flight = False
@@ -249,9 +247,7 @@ class AgentManager(QObject):
         self._assistant_training_terminal_retry_timer.timeout.connect(
             self._flush_assistant_training_terminal
         )
-        self._last_assistant_activity: AssistantTurnActivity | None = None
         self._assistant_turn_state = AssistantUiTurnStateMachine()
-        self._deferred_submission_events: list[tuple[str, object]] | None = None
         self._assistant_runtime = runtime_lifecycle or AssistantRuntimeLifecycle(
             study,
             controller_factory=self._create_assistant_controller,
@@ -641,7 +637,7 @@ class AgentManager(QObject):
             if self._assistant_turn_state.phase is AssistantUiTurnPhase.STOPPING:
                 presentation = ChatTurnPresentation.stopping()
             else:
-                activity = self._last_assistant_activity
+                activity = self._assistant_turn_state.last_activity
                 presentation = (
                     present_assistant_activity(
                         activity,
@@ -711,15 +707,13 @@ class AgentManager(QObject):
 
         # Reserve the runtime turn before changing the transcript. A rejected
         # command must not leave an unanswered user bubble behind.
-        submission = self._begin_assistant_turn_submission()
-        self._deferred_submission_events = []
+        submission = self._assistant_turn_state.begin_submission()
         admission = self._assistant_runtime.submit(
             text,
             generation=submission.generation,
         )
         if not isinstance(admission, RuntimeCommandAdmissionResult):
-            self._finish_assistant_turn_submission(submission, accepted=False)
-            self._deferred_submission_events = None
+            self._assistant_turn_state.reject_admission(submission)
             logger.error("Assistant runtime returned an invalid admission result")
             self._reject_user_submission(
                 text,
@@ -727,15 +721,13 @@ class AgentManager(QObject):
             )
             return AssistantTurnAdmissionResult()
         if not admission.accepted:
-            self._finish_assistant_turn_submission(submission, accepted=False)
-            self._deferred_submission_events = None
+            self._assistant_turn_state.reject_admission(submission)
             self._reject_user_submission(text, admission.message)
             return AssistantTurnAdmissionResult()
 
         correlation = admission.correlation
         if correlation is None:
-            self._finish_assistant_turn_submission(submission, accepted=False)
-            self._deferred_submission_events = None
+            self._assistant_turn_state.reject_admission(submission)
             logger.error("Assistant admission is missing exact turn correlation")
             self._reject_user_submission(
                 text,
@@ -743,13 +735,11 @@ class AgentManager(QObject):
             )
             return AssistantTurnAdmissionResult()
 
-        deferred_events = self._deferred_submission_events
-        self._deferred_submission_events = None
-        if not self._finish_assistant_turn_submission(
+        deferred_events = self._assistant_turn_state.complete_admission(
             submission,
-            accepted=True,
-            correlation=correlation,
-        ):
+            correlation,
+        )
+        if deferred_events is None:
             self._reject_user_submission(
                 text,
                 "The assistant could not correlate this request. Try again.",
@@ -781,8 +771,7 @@ class AgentManager(QObject):
                 "The assistant runtime must be ready before running diagnostics."
             )
             return
-        submission = self._begin_assistant_turn_submission()
-        self._deferred_submission_events = []
+        submission = self._assistant_turn_state.begin_submission()
         debug_options: dict[str, Any] = {"generation": submission.generation}
         if confirmed:
             debug_options["confirmed"] = True
@@ -794,8 +783,7 @@ class AgentManager(QObject):
             **debug_options,
         )
         if not isinstance(admission, RuntimeCommandAdmissionResult):
-            self._finish_assistant_turn_submission(submission, accepted=False)
-            self._deferred_submission_events = None
+            self._assistant_turn_state.reject_admission(submission)
             logger.error("Assistant debug runtime returned an invalid admission result")
             self._show_low_priority_notice(
                 "The diagnostic action could not be started. Try again."
@@ -806,20 +794,28 @@ class AgentManager(QObject):
                 )
             return
         if not admission.accepted:
-            self._finish_assistant_turn_submission(submission, accepted=False)
-            self._deferred_submission_events = None
+            self._assistant_turn_state.reject_admission(submission)
             self._show_low_priority_notice(admission.message)
             if self.chat_panel:
                 self.chat_panel.reject_debug_step(admission.message)
             return
         correlation = admission.correlation
-        deferred_events = self._deferred_submission_events
-        self._deferred_submission_events = None
-        if not self._finish_assistant_turn_submission(
+        if correlation is None:
+            self._assistant_turn_state.reject_admission(submission)
+            logger.error("Assistant debug admission is missing exact turn correlation")
+            self._show_low_priority_notice(
+                "The diagnostic action could not be correlated. Try again."
+            )
+            if self.chat_panel:
+                self.chat_panel.reject_debug_step(
+                    "The diagnostic action could not be correlated. Try again."
+                )
+            return
+        deferred_events = self._assistant_turn_state.complete_admission(
             submission,
-            accepted=True,
-            correlation=correlation,
-        ):
+            correlation,
+        )
+        if deferred_events is None:
             self._show_low_priority_notice(
                 "The diagnostic action could not be correlated. Try again."
             )
@@ -834,16 +830,16 @@ class AgentManager(QObject):
     def _prepare_admitted_transcript_turn(self) -> None:
         """Establish one bounded transcript budget after runtime admission."""
         pruned_rows = self.chat_controller.prepare_for_turn()
-        self._pending_prune_notice = bool(pruned_rows)
+        self._assistant_turn_state.set_prune_notice_pending(bool(pruned_rows))
         if pruned_rows:
             self._show_low_priority_notice(_CHAT_PRUNE_NOTICE)
 
     def _replay_deferred_submission_events(
         self,
-        events: list[tuple[str, object]] | None,
+        events: tuple[tuple[str, object], ...],
     ) -> None:
         """Replay controller events emitted before UI admission was committed."""
-        for event_kind, event_payload in events or ():
+        for event_kind, event_payload in events:
             if event_kind == "activity":
                 self.on_assistant_activity_changed(event_payload)
             elif event_kind == "response":
@@ -855,39 +851,13 @@ class AgentManager(QObject):
             elif event_kind == "workflow_handoff":
                 self.handle_workflow_ui_handoff(event_payload)
 
-    def _begin_assistant_turn_submission(self) -> AssistantUiTurnSubmission:
-        """Create one UI generation before asking the runtime for admission."""
-        return self._assistant_turn_state.begin_submission()
-
-    def _finish_assistant_turn_submission(
-        self,
-        submission: AssistantUiTurnSubmission,
-        *,
-        accepted: bool,
-        correlation: AssistantTurnCorrelation | None = None,
-    ) -> bool:
-        """Commit or discard exactly the UI generation submitted to the runtime."""
-        if not accepted:
-            return self._assistant_turn_state.reject_admission(submission)
-        if correlation is None:
-            self._assistant_turn_state.reject_admission(submission)
-            logger.error("Assistant admission omitted its turn correlation")
-            return False
-        accepted_admission = self._assistant_turn_state.accept_admission(
-            submission,
-            correlation,
-        )
-        if not accepted_admission:
-            logger.error("Assistant admission did not match its UI submission")
-        return accepted_admission
-
     def _render_visible_assistant_response(
         self,
         presentation: AssistantResponsePresentation,
     ) -> None:
         """Persist one response after mapping only its typed source state."""
         if (
-            not self._pending_prune_notice
+            not self._assistant_turn_state.pending_prune_notice
             and self.chat_panel
             and hasattr(self.chat_panel, "show_notice")
         ):
@@ -900,7 +870,7 @@ class AgentManager(QObject):
             visible_text,
             presentation_kind=kind,
         )
-        if self._pending_prune_notice:
+        if self._assistant_turn_state.pending_prune_notice:
             self._show_low_priority_notice(_CHAT_PRUNE_NOTICE)
 
     def _handle_response_presentation(self, payload: object) -> None:
@@ -911,7 +881,7 @@ class AgentManager(QObject):
                 redact_public_text(payload),
             )
             return
-        if self._defer_provisional_turn_event(
+        if self._assistant_turn_state.defer_turn_event(
             "response",
             payload,
             payload.correlation,
@@ -1160,7 +1130,7 @@ class AgentManager(QObject):
     def _clear_conversation_presentation(self) -> None:
         """Clear Assistant transcript/UI state without changing EEG workflow."""
         self.chat_controller.clear_conversation()
-        self._pending_prune_notice = False
+        self._assistant_turn_state.clear_prune_notice()
         self._application_publication_coordinator.clear_training()
         if self.chat_panel:
             self.chat_panel.clear_confirmation_request()
@@ -1242,7 +1212,7 @@ class AgentManager(QObject):
                 redact_public_text(payload),
             )
             return
-        if self._defer_provisional_turn_event(
+        if self._assistant_turn_state.defer_turn_event(
             "activity",
             payload,
             payload.correlation,
@@ -1254,7 +1224,7 @@ class AgentManager(QObject):
             correlation = payload.correlation
             if correlation is not None:
                 self._assistant_turn_state.latch_stop(correlation)
-        self._last_assistant_activity = payload
+        self._assistant_turn_state.record_activity(payload)
         presentation = present_assistant_activity(
             payload,
             application_command_in_flight=self._application_command_in_flight,
@@ -1265,7 +1235,7 @@ class AgentManager(QObject):
         if self.chat_panel:
             if (
                 processing
-                and not self._pending_prune_notice
+                and not self._assistant_turn_state.pending_prune_notice
                 and hasattr(self.chat_panel, "show_notice")
             ):
                 self.chat_panel.show_notice("")
@@ -1288,7 +1258,7 @@ class AgentManager(QObject):
                 redact_public_text(payload),
             )
             return
-        if self._defer_provisional_turn_event(
+        if self._assistant_turn_state.defer_turn_event(
             "terminal",
             payload,
             payload.correlation,
@@ -1303,10 +1273,10 @@ class AgentManager(QObject):
         self._render_delivery_terminal_error(payload)
         if self.chat_panel:
             self.chat_panel.complete_debug_step(payload.outcome)
-        self._pending_prune_notice = False
+        self._assistant_turn_state.clear_prune_notice()
         if self.chat_panel:
             self.chat_panel.clear_confirmation_request()
-        self._last_assistant_activity = None
+        self._assistant_turn_state.clear_activity()
         if self.chat_controller.is_processing:
             self.chat_controller.set_processing(False)
         elif self.chat_panel:
@@ -1331,38 +1301,6 @@ class AgentManager(QObject):
                 kind=AssistantResponseKind.ERROR,
             )
         )
-
-    def _defer_provisional_turn_event(
-        self,
-        event_kind: str,
-        payload: object,
-        correlation: AssistantTurnCorrelation | None,
-    ) -> bool:
-        """Preserve exact synchronous events until runtime admission commits."""
-        events = self._deferred_submission_events
-        submission = self._assistant_turn_state.submission
-        if (
-            events is None
-            or submission is None
-            or correlation is None
-            or correlation.generation != submission.generation
-        ):
-            return False
-        events.append((event_kind, payload))
-        return True
-
-    def _defer_provisional_controller_event(
-        self,
-        event_kind: str,
-        payload: object,
-    ) -> bool:
-        """Hold synchronous decision events until their turn lease is admitted."""
-        events = self._deferred_submission_events
-        submission = self._assistant_turn_state.submission
-        if events is None or submission is None:
-            return False
-        events.append((event_kind, payload))
-        return True
 
     def _render_assistant_runtime(
         self,
@@ -1667,7 +1605,10 @@ class AgentManager(QObject):
                 "The requested XBrainLab settings could not be opened."
             )
             return
-        if self._defer_provisional_controller_event("workflow_handoff", payload):
+        if self._assistant_turn_state.defer_controller_event(
+            "workflow_handoff",
+            payload,
+        ):
             return
         if not self._workflow_handoff_identity_matches_active_turn(payload):
             logger.warning(
@@ -1741,7 +1682,10 @@ class AgentManager(QObject):
                 redact_public_text(request),
             )
             return
-        if self._defer_provisional_controller_event("confirmation", request):
+        if self._assistant_turn_state.defer_controller_event(
+            "confirmation",
+            request,
+        ):
             return
         if not self._confirmation_identity_matches_active_turn(
             request_id=request.request_id,
@@ -1811,7 +1755,7 @@ class AgentManager(QObject):
         command_name: str,
     ) -> bool:
         """Bind one confirmation card to the exact active UI/runtime turn."""
-        activity = self._last_assistant_activity
+        activity = self._assistant_turn_state.last_activity
         lease = self._assistant_turn_state.lease
         return bool(
             lease is not None
@@ -1828,7 +1772,7 @@ class AgentManager(QObject):
         request: WorkflowUiHandoffRequest,
     ) -> bool:
         """Bind one product-UI request to its exact active waiting lease."""
-        activity = self._last_assistant_activity
+        activity = self._assistant_turn_state.last_activity
         lease = self._assistant_turn_state.lease
         if request.kind is WorkflowUiHandoffKind.ACTION_REQUESTED:
             phase_matches = bool(

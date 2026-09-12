@@ -111,9 +111,12 @@ def _admit_ui_turn(agent_mgr: Any, *, turn_id: int = 1) -> AssistantTurnCorrelat
         generation=submission.generation,
         turn_id=turn_id,
     )
-    assert agent_mgr._assistant_turn_state.accept_admission(
-        submission,
-        correlation,
+    assert (
+        agent_mgr._assistant_turn_state.complete_admission(
+            submission,
+            correlation,
+        )
+        is not None
     )
     return correlation
 
@@ -676,6 +679,25 @@ class TestAgentManagerMethods:
         lease = agent_mgr._assistant_turn_state.lease
         assert lease is not None
         assert lease == AssistantTurnCorrelation(generation=1, turn_id=1)
+
+    def test_debug_admission_without_correlation_releases_its_provisional_queue(
+        self,
+        agent_mgr,
+    ):
+        agent_mgr.chat_panel = MagicMock()
+        agent_mgr._assistant_runtime.debug.side_effect = None
+        agent_mgr._assistant_runtime.debug.return_value = RuntimeCommandAdmissionResult(
+            command_name="debug",
+            status=RuntimeCommandAdmissionStatus.ACCEPTED,
+        )
+
+        agent_mgr._handle_debug_tool_requested("inspect_state", {})
+
+        assert agent_mgr._assistant_turn_state.submission is None
+        assert agent_mgr._assistant_turn_state.lease is None
+        agent_mgr.chat_panel.reject_debug_step.assert_called_once_with(
+            "The diagnostic action could not be correlated. Try again."
+        )
 
     def test_rejected_runtime_submission_does_not_enter_processing(self, agent_mgr):
         agent_mgr.chat_panel = MagicMock()
@@ -3305,9 +3327,12 @@ class TestAgentManagerMethods:
                     generation=submission.generation,
                     turn_id=1,
                 )
-                assert manager._assistant_turn_state.accept_admission(
-                    submission,
-                    correlation,
+                assert (
+                    manager._assistant_turn_state.complete_admission(
+                        submission,
+                        correlation,
+                    )
+                    is not None
                 )
                 manager.agent_controller._turn_orchestrator.host_turn_generation = None
                 manager.agent_controller._turn_orchestrator.host_turn_id = None

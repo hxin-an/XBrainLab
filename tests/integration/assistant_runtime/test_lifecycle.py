@@ -547,9 +547,12 @@ def _install_host_turn_lease(harness: _RuntimeHarness) -> AssistantTurnCorrelati
         generation=submission.generation,
         turn_id=10_000 + submission.generation,
     )
-    assert harness.manager._assistant_turn_state.accept_admission(
-        submission,
-        correlation,
+    assert (
+        harness.manager._assistant_turn_state.complete_admission(
+            submission,
+            correlation,
+        )
+        is not None
     )
     harness.runtime._active_turn = correlation
     harness.controller._turn_orchestrator.host_turn_generation = correlation.generation

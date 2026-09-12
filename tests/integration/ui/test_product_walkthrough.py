@@ -510,9 +510,12 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
         generation=submission.generation,
         turn_id=1,
     )
-    assert manager._assistant_turn_state.accept_admission(
-        submission,
-        correlation,
+    assert (
+        manager._assistant_turn_state.complete_admission(
+            submission,
+            correlation,
+        )
+        is not None
     )
     manager._handle_response_presentation(
         AssistantResponsePresentation(
