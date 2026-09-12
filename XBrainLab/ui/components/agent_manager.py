@@ -5,22 +5,11 @@ from typing import Any, cast
 
 from PyQt6.QtCore import (
     QObject,
-    QSize,
     Qt,
     QTimer,
     pyqtSignal,
 )
-from PyQt6.QtGui import QIcon
-from PyQt6.QtWidgets import (
-    QApplication,
-    QDockWidget,
-    QFrame,
-    QHBoxLayout,
-    QLabel,
-    QPushButton,
-    QStyle,
-    QWidget,
-)
+from PyQt6.QtWidgets import QDockWidget
 
 from XBrainLab.backend.application import (
     APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
@@ -33,7 +22,6 @@ from XBrainLab.backend.controller.chat_controller import (
     ChatMessagePresentationKind,
 )
 from XBrainLab.backend.utils.logger import logger
-from XBrainLab.config import AppConfig
 from XBrainLab.debug.tool_debug_mode import ToolDebugMode
 from XBrainLab.llm.agent.assistant_activity import (
     AssistantDecisionOwner,
@@ -75,6 +63,7 @@ from XBrainLab.llm.tools.result_contract import (
     redact_public_text,
     safe_unexpected_failure,
 )
+from XBrainLab.ui.chat.assistant_dock import AssistantDockView
 from XBrainLab.ui.chat.panel import ChatPanel
 from XBrainLab.ui.chat.presentation import (
     ChatTurnPresentation,
@@ -117,7 +106,6 @@ from XBrainLab.ui.panel_navigation import (
     VISUALIZATION_TAB_SPECTROGRAM,
     VISUALIZATION_TAB_TOPOGRAPHIC_MAP,
 )
-from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 _CHAT_PRUNE_NOTICE = (
     "Older messages were removed from this view to keep the conversation responsive."
@@ -174,55 +162,6 @@ _APPLICATION_PUBLICATION_RETRY_INTERVAL_MS = 25
 _APPLICATION_PUBLICATION_MAX_RETRIES = 3
 _APPLICATION_PUBLICATION_RECOVERY_INTERVAL_MS = 500
 _ASSISTANT_TERMINAL_RENDER_RETRY_INTERVAL_MS = 500
-
-
-class AssistantDockTitleBar(QWidget):
-    """Product header for the fixed-right assistant dock."""
-
-    MINIMUM_DOCK_WIDTH = 320
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.title_label: QLabel | None = None
-        self.status_indicator: QWidget | None = None
-        self.status_dot: QFrame | None = None
-        self.status_badge: QLabel | None = None
-
-    def set_assistant_status(self, text: str) -> None:
-        """Expose runtime status without adding a competing header badge."""
-        normalized = " ".join(str(text or "Local · Setup").split())
-        state_text = normalized.rsplit("·", 1)[-1].strip() or "Setup"
-        state = state_text.lower()
-        self.setProperty("assistantState", state)
-        self.setToolTip(normalized)
-        self.setAccessibleDescription(f"Assistant status: {normalized}")
-        if self.title_label is not None:
-            self.title_label.setToolTip(normalized)
-            self.title_label.setAccessibleDescription(f"Assistant status: {normalized}")
-
-    def minimumSizeHint(self) -> QSize:  # noqa: N802
-        """Do not let platform font hints widen the dock past its product floor."""
-        hint = super().minimumSizeHint()
-        return QSize(min(hint.width(), self.MINIMUM_DOCK_WIDTH), hint.height())
-
-    def resizeEvent(self, event):  # noqa: N802
-        """Keep essential title actions readable at narrow dock widths."""
-        super().resizeEvent(event)
-        QTimer.singleShot(0, self._finalize_title_layout)
-
-    def showEvent(self, event):  # noqa: N802
-        """Settle action geometry after the dock installs its title bar."""
-        super().showEvent(event)
-        QTimer.singleShot(0, self._finalize_title_layout)
-
-    def _finalize_title_layout(self) -> None:
-        """Reflow once after Qt applies the parent dock geometry."""
-        layout = self.layout()
-        if layout is None:
-            return
-        layout.invalidate()
-        layout.activate()
-        self.updateGeometry()
 
 
 class AgentManager(QObject):
@@ -392,7 +331,9 @@ class AgentManager(QObject):
         title bar with settings/new-conversation buttons, and
         adds the dock to the main window's right area.
         """
-        chat_panel = ChatPanel()
+        chat_dock = AssistantDockView(self.main_window)
+        chat_panel = chat_dock.chat_panel
+        self.chat_dock = chat_dock
         self.chat_panel = chat_panel
         self._assistant_runtime.replay_runtime_snapshot()
 
@@ -416,92 +357,9 @@ class AgentManager(QObject):
             self._resolve_action_confirmation
         )
 
-        chat_dock = QDockWidget("XBrainLab", self.main_window)
-        self.chat_dock = chat_dock
-        chat_dock.setWidget(chat_panel)
-        # QDockWidget's native frame consumes platform-dependent horizontal
-        # chrome. Keep the supported 320 px floor on the actual assistant
-        # surface so Windows does not receive a narrower first layout.
-        chat_panel.setMinimumWidth(320)
-        chat_dock.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea)
-        chat_dock.setFeatures(
-            QDockWidget.DockWidgetFeature.DockWidgetClosable,
-        )
-        # Custom title bar for the fixed-right Assistant surface.
-        title_bar = AssistantDockTitleBar(chat_dock)
-        self.assistant_header = title_bar
-        title_bar.setStyleSheet(Stylesheets.AGENT_TITLE_BAR)
-        title_layout = QHBoxLayout(title_bar)
-        title_layout.setContentsMargins(12, 6, 6, 6)
-        title_layout.setSpacing(6)
-
-        title_label = QLabel("XBrainLab Assistant")
-        title_label.setObjectName("AssistantDockTitle")
-        title_label.setStyleSheet(Stylesheets.AGENT_TITLE_LABEL)
-        title_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        title_label.setMinimumWidth(title_label.sizeHint().width())
-        title_bar.title_label = title_label
-        title_layout.addWidget(title_label)
-        title_bar.set_assistant_status(chat_panel.header_status_text)
-        title_layout.addStretch()
-        chat_panel.header_status_changed.connect(title_bar.set_assistant_status)
-
-        title_style = title_bar.style()
-        if title_style is None:
-            title_style = QApplication.style()
-        if title_style is None:
-            raise RuntimeError("Qt application style is unavailable.")
-
-        # New chat clears only the assistant conversation, never workflow state.
-        self.new_conv_title_btn = QPushButton("+")
-        self.new_conv_title_btn.setAutoDefault(False)
-        self.new_conv_title_btn.setDefault(False)
-        self.new_conv_title_btn.setIconSize(QSize(16, 16))
-        self.new_conv_title_btn.setFixedSize(30, 30)
-        self.new_conv_title_btn.setToolTip("New chat")
-        self.new_conv_title_btn.setAccessibleName("New chat")
-        self.new_conv_title_btn.setAccessibleDescription(
-            "Clear the assistant conversation without changing the EEG workflow."
-        )
-        self.new_conv_title_btn.setStyleSheet(Stylesheets.AGENT_NEW_CONV_BTN)
-        self.new_conv_title_btn.clicked.connect(self.start_new_conversation)
-        title_layout.addWidget(self.new_conv_title_btn)
-
-        # Settings is a direct action; dock controls have their own buttons.
-        self.settings_btn = QPushButton()
-        settings_icon = QIcon(AppConfig.get_icon_path("settings.svg"))
-        if settings_icon.isNull():
-            settings_icon = title_style.standardIcon(
-                QStyle.StandardPixmap.SP_FileDialogDetailedView
-            )
-        self.settings_btn.setIcon(settings_icon)
-        self.settings_btn.setIconSize(QSize(16, 16))
-        self.settings_btn.setFixedSize(30, 30)
-        self.settings_btn.setToolTip("Assistant settings")
-        self.settings_btn.setAccessibleName("Assistant settings")
-        self.settings_btn.setAccessibleDescription("Open Assistant settings.")
-        self.settings_btn.setStyleSheet(Stylesheets.AGENT_TITLE_BTN)
-        self.settings_btn.clicked.connect(
-            lambda _checked=False: self.open_settings_dialog()
-        )
-        title_layout.addWidget(self.settings_btn)
-
-        self.close_btn = QPushButton()
-        self.close_btn.setIcon(
-            title_style.standardIcon(QStyle.StandardPixmap.SP_DockWidgetCloseButton)
-        )
-        self.close_btn.setIconSize(QSize(16, 16))
-        self.close_btn.setFixedSize(30, 30)
-        self.close_btn.setToolTip("Hide assistant")
-        self.close_btn.setAccessibleName("Hide assistant")
-        self.close_btn.setAccessibleDescription(
-            "Hide the Assistant panel without ending the conversation."
-        )
-        self.close_btn.setStyleSheet(Stylesheets.AGENT_TITLE_BTN)
-        self.close_btn.clicked.connect(chat_dock.close)
-        title_layout.addWidget(self.close_btn)
-
-        chat_dock.setTitleBarWidget(title_bar)
+        chat_dock.install_title_bar()
+        chat_dock.new_conversation_requested.connect(self.start_new_conversation)
+        chat_dock.settings_requested.connect(lambda: self.open_settings_dialog())
         self.main_window.addDockWidget(
             Qt.DockWidgetArea.RightDockWidgetArea,
             chat_dock,

@@ -74,6 +74,7 @@ from XBrainLab.llm.agent.turn import (
 from XBrainLab.llm.agent.ui_handoff import WorkflowUiHandoffRequest
 from XBrainLab.llm.agent.worker import AgentWorker
 from XBrainLab.llm.core.model_catalog import PRIMARY_LOCAL_MODEL_ID
+from XBrainLab.ui.chat.assistant_dock import AssistantDockView
 from XBrainLab.ui.components.agent_manager import AgentManager
 from XBrainLab.ui.components.assistant_runtime_lifecycle import (
     RuntimeActivationResult,
@@ -434,20 +435,25 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
 
     assert dock_title_text.count("XBrainLab") == 1
 
-    assert manager.new_conv_title_btn.text() == "+"
-    assert manager.new_conv_title_btn.icon().isNull()
+    dock = manager.chat_dock
+    assert isinstance(dock, AssistantDockView)
+    assert dock.new_conversation_button is not None
+    assert dock.settings_button is not None
+    assert dock.close_button is not None
+    assert dock.new_conversation_button.text() == "+"
+    assert dock.new_conversation_button.icon().isNull()
     assert not hasattr(manager, "float_btn")
-    assert manager.settings_btn.text() == ""
-    assert not manager.settings_btn.icon().isNull()
-    assert manager.settings_btn.accessibleName() == "Assistant settings"
+    assert dock.settings_button.text() == ""
+    assert not dock.settings_button.icon().isNull()
+    assert dock.settings_button.accessibleName() == "Assistant settings"
     assert not hasattr(manager, "retry_title_btn")
     assert not hasattr(manager, "settings_menu")
     assert not hasattr(manager, "clear_title_btn")
-    assert manager.new_conv_title_btn.geometry().right() <= (
-        manager.settings_btn.geometry().left()
+    assert dock.new_conversation_button.geometry().right() <= (
+        dock.settings_button.geometry().left()
     )
     assert (
-        manager.settings_btn.geometry().right() <= manager.close_btn.geometry().left()
+        dock.settings_button.geometry().right() <= dock.close_button.geometry().left()
     )
 
     visible_title_text = " ".join(
@@ -670,7 +676,7 @@ def test_assistant_dock_preserves_workflow_width_with_wide_platform_title(
     qtbot.waitUntil(dock.isVisible, timeout=2_000)
     qtbot.wait(50)
 
-    assert manager.assistant_header.minimumSizeHint().width() <= 320
+    assert dock.titleBarWidget().minimumSizeHint().width() <= 320
     assert 320 <= dock.width() <= 420
     assert manager.chat_panel.width() == dock.width()
     assert test_app.centralWidget().width() >= 436

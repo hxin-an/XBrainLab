@@ -3128,10 +3128,8 @@ class TestAgentManagerMethods:
     def test_init_ui_uses_fixed_right_product_dock_titlebar(self, qtbot):
         from PyQt6.QtWidgets import QDockWidget, QLabel
 
-        from XBrainLab.ui.components.agent_manager import (
-            AgentManager,
-            AssistantDockTitleBar,
-        )
+        from XBrainLab.ui.chat.assistant_dock import AssistantDockTitleBar
+        from XBrainLab.ui.components.agent_manager import AgentManager
 
         main_window = cast(Any, QMainWindow())
         main_window.ai_btn = MagicMock()
@@ -3157,40 +3155,44 @@ class TestAgentManagerMethods:
             "XBrainLab Assistant"
         )
         assert title.text() == "XBrainLab Assistant"
-        assert manager.assistant_header.status_badge is None
-        assert manager.assistant_header.status_indicator is None
-        assert manager.assistant_header.status_dot is None
-        manager.assistant_header.set_assistant_status("Local · Ready")
+        dock_view = manager.chat_dock
+        assert isinstance(dock_view, QDockWidget)
+        title_bar = dock_view.titleBarWidget()
+        assert isinstance(title_bar, AssistantDockTitleBar)
+        assert title_bar.status_badge is None
+        assert title_bar.status_indicator is None
+        assert title_bar.status_dot is None
+        title_bar.set_assistant_status("Local · Ready")
         assert title.toolTip() == "Local · Ready"
         assert title.accessibleDescription() == "Assistant status: Local · Ready"
-        assert manager.assistant_header.property("assistantState") == "ready"
+        assert title_bar.property("assistantState") == "ready"
         manager.chat_panel.retry_local_assistant_requested.emit()
         manager.retry_local_assistant.assert_called_once_with()
         for control in (
-            manager.new_conv_title_btn,
-            manager.settings_btn,
-            manager.close_btn,
+            dock_view.new_conversation_button,
+            dock_view.settings_button,
+            dock_view.close_button,
         ):
             assert control.width() >= 30
             assert control.height() >= 30
             assert control.focusPolicy() == Qt.FocusPolicy.StrongFocus
         assert not hasattr(manager, "retry_title_btn")
         assert not hasattr(manager, "settings_menu")
-        assert manager.close_btn.text() == ""
-        assert not manager.close_btn.icon().isNull()
-        assert manager.close_btn.accessibleName() == "Hide assistant"
-        assert manager.new_conv_title_btn.text() == "+"
-        assert manager.new_conv_title_btn.icon().isNull()
-        assert manager.new_conv_title_btn.toolTip() == "New chat"
-        assert manager.new_conv_title_btn.accessibleName() == "New chat"
+        assert dock_view.close_button.text() == ""
+        assert not dock_view.close_button.icon().isNull()
+        assert dock_view.close_button.accessibleName() == "Hide assistant"
+        assert dock_view.new_conversation_button.text() == "+"
+        assert dock_view.new_conversation_button.icon().isNull()
+        assert dock_view.new_conversation_button.toolTip() == "New chat"
+        assert dock_view.new_conversation_button.accessibleName() == "New chat"
         assert not hasattr(manager, "float_btn")
-        assert manager.settings_btn.text() == ""
-        assert not manager.settings_btn.icon().isNull()
-        assert manager.settings_btn.toolTip() == "Assistant settings"
-        assert manager.settings_btn.accessibleName() == "Assistant settings"
-        assert manager.settings_btn.isCheckable() is False
+        assert dock_view.settings_button.text() == ""
+        assert not dock_view.settings_button.icon().isNull()
+        assert dock_view.settings_button.toolTip() == "Assistant settings"
+        assert dock_view.settings_button.accessibleName() == "Assistant settings"
+        assert dock_view.settings_button.isCheckable() is False
         manager.chat_dock.show()
-        manager.close_btn.click()
+        dock_view.close_button.click()
         assert manager.chat_dock.isHidden()
 
     def test_fixed_right_dock_ignores_titlebar_double_click_and_reopens(self, qtbot):
@@ -3206,7 +3208,9 @@ class TestAgentManagerMethods:
         assert manager.chat_dock is not None
         main_window.show()
         manager.chat_dock.show()
-        qtbot.mouseDClick(manager.assistant_header, Qt.MouseButton.LeftButton)
+        title_bar = manager.chat_dock.titleBarWidget()
+        assert title_bar is not None
+        qtbot.mouseDClick(title_bar, Qt.MouseButton.LeftButton)
         qtbot.wait(10)
         assert manager.chat_dock.isFloating() is False
         manager.chat_dock.hide()
@@ -3690,7 +3694,7 @@ class TestAgentManagerProductChatFlow:
         manager.chat_dock.show()
         composer = manager.chat_panel.input_field
         new_chat_requests: list[bool] = []
-        manager.new_conv_title_btn.clicked.connect(
+        manager.chat_dock.new_conversation_button.clicked.connect(
             lambda _checked=False: new_chat_requests.append(True)
         )
         composer.setFocus()
