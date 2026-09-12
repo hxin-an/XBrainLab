@@ -87,8 +87,8 @@ XBrainLab 本體應至少覆蓋以下 workflow 能力：
 - 本地模型、模型 cache、GPU / CPU fallback、timeout、stop generation 必須可驗證。
 - remote backend modules 已從 product package 移除；`api` / `gemini` legacy selection 必須
   migrate local 或 fail closed，不可 instantiate remote backend。
-- `openai` / `google-genai` 不在 default dependencies；若歷史比較仍需要，只能放 optional
-  `legacy-remote-llm` dependency group / legacy fixture，且 product code 不可 import。
+- `openai` / `google-genai` 已不再是專案 dependency；remote backend 的歷史只由 Git
+  history 保存，且 product code 不可 import。
 - 真 local LLM 長時間 ChatPanel walkthrough 仍未完成，不能用 standalone runtime smoke 取代。
 
 ### 同一套 workflow 能力面

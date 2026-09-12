@@ -37,8 +37,8 @@ human user 和 in-app assistant 都能操作同一套 EEG workflow 的桌面應�
 - assistant 是 workflow operator，不是普通 chatbot，也不是外部 coding agent。
 - validation 是 thesis-critical，不是最後補上的測試。
 - assistant product runtime 已 local-only；remote backend modules 已從 product package 移除。
-- `openai` / `google-genai` 只允許留在 optional `legacy-remote-llm` dependency group /
-  legacy fixture，不是產品 execution path。
+- `openai` / `google-genai` 已不再是專案 dependency；remote backend 的歷史只由 Git
+  history 保存，不是產品 execution path。
 - MCP 已從 active product／thesis target與executable source退役；舊探索只由Git history保存。
 
 ## 和其他文件的關係
