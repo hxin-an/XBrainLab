@@ -434,13 +434,11 @@ class PreprocessCommandService:
         source_data: Sequence[Any],
     ) -> tuple[PreparedPreprocessData, HandlerResult]:
         """Validate and materialize epochs against the admitted state snapshot."""
-        handoff = self._epoch_handoff_from_state(state)
         preprocessed_data = list(source_data)
-        epoch_context = build_epoching_context(
-            preprocessed_data,
-            epoch_handoff=handoff,
+        handoff, epoch_context = self.build_epoch_setup(
+            state,
+            source_data=preprocessed_data,
         )
-        require_epoch_context_available(epoch_context)
         event_ids = self._event_ids_for_epoch_command(command, handoff=handoff)
         self._enforce_epoch_confirmation(
             command,
@@ -517,6 +515,21 @@ class PreprocessCommandService:
             }
         )
         return prepared, (message, diagnostics)
+
+    def build_epoch_setup(
+        self,
+        state: ApplicationStateSnapshot,
+        *,
+        source_data: list[Any],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Build the one validated epoch setup used by dialog and execution."""
+        handoff = self._epoch_handoff_from_state(state)
+        epoch_context = build_epoching_context(
+            source_data,
+            epoch_handoff=handoff,
+        )
+        require_epoch_context_available(epoch_context)
+        return handoff, epoch_context
 
     @staticmethod
     def _normalize_handler_result(

@@ -31,7 +31,6 @@ class TestPackageInit:
             "ChannelSelectionDialog",
             "DataInterpretationPreviewDialog",
             "DataSplittingDialog",
-            "SmartParserDialog",
         }
         assert all(value.__name__ == name for name, value in exports.items())
 

@@ -8,7 +8,6 @@ import pytest
 
 from XBrainLab.backend.data_manager import DataManager
 from XBrainLab.backend.load_data import Raw
-from XBrainLab.backend.preprocessor import PreprocessBase
 
 
 # ---------------------------------------------------------------------------
@@ -122,24 +121,6 @@ class TestPreprocess:
     def test_set_preprocessed_data_list(self, dm, raw_data):
         dm.set_preprocessed_data_list(raw_data, force_update=True)
         assert len(dm.preprocessed_data_list) == 1
-
-    def test_preprocess_applies(self, dm, raw_data):
-        class RenamePreprocessor(PreprocessBase):
-            def get_preprocess_desc(self):
-                return "rename"
-
-            def _data_preprocess(self, preprocessed_data):
-                preprocessed_data.set_subject_name("modified")
-
-        dm.set_loaded_data_list(raw_data, force_update=True)
-        dm.preprocess(RenamePreprocessor)
-        assert dm.preprocessed_data_list[0].get_subject_name() == "modified"
-        assert dm.loaded_data_list[0].get_subject_name() != "modified"
-
-    def test_preprocess_validates_subclass(self, dm, raw_data):
-        dm.set_loaded_data_list(raw_data, force_update=True)
-        with pytest.raises(TypeError):
-            dm.preprocess(int)
 
     def test_reset_preprocess(self, dm, raw_data):
         dm.set_loaded_data_list(raw_data, force_update=True)

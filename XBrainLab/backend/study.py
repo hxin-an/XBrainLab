@@ -17,7 +17,6 @@ from .utils.logger import logger
 if TYPE_CHECKING:
     from .dataset import Dataset, DatasetGenerator, DataSplittingConfig, Epochs
     from .load_data import Raw
-    from .preprocessor import PreprocessBase
     from .training import ModelHolder, Trainer, TrainingOption
     from .training_state_contract import PostTrainingSaliencyScheduleOutcome
 
@@ -188,16 +187,6 @@ class Study:
     def reset_preprocess(self, force_update=False) -> None:
         """Reset preprocessing via DataManager."""
         self.data_manager.reset_preprocess(force_update)
-
-    def preprocess(self, preprocessor: type[PreprocessBase], **kwargs) -> None:
-        """Apply a preprocessing step via DataManager.
-
-        Args:
-            preprocessor: The preprocessor class to apply.
-            **kwargs: Keyword arguments forwarded to the preprocessor.
-
-        """
-        self.data_manager.preprocess(preprocessor, **kwargs)
 
     # step 3 - split data for training
     def get_datasets_generator(self, config: DataSplittingConfig) -> DatasetGenerator:

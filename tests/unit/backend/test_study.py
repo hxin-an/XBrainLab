@@ -12,7 +12,6 @@ from XBrainLab.backend.dataset import (
     TrainingType,
 )
 from XBrainLab.backend.load_data import Raw
-from XBrainLab.backend.preprocessor import PreprocessBase
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training import (
     ModelHolder,
@@ -62,14 +61,6 @@ def _test_study_set_preprocessed_data_list_raise(study, loaded_data_list, force_
         study.set_preprocessed_data_list(loaded_data_list, force_update)
 
 
-class FakePreprocessBase(PreprocessBase):
-    def get_preprocess_desc(self):
-        return "test"
-
-    def _data_preprocess(self, preprocessed_data):
-        preprocessed_data.filepath = "new"
-
-
 @pytest.mark.parametrize("force_update", [True, False])
 @pytest.mark.parametrize(
     "loaded_data_list_target, loaded_data_list_is_raw",
@@ -87,8 +78,6 @@ def test_study_set_preprocessed_data_list(
         assert study.epoch_data is None
     else:
         assert study.epoch_data is not None
-    study.preprocess(FakePreprocessBase)
-    assert study.preprocessed_data_list[0].get_filepath() == "new"
     study.reset_preprocess()
     assert study.preprocessed_data_list[0].get_filepath() == "test"
     test_hook(study, loaded_data_list, force_update)

@@ -21,7 +21,6 @@ from PyQt6.QtWidgets import QDialog, QMainWindow, QPushButton, QWidget
 from XBrainLab.backend.application import (
     ApplicationService,
     ApplyInterpretationCommand,
-    ApplySmartParseCommand,
     ChangedState,
     CommandName,
     CommandResult,
@@ -49,7 +48,6 @@ from XBrainLab.backend.application.view_publication import (
     InterpretationReviewIdentity,
 )
 from XBrainLab.backend.load_data.raw import Raw
-from XBrainLab.backend.services.dataset_state_service import DatasetStateService
 from XBrainLab.backend.study import Study
 from XBrainLab.ui import application_capabilities, async_command_runner
 from XBrainLab.ui.application_capabilities import CommandReviewContext
@@ -2939,181 +2937,6 @@ def test_apply_cancel_retry_reopens_the_same_review_without_rescanning(
     )
 
 
-def test_smart_parse_binds_the_generation_reviewed_before_the_dialog(
-    monkeypatch,
-) -> None:
-    panel = MagicMock()
-    handler = DatasetActionHandler(panel)
-    capability = CommandCapability(
-        command_name="apply_smart_parse",
-        enabled=True,
-    )
-    review_context = CommandReviewContext(
-        capability=capability,
-        publication_generation=41,
-    )
-    monkeypatch.setattr(
-        actions,
-        "get_command_review_context",
-        lambda *_args, **_kwargs: review_context,
-    )
-    monkeypatch.setattr(
-        actions,
-        "get_command_capability",
-        lambda *_args, **_kwargs: capability,
-    )
-    observed_filename_generations: list[int | None] = []
-
-    def _filenames(
-        *,
-        expected_publication_generation: int | None = None,
-    ) -> list[str]:
-        observed_filename_generations.append(expected_publication_generation)
-        return ["sub-01_task-mi_eeg.edf"]
-
-    monkeypatch.setattr(handler, "_smart_parse_filenames", _filenames)
-    dialog = MagicMock()
-    dialog.exec.return_value = True
-    dialog.get_result.return_value = {
-        "sub-01_task-mi_eeg.edf": ("01", "01"),
-    }
-    monkeypatch.setattr(actions, "SmartParserDialog", MagicMock(return_value=dialog))
-    observed_apply_generations: list[int | None] = []
-
-    def _execute(_panel, _command, **kwargs):
-        observed_apply_generations.append(kwargs.get("expected_publication_generation"))
-        return _success_result("apply_smart_parse", success_count=1)
-
-    monkeypatch.setattr(actions, "execute_application_command", _execute)
-
-    handler.open_smart_parser()
-
-    assert observed_filename_generations == [41]
-    assert observed_apply_generations == [41]
-
-
-def test_smart_parse_reads_full_paths_from_generation_bound_data_lists(
-    monkeypatch,
-) -> None:
-    panel = MagicMock()
-    handler = DatasetActionHandler(panel)
-    observed_commands: list[tuple[object, int | None]] = []
-
-    def _execute(_panel, command, **kwargs):
-        observed_commands.append(
-            (command, kwargs.get("expected_publication_generation")),
-        )
-        return _success_result(
-            "query_state",
-            raw_rows=[
-                {
-                    "filepath": "/data/sub-01_task-mi_run-01_raw.fif",
-                    "filename": "sub-01_task-mi_run-01_raw.fif",
-                },
-                {
-                    "filepath": "/data/sub-02_task-mi_run-01_raw.fif",
-                    "filename": "sub-02_task-mi_run-01_raw.fif",
-                },
-            ],
-        )
-
-    monkeypatch.setattr(actions, "execute_application_command", _execute)
-
-    result = handler._smart_parse_filenames(
-        expected_publication_generation=43,
-    )
-
-    assert result == [
-        "/data/sub-01_task-mi_run-01_raw.fif",
-        "/data/sub-02_task-mi_run-01_raw.fif",
-    ]
-    assert len(observed_commands) == 1
-    command, generation = observed_commands[0]
-    assert isinstance(command, QueryStateCommand)
-    assert command.query == "data_lists"
-    assert generation == 43
-
-
-def test_smart_parse_distinguishes_same_basename_across_directories_through_apply(
-    monkeypatch,
-) -> None:
-    class MetadataRow:
-        def __init__(self, filepath: str) -> None:
-            self.filepath = filepath
-            self.subject = "old"
-            self.session = "old"
-
-        def get_filepath(self) -> str:
-            return self.filepath
-
-        def set_subject_name(self, value: str) -> None:
-            self.subject = value
-
-        def set_session_name(self, value: str) -> None:
-            self.session = value
-
-    class MetadataStudy:
-        def __init__(self, rows: list[MetadataRow]) -> None:
-            self.loaded_data_list = rows
-            self.preprocessed_data_list = list(rows)
-
-        def reset_preprocess(self, *, force_update: bool) -> None:
-            assert force_update is True
-            self.preprocessed_data_list = list(self.loaded_data_list)
-
-    paths = (
-        "/datasets/site-a/sub-01/eeg.edf",
-        "/datasets/site-b/sub-01/eeg.edf",
-    )
-    study = MetadataStudy([MetadataRow(path) for path in paths])
-    state = DatasetStateService(study)
-    panel = MagicMock()
-    handler = DatasetActionHandler(panel)
-    capability = CommandCapability(
-        command_name="apply_smart_parse",
-        enabled=True,
-    )
-    monkeypatch.setattr(
-        actions,
-        "get_command_review_context",
-        lambda *_args, **_kwargs: CommandReviewContext(
-            capability=capability,
-            publication_generation=47,
-        ),
-    )
-    dialog = MagicMock()
-    dialog.exec.return_value = True
-    dialog.get_result.return_value = {
-        paths[0]: ("site-a", "session-a"),
-        paths[1]: ("site-b", "session-b"),
-    }
-    dialog_factory = MagicMock(return_value=dialog)
-    monkeypatch.setattr(actions, "SmartParserDialog", dialog_factory)
-
-    def _execute(_panel, command, **kwargs):
-        assert kwargs.get("expected_publication_generation") == 47
-        if isinstance(command, QueryStateCommand):
-            return _success_result(
-                "query_state",
-                raw_rows=[{"filepath": path} for path in paths],
-            )
-        assert isinstance(command, ApplySmartParseCommand)
-        return _success_result(
-            "apply_smart_parse",
-            success_count=state.apply_smart_parse(command.results),
-        )
-
-    monkeypatch.setattr(actions, "execute_application_command", _execute)
-
-    handler.open_smart_parser()
-
-    dialog_factory.assert_called_once_with(list(paths), panel)
-    assert [(row.subject, row.session) for row in study.loaded_data_list] == [
-        ("site-a", "session-a"),
-        ("site-b", "session-b"),
-    ]
-
-
 def test_real_study_command_returns_immediately_and_continues_on_result(
     qtbot,
     monkeypatch,
@@ -4643,26 +4466,4 @@ def test_recipe_reload_fails_before_chooser_when_product_review_disappears(
     handler.reload_interpretation_recipe()
 
     chooser.assert_not_called()
-    warning.assert_called_once()
-
-
-def test_smart_parser_fails_before_query_when_product_review_disappears(
-    qtbot,
-    monkeypatch,
-):
-    handler = _real_study_dataset_handler(qtbot)
-    enabled = CommandCapability(command_name="apply_smart_parse", enabled=True)
-    query = MagicMock(return_value=["sub-01_raw.fif"])
-    dialog = MagicMock()
-    warning = MagicMock()
-    monkeypatch.setattr(actions, "get_command_review_context", lambda *_args: None)
-    monkeypatch.setattr(actions, "get_command_capability", lambda *_args: enabled)
-    monkeypatch.setattr(handler, "_smart_parse_filenames", query)
-    monkeypatch.setattr(actions, "SmartParserDialog", dialog)
-    monkeypatch.setattr(actions, "show_warning", warning)
-
-    handler.open_smart_parser()
-
-    query.assert_not_called()
-    dialog.assert_not_called()
     warning.assert_called_once()

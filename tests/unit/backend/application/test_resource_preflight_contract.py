@@ -161,12 +161,13 @@ def test_receipt_authority_consumes_one_exact_scope_once() -> None:
         ttl_seconds=120.0,
         challenge_id_factory=lambda: next(ids),
     )
-    challenge = authority.issue(
+    record = authority.issue(
         scope_fingerprint="scope-a",
         payload="warning-preflight",
         candidate_id="candidate-a",
         preflight_fingerprint="preflight-a",
     )
+    challenge = record.challenge
 
     consumed = authority.consume(
         challenge.challenge_id,
@@ -175,7 +176,7 @@ def test_receipt_authority_consumes_one_exact_scope_once() -> None:
         preflight_fingerprint="preflight-a",
     )
 
-    assert consumed is not None
+    assert consumed is record
     assert consumed.payload == "warning-preflight"
     assert consumed.challenge == challenge
     assert (
@@ -196,12 +197,13 @@ def test_receipt_authority_rejects_and_discards_mismatched_scope() -> None:
         ttl_seconds=120.0,
         challenge_id_factory=lambda: next(ids),
     )
-    challenge = authority.issue(
+    record = authority.issue(
         scope_fingerprint="scope-a",
         payload="warning-preflight",
         configuration_fingerprint="config-a",
         preflight_fingerprint="preflight-a",
     )
+    challenge = record.challenge
 
     assert (
         authority.consume(
@@ -250,11 +252,12 @@ def test_receipt_authority_rejects_expired_challenge() -> None:
         clock=lambda: now,
         challenge_id_factory=lambda: next(ids),
     )
-    challenge = authority.issue(
+    record = authority.issue(
         scope_fingerprint="scope-a",
         payload="warning-preflight",
         preflight_fingerprint="preflight-a",
     )
+    challenge = record.challenge
     now = 15.0
 
     assert (
@@ -280,18 +283,20 @@ def test_import_and_training_challenges_share_one_wire_contract() -> None:
         challenge_id_factory=lambda: next(ids),
     )
 
-    import_challenge = import_authority.issue(
+    import_record = import_authority.issue(
         scope_fingerprint="import-scope",
         payload="import-preflight",
         candidate_id="candidate-1",
         preflight_fingerprint="import-preflight-fingerprint",
     )
-    training_challenge = training_authority.issue(
+    training_record = training_authority.issue(
         scope_fingerprint="training-scope",
         payload="training-preflight",
         configuration_fingerprint="training-config",
         preflight_fingerprint="training-preflight-fingerprint",
     )
+    import_challenge = import_record.challenge
+    training_challenge = training_record.challenge
 
     assert import_challenge.to_diagnostics().keys() == (
         training_challenge.to_diagnostics().keys()

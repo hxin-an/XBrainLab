@@ -44,7 +44,7 @@ from XBrainLab.chat_contract import (
 from XBrainLab.llm.agent.confirmation import AgentConfirmationResolution
 from XBrainLab.llm.agent.context_encoding import decode_untrusted_context
 from XBrainLab.llm.agent.controller import LLMController
-from XBrainLab.llm.agent.rag_lifecycle import RAGRetrieverLifecycle
+from XBrainLab.llm.agent.rag_process_lifecycle import ProcessRAGRetrieverLifecycle
 from XBrainLab.llm.agent.runtime_state import (
     AssistantRuntimePhase,
     AssistantRuntimeSnapshot,
@@ -834,7 +834,7 @@ def _open_reset_preprocessing_confirmation(
     ):
         controller = LLMController(
             study,
-            rag_lifecycle=cast(RAGRetrieverLifecycle, rag_lifecycle),
+            rag_lifecycle=cast(ProcessRAGRetrieverLifecycle, rag_lifecycle),
         )
     worker = controller.worker
     assert isinstance(worker, _ResetPreprocessingProposalWorker)
@@ -1052,7 +1052,7 @@ def test_long_session_uses_real_policy_and_stays_bounded_across_two_prunes(
         ):
             controller = LLMController(
                 study,
-                rag_lifecycle=cast(RAGRetrieverLifecycle, rag_lifecycle),
+                rag_lifecycle=cast(ProcessRAGRetrieverLifecycle, rag_lifecycle),
             )
         worker = controller.worker
         assert isinstance(worker, _DeterministicModelWorker)

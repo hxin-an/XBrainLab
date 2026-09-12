@@ -53,7 +53,9 @@ def _run_rag_process(command_queue: Any, result_queue: Any) -> None:
                     ),
                 )
             except BaseException as exc:
-                logger.exception("RAG child retrieval failed")
+                safe_unexpected_failure(
+                    logger, exc, boundary="rag_process_lifecycle", operation="retrieve"
+                )
                 result_queue.put(
                     (
                         "result",
@@ -74,13 +76,17 @@ def _run_rag_process(command_queue: Any, result_queue: Any) -> None:
                     )
                 )
     except BaseException as exc:
-        logger.exception("RAG child initialization failed")
+        safe_unexpected_failure(
+            logger, exc, boundary="rag_process_lifecycle", operation="initialize"
+        )
         result_queue.put(("initialization_error", type(exc).__name__))
     finally:
         try:
             retriever.close()
-        except BaseException:
-            logger.exception("RAG child cleanup failed")
+        except BaseException as exc:
+            safe_unexpected_failure(
+                logger, exc, boundary="rag_process_lifecycle", operation="close"
+            )
 
 
 @dataclass(slots=True)

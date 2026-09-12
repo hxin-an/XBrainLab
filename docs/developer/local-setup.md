@@ -120,6 +120,44 @@ PowerShell 執行。
 不得隱式下載或替換模型。模型 identity、license、quantization、cache 位置與容量上限都屬於產品
 決策。
 
+## 多 worktree 共用 Windows 手測環境
+
+已配置好的開發機可用 `scripts/dev/manual_windows.ps1` 重用一套 Windows Python 與本機模型，
+不必在每個 worktree 執行 setup 或建立 `.venv`。這是 native Windows source 手測入口，
+不是 WSLg launcher 或 signed installer。從包含該腳本的 checkout 執行，例如：
+
+```powershell
+$candidateSha = '<交付的完整 40 字元小寫 SHA>'
+& .\scripts\dev\manual_windows.ps1 -Action check -Sha $candidateSha `
+  -Source 'D:\workspace_v2\projects\lab\xbrainlab-manual' `
+  -Python 'D:\workspace_v2\projects\lab\XBrainLab\.venv\Scripts\python.exe' `
+  -Cache 'D:\XBrainLabCache'
+```
+
+`-Action launch` 使用相同參數啟動 GUI，Python 同步使用目前 PowerShell 作為唯一 live log。
+`check` 和 `launch` 要求 source 乾淨且 HEAD 精確符合 SHA，並檢查既有 Python 與 candidate
+lock 的直接產品／Assistant 相依；不自動安裝、修復或下載。`launch` 要求 pinned local model
+cache；RAG embedding 是產品可選能力，缺少時仍以 offline mode 啟動並由 Assistant 顯示 RAG
+unavailable。最終 handoff 的 RAG evidence gate 不因此放寬。路徑可依機器明確指定；不要對含未保存
+修改的工作目錄操作。
+
+若要切換專用手測 checkout，先關閉使用它的程式，再以相同參數執行 `-Action prepare`。
+它先驗證目標依賴，才將 source checkout 切到指定 commit。prepare／launch／clean 共用 OS lease，
+不關閉其他程式、不更改共用環境。從 cache 目錄執行的部署副本必須與已交付 source 的兩個腳本
+雜湊一致；程式碼的正式來源是 repository，不是部署副本。
+
+每個 SHA 的設定、Qt 偏好、log、data／cache 與工作目錄隔離在 source 的
+`build/manual-runs/<SHA>/`；模型／embedding 仍共用指定 Cache。不要把需要保留的訓練結果留在
+該 run 的 `work/output` 中。
+
+`-Action clean` 預設只預覽指定 run 的 `work/output`；只有手測已接受、保留結果已另行匯出後，
+才使用 `-Apply -Accepted` 刪除該輸出。其他 source、設定、log、identity evidence 與模型不刪。
+符號連結／reparse、身分不符或使用中 source 會被拒絕。此入口不提供 WSL 壓縮／搬移能力。
+
+標準 attested 測試 runner 會為每次子程序建立專屬暫存目錄，僅在完成證據有效且測試成功後
+移除；失敗、timeout 或證據不完整時保留。明定 `--basetemp` 不納入 runner 的自動清理；
+pytest 本身對該目錄的行為不因此改變。
+
 ## 啟動應用程式
 
 ```bash

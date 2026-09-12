@@ -1808,21 +1808,12 @@ class DataInterpretationCommandService:
         preflight: ResourcePreflightResult,
     ) -> _ImportPreflightReceipt:
         preflight_fingerprint = fingerprint_resource_preflight(preflight)
-        challenge = self._import_preflight_receipts.issue(
+        return self._import_preflight_receipts.issue(
             payload=preflight,
             candidate_id=candidate_id,
             scope_fingerprint=scope_fingerprint,
             preflight_fingerprint=preflight_fingerprint,
         )
-        receipt = self._import_preflight_receipts.peek(
-            challenge.challenge_id,
-            candidate_id=candidate_id,
-            scope_fingerprint=scope_fingerprint,
-            preflight_fingerprint=preflight_fingerprint,
-        )
-        if receipt is None:  # pragma: no cover - issue and lookup share one authority
-            raise RuntimeError("Issued import resource challenge was not stored.")
-        return receipt
 
     @staticmethod
     def _resource_confirmation_error(

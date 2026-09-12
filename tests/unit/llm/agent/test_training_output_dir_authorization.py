@@ -2,8 +2,11 @@
 
 from typing import Any
 
+import pytest
+
 from XBrainLab.backend.application import CommandName
-from XBrainLab.llm.agent.assembler import PromptToolPublication
+from XBrainLab.backend.study import Study
+from XBrainLab.llm.agent.assembler import ContextAssembler, PromptToolPublication
 from XBrainLab.llm.agent.confirmation import AgentConfirmationRequest
 from XBrainLab.llm.agent.tool_attempt_coordinator import (
     ToolAttemptAction,
@@ -11,11 +14,14 @@ from XBrainLab.llm.agent.tool_attempt_coordinator import (
     ToolAttemptRequest,
 )
 from XBrainLab.llm.agent.verifier import PathProvenanceVerifier, VerificationLayer
+from XBrainLab.llm.tools import get_all_tools
 from XBrainLab.llm.tools.application_surface import (
     ToolAvailability,
     ToolAvailabilityContext,
+    UserProvidedTrainingOutputDir,
 )
 from XBrainLab.llm.tools.definitions.training_def import BaseStartTrainingTool
+from XBrainLab.llm.tools.tool_registry import ToolRegistry
 
 
 class _Registry:
@@ -40,7 +46,7 @@ class _ContextSource:
         )
 
     def get_context(self, tool_name: str) -> ToolAvailabilityContext:
-        assert tool_name == "start_training"
+        assert tool_name == self.context.availability.tool_name
         return self.context
 
 
@@ -153,3 +159,107 @@ def test_start_training_confirmation_reports_disabled_checkpoints() -> None:
         ("Checkpoint policy", "Disabled"),
         ("Output directory", "./output"),
     )
+
+
+@pytest.mark.parametrize("mode", ["real", "mock"])
+@pytest.mark.parametrize(
+    ("path", "text", "expected"),
+    [
+        (
+            "/approved/new output",
+            "Use /approved/new output now",
+            ToolAttemptAction.CONFIRMATION_REQUIRED,
+        ),
+        (
+            r"C:\Data\New Output",
+            r"Use `C:\DATA\New Output`",
+            ToolAttemptAction.CONFIRMATION_REQUIRED,
+        ),
+        ("/approved", "Use /approved-extra", ToolAttemptAction.PROVENANCE_BLOCKED),
+        ("/invented", "Use the selected dataset", ToolAttemptAction.PROVENANCE_BLOCKED),
+        (
+            "relative/output",
+            "Use relative/output",
+            ToolAttemptAction.PROVENANCE_BLOCKED,
+        ),
+        (
+            "/path/to/output",
+            "Use /path/to/output",
+            ToolAttemptAction.VERIFICATION_BLOCKED,
+        ),
+        ("", "Configure training", ToolAttemptAction.VERIFICATION_BLOCKED),
+    ],
+)
+def test_current_training_host_path_protection(mode, path, text, expected) -> None:
+    registry = ToolRegistry()
+    for tool in get_all_tools(mode):
+        registry.register(tool)
+    source = _ContextSource(
+        {"interpretation": {"source_path": "/invented", "source_kind": "folder"}}
+    )
+    source.context = ToolAvailabilityContext(
+        availability=ToolAvailability(tool_name="configure_training", enabled=True),
+        state=source.context.state,
+        generation=17,
+    )
+    coordinator = ToolAttemptCoordinator(
+        registry=registry,
+        verifier=VerificationLayer(
+            tool_schemas={t.name: t.parameters for t in registry.get_all_tools()}
+        ),
+        context_source=source,
+    )
+    decision = coordinator.evaluate(
+        ToolAttemptRequest(
+            command_name="configure_training",
+            params={"output_dir": path},
+            confidence=0.9,
+            publication=PromptToolPublication(
+                tool_names=frozenset({"configure_training"}), backend_generation=17
+            ),
+            latest_user_text=text,
+        )
+    )
+    assert decision.action is expected
+    if expected is ToolAttemptAction.CONFIRMATION_REQUIRED:
+        assert isinstance(decision.params["output_dir"], UserProvidedTrainingOutputDir)
+        assert decision.params["output_dir"] == path
+
+
+@pytest.mark.parametrize("mode", ["real", "mock"])
+def test_retired_file_tools_fail_at_current_prompt_admission(mode) -> None:
+    registry = ToolRegistry()
+    for tool in get_all_tools(mode):
+        registry.register(tool)
+    assembler = ContextAssembler(registry, Study())
+    assembler.build_system_prompt()
+    coordinator = ToolAttemptCoordinator(
+        registry=registry,
+        verifier=VerificationLayer(
+            tool_schemas={t.name: t.parameters for t in registry.get_all_tools()}
+        ),
+        context_source=_ContextSource({}),
+    )
+    for name in (
+        "list_files",
+        "scan_source",
+        "preview_interpretation",
+        "save_interpretation_recipe",
+        "reload_interpretation_recipe",
+    ):
+        decision = coordinator.evaluate(
+            ToolAttemptRequest(
+                command_name=name,
+                params={
+                    "directory": "/private",
+                    "source_path": "/private",
+                    "recipe_path": "/private",
+                },
+                confidence=0.9,
+                publication=assembler.latest_tool_publication,
+                latest_user_text="Use /private",
+            )
+        )
+        assert decision.action is ToolAttemptAction.PUBLICATION_BLOCKED
+        assert decision.result is not None
+        assert decision.result.error_type == "tool_not_published"

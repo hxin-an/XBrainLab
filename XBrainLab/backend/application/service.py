@@ -5,9 +5,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import replace
+from functools import cached_property
 from threading import Lock, RLock, Thread, current_thread
 from time import monotonic
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from XBrainLab.backend.services.dataset_state_service import (
     DatasetProductPort,
@@ -94,9 +95,6 @@ from .dataset_split_preview import (
 from .epoch_context import (
     EPOCH_DIALOG_CONTEXT_UNAVAILABLE_MESSAGE,
     EpochDialogContext,
-    build_epoching_context,
-    require_epoch_context_available,
-    validated_epoch_handoff,
 )
 from .errors import (
     ApplicationError,
@@ -105,14 +103,12 @@ from .errors import (
 )
 from .evaluation_render import (
     EvaluationModelSummary,
-    EvaluationModelSummaryPreparation,
     EvaluationRenderPublication,
     EvaluationRenderPublisher,
     EvaluationRenderRequest,
 )
 from .evaluation_work import EvaluationWorkController
 from .lifecycle_service import LifecycleCommandService
-from .montage_capability import montage_layout_issues
 from .montage_preparation_lifecycle import MontagePreparationWork
 from .owned_work import (
     OwnedOperationCancelledError,
@@ -175,7 +171,6 @@ from .training_resource_preview_coordinator import (
 )
 from .training_runtime import (
     StudyTrainingRuntime,
-    TrainingProjectionReadPort,
     TrainingRuntimePort,
 )
 from .training_snapshot import (
@@ -191,6 +186,9 @@ from .view_publication import (
     ApplicationViewPublication,
     InterpretationReviewIdentity,
 )
+
+if TYPE_CHECKING:
+    from .analysis_service import AnalysisCommandService
 
 HandlerResult = str | tuple[str, dict[str, Any]]
 _ObserverCleanup = tuple[Callable[..., Any], tuple[Any, ...]]
@@ -453,6 +451,14 @@ class _LazyDatasetGenerationCommandService:
     def handle_clear_datasets(self, command: Command) -> HandlerResult:
         return self._service().handle_clear_datasets(command)
 
+    def config_from_payload(self, payload: dict[str, Any]) -> Any:
+        """Parse a split preview without constructing the lazy command service."""
+        from .dataset_generation_service import (  # noqa: PLC0415
+            DatasetGenerationCommandService,
+        )
+
+        return DatasetGenerationCommandService.config_from_payload(payload)
+
 
 class _LazyTrainingCommandService:
     """Defer torch/model/training imports until training commands run."""
@@ -557,69 +563,6 @@ class _LazyTrainingCommandService:
 
     def handle_clear_training_history(self, command: Command) -> HandlerResult:
         return self._service().handle_clear_training_history(command)
-
-
-class _LazyAnalysisCommandService:
-    """Defer NumPy/visualization analysis service until analysis commands run."""
-
-    def __init__(
-        self,
-        *,
-        training_runtime: TrainingProjectionReadPort,
-        visualization: Any,
-        get_state: Callable[[], ApplicationStateSnapshot],
-    ) -> None:
-        self.training_runtime = training_runtime
-        self.visualization = visualization
-        self._get_state = get_state
-        self._service_instance: Any | None = None
-
-    def _service(self) -> Any:
-        if self._service_instance is None:
-            from .analysis_service import AnalysisCommandService  # noqa: PLC0415
-
-            self._service_instance = AnalysisCommandService(
-                training_runtime=self.training_runtime,
-                visualization=self.visualization,
-                get_state=self._get_state,
-            )
-        return self._service_instance
-
-    def handle_evaluate(self, command: Command) -> HandlerResult:
-        return self._service().handle_evaluate(command)
-
-    def prepare_evaluate(
-        self,
-        command: Command,
-    ) -> tuple[
-        tuple[str, dict[str, Any]],
-        EvaluationModelSummaryPreparation | None,
-    ]:
-        return self._service().prepare_evaluate(command)
-
-    def build_prepared_model_summary(
-        self,
-        preparation: EvaluationModelSummaryPreparation,
-    ) -> EvaluationModelSummary:
-        return self._service().build_prepared_model_summary(preparation)
-
-    def complete_prepared_evaluate(
-        self,
-        result: tuple[str, dict[str, Any]],
-        command: EvaluateCommand,
-        model_summary: EvaluationModelSummary,
-    ) -> tuple[str, dict[str, Any]]:
-        return self._service().complete_prepared_evaluate(
-            result,
-            command,
-            model_summary,
-        )
-
-    def handle_visualize(self, command: Command) -> HandlerResult:
-        return self._service().handle_visualize(command)
-
-    def handle_saliency(self, command: Command) -> HandlerResult:
-        return self._service().handle_saliency(command)
 
 
 class ApplicationService(Observable):
@@ -732,7 +675,7 @@ class ApplicationService(Observable):
             else ()
         )
         initial_data_summary_rows = (
-            tuple(self._build_data_summary_rows())
+            tuple(self.dataset_state.get_active_data_rows())
             if initial_state.state_reliable and initial_training_boundary.stable
             else None
         )
@@ -744,7 +687,7 @@ class ApplicationService(Observable):
             initial_training_boundary=final_initial_training_boundary,
             build_state=lambda: self.state_snapshot.build(last_error=self._last_error),
             build_training_history=self.state_snapshot.training_history,
-            build_data_summary_rows=self._build_data_summary_rows,
+            build_data_summary_rows=self.dataset_state.get_active_data_rows,
             capture_training_boundary=(
                 self.state_snapshot.capture_training_read_boundary
             ),
@@ -821,15 +764,11 @@ class ApplicationService(Observable):
             dataset=self.dataset_state,
             generator_factory=self.study.get_datasets_generator,
             get_publication=self._committed_view_publication,
+            config_factory=self.dataset_generation.config_from_payload,
         )
         self.query_state_commands = QueryStateCommandService(
             dataset=self.dataset_state,
             state_builder=self.state_snapshot,
-            get_state=self.get_state,
-        )
-        self.analysis = _LazyAnalysisCommandService(
-            training_runtime=self.training_runtime,
-            visualization=self.visualization,
             get_state=self.get_state,
         )
         self.lifecycle = LifecycleCommandService(
@@ -876,15 +815,19 @@ class ApplicationService(Observable):
         self._command_handlers = self._build_command_handlers()
         self.publication_lifecycle.start()
 
+    @cached_property
+    def analysis(self) -> AnalysisCommandService:
+        """Create the real analysis owner only when an analysis route is used."""
+        from .analysis_service import AnalysisCommandService  # noqa: PLC0415
+
+        return AnalysisCommandService(
+            training_runtime=self.training_runtime,
+            visualization=self.visualization,
+            get_state=self.get_state,
+        )
+
     def _wait_for_synchronous_training_quiescence(self, timeout: float) -> bool:
         return self.synchronous_training_lifecycle.wait_until_quiescent(timeout=timeout)
-
-    def _build_data_summary_rows(self) -> list[dict[str, Any]]:
-        """Return the active detached dataset rows for one view publication."""
-        preprocessed_rows = self.dataset.get_preprocessed_data_rows()
-        if preprocessed_rows:
-            return preprocessed_rows
-        return self.dataset.get_loaded_data_rows()
 
     def close(self) -> None:
         """Idempotently detach lifecycle observers and release runtime ownership."""
@@ -1250,12 +1193,10 @@ class ApplicationService(Observable):
                     capability=capability,
                     publication_generation=publication.generation,
                 )
-            handoff = validated_epoch_handoff(state.interpretation.epoch_handoff)
-            setup = build_epoching_context(
-                self.dataset_state.get_preprocessed_data_list(),
-                epoch_handoff=handoff,
+            handoff, setup = self.preprocess_commands.build_epoch_setup(
+                state,
+                source_data=self.dataset_state.get_preprocessed_data_list(),
             )
-            require_epoch_context_available(setup)
             return EpochDialogContext(
                 capability=capability,
                 epoch_handoff=handoff,
@@ -3069,23 +3010,10 @@ class ApplicationService(Observable):
                     )
                 self._last_error = None
                 self._mutation_in_progress = False
-                after, refresh_error = self._state_after_command()
-                if refresh_error is not None or not after.state_reliable:
-                    verification_error = refresh_error or RuntimeError(
-                        "; ".join(after.read_errors)
-                        or "updated application state is unreliable",
-                    )
-                    return self._post_state_verification_failure_result(
-                        name=name,
-                        state=after,
-                        diagnostics=diagnostics,
-                        error=verification_error,
-                    )
-                return CommandResult.success_result(
-                    command_name=name.value,
+                return self._result_after_mutation(
+                    name=name,
+                    before=current_state,
                     message=message,
-                    state=after,
-                    changed_state=self._changed_state(current_state, after),
                     diagnostics=diagnostics,
                 )
             finally:
@@ -3323,23 +3251,10 @@ class ApplicationService(Observable):
                 # Publication delivery remains fenced until the verified result
                 # returns, but state capture must commit the new read model.
                 self._mutation_in_progress = False
-                after, refresh_error = self._state_after_command()
-                if refresh_error is not None or not after.state_reliable:
-                    verification_error = refresh_error or RuntimeError(
-                        "; ".join(after.read_errors)
-                        or "updated application state is unreliable",
-                    )
-                    return self._post_state_verification_failure_result(
-                        name=name,
-                        state=after,
-                        diagnostics=diagnostics,
-                        error=verification_error,
-                    )
-                return CommandResult.success_result(
-                    command_name=name.value,
+                return self._result_after_mutation(
+                    name=name,
+                    before=current_state,
                     message=message,
-                    state=after,
-                    changed_state=self._changed_state(current_state, after),
                     diagnostics=diagnostics,
                 )
             finally:
@@ -3502,23 +3417,10 @@ class ApplicationService(Observable):
                     )
                 self._last_error = None
                 self._mutation_in_progress = False
-                after, refresh_error = self._state_after_command()
-                if refresh_error is not None or not after.state_reliable:
-                    verification_error = refresh_error or RuntimeError(
-                        "; ".join(after.read_errors)
-                        or "updated application state is unreliable",
-                    )
-                    return self._post_state_verification_failure_result(
-                        name=name,
-                        state=after,
-                        diagnostics=diagnostics,
-                        error=verification_error,
-                    )
-                return CommandResult.success_result(
-                    command_name=name.value,
+                return self._result_after_mutation(
+                    name=name,
+                    before=current_state,
                     message=message,
-                    state=after,
-                    changed_state=self._changed_state(current_state, after),
                     diagnostics=diagnostics,
                 )
             finally:
@@ -4013,23 +3915,10 @@ class ApplicationService(Observable):
                 diagnostics=diagnostics,
             )
         self._last_error = None
-        after, refresh_error = self._state_after_command()
-        if refresh_error is not None or not after.state_reliable:
-            verification_error = refresh_error or RuntimeError(
-                "; ".join(after.read_errors)
-                or "updated application state is unreliable",
-            )
-            return self._post_state_verification_failure_result(
-                name=name,
-                state=after,
-                diagnostics=diagnostics,
-                error=verification_error,
-            )
-        return CommandResult.success_result(
-            command_name=name.value,
+        return self._result_after_mutation(
+            name=name,
+            before=before,
             message=message,
-            state=after,
-            changed_state=self._changed_state(before, after),
             diagnostics=diagnostics,
         )
 
@@ -4167,9 +4056,16 @@ class ApplicationService(Observable):
                     "import_blocking": False,
                 },
             }
-        channels, electrodes, positions = self._validate_electrode_layout_command(
-            command
+        manual_override = self.bids_montage_preparation.build_manual_override(
+            name=command.montage_name or "Manual montage",
+            selected_channel_names=current_channels,
+            channel_names=command.channels,
+            positions=command.positions,
+            electrode_names=command.electrode_names,
         )
+        channels = manual_override.channel_names
+        electrodes = manual_override.electrode_names
+        positions = manual_override.positions_m
         if self.training_runtime.has_trainer():
             existing = self.bids_montage_preparation.effective_montage()
             requested = (
@@ -4196,12 +4092,7 @@ class ApplicationService(Observable):
                     "Electrode layout is already applied.",
                     {"channel_count": len(channels), "layout_noop": True},
                 )
-        snapshot = self.bids_montage_preparation.select_manual_values(
-            name=command.montage_name or "Manual montage",
-            channel_names=channels,
-            positions=positions,
-            electrode_names=electrodes,
-        )
+        snapshot = self.bids_montage_preparation.select_manual(manual_override)
         self._project_effective_montage_to_epoch()
         message = (
             f"Applied electrode layout '{command.montage_name}' to "
@@ -4218,52 +4109,6 @@ class ApplicationService(Observable):
                 "import_blocking": False,
             },
         }
-
-    def _validate_electrode_layout_command(
-        self, command: ApplyMontageCommand
-    ) -> tuple[
-        tuple[str, ...], tuple[str, ...], tuple[tuple[float, float, float], ...]
-    ]:
-        """Validate user layout before changing coordinator or Epoch state."""
-        raw_channels = tuple(str(value) for value in command.channels)
-        raw_electrodes = tuple(
-            str(value)
-            for value in (
-                command.channels
-                if command.electrode_names is None
-                else command.electrode_names
-            )
-        )
-        if any(value != value.strip() for value in (*raw_channels, *raw_electrodes)):
-            raise ValueError(
-                "Electrode layout names cannot have surrounding whitespace."
-            )
-        channels = raw_channels
-        electrodes = raw_electrodes
-        current = (
-            tuple(self.study.epoch_data.get_channel_names())
-            if self.study.epoch_data is not None
-            else tuple(self.get_state().raw.channels)
-        )
-        issues = montage_layout_issues(
-            current,
-            channels,
-            electrodes,
-            command.positions,
-        )
-        if issues:
-            raise ValueError(
-                "Electrode layout must cover every selected channel with unique "
-                f"topographic geometry. {issues[0][1]}"
-            )
-        return (
-            channels,
-            electrodes,
-            tuple(
-                (float(row[0]), float(row[1]), float(row[2]))
-                for row in command.positions
-            ),
-        )
 
     def _project_effective_montage_to_epoch(self) -> None:
         """Project coordinator geometry without modifying Epoch identity."""
@@ -4467,6 +4312,39 @@ class ApplicationService(Observable):
         except Exception:
             return False
 
+    def _result_after_mutation(
+        self,
+        *,
+        name: CommandName,
+        before: ApplicationStateSnapshot,
+        message: str,
+        diagnostics: dict[str, Any],
+    ) -> CommandResult:
+        """Verify a committed mutation before reporting success on any command route.
+
+        The caller retains admission and publication fencing, and ends mutation
+        capture before entering here so the new read model can be verified.
+        """
+        after, refresh_error = self._state_after_command()
+        if refresh_error is not None or not after.state_reliable:
+            verification_error = refresh_error or RuntimeError(
+                "; ".join(after.read_errors)
+                or "updated application state is unreliable",
+            )
+            return self._post_state_verification_failure_result(
+                name=name,
+                state=after,
+                diagnostics=diagnostics,
+                error=verification_error,
+            )
+        return CommandResult.success_result(
+            command_name=name.value,
+            message=message,
+            state=after,
+            changed_state=self._changed_state(before, after),
+            diagnostics=diagnostics,
+        )
+
     def _state_after_command(
         self,
     ) -> tuple[ApplicationStateSnapshot, Exception | None]:
@@ -4646,9 +4524,15 @@ class ApplicationService(Observable):
             CommandName.CLEAR_TRAINING_HISTORY: (
                 self.training_commands.handle_clear_training_history
             ),
-            CommandName.EVALUATE: self.analysis.handle_evaluate,
-            CommandName.VISUALIZE: self.analysis.handle_visualize,
-            CommandName.SALIENCY: self.analysis.handle_saliency,
+            CommandName.EVALUATE: lambda command: self.analysis.handle_evaluate(
+                command
+            ),
+            CommandName.VISUALIZE: lambda command: self.analysis.handle_visualize(
+                command
+            ),
+            CommandName.SALIENCY: lambda command: self.analysis.handle_saliency(
+                command
+            ),
             CommandName.APPLY_MONTAGE: self._handle_apply_montage,
             CommandName.RESET_PREPROCESS: self.lifecycle.handle_reset_preprocess,
             CommandName.RESET_SESSION: self.lifecycle.handle_reset_session,

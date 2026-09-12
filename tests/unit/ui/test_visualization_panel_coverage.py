@@ -1226,6 +1226,50 @@ def test_cancelled_shutdown_resubmits_3d_publication_to_true_worker(
 
 
 class TestRefreshCombos:
+    def test_partial_method_is_selectable_only_in_the_3d_tab(
+        self,
+        visualization_panel,
+    ):
+        """The four visible views retain their distinct partial-coverage policy."""
+        panel = visualization_panel
+        partial = SaliencyMethodCoverageSnapshot(
+            method="Gradient",
+            available=True,
+            complete=False,
+            classes=[
+                SaliencyClassCoverageSnapshot(
+                    class_index=0,
+                    display_name="left",
+                    available=True,
+                ),
+                SaliencyClassCoverageSnapshot(
+                    class_index=1,
+                    display_name="right",
+                    available=False,
+                ),
+            ],
+        )
+        coverage = {partial.method: partial}
+
+        assert [panel.tabs.tabText(index) for index in range(panel.tabs.count())] == [
+            "Saliency Map",
+            "Spectrogram",
+            "Topographic Map",
+            "3D Plot",
+        ]
+        panel.tabs.blockSignals(True)
+        try:
+            panel.tabs.setCurrentIndex(0)
+            panel._sync_method_options(coverage)
+            assert panel.method_combo.findText("Gradient") == -1
+
+            panel.tabs.setCurrentIndex(3)
+            panel._sync_method_options(coverage)
+        finally:
+            panel.tabs.blockSignals(False)
+
+        assert panel.method_combo.findText("Gradient") == 0
+
     def test_empty_publication_keeps_only_placeholder(self, visualization_panel):
         panel = visualization_panel
 

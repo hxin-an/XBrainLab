@@ -135,6 +135,7 @@ class DatasetDetachedReadPort(Protocol):
 
     def get_loaded_data_rows(self) -> list[dict[str, Any]]: ...
     def get_preprocessed_data_rows(self) -> list[dict[str, Any]]: ...
+    def get_active_data_rows(self) -> list[dict[str, Any]]: ...
     def get_label_import_target_rows(
         self,
         target_indices: Sequence[int],
@@ -265,6 +266,11 @@ class DatasetStateService:
         return [
             self.project_data_row(data) for data in self.get_preprocessed_data_list()
         ]
+
+    def get_active_data_rows(self) -> list[dict[str, Any]]:
+        """Return the current display summary, preferring processed EEG data."""
+        preprocessed_rows = self.get_preprocessed_data_rows()
+        return preprocessed_rows or self.get_loaded_data_rows()
 
     def get_label_import_target_rows(
         self,

@@ -7,6 +7,7 @@ FIF compatibility.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from threading import Event
 
@@ -23,6 +24,7 @@ from XBrainLab.backend.application import (
     EvaluationPlanIdentity,
     EvaluationRenderRequest,
     EvaluationRunIdentity,
+    NewSessionCommand,
     PreprocessCommand,
     PreprocessOperation,
     PreviewInterpretationCommand,
@@ -34,6 +36,7 @@ from XBrainLab.backend.application import (
     ValidateInterpretationCommand,
     VisualizeCommand,
 )
+from XBrainLab.backend.application.errors import ErrorType
 from XBrainLab.backend.application.owned_work import OwnedWorkPhase
 from XBrainLab.backend.training import TrainingPlanHolder
 from XBrainLab.backend.training.record import EvalRecord
@@ -166,6 +169,96 @@ def test_application_service_fif_reaches_persisted_visualization_readiness(
         assert persisted_files
         assert any(path.name == "record" for path in persisted_files)
         assert any(path.name.startswith("Epoch-1-model") for path in persisted_files)
+    finally:
+        assert service.wait_for_background_tasks(timeout=30.0)
+        service.close()
+
+
+@pytest.mark.parametrize("stage", ("scan", "apply", "normalize", "epoch", "reset"))
+@pytest.mark.parametrize("verification", ("success", "unreliable", "error"))
+def test_real_mutations_require_verified_post_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+    verification: str,
+) -> None:
+    """Real mutations share fail-closed verification, without mocking their effects."""
+    source = tmp_path / "verification_raw.fif"
+    _write_command_spine_fif(source)
+    commands = [
+        ScanSourceCommand(source_path=str(source), source_hint="file"),
+        PreviewInterpretationCommand(choices={"label_carrier": "embedded_events"}),
+        ValidateInterpretationCommand(),
+        ApplyInterpretationCommand(confirmed=True),
+        PreprocessCommand(operation=PreprocessOperation.NORMALIZE, method="z-score"),
+        CreateEpochCommand(t_min=0.0, t_max=1.3, event_ids=["left", "right"]),
+        NewSessionCommand(confirmed=True),
+    ]
+    target = {"scan": 0, "apply": 3, "normalize": 4, "epoch": 5, "reset": 6}[stage]
+    service = ApplicationService()
+    try:
+        for command in commands[:target]:
+            prepared = service.execute(command)
+            assert prepared.ok, prepared.message
+
+        # Inject only the post-effect state verification failure. Admission, EEG
+        # import/transforms and commit still execute their real production paths.
+        capture_post_state = service._state_after_command
+
+        def unavailable_post_state():
+            state, error = capture_post_state()
+            assert error is None
+            assert state.state_reliable
+            return (
+                replace(state, state_reliable=False, read_errors=["injected failure"]),
+                RuntimeError("injected failure") if verification == "error" else None,
+            )
+
+        with monkeypatch.context() as fault:
+            if verification != "success":
+                fault.setattr(service, "_state_after_command", unavailable_post_state)
+            result = service.execute(commands[target])
+
+        if verification == "success":
+            assert result.ok, result.message
+            assert result.state.state_reliable
+            assert result.state.last_error is None
+            assert not result.changed_state.state_unknown
+        else:
+            assert result.failed
+            assert result.error_type is ErrorType.INTERNAL
+            assert result.recoverable is False
+            assert result.changed_state.state_unknown
+            assert result.changed_state.error_changed
+            assert not result.state.state_reliable
+            assert result.diagnostics["state_refresh_failed"] is True
+            assert result.diagnostics["command_effect_may_have_applied"] is True
+
+        # A failed verification is not a rollback claim: observe the actual
+        # committed effect after the injected unavailable-read seam is restored.
+        state = service.get_state()
+        assert state.state_reliable
+        if stage == "scan":
+            assert state.interpretation.has_scan_result
+            assert state.interpretation.source_path == str(source)
+        elif stage == "apply":
+            assert state.raw.files == [source.name]
+            assert state.interpretation.has_applied_interpretation
+        elif stage == "normalize":
+            assert state.preprocessed.operations == [
+                "z score normalization requested (deferred to per-epoch application)"
+            ]
+        elif stage == "epoch":
+            assert state.epoch.epoch_count == 12
+        else:
+            assert not state.raw.loaded
+            assert not state.epoch.exists
+            assert not state.interpretation.has_scan_result
+
+        # A terminal error must not leave admission or publication fenced.
+        queried = service.execute(QueryStateCommand())
+        assert queried.ok, queried.message
+        assert queried.state == state
     finally:
         assert service.wait_for_background_tasks(timeout=30.0)
         service.close()

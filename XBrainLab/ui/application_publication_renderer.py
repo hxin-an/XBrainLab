@@ -9,8 +9,8 @@ from PyQt6.QtCore import QObject, QTimer
 
 from XBrainLab.backend.application import (
     APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
-    ApplicationViewPublication,
 )
+from XBrainLab.backend.application.view_publication import ApplicationViewPublication
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.utils.observer import ObserverDeliveryStatus
 from XBrainLab.ui.core.observer_bridge import QtObserverBridge
@@ -22,6 +22,16 @@ PANEL_PUBLICATION_RENDER_MAX_ATTEMPTS = 3
 PANEL_PUBLICATION_RENDER_RETRY_INTERVAL_MS = 25
 PANEL_PUBLICATION_RENDER_RECOVERY_INTERVAL_MS = 500
 DESKTOP_PUBLICATION_RENDER_MAX_ATTEMPTS = PANEL_PUBLICATION_RENDER_MAX_ATTEMPTS + 5
+
+
+def is_valid_application_view_publication(publication: object) -> bool:
+    """Accept only a publication with a positive, non-boolean revision."""
+    return (
+        isinstance(publication, ApplicationViewPublication)
+        and not isinstance(publication.revision, bool)
+        and isinstance(publication.revision, int)
+        and publication.revision >= 1
+    )
 
 
 class ApplicationPublicationRenderLedger(QObject):

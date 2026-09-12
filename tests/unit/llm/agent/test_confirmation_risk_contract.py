@@ -5,9 +5,9 @@ from __future__ import annotations
 from typing import Any
 
 from XBrainLab.llm.agent.confirmation import AgentConfirmationRisk
-from XBrainLab.llm.agent.controller import LLMController
 from XBrainLab.llm.agent.tool_attempt_coordinator import (
     ToolAttemptAction,
+    ToolAttemptCoordinator,
     ToolAttemptDecision,
 )
 from XBrainLab.llm.tools.application_surface import (
@@ -55,7 +55,7 @@ def _request_for(
         tool=_Tool(),
         confirmation_kind=confirmation_kind,
     )
-    return LLMController._build_confirmation_request(None, decision)  # type: ignore[arg-type]
+    return ToolAttemptCoordinator.build_confirmation_request(decision)
 
 
 def test_start_training_confirmation_preserves_policy_risk_and_impact() -> None:

@@ -97,7 +97,7 @@ def test_render_markdown_includes_visible_transcript() -> None:
     assert "tool_name" not in rendered
 
 
-def test_collect_executed_tools_reads_completed_turn_metrics() -> None:
+def test_collect_executed_tools_reads_latest_completed_turn_metrics() -> None:
     metrics = AgentMetricsTracker()
 
     assert collect_executed_tools(metrics) == []
@@ -112,12 +112,6 @@ def test_collect_executed_tools_reads_completed_turn_metrics() -> None:
     metrics.finish_turn()
 
     assert collect_executed_tools(metrics) == [
-        {
-            "name": "ignored",
-            "success": True,
-            "duration_ms": 9.0,
-            "error": None,
-        },
         {
             "name": "resample_data",
             "success": True,

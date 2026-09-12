@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import gc
 import time
+import weakref
 
 from XBrainLab.llm.agent.metrics import AgentMetricsTracker, TurnMetrics
 
@@ -47,7 +49,7 @@ class TestAgentMetricsTracker:
         t = AgentMetricsTracker()
         assert len(t.conversation_id) == 12
         assert t.current_turn is None
-        assert t.total_turns == 0
+        assert t.last_completed_turn is None
 
     def test_start_turn(self):
         t = AgentMetricsTracker()
@@ -64,7 +66,7 @@ class TestAgentMetricsTracker:
         assert finished is turn
         assert finished.end_time > 0
         assert t.current_turn is None
-        assert t.total_turns == 1
+        assert t.last_completed_turn is finished
 
     def test_finish_turn_none(self):
         t = AgentMetricsTracker()
@@ -75,23 +77,26 @@ class TestAgentMetricsTracker:
         turn1 = t.start_turn()
         turn1.input_chars = 50
         turn2 = t.start_turn()
-        assert t.total_turns == 1  # turn1 was auto-finalized
+        assert t.last_completed_turn is turn1
         assert t.current_turn is turn2
 
-    def test_total_estimated_tokens(self):
+    def test_tracker_releases_superseded_completed_turns(self):
         t = AgentMetricsTracker()
         turn1 = t.start_turn()
-        turn1.input_chars = 400
-        turn1.output_chars = 200
+        reference = weakref.ref(turn1)
         t.finish_turn()
-
+        assert t.last_completed_turn is turn1
+        del turn1
         turn2 = t.start_turn()
-        turn2.input_chars = 800
-        turn2.output_chars = 400
         t.finish_turn()
-
-        # (400/4 + 200/4) + (800/4 + 400/4) = 150 + 300 = 450
-        assert t.total_estimated_tokens == 450
+        gc.collect()
+        assert reference() is None
+        assert t.last_completed_turn is turn2
+        reset_reference = weakref.ref(turn2)
+        del turn2
+        t.reset()
+        gc.collect()
+        assert reset_reference() is None
 
     def test_reset(self):
         t = AgentMetricsTracker()
@@ -101,4 +106,4 @@ class TestAgentMetricsTracker:
         t.reset()
         assert t.conversation_id != old_id
         assert t.current_turn is None
-        assert t.total_turns == 0
+        assert t.last_completed_turn is None

@@ -38,6 +38,19 @@ class ConversationHistory:
         if len(self.messages) > self.max_size:
             self.messages = self.messages[-self.max_size :]
 
+    def latest_user_request_text(self) -> str:
+        """Return the most recent human request, excluding tool/system feedback."""
+        for message in reversed(self.messages):
+            if message.get("role") != "user":
+                continue
+            content = str(message.get("content", "")).strip()
+            if not content:
+                continue
+            if content.startswith(("System:", "Tool Output:")):
+                continue
+            return content
+        return ""
+
     def clear(self) -> None:
         """Remove all messages from history."""
         self.messages.clear()

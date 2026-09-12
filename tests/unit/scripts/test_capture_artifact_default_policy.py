@@ -11,7 +11,6 @@ CAPTURE_SOURCES = (
     *sorted(DEV_SCRIPTS.glob("capture_*.py")),
     *sorted(DEV_SCRIPTS.glob("chatpanel_*/*.py")),
     *sorted((ROOT / "scripts" / "agent" / "evals").glob("*.py")),
-    DEV_SCRIPTS / "probe_pyvistaqt_runtime.py",
     DEV_SCRIPTS / "report_data_interpretation_format_matrix.py",
     DEV_SCRIPTS / "report_teacher_dataset_preflight.py",
     DEV_SCRIPTS / "run_chatpanel_ui_dpi_gate.py",

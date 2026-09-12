@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from PyQt6.QtWidgets import QDialog, QMainWindow, QWidget
+from PyQt6.QtWidgets import QMainWindow, QWidget
 
 from XBrainLab.backend.application.saliency_render import (
     SaliencyPlanIdentity,
@@ -707,15 +707,6 @@ class TestDatasetActionHandler:
             "selected_eeg_files": ["/mnt/a/sub-01.fif", "/tmp/b/sub-02.fif"],
         }
 
-    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
-    def test_open_smart_parser_without_product_review_is_blocked(
-        self,
-        mock_mb,
-        handler,
-    ):
-        handler.open_smart_parser()
-        mock_mb.assert_called_once()
-
     def test_remove_files_real_study_requires_fresh_review(self, handler):
         from XBrainLab.backend.study import Study
         from XBrainLab.ui.panels.dataset.actions import (
@@ -843,140 +834,6 @@ class TestDatasetActionHandler:
         mock_mb.assert_called_once()
         assert mock_mb.call_args.args[1] == "Review Metadata Again"
         assert "Refresh Dataset" in mock_mb.call_args.args[2]
-
-    def test_open_smart_parser_uses_backend_capability(self, handler):
-        from XBrainLab.backend.study import Study
-
-        handler.panel.study = Study()
-
-        with (
-            patch(
-                "XBrainLab.ui.panels.dataset.actions.SmartParserDialog",
-            ) as mock_dialog,
-            patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_mb,
-        ):
-            handler.open_smart_parser()
-
-        mock_dialog.assert_not_called()
-        mock_mb.assert_called_once()
-        assert (
-            "Load raw data before applying smart parse." in (mock_mb.call_args.args[2])
-        )
-
-    def test_open_smart_parser_uses_published_rows(
-        self,
-        handler,
-    ):
-        from XBrainLab.backend.study import Study
-
-        study = Study()
-        raw = MagicMock()
-        raw.get_filename.return_value = "sub-01_task-mi_raw.fif"
-        raw.get_filepath.return_value = "/tmp/sub-01_task-mi_raw.fif"
-        study.data_manager.loaded_data_list = [raw]
-        handler.panel.study = study
-
-        query_result = _command_result()
-        query_result.diagnostics = {
-            "raw_rows": [
-                {
-                    "filepath": "/tmp/sub-01_task-mi_raw.fif",
-                    "filename": "sub-01_task-mi_raw.fif",
-                }
-            ],
-        }
-        apply_result = _command_result(success_count=1)
-
-        with (
-            patch(
-                "XBrainLab.ui.panels.dataset.actions.SmartParserDialog",
-            ) as mock_dialog,
-            patch(
-                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
-                side_effect=[query_result, apply_result],
-            ) as mock_execute,
-            patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_mb,
-        ):
-            mock_dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
-            mock_dialog.return_value.get_result.return_value = {
-                "/tmp/sub-01_task-mi_raw.fif": ("S01", "session-01")
-            }
-            handler.open_smart_parser()
-
-        mock_dialog.assert_called_once_with(
-            ["/tmp/sub-01_task-mi_raw.fif"],
-            handler.panel,
-        )
-        assert mock_execute.call_count == 2
-        mock_mb.assert_not_called()
-
-    def test_open_smart_parser_real_study_blocks_without_command_result(
-        self,
-        handler,
-    ):
-        from XBrainLab.backend.study import Study
-
-        study = Study()
-        raw = MagicMock()
-        raw.get_filename.return_value = "sub-01_task-mi_raw.fif"
-        raw.get_filepath.return_value = "/tmp/sub-01_task-mi_raw.fif"
-        study.data_manager.loaded_data_list = [raw]
-        handler.panel.study = study
-
-        query_result = _command_result()
-        query_result.diagnostics = {
-            "raw_rows": [
-                {
-                    "filepath": "/tmp/sub-01_task-mi_raw.fif",
-                    "filename": "sub-01_task-mi_raw.fif",
-                }
-            ],
-        }
-
-        with (
-            patch(
-                "XBrainLab.ui.panels.dataset.actions.SmartParserDialog",
-            ) as mock_dialog,
-            patch(
-                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
-                side_effect=[query_result, None],
-            ),
-            patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_mb,
-        ):
-            mock_dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
-            mock_dialog.return_value.get_result.return_value = {
-                "/tmp/sub-01_task-mi_raw.fif": ("S01", "session-01")
-            }
-            handler.open_smart_parser()
-
-        mock_mb.assert_called_once()
-        assert mock_mb.call_args.args[1] == "Smart Parse Blocked"
-        assert "could not safely complete" in mock_mb.call_args.args[2]
-
-    def test_open_smart_parser_blocks_when_capability_is_unavailable(
-        self,
-        handler,
-    ):
-        from XBrainLab.backend.study import Study
-
-        handler.panel.study = Study()
-
-        with (
-            patch(
-                "XBrainLab.ui.panels.dataset.actions.get_command_capability",
-                return_value=None,
-            ),
-            patch(
-                "XBrainLab.ui.panels.dataset.actions.SmartParserDialog",
-            ) as mock_dialog,
-            patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_mb,
-        ):
-            handler.open_smart_parser()
-
-        mock_dialog.assert_not_called()
-        mock_mb.assert_called_once()
-        assert mock_mb.call_args.args[1] == "Smart Parse Blocked"
-        assert "Load raw data before applying smart parse." in mock_mb.call_args.args[2]
 
 
 # ====================================================================

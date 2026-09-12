@@ -38,7 +38,7 @@ from XBrainLab.llm.core.model_catalog import (
     local_model_policy_error,
     local_model_spec,
 )
-from XBrainLab.llm.tools.real.ui_control_real import RealSwitchPanelTool
+from XBrainLab.llm.tools.definitions.ui_control_def import BaseSwitchPanelTool
 
 _STRUCTURED_SMOKE_STAGE = "unavailable"
 _STRUCTURED_SMOKE_TOOL = "switch_panel"
@@ -349,7 +349,7 @@ def run_structured_output_smoke(config: LLMConfig) -> dict[str, Any]:
         }
 
     model_tools = AGENT_ACTION_CONTRACTS.model_tool_names()
-    switch_tool = RealSwitchPanelTool()
+    switch_tool = BaseSwitchPanelTool()
     command_name, parameters = envelope.commands[0]
     schema_result = ToolSchemaValidator(
         {switch_tool.name: switch_tool.parameters}

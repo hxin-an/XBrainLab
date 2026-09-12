@@ -13,6 +13,9 @@ import mne
 import numpy as np
 import pytest
 
+from XBrainLab.backend.application.dataset_generation_service import (
+    DatasetGenerationCommandService,
+)
 from XBrainLab.backend.application.dataset_split_preview import (
     DatasetSplitContextRequest,
     DatasetSplitPreviewPublisher,
@@ -185,6 +188,7 @@ def test_context_publication_contains_only_detached_split_choices() -> None:
         dataset=dataset,
         generator_factory=lambda _config: _Generator(),
         get_publication=lambda: _view(),
+        config_factory=DatasetGenerationCommandService.config_from_payload,
     )
 
     publication = publisher.publish_context(
@@ -228,6 +232,7 @@ def test_context_trial_group_count_accepts_array_like_groups_and_fails_safe(
         dataset=_DatasetState(_EpochDataWithTrialGroups(trial_groups)),
         generator_factory=lambda _config: _Generator(),
         get_publication=lambda: _view(),
+        config_factory=DatasetGenerationCommandService.config_from_payload,
     )
 
     context = publisher.publish_context(
@@ -246,6 +251,7 @@ def test_context_choices_keep_internal_keys_but_publish_real_display_names() -> 
         dataset=_DatasetState(epoch_data),
         generator_factory=lambda _config: _Generator(),
         get_publication=lambda: _view(),
+        config_factory=DatasetGenerationCommandService.config_from_payload,
     )
 
     context = publisher.publish_context(
@@ -268,6 +274,7 @@ def test_context_publication_represents_missing_epochs_without_live_payload() ->
         dataset=_DatasetState(None),
         generator_factory=lambda _config: _Generator(),
         get_publication=lambda: _view(),
+        config_factory=DatasetGenerationCommandService.config_from_payload,
     )
 
     publication = publisher.publish_context(
@@ -292,6 +299,7 @@ def test_real_preview_success_preserves_live_epoch_evidence_and_dataset_sequence
         dataset=_DatasetState(epoch_data),
         generator_factory=lambda config: DatasetGenerator(epoch_data, config),
         get_publication=lambda: _view(),
+        config_factory=DatasetGenerationCommandService.config_from_payload,
     )
 
     publication = publisher.publish_preview(
@@ -321,6 +329,7 @@ def test_real_preview_row_exposes_allocation_and_saliency_evidence(
         dataset=_DatasetState(epoch_data),
         generator_factory=lambda config: DatasetGenerator(epoch_data, config),
         get_publication=lambda: _view(),
+        config_factory=DatasetGenerationCommandService.config_from_payload,
     )
 
     specification = DatasetSplitSpecification.from_payload(
@@ -379,6 +388,7 @@ def test_real_preview_failure_preserves_live_epoch_evidence_and_dataset_sequence
         dataset=_DatasetState(epoch_data),
         generator_factory=lambda config: DatasetGenerator(epoch_data, config),
         get_publication=lambda: _view(),
+        config_factory=DatasetGenerationCommandService.config_from_payload,
     )
     invalid_specification = DatasetSplitSpecification.from_payload(
         {
@@ -429,6 +439,7 @@ def test_real_preview_rejects_the_same_mixed_trial_provenance_risk_as_train(
         dataset=_DatasetState(epoch_data),
         generator_factory=lambda config: DatasetGenerator(epoch_data, config),
         get_publication=lambda: _view(),
+        config_factory=DatasetGenerationCommandService.config_from_payload,
     )
     specification = DatasetSplitSpecification.from_payload(
         {
@@ -482,6 +493,7 @@ def test_real_preview_cancel_preserves_live_epoch_evidence_and_dataset_sequence(
             release=release,
         ),
         get_publication=lambda: _view(),
+        config_factory=DatasetGenerationCommandService.config_from_payload,
     )
     errors: list[BaseException] = []
 
@@ -559,6 +571,7 @@ def test_real_preview_cancel_inside_allocator_rolls_back_generator_state(
         dataset=_DatasetState(epoch_data),
         generator_factory=generator_factory,
         get_publication=lambda: _view(),
+        config_factory=DatasetGenerationCommandService.config_from_payload,
     )
     errors: list[BaseException] = []
 
@@ -617,6 +630,7 @@ def test_real_preview_does_not_publish_when_cancelled_just_after_generation(
             epoch_data, config, on_complete=cancel_after_generate
         ),
         get_publication=lambda: _view(),
+        config_factory=DatasetGenerationCommandService.config_from_payload,
     )
 
     with pytest.raises(PreconditionError, match="cancelled"):
@@ -639,6 +653,7 @@ def test_preview_completion_claim_linearizes_late_cancellation(
             epoch_data, config, on_complete=lambda: None
         ),
         get_publication=lambda: _view(),
+        config_factory=DatasetGenerationCommandService.config_from_payload,
     )
     completion_retired = threading.Event()
     release = threading.Event()
@@ -686,6 +701,7 @@ def test_stale_context_request_fails_before_reading_epoch_data() -> None:
         dataset=dataset,
         generator_factory=lambda _config: _Generator(),
         get_publication=lambda: _view(generation=5),
+        config_factory=DatasetGenerationCommandService.config_from_payload,
     )
 
     with pytest.raises(PreconditionError, match="changed"):
@@ -701,6 +717,7 @@ def test_generation_change_discards_preview_rows() -> None:
         dataset=_DatasetState(epoch_data),
         generator_factory=lambda config: DatasetGenerator(epoch_data, config),
         get_publication=lambda: next(publications),
+        config_factory=DatasetGenerationCommandService.config_from_payload,
     )
 
     with pytest.raises(PreconditionError, match="changed"):
@@ -727,6 +744,7 @@ def test_duplicate_active_preview_request_id_is_rejected() -> None:
             release=release,
         ),
         get_publication=lambda: _view(),
+        config_factory=DatasetGenerationCommandService.config_from_payload,
     )
     request = DatasetSplitPreviewRequest(
         request_id="preview-duplicate",

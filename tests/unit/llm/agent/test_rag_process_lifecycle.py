@@ -2,15 +2,94 @@
 
 from __future__ import annotations
 
+import io
+import logging
+import queue
 import threading
 import time
 from typing import Any
 
+import pytest
+
+from XBrainLab.llm.agent import rag_process_lifecycle
 from XBrainLab.llm.agent.rag_process_lifecycle import (
     ProcessRAGRetrieverLifecycle,
 )
 
 _CALLBACK_WAIT_SECONDS = 30.0
+
+
+@pytest.mark.parametrize("phase", ["initialize", "retrieve", "close"])
+@pytest.mark.parametrize("error_type", [RuntimeError, KeyboardInterrupt])
+def test_child_failure_logs_are_safe_and_preserve_queue_contract(
+    monkeypatch, phase: str, error_type: type[BaseException]
+) -> None:
+    """Exercise the production child loop, isolating only the external retriever."""
+    from XBrainLab.llm import rag
+
+    private_path = "/home/alice/private/subject-17/events.tsv"
+    private_email = "alice@example.test"
+    private_token = "hf_super_secret"  # noqa: S105 - synthetic redaction witness
+    output = io.StringIO()
+    public_logger = logging.Logger("tests.rag-child-public-sink")
+    public_logger.addHandler(logging.StreamHandler(output))
+    monkeypatch.setattr(rag_process_lifecycle, "logger", public_logger)
+    closed = []
+
+    class FaultingRetriever:
+        is_initialized = True
+
+        def initialize(self):
+            if phase == "initialize":
+                raise error_type(
+                    f"{private_path} {private_email} token={private_token}"
+                )
+
+        def get_similar_examples(self, query, *, allowed_tool_names):
+            assert query == "query"
+            assert allowed_tool_names == frozenset({"apply_bandpass_filter"})
+            if phase == "retrieve":
+                raise error_type(
+                    f"{private_path} {private_email} token={private_token}"
+                )
+            return "features"
+
+        def close(self):
+            closed.append(True)
+            if phase == "close":
+                raise error_type(
+                    f"{private_path} {private_email} token={private_token}"
+                )
+
+    monkeypatch.setattr(rag, "RAGRetriever", FaultingRetriever)
+    commands = queue.Queue()
+    results = queue.Queue()
+    commands.put(("retrieve", 4, "query", ("apply_bandpass_filter",)))
+    commands.put(("close",))
+
+    rag_process_lifecycle._run_rag_process(commands, results)
+
+    if phase == "initialize":
+        assert results.get_nowait() == ("initialization_error", error_type.__name__)
+    else:
+        assert results.get_nowait() == ("ready", True)
+        expected = (
+            ("result", 4, "query", "", f"RAG retrieval failed ({error_type.__name__}).")
+            if phase == "retrieve"
+            else ("result", 4, "query", "features", "")
+        )
+        assert results.get_nowait() == expected
+    assert results.empty()
+    assert closed == [True]
+    rendered = output.getvalue()
+    assert rendered
+    for private in (private_path, "subject-17", private_email, private_token):
+        assert private not in rendered
+    assert "[REDACTED_PATH]" in rendered
+    assert "[REDACTED_EMAIL]" in rendered
+    assert "[REDACTED_SECRET]" in rendered
+    assert error_type.__name__ in rendered
+    assert "Traceback (most recent call last)" not in rendered
 
 
 def _responsive_worker(command_queue: Any, result_queue: Any) -> None:

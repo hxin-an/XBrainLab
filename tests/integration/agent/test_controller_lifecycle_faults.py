@@ -6,7 +6,7 @@ import sys
 import threading
 import time
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from PyQt6 import sip
@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import QMainWindow
 from XBrainLab.backend.controller.chat_controller import ChatMessagePresentationKind
 from XBrainLab.backend.study import Study
 from XBrainLab.llm.agent.controller import LLMController
-from XBrainLab.llm.agent.rag_lifecycle import RAGRetrieverLifecycle
+from XBrainLab.llm.agent.rag_process_lifecycle import ProcessRAGRetrieverLifecycle
 from XBrainLab.llm.agent.response_presentation import AssistantResponseKind
 from XBrainLab.llm.agent.runtime_state import AssistantRuntimePhase
 from XBrainLab.llm.agent.turn import (
@@ -75,6 +75,44 @@ class _ContextRetriever(_NoopRetriever):
         return _RAG_CONTEXT
 
 
+class _ImmediateRagLifecycle:
+    """Deterministic retrieval seam for lifecycle-fault topology tests."""
+
+    def __init__(self, retriever: _NoopRetriever) -> None:
+        self._retriever = retriever
+
+    def start(self) -> bool:
+        self._retriever.initialize()
+        return True
+
+    def retrieve(
+        self,
+        turn_id,
+        query,
+        callback,
+        *,
+        allowed_tool_names=None,
+    ) -> bool:
+        callback(
+            turn_id,
+            query,
+            self._retriever.get_similar_examples(
+                query,
+                allowed_tool_names=allowed_tool_names,
+            ),
+            "",
+        )
+        return True
+
+    def cancel_retrieval(self, turn_id: int) -> bool:
+        del turn_id
+        return False
+
+    def close(self) -> bool:
+        self._retriever.close()
+        return True
+
+
 class _InMemoryEngine:
     """Avoid model IO while retaining the real AgentWorker generation thread."""
 
@@ -126,7 +164,10 @@ def lifecycle_harness(
     def _controller_factory(study: object) -> LLMController:
         controller = LLMController(
             study,
-            rag_lifecycle=RAGRetrieverLifecycle(_NoopRetriever()),
+            rag_lifecycle=cast(
+                ProcessRAGRetrieverLifecycle,
+                _ImmediateRagLifecycle(_NoopRetriever()),
+            ),
         )
         controllers.append(controller)
         return controller
@@ -169,7 +210,10 @@ def manager_lifecycle_harness(qtbot, monkeypatch):
     def _controller_factory(controller_study: object) -> LLMController:
         controller = LLMController(
             controller_study,
-            rag_lifecycle=RAGRetrieverLifecycle(_NoopRetriever()),
+            rag_lifecycle=cast(
+                ProcessRAGRetrieverLifecycle,
+                _ImmediateRagLifecycle(_NoopRetriever()),
+            ),
         )
         controllers.append(controller)
         return controller
@@ -687,7 +731,10 @@ def test_post_rag_context_failure_releases_full_topology_leases_and_next_turn(
     def _controller_factory(controller_study: object) -> LLMController:
         controller = LLMController(
             controller_study,
-            rag_lifecycle=RAGRetrieverLifecycle(_ContextRetriever()),
+            rag_lifecycle=cast(
+                ProcessRAGRetrieverLifecycle,
+                _ImmediateRagLifecycle(_ContextRetriever()),
+            ),
         )
         controllers.append(controller)
         return controller
@@ -808,7 +855,10 @@ def test_worker_dispatch_setup_and_model_faults_release_manager_turns(
     def _controller_factory(controller_study: object) -> LLMController:
         controller = LLMController(
             controller_study,
-            rag_lifecycle=RAGRetrieverLifecycle(_NoopRetriever()),
+            rag_lifecycle=cast(
+                ProcessRAGRetrieverLifecycle,
+                _ImmediateRagLifecycle(_NoopRetriever()),
+            ),
         )
         controllers.append(controller)
         return controller

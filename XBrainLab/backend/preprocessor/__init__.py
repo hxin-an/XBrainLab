@@ -2,7 +2,6 @@
 
 from .base import PreprocessBase
 from .channel_selection import ChannelSelection
-from .edit_event import EditEventId, EditEventName
 from .filtering import Filtering
 from .normalize import Normalize
 from .rereference import Rereference
@@ -12,8 +11,6 @@ from .window_epoch import WindowEpoch
 
 __all__ = [
     "ChannelSelection",
-    "EditEventId",
-    "EditEventName",
     "Filtering",
     "Normalize",
     "PreprocessBase",

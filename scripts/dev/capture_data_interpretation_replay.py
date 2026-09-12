@@ -344,7 +344,6 @@ def dataset_sidebar_state(sidebar: Any) -> dict[str, dict[str, Any]]:
         "import_source": button_state(sidebar.import_btn),
         "reload_recipe": button_state(sidebar.reload_recipe_btn),
         "import_labels": button_state(sidebar.import_label_btn),
-        "smart_parse": button_state(sidebar.smart_parse_btn),
         "channel_selection": button_state(sidebar.chan_select_btn),
     }
 

@@ -173,24 +173,6 @@ class Dataset:
         """Return the mask for remaining trials."""
         return self.remaining_mask.copy()
 
-    ## filter
-    def intersection_with_subject_by_idx(
-        self,
-        mask: np.ndarray,
-        idx: int,
-    ) -> np.ndarray:
-        """Return the intersection of the mask and the subject mask.
-
-        Args:
-            mask: Boolean mask to intersect.
-            idx: Target subject index.
-
-        Returns:
-            Boolean mask of trials matching both the input mask and the subject.
-
-        """
-        return mask & self.epoch_data.pick_subject_mask_by_idx(idx)
-
     def set_remaining_by_subject_idx(self, subject_idx: int) -> None:
         """Restrict remaining mask to include only a specific subject.
 
@@ -200,16 +182,6 @@ class Dataset:
         """
         subject_mask = self.epoch_data.pick_subject_mask_by_idx(subject_idx)
         self.remaining_mask &= subject_mask
-        self._mark_resource_fingerprint_mutation()
-
-    def discard_remaining_mask(self, mask: np.ndarray) -> None:
-        """Remove masked trials from the remaining mask.
-
-        Args:
-            mask: Boolean mask of trials to discard from remaining.
-
-        """
-        self.remaining_mask &= np.logical_not(mask)
         self._mark_resource_fingerprint_mutation()
 
     # train

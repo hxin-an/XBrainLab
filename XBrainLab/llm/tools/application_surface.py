@@ -8,39 +8,22 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Protocol, cast
 
 from XBrainLab.backend.application import (
-    ApplyInterpretationCommand,
     ClearTrainingHistoryCommand,
     Command,
     CommandName,
     CommandResult,
-    ConfigureTrainingCommand,
-    CreateEpochCommand,
-    DatasetSplitPreviewReceipt,
-    EvaluateCommand,
     PreprocessCommand,
     PreprocessOperation,
-    PreviewInterpretationCommand,
-    QueryStateCommand,
-    ReloadInterpretationRecipeCommand,
     ResetPreprocessCommand,
-    SaliencyCommand,
-    SaveDatasetSplitCommand,
-    SaveInterpretationRecipeCommand,
-    ScanSourceCommand,
     StopTrainingCommand,
     TrainCommand,
     TrainingRecommendationField,
-    ValidateInterpretationCommand,
-    VisualizeCommand,
     get_application_service,
 )
 from XBrainLab.backend.application.capabilities import (
     CapabilityPolicy,
     CommandCapability,
     build_capability_policy,
-)
-from XBrainLab.backend.application.training_submission import (
-    attach_training_submission_provenance,
 )
 from XBrainLab.backend.application.view_publication import (
     PUBLIC_VIEW_UNAVAILABLE_MESSAGE,
@@ -51,10 +34,7 @@ from XBrainLab.backend.study import Study
 from XBrainLab.backend.training.input_contract import (
     REQUIRED_TRAINING_FIELDS,
     TrainingInputContractError,
-    normalize_non_negative_integer,
-    normalize_positive_integer,
     normalize_strict_boolean,
-    normalize_training_input,
 )
 from XBrainLab.backend.utils.public_diagnostics import (
     PUBLIC_DIAGNOSTIC_MAX_OUTPUT_BYTES,
@@ -1153,7 +1133,7 @@ def execute_application_tool_command(
         ).get(tool_name)
     input_error: str | None = None
     try:
-        command = _command_for_tool(tool_name, command_params, state=state)
+        command = _command_for_tool(tool_name, command_params)
     except TrainingInputContractError as exc:
         command = None
         input_error = str(exc)
@@ -1256,7 +1236,6 @@ def execute_application_tool_command(
                     **command_params,
                     _ASSISTANT_SETTING_CONFIRMATION_PARAM: setting_confirmation,
                 },
-                state=state,
             )
             if confirmed_command is None:
                 raise RuntimeError(
@@ -1291,58 +1270,9 @@ def execute_application_tool_command(
     )
 
 
-def build_standard_preprocess_command(params: dict[str, Any]) -> PreprocessCommand:
-    """Translate standard-preprocess tool arguments into one canonical command."""
-    rereference = _optional_str(params.get("rereference"))
-    return PreprocessCommand(
-        operation=PreprocessOperation.STANDARD,
-        low_freq=_optional_float(params.get("l_freq")),
-        high_freq=_optional_float(params.get("h_freq")),
-        notch_freq=_optional_float(params.get("notch_freq")),
-        rate=_optional_int(params.get("resample_rate")),
-        method=_optional_str(params.get("normalize_method")),
-        channels=[rereference] if rereference is not None else None,
-    )
-
-
-def build_preview_interpretation_command(
-    params: dict[str, Any],
-) -> PreviewInterpretationCommand:
-    """Translate preview arguments, including host-only resource consent."""
-    choices = params.get("choices")
-    return PreviewInterpretationCommand(
-        scan_id=_optional_str(params.get("scan_id")),
-        choices=dict(choices) if isinstance(choices, dict) else {},
-        resource_preflight_confirmed=_boolean_param(
-            params,
-            "resource_preflight_confirmed",
-        ),
-        resource_preflight_token=_optional_str(params.get("resource_preflight_token")),
-    )
-
-
-def build_reload_interpretation_recipe_command(
-    params: dict[str, Any],
-) -> ReloadInterpretationRecipeCommand | None:
-    """Translate recipe reload arguments through the canonical agent owner."""
-    recipe_path = params.get("recipe_path")
-    if not recipe_path:
-        return None
-    return ReloadInterpretationRecipeCommand(
-        recipe_path=str(recipe_path),
-        resource_preflight_confirmed=_boolean_param(
-            params,
-            "resource_preflight_confirmed",
-        ),
-        resource_preflight_token=_optional_str(params.get("resource_preflight_token")),
-    )
-
-
 def _command_for_tool(
     tool_name: str,
     params: dict[str, Any],
-    *,
-    state: dict[str, Any] | None = None,
 ) -> Command | None:
     """Build an ApplicationService command for a supported agent tool."""
     contract = AGENT_ACTION_CONTRACTS.contract_for(tool_name)
@@ -1351,54 +1281,6 @@ def _command_for_tool(
         or contract.execution_kind is not AgentExecutionKind.APPLICATION_COMMAND
     ):
         return None
-    if tool_name == "scan_source":
-        source_path = params.get("source_path")
-        if not source_path:
-            return None
-        return ScanSourceCommand(
-            source_path=str(source_path),
-            source_hint=str(params.get("source_hint", "auto")),
-            label_sources=[
-                str(item)
-                for item in params.get("label_sources", [])
-                if str(item).strip()
-            ]
-            if isinstance(params.get("label_sources"), list)
-            else [],
-        )
-
-    if tool_name == "preview_interpretation":
-        return build_preview_interpretation_command(params)
-
-    if tool_name == "validate_interpretation":
-        return ValidateInterpretationCommand(
-            candidate_id=_optional_str(params.get("candidate_id")),
-        )
-
-    if tool_name == "apply_interpretation":
-        return ApplyInterpretationCommand(
-            candidate_id=_optional_str(params.get("candidate_id")),
-            confirmed=_boolean_param(params, "confirmed"),
-            resource_preflight_confirmed=_boolean_param(
-                params,
-                "resource_preflight_confirmed",
-            ),
-            resource_preflight_token=_optional_str(
-                params.get("resource_preflight_token")
-            ),
-        )
-
-    if tool_name == "save_interpretation_recipe":
-        return SaveInterpretationRecipeCommand(
-            recipe_path=_optional_str(params.get("recipe_path")),
-        )
-
-    if tool_name == "reload_interpretation_recipe":
-        return build_reload_interpretation_recipe_command(params)
-
-    if tool_name == "apply_standard_preprocess":
-        return build_standard_preprocess_command(params)
-
     if tool_name == "apply_bandpass_filter":
         low_freq = params.get("low_freq")
         high_freq = params.get("high_freq")
@@ -1446,15 +1328,6 @@ def _command_for_tool(
             method=str(method),
         )
 
-    if tool_name == "select_channels":
-        channels = params.get("channels")
-        if not isinstance(channels, list) or not channels:
-            return None
-        return PreprocessCommand(
-            operation=PreprocessOperation.SELECT_CHANNELS,
-            channels=[str(channel) for channel in channels],
-        )
-
     if tool_name == "reset_preprocessing":
         return ResetPreprocessCommand(
             confirmed=_boolean_param(params, "confirmed"),
@@ -1463,88 +1336,6 @@ def _command_for_tool(
     if tool_name == "clear_training_history":
         return ClearTrainingHistoryCommand(
             confirmed=_boolean_param(params, "confirmed"),
-        )
-
-    if tool_name == "epoch_data":
-        t_min = params.get("t_min")
-        t_max = params.get("t_max")
-        if t_min is None or t_max is None:
-            return None
-        return CreateEpochCommand(
-            t_min=float(t_min),
-            t_max=float(t_max),
-            baseline=params.get("baseline"),
-            event_ids=params.get("event_id"),
-        )
-
-    if tool_name == "configure_dataset_split":
-        split_strategy = params.get("split_strategy")
-        training_mode = params.get("training_mode")
-        if not split_strategy or not training_mode:
-            return None
-        preview_receipt = params.get("preview_receipt")
-        if preview_receipt is not None and not isinstance(
-            preview_receipt,
-            DatasetSplitPreviewReceipt,
-        ):
-            return None
-        return SaveDatasetSplitCommand(
-            test_ratio=float(params.get("test_ratio", 0.2)),
-            val_ratio=float(params.get("val_ratio", 0.2)),
-            split_strategy=str(split_strategy),
-            training_mode=str(training_mode),
-            preview_receipt=preview_receipt,
-        )
-
-    if tool_name == "set_model":
-        model_name = params.get("model_name")
-        if not model_name:
-            return None
-        return ConfigureTrainingCommand(model_name=str(model_name))
-
-    if tool_name == "configure_training":
-        confirmation = params.get(_ASSISTANT_SETTING_CONFIRMATION_PARAM)
-        edited_recommendation_fields = (
-            frozenset(confirmation.edited_recommendation_fields)
-            if isinstance(confirmation, AssistantSettingConfirmation)
-            else frozenset()
-        )
-        training_input = normalize_training_input(params)
-        output_dir_param = params.get("output_dir")
-        if output_dir_param is not None and not isinstance(
-            output_dir_param,
-            UserProvidedTrainingOutputDir,
-        ):
-            return None
-        if isinstance(output_dir_param, UserProvidedTrainingOutputDir):
-            if not output_dir_param.strip():
-                return None
-            output_dir = str(output_dir_param)
-        else:
-            current = start_training_confirmation_truth(state)
-            output_dir = (
-                current.output_directory
-                if current is not None
-                else ConfigureTrainingCommand().output_dir
-            )
-        command = ConfigureTrainingCommand(
-            model_name=_optional_str(params.get("model_name")),
-            epoch=training_input.epoch,
-            batch_size=training_input.batch_size,
-            learning_rate=training_input.learning_rate,
-            repeat=normalize_positive_integer("repeat", params.get("repeat", 1)),
-            device=str(params.get("device", "cpu")),
-            optimizer=str(params.get("optimizer", "adam")),
-            evaluation_option=str(params.get("evaluation_option", "last_epoch")),
-            save_checkpoints_every=normalize_non_negative_integer(
-                "save_checkpoints_every",
-                params.get("save_checkpoints_every", 0),
-            ),
-            output_dir=str(output_dir),
-        )
-        return attach_training_submission_provenance(
-            command,
-            edited_recommendation_fields,
         )
 
     if tool_name == "start_training":
@@ -1564,46 +1355,6 @@ def _command_for_tool(
     if tool_name == "stop_training":
         return StopTrainingCommand()
 
-    if tool_name == "evaluate":
-        return EvaluateCommand(target=_optional_str(params.get("target")))
-
-    if tool_name == "visualize":
-        return VisualizeCommand(view=_optional_str(params.get("view")))
-
-    if tool_name == "saliency":
-        nested_saliency_params = params.get("params")
-        saliency_params = (
-            dict(nested_saliency_params)
-            if isinstance(nested_saliency_params, dict)
-            else {}
-        )
-        for parameter_name in (
-            "nt_samples",
-            "nt_samples_batch_size",
-            "stdevs",
-        ):
-            if parameter_name in params:
-                saliency_params[parameter_name] = params[parameter_name]
-        return SaliencyCommand(
-            method=_optional_str(params.get("method")),
-            params=saliency_params or None,
-            resource_preflight_confirmed=_boolean_param(
-                params,
-                "resource_preflight_confirmed",
-            ),
-            resource_preflight_token=_optional_str(
-                params.get("resource_preflight_token")
-            ),
-        )
-
-    if tool_name == "query_state":
-        return QueryStateCommand(
-            query=str(params.get("query", "state")),
-            params=dict(params.get("params", {}))
-            if isinstance(params.get("params"), dict)
-            else {},
-        )
-
     return None
 
 
@@ -1612,18 +1363,6 @@ def _optional_str(value: Any) -> str | None:
         return None
     text = str(value)
     return text or None
-
-
-def _optional_float(value: Any) -> float | None:
-    if value is None:
-        return None
-    return float(value)
-
-
-def _optional_int(value: Any) -> int | None:
-    if value is None:
-        return None
-    return int(value)
 
 
 def _boolean_param(

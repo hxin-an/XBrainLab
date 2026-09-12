@@ -1682,6 +1682,48 @@ def test_data_summary_query_uses_committed_publication_while_command_lock_is_bus
     live_read.assert_not_called()
 
 
+def test_published_data_summary_prefers_preprocessed_then_falls_back_to_loaded_rows() -> (
+    None
+):
+    """A published summary selects processed data without leaking mutable Raw."""
+    service = ApplicationService(Study())
+    loaded = _raw_mock()
+    loaded.get_filepath.return_value = "/data/loaded.fif"
+    preprocessed = _raw_mock()
+    preprocessed.get_filepath.return_value = "/data/preprocessed.fif"
+    service.study.data_manager.loaded_data_list = [loaded]
+    service.study.data_manager.preprocessed_data_list = [preprocessed]
+
+    try:
+        service.get_state()
+        publication = service.get_view_publication()
+
+        assert publication.data_summary_rows is not None
+        assert publication.data_summary_rows[0]["filepath"] == "/data/preprocessed.fif"
+        preprocessed.get_filepath.return_value = "/data/changed-after-publication.fif"
+        assert publication.data_summary_rows[0]["filepath"] == "/data/preprocessed.fif"
+
+        service.study.data_manager.preprocessed_data_list = []
+        service.get_state()
+        loaded_publication = service.get_view_publication()
+        assert loaded_publication.data_summary_rows is not None
+        assert loaded_publication.data_summary_rows[0]["filepath"] == "/data/loaded.fif"
+    finally:
+        service.close()
+
+
+def test_published_data_summary_is_empty_when_real_dataset_lists_are_empty() -> None:
+    service = ApplicationService(Study())
+
+    try:
+        service.get_state()
+        publication = service.get_view_publication()
+
+        assert publication.data_summary_rows == ()
+    finally:
+        service.close()
+
+
 def test_data_summary_query_rejects_stale_expected_publication_generation() -> None:
     service = ApplicationService(Study())
     publication = service.get_view_publication()
@@ -12040,6 +12082,34 @@ def test_invalid_montage_payload_preserves_existing_effective_layout(command) ->
     assert effective.name == "existing"
     assert effective.channel_names == ("C4",)
     assert effective.positions_m == ((0.1, 0.2, 0.3),)
+
+
+def test_apply_montage_explicit_empty_electrodes_is_not_defaulted() -> None:
+    """An explicit empty mapping is invalid; only ``None`` requests defaults."""
+    study = Study()
+    study.data_manager.loaded_data_list = [_raw_mock()]
+    service = ApplicationService(study)
+    service.bids_montage_preparation.select_manual(
+        ManualMontageOverride(
+            name="existing",
+            channel_names=("C4",),
+            positions_m=((0.1, 0.2, 0.3),),
+            coordinate_frame="head",
+        )
+    )
+
+    result = service.execute(
+        ApplyMontageCommand(
+            channels=["C3"],
+            positions=[(0.0, 0.0, 0.0)],
+            electrode_names=[],
+        )
+    )
+
+    assert result.failed is True
+    effective = service.bids_montage_preparation.effective_montage()
+    assert effective is not None
+    assert effective.name == "existing"
 
 
 def test_apply_montage_trainer_allows_first_attach_then_freezes_layout() -> None:

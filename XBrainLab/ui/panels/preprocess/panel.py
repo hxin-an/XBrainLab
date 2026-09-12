@@ -21,6 +21,7 @@ from XBrainLab.ui.application_capabilities import (
 )
 from XBrainLab.ui.application_publication_renderer import (
     ApplicationPublicationRenderLedger,
+    is_valid_application_view_publication,
 )
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.panels.preprocess.data_query import (
@@ -92,7 +93,7 @@ class PreprocessPanel(BasePanel):
         publication: object,
     ) -> bool:
         """Queue one Preprocess render for each monotonic application revision."""
-        if not self._valid_application_publication(publication):
+        if not is_valid_application_view_publication(publication):
             logger.error("Ignored malformed Preprocess application publication.")
             return False
         typed_publication = cast(ApplicationViewPublication, publication)
@@ -111,15 +112,6 @@ class PreprocessPanel(BasePanel):
     ) -> None:
         self._last_application_revision = publication.revision
 
-    @staticmethod
-    def _valid_application_publication(publication: object) -> bool:
-        return (
-            isinstance(publication, ApplicationViewPublication)
-            and not isinstance(publication.revision, bool)
-            and isinstance(publication.revision, int)
-            and publication.revision >= 1
-        )
-
     def _read_application_publication(self) -> ApplicationViewPublication | None:
         pending = self._application_render_ledger.pending_publication
         if pending is not None and pending.revision > self._last_application_revision:
@@ -137,7 +129,7 @@ class PreprocessPanel(BasePanel):
             )
             self._application_view_publication = None
             return None
-        if not self._valid_application_publication(publication):
+        if not is_valid_application_view_publication(publication):
             self._application_view_publication = None
             return None
         typed_publication = cast(ApplicationViewPublication, publication)

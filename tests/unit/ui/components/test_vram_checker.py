@@ -17,26 +17,29 @@ from XBrainLab.llm.agent.runtime_state import (
     AssistantRuntimeSnapshot,
 )
 from XBrainLab.ui.components.modal_presentation import AlertSeverity
-from XBrainLab.ui.components.vram_checker import (
-    PANEL_VISUALIZATION,
-    VIZ_TAB_3D_PLOT,
-    VRAMConflictChecker,
-)
+from XBrainLab.ui.components.vram_checker import VRAMConflictChecker
 
 
 @pytest.fixture()
 def widget_main_window(qtbot):
     main_window = QMainWindow()
     stack = QStackedWidget(main_window)
-    for _ in range(PANEL_VISUALIZATION):
+    # The visible workspace order is intentionally fixed here rather than
+    # derived from the implementation constants being consolidated.
+    for _ in range(4):
         stack.addWidget(QWidget(stack))
 
     visualization_panel = QWidget(stack)
     tabs = QTabWidget(visualization_panel)
-    for index in range(VIZ_TAB_3D_PLOT + 1):
-        tabs.addTab(QWidget(tabs), f"Tab {index}")
+    for label in (
+        "Saliency Map",
+        "Spectrogram",
+        "Topographic Map",
+        "3D Plot",
+    ):
+        tabs.addTab(QWidget(tabs), label)
     stack.addWidget(visualization_panel)
-    stack.setCurrentIndex(PANEL_VISUALIZATION)
+    stack.setCurrentIndex(4)
 
     main_window.setCentralWidget(stack)
     main_window.stack = stack
@@ -65,9 +68,9 @@ def test_real_widgets_warn_for_initialized_local_mode_with_active_3d(
     widget_main_window,
     widget_checker,
 ):
-    widget_main_window.visualization_panel.tabs.setCurrentIndex(VIZ_TAB_3D_PLOT)
+    widget_main_window.visualization_panel.tabs.setCurrentIndex(3)
     assert not widget_main_window.visualization_panel.isHidden()
-    assert widget_main_window.stack.currentIndex() == PANEL_VISUALIZATION
+    assert widget_main_window.stack.currentIndex() == 4
 
     with patch("XBrainLab.ui.components.vram_checker.show_alert") as show_alert:
         widget_checker.check()
@@ -87,11 +90,11 @@ def test_real_widgets_warn_for_initialized_local_mode_with_active_3d(
 @pytest.mark.parametrize(
     ("tab_index", "panel_hidden", "stack_index", "initialized", "backend_mode"),
     [
-        (0, False, PANEL_VISUALIZATION, True, "local"),
-        (VIZ_TAB_3D_PLOT, True, PANEL_VISUALIZATION, True, "local"),
-        (VIZ_TAB_3D_PLOT, False, 0, True, "local"),
-        (VIZ_TAB_3D_PLOT, False, PANEL_VISUALIZATION, True, "remote"),
-        (VIZ_TAB_3D_PLOT, False, PANEL_VISUALIZATION, False, "local"),
+        (0, False, 4, True, "local"),
+        (3, True, 4, True, "local"),
+        (3, False, 0, True, "local"),
+        (3, False, 4, True, "remote"),
+        (3, False, 4, False, "local"),
     ],
     ids=("other-tab", "hidden", "other-workspace", "nonlocal", "not-initialized"),
 )
@@ -120,7 +123,7 @@ def test_real_widgets_skip_warning_outside_active_local_3d_conditions(
         checker.check()
 
     assert widget_main_window.visualization_panel.isHidden() is (
-        panel_hidden or stack_index != PANEL_VISUALIZATION
+        panel_hidden or stack_index != 4
     )
     assert widget_main_window.stack.currentIndex() == stack_index
     show_alert.assert_not_called()
@@ -129,7 +132,7 @@ def test_real_widgets_skip_warning_outside_active_local_3d_conditions(
 def test_real_widgets_warn_when_switching_to_local_with_3d_visible(
     widget_main_window,
 ):
-    widget_main_window.visualization_panel.tabs.setCurrentIndex(VIZ_TAB_3D_PLOT)
+    widget_main_window.visualization_panel.tabs.setCurrentIndex(3)
     remote_snapshot = AssistantRuntimeSnapshot(
         phase=AssistantRuntimePhase.READY,
         initialized=True,
@@ -152,7 +155,7 @@ def test_real_widgets_warn_when_switching_to_3d_with_local_mode(
     with patch("XBrainLab.ui.components.vram_checker.show_alert") as show_alert:
         widget_checker.on_viz_tab_changed(0)
         show_alert.assert_not_called()
-        widget_checker.on_viz_tab_changed(VIZ_TAB_3D_PLOT)
+        widget_checker.on_viz_tab_changed(3)
 
     show_alert.assert_called_once()
 
@@ -160,7 +163,7 @@ def test_real_widgets_warn_when_switching_to_3d_with_local_mode(
 def test_real_widgets_skip_warning_when_runtime_snapshot_is_unavailable(
     widget_main_window,
 ):
-    widget_main_window.visualization_panel.tabs.setCurrentIndex(VIZ_TAB_3D_PLOT)
+    widget_main_window.visualization_panel.tabs.setCurrentIndex(3)
 
     def unavailable_snapshot():
         raise RuntimeError("runtime not ready")

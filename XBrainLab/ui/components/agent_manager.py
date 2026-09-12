@@ -32,9 +32,6 @@ from XBrainLab.backend.controller.chat_controller import (
     ChatController,
     ChatMessagePresentationKind,
 )
-from XBrainLab.backend.training_state_contract import (
-    TrainingOutcomeState,
-)
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.config import AppConfig
 from XBrainLab.debug.tool_debug_mode import ToolDebugMode
@@ -109,10 +106,18 @@ from XBrainLab.ui.components.vram_checker import VRAMConflictChecker
 from XBrainLab.ui.components.workflow_ui_handoff_host import WorkflowUiHandoffHost
 from XBrainLab.ui.core.observer_bridge import QtObserverBridge
 from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
+from XBrainLab.ui.panel_navigation import (
+    PANEL_DATASET,
+    PANEL_EVALUATION,
+    PANEL_PREPROCESS,
+    PANEL_TRAINING,
+    PANEL_VISUALIZATION,
+    VISUALIZATION_TAB_3D_PLOT,
+    VISUALIZATION_TAB_SALIENCY_MAP,
+    VISUALIZATION_TAB_SPECTROGRAM,
+    VISUALIZATION_TAB_TOPOGRAPHIC_MAP,
+)
 from XBrainLab.ui.styles.stylesheets import Stylesheets
-
-VIZ_TAB_3D_PLOT = 3
-"""Index of the 3D Plot tab in the visualization panel."""
 
 _CHAT_PRUNE_NOTICE = (
     "Older messages were removed from this view to keep the conversation responsive."
@@ -129,13 +134,6 @@ class AssistantTurnAdmissionResult:
     def accepted(self) -> bool:
         return self.correlation is not None
 
-
-# Panel indices in the main window stack
-PANEL_DATASET = 0
-PANEL_PREPROCESS = 1
-PANEL_TRAINING = 2
-PANEL_EVALUATION = 3
-PANEL_VISUALIZATION = 4
 
 _ASSISTANT_CONTROLLER_UI_SIGNALS = (
     "response_presentation_ready",
@@ -1629,17 +1627,6 @@ class AgentManager(QObject):
     ) -> None:
         """Translate one verified Assistant-started run into one terminal notice."""
         coordinator = self._application_publication_coordinator
-        watch = coordinator.snapshot().training_watch
-        outcome = publication.state.training.terminal_outcome
-        if (
-            watch is not None
-            and outcome.is_terminal
-            and (watch.run is None or outcome.run != watch.run)
-        ):
-            logger.warning(
-                "Ignored Assistant training terminal without the current run identity"
-            )
-            return
         notice = coordinator.observe_training_publication(publication)
         if notice is None:
             return
@@ -1652,21 +1639,7 @@ class AgentManager(QObject):
         )
         if notice is None:
             return False
-        copy = {
-            TrainingOutcomeState.COMPLETED: (
-                "Training completed. Results are ready in Evaluation.",
-                AssistantResponseKind.TOOL_RESULT,
-            ),
-            TrainingOutcomeState.FAILED: (
-                "Training failed. Review the Training panel, adjust the "
-                "configuration, and try again.",
-                AssistantResponseKind.ERROR,
-            ),
-            TrainingOutcomeState.CANCELLED: (
-                "Training was cancelled.",
-                AssistantResponseKind.CANCELLED,
-            ),
-        }.get(notice.outcome)
+        copy = self._presentation.training_terminal_presentation(notice.outcome)
         if copy is None:
             self._application_publication_coordinator.complete_terminal_notice(notice)
             self._assistant_training_terminal_retry_timer.stop()
@@ -2141,11 +2114,11 @@ class AgentManager(QObject):
         """
         # Map panel index to view mode mapping
         view_map = {
-            4: {  # Visualization Panel
-                "saliency_map": 0,
-                "spectrogram": 1,
-                "topographic_map": 2,
-                "3d_plot": VIZ_TAB_3D_PLOT,
+            PANEL_VISUALIZATION: {
+                "saliency_map": VISUALIZATION_TAB_SALIENCY_MAP,
+                "spectrogram": VISUALIZATION_TAB_SPECTROGRAM,
+                "topographic_map": VISUALIZATION_TAB_TOPOGRAPHIC_MAP,
+                "3d_plot": VISUALIZATION_TAB_3D_PLOT,
             },
             # Future: Add Preprocess or Evaluation panels if they have tabs
         }

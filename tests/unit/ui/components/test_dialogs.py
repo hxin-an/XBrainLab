@@ -15,7 +15,8 @@ from PyQt6.QtWidgets import (
 
 from XBrainLab.backend.application.epoch_context import build_epoching_context
 from XBrainLab.backend.load_data import Raw
-from XBrainLab.ui.dialogs.dataset import ChannelSelectionDialog, SmartParserDialog
+from XBrainLab.ui.dialogs.dataset import ChannelSelectionDialog
+from XBrainLab.ui.dialogs.dataset.smart_parser_dialog import SmartParserDialog
 from XBrainLab.ui.dialogs.preprocess import (
     EpochingDialog,
     FilteringDialog,

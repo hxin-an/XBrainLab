@@ -3,6 +3,7 @@ from collections.abc import Iterator
 from contextlib import suppress
 from copy import deepcopy
 from threading import Event
+from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -11,7 +12,7 @@ from PyQt6.QtCore import QObject, QThread, pyqtSignal
 
 from XBrainLab.llm.agent.assembler import ContextAssembler, PromptToolPublication
 from XBrainLab.llm.agent.controller import LLMController
-from XBrainLab.llm.agent.rag_lifecycle import RAGRetrieverLifecycle
+from XBrainLab.llm.agent.rag_process_lifecycle import ProcessRAGRetrieverLifecycle
 from XBrainLab.llm.agent.turn import (
     AssistantGenerationRequest,
     AssistantGenerationStopAcknowledgement,
@@ -49,23 +50,30 @@ EXPECTED_CONTROLLER_TOOL_NAMES = (
 )
 
 
-class _NoopRetriever:
-    """Retriever double with no background work or external resources."""
+class _NoopRagLifecycle:
+    """Deterministic injected RAG seam for controller integration tests."""
 
-    def initialize(self) -> None:
-        return None
+    def start(self) -> bool:
+        return True
 
-    def get_similar_examples(
+    def retrieve(
         self,
-        query: str,
+        turn_id,
+        query,
+        callback,
         *,
-        allowed_tool_names: frozenset[str] | None = None,
-    ) -> str:
-        del query, allowed_tool_names
-        return ""
+        allowed_tool_names=None,
+    ) -> bool:
+        del allowed_tool_names
+        callback(turn_id, query, "", "")
+        return True
 
-    def close(self) -> None:
-        return None
+    def cancel_retrieval(self, turn_id: int) -> bool:
+        del turn_id
+        return False
+
+    def close(self) -> bool:
+        return True
 
 
 class _LateGenerationEmitter(QThread):
@@ -116,8 +124,11 @@ class _DelayedStopAcknowledgementEmitter(QThread):
 @pytest.fixture
 def controller(qtbot) -> Iterator[LLMController]:
     """Run integration assertions against the real QObject worker lifecycle."""
-    lifecycle = RAGRetrieverLifecycle(_NoopRetriever())
-    instance = LLMController(MagicMock(), rag_lifecycle=lifecycle)
+    lifecycle = _NoopRagLifecycle()
+    instance = LLMController(
+        MagicMock(),
+        rag_lifecycle=cast(ProcessRAGRetrieverLifecycle, lifecycle),
+    )
     worker = instance.worker
     worker_thread = instance.worker_thread
 

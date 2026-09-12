@@ -18,7 +18,6 @@ from XBrainLab.llm.tools.application_surface import ToolCommandResult
 class AssistantTrainingAttemptSession:
     """Typed identity for one training job admitted through the Assistant."""
 
-    initial_finished_run_count: int
     run: TrainingRunIdentity | None
     correlation: AssistantTurnCorrelation
 
@@ -143,9 +142,6 @@ class AssistantApplicationPublicationCoordinator:
             return False
         outcome = training.get("terminal_outcome")
         self._training_watch = AssistantTrainingAttemptSession(
-            initial_finished_run_count=self._non_negative_int(
-                training.get("finished_run_count")
-            ),
             run=self._serialized_training_run(
                 outcome.get("run") if isinstance(outcome, dict) else None
             ),
@@ -170,17 +166,7 @@ class AssistantApplicationPublicationCoordinator:
         outcome = training.terminal_outcome
         if not isinstance(outcome, TrainingTerminalOutcome) or not outcome.is_terminal:
             return None
-        if (
-            watch.run is not None
-            and outcome.run is not None
-            and outcome.run != watch.run
-        ):
-            return None
-        if (
-            outcome.state is TrainingOutcomeState.COMPLETED
-            and outcome.run is None
-            and training.finished_run_count <= watch.initial_finished_run_count
-        ):
+        if watch.run is None or outcome.run != watch.run:
             return None
         notice = AssistantTrainingTerminalNotice(
             outcome=outcome.state,
@@ -241,9 +227,3 @@ class AssistantApplicationPublicationCoordinator:
             return TrainingRunIdentity(trainer_id=trainer_id, run_id=run_id)
         except (TypeError, ValueError):
             return None
-
-    @staticmethod
-    def _non_negative_int(value: object) -> int:
-        if isinstance(value, bool) or not isinstance(value, int):
-            return 0
-        return max(0, value)

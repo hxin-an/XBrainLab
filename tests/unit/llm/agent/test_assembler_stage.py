@@ -188,6 +188,10 @@ class TestStageBasedFiltering:
             "get_dataset_info",
             "scan_source",
             "query_state",
+            "list_files",
+            "preview_interpretation",
+            "save_interpretation_recipe",
+            "reload_interpretation_recipe",
         }
         registry = ToolRegistry()
         for name in (*retired, "import_eeg_data", "switch_panel"):

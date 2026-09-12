@@ -50,7 +50,10 @@ from XBrainLab.backend.dataset import (
     TrainingType,
     ValSplitByType,
 )
-from XBrainLab.backend.dataset.split_audit import split_preview_rows
+from XBrainLab.backend.dataset.split_audit import (
+    split_preview_rows,
+    split_protocols_for_config,
+)
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training import (
     Trainer,
@@ -490,7 +493,7 @@ def test_real_shorthand_split_command_saves_canonical_non_cv_specification(
         }
     ]
     canonical = DatasetGenerationCommandService.config_from_payload(specification)
-    assert DatasetGenerationCommandService._split_protocols_for_config(canonical) == {
+    assert split_protocols_for_config(canonical) == {
         "test": protocol,
         "validation": protocol,
     }
@@ -540,6 +543,10 @@ def test_real_cross_split_preview_save_and_preparation_preserve_reviewed_members
             specification=specification,
         )
     )
+
+    # Preview validates the canonical split contract but must not construct the
+    # generation command service or mutate its saved/materialized state.
+    assert service.dataset_generation._service_instance is None
 
     saved = service.execute(
         SaveDatasetSplitCommand(

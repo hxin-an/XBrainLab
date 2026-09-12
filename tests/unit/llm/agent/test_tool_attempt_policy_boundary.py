@@ -834,15 +834,13 @@ def test_explicit_dataset_info_request_authorizes_normalized_query_state() -> No
 
 
 def test_unapproved_path_is_blocked_before_schema_verification() -> None:
-    coordinator, source, verifier = _coordinator(
-        _context("scan_source", command_name="scan_source")
-    )
+    coordinator, source, verifier = _coordinator(_context("configure_training"))
 
     decision = coordinator.evaluate(
         _request(
-            "scan_source",
-            params={"source_path": "/tmp/model-invented-path.gdf"},
-            text="Import my EEG data",
+            "configure_training",
+            params={"output_dir": "/tmp/model-invented-output"},
+            text="Configure training",
         )
     )
 
@@ -851,7 +849,7 @@ def test_unapproved_path_is_blocked_before_schema_verification() -> None:
     assert decision.result.error_type == "input"
     assert decision.result.diagnostics["policy"] == "path_provenance"
     assert decision.result.diagnostics["publication_generation"] == 21
-    assert source.reads == ["scan_source"]
+    assert source.reads == ["configure_training"]
     assert verifier.calls == []
 
 

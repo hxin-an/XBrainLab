@@ -5,13 +5,12 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import TYPE_CHECKING
 
-from .utils.check import validate_issubclass, validate_list_type
+from .utils.check import validate_list_type
 from .utils.logger import logger
 
 if TYPE_CHECKING:
     from .dataset import Dataset, DatasetGenerator, Epochs
     from .load_data import Raw
-    from .preprocessor import PreprocessBase
 
 
 class DataManager:
@@ -135,23 +134,6 @@ class DataManager:
                 force_update=force_update,
             )
         logger.info("Reset preprocess to loaded data")
-
-    def preprocess(self, preprocessor: type[PreprocessBase], **kwargs) -> None:
-        """Apply a preprocessing step to the current data.
-
-        Args:
-            preprocessor (type[PreprocessBase]): The preprocessor class to apply.
-            **kwargs: Keyword arguments for the preprocessor's data_preprocess method.
-
-        """
-        from .preprocessor import PreprocessBase  # noqa: PLC0415
-
-        validate_issubclass(preprocessor, PreprocessBase, "preprocessor")
-        pp_instance = preprocessor(self.preprocessed_data_list)
-        pp_instance.check_data()
-        preprocessed_data_list = pp_instance.data_preprocess(**kwargs)
-        self.set_preprocessed_data_list(preprocessed_data_list)
-        logger.info("Applied preprocessing: %s", pp_instance.__class__.__name__)
 
     # --- Datasets ---
     def set_datasets(self, datasets: list[Dataset], force_update: bool = False) -> None:

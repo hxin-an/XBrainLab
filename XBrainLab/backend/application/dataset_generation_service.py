@@ -22,6 +22,7 @@ from XBrainLab.backend.dataset.split_audit import (
     blocking_split_audit_issues,
     materialization_digest,
     split_preview_rows,
+    split_protocols_for_config,
 )
 from XBrainLab.backend.exceptions import StaleTrainingPipelineMutationError
 from XBrainLab.backend.training_state_contract import TrainingPipelineMutationBoundary
@@ -245,7 +246,7 @@ class DatasetGenerationCommandService:
                         "state_preserved": True,
                     },
                 )
-            protocols = self._split_protocols_for_config(config)
+            protocols = split_protocols_for_config(config)
             protocol = protocols["test"]
             self._require_preview_evidence_matches(
                 saved.preview_summary,
@@ -1076,29 +1077,6 @@ class DatasetGenerationCommandService:
             if text in {item.value, item.name, enum_repr}:
                 return item
         raise ValueError(f"Unknown {enum_type.__name__} value: {value}")
-
-    @classmethod
-    def _split_protocols_for_config(
-        cls,
-        config: DataSplittingConfig,
-    ) -> dict[str, str]:
-        test_rule = next(rule for rule in config.test_splitter_list if rule.is_option)
-        protocols = {"test": cls._split_protocol_for_rule(test_rule)}
-        validation_rule = next(
-            (rule for rule in config.val_splitter_list if rule.is_option), None
-        )
-        if validation_rule is not None:
-            protocols["validation"] = cls._split_protocol_for_rule(validation_rule)
-        return protocols
-
-    @staticmethod
-    def _split_protocol_for_rule(rule: Any) -> str:
-        split_type = getattr(rule, "split_type", None)
-        if split_type in {SplitByType.SUBJECT, ValSplitByType.SUBJECT}:
-            return "subject-wise"
-        if split_type in {SplitByType.SESSION, ValSplitByType.SESSION}:
-            return "session-wise"
-        return "trial-wise"
 
     def _require_preview_evidence_matches(
         self,

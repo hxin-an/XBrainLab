@@ -15,7 +15,6 @@ _EXPORT_MODULES = {
     "ChannelSelectionDialog": ".channel_selection_dialog",
     "DataInterpretationPreviewDialog": ".data_interpretation_preview_dialog",
     "DataSplittingDialog": ".data_splitting_dialog",
-    "SmartParserDialog": ".smart_parser_dialog",
 }
 
 __all__ = list(_EXPORT_MODULES)

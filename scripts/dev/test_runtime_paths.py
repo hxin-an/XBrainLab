@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import stat
 import tempfile
 from hashlib import sha256
 from pathlib import Path
@@ -34,6 +35,38 @@ def configure_test_temp_root(repo_root: Path) -> Path:
     os.environ["TMPDIR"] = str(test_temp_root)
     tempfile.tempdir = str(test_temp_root)
     return test_temp_root
+
+
+def create_owned_pytest_temp_root(test_temp_root: Path) -> Path:
+    """Create one runner-owned child root safe to remove after a passed shard."""
+    return Path(tempfile.mkdtemp(prefix="pytest-run-", dir=test_temp_root))
+
+
+def remove_owned_pytest_temp_root(test_temp_root: Path, owned_root: Path) -> None:
+    """Remove only a direct, non-symlink child created for this runner."""
+    import shutil
+
+    root = test_temp_root.resolve()
+    if owned_root.is_symlink() or owned_root.parent.resolve() != root:
+        return
+    if not owned_root.name.startswith("pytest-run-") or not owned_root.is_dir():
+        return
+    if (
+        getattr(owned_root.lstat(), "st_file_attributes", 0)
+        & stat.FILE_ATTRIBUTE_REPARSE_POINT
+    ):
+        return
+
+    def retry_owned_readonly_remove(function, path, _exc_info) -> None:
+        candidate = Path(path)
+        if candidate.is_symlink() or not candidate.resolve().is_relative_to(
+            owned_root.resolve()
+        ):
+            raise PermissionError(f"Refused cleanup outside owned pytest root: {path}")
+        os.chmod(candidate, candidate.stat().st_mode | stat.S_IWRITE)
+        function(path)
+
+    shutil.rmtree(owned_root, onerror=retry_owned_readonly_remove)
 
 
 def matplotlib_cache_root(

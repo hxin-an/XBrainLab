@@ -39,8 +39,10 @@ from XBrainLab.llm.tools.result_contract import (
     redact_public_text,
     safe_unexpected_failure,
 )
+from XBrainLab.product_language import tool_action_label
 
 from .assembler import PromptToolPublication
+from .confirmation import AgentConfirmationRequest, AgentConfirmationRisk
 from .execution_policy import HostExecutionPolicy
 from .turn import AssistantToolInputReceipt
 from .verifier import (
@@ -299,6 +301,45 @@ class ToolAttemptCoordinator:
             command,
             start.reason,
             discarded_count=max(len(commands) - 1, 0),
+        )
+
+    @staticmethod
+    def build_confirmation_request(
+        decision: ToolAttemptDecision,
+        context: ToolAvailabilityContext | None = None,
+    ) -> AgentConfirmationRequest:
+        """Build the typed request paired with one confirmation decision."""
+        cmd = decision.command_name
+        # Keep the prompt-time generation on the request. Resolution re-reads a
+        # fresh context and ApplicationService performs the final locked check.
+        tool_context = context
+        if tool_context is None and isinstance(
+            decision.context,
+            ToolAvailabilityContext,
+        ):
+            tool_context = decision.context
+        label = tool_action_label(cmd)
+        availability = tool_context.availability if tool_context is not None else None
+        high_impact = decision.confirmation_kind == "setting_change"
+        risk = AgentConfirmationRisk.from_policy(
+            command_name=cmd,
+            destructive=bool(availability and availability.destructive),
+            high_impact=high_impact,
+            long_running=bool(availability and availability.long_running),
+            decision_boundary=(
+                availability.decision_boundary if availability is not None else None
+            ),
+        )
+        return AgentConfirmationRequest.for_action(
+            command_name=cmd,
+            params=decision.params,
+            action_label=label,
+            description=decision.message
+            or (decision.tool.description if decision.tool else label),
+            destructive=risk.destructive,
+            publication_generation=(tool_context.generation if tool_context else None),
+            confirmation_kind=decision.confirmation_kind,
+            risk=risk,
         )
 
     def evaluate(self, request: ToolAttemptRequest) -> ToolAttemptDecision:

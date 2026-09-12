@@ -537,13 +537,6 @@ class TrainingCommandService:
     def _resource_preflight_context(self) -> dict[str, Any]:
         return self.training_runtime.resource_context().to_mapping()
 
-    def _resolve_resource_preflight(
-        self,
-        command: TrainCommand,
-    ) -> tuple[ResourcePreflightResult, bool]:
-        """Atomically validate and consume one exact warning receipt."""
-        return self.resolve_train_preflight(command)
-
     def handle_stop_training(self, command: Command) -> HandlerResult:
         if not isinstance(command, StopTrainingCommand):
             raise TypeError("Invalid command for stop_training")

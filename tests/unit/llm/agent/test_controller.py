@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import json
 import logging
-import threading
 from dataclasses import replace
 from typing import Any, cast
 from unittest.mock import MagicMock, call, patch
@@ -162,7 +160,9 @@ def _begin_confirmation(
     decision: ToolAttemptDecision,
     request: AgentConfirmationRequest | None = None,
 ) -> PendingConfirmation:
-    paired_request = request or ctrl._build_confirmation_request(decision)
+    paired_request = (
+        request or ctrl._tool_attempt_coordinator.build_confirmation_request(decision)
+    )
     return _pending_session(ctrl).begin_confirmation(decision, paired_request)
 
 
@@ -297,7 +297,7 @@ def _evaluate_policy(
             confidence=0.9,
             publication=ctrl._turn_orchestrator.active_publication,
             latest_user_text=(
-                ctrl._latest_user_request_text() if text is None else text
+                ctrl._conversation.latest_user_request_text() if text is None else text
             ),
         )
     )
@@ -509,41 +509,10 @@ def _use_rag_probe(ctrl: Any, *, accept: bool = True) -> _RAGLifecycleProbe:
     return lifecycle
 
 
-class _BlockingRAGRetriever:
-    def __init__(self) -> None:
-        self.started = threading.Event()
-        self.release = threading.Event()
-        self.closed = False
-
-    def initialize(self) -> None:
-        return None
-
-    def get_similar_examples(
-        self,
-        query: str,
-        *,
-        allowed_tool_names: frozenset[str] | None = None,
-    ) -> str:
-        del allowed_tool_names
-        self.started.set()
-        self.release.wait(timeout=2)
-        return "RAG info"
-
-    def close(self) -> None:
-        self.closed = True
-        self.release.set()
-
-
 def _make_real_signal_controller(
-    rag_retriever: Any,
-    *,
-    rag_lifecycle: Any | None = None,
+    rag_lifecycle: Any,
 ) -> Any:
     from PyQt6.QtCore import QObject
-
-    from XBrainLab.llm.agent.rag_lifecycle import RAGRetrieverLifecycle
-
-    lifecycle = rag_lifecycle or RAGRetrieverLifecycle(rag_retriever)
 
     with (
         patch("XBrainLab.llm.agent.controller.ToolRegistry"),
@@ -555,7 +524,7 @@ def _make_real_signal_controller(
     ):
         from XBrainLab.llm.agent.controller import LLMController
 
-        controller = LLMController(MagicMock(), rag_lifecycle=lifecycle)
+        controller = LLMController(MagicMock(), rag_lifecycle=rag_lifecycle)
         assert isinstance(controller, QObject)
         return controller
 
@@ -1088,28 +1057,38 @@ class TestHandleUserInput:
 
 
 def test_handle_user_input_does_not_block_qt_event_loop_during_rag(qtbot):
-    from PyQt6.QtCore import QEventLoop, QTimer
+    from PyQt6.QtCore import QTimer
 
-    rag = _BlockingRAGRetriever()
-    ctrl = _make_real_signal_controller(rag)
+    from tests.unit.llm.agent.test_rag_process_lifecycle import _stuck_worker
+    from XBrainLab.llm.agent.rag_process_lifecycle import (
+        ProcessRAGRetrieverLifecycle,
+    )
+
+    lifecycle = ProcessRAGRetrieverLifecycle(
+        process_target=_stuck_worker,
+        retrieval_timeout_seconds=5.0,
+        shutdown_wait_seconds=0.5,
+    )
+    ctrl = _make_real_signal_controller(lifecycle)
     ctrl._generate_response = MagicMock()
+    ticks: list[bool] = []
+    tick = QTimer()
+    tick.setInterval(1)
+    tick.timeout.connect(lambda: ticks.append(True))
+    tick.start()
+    try:
+        _submit_user_turn(ctrl, "do something")
 
-    _submit_user_turn(ctrl, "do something")
-
-    assert rag.started.wait(timeout=2)
-    assert not rag.release.is_set()
-    ctrl._generate_response.assert_not_called()
-
-    processed = []
-    loop = QEventLoop()
-    QTimer.singleShot(0, lambda: processed.append(True))
-    QTimer.singleShot(0, loop.quit)
-    loop.exec()
-    assert processed == [True]
-
-    rag.release.set()
-    qtbot.waitUntil(lambda: ctrl._generate_response.call_count == 1, timeout=2_000)
-    ctrl._generate_response.assert_called_once()
+        qtbot.waitUntil(
+            lambda: bool(ticks) and ctrl._generate_response.call_count == 0,
+            timeout=2_000,
+        )
+        assert lifecycle.has_active_process is True
+        ctrl._generate_response.assert_not_called()
+    finally:
+        tick.stop()
+        assert lifecycle.close() is True
+        assert lifecycle.has_active_process is False
 
 
 # --- _on_chunk_received ---
@@ -2411,44 +2390,35 @@ class TestProcessToolCalls:
         assert isinstance(unrelated, ToolCommandResult)
         assert unrelated.error_type == "tool_not_published"
 
-    def test_model_invented_path_is_rejected_by_turn_provenance(self, ctrl, tmp_path):
-        from XBrainLab.llm.tools.application_surface import (
-            ToolAvailability,
-            ToolAvailabilityContext,
-        )
-
-        invented = tmp_path / "not-selected"
-        invented.mkdir()
-        ctrl.history = [{"role": "user", "content": "Show my EEG files"}]
-        context = ToolAvailabilityContext(
-            availability=ToolAvailability(tool_name="list_files", enabled=True),
-            state={"interpretation": {}},
-            generation=14,
-        )
-
-        result = _evaluate_policy(
-            ctrl,
-            "list_files",
-            context,
-            params={"directory": str(invented)},
-        ).result
-
-        assert isinstance(result, ToolCommandResult)
-        assert result.error_type == "input"
-        assert result.diagnostics["policy"] == "path_provenance"
-        assert "Choose a file or folder" in result.message
-
 
 # --- close ---
+@pytest.mark.parametrize(
+    ("name", "params"),
+    [
+        ("apply_bandpass_filter", {"low_freq": 4, "high_freq": 38}),
+        ("apply_bandpass_filter", {"low_frequency": 4, "extra": None}),
+        ("create_epoch", {"confirmed": True}),
+        ("create_epochs", {}),
+        ("switch_panel", {"panel_name": "visualization", "view_mode": "3d_plot"}),
+    ],
+)
+def test_controller_preserves_exact_proposal_and_detaches_parameters(
+    ctrl, name, params
+):
+    ctrl.history = [{"role": "user", "content": "Use a 1 to 40 Hz filter instead"}]
+    original = dict(params)
+    proposal = ctrl._select_tool_proposal((name, params))
+    assert proposal == (name, original)
+    assert proposal[1] is not params
+    assert params == original
+
+
 class TestClose:
     def test_constructor_injected_rag_lifecycle_is_the_only_cleanup_owner(self):
         retriever = MagicMock()
         lifecycle = MagicMock(retriever=retriever)
         lifecycle.close.return_value = True
-        controller = _make_real_signal_controller(
-            MagicMock(),
-            rag_lifecycle=lifecycle,
-        )
+        controller = _make_real_signal_controller(lifecycle)
         controller.worker_thread.isRunning.return_value = False
 
         assert controller.close() is True
@@ -5337,71 +5307,6 @@ class TestPipelineGate:
         assert result.error_type == "input"
         assert "Required inputs" in result.message
         mock_tool.execute.assert_not_called()
-
-    def test_tool_output_history_uses_compact_state_summary(self, ctrl):
-        result = ToolCommandResult(
-            ok=True,
-            tool_name="query_state",
-            command_name="query_state",
-            message="Application state snapshot ready.",
-            state={
-                "pipeline_stage": "empty",
-                "raw": {
-                    "loaded": False,
-                    "count": 0,
-                    "metadata": [{"large": "payload"}],
-                    "diagnostics": {"verbose": "details"},
-                },
-                "training": {
-                    "has_model": False,
-                    "missing_requirements": ["Data Splitting"],
-                },
-            },
-            diagnostics={
-                "payload_type": "state_snapshot",
-                "state": {"too": "big"},
-                "publication_generation": 8,
-                "view_verified": True,
-                "view_stale": True,
-                "view_refresh_error": "A command is still publishing state.",
-            },
-            raw_result={"status": "ok", "state": {"too": "big"}},
-        )
-
-        payload = json.loads(ctrl._format_tool_output("query_state", True, result))
-
-        assert payload["message"] == "Application state snapshot ready."
-        assert payload["state_summary"]["pipeline_stage"] == "empty"
-        assert payload["state_summary"]["raw"] == {"loaded": False, "count": 0}
-        assert payload["state_summary"]["training"]["missing_requirements"] == [
-            "Data Splitting"
-        ]
-        assert payload["diagnostics"] == {
-            "payload_type": "state_snapshot",
-            "publication_generation": 8,
-            "view_verified": True,
-            "view_stale": True,
-            "view_refresh_error": "A command is still publishing state.",
-        }
-        assert "raw_result" not in payload
-        assert "state" not in payload
-
-    def test_import_summary_uses_neutral_product_language(self):
-        from XBrainLab.llm.agent.controller import LLMController
-
-        result = ToolCommandResult.failure(
-            "import_eeg_data",
-            "Load raw data first.",
-            command_name=CommandName.SCAN_SOURCE.value,
-            error_type="precondition",
-        )
-
-        summary = LLMController._summarize_tool_result("import_eeg_data", False, result)
-
-        assert "EEG data import can't run yet" in summary
-        assert "**Required first:** Load raw data first." in summary
-        assert "Load EEG data" not in summary
-        assert "import_eeg_data" not in summary
 
     def test_train_blocked_until_backend_ready(self, ctrl):
         """Train is blocked until raw data, split, model, and options exist."""
