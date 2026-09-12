@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from copy import copy
 from pathlib import Path
 from threading import Event, Thread, get_ident
 from typing import Any, cast
@@ -666,6 +667,7 @@ def test_completed_model_summary_tracks_selected_result_during_training(
             assert "model_summary" not in result.diagnostics
         else:
             assert result.ok, result.message
+            assert len(result.diagnostics["plans"]) == 2
             assert result.diagnostics["model_summary"]["status"] == "ready"
             assert "EEGNet" in result.diagnostics["model_summary"]["text"]
             assert result.state == current.state
@@ -677,6 +679,82 @@ def test_completed_model_summary_tracks_selected_result_during_training(
         release_summary.set()
         if worker is not None:
             worker.join(timeout=10.0)
+        service.wait_for_background_tasks(timeout=10.0)
+        service.close()
+
+
+@pytest.mark.parametrize(
+    ("changed_target", "select_run"),
+    (
+        ("plan", False),
+        ("run", True),
+        ("dataset", False),
+        ("dataset", True),
+        ("model", True),
+        ("model_holder", False),
+        ("terminal", True),
+    ),
+)
+def test_model_summary_revalidates_exact_target_after_detached_inspection(
+    tmp_path: Path,
+    monkeypatch,
+    changed_target: str,
+    select_run: bool,
+) -> None:
+    """A changed target cannot publish old model text, even without a new trainer."""
+    study, service = _prepare_training_runtime(tmp_path)
+    try:
+        assert service.execute(TrainCommand(interactive=False, confirmed=True)).ok
+        trainer = study.training_manager.trainer
+        assert trainer is not None
+        holder = trainer.get_training_plan_holders()[0]
+        run = holder.get_plans()[0]
+        plan_identity = EvaluationPlanIdentity(plan_index=0)
+        command = EvaluateCommand(
+            summary_identity=EvaluationSummaryIdentity(
+                plan=plan_identity,
+                run=EvaluationRunIdentity(plan=plan_identity, run_index=0)
+                if select_run
+                else None,
+            )
+        )
+        inspect_model = service.analysis.build_prepared_model_summary
+        inspections = []
+
+        def inspect_then_replace(preparation):
+            summary = inspect_model(preparation)
+            assert summary.status == "ready"
+            inspections.append(summary)
+            # Inject one same-trainer target substitution at the unlocked
+            # inspection seam. Actual command admission and revalidation run.
+            if changed_target == "plan":
+                target_patch.setattr(trainer, "training_plan_holders", [copy(holder)])
+            elif changed_target == "run":
+                target_patch.setattr(holder, "train_record_list", [copy(run)])
+            elif changed_target == "dataset":
+                target = run if select_run else holder
+                target_patch.setattr(target, "dataset", copy(target.dataset))
+            elif changed_target == "model":
+                target_patch.setattr(run, "model", copy(run.model))
+            elif changed_target == "model_holder":
+                target_patch.setattr(holder, "model_holder", copy(holder.model_holder))
+            else:
+                target_patch.setattr(run, "model", None)
+            return summary
+
+        with monkeypatch.context() as target_patch:
+            target_patch.setattr(
+                service.analysis, "build_prepared_model_summary", inspect_then_replace
+            )
+            result = service.execute(command)
+
+        assert len(inspections) == 1
+        assert not result.ok
+        assert result.diagnostics["stale_evaluation_summary"] is True
+        assert result.diagnostics["trainer_identity_changed"] is False
+        assert result.diagnostics["state_preserved"] is True
+        assert "model_summary" not in result.diagnostics
+    finally:
         service.wait_for_background_tasks(timeout=10.0)
         service.close()
 
