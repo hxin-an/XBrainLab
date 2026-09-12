@@ -41,7 +41,6 @@ PUBLIC_EXCEPTION_TYPE_BOUNDARIES = (
     "XBrainLab/llm/tools/result_contract.py",
     "XBrainLab/ui/components/assistant_command_dispatcher.py",
     "XBrainLab/ui/dialogs/dataset/data_splitting_preview_dialog.py",
-    "scripts/dev/run_application_command.py",
 )
 _SENSITIVE_LOG_NAMES = frozenset(
     {

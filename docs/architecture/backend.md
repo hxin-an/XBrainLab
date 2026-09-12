@@ -29,7 +29,8 @@ objects，但產品 UI mutation 不能繞過這條 spine。
 
 產品入口不得建立自己的 capability policy、confirmation authority、async lifecycle 或可變 state。
 Assistant 的 tool contract 也只能經過相同 command/query boundary；已退役的 MCP executable
-surface 不在 current architecture 內。
+surface 不在 current architecture 內。Headless JSON command CLI 與專屬 automation adapter 已移除；
+受支援 scripts 直接使用 typed Command/query API，不保留另一套 JSON command schema 或便利匯出。
 
 ## Current responsibilities
 

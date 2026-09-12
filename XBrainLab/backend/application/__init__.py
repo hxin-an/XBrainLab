@@ -129,15 +129,9 @@ _EXPORT_MODULES: dict[str, str] = {
     "MetadataFieldResolution": ".data_interpretation",
     "ScanResult": ".data_interpretation",
     "ValidationDecision": ".data_interpretation",
-    # heavier runtime/automation exports kept lazy for compatibility
+    # runtime exports stay lazy to keep command-contract imports lightweight
     "ApplicationService": ".service",
     "get_application_service": ".runtime",
-    "AutomationCommandSpec": ".automation",
-    "AutomationExecution": ".automation",
-    "AutomationPayloadError": ".automation",
-    "build_command_from_payload": ".automation",
-    "command_specs": ".automation",
-    "execute_automation_payload": ".automation",
 }
 
 __all__ = list(_EXPORT_MODULES)
@@ -145,7 +139,7 @@ __all__.sort()
 
 
 def __getattr__(name: str) -> Any:
-    """Load compatibility exports on demand without broad startup imports."""
+    """Load public exports on demand without broad startup imports."""
     module_name = _EXPORT_MODULES.get(name)
     if module_name is None:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

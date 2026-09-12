@@ -19,7 +19,6 @@ _BAD_DATASET_IMPORT_ROOTS = (
     "vtk",
     "scipy",
     "XBrainLab.backend.application.service",
-    "XBrainLab.backend.application.automation",
     "XBrainLab.backend.application.runtime",
     "XBrainLab.backend.application.training_service",
     "XBrainLab.backend.application.analysis_service",

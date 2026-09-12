@@ -1,6 +1,6 @@
 # XBrainLab Decisions
 
-最後更新：`2026-09-06`
+最後更新：`2026-09-12`
 
 ## 這份文件的用途
 
@@ -18,6 +18,7 @@
 | 決策 | 狀態 | 說明 |
 | --- | --- | --- |
 | 穩定化優先 | active | 先讓既有 app 可跑、可測、可理解，再做 agent redesign。 |
+| Headless JSON command CLI 退役 | active | 使用者核准物理移除 CLI、專屬 automation adapter、便利匯出及專屬測試；仍有用途的行為測試改由 typed Command 保護。ApplicationService / Command/query 契約保留，受支援 scripts 直接使用該 spine；不留 legacy、相容空殼或替代 JSON 控制層。 |
 | app 內 assistant 是 workflow operator | active | 它不是外部 coding assistant，也不是普通聊天視窗。 |
 | assistant runtime local-only | active | 為了簡化開發、部署、隱私和驗證，assistant product runtime 已 local-only；remote backend modules 已從 product package 移除，`openai` / `google-genai` 只留 optional `legacy-remote-llm` dependency group。 |
 | Assistant tool surface 由 approved intent 決定 | active | Tool 不由 runtime inventory 或既有測試反推。名稱、membership、side effect、confirmation 與 visible result 必須先在 `docs/target/agent.md` 的 intent ledger 取得使用者核准；current model-facing projection 只描述現況。 |

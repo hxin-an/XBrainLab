@@ -39,7 +39,6 @@ def test_application_package_root_is_contract_light() -> None:
             "pyvistaqt",
             "XBrainLab.backend.application.service",
             "XBrainLab.backend.application.runtime",
-            "XBrainLab.backend.application.automation",
             "XBrainLab.backend.application.training_service",
             "XBrainLab.backend.application.dataset_generation_service",
             "XBrainLab.backend.training",

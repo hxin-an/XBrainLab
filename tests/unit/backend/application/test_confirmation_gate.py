@@ -18,83 +18,18 @@ from XBrainLab.backend.application import (
     QueryStateCommand,
     ResetSessionCommand,
     TrainCommand,
-    command_specs,
-    execute_automation_payload,
 )
 from XBrainLab.backend.application.state import DatasetSplitLifecycle
 from XBrainLab.backend.study import Study
 
 
-def test_public_automation_confirmation_field_sweep_is_strict_boolean() -> None:
-    confirmation_schemas = {
-        field_name: field_schema
-        for spec in command_specs()
-        for field_name, field_schema in spec.input_schema["properties"].items()
-        if field_name == "confirmed" or field_name.endswith("_confirmed")
-    }
-
-    assert set(confirmation_schemas) == {
-        "confirmed",
-        "resource_preflight_confirmed",
-    }
-    assert all(
-        field_schema == {"type": "boolean"}
-        for field_schema in confirmation_schemas.values()
-    )
-
-    create_epoch_spec = next(
-        spec for spec in command_specs() if spec.name == CommandName.CREATE_EPOCH
-    )
-    assert create_epoch_spec.input_schema["properties"]["confirmation_receipt"] == {
-        "type": "string",
-        "nullable": True,
-    }
-
-
-@pytest.mark.parametrize("invalid_confirmation", ["false", 1])
-@pytest.mark.parametrize(
-    ("field_name", "valid_arguments"),
-    [
-        ("confirmed", {}),
-        ("resource_preflight_confirmed", {"confirmed": True}),
-    ],
-)
-def test_public_automation_rejects_non_boolean_confirmation_fields(
-    field_name: str,
-    valid_arguments: dict[str, Any],
-    invalid_confirmation: object,
-) -> None:
-    service = _ready_training_service()
-    arguments = {**valid_arguments, field_name: invalid_confirmation}
-
-    execution = execute_automation_payload(
-        service,
-        {"command": "train", "arguments": arguments},
-    )
-
-    assert execution.accepted is False
-    assert execution.command_name == "train"
-    assert execution.verification["schema_valid"] is False
-    assert field_name in execution.verification["error"]
-    assert "must be a boolean" in execution.verification["error"]
-    assert type(invalid_confirmation).__name__ in execution.verification["error"]
-    assert execution.result is None
-    service.training.start_training.assert_not_called()
-
-
-def test_public_automation_preserves_false_as_missing_confirmation() -> None:
+def test_command_gate_preserves_false_as_missing_confirmation() -> None:
     service = _ready_training_service()
 
-    execution = execute_automation_payload(
-        service,
-        {"command": "train", "arguments": {"confirmed": False}},
-    )
+    result = service.execute(TrainCommand(confirmed=False))
 
-    assert execution.accepted is True
-    assert execution.verification["schema_valid"] is True
-    assert execution.result is not None
-    assert execution.result["status"] == "failed"
-    assert execution.result["error_type"] == "confirmation_required"
+    assert result.failed is True
+    assert result.error_type is ErrorType.CONFIRMATION_REQUIRED
     service.training.start_training.assert_not_called()
 
 

@@ -19,7 +19,6 @@ from XBrainLab.backend.application import (
     DiscardTrainingPreparationCommand,
     SaveDatasetSplitCommand,
     TrainCommand,
-    execute_automation_payload,
 )
 from XBrainLab.backend.application.dataset_generation_service import (
     DatasetGenerationCommandService,
@@ -1166,7 +1165,7 @@ def test_stale_publication_and_epoch_preview_receipts_are_rejected() -> None:
     assert "current EEG epochs" in stale_epoch.message
 
 
-def test_automation_json_saves_split_then_train_materializes_once(monkeypatch) -> None:
+def test_commands_save_split_then_train_materializes_once(monkeypatch) -> None:
     service, epoch = _service_with_epoch()
     generator = MagicMock()
     generator.prepare_result.return_value = [_materialized_dataset(epoch)]
@@ -1181,36 +1180,25 @@ def test_automation_json_saves_split_then_train_materializes_once(monkeypatch) -
         ),
     )
 
-    saved = execute_automation_payload(
-        service,
-        {
-            "command": "configure_dataset_split",
-            "arguments": {"split_config": _specification().to_payload()},
-        },
+    saved = service.execute(
+        SaveDatasetSplitCommand(split_config=_specification().to_payload()),
     )
-    configured = execute_automation_payload(
-        service,
-        {
-            "command": "configure_training",
-            "arguments": {
-                "model_name": "EEGNet",
-                "epoch": 1,
-                "batch_size": 4,
-                "learning_rate": 0.001,
-                "device": "cpu",
-            },
-        },
+    configured = service.execute(
+        ConfigureTrainingCommand(
+            model_name="EEGNet",
+            epoch=1,
+            batch_size=4,
+            learning_rate=0.001,
+            device="cpu",
+        ),
     )
-    trained = execute_automation_payload(
-        service,
-        {"command": "train", "arguments": {"confirmed": True}},
-    )
+    trained = service.execute(TrainCommand(confirmed=True))
 
-    assert saved.result is not None and saved.result["status"] == "ok"
-    assert saved.state["dataset"]["split_spec_saved"] is True
-    assert saved.state["dataset"]["available"] is False
-    assert configured.result is not None and configured.result["status"] == "ok"
-    assert trained.result is not None and trained.result["status"] == "ok"
+    assert saved.ok is True
+    assert saved.state.dataset.split_spec_saved is True
+    assert saved.state.dataset.available is False
+    assert configured.ok is True
+    assert trained.ok is True
     assert generator.prepare_result.call_count == 1
 
 
