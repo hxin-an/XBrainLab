@@ -175,6 +175,61 @@ def test_main_isolates_preferences_before_gui_and_restores_host_on_failure(
     assert roots and all(not root.exists() for root in roots)
 
 
+@pytest.mark.parametrize(
+    ("module_name", "arguments", "result"),
+    [
+        (
+            "run_preprocess_async_filter_stress",
+            ["--fixture"],
+            {"ok": True},
+        ),
+        (
+            "run_ui_native_render_stress",
+            ["--fixture"],
+            {"interactive_3d_probe": {"status": "SKIP"}},
+        ),
+    ],
+)
+@pytest.mark.parametrize("fail", [False, True])
+def test_native_stress_main_isolates_and_restores_host_preferences(
+    monkeypatch, tmp_path, capture_tmp, module_name, arguments, result, fail
+):
+    module = importlib.import_module(f"scripts.dev.{module_name}")
+    host = tmp_path / "host config"
+    host.mkdir()
+    host_settings = host / "settings.json"
+    host_settings.write_bytes(b'{"host": true}\n')
+    fixture = tmp_path / "fixture.gdf"
+    fixture.write_bytes(b"fixture")
+    monkeypatch.setenv("XBRAINLAB_CONFIG_DIR", str(host))
+    observed = []
+
+    def fake_stress(*_args, **_kwargs):
+        isolated = Path(os.environ["XBRAINLAB_CONFIG_DIR"])
+        assert isolated != host
+        assert isolated.is_dir()
+        settings = application_settings()
+        settings.setValue("stress-probe", QByteArray(b"isolated"))
+        settings.sync()
+        observed.append(isolated)
+        if fail:
+            raise _BeforeGui
+        return result
+
+    monkeypatch.setattr(module, "run_stress", fake_stress)
+    argv = [module_name, *arguments, str(fixture), "--cycles", "1"]
+    monkeypatch.setattr(sys, "argv", argv)
+
+    if fail and module_name == "run_preprocess_async_filter_stress":
+        with pytest.raises(_BeforeGui):
+            module.main()
+    else:
+        assert module.main() == (1 if fail else 0)
+    assert os.environ["XBRAINLAB_CONFIG_DIR"] == str(host)
+    assert host_settings.read_bytes() == b'{"host": true}\n'
+    assert observed and all(not path.exists() for path in observed)
+
+
 @pytest.mark.parametrize("previous", [None, ""])
 @pytest.mark.parametrize("fail", [False, True])
 def test_capture_config_lifetime_restores_missing_or_empty_override(

@@ -6,7 +6,6 @@ import argparse
 import json
 import os
 import re
-import shutil
 import sys
 from pathlib import Path
 from typing import Any
@@ -48,7 +47,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--confirm-resource-plan", action="store_true")
-    parser.add_argument("--force", action="store_true")
     return parser
 
 
@@ -78,11 +76,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     output_dir = require_build_output_path(args.output_dir or default_output)
     if output_dir.exists():
-        if not args.force:
-            raise FileExistsError(
-                f"Capture output already exists; choose a new run-id: {output_dir}"
-            )
-        shutil.rmtree(output_dir)
+        raise FileExistsError(
+            f"Capture output already exists; choose a new run-id: {output_dir}"
+        )
     output_dir.mkdir(parents=True)
 
     with isolated_capture_config():

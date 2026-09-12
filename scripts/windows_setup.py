@@ -163,7 +163,9 @@ def select_model_id(settings_path: Path) -> str:
     """Read a supported persisted model choice without modifying settings."""
     try:
         payload = json.loads(settings_path.read_text(encoding="utf-8"))
-        model_id = str(payload.get("local", {}).get("model_name", "")).strip()
+        local = payload.get("local", {}) if isinstance(payload, dict) else {}
+        model_name = local.get("model_name", "") if isinstance(local, dict) else ""
+        model_id = str(model_name).strip()
     except (OSError, TypeError, ValueError, json.JSONDecodeError):
         model_id = ""
     return (

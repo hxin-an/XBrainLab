@@ -17,6 +17,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 
+from scripts.dev.capture_config import isolated_capture_config
 from scripts.dev.native_process_safety import disable_core_dumps
 
 _NATIVE_PROCESS_SAFETY = disable_core_dumps()
@@ -1797,11 +1798,12 @@ def main() -> int:
         parser.error(f"fixture does not exist: {fixture}")
 
     try:
-        result = run_stress(
-            fixture=fixture,
-            cycles=args.cycles,
-            warmup_cycles=args.warmup_cycles,
-        )
+        with isolated_capture_config():
+            result = run_stress(
+                fixture=fixture,
+                cycles=args.cycles,
+                warmup_cycles=args.warmup_cycles,
+            )
     except Exception:
         traceback.print_exc(file=sys.stderr)
         return 1
