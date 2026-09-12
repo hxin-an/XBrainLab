@@ -77,13 +77,9 @@ _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE = (
 )
 
 
-def _dataset_dialog_start_directory(*, prefer_bids: bool = False) -> str:
+def _dataset_dialog_start_directory() -> str:
     layout = dataset_storage_layout()
-    candidates = (
-        (layout.bids_root, layout.datasets_root, layout.data_root)
-        if prefer_bids
-        else (layout.datasets_root, layout.data_root)
-    )
+    candidates = (layout.datasets_root, layout.data_root)
     return next((str(path) for path in candidates if path.is_dir()), "")
 
 
@@ -721,88 +717,6 @@ class DataInterpretationActionCoordinator:
             ),
             on_result=_handle_classification,
             error_title="EEG source discovery failed",
-            unexpected_error_context=UnexpectedErrorContext.DATA_IMPORT,
-        )
-
-    def import_folder_source(self):
-        """Compatibility entry retained for non-sidebar callers."""
-        if not self._can_start_interpretation():
-            return
-        source_path = self._bindings.file_dialog().getExistingDirectory(
-            self.panel,
-            "Choose Folder or BIDS Root for Interpretation",
-            _dataset_dialog_start_directory(),
-            options=(
-                self._bindings.file_dialog().Option.ShowDirsOnly
-                | self._bindings.file_dialog().Option.DontUseNativeDialog
-            ),
-        )
-        if not source_path:
-            return
-        try:
-            handled = self._run_data_interpretation_import([source_path])
-            if not handled:
-                self._bindings.show_error(
-                    self.panel,
-                    "Interpretation unavailable",
-                    "Data Interpretation command service is unavailable.",
-                )
-        except Exception:
-            self._bindings.present_unexpected_error(
-                self.panel,
-                UnexpectedErrorContext.DATA_IMPORT,
-            )
-
-    def import_bids_source(self):
-        """Compatibility entry retained for non-sidebar callers."""
-        if not self._can_start_interpretation():
-            return
-        source_path = self._bindings.file_dialog().getExistingDirectory(
-            self.panel,
-            "Choose BIDS Folder for Import",
-            _dataset_dialog_start_directory(prefer_bids=True),
-            options=(
-                self._bindings.file_dialog().Option.ShowDirsOnly
-                | self._bindings.file_dialog().Option.DontUseNativeDialog
-            ),
-        )
-        if not source_path:
-            return
-        try:
-            handled = self._start_bids_subject_selection_async(source_path)
-            if not handled:
-                self._bindings.show_error(
-                    self.panel,
-                    "Interpretation unavailable",
-                    "Data Interpretation command service is unavailable.",
-                )
-        except Exception:
-            self._bindings.present_unexpected_error(
-                self.panel,
-                UnexpectedErrorContext.DATA_IMPORT,
-            )
-
-    def _start_bids_subject_selection_async(
-        self,
-        source_path: str,
-    ) -> InteractionOutcome | None:
-        """Inspect one explicit BIDS root for compatibility callers."""
-
-        def _handle_catalog_result(result) -> InteractionOutcome:
-            if self._result_failed(result, "BIDS subject discovery failed"):
-                return self._interaction_failure_outcome(result, result.message)
-            catalog = diagnostic_payload(result, "bids_subject_catalog")
-            return self._present_bids_subject_catalog(source_path, catalog)
-
-        self._show_status("Reading BIDS subject catalog...")
-        return self._execute_interpretation_command_async(
-            ScanSourceCommand(
-                source_path=source_path,
-                source_hint="bids",
-                catalog_only=True,
-            ),
-            on_result=_handle_catalog_result,
-            error_title="BIDS subject discovery failed",
             unexpected_error_context=UnexpectedErrorContext.DATA_IMPORT,
         )
 

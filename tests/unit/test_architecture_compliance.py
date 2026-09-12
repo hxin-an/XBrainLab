@@ -1981,8 +1981,6 @@ def test_dataset_interpretation_action_guard_rejects_handler_regrowth(
     delegate_names = (
         "import_data",
         "review_current_import",
-        "import_folder_source",
-        "import_bids_source",
         "reload_interpretation_recipe",
         "_execute_interpretation_command_async",
         "_interaction_failure_outcome",
