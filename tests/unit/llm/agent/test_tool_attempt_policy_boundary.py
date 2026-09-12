@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Any
 
 import pytest
@@ -17,7 +17,6 @@ from XBrainLab.llm.agent.tool_attempt_coordinator import (
     ToolAttemptRequest,
 )
 from XBrainLab.llm.agent.turn import AssistantToolInputReceipt
-from XBrainLab.llm.agent.turn_orchestrator import AssistantToolAttemptSession
 from XBrainLab.llm.agent.verifier import VerificationResult
 from XBrainLab.llm.tools.application_surface import (
     ToolAvailability,
@@ -908,62 +907,6 @@ def test_confirmation_fields_are_owned_by_coordinator() -> None:
         "resource_preflight_confirmed": True,
         "resource_preflight_token": "receipt-1",
     }
-
-
-def test_loop_state_resets_per_turn() -> None:
-    coordinator, _source, _verifier = _coordinator(_context("query_state"))
-    session = AssistantToolAttemptSession()
-    request = _request("query_state", text="Show current workflow state")
-
-    def observed() -> ToolAttemptRequest:
-        return replace(
-            request,
-            repeated=session.record_tool_proposal(
-                request.command_name,
-                request.params,
-            ),
-        )
-
-    first = coordinator.evaluate(observed())
-    second = coordinator.evaluate(observed())
-    third = coordinator.evaluate(observed())
-    session.reset_for_user_turn()
-    after_reset = coordinator.evaluate(observed())
-
-    assert first.action is ToolAttemptAction.EXECUTE
-    assert second.action is ToolAttemptAction.EXECUTE
-    assert third.action is ToolAttemptAction.LOOP
-    assert after_reset.action is ToolAttemptAction.EXECUTE
-
-
-def test_loop_policy_handles_non_json_serializable_parameters_deterministically() -> (
-    None
-):
-    coordinator, _source, _verifier = _coordinator(_context("query_state"))
-    session = AssistantToolAttemptSession()
-    opaque_value = object()
-    request = _request(
-        "query_state",
-        params={"opaque": opaque_value},
-        text="Show current workflow state",
-    )
-
-    def observed() -> ToolAttemptRequest:
-        return replace(
-            request,
-            repeated=session.record_tool_proposal(
-                request.command_name,
-                request.params,
-            ),
-        )
-
-    first = coordinator.evaluate(observed())
-    second = coordinator.evaluate(observed())
-    third = coordinator.evaluate(observed())
-
-    assert first.action is ToolAttemptAction.EXECUTE
-    assert second.action is ToolAttemptAction.EXECUTE
-    assert third.action is ToolAttemptAction.LOOP
 
 
 def test_resource_warning_becomes_candidate_bound_typed_confirmation() -> None:

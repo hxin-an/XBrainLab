@@ -1034,19 +1034,6 @@ class TestHandleUserInput:
         assert len(lifecycle.requests) == 1
         ctrl.response_presentation_ready.emit.assert_not_called()
 
-    def test_new_user_turn_clears_previous_tool_loop_history(self, ctrl):
-        lifecycle = _use_rag_probe(ctrl)
-        ctrl._generate_response = MagicMock()
-        ctrl._tool_attempt_session.record_tool_proposal("query_state", {})
-        assert list(ctrl._tool_attempt_session.recent_tool_calls)
-
-        _submit_user_turn(ctrl, "show current state")
-
-        assert list(ctrl._tool_attempt_session.recent_tool_calls) == []
-        ctrl._generate_response.assert_not_called()
-        lifecycle.complete()
-        ctrl._generate_response.assert_called_once()
-
     def test_stop_while_waiting_for_rag_ignores_stale_result(self, ctrl):
         lifecycle = _use_rag_probe(ctrl)
         ctrl._generate_response = MagicMock()
@@ -1796,26 +1783,6 @@ class TestRuntimeErrors:
         ctrl.generation_event.emit.assert_not_called()
         ctrl.error_occurred.emit.assert_not_called()
         ctrl.processing_finished.emit.assert_not_called()
-
-
-# --- _handle_loop_detected ---
-class TestHandleLoopDetected:
-    def test_increments_break_count(self, ctrl):
-        ctrl._generate_response = MagicMock()
-        ctrl._handle_loop_detected("test_tool")
-        assert ctrl._tool_attempt_session.loop_break_count == 1
-        ctrl._generate_response.assert_called_once()
-
-    def test_aborts_after_max(self, ctrl):
-        ctrl._tool_attempt_session.loop_break_count = 3
-        ctrl._handle_loop_detected("test_tool")
-
-        presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
-        assert presentation.kind is AssistantResponseKind.BLOCKED
-        assert "repeated the same action" in presentation.text
-        assert not hasattr(presentation, "actions")
-        assert not ctrl.is_processing
-        ctrl.processing_finished.emit.assert_called_once()
 
 
 # --- _execute_tool_no_loop ---

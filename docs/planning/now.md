@@ -38,9 +38,9 @@ LOC quota or coverage-denominator manipulation. Update the bounded slice record 
 | Batch | Required result | Status |
 | --- | --- | --- |
 | A Map | Every responsibility and direct consumer assigned, retain/migrate/delete rationale and baselines | In progress |
-| B Backend | Workflow/composition and monitoring separation; shared lock/admission/publication preserved | B1 validated; B2 next |
-| C Controller | Non-Qt proposal/interaction/terminal decisions in explicit owners; real harnesses migrated | Not started |
-| D UI host | Concrete presentation separated; no duplicate runtime/publication/turn decisions | D1 validated; D2 next |
+| B Backend | Workflow/composition and monitoring separation; shared lock/admission/publication preserved | B1/B2 committed; B3 next |
+| C Controller | Non-Qt proposal/interaction/terminal decisions in explicit owners; real harnesses migrated | C1 committed; C2/C3 next |
+| D UI host | Concrete presentation separated; no duplicate runtime/publication/turn decisions | D1/D2 committed; D3 next |
 | E Integration | Independent boundary review, same-source gates, one Windows GUI/Assistant handoff | Not started |
 
 At most two non-overlapping workers; main owns common boundaries, source identity, plan and integration.
@@ -81,9 +81,11 @@ permission; bounded cleanup follows. No zero-defect or Stable Assistant claim.
 
 Source: build/dev-artifacts/core-responsibility, from merged main 6fbc5d5c. Original dirty checkout,
 accepted complete-baseline app/evidence, user settings/data and shared caches remain protected.
-Commit validated B2/C1/D2 separately, then delete unreachable repeated-proposal machinery and transfer
-UI admission staging to its existing owner. B3 evaluation revalidation and C3 test-only shutdown paths
-require characterization before changes. Responsibility maps are in ignored core-audit. No candidate PR.
+C2 deletion and D3 admission-state transfer are implemented and independently reviewed. The new D3
+debug witness initially kept the fixture's side_effect, bypassing its no-correlation return_value.
+Corrected fixture plus adjacent state/Manager tests passed 158 cases/22.07s. All new B3 exact-target and C3 real-Qt shutdown
+characterizations passed, allowing those transfers next. Responsibility maps are in ignored core-audit.
+No candidate PR.
 
 ### B1: delete method-by-method lazy proxy classes
 
@@ -205,3 +207,41 @@ Main independently reviewed B2's complete thread/generation/fence/physical-exit 
 Same run passed C2's three new real Qt transition cases and existing D3 turn-state/analysis/render tests.
 B2 production +234/-217/net +17 (two files including new concrete monitor); C1 +57/-54/net +3;
 D2 +101/-93/net +8 after explicit publication typing/formatting. Stage not complete.
+
+### B3: evaluation target revalidation in its analysis owner
+
+Current final summary admission reaches into selected plan/run and re-prepares the catalog. Move target
+comparison into AnalysisCommandService, returning the refreshed catalog or None (not just a boolean).
+Existing frozen EvaluationModelSummaryPreparation captures the selected plan/run refs alongside its
+existing dataset/model inputs at preparation. Remove service's duplicate target selection/comparison;
+service keeps locks, training/publication freshness, shutdown/cancel, errors and final result envelope.
+No new owner/module/mutable state/schema. Estimated production +40/-40/net near zero across service,
+analysis and evaluation_render; revert together. Initial evidence gap corrected: existing service tests
+cover summary lock/cancel, not all changed targets. First characterize actual two-phase service rejection
+for plan/run/model/dataset/terminal replacement and acceptance with refreshed catalog for unrelated
+append. Supplement existing real UI selected-result test; only then transfer and add owner contract tests.
+Earlier local target capture must not replace identity with equality or weaken unavailable-target checks.
+
+### C3: retire test-only alternate worker shutdown
+
+Read-only audit found non-QObject worker close and non-QThread fallback reachable only from mocked
+constructors, not product factories, scripts, local walkthrough or evaluator. Product always composes
+AgentWorker/QThread; absent/deleted worker remains a valid lifecycle state. Remove that alternate path
+and exclusive mock tests only after real Qt characterization covers still-unique RAG close exception,
+failure/retry, cleanup-pending admission rejection, late RAG/Stop delivery and pending input cleanup.
+Existing real lifecycle tests cover worker false/retry, native exit/deferred deletion and idempotency.
+Migrate the actual AgentManager debug-flow fixture to real worker/thread; no product init/model change.
+Estimated production -25–40 in controller; tests shrink only after behavior replacement. No new module,
+owner or fallback. Independently review exact lifecycle equivalence and run Qt lifecycle/integration plus
+affected Manager gates. Roll back this slice independently from C2. Do not simplify real timeout/fence
+or zero-time native completion protections.
+
+Committed construction slices: B2 62cde20c, C1 897c925a (includes C2 pre-characterization), D2 a3b5db2e.
+Independent C2 and D3 review found no remaining blocker after main's D3 ordering/correlation corrections.
+C2 production -93 LOC; D3 production +127/-112/net +15 across the existing two owners (formatting may
+change counts). Native turn-staging-post-target-shutdown-baseline completed 823 passed/1 failed in
+151.66s on immutable source; failure is the new D3 debug witness, not permission to claim D3 complete.
+B3's seven exact-target substitutions and refreshed-catalog cases passed against unchanged production;
+C3's real worker/thread RAG false/exception/retry and late-delivery fences also passed before deletion.
+C3 follows Controller deletion with its own passing pre-change witnesses. Then final disposition/diff
+review and canonical same-head integration gates, not another open-ended audit.

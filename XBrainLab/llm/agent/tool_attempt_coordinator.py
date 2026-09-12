@@ -2,7 +2,7 @@
 
 The controller owns turn orchestration and UI signals.  This module owns the
 policy decision for a proposal: prompt publication, path provenance, schema
-verification, backend capability, confirmation, retry, and loop limits.
+verification, backend capability, confirmation, and one-action admission.
 """
 
 from __future__ import annotations
@@ -99,7 +99,6 @@ def _resource_receipt_contract_error(
 class ToolAttemptAction(str, Enum):
     """Controller action selected for one model proposal."""
 
-    LOOP = "loop"
     RESPOND = "respond"
     PUBLICATION_BLOCKED = "publication_blocked"
     PROVENANCE_BLOCKED = "provenance_blocked"
@@ -126,7 +125,6 @@ class ToolAttemptRequest:
     confidence: float
     publication: PromptToolPublication
     latest_user_text: str
-    repeated: bool = False
     enforce_direct_parameter_origins: bool = True
     tool_input_receipt: AssistantToolInputReceipt | None = None
     single_proposal: bool = True
@@ -346,9 +344,6 @@ class ToolAttemptCoordinator:
         """Evaluate one proposal against one immutable prompt publication."""
         command_name = request.command_name
         params = request.params
-        if request.repeated:
-            return ToolAttemptDecision(ToolAttemptAction.LOOP, command_name, params)
-
         publication_result = self._publication_result(
             command_name,
             request.publication,

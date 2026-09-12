@@ -114,25 +114,21 @@ def test_tool_attempt_session_resets_all_user_turn_state() -> None:
     session = AssistantToolAttemptSession()
     session.retry_count = 2
     session.tool_failure_count = 3
-    session.loop_break_count = 1
     session.successful_tool_count = 4
     session.execution_count = 5
     session.visible_response_sent = True
     session.last_tool_summary = "old result"
     session.last_tool_summary_kind = AssistantResponseKind.TOOL_RESULT
-    session.record_tool_proposal("query_state", {})
 
     session.reset_for_user_turn()
 
     assert session.retry_count == 0
     assert session.tool_failure_count == 0
-    assert session.loop_break_count == 0
     assert session.successful_tool_count == 0
     assert session.execution_count == 0
     assert session.visible_response_sent is False
     assert session.last_tool_summary is None
     assert session.last_tool_summary_kind is AssistantResponseKind.MESSAGE
-    assert list(session.recent_tool_calls) == []
 
 
 def test_tool_attempt_session_owns_attempt_transition_sequence() -> None:
@@ -149,28 +145,6 @@ def test_tool_attempt_session_owns_attempt_transition_sequence() -> None:
     assert session.tool_failure_count == 1
     assert session.record_success() == 1
     assert session.tool_failure_count == 0
-
-
-def test_tool_attempt_session_owns_bounded_loop_transition() -> None:
-    session = AssistantToolAttemptSession()
-
-    assert session.record_loop_break(limit=2) is False
-    assert session.loop_break_count == 1
-    assert session.record_loop_break(limit=2) is True
-    assert session.loop_break_count == 2
-
-
-def test_tool_attempt_session_owns_repeated_proposal_detection() -> None:
-    session = AssistantToolAttemptSession()
-    params = {"opaque": object()}
-
-    assert session.record_tool_proposal("query_state", params) is False
-    assert session.record_tool_proposal("query_state", params) is False
-    assert session.record_tool_proposal("query_state", params) is True
-
-    session.reset_for_user_turn()
-
-    assert session.record_tool_proposal("query_state", params) is False
 
 
 def test_tool_attempt_session_arbitrates_visible_terminal_response() -> None:

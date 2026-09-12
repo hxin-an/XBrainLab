@@ -349,9 +349,6 @@ class LLMController(QObject):
         # Robustness State
         self._strict_envelope_recovery_policy = DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY
 
-        # Tool Failure Loop Protection
-        self._max_loop_breaks = 3
-
         # The model proposes commands; this deterministic policy boundary owns
         # publication, provenance, schema, capability, and confirmation.
         self._tool_attempt_coordinator = ToolAttemptCoordinator(
@@ -1216,7 +1213,6 @@ class LLMController(QObject):
         logger.debug("Heuristic confidence: %.2f", confidence)
 
         cmd, params = command
-        repeated = self._tool_attempt_session.record_tool_proposal(cmd, params)
         latest_user_text = self._conversation.latest_user_request_text()
         publication = self._turn_orchestrator.active_publication
         return self._tool_attempt_coordinator.evaluate(
@@ -1226,7 +1222,6 @@ class LLMController(QObject):
                 confidence=confidence,
                 publication=publication,
                 latest_user_text=latest_user_text,
-                repeated=repeated,
                 single_proposal=single_proposal,
             )
         )
@@ -1248,11 +1243,8 @@ class LLMController(QObject):
         return receipt.question
 
     def _present_tool_attempt_boundary(self, decision: ToolAttemptDecision) -> bool:
-        """Present loop, block, validation, or confirmation boundaries."""
+        """Present block, validation, or confirmation boundaries."""
         cmd = decision.command_name
-        if decision.action is ToolAttemptAction.LOOP:
-            self._handle_loop_detected(cmd)
-            return True
         if decision.action is ToolAttemptAction.RESPOND:
             message = decision.message or "Please provide the required values."
             receipt = decision.tool_input_receipt
@@ -1807,50 +1799,6 @@ class LLMController(QObject):
                 ),
             }[status]
         )
-
-    def _handle_loop_detected(self, cmd: str):
-        """Handles detection of a repeated tool-call loop.
-
-        Injects a system message into history informing the LLM of the
-        loop and re-triggers generation to break the cycle.
-
-        Args:
-            cmd: The tool name that was called repeatedly.
-
-        """
-        if self._tool_attempt_session.record_loop_break(limit=self._max_loop_breaks):
-            msg = (
-                f"System: Persistent loop detected for '{cmd}'. "
-                "Aborting to prevent infinite recursion."
-            )
-            self._append_history("user", msg)
-            visible_message = (
-                "The assistant stopped because it repeated the same action "
-                "without making progress. Check the current workflow before "
-                "trying a narrower request."
-            )
-            self._append_history("assistant", visible_message)
-            self._publish_response(
-                visible_message,
-                kind=AssistantResponseKind.BLOCKED,
-            )
-            self.metrics.finish_turn()
-            self.status_update.emit("Loop detected, aborting.")
-            self._publish_activity(
-                AssistantTurnActivityPhase.NEEDS_ATTENTION,
-                command_name=cmd,
-            )
-            self.is_processing = False
-            self._emit_processing_finished("loop_detected")
-            return
-
-        msg = (
-            f"System: Loop detected. You have called '{cmd}' "
-            "with these params multiple times. Stop."
-        )
-        self._append_history("user", msg)
-        self.status_update.emit("Loop detected, interrupting...")
-        self._generate_response()
 
     def _finalize_turn(self, response_text: str):
         """Finalizes the turn when no tool commands are present.
@@ -2607,7 +2555,6 @@ class LLMController(QObject):
             backend_generation=context.generation,
         )
         self._turn_orchestrator.set_active_publication(publication)
-        repeated = self._tool_attempt_session.record_tool_proposal(tool_name, params)
         decision = self._tool_attempt_coordinator.evaluate(
             ToolAttemptRequest(
                 command_name=tool_name,
@@ -2615,7 +2562,6 @@ class LLMController(QObject):
                 confidence=1.0,
                 publication=publication,
                 latest_user_text=authorization_text,
-                repeated=repeated,
                 enforce_direct_parameter_origins=False,
             )
         )
