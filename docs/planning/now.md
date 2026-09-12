@@ -49,7 +49,7 @@ still receives complexity review: deletion candidates, owners before/after, +/-/
 3. **Dataset unused routes [implemented/reviewed; integration pending]**: characterize real Import Data paths, delete unused folder/BIDS
    delegates and exclusively reachable implementation/tests/required facade guards. Retain real BIDS
    subject selection. Run identical characterization and relevant architecture negative fixtures.
-4. **Assistant registry/terminal/ambiguity [registry/terminal implemented; candidates 3–4 authorized]**: evaluator uses real registry metadata with its
+4. **Assistant registry/terminal/ambiguity [registry/terminal implemented; blocked after candidate 4]**: evaluator uses real registry metadata with its
    existing execution-suppressed harness; prove schema/description/membership parity before removing mock
    execution capability and exclusive tests. Navigation metrics finish on matching terminal only;
    cover success/failure/stale/duplicate callbacks and real UI callback boundary. Correct two ambiguity
@@ -170,15 +170,34 @@ the current lock without installing or changing anything. Independent review con
 prompt-only placement and fourth-candidate consistency with unchanged schema/Host admission. No code
 blocker found; actual model outcome remains unknown before the fixed-source run.
 
+Candidate 4 completed on clean 46aa5575b5f6ebb462798ea18d07fb13124f8d69; all 81 frozen cases
+and file hashes match. Positive 36/36; origin safety 10/10 and 5/5; direct clarification admission 4/5;
+product no-action 22/24; clarification execution boundary 6/7. Bounded gate FAILED on multi_en,
+multi_en_alt and clarify_notch_en. The original ambiguity cases now pass, but these regressions prevent
+acceptance. Multi-action requests still propose their first action; the notch question lacks typed fields
+and therefore creates no Host receipt. This is not a context truncation, registry or missing-model problem.
+Reports retained under build/dev-artifacts/candidate3 and candidate4; full stdout/stderr logs also retained.
+Report SHA-256: candidate3 007a8c9c09c6f82fb4a9d155704fb5a7155ae40c8352624a4dfdc17b5dcb0af1;
+candidate4 a0c76ce24f66561281c12e3e3d6b3ef41dffb23c3eedffe024093c479a6a913b.
+
+BLOCKED: renewed two-candidate budget is exhausted, with no passing candidate. No fifth prompt, changed
+model/RAG/Host/schema/scorer, weakened acceptance or automatic deferral is authorized. Recommend user
+decision on rolling back the four failed prompt experiments while retaining verified cleanup/metrics/
+safety fixes, and defining Assistant reliability as a separate bounded repair. Do not perform that rollback
+or declare the stage complete without approval. Native real-model journey and manual launch have not run.
+CI for 46aa5575 continues independently (no failures observed at checkpoint; several jobs pending), but
+even all-green CI would not resolve this model blocker. Keep the draft PR unmerged and not handoff-ready.
+
 Shared environment editable .pth exposed old scripts namespace: tests use process-only path exclusion,
 not environment edits. New worktree .git pointer is relative so WSL and native Windows Git agree.
 Broad Assistant check: 1,425 passed, 30 failed, 2 skipped; all failures were fake Hugging Face
 snapshot paths exceeding Windows MAX_PATH. Short owned temporary root rerun: 166 passed, 5 same-path
 failures, 2 skipped. Fresh shorter basetemp for the remaining RAG security file: 29 passed, 2 POSIX-only
 skips. No product change or weakened assertion was needed; overlapping counts are not a unique total.
-Next: candidate 3 prompt diagnosis/correction and scripts CI failure diagnosis, then frozen evaluation,
-candidate 4 only if necessary, and final exact-source CI/native handoff. PR #140 remains a draft integration
-vehicle, not a manual-testing or merge request. No final gates/manual acceptance yet.
+Next: obtain the scope decision above. PR #140 remains a draft integration vehicle, not a manual-testing
+or merge request. This docs-only blocker checkpoint is committed locally; defer its push until the next
+authorized change to avoid restarting pending exact-candidate CI merely for a status update. The PR body
+records the same blocker. No final gates/manual acceptance yet.
 
 三核心責任重構已完成 Windows GUI／English Assistant 手測，並經使用者明確同意合併
 [PR #138](https://github.com/hxin-an/XBrainLab/pull/138)。不再把該階段的施工切片或 pending gates
