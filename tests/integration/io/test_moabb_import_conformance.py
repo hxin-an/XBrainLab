@@ -157,6 +157,52 @@ def test_import_case_preserves_context_without_inventing_classes(
     assert result["replay"]["waveform_max_abs_error"] == 0.0
 
 
+@pytest.mark.parametrize("wrong_alias", [False, True])
+def test_import_case_verifies_reviewed_internal_aliases_and_retains_context(
+    tmp_path: Path, wrong_alias: bool
+) -> None:
+    data_root, case = _write_case_fixture(tmp_path)
+    marker = data_root / "tiny-bids/sub-01/eeg/sub-01_task-mi_eeg.vmrk"
+    marker.write_text(
+        marker.read_text(encoding="utf-8").replace(
+            "Mk2=Comment,reviewed,101,1,0\n",
+            "Mk2=Stimulus,S  1,101,1,0\nMk3=Stimulus,S  2,301,1,0\n",
+        ),
+        encoding="utf-8",
+    )
+    for item in case["input_files"]:
+        if item["path"] == marker.relative_to(data_root).as_posix():
+            item["sha256"] = _sha256(marker)
+    case["choices"] = {
+        "label_carrier": "embedded_events",
+        "internal_event_selection": {
+            "label_event_codes": ["Stimulus/S  1", "Stimulus/S  2"],
+            "not_label_event_codes": ["Comment/baseline"],
+            "class_map": {
+                "Stimulus/S  1": "wrong" if wrong_alias else "left",
+                "Stimulus/S  2": "right",
+            },
+        },
+        "event_roles": {
+            "Stimulus/S  1": "class label",
+            "Stimulus/S  2": "class label",
+            "Comment/baseline": "not a label",
+        },
+    }
+
+    result = run_import_case(case, data_root, tmp_path / "out")
+
+    if wrong_alias:
+        assert result["status"] == "failed", result
+        assert "class events differ" in result["failure"]["message"]
+    else:
+        assert result["status"] == "passed", result
+        assert result["observed"]["events"] == [[100, "left"], [300, "right"]]
+        assert result["reference"]["annotation_count"] == 3
+        assert result["initial"]["waveform_max_abs_error"] == 0.0
+        assert result["replay"]["waveform_max_abs_error"] == 0.0
+
+
 def test_import_case_cannot_hide_applied_classes_with_empty_expectation(
     tmp_path: Path,
 ) -> None:

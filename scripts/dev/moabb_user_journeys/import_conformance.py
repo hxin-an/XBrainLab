@@ -25,6 +25,7 @@ from XBrainLab.backend.application import (
     ScanSourceCommand,
     ValidateInterpretationCommand,
 )
+from XBrainLab.backend.application.epoch_context import EPOCH_HINT_KEY
 
 from .import_catalog import file_sha256, resolve_data_path
 
@@ -175,7 +176,33 @@ def _assert_loaded(
     if expected["events"]:
         events, event_id = service.study.loaded_data_list[0].get_event_list()
         inverse = {int(code): name for name, code in event_id.items()}
-        actual_events = [[int(row[0]), inverse[int(row[2])]] for row in events]
+        if interpretation.epoch_handoff["label_source"] == "internal_events":
+            # Internal import preserves raw markers. Epoch consumes the aliases
+            # published for this recording, not renamed Raw annotations.
+            hint = service.study.loaded_data_list[0].get_runtime_detail(EPOCH_HINT_KEY)
+            aliases = (
+                hint.get("event_label_aliases") if isinstance(hint, dict) else None
+            )
+            if (
+                not isinstance(aliases, dict)
+                or not aliases
+                or set(aliases) != set(hint.get("recommended_events", []))
+                or not set(aliases) <= set(event_id)
+            ):
+                raise RuntimeError("loaded internal class aliases are incomplete")
+            if not interpretation.epoch_handoff.get("run_dependent_mapping") and (
+                aliases != interpretation.epoch_handoff.get("event_label_aliases")
+            ):
+                raise RuntimeError("loaded internal class aliases differ from handoff")
+            actual_events = [
+                [int(row[0]), aliases[inverse[int(row[2])]]]
+                for row in events
+                if inverse[int(row[2])] in aliases
+            ]
+            # Even class markers must remain unchanged in the source annotations.
+            event_id = {}
+        else:
+            actual_events = [[int(row[0]), inverse[int(row[2])]] for row in events]
     else:
         # Raw event detection includes acquisition context when no labels were
         # applied. Only the published interpretation declares supervised classes.

@@ -93,16 +93,31 @@ tests passing together. Independent reviews closed promotion-downgrade, no-label
 root/ancestor junction and completion-receipt overwrite gaps. No product/UI code changed in these
 new validation slices. None of this substitutes for the outstanding full portable corpus run.
 
-**One heavy E task at a time.** The 127-root BIDS relocation is still running: unified session 57939,
-owned bootstrap PID 46772 / actual copy child 33432. Verify command-line identities before any
-process action; a returned wrapper alone does not prove native-child termination. It uses an existing
-writer lock and bounded owned-process wrapper. E is a measured slow USB disk; do not start another
-heavy E reader/writer or interrupt this job merely for slowness. Full copy target is 40.19 GB;
-a completed operation/visible directory is not a passed new-path import.
-The current owned invocation started around 06:00 UTC and has a 14,400-second bound. If that
-bound expires, first confirm the exact child has terminated and preserve partial staging and the
-failed attempt. Inspect completed targets before a bounded continuation; do not treat migration
-timeout as an import defect, overwrite an active plan, or disable verification to finish faster.
+**One heavy E task at a time.** Initial BIDS relocation session 57939 reached its 14,400-second
+bound at 10:16:29 UTC (started 06:16:29 UTC), reporting wrapper code 124. Native inspection confirmed
+all six owned processes absent; no child is left writing. It completed 94/127 operations (27.52 GB
+of 40.19 GB); Jeong's unpublished `staging/relocate-trk3nem2` contains 61/84 files and 3.936/5.279 GB
+by metadata only. Preserve it unchanged and retain `portable-case-relocation-attempt-1-timeout.json`.
+The final completion receipt does not exist. This is slow-copy timeout evidence, not an import defect.
+Use this idle boundary for the prepared three-case portable probe and bounded metadata inventory,
+then continue the unchanged migration plan through the existing verified-copy owner/lock. Do not
+disable checks, overwrite a live plan, delete partial staging or count copies as portable replay PASS.
+
+Early portable probe v2 caught a runner-only internal-alias defect: internal import preserves raw
+marker descriptions and publishes class aliases in per-recording epoch hints. The runner had compared
+raw descriptions directly to semantic class names. A real-command fixture reproduced it (1 failed,
+1 passed), then all 13 focused conformance tests passed after the bounded correction. Wrong aliases
+still fail, excluded context stays non-class, and original annotations/waveforms must survive Apply
+and fresh recipe replay. Independent review found no blocker. Fresh portable probe v3 passed
+Mainsah2025_A, AlexMI and BNCI2014_001; this is shared-boundary evidence, not the full campaign.
+Preserve v2 failure (its one-time probe exited zero despite the failed row; it is not a passing probe).
+No product/UI behavior or expected source classes changed. The bounded mixed-source metadata
+inventory is complete: original archives/extractions in `source`, `forenzo-source`, `kojima-source`,
+`liu2024-source`, plus `zhang-source/MNE-Zhang2025-data` are now included in the prepared source
+planner. Zhang's generated BIDS sibling stays in the separate BIDS plan. Preserve Kojima's possible
+flattened duplicates until content identity is proven; no filename-based deletion. The E public-fixture
+directory is absent and must be populated from the already hash-verified D cache. No native Python
+writer remained at the restart preflight. Continue the unchanged migration plan with verified reuse.
 
 Evidence/artifact entry points (all beneath this task's `build/dev-artifacts` unless stated):
 
@@ -142,14 +157,15 @@ Evidence/artifact entry points (all beneath this task's `build/dev-artifacts` un
 - Independent source-preservation review found a concrete mapping gap: existing
   `evidence/moabb-ten-20260913/{source,forenzo-source,kojima-source,liu2024-source,zhang-source}`
   contains original archives/extractions referenced by retained fidelity receipts, but only Brandl
-  was in the E plan. Run the bounded `inventory_mixed_source_gap.py` when the E writer is idle,
-  inspect contents and include originals (not generated BIDS children) before source planning.
-  No deletion or reacquisition is authorized by this finding.
+  was in the E plan. `retained-mixed-source-roots-v1.json` now records the bounded metadata inventory;
+  the prepared source planner includes the original roots/child described above. This closes the
+  planning coverage gap, not the still-outstanding hash/copy proof. No deletion or reacquisition.
 
 Queued work, in order:
 
-1. Finish the current 127 BIDS copy. Run the prepared `probe_relocated_cases.py` (fresh v2 output)
-   for early shared-boundary E replay; no prior early-probe PASS is claimed.
+1. The three-case early portable probe v3 passed after the alias-verification repair above.
+   Finish the 127 BIDS copy with verified reuse of completed destinations after the idle metadata
+   check. Keep the original attempt's incomplete staging and failure record unchanged.
 2. With E idle, execute `remaining-eleven/convert_retained_remaining.py` separately for
    BNCI2016_002, BNCI2022_001 and Yang2025 into fresh D outputs. The first fixes a reproduced
    marker row/column indexing error. BNCI2022 fixes lower-case trigger lookup and verifies actual
@@ -187,6 +203,9 @@ correct official Martinez subject URL (sequence 11) still times out
 missing fiducials; BNCI2019 source EOG units remain unresolved. Never infer coordinates/units/classes
 or reduce the pinned denominator to obtain PASS. Do not promote the four D-verified candidates
 until portable evidence exists, or claim original-source consolidation from BIDS copies alone.
+`remaining-eleven/bnci2019-unit-authority-review.md` retains the additional originating-lab
+description/installed-loader check: shared acquisition hardware is not an explicit stored EOG
+unit calibration. No additional source acquisition, rescaling or promotion followed that check.
 
 ## Closed baseline
 
