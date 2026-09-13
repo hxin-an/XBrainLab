@@ -99,6 +99,10 @@ process action; a returned wrapper alone does not prove native-child termination
 writer lock and bounded owned-process wrapper. E is a measured slow USB disk; do not start another
 heavy E reader/writer or interrupt this job merely for slowness. Full copy target is 40.19 GB;
 a completed operation/visible directory is not a passed new-path import.
+The current owned invocation started around 06:00 UTC and has a 14,400-second bound. If that
+bound expires, first confirm the exact child has terminated and preserve partial staging and the
+failed attempt. Inspect completed targets before a bounded continuation; do not treat migration
+timeout as an import defect, overwrite an active plan, or disable verification to finish faster.
 
 Evidence/artifact entry points (all beneath this task's `build/dev-artifacts` unless stated):
 
@@ -131,6 +135,10 @@ Evidence/artifact entry points (all beneath this task's `build/dev-artifacts` un
   it excludes the proven generated `legacy4-bids-route-20260913` and already canonical sources.
   `apply_source_copy_plan.py` uses the existing copy helper/lock and exclusive completion.
   Neither E source planning nor copying has run. Original/failed evidence remains protected.
+  Source planning also compares full file-name/size/hash maps against the completed BIDS plan:
+  native BIDS originals can share an already verified canonical BIDS tree instead of writing
+  another identical source copy. Original-prefix provenance and separate export rows stay intact;
+  application of the source plan rechecks both trees before accepting reuse.
 - Independent source-preservation review found a concrete mapping gap: existing
   `evidence/moabb-ten-20260913/{source,forenzo-source,kojima-source,liu2024-source,zhang-source}`
   contains original archives/extractions referenced by retained fidelity receipts, but only Brandl
@@ -161,7 +169,7 @@ Queued work, in order:
    `stage_import_provenance.py` preserves historical recipes, task-local prerequisites and exact
    runner/catalog/lock bytes. Execute this packaging only after the portable catalog is bound and
    committed (the script rejects unfinished bindings/dirty tracked source); its source-commit
-  reference is not a standalone application bundle.
+   reference is not a standalone application bundle.
    Retained D fixtures passed the existing `required-ci` (205,255,918 bytes) and
    `teacher-preflight` (277,106,963 bytes) hash verifiers. The broader optional `all` profile
    stopped on missing P300 `sub-002`; preserve that distinction rather than downloading all
