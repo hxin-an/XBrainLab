@@ -1081,8 +1081,10 @@
       "id": "MartinezCagigal2023Pary",
       "module": "martinezcagigal2023_pary_cvep",
       "status": "blocked",
-      "evidence_note": "BLOCKED: exact official source failed two independent bounded Windows-native connections",
-      "evidence_hashes": [],
+      "evidence_note": "Acquisition BLOCKED: the original official hgab.zip URL (sequence 11) still times out in bounded native checks; no alternate publication substituted for the pinned loader source",
+      "evidence_hashes": [
+        "d678381cb9e7f8184eab1edb2778571ad8ef4c4121c78299657722bb88ada02a"
+      ],
       "case_manifest": null
     },
     {
@@ -1130,8 +1132,11 @@
       "id": "Rozado2015",
       "module": "rozado2015",
       "status": "blocked",
-      "evidence_note": "BLOCKED: pinned RAR extraction requires unrar, unar, or 7z, none present in retained environment",
-      "evidence_hashes": [],
+      "evidence_note": "Acquisition BLOCKED: official archive and dataset-metadata requests return HTTP 403; no archive available for extraction/loader verification, and no access-control bypass attempted",
+      "evidence_hashes": [
+        "7b9aca741933567ca289e0dfc7d81b30f2e12d0e41bfd493d22ea0f1eecfa7ae",
+        "d678381cb9e7f8184eab1edb2778571ad8ef4c4121c78299657722bb88ada02a"
+      ],
       "case_manifest": null
     },
     {

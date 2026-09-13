@@ -116,8 +116,15 @@ inventory is complete: original archives/extractions in `source`, `forenzo-sourc
 `liu2024-source`, plus `zhang-source/MNE-Zhang2025-data` are now included in the prepared source
 planner. Zhang's generated BIDS sibling stays in the separate BIDS plan. Preserve Kojima's possible
 flattened duplicates until content identity is proven; no filename-based deletion. The E public-fixture
-directory is absent and must be populated from the already hash-verified D cache. No native Python
-writer remained at the restart preflight. Continue the unchanged migration plan with verified reuse.
+directory yielded no fixture entries at preflight and must be populated/verified from the retained D
+cache. No native Python writer remained at restart preflight. Continuation session 73965 started
+10:32:35 UTC, with the same 14,400-second bound and unchanged plan. Owned process chain:
+27820 → 41640 → 2620 → 35888 → 43020 → 3548. All 94 previous destinations were reverified.
+Jeong2020 (5,279,329,964 bytes) through RomaniBF2025ERP are now fully copied/verified/published: 114/127
+operations completed. No full completion receipt or portable corpus PASS yet. Do not start competing
+heavy E work. Read/write counters confirmed continued progress during the long Jeong copy; the
+earlier incomplete staging is untouched. The prepared three-conversion/replay scripts also received
+a bounded independent review with no blocker; execution remains queued, not claimed passing.
 
 Evidence/artifact entry points (all beneath this task's `build/dev-artifacts` unless stated):
 
@@ -177,11 +184,21 @@ Queued work, in order:
 3. Run `verify_new_dside_cases.py` with fresh output per candidate. Regenerate/apply the separate
    new-only relocation plan only when idle; portable-check newly resolved cases before promotion.
 4. Complete original-source and necessary evidence consolidation within 500 GB, hash-check targets
-   and preserve originals. Current source plans are not successful migration receipts. Optional
+   and preserve originals. Prepare the content-bound source plan and consolidate public fixtures
+   first, but run step 5's frozen full-catalog/native evidence before the long bulk original-source
+   copy when the portable BIDS bindings are ready. This catches import regressions before spending
+   the archive-copy wait; it does not waive source/evidence consolidation before handoff or permit
+   concurrent heavy E tasks. Current source plans are not successful migration receipts. Optional
    questions about another SSD or a reviewed E-in-place move are not blockers: without a response,
    continue the approved copy/verify/preserve-original strategy, not unapproved moves/deletions.
    Also check `datasets/public-fixtures` with the existing pinned fixture verifier against retained
    D fixtures; do not assume this cache is already consolidated or download it again. The prepared
+   `consolidate_public_fixtures.py` uses the existing copy owner/lock, verifies required-ci and
+   teacher-preflight before/after copy and records both profiles (not optional `all`). It may remove
+   only the exact empty public-fixtures directory before atomic publication; occupied contents are
+   never overwritten. The queued D replay wrapper now also exits nonzero on any failed case rather
+   than relying only on its failed JSON row. These task scripts are prepared, not execution evidence.
+   The prepared
    `stage_import_provenance.py` preserves historical recipes, task-local prerequisites and exact
    runner/catalog/lock bytes. Execute this packaging only after the portable catalog is bound and
    committed (the script rejects unfinished bindings/dirty tracked source); its source-commit
@@ -191,6 +208,13 @@ Queued work, in order:
    stopped on missing P300 `sub-002`; preserve that distinction rather than downloading all
    profiles or calling an optional missing extra a required-gate pass.
 5. Bind the final portable manifests/catalog, generate the human inventory, then freeze the candidate.
+   The prepared artifact-only `prepare_portable_catalog.py` validates exact initial/new plan completion,
+   new portable replay receipts and every actual E manifest before producing a D-side candidate; it
+   never edits the tracked catalog or promotes a rights-deferred entry. It has not run yet.
+   Generate a readable dataset-ID → actual BIDS-folder index from that catalog and its manifests;
+   distinguish GUI import folders, original sources and evidence without another hand-written catalog.
+   `render_portable_locations.py` is prepared to generate this passive guide only after all required
+   manifests resolve by hash and their selected files exist; it makes no runtime PASS claim.
    Fetch origin/main before the full campaign. Run every required case, representative native Windows
    wizard/source-diverse gates and same-head CI without replacing them with old evidence. Keep source
    stable during the final campaign; failed attempts remain available. Final delivery is one integrated
@@ -206,6 +230,14 @@ until portable evidence exists, or claim original-source consolidation from BIDS
 `remaining-eleven/bnci2019-unit-authority-review.md` retains the additional originating-lab
 description/installed-loader check: shared acquisition hardware is not an explicit stored EOG
 unit calibration. No additional source acquisition, rescaling or promotion followed that check.
+The catalog and its rendered inventory now correct Rozado's outdated missing-extractor disposition
+to the observed official archive/metadata HTTP 403; Martinez's row binds the current original-URL
+timeout receipt. Membership/status counts are unchanged. Table/catalog equality and diff whitespace
+checks passed; these documentation checks are not import runtime evidence.
+An independent metadata-only lead found NEMAR `nm000239` (separately published BIDS related to
+Martinez's original DOI). It is not the original pinned loader archive and has not been acquired or
+substituted into the catalog. Keep the original-loader blocker; an alternate representative needs an
+explicit provenance/scope decision rather than silently changing the acceptance oracle.
 
 ## Closed baseline
 
