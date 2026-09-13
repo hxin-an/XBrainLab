@@ -227,6 +227,8 @@ def complete_bbci_internal_event_choices(
             raise AssertionError(f"BBCI class selector does not offer {class_name!r}.")
         selector.showPopup()
         view = selector.view()
+        if not QTest.qWaitForWindowExposed(view.window(), 1_000):
+            raise AssertionError("BBCI class dropdown did not become visible.")
         model_index = selector.model().index(index, 0)
         view.scrollTo(model_index)
         QApplication.processEvents()

@@ -112,6 +112,11 @@ implemented; retained-source reruns must establish the new route counts before t
   when no class event is selected. The BBCI driver now clicks the exact dropdown options instead of
   depending on partial-text autocomplete timing; publication assertions remain exact. Final combined
   Windows run: 405 passed, 95 upstream/runtime warnings, no skips. Changed-file Ruff/diff checks pass.
+  Final native feedback found the BBCI driver clicking before its Windows popup was exposed; waiting
+  for actual popup exposure fixes it, and all four native cases pass. CI's format-matrix gate separately
+  found the old oracle still expected BDF to be reported as EDF; its expected value now matches the
+  approved reporting fix. Follow-up script/BBCI evidence: 21 passed; native BIDS/BBCI group: 4 passed.
+  Both changes are validation-only; push the follow-up and require all applicable CI on the new head.
 - Mainsah's 20 retained exports plus Zuo/Yi passed Commands, exact readback and recipe replay; the root
   independently read all receipts and matched all six affected backend hashes. Inventory is now
   110 route passes / 37 reviewed blockers / 0 undispositioned. Yi's old missing-events claim was wrong:
