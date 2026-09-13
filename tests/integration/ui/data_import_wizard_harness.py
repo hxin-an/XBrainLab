@@ -218,11 +218,27 @@ def complete_bbci_internal_event_choices(
         raise AssertionError(
             f"Expected two visible BBCI class-name controls, found {len(selectors)}."
         )
-    for selector, class_name in zip(selectors, ("left", "right"), strict=True):
-        selector.setFocus()
-        QTest.mouseClick(selector, Qt.MouseButton.LeftButton)
-        QTest.keyClick(selector, Qt.Key.Key_A, Qt.KeyboardModifier.ControlModifier)
-        QTest.keyClicks(selector, class_name)
+    for selector, class_name in zip(
+        selectors, ("left hand", "right hand"), strict=True
+    ):
+        dialog.scroll_area.ensureWidgetVisible(selector)
+        index = selector.findData(class_name)
+        if index < 0:
+            raise AssertionError(f"BBCI class selector does not offer {class_name!r}.")
+        selector.showPopup()
+        view = selector.view()
+        if not QTest.qWaitForWindowExposed(view.window(), 1_000):
+            raise AssertionError("BBCI class dropdown did not become visible.")
+        model_index = selector.model().index(index, 0)
+        view.scrollTo(model_index)
+        QApplication.processEvents()
+        QTest.mouseClick(
+            view.viewport(),
+            Qt.MouseButton.LeftButton,
+            pos=view.visualRect(model_index).center(),
+        )
+        if selector.currentData() != class_name:
+            raise AssertionError(f"BBCI class selector did not retain {class_name!r}.")
     QApplication.processEvents()
     if not dialog.next_button.isEnabled():
         raise AssertionError("Complete BBCI Match Labels did not enable Next.")

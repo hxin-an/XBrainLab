@@ -229,12 +229,21 @@ def format_capability(
     if suffix in {".edf", ".bdf"}:
         return _capability(
             path,
-            "EDF",
+            "EDF" if suffix == ".edf" else "BDF",
             "eeg",
             "needs_review",
             "EDF / BDF annotations can describe events or intervals; review "
             "annotation roles, time units, and class map before supervised "
             "training.",
+        )
+    if suffix == ".cnt":
+        return _capability(
+            path,
+            "Neuroscan CNT",
+            "eeg",
+            "needs_review",
+            "Neuroscan CNT reader available; review events, channel metadata, "
+            "and class mapping. ANT Neuro CNT is not supported by this reader.",
         )
     if suffix == ".set":
         return _capability(
@@ -306,8 +315,8 @@ def format_capability(
             "device_export",
             "blocked",
             "XDF / LSL stream selection is not available in this import wizard "
-            "yet. Convert streams to a supported EEG format or provide a "
-            "prepared recipe.",
+            "yet. Convert streams to a supported EEG format, preserving marker "
+            "timing and meaning, then review the converted data and labels.",
         )
     if suffix in {".pkl", ".pickle"}:
         return _capability(

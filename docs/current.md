@@ -1,6 +1,6 @@
 # XBrainLab 目前狀態
 
-最後更新：`2026-09-07`
+最後更新：`2026-09-13`
 
 ## 一句話
 
@@ -9,6 +9,19 @@ import/review 經 Preprocess、Epoch、Split/Training、Evaluation 到 Saliency 
 local Granite透過18個核准action進入相同GUI與Command workflow。
 
 ## Current product truth
+
+使用者匯入邊界集中於 `user_docs/import-support.md`：通用 EEG 檔案與 EEG-BIDS 是並列入口，
+內嵌／外部／混合／明確無 label 均經既有 wizard。無 label 可檢視與前處理，不代表監督式
+epoch/training ready。MOABB loader 轉成 EEG-BIDS 後的全清單相容性是已同意的最低目標；完整
+1.5.0 inventory 目前已有 127 個代表路徑通過、20 個明確 blocker、0 個未盤點。這是完整
+disposition，**不是 147/147 相容能力**。目前同批通道配置／raw-epoch 相容性限制，以及
+BIDS epoched/discontinuous 與仍未通過的逐項轉換／產品 blocker，
+必須公開，不能透過文件把尚未完成的目標改寫為已支援。
+明確無 label 的 BIDS 匯入不再強制 events.tsv；wizard 可選 `Continue without labels`，經後端
+重新驗證後才確認匯入，仍阻擋監督式 epoch。原生自動流程可證明此路徑，不取代真人驗收。
+BIDS 缺少 events.tsv 時亦可完整審查檔內事件與 class 後匯入並重播 recipe；不猜測 class。
+外部 timestamp placement 遇到 inherited EEG metadata 明定 epoched/discontinuous 時會阻擋，
+不再當成連續時間軸；新增或修改已審查的 sidecar 必須重新 preview/review。
 
 | 區域 | 目前能相信 | 邊界 |
 | --- | --- | --- |

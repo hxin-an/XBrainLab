@@ -287,7 +287,7 @@ FORMAT_CASES: tuple[FormatCase, ...] = (
             ExpectedCapability(
                 "BDF recording",
                 "sub-01_ses-01_task-rest_run-2.bdf",
-                "EDF",
+                "BDF",
                 "eeg",
                 "needs_review",
                 "EDF / BDF",

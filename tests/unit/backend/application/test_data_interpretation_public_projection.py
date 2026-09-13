@@ -131,6 +131,28 @@ def test_bids_projection_bounds_row_level_issues_without_losing_issue_count() ->
     assert project_bids_review(projected) == projected
 
 
+def test_public_recipe_projects_bids_event_rows_without_touching_identity() -> None:
+    count = PUBLIC_EVIDENCE_PREVIEW_LIMIT + 5
+    recipe = ImportRecipe(
+        recipe_id="bids-recipe",
+        interpretation_id="interpretation-1",
+        source_path="/data",
+        source_kind="bids",
+        bids={
+            "is_bids": True,
+            "event_validation": {"runs": [{"row_evidence": _rows(count)}]},
+        },
+        content_identity={"/data/events.tsv": {"sha256": "source-owned"}},
+    )
+
+    public = recipe.to_public_dict()
+
+    [run] = public["bids"]["event_validation"]["runs"]
+    assert "row_evidence" not in run
+    assert run["row_evidence_count"] == count
+    assert public["content_identity"] == recipe.content_identity
+
+
 def test_candidate_projection_publishes_bids_recommendation_details_once() -> None:
     run_count = 80
     sampled_counts = list(range(run_count))
@@ -211,7 +233,7 @@ def test_label_carrier_projection_is_idempotent_for_empty_bounded_evidence() -> 
     }
 
 
-def test_recipe_persistence_keeps_full_evidence_while_public_payload_is_bounded(
+def test_recipe_persistence_keeps_bounded_evidence_while_replay_choices_remain(
     tmp_path,
 ) -> None:
     evidence = [{"code": str(index)} for index in range(20)]
@@ -241,10 +263,12 @@ def test_recipe_persistence_keeps_full_evidence_while_public_payload_is_bounded(
     loaded = load_import_recipe(str(target))
     public = recipe.to_public_dict()
 
-    assert loaded == recipe
+    assert loaded.recipe_id == recipe.recipe_id
     persisted_review = loaded.label_carrier_plan[0]["placement_reviews"]["event_code"]
-    assert persisted_review["code_mappings"] == evidence
-    assert persisted_review["row_evidence"] == row_evidence
+    assert persisted_review["code_mapping_count"] == len(evidence)
+    assert persisted_review["code_mappings"] == evidence[:PUBLIC_EVIDENCE_PREVIEW_LIMIT]
+    assert persisted_review["row_evidence_count"] == len(row_evidence)
+    assert "row_evidence" not in persisted_review
     public_review = public["label_carrier_plan"][0]["placement_reviews"]["event_code"]
     assert public_review["code_mapping_count"] == 20
     assert public_review["code_mappings"] == evidence[:PUBLIC_EVIDENCE_PREVIEW_LIMIT]

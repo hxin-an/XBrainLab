@@ -20,6 +20,7 @@ from .data_interpretation_event_values import (
 from .data_interpretation_parsed_cache import (
     ParsedContentTooLargeError,
     parsed_delimited_table,
+    parsed_json_value,
 )
 from .data_interpretation_public_projection import PUBLIC_EVIDENCE_PREVIEW_LIMIT
 from .data_interpretation_resource_reader import AdmittedResourceReader
@@ -68,6 +69,11 @@ def review_strict_bids_event_runs(
         for row in layout
         if str(row.get("file") or "").strip()
     }
+    eeg_json_by_recording = {
+        _path_key(str(recording)): [str(path) for path in paths if str(path).strip()]
+        for recording, paths in dict(bids.get("eeg_json_by_recording") or {}).items()
+        if isinstance(paths, list | tuple)
+    }
     plan_indexes = {
         _path_key(str(plan.get("path") or "")): index
         for index, plan in enumerate(plans)
@@ -93,6 +99,11 @@ def review_strict_bids_event_runs(
             )
             continue
         eeg_path = str(layout_row.get("file") or selected_path)
+        if "eeg_json_files" not in layout_row:
+            layout_row["eeg_json_files"] = eeg_json_by_recording.get(
+                _path_key(eeg_path),
+                [],
+            )
         events_path = str(layout_row.get("events_file") or "").strip()
         if not events_path:
             pairing_issues.append(
@@ -149,6 +160,7 @@ def review_strict_bids_event_runs(
                 eeg_path=eeg_path,
                 events_path=events_path,
                 plan=plan,
+                layout_row=layout_row,
                 resource_reader=resource_reader,
             )
         if effective_class_map:
@@ -237,6 +249,7 @@ def _review_one_run(
     eeg_path: str,
     events_path: str,
     plan: dict[str, Any],
+    layout_row: dict[str, Any],
     resource_reader: AdmittedResourceReader | None = None,
 ) -> tuple[dict[str, Any], dict[str, str]]:
     schema_issues: list[dict[str, Any]] = []
@@ -260,6 +273,11 @@ def _review_one_run(
         "sampling_frequency_hz": None,
         "sample_count": None,
         "recording_duration_seconds": None,
+        "recording_timeline": {
+            "recording_type": "continuous",
+            "epoch_length_seconds": None,
+            "source_files": [],
+        },
         "event_count": 0,
         "zero_duration_event_count": 0,
         "event_code_class_map": {},
@@ -403,6 +421,17 @@ def _review_one_run(
         "time_field",
         "interval",
     }
+    timeline = _bids_recording_timeline_metadata(
+        layout_row,
+        resource_reader=resource_reader,
+    )
+    evidence["recording_timeline"] = {
+        "recording_type": timeline["recording_type"],
+        "epoch_length_seconds": timeline["epoch_length_seconds"],
+        "source_files": timeline["source_files"],
+    }
+    if timestamp_placement and timeline["issue"] is not None:
+        compatibility_issues.append(timeline["issue"])
     row_evidence: list[dict[str, Any]] = []
     usable_rows: list[_ParsedBidsEventRow] = []
     excluded_rows: list[dict[str, Any]] = []
@@ -532,44 +561,45 @@ def _review_one_run(
             )
         )
 
-    code_labels: dict[str, set[str]] = {}
-    for row in usable_rows:
-        if row["event_code"] and row["selected_label"]:
-            code_labels.setdefault(row["event_code"], set()).add(row["selected_label"])
-    for code, labels in sorted(code_labels.items()):
-        if len(labels) > 1:
-            compatibility_issues.append(
-                _issue(
-                    "event_code_has_multiple_classes",
-                    None,
-                    f"event code {code} maps to multiple classes in one run",
-                )
-            )
-
     carrier_class_map = class_map_from_value_decisions(
         value_decisions,
     )
     effective_class_map: dict[str, str] = {}
     event_code_class_map: dict[str, str] = {}
-    for code, labels in sorted(code_labels.items()):
-        if len(labels) != 1:
-            continue
-        label = next(iter(labels))
-        event_code_class_map[code] = label
-        display = carrier_class_map.get(label)
-        if not display:
-            continue
-        previous = effective_class_map.get(label)
-        if previous is not None and previous != display:
-            compatibility_issues.append(
-                _issue(
-                    "run_mapping_conflict",
-                    None,
-                    f"class {label} has conflicting per-run meanings",
+    event_code_placement = (
+        str(plan.get("placement_method") or "").strip().lower() == "event_code"
+    )
+    if event_code_placement:
+        code_labels: dict[str, set[str]] = {}
+        for row in usable_rows:
+            if row["event_code"] and row["selected_label"]:
+                code_labels.setdefault(row["event_code"], set()).add(
+                    row["selected_label"]
                 )
-            )
-            continue
-        effective_class_map[label] = display
+        for code, labels in sorted(code_labels.items()):
+            if len(labels) > 1:
+                compatibility_issues.append(
+                    _issue(
+                        "event_code_has_multiple_classes",
+                        None,
+                        f"event code {code} maps to multiple classes in one run",
+                    )
+                )
+                continue
+            label = next(iter(labels))
+            event_code_class_map[code] = label
+            display = carrier_class_map.get(label)
+            if display:
+                effective_class_map[label] = display
+    else:
+        # Timestamp and interval placement use the selected label field at its
+        # reviewed onset.  A BIDS ``value`` column may instead describe a
+        # generic flash/marker and need not identify a class.
+        for row in usable_rows:
+            label = row["selected_label"]
+            display = carrier_class_map.get(label)
+            if display:
+                effective_class_map[label] = display
 
     all_issues = [*schema_issues, *compatibility_issues]
     if all_issues:
@@ -804,6 +834,112 @@ def _recording_metadata(
                 close = getattr(raw, "close", None)
                 if callable(close):
                     close()
+
+
+def _bids_recording_timeline_metadata(
+    layout_row: dict[str, Any],
+    *,
+    resource_reader: AdmittedResourceReader | None,
+) -> dict[str, Any]:
+    """Read reviewed BIDS EEG timing metadata without assuming continuity.
+
+    An absent ``RecordingType`` preserves BIDS' continuous default.  Once a
+    sidecar explicitly declares a different recording topology, its event
+    onset coordinates cannot safely be placed against one concatenated Raw
+    duration, so timestamp placement is rejected before data is loaded.
+    """
+    raw_paths = layout_row.get("eeg_json_files")
+    sidecar_paths = (
+        [str(path).strip() for path in raw_paths if str(path).strip()]
+        if isinstance(raw_paths, list | tuple)
+        else []
+    )
+    recording_type = "continuous"
+    epoch_length: float | None = None
+
+    def result(issue: dict[str, Any] | None = None) -> dict[str, Any]:
+        return {
+            "recording_type": recording_type,
+            "epoch_length_seconds": epoch_length,
+            "source_files": sidecar_paths,
+            "issue": issue,
+        }
+
+    for raw_path in sidecar_paths:
+        path = Path(raw_path)
+        try:
+            guard = (
+                resource_reader.guard([path], purpose="BIDS EEG timing metadata")
+                if resource_reader is not None
+                else contextlib.nullcontext()
+            )
+            with guard:
+                payload, _content_key = parsed_json_value(
+                    path,
+                    parser_id="bids-eeg-timeline-metadata",
+                    schema_version=1,
+                )
+        except (OSError, UnicodeDecodeError, ValueError) as exc:
+            return result(
+                _issue(
+                    "bids_recording_timeline_metadata_unavailable",
+                    None,
+                    f"BIDS EEG timing metadata could not be read: {exc}",
+                )
+            )
+        except Exception as exc:
+            # Resource admission failures retain their normal controlled error
+            # path.  Parsing failures become a review blocker with source
+            # context rather than permitting timestamp placement by default.
+            if resource_reader is not None:
+                raise
+            return result(
+                _issue(
+                    "bids_recording_timeline_metadata_unavailable",
+                    None,
+                    f"BIDS EEG timing metadata could not be read: {exc}",
+                )
+            )
+        if not isinstance(payload, dict):
+            return result(
+                _issue(
+                    "bids_recording_timeline_metadata_invalid",
+                    None,
+                    "BIDS EEG timing metadata must contain a JSON object.",
+                )
+            )
+        raw_type = payload.get("RecordingType")
+        if raw_type is not None and str(raw_type).strip():
+            recording_type = str(raw_type).strip().casefold()
+        raw_epoch_length = payload.get("EpochLength")
+        if raw_epoch_length is not None:
+            try:
+                candidate_epoch_length = float(raw_epoch_length)
+            except (TypeError, ValueError):
+                return result(_invalid_bids_epoch_length_issue())
+            if not math.isfinite(candidate_epoch_length) or candidate_epoch_length <= 0:
+                return result(_invalid_bids_epoch_length_issue())
+            epoch_length = candidate_epoch_length
+
+    if recording_type != "continuous":
+        return result(
+            _issue(
+                "unsupported_bids_recording_type_for_timestamp_placement",
+                None,
+                "BIDS RecordingType "
+                f"{recording_type!r} cannot be placed on XBrainLab's continuous "
+                "timestamp timeline.",
+            )
+        )
+    return result()
+
+
+def _invalid_bids_epoch_length_issue() -> dict[str, Any]:
+    return _issue(
+        "bids_recording_timeline_metadata_invalid",
+        None,
+        "BIDS EpochLength must be a finite positive number.",
+    )
 
 
 def _validated_recording_metadata(wrapper: Any) -> tuple[int, float, Decimal]:

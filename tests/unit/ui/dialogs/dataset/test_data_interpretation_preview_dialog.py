@@ -4,6 +4,7 @@ import inspect
 import re
 from pathlib import Path
 
+import pytest
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -3328,6 +3329,51 @@ def test_data_interpretation_preview_dialog_skip_labels_marks_choice(qtbot):
     assert "label_carrier" not in result["choices"]
     assert "label_carrier_choices" not in result["choices"]
     assert "Skipped" in dialog.label_sources_label.text()
+    assert dialog._review_label_source_text() == "Labels explicitly skipped"
+    assert (
+        "Supervised epoching and training are unavailable"
+        in dialog._review_label_placement_text()
+    )
+
+
+@pytest.mark.parametrize(
+    ("target", "already_skipped", "can_recheck"),
+    [
+        ("Load Labels", False, True),
+        ("Match Labels", False, True),
+        ("Review Metadata", False, False),
+        ("Choose EEG Data", False, False),
+        ("Match Labels", True, False),
+    ],
+)
+def test_skip_labels_only_rechecks_new_label_edits(
+    qtbot, target, already_skipped, can_recheck
+):
+    """Skipping labels cannot bypass unrelated or already-revalidated blockers."""
+    dialog = DataInterpretationPreviewDialog(
+        scan_result={
+            "source_path": "/tmp/source",
+            "source_kind": "bids",
+            "bids": {"is_bids": True},
+            "eeg_files": ["/tmp/source/sub-01_task-mi_eeg.vhdr"],
+        },
+        preview={},
+        validation_decision=_validation_decision(
+            "blocked",
+            [
+                _review_action(
+                    target_step=target, issue="Needs review.", severity="blocked"
+                )
+            ],
+        ),
+        choices={"skip_labels": True} if already_skipped else {},
+    )
+    qtbot.addWidget(dialog)
+    dialog.skip_labels_btn.click()
+    assert dialog.get_result()["choices"]["skip_labels"] is True
+    assert dialog._edited_choices_can_resolve_blocker() is can_recheck
+    assert dialog.decision == "blocked"
+    assert not dialog.get_result()["confirmed"]
 
 
 def test_match_labels_selecting_source_after_skip_clears_skip_choice(qtbot):
@@ -4336,7 +4382,7 @@ def test_load_labels_removing_bids_events_refreshes_active_bids_state(qtbot):
     qtbot.wait(0)
 
     assert dialog._has_bids_events()
-    assert not dialog.skip_labels_btn.isVisibleTo(dialog)
+    assert dialog.skip_labels_btn.isVisibleTo(dialog)
     assert not dialog.add_label_file_btn.isVisibleTo(dialog)
     assert not dialog.add_label_folder_btn.isVisibleTo(dialog)
 
@@ -4348,7 +4394,7 @@ def test_load_labels_removing_bids_events_refreshes_active_bids_state(qtbot):
     qtbot.wait(0)
 
     assert not dialog._has_bids_events()
-    assert not dialog.skip_labels_btn.isVisibleTo(dialog)
+    assert dialog.skip_labels_btn.isVisibleTo(dialog)
     assert not dialog.add_label_file_btn.isVisibleTo(dialog)
     assert not dialog.add_label_folder_btn.isVisibleTo(dialog)
     assert "BIDS events.tsv" in _visible_step_text(dialog, "Load Labels")
@@ -4448,7 +4494,7 @@ def test_bids_preset_uses_compact_actionable_first_layer(qtbot):
     assert "Paired with sub-01_task-mi_run-01_raw.fif" in load_text
     assert "Detected nearby" not in load_text
     assert "events.json" not in load_text
-    assert not dialog.skip_labels_btn.isVisibleTo(dialog)
+    assert dialog.skip_labels_btn.isVisibleTo(dialog)
     assert not dialog.add_label_file_btn.isVisibleTo(dialog)
     assert not dialog.add_label_folder_btn.isVisibleTo(dialog)
 

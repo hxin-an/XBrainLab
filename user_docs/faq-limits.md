@@ -27,12 +27,9 @@ exports, and de-identification. Follow your institution's data-governance rules.
 
 ### Which formats can I import?
 
-The import system recognizes representative GDF, EDF/BDF, EEGLAB SET, BrainVision,
-MNE FIF, and BIDS-related sources. External labels can include reviewed MAT and
-CSV/TSV/TXT patterns.
-
-Format recognition is not a semantic guarantee. Check events, annotations, units,
-class mappings, and metadata in the import review.
+See [Supported data and labels](import-support.md) for the format list, required
+companion files, BIDS scope, internal/external labels and current collection limits.
+Format recognition is not a guarantee of dataset or event/label correctness.
 
 ### Is XBrainLab a full BIDS validator?
 
@@ -47,9 +44,10 @@ meaning, and the converted result must still be reviewed before analysis.
 
 ### Can I continue without labels?
 
-Yes, when the intended downstream task does not require supervised classes. Supervised
-epoching or training is not ready until the event/class meaning is available and
-reviewed.
+Yes. Explicitly choose **Continue without labels** for inspection and preprocessing.
+The current supervised epoch/training workflow requires reviewed usable classes and
+valid event placement. A supplied label file that fails validation is not an implicit
+choice to proceed without labels. See the [label boundary](import-support.md#labels-internal-external-combined-or-absent).
 
 ## Analysis boundaries
 

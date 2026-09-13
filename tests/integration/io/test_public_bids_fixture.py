@@ -6,6 +6,8 @@ import json
 import shutil
 from pathlib import Path
 
+import mne
+import numpy as np
 import pytest
 
 from scripts.dev.fetch_public_eeg_fixtures import resolve_public_fixture_dir
@@ -35,6 +37,207 @@ OPENNEURO_P300_ROOT = PUBLIC_DATA_DIR / "openneuro-ds003061-p300"
 OPENNEURO_P300_EEG_DIR = OPENNEURO_P300_ROOT / "sub-001" / "eeg"
 
 pytestmark = pytest.mark.optional_public_fixture
+
+
+@pytest.mark.parametrize(
+    "review",
+    [
+        "complete",
+        "missing_class",
+        "missing_event",
+        "unknown_event",
+        "overlap",
+        "excluded_class",
+        "unknown_class",
+    ],
+)
+def test_bids_embedded_events_require_observed_complete_review(
+    tmp_path: Path, review: str
+) -> None:
+    """A missing events sidecar must expose real markers and honor explicit review."""
+    if not MNE_BIDS_EEG.exists():
+        pytest.skip("MNE-BIDS tiny public fixture is not downloaded.")
+    root = tmp_path / "embedded-bids"
+    shutil.copytree(MNE_BIDS_ROOT, root)
+    eeg = root / MNE_BIDS_EEG.relative_to(MNE_BIDS_ROOT)
+    (root / MNE_BIDS_EVENTS.relative_to(MNE_BIDS_ROOT)).unlink()
+    # Keep the public signal; controlled marker semantics isolate the missing-sidecar defect.
+    marker = eeg.with_suffix(".vmrk")
+    with marker.open("a", encoding="utf-8") as stream:
+        stream.write("\nMk3=Stimulus,S  1,101,1,0\nMk4=Stimulus,S  2,201,1,0\n")
+    source_bytes = {
+        path: path.read_bytes() for path in eeg.parent.iterdir() if path.is_file()
+    }
+    service = ApplicationService()
+    try:
+        assert service.execute(ScanSourceCommand(str(root), source_hint="bids")).ok
+        preview = service.execute(PreviewInterpretationCommand())
+        assert preview.ok, preview.message
+        internal = preview.diagnostics["preview"]["internal_event_preview"]
+        observed = {
+            row["event_code"]
+            for bucket in ("candidate_label_events", "not_used_events")
+            for row in internal.get(bucket, [])
+        }
+        selected = ["Stimulus/S  1", "Stimulus/S  2"]
+        assert set(selected) <= observed
+        selection = {
+            "label_event_codes": selected.copy(),
+            "not_label_event_codes": sorted(observed - set(selected)),
+            "class_map": dict(zip(selected, ["left", "right"], strict=True)),
+        }
+        if review == "missing_class":
+            selection["class_map"].pop(selected[1])
+        elif review == "missing_event":
+            selection["label_event_codes"].pop()
+        elif review == "unknown_event":
+            selection["not_label_event_codes"].append("not in the recording")
+        elif review == "overlap":
+            selection["not_label_event_codes"].append(selected[0])
+        elif review == "excluded_class":
+            selection["not_label_event_codes"].append(
+                selection["label_event_codes"].pop()
+            )
+        elif review == "unknown_class":
+            selection["class_map"]["unknown"] = "phantom class"
+        reviewed = service.execute(
+            PreviewInterpretationCommand(
+                choices={
+                    "label_carrier": "embedded_events",
+                    "internal_event_selection": selection,
+                }
+            )
+        )
+        assert reviewed.ok, reviewed.message
+        assert service.execute(ValidateInterpretationCommand()).ok
+        applied = service.execute(ApplyInterpretationCommand(confirmed=True))
+        if review != "complete":
+            assert not applied.ok
+            assert applied.state.raw.count == 0
+            assert not applied.state.interpretation.has_applied_interpretation
+        else:
+            assert applied.ok, applied.message
+            assert applied.state.raw.count == 1
+            assert applied.state.interpretation.class_map == selection["class_map"]
+            handoff = applied.state.interpretation.epoch_handoff
+            assert handoff["supervised_ready"]
+            assert set(handoff["default_epoch_events"]) == set(selected)
+            with mne.io.read_raw_brainvision(eeg, verbose="ERROR") as original:
+                loaded = service.study.preprocessed_data_list[0].get_mne()
+                np.testing.assert_array_equal(loaded.get_data(), original.get_data())
+                np.testing.assert_array_equal(
+                    loaded.annotations.onset, original.annotations.onset
+                )
+                np.testing.assert_array_equal(
+                    loaded.annotations.description, original.annotations.description
+                )
+            recipe = tmp_path / "embedded-recipe.json"
+            assert service.execute(SaveInterpretationRecipeCommand(str(recipe))).ok
+            replay = ApplicationService()
+            try:
+                assert replay.execute(ReloadInterpretationRecipeCommand(str(recipe))).ok
+                assert replay.execute(ValidateInterpretationCommand()).ok
+                reapplied = replay.execute(ApplyInterpretationCommand(confirmed=True))
+                assert reapplied.ok, reapplied.message
+                assert (
+                    reapplied.state.interpretation.class_map == selection["class_map"]
+                )
+                assert reapplied.state.interpretation.epoch_handoff["supervised_ready"]
+            finally:
+                replay.close()
+        assert all(path.read_bytes() == data for path, data in source_bytes.items())
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize("events_present", [True, False])
+def test_explicit_no_label_bids_import_does_not_require_events(
+    tmp_path: Path, events_present: bool
+) -> None:
+    """BIDS no-label import must remain distinct from an unresolved labelled import."""
+    if not MNE_BIDS_EEG.exists():
+        pytest.skip("MNE-BIDS tiny public fixture is not downloaded.")
+    bids_root = tmp_path / "unlabelled-bids"
+    shutil.copytree(MNE_BIDS_ROOT, bids_root)
+    eeg_path = bids_root / MNE_BIDS_EEG.relative_to(MNE_BIDS_ROOT)
+    events_path = bids_root / MNE_BIDS_EVENTS.relative_to(MNE_BIDS_ROOT)
+    if not events_present:
+        events_path.unlink()
+    source_bytes = {
+        path: path.read_bytes() for path in eeg_path.parent.iterdir() if path.is_file()
+    }
+    service = ApplicationService()
+    try:
+        commands = (
+            ScanSourceCommand(source_path=str(bids_root), source_hint="bids"),
+            PreviewInterpretationCommand(choices={"skip_labels": True}),
+            ValidateInterpretationCommand(),
+            ApplyInterpretationCommand(confirmed=True),
+        )
+        for command in commands:
+            applied = service.execute(command)
+            assert applied.ok, applied.message
+        assert applied.state.raw.count == 1
+        assert applied.state.interpretation.class_map == {}
+        assert not applied.state.interpretation.epoch_handoff["supervised_ready"]
+        assert applied.state.interpretation.epoch_handoff[
+            "supervised_blocker_codes"
+        ] == ["missing_class_labels"]
+        loaded = service.study.preprocessed_data_list[0].get_mne()
+        with mne.io.read_raw_brainvision(eeg_path, verbose="ERROR") as original:
+            np.testing.assert_array_equal(loaded.get_data(), original.get_data())
+            np.testing.assert_array_equal(
+                loaded.annotations.onset, original.annotations.onset
+            )
+            np.testing.assert_array_equal(
+                loaded.annotations.description, original.annotations.description
+            )
+        rate = loaded.info["sfreq"] / 2
+        preprocessed = service.execute(
+            PreprocessCommand(operation=PreprocessOperation.RESAMPLE, rate=rate)
+        )
+        assert preprocessed.ok, preprocessed.message
+        before_epoch = (
+            service.study.preprocessed_data_list[0].get_mne().get_data().copy()
+        )
+        assert service.study.preprocessed_data_list[0].get_sfreq() == rate
+        rejected = service.execute(
+            CreateEpochCommand(t_min=0, t_max=0.1, event_ids=["unused"])
+        )
+        assert not rejected.ok
+        assert rejected.error_type.value == "precondition"
+        assert rejected.recoverable
+        assert not rejected.state.epoch.exists
+        np.testing.assert_array_equal(
+            service.study.preprocessed_data_list[0].get_mne().get_data(), before_epoch
+        )
+        recipe_path = tmp_path / "no-label-recipe.json"
+        saved = service.execute(SaveInterpretationRecipeCommand(str(recipe_path)))
+        assert saved.ok, saved.message
+        assert (
+            json.loads(recipe_path.read_text(encoding="utf-8"))["skip_labels"] is True
+        )
+        reloaded_service = ApplicationService()
+        try:
+            reloaded = reloaded_service.execute(
+                ReloadInterpretationRecipeCommand(str(recipe_path))
+            )
+            assert reloaded.ok, reloaded.message
+            assert reloaded_service.execute(ValidateInterpretationCommand()).ok
+            reapplied = reloaded_service.execute(
+                ApplyInterpretationCommand(confirmed=True)
+            )
+            assert reapplied.ok, reapplied.message
+            assert reapplied.state.raw.count == 1
+            assert reapplied.state.interpretation.class_map == {}
+            assert not reapplied.state.interpretation.epoch_handoff["supervised_ready"]
+        finally:
+            reloaded_service.close()
+        assert all(
+            path.read_bytes() == content for path, content in source_bytes.items()
+        )
+    finally:
+        service.close()
 
 
 def test_public_mne_bids_numeric_trial_type_applies_and_publishes(

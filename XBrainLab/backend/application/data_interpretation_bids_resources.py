@@ -138,6 +138,81 @@ def bids_events_json_resources_by_carrier(
     return result
 
 
+def bids_eeg_json_resources_by_recording(
+    bids: dict[str, Any],
+    selected_eeg_files: Iterable[str],
+) -> dict[str, tuple[str, ...]]:
+    """Return indexed inherited EEG JSON sidecars for selected recordings.
+
+    The index has already bounded discovery to the selected BIDS root.  This
+    function only matches that retained catalog against BIDS inheritance and
+    does not walk directories or discover new paths during preview.
+    """
+    root_text = str(bids.get("root") or "").strip()
+    if not root_text:
+        return {}
+    root = Path(root_text)
+    root_key = _lexical_path_key(root)
+    available_by_directory: dict[str, list[tuple[str, str]]] = {}
+    for raw_path in bids.get("json_sidecar_files", []) or []:
+        path = Path(str(raw_path))
+        if not _is_bids_eeg_json_sidecar(path):
+            continue
+        path_key = _lexical_path_key(path)
+        directory_key = _lexical_path_key(path.parent)
+        available_by_directory.setdefault(directory_key, []).append(
+            (path_key, str(path))
+        )
+    result: dict[str, tuple[str, ...]] = {}
+    for eeg_file in selected_eeg_files:
+        recording = Path(eeg_file)
+        try:
+            recording.relative_to(root)
+        except ValueError:
+            continue
+        directories = _bids_inheritance_directories(recording.parent, root_key)
+        if directories is None:
+            continue
+        candidates: list[str] = []
+        seen: set[str] = set()
+        # BIDS inheritance applies broader sidecars first, then increasingly
+        # local/specific files override individual fields.
+        for directory in reversed(directories):
+            matching = [
+                (key, path)
+                for key, path in available_by_directory.get(
+                    _lexical_path_key(directory), []
+                )
+                if _eeg_sidecar_matches_recording(Path(path), recording)
+                and key not in seen
+            ]
+            for key, path in sorted(
+                matching,
+                key=lambda item: _eeg_sidecar_specificity(Path(item[1])),
+            ):
+                candidates.append(path)
+                seen.add(key)
+        result[str(recording)] = tuple(candidates)
+    return result
+
+
+def _bids_inheritance_directories(
+    local_directory: Path,
+    root_key: str,
+) -> list[Path] | None:
+    """Return retained ancestor paths without reopening or resolving them."""
+    directories: list[Path] = []
+    directory = local_directory
+    while True:
+        directories.append(directory)
+        if _lexical_path_key(directory) == root_key:
+            return directories
+        parent = directory.parent
+        if parent == directory:
+            return None
+        directory = parent
+
+
 @dataclass
 class BidsEventsJsonReadBudget:
     """Track one workflow's aggregate events JSON payload reads."""
@@ -602,6 +677,57 @@ def _bids_event_sidecar_names(path: Path) -> list[str]:
         names.append("_".join([*semantic_parts, "events"]) + ".json")
     names.append("events.json")
     return list(dict.fromkeys(names))
+
+
+def _is_bids_eeg_json_sidecar(path: Path) -> bool:
+    name = path.name.casefold()
+    return name == "eeg.json" or name.endswith("_eeg.json")
+
+
+def _eeg_sidecar_matches_recording(sidecar: Path, recording: Path) -> bool:
+    """Whether one indexed EEG sidecar may inherit onto this recording."""
+    if not _is_bids_eeg_json_sidecar(sidecar):
+        return False
+    recording_entities = _bids_filename_entities(recording.name)
+    sidecar_entities = _bids_filename_entities(sidecar.name)
+    return all(
+        recording_entities.get(key) == value for key, value in sidecar_entities.items()
+    )
+
+
+def _eeg_sidecar_specificity(path: Path) -> tuple[int, str]:
+    entities = _bids_filename_entities(path.name)
+    return (len(entities), path.name.casefold())
+
+
+def _bids_filename_entities(name: str) -> dict[str, str]:
+    stem = name
+    lowered = stem.casefold()
+    for extension in (
+        ".fif.gz",
+        ".json",
+        ".tsv",
+        ".fif",
+        ".set",
+        ".edf",
+        ".bdf",
+        ".cnt",
+        ".vhdr",
+        ".eeg",
+    ):
+        if lowered.endswith(extension):
+            stem = stem[: -len(extension)]
+            break
+    if stem.casefold().endswith("_eeg"):
+        stem = stem[: -len("_eeg")]
+    result: dict[str, str] = {}
+    for part in stem.split("_"):
+        if "-" not in part:
+            continue
+        key, value = part.split("-", 1)
+        if key and value:
+            result[key.casefold()] = value
+    return result
 
 
 def _bids_inheritance_scope(path: Path) -> tuple[list[Path], Path | None]:
