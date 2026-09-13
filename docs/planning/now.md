@@ -95,112 +95,59 @@ blockers, with zero undispositioned export. The authorized missing-events and ti
 implemented; retained-source reruns must establish the new route counts before the product handoff.
 ### Current checkpoint and remaining work
 
-- The complete pinned denominator and per-entry source/route receipts live only in
-  `docs/validation/moabb-inventory.md`. Campaign downloads are complete for the current representative
-  reruns; rights/source/loader/converter failures remain explicit and are not importer failures.
-- Implemented authorized fixes: format reporting (Neuroscan CNT/BDF/XDF); explicit no-label BIDS wizard;
-  embedded-event BIDS review without events.tsv; exact selected-code/class-map agreement and recipe
-  replay; inherited EEG RecordingType/EpochLength checks; reviewed sidecar byte/directory identity.
-- Independent review reproduced and closed extra/unknown class-map keys, new sidecars after Preview or
-  Validate, and recording-specific EEG JSON leaking to another recording. No new authoritative owner,
-  public class, production module or compatibility layer was added.
-- Native Windows embedded-label wizard passed; both Match Labels and fresh Review screenshots were
-  inspected. This is automated workflow evidence, not manual acceptance or a final exact-head gate.
-- The first combined run was 400 PASS / 5 FAIL. Junction fixture paths and Windows MAX_PATH were
-  environment issues: use the canonical retained fixture root and a short task-owned pytest basetemp.
-  Product corrections retain the existing canonicalization budget and prevent unnecessary fresh review
-  when no class event is selected. The BBCI driver now clicks the exact dropdown options instead of
-  depending on partial-text autocomplete timing; publication assertions remain exact. Final combined
-  Windows run: 405 passed, 95 upstream/runtime warnings, no skips. Changed-file Ruff/diff checks pass.
-  Final native feedback found the BBCI driver clicking before its Windows popup was exposed; waiting
-  for actual popup exposure fixes it, and all four native cases pass. CI's format-matrix gate separately
-  found the old oracle still expected BDF to be reported as EDF; its expected value now matches the
-  approved reporting fix. Follow-up script/BBCI evidence: 21 passed; native BIDS/BBCI group: 4 passed.
-  Both changes are validation-only; push the follow-up and require all applicable CI on the new head.
-- Mainsah's 20 retained exports plus Zuo/Yi passed Commands, exact readback and recipe replay; the root
-  independently read all receipts and matched all six affected backend hashes. Inventory is now
-  110 route passes / 37 reviewed blockers / 0 undispositioned. Yi's old missing-events claim was wrong:
-  a supplemental retained-source audit verifies all eight event sequences and full run-0 waveform,
-  explicitly disclosing sampled waveforms for runs 1–7 and the missing historical converter script/log.
-- Shared Windows environment remains the only runtime. Native interop requires the approved escalated
-  process boundary; do not restart WSL or create an environment. Original-checkout dirty UI/tests and
-  settings.json remain untouched. Task-local acquisition scripts and generated data are not PR content.
+- Keep the full 147-entry denominator and per-entry source/conversion/Command receipts in
+  `docs/validation/moabb-inventory.md`; do not make a second campaign status registry.
+- Product repairs are committed at `3697f95b` on the existing PR #141. They include format reporting,
+  explicit no-label BIDS, missing-events embedded review, timeline/sidecar freshness, selected timestamp
+  label-field authority, and bounded recipe persistence/public diagnostics. No new authoritative owner,
+  public class or compatibility layer was introduced; unrelated root settings/UI/test edits remain intact.
+- Recipe persistence retains complete explicit choices/content identities and the 1 MiB read cap,
+  bounds only regenerable diagnostic evidence, and rejects oversized choices before overwrite.
+  BIDS timestamp/interval classes come from the selected field; actual event-code collisions still block.
+  Recipe/projection tests: 17 passed. Strict BIDS and timestamp integration: 63 passed with a short
+  Windows basetemp; the previous MAX_PATH fixture error occurred before product code.
+- Source-diverse, native startup, visual/DPI and most regression gates pass at `3697f95b`.
+  Linux integration fails because the new generated fixture used optional pybv, absent from that shard.
+  The fixture-only repair now writes tiny real BrainVision files directly; the same two Command/recipe
+  regressions pass on Windows and Ruff passes. Do not add a dependency, skip or weaken the assertions.
+  The next commit must pass all applicable CI on its own exact SHA.
+- Remaining-blocker work proved `return_all_modalities=True` preserves non-STIM channels in the pinned
+  official converter. Root independently reviews actual scripts and receipts, including sidecar channel
+  types, fresh source objects, exact class/sample arrays, full chunked waveforms and recipe replay.
+  Huebner unitless MISC fidelity uses exact float32 storage representation, not an invented physical
+  tolerance. Kojima B's old failure paired the wrong source/BIDS run.
+- BNCI2019 now passes numerical transport and App/replay checks, but source EOG unit semantics remain
+  ambiguous: original GDF unit code 0 and asymmetric pinned loader scaling. Do not silently correct
+  units. Triana's unmodified official converter fails for missing head-coordinate fiducials; its old
+  manually altered export is not official-converter evidence. Other source/license/dependency/large
+  archive blockers remain specific inventory rows, not importer failures or unexamined entries.
+- BNCI2025_001 and Weibo supplemental receipts are complete and independently inspected: every
+  class/sample pair, sidecar type, initial/replayed full waveform and fresh post-run source hash passes.
+  The inventory now records 127 representative BIDS-route passes and 20 specific blockers out of 147;
+  payload/runtime evidence is 129/18. BNCI2025 source-reader boundary warnings do not establish
+  discontinuous recording support; the selected public-loader/BIDS timeline is continuous.
+- Some original sources reside in the task worktree's `E-/XBrainLabData` because the upstream downloader
+  sanitized a Windows drive path. Use exact retained-file bindings plus hard offline guards, not guessed
+  cache paths or new downloads. One BNCI2025 subject archive was duplicated during path resolution;
+  retain it pending safe post-merge cleanup, not another download. New supplementary receipts are
+  workspace-local when external E: writes are rejected. Do not delete original data or shared environments.
 
-Complexity review: nine production files, +401/-25 (net +376). Existing
-candidate, BIDS semantic review and Command service retain authority. The ninth file is necessary to
-invalidate a review when a new matching sidecar appears; byte hashing alone cannot discover additions.
-Removed the unused flat helper and duplicate result construction; catalog matching reuses indexed paths
-without repeated canonicalization. Logical rollback units are reporting, no-label/embedded-label
-admission, and timeline/source validity. Keep one integrated user handtest.
+Complexity review: the initial repair touched nine production files, +401/-25 (net +376); the two
+follow-up backend fixes add +88/-38 (net +50) across existing owners. Removed redundant mapping logic
+and reused existing evidence projection; no owner/state/control-plane increase. Rollback remains
+slice-level while the user receives one integrated handtest.
 
 Next steps, in order:
 
-0. User renewed authorization to continue resolving remaining blockers (2026-09-13). Diagnose each
-   remaining conversion/import failure without relaxing source fidelity or assuming license acceptance.
-   First close current CI: Linux UI executed 129 cases successfully but rejected the new unmarked CNT
-   public-fixture skip. Mark only that downloaded-fixture parameter consistently with existing shard
-   policy; the public-data gate must still execute it without skips. BDF oracle and native popup
-   synchronization fixes are committed locally at 78ac4613, not yet pushed. Then inspect duplicate
-   event placement (BNCI2025_001) and whether official conversion options can preserve omitted non-STIM
-   channels. Reproduce before product changes; new semantic/UI decisions remain explicit boundaries.
-   CNT parameter policy repair passes the complete visible format matrix and mandatory-runner tests:
-   26 passed, no skips, using the retained Windows fixtures. The source-diverse CI gate still disallows
-   all skips; no production behavior or assertion was weakened.
-   Remaining-blocker audit found an official converter option: `return_all_modalities=True` preserves
-   non-STIM channels whereas the default selects EEG only. Verify a fresh BNCI2014_001 retained-source
-   pilot before extending to the same-cause entries; compare independent source copies to avoid
-   alias-mutated fidelity receipts. This is conversion configuration, not permission to accept channel
-   loss, invent labels, change the pinned dependency, or add a second product importer.
-   Fresh Kojima2024B selected source run-12 converts to MOABB run `62stream` / BIDS run-62, not the
-   old receipt's paired BIDS run-12. New conversion preserves all 66 non-STIM channels, 424480 samples,
-   all 240 class/sample pairs, full chunked waveforms, Commands and recipe replay. Receipt:
-   `E:\XBrainLabData\evidence\kojima-b-reconversion-20260913-v1\result-v2.json`, SHA-256
-   `7e334a7489cbb76fc2f80c214bf94cfe24b543420abe4c02031c1acdc2cb76f4`.
-   The first validation attempt used plain BrainVision channel types instead of channels.tsv for its
-   Command reference; the follow-up uses actual BIDS metadata and reuses the same converted files.
-   All 24 non-skipped CI checks passed at pushed head `5d23d0b0` (run 34735323194). Root inspected
-   public-data artifacts: required I/O 48 passed / 0 skipped, visible format matrix 12 passed / 0 skipped,
-   including CNT. Continue retained-source repairs before requesting manual testing; subsequent doc/source
-   commits still require their own applicable CI. BNCI2025_001's original class collision reproduces and
-   proper explicit class/context review passes the retained payload; official-conversion evidence is
-   still missing until its original source unit is located or safely reacquired.
-   Two directly reproduced product repairs remain in scope before handoff:
-   - Large-event recipe replay: successful BNCI2025_001 import saves 2,670,013 bytes while reload is
-     bounded at 1 MiB. Most bytes are redundant derived carrier preview lists, not reviewed choices.
-     Compact only regenerable evidence, preserve every explicit decision/mapping and content identity,
-     keep the read cap, and prove save→reload→validate→apply with the same classes/context. Do not
-     recursively project away user-chosen label keys that happen to resemble diagnostic field names.
-     Apply the existing bounded BIDS projection to Save/Reload public responses as well, so the same
-     redundant event rows do not escape through command diagnostics after bounded persistence.
-   - BIDS timestamp labels: Thielen's official converter preserves trial_id, flash events and all
-     104 non-STIM channels. The existing Label-time target permits an independent selected label field,
-     but strict BIDS incorrectly applies one-code/one-class to an unrelated `value` column. Restore
-     timestamp/interval field authority while keeping true event-code mapping conflicts, complete
-     decisions, timeline/bounds, same-sample conflict, freshness and recipe protections. Test first
-     with a bounded real BIDS fixture, then rerun retained Thielen. No UI files or new public contract;
-     no claim of full cVEP model/training support from an import result.
-   Both repairs now pass focused Windows validation: recipe/public projection 17 cases and strict BIDS
-   plus generated BrainVision timestamp regression 63 cases, no skips. The previous deep-directory
-   fixture failure disappears with a short Windows pytest basetemp; it occurred before product code.
-   Retained BNCI2025_001 payload save/reload/validate/apply now preserves 958 class events and exact
-   waveforms with a 170,427-byte recipe; this is not yet its official BIDS route. Retained official
-   Thielen BIDS imports and replays all 36 selected trial IDs. Independent recipe review confirmed
-   explicit choices/content identities survive, while root reviews the timestamp diff and receipts.
-   Modality batch reruns must bind actual original source paths/hashes, use independent loader objects,
-   and check full chunked waveforms, sidecar channel types, exact class/sample arrays and recipe replay.
-   Missing guessed cache paths are not dataset blockers. Locate actual campaign sources before any
-   reacquisition; no network-dependent default-loader fallback or persistent config changes.
-   BNCI2019_001's float32 BrainVision precision discrepancy remains under diagnosis, not PASS; an
-   integer half-resolution bound alone is not an adequate floating-point export oracle.
-1. Product tests and scoped review are complete. Finish user-site/source audits and strict docs builds
-   for the synchronized support facts; retain the explicitly described evidence/provenance limits.
-2. Commit only explicit product/tests/docs paths, push one task PR against main, and require same-head
-   non-skipped CI success, including source-diverse data, visual comparison and Windows DPI gates.
-   Reuse CI evidence instead of duplicating full regression locally. Run both strict documentation
-   builds and applicable source audits. No merge approval has been given for this source.
-3. Inspect changed artifacts, launch the exact Windows candidate with visible PowerShell log, confirm
-   responsiveness, and provide one GUI/Assistant handtest checklist and repeatable command.
-   Stop at handoff only after applicable gates; pending evidence is a checkpoint, not completion.
+1. The final supplemental fidelity checks, 147-row arithmetic and inventory/current/user-facing
+   claim synchronization are complete. No all-MOABB or full-corpus certification claim.
+2. Commit only explicit tests/docs paths and push the fixture repair and final facts to PR #141.
+   Require same-head non-skipped CI success, including source-diverse data, visual/DPI/platform gates
+   and both strict docs builds. Reuse equivalent CI; do not repeat a full local suite.
+3. Review changed-surface native screenshots, prepare the exact Windows manual checkout using the
+   single retained interpreter, then launch with one visible PowerShell console as its live log.
+   Confirm responsiveness and provide the GUI/English-Assistant handtest checklist and repeat command.
+   Do not merge until the user passes this source and explicitly approves merging.
 
 ## Closed baseline
 

@@ -13,7 +13,7 @@ local Granite透過18個核准action進入相同GUI與Command workflow。
 使用者匯入邊界集中於 `user_docs/import-support.md`：通用 EEG 檔案與 EEG-BIDS 是並列入口，
 內嵌／外部／混合／明確無 label 均經既有 wizard。無 label 可檢視與前處理，不代表監督式
 epoch/training ready。MOABB loader 轉成 EEG-BIDS 後的全清單相容性是已同意的最低目標；完整
-1.5.0 inventory 目前已有 110 個代表路徑通過、37 個明確 blocker、0 個未盤點。這是完整
+1.5.0 inventory 目前已有 127 個代表路徑通過、20 個明確 blocker、0 個未盤點。這是完整
 disposition，**不是 147/147 相容能力**。目前同批通道配置／raw-epoch 相容性限制，以及
 BIDS epoched/discontinuous 與仍未通過的逐項轉換／產品 blocker，
 必須公開，不能透過文件把尚未完成的目標改寫為已支援。

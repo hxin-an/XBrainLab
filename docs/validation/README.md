@@ -122,6 +122,8 @@ several formats exported from one GDF source remain one source family.
 | BIDS folder wizard → explicit no-label choice → fresh review → apply | `test_visible_bids_wizard_can_explicitly_import_without_labels` in `test_data_import_wizard_real_fixture_acceptance.py` | Real wizard/Commands, isolated directory chooser; with/without events.tsv, no classes and supervised epoch blocked. Native automation does not replace human acceptance. |
 | Visible wizard no-label route | `tests/integration/ui/test_data_import_wizard_real_fixture_acceptance.py` | File chooser isolation with real wizard/readers; offscreen is not human native acceptance. |
 | BIDS metadata/events/recipe and timing | `tests/integration/io/test_public_bids_fixture.py`, `test_bids_epoch_duration_handoff.py` | Public fixture and bounded timing cases; not full specification validation. |
+| Selected timestamp label field independent of generic BIDS value codes | `tests/integration/io/test_bids_timestamp_label_field.py` | Generated BrainVision files through real Commands and recipe replay; event-code collisions remain blocked. Retained Thielen evidence is recorded separately in the inventory. |
+| Large-event recipe persistence and public diagnostics | `test_data_interpretation_recipe.py`, `test_data_interpretation_public_projection.py` under `tests/unit/backend/application/` | Bounded derived evidence, complete explicit choices/content identity, and oversized-input rejection before overwrite; does not raise the 1 MiB limit. |
 
 All-MOABB acceptance additionally requires a complete pinned release inventory and dataset-level
 source selections, official loader identity, converter identity/options, export precision, preserved

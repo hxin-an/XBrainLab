@@ -155,7 +155,7 @@ access, missing conversion evidence and untested datasets remain visible gaps.
 Testing selected subjects/runs is not proof that every byte of a corpus was exercised.
 
 The pinned MOABB 1.5.0 inventory now has an explicit outcome for all 147 static,
-non-synthetic exports: 110 representative loader-to-BIDS routes passed and 37 have a
+non-synthetic exports: 127 representative loader-to-BIDS routes passed and 20 have a
 specific source, license, loader, conversion or product blocker. No row is unexamined,
 but this is not a 147/147 support result. Several exports share recordings, and most
 runtime checks intentionally cover only a representative subject/session/run. See

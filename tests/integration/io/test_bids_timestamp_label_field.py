@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import mne
 import numpy as np
 
 from XBrainLab.backend.application import (
@@ -35,20 +34,29 @@ def _write_brainvision_bids_with_generic_flash_codes(
         ),
         encoding="utf-8",
     )
-    raw = mne.io.RawArray(
-        np.zeros((2, 1_000)),
-        mne.create_info(["C3", "C4"], sfreq=100.0, ch_types="eeg"),
-        verbose="ERROR",
-    )
-    raw.set_annotations(
-        mne.Annotations(
-            onset=[1.0, 2.0, 3.0, 4.0],
-            duration=[0.0, 0.0, 0.0, 0.0],
-            description=["0.0", "1.0", "0.0", "1.0"],
-        )
-    )
     eeg = eeg_dir / "sub-01_task-cvep_eeg.vhdr"
-    mne.export.export_raw(eeg, raw, fmt="brainvision", overwrite=True, verbose="ERROR")
+    # A real tiny recording without a dependency on the optional pybv exporter.
+    eeg.with_suffix(".eeg").write_bytes(np.zeros((1_000, 2), dtype="<f4").tobytes())
+    eeg.write_text(
+        "Brain Vision Data Exchange Header File Version 1.0\n"
+        "[Common Infos]\nCodepage=UTF-8\n"
+        f"DataFile={eeg.with_suffix('.eeg').name}\n"
+        f"MarkerFile={eeg.with_suffix('.vmrk').name}\n"
+        "DataFormat=BINARY\nDataOrientation=MULTIPLEXED\n"
+        "NumberOfChannels=2\nSamplingInterval=10000\n"
+        "[Binary Infos]\nBinaryFormat=IEEE_FLOAT_32\n"
+        "[Channel Infos]\nCh1=C3,,1,µV\nCh2=C4,,1,µV\n",
+        encoding="utf-8",
+    )
+    eeg.with_suffix(".vmrk").write_text(
+        "Brain Vision Data Exchange Marker File, Version 1.0\n"
+        "[Common Infos]\nCodepage=UTF-8\n"
+        f"DataFile={eeg.with_suffix('.eeg').name}\n"
+        "[Marker Infos]\n"
+        "Mk1=Comment,0.0,101,1,0\nMk2=Comment,1.0,201,1,0\n"
+        "Mk3=Comment,0.0,301,1,0\nMk4=Comment,1.0,401,1,0\n",
+        encoding="utf-8",
+    )
     events = eeg_dir / "sub-01_task-cvep_events.tsv"
     events.write_text(
         "onset\tduration\ttrial_type\tvalue\ttrial_id\n"
