@@ -1,6 +1,6 @@
 # XBrainLab Validation Contract
 
-最後更新：`2026-09-09`
+最後更新：`2026-09-13`
 
 驗證回答「哪個exact source，在什麼環境，觀察到什麼」，不能把單一PASS放大成產品、科學或真人
 驗收結論。日常與PR交付按下表選證據；CI routing由既有workflow擁有。明確要求完整dossier時，
@@ -133,9 +133,43 @@ Inspect selected-subject coverage separately from full-corpus coverage. Reuse ex
 runners where applicable; this contract does not authorize downloads, duplicate caches or a new
 validation control plane. Existing compact MOABB registry is not a full inventory.
 
-The [pinned release inventory](moabb-inventory.md) lists every static non-synthetic dataset export
-of the existing MOABB 1.5.0 evidence anchor, including untested entries and aggregate/subset variants.
-It is the denominator reference, not a new gate or an all-dataset support claim.
+### Recurring representative import conformance
+
+Every major-stage integrated acceptance, and every change to import/label semantics or the
+MNE/MOABB/MNE-BIDS/reader dependencies, requires the complete representative import catalog plus
+representative native Windows wizard evidence before handoff. Ordinary unrelated PRs keep focused
+checks and normal CI; this requirement does not mean retraining every dataset or downloading the
+corpus in CI. Existing source-diverse training gates remain independently required where applicable.
+
+The executable membership authority is
+`scripts/dev/moabb_user_journeys/data/moabb-import-catalog-v1.json`: all 147 pinned MOABB 1.5.0 exports,
+including aggregate/subset variants. The [human inventory](moabb-inventory.md) describes that boundary.
+Required cases must all execute successfully; deferred rights and unresolved blockers stay visible
+but do not become passing cases. Removing an already passing required entry is a baseline regression,
+not a way to achieve a green campaign. Source-BIDS-only and retained-conversion evidence must retain
+their provenance limitations; neither means a fresh full-cohort conversion or benchmark replication.
+
+`moabb-import-conformance` is registered in the existing handoff gate registry and full release
+profiles. Its runner is `scripts/dev/run_moabb_import_conformance.py`; the existing
+`XBRAINLAB_DATA_DIR` resolver or explicit `--data-root` selects the retained data root. Each required
+case binds a content-hashed manifest, portable input paths, hashes, explicit label choices and
+independent expectations. The runner uses actual Scan/Preview/Validate/Apply and fresh-service recipe
+replay, checking full selected-run waveforms, channels/types, sample counts and class/sample tuples.
+This does not replace native wizard checks or user acceptance.
+
+Refresh `origin/main` before a formal campaign: admission compares against its accepted catalog,
+including later promotions, and records its exact SHA. An unavailable Git/ref fails closed; only
+an accepted main that genuinely predates the catalog uses the pinned initial 127-case baseline.
+Use a new `--output` directory for each candidate. `--resume` permits reuse only with identical
+source/environment/catalog/accepted-baseline identities and reverified input/result/recipe hashes; failed attempts
+remain available. Missing, changed, unexecuted or timed-out required cases fail closed. No runner
+acquisition or automatic terms acceptance is allowed. Reader/converter changes additionally require
+attributable reconversion checks; replaying retained BIDS alone cannot prove a changed converter.
+
+The durable local hierarchy is `E:\XBrainLabData\datasets\{source,bids,public-fixtures,manifests,quarantine}`,
+with sibling `evidence` and `staging`. This is the current machine's data-root choice, not a hard-coded
+product path. Copy/hash/replay precedes reference changes; original and failed evidence retention is
+separate from an explicitly approved exact-target cleanup. Do not rewrite historical recipes.
 
 ## Exact-source requirements
 

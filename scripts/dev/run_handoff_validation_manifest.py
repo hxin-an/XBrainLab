@@ -82,6 +82,7 @@ _POST_REGRESSION_LANES = (
         "dataset-validation-matrix",
         "data-interpretation-matrix",
         "public-cross-source-training",
+        "moabb-import-conformance",
     ),
 )
 _FINAL_GATE_IDS = ("handoff-dashboard",)

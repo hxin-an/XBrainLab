@@ -1,0 +1,1473 @@
+{
+  "schema_version": 1,
+  "initial_nonrequired_ids": [
+    "BNCI2015_006",
+    "BNCI2016_002",
+    "BNCI2019_001",
+    "BNCI2022_001",
+    "EPFLP300",
+    "Lee2024_AC",
+    "Lee2024_BS",
+    "Lee2024_DL",
+    "Lee2024_EL",
+    "Lee2024_TV",
+    "Liu2020BETA",
+    "MartinezCagigal2023Pary",
+    "Rozado2015",
+    "Shin2017A",
+    "Shin2017B",
+    "Sosulski2019",
+    "Tavakolan2017",
+    "TrianaGuzman2024",
+    "Yang2025",
+    "Zhang2017"
+  ],
+  "moabb_release": {
+    "version": "1.5.0",
+    "commit": "140809d8c48bdf2be953951ff75f688122edee34"
+  },
+  "entries": [
+    {
+      "id": "AlexMI",
+      "module": "alex_mi",
+      "status": "required",
+      "evidence_note": "Full 8-subject source/conversion evidence plus selected-run BIDS-root Command/readback/recipe PASS; aggregate receipt SHA-256 `d98657f1...8a09f0ea`",
+      "evidence_hashes": [
+        "d98657f1f9acb9f28c22b3f88d7f343d856f2ddc90471210ac6830ff8a09f0ea"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Rodrigues2017",
+      "module": "alphawaves",
+      "status": "required",
+      "evidence_note": "Full 19-subject converted-shape evidence plus selected-run BIDS-root Command/readback/recipe PASS; pinned loader path repair disclosed; aggregate receipt SHA-256 `d98657f1...8a09f0ea`",
+      "evidence_hashes": [
+        "d98657f1f9acb9f28c22b3f88d7f343d856f2ddc90471210ac6830ff8a09f0ea"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Shin2017A",
+      "module": "bbci_eeg_fnirs",
+      "status": "deferred_rights",
+      "evidence_note": "BLOCKED: pinned loader requires explicit user GPLv3 terms acceptance",
+      "evidence_hashes": [],
+      "case_manifest": null
+    },
+    {
+      "id": "Shin2017B",
+      "module": "bbci_eeg_fnirs",
+      "status": "deferred_rights",
+      "evidence_note": "BLOCKED: pinned loader requires explicit user GPLv3 terms acceptance",
+      "evidence_hashes": [],
+      "case_manifest": null
+    },
+    {
+      "id": "Beetl2021_A",
+      "module": "beetl",
+      "status": "required",
+      "evidence_note": "Final-training subject 1 retained source fresh-loader → MOABB 1.5.0 EEG-BIDS → five-Command/readback/recipe PASS with 100 semantic `trial_type` events and exact 63-channel waveform fidelity (`aee746da0a4c10943a6802bdf52a6972d28c0c27037775bd87992bd93cf0b897`)",
+      "evidence_hashes": [
+        "aee746da0a4c10943a6802bdf52a6972d28c0c27037775bd87992bd93cf0b897"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Beetl2021_B",
+      "module": "beetl",
+      "status": "required",
+      "evidence_note": "Final-training subject 4 retained source fresh-loader → MOABB 1.5.0 EEG-BIDS → five-Command/readback/recipe PASS with 120 semantic `trial_type` events and exact 32-channel waveform fidelity (`05c86d7e3594983e87566fda9ea3e71aeba2bafe8cb32fe9c70b00878a5eb347`)",
+      "evidence_hashes": [
+        "05c86d7e3594983e87566fda9ea3e71aeba2bafe8cb32fe9c70b00878a5eb347"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "BNCI2003_004",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with fresh-loader source/BIDS fidelity (`89282b2124b4ec49887a847e1da27a902a167f72d167bd97ea07b98e8a5be1d4`)",
+      "evidence_hashes": [
+        "89282b2124b4ec49887a847e1da27a902a167f72d167bd97ea07b98e8a5be1d4"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "BNCI2014_001",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 / 0train / run 0 official all-modality BIDS, source fidelity, Commands and recipe replay PASS (25 non-STIM channels, 48 class events); 12 runs converted, one verified; `544409d8caf23ba86ab6f840d6c26031262d43e25e3d5b550f6241ca58c6e107`",
+      "evidence_hashes": [
+        "544409d8caf23ba86ab6f840d6c26031262d43e25e3d5b550f6241ca58c6e107"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "BNCI2014_002",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with fresh-loader source/BIDS fidelity (`ee2c25a6e32939230e4c4e5a9255ebe5d3295de0c975f455fb6d27f1d0143099`)",
+      "evidence_hashes": [
+        "ee2c25a6e32939230e4c4e5a9255ebe5d3295de0c975f455fb6d27f1d0143099"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "BNCI2014_004",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 / 0train / run 0 official all-modality BIDS, full source/readback and recipe replay PASS (6 non-STIM channels, 120 class events); `66607491974f8c7464fee3e1ff7d845b9831bb4e806dae38d7b49b350d208126`",
+      "evidence_hashes": [
+        "66607491974f8c7464fee3e1ff7d845b9831bb4e806dae38d7b49b350d208126"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "BNCI2014_008",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with source/BIDS channel, waveform and event fidelity (`4e956b42361d502d1c94054a7e1200788df54a8f81e1d7f22221fcb54762dcd3`)",
+      "evidence_hashes": [
+        "4e956b42361d502d1c94054a7e1200788df54a8f81e1d7f22221fcb54762dcd3"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "BNCI2014_009",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 session-0 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with deterministic source pairing and source/BIDS fidelity (`2e1991da61b284bfd8fa8a5d6a5bf1a96308abea3b77ab1009fcdbbc09acd2eb`)",
+      "evidence_hashes": [
+        "2e1991da61b284bfd8fa8a5d6a5bf1a96308abea3b77ab1009fcdbbc09acd2eb"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "BNCI2015_001",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with source/BIDS channel, waveform and event fidelity (`fb3841b4100d4e99fba98d31ded799de9a121367735c6e0cc3744507da249058`)",
+      "evidence_hashes": [
+        "fb3841b4100d4e99fba98d31ded799de9a121367735c6e0cc3744507da249058"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "BNCI2015_003",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with source/BIDS channel, waveform and event fidelity (`89afc2ad7ffb9effa7d4a55bc3d90ac2e3ae17f2e4085e81b0c4fe610e10a331`)",
+      "evidence_hashes": [
+        "89afc2ad7ffb9effa7d4a55bc3d90ac2e3ae17f2e4085e81b0c4fe610e10a331"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "BNCI2015_004",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with source/BIDS channel, waveform and event fidelity (`0c4f85c44ca79d4728f5527cc0629635dbc41d09e095246a99c23476dca1accc`)",
+      "evidence_hashes": [
+        "0c4f85c44ca79d4728f5527cc0629635dbc41d09e095246a99c23476dca1accc"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "BNCI2015_006",
+      "module": "bnci",
+      "status": "blocked",
+      "evidence_note": "BLOCKED: pinned loader rejects 973 events shorter than its shortest-event rule",
+      "evidence_hashes": [],
+      "case_manifest": null
+    },
+    {
+      "id": "BNCI2015_007",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 run-0 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with event-based deterministic pairing and source/BIDS fidelity (`0c7fc78b800285afdcc37271968da8ff46f194ba6455d8c8a45bcd4f90223927`)",
+      "evidence_hashes": [
+        "0c7fc78b800285afdcc37271968da8ff46f194ba6455d8c8a45bcd4f90223927"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "BNCI2015_008",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with fresh-loader source/BIDS fidelity (`aef8321d0c5e35ab62f4a6da2b5940f7d77bd5608898b475b3940474f3c5abaa`)",
+      "evidence_hashes": [
+        "aef8321d0c5e35ab62f4a6da2b5940f7d77bd5608898b475b3940474f3c5abaa"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "BNCI2015_009",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 representative official all-modality BIDS, source/readback and new bounded recipe replay PASS; old oversized recipe retained as failure evidence; `916258944af5d70a0ca56e89c538fe8f5ed27bcd022751e0bf6962e3344ce698`",
+      "evidence_hashes": [
+        "916258944af5d70a0ca56e89c538fe8f5ed27bcd022751e0bf6962e3344ce698"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "BNCI2015_010",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with fresh-loader source/BIDS fidelity (`4b9cb4fada146d43e8c3509eff49f047d4a9dc0e09df7ded3bc115717b6ebea8`)",
+      "evidence_hashes": [
+        "4b9cb4fada146d43e8c3509eff49f047d4a9dc0e09df7ded3bc115717b6ebea8"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "BNCI2015_012",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with fresh-loader source/BIDS fidelity (`f5dd6882bd35220e6a9b448b13e99df0f19ecf99fc0d3fc932c2cd50f6bd91d9`)",
+      "evidence_hashes": [
+        "f5dd6882bd35220e6a9b448b13e99df0f19ecf99fc0d3fc932c2cd50f6bd91d9"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "BNCI2015_013",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with fresh-loader source/BIDS fidelity (`03313fcfa79a930e5dc84d6183b8279f124265b5fd6becacc830f3532de8b39f`)",
+      "evidence_hashes": [
+        "03313fcfa79a930e5dc84d6183b8279f124265b5fd6becacc830f3532de8b39f"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "BNCI2016_002",
+      "module": "bnci",
+      "status": "blocked",
+      "evidence_note": "BLOCKED: pinned loader raises `KeyError: 88` for representative subject 1",
+      "evidence_hashes": [],
+      "case_manifest": null
+    },
+    {
+      "id": "BNCI2019_001",
+      "module": "bnci",
+      "status": "blocked",
+      "evidence_note": "BIDS-root Commands, full readback and recipe replay pass with all 64 channels and 40 class events, but **source-unit fidelity BLOCKED**: original GDF units are unspecified and pinned loader scales EEG but not EOG (EOG peaks 300–334 in a V-labelled Raw). Float32 storage matches exactly; no silent unit correction; `f4464aef8a42922a243b2dd03944f814765d7727f56cb274ebe2d635ea62e2b5`",
+      "evidence_hashes": [
+        "f4464aef8a42922a243b2dd03944f814765d7727f56cb274ebe2d635ea62e2b5"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "BNCI2020_001",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 / 0 / run 0 official all-modality BIDS, full source/readback and recipe replay PASS (64 non-STIM channels, 161 class events); `263ed057802ff7871416ca6427143d4b977ca5c7ee9ebbeabf280eee30308d03`",
+      "evidence_hashes": [
+        "263ed057802ff7871416ca6427143d4b977ca5c7ee9ebbeabf280eee30308d03"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "BNCI2020_002",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 / 0 / run 0 official all-modality BIDS, full source/readback and recipe replay PASS (32 non-STIM channels, 119 class events); `7f72d5654079684603bd30fbdee76172003579d561bfeba7bfaff7f0ff16fda6`",
+      "evidence_hashes": [
+        "7f72d5654079684603bd30fbdee76172003579d561bfeba7bfaff7f0ff16fda6"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "BNCI2022_001",
+      "module": "bnci",
+      "status": "blocked",
+      "evidence_note": "BLOCKED: pinned loader finds no stim channel in representative subject 1",
+      "evidence_hashes": [],
+      "case_manifest": null
+    },
+    {
+      "id": "BNCI2024_001",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 / 0 / run 0 official all-modality BIDS, full source/readback and recipe replay PASS (64 non-STIM channels, 320 class events); `f4750c1dfb1731838336b31604fb932807d1340b962a40ca9f901f1a9a40fd19`",
+      "evidence_hashes": [
+        "f4750c1dfb1731838336b31604fb932807d1340b962a40ca9f901f1a9a40fd19"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "BNCI2025_001",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject-1 official all-modality BIDS, exact source annotation/class/sample/type fidelity, full App readback and bounded recipe replay PASS (958 events, 16 official classes). Ordinary payload context markers need explicit non-class decisions. Public-loader/BIDS timeline is continuous; no discontinuity-support claim; `06311903da4dbbaba9f0dac3a978624cc9e3df62c63411f94a056671a292af21`",
+      "evidence_hashes": [
+        "06311903da4dbbaba9f0dac3a978624cc9e3df62c63411f94a056671a292af21"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "BNCI2025_002",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Official all-modality BIDS and representative 0ses1 / 0perc0 source/readback/recipe PASS; 9 retained subject-1 runs converted, one verified. Selected `snakerun` is one class, not supervised-ready; `3ae2ce23ec4ce0db920d1835c8cb85d4d06753a1f4bdfab35f83fd75d416c8ac`",
+      "evidence_hashes": [
+        "3ae2ce23ec4ce0db920d1835c8cb85d4d06753a1f4bdfab35f83fd75d416c8ac"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "BI2012",
+      "module": "braininvaders",
+      "status": "required",
+      "evidence_note": "Payload evidence plus selected-run fresh MOABB-to-BIDS five-Command/readback/recipe PASS (`fed0abd4...ad02e8d`); pinned loader path workaround disclosed",
+      "evidence_hashes": [
+        "fed0abd4e6844291b68d7347e6b67c11247a8a660037308258029d28bad02e8d"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "BI2013a",
+      "module": "braininvaders",
+      "status": "required",
+      "evidence_note": "Subject 1 selected run loader → retained EEG-BIDS root → BIDS-root Command evidence; official archive MD5 values retained",
+      "evidence_hashes": [
+        "a67b1b0f6fbb3a9e16cb3ed5e57ad24cc673c27bf8ec52d61cc9f5ffbe8dcee0"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "BI2014a",
+      "module": "braininvaders",
+      "status": "required",
+      "evidence_note": "Payload evidence plus selected-run fresh MOABB-to-BIDS five-Command/readback/recipe PASS (`fed0abd4...ad02e8d`); 64-subject loader versus 71-subject record-description limit disclosed",
+      "evidence_hashes": [
+        "fed0abd4e6844291b68d7347e6b67c11247a8a660037308258029d28bad02e8d"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "BI2014b",
+      "module": "braininvaders",
+      "status": "required",
+      "evidence_note": "Payload evidence plus selected-run fresh MOABB-to-BIDS five-Command/readback/recipe PASS (`fed0abd4...ad02e8d`); pinned adapter omits collaborative recording",
+      "evidence_hashes": [
+        "fed0abd4e6844291b68d7347e6b67c11247a8a660037308258029d28bad02e8d"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "BI2015a",
+      "module": "braininvaders",
+      "status": "required",
+      "evidence_note": "Subject 1 payload evidence plus selected-run fresh MOABB-to-BIDS five-Command/readback/recipe PASS (`fed0abd4...ad02e8d`)",
+      "evidence_hashes": [
+        "fed0abd4e6844291b68d7347e6b67c11247a8a660037308258029d28bad02e8d"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "BI2015b",
+      "module": "braininvaders",
+      "status": "required",
+      "evidence_note": "Subjects 1/2 payload evidence plus selected-run fresh MOABB-to-BIDS five-Command/readback/recipe PASS (`fed0abd4...ad02e8d`)",
+      "evidence_hashes": [
+        "fed0abd4e6844291b68d7347e6b67c11247a8a660037308258029d28bad02e8d"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Cattan2019_VR",
+      "module": "braininvaders",
+      "status": "required",
+      "evidence_note": "Subjects 1/21 PC+VR payload evidence; selected-run MOABB-1.5.0 BIDS-root five-Command/exact-readback PASS (`e5a20362...c6464b08`); pinned loader path contradiction disclosed",
+      "evidence_hashes": [
+        "e5a203622cf9861b4e9e199d45c5317656afe861e9246f503a172b79c6464b08"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Brandl2020",
+      "module": "brandl2020",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with fresh-loader source/BIDS fidelity (`e111d1e825086d21430c521b45cfbe074698870b3dc3011faf07f773324089b2`); process-local relative-junction seam avoids the pinned Windows path sanitizer",
+      "evidence_hashes": [
+        "e111d1e825086d21430c521b45cfbe074698870b3dc3011faf07f773324089b2"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "CastillosBurstVEP40",
+      "module": "castillos2023",
+      "status": "required",
+      "evidence_note": "Subject 2 conversion plus selected-run BIDS-root Command/readback/recipe PASS; Windows cache workaround disclosed; aggregate receipt SHA-256 `d98657f1...8a09f0ea`",
+      "evidence_hashes": [
+        "d98657f1f9acb9f28c22b3f88d7f343d856f2ddc90471210ac6830ff8a09f0ea"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "CastillosBurstVEP100",
+      "module": "castillos2023",
+      "status": "required",
+      "evidence_note": "Subject 1 conversion plus selected-run BIDS-root Command/readback/recipe PASS; Windows cache workaround disclosed; aggregate receipt SHA-256 `d98657f1...8a09f0ea`",
+      "evidence_hashes": [
+        "d98657f1f9acb9f28c22b3f88d7f343d856f2ddc90471210ac6830ff8a09f0ea"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "CastillosCVEP40",
+      "module": "castillos2023",
+      "status": "required",
+      "evidence_note": "Subject 4 conversion plus selected-run BIDS-root Command/readback/recipe PASS; Windows cache workaround disclosed; aggregate receipt SHA-256 `d98657f1...8a09f0ea`",
+      "evidence_hashes": [
+        "d98657f1f9acb9f28c22b3f88d7f343d856f2ddc90471210ac6830ff8a09f0ea"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "CastillosCVEP100",
+      "module": "castillos2023",
+      "status": "required",
+      "evidence_note": "Subject 3 conversion plus selected-run BIDS-root Command/readback/recipe PASS; Windows cache workaround disclosed; aggregate receipt SHA-256 `d98657f1...8a09f0ea`",
+      "evidence_hashes": [
+        "d98657f1f9acb9f28c22b3f88d7f343d856f2ddc90471210ac6830ff8a09f0ea"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Chailloux2020",
+      "module": "chailloux2020",
+      "status": "required",
+      "evidence_note": "Subject 1 full pinned 15-run source/BrainVision/BIDS-root Command/readback/event/recipe evidence; 45 OpenNeuro ds003190 CC0 assets and the converter child BIDS root are retained atomically on E:, independently re-read aggregate receipt SHA-256 `87dc487d...59b8850c`",
+      "evidence_hashes": [
+        "87dc487d18d20db7571492244fa8ceaa04a17c8f84f1a1949881290059b8850c"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Chang2025",
+      "module": "chang2025",
+      "status": "required",
+      "evidence_note": "Subject 6 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with fresh-loader source/BIDS fidelity; only STIM is externalized (`09a099d7eee3c0aaf4f40c7fb3b7c19ab873777eef7a6ac2e2824e2736968ce5`)",
+      "evidence_hashes": [
+        "09a099d7eee3c0aaf4f40c7fb3b7c19ab873777eef7a6ac2e2824e2736968ce5"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Dreyer2023",
+      "module": "dreyer2023",
+      "status": "required",
+      "evidence_note": "Official source-BIDS selected-run five-Command/exact-readback PASS; aggregate maps explicitly to Dreyer2023A subject 1 (`e5a20362...c6464b08`)",
+      "evidence_hashes": [
+        "e5a203622cf9861b4e9e199d45c5317656afe861e9246f503a172b79c6464b08"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Dreyer2023A",
+      "module": "dreyer2023",
+      "status": "required",
+      "evidence_note": "Subject 1 official source-BIDS selected-run five-Command/exact-readback PASS with reviewed 769/770 class mapping (`e5a20362...c6464b08`)",
+      "evidence_hashes": [
+        "e5a203622cf9861b4e9e199d45c5317656afe861e9246f503a172b79c6464b08"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Dreyer2023B",
+      "module": "dreyer2023",
+      "status": "required",
+      "evidence_note": "Subject 61 official source-BIDS selected-run five-Command/exact-readback PASS with reviewed 769/770 class mapping (`e5a20362...c6464b08`)",
+      "evidence_hashes": [
+        "e5a203622cf9861b4e9e199d45c5317656afe861e9246f503a172b79c6464b08"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Dreyer2023C",
+      "module": "dreyer2023",
+      "status": "required",
+      "evidence_note": "Subject 82 official source-BIDS selected-run five-Command/exact-readback PASS with reviewed 769/770 class mapping (`e5a20362...c6464b08`)",
+      "evidence_hashes": [
+        "e5a203622cf9861b4e9e199d45c5317656afe861e9246f503a172b79c6464b08"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "EPFLP300",
+      "module": "epfl",
+      "status": "deferred_rights",
+      "evidence_note": "BLOCKED: official academic host and adapter provide no explicit source-data license or published checksum",
+      "evidence_hashes": [],
+      "case_manifest": null
+    },
+    {
+      "id": "ErpCore2021_ERN",
+      "module": "erpcore2021",
+      "status": "required",
+      "evidence_note": "Subject 1 source-BIDS/Command evidence; evidence mapping keeps stimulus and excludes response",
+      "evidence_hashes": [
+        "0711042b25fd0b9ad911ceefa7c01cff266f5dae6d178cec064e52963d1768d4"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "ErpCore2021_LRP",
+      "module": "erpcore2021",
+      "status": "required",
+      "evidence_note": "Subject 1 source-BIDS/Command evidence; evidence mapping keeps stimulus and excludes response",
+      "evidence_hashes": [
+        "0711042b25fd0b9ad911ceefa7c01cff266f5dae6d178cec064e52963d1768d4"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "ErpCore2021_MMN",
+      "module": "erpcore2021",
+      "status": "required",
+      "evidence_note": "Subject 1 source-BIDS/Command evidence; evidence mapping keeps stimulus and excludes response/STATUS",
+      "evidence_hashes": [
+        "0711042b25fd0b9ad911ceefa7c01cff266f5dae6d178cec064e52963d1768d4"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "ErpCore2021_N2pc",
+      "module": "erpcore2021",
+      "status": "required",
+      "evidence_note": "Subject 1 source-BIDS/Command evidence; evidence mapping keeps stimulus and excludes response",
+      "evidence_hashes": [
+        "0711042b25fd0b9ad911ceefa7c01cff266f5dae6d178cec064e52963d1768d4"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "ErpCore2021_N170",
+      "module": "erpcore2021",
+      "status": "required",
+      "evidence_note": "Subject 1 source-BIDS/Command evidence; evidence mapping keeps stimulus and excludes response",
+      "evidence_hashes": [
+        "0711042b25fd0b9ad911ceefa7c01cff266f5dae6d178cec064e52963d1768d4"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "ErpCore2021_N400",
+      "module": "erpcore2021",
+      "status": "required",
+      "evidence_note": "Subject 1 source-BIDS/Command evidence; evidence mapping keeps stimulus and excludes response",
+      "evidence_hashes": [
+        "0711042b25fd0b9ad911ceefa7c01cff266f5dae6d178cec064e52963d1768d4"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "ErpCore2021_P3",
+      "module": "erpcore2021",
+      "status": "required",
+      "evidence_note": "Retained MOABB 1.5 BIDS root selected-run Command/readback/recipe PASS; original converter options were not persisted; aggregate SHA-256 `62ef6cdb...49ac4c53`",
+      "evidence_hashes": [
+        "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Forenzo2023",
+      "module": "forenzo2023",
+      "status": "required",
+      "evidence_note": "Subject 1 retained source fresh-loader → existing MOABB 1.5.0 EEG-BIDS root → five-Command/readback/recipe PASS (`4377285aa305221f8e6d2bcfc0ff836926465e0e59f11a813fc8d7e43b209712`)",
+      "evidence_hashes": [
+        "4377285aa305221f8e6d2bcfc0ff836926465e0e59f11a813fc8d7e43b209712"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Gao2026",
+      "module": "gao2026",
+      "status": "required",
+      "evidence_note": "Subject 9 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with fresh-loader source/BIDS fidelity (`350fcac5da18167b1e00ee6c59029a824d24730e67649e9778589b07dbb42032`)",
+      "evidence_hashes": [
+        "350fcac5da18167b1e00ee6c59029a824d24730e67649e9778589b07dbb42032"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Cho2017",
+      "module": "gigadb",
+      "status": "required",
+      "evidence_note": "Subject 1 selected run loader → retained EEG-BIDS root → BIDS-root Command evidence; official source has no published cryptographic checksum",
+      "evidence_hashes": [
+        "05b47169a25203fbae36a2a733ff9b16dd84bc372d6b7bcbe1ad049038ce9c9a"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "GuttmannFlury2025_ME",
+      "module": "guttmann_flury2025",
+      "status": "required",
+      "evidence_note": "Subject 1 retained source fresh-loader → MOABB 1.5.0 EEG-BIDS → five-Command/readback/recipe PASS with strict source/BIDS fidelity (`04edab69f125c015ee35fa53be5eebbef0ff56de521ee2944720a02c7cf376e7`); exporter incomplete-head-dig seam disclosed",
+      "evidence_hashes": [
+        "04edab69f125c015ee35fa53be5eebbef0ff56de521ee2944720a02c7cf376e7"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "GuttmannFlury2025_MI",
+      "module": "guttmann_flury2025",
+      "status": "required",
+      "evidence_note": "Subject 1 retained source fresh-loader → MOABB 1.5.0 EEG-BIDS → five-Command/readback/recipe PASS with strict source/BIDS fidelity (`5be9001b66b0f395338888b82e43da6d6f511bf4be0f51ef34a746311e98e89f`); exporter incomplete-head-dig seam disclosed",
+      "evidence_hashes": [
+        "5be9001b66b0f395338888b82e43da6d6f511bf4be0f51ef34a746311e98e89f"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "GuttmannFlury2025_P300",
+      "module": "guttmann_flury2025",
+      "status": "required",
+      "evidence_note": "Subject 1 default 4L retained source fresh-loader → MOABB 1.5.0 EEG-BIDS → five-Command/readback/recipe PASS with strict source/BIDS fidelity (`d4a730dfd85c5269e1d39fbca352bede60225bce288fd1c34b19a4c091af34c5`); exporter incomplete-head-dig seam disclosed",
+      "evidence_hashes": [
+        "d4a730dfd85c5269e1d39fbca352bede60225bce288fd1c34b19a4c091af34c5"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "GuttmannFlury2025_SSVEP",
+      "module": "guttmann_flury2025",
+      "status": "required",
+      "evidence_note": "Retained MOABB 1.5 BIDS root selected-run Command/readback/recipe PASS; original converter options were not persisted; aggregate SHA-256 `62ef6cdb...49ac4c53`",
+      "evidence_hashes": [
+        "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "HefmiIch2025",
+      "module": "hefmi_ich2025",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with fresh-loader source/BIDS fidelity; only STI is externalized (`d0a541974e6c52b6460e544b54ee4a23827b0be8d8cf3840c0a2eaa7ad6abaf3`); receipt supersedes an exact-file identity race",
+      "evidence_hashes": [
+        "d0a541974e6c52b6460e544b54ee4a23827b0be8d8cf3840c0a2eaa7ad6abaf3"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Hinss2021",
+      "module": "hinss2021",
+      "status": "required",
+      "evidence_note": "Retained MOABB 1.5 BIDS root selected-run Command/readback/recipe PASS; original converter options were not persisted; aggregate SHA-256 `62ef6cdb...49ac4c53`",
+      "evidence_hashes": [
+        "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Huebner2017",
+      "module": "huebner_llp",
+      "status": "required",
+      "evidence_note": "Retained Block1/Run1 official all-modality BIDS, full readback and recipe PASS (37 non-STIM channels). Six MISC channels have unit NONE in the public loader; BIDS n/a matches that contract. Float32 storage oracle has zero mismatches; `5679bbc3b7168b933aad1427bbd9b9c62174f204bd66cc04799af69bdb473514`",
+      "evidence_hashes": [
+        "5679bbc3b7168b933aad1427bbd9b9c62174f204bd66cc04799af69bdb473514"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Huebner2018",
+      "module": "huebner_llp",
+      "status": "required",
+      "evidence_note": "Retained Block1/Run1 official all-modality BIDS, full readback and recipe PASS (37 non-STIM channels). Six MISC channels have unit NONE in the public loader; BIDS n/a matches that contract. Float32 storage oracle has zero mismatches; `af32a70bc607e1995ea91a2ba780eef9f9cdd5d69f45901b0d6c32318b942ddf`",
+      "evidence_hashes": [
+        "af32a70bc607e1995ea91a2ba780eef9f9cdd5d69f45901b0d6c32318b942ddf"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Jeong2020",
+      "module": "jeong2020",
+      "status": "required",
+      "evidence_note": "Subject 1 official-MD5 loader/BrainVision/Command evidence; selected-run MOABB EEG-BIDS/BIDS-root Command/readback/recipe evidence, receipt SHA-256 `474ce0bc...a5a954c`",
+      "evidence_hashes": [
+        "474ce0bc7dc5f44d29c30a64e7c7aa207e68f473be9f00b292b91a66ba5a954c"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Kaneshiro2015",
+      "module": "kaneshiro2015",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS (`05735ef7...f8d8a798`)",
+      "evidence_hashes": [
+        "05735ef701fd1538e0d3c76b84e38a6b403acd7d65b6f00e0cdcab67f8d8a798"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Kaya2018",
+      "module": "kaya2018",
+      "status": "required",
+      "evidence_note": "Subject 1 selected run loader → retained EEG-BIDS root → BIDS-root Command evidence; official file MD5 retained",
+      "evidence_hashes": [
+        "5ccf3f8eca357d31665d17226e7f6a116221d4b98d1127d9d5a76f9c96d68a50"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Kojima2024A",
+      "module": "kojima2024a",
+      "status": "required",
+      "evidence_note": "Retained subject-A low/run-1 official all-modality BIDS, exact source event/waveform/channel fidelity, Commands and recipe replay PASS; `5fc87ac6ca04c21b9b1ba83f714728ea3a8432bfac3ad853d6351d57a2c0f18e`",
+      "evidence_hashes": [
+        "5fc87ac6ca04c21b9b1ba83f714728ea3a8432bfac3ad853d6351d57a2c0f18e"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Kojima2024B",
+      "module": "kojima2024b",
+      "status": "required",
+      "evidence_note": "Retained source run-12 maps to MOABB `62stream` / BIDS run-62, not old run-12 pairing. Fresh official all-modality BIDS preserves 66 non-STIM channels, 424480 samples and 240 events; Commands/readback/recipe PASS; `7e334a7489cbb76fc2f80c214bf94cfe24b543420abe4c02031c1acdc2cb76f4`",
+      "evidence_hashes": [
+        "7e334a7489cbb76fc2f80c214bf94cfe24b543420abe4c02031c1acdc2cb76f4"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Kumar2024",
+      "module": "kumar2024",
+      "status": "required",
+      "evidence_note": "Subject 1 retained source fresh-loader → existing MOABB 1.5.0 EEG-BIDS root → five-Command/readback/recipe PASS with exact channel, rate, sample, waveform and event fidelity (`b1558ae413b031daabd86b667f3ed7f37e3510ece1b7bfe50ad84961b5a57fc2`)",
+      "evidence_hashes": [
+        "b1558ae413b031daabd86b667f3ed7f37e3510ece1b7bfe50ad84961b5a57fc2"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Lee2019_ERP",
+      "module": "Lee2019",
+      "status": "required",
+      "evidence_note": "Subject 1 payload evidence plus retained MOABB-1.5.0 BIDS-root five-Command/exact-readback PASS (`e5a20362...c6464b08`); pinned selected-session defect disclosed",
+      "evidence_hashes": [
+        "e5a203622cf9861b4e9e199d45c5317656afe861e9246f503a172b79c6464b08"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Lee2019_MI",
+      "module": "Lee2019",
+      "status": "required",
+      "evidence_note": "Subject 1 payload evidence plus retained MOABB-1.5.0 BIDS-root five-Command/exact-readback PASS (`e5a20362...c6464b08`); pinned selected-session defect disclosed",
+      "evidence_hashes": [
+        "e5a203622cf9861b4e9e199d45c5317656afe861e9246f503a172b79c6464b08"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Lee2019_SSVEP",
+      "module": "Lee2019",
+      "status": "required",
+      "evidence_note": "Subject 1 payload evidence plus retained MOABB-1.5.0 BIDS-root five-Command/exact-readback PASS (`e5a20362...c6464b08`); pinned selected-session defect disclosed",
+      "evidence_hashes": [
+        "e5a203622cf9861b4e9e199d45c5317656afe861e9246f503a172b79c6464b08"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Lee2021Mobile_ERP",
+      "module": "lee2021_mobile",
+      "status": "required",
+      "evidence_note": "Retained MOABB 1.5 BIDS root selected-run Command/readback/recipe PASS; original converter options were not persisted; aggregate SHA-256 `62ef6cdb...49ac4c53`",
+      "evidence_hashes": [
+        "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Lee2021Mobile_SSVEP",
+      "module": "lee2021_mobile",
+      "status": "required",
+      "evidence_note": "Subject 1 session 2 fresh MOABB-to-BIDS five-Command/readback/recipe PASS (`d4fb023f...3bfa9d6`); supplemental fresh public-loader audit confirms source/non-STIM channel, event and waveform fidelity (`5bec1714f50f9c1820c4780a09f095a824387b758d6f278989d51afec3537a7f`)",
+      "evidence_hashes": [
+        "5bec1714f50f9c1820c4780a09f095a824387b758d6f278989d51afec3537a7f",
+        "d4fb023fe415260ede37050b7f32c9ce43c5f36c3246ae1a2d31bd4483bfa9d6"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Lee2024_AC",
+      "module": "lee2024",
+      "status": "deferred_rights",
+      "evidence_note": "BLOCKED: official repository has no declared or included source-data license",
+      "evidence_hashes": [],
+      "case_manifest": null
+    },
+    {
+      "id": "Lee2024_BS",
+      "module": "lee2024",
+      "status": "deferred_rights",
+      "evidence_note": "BLOCKED: official repository has no declared or included source-data license",
+      "evidence_hashes": [],
+      "case_manifest": null
+    },
+    {
+      "id": "Lee2024_DL",
+      "module": "lee2024",
+      "status": "deferred_rights",
+      "evidence_note": "BLOCKED: official repository has no declared or included source-data license",
+      "evidence_hashes": [],
+      "case_manifest": null
+    },
+    {
+      "id": "Lee2024_EL",
+      "module": "lee2024",
+      "status": "deferred_rights",
+      "evidence_note": "BLOCKED: official repository has no declared or included source-data license",
+      "evidence_hashes": [],
+      "case_manifest": null
+    },
+    {
+      "id": "Lee2024_TV",
+      "module": "lee2024",
+      "status": "deferred_rights",
+      "evidence_note": "BLOCKED: official repository has no declared or included source-data license",
+      "evidence_hashes": [],
+      "case_manifest": null
+    },
+    {
+      "id": "Liu2024",
+      "module": "liu2024",
+      "status": "required",
+      "evidence_note": "Retained subject-1 EDF/sidecars → official all-modality BIDS → full source/readback/recipe PASS, including both EOG channels and 40 class events; `4080611edbe0fe1f92f190686a34c2eb9b3ed9c93f1a5be9cf1d6e09d04017da`",
+      "evidence_hashes": [
+        "4080611edbe0fe1f92f190686a34c2eb9b3ed9c93f1a5be9cf1d6e09d04017da"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Liu2025",
+      "module": "liu2025",
+      "status": "required",
+      "evidence_note": "Subject 6 verified retained archive fresh-loader → MOABB 1.5.0 EEG-BIDS → five-Command/readback/recipe PASS with strict source/BIDS fidelity (`beefff38b9d40a70f38224201458e675bd8a32f5bbc65db9924206676f3fe9d3`); task-local extraction was removed after receipt publication",
+      "evidence_hashes": [
+        "beefff38b9d40a70f38224201458e675bd8a32f5bbc65db9924206676f3fe9d3"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Ma2020",
+      "module": "ma2020",
+      "status": "required",
+      "evidence_note": "Retained MOABB 1.5 BIDS root selected-run Command/readback/recipe PASS; original converter options were not persisted; aggregate SHA-256 `62ef6cdb...49ac4c53`",
+      "evidence_hashes": [
+        "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Mainsah2025_A",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 1, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
+      "evidence_hashes": [
+        "d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Mainsah2025_B",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 8, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
+      "evidence_hashes": [
+        "d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Mainsah2025_C",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 18, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
+      "evidence_hashes": [
+        "d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Mainsah2025_D",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 1, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
+      "evidence_hashes": [
+        "d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Mainsah2025_E",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 1, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
+      "evidence_hashes": [
+        "d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Mainsah2025_F",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 3, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
+      "evidence_hashes": [
+        "d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Mainsah2025_G",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 1, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
+      "evidence_hashes": [
+        "d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Mainsah2025_H",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 1, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
+      "evidence_hashes": [
+        "d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Mainsah2025_I",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 1, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
+      "evidence_hashes": [
+        "d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Mainsah2025_J",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 1, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
+      "evidence_hashes": [
+        "d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Mainsah2025_K",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 2, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
+      "evidence_hashes": [
+        "8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Mainsah2025_L",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 1, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
+      "evidence_hashes": [
+        "8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Mainsah2025_M",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 4, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
+      "evidence_hashes": [
+        "8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Mainsah2025_N",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 1, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
+      "evidence_hashes": [
+        "8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Mainsah2025_O",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 14, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
+      "evidence_hashes": [
+        "8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Mainsah2025_P",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 1, run 1: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
+      "evidence_hashes": [
+        "8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Mainsah2025_Q",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 1, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
+      "evidence_hashes": [
+        "8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Mainsah2025_R",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 1, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
+      "evidence_hashes": [
+        "8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Mainsah2025_S1",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 1, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
+      "evidence_hashes": [
+        "8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Mainsah2025_S2",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 1, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
+      "evidence_hashes": [
+        "8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "MartinezCagigal2023Checker",
+      "module": "martinezcagigal2023_checker_cvep",
+      "status": "required",
+      "evidence_note": "SF01 fresh MOABB-to-BIDS five-Command/readback/recipe PASS under a measured same-source float32 relative-error bound (`04793d0c...e697bcb`); supplemental fresh public-loader audit confirms source/non-STIM channel, event and bounded waveform fidelity (`7a973c7dd26e4d7977becac8d29dd50c04c31d295dd07b26bfc3c5f5254ca506`)",
+      "evidence_hashes": [
+        "04793d0c6e70d104de4dbb74b9576f8048727569fc0fdc6947deb879be697bcb",
+        "7a973c7dd26e4d7977becac8d29dd50c04c31d295dd07b26bfc3c5f5254ca506"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "MartinezCagigal2023Pary",
+      "module": "martinezcagigal2023_pary_cvep",
+      "status": "blocked",
+      "evidence_note": "BLOCKED: exact official source failed two independent bounded Windows-native connections",
+      "evidence_hashes": [],
+      "case_manifest": null
+    },
+    {
+      "id": "GrosseWentrup2009",
+      "module": "mpi_mi",
+      "status": "required",
+      "evidence_note": "Subject 1 selected run loader → retained EEG-BIDS root → BIDS-root Command evidence; both official MD5 values retained",
+      "evidence_hashes": [
+        "b6e3493f56c64f19bdb32d00da26347213520631b99d14582faf380a7f60b63f"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Cattan2019_PHMD",
+      "module": "phmd_ml",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS (`263997fe...77f99ad`); supplemental fresh public-loader audit confirms source/non-STIM channel, event and waveform fidelity (`142d6ad8a27ee241ee3c6802213df5f06f4fa1eddc2eb005265ef2dcffe28aa6`)",
+      "evidence_hashes": [
+        "142d6ad8a27ee241ee3c6802213df5f06f4fa1eddc2eb005265ef2dcffe28aa6",
+        "263997fe2ac983c76bda10c0976a8eebbf0c5a14f9ee9c0333da65d7277f99ad"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "PhysionetMI",
+      "module": "physionet_mi",
+      "status": "required",
+      "evidence_note": "Retained MOABB 1.5 BIDS root selected-run Command/readback/recipe PASS; original converter options were not persisted; aggregate SHA-256 `62ef6cdb...49ac4c53`",
+      "evidence_hashes": [
+        "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "RomaniBF2025ERP",
+      "module": "romani_bf2025_erp",
+      "status": "required",
+      "evidence_note": "Representative source/loader/BrainVision/Command evidence; nested BIDS-root seam disclosed",
+      "evidence_hashes": [
+        "8d631840ce0dfd6f076a89accac5e8a771d7f01e2e45ad2d951db06c9888d7a5"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Rozado2015",
+      "module": "rozado2015",
+      "status": "blocked",
+      "evidence_note": "BLOCKED: pinned RAR extraction requires unrar, unar, or 7z, none present in retained environment",
+      "evidence_hashes": [],
+      "case_manifest": null
+    },
+    {
+      "id": "Schirrmeister2017",
+      "module": "schirrmeister2017",
+      "status": "required",
+      "evidence_note": "Subject 1 train selected run fresh MOABB-to-BIDS Scan/Preview/Validate/Apply, waveform/event readback and recipe-root identity PASS; retained child receipt SHA-256 `cbd252420865dd2a176ec9c587fbf6afe9a68302ba0617219bafff29ece70af3`",
+      "evidence_hashes": [
+        "cbd252420865dd2a176ec9c587fbf6afe9a68302ba0617219bafff29ece70af3"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Simoes2020",
+      "module": "simoes2020",
+      "status": "required",
+      "evidence_note": "Subject 1 payload evidence plus selected-run fresh MOABB-to-BIDS five-Command/readback/recipe PASS (`296c1c46...57ebe9f`)",
+      "evidence_hashes": [
+        "296c1c4631f309a37323072849fefc59c22cf020e51f8dc3f36105a8057ebe9f"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Sosulski2019",
+      "module": "sosulski2019",
+      "status": "blocked",
+      "evidence_note": "BLOCKED: pinned loader exposes only one 4.58 GB all-subject archive, with no representative source unit",
+      "evidence_hashes": [],
+      "case_manifest": null
+    },
+    {
+      "id": "Speier2017",
+      "module": "speier2017",
+      "status": "required",
+      "evidence_note": "Subject 1 complete payload evidence plus selected-run fresh MOABB-to-BIDS five-Command/readback/recipe PASS (`478c1868...61c0be60`); supplemental fresh public-loader audit confirms source/non-STIM channel, event and waveform fidelity (`770483d1f1dcb44ddd8b0569b267227a3bdbf449daa5d5efb2539ba7dcf63cc9`)",
+      "evidence_hashes": [
+        "478c18682f84d95254b1a00c7e7f678512ecdce7f3c02a745f9c020661c0be60",
+        "770483d1f1dcb44ddd8b0569b267227a3bdbf449daa5d5efb2539ba7dcf63cc9"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Chen2017SingleFlicker",
+      "module": "ssvep_chen2017",
+      "status": "required",
+      "evidence_note": "Retained MOABB 1.5 BIDS root selected-run Command/readback/recipe PASS; original converter options were not persisted; aggregate SHA-256 `62ef6cdb...49ac4c53`",
+      "evidence_hashes": [
+        "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Dong2023",
+      "module": "ssvep_dong2023",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS (`eca6c948...98a0c022`); supplemental fresh public-loader audit confirms only STIM was externalized and preserves source channels/events/readback (`9c664edcd135ef44806f9eb6c087d23772f4373f32e4b86fd69b177b85738c1b`)",
+      "evidence_hashes": [
+        "9c664edcd135ef44806f9eb6c087d23772f4373f32e4b86fd69b177b85738c1b",
+        "eca6c94802534d54edc2550daa2f0030248b9e7d79fa17f94ca98d9198a0c022"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Kalunga2016",
+      "module": "ssvep_exo",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS (`0273cb23...48677c0e`); supplemental fresh public-loader audit confirms only STIM was externalized and preserves source channels/events/readback (`bff167fc714a61e16bad4cb67f0a2f1cde7143725fcf5372a64a7727593ff040`)",
+      "evidence_hashes": [
+        "0273cb2307c7fcbfac615b14b2b877d0f67cf4237849fd107dc464a748677c0e",
+        "bff167fc714a61e16bad4cb67f0a2f1cde7143725fcf5372a64a7727593ff040"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Han2024Fatigue",
+      "module": "ssvep_han2024",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS (`08f14424...9f8d052b`); supplemental fresh public-loader audit confirms source/non-STIM channel, event and waveform fidelity (`e0da6d7c83a5bffb8bfcf2a2376f9f970ee8942d6e81d7bc7e36fa28b6d61563`)",
+      "evidence_hashes": [
+        "08f144242d9ed40e4b352b446ca3e27ac94bc05741fb040310a1372c9f8d052b",
+        "e0da6d7c83a5bffb8bfcf2a2376f9f970ee8942d6e81d7bc7e36fa28b6d61563"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Kim2025BetaRange",
+      "module": "ssvep_kim2025",
+      "status": "required",
+      "evidence_note": "Official all-modality subject-1 conversion preserves M1/M2 MISC; session-0/run-0 full source/readback/recipe PASS (40 class events). Six sessions converted, only one verified; `b0e4d6f2237899d85c2234e347d6ca9b08ca450684002dac6b38f9d5d1e767f6`",
+      "evidence_hashes": [
+        "b0e4d6f2237899d85c2234e347d6ca9b08ca450684002dac6b38f9d5d1e767f6"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Liu2020BETA",
+      "module": "ssvep_liu2020",
+      "status": "deferred_rights",
+      "evidence_note": "BLOCKED: source only states non-commercial research use; no public CC license or official checksum",
+      "evidence_hashes": [],
+      "case_manifest": null
+    },
+    {
+      "id": "Liu2022EldBETA",
+      "module": "ssvep_liu2022",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS (`ddcb2816...cc0d9beb`); supplemental fresh public-loader audit confirms source/non-STIM channel, event and waveform fidelity (`df52466989075913191895475d34c39d22228ec3e758826fe99d1c6e6cd9baf4`)",
+      "evidence_hashes": [
+        "ddcb2816e53b6f8214aeccb8c0857fe79be5bfa0dc27088e18898662cc0d9beb",
+        "df52466989075913191895475d34c39d22228ec3e758826fe99d1c6e6cd9baf4"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "MAMEM1",
+      "module": "ssvep_mamem",
+      "status": "required",
+      "evidence_note": "Retained MOABB 1.5 BIDS root selected-run Command/readback/recipe PASS; original converter options were not persisted; aggregate SHA-256 `62ef6cdb...49ac4c53`",
+      "evidence_hashes": [
+        "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "MAMEM2",
+      "module": "ssvep_mamem",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with converter-derived quantization bound (`bee42ce8...fbb0ff2`)",
+      "evidence_hashes": [
+        "bee42ce8ff980d7110c182f7a5699ed2c724ccd590d4856b8fe8cbb77fbb0ff2"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "MAMEM3",
+      "module": "ssvep_mamem",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with converter-derived quantization bound (`372f5bd6...749bfec2`)",
+      "evidence_hashes": [
+        "372f5bd6bf0b7b82d481c294e467dd07252f811d889985bb1c940f7b749bfec2"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Nakanishi2015",
+      "module": "ssvep_nakanishi",
+      "status": "required",
+      "evidence_note": "Retained MOABB 1.5 BIDS root selected-run Command/readback/recipe PASS; original converter options were not persisted; aggregate SHA-256 `62ef6cdb...49ac4c53`",
+      "evidence_hashes": [
+        "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Wang2016",
+      "module": "ssvep_wang",
+      "status": "required",
+      "evidence_note": "Retained MOABB 1.5 BIDS root selected-run Command/readback/recipe PASS; original converter options were not persisted; aggregate SHA-256 `62ef6cdb...49ac4c53`",
+      "evidence_hashes": [
+        "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Wang2021Combined",
+      "module": "ssvep_wang2021",
+      "status": "required",
+      "evidence_note": "Retained first CNT → official all-modality BIDS → full source/readback/recipe PASS (200 class events). Existing retained child is unchanged; constructor lacks the option, so the inherited dataset field is explicitly set True; `7451f7617dd4a24d283b59be9f6443d40b2b97141d9ba3d654836833a56dfd0c`",
+      "evidence_hashes": [
+        "7451f7617dd4a24d283b59be9f6443d40b2b97141d9ba3d654836833a56dfd0c"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Stieger2021",
+      "module": "stieger2021",
+      "status": "required",
+      "evidence_note": "Subject 1 session 1 run 0 fresh MOABB-to-BIDS Scan/Preview/Validate/Apply, waveform/event readback and recipe-root identity PASS; retained child receipt SHA-256 `25e7f5b55dfe3c07857f778981002bb0f20ccca2968706bb699eaa584492fcdd`",
+      "evidence_hashes": [
+        "25e7f5b55dfe3c07857f778981002bb0f20ccca2968706bb699eaa584492fcdd"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Tavakolan2017",
+      "module": "tavakolan2017",
+      "status": "blocked",
+      "evidence_note": "BLOCKED: pinned loader requires missing BCI2kReader after finding all four subject-1 DAT files",
+      "evidence_hashes": [],
+      "case_manifest": null
+    },
+    {
+      "id": "Thielen2015",
+      "module": "thielen2015",
+      "status": "required",
+      "evidence_note": "Official converter preserves annotation extras in events.tsv. Reviewed trial_id timestamp classes now import and replay at all 36 exact samples; full 104-channel app readback equals BIDS, source hashes unchanged; `a90b58bb94c5969d240ed49054bcafdea57f45d32b67b9512cac3ab1094379b9`. Representative import, not full cVEP training support",
+      "evidence_hashes": [
+        "a90b58bb94c5969d240ed49054bcafdea57f45d32b67b9512cac3ab1094379b9"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Thielen2021",
+      "module": "thielen2021",
+      "status": "required",
+      "evidence_note": "Retained MOABB 1.5 BIDS root selected-run Command/readback/recipe PASS; original converter options were not persisted; aggregate SHA-256 `62ef6cdb...49ac4c53`",
+      "evidence_hashes": [
+        "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "TrianaGuzman2024",
+      "module": "triana_guzman2024",
+      "status": "blocked",
+      "evidence_note": "**Official converter BLOCKED**: unmodified pinned MOABB / MNE-BIDS fails because head-coordinate metadata lacks nasion/LPA/RPA landmarks. The old export-only root altered fiducial/STIM metadata and is not canonical conversion evidence; no product workaround applied; `1686f1e9905f01fc24b7dd9f43806109779963f93d04c161988b6814522843ca`",
+      "evidence_hashes": [
+        "1686f1e9905f01fc24b7dd9f43806109779963f93d04c161988b6814522843ca"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Ofner2017",
+      "module": "upper_limb",
+      "status": "required",
+      "evidence_note": "Retained MOABB 1.5 BIDS root selected-run Command/readback/recipe PASS; original converter options were not persisted; aggregate SHA-256 `62ef6cdb...49ac4c53`",
+      "evidence_hashes": [
+        "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Wairagkar2018",
+      "module": "wairagkar2018",
+      "status": "required",
+      "evidence_note": "Subject 1 session 0 run 0 fresh MOABB-to-BIDS Scan/Preview/Validate/Apply, waveform/event readback and recipe-root identity PASS; retained child receipt SHA-256 `af3de6caca1519ec5b4cd5c74d74431e35bcc14e42a88b364a3a79cc00431406`",
+      "evidence_hashes": [
+        "af3de6caca1519ec5b4cd5c74d74431e35bcc14e42a88b364a3a79cc00431406"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Weibo2014",
+      "module": "Weibo2014",
+      "status": "required",
+      "evidence_note": "Official all-modality representative BIDS, source/readback and recipe PASS (64 non-STIM channels, 560 events, 7 classes). Annotations match the public loader's [3,7] interval: original STIM sample +600; BIDS value IDs are explicitly mapped to class names, not mistaken for original codes; `9dadd3a106347948d63c500bebe5859e63ecfce9aedc4d631530e32e7b867bd9`",
+      "evidence_hashes": [
+        "9dadd3a106347948d63c500bebe5859e63ecfce9aedc4d631530e32e7b867bd9"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Wu2020",
+      "module": "wu2020",
+      "status": "required",
+      "evidence_note": "Subject 1 payload evidence plus retained MOABB-1.5.0 BIDS-root five-Command/exact-readback PASS (`e5a20362...c6464b08`); official EEG-only channel selection recorded",
+      "evidence_hashes": [
+        "e5a203622cf9861b4e9e199d45c5317656afe861e9246f503a172b79c6464b08"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Yang2025",
+      "module": "yang2025",
+      "status": "blocked",
+      "evidence_note": "BLOCKED: pinned loader exposes only one 65.6 GB corpus archive, with no representative source unit",
+      "evidence_hashes": [],
+      "case_manifest": null
+    },
+    {
+      "id": "Yi2025",
+      "module": "yi2025",
+      "status": "required",
+      "evidence_note": "Subject 11 retained MOABB 1.5.0 BIDS root has eight events.tsv files; all eight source event sequences match, and selected run-0 Commands/readback/recipe replay PASS (`edd6b22dd795aa0547d7f0b9e849102562b05394fadc3036427f222a1b781ae7`). The earlier missing-events receipt was incorrect; historical converter script/log is unavailable, so retained options/provenance are disclosed rather than described as a fresh conversion",
+      "evidence_hashes": [
+        "edd6b22dd795aa0547d7f0b9e849102562b05394fadc3036427f222a1b781ae7"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Zhang2017",
+      "module": "zhang2017",
+      "status": "blocked",
+      "evidence_note": "BLOCKED: pinned RAR extraction requires an external extractor absent from the retained environment",
+      "evidence_hashes": [],
+      "case_manifest": null
+    },
+    {
+      "id": "Zhang2025",
+      "module": "zhang2025",
+      "status": "required",
+      "evidence_note": "Subject 1 retained source fresh-loader → existing MOABB 1.5.0 EEG-BIDS root → five-Command/readback/recipe PASS (`f04a76f5cc39223b07ea2f23d027551ab2a67c1991c51e931ba4f20e393ebd32`); process-only pinned output-path seam disclosed",
+      "evidence_hashes": [
+        "f04a76f5cc39223b07ea2f23d027551ab2a67c1991c51e931ba4f20e393ebd32"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Zheng2020",
+      "module": "zheng2020",
+      "status": "required",
+      "evidence_note": "Subject 1 session 0 run 0 fresh MOABB-to-BIDS Scan/Preview/Validate/Apply, waveform/event readback and recipe-root identity PASS; retained child receipt SHA-256 `986dc316b581d3a6f20d9d38f837dd87394daba5ede07f4f7e48e6b0cd15db66`",
+      "evidence_hashes": [
+        "986dc316b581d3a6f20d9d38f837dd87394daba5ede07f4f7e48e6b0cd15db66"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Zhou2016",
+      "module": "Zhou2016",
+      "status": "required",
+      "evidence_note": "Subject 1 retained source plus root metadata fresh MOABB-to-BIDS five-Command/readback/recipe PASS; independent public-loader identity remained stable across conversion (`0d2ab582820e68fb3d4aa966b768c7488e099547970eb7328ae28c64d041247f`)",
+      "evidence_hashes": [
+        "0d2ab582820e68fb3d4aa966b768c7488e099547970eb7328ae28c64d041247f"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Zhou2020",
+      "module": "zhou2020",
+      "status": "required",
+      "evidence_note": "Retained MOABB 1.5 BIDS root selected-run Command/readback/recipe PASS; original converter options were not persisted; aggregate SHA-256 `62ef6cdb...49ac4c53`",
+      "evidence_hashes": [
+        "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Zuo2025",
+      "module": "zuo2025",
+      "status": "required",
+      "evidence_note": "Retained source/official BIDS embedded markers match the fresh loader as `Stimulus/S  1`→`left_leg`, `Stimulus/S  2`→`right_leg`; complete reviewed Commands, exact readback and recipe replay PASS (`edd6b22dd795aa0547d7f0b9e849102562b05394fadc3036427f222a1b781ae7`), superseding the missing-events product blocker",
+      "evidence_hashes": [
+        "edd6b22dd795aa0547d7f0b9e849102562b05394fadc3036427f222a1b781ae7"
+      ],
+      "case_manifest": null
+    }
+  ]
+}

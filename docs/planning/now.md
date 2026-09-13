@@ -2,152 +2,134 @@
 
 最後更新：`2026-09-13`
 
-## Active — Import support boundary and conformance
+## Active — Repeatable release import conformance and durable dataset storage
 
-### Problem, evidence and outcome
+### Approved outcome and source
 
-User approved a format-independent import contract: common EEG files and EEG-BIDS are parallel
-entry points; MOABB-loader-to-EEG-BIDS compatibility is a minimum acceptance requirement, not the
-only entry point or proof that all datasets already work. Internal, external, combined and explicitly
-absent labels belong to this contract. Unlabelled recordings remain inspectable/preprocessable;
-the current supervised epoch workflow requires reviewed usable classes.
+User approved implementation of the combined plan: consolidate dataset locations, make full import
+conformance a recurring major-stage/key-change gate, and investigate the 11 non-rights blockers.
+The fixed MOABB 1.5.0 / 140809d8c48bdf2be953951ff75f688122edee34 denominator remains 147 exports.
+Initial evidence is 127 representative BIDS routes passed, nine rights entries deferred and eleven
+technical/acquisition/source-semantic blockers. These are not 147 independent complete cohorts.
 
-Current docs enumerate readers and representative evidence, but do not give users one complete
-boundary. Existing MOABB examples are a small selection, not the full release inventory. Establish
-a discoverable user guide, separate accepted target from actual evidence, and verify existing
-production paths before making support claims.
+PR #141 remains open. Commit 4522bbe6681147b2bb4d78e176fc37323edacff9 has all 24 applicable CI
+checks successful and four native Windows changed-import cases passed. The exact manual checkout
+was launched with PowerShell PID 38336 and XBrainLab PID 36344; verify live use, never terminate it.
+User has not accepted or authorized merging this PR. Keep that checkout untouched while it is used.
+Continue the import task branch with independently revertible slices; new candidate source requires
+fresh applicable evidence and acceptance. Preserve unrelated root settings/UI/test changes.
 
-### Scope, assumptions and non-goals
+### Scope and defaults
 
-- Common formats: EDF/EDF+, BDF/BDF+, BrainVision, EEGLAB, GDF, FIF/FIF.gz; retain existing
-  Neuroscan CNT without promising other CNT variants. EEG-BIDS remains independent of MOABB.
-- Preserve events, units, channel metadata and subject/session/run provenance through conversion
-  and import. Arbitrary MAT/CSV waveforms, new device readers, a MOABB download UI, MRI/MEG/iEEG,
-  derivatives and a new unlabelled epoch workflow are not included.
-- Use the existing reviewed import/Command spine and readiness checks. No additional owner/state,
-  post-preprocessing label replacement protocol, prompt/model changes or broad cleanup.
-- For the remaining evidence campaign, keep up to four disjoint Windows workers active when the host
-  and source permit it. Download only the minimum representative subject/session/run needed for each
-  export, reuse checksum-verified retained sources, and refill a freed worker slot immediately. Keep
-  downloads/conversions parallel but serialize final E: publication under the existing writer lock;
-  do not fetch an entire corpus merely to improve worker utilization.
-- Use the merged origin/main baseline in an isolated worktree; preserve existing dirty files/settings,
-  running Windows app, datasets and shared environments. User now authorizes additional validation
-  data on E: up to 500 GB (500,000,000,000 bytes), including archives, extraction, conversion and
-  temporary files. Use `E:\XBrainLabData` without relocating or deleting the existing D: datasets.
-  Inspect sources, licenses, transfer/extraction sizes and dependency compatibility before acquisition;
-  do not create another virtual environment or silently upgrade the retained product dependencies.
-- UI confirmation: user approved reporting corrections and now explicitly authorized exposing BIDS
-  Continue without labels (2026-09-12, reply: 授權). Reuse the existing handler/review flow; preserve
-  supervised epoch blocking. A separate current blocker is now reproduced: BIDS without `events.tsv`
-  remains blocked even after the existing embedded-event review supplies explicit selections/class names.
-  User approved prioritizing these importer repairs (2026-09-13, reply: 我同意), including the visible
-  embedded-event admission/review and invalid-timeline blocking outcomes. Reuse the existing event
-  preview and complete selection checks; keep `events.tsv` preferred when present and never infer class
-  mappings. No unrelated layout redesign,
-  new readers or inferred class mappings.
-- Existing MOABB v1.5.0 three-example registry is historical bounded evidence, not a silently selected
-  full-support version. A full release inventory and reproducible conversion provenance remain required.
+- Major-stage integrated acceptance and changes to import/label contracts or reader/converter
+  dependencies require full representative backend conformance plus representative Windows GUI.
+  Ordinary PRs retain focused tests and existing CI; no equivalent full local reruns while CI runs.
+- Keep all 147 statuses visible. The nine rights entries are deferred: no terms acceptance, new
+  acquisition or author contact. A previously passed baseline cannot silently become an allowed blocker.
+- Durable data root is E:\\XBrainLabData, using the existing datasets/source, bids, public-fixtures,
+  manifests and quarantine hierarchy, with sibling evidence and staging. Models/shared Python stay put.
+- Retain unique original sources, reproduction-required extraction, validated BIDS and necessary
+  success/failure evidence. Duplicate/intermediate deletion requires an exact reviewed deletion list
+  and separate confirmation. No original data, live source, user output or broad worktree deletion.
+- Copy first, hash verify, rerun from destination, then switch references. Never rewrite historical
+  recipes/receipts. Data IDs resolve relative paths beneath an explicit root, not worktree/date paths
+  or permanent junctions. Account for copy overlap within the authorized 500,000,000,000-byte E budget.
+- Reuse the existing command spine, dataset resolver and gate registry. No new product owner,
+  compatibility layer, UI layout/flow changes, shared-model changes or extra environment.
+  Any necessary visible UI fix needs explicit confirmation before implementation.
+- Technical work may check/install only a separately reviewed compatible prerequisite; no silent
+  upgrade of the shared environment. Sosulski's minimum 4.58 GB archive may be considered after
+  source/license/space preflight; Yang's 65.6 GB full corpus is not a default acquisition.
+- Independent lanes may proceed while one needs external authority. At most two disjoint workers;
+  primary owns catalog/storage/integration. No agent writes another lane's files.
 
-### Steps and focused validation
+### Implementation sequence
 
-Immediate repair order: reproduce missing-events BIDS with a real copied BrainVision fixture, then
-share the existing embedded-event review path and prove complete explicit mapping, rejected incomplete
-choices, source/event preservation, epoch readiness and recipe replay. In a disjoint worker, protect BIDS
-timestamp placement against declared epoched/discontinuous timelines using inherited EEG metadata and
-the existing resource admission/semantic boundary. Review both actual diffs and focused evidence before
-parallel retained-source Mainsah/Zuo/Yi reruns. Keep acquisition/environment limitations separate from
-observed importer and source-to-export fidelity failures; do not reduce the acceptance denominator.
+1. Inventory actual receipts, original/converted selections, paths, hashes and live use. Resolve the
+   D-side E- sanitizer fallout and shared physical recordings; do not classify duplicates by filenames.
+2. Consolidate the necessary task scripts into a tracked import-only runner using real
+   Scan/Preview/Validate/Apply, waveform/channel/type/sample/class checks and fresh-service recipe replay.
+   Preserve the existing three-case training/showcase contract rather than forcing all exports to train.
+3. Establish one executable 147-entry catalog with pinned versions, selections, relative paths,
+   identities, conversion settings, explicit choices, numeric tolerance and expected status.
+   Generate the human inventory from this authority; no parallel hand-written current-status list.
+4. Batch copy verified sources and formal BIDS into the durable hierarchy. Quarantine unknown identity.
+   Keep manifests/provenance explicit for retained conversions whose original options/logs are missing.
+   Run from new paths before updating formal references; no historical evidence rewriting.
+5. Investigate Rozado2015/Zhang2017/Tavakolan2017 prerequisites, Martinez acquisition, Sosulski/Yang
+   sampling, BNCI2015_006/BNCI2016_002/BNCI2022_001 loader failures, Triana fiducials and BNCI2019 units.
+   Reproduce pinned failures, prefer attributable upstream fixes, do not guess events/coordinates/units.
+   Newly resolved entries join the required baseline only after full actual verification.
+6. Bind the recurring requirement to docs/validation/README.md and the existing
+   scripts/dev/handoff_gate_spec.py mechanism. Normal CI tests catalog/runner/failure semantics;
+   the corpus gate runs natively against retained Windows data without repeated public downloads.
+7. Run the full baseline once with the formal runner, then fixed representative normal-wizard paths.
+   Review actual data/publication/migration risks independently, complete same-source CI/native gates,
+   and hand off one integrated Windows version with PowerShell log. Do not merge automatically.
 
-1. Trace file/BIDS scan, internal/external label review, apply, epoch admission and existing real-data
-   evidence. Inspect the pinned official converter/release inventory, then acquire missing public data
-   in bounded batches within the authorized E: budget; do not mutate retained source datasets.
-2. Publish one user-facing support page and link it from workflow/limits/navigation. Keep current truth
-   in docs/current.md and engineering evidence rules in docs/validation/README.md; no duplicate status
-   platform. Document genuine gaps rather than shrinking the user's accepted requirement.
-3. Run existing bounded loader, label/placement, no-label/epoch and BIDS integration tests with shared
-   environment, native core disabled and explicit timeouts. Add a meaningful regression only if an
-   untested directly relevant behavior needs proof. Existing public fixtures only, no silent skips as PASS.
-4. Run source/doc audit and both applicable strict site builds. Inspect the actual diff and report the
-   verified subset, exact limits and next repairs. Continue across independent acquisition/conformance
-   lanes; request one integrated Windows handtest only after every pinned inventory entry has either
-   representative runtime evidence or a specific reviewed blocker and all applicable handoff gates pass.
-5. For every nonblocked pinned export, close the literal MOABB-to-BIDS contract: use the pinned
-   `BaseDataset.convert_to_bids` path (or record a specific converter failure), retain converter version,
-   options and output identities, then scan the generated dataset root with `source_hint="bids"` and
-   assert BIDS source diagnostics, selected recording/event pairing, fresh Preview/Validate/Apply,
-   waveform/event fidelity and recipe BIDS provenance. Existing direct BrainVision Command receipts are
-   a payload-reader baseline, not a substitute for this route. Shared physical recordings may be reused,
-   but every registry export needs an explicit mapping and observed BIDS-root outcome.
+### Focused validation and stop condition
 
-### Stop condition and next action
+- File identities and full selected-run waveforms, channel order/types, event class/sample tuples,
+  fresh recipe replay; source STIM interval shifts and converter ID changes remain explicit.
+- Missing input, changed hashes, dropped/retyped channels, event offset, lost recipe choice, stale
+  source/environment/registry resume, timeout or unexecuted required entry must fail closed.
+- Preserve a failure attempt on successful retry. Resume only under identical candidate/environment/
+  catalog/input identities; source change requires current-source execution evidence.
+- GUI matrix covers ordinary EEG and BIDS, internal/external/no labels, multiple subjects/sessions,
+  dense events, recipe reopen, back/edit/review, cancel/retry and recovery without partial publication.
+  Grounded representative classes reach epoch/small training; one-class data stays correctly blocked.
+- Scope-complete requires portable verified data mappings, repeatable runner, complete disposition,
+  no baseline regression and final applicable exact-source evidence. No all-corpus/scientific/Assistant
+  readiness claim. Do not stop at a slice, compaction or pending CI.
+- Cleanup is held until exact candidate targets are approved and no live reader references them.
+  If required migration/verification needs unavailable authority, complete independent work and report
+  the precise missing decision instead of bypassing safety.
 
-Scope-complete requires the published boundary and evidence disposition for all 147 pinned entries:
-representative runtime evidence under the user-approved sampling rule, or a specific reviewed source,
-license, dependency or upstream-loader blocker. An unexamined entry is neither PASS nor BLOCKED. Missing
-required UI/public-flow decisions remain explicit blockers. Exhaust authorized work and independent lanes,
-then run one integrated handoff; do not stop merely because one batch, download, or context compaction ends.
-For a runtime entry, "representative runtime evidence" now explicitly includes the newly generated
-EEG-BIDS and BIDS-root Command route above; payload-file import alone cannot satisfy the stop condition.
+### Current checkpoint / next action
 
-The pre-repair per-row route denominator closed at 88 representative route passes and 59 specific
-blockers, with zero undispositioned export. The authorized missing-events and timeline repairs are now
-implemented; retained-source reruns must establish the new route counts before the product handoff.
-### Current checkpoint and remaining work
+Catalog membership, copy-only storage and real-command replay are implemented; 51 focused native
+Windows tests passed together, including real contained-child timeout/retry/replay. This is not
+corpus completion. All 78 cited receipt contents were snapshotted; 363 recipes were indexed. All 127
+baseline cases now have complete source-bound drafts, including recovered ERP/Romani decisions and
+the actual 82 MB Thielen2021 historical recipe. Their portable replay remains outstanding.
+Independent review found promotion could later be downgraded; a real-Git regression test reproduced
+it. Campaign admission now binds to the accepted origin/main catalog, including resume identity;
+the real-Git red/green test and independent narrow re-review passed. origin/main was freshly fetched.
+Catalog historical evidence hashes have been expanded to full identities from retained receipts,
+including previously missing ERP/Romani/legacy-MI bindings; no abbreviated token is an identity.
 
-- Keep the full 147-entry denominator and per-entry source/conversion/Command receipts in
-  `docs/validation/moabb-inventory.md`; do not make a second campaign status registry.
-- Product repairs are committed at `3697f95b` on the existing PR #141. They include format reporting,
-  explicit no-label BIDS, missing-events embedded review, timeline/sidecar freshness, selected timestamp
-  label-field authority, and bounded recipe persistence/public diagnostics. No new authoritative owner,
-  public class or compatibility layer was introduced; unrelated root settings/UI/test edits remain intact.
-- Recipe persistence retains complete explicit choices/content identities and the 1 MiB read cap,
-  bounds only regenerable diagnostic evidence, and rejects oversized choices before overwrite.
-  BIDS timestamp/interval classes come from the selected field; actual event-code collisions still block.
-  Recipe/projection tests: 17 passed. Strict BIDS and timestamp integration: 63 passed with a short
-  Windows basetemp; the previous MAX_PATH fixture error occurred before product code.
-- Source-diverse, native startup, visual/DPI and most regression gates pass at `3697f95b`.
-  Linux integration fails because the new generated fixture used optional pybv, absent from that shard.
-  The fixture-only repair now writes tiny real BrainVision files directly; the same two Command/recipe
-  regressions pass on Windows and Ruff passes. Do not add a dependency, skip or weaken the assertions.
-  The next commit must pass all applicable CI on its own exact SHA.
-- Remaining-blocker work proved `return_all_modalities=True` preserves non-STIM channels in the pinned
-  official converter. Root independently reviews actual scripts and receipts, including sidecar channel
-  types, fresh source objects, exact class/sample arrays, full chunked waveforms and recipe replay.
-  Huebner unitless MISC fidelity uses exact float32 storage representation, not an invented physical
-  tolerance. Kojima B's old failure paired the wrong source/BIDS run.
-- BNCI2019 now passes numerical transport and App/replay checks, but source EOG unit semantics remain
-  ambiguous: original GDF unit code 0 and asymmetric pinned loader scaling. Do not silently correct
-  units. Triana's unmodified official converter fails for missing head-coordinate fiducials; its old
-  manually altered export is not official-converter evidence. Other source/license/dependency/large
-  archive blockers remain specific inventory rows, not importer failures or unexamined entries.
-- BNCI2025_001 and Weibo supplemental receipts are complete and independently inspected: every
-  class/sample pair, sidecar type, initial/replayed full waveform and fresh post-run source hash passes.
-  The inventory now records 127 representative BIDS-route passes and 20 specific blockers out of 147;
-  payload/runtime evidence is 129/18. BNCI2025 source-reader boundary warnings do not establish
-  discontinuous recording support; the selected public-loader/BIDS timeline is continuous.
-- Some original sources reside in the task worktree's `E-/XBrainLabData` because the upstream downloader
-  sanitized a Windows drive path. Use exact retained-file bindings plus hard offline guards, not guessed
-  cache paths or new downloads. One BNCI2025 subject archive was duplicated during path resolution;
-  retain it pending safe post-merge cleanup, not another download. New supplementary receipts are
-  workspace-local when external E: writes are rejected. Do not delete original data or shared environments.
+Copy-only relocation has started; verified destinations are retained, but no completed corpus or
+manifest publication is claimed. The regenerated 127-root plan accounts conservatively for 241 GB
+used on E and 33 GB additional copy, below 500 GB. E is a USB disk: measured concurrent writers
+caused queueing, so root exclusively owns one heavy E task at a time. Interrupted attempts/staging
+are preserved. Native Windows children use the existing owned-process mechanism and bounded waits;
+a returned wrapper or timeout alone does not prove child termination.
 
-Complexity review: the initial repair touched nine production files, +401/-25 (net +376); the two
-follow-up backend fixes add +88/-38 (net +50) across existing owners. Removed redundant mapping logic
-and reused existing evidence projection; no owner/state/control-plane increase. Rollback remains
-slice-level while the user receives one integrated handtest.
+BNCI2015_006 has a provenance-checked 1734-event replay pending portable promotion. Minimal official
+BNCI2016_002 and BNCI2022_001 sources are retained: the former has a reproduced row/column loader
+indexing error, the latter a Trigger/trigger mismatch (not truly unlabeled). Yang subject 001 has
+three CRC-verified original sessions; an overlapping conversion produced incomplete output despite
+a PASS receipt and is invalidated, preserved and never used as baseline evidence. Retry conversions
+only into fresh destinations after the relocation writer is idle. Nine rights entries stay deferred.
 
-Next steps, in order:
+Next: finish hash/copy and replay from durable destinations, repair attributable technical blockers,
+publish immutable manifests only after verification, finish representative native coverage and
+same-source integrated evidence. No originals have been removed; exact-list cleanup approval is
+still required. One integrated Windows handoff remains the endpoint, not a slice or CI checkpoint.
 
-1. The final supplemental fidelity checks, 147-row arithmetic and inventory/current/user-facing
-   claim synchronization are complete. No all-MOABB or full-corpus certification claim.
-2. Commit only explicit tests/docs paths and push the fixture repair and final facts to PR #141.
-   Require same-head non-skipped CI success, including source-diverse data, visual/DPI/platform gates
-   and both strict docs builds. Reuse equivalent CI; do not repeat a full local suite.
-3. Review changed-surface native screenshots, prepare the exact Windows manual checkout using the
-   single retained interpreter, then launch with one visible PowerShell console as its live log.
-   Confirm responsiveness and provide the GUI/English-Assistant handtest checklist and repeat command.
-   Do not merge until the user passes this source and explicitly approves merging.
+Additional verified progress: the unmodified BCI2kReader wheel works through isolated task-local
+sys.path; no shared install/compatibility patch was needed. Tavakolan subject 1 four-session official
+conversion and source waveform/events checks passed; both its 60-event selected run and BNCI2015_006
+1734-event run passed the tracked command/replay runner on D. Their new drafts are in
+`build/dev-artifacts/catalog-case-drafts-new`; portable E replay/promotion is still outstanding.
+A first Tavakolan task path binding misplaced new BIDS output beside its source cache; that failed
+attempt is preserved, and the corrected fresh v2 destination passed. Original DAT files stay intact.
+Bounded official preflights: Martinez still times out natively; Rozado returns HTTP 403; Sosulski's
+4,581,254,425-byte endpoint ignores Range (not acquired). Zhang's official 1,755,269,242-byte RAR
+supports Range; publisher CC-BY-4.0/size/MD5 are checked before four bounded D-side download workers.
+No nine-rights-entry action occurred. Root exclusively owns the E relocation writer (session 57939,
+owned wrapper PID 46772 / actual child 33432); verify these identities before any process action.
+Use the existing task-local owned wrapper for future native jobs; do not rerun an occupied output.
 
 ## Closed baseline
 

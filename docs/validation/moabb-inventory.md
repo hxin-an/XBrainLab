@@ -52,7 +52,7 @@ independent MNE reader of the converted file, channel order against channels.tsv
 sample positions/class text against events.tsv. These are bounded importer checks, **not a replay
 of the official loader or all recordings/subjects**. The four converted format families were
 BrainVision, EEGLAB, EDF and BDF. Exact selections/results remain in the local diagnostic output;
-this page defines the denominator and evidence limits, not a new executable gate.
+the recurring gate binds portable representative selections separately, without claiming all-cohort replay.
 
 Keep original trigger numbers distinct from exporter or application IDs: names and sample
 positions must match the reviewed mapping, while numeric identity changes must be traceable.
@@ -134,6 +134,10 @@ all-paradigm training claim follows. In particular BNCI2025_002's selected one-c
 importable but not sufficient for the current supervised epoch workflow.
 
 ## Full export list
+
+This table is generated from the executable import catalog's `evidence_note` fields;
+`test_human_inventory_matches_executable_catalog` prevents independent status edits. The recurring
+gate and retained-data requirements are defined in [the validation contract](README.md#recurring-representative-import-conformance).
 
 Module paths are relative to `moabb/datasets/` at the exact revision above. Availability combines the
 retained and E: campaigns; each row still states its evidence limit and is not a product-support claim.
