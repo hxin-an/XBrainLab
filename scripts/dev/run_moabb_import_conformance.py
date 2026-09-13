@@ -142,8 +142,8 @@ def _run_one(row: dict, args: argparse.Namespace, previous: dict | None) -> dict
     receipt = None
     try:
         case = resolve_case_manifest(row, args.data_root)
-        _verify_inputs(case, args.data_root)
         if previous and previous.get("status") == "passed":
+            _verify_inputs(case, args.data_root)
             _verify_previous(previous, case_id)
             return previous
         case_attempts = args.output / "attempts" / case_id

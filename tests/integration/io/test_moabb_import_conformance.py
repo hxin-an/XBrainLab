@@ -174,6 +174,26 @@ def test_campaign_subprocess_replay_and_tampered_resume_fail_closed(
     assert initial["attempt"] == 2
     assert Path(timed_out["receipt"]).read_bytes() == timeout_receipt
     assert _run_one(row, args, initial) == initial
+
+    source = data_root / "tiny-bids/sub-01/eeg/sub-01_task-mi_eeg.eeg"
+    original_source = source.read_bytes()
+    source.write_bytes(b"changed")
+    reused = _run_one(row, args, initial)
+    assert reused["status"] == "failed"
+    assert "input identity changed" in reused["failure"]["message"]
+    fresh = _run_one(row, args, None)
+    assert fresh["status"] == "failed"
+    source.write_bytes(original_source)
+
+    receipt = Path(initial["receipt"])
+    recipe = Path(json.loads(receipt.read_text(encoding="utf-8"))["recipe"]["path"])
+    original_recipe = recipe.read_bytes()
+    recipe.write_text("{}", encoding="utf-8")
+    reused = _run_one(row, args, initial)
+    assert reused["status"] == "failed"
+    assert "recipe identity changed" in reused["failure"]["message"]
+    recipe.write_bytes(original_recipe)
+    assert _run_one(row, args, initial) == initial
     Path(initial["receipt"]).write_text("{}", encoding="utf-8")
     reused = _run_one(row, args, initial)
     assert reused["status"] == "failed"

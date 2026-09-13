@@ -127,9 +127,27 @@ attempt is preserved, and the corrected fresh v2 destination passed. Original DA
 Bounded official preflights: Martinez still times out natively; Rozado returns HTTP 403; Sosulski's
 4,581,254,425-byte endpoint ignores Range (not acquired). Zhang's official 1,755,269,242-byte RAR
 supports Range; publisher CC-BY-4.0/size/MD5 are checked before four bounded D-side download workers.
-No nine-rights-entry action occurred. Root exclusively owns the E relocation writer (session 57939,
+Zhang subject 1 now passed all 15 source/conversion run comparisons and the selected 24-event
+command/replay case on D; its draft joins the two earlier candidates pending portable replay.
+Local implementation commit is 51f9a92 (not yet pushed); old CI is not evidence for this new source.
+FreiDok's official publication API exposes individual Sosulski archives: subject1.zip is 415,772,811
+bytes with publisher SHA-256 and CC-BY-SA-4.0 attribution. Acquire this representative archive and
+description on D, inspect members, and use the unmodified loader on retained Run 2 files; do not
+download the 4.58 GB aggregate. New-only relocation plan currently covers three candidates / 1.17 GB;
+apply only after the existing E writer finishes. No nine-rights-entry action occurred.
+Root exclusively owns the E relocation writer (session 57939,
 owned wrapper PID 46772 / actual child 33432); verify these identities before any process action.
 Use the existing task-local owned wrapper for future native jobs; do not rerun an occupied output.
+
+Measured resource slice: the fresh campaign parent hashes the same inputs immediately before the
+child's mandatory admission hash, adding an unnecessary 40.19 GB read across the 127 planned trees.
+First extend the real-child characterization to input/recipe/result tampering and fresh retry;
+then keep parent input hashing only for reuse (where no child executes). Child pre/post-import and
+post-replay checks remain unchanged. No new owner or product/UI behavior; focused subprocess tests
+must pass before and after this two-line movement, with fail-closed tamper and preserved attempts.
+Characterization passed before the move; all 53 focused Windows cases passed after it. Independent
+read-only review confirmed fresh-child and reuse identity checks remain fail-closed. This removes
+one redundant parent pass, not the required source or replay fidelity checks.
 
 ## Closed baseline
 
