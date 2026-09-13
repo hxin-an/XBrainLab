@@ -141,6 +141,34 @@ def test_import_case_replays_real_bids_commands_and_preserves_input(
     assert Path(result["recipe"]["path"]).is_file()
 
 
+def test_import_case_preserves_context_without_inventing_classes(
+    tmp_path: Path,
+) -> None:
+    data_root, case = _write_case_fixture(tmp_path)
+    case["choices"] = {"skip_labels": True}
+    case["expected"]["events"] = []
+
+    result = run_import_case(case, data_root, tmp_path / "out")
+
+    assert result["status"] == "passed", result
+    assert result["observed"]["events"] == []
+    assert result["reference"]["annotation_count"] == 2
+    assert result["initial"]["waveform_max_abs_error"] == 0.0
+    assert result["replay"]["waveform_max_abs_error"] == 0.0
+
+
+def test_import_case_cannot_hide_applied_classes_with_empty_expectation(
+    tmp_path: Path,
+) -> None:
+    data_root, case = _write_case_fixture(tmp_path)
+    case["expected"]["events"] = []
+
+    result = run_import_case(case, data_root, tmp_path / "out")
+
+    assert result["status"] == "failed"
+    assert "unexpectedly admits supervised classes" in result["failure"]["message"]
+
+
 def test_campaign_subprocess_replay_and_tampered_resume_fail_closed(
     tmp_path: Path,
 ) -> None:

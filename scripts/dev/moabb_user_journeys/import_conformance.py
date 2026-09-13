@@ -128,8 +128,10 @@ def _apply_route(
         )
         _execute(service, PreviewInterpretationCommand(choices=choices), "preview")
         _execute(service, ValidateInterpretationCommand(), "validate")
-        _execute(service, ApplyInterpretationCommand(confirmed=True), "apply")
-        observed, proof = _assert_loaded(service, expected, reference_raw)
+        applied = _execute(service, ApplyInterpretationCommand(confirmed=True), "apply")
+        observed, proof = _assert_loaded(
+            service, expected, reference_raw, applied.state.interpretation
+        )
         _execute(
             service, SaveInterpretationRecipeCommand(str(recipe_path)), "save_recipe"
         )
@@ -145,15 +147,19 @@ def _replay_route(
     try:
         _execute(service, ReloadInterpretationRecipeCommand(str(recipe_path)), "reload")
         _execute(service, ValidateInterpretationCommand(), "validate_replay")
-        _execute(service, ApplyInterpretationCommand(confirmed=True), "apply_replay")
-        _observed, proof = _assert_loaded(service, expected, reference_raw)
+        applied = _execute(
+            service, ApplyInterpretationCommand(confirmed=True), "apply_replay"
+        )
+        _observed, proof = _assert_loaded(
+            service, expected, reference_raw, applied.state.interpretation
+        )
         return proof
     finally:
         service.close()
 
 
 def _assert_loaded(
-    service: Any, expected: dict[str, Any], reference_raw: Any
+    service: Any, expected: dict[str, Any], reference_raw: Any, interpretation: Any
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     if len(service.study.loaded_data_list) != 1:
         raise RuntimeError("application did not load exactly one selected recording")
@@ -166,9 +172,23 @@ def _assert_loaded(
         raise RuntimeError("loaded sampling frequency differs from catalog expectation")
     if int(loaded.n_times) != expected["n_times"]:
         raise RuntimeError("loaded sample count differs from catalog expectation")
-    events, event_id = service.study.loaded_data_list[0].get_event_list()
-    inverse = {int(code): name for name, code in event_id.items()}
-    actual_events = [[int(row[0]), inverse[int(row[2])]] for row in events]
+    if expected["events"]:
+        events, event_id = service.study.loaded_data_list[0].get_event_list()
+        inverse = {int(code): name for name, code in event_id.items()}
+        actual_events = [[int(row[0]), inverse[int(row[2])]] for row in events]
+    else:
+        # Raw event detection includes acquisition context when no labels were
+        # applied. Only the published interpretation declares supervised classes.
+        if interpretation.class_map or interpretation.epoch_handoff["supervised_ready"]:
+            raise RuntimeError(
+                "unlabelled import unexpectedly admits supervised classes"
+            )
+        if (
+            "missing_class_labels"
+            not in interpretation.epoch_handoff["supervised_blocker_codes"]
+        ):
+            raise RuntimeError("unlabelled import lost its supervised blocker")
+        actual_events, event_id = [], {}
     if actual_events != expected["events"]:
         raise RuntimeError(
             "loaded class events differ from independent catalog expectation"
@@ -213,10 +233,11 @@ def _annotation_counter(
     )
 
 
-def _execute(service: Any, command: Any, stage: str) -> None:
+def _execute(service: Any, command: Any, stage: str) -> Any:
     result = service.execute(command)
     if not result.ok:
         raise _StageFailureError(stage, result.message)
+    return result
 
 
 class _StageFailureError(RuntimeError):

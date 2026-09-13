@@ -149,6 +149,20 @@ Characterization passed before the move; all 53 focused Windows cases passed aft
 read-only review confirmed fresh-child and reuse identity checks remain fail-closed. This removes
 one redundant parent pass, not the required source or replay fidelity checks.
 
+Sosulski subject 1 archive and description now match publisher SHA-256. Two non-60 ms Run 2 trials
+passed source/conversion comparison (90 events each), and the selected trial passed real Commands
+and fresh recipe replay on D. A task verifier initially omitted the BIDS recording suffix from run
+identity; correcting that lookup verified the unchanged output. Four new candidates await E replay.
+BNCI2022 independent semantic review supports lower-case trigger and verified pulse starts, not
+four difficulty classes. Preserve all structural/outcome annotations; use the existing explicit
+no-label import route with supervised readiness blocked. First characterize the corpus runner's
+no-label path; no production/UI behavior changes are authorized or necessary for that case.
+The new characterization reproduced a verifier defect: Raw event detection was being mistaken for
+supervised classes on an explicit no-label import. The verifier now checks the returned Apply
+interpretation (no extra query), preserves acquisition annotations, and requires the missing-class
+blocker. Positive plus negative real-command tests and all 55 focused Windows cases passed;
+independent data review found no blocker. Product behavior was unchanged.
+
 ## Closed baseline
 
 Quality-baseline closure was accepted and merged via
