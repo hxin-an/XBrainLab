@@ -1,94 +1,150 @@
 # XBrainLab Now
 
-最後更新：`2026-09-12`
+最後更新：`2026-09-13`
 
-## Active — Quality baseline closure
+## Active — Import support boundary and conformance
 
-One approved integration PR, small reversible commits, one final native Windows GUI / English
-Assistant manual acceptance. A commit, compaction or pending CI is not completion. No merge without
-exact-source manual acceptance and explicit approval. This file is the sole active plan.
+### Problem, evidence and outcome
 
-### Current decision, outcome and boundaries
+User approved a format-independent import contract: common EEG files and EEG-BIDS are parallel
+entry points; MOABB-loader-to-EEG-BIDS compatibility is a minimum acceptance requirement, not the
+only entry point or proof that all datasets already work. Internal, external, combined and explicitly
+absent labels belong to this contract. Unlabelled recordings remain inspectable/preprocessable;
+the current supervised epoch workflow requires reviewed usable classes.
 
-User approved withdrawing all four failed prompt experiments, retaining cleanup/metrics/safety fixes,
-and planning Assistant reliability separately. This explicitly defers the original ambiguity-fix outcome;
-it does not claim those limitations are fixed or change the frozen evaluator/acceptance threshold.
-No fifth prompt experiment, model/RAG/Host/schema change, new environment/download, visible UI change,
-storage cleanup or merge is authorized by this adjustment.
+Current docs enumerate readers and representative evidence, but do not give users one complete
+boundary. Existing MOABB examples are a small selection, not the full release inventory. Establish
+a discoverable user guide, separate accepted target from actual evidence, and verify existing
+production paths before making support claims.
 
-Preserve original-checkout user edits/settings, datasets, shared environments/model/RAG caches and
-retained evidence. Git owns branch/source/dirty/worktree identity. Product/claim boundaries remain in
-`docs/current.md` and `docs/validation/README.md`. Approved cumulative stage complexity exception remains;
-individual slices still require deletion-first review and no additional authoritative owner.
+### Scope, assumptions and non-goals
 
-### Retained scope and evidence
+- Common formats: EDF/EDF+, BDF/BDF+, BrainVision, EEGLAB, GDF, FIF/FIF.gz; retain existing
+  Neuroscan CNT without promising other CNT variants. EEG-BIDS remains independent of MOABB.
+- Preserve events, units, channel metadata and subject/session/run provenance through conversion
+  and import. Arbitrary MAT/CSV waveforms, new device readers, a MOABB download UI, MRI/MEG/iEEG,
+  derivatives and a new unlabelled epoch workflow are not included.
+- Use the existing reviewed import/Command spine and readiness checks. No additional owner/state,
+  post-preprocessing label replacement protocol, prompt/model changes or broad cleanup.
+- For the remaining evidence campaign, keep up to four disjoint Windows workers active when the host
+  and source permit it. Download only the minimum representative subject/session/run needed for each
+  export, reuse checksum-verified retained sources, and refill a freed worker slot immediately. Keep
+  downloads/conversions parallel but serialize final E: publication under the existing writer lock;
+  do not fetch an entire corpus merely to improve worker utilization.
+- Use the merged origin/main baseline in an isolated worktree; preserve existing dirty files/settings,
+  running Windows app, datasets and shared environments. User now authorizes additional validation
+  data on E: up to 500 GB (500,000,000,000 bytes), including archives, extraction, conversion and
+  temporary files. Use `E:\XBrainLabData` without relocating or deleting the existing D: datasets.
+  Inspect sources, licenses, transfer/extraction sizes and dependency compatibility before acquisition;
+  do not create another virtual environment or silently upgrade the retained product dependencies.
+- UI confirmation: user approved reporting corrections and now explicitly authorized exposing BIDS
+  Continue without labels (2026-09-12, reply: 授權). Reuse the existing handler/review flow; preserve
+  supervised epoch blocking. A separate current blocker is now reproduced: BIDS without `events.tsv`
+  remains blocked even after the existing embedded-event review supplies explicit selections/class names.
+  User approved prioritizing these importer repairs (2026-09-13, reply: 我同意), including the visible
+  embedded-event admission/review and invalid-timeline blocking outcomes. Reuse the existing event
+  preview and complete selection checks; keep `events.tsv` preferred when present and never infer class
+  mappings. No unrelated layout redesign,
+  new readers or inferred class mappings.
+- Existing MOABB v1.5.0 three-example registry is historical bounded evidence, not a silently selected
+  full-support version. A full release inventory and reproducible conversion provenance remain required.
 
-- Physically retired JSON CLI, exclusive automation adapter and six convenience exports; no shim/legacy
-  replacement. Valuable confirmation/split/manual-training protection uses typed Commands. Baseline
-  108 passed; retained Command/import-boundary suite 103 passed. Independent review found no caller
-  left behind. Unknown external convenience API users intentionally unsupported.
-- Deleted unreachable Dataset folder/BIDS delegates; actual Import Data folder/BIDS catalog/subject
-  selection retained. Focused 281 and active-path subset 78 passed; guards/negative fixtures match seven
-  actual facades. UI authorization covers invisible deletion only, no layout/copy changes.
-- Product/evaluator share formal 18-tool metadata; mock execution/state and exclusive tests removed.
-  Evaluator still stops at execution boundary. Metadata parity and 213 baseline tests passed; consumer
-  suite 292 passed. Matching navigation terminal now finishes metrics immediately: two pre-fix RED
-  cases and 15 passing tests include real Manager/Controller callbacks and worker cleanup.
-- Removed unsafe Poe clean and MOABB --force; existing capture directories rejected. Both native stress
-  scripts isolate settings. Windows setup tolerates malformed JSON shapes without rewriting settings.
-  Original-function retrospective check: 9 expected failures, 3 unaffected passes; current combined
-  safety/prompt/evaluator check 198 passed. Not a claim that original implementation was test-first.
-- Removed unused remote SDK group/seven exclusive packages, obsolete CI branch triggers and broken
-  wheel test entrypoints; real repo test commands/gates retained. Lock check passed, no retained version
-  changes/installations. Four weak seed tests mapped to 9 passing RNG replay/input-integrity tests.
-  AST cache rejected: ~1.2s saved for ~161 MB extra peak memory. No runtime acceleration claim.
-- CI exposed capture_config import before native core guard in Linux scripts and Windows/macOS
-  lifecycle jobs. Import moved behind same fail-closed guard: two existing tests RED, then 4 safety/
-  order/isolation tests passed. Independent diagnosis confirmed one shared cause. No weakened gate.
+### Steps and focused validation
 
-Counts overlap, not a unique total. Broad Windows Assistant run: 1,425 passed, 30 fake-cache MAX_PATH
-failures. Short owned temp paths resolved them (166 passes, then 29 RAG-security passes; two POSIX skips),
-without product/assertion changes. Exclude the old editable checkout's scripts namespace only within the
-test process; never edit shared .pth. Source environment matches the candidate lock without installation.
+Immediate repair order: reproduce missing-events BIDS with a real copied BrainVision fixture, then
+share the existing embedded-event review path and prove complete explicit mapping, rejected incomplete
+choices, source/event preservation, epoch readiness and recipe replay. In a disjoint worker, protect BIDS
+timestamp placement against declared epoched/discontinuous timelines using inherited EEG metadata and
+the existing resource admission/semantic boundary. Review both actual diffs and focused evidence before
+parallel retained-source Mainsah/Zuo/Yi reruns. Keep acquisition/environment limitations separate from
+observed importer and source-to-export fidelity failures; do not reduce the acceptance denominator.
 
-### Prompt withdrawal — implementation now
+1. Trace file/BIDS scan, internal/external label review, apply, epoch admission and existing real-data
+   evidence. Inspect the pinned official converter/release inventory, then acquire missing public data
+   in bounded batches within the authorized E: budget; do not mutate retained source datasets.
+2. Publish one user-facing support page and link it from workflow/limits/navigation. Keep current truth
+   in docs/current.md and engineering evidence rules in docs/validation/README.md; no duplicate status
+   platform. Document genuine gaps rather than shrinking the user's accepted requirement.
+3. Run existing bounded loader, label/placement, no-label/epoch and BIDS integration tests with shared
+   environment, native core disabled and explicit timeouts. Add a meaningful regression only if an
+   untested directly relevant behavior needs proof. Existing public fixtures only, no silent skips as PASS.
+4. Run source/doc audit and both applicable strict site builds. Inspect the actual diff and report the
+   verified subset, exact limits and next repairs. Continue across independent acquisition/conformance
+   lanes; request one integrated Windows handtest only after every pinned inventory entry has either
+   representative runtime evidence or a specific reviewed blocker and all applicable handoff gates pass.
+5. For every nonblocked pinned export, close the literal MOABB-to-BIDS contract: use the pinned
+   `BaseDataset.convert_to_bids` path (or record a specific converter failure), retain converter version,
+   options and output identities, then scan the generated dataset root with `source_hint="bids"` and
+   assert BIDS source diagnostics, selected recording/event pairing, fresh Preview/Validate/Apply,
+   waveform/event fidelity and recipe BIDS provenance. Existing direct BrainVision Command receipts are
+   a payload-reader baseline, not a substitute for this route. Shared physical recordings may be reused,
+   but every registry export needs an explicit mapping and observed BIDS-root outcome.
 
-Four full frozen 81-case runs failed despite focused tests and independent code review. Each retained
-36/36 positives and 10/10 + 5/5 origin safety. Product no-action / clarification outcomes:
-candidate 1 23/24 + 7/7; candidate 2 22/24 + 4/7; candidate 3 23/24 + 3/7; candidate 4 22/24 + 6/7.
-Each introduced regressions. Tokenizer inspection ruled out truncation for the examined multi-action
-case (2,501/7,680 tokens); this does not prove every possible prompt must fail.
-Reports remain in ignored `build/dev-artifacts/candidate1` through `candidate4`; source identities,
-hashes, failures and review details are retained in Git history/PR #140, not active dispatch.
+### Stop condition and next action
 
-1. Restore `prompt_policy.py` text and `assembler.py` placement exactly to main; restore only exclusive
-   experiment assertions. Preserve tests' single-registry migration and all cleanup/metrics/safety fixes.
-   Callers, typed Commands, publication/admission owners and visible UI remain unchanged.
-2. Verify exact main equality for both production files; run the same prompt/assembler/evaluator/export
-   tests and adjacent navigation/registry protection. Previously passing 151 tests are characterization;
-   do not invent a RED test for an approved withdrawal.
-3. Commit/push the bounded withdrawal and verify the restored prompt on the clean exact candidate with
-   the unchanged frozen bounded model gate. Prior accepted evidence is not a fresh run; disclose known
-   baseline limitations instead of renaming them fixes.
-4. Complete same-head CI (source-diverse/platform/visual evidence), independent scope review and
-   missing native Assistant journey evidence. Reuse CI instead of equivalent full local regression.
-5. Launch native Windows with one PowerShell log, give restart command and one manual checklist
-   (import/preprocess, subject multi-plan training, stop/rerun, reopen results, Saliency/SmoothGrad,
-   English Assistant). Confirm response, hand back; do not monitor user operations or merge.
+Scope-complete requires the published boundary and evidence disposition for all 147 pinned entries:
+representative runtime evidence under the user-approved sampling rule, or a specific reviewed source,
+license, dependency or upstream-loader blocker. An unexamined entry is neither PASS nor BLOCKED. Missing
+required UI/public-flow decisions remain explicit blockers. Exhaust authorized work and independent lanes,
+then run one integrated handoff; do not stop merely because one batch, download, or context compaction ends.
+For a runtime entry, "representative runtime evidence" now explicitly includes the newly generated
+EEG-BIDS and BIDS-root Command route above; payload-file import alone cannot satisfy the stop condition.
 
-Stop condition: revised cleanup scope and applicable gates complete, then one manual handoff; or
-genuine new authority/resource blocker. Known ambiguity limitations are explicitly deferred, not fixed.
-Rollback alone is not final integration acceptance.
+The pre-repair per-row route denominator closed at 88 representative route passes and 59 specific
+blockers, with zero undispositioned export. The authorized missing-events and timeline repairs are now
+implemented; retained-source reruns must establish the new route counts before the product handoff.
+### Current checkpoint and remaining work
 
-### Next action
+- The complete pinned denominator and per-entry source/route receipts live only in
+  `docs/validation/moabb-inventory.md`. Campaign downloads are complete for the current representative
+  reruns; rights/source/loader/converter failures remain explicit and are not importer failures.
+- Implemented authorized fixes: format reporting (Neuroscan CNT/BDF/XDF); explicit no-label BIDS wizard;
+  embedded-event BIDS review without events.tsv; exact selected-code/class-map agreement and recipe
+  replay; inherited EEG RecordingType/EpochLength checks; reviewed sidecar byte/directory identity.
+- Independent review reproduced and closed extra/unknown class-map keys, new sidecars after Preview or
+  Validate, and recording-specific EEG JSON leaking to another recording. No new authoritative owner,
+  public class, production module or compatibility layer was added.
+- Native Windows embedded-label wizard passed; both Match Labels and fresh Review screenshots were
+  inspected. This is automated workflow evidence, not manual acceptance or a final exact-head gate.
+- The first combined run was 400 PASS / 5 FAIL. Junction fixture paths and Windows MAX_PATH were
+  environment issues: use the canonical retained fixture root and a short task-owned pytest basetemp.
+  Product corrections retain the existing canonicalization budget and prevent unnecessary fresh review
+  when no class event is selected. The BBCI driver now clicks the exact dropdown options instead of
+  depending on partial-text autocomplete timing; publication assertions remain exact. Final combined
+  Windows run: 405 passed, 95 upstream/runtime warnings, no skips. Changed-file Ruff/diff checks pass.
+- Mainsah's 20 retained exports plus Zuo/Yi passed Commands, exact readback and recipe replay; the root
+  independently read all receipts and matched all six affected backend hashes. Inventory is now
+  110 route passes / 37 reviewed blockers / 0 undispositioned. Yi's old missing-events claim was wrong:
+  a supplemental retained-source audit verifies all eight event sequences and full run-0 waveform,
+  explicitly disclosing sampled waveforms for runs 1–7 and the missing historical converter script/log.
+- Shared Windows environment remains the only runtime. Native interop requires the approved escalated
+  process boundary; do not restart WSL or create an environment. Original-checkout dirty UI/tests and
+  settings.json remain untouched. Task-local acquisition scripts and generated data are not PR content.
 
-Authorized withdrawal is implemented: both production files and the decision-contract test match main;
-the context-assembler test differs only by its retained single-registry migration. Focused restored prompt/
-assembler/evaluator/export plus Controller/navigation/registry checks: 428 passed (one third-party MNE
-deprecation warning). Independent withdrawal review confirmed byte equality, retained cleanup and no
-contract/scope expansion; no blocker. Next: commit/push, exact-source bounded model run
-and applicable CI/native evidence, then one integrated handoff. No fresh model/CI acceptance yet.
-The next Assistant work below is a planning proposal, not permission for new product changes.
+Complexity review: nine production files, +401/-25 (net +376). Existing
+candidate, BIDS semantic review and Command service retain authority. The ninth file is necessary to
+invalidate a review when a new matching sidecar appears; byte hashing alone cannot discover additions.
+Removed the unused flat helper and duplicate result construction; catalog matching reuses indexed paths
+without repeated canonicalization. Logical rollback units are reporting, no-label/embedded-label
+admission, and timeline/source validity. Keep one integrated user handtest.
+
+Next steps, in order:
+
+1. Product tests and scoped review are complete. Finish user-site/source audits and strict docs builds
+   for the synchronized support facts; retain the explicitly described evidence/provenance limits.
+2. Commit only explicit product/tests/docs paths, push one task PR against main, and require same-head
+   non-skipped CI success, including source-diverse data, visual comparison and Windows DPI gates.
+   Reuse CI evidence instead of duplicating full regression locally. Run both strict documentation
+   builds and applicable source audits. No merge approval has been given for this source.
+3. Inspect changed artifacts, launch the exact Windows candidate with visible PowerShell log, confirm
+   responsiveness, and provide one GUI/Assistant handtest checklist and repeatable command.
+   Stop at handoff only after applicable gates; pending evidence is a checkpoint, not completion.
+
+## Closed baseline
+
+Quality-baseline closure was accepted and merged via
+[PR #140](https://github.com/hxin-an/XBrainLab/pull/140). Its implementation/evidence history stays in
+Git/PR, not active dispatch. Known Assistant limitations below remain deferred.
 
 ## Candidate — Assistant reliability repair plan (not active implementation)
 
@@ -125,9 +181,4 @@ LOC, static pass, literal prompt assertions or one improved score are not comple
 This proposal does not block the explicitly revised cleanup scope or certify Assistant readiness.
 New implementation begins only after diagnostic outcome, scope and budget are approved.
 
-## 已合併基準的邊界
-
-三核心責任重構已經 Windows GUI／English Assistant 手測並同意合併
-[PR #138](https://github.com/hxin-an/XBrainLab/pull/138)。`main` 是唯一產品基線；舊證據不代替新 source
-驗證。責任邊界見 `docs/architecture/`；Assistant 保留已接受的 bounded baseline 限制，不宣稱 Stable
-或零缺陷。其他候選方向見 [Roadmap](roadmap.md)。
+其他候選方向見 [Roadmap](roadmap.md)；不宣稱 Assistant Stable 或零缺陷。

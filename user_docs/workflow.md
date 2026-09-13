@@ -5,6 +5,9 @@ choices established earlier.
 
 ## Import and review the dataset
 
+Check [Supported data and labels](import-support.md) for file dependencies, BIDS scope,
+internal/external label placement and the limits of an import without labels.
+
 Import is a review step, not just a file picker. Confirm the selected recordings, label
 source, label placement, class map, and subject/session/task/run metadata before you
 apply the import.
