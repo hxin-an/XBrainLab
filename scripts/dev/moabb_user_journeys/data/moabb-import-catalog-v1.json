@@ -1864,8 +1864,8 @@
         "edd6b22dd795aa0547d7f0b9e849102562b05394fadc3036427f222a1b781ae7"
       ],
       "case_manifest": {
-        "path": "datasets/manifests/import-cases-v1/Yi2025-ba7340b85652.json",
-        "sha256": "ba7340b85652b02a5fa6ba23121e7c681812b04c758da78996a861d7d68d2b37"
+        "path": "datasets/manifests/import-cases-v1/Yi2025-09895cbabb7f.json",
+        "sha256": "09895cbabb7f627356d3acf21f19a96bd3ec3a8bb327fc18b2757d1cc3187902"
       }
     },
     {

@@ -107,14 +107,16 @@ the exact candidate/main identities were verified, with no shared Git configurat
   from the hash-bound saved choices and independent selected-run events, publish a new immutable
   manifest and update its binding after focused portable replay. Preserve old manifest/failure.
   Do not weaken product admission or replace labels with skip_labels.
-  The repaired local draft passed focused replay (eight explicit classes, five events each), but
-  publication is blocked by auto-review requiring explicit confirmation for the exact E write.
+  The repaired local draft passed focused replay (eight explicit classes, five events each).
+  User explicitly approved the exact create-only publication in response to the permission request
+  ("同意 目前還差多少"); the previous auto-review authority blocker is now resolved.
   The create-only target is
   `E:\XBrainLabData\datasets\manifests\import-cases-v1\Yi2025-09895cbabb7f.json`.
   Read-only preflight confirmed that target absent, the parent a normal directory, and the old
   `Yi2025-ba7340b85652.json` unchanged. Re-review with the approved plan and these checks was also
-  denied. Do not retry or route through another tool; request the user's explicit publication approval.
-  No new E manifest or catalog binding was written. Existing data and failure evidence are untouched.
+  denied before that user approval. The reviewed create-only publisher has now succeeded; its
+  `yi2025-portable-repair-v1/publication.json` binds the actual destination hash. Only the Yi
+  manifest binding changed. Existing data and failure evidence stay untouched.
 - The historical 82,138,516-byte Thielen2021 recipe is required provenance but exceeds the general
   small-artifact selector. Review and preserve this exact hash-bound large file explicitly during
   evidence packaging; never silently omit it or raise the product recipe input cap.
@@ -169,8 +171,8 @@ shared Python/product change. Source hash-planning session 10766 completed succe
 archives, requiring 102,748,932,711 additional bytes. Its SHA-256 is
 `aabcf60fb5233b27a32f9a9dc5f8e5b9c0fdc5577369c04fea078b5976eb9b27`.
 No bulk original-source copy has started. The focused Thielen process also exited successfully;
-there is no remaining owned heavy task. Resolve the explicit E-publication authority blocker above
-before switching the Yi binding or starting final campaign/storage publication.
+there is no remaining owned heavy task. The explicitly approved Yi manifest and its verified binding
+are now published. Freeze the repaired candidate before final campaign/storage publication.
 
 Next, in order:
 
