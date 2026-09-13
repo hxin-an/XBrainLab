@@ -118,6 +118,7 @@ def build_review_content_identity(
     selected_eeg_files: Iterable[str] = (),
     eeg_parser_dependencies: Mapping[str, Iterable[str]] | None = None,
     bids_events_json_files: Iterable[str] = (),
+    bids_eeg_json_files: Iterable[str] = (),
     bids_channels_files: Iterable[str] = (),
     admitted_file_identities: Mapping[str, Mapping[str, Any]] | None = None,
     class_map: Mapping[str, Any] | None = None,
@@ -165,6 +166,12 @@ def build_review_content_identity(
         roles_by_identity.setdefault(
             _path_key(path, path_identity_scope=path_identity_scope),
             (path, "bids_events_json"),
+        )
+    for raw_path in bids_eeg_json_files:
+        path = _path_value(raw_path, path_identity_scope=path_identity_scope)
+        roles_by_identity.setdefault(
+            _path_key(path, path_identity_scope=path_identity_scope),
+            (path, "bids_eeg_json"),
         )
     for raw_path in bids_channels_files:
         path = _path_value(raw_path, path_identity_scope=path_identity_scope)
@@ -310,12 +317,16 @@ def assert_review_content_unchanged(
     channels_paths = [
         row["path"] for row in expected_files if row.get("role") == "bids_channels"
     ]
+    eeg_json_paths = [
+        row["path"] for row in expected_files if row.get("role") == "bids_eeg_json"
+    ]
     try:
         observed = build_review_content_identity(
             label_carrier_plan=bindings,
             selected_eeg_files=selected_eeg_files,
             eeg_parser_dependencies=parser_dependencies,
             bids_events_json_files=sidecar_paths,
+            bids_eeg_json_files=eeg_json_paths,
             bids_channels_files=channels_paths,
             class_map=class_map,
             event_roles=event_roles,

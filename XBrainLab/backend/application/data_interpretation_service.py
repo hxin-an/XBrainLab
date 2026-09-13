@@ -727,6 +727,11 @@ class DataInterpretationCommandService:
     ) -> _PreparedInterpretationValidation:
         """Recheck reviewed content without publishing the decision."""
         candidate = self.state.resolve_candidate(command.candidate_id)
+        if bids_index_reason := self._reviewed_bids_index_change_reason(candidate):
+            candidate = replace(
+                candidate,
+                blocked_reasons=[*candidate.blocked_reasons, bids_index_reason],
+            )
         decision = validate_interpretation_candidate(candidate)
         return _PreparedInterpretationValidation(
             candidate_id=candidate.candidate_id,
@@ -763,6 +768,7 @@ class DataInterpretationCommandService:
             )
         owned_work_checkpoint("Preparing interpretation apply")
         candidate = self.state.resolve_candidate(command.candidate_id)
+        self._assert_reviewed_bids_index_is_current(candidate)
         decision = self.state.resolve_validation_decision(candidate.candidate_id)
         if decision is None:
             raise PreconditionError("Validate an interpretation before applying it.")
@@ -1098,6 +1104,38 @@ class DataInterpretationCommandService:
                 "state_preserved": True,
             },
         )
+
+    def _assert_reviewed_bids_index_is_current(
+        self,
+        candidate: InterpretationCandidate,
+    ) -> None:
+        if reason := self._reviewed_bids_index_change_reason(candidate):
+            raise PreconditionError(
+                reason,
+                diagnostics={
+                    "code": "bids_dataset_structure_changed_after_review",
+                    "state_preserved": True,
+                    "next_action": "preview_and_review_again",
+                },
+            )
+
+    def _reviewed_bids_index_change_reason(
+        self,
+        candidate: InterpretationCandidate,
+    ) -> str | None:
+        if candidate.source_kind != "bids" or not candidate.bids.get("is_bids"):
+            return None
+        root = str(candidate.bids.get("root") or candidate.source_path).strip()
+        if not root:
+            return "The reviewed BIDS dataset root is no longer available."
+        cache_key = os.path.normcase(str(Path(root).expanduser().resolve(strict=False)))
+        index = self._bids_dataset_indexes.get(cache_key)
+        if index is None or not index.matches_root(root) or not index.is_current():
+            return (
+                "The BIDS dataset structure changed after preview; preview and "
+                "review the source again before import."
+            )
+        return None
 
     @staticmethod
     def _reviewed_content_identity(

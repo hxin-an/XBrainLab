@@ -644,9 +644,6 @@ class DataInterpretationPreviewDialog(
         self.skip_labels_btn.setToolTip(
             "Continue this import without labels; supervised workflows may be limited.",
         )
-        self.skip_labels_btn.setVisible(
-            not self._is_bids_source() and not self._has_bids_events()
-        )
         self.skip_labels_btn.clicked.connect(self._skip_labels_for_now)
         label_button_layout.addWidget(self.add_label_file_btn)
         label_button_layout.addWidget(self.add_label_folder_btn)
@@ -2042,7 +2039,8 @@ class DataInterpretationPreviewDialog(
         if self._is_bids_source():
             return (
                 "No events.tsv is attached for the selected BIDS runs. Add the "
-                "missing BIDS sidecar or return to Import Data for non-BIDS labels."
+                "missing BIDS sidecar, or choose Continue without labels for "
+                "inspection and preprocessing only."
             )
         if "label_carrier_preview" in self.preview:
             carriers = self.preview.get("label_carrier_preview")

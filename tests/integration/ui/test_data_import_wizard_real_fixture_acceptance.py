@@ -18,9 +18,11 @@ from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFileDialog,
+    QFrame,
     QLabel,
     QLineEdit,
     QMessageBox,
+    QPushButton,
     QWidget,
 )
 from pytestqt.exceptions import TimeoutError as QtBotTimeoutError
@@ -35,6 +37,7 @@ from tests.integration.ui.data_import_wizard_harness import (
 )
 from tests.integration.ui.data_import_wizard_harness import (
     P300BidsWizardDriver,
+    capture_teacher_ui,
 )
 from tests.integration.ui.data_import_wizard_harness import (
     build_dataset_panel as _shared_build_dataset_panel,
@@ -205,6 +208,7 @@ class _WizardDriver:
     resolve_bids_values: bool = False
     resolve_openneuro_trial_types: bool = False
     resolve_bbci_internal_events: bool = False
+    resolve_bids_internal_events: bool = False
     expect_blocked: bool = False
     awaiting_label_field_refresh: bool = False
     dialog_count: int = 0
@@ -423,6 +427,7 @@ def _start_wizard_driver(
     resolve_bids_values: bool = False,
     resolve_openneuro_trial_types: bool = False,
     resolve_bbci_internal_events: bool = False,
+    resolve_bids_internal_events: bool = False,
     expect_blocked: bool = False,
     runtime: Any | None = None,
 ) -> _WizardDriver:
@@ -433,6 +438,7 @@ def _start_wizard_driver(
         resolve_bids_values=resolve_bids_values,
         resolve_openneuro_trial_types=resolve_openneuro_trial_types,
         resolve_bbci_internal_events=resolve_bbci_internal_events,
+        resolve_bids_internal_events=resolve_bids_internal_events,
         expect_blocked=expect_blocked,
         runtime=runtime,
     )
@@ -649,6 +655,34 @@ def _start_wizard_driver(
                 return
 
             if driver.phase == 3:
+                if driver.resolve_bids_internal_events:
+                    for code in ("Stimulus/S  1", "Stimulus/S  2"):
+                        button = next(
+                            button
+                            for button in modal.findChildren(QPushButton)
+                            if button.property("event_code") == code
+                            and button.text() == "Use for training"
+                        )
+                        modal.scroll_area.ensureWidgetVisible(button)
+                        QTEST.mouseClick(button, Qt.MouseButton.LeftButton)
+                    table = modal.findChild(QFrame, "DataImportInternalLabelsTable")
+                    assert table is not None
+                    selectors = [
+                        item
+                        for item in table.findChildren(QComboBox)
+                        if item.isEditable()
+                    ]
+                    assert len(selectors) == 2
+                    for selector, name in zip(
+                        selectors, ("alpha", "beta"), strict=True
+                    ):
+                        editor = selector.lineEdit()
+                        assert editor is not None
+                        modal.scroll_area.ensureWidgetVisible(editor)
+                        _replace_line_edit_text(editor, name)
+                        QTEST.keyClick(editor, Qt.Key.Key_Tab)
+                    driver.trace.append("review BIDS internal events")
+                    capture_teacher_ui(modal, "bids-embedded-labels.png")
                 if driver.resolve_bbci_internal_events:
                     _complete_bbci_internal_event_choices(modal)
                     driver.trace.append("review BBCI internal events")
@@ -713,6 +747,8 @@ def _start_wizard_driver(
                 )
                 return
             if driver.fresh_review_count:
+                if driver.resolve_bids_internal_events:
+                    capture_teacher_ui(modal, "bids-embedded-review.png")
                 if driver.runtime is not None:
                     state_before_confirm = driver.runtime.get_view_publication().state
                     driver.fresh_pre_confirm_state = (
@@ -996,7 +1032,7 @@ def test_bbci_subject_and_internal_event_review_republishes_safe_before_apply(
     assert application_command_registry().active_count(panel) == 0
     assert state.raw.count == 1
     assert state.interpretation.has_applied_interpretation is True
-    assert state.interpretation.class_map == {"769": "left", "770": "right hand"}
+    assert state.interpretation.class_map == {"769": "left hand", "770": "right hand"}
 
 
 def test_bbci_empty_internal_class_name_cannot_confirm_or_mutate(qtbot: Any) -> None:
@@ -1338,6 +1374,78 @@ def test_openneuro_p300_import_bids_trial_type_excludes_na_and_applies(
         "stimulus"
     ]
     assert panel.table.rowCount() == 3
+
+
+@pytest.mark.parametrize("events_present", [True, False])
+def test_visible_bids_wizard_can_explicitly_import_without_labels(
+    qtbot: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, events_present: bool
+) -> None:
+    """The folder route must honor the same no-label choice as ordinary files."""
+    _require_manifest_group("mne-bids-tiny-eeg")
+    source = tmp_path / "bids-no-label"
+    shutil.copytree(PUBLIC_BIDS_ROOT, source)
+    if not events_present:
+        for events_path in source.rglob("*_events.tsv"):
+            events_path.unlink()
+    monkeypatch.setattr(
+        QFileDialog,
+        "getExistingDirectory",
+        staticmethod(lambda _parent, _title, _directory, **_kwargs: str(source)),
+    )
+    _host, panel, runtime = _build_dataset_panel(qtbot)
+    driver = _start_wizard_driver(
+        skip_labels=True, source_picker="folder", runtime=runtime
+    )
+    QTEST.mouseClick(panel.sidebar.import_btn, Qt.MouseButton.LeftButton)
+    _wait_for_applied_interpretation(qtbot, driver, runtime, panel)
+
+    state = runtime.get_view_publication().state
+    assert state.raw.count == 1
+    assert state.interpretation.source_kind == "bids"
+    assert state.interpretation.class_map == {}
+    assert not state.interpretation.epoch_handoff["supervised_ready"]
+    assert state.interpretation.epoch_handoff["supervised_blocker_codes"] == [
+        "missing_class_labels"
+    ]
+    assert "continue without labels" in driver.trace
+    assert "confirm and import" in driver.trace
+    assert driver.fresh_review_decisions == ["safe"]
+    assert driver.fresh_pre_confirm_state == (0, False)
+    assert panel.table.rowCount() == 1
+
+
+def test_visible_bids_wizard_reviews_embedded_labels_without_events_sidecar(
+    qtbot: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _require_manifest_group("mne-bids-tiny-eeg")
+    source = tmp_path / "bids-embedded-labels"
+    shutil.copytree(PUBLIC_BIDS_ROOT, source)
+    for events in source.rglob("*_events.tsv"):
+        events.unlink()
+    marker = next(source.rglob("*.vmrk"))
+    with marker.open("a", encoding="utf-8") as stream:
+        stream.write("\nMk3=Stimulus,S  1,101,1,0\nMk4=Stimulus,S  2,201,1,0\n")
+    monkeypatch.setattr(
+        QFileDialog,
+        "getExistingDirectory",
+        staticmethod(lambda *args, **kwargs: str(source)),
+    )
+    _host, panel, runtime = _build_dataset_panel(qtbot)
+    driver = _start_wizard_driver(
+        source_picker="folder", resolve_bids_internal_events=True, runtime=runtime
+    )
+    QTEST.mouseClick(panel.sidebar.import_btn, Qt.MouseButton.LeftButton)
+    _wait_for_applied_interpretation(qtbot, driver, runtime, panel)
+    state = runtime.get_view_publication().state
+    assert state.raw.count == 1
+    assert state.interpretation.class_map == {
+        "Stimulus/S  1": "alpha",
+        "Stimulus/S  2": "beta",
+    }
+    assert state.interpretation.epoch_handoff["supervised_ready"]
+    assert driver.fresh_pre_confirm_state == (0, False)
+    assert driver.fresh_review_decisions == ["safe"]
+    assert "review BIDS internal events" in driver.trace
 
 
 def test_visible_bids_apply_cancel_reopens_identical_review_and_retries(

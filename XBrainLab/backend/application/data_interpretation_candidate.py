@@ -13,6 +13,7 @@ from .data_interpretation_bids import review_strict_bids_event_runs
 from .data_interpretation_bids_channels import review_bids_channel_sidecars
 from .data_interpretation_bids_resources import (
     BidsEventsJsonReader,
+    bids_eeg_json_resources_by_recording,
     bids_events_json_resource_paths,
 )
 from .data_interpretation_content_identity import build_review_content_identity
@@ -103,6 +104,7 @@ class InterpretationResourceScope:
     label_carriers: list[str] = dc_field(default_factory=list)
     bids_events_json_files: list[str] = dc_field(default_factory=list)
     bids_channels_files: list[str] = dc_field(default_factory=list)
+    bids_eeg_json_files: list[str] = dc_field(default_factory=list)
     bids_events_json_by_carrier: dict[str, tuple[str, ...]] = dc_field(
         default_factory=dict
     )
@@ -117,6 +119,7 @@ class InterpretationResourceScope:
             *self.label_carriers,
             *self.bids_events_json_files,
             *self.bids_channels_files,
+            *self.bids_eeg_json_files,
         ]:
             if path not in result:
                 result.append(path)
@@ -164,6 +167,11 @@ def resolve_interpretation_resource_scope(
         else []
     )
     bids = _bids_for_selected_scope(scan.bids, selected_files)
+    eeg_json_by_recording = bids_eeg_json_resources_by_recording(
+        bids, materializable_files
+    )
+    if bids.get("is_bids"):
+        bids["eeg_json_by_recording"] = eeg_json_by_recording
     active_label_carriers = _filter_bids_label_carriers_for_selected_scope(
         active_label_carriers,
         scan.bids,
@@ -185,6 +193,11 @@ def resolve_interpretation_resource_scope(
             )
         ),
         bids_channels_files=_selected_bids_channels_files(bids),
+        bids_eeg_json_files=list(
+            dict.fromkeys(
+                path for paths in eeg_json_by_recording.values() for path in paths
+            )
+        ),
         bids_events_json_by_carrier=sidecars_by_carrier,
         bids=bids,
     )
@@ -278,6 +291,8 @@ def build_interpretation_candidate(
         scan.source_kind == "bids"
         and scan.bids.get("is_bids")
         and selected_files
+        and not skip_labels
+        and label_carrier_source != "embedded_events"
         and not _bids_selected_scope_has_events(bids)
     ):
         blocked_reasons.append(
@@ -332,7 +347,11 @@ def build_interpretation_candidate(
     internal_event_preview: dict[str, Any] = {}
     if skip_labels:
         internal_event_selection: dict[str, Any] = {}
-    elif scan.bids.get("is_bids"):
+    elif (
+        scan.bids.get("is_bids")
+        and active_label_carriers
+        and label_carrier_source != "embedded_events"
+    ):
         event_roles.update(
             {
                 "onset": "time anchor",
@@ -341,20 +360,7 @@ def build_interpretation_candidate(
             },
         )
         event_roles.update(_string_mapping(choices.get("event_roles")))
-        explicit_internal_event_selection = isinstance(
-            choices.get("internal_event_selection"),
-            dict,
-        ) and bool(choices.get("internal_event_selection"))
-        internal_event_selection = (
-            _internal_event_selection(
-                internal_event_preview,
-                choices.get("internal_event_selection"),
-                event_roles,
-            )
-            if label_carrier_source == "embedded_events"
-            or explicit_internal_event_selection
-            else {}
-        )
+        internal_event_selection = {}
     else:
         extensions = {Path(item).suffix.lower() for item in materializable_files}
         internal_event_preview = _internal_events.build_internal_event_preview(
@@ -425,6 +431,40 @@ def build_interpretation_candidate(
         if selection_class_map:
             class_map = selection_class_map
             class_map_source = "internal_events"
+
+    if (
+        scan.bids.get("is_bids")
+        and label_carrier_source == "embedded_events"
+        and not skip_labels
+    ):
+        if (
+            not _internal_event_selection_is_complete(
+                internal_event_preview,
+                choices.get("internal_event_selection"),
+                choices.get("event_roles"),
+            )
+            or not internal_event_selection.get("label_event_codes")
+            or set(class_map)
+            != set(internal_event_selection.get("label_event_codes", []))
+            or class_map != _string_mapping(internal_event_selection.get("class_map"))
+        ):
+            blocked_reasons.append(
+                "Review all observed internal events and provide a class name "
+                "for every selected label event before importing BIDS with "
+                "embedded labels. "
+                "Alternatively, choose Continue without labels."
+            )
+        else:
+            event_roles.update(
+                dict.fromkeys(
+                    internal_event_selection["label_event_codes"], "class label"
+                )
+            )
+            event_roles.update(
+                dict.fromkeys(
+                    internal_event_selection["not_label_event_codes"], "not a label"
+                )
+            )
 
     label_carrier_plan = _annotate_label_carrier_placements(
         label_carrier_plan,
@@ -512,6 +552,7 @@ def build_interpretation_candidate(
         eeg_parser_dependencies=resource_scope.eeg_dependencies_by_file,
         bids_events_json_files=resource_scope.bids_events_json_files,
         bids_channels_files=resource_scope.bids_channels_files,
+        bids_eeg_json_files=resource_scope.bids_eeg_json_files,
         admitted_file_identities={
             **dict(admitted_content_identities or {}),
             **sidecar_reader.content_identities(
