@@ -45,7 +45,11 @@ PUBLIC_BIDS_EVENTS = PUBLIC_BIDS_EEG.with_name("sub-01_ses-eeg_task-rest_events.
 @pytest.mark.parametrize(
     ("source", "expected_format"),
     [
-        (resolve_public_fixture_dir() / "scan41_short.cnt", "Neuroscan CNT"),
+        pytest.param(
+            resolve_public_fixture_dir() / "scan41_short.cnt",
+            "Neuroscan CNT",
+            marks=pytest.mark.optional_public_fixture,
+        ),
         (
             Path(__file__).resolve().parents[2]
             / "fixtures/data/multiformat/A01T-mini-real.bdf",

@@ -135,6 +135,17 @@ admission, and timeline/source validity. Keep one integrated user handtest.
 
 Next steps, in order:
 
+0. User renewed authorization to continue resolving remaining blockers (2026-09-13). Diagnose each
+   remaining conversion/import failure without relaxing source fidelity or assuming license acceptance.
+   First close current CI: Linux UI executed 129 cases successfully but rejected the new unmarked CNT
+   public-fixture skip. Mark only that downloaded-fixture parameter consistently with existing shard
+   policy; the public-data gate must still execute it without skips. BDF oracle and native popup
+   synchronization fixes are committed locally at 78ac4613, not yet pushed. Then inspect duplicate
+   event placement (BNCI2025_001) and whether official conversion options can preserve omitted non-STIM
+   channels. Reproduce before product changes; new semantic/UI decisions remain explicit boundaries.
+   CNT parameter policy repair passes the complete visible format matrix and mandatory-runner tests:
+   26 passed, no skips, using the retained Windows fixtures. The source-diverse CI gate still disallows
+   all skips; no production behavior or assertion was weakened.
 1. Product tests and scoped review are complete. Finish user-site/source audits and strict docs builds
    for the synchronized support facts; retain the explicitly described evidence/provenance limits.
 2. Commit only explicit product/tests/docs paths, push one task PR against main, and require same-head
