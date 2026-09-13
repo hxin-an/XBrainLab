@@ -87,81 +87,82 @@ fresh applicable evidence and acceptance. Preserve unrelated root settings/UI/te
 
 ### Current checkpoint / next action
 
-Catalog membership, copy-only storage and real-command replay are implemented; 51 focused native
-Windows tests passed together, including real contained-child timeout/retry/replay. This is not
-corpus completion. All 78 cited receipt contents were snapshotted; 363 recipes were indexed. All 127
-baseline cases now have complete source-bound drafts, including recovered ERP/Romani decisions and
-the actual 82 MB Thielen2021 historical recipe. Their portable replay remains outstanding.
-Independent review found promotion could later be downgraded; a real-Git regression test reproduced
-it. Campaign admission now binds to the accepted origin/main catalog, including resume identity;
-the real-Git red/green test and independent narrow re-review passed. origin/main was freshly fetched.
-Catalog historical evidence hashes have been expanded to full identities from retained receipts,
-including previously missing ERP/Romani/legacy-MI bindings; no abbreviated token is an identity.
+Implementation is committed on the existing task branch (Git is the authority for exact SHA).
+The new catalog/gate, real-command replay and copy-only helpers have 59 focused native Windows
+tests passing together. Independent reviews closed promotion-downgrade, no-label verification,
+root/ancestor junction and completion-receipt overwrite gaps. No product/UI code changed in these
+new validation slices. None of this substitutes for the outstanding full portable corpus run.
 
-Copy-only relocation has started; verified destinations are retained, but no completed corpus or
-manifest publication is claimed. The regenerated 127-root plan accounts conservatively for 241 GB
-used on E and 33 GB additional copy, below 500 GB. E is a USB disk: measured concurrent writers
-caused queueing, so root exclusively owns one heavy E task at a time. Interrupted attempts/staging
-are preserved. Native Windows children use the existing owned-process mechanism and bounded waits;
-a returned wrapper or timeout alone does not prove child termination.
+**One heavy E task at a time.** The 127-root BIDS relocation is still running: unified session 57939,
+owned bootstrap PID 46772 / actual copy child 33432. Verify command-line identities before any
+process action; a returned wrapper alone does not prove native-child termination. It uses an existing
+writer lock and bounded owned-process wrapper. E is a measured slow USB disk; do not start another
+heavy E reader/writer or interrupt this job merely for slowness. Full copy target is 40.19 GB;
+a completed operation/visible directory is not a passed new-path import.
 
-BNCI2015_006 has a provenance-checked 1734-event replay pending portable promotion. Minimal official
-BNCI2016_002 and BNCI2022_001 sources are retained: the former has a reproduced row/column loader
-indexing error, the latter a Trigger/trigger mismatch (not truly unlabeled). Yang subject 001 has
-three CRC-verified original sessions; an overlapping conversion produced incomplete output despite
-a PASS receipt and is invalidated, preserved and never used as baseline evidence. Retry conversions
-only into fresh destinations after the relocation writer is idle. Nine rights entries stay deferred.
+Evidence/artifact entry points (all beneath this task's `build/dev-artifacts` unless stated):
 
-Next: finish hash/copy and replay from durable destinations, repair attributable technical blockers,
-publish immutable manifests only after verification, finish representative native coverage and
-same-source integrated evidence. No originals have been removed; exact-list cleanup approval is
-still required. One integrated Windows handoff remains the endpoint, not a slice or CI checkpoint.
+- `portable-case-relocation-plan.json`: all 127 initial cases, complete input hashes and choices.
+  `portable-case-relocation-completed.json` appears only after every copy/hash operation and input
+  manifest publication; it does not certify portable replay. Do not overwrite the occupied plan.
+- `catalog-case-drafts-local/cases-v3` and `catalog-case-drafts-bound`: all 127 original bindings.
+  Includes source-bound ERP/Romani choices and actual Thielen2021 recipe, not the wrong dataset alias.
+  `receipt-index.json`, `receipt-snapshots` (78 cited contents), `saved-choice-index.json`
+  (363 historical recipes) retain evidence. Historical recipes must not be rewritten.
+- `catalog-case-drafts-new`: BNCI2015_006, Tavakolan2017, Zhang2017 and Sosulski2019 passed
+  independent source/conversion checks and selected-run actual Commands plus fresh recipe replay
+  on D (1734, 60, 24 and 90 events respectively). Tavakolan checks four sessions; Zhang checks 15
+  runs; Sosulski checks two Run 2 trials with distinct non-60 ms SOAs. These are representative
+  selections, not complete cohorts. E replay/promotion remains outstanding.
+- `remaining-eleven`: original acquisition, failed attempts, exact source/conversion proofs and
+  process-local repair scripts. Zhang's official archive is 1.755 GB with publisher MD5 and SHA-256.
+  Sosulski's official per-subject archive is 415.77 MB with publisher SHA-256 and CC-BY-SA-4.0;
+  the 4.58 GB aggregate was not acquired. Original BCI2kReader wheel works through isolated task
+  sys.path; no shared install or compatibility patch was needed.
+- `retained-source-roots-v2.json` and `retained-additional-source-roots-v1.json`: size-only original
+  source-location inventory, not identity proof or globally complete mixed-staging coverage.
+  D `a-cache`, `a-source`, `guttmann-loader-root`, `brandl-loader-source` and
+  `legacy-mi-staging` are aliases, not extra physical copies. Metadata-only v1 followed root
+  aliases and timed out; its counts are invalid. It never modified data.
+- `dside-source-copy-plan-v2.json`: content-bound 16 physical source trees and three original
+  archives, 41.62 GB. Separates Jeong's original ZIP and subject extraction from the 725 MB
+  acquisition temporary file (retained in place, not promoted). Original v1 plan is historical.
+  `plan_eside_source_copy.py` prepares the combined source plan after the BIDS writer is idle;
+  it excludes the proven generated `legacy4-bids-route-20260913` and already canonical sources.
+  `apply_source_copy_plan.py` uses the existing copy helper/lock and exclusive completion.
+  Neither E source planning nor copying has run. Original/failed evidence remains protected.
 
-Additional verified progress: the unmodified BCI2kReader wheel works through isolated task-local
-sys.path; no shared install/compatibility patch was needed. Tavakolan subject 1 four-session official
-conversion and source waveform/events checks passed; both its 60-event selected run and BNCI2015_006
-1734-event run passed the tracked command/replay runner on D. Their new drafts are in
-`build/dev-artifacts/catalog-case-drafts-new`; portable E replay/promotion is still outstanding.
-A first Tavakolan task path binding misplaced new BIDS output beside its source cache; that failed
-attempt is preserved, and the corrected fresh v2 destination passed. Original DAT files stay intact.
-Bounded official preflights: Martinez still times out natively; Rozado returns HTTP 403; Sosulski's
-4,581,254,425-byte endpoint ignores Range (not acquired). Zhang's official 1,755,269,242-byte RAR
-supports Range; publisher CC-BY-4.0/size/MD5 are checked before four bounded D-side download workers.
-Zhang subject 1 now passed all 15 source/conversion run comparisons and the selected 24-event
-command/replay case on D; its draft joins the two earlier candidates pending portable replay.
-Local implementation commit is 51f9a92 (not yet pushed); old CI is not evidence for this new source.
-FreiDok's official publication API exposes individual Sosulski archives: subject1.zip is 415,772,811
-bytes with publisher SHA-256 and CC-BY-SA-4.0 attribution. Acquire this representative archive and
-description on D, inspect members, and use the unmodified loader on retained Run 2 files; do not
-download the 4.58 GB aggregate. New-only relocation plan currently covers three candidates / 1.17 GB;
-apply only after the existing E writer finishes. No nine-rights-entry action occurred.
-Root exclusively owns the E relocation writer (session 57939,
-owned wrapper PID 46772 / actual child 33432); verify these identities before any process action.
-Use the existing task-local owned wrapper for future native jobs; do not rerun an occupied output.
+Queued work, in order:
 
-Measured resource slice: the fresh campaign parent hashes the same inputs immediately before the
-child's mandatory admission hash, adding an unnecessary 40.19 GB read across the 127 planned trees.
-First extend the real-child characterization to input/recipe/result tampering and fresh retry;
-then keep parent input hashing only for reuse (where no child executes). Child pre/post-import and
-post-replay checks remain unchanged. No new owner or product/UI behavior; focused subprocess tests
-must pass before and after this two-line movement, with fail-closed tamper and preserved attempts.
-Characterization passed before the move; all 53 focused Windows cases passed after it. Independent
-read-only review confirmed fresh-child and reuse identity checks remain fail-closed. This removes
-one redundant parent pass, not the required source or replay fidelity checks.
+1. Finish the current 127 BIDS copy. Run the prepared `probe_relocated_cases.py` (fresh v2 output)
+   for early shared-boundary E replay; no prior early-probe PASS is claimed.
+2. With E idle, execute `remaining-eleven/convert_retained_remaining.py` separately for
+   BNCI2016_002, BNCI2022_001 and Yang2025 into fresh D outputs. The first fixes a reproduced
+   marker row/column indexing error. BNCI2022 fixes lower-case trigger lookup and verifies actual
+   zero-to-nonzero pulse starts against the retained 1152-segment evidence; unexpected adjacent
+   nonzero transitions fail closed. These are structure/outcome events, not four difficulty labels:
+   preserve annotations, use explicit no-label import and retain the supervised missing-class block.
+   Yang has three CRC-verified original sessions; prior overlapping E output is incomplete despite
+   a PASS receipt, is invalidated/preserved, and must not be reused.
+3. Run `verify_new_dside_cases.py` with fresh output per candidate. Regenerate/apply the separate
+   new-only relocation plan only when idle; portable-check newly resolved cases before promotion.
+4. Complete original-source and necessary evidence consolidation within 500 GB, hash-check targets
+   and preserve originals. Current source plans are not successful migration receipts. Optional
+   questions about another SSD or a reviewed E-in-place move are not blockers: without a response,
+   continue the approved copy/verify/preserve-original strategy, not unapproved moves/deletions.
+5. Bind the final portable manifests/catalog, generate the human inventory, then freeze the candidate.
+   Fetch origin/main before the full campaign. Run every required case, representative native Windows
+   wizard/source-diverse gates and same-head CI without replacing them with old evidence. Keep source
+   stable during the final campaign; failed attempts remain available. Final delivery is one integrated
+   Windows handtest with PowerShell log, not a slice/CI/compaction checkpoint.
 
-Sosulski subject 1 archive and description now match publisher SHA-256. Two non-60 ms Run 2 trials
-passed source/conversion comparison (90 events each), and the selected trial passed real Commands
-and fresh recipe replay on D. A task verifier initially omitted the BIDS recording suffix from run
-identity; correcting that lookup verified the unchanged output. Four new candidates await E replay.
-BNCI2022 independent semantic review supports lower-case trigger and verified pulse starts, not
-four difficulty classes. Preserve all structural/outcome annotations; use the existing explicit
-no-label import route with supervised readiness blocked. First characterize the corpus runner's
-no-label path; no production/UI behavior changes are authorized or necessary for that case.
-The new characterization reproduced a verifier defect: Raw event detection was being mistaken for
-supervised classes on an explicit no-label import. The verifier now checks the returned Apply
-interpretation (no extra query), preserves acquisition annotations, and requires the missing-class
-blocker. Positive plus negative real-command tests and all 55 focused Windows cases passed;
-independent data review found no blocker. Product behavior was unchanged.
+Remaining dispositions must stay honest: nine rights entries remain deferred (no new acquisition,
+terms acceptance or contact); native Rozado archive/metadata requests return HTTP 403, and the
+correct official Martinez subject URL (sequence 11) still times out
+(`remaining-eleven/final-access-preflight-v1.json`). Triana official conversion remains blocked on
+missing fiducials; BNCI2019 source EOG units remain unresolved. Never infer coordinates/units/classes
+or reduce the pinned denominator to obtain PASS. Do not promote the four D-verified candidates
+until portable evidence exists, or claim original-source consolidation from BIDS copies alone.
 
 ## Closed baseline
 

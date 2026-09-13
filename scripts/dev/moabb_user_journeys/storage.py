@@ -220,10 +220,19 @@ def _tree_files(source: Path) -> dict[str, dict[str, Any]]:
     return dict(sorted(result.items()))
 
 
+def _physical_source(source: Path) -> Path:
+    # Validate the unresolved root and its ancestors before resolve() can hide
+    # a junction. Reuse the same link/containment policy as portable inputs.
+    absolute = source.absolute()
+    return resolve_data_path(
+        Path(absolute.anchor), absolute.relative_to(absolute.anchor).as_posix()
+    ).resolve(strict=True)
+
+
 def plan_tree_copy(source: Path, destination: str, data_root: Path) -> dict[str, Any]:
     """Plan one copy-only relocation; publication and deletion are separate."""
     target = resolve_data_path(data_root, destination)
-    original = source.resolve(strict=True)
+    original = _physical_source(source)
     if target.resolve().is_relative_to(original) or original.is_relative_to(
         target.resolve()
     ):
@@ -249,7 +258,7 @@ def copy_verified_tree(
     already retained. Failed staging is preserved for diagnosis, never deleted.
     """
     target = resolve_data_path(data_root, str(plan["destination"]))
-    original = Path(plan["source"]).resolve(strict=True)
+    original = _physical_source(Path(plan["source"]))
     if target.resolve().is_relative_to(original) or original.is_relative_to(
         target.resolve()
     ):
