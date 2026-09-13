@@ -131,6 +131,12 @@ Evidence/artifact entry points (all beneath this task's `build/dev-artifacts` un
   it excludes the proven generated `legacy4-bids-route-20260913` and already canonical sources.
   `apply_source_copy_plan.py` uses the existing copy helper/lock and exclusive completion.
   Neither E source planning nor copying has run. Original/failed evidence remains protected.
+- Independent source-preservation review found a concrete mapping gap: existing
+  `evidence/moabb-ten-20260913/{source,forenzo-source,kojima-source,liu2024-source,zhang-source}`
+  contains original archives/extractions referenced by retained fidelity receipts, but only Brandl
+  was in the E plan. Run the bounded `inventory_mixed_source_gap.py` when the E writer is idle,
+  inspect contents and include originals (not generated BIDS children) before source planning.
+  No deletion or reacquisition is authorized by this finding.
 
 Queued work, in order:
 
@@ -150,6 +156,16 @@ Queued work, in order:
    and preserve originals. Current source plans are not successful migration receipts. Optional
    questions about another SSD or a reviewed E-in-place move are not blockers: without a response,
    continue the approved copy/verify/preserve-original strategy, not unapproved moves/deletions.
+   Also check `datasets/public-fixtures` with the existing pinned fixture verifier against retained
+   D fixtures; do not assume this cache is already consolidated or download it again. The prepared
+   `stage_import_provenance.py` preserves historical recipes, task-local prerequisites and exact
+   runner/catalog/lock bytes. Execute this packaging only after the portable catalog is bound and
+   committed (the script rejects unfinished bindings/dirty tracked source); its source-commit
+  reference is not a standalone application bundle.
+   Retained D fixtures passed the existing `required-ci` (205,255,918 bytes) and
+   `teacher-preflight` (277,106,963 bytes) hash verifiers. The broader optional `all` profile
+   stopped on missing P300 `sub-002`; preserve that distinction rather than downloading all
+   profiles or calling an optional missing extra a required-gate pass.
 5. Bind the final portable manifests/catalog, generate the human inventory, then freeze the candidate.
    Fetch origin/main before the full campaign. Run every required case, representative native Windows
    wizard/source-diverse gates and same-head CI without replacing them with old evidence. Keep source
