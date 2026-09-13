@@ -299,6 +299,68 @@ def test_recipe_bounds_derived_placement_evidence_but_replays_literal_values(
     )
 
 
+@pytest.mark.parametrize(
+    "stats_key", ["selected_anchor_stats", "selected_duration_stats"]
+)
+def test_recipe_dense_timing_stats_roundtrip_preserves_choices(tmp_path, stats_key):
+    count = 40_000
+    stats = {
+        "row_count": count,
+        "numeric_count": count,
+        "min": 0.0,
+        "max": (count - 1) / 60,
+        "value_counts": {f"{index / 60:.15f}": 1 for index in range(count)},
+    }
+    # A literal class value may match the derived section's key. Only the
+    # top-level evidence section may be compacted, never user decisions.
+    decision = {
+        "class_name": "Target",
+        "role": "stimulus",
+        "keep_event": True,
+        "use_as_class": True,
+        "decision": "resolved",
+        "decision_source": "user_choice",
+        "provenance": "label_carrier_choice",
+    }
+    recipe = ImportRecipe(
+        recipe_id="dense-timing",
+        interpretation_id="interpretation-dense-timing",
+        source_path="/data",
+        source_kind="bids",
+        selected_eeg_files=["/data/recording.vhdr"],
+        label_carrier="external_files",
+        label_sources=["/data/events.tsv"],
+        label_carriers=["/data/events.tsv"],
+        label_carrier_plan=[
+            {
+                "path": "/data/events.tsv",
+                "selected_target_file": "/data/recording.vhdr",
+                "selected_label_field": "trial_type",
+                "selected_anchor": "onset",
+                "selected_duration_field": "duration",
+                "time_model": "seconds",
+                "placement_method": "interval",
+                "value_decisions": {stats_key: decision},
+                stats_key: stats,
+            }
+        ],
+        content_identity={"source": {"sha256": "a" * 64}},
+    )
+    original_choices = choices_from_import_recipe(recipe)
+    target = tmp_path / "dense-timing.json"
+
+    recipe.write_json(str(target))
+    loaded = load_import_recipe(str(target))
+
+    assert target.stat().st_size <= IMPORT_RECIPE_MAX_BYTES
+    assert choices_from_import_recipe(loaded) == original_choices
+    assert loaded.content_identity == recipe.content_identity
+    assert loaded.label_carrier_plan[0][stats_key] == {
+        key: value for key, value in stats.items() if key != "value_counts"
+    }
+    assert len(recipe.label_carrier_plan[0][stats_key]["value_counts"]) == count
+
+
 def test_recipe_write_rejects_unbounded_explicit_choices_before_overwrite(
     tmp_path,
 ) -> None:

@@ -355,7 +355,8 @@ still applies to actual event-code placement. Schema, timing, complete-choice an
 remain independent of that distinction.
 
 Saved import recipes retain complete explicit choices and content identities, but bound regenerable
-placement/BIDS preview evidence to the existing count/preview projection. Reload rescans the source
+placement/BIDS preview evidence and selected anchor/duration value histograms to the existing
+count/preview projection, preserving aggregate timing statistics. Reload rescans the source
 and rebuilds full review evidence before validation and apply. The 1 MiB recipe read limit also applies
 before writing: an oversized explicit recipe is rejected without overwriting an existing file.
 

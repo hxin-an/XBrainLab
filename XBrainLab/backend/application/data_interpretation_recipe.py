@@ -105,15 +105,16 @@ def _persisted_label_carrier_plan(
         # This top-level count map is preview-only.  Do not project the whole
         # row: arbitrary raw label values can legitimately equal this key.
         item.pop("event_code_label_counts", None)
-        reviews = item.get("placement_reviews")
-        if isinstance(reviews, dict):
-            [projected] = project_label_carrier_plan(
-                [{"placement_reviews": reviews}],
-            )
-            item["placement_reviews"] = projected["placement_reviews"]
-        bids_review = item.get("bids_event_review")
-        if isinstance(bids_review, dict):
-            item["bids_event_review"] = project_bids_review(bids_review)
+        for key in (
+            "placement_reviews",
+            "bids_event_review",
+            "selected_anchor_stats",
+            "selected_duration_stats",
+        ):
+            evidence = item.get(key)
+            if isinstance(evidence, dict):
+                [projected] = project_label_carrier_plan([{key: evidence}])
+                item[key] = projected[key]
         persisted.append(item)
     return persisted
 

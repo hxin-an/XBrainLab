@@ -87,6 +87,44 @@ fresh applicable evidence and acceptance. Preserve unrelated root settings/UI/te
 
 ### Current checkpoint / next action
 
+**Post-candidate repair, 2026-09-13:** frozen candidate 8122d2ad completed the full native portable
+campaign with 132/134 passed and two failures, so it is not a handoff version despite all 24 applicable
+CI checks passing. Preserve `portable-full-8122d2ad-v2` and the earlier v1 Git-path admission failure.
+Native Git needs process-local Windows GIT_DIR/GIT_WORK_TREE for this WSL-created worktree;
+the exact candidate/main identities were verified, with no shared Git configuration change.
+
+- Thielen2021 applies 37,800 labels but Save recipe exceeds the existing 1 MiB cap. Diagnose the
+  serialized field sizes, add a focused red regression, and bound only proven regenerable evidence
+  through the existing recipe serializer. Preserve all replay choices/content identity and the byte
+  cap; no UI edit, guessed classes or case removal. Require fresh Thielen Commands and recipe replay.
+  Repair is now implemented in the existing serializer: only derived anchor/duration value-count
+  histograms are omitted. The two new regression cases failed before repair; all 19 directly related
+  tests passed afterward, with no skips. Native `thielen-dense-recipe-replay-v1/result.json` passed
+  actual Commands/save/fresh replay with 37,800 events, zero waveform error and a 52,513-byte recipe.
+  Independent persistence review found no blocker; these focused results do not certify a new full run.
+- Yi2025's portable draft omitted the label carriers and eight explicit class decisions present in
+  its exact historical recipe; its empty expected-event list is also wrong. Rebuild only that case
+  from the hash-bound saved choices and independent selected-run events, publish a new immutable
+  manifest and update its binding after focused portable replay. Preserve old manifest/failure.
+  Do not weaken product admission or replace labels with skip_labels.
+  The repaired local draft passed focused replay (eight explicit classes, five events each), but
+  publication is blocked by auto-review requiring explicit confirmation for the exact E write.
+  The create-only target is
+  `E:\XBrainLabData\datasets\manifests\import-cases-v1\Yi2025-09895cbabb7f.json`.
+  Read-only preflight confirmed that target absent, the parent a normal directory, and the old
+  `Yi2025-ba7340b85652.json` unchanged. Re-review with the approved plan and these checks was also
+  denied. Do not retry or route through another tool; request the user's explicit publication approval.
+  No new E manifest or catalog binding was written. Existing data and failure evidence are untouched.
+- The historical 82,138,516-byte Thielen2021 recipe is required provenance but exceeds the general
+  small-artifact selector. Review and preserve this exact hash-bound large file explicitly during
+  evidence packaging; never silently omit it or raise the product recipe input cap.
+  The task-local packager now selects only this exact size/SHA-bound large artifact explicitly;
+  the general 32 MB file and 500 MB aggregate bounds remain. Packaging has not executed.
+- After focused tests and independent data/persistence review, commit/freeze the repaired candidate
+  and rerun the complete 134-case campaign plus exact-head CI/native wizard. Prior-head passes are
+  history, not the new candidate's full evidence. Then finish the already prepared source/evidence
+  copies and single Windows handoff. UI modification remains unauthorized.
+
 The task branch owns the implementation; Git is the authority for exact source and dirty state.
 No new product/UI source changed in the recurring-catalog/storage slices. Earlier focused evidence:
 59 native tests together, then the real internal-alias defect reproduced and all 13 conformance tests
@@ -126,8 +164,13 @@ Preserve `staging/copy-buffer-probe-v1` and its diagnostic receipt for separatel
 cleanup. The old observed operation took roughly 26 minutes; cache/antivirus/external load were
 uncontrolled, so no causal/general speedup claim. Use the measured 64 MiB buffer only in the
 task-local source-copy process, retaining the same verification/publication owner. No D relay or
-shared Python/product change. Source hash-planning session 10766 (owned bootstrap PID 42036)
-is now running with a 5,400-second bound; do not start another heavy E task until it exits.
+shared Python/product change. Source hash-planning session 10766 completed successfully.
+`combined-source-copy-plan-v1.json` binds 53 source mappings, 49 unique tree operations and three
+archives, requiring 102,748,932,711 additional bytes. Its SHA-256 is
+`aabcf60fb5233b27a32f9a9dc5f8e5b9c0fdc5577369c04fea078b5976eb9b27`.
+No bulk original-source copy has started. The focused Thielen process also exited successfully;
+there is no remaining owned heavy task. Resolve the explicit E-publication authority blocker above
+before switching the Yi binding or starting final campaign/storage publication.
 
 Next, in order:
 
@@ -135,8 +178,8 @@ Next, in order:
    content-bound replay receipts; all 16 focused catalog tests passed natively with no skips.
    The secret hook flags new public evidence checksums; only scanner-reported, reviewed values in
    the seven promoted entries are added as individual false positives, with no filter/exclusion change.
-   Finish the running
-   `plan_eside_source_copy.py` original-source hashing. It combines
+   Original-source hashing is complete; use the hash-bound combined plan rather than rerunning
+   `plan_eside_source_copy.py`. It combines
    `dside-source-copy-plan-v2.json` (16 trees and three archives, 41.62 GB) with verified physical
    E roots. Include mixed `moabb-ten-20260913/{source,forenzo-source,kojima-source,liu2024-source}`
    and `zhang-source/MNE-Zhang2025-data`; exclude Zhang's generated BIDS sibling. Aliases
