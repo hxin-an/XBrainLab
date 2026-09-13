@@ -561,44 +561,45 @@ def _review_one_run(
             )
         )
 
-    code_labels: dict[str, set[str]] = {}
-    for row in usable_rows:
-        if row["event_code"] and row["selected_label"]:
-            code_labels.setdefault(row["event_code"], set()).add(row["selected_label"])
-    for code, labels in sorted(code_labels.items()):
-        if len(labels) > 1:
-            compatibility_issues.append(
-                _issue(
-                    "event_code_has_multiple_classes",
-                    None,
-                    f"event code {code} maps to multiple classes in one run",
-                )
-            )
-
     carrier_class_map = class_map_from_value_decisions(
         value_decisions,
     )
     effective_class_map: dict[str, str] = {}
     event_code_class_map: dict[str, str] = {}
-    for code, labels in sorted(code_labels.items()):
-        if len(labels) != 1:
-            continue
-        label = next(iter(labels))
-        event_code_class_map[code] = label
-        display = carrier_class_map.get(label)
-        if not display:
-            continue
-        previous = effective_class_map.get(label)
-        if previous is not None and previous != display:
-            compatibility_issues.append(
-                _issue(
-                    "run_mapping_conflict",
-                    None,
-                    f"class {label} has conflicting per-run meanings",
+    event_code_placement = (
+        str(plan.get("placement_method") or "").strip().lower() == "event_code"
+    )
+    if event_code_placement:
+        code_labels: dict[str, set[str]] = {}
+        for row in usable_rows:
+            if row["event_code"] and row["selected_label"]:
+                code_labels.setdefault(row["event_code"], set()).add(
+                    row["selected_label"]
                 )
-            )
-            continue
-        effective_class_map[label] = display
+        for code, labels in sorted(code_labels.items()):
+            if len(labels) > 1:
+                compatibility_issues.append(
+                    _issue(
+                        "event_code_has_multiple_classes",
+                        None,
+                        f"event code {code} maps to multiple classes in one run",
+                    )
+                )
+                continue
+            label = next(iter(labels))
+            event_code_class_map[code] = label
+            display = carrier_class_map.get(label)
+            if display:
+                effective_class_map[label] = display
+    else:
+        # Timestamp and interval placement use the selected label field at its
+        # reviewed onset.  A BIDS ``value`` column may instead describe a
+        # generic flash/marker and need not identify a class.
+        for row in usable_rows:
+            label = row["selected_label"]
+            display = carrier_class_map.get(label)
+            if display:
+                effective_class_map[label] = display
 
     all_issues = [*schema_issues, *compatibility_issues]
     if all_issues:

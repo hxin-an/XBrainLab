@@ -146,6 +146,52 @@ Next steps, in order:
    CNT parameter policy repair passes the complete visible format matrix and mandatory-runner tests:
    26 passed, no skips, using the retained Windows fixtures. The source-diverse CI gate still disallows
    all skips; no production behavior or assertion was weakened.
+   Remaining-blocker audit found an official converter option: `return_all_modalities=True` preserves
+   non-STIM channels whereas the default selects EEG only. Verify a fresh BNCI2014_001 retained-source
+   pilot before extending to the same-cause entries; compare independent source copies to avoid
+   alias-mutated fidelity receipts. This is conversion configuration, not permission to accept channel
+   loss, invent labels, change the pinned dependency, or add a second product importer.
+   Fresh Kojima2024B selected source run-12 converts to MOABB run `62stream` / BIDS run-62, not the
+   old receipt's paired BIDS run-12. New conversion preserves all 66 non-STIM channels, 424480 samples,
+   all 240 class/sample pairs, full chunked waveforms, Commands and recipe replay. Receipt:
+   `E:\XBrainLabData\evidence\kojima-b-reconversion-20260913-v1\result-v2.json`, SHA-256
+   `7e334a7489cbb76fc2f80c214bf94cfe24b543420abe4c02031c1acdc2cb76f4`.
+   The first validation attempt used plain BrainVision channel types instead of channels.tsv for its
+   Command reference; the follow-up uses actual BIDS metadata and reuses the same converted files.
+   All 24 non-skipped CI checks passed at pushed head `5d23d0b0` (run 34735323194). Root inspected
+   public-data artifacts: required I/O 48 passed / 0 skipped, visible format matrix 12 passed / 0 skipped,
+   including CNT. Continue retained-source repairs before requesting manual testing; subsequent doc/source
+   commits still require their own applicable CI. BNCI2025_001's original class collision reproduces and
+   proper explicit class/context review passes the retained payload; official-conversion evidence is
+   still missing until its original source unit is located or safely reacquired.
+   Two directly reproduced product repairs remain in scope before handoff:
+   - Large-event recipe replay: successful BNCI2025_001 import saves 2,670,013 bytes while reload is
+     bounded at 1 MiB. Most bytes are redundant derived carrier preview lists, not reviewed choices.
+     Compact only regenerable evidence, preserve every explicit decision/mapping and content identity,
+     keep the read cap, and prove save→reload→validate→apply with the same classes/context. Do not
+     recursively project away user-chosen label keys that happen to resemble diagnostic field names.
+     Apply the existing bounded BIDS projection to Save/Reload public responses as well, so the same
+     redundant event rows do not escape through command diagnostics after bounded persistence.
+   - BIDS timestamp labels: Thielen's official converter preserves trial_id, flash events and all
+     104 non-STIM channels. The existing Label-time target permits an independent selected label field,
+     but strict BIDS incorrectly applies one-code/one-class to an unrelated `value` column. Restore
+     timestamp/interval field authority while keeping true event-code mapping conflicts, complete
+     decisions, timeline/bounds, same-sample conflict, freshness and recipe protections. Test first
+     with a bounded real BIDS fixture, then rerun retained Thielen. No UI files or new public contract;
+     no claim of full cVEP model/training support from an import result.
+   Both repairs now pass focused Windows validation: recipe/public projection 17 cases and strict BIDS
+   plus generated BrainVision timestamp regression 63 cases, no skips. The previous deep-directory
+   fixture failure disappears with a short Windows pytest basetemp; it occurred before product code.
+   Retained BNCI2025_001 payload save/reload/validate/apply now preserves 958 class events and exact
+   waveforms with a 170,427-byte recipe; this is not yet its official BIDS route. Retained official
+   Thielen BIDS imports and replays all 36 selected trial IDs. Independent recipe review confirmed
+   explicit choices/content identities survive, while root reviews the timestamp diff and receipts.
+   Modality batch reruns must bind actual original source paths/hashes, use independent loader objects,
+   and check full chunked waveforms, sidecar channel types, exact class/sample arrays and recipe replay.
+   Missing guessed cache paths are not dataset blockers. Locate actual campaign sources before any
+   reacquisition; no network-dependent default-loader fallback or persistent config changes.
+   BNCI2019_001's float32 BrainVision precision discrepancy remains under diagnosis, not PASS; an
+   integer half-resolution bound alone is not an adequate floating-point export oracle.
 1. Product tests and scoped review are complete. Finish user-site/source audits and strict docs builds
    for the synchronized support facts; retain the explicitly described evidence/provenance limits.
 2. Commit only explicit product/tests/docs paths, push one task PR against main, and require same-head

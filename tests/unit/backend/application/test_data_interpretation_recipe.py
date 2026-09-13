@@ -7,7 +7,11 @@ from XBrainLab.backend.application.data_interpretation_metadata import (
     FileMetadataResolution,
     MetadataFieldResolution,
 )
+from XBrainLab.backend.application.data_interpretation_public_projection import (
+    PUBLIC_EVIDENCE_PREVIEW_LIMIT,
+)
 from XBrainLab.backend.application.data_interpretation_recipe import (
+    IMPORT_RECIPE_MAX_BYTES,
     ImportRecipe,
     build_import_recipe,
     choices_from_import_recipe,
@@ -196,6 +200,135 @@ def test_recipe_preserves_reviewed_label_content_identity(tmp_path):
         "applied:interp-identity",
         "recipe:recipe-identity",
     ]
+
+
+def test_recipe_bounds_derived_placement_evidence_but_replays_literal_values(
+    tmp_path,
+) -> None:
+    """Large current preview evidence cannot make a saved reviewed route unreadable."""
+    mapping_count = 12_000
+    literal_value = "event_code_label_counts"
+    decision = {
+        "role": "annotation",
+        "keep_event": True,
+        "use_as_class": False,
+        "decision": "resolved",
+        "decision_source": "user_choice",
+        "provenance": "label_carrier_choice",
+    }
+    recipe = ImportRecipe(
+        recipe_id="large-preview",
+        interpretation_id="interpretation-large-preview",
+        source_path="/data",
+        source_kind="folder",
+        selected_eeg_files=["/data/recording.vhdr"],
+        label_sources=["/data/events.tsv"],
+        label_carriers=["/data/events.tsv"],
+        label_carrier="external_files",
+        bids={
+            "root": "/data",
+            "event_validation": {
+                "runs": [
+                    {
+                        "events_file": "/data/events.tsv",
+                        "row_evidence": [
+                            {"source_row": index, "detail": "x" * 100}
+                            for index in range(mapping_count)
+                        ],
+                    }
+                ]
+            },
+        },
+        run_event_mappings={"/data/recording.vhdr": {literal_value: "Context"}},
+        label_carrier_plan=[
+            {
+                "path": "/data/events.tsv",
+                "selected_target_file": "/data/recording.vhdr",
+                "selected_label_field": "trial_type",
+                "selected_anchor": "onset",
+                "selected_duration_field": "duration",
+                "time_model": "seconds",
+                "placement_method": "interval",
+                "value_decisions": {literal_value: decision},
+                "run_class_map": {literal_value: "Context"},
+                "event_code_label_counts": {literal_value: {"Context": mapping_count}},
+                "placement_reviews": {
+                    "event_code": {
+                        "code_mappings": [
+                            {"source_row": index, "detail": "x" * 100}
+                            for index in range(mapping_count)
+                        ],
+                        "missing_codes": [str(index) for index in range(mapping_count)],
+                    }
+                },
+                "bids_event_review": {
+                    "row_evidence": [
+                        {"source_row": index, "detail": "x" * 100}
+                        for index in range(mapping_count)
+                    ]
+                },
+            }
+        ],
+    )
+    target = tmp_path / "large-preview.json"
+
+    recipe.write_json(str(target))
+    loaded = load_import_recipe(str(target))
+
+    assert target.stat().st_size <= IMPORT_RECIPE_MAX_BYTES
+    [plan] = loaded.label_carrier_plan
+    review = plan["placement_reviews"]["event_code"]
+    assert review["code_mapping_count"] == mapping_count
+    assert len(review["code_mappings"]) == PUBLIC_EVIDENCE_PREVIEW_LIMIT
+    assert review["missing_code_count"] == mapping_count
+    assert len(review["missing_codes"]) == PUBLIC_EVIDENCE_PREVIEW_LIMIT
+    assert plan["value_decisions"][literal_value] == decision
+    assert plan["run_class_map"][literal_value] == "Context"
+    bids_review = plan["bids_event_review"]
+    assert bids_review["row_evidence_count"] == mapping_count
+    assert "row_evidence" not in bids_review
+    [bids_run] = loaded.bids["event_validation"]["runs"]
+    assert bids_run["row_evidence_count"] == mapping_count
+    assert "row_evidence" not in bids_run
+    replay_choices = choices_from_import_recipe(loaded)
+    assert (
+        replay_choices["label_carrier_choices"]["/data/events.tsv"]["value_decisions"][
+            literal_value
+        ]
+        == decision
+    )
+
+
+def test_recipe_write_rejects_unbounded_explicit_choices_before_overwrite(
+    tmp_path,
+) -> None:
+    target = tmp_path / "existing.json"
+    original = b'{"existing": true}\n'
+    target.write_bytes(original)
+    recipe = ImportRecipe(
+        recipe_id="too-large-explicit-choice",
+        interpretation_id="interpretation-too-large",
+        source_path="/data",
+        source_kind="folder",
+        label_carrier_plan=[
+            {
+                "path": "/data/events.tsv",
+                "value_decisions": {
+                    "class": {
+                        "role": "stimulus",
+                        "keep_event": True,
+                        "use_as_class": True,
+                        "class_name": "x" * IMPORT_RECIPE_MAX_BYTES,
+                    }
+                },
+            }
+        ],
+    )
+
+    with pytest.raises(ValueError, match=r"recipe.*limit"):
+        recipe.write_json(str(target))
+
+    assert target.read_bytes() == original
 
 
 def test_recipe_loader_uses_one_bounded_binary_read(tmp_path, monkeypatch) -> None:

@@ -104,6 +104,11 @@ External labels require one of the supported reviewed placements:
   count and order. Equal row counts alone do not establish alignment.
 - **Event-code mapping:** explicitly associate codes with their reviewed meaning.
 
+For BIDS time/interval placement, the selected label field can be independent of `value`.
+For example, a generic flash code may repeat while a separate reviewed trial-ID field supplies
+classes. Do not treat every acquisition or context marker as a training class. Saved recipes keep
+your choices and source checks; large regenerable event previews are summarized and rebuilt on reload.
+
 CSV, TXT and MAT are containers, not guarantees that arbitrary columns or nested
 arrays can be understood automatically. This support concerns labels, not generic
 CSV/MAT waveform import. An unreadable or misaligned supplied label file must not be
@@ -129,6 +134,19 @@ represented by BIDS `events.tsv` instead of remaining a signal channel, but the 
 non-EEG channel and preserved event mapping must be disclosed and checked. Any other
 material transformation must also be disclosed; filtering or event relabelling cannot
 be hidden in conversion.
+
+For MOABB 1.5.0 conversion, review `return_all_modalities` on the dataset object.
+The default converter channel selection keeps EEG only; it can omit EOG or other
+auxiliary signals even when the loader returned them. For dataset constructors that
+expose the option, `return_all_modalities=True` retains non-STIM channels. This is a
+conversion option, not an XBrainLab setting or a guarantee that every converter works.
+Always compare the selected source run with its actual exported run, including
+`channels.tsv`; BrainVision's header alone does not preserve every channel type.
+
+Also distinguish acquisition triggers from MOABB's reviewed task annotations. Some
+loaders define a task interval starting after the trigger, and BIDS `value` IDs may be
+renumbered. Verify class meaning and sample placement against the documented mapping
+and interval; do not compare numeric IDs alone or treat every annotation as a class.
 
 The acceptance denominator must be a complete, pinned MOABB release inventory, not
 only datasets that happened to pass. Each dataset needs an explicit source selection,

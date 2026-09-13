@@ -13,7 +13,10 @@ from .data_interpretation_metadata import (
     FileMetadataResolution,
     file_metadata_from_dict,
 )
-from .data_interpretation_public_projection import project_label_carrier_plan
+from .data_interpretation_public_projection import (
+    project_bids_review,
+    project_label_carrier_plan,
+)
 
 IMPORT_RECIPE_MAX_BYTES = 1_048_576
 
@@ -60,7 +63,7 @@ class ImportRecipe:
     recipe_trace: list[str] = dc_field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
-        """Return the complete persistence representation."""
+        """Return all recipe fields, including complete in-memory review evidence."""
         return _serialize(self)
 
     def to_public_dict(self) -> dict[str, Any]:
@@ -69,15 +72,61 @@ class ImportRecipe:
         payload["label_carrier_plan"] = project_label_carrier_plan(
             self.label_carrier_plan,
         )
+        payload["bids"] = _persisted_bids_review(self.bids)
         return payload
 
     def write_json(self, path: str) -> None:
+        """Persist replay inputs plus a bounded snapshot of derived review evidence."""
         target = Path(path).expanduser()
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(
-            json.dumps(self.to_dict(), indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
+        payload = self.to_dict()
+        payload["label_carrier_plan"] = _persisted_label_carrier_plan(
+            self.label_carrier_plan,
         )
+        payload["bids"] = _persisted_bids_review(self.bids)
+        encoded = (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode(
+            "utf-8",
+        )
+        if len(encoded) > IMPORT_RECIPE_MAX_BYTES:
+            raise ImportRecipeTooLargeError(
+                path=target,
+                file_bytes_at_least=len(encoded),
+            )
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(encoded)
+
+
+def _persisted_label_carrier_plan(
+    rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Bound only known derived review sections; preserve replay choices verbatim."""
+    persisted: list[dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        # This top-level count map is preview-only.  Do not project the whole
+        # row: arbitrary raw label values can legitimately equal this key.
+        item.pop("event_code_label_counts", None)
+        reviews = item.get("placement_reviews")
+        if isinstance(reviews, dict):
+            [projected] = project_label_carrier_plan(
+                [{"placement_reviews": reviews}],
+            )
+            item["placement_reviews"] = projected["placement_reviews"]
+        bids_review = item.get("bids_event_review")
+        if isinstance(bids_review, dict):
+            item["bids_event_review"] = project_bids_review(bids_review)
+        persisted.append(item)
+    return persisted
+
+
+def _persisted_bids_review(bids: dict[str, Any]) -> dict[str, Any]:
+    """Bound BIDS event-validation evidence without changing BIDS admission data."""
+    persisted = dict(bids)
+    event_validation = persisted.get("event_validation")
+    if isinstance(event_validation, dict):
+        persisted["event_validation"] = project_bids_review(
+            {"event_validation": event_validation},
+        )["event_validation"]
+    return persisted
 
 
 def load_import_recipe(path: str) -> ImportRecipe:

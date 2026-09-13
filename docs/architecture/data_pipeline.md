@@ -349,6 +349,16 @@ in the recipe. External carrier pairing is shared by validation, apply and wizar
 `data_interpretation_pairing.py`; ambiguous or incomplete mapping blocks import rather than skipping
 selected recordings. Label placement distinguishes event order, time, interval and event-code modes.
 
+For BIDS time/interval placement, the reviewed label field supplies class meaning at each row's
+onset; a generic `value` column need not uniquely identify a class. One-code/one-class validation
+still applies to actual event-code placement. Schema, timing, complete-choice and freshness checks
+remain independent of that distinction.
+
+Saved import recipes retain complete explicit choices and content identities, but bound regenerable
+placement/BIDS preview evidence to the existing count/preview projection. Reload rescans the source
+and rebuilds full review evidence before validation and apply. The 1 MiB recipe read limit also applies
+before writing: an oversized explicit recipe is rejected without overwriting an existing file.
+
 BIDS field recommendations inspect bounded selected-run coverage, values, sidecar semantics and
 cross-run consistency; truncated or insufficient evidence cannot authorize an automatic choice.
 Explicit review remains authoritative. `Continue without labels` preserves raw inspection and
