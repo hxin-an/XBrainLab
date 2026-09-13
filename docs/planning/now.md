@@ -87,158 +87,100 @@ fresh applicable evidence and acceptance. Preserve unrelated root settings/UI/te
 
 ### Current checkpoint / next action
 
-Implementation is committed on the existing task branch (Git is the authority for exact SHA).
-The new catalog/gate, real-command replay and copy-only helpers have 59 focused native Windows
-tests passing together. Independent reviews closed promotion-downgrade, no-label verification,
-root/ancestor junction and completion-receipt overwrite gaps. No product/UI code changed in these
-new validation slices. None of this substitutes for the outstanding full portable corpus run.
+The task branch owns the implementation; Git is the authority for exact source and dirty state.
+No new product/UI source changed in the recurring-catalog/storage slices. Earlier focused evidence:
+59 native tests together, then the real internal-alias defect reproduced and all 13 conformance tests
+passed after correction. Internal raw markers and per-recording class aliases remain distinct.
+Those runs do not replace the outstanding frozen full portable campaign.
 
-**One heavy E task at a time.** Initial BIDS relocation session 57939 reached its 14,400-second
-bound at 10:16:29 UTC (started 06:16:29 UTC), reporting wrapper code 124. Native inspection confirmed
-all six owned processes absent; no child is left writing. It completed 94/127 operations (27.52 GB
-of 40.19 GB); Jeong's unpublished `staging/relocate-trk3nem2` contains 61/84 files and 3.936/5.279 GB
-by metadata only. Preserve it unchanged and retain `portable-case-relocation-attempt-1-timeout.json`.
-The final completion receipt does not exist. This is slow-copy timeout evidence, not an import defect.
-Use this idle boundary for the prepared three-case portable probe and bounded metadata inventory,
-then continue the unchanged migration plan through the existing verified-copy owner/lock. Do not
-disable checks, overwrite a live plan, delete partial staging or count copies as portable replay PASS.
+Completed and protected:
 
-Early portable probe v2 caught a runner-only internal-alias defect: internal import preserves raw
-marker descriptions and publishes class aliases in per-recording epoch hints. The runner had compared
-raw descriptions directly to semantic class names. A real-command fixture reproduced it (1 failed,
-1 passed), then all 13 focused conformance tests passed after the bounded correction. Wrong aliases
-still fail, excluded context stays non-class, and original annotations/waveforms must survive Apply
-and fresh recipe replay. Independent review found no blocker. Fresh portable probe v3 passed
-Mainsah2025_A, AlexMI and BNCI2014_001; this is shared-boundary evidence, not the full campaign.
-Preserve v2 failure (its one-time probe exited zero despite the failed row; it is not a passing probe).
-No product/UI behavior or expected source classes changed. The bounded mixed-source metadata
-inventory is complete: original archives/extractions in `source`, `forenzo-source`, `kojima-source`,
-`liu2024-source`, plus `zhang-source/MNE-Zhang2025-data` are now included in the prepared source
-planner. Zhang's generated BIDS sibling stays in the separate BIDS plan. Preserve Kojima's possible
-flattened duplicates until content identity is proven; no filename-based deletion. The E public-fixture
-directory yielded no fixture entries at preflight and must be populated/verified from the retained D
-cache. No native Python writer remained at restart preflight. Continuation session 73965 started
-10:32:35 UTC, with the same 14,400-second bound and unchanged plan. Owned process chain:
-27820 → 41640 → 2620 → 35888 → 43020 → 3548. All 94 previous destinations were reverified.
-Jeong2020 (5,279,329,964 bytes) through RomaniBF2025ERP are now fully copied/verified/published: 114/127
-operations completed. No full completion receipt or portable corpus PASS yet. Do not start competing
-heavy E work. Read/write counters confirmed continued progress during the long Jeong copy; the
-earlier incomplete staging is untouched. The prepared three-conversion/replay scripts also received
-a bounded independent review with no blocker; execution remains queued, not claimed passing.
+- Initial 127 BIDS roots and case manifests copied/verified. Completion binds plan
+  `636aaf45bf7d21ff8b478e56f711c068a2de4c2ddcf05fb70fb3bab505995cc1` and exactly 127 IDs.
+  First attempt timed out at 14,400 seconds after 94 roots; preserve its failure receipt and
+  incomplete `staging/relocate-trk3nem2` (3.936 GB by metadata) and older staging. Continuation
+  session 73965 completed with exit 0; all six owned native processes were confirmed absent.
+- BNCI2016 v1 failed with the original loader's KeyError because the instance captured its callable
+  before replacement. Preserve v1 source/driver/failure; v2 constructs after binding and asserts
+  identity. BNCI2016, BNCI2022 and Yang fresh conversions and D actual imports/replays then passed.
+  BNCI2022 is explicitly no-label: 1,152 structural markers, not supervised difficulty classes.
+  Yang checks three sessions but complete application replay selects the first recording.
+- All seven new portable roots/manifests copied and replayed with actual Commands, complete
+  selected-run waveform/channel/event checks and fresh recipes. New plan SHA-256
+  `e7adf335e4ff6bca18aae94b7e0a6d395c891bad70bbebe14b9086190183b7bf`;
+  `relocated-new-probe-v1/summary.json` binds every successful result.
+  Preserve the unexecuted three-case predecessor plan and all original/failed data.
+- The candidate catalog now binds all 134 required cases and promotes only the seven proved new
+  entries. Nine rights entries and four remaining blockers stay visible. Preparation checked both
+  completions, exact seven results and all actual E manifest hashes before tracked integration.
+  The human inventory is generated from that catalog; this is not full campaign PASS.
+- Required public fixtures copied from retained D to `E:\XBrainLabData\datasets\public-fixtures`.
+  `public-fixture-copy-completed-v1.json` binds the copy plan and successful before/after
+  `required-ci` and `teacher-preflight` checks. The optional `all` profile's missing P300
+  sub-002 is retained as a distinct non-required finding; no repeated download or all-profile claim.
 
-Evidence/artifact entry points (all beneath this task's `build/dev-artifacts` unless stated):
+One heavy E task at a time. The bounded Wu2020 diagnostic completed with exit 0: the unchanged
+1,458,751,813-byte input took 26.23 seconds (12.84 copy, 13.34 tree verification), with a 137.73 MB
+peak working set. Existing copy owner/lock/full source and staging hashes remained enabled.
+Preserve `staging/copy-buffer-probe-v1` and its diagnostic receipt for separately approved exact
+cleanup. The old observed operation took roughly 26 minutes; cache/antivirus/external load were
+uncontrolled, so no causal/general speedup claim. Use the measured 64 MiB buffer only in the
+task-local source-copy process, retaining the same verification/publication owner. No D relay or
+shared Python/product change. Source hash-planning session 10766 (owned bootstrap PID 42036)
+is now running with a 5,400-second bound; do not start another heavy E task until it exits.
 
-- `portable-case-relocation-plan.json`: all 127 initial cases, complete input hashes and choices.
-  `portable-case-relocation-completed.json` appears only after every copy/hash operation and input
-  manifest publication; it does not certify portable replay. Do not overwrite the occupied plan.
-- `catalog-case-drafts-local/cases-v3` and `catalog-case-drafts-bound`: all 127 original bindings.
-  Includes source-bound ERP/Romani choices and actual Thielen2021 recipe, not the wrong dataset alias.
-  `receipt-index.json`, `receipt-snapshots` (78 cited contents), `saved-choice-index.json`
-  (363 historical recipes) retain evidence. Historical recipes must not be rewritten.
-- `catalog-case-drafts-new`: BNCI2015_006, Tavakolan2017, Zhang2017 and Sosulski2019 passed
-  independent source/conversion checks and selected-run actual Commands plus fresh recipe replay
-  on D (1734, 60, 24 and 90 events respectively). Tavakolan checks four sessions; Zhang checks 15
-  runs; Sosulski checks two Run 2 trials with distinct non-60 ms SOAs. These are representative
-  selections, not complete cohorts. E replay/promotion remains outstanding.
-- `remaining-eleven`: original acquisition, failed attempts, exact source/conversion proofs and
-  process-local repair scripts. Zhang's official archive is 1.755 GB with publisher MD5 and SHA-256.
-  Sosulski's official per-subject archive is 415.77 MB with publisher SHA-256 and CC-BY-SA-4.0;
-  the 4.58 GB aggregate was not acquired. Original BCI2kReader wheel works through isolated task
-  sys.path; no shared install or compatibility patch was needed.
-- `retained-source-roots-v2.json` and `retained-additional-source-roots-v1.json`: size-only original
-  source-location inventory, not identity proof or globally complete mixed-staging coverage.
-  D `a-cache`, `a-source`, `guttmann-loader-root`, `brandl-loader-source` and
-  `legacy-mi-staging` are aliases, not extra physical copies. Metadata-only v1 followed root
-  aliases and timed out; its counts are invalid. It never modified data.
-- `dside-source-copy-plan-v2.json`: content-bound 16 physical source trees and three original
-  archives, 41.62 GB. Separates Jeong's original ZIP and subject extraction from the 725 MB
-  acquisition temporary file (retained in place, not promoted). Original v1 plan is historical.
-  `plan_eside_source_copy.py` prepares the combined source plan after the BIDS writer is idle;
-  it excludes the proven generated `legacy4-bids-route-20260913` and already canonical sources.
-  `apply_source_copy_plan.py` uses the existing copy helper/lock and exclusive completion.
-  Neither E source planning nor copying has run. Original/failed evidence remains protected.
-  Source planning also compares full file-name/size/hash maps against the completed BIDS plan:
-  native BIDS originals can share an already verified canonical BIDS tree instead of writing
-  another identical source copy. Original-prefix provenance and separate export rows stay intact;
-  application of the source plan rechecks both trees before accepting reuse.
-- Independent source-preservation review found a concrete mapping gap: existing
-  `evidence/moabb-ten-20260913/{source,forenzo-source,kojima-source,liu2024-source,zhang-source}`
-  contains original archives/extractions referenced by retained fidelity receipts, but only Brandl
-  was in the E plan. `retained-mixed-source-roots-v1.json` now records the bounded metadata inventory;
-  the prepared source planner includes the original roots/child described above. This closes the
-  planning coverage gap, not the still-outstanding hash/copy proof. No deletion or reacquisition.
+Next, in order:
 
-Queued work, in order:
+1. Independent review found no blocker in actual catalog/docs promotion semantics and seven
+   content-bound replay receipts; all 16 focused catalog tests passed natively with no skips.
+   The secret hook flags new public evidence checksums; only scanner-reported, reviewed values in
+   the seven promoted entries are added as individual false positives, with no filter/exclusion change.
+   Finish the running
+   `plan_eside_source_copy.py` original-source hashing. It combines
+   `dside-source-copy-plan-v2.json` (16 trees and three archives, 41.62 GB) with verified physical
+   E roots. Include mixed `moabb-ten-20260913/{source,forenzo-source,kojima-source,liu2024-source}`
+   and `zhang-source/MNE-Zhang2025-data`; exclude Zhang's generated BIDS sibling. Aliases
+   `a-cache`, `a-source`, `guttmann-loader-root`, `brandl-loader-source`, `legacy-mi-staging`
+   are not extra physical copies. Deduplicate only identical complete name/size/hash maps; native
+   BIDS originals may reuse verified canonical BIDS with original-prefix provenance preserved.
+2. Render the passive folder guide using `render_portable_locations.py`, from bound manifests
+   only. Freeze/commit the candidate and fetch origin/main. Do not modify tracked source during
+   formal evidence collection: the runner fingerprints all tracked files, source and environment.
+   Run every one of the 134 required cases with `run_moabb_import_conformance.py` against E,
+   a fresh output, one worker and existing case/gate bounds. Missing/failed/timeout cases fail closed.
+   Run representative native Windows wizard evidence and use same-head CI for equivalent
+   source-diverse/regression/platform/docs gates. Do not reuse old-head green checks.
+3. Complete original-source bulk copies through `apply_source_copy_plan.py` and the existing
+   verified-copy owner/lock; whole-E usage plus overlap stays below 500,000,000,000 bytes.
+   Formal import evidence precedes long source copying to expose product defects earlier;
+   this sequence does not waive consolidation before handoff. No original deletion/move.
+   Preserve `retained_failures`, Jeong's acquisition fragment and incomplete Yang output.
+4. Package required historical success/failure evidence and recipes with `stage_import_provenance.py`
+   after catalog/source completion and a clean tracked candidate. It retains original bytes and
+   mappings, exact runner/catalog/lock source, task-local prerequisites and historical receipts.
+   Apply its evidence-copy plan with the same owner/lock, verify, and keep original recipes unchanged.
+5. After exact-source applicable gates succeed and source/evidence mappings are complete, prepare
+   the final manual checkout, open native Windows GUI with PowerShell as the sole live log, confirm
+   responsiveness and provide a rerun command plus focused integrated handtest checklist.
+   Never call a slice, copy completion, compaction or CI pending the requested endpoint.
+   User manual acceptance and explicit merge approval are still required.
 
-1. The three-case early portable probe v3 passed after the alias-verification repair above.
-   Finish the 127 BIDS copy with verified reuse of completed destinations after the idle metadata
-   check. Keep the original attempt's incomplete staging and failure record unchanged.
-2. With E idle, execute `remaining-eleven/convert_retained_remaining.py` separately for
-   BNCI2016_002, BNCI2022_001 and Yang2025 into fresh D outputs. The first fixes a reproduced
-   marker row/column indexing error. BNCI2022 fixes lower-case trigger lookup and verifies actual
-   zero-to-nonzero pulse starts against the retained 1152-segment evidence; unexpected adjacent
-   nonzero transitions fail closed. These are structure/outcome events, not four difficulty labels:
-   preserve annotations, use explicit no-label import and retain the supervised missing-class block.
-   Yang has three CRC-verified original sessions; prior overlapping E output is incomplete despite
-   a PASS receipt, is invalidated/preserved, and must not be reused.
-3. Run `verify_new_dside_cases.py` with fresh output per candidate. Regenerate/apply the separate
-   new-only relocation plan only when idle; portable-check newly resolved cases before promotion.
-4. Complete original-source and necessary evidence consolidation within 500 GB, hash-check targets
-   and preserve originals. Prepare the content-bound source plan and consolidate public fixtures
-   first, but run step 5's frozen full-catalog/native evidence before the long bulk original-source
-   copy when the portable BIDS bindings are ready. This catches import regressions before spending
-   the archive-copy wait; it does not waive source/evidence consolidation before handoff or permit
-   concurrent heavy E tasks. Current source plans are not successful migration receipts. Optional
-   questions about another SSD or a reviewed E-in-place move are not blockers: without a response,
-   continue the approved copy/verify/preserve-original strategy, not unapproved moves/deletions.
-   Also check `datasets/public-fixtures` with the existing pinned fixture verifier against retained
-   D fixtures; do not assume this cache is already consolidated or download it again. The prepared
-   `consolidate_public_fixtures.py` uses the existing copy owner/lock, verifies required-ci and
-   teacher-preflight before/after copy and records both profiles (not optional `all`). It may remove
-   only the exact empty public-fixtures directory before atomic publication; occupied contents are
-   never overwritten. The queued D replay wrapper now also exits nonzero on any failed case rather
-   than relying only on its failed JSON row. These task scripts are prepared, not execution evidence.
-   The prepared
-   `stage_import_provenance.py` preserves historical recipes, task-local prerequisites and exact
-   runner/catalog/lock bytes. Execute this packaging only after the portable catalog is bound and
-   committed (the script rejects unfinished bindings/dirty tracked source); its source-commit
-   reference is not a standalone application bundle.
-   Retained D fixtures passed the existing `required-ci` (205,255,918 bytes) and
-   `teacher-preflight` (277,106,963 bytes) hash verifiers. The broader optional `all` profile
-   stopped on missing P300 `sub-002`; preserve that distinction rather than downloading all
-   profiles or calling an optional missing extra a required-gate pass.
-5. Bind the final portable manifests/catalog, generate the human inventory, then freeze the candidate.
-   The prepared artifact-only `prepare_portable_catalog.py` validates exact initial/new plan completion,
-   new portable replay receipts and every actual E manifest before producing a D-side candidate; it
-   never edits the tracked catalog or promotes a rights-deferred entry. It has not run yet.
-   Generate a readable dataset-ID → actual BIDS-folder index from that catalog and its manifests;
-   distinguish GUI import folders, original sources and evidence without another hand-written catalog.
-   `render_portable_locations.py` is prepared to generate this passive guide only after all required
-   manifests resolve by hash and their selected files exist; it makes no runtime PASS claim.
-   Fetch origin/main before the full campaign. Run every required case, representative native Windows
-   wizard/source-diverse gates and same-head CI without replacing them with old evidence. Keep source
-   stable during the final campaign; failed attempts remain available. Final delivery is one integrated
-   Windows handtest with PowerShell log, not a slice/CI/compaction checkpoint.
+Artifact entry points are below this task's ignored `build/dev-artifacts`, unless E is explicit.
+`portable-case-relocation-plan.json` and its completion own initial inputs;
+`portable-new-relocation-plan.json`, its completion and `relocated-new-probe-v1` own the seven
+new copies/replays. `portable-catalog-candidate-v1` retains preparation identity. `remaining-eleven`
+retains exact originals, acquisition failures, source/conversion fidelity and task-local repairs.
+`receipt-index.json`, `receipt-snapshots` and `saved-choice-index.json` retain historical evidence.
+These are evidence/migration records, not a second product state or blanket cleanup authorization.
 
-Remaining dispositions must stay honest: nine rights entries remain deferred (no new acquisition,
-terms acceptance or contact); native Rozado archive/metadata requests return HTTP 403, and the
-correct official Martinez subject URL (sequence 11) still times out
-(`remaining-eleven/final-access-preflight-v1.json`). Triana official conversion remains blocked on
-missing fiducials; BNCI2019 source EOG units remain unresolved. Never infer coordinates/units/classes
-or reduce the pinned denominator to obtain PASS. Do not promote the four D-verified candidates
-until portable evidence exists, or claim original-source consolidation from BIDS copies alone.
-`remaining-eleven/bnci2019-unit-authority-review.md` retains the additional originating-lab
-description/installed-loader check: shared acquisition hardware is not an explicit stored EOG
-unit calibration. No additional source acquisition, rescaling or promotion followed that check.
-The catalog and its rendered inventory now correct Rozado's outdated missing-extractor disposition
-to the observed official archive/metadata HTTP 403; Martinez's row binds the current original-URL
-timeout receipt. Membership/status counts are unchanged. Table/catalog equality and diff whitespace
-checks passed; these documentation checks are not import runtime evidence.
-An independent metadata-only lead found NEMAR `nm000239` (separately published BIDS related to
-Martinez's original DOI). It is not the original pinned loader archive and has not been acquired or
-substituted into the catalog. Keep the original-loader blocker; an alternate representative needs an
-explicit provenance/scope decision rather than silently changing the acceptance oracle.
-
+Remaining dispositions: defer Shin2017A/B, EPFLP300, Lee2024 AC/BS/DL/EL/TV and Liu2020BETA rights.
+Martinez original subject URL sequence 11 times out; Rozado official archive and metadata return 403.
+Triana lacks authoritative fiducials; BNCI2019 EOG stored units remain unresolved. No invented
+coordinates/classes/scaling, bypassed access or automatic terms acceptance. NEMAR nm000239 is a
+metadata-only alternative lead related to Martinez, not the pinned original-loader archive; it has
+not been acquired or substituted and requires a provenance/scope decision before doing so.
+Optional alternate-SSD or exact E-in-place move questions are unanswered, not blockers: continue
+approved copy/hash/preserve-originals, not unapproved moves, repeated downloads or duplicate deletion.
 ## Closed baseline
 
 Quality-baseline closure was accepted and merged via

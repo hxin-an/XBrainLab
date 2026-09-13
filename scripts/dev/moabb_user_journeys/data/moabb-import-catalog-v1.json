@@ -35,7 +35,10 @@
       "evidence_hashes": [
         "d98657f1f9acb9f28c22b3f88d7f343d856f2ddc90471210ac6830ff8a09f0ea"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/AlexMI-b041e0acfeab.json",
+        "sha256": "b041e0acfeabdba606164bf167c260e1806041c0d618c55eebbdf522eb207ebd"
+      }
     },
     {
       "id": "Rodrigues2017",
@@ -45,7 +48,10 @@
       "evidence_hashes": [
         "d98657f1f9acb9f28c22b3f88d7f343d856f2ddc90471210ac6830ff8a09f0ea"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Rodrigues2017-c295b75f52ae.json",
+        "sha256": "c295b75f52aed5360e8fee361d3d59d35a83d0f9118a6572fad33434c5fb8935"
+      }
     },
     {
       "id": "Shin2017A",
@@ -67,21 +73,27 @@
       "id": "Beetl2021_A",
       "module": "beetl",
       "status": "required",
-      "evidence_note": "Final-training subject 1 retained source fresh-loader → MOABB 1.5.0 EEG-BIDS → five-Command/readback/recipe PASS with 100 semantic `trial_type` events and exact 63-channel waveform fidelity (`aee746da0a4c10943a6802bdf52a6972d28c0c27037775bd87992bd93cf0b897`)",
+      "evidence_note": "Final-training subject 1 retained source fresh-loader \u2192 MOABB 1.5.0 EEG-BIDS \u2192 five-Command/readback/recipe PASS with 100 semantic `trial_type` events and exact 63-channel waveform fidelity (`aee746da0a4c10943a6802bdf52a6972d28c0c27037775bd87992bd93cf0b897`)",
       "evidence_hashes": [
         "aee746da0a4c10943a6802bdf52a6972d28c0c27037775bd87992bd93cf0b897"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Beetl2021_A-34e963ce2784.json",
+        "sha256": "34e963ce278438a6a6d1a67d65f2ed9cce41ba4e00a878ab0e8448969bf43955"
+      }
     },
     {
       "id": "Beetl2021_B",
       "module": "beetl",
       "status": "required",
-      "evidence_note": "Final-training subject 4 retained source fresh-loader → MOABB 1.5.0 EEG-BIDS → five-Command/readback/recipe PASS with 120 semantic `trial_type` events and exact 32-channel waveform fidelity (`05c86d7e3594983e87566fda9ea3e71aeba2bafe8cb32fe9c70b00878a5eb347`)",
+      "evidence_note": "Final-training subject 4 retained source fresh-loader \u2192 MOABB 1.5.0 EEG-BIDS \u2192 five-Command/readback/recipe PASS with 120 semantic `trial_type` events and exact 32-channel waveform fidelity (`05c86d7e3594983e87566fda9ea3e71aeba2bafe8cb32fe9c70b00878a5eb347`)",
       "evidence_hashes": [
         "05c86d7e3594983e87566fda9ea3e71aeba2bafe8cb32fe9c70b00878a5eb347"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Beetl2021_B-e86b643f26c2.json",
+        "sha256": "e86b643f26c27708848ab15698dbc1e7017606d09eb4729ad33f231e47b2c281"
+      }
     },
     {
       "id": "BNCI2003_004",
@@ -91,7 +103,10 @@
       "evidence_hashes": [
         "89282b2124b4ec49887a847e1da27a902a167f72d167bd97ea07b98e8a5be1d4"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2003_004-664be0cd99e1.json",
+        "sha256": "664be0cd99e1ac76af75943ea347065b4b97d1c4e6c7d20c9f7ae5bc1bf05e6b"
+      }
     },
     {
       "id": "BNCI2014_001",
@@ -101,7 +116,10 @@
       "evidence_hashes": [
         "544409d8caf23ba86ab6f840d6c26031262d43e25e3d5b550f6241ca58c6e107"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2014_001-43e2e1293a57.json",
+        "sha256": "43e2e1293a57fff63a4a213b9adadf3e3192daf3ff906a138afc0bb1dcb75119"
+      }
     },
     {
       "id": "BNCI2014_002",
@@ -111,7 +129,10 @@
       "evidence_hashes": [
         "ee2c25a6e32939230e4c4e5a9255ebe5d3295de0c975f455fb6d27f1d0143099"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2014_002-67e1eed78d60.json",
+        "sha256": "67e1eed78d6020387a67f12b2f9285bb660a37c0ea9b42a60f6dfce659a1c714"
+      }
     },
     {
       "id": "BNCI2014_004",
@@ -121,7 +142,10 @@
       "evidence_hashes": [
         "66607491974f8c7464fee3e1ff7d845b9831bb4e806dae38d7b49b350d208126"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2014_004-f8762a431940.json",
+        "sha256": "f8762a431940d2a24ec6ac6d20cc22b7ead3140d2f64942841061f6e27b99c1d"
+      }
     },
     {
       "id": "BNCI2014_008",
@@ -131,7 +155,10 @@
       "evidence_hashes": [
         "4e956b42361d502d1c94054a7e1200788df54a8f81e1d7f22221fcb54762dcd3"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2014_008-a33fb593b594.json",
+        "sha256": "a33fb593b594b7e3a5db97346ad9f357a72c0dd0e0d4e0f967d941fa84b1580f"
+      }
     },
     {
       "id": "BNCI2014_009",
@@ -141,7 +168,10 @@
       "evidence_hashes": [
         "2e1991da61b284bfd8fa8a5d6a5bf1a96308abea3b77ab1009fcdbbc09acd2eb"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2014_009-c51cf8c52016.json",
+        "sha256": "c51cf8c5201664ec66241ec436fffd9a48b27b338d58ebad26fd611d5f4ed294"
+      }
     },
     {
       "id": "BNCI2015_001",
@@ -151,7 +181,10 @@
       "evidence_hashes": [
         "fb3841b4100d4e99fba98d31ded799de9a121367735c6e0cc3744507da249058"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2015_001-971ed484261d.json",
+        "sha256": "971ed484261d32f06f98a95d679242487c6297e2c688fe4a255463f1bf25fe95"
+      }
     },
     {
       "id": "BNCI2015_003",
@@ -161,7 +194,10 @@
       "evidence_hashes": [
         "89afc2ad7ffb9effa7d4a55bc3d90ac2e3ae17f2e4085e81b0c4fe610e10a331"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2015_003-ade794aabada.json",
+        "sha256": "ade794aabada118a2dd16c86862ac7b01c7b014d724550468cf9e8e6a90f9626"
+      }
     },
     {
       "id": "BNCI2015_004",
@@ -171,15 +207,31 @@
       "evidence_hashes": [
         "0c4f85c44ca79d4728f5527cc0629635dbc41d09e095246a99c23476dca1accc"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2015_004-6740faab7cfd.json",
+        "sha256": "6740faab7cfd5e0b360c44b41e25d25d7131dd3f0683450cafce3a50ddf5f105"
+      }
     },
     {
       "id": "BNCI2015_006",
       "module": "bnci",
-      "status": "blocked",
-      "evidence_note": "BLOCKED: pinned loader rejects 973 events shorter than its shortest-event rule",
-      "evidence_hashes": [],
-      "case_manifest": null
+      "status": "required",
+      "evidence_note": "Selected-run portable BIDS Command/import and fresh recipe replay PASS; conversion/source limits remain in bound receipts.",
+      "evidence_hashes": [
+        "2efb6ecf1e82154a425b3dd914bce1aadaa516b01623a017bc1e8c29d83bc5ba",
+        "529c37dfb7b6aed35782b0ea1a0210b26e5931f7477899eb7d6746b44f74d894",
+        "66f3fcb6c5316358ceb188ab5a768991df7ab7209dadb2785e5e2bffb17cb236",
+        "6fd5790c35003f4a3a00ee5fc4c11ab63d42c5622cb712b9b44c2fd730bfa311",
+        "7a8b20b0d4364cc663ff9e629e7f08e4fddc15534330811ece43d066a19c0d70",
+        "7cf7c6a15461cdc09c98907d53b58acbda79bd7777c9e3273e132a2b2cead409",
+        "885880c02e91a8370cb5c2f3d3f01caed059aab603ae25cb37a856334733fcb5",
+        "98a5205c290b4183b6ba08c6cd52a9dbdc984b95e1781cc4ea2f5ed9c37f823c",
+        "e7adf335e4ff6bca18aae94b7e0a6d395c891bad70bbebe14b9086190183b7bf"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2015_006-98a5205c290b.json",
+        "sha256": "98a5205c290b4183b6ba08c6cd52a9dbdc984b95e1781cc4ea2f5ed9c37f823c"
+      }
     },
     {
       "id": "BNCI2015_007",
@@ -189,7 +241,10 @@
       "evidence_hashes": [
         "0c7fc78b800285afdcc37271968da8ff46f194ba6455d8c8a45bcd4f90223927"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2015_007-1eb16560d5b2.json",
+        "sha256": "1eb16560d5b2b4bec3093d6bd76b318f98f46c563a4d4b404960303372dc3ef5"
+      }
     },
     {
       "id": "BNCI2015_008",
@@ -199,7 +254,10 @@
       "evidence_hashes": [
         "aef8321d0c5e35ab62f4a6da2b5940f7d77bd5608898b475b3940474f3c5abaa"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2015_008-971d764aca99.json",
+        "sha256": "971d764aca9954dceed1eb363b7270852d9d8b6f7a34b739776af900b62c1588"
+      }
     },
     {
       "id": "BNCI2015_009",
@@ -209,7 +267,10 @@
       "evidence_hashes": [
         "916258944af5d70a0ca56e89c538fe8f5ed27bcd022751e0bf6962e3344ce698"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2015_009-e3d8d3aacbad.json",
+        "sha256": "e3d8d3aacbade2da64f3f1f6305aa4f53c2ff4ce6c5c2c80b98697d64305e099"
+      }
     },
     {
       "id": "BNCI2015_010",
@@ -219,7 +280,10 @@
       "evidence_hashes": [
         "4b9cb4fada146d43e8c3509eff49f047d4a9dc0e09df7ded3bc115717b6ebea8"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2015_010-b2ce64945821.json",
+        "sha256": "b2ce64945821ffa2cf2950d8bbefdcf045b96000cef5180df299e1a5983f9814"
+      }
     },
     {
       "id": "BNCI2015_012",
@@ -229,7 +293,10 @@
       "evidence_hashes": [
         "f5dd6882bd35220e6a9b448b13e99df0f19ecf99fc0d3fc932c2cd50f6bd91d9"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2015_012-49a69a438900.json",
+        "sha256": "49a69a4389003b78675696ebb84a3618b7f480fc87ca34b6ea2b5d06497b6a46"
+      }
     },
     {
       "id": "BNCI2015_013",
@@ -239,21 +306,36 @@
       "evidence_hashes": [
         "03313fcfa79a930e5dc84d6183b8279f124265b5fd6becacc830f3532de8b39f"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2015_013-e338a0ddac0b.json",
+        "sha256": "e338a0ddac0b40d6e8ab596083f27c45cd5c4e8bde6207c8ebaa5af783d57158"
+      }
     },
     {
       "id": "BNCI2016_002",
       "module": "bnci",
-      "status": "blocked",
-      "evidence_note": "BLOCKED: pinned loader raises `KeyError: 88` for representative subject 1",
-      "evidence_hashes": [],
-      "case_manifest": null
+      "status": "required",
+      "evidence_note": "Selected-run portable BIDS Command/import and fresh recipe replay PASS; conversion/source limits remain in bound receipts.",
+      "evidence_hashes": [
+        "465441dd537dd21572b2590564f2bc44186d068356c2e472450d64a3e39b231b",
+        "4e2648d67c39b4ed5ba59327cfc955d52e36139c3d693bd9293bdeaa4e16abaf",
+        "7cf7c6a15461cdc09c98907d53b58acbda79bd7777c9e3273e132a2b2cead409",
+        "8a578415f326084860463ad18ede631052b414b7621d796b08e757995f6b7f40",
+        "b1adf7541eb9253f7481d5c10e9c9cb0b98d7a034383c76288036c2a5d823a23",
+        "df5096401da5e8342873e15ec8711eeb25cc139a35a2b7b48ae55946424398d4",
+        "e7adf335e4ff6bca18aae94b7e0a6d395c891bad70bbebe14b9086190183b7bf",
+        "facaf8afbcfcae37bbec8ca4b9c49a0c4373955641d3e7570ce30570a9b4bbfa"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2016_002-b1adf7541eb9.json",
+        "sha256": "b1adf7541eb9253f7481d5c10e9c9cb0b98d7a034383c76288036c2a5d823a23"
+      }
     },
     {
       "id": "BNCI2019_001",
       "module": "bnci",
       "status": "blocked",
-      "evidence_note": "BIDS-root Commands, full readback and recipe replay pass with all 64 channels and 40 class events, but **source-unit fidelity BLOCKED**: original GDF units are unspecified and pinned loader scales EEG but not EOG (EOG peaks 300–334 in a V-labelled Raw). Float32 storage matches exactly; no silent unit correction; `f4464aef8a42922a243b2dd03944f814765d7727f56cb274ebe2d635ea62e2b5`",
+      "evidence_note": "BIDS-root Commands, full readback and recipe replay pass with all 64 channels and 40 class events, but **source-unit fidelity BLOCKED**: original GDF units are unspecified and pinned loader scales EEG but not EOG (EOG peaks 300\u2013334 in a V-labelled Raw). Float32 storage matches exactly; no silent unit correction; `f4464aef8a42922a243b2dd03944f814765d7727f56cb274ebe2d635ea62e2b5`",
       "evidence_hashes": [
         "f4464aef8a42922a243b2dd03944f814765d7727f56cb274ebe2d635ea62e2b5"
       ],
@@ -267,7 +349,10 @@
       "evidence_hashes": [
         "263ed057802ff7871416ca6427143d4b977ca5c7ee9ebbeabf280eee30308d03"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2020_001-01642008394f.json",
+        "sha256": "01642008394fc401de52beaabb5e8470983c359e04ed21c219a6c29e4473c68a"
+      }
     },
     {
       "id": "BNCI2020_002",
@@ -277,15 +362,30 @@
       "evidence_hashes": [
         "7f72d5654079684603bd30fbdee76172003579d561bfeba7bfaff7f0ff16fda6"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2020_002-5789eceaf590.json",
+        "sha256": "5789eceaf59058ae4420daf78cec8c29a7f84a67a3a5ee32d337cfe18069665f"
+      }
     },
     {
       "id": "BNCI2022_001",
       "module": "bnci",
-      "status": "blocked",
-      "evidence_note": "BLOCKED: pinned loader finds no stim channel in representative subject 1",
-      "evidence_hashes": [],
-      "case_manifest": null
+      "status": "required",
+      "evidence_note": "Selected-run portable BIDS import/replay PASS for preserved trajectory/waypoint structural annotations; no supervised classes or difficulty labels were inferred.",
+      "evidence_hashes": [
+        "172eb72605f8a40962834a1f5e858a8aac7b03989417a0c1a4f9dcff679f55a2",
+        "248880a247a22e391fafe60a2742554010e9ac92996fcd7c4527932d9990b8e7",
+        "7cf7c6a15461cdc09c98907d53b58acbda79bd7777c9e3273e132a2b2cead409",
+        "b19d6df4d40ca85516a885b08ae8c0a5326fd9ae0166163a536f126048b024d0",
+        "bb0ddb91673a01494a0d297dd83777a7ddd9f61516c837bdfd34714fa8d62aef",
+        "bb43d1f91915e461bfe215e04506a917b4e46812534dd4374a7201c44db31569",
+        "c3ca8919af675135e27d6d07e2881c9a7f06f0621b12c6d5691fa907968926bd",
+        "e7adf335e4ff6bca18aae94b7e0a6d395c891bad70bbebe14b9086190183b7bf"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2022_001-b19d6df4d40c.json",
+        "sha256": "b19d6df4d40ca85516a885b08ae8c0a5326fd9ae0166163a536f126048b024d0"
+      }
     },
     {
       "id": "BNCI2024_001",
@@ -295,7 +395,10 @@
       "evidence_hashes": [
         "f4750c1dfb1731838336b31604fb932807d1340b962a40ca9f901f1a9a40fd19"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2024_001-dbaaece9ace2.json",
+        "sha256": "dbaaece9ace2b2b8f39e21be5493016c7383f30ffff27f697d86bf4d2f510100"
+      }
     },
     {
       "id": "BNCI2025_001",
@@ -305,7 +408,10 @@
       "evidence_hashes": [
         "06311903da4dbbaba9f0dac3a978624cc9e3df62c63411f94a056671a292af21"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2025_001-5d9f585d0446.json",
+        "sha256": "5d9f585d044666779a9a53a7b155f2d9a94efc3e45c2d554f9de30a0612422da"
+      }
     },
     {
       "id": "BNCI2025_002",
@@ -315,7 +421,10 @@
       "evidence_hashes": [
         "3ae2ce23ec4ce0db920d1835c8cb85d4d06753a1f4bdfab35f83fd75d416c8ac"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2025_002-1d5087b52f20.json",
+        "sha256": "1d5087b52f2020fdd0576fe58c272f29effed25755db793aa1dd282cfac4f197"
+      }
     },
     {
       "id": "BI2012",
@@ -325,17 +434,23 @@
       "evidence_hashes": [
         "fed0abd4e6844291b68d7347e6b67c11247a8a660037308258029d28bad02e8d"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BI2012-d834c16a337d.json",
+        "sha256": "d834c16a337d74d471f743794d208d09d6ab2d96701309da5bab1ea109f1e752"
+      }
     },
     {
       "id": "BI2013a",
       "module": "braininvaders",
       "status": "required",
-      "evidence_note": "Subject 1 selected run loader → retained EEG-BIDS root → BIDS-root Command evidence; official archive MD5 values retained",
+      "evidence_note": "Subject 1 selected run loader \u2192 retained EEG-BIDS root \u2192 BIDS-root Command evidence; official archive MD5 values retained",
       "evidence_hashes": [
         "a67b1b0f6fbb3a9e16cb3ed5e57ad24cc673c27bf8ec52d61cc9f5ffbe8dcee0"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BI2013a-2048e996b764.json",
+        "sha256": "2048e996b76499fae0ec4aae92a611dfec1c440181b6ef17454a31d7782f3b02"
+      }
     },
     {
       "id": "BI2014a",
@@ -345,7 +460,10 @@
       "evidence_hashes": [
         "fed0abd4e6844291b68d7347e6b67c11247a8a660037308258029d28bad02e8d"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BI2014a-6414ed059fc8.json",
+        "sha256": "6414ed059fc839d6ff332f31aa63734376b3a56bdb22acf6de7b66b0e965af30"
+      }
     },
     {
       "id": "BI2014b",
@@ -355,7 +473,10 @@
       "evidence_hashes": [
         "fed0abd4e6844291b68d7347e6b67c11247a8a660037308258029d28bad02e8d"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BI2014b-abfa85599bf3.json",
+        "sha256": "abfa85599bf361e47e7a7f1c995decd0a7bc0eff24de26001fe500b7cfa6860d"
+      }
     },
     {
       "id": "BI2015a",
@@ -365,7 +486,10 @@
       "evidence_hashes": [
         "fed0abd4e6844291b68d7347e6b67c11247a8a660037308258029d28bad02e8d"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BI2015a-89cb52bde4b1.json",
+        "sha256": "89cb52bde4b11c8f45eb1032f70f0bc5d3647d5389a64174b69fcf9ac4dee610"
+      }
     },
     {
       "id": "BI2015b",
@@ -375,7 +499,10 @@
       "evidence_hashes": [
         "fed0abd4e6844291b68d7347e6b67c11247a8a660037308258029d28bad02e8d"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BI2015b-604ab5b108e2.json",
+        "sha256": "604ab5b108e27adbb1c0ccae365222c1387661f71818b439a1bc57ce3e39d2d4"
+      }
     },
     {
       "id": "Cattan2019_VR",
@@ -385,7 +512,10 @@
       "evidence_hashes": [
         "e5a203622cf9861b4e9e199d45c5317656afe861e9246f503a172b79c6464b08"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Cattan2019_VR-d39b4420510b.json",
+        "sha256": "d39b4420510b767fef668056f89b753a0815ab1bc6ee232f50e412928b3afe3d"
+      }
     },
     {
       "id": "Brandl2020",
@@ -395,7 +525,10 @@
       "evidence_hashes": [
         "e111d1e825086d21430c521b45cfbe074698870b3dc3011faf07f773324089b2"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Brandl2020-d79603538eb4.json",
+        "sha256": "d79603538eb4ca769ffe41ba1e13ed9f77b014972531259ad79561a602128d13"
+      }
     },
     {
       "id": "CastillosBurstVEP40",
@@ -405,7 +538,10 @@
       "evidence_hashes": [
         "d98657f1f9acb9f28c22b3f88d7f343d856f2ddc90471210ac6830ff8a09f0ea"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/CastillosBurstVEP40-6eb9c64510c5.json",
+        "sha256": "6eb9c64510c53a17958b82134cbb13dbd4ae9ff21fd22f7e0969a10d17701897"
+      }
     },
     {
       "id": "CastillosBurstVEP100",
@@ -415,7 +551,10 @@
       "evidence_hashes": [
         "d98657f1f9acb9f28c22b3f88d7f343d856f2ddc90471210ac6830ff8a09f0ea"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/CastillosBurstVEP100-b6731fda432d.json",
+        "sha256": "b6731fda432d5dffcad073838ad20c517a59dc9907737b6a9bb1ee764f5a311c"
+      }
     },
     {
       "id": "CastillosCVEP40",
@@ -425,7 +564,10 @@
       "evidence_hashes": [
         "d98657f1f9acb9f28c22b3f88d7f343d856f2ddc90471210ac6830ff8a09f0ea"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/CastillosCVEP40-5d672c0a7274.json",
+        "sha256": "5d672c0a7274eafcbb0bd64ffd7dfddfd338a79f8c501d050cda9c8c902f0d8b"
+      }
     },
     {
       "id": "CastillosCVEP100",
@@ -435,7 +577,10 @@
       "evidence_hashes": [
         "d98657f1f9acb9f28c22b3f88d7f343d856f2ddc90471210ac6830ff8a09f0ea"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/CastillosCVEP100-6c4a2b972df4.json",
+        "sha256": "6c4a2b972df441c0e3cfeb5b44b6386b233235954cf9b071babcd765ea85b93a"
+      }
     },
     {
       "id": "Chailloux2020",
@@ -445,7 +590,10 @@
       "evidence_hashes": [
         "87dc487d18d20db7571492244fa8ceaa04a17c8f84f1a1949881290059b8850c"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Chailloux2020-fa039768c348.json",
+        "sha256": "fa039768c34820fc6e8c51a0b2620ec316f0b4fd463e7821cc4e1eac01698cba"
+      }
     },
     {
       "id": "Chang2025",
@@ -455,7 +603,10 @@
       "evidence_hashes": [
         "09a099d7eee3c0aaf4f40c7fb3b7c19ab873777eef7a6ac2e2824e2736968ce5"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Chang2025-9e72f3a65c24.json",
+        "sha256": "9e72f3a65c2455efc12a883d4c6564add54fe49998165f166fe4afb173dfdd1e"
+      }
     },
     {
       "id": "Dreyer2023",
@@ -465,7 +616,10 @@
       "evidence_hashes": [
         "e5a203622cf9861b4e9e199d45c5317656afe861e9246f503a172b79c6464b08"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Dreyer2023-d2bb172cf62b.json",
+        "sha256": "d2bb172cf62b5a46696262c9f794fc9f641b49bc83eaac885bd8f57ae73decdb"
+      }
     },
     {
       "id": "Dreyer2023A",
@@ -475,7 +629,10 @@
       "evidence_hashes": [
         "e5a203622cf9861b4e9e199d45c5317656afe861e9246f503a172b79c6464b08"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Dreyer2023A-483493e079ca.json",
+        "sha256": "483493e079ca0164afecda621419bdd1344a47b6b82743b6ac5fb6768f6aaaba"
+      }
     },
     {
       "id": "Dreyer2023B",
@@ -485,7 +642,10 @@
       "evidence_hashes": [
         "e5a203622cf9861b4e9e199d45c5317656afe861e9246f503a172b79c6464b08"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Dreyer2023B-1548f215ba89.json",
+        "sha256": "1548f215ba89dc37e58bdafff5258682c8a8ce34719f4c482234e6873e4a5840"
+      }
     },
     {
       "id": "Dreyer2023C",
@@ -495,7 +655,10 @@
       "evidence_hashes": [
         "e5a203622cf9861b4e9e199d45c5317656afe861e9246f503a172b79c6464b08"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Dreyer2023C-0dad29212287.json",
+        "sha256": "0dad29212287fef2b156bca072978ba0fbceec879f69c32dd62ec7bae13ce6de"
+      }
     },
     {
       "id": "EPFLP300",
@@ -513,7 +676,10 @@
       "evidence_hashes": [
         "0711042b25fd0b9ad911ceefa7c01cff266f5dae6d178cec064e52963d1768d4"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/ErpCore2021_ERN-893902719701.json",
+        "sha256": "8939027197019ab2f04099a3697c536ca17e8c2ef710ee8787974c372fea05dd"
+      }
     },
     {
       "id": "ErpCore2021_LRP",
@@ -523,7 +689,10 @@
       "evidence_hashes": [
         "0711042b25fd0b9ad911ceefa7c01cff266f5dae6d178cec064e52963d1768d4"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/ErpCore2021_LRP-9ddcdd5eace3.json",
+        "sha256": "9ddcdd5eace362349eb11d489417001a475049d55e3e7058f5cd49fc68c30605"
+      }
     },
     {
       "id": "ErpCore2021_MMN",
@@ -533,7 +702,10 @@
       "evidence_hashes": [
         "0711042b25fd0b9ad911ceefa7c01cff266f5dae6d178cec064e52963d1768d4"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/ErpCore2021_MMN-5ac40d174b43.json",
+        "sha256": "5ac40d174b434aa9c3f11d78bd2ce2ba9913987f2fedced160bb67954aa59eda"
+      }
     },
     {
       "id": "ErpCore2021_N2pc",
@@ -543,7 +715,10 @@
       "evidence_hashes": [
         "0711042b25fd0b9ad911ceefa7c01cff266f5dae6d178cec064e52963d1768d4"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/ErpCore2021_N2pc-a2016673a803.json",
+        "sha256": "a2016673a803ef3c0962f748348715ae74de5ed2b1d27e7f1328e8539cb6cb37"
+      }
     },
     {
       "id": "ErpCore2021_N170",
@@ -553,7 +728,10 @@
       "evidence_hashes": [
         "0711042b25fd0b9ad911ceefa7c01cff266f5dae6d178cec064e52963d1768d4"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/ErpCore2021_N170-3d5f143b0af8.json",
+        "sha256": "3d5f143b0af88c00e9cd873508484a59d3c45adf3eadce580ad1162bd9ce93a3"
+      }
     },
     {
       "id": "ErpCore2021_N400",
@@ -563,7 +741,10 @@
       "evidence_hashes": [
         "0711042b25fd0b9ad911ceefa7c01cff266f5dae6d178cec064e52963d1768d4"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/ErpCore2021_N400-81b6e634354e.json",
+        "sha256": "81b6e634354eb1fea9a4796391e937d2d030df0ac3266514b1241df6de683173"
+      }
     },
     {
       "id": "ErpCore2021_P3",
@@ -573,17 +754,23 @@
       "evidence_hashes": [
         "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/ErpCore2021_P3-00044a44885f.json",
+        "sha256": "00044a44885fd36b3e5d14e450a9c92592cc0e89a6c83a20d42e55f417601efa"
+      }
     },
     {
       "id": "Forenzo2023",
       "module": "forenzo2023",
       "status": "required",
-      "evidence_note": "Subject 1 retained source fresh-loader → existing MOABB 1.5.0 EEG-BIDS root → five-Command/readback/recipe PASS (`4377285aa305221f8e6d2bcfc0ff836926465e0e59f11a813fc8d7e43b209712`)",
+      "evidence_note": "Subject 1 retained source fresh-loader \u2192 existing MOABB 1.5.0 EEG-BIDS root \u2192 five-Command/readback/recipe PASS (`4377285aa305221f8e6d2bcfc0ff836926465e0e59f11a813fc8d7e43b209712`)",
       "evidence_hashes": [
         "4377285aa305221f8e6d2bcfc0ff836926465e0e59f11a813fc8d7e43b209712"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Forenzo2023-25de1e1c5ce9.json",
+        "sha256": "25de1e1c5ce97de7f08b435f7097f0a9d3d08ef0b3a2b82bf030501322d65547"
+      }
     },
     {
       "id": "Gao2026",
@@ -593,47 +780,62 @@
       "evidence_hashes": [
         "350fcac5da18167b1e00ee6c59029a824d24730e67649e9778589b07dbb42032"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Gao2026-ae0d3b1a3415.json",
+        "sha256": "ae0d3b1a34156922a02f1f2c70ac9493f30d7f86c459b313c16a12cbfd4f1d9f"
+      }
     },
     {
       "id": "Cho2017",
       "module": "gigadb",
       "status": "required",
-      "evidence_note": "Subject 1 selected run loader → retained EEG-BIDS root → BIDS-root Command evidence; official source has no published cryptographic checksum",
+      "evidence_note": "Subject 1 selected run loader \u2192 retained EEG-BIDS root \u2192 BIDS-root Command evidence; official source has no published cryptographic checksum",
       "evidence_hashes": [
         "05b47169a25203fbae36a2a733ff9b16dd84bc372d6b7bcbe1ad049038ce9c9a"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Cho2017-bf69accc60d7.json",
+        "sha256": "bf69accc60d74c4088293f218179631751d56bd7fac76cf521e9de396a4c2946"
+      }
     },
     {
       "id": "GuttmannFlury2025_ME",
       "module": "guttmann_flury2025",
       "status": "required",
-      "evidence_note": "Subject 1 retained source fresh-loader → MOABB 1.5.0 EEG-BIDS → five-Command/readback/recipe PASS with strict source/BIDS fidelity (`04edab69f125c015ee35fa53be5eebbef0ff56de521ee2944720a02c7cf376e7`); exporter incomplete-head-dig seam disclosed",
+      "evidence_note": "Subject 1 retained source fresh-loader \u2192 MOABB 1.5.0 EEG-BIDS \u2192 five-Command/readback/recipe PASS with strict source/BIDS fidelity (`04edab69f125c015ee35fa53be5eebbef0ff56de521ee2944720a02c7cf376e7`); exporter incomplete-head-dig seam disclosed",
       "evidence_hashes": [
         "04edab69f125c015ee35fa53be5eebbef0ff56de521ee2944720a02c7cf376e7"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/GuttmannFlury2025_ME-9e65878e31fd.json",
+        "sha256": "9e65878e31fdd66630ecd8b3fc4db73b33d8f1850d04e861ead8d2ad7b10af80"
+      }
     },
     {
       "id": "GuttmannFlury2025_MI",
       "module": "guttmann_flury2025",
       "status": "required",
-      "evidence_note": "Subject 1 retained source fresh-loader → MOABB 1.5.0 EEG-BIDS → five-Command/readback/recipe PASS with strict source/BIDS fidelity (`5be9001b66b0f395338888b82e43da6d6f511bf4be0f51ef34a746311e98e89f`); exporter incomplete-head-dig seam disclosed",
+      "evidence_note": "Subject 1 retained source fresh-loader \u2192 MOABB 1.5.0 EEG-BIDS \u2192 five-Command/readback/recipe PASS with strict source/BIDS fidelity (`5be9001b66b0f395338888b82e43da6d6f511bf4be0f51ef34a746311e98e89f`); exporter incomplete-head-dig seam disclosed",
       "evidence_hashes": [
         "5be9001b66b0f395338888b82e43da6d6f511bf4be0f51ef34a746311e98e89f"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/GuttmannFlury2025_MI-7b440cceb58c.json",
+        "sha256": "7b440cceb58ccf2ed3a0aab319d4183a7d24c1b8b1df80e2568c7bdded1484ce"
+      }
     },
     {
       "id": "GuttmannFlury2025_P300",
       "module": "guttmann_flury2025",
       "status": "required",
-      "evidence_note": "Subject 1 default 4L retained source fresh-loader → MOABB 1.5.0 EEG-BIDS → five-Command/readback/recipe PASS with strict source/BIDS fidelity (`d4a730dfd85c5269e1d39fbca352bede60225bce288fd1c34b19a4c091af34c5`); exporter incomplete-head-dig seam disclosed",
+      "evidence_note": "Subject 1 default 4L retained source fresh-loader \u2192 MOABB 1.5.0 EEG-BIDS \u2192 five-Command/readback/recipe PASS with strict source/BIDS fidelity (`d4a730dfd85c5269e1d39fbca352bede60225bce288fd1c34b19a4c091af34c5`); exporter incomplete-head-dig seam disclosed",
       "evidence_hashes": [
         "d4a730dfd85c5269e1d39fbca352bede60225bce288fd1c34b19a4c091af34c5"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/GuttmannFlury2025_P300-295dd1849bfa.json",
+        "sha256": "295dd1849bfa6ec06599fddb2b33ac1408e06d40b40848e13771254e54542ae9"
+      }
     },
     {
       "id": "GuttmannFlury2025_SSVEP",
@@ -643,7 +845,10 @@
       "evidence_hashes": [
         "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/GuttmannFlury2025_SSVEP-15337b8531a3.json",
+        "sha256": "15337b8531a300368692f249cb1b7eb8e55b2f6f72f40ad09f63c451f14ab405"
+      }
     },
     {
       "id": "HefmiIch2025",
@@ -653,7 +858,10 @@
       "evidence_hashes": [
         "d0a541974e6c52b6460e544b54ee4a23827b0be8d8cf3840c0a2eaa7ad6abaf3"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/HefmiIch2025-b9dc935f26dc.json",
+        "sha256": "b9dc935f26dcb64e6f63d228466f40f13915999e8f0d967f0e231cba66f67eb6"
+      }
     },
     {
       "id": "Hinss2021",
@@ -663,7 +871,10 @@
       "evidence_hashes": [
         "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Hinss2021-5f754fe78367.json",
+        "sha256": "5f754fe7836738d6a5d45c32d28a99c2195a75dff4b79954437d011b64e5be25"
+      }
     },
     {
       "id": "Huebner2017",
@@ -673,7 +884,10 @@
       "evidence_hashes": [
         "5679bbc3b7168b933aad1427bbd9b9c62174f204bd66cc04799af69bdb473514"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Huebner2017-703e69f97640.json",
+        "sha256": "703e69f976400618062632200257168d735ca1cf62cccd90eefab306936cdca2"
+      }
     },
     {
       "id": "Huebner2018",
@@ -683,7 +897,10 @@
       "evidence_hashes": [
         "af32a70bc607e1995ea91a2ba780eef9f9cdd5d69f45901b0d6c32318b942ddf"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Huebner2018-554fec6d47e6.json",
+        "sha256": "554fec6d47e6aaedb4cafe7bcc576560b65b73e94656284efe9cef7d4e8fa255"
+      }
     },
     {
       "id": "Jeong2020",
@@ -693,7 +910,10 @@
       "evidence_hashes": [
         "474ce0bc7dc5f44d29c30a64e7c7aa207e68f473be9f00b292b91a66ba5a954c"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Jeong2020-2e71ba939328.json",
+        "sha256": "2e71ba939328a7394597328e7c1b2c24cadf5b1baafe7ac73e2bdcd16d3691a2"
+      }
     },
     {
       "id": "Kaneshiro2015",
@@ -703,17 +923,23 @@
       "evidence_hashes": [
         "05735ef701fd1538e0d3c76b84e38a6b403acd7d65b6f00e0cdcab67f8d8a798"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Kaneshiro2015-bd0b92c121cb.json",
+        "sha256": "bd0b92c121cb8d53d75a7b8a3e787e91a42e584fe8fb38012d24d0724e125700"
+      }
     },
     {
       "id": "Kaya2018",
       "module": "kaya2018",
       "status": "required",
-      "evidence_note": "Subject 1 selected run loader → retained EEG-BIDS root → BIDS-root Command evidence; official file MD5 retained",
+      "evidence_note": "Subject 1 selected run loader \u2192 retained EEG-BIDS root \u2192 BIDS-root Command evidence; official file MD5 retained",
       "evidence_hashes": [
         "5ccf3f8eca357d31665d17226e7f6a116221d4b98d1127d9d5a76f9c96d68a50"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Kaya2018-da1b7f244619.json",
+        "sha256": "da1b7f244619effdd73352ade7b253a948d6209935ae4a83eef0a25e2fc317a7"
+      }
     },
     {
       "id": "Kojima2024A",
@@ -723,7 +949,10 @@
       "evidence_hashes": [
         "5fc87ac6ca04c21b9b1ba83f714728ea3a8432bfac3ad853d6351d57a2c0f18e"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Kojima2024A-980b86082daa.json",
+        "sha256": "980b86082daa5d1715a307c322554abada7be95836a790fcaf91a3502c0cd6d6"
+      }
     },
     {
       "id": "Kojima2024B",
@@ -733,17 +962,23 @@
       "evidence_hashes": [
         "7e334a7489cbb76fc2f80c214bf94cfe24b543420abe4c02031c1acdc2cb76f4"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Kojima2024B-9474de27be92.json",
+        "sha256": "9474de27be92607426a93951d8ce362e6b5d8226d100d16fc2b15b4e15b62b92"
+      }
     },
     {
       "id": "Kumar2024",
       "module": "kumar2024",
       "status": "required",
-      "evidence_note": "Subject 1 retained source fresh-loader → existing MOABB 1.5.0 EEG-BIDS root → five-Command/readback/recipe PASS with exact channel, rate, sample, waveform and event fidelity (`b1558ae413b031daabd86b667f3ed7f37e3510ece1b7bfe50ad84961b5a57fc2`)",
+      "evidence_note": "Subject 1 retained source fresh-loader \u2192 existing MOABB 1.5.0 EEG-BIDS root \u2192 five-Command/readback/recipe PASS with exact channel, rate, sample, waveform and event fidelity (`b1558ae413b031daabd86b667f3ed7f37e3510ece1b7bfe50ad84961b5a57fc2`)",
       "evidence_hashes": [
         "b1558ae413b031daabd86b667f3ed7f37e3510ece1b7bfe50ad84961b5a57fc2"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Kumar2024-0d0c7d40989a.json",
+        "sha256": "0d0c7d40989a56ddddd342761d9c33fa78326e1eb4c455baf33ce85f6db57b26"
+      }
     },
     {
       "id": "Lee2019_ERP",
@@ -753,7 +988,10 @@
       "evidence_hashes": [
         "e5a203622cf9861b4e9e199d45c5317656afe861e9246f503a172b79c6464b08"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Lee2019_ERP-05d26b7c1ea8.json",
+        "sha256": "05d26b7c1ea868b7c14e433b738e5820b4ca892979210174788288366ea1187d"
+      }
     },
     {
       "id": "Lee2019_MI",
@@ -763,7 +1001,10 @@
       "evidence_hashes": [
         "e5a203622cf9861b4e9e199d45c5317656afe861e9246f503a172b79c6464b08"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Lee2019_MI-0e17a706eeff.json",
+        "sha256": "0e17a706eeffebd3e5fb847c92271e9fdaa9fc41b7fbfef2bfed831488f35b03"
+      }
     },
     {
       "id": "Lee2019_SSVEP",
@@ -773,7 +1014,10 @@
       "evidence_hashes": [
         "e5a203622cf9861b4e9e199d45c5317656afe861e9246f503a172b79c6464b08"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Lee2019_SSVEP-5fd3237a9531.json",
+        "sha256": "5fd3237a95319c6f710a0bf6e6d14c31eb92cfaa12b0335f11d091bfd2c23f54"
+      }
     },
     {
       "id": "Lee2021Mobile_ERP",
@@ -783,7 +1027,10 @@
       "evidence_hashes": [
         "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Lee2021Mobile_ERP-0b6805d74050.json",
+        "sha256": "0b6805d740506b044fb043cbfd4d92735f0e8993305ef35c39d504015311bc3f"
+      }
     },
     {
       "id": "Lee2021Mobile_SSVEP",
@@ -794,7 +1041,10 @@
         "5bec1714f50f9c1820c4780a09f095a824387b758d6f278989d51afec3537a7f",
         "d4fb023fe415260ede37050b7f32c9ce43c5f36c3246ae1a2d31bd4483bfa9d6"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Lee2021Mobile_SSVEP-58f44bca04d5.json",
+        "sha256": "58f44bca04d59680bcf08f5e1d6cfb7800885238e993611451f3b21b00ec2a82"
+      }
     },
     {
       "id": "Lee2024_AC",
@@ -840,21 +1090,27 @@
       "id": "Liu2024",
       "module": "liu2024",
       "status": "required",
-      "evidence_note": "Retained subject-1 EDF/sidecars → official all-modality BIDS → full source/readback/recipe PASS, including both EOG channels and 40 class events; `4080611edbe0fe1f92f190686a34c2eb9b3ed9c93f1a5be9cf1d6e09d04017da`",
+      "evidence_note": "Retained subject-1 EDF/sidecars \u2192 official all-modality BIDS \u2192 full source/readback/recipe PASS, including both EOG channels and 40 class events; `4080611edbe0fe1f92f190686a34c2eb9b3ed9c93f1a5be9cf1d6e09d04017da`",
       "evidence_hashes": [
         "4080611edbe0fe1f92f190686a34c2eb9b3ed9c93f1a5be9cf1d6e09d04017da"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Liu2024-09e3da5a12b8.json",
+        "sha256": "09e3da5a12b89c7d32863fd71fab90e31f31453da2a19e4fd4f248608a71cb64"
+      }
     },
     {
       "id": "Liu2025",
       "module": "liu2025",
       "status": "required",
-      "evidence_note": "Subject 6 verified retained archive fresh-loader → MOABB 1.5.0 EEG-BIDS → five-Command/readback/recipe PASS with strict source/BIDS fidelity (`beefff38b9d40a70f38224201458e675bd8a32f5bbc65db9924206676f3fe9d3`); task-local extraction was removed after receipt publication",
+      "evidence_note": "Subject 6 verified retained archive fresh-loader \u2192 MOABB 1.5.0 EEG-BIDS \u2192 five-Command/readback/recipe PASS with strict source/BIDS fidelity (`beefff38b9d40a70f38224201458e675bd8a32f5bbc65db9924206676f3fe9d3`); task-local extraction was removed after receipt publication",
       "evidence_hashes": [
         "beefff38b9d40a70f38224201458e675bd8a32f5bbc65db9924206676f3fe9d3"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Liu2025-f4f7c3a958ac.json",
+        "sha256": "f4f7c3a958acfd6bdd0eeff9d93088c4a8fe1a68179d75e9a8ac26eba713390b"
+      }
     },
     {
       "id": "Ma2020",
@@ -864,207 +1120,270 @@
       "evidence_hashes": [
         "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Ma2020-7a7435fa34ea.json",
+        "sha256": "7a7435fa34eaf7aec45a17226ad24b6ba22c9e20569252575d1197c473882791"
+      }
     },
     {
       "id": "Mainsah2025_A",
       "module": "mainsah2025",
       "status": "required",
-      "evidence_note": "Subject 1, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
+      "evidence_note": "Subject 1, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
       "evidence_hashes": [
         "d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_A-c63afe017a22.json",
+        "sha256": "c63afe017a224ce467356145d42a8f1623a1bd9921a27e415d120995bba75c46"
+      }
     },
     {
       "id": "Mainsah2025_B",
       "module": "mainsah2025",
       "status": "required",
-      "evidence_note": "Subject 8, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
+      "evidence_note": "Subject 8, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
       "evidence_hashes": [
         "d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_B-4f309f4fedee.json",
+        "sha256": "4f309f4fedee36f357b5ceb99818a5689c21548badeb7c8fa19fbb6702452486"
+      }
     },
     {
       "id": "Mainsah2025_C",
       "module": "mainsah2025",
       "status": "required",
-      "evidence_note": "Subject 18, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
+      "evidence_note": "Subject 18, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
       "evidence_hashes": [
         "d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_C-239591b30e5b.json",
+        "sha256": "239591b30e5bbfb7a994df2771c4539356638b67e8152db909a2745a52746151"
+      }
     },
     {
       "id": "Mainsah2025_D",
       "module": "mainsah2025",
       "status": "required",
-      "evidence_note": "Subject 1, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
+      "evidence_note": "Subject 1, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
       "evidence_hashes": [
         "d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_D-d3ff4e25941a.json",
+        "sha256": "d3ff4e25941a9ae86b6ab9aff4ee733382add3a2692a39b2696dd7c3a9d9b4ec"
+      }
     },
     {
       "id": "Mainsah2025_E",
       "module": "mainsah2025",
       "status": "required",
-      "evidence_note": "Subject 1, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
+      "evidence_note": "Subject 1, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
       "evidence_hashes": [
         "d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_E-5df9c9dacd35.json",
+        "sha256": "5df9c9dacd35a24eed5746c437bd0f747c2d7bffe7115e32045f75ac5e4dd65a"
+      }
     },
     {
       "id": "Mainsah2025_F",
       "module": "mainsah2025",
       "status": "required",
-      "evidence_note": "Subject 3, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
+      "evidence_note": "Subject 3, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
       "evidence_hashes": [
         "d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_F-e641cae34329.json",
+        "sha256": "e641cae343295f8886b456bac01d1da775dfabbec1c95b0b0928e8c92e188d11"
+      }
     },
     {
       "id": "Mainsah2025_G",
       "module": "mainsah2025",
       "status": "required",
-      "evidence_note": "Subject 1, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
+      "evidence_note": "Subject 1, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
       "evidence_hashes": [
         "d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_G-0109c1e878ae.json",
+        "sha256": "0109c1e878aef72be246ff9156aa4b3776d4aa9c3d874c64328c3ca4329a8889"
+      }
     },
     {
       "id": "Mainsah2025_H",
       "module": "mainsah2025",
       "status": "required",
-      "evidence_note": "Subject 1, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
+      "evidence_note": "Subject 1, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
       "evidence_hashes": [
         "d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_H-fb423d1c70ca.json",
+        "sha256": "fb423d1c70ca620aceacf7759523047c45ab67d6dd081f80d34c1e0b8c71b98b"
+      }
     },
     {
       "id": "Mainsah2025_I",
       "module": "mainsah2025",
       "status": "required",
-      "evidence_note": "Subject 1, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
+      "evidence_note": "Subject 1, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
       "evidence_hashes": [
         "d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_I-3408eb4256fe.json",
+        "sha256": "3408eb4256fef7796861f799c6a05f538befbd18c8953f78673760b747ee8024"
+      }
     },
     {
       "id": "Mainsah2025_J",
       "module": "mainsah2025",
       "status": "required",
-      "evidence_note": "Subject 1, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
+      "evidence_note": "Subject 1, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
       "evidence_hashes": [
         "d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_J-fef677cb3086.json",
+        "sha256": "fef677cb308694c65e12842184d0fe0ce56f9a98b3f97d2e60cf07e1403d2108"
+      }
     },
     {
       "id": "Mainsah2025_K",
       "module": "mainsah2025",
       "status": "required",
-      "evidence_note": "Subject 2, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
+      "evidence_note": "Subject 2, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
       "evidence_hashes": [
         "8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_K-5e287e7a510b.json",
+        "sha256": "5e287e7a510be6219849793b1964ed29a5eb37e008fa7b9ede278623faf4502b"
+      }
     },
     {
       "id": "Mainsah2025_L",
       "module": "mainsah2025",
       "status": "required",
-      "evidence_note": "Subject 1, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
+      "evidence_note": "Subject 1, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
       "evidence_hashes": [
         "8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_L-37ebf3d87493.json",
+        "sha256": "37ebf3d87493c2f7a0886b1e66e6427e70c51a996a2cb3493f16801b9fe36910"
+      }
     },
     {
       "id": "Mainsah2025_M",
       "module": "mainsah2025",
       "status": "required",
-      "evidence_note": "Subject 4, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
+      "evidence_note": "Subject 4, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
       "evidence_hashes": [
         "8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_M-c896c41654b6.json",
+        "sha256": "c896c41654b6d88a9878ddd69461dd99f2ca4a339cfd0d2cfb690fec88d54526"
+      }
     },
     {
       "id": "Mainsah2025_N",
       "module": "mainsah2025",
       "status": "required",
-      "evidence_note": "Subject 1, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
+      "evidence_note": "Subject 1, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
       "evidence_hashes": [
         "8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_N-0e5a68cc22be.json",
+        "sha256": "0e5a68cc22befa539a2e024255c79f8d1b0b55c838ca7c585bed6130dc5e8355"
+      }
     },
     {
       "id": "Mainsah2025_O",
       "module": "mainsah2025",
       "status": "required",
-      "evidence_note": "Subject 14, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
+      "evidence_note": "Subject 14, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
       "evidence_hashes": [
         "8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_O-2f7d537f7778.json",
+        "sha256": "2f7d537f77787f4828824710de8a747cf60389852245bbbf2bd0cd4ac31e32eb"
+      }
     },
     {
       "id": "Mainsah2025_P",
       "module": "mainsah2025",
       "status": "required",
-      "evidence_note": "Subject 1, run 1: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
+      "evidence_note": "Subject 1, run 1: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
       "evidence_hashes": [
         "8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_P-d025c32b6579.json",
+        "sha256": "d025c32b65799624e11ec2e570c951153b930e5807589c98742a1e29bb06e57a"
+      }
     },
     {
       "id": "Mainsah2025_Q",
       "module": "mainsah2025",
       "status": "required",
-      "evidence_note": "Subject 1, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
+      "evidence_note": "Subject 1, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
       "evidence_hashes": [
         "8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_Q-ca32bee2608c.json",
+        "sha256": "ca32bee2608c85dab4955ac3b6a053f41f69b23b937bff62f66537c1a0a5f11c"
+      }
     },
     {
       "id": "Mainsah2025_R",
       "module": "mainsah2025",
       "status": "required",
-      "evidence_note": "Subject 1, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
+      "evidence_note": "Subject 1, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
       "evidence_hashes": [
         "8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_R-30c41e1f5c53.json",
+        "sha256": "30c41e1f5c53c9692ece37c3dc532cb5e18e06209b6f9cd3098b89231b6b25a4"
+      }
     },
     {
       "id": "Mainsah2025_S1",
       "module": "mainsah2025",
       "status": "required",
-      "evidence_note": "Subject 1, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
+      "evidence_note": "Subject 1, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
       "evidence_hashes": [
         "8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_S1-acdc147358ca.json",
+        "sha256": "acdc147358ca401f0aa790e5c1916c675c1171b44edd0dc6e7e25ab786299b31"
+      }
     },
     {
       "id": "Mainsah2025_S2",
       "module": "mainsah2025",
       "status": "required",
-      "evidence_note": "Subject 1, run 0: retained official converter root → complete embedded `NonTarget`/`Target` review → Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
+      "evidence_note": "Subject 1, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
       "evidence_hashes": [
         "8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_S2-27788481d2ff.json",
+        "sha256": "27788481d2ffa6689d2a9e4f38334cb952815b74cd7ee18adda0b9b612801a03"
+      }
     },
     {
       "id": "MartinezCagigal2023Checker",
@@ -1075,7 +1394,10 @@
         "04793d0c6e70d104de4dbb74b9576f8048727569fc0fdc6947deb879be697bcb",
         "7a973c7dd26e4d7977becac8d29dd50c04c31d295dd07b26bfc3c5f5254ca506"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/MartinezCagigal2023Checker-7a50675b1a6b.json",
+        "sha256": "7a50675b1a6bd130ffea154606be450e142146d8fd3851945e4aa9fc36aa2060"
+      }
     },
     {
       "id": "MartinezCagigal2023Pary",
@@ -1091,11 +1413,14 @@
       "id": "GrosseWentrup2009",
       "module": "mpi_mi",
       "status": "required",
-      "evidence_note": "Subject 1 selected run loader → retained EEG-BIDS root → BIDS-root Command evidence; both official MD5 values retained",
+      "evidence_note": "Subject 1 selected run loader \u2192 retained EEG-BIDS root \u2192 BIDS-root Command evidence; both official MD5 values retained",
       "evidence_hashes": [
         "b6e3493f56c64f19bdb32d00da26347213520631b99d14582faf380a7f60b63f"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/GrosseWentrup2009-d560d6fac2f6.json",
+        "sha256": "d560d6fac2f6aec1a80a3c1dac48ab63c519053d1acc77002a283324af593431"
+      }
     },
     {
       "id": "Cattan2019_PHMD",
@@ -1106,7 +1431,10 @@
         "142d6ad8a27ee241ee3c6802213df5f06f4fa1eddc2eb005265ef2dcffe28aa6",
         "263997fe2ac983c76bda10c0976a8eebbf0c5a14f9ee9c0333da65d7277f99ad"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Cattan2019_PHMD-4f8cf485239a.json",
+        "sha256": "4f8cf485239a110e9c7eacc9e1ed668a91218ec41d0202c70d0afaa90ab73df8"
+      }
     },
     {
       "id": "PhysionetMI",
@@ -1116,7 +1444,10 @@
       "evidence_hashes": [
         "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/PhysionetMI-d360daf21bec.json",
+        "sha256": "d360daf21bec1e361adefb192e3e0dbe1cc0ce98f6d823bcb0cc0b0fd96dbb85"
+      }
     },
     {
       "id": "RomaniBF2025ERP",
@@ -1126,7 +1457,10 @@
       "evidence_hashes": [
         "8d631840ce0dfd6f076a89accac5e8a771d7f01e2e45ad2d951db06c9888d7a5"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/RomaniBF2025ERP-51033e3d8123.json",
+        "sha256": "51033e3d81231e2adc147bc63c7a4b734d4c785a44da1c4391fbc30031132d73"
+      }
     },
     {
       "id": "Rozado2015",
@@ -1147,7 +1481,10 @@
       "evidence_hashes": [
         "cbd252420865dd2a176ec9c587fbf6afe9a68302ba0617219bafff29ece70af3"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Schirrmeister2017-0f084e22d83a.json",
+        "sha256": "0f084e22d83a080705d0b10c02d8e31b94eb16c4e3bf750f51b8ce0b02695ab6"
+      }
     },
     {
       "id": "Simoes2020",
@@ -1157,15 +1494,35 @@
       "evidence_hashes": [
         "296c1c4631f309a37323072849fefc59c22cf020e51f8dc3f36105a8057ebe9f"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Simoes2020-fa3db3e2645f.json",
+        "sha256": "fa3db3e2645f3203c2f583180e18dd735fde09730d2b38eb3299c63ed2126908"
+      }
     },
     {
       "id": "Sosulski2019",
       "module": "sosulski2019",
-      "status": "blocked",
-      "evidence_note": "BLOCKED: pinned loader exposes only one 4.58 GB all-subject archive, with no representative source unit",
-      "evidence_hashes": [],
-      "case_manifest": null
+      "status": "required",
+      "evidence_note": "Selected-run portable BIDS Command/import and fresh recipe replay PASS; conversion/source limits remain in bound receipts.",
+      "evidence_hashes": [
+        "32b8e860f02a2a91dfb4f9a065aa5660c20f9bcfb82a3ea1a9e8eb8a7def7959",
+        "3e347142059d5442306e94798e0844e3357e375bf227e1260857873e9c3bf66c",
+        "3eab8bb50099a1ec61f11f484eccba57529fcc05ce6adcc9008ea4184e7a35f8",
+        "4f192635098bc1d70f5a4c552edcac555802120114486cccd42773461c84e820",
+        "55f7622b1148cab8d9b654b656c43969d8f62ece9bebdd41886bd09f0b410f5c",
+        "6bf4f1725065e458922591aa719863ace2d0ed71e16abbbcf42739db408c9c39",
+        "6cd4e7701df92d95726891ca5428b52dbc8532ba0720d579d44fbccb209733ae",
+        "74dbdbda1f450dbcb5d1db18acaca558e81dfa46306ce781d9bc1617d1f2a658",
+        "7b761844be10325d8d8615f388519f8d95bd7ace293d0ec060791c91f8c44223",
+        "7cf7c6a15461cdc09c98907d53b58acbda79bd7777c9e3273e132a2b2cead409",
+        "9d99a7942d1ce265dbe511dbf5a5e15c782d078a7976cdbb70b8e5ef1069954b",
+        "e7adf335e4ff6bca18aae94b7e0a6d395c891bad70bbebe14b9086190183b7bf",
+        "fe3e744b015eccd445c643a8b4e15cfdb976a6351e85d7142e9916c2872b8022"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Sosulski2019-55f7622b1148.json",
+        "sha256": "55f7622b1148cab8d9b654b656c43969d8f62ece9bebdd41886bd09f0b410f5c"
+      }
     },
     {
       "id": "Speier2017",
@@ -1176,7 +1533,10 @@
         "478c18682f84d95254b1a00c7e7f678512ecdce7f3c02a745f9c020661c0be60",
         "770483d1f1dcb44ddd8b0569b267227a3bdbf449daa5d5efb2539ba7dcf63cc9"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Speier2017-680a803dc431.json",
+        "sha256": "680a803dc4314455852bcdc01fe8b5fbd0eb1562b6375ccef98ed1eaca1a75a3"
+      }
     },
     {
       "id": "Chen2017SingleFlicker",
@@ -1186,7 +1546,10 @@
       "evidence_hashes": [
         "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Chen2017SingleFlicker-6fd7ba1b9e9d.json",
+        "sha256": "6fd7ba1b9e9d266d32a4f0c97bb9c9e90695680f07d537f951ea75dc0b2acddd"
+      }
     },
     {
       "id": "Dong2023",
@@ -1197,7 +1560,10 @@
         "9c664edcd135ef44806f9eb6c087d23772f4373f32e4b86fd69b177b85738c1b",
         "eca6c94802534d54edc2550daa2f0030248b9e7d79fa17f94ca98d9198a0c022"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Dong2023-f73642fb827d.json",
+        "sha256": "f73642fb827d24e491e1d81063e764fb5ef0e2902807130534ed6af0d57336cb"
+      }
     },
     {
       "id": "Kalunga2016",
@@ -1208,7 +1574,10 @@
         "0273cb2307c7fcbfac615b14b2b877d0f67cf4237849fd107dc464a748677c0e",
         "bff167fc714a61e16bad4cb67f0a2f1cde7143725fcf5372a64a7727593ff040"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Kalunga2016-a94d14d262a2.json",
+        "sha256": "a94d14d262a2c974993ab5a55f8982f909779eb8fabfdb7292bfb58d84eef7db"
+      }
     },
     {
       "id": "Han2024Fatigue",
@@ -1219,7 +1588,10 @@
         "08f144242d9ed40e4b352b446ca3e27ac94bc05741fb040310a1372c9f8d052b",
         "e0da6d7c83a5bffb8bfcf2a2376f9f970ee8942d6e81d7bc7e36fa28b6d61563"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Han2024Fatigue-a43de7064936.json",
+        "sha256": "a43de7064936a2bde84c2dfeaad23d4b116d564d2d36a05ea881956248292efc"
+      }
     },
     {
       "id": "Kim2025BetaRange",
@@ -1229,7 +1601,10 @@
       "evidence_hashes": [
         "b0e4d6f2237899d85c2234e347d6ca9b08ca450684002dac6b38f9d5d1e767f6"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Kim2025BetaRange-09b5e0bb2a8f.json",
+        "sha256": "09b5e0bb2a8fedf19a4bb94ad278534c93bbf92d4d81dd9c7cdb996e07105bbd"
+      }
     },
     {
       "id": "Liu2020BETA",
@@ -1248,7 +1623,10 @@
         "ddcb2816e53b6f8214aeccb8c0857fe79be5bfa0dc27088e18898662cc0d9beb",
         "df52466989075913191895475d34c39d22228ec3e758826fe99d1c6e6cd9baf4"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Liu2022EldBETA-8a2dfb301114.json",
+        "sha256": "8a2dfb30111462d4794d980ed9f6bc10b798a14f045b2bd1ba2406a47b786d82"
+      }
     },
     {
       "id": "MAMEM1",
@@ -1258,7 +1636,10 @@
       "evidence_hashes": [
         "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/MAMEM1-dece3e992373.json",
+        "sha256": "dece3e9923735415ea8525affd8b09df990045dd5c5716a53399682eeec97faa"
+      }
     },
     {
       "id": "MAMEM2",
@@ -1268,7 +1649,10 @@
       "evidence_hashes": [
         "bee42ce8ff980d7110c182f7a5699ed2c724ccd590d4856b8fe8cbb77fbb0ff2"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/MAMEM2-8c572689d0b0.json",
+        "sha256": "8c572689d0b0d50677122fa0871b64e359079777dee7725c056d9f1289c47f54"
+      }
     },
     {
       "id": "MAMEM3",
@@ -1278,7 +1662,10 @@
       "evidence_hashes": [
         "372f5bd6bf0b7b82d481c294e467dd07252f811d889985bb1c940f7b749bfec2"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/MAMEM3-f4e8a8e676d7.json",
+        "sha256": "f4e8a8e676d73edcdcd47c8f8454d8be07c1dfaf255fdbebfd49a7a40239e09c"
+      }
     },
     {
       "id": "Nakanishi2015",
@@ -1288,7 +1675,10 @@
       "evidence_hashes": [
         "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Nakanishi2015-017b2e193092.json",
+        "sha256": "017b2e1930921544306d5d5f4a56f4cc3034102f78d7435495fdcde7a4806e41"
+      }
     },
     {
       "id": "Wang2016",
@@ -1298,17 +1688,23 @@
       "evidence_hashes": [
         "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Wang2016-c7f5fa4bb964.json",
+        "sha256": "c7f5fa4bb964060170978873943873993caca2812dd24c78c8a77a1fad55abfc"
+      }
     },
     {
       "id": "Wang2021Combined",
       "module": "ssvep_wang2021",
       "status": "required",
-      "evidence_note": "Retained first CNT → official all-modality BIDS → full source/readback/recipe PASS (200 class events). Existing retained child is unchanged; constructor lacks the option, so the inherited dataset field is explicitly set True; `7451f7617dd4a24d283b59be9f6443d40b2b97141d9ba3d654836833a56dfd0c`",
+      "evidence_note": "Retained first CNT \u2192 official all-modality BIDS \u2192 full source/readback/recipe PASS (200 class events). Existing retained child is unchanged; constructor lacks the option, so the inherited dataset field is explicitly set True; `7451f7617dd4a24d283b59be9f6443d40b2b97141d9ba3d654836833a56dfd0c`",
       "evidence_hashes": [
         "7451f7617dd4a24d283b59be9f6443d40b2b97141d9ba3d654836833a56dfd0c"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Wang2021Combined-43108792c5e7.json",
+        "sha256": "43108792c5e7d6bf0dd11e15f44d227069f4361ed3c2cdd4ea11b8be95061462"
+      }
     },
     {
       "id": "Stieger2021",
@@ -1318,15 +1714,33 @@
       "evidence_hashes": [
         "25e7f5b55dfe3c07857f778981002bb0f20ccca2968706bb699eaa584492fcdd"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Stieger2021-341123d4ddea.json",
+        "sha256": "341123d4ddeab725e761ad29137d2b4fb84c1d2ad35fef09fbc34239ceb3aa4e"
+      }
     },
     {
       "id": "Tavakolan2017",
       "module": "tavakolan2017",
-      "status": "blocked",
-      "evidence_note": "BLOCKED: pinned loader requires missing BCI2kReader after finding all four subject-1 DAT files",
-      "evidence_hashes": [],
-      "case_manifest": null
+      "status": "required",
+      "evidence_note": "Selected-run portable BIDS Command/import and fresh recipe replay PASS; conversion/source limits remain in bound receipts.",
+      "evidence_hashes": [
+        "220c2897cc5d4c7bf88578de46ac3588b6e6007af1715bcc04e0ba4fb74df987",
+        "65c4b7074e4e0a0572b7121eb5f6ec746cb8ca80e0b7daae27db2af8a87515d8",
+        "672f08868b5fc1b1488c73d21daf73d0d25432d9185a6bc2c50c1f9e7ab0375c",
+        "76cb0b927c70d5cb7db99b2ae81a5802647512d0497ab7e6c4114d50373db014",
+        "7cf7c6a15461cdc09c98907d53b58acbda79bd7777c9e3273e132a2b2cead409",
+        "a671cec697ece84011af751427a70881dc31faa0be05411ee94517268356dffd",
+        "d339def236b245e710e0eb1f195855dcc04478dd41a35277190fdd5c8bd87d39",
+        "da418e21a9303d0005183b5bc7fbc191e323788cfc060a4088166b753ebf8d2e",
+        "e7adf335e4ff6bca18aae94b7e0a6d395c891bad70bbebe14b9086190183b7bf",
+        "e89b2ccb993eea8c0d538a24f844a56ae082a6d981468bb1928511aa0a733d13",
+        "feaf4b6194bca61cac648289cd46f94ca15fa7701bb9afd5b912d1339828545a"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Tavakolan2017-d339def236b2.json",
+        "sha256": "d339def236b245e710e0eb1f195855dcc04478dd41a35277190fdd5c8bd87d39"
+      }
     },
     {
       "id": "Thielen2015",
@@ -1336,7 +1750,10 @@
       "evidence_hashes": [
         "a90b58bb94c5969d240ed49054bcafdea57f45d32b67b9512cac3ab1094379b9"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Thielen2015-7aadc8a35e9a.json",
+        "sha256": "7aadc8a35e9a6f360ef14ca992b2735fa767971144da0071e2313541fe262989"
+      }
     },
     {
       "id": "Thielen2021",
@@ -1346,7 +1763,10 @@
       "evidence_hashes": [
         "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Thielen2021-06d2290d10af.json",
+        "sha256": "06d2290d10af911a6626cac5e12a9fd6e59c5a2d54fd3a825c3164a02ee1f95c"
+      }
     },
     {
       "id": "TrianaGuzman2024",
@@ -1366,7 +1786,10 @@
       "evidence_hashes": [
         "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Ofner2017-31cb80004ed8.json",
+        "sha256": "31cb80004ed8b770eb57a504a1bcca9f462366ce55e4b20cece1ba85fde024e3"
+      }
     },
     {
       "id": "Wairagkar2018",
@@ -1376,7 +1799,10 @@
       "evidence_hashes": [
         "af3de6caca1519ec5b4cd5c74d74431e35bcc14e42a88b364a3a79cc00431406"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Wairagkar2018-ac902906f117.json",
+        "sha256": "ac902906f117db27d0fbb11b3105e1999d91a69b198c3df14505fb0497e7a8c9"
+      }
     },
     {
       "id": "Weibo2014",
@@ -1386,7 +1812,10 @@
       "evidence_hashes": [
         "9dadd3a106347948d63c500bebe5859e63ecfce9aedc4d631530e32e7b867bd9"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Weibo2014-b1856ac43d27.json",
+        "sha256": "b1856ac43d27a87df0604075b931f545967d829e1e90a7cce8913d2fe3317f4b"
+      }
     },
     {
       "id": "Wu2020",
@@ -1396,15 +1825,35 @@
       "evidence_hashes": [
         "e5a203622cf9861b4e9e199d45c5317656afe861e9246f503a172b79c6464b08"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Wu2020-9bb7ce67fa7a.json",
+        "sha256": "9bb7ce67fa7a3fcd5dcfe303d1fc49bdda6c5eaa390377a6281facbef0e88b5d"
+      }
     },
     {
       "id": "Yang2025",
       "module": "yang2025",
-      "status": "blocked",
-      "evidence_note": "BLOCKED: pinned loader exposes only one 65.6 GB corpus archive, with no representative source unit",
-      "evidence_hashes": [],
-      "case_manifest": null
+      "status": "required",
+      "evidence_note": "Selected-run portable BIDS Command/import and fresh recipe replay PASS; conversion/source limits remain in bound receipts.",
+      "evidence_hashes": [
+        "1584fae941d4e944f9dbdf0408ca163a73831dd6006ea95ec5ee619d926bf552",
+        "4ae7c93b1e81b41eb8220713058e04e0989c14e9d78ac76113d3d6ea3ae39ed7",
+        "543801767194e99175f9740f74a47a87132fb48b438de9917cb040cc25c7f0fb",
+        "6235439fe7ed8e2484cb1b393b4ba562c023717352480eab896c9ab710d03a41",
+        "7436cb9fb755b077c89750c8a5d77c029d3d2640bdd3d52848028f074a2f2d8c",
+        "7cf7c6a15461cdc09c98907d53b58acbda79bd7777c9e3273e132a2b2cead409",
+        "99468dcd59d7d2c6c5bd568f1b07893fd5126304da96596eaecdab25f046da6e",
+        "9c0559fc74a16249a15567046572e8de1d49f6a2ac423e45fbbc2c972e1c1361",
+        "a7902b8e500695a009564728a71a331bab65f2feb22fc448411793cb67be676a",
+        "b12154047ed2587adb6f04ac9282576f42246f681e7e777a5ede01253420d80a",
+        "bde96107208aec97eee0b2f5acb2e3f24114412f0c6fa54bfcc236e280a0184a",
+        "e7adf335e4ff6bca18aae94b7e0a6d395c891bad70bbebe14b9086190183b7bf",
+        "fe5d5fb786fb2918e403c03afeb4be2411166427ece5108a3fb4857f895d73e3"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Yang2025-fe5d5fb786fb.json",
+        "sha256": "fe5d5fb786fb2918e403c03afeb4be2411166427ece5108a3fb4857f895d73e3"
+      }
     },
     {
       "id": "Yi2025",
@@ -1414,25 +1863,57 @@
       "evidence_hashes": [
         "edd6b22dd795aa0547d7f0b9e849102562b05394fadc3036427f222a1b781ae7"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Yi2025-ba7340b85652.json",
+        "sha256": "ba7340b85652b02a5fa6ba23121e7c681812b04c758da78996a861d7d68d2b37"
+      }
     },
     {
       "id": "Zhang2017",
       "module": "zhang2017",
-      "status": "blocked",
-      "evidence_note": "BLOCKED: pinned RAR extraction requires an external extractor absent from the retained environment",
-      "evidence_hashes": [],
-      "case_manifest": null
+      "status": "required",
+      "evidence_note": "Selected-run portable BIDS Command/import and fresh recipe replay PASS; conversion/source limits remain in bound receipts.",
+      "evidence_hashes": [
+        "0d876759e13a0b42fa2cb8632251058886fe252ef02f9371b785b5f037e801cc",
+        "115c58609774ad969ad6cd82e41181b4a26acc63b44cf8efbb72777f43f644bb",
+        "12e409da8b0fb8c7c8334175bd4c3977abc452c9da1b99b44ab617e9fdee2cb6",
+        "13f01db9c90a318dadec7d1e31ddc9c7a247ab24f0b817b6ad655af7d4fb3ffb",
+        "3ac631cdd42c40219a0ca3b8119f345430d31668d2a849a49b90296718b23cf5",
+        "48a7619f1491e53267e86d9691e4228f9360ce9d406ebc617fd1651b1dab02c0",
+        "5df1944ad5757248a1ee94fbef11c955ae6d1da670b3c72b04da8bc2eaca9c04",
+        "60714262e07252797fdc66f7e241bf65eea60cc13d7436a5dd090096a34ce066",
+        "7cf7c6a15461cdc09c98907d53b58acbda79bd7777c9e3273e132a2b2cead409",
+        "90b0370e4c1cd7041d37cb2cc746b79ecb15e89833f913f952fc198c2e72e1e2",
+        "92f5c7900ddfd875160dde84bda092de413701a3f0267261207a7c543785489d",
+        "99cbf2f4782f11b135fb15c1ba0e4da52811415913dc56447a6d8700e1bf74c5",
+        "b2e56bd8e98bbeb156980bb1365ad247a8d0fa5305d861d719019c6235c25d11",
+        "c9527d211b69f77fe1a083f082d99269892bd301e67974daeec9e5c781f3799b",
+        "d0ba009ce9bd649cc715da159b5482c069adf727a02670c223b938d8bab09f93",
+        "db4a6686f0e282b5c6a4a3154644074701f94fb44dd036a197ca29f0f1a62ab8",
+        "dc436d4e9d5b2e1934d9e1ea93ea9171b0aaa17bd748e7be0109063e3543523c",
+        "e7adf335e4ff6bca18aae94b7e0a6d395c891bad70bbebe14b9086190183b7bf",
+        "ed4f58a58d643a8a0d6bfae9dd4f1ecacdb1ca8599916e03835d1a8048622053",
+        "f6e261fec9d5bb643324a703ec370053295da923f285255b39cb8c4cd97c4c9d",
+        "f91477a6606c2ec4c131960c04c4924e1c78e143655cd4575254f82a3ff21e1e",
+        "fdcc1c450b373414170f2e1c25e4e8f87ada343b9014b890d5c4897740898429"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Zhang2017-0d876759e13a.json",
+        "sha256": "0d876759e13a0b42fa2cb8632251058886fe252ef02f9371b785b5f037e801cc"
+      }
     },
     {
       "id": "Zhang2025",
       "module": "zhang2025",
       "status": "required",
-      "evidence_note": "Subject 1 retained source fresh-loader → existing MOABB 1.5.0 EEG-BIDS root → five-Command/readback/recipe PASS (`f04a76f5cc39223b07ea2f23d027551ab2a67c1991c51e931ba4f20e393ebd32`); process-only pinned output-path seam disclosed",
+      "evidence_note": "Subject 1 retained source fresh-loader \u2192 existing MOABB 1.5.0 EEG-BIDS root \u2192 five-Command/readback/recipe PASS (`f04a76f5cc39223b07ea2f23d027551ab2a67c1991c51e931ba4f20e393ebd32`); process-only pinned output-path seam disclosed",
       "evidence_hashes": [
         "f04a76f5cc39223b07ea2f23d027551ab2a67c1991c51e931ba4f20e393ebd32"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Zhang2025-be39a2bba9ee.json",
+        "sha256": "be39a2bba9ee31dfd02625c14507a63be50c7a0a198a9083d0b7d43bb3d071c3"
+      }
     },
     {
       "id": "Zheng2020",
@@ -1442,7 +1923,10 @@
       "evidence_hashes": [
         "986dc316b581d3a6f20d9d38f837dd87394daba5ede07f4f7e48e6b0cd15db66"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Zheng2020-2d2f87e352f5.json",
+        "sha256": "2d2f87e352f5355691f862bdfd06aa638100bb920d763f8813dde9f53c4df86c"
+      }
     },
     {
       "id": "Zhou2016",
@@ -1452,7 +1936,10 @@
       "evidence_hashes": [
         "0d2ab582820e68fb3d4aa966b768c7488e099547970eb7328ae28c64d041247f"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Zhou2016-eab29f3383d9.json",
+        "sha256": "eab29f3383d959dc09aa389a8f18d2f3cc2c5c35c067b955bab50961f6853436"
+      }
     },
     {
       "id": "Zhou2020",
@@ -1462,17 +1949,23 @@
       "evidence_hashes": [
         "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Zhou2020-a67acd368220.json",
+        "sha256": "a67acd3682208efae2f60e162487fc7d5ca87fca51631826b9ac9b20d7a265c5"
+      }
     },
     {
       "id": "Zuo2025",
       "module": "zuo2025",
       "status": "required",
-      "evidence_note": "Retained source/official BIDS embedded markers match the fresh loader as `Stimulus/S  1`→`left_leg`, `Stimulus/S  2`→`right_leg`; complete reviewed Commands, exact readback and recipe replay PASS (`edd6b22dd795aa0547d7f0b9e849102562b05394fadc3036427f222a1b781ae7`), superseding the missing-events product blocker",
+      "evidence_note": "Retained source/official BIDS embedded markers match the fresh loader as `Stimulus/S  1`\u2192`left_leg`, `Stimulus/S  2`\u2192`right_leg`; complete reviewed Commands, exact readback and recipe replay PASS (`edd6b22dd795aa0547d7f0b9e849102562b05394fadc3036427f222a1b781ae7`), superseding the missing-events product blocker",
       "evidence_hashes": [
         "edd6b22dd795aa0547d7f0b9e849102562b05394fadc3036427f222a1b781ae7"
       ],
-      "case_manifest": null
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Zuo2025-f99d266ce05e.json",
+        "sha256": "f99d266ce05eb9b980a24fafd4c80ddfd6494909de755c1316fb845561c7b57b"
+      }
     }
   ]
 }

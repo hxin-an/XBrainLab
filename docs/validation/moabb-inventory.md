@@ -27,22 +27,22 @@ Do not replace it with the subset that passes, or silently update it to the late
 
 ## Available evidence and missing scope
 
-The retained local campaign has converted subsets for 15 entries. The E: conformance campaign adds
-full-corpus and representative source/loader/conversion/import evidence across the inventory, including
-BNCI, ERP Core, Mainsah2025, SSVEP, motor-imagery and recent-dataset lanes. The per-entry table and its
-linked reports are authoritative for the exact coverage. That is currently **129 entries with runtime
-evidence, 18 entries with a specific reviewed rights/data/loader blocker, and no entry left
-undispositioned**. Payload/runtime disposition remains distinct from the stricter MOABB-to-EEG-BIDS
-route disposition described below; a payload PASS must not be read as a BIDS-route PASS.
-The stricter route review is also fully dispositioned: **127 representative route passes and 20 specific
-route/source/license/loader/product blockers across all 147 exports, with no row left unexamined**.
-The blocker count includes the 18 payload-level blockers plus BNCI2019's unresolved source-unit
-semantics and Triana's official-converter fiducial prerequisite; it is not 20 unreadable datasets.
+The retained campaigns cover BNCI, ERP Core, Mainsah2025, SSVEP, motor-imagery and recent-dataset
+lanes. The executable catalog now requires **134 representative routes**, with **nine rights entries
+deferred and four unresolved blockers** across the unchanged 147 exports. Every entry has a disposition.
+The initial route baseline was 127 passed / 20 blocked; seven additional selected-recording conversions,
+actual Command imports and fresh-service recipe replays now pass, including replay after verified
+copy to the portable data root. All 134 required entries bind immutable, content-hashed case manifests.
+This promotes the recurring gate's required membership; it does not certify the outstanding complete
+same-source portable campaign or full-cohort support. Earlier payload-only passes are not route passes.
+The four remaining blockers are Martinez's original archive connection timeout, Rozado's official
+archive/metadata HTTP 403, BNCI2019's unresolved source EOG units and Triana's missing converter
+fiducials. Deferred rights are not a claim that the source is technically unreadable.
 After the embedded-event review
 repair, all 20 Mainsah2025 exports and Zuo2025 pass retained-source BIDS-root Commands and recipe replay.
 Yi2025 also passes the existing external-label route: its old missing-events receipt was incorrect,
 and fresh source comparison confirms the retained events.tsv values and sample positions.
-These blockers do not prove original sources are unavailable elsewhere. Acquisition still requires
+Remaining blockers do not prove original sources are unavailable elsewhere. Acquisition still requires
 source/license/size/cache review; absence is not PASS or exclusion.
 Local source manifests and checksums do not by themselves prove conversion fidelity.
 
@@ -97,6 +97,7 @@ Retained evidence below is under `E:\XBrainLabData\evidence`:
 ## Remaining-blocker rerun evidence
 
 The follow-up resolves 17 of the previous 37 route blockers without changing the 147-entry denominator.
+This paragraph describes the initial 127-route baseline; the seven subsequent promotions are below.
 Most omitted-channel findings were the pinned converter's default EEG-only selection: the official
 `return_all_modalities=True` option preserves non-STIM channels. The source baseline is a fresh public
 MOABB loader result, not the Raw object mutated during conversion. BIDS channel types come from
@@ -133,6 +134,32 @@ entry received the complete check. No whole-corpus, scientific-quality, disconti
 all-paradigm training claim follows. In particular BNCI2025_002's selected one-class recording is
 importable but not sufficient for the current supervised epoch workflow.
 
+## Subsequent portable promotions
+
+Seven additional entries passed selected-run Commands, full converted-waveform/channel/event checks
+and fresh recipe replay at their verified portable destinations. Exact sources, conversion options,
+failed attempts and fidelity limits remain bound by each case manifest and its provenance:
+
+- BNCI2015_006 and BNCI2016_002 use task-local corrections to the reproduced pinned loader defects;
+  shared MOABB was not patched. BNCI2016 preserves all 69 channels and 457 class events. Its initial
+  failed attempt retained the original callable because the dataset captured it before replacement;
+  the successful attempt checks the captured callable before conversion.
+- BNCI2022_001 preserves 1,152 trajectory/waypoint structural events over 67 channels. The task-local
+  loader reads the actual lower-case trigger channel and independently checks pulse starts. These
+  events are not difficulty classes: explicit no-label import keeps supervised epoch blocked. The
+  pinned loader clips 24 tail annotation durations at recording bounds; no missing labels are guessed.
+- Tavakolan2017 uses the original BCI2kReader wheel through task-local import isolation, not a shared
+  environment install. Four source sessions were checked; complete application replay selects one run.
+- Zhang2017 checks the official archive checksum and 15 subject-1 runs; complete application replay
+  selects one run. Sosulski2019 checks two retained Run 2 trials with their distinct non-60 ms SOAs,
+  obtained from the official individual-subject archive, not the 4.58 GB aggregate.
+- Yang2025 checks all three retained subject-1 source sessions (200 events each), with complete
+  application replay of the selected first recording. The earlier incomplete conversion is preserved
+  as invalid evidence, not reused as a passing input.
+
+Original-source and historical-evidence consolidation is separate from validated BIDS relocation.
+Copies do not authorize deleting originals, failed attempts or recordings shared by multiple exports.
+
 ## Full export list
 
 This table is generated from the executable import catalog's `evidence_note` fields;
@@ -159,18 +186,18 @@ retained and E: campaigns; each row still states its evidence limit and is not a
 | BNCI2015_001 | `bnci` | Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with source/BIDS channel, waveform and event fidelity (`fb3841b4100d4e99fba98d31ded799de9a121367735c6e0cc3744507da249058`) |
 | BNCI2015_003 | `bnci` | Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with source/BIDS channel, waveform and event fidelity (`89afc2ad7ffb9effa7d4a55bc3d90ac2e3ae17f2e4085e81b0c4fe610e10a331`) |
 | BNCI2015_004 | `bnci` | Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with source/BIDS channel, waveform and event fidelity (`0c4f85c44ca79d4728f5527cc0629635dbc41d09e095246a99c23476dca1accc`) |
-| BNCI2015_006 | `bnci` | BLOCKED: pinned loader rejects 973 events shorter than its shortest-event rule |
+| BNCI2015_006 | `bnci` | Selected-run portable BIDS Command/import and fresh recipe replay PASS; conversion/source limits remain in bound receipts. |
 | BNCI2015_007 | `bnci` | Subject 1 run-0 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with event-based deterministic pairing and source/BIDS fidelity (`0c7fc78b800285afdcc37271968da8ff46f194ba6455d8c8a45bcd4f90223927`) |
 | BNCI2015_008 | `bnci` | Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with fresh-loader source/BIDS fidelity (`aef8321d0c5e35ab62f4a6da2b5940f7d77bd5608898b475b3940474f3c5abaa`) |
 | BNCI2015_009 | `bnci` | Subject 1 representative official all-modality BIDS, source/readback and new bounded recipe replay PASS; old oversized recipe retained as failure evidence; `916258944af5d70a0ca56e89c538fe8f5ed27bcd022751e0bf6962e3344ce698` |
 | BNCI2015_010 | `bnci` | Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with fresh-loader source/BIDS fidelity (`4b9cb4fada146d43e8c3509eff49f047d4a9dc0e09df7ded3bc115717b6ebea8`) |
 | BNCI2015_012 | `bnci` | Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with fresh-loader source/BIDS fidelity (`f5dd6882bd35220e6a9b448b13e99df0f19ecf99fc0d3fc932c2cd50f6bd91d9`) |
 | BNCI2015_013 | `bnci` | Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with fresh-loader source/BIDS fidelity (`03313fcfa79a930e5dc84d6183b8279f124265b5fd6becacc830f3532de8b39f`) |
-| BNCI2016_002 | `bnci` | BLOCKED: pinned loader raises `KeyError: 88` for representative subject 1 |
+| BNCI2016_002 | `bnci` | Selected-run portable BIDS Command/import and fresh recipe replay PASS; conversion/source limits remain in bound receipts. |
 | BNCI2019_001 | `bnci` | BIDS-root Commands, full readback and recipe replay pass with all 64 channels and 40 class events, but **source-unit fidelity BLOCKED**: original GDF units are unspecified and pinned loader scales EEG but not EOG (EOG peaks 300–334 in a V-labelled Raw). Float32 storage matches exactly; no silent unit correction; `f4464aef8a42922a243b2dd03944f814765d7727f56cb274ebe2d635ea62e2b5` |
 | BNCI2020_001 | `bnci` | Subject 1 / 0 / run 0 official all-modality BIDS, full source/readback and recipe replay PASS (64 non-STIM channels, 161 class events); `263ed057802ff7871416ca6427143d4b977ca5c7ee9ebbeabf280eee30308d03` |
 | BNCI2020_002 | `bnci` | Subject 1 / 0 / run 0 official all-modality BIDS, full source/readback and recipe replay PASS (32 non-STIM channels, 119 class events); `7f72d5654079684603bd30fbdee76172003579d561bfeba7bfaff7f0ff16fda6` |
-| BNCI2022_001 | `bnci` | BLOCKED: pinned loader finds no stim channel in representative subject 1 |
+| BNCI2022_001 | `bnci` | Selected-run portable BIDS import/replay PASS for preserved trajectory/waypoint structural annotations; no supervised classes or difficulty labels were inferred. |
 | BNCI2024_001 | `bnci` | Subject 1 / 0 / run 0 official all-modality BIDS, full source/readback and recipe replay PASS (64 non-STIM channels, 320 class events); `f4750c1dfb1731838336b31604fb932807d1340b962a40ca9f901f1a9a40fd19` |
 | BNCI2025_001 | `bnci` | Subject-1 official all-modality BIDS, exact source annotation/class/sample/type fidelity, full App readback and bounded recipe replay PASS (958 events, 16 official classes). Ordinary payload context markers need explicit non-class decisions. Public-loader/BIDS timeline is continuous; no discontinuity-support claim; `06311903da4dbbaba9f0dac3a978624cc9e3df62c63411f94a056671a292af21` |
 | BNCI2025_002 | `bnci` | Official all-modality BIDS and representative 0ses1 / 0perc0 source/readback/recipe PASS; 9 retained subject-1 runs converted, one verified. Selected `snakerun` is one class, not supervised-ready; `3ae2ce23ec4ce0db920d1835c8cb85d4d06753a1f4bdfab35f83fd75d416c8ac` |
@@ -259,7 +286,7 @@ retained and E: campaigns; each row still states its evidence limit and is not a
 | Rozado2015 | `rozado2015` | Acquisition BLOCKED: official archive and dataset-metadata requests return HTTP 403; no archive available for extraction/loader verification, and no access-control bypass attempted |
 | Schirrmeister2017 | `schirrmeister2017` | Subject 1 train selected run fresh MOABB-to-BIDS Scan/Preview/Validate/Apply, waveform/event readback and recipe-root identity PASS; retained child receipt SHA-256 `cbd252420865dd2a176ec9c587fbf6afe9a68302ba0617219bafff29ece70af3` |
 | Simoes2020 | `simoes2020` | Subject 1 payload evidence plus selected-run fresh MOABB-to-BIDS five-Command/readback/recipe PASS (`296c1c46...57ebe9f`) |
-| Sosulski2019 | `sosulski2019` | BLOCKED: pinned loader exposes only one 4.58 GB all-subject archive, with no representative source unit |
+| Sosulski2019 | `sosulski2019` | Selected-run portable BIDS Command/import and fresh recipe replay PASS; conversion/source limits remain in bound receipts. |
 | Speier2017 | `speier2017` | Subject 1 complete payload evidence plus selected-run fresh MOABB-to-BIDS five-Command/readback/recipe PASS (`478c1868...61c0be60`); supplemental fresh public-loader audit confirms source/non-STIM channel, event and waveform fidelity (`770483d1f1dcb44ddd8b0569b267227a3bdbf449daa5d5efb2539ba7dcf63cc9`) |
 | Chen2017SingleFlicker | `ssvep_chen2017` | Retained MOABB 1.5 BIDS root selected-run Command/readback/recipe PASS; original converter options were not persisted; aggregate SHA-256 `62ef6cdb...49ac4c53` |
 | Dong2023 | `ssvep_dong2023` | Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS (`eca6c948...98a0c022`); supplemental fresh public-loader audit confirms only STIM was externalized and preserves source channels/events/readback (`9c664edcd135ef44806f9eb6c087d23772f4373f32e4b86fd69b177b85738c1b`) |
@@ -275,7 +302,7 @@ retained and E: campaigns; each row still states its evidence limit and is not a
 | Wang2016 | `ssvep_wang` | Retained MOABB 1.5 BIDS root selected-run Command/readback/recipe PASS; original converter options were not persisted; aggregate SHA-256 `62ef6cdb...49ac4c53` |
 | Wang2021Combined | `ssvep_wang2021` | Retained first CNT → official all-modality BIDS → full source/readback/recipe PASS (200 class events). Existing retained child is unchanged; constructor lacks the option, so the inherited dataset field is explicitly set True; `7451f7617dd4a24d283b59be9f6443d40b2b97141d9ba3d654836833a56dfd0c` |
 | Stieger2021 | `stieger2021` | Subject 1 session 1 run 0 fresh MOABB-to-BIDS Scan/Preview/Validate/Apply, waveform/event readback and recipe-root identity PASS; retained child receipt SHA-256 `25e7f5b55dfe3c07857f778981002bb0f20ccca2968706bb699eaa584492fcdd` |
-| Tavakolan2017 | `tavakolan2017` | BLOCKED: pinned loader requires missing BCI2kReader after finding all four subject-1 DAT files |
+| Tavakolan2017 | `tavakolan2017` | Selected-run portable BIDS Command/import and fresh recipe replay PASS; conversion/source limits remain in bound receipts. |
 | Thielen2015 | `thielen2015` | Official converter preserves annotation extras in events.tsv. Reviewed trial_id timestamp classes now import and replay at all 36 exact samples; full 104-channel app readback equals BIDS, source hashes unchanged; `a90b58bb94c5969d240ed49054bcafdea57f45d32b67b9512cac3ab1094379b9`. Representative import, not full cVEP training support |
 | Thielen2021 | `thielen2021` | Retained MOABB 1.5 BIDS root selected-run Command/readback/recipe PASS; original converter options were not persisted; aggregate SHA-256 `62ef6cdb...49ac4c53` |
 | TrianaGuzman2024 | `triana_guzman2024` | **Official converter BLOCKED**: unmodified pinned MOABB / MNE-BIDS fails because head-coordinate metadata lacks nasion/LPA/RPA landmarks. The old export-only root altered fiducial/STIM metadata and is not canonical conversion evidence; no product workaround applied; `1686f1e9905f01fc24b7dd9f43806109779963f93d04c161988b6814522843ca` |
@@ -283,9 +310,9 @@ retained and E: campaigns; each row still states its evidence limit and is not a
 | Wairagkar2018 | `wairagkar2018` | Subject 1 session 0 run 0 fresh MOABB-to-BIDS Scan/Preview/Validate/Apply, waveform/event readback and recipe-root identity PASS; retained child receipt SHA-256 `af3de6caca1519ec5b4cd5c74d74431e35bcc14e42a88b364a3a79cc00431406` |
 | Weibo2014 | `Weibo2014` | Official all-modality representative BIDS, source/readback and recipe PASS (64 non-STIM channels, 560 events, 7 classes). Annotations match the public loader's [3,7] interval: original STIM sample +600; BIDS value IDs are explicitly mapped to class names, not mistaken for original codes; `9dadd3a106347948d63c500bebe5859e63ecfce9aedc4d631530e32e7b867bd9` |
 | Wu2020 | `wu2020` | Subject 1 payload evidence plus retained MOABB-1.5.0 BIDS-root five-Command/exact-readback PASS (`e5a20362...c6464b08`); official EEG-only channel selection recorded |
-| Yang2025 | `yang2025` | BLOCKED: pinned loader exposes only one 65.6 GB corpus archive, with no representative source unit |
+| Yang2025 | `yang2025` | Selected-run portable BIDS Command/import and fresh recipe replay PASS; conversion/source limits remain in bound receipts. |
 | Yi2025 | `yi2025` | Subject 11 retained MOABB 1.5.0 BIDS root has eight events.tsv files; all eight source event sequences match, and selected run-0 Commands/readback/recipe replay PASS (`edd6b22dd795aa0547d7f0b9e849102562b05394fadc3036427f222a1b781ae7`). The earlier missing-events receipt was incorrect; historical converter script/log is unavailable, so retained options/provenance are disclosed rather than described as a fresh conversion |
-| Zhang2017 | `zhang2017` | BLOCKED: pinned RAR extraction requires an external extractor absent from the retained environment |
+| Zhang2017 | `zhang2017` | Selected-run portable BIDS Command/import and fresh recipe replay PASS; conversion/source limits remain in bound receipts. |
 | Zhang2025 | `zhang2025` | Subject 1 retained source fresh-loader → existing MOABB 1.5.0 EEG-BIDS root → five-Command/readback/recipe PASS (`f04a76f5cc39223b07ea2f23d027551ab2a67c1991c51e931ba4f20e393ebd32`); process-only pinned output-path seam disclosed |
 | Zheng2020 | `zheng2020` | Subject 1 session 0 run 0 fresh MOABB-to-BIDS Scan/Preview/Validate/Apply, waveform/event readback and recipe-root identity PASS; retained child receipt SHA-256 `986dc316b581d3a6f20d9d38f837dd87394daba5ede07f4f7e48e6b0cd15db66` |
 | Zhou2016 | `Zhou2016` | Subject 1 retained source plus root metadata fresh MOABB-to-BIDS five-Command/readback/recipe PASS; independent public-loader identity remained stable across conversion (`0d2ab582820e68fb3d4aa966b768c7488e099547970eb7328ae28c64d041247f`) |

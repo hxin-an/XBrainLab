@@ -13,8 +13,10 @@ local Granite透過18個核准action進入相同GUI與Command workflow。
 使用者匯入邊界集中於 `user_docs/import-support.md`：通用 EEG 檔案與 EEG-BIDS 是並列入口，
 內嵌／外部／混合／明確無 label 均經既有 wizard。無 label 可檢視與前處理，不代表監督式
 epoch/training ready。MOABB loader 轉成 EEG-BIDS 後的全清單相容性是已同意的最低目標；完整
-1.5.0 inventory 目前已有 127 個代表路徑通過、20 個明確 blocker、0 個未盤點。這是完整
-disposition，**不是 147/147 相容能力**。目前同批通道配置／raw-epoch 相容性限制，以及
+1.5.0 inventory 的 recurring gate 目前要求 134 個代表路徑：原有 127 個加上七個新通過
+轉換／實際匯入／recipe 重播的案例，另有九個授權暫緩、四個明確 blocker、零個未盤點。
+每個 required entry 已綁定可攜式資料 manifest；完整同版本、新位置 campaign 仍須另行通過。
+這是完整 disposition，**不是 147/147 相容能力**。目前同批通道配置／raw-epoch 相容性限制，以及
 BIDS epoched/discontinuous 與仍未通過的逐項轉換／產品 blocker，
 必須公開，不能透過文件把尚未完成的目標改寫為已支援。
 明確無 label 的 BIDS 匯入不再強制 events.tsv；wizard 可選 `Continue without labels`，經後端
@@ -55,10 +57,12 @@ BIDS 缺少 events.tsv 時亦可完整審查檔內事件與 class 後匯入並�
 
 `XBRAINLAB_DATA_DIR/datasets/`是唯一central local hierarchy，分為source、bids、public-fixtures、
 manifests與quarantine。這台開發機目前使用
-`/mnt/d/workspace_v2/.xbrainlab-data/datasets/`；其中保存15個formal BIDS、唯一MOABB raw source、
-legacy compact source、pinned public fixtures與relocation-aware checksums/receipts。Import dialog只把
-它當起始位置，仍可選外部路徑。Repo `build/`只允許可重建、可丟棄的當次artifact，不再保存dataset、
-seed、cache authority或retired worktree。
+`E:\XBrainLabData\datasets`；134 個代表性 BIDS entry 的檔案與 manifest，以及必要 public fixtures，
+已複製並核對至此。原始 source 與歷史 evidence 的內容核對／位置映射以 migration manifest 與
+completion receipt 為準；舊 D／E 位置在精確清理批准前保留，不能據此刪除。
+Import dialog 只把設定的 data root 當起始位置，仍可選外部路徑。
+Repo `build/`是可重建的當次 artifact 位置，不是 durable dataset authority；本輪歷史資料須先完成
+copy／hash／replay 與 evidence 保存，另經精確清理授權後才移除舊副本。
 
 ## Release boundary
 
