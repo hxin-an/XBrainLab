@@ -11,7 +11,9 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, TypedDict
 
-from XBrainLab.backend.load_data.event_loader import timestamp_interval_end_tolerance
+from XBrainLab.backend.load_data.event_loader import (
+    timestamp_interval_exceeds_recording,
+)
 from XBrainLab.backend.load_data.raw_data_loader import load_raw_data
 
 from .data_interpretation_event_values import (
@@ -399,13 +401,7 @@ def _review_one_run(
     recording = _recording_metadata(eeg_file, resource_reader=resource_reader)
     recording_issue = recording["issue"]
     recording_duration: Decimal | None = recording["recording_duration"]
-    end_precision = Decimal(0)
     if recording_issue is None and recording_duration is not None:
-        # Annotation timestamps can round at microsecond precision. Never admit
-        # a full extra sample, and retain the source's literal timing evidence.
-        end_precision = Decimal(
-            str(timestamp_interval_end_tolerance(recording["sampling_frequency_hz"]))
-        )
         evidence.update(
             {
                 "sampling_frequency_hz": recording["sampling_frequency_hz"],
@@ -506,7 +502,12 @@ def _review_one_run(
         elif (
             row["onset"] is not None
             and row["duration"] is not None
-            and row["onset"] + row["duration"] > recording_duration + end_precision
+            and timestamp_interval_exceeds_recording(
+                float(row["onset"]),
+                float(row["duration"]),
+                sfreq=recording["sampling_frequency_hz"],
+                n_times=recording["sample_count"],
+            )
         ):
             placement_status = "blocked"
             placement_code = "interval_exceeds_recording_end"

@@ -210,9 +210,8 @@ def _assert_loaded(
             raise RuntimeError(
                 "unlabelled import unexpectedly admits supervised classes"
             )
-        if (
-            "missing_class_labels"
-            not in interpretation.epoch_handoff["supervised_blocker_codes"]
+        if not {"missing_class_labels", "missing_reviewed_target"}.intersection(
+            interpretation.epoch_handoff["supervised_blocker_codes"]
         ):
             raise RuntimeError("unlabelled import lost its supervised blocker")
         actual_events, event_id = [], {}

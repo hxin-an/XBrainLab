@@ -99,6 +99,27 @@ No GUI pass count certifies label semantics or untested retained recordings.
 Diagnostic scripts/results live under this worktree's `build/dev-artifacts/retained-import-20260916`.
 No UI changes are authorized by this diagnostic finding; no new human-acceptance claim is made.
 
+All eight initially unfinished default GUI roots subsequently loaded via reviewed visible controls.
+Dreyer baseline recordings remain alongside MI runs; the diagnostic driver now waits for import
+completion rather than querying a busy review. Jeong's complete eleven-class mapping was checked
+against the retained pinned loader. A 108-recording pilot passed 106 readback/replay cases; the two
+baseline cases exposed a verifier that demanded the missing-label blocker even when explicit
+context-only review correctly publishes a missing-reviewed-target blocker. Extend the verifier's
+real-command baseline fixture, keeping zero class-map/readiness assertions and negative controls.
+Independent review additionally found Decimal-preview versus float-apply disagreement at the exact
+annotation end tolerance (one ULP, e.g. 1 sample at 3 Hz). Add real Preview/Apply boundary regression,
+then use the same bounded numeric predicate at both owners without changing source timestamps,
+onset admission or whole-sample-overrun rejection. These directly related corrections precede the
+final clean-source recording/native campaigns; earlier diagnostics remain non-final evidence.
+The real 3/7 Hz reproduction additionally confirmed MNE crop rejection at a microsecond boundary.
+Both owners now share numeric admission plus the pinned MNE timedelta representability predicate;
+the original Kumar quarter-microsecond case still imports without changing literal source bytes.
+Context-only verification accepts the existing missing-reviewed-target code as well as missing
+labels, while still rejecting any published classes/readiness. Related tests pass 89/89; independent
+review found no remaining blocker in this fix. Cattan whole-root GUI exceeded the diagnostic
+deadline (240 files, initial review ~125 s); measure its actual GUI/worker bottleneck before repair,
+do not raise timeouts or substitute the 120-file default pass for full-root evidence.
+
 ### Previous evidence and storage checkpoint
 
 The agreed common-EEG, EEG-BIDS and MOABB-converted-data import boundary is implemented in

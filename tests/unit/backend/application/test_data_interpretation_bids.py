@@ -980,6 +980,69 @@ def test_interval_end_respects_annotation_precision_without_admitting_overruns(
         service.close()
 
 
+@pytest.mark.parametrize(
+    ("sfreq", "duration", "allowed"),
+    [
+        (3.0, "0.3333343333333333333333333333", False),
+        (7.0, "0.1428581428571428571428571429", False),
+        (3.0, "0.3333333333333333", True),
+        (7.0, "0.14285714285714285", True),
+    ],
+)
+def test_interval_precision_edge_agrees_between_preview_and_apply(
+    tmp_path: Path, sfreq: float, duration: str, allowed: bool
+) -> None:
+    root = tmp_path / "bids"
+    _eeg, events = _write_bids_run(
+        root,
+        run="1",
+        sfreq=sfreq,
+        n_times=1,
+        event_rows=[("0", duration, "right_hand", "2")],
+    )
+    original = events.read_bytes()
+    service = ApplicationService()
+    try:
+        assert service.execute(ScanSourceCommand(str(root), source_hint="bids")).ok
+        preview = service.execute(
+            PreviewInterpretationCommand(
+                choices={
+                    "label_carrier_choices": {
+                        str(events): {
+                            "label_field": "trial_type",
+                            "anchor": "onset",
+                            "duration_field": "duration",
+                            "time_model": "seconds",
+                            "placement_method": "interval",
+                            "value_decisions": _value_decisions_from_events(events),
+                        }
+                    },
+                }
+            )
+        )
+        assert preview.ok
+        validated = service.execute(ValidateInterpretationCommand())
+        assert validated.ok
+        assert bool(validated.state.interpretation.blocked_reasons) is not allowed
+        applied = service.execute(ApplyInterpretationCommand(confirmed=True))
+        assert applied.ok is allowed, applied.message
+        if not allowed:
+            assert applied.state.raw.count == 0
+            assert "exceeds the stored EEG end" in " ".join(
+                applied.state.interpretation.blocked_reasons
+            )
+            assert events.read_bytes() == original
+            return
+        loaded = service.study.loaded_data_list[0]
+        rows, labels = loaded.get_event_list()
+        assert rows.tolist() == [[0, 0, 1]]
+        assert labels == {"right_hand": 1}
+        assert loaded.get_mne().n_times == 1
+        assert events.read_bytes() == original
+    finally:
+        service.close()
+
+
 def test_interval_end_precision_cannot_admit_an_extra_sample(tmp_path: Path) -> None:
     root = tmp_path / "bids"
     _write_bids_run(

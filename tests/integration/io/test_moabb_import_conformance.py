@@ -141,11 +141,19 @@ def test_import_case_replays_real_bids_commands_and_preserves_input(
     assert Path(result["recipe"]["path"]).is_file()
 
 
+@pytest.mark.parametrize("context_only_review", [False, True])
 def test_import_case_preserves_context_without_inventing_classes(
     tmp_path: Path,
+    context_only_review: bool,
 ) -> None:
     data_root, case = _write_case_fixture(tmp_path)
-    case["choices"] = {"skip_labels": True}
+    if context_only_review:
+        for plan in case["choices"]["label_carrier_choices"].values():
+            for decision in plan["value_decisions"].values():
+                decision["use_as_class"] = False
+                decision.pop("class_name")
+    else:
+        case["choices"] = {"skip_labels": True}
     case["expected"]["events"] = []
 
     result = run_import_case(case, data_root, tmp_path / "out")
