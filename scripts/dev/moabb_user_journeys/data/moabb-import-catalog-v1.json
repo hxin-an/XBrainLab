@@ -435,8 +435,8 @@
         "fed0abd4e6844291b68d7347e6b67c11247a8a660037308258029d28bad02e8d"
       ],
       "case_manifest": {
-        "path": "datasets/manifests/import-cases-v1/BI2012-6b346b7322ab.json",
-        "sha256": "6b346b7322ab8387b96848b3cb54b8a131c13106c95649efa5dd5155b5446cd4"
+        "path": "datasets/manifests/import-cases-v1/BI2012-75844872d2f4.json",
+        "sha256": "75844872d2f47d1392c973ff53ae82207c39eeb4e998c7347218deb607024b7a"
       }
     },
     {
@@ -461,8 +461,8 @@
         "fed0abd4e6844291b68d7347e6b67c11247a8a660037308258029d28bad02e8d"
       ],
       "case_manifest": {
-        "path": "datasets/manifests/import-cases-v1/BI2014a-065faee33c2c.json",
-        "sha256": "065faee33c2c0f3160354c5feb852c1d374808d8dcdaca649c52898c2686ec2c"
+        "path": "datasets/manifests/import-cases-v1/BI2014a-1f6d9cf667d1.json",
+        "sha256": "1f6d9cf667d1088a126b39388ea06da5568851fba985737ae16532ab3abd0803"
       }
     },
     {
@@ -474,8 +474,8 @@
         "fed0abd4e6844291b68d7347e6b67c11247a8a660037308258029d28bad02e8d"
       ],
       "case_manifest": {
-        "path": "datasets/manifests/import-cases-v1/BI2014b-c9c020372e62.json",
-        "sha256": "c9c020372e62dc091d96a0b81fc73b99df5cb95bdd8fdffbdf31699ac07a71de"
+        "path": "datasets/manifests/import-cases-v1/BI2014b-c0a178af3dd3.json",
+        "sha256": "c0a178af3dd3b2c67fdf4c90c58938db4b5ede4dfe086a3452d14616232fe4d9"
       }
     },
     {

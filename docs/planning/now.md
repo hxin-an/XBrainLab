@@ -1,8 +1,105 @@
 # XBrainLab Now
 
-最後更新：`2026-09-15`
+最後更新：`2026-09-16`
 
-## Active — PR #141 import-boundary acceptance
+## Active — retained E-drive datasets through normal Windows import
+
+User approved this continuation on 2026-09-16. The observable outcome is that a teacher can
+choose any of the 134 retained formal dataset roots in `E:\\XBrainLabData\\datasets\\bids`
+and complete normal Windows GUI import, with meaningful data and label state, without hidden
+manifest choices. The earlier 134 representative backend passes do not establish that outcome.
+
+Scope: inventory every retained recording; resolve all 23 unbound old BIDS directories; verify
+single-recording, default and whole-dataset selection through existing import owners; run all 134
+roots through native Windows GUI; repair reachable import defects and synchronize navigation/docs.
+No new downloads/environments, acceptance of deferred rights, arbitrary cross-dataset combinations,
+all-subject claims beyond retained data, training/scientific certification or automatic merge.
+
+Assumptions/authority: reuse PR #141 and the existing shared Windows environment. Preserve unrelated
+root changes/settings. User approved cleanup, exact duplicate removal within prior authorization,
+and retention/promotion of valid unique recordings. Resolve exact deletion targets and independently
+verify replacements first; preserve source and necessary failure evidence. Visible UI changes still
+need a concrete proposed change and explicit confirmation before implementation.
+
+Execution and focused validation:
+1. Inventory the 134 formal and 23 quarantined roots, recording selections, metadata and sizes.
+   Compare each old recording to canonical/source content; assign exact duplicate, superseded
+   conversion, valid unique recording or a concrete unresolved difference. An unknown is unfinished.
+2. Resolve quarantine dispositions without shrinking the 134 required catalog; validate any promoted
+   recordings and retain relocation/source mappings before approved deletion.
+3. Exercise all retained recordings and default/whole-root combinations through Scan/Preview/
+   Validate/Apply and observable readback. Reuse existing runners; reproduce defects before repair.
+4. Exercise all 134 roots via real Windows wizard controls, including label review and final dataset
+   display; fail on hidden choices, unexpected dialogs, partial imports or untested recordings.
+   Check representative cancel/retry and consecutive imports. Bound native jobs and preserve failures.
+5. Review actual evidence coverage, synchronize the stale 127/20 user-doc claim and E navigation,
+   run applicable same-commit gates/CI, then open Windows for one consolidated manual acceptance.
+
+Stop condition: all 23 old directories have resolved dispositions; every retained formal recording
+is accounted for and verified; all 134 roots have native GUI results; no unexplained import failures,
+missing cases or stale navigation remain. A real product decision/resource blocker is reported as
+unfinished, never converted into a pass. User handtest/merge is the final separate approval.
+
+Progress (2026-09-16): inventory found 1,179 formal recordings and 63 quarantined recordings.
+Seventeen quarantined directories (436 files, 2,194,277,166 logical bytes) were independently
+rehashed against canonical replacements and permanently removed under the approved cleanup scope;
+the journal and before inventory are at `E:\\XBrainLabData\\evidence\\retained-import-20260916\\duplicate-removal`.
+All 26 unique Brain Invaders recordings passed independent waveform/event readback and recipe
+replay and were promoted into the three existing formal roots, with refreshed manifest bindings.
+The three superseded conversions (Kim2025, Wang2021, Weibo2014) passed exact common-channel/event
+comparison against their more complete replacements. All six remaining old directories were then
+removed after rechecking replacements; 27 differing small metadata files were archived with the
+deletion journal. There are now 134 formal roots, 1,205 retained recordings and zero quarantined units.
+Evidence is under `retained-import-20260916/{unique-promotion,quarantine-closure}` on E.
+Native GUI default diagnostics are running; these do not yet establish correct label semantics or
+the full retained denominator. The stale user-doc 127/20 count is corrected.
+
+Next: synchronize E navigation and finish normal subject-selection/label automation and all retained
+GUI/backend cases. Cattan's 240-recording GUI diagnostic terminated during loading; independently,
+native profiling measured preview at 51.84 s (with profiling overhead), including 24.41 s in repeated
+linear dependency lookup and 1,751,051 path-key calls. Bounded backend repair: characterize existing
+index/dependency safety, add a deterministic lookup-cost regression, then derive lookup keys once
+inside the existing immutable index and defer unused generic path resolution. No new owner, global
+cache, admission bypass, UI change or EEG semantic change. Re-run the same tests/profile/GUI case;
+keep native process failure diagnosis separate from the measured lookup cost.
+The lookup change is +17/-9 production LOC (two files, net +8, unchanged owners). The same
+240-recording profiled Scan/Preview measured 13.01/25.72 s versus baseline 23.08/51.84 s;
+profiling overhead and concurrent diagnostic workload mean these are not a general latency SLA.
+A Windows identity-mutation test needed explicit mtime change because immediate NTFS operations
+can share timestamps; its rejection assertion is unchanged. Payload admission remains separate.
+
+Brandl default import also reproduced a concrete estimate defect: seven headers describe
+10,037,517,840 raw bytes (~16.95 GB with buffers), but including their parser dependencies inflates
+the preflight to ~47.4 GiB by counting `.eeg` files again. Next bounded fix: a real BrainVision
+fixture must prove header-only and header+dependencies have the same waveform budget; unowned
+payloads must still count and genuine oversized selections remain blocked. Move the existing
+bounded BrainVision parser out of candidate into `brainvision_preflight.py`, sharing it with
+ResourceChecker. Complexity review: no new owner/state/admission contract; move ~180 existing
+lines, remove the original block, add only dependency accounting (~30-60 net production lines).
+Two real callers need the same unsafe-path policy; do not duplicate parsing or add a compatibility
+wrapper. Re-run candidate/index/resource tests and actual Brandl/Jeong GUI selections.
+Resource/index/candidate tests now pass 127/127. Actual quarantine is empty after additionally
+resolving ten interrupted-download files in two directories: all nonzero bytes matched retained
+sources; 98,937,680 logical bytes removed with 167,426 bytes of exact reconstruction masks.
+The three existing E navigation files now bind catalog `949a27ce...d70adb` and state that the
+all-recording/native campaign remains unfinished.
+
+Kumar all-20 validation reproduces a sub-microsecond end-boundary defect: final row onset
+181.58203125 + six-decimal duration 4.417969 = 186.00000025 against 186 stored seconds.
+The normal review closes as blocked; do not count that driver timeout as success. Bounded repair:
+allow only annotation timestamp representation error at the recording-end interval check
+(at most one microsecond and at most half a sample); preserve literal onset/duration, keep onset
+at/after the end and real overruns blocked. Add real Command/apply regression plus neighboring
+overrun rejections, then retry all 20 through native GUI. No data rewriting or UI edits.
+The end tolerance now reuses the existing event-loader annotation precision at both preview and
+apply; BIDS/event-loader tests pass 71/71, including source-file preservation and real overruns.
+Next execution: finish first diagnostic GUI pass, rerun failures through reviewed visible class
+controls, then complete all-retained-recording readback/replay and whole-root native import.
+No GUI pass count certifies label semantics or untested retained recordings.
+Diagnostic scripts/results live under this worktree's `build/dev-artifacts/retained-import-20260916`.
+No UI changes are authorized by this diagnostic finding; no new human-acceptance claim is made.
+
+### Previous evidence and storage checkpoint
 
 The agreed common-EEG, EEG-BIDS and MOABB-converted-data import boundary is implemented in
 [PR #141](https://github.com/hxin-an/XBrainLab/pull/141). Product behavior still requires manual
@@ -20,9 +117,8 @@ acceptance and explicit merge approval; Git and the PR own exact source/check st
   `ea44c136d9423caa7e2dd55618e76ec4a7a7eb157a0fa37e8920cd07e490daef`; post-cleanup counts
   remain 134 canonical BIDS directories and 23 quarantine directories.
 
-Next: require successful non-skipped checks on the exact current PR head, then provide one integrated
-Windows GUI handtest for the import/label boundary. Do not claim all-subject, training or scientific
-validation, accept deferred rights, bypass the four blockers, or merge without user acceptance.
+This checkpoint predates the approved all-retained-recordings continuation above. Its passing
+representative evidence does not complete the current scope or replace the final Windows handtest.
 
 ## Closed baseline
 

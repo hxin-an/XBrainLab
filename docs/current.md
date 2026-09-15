@@ -1,6 +1,6 @@
 # XBrainLab 目前狀態
 
-最後更新：`2026-09-15`
+最後更新：`2026-09-16`
 
 ## 一句話
 
@@ -25,6 +25,10 @@ BIDS epoched/discontinuous 與仍未通過的逐項轉換／產品 blocker，
 BIDS 缺少 events.tsv 時亦可完整審查檔內事件與 class 後匯入並重播 recipe；不猜測 class。
 外部 timestamp placement 遇到 inherited EEG metadata 明定 epoched/discontinuous 時會阻擋，
 不再當成連續時間軸；新增或修改已審查的 sidecar 必須重新 preview/review。
+Timestamp interval 結尾的表示誤差由 preview 與實際事件載入共用同一界線：最多一微秒，
+且不超過半個 sample；不改寫來源時間、不允許 onset 落在錄製結尾或真正的 interval 越界。
+BrainVision header 已計入的 signal／marker 依賴不再重複增加波形 RAM 估算；未被引用的檔案
+仍計入，安全門檻與必要確認保持不變。
 
 | 區域 | 目前能相信 | 邊界 |
 | --- | --- | --- |
@@ -60,8 +64,12 @@ BIDS 缺少 events.tsv 時亦可完整審查檔內事件與 class 後匯入並�
 manifests與quarantine。這台開發機目前使用
 `E:\XBrainLabData\datasets`；134 個代表性 BIDS entry 現為 `datasets/bids/<dataset-storage-id>`
 的直接子目錄，12,434 個綁定輸入在同磁碟整理後維持內容雜湊，並由 fresh 134/134 backend
-campaign 重播。另有 23 個未綁定舊單元保留在 `datasets/quarantine/moabb-1.5.0-unbound`，不計為
-通過。位置入口為 `datasets/manifests/import-locations-v3/README.md`；來源對照為
+campaign 重播。2026-09-16 後續逐檔比對完成原 23 個隔離目錄的處置：17 份完全重複、3 份
+被保留更多通道的正式版本取代；另 3 份中的 26 筆獨有 Brain Invaders recordings 通過逐筆
+匯入／波形／事件／recipe 重播後加入正式目錄，舊副本已清除。正式区共 1,205 筆 retained
+recordings，隔離資料單元為零；完整逐筆與 Windows GUI 驗收仍在進行，不能由此宣稱全部通過。
+逐檔刪除、替代位置、差異 metadata 與 promotion 證據在 `evidence/retained-import-20260916`。
+位置入口為 `datasets/manifests/import-locations-v3/README.md`；來源對照為
 `datasets/manifests/source-locations-v2-c84e8fb0cc29.json`。原始 source 與歷史 evidence 的內容
 核對／位置映射仍以 migration manifest 與 completion receipt 為準；這些保留內容不因代表路徑
 通過而自動取得刪除授權。

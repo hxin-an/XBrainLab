@@ -19,6 +19,11 @@ _MNE_EXCLUDED_CLASS_PREFIXES = ("bad", "edge")
 _MNE_ANNOTATION_TIME_TOLERANCE_SECONDS = 1e-6
 
 
+def timestamp_interval_end_tolerance(sfreq: float) -> float:
+    """Bound annotation representation error without admitting an extra sample."""
+    return min(_MNE_ANNOTATION_TIME_TOLERANCE_SECONDS, 0.5 / sfreq)
+
+
 class _AnnotationSnapshotSource(Protocol):
     def copy(self) -> mne.Annotations: ...
 
@@ -293,6 +298,7 @@ def _normalize_timestamp_rows(
     recording_duration = n_times / sfreq
     last_sample_time = (n_times - 1) / sfreq
     tolerance = max(1e-12, 1.0 / sfreq * 1e-9)
+    end_tolerance = timestamp_interval_end_tolerance(sfreq)
     rows: list[_TimestampRow] = []
     for source_index, raw_item in enumerate(label_list, start=1):
         if not isinstance(raw_item, dict):
@@ -312,7 +318,7 @@ def _normalize_timestamp_rows(
             onset < 0
             or duration < 0
             or onset > last_sample_time + tolerance
-            or onset + duration > recording_duration + tolerance
+            or onset + duration > recording_duration + end_tolerance
         ):
             raise ValueError(
                 f"Timestamp label row {source_index} is outside the stored EEG range.",

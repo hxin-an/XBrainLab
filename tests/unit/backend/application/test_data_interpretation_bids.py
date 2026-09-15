@@ -924,6 +924,75 @@ def test_strict_bids_accepts_zero_duration_and_interval_ending_at_recording_end(
     )
 
 
+@pytest.mark.parametrize(
+    ("duration", "allowed"),
+    [("4.417969", True), ("4.417972", False), ("4.419922", False)],
+)
+def test_interval_end_respects_annotation_precision_without_admitting_overruns(
+    tmp_path: Path, duration: str, allowed: bool
+) -> None:
+    root = tmp_path / "bids"
+    eeg, events = _write_bids_run(
+        root,
+        run="1",
+        sfreq=512.0,
+        n_times=186 * 512,
+        event_rows=[("181.58203125", duration, "right_hand", "2")],
+    )
+    original = events.read_bytes()
+    service = ApplicationService()
+    try:
+        assert service.execute(ScanSourceCommand(str(root), source_hint="bids")).ok
+        preview = service.execute(
+            PreviewInterpretationCommand(
+                choices={
+                    "label_carrier_choices": {
+                        str(events): {
+                            "label_field": "trial_type",
+                            "anchor": "onset",
+                            "duration_field": "duration",
+                            "time_model": "seconds",
+                            "placement_method": "interval",
+                            "value_decisions": _value_decisions_from_events(events),
+                        }
+                    },
+                }
+            )
+        )
+        assert preview.ok
+        assert service.execute(ValidateInterpretationCommand()).ok
+        applied = service.execute(ApplyInterpretationCommand(confirmed=True))
+        assert applied.ok is allowed
+        assert applied.state.raw.count == int(allowed)
+        if allowed:
+            loaded = service.study.loaded_data_list[0]
+            assert loaded.get_filepath() == str(eeg)
+            event_rows, event_id = loaded.get_event_list()
+            assert event_id == {"right_hand": 1}
+            assert event_rows.tolist() == [[92970, 0, 1]]
+            assert loaded.get_mne().n_times == 186 * 512
+        else:
+            assert "exceeds the stored EEG end" in " ".join(
+                applied.state.interpretation.blocked_reasons
+            )
+        assert events.read_bytes() == original
+    finally:
+        service.close()
+
+
+def test_interval_end_precision_cannot_admit_an_extra_sample(tmp_path: Path) -> None:
+    root = tmp_path / "bids"
+    _write_bids_run(
+        root,
+        run="1",
+        sfreq=2_000_000.0,
+        n_times=1_000,
+        event_rows=[("0.000499", "0.0000015", "outside", "1")],
+    )
+    candidate = _candidate_for_bids(root)
+    assert any("exceeds the stored EEG end" in r for r in candidate.blocked_reasons)
+
+
 def test_strict_bids_preview_uses_admitted_header_bounds_without_loading_raw(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
