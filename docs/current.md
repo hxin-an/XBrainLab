@@ -1,6 +1,6 @@
 # XBrainLab 目前狀態
 
-最後更新：`2026-09-13`
+最後更新：`2026-09-15`
 
 ## 一句話
 
@@ -15,7 +15,8 @@ local Granite透過18個核准action進入相同GUI與Command workflow。
 epoch/training ready。MOABB loader 轉成 EEG-BIDS 後的全清單相容性是已同意的最低目標；完整
 1.5.0 inventory 的 recurring gate 目前要求 134 個代表路徑：原有 127 個加上七個新通過
 轉換／實際匯入／recipe 重播的案例，另有九個授權暫緩、四個明確 blocker、零個未盤點。
-每個 required entry 已綁定可攜式資料 manifest；完整同版本、新位置 campaign 仍須另行通過。
+每個 required entry 已綁定可攜式資料 manifest；統一路徑的同版本 fresh backend campaign 已
+於 134/134 通過。
 這是完整 disposition，**不是 147/147 相容能力**。目前同批通道配置／raw-epoch 相容性限制，以及
 BIDS epoched/discontinuous 與仍未通過的逐項轉換／產品 blocker，
 必須公開，不能透過文件把尚未完成的目標改寫為已支援。
@@ -57,12 +58,16 @@ BIDS 缺少 events.tsv 時亦可完整審查檔內事件與 class 後匯入並�
 
 `XBRAINLAB_DATA_DIR/datasets/`是唯一central local hierarchy，分為source、bids、public-fixtures、
 manifests與quarantine。這台開發機目前使用
-`E:\XBrainLabData\datasets`；134 個代表性 BIDS entry 的檔案與 manifest，以及必要 public fixtures，
-已複製並核對至此。原始 source 與歷史 evidence 的內容核對／位置映射以 migration manifest 與
-completion receipt 為準；舊 D／E 位置在精確清理批准前保留，不能據此刪除。
+`E:\XBrainLabData\datasets`；134 個代表性 BIDS entry 現為 `datasets/bids/<dataset-storage-id>`
+的直接子目錄，12,434 個綁定輸入在同磁碟整理後維持內容雜湊，並由 fresh 134/134 backend
+campaign 重播。另有 23 個未綁定舊單元保留在 `datasets/quarantine/moabb-1.5.0-unbound`，不計為
+通過。位置入口為 `datasets/manifests/import-locations-v3/README.md`；來源對照為
+`datasets/manifests/source-locations-v2-c84e8fb0cc29.json`。原始 source 與歷史 evidence 的內容
+核對／位置映射仍以 migration manifest 與 completion receipt 為準；這些保留內容不因代表路徑
+通過而自動取得刪除授權。
 Import dialog 只把設定的 data root 當起始位置，仍可選外部路徑。
-Repo `build/`是可重建的當次 artifact 位置，不是 durable dataset authority；本輪歷史資料須先完成
-copy／hash／replay 與 evidence 保存，另經精確清理授權後才移除舊副本。
+Repo `build/`是可重建的當次 artifact 位置，不是 durable dataset authority；本機需長期保留的
+campaign 已明確發布至 E 槽 evidence。任何其他副本或歷史資料仍須另經精確清理授權才能移除。
 
 ## Release boundary
 

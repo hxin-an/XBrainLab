@@ -33,8 +33,14 @@ deferred and four unresolved blockers** across the unchanged 147 exports. Every 
 The initial route baseline was 127 passed / 20 blocked; seven additional selected-recording conversions,
 actual Command imports and fresh-service recipe replays now pass, including replay after verified
 copy to the portable data root. All 134 required entries bind immutable, content-hashed case manifests.
-This promotes the recurring gate's required membership; it does not certify the outstanding complete
-same-source portable campaign or full-cohort support. Earlier payload-only passes are not route passes.
+After consolidating the retained storage units as direct children of `datasets/bids`, a fresh native
+Windows campaign at source `c6efe0d29608402aa9e2ddcd5ef018ae9f4ed758` passed all 134 required
+Scan/Preview/Validate/Apply and fresh-service recipe replays. Its durable summary is under
+`E:\XBrainLabData\evidence\import-conformance-unified-20260915-c6efe0d2` with summary SHA-256
+`ea44c136d9423caa7e2dd55618e76ec4a7a7eb157a0fa37e8920cd07e490daef`.
+This promotes the recurring gate's required membership and proves the representative unified paths;
+it does not certify all subjects, every recording, converter changes or full-cohort support.
+Earlier payload-only passes are not route passes.
 The four remaining blockers are Martinez's original archive connection timeout, Rozado's official
 archive/metadata HTTP 403, BNCI2019's unresolved source EOG units and Triana's missing converter
 fiducials. Deferred rights are not a claim that the source is technically unreadable.
@@ -74,19 +80,26 @@ exercise every recording. All 22 rows pass fresh Scan/Preview/Validate/Apply, ex
 readback and saved-recipe replay. The receipts bind the active worktree baseline plus exact hashes of
 the six affected backend files; those hashes were independently checked before product commit.
 
-Retained evidence below is under `E:\XBrainLabData\evidence`:
+Retained evidence below is under `E:\XBrainLabData\evidence\history`, grouped by dataset
+family after the approved 2026-09-15 directory organization. Historical recipe/report bytes
+were not rewritten. Old-to-new directory prefixes (and explicitly removed empty trees) are
+recorded in `E:\XBrainLabData\evidence\directory-layout-20260915\paths.csv`;
+the corresponding `plan.json`, journal and summary bind the actual move. At that point formal dataset,
+case-manifest and source-location-index paths were unchanged. The later BIDS namespace consolidation
+is bound by the current catalog, source-locations-v2 and the fresh 134/134 campaign described above;
+historical recipe/report bytes remain unchanged.
 
-- Mainsah A–J: `mainsah2025-embedded-bids-retest-20260913/result-a-b-c-d-e-f-g-h-i-j-v7.json`,
+- Mainsah A–J: `mainsah/mainsah2025-embedded-bids-retest-20260913/result-a-b-c-d-e-f-g-h-i-j-v7.json`,
   SHA-256 `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`.
-- Mainsah K–S2: `mainsah2025-embedded-bids-retest-20260913/result-k-l-m-n-o-p-q-r-s1-s2-v7.json`,
+- Mainsah K–S2: `mainsah/mainsah2025-embedded-bids-retest-20260913/result-k-l-m-n-o-p-q-r-s1-s2-v7.json`,
   SHA-256 `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`.
   Each observed embedded event sequence matches a fresh retained-source MOABB loader run. Run P uses
   run 1 to include both classes; the selected runs and subjects are preserved per row.
-- Zuo and Yi: `retained-zuo-yi-embedded-retest-20260913/result-v2.json`,
+- Zuo and Yi: `campaigns/retained-zuo-yi-embedded-retest-20260913/result-v2.json`,
   SHA-256 `edd6b22dd795aa0547d7f0b9e849102562b05394fadc3036427f222a1b781ae7`.
   Zuo's two marker classes are checked against its original MAT loader. Yi uses its retained external
   events.tsv, not the new missing-sidecar path.
-- Yi provenance correction: `moabb-ten-20260913/yi2025-provenance-correction-20260913/result-v2.json`,
+- Yi provenance correction: `campaigns/moabb-ten-20260913/yi2025-provenance-correction-20260913/result-v2.json`,
   SHA-256 `45e4e18502dd2176f85579e24e85b0ff4986d9f3a7eed2b7434b4a979708cfcf`.
   All eight source class/sample sequences match the retained BIDS sidecars (40 events per run). Run 0
   compares all 789,000 samples across 62 channels; maximum voltage error is about 4.9e-11 V, below the
@@ -114,14 +127,14 @@ portable dataset paths or committed recordings:
 
 | Entries | Receipt location |
 | --- | --- |
-| BNCI2014_001 | `E:\XBrainLabData\evidence\bnci2014-001-return-all-modalities-pilot-20260913-v3-validation-v2-selected\result.json` |
-| BNCI2014_004, BNCI2015_009, BNCI2020_001 | Under `E:\XBrainLabData\evidence\return-all-modalities-representative-20260913\<lowercase export>\supplement-v2\result.json` |
+| BNCI2014_001 | `E:\XBrainLabData\evidence\history\bnci\bnci2014-001-return-all-modalities-pilot-20260913-v3-validation-v2-selected\result.json` |
+| BNCI2014_004, BNCI2015_009, BNCI2020_001 | Under `E:\XBrainLabData\evidence\history\campaigns\return-all-modalities-representative-20260913\<lowercase export>\supplement-v2\result.json` |
 | BNCI2020_002, BNCI2024_001 | Same campaign directory, `<lowercase export>\result.json` |
-| Kojima2024B | `E:\XBrainLabData\evidence\kojima-b-reconversion-20260913-v1\result-v2.json` |
+| Kojima2024B | `E:\XBrainLabData\evidence\history\kojima\kojima-b-reconversion-20260913-v1\result-v2.json` |
 | Thielen2015 | Workspace `build/dev-artifacts/thielen-full-app-readback.json`; links official-converter receipt `a05782d51b73cfe6f5232d9ff54c504160f22c95516bd6fa9a400c7a3f5cd66c` |
 | Huebner2017, Huebner2018 | Workspace `build/dev-artifacts/huebner-return-all/<lowercase export>-utf8/result.json` |
 | Kojima2024A, Liu2024, Kim2025BetaRange, Wang2021Combined | Workspace `build/dev-artifacts/<lowercase export>-all-modalities/result.json` |
-| BNCI2025_001 | Workspace `.bnci2025-supplement-v7/result.json`, supplementing official conversion `E:\XBrainLabData\evidence\bnci2025-001-official-return-all-modalities-20260913-v2` |
+| BNCI2025_001 | Workspace `.bnci2025-supplement-v7/result.json`; the old `evidence/bnci2025-001-official-return-all-modalities-20260913-v2` conversion directory became empty after approved duplicate removal and its empty tree was removed during organization. Use the retained formal dataset and source-location mappings, not that historical path. |
 | BNCI2025_002 | Workspace `build/dev-artifacts/bnci2025_002-all-modalities/result-v2.json` |
 | Weibo2014 | Workspace `.weibo2014-offline-return-all-modalities-v6-validation/result.json` |
 | BNCI2019_001, TrianaGuzman2024 blockers | Workspace `build/dev-artifacts/bnci2019-fidelity/result.json` and `build/dev-artifacts/triana-guzman-official-minimal/failure-receipt.json` |

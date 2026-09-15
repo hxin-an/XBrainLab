@@ -168,8 +168,11 @@ attributable reconversion checks; replaying retained BIDS alone cannot prove a c
 
 The durable local hierarchy is `E:\XBrainLabData\datasets\{source,bids,public-fixtures,manifests,quarantine}`,
 with sibling `evidence` and `staging`. This is the current machine's data-root choice, not a hard-coded
-product path. Copy/hash/replay precedes reference changes; original and failed evidence retention is
-separate from an explicitly approved exact-target cleanup. Do not rewrite historical recipes.
+product path. Its 134 required representative storage units are direct children of `datasets/bids`;
+the current human entrypoint is `datasets/manifests/import-locations-v3/README.md`. Unbound retained
+units stay under quarantine and are not promoted by proximity. Copy/hash/replay precedes reference
+changes; original and failed evidence retention is separate from an explicitly approved exact-target
+cleanup. Do not rewrite historical recipes.
 
 ## Exact-source requirements
 
