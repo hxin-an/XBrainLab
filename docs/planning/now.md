@@ -134,6 +134,39 @@ fix passes it with unchanged waveform memory, and112 resource/candidate tests pa
 old diagnostic supervisors were identity-checked and stopped (only owned process/job trees);
 partial results/timeouts remain. Restart from a clean commit using the explicit Windows Git entrypoint.
 
+Clean `3cfd9d70` baseline is complete: all 1,205 unique recordings passed full waveform/event
+readback and fresh recipe replay across `retained-all2`, `retained-retry1`, `retained-retry2`.
+The first run was 1,180 pass/25 fail; failures remain preserved. Corrections were diagnostic-only:
+Gao/PhysioNet additional task classes were checked against the pinned loader; six ERP CORE source
+TSVs have one-based `sample` but all 4,251 onsets/values match source EEG events exactly; two
+Mainsah P runs need their absent Target removed from both selected labels and legacy event roles.
+No source EEG/TSV bytes or product admission rules changed for these corrections. Same-head native
+representatives passed 134/134 and CI completed successfully. Four existing native recovery tests
+passed (CI had skipped them for missing fixtures), and two consecutive AlexMI imports passed.
+
+The original native whole-root driver is not final GUI evidence: it sometimes stopped at backend
+commit before table publication and its supervisor did not fail on failed cases. The tightened driver
+binds all 1,205 expected paths independently, waits for visible table/count/filenames/current
+generation and settled commands, and fails closed on missing/failed IDs. AlexMI/Gao/Weibo pilots
+pass, including Weibo's existing visible field-refresh action. All 134 roots plus 19 multi-subject
+default selections still need that final native pass. No UI product files have been edited.
+
+Next bounded repair: Thielen2021 whole-root (10 recordings) exceeds the unchanged 150 s diagnostic
+budget. Profiling measured Scan 17.625 s and Preview 66.281 s (profiling overhead included), with
+23.408 s in `InterpretationCandidate.to_public_dict` copying full evidence via `asdict` before the
+existing public projector drops it. Pass dataclass fields directly through that existing projection,
+recursively preserve dataclass/tuple semantics and detach retained leaves; never traverse discarded
+row evidence. Keep full private `to_dict`, source identities, counts, policy and UI unchanged. Do not
+add a BrainVision header estimator despite its separately measured cost. Owners remain unchanged.
+First require old-output equivalence and mutable-output isolation, plus a red no-traversal regression;
+then candidate/projection/recipe/BIDS focused tests, independent diff review and the same native
+Thielen/Cattan budgets. Earlier waveform/recipe runs are baseline only after source changes; final
+claims require re-established exact-head evidence. UI internal-source refresh approval is still pending.
+The no-traversal regression failed exactly on the old `asdict` path (1 fail/9 pass). After the
+projection-order change, all 121 candidate/projection/recipe/BIDS tests pass; lint passes and the
+independent actual-diff review found no blocker. Next: commit, rerun the original Thielen/Cattan
+native budgets, then re-establish final recording/native/CI evidence on that exact source.
+
 ### Previous evidence and storage checkpoint
 
 The agreed common-EEG, EEG-BIDS and MOABB-converted-data import boundary is implemented in

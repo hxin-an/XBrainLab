@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, is_dataclass
 from dataclasses import field as dc_field
+from dataclasses import fields as dc_fields
 from pathlib import Path
 from typing import Any
 
@@ -87,7 +88,9 @@ class InterpretationCandidate:
 
     def to_public_dict(self) -> dict[str, Any]:
         """Return a bounded projection for UI, agent, and diagnostics clients."""
-        return project_interpretation_candidate(_serialize(self))
+        return project_interpretation_candidate(
+            {field.name: getattr(self, field.name) for field in dc_fields(self)}
+        )
 
 
 @dataclass(frozen=True)
