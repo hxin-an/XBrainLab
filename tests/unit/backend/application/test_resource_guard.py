@@ -210,9 +210,9 @@ def test_dataset_ram_check_blocks_large_file_size_fallback(
     assert "memory mapping" not in result.message.lower()
 
 
-def test_brainvision_dependencies_do_not_duplicate_waveform_memory(
+def _write_brainvision_fixture(
     tmp_path: Path,
-) -> None:
+) -> tuple[Path, Path, Path]:
     header = tmp_path / "subject.vhdr"
     signal = tmp_path / "signal.eeg"
     marker = tmp_path / "events.vmrk"
@@ -231,6 +231,13 @@ def test_brainvision_dependencies_do_not_duplicate_waveform_memory(
         "[Channel Infos]\nCh1=C3,,1,µV\nCh2=C4,,1,µV\n",
         encoding="utf-8",
     )
+    return header, signal, marker
+
+
+def test_brainvision_dependencies_do_not_duplicate_waveform_memory(
+    tmp_path: Path,
+) -> None:
+    header, signal, marker = _write_brainvision_fixture(tmp_path)
     header_only = resource_guard.ResourceChecker.estimate_dataset_ram([str(header)])
     full = resource_guard.ResourceChecker.estimate_dataset_ram(
         [str(header), str(signal), str(marker)]
@@ -254,6 +261,31 @@ def test_brainvision_dependencies_do_not_duplicate_waveform_memory(
     assert extra["raw_eeg_bytes"] == full["raw_eeg_bytes"] + int(
         4_096 * resource_guard.IMPORT_FILE_SIZE_FALLBACK_MULTIPLIER
     )
+
+
+def test_brainvision_dependency_accounting_resolves_paths_linearly(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    header, signal, marker = _write_brainvision_fixture(tmp_path)
+    paths = [str(signal), str(marker)]
+    for index in range(16):
+        copy = tmp_path / f"run-{index}.vhdr"
+        copy.write_bytes(header.read_bytes())
+        paths.append(str(copy))
+    original = resource_guard._path_key
+    calls = 0
+
+    def counted(path):
+        nonlocal calls
+        calls += 1
+        return original(path)
+
+    monkeypatch.setattr(resource_guard, "_path_key", counted)
+    estimate = resource_guard.ResourceChecker.estimate_dataset_ram(paths)
+    assert estimate["raw_eeg_bytes"] == 16 * 2 * 1_000 * 8
+    assert estimate["eeg_path_count"] == 16
+    assert calls <= 10 * len(paths), calls
 
 
 def test_embedded_eeglab_set_preflight_never_invokes_mne_reader(

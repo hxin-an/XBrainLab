@@ -119,6 +119,20 @@ labels, while still rejecting any published classes/readiness. Related tests pas
 review found no remaining blocker in this fix. Cattan whole-root GUI exceeded the diagnostic
 deadline (240 files, initial review ~125 s); measure its actual GUI/worker bottleneck before repair,
 do not raise timeouts or substitute the 120-file default pass for full-root evidence.
+Native stack samples at15/30seconds locate the Cattan regression in the new resource accounting:
+`estimate_dataset_ram` rebuilds the entire resolved path-key set for each dependency. Precompute
+that invocation-local set once; characterize real estimate equality and linear path-resolution
+counts, then rerun the same240-file GUI budget. No new cache/owner or admission bypass.
+The separate visible external-to-internal label switch cannot fetch absent internal evidence because
+Next is disabled. Concrete reuse of the existing Refresh label preview flow was requested from the
+user; UI edits remain unauthorized until that reply. Other diagnostics continue.
+Current large diagnostics are not final-source evidence: Windows Git could not read the WSL `.git`
+pointer. Explicit task-local GIT_DIR/GIT_COMMON_DIR/GIT_WORK_TREE were verified against2aef3621;
+future candidate runs must fail closed on unavailable identity and record the wrapper/driver hashes.
+The linear-path regression failed at642 canonicalizations for18 paths; the invocation-local set
+fix passes it with unchanged waveform memory, and112 resource/candidate tests pass. The two
+old diagnostic supervisors were identity-checked and stopped (only owned process/job trees);
+partial results/timeouts remain. Restart from a clean commit using the explicit Windows Git entrypoint.
 
 ### Previous evidence and storage checkpoint
 

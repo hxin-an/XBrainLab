@@ -688,6 +688,7 @@ class ResourceChecker:
     def estimate_dataset_ram(paths: Iterable[str]) -> dict[str, Any]:
         """Estimate EEG and label-carrier RAM without loading their payloads."""
         path_list = _deduplicated_resource_paths(paths)
+        path_keys = {_path_key(Path(path)) for path in path_list}
         eeglab_headers: dict[str, EeglabSetHeaderInspection] = {}
         dependency_details: dict[str, tuple[str, str]] = {}
         brainvision_headers: dict[str, dict[str, Any]] = {}
@@ -705,8 +706,9 @@ class ResourceChecker:
                     path,
                     "brainvision_parser_dependency",
                 )
-                if dependency_key not in {_path_key(Path(item)) for item in path_list}:
+                if dependency_key not in path_keys:
                     path_list.append(dependency)
+                    path_keys.add(dependency_key)
         eeglab_paths = [
             path for path in path_list if _normalized_suffix(Path(path)) == ".set"
         ]
@@ -729,8 +731,9 @@ class ResourceChecker:
                 str(resource_path),
                 "eeglab_external_data_dependency",
             )
-            if dependency_key not in {_path_key(Path(item)) for item in path_list}:
+            if dependency_key not in path_keys:
                 path_list.append(dependency)
+                path_keys.add(dependency_key)
         total_file_bytes = sum(_path_size(path) for path in path_list)
         raw_bytes = 0
         metadata_bytes = 0
