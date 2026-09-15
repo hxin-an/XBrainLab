@@ -167,6 +167,26 @@ projection-order change, all 121 candidate/projection/recipe/BIDS tests pass; li
 independent actual-diff review found no blocker. Next: commit, rerun the original Thielen/Cattan
 native budgets, then re-establish final recording/native/CI evidence on that exact source.
 
+At clean `52a897e4`, Cattan's full 240-recording Windows import reaches the visible table in
+116.375 s. Thielen's ten-recording import still exceeds the original 150 s diagnostic deadline:
+review is visible at 72.97 s, followed by 378,000 timestamp labels; timeout remains a failure,
+not proof of unreadable files. A single-run native label profile measures 13.405 s with profiling
+overhead, including 3.603 s in five annotation snapshots. Independent review identifies one
+redundant snapshot: `create_event` captures acquisition annotations and its immediately called
+`_prepare_external_annotations` copies them again. Reuse that same detached snapshot for the
+helper's restore, retaining MNE attachment/crop validation, applied snapshots and atomic rollback.
+Do not transfer staged MNE ownership or remove the other safety copies. First characterize source
+annotation preservation and failure restore, add a deterministic duplicate-snapshot regression,
+then rerun the existing semantic/atomicity tests and native case. No UI change or new owner.
+This small saving does not promise the 150 s limit. Concrete UI refresh authorization and a separate
+decision to observe the large import to completion while preserving its original timeout finding
+have been requested asynchronously; continue unaffected verification, without silently widening gates.
+The snapshot-count regression failed at two copies versus one. Reuse is +3/-1 production LOC in
+one file; 59 semantic/strict-event/label-service/atomicity tests pass, including a new real-MNE
+partial-attachment failure restore with/without measurement date and nonzero first sample.
+Remaining native and recording campaigns must bind the next clean commit; prior identities remain
+historical evidence. No atomic commit ownership or public label policy was changed.
+
 ### Previous evidence and storage checkpoint
 
 The agreed common-EEG, EEG-BIDS and MOABB-converted-data import boundary is implemented in

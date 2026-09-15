@@ -485,8 +485,9 @@ def _require_matching_reviewed_annotations(
 def _prepare_external_annotations(
     raw_mne: Any,
     rows: list[_TimestampRow],
+    *,
+    existing: mne.Annotations,
 ) -> mne.Annotations:
-    existing = _annotation_snapshot(raw_mne)
     external = mne.Annotations(
         onset=[row.onset for row in rows],
         duration=[row.duration for row in rows],
@@ -654,6 +655,7 @@ class EventLoader:
             applied_external_annotations = _prepare_external_annotations(
                 raw_mne,
                 timestamp_rows,
+                existing=existing_annotations,
             )
             events, event_id = _events_from_timestamp_rows(raw_mne, timestamp_rows)
             merged_annotations = _merge_external_annotations(
