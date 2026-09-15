@@ -172,8 +172,9 @@ product path. Its 134 required representative storage units are direct children 
 the current human entrypoint is `datasets/manifests/import-locations-v3/README.md`. Unbound retained
 units were resolved on 2026-09-16: exact duplicates/superseded conversions were removed, and 26
 individually verified extra recordings joined the three canonical Brain Invaders roots. The original
-134-case campaign remains historical representative evidence; all 1,205 retained recordings and all
-134 normal Windows GUI roots are the active verification scope, not a completed claim. Copy/hash/replay precedes reference
+134-case campaign remains historical representative evidence; the expanded scope includes all 1,205
+retained recordings and all 134 normal Windows GUI roots. Current outcomes and unresolved routes are
+recorded in [Current](../current.md), not inferred from the representative pass count. Copy/hash/replay precedes reference
 changes; original and failed evidence retention is separate from an explicitly approved exact-target
 cleanup. Do not rewrite historical recipes.
 

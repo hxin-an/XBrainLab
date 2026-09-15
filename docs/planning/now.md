@@ -40,6 +40,46 @@ is accounted for and verified; all 134 roots have native GUI results; no unexpla
 missing cases or stale navigation remain. A real product decision/resource blocker is reported as
 unfinished, never converted into a pass. User handtest/merge is the final separate approval.
 
+### Current checkpoint and next action
+
+At clean product source `3a2c65aa89298c295c4a6dde6ccdb5dec8e4c661`, the final single-recording
+campaign passed all 1,205 unique retained paths in 134 roots, including full waveform/event readback
+and fresh-service recipe replay. Inventory, results and source/driver identities agree; no retry was
+needed for this campaign. The recurring representative gate passed 134/134. Same-source CI and docs
+checks completed successfully; source-diverse public data and Windows lifecycle artifacts are retained.
+
+Native whole-root results are 133 successful roots and one unfinished root, not a single clean batch:
+all12 passed 128/134; five immediate Cancel-state assertions were diagnosed as the existing 250 ms
+presenter transition. Reviewed diagnostic-only changes wait for that transition and observe the same
+visible terminal before expensive readback; all14 passed those five. Both probe versions require the
+expected full path set, current visible rows/filenames/generation, idle commands and disabled Cancel.
+Their distinct driver identities and original failures remain; do not claim uniform corrected-probe
+timing coverage or a 150-second end-to-end SLA. All 19 multi-subject default selections passed;
+four native recovery tests and two consecutive imports in the same window also passed.
+
+The quiet all16 Thielen2021 whole-root run still failed the unchanged 150-second diagnostic deadline,
+without competing data/native jobs. Ten recordings contain 378,000 reviewed timestamp events; the
+189.172-second result includes shutdown and is not successful visible import latency. Its default
+five-recording selection passed separately; that does not replace the missing whole-root result.
+The external-to-internal label-source switch is still a confirmed UI dead end, not repaired.
+
+Next action requires the two concrete decisions already requested from the user:
+1. Approve reusing the existing **Refresh label preview** flow after choosing **Labels inside EEG
+   files**, then require explicit class review. No new window or automatic class decisions.
+2. Approve a separate bounded observation of Thielen's full completion, preserving the failed
+   150-second check and its performance limitation rather than increasing a gate to obtain a pass.
+
+Unaffected implementation and verification are complete; these are genuine remaining authority/
+evidence blockers, not manual-test delivery. Do not merge or claim all GUI paths passed. E navigation
+states the limits and the completed evidence is preserved under
+`evidence/retained-import-20260916/source-3a2c65aa`. Documentation updates after this checkpoint do
+not change the recorded product/evidence SHA; any future product repair needs applicable fresh gates.
+
+### Construction history (not current dispatch)
+
+The entries below explain earlier failures and bounded repairs. Their historical "Next" instructions
+are superseded by the current checkpoint above; do not restart completed campaigns after compaction.
+
 Progress (2026-09-16): inventory found 1,179 formal recordings and 63 quarantined recordings.
 Seventeen quarantined directories (436 files, 2,194,277,166 logical bytes) were independently
 rehashed against canonical replacements and permanently removed under the approved cleanup scope;

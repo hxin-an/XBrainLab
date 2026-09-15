@@ -67,7 +67,13 @@ manifests與quarantine。這台開發機目前使用
 campaign 重播。2026-09-16 後續逐檔比對完成原 23 個隔離目錄的處置：17 份完全重複、3 份
 被保留更多通道的正式版本取代；另 3 份中的 26 筆獨有 Brain Invaders recordings 通過逐筆
 匯入／波形／事件／recipe 重播後加入正式目錄，舊副本已清除。正式区共 1,205 筆 retained
-recordings，隔離資料單元為零；完整逐筆與 Windows GUI 驗收仍在進行，不能由此宣稱全部通過。
+recordings，隔離資料單元為零。Clean product source `3a2c65aa` 的逐筆驗證已通過 1,205/1,205，
+包含波形／事件讀回與 fresh-service recipe 重播。Windows 整批匯入有 133/134 個根目錄的成功
+證據（128 個初次通過、五個在修正診斷程式的 Cancel-state 等待後通過；保留不同 probe identities
+及原始失敗）。Thielen2021 整批十筆／378,000 事件仍超過 150 秒診斷期限；五筆預設選取成功
+不取代整批驗證，也不表示來源不可讀。另有 BIDS 外部標籤切換內部事件的預覽卡點待 UI 修正
+授權。19 個多受試者根目錄的預設選取、四個 native recovery 案例及同視窗連續匯入已通過；
+這些不是真人驗收，也不代表所有 GUI 路徑均已通過。
 逐檔刪除、替代位置、差異 metadata 與 promotion 證據在 `evidence/retained-import-20260916`。
 位置入口為 `datasets/manifests/import-locations-v3/README.md`；來源對照為
 `datasets/manifests/source-locations-v2-c84e8fb0cc29.json`。原始 source 與歷史 evidence 的內容
