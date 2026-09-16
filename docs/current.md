@@ -68,15 +68,21 @@ campaign 重播。2026-09-16 後續逐檔比對完成原 23 個隔離目錄的�
 被保留更多通道的正式版本取代；另 3 份中的 26 筆獨有 Brain Invaders recordings 通過逐筆
 匯入／波形／事件／recipe 重播後加入正式目錄，舊副本已清除。正式区共 1,205 筆 retained
 recordings，隔離資料單元為零。Clean product source `3a2c65aa` 的逐筆驗證已通過 1,205/1,205，
-包含波形／事件讀回與 fresh-service recipe 重播。Windows 整批匯入有 133/134 個根目錄的成功
-證據（128 個初次通過、五個在修正診斷程式的 Cancel-state 等待後通過；保留不同 probe identities
-及原始失敗）。Thielen2021 整批十筆／378,000 事件仍超過 150 秒診斷期限；五筆預設選取成功
-不取代整批驗證，也不表示來源不可讀。BIDS 外部標籤切換內部事件的預覽卡點已依後續批准
-修正：未讀取內部事件時使用既有 Refresh label preview，刷新後仍須明確審查類別；刷新前不把
-舊的外部欄位冒充內部事件。這項 UI 修正的最終同版本驗證與獲批准的 Thielen 較長完整觀察
-由 [Now](planning/now.md) 追蹤。前述基線的 19 個多受試者根目錄預設選取、四個 native recovery
-案例及同視窗連續匯入已通過；
-這些不是真人驗收，也不代表所有 GUI 路徑均已通過。
+包含波形／事件讀回與 fresh-service recipe 重播，這仍是原 source 的 backend 基線，不改標新 SHA。
+在 clean `b7cd1206`，Windows 正常 GUI 已完成全部 134 個正式根目錄／1,205 筆錄製：133 個
+一般完整選取加上獲批准較長觀察的 Thielen2021，逐根核對完整檔案集合、畫面 publication、
+事件／標籤讀回。Thielen 十筆／378,000 事件的畫面完成為 214.688 秒，含讀回共 217.703 秒；
+原 150 秒診斷失敗保持保留，不能宣稱符合該期限或一般延遲 SLA。19 個多受試者預設選取、
+21 個內嵌標籤切換路徑、8 個 native recovery／標籤回歸案例與同視窗連續兩次匯入亦通過。
+BIDS 外部標籤切換內部事件時重用既有 Refresh label preview，刷新後仍須明確審查類別；
+刷新前不把外部欄位冒充內部事件。無標籤匯入返回 Match Labels 仍能正常繼續，不強迫刷新。
+既有 UI 類別命名會把 `Target` 整理成 `target`、`left_leg` 整理成 `left leg`；驗證保留明確
+名稱對照，不把逐字不同誤判為事件遺失。原診斷失敗及各版 driver 雜湊仍保留。
+同一 `b7cd1206` CI／docs 全部適用項目成功。134/134 recurring representatives 的最近執行
+source 是 `751edfe0`；到 `b7cd1206` 僅有 tests/docs 改動。前述 `3a2c65aa` 基線到候選的
+backend、scripts 與依賴未變；不重標歷史證據。後續文件收尾不改產品或測試內容。
+這支持此機已保留資料、既有 wizard 與明確標籤審查路徑，不代表任意 BIDS、完整來源 cohort、
+所有 GUI 操作、訓練／科學認證或真人驗收。手測與 merge 批准仍由 [Now](planning/now.md) 追蹤。
 逐檔刪除、替代位置、差異 metadata 與 promotion 證據在 `evidence/retained-import-20260916`。
 位置入口為 `datasets/manifests/import-locations-v3/README.md`；來源對照為
 `datasets/manifests/source-locations-v2-c84e8fb0cc29.json`。原始 source 與歷史 evidence 的內容
