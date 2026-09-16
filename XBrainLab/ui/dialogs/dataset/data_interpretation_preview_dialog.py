@@ -460,6 +460,7 @@ class DataInterpretationPreviewDialog(
             title="Import EEG Data",
             width=1040,
             height=760,
+            defer_first_frame=True,
         )
 
     @property
@@ -620,24 +621,22 @@ class DataInterpretationPreviewDialog(
         self.label_sources_label = QLabel(self._label_sources_status_text())
         self.label_sources_label.setObjectName("DataImportStatusLabel")
         self.label_sources_label.setWordWrap(True)
+        label_sources_layout.addWidget(self.label_sources_label)
         self.label_sources_label.setVisible(
             self._label_sources_changed() or self._skip_labels
         )
-        label_sources_layout.addWidget(self.label_sources_label)
         label_button_layout = QHBoxLayout()
         label_button_layout.setContentsMargins(0, 0, 0, 0)
         label_button_layout.setSpacing(8)
         self.add_label_file_btn = QPushButton("Load label file")
         self.add_label_file_btn.setObjectName("DataImportToolButton")
         self.add_label_file_btn.setToolTip("Load a label file from another location.")
-        self.add_label_file_btn.setVisible(not self._is_bids_source())
         self.add_label_file_btn.clicked.connect(self._add_label_file)
         self.add_label_folder_btn = QPushButton("Load label folder")
         self.add_label_folder_btn.setObjectName("DataImportToolButton")
         self.add_label_folder_btn.setToolTip(
             "Load a folder of label files from another location.",
         )
-        self.add_label_folder_btn.setVisible(not self._is_bids_source())
         self.add_label_folder_btn.clicked.connect(self._add_label_folder)
         self.skip_labels_btn = QPushButton("Continue without labels")
         self.skip_labels_btn.setObjectName("DataImportTertiaryButton")
@@ -650,6 +649,8 @@ class DataInterpretationPreviewDialog(
         label_button_layout.addStretch()
         label_button_layout.addWidget(self.skip_labels_btn)
         label_sources_layout.addLayout(label_button_layout)
+        self.add_label_file_btn.setVisible(not self._is_bids_source())
+        self.add_label_folder_btn.setVisible(not self._is_bids_source())
         attach_panel_layout.addWidget(label_sources_card)
         attach_panel_layout.addStretch()
         self.step_stack.addWidget(attach_panel)
@@ -817,8 +818,8 @@ class DataInterpretationPreviewDialog(
             | QAbstractItemView.EditTrigger.EditKeyPressed,
         )
         self.event_layout.addWidget(self.event_tree)
-        self._refresh_event_detail_view()
         label_panel_layout.addWidget(self.event_group)
+        self._refresh_event_detail_view()
         if hasattr(self, "internal_event_status_label"):
             self.internal_event_status_label.setText(self._internal_event_status_text())
         self.match_check_card, match_check_layout = self._card("Check")
@@ -856,8 +857,8 @@ class DataInterpretationPreviewDialog(
         self.review_actions_layout = QVBoxLayout(self.review_actions_panel)
         self.review_actions_layout.setContentsMargins(0, 0, 0, 0)
         self.review_actions_layout.setSpacing(10)
-        self._populate_review_action_cards()
         review_panel_layout.addWidget(self.review_actions_panel)
+        self._populate_review_action_cards()
 
         self.import_report_toggle = QPushButton("View import report")
         self.import_report_toggle.setObjectName("DataImportReviewAction")
@@ -908,10 +909,10 @@ class DataInterpretationPreviewDialog(
         )
         import_report_layout.addWidget(self.review_tree)
         self._refresh_import_report_summary()
+        review_panel_layout.addWidget(self.import_report_card)
         self.import_report_card.setVisible(self._has_remap_options())
         if self._has_remap_options():
             self.import_report_toggle.setText("Hide import report")
-        review_panel_layout.addWidget(self.import_report_card)
         review_panel_layout.addStretch()
         self.step_stack.addWidget(review_panel)
 

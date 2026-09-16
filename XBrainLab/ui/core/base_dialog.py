@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QPoint, QRect, QSize
-from PyQt6.QtGui import QIcon, QMoveEvent, QShowEvent
+from PyQt6.QtCore import QPoint, QRect, QSize, QTimer
+from PyQt6.QtGui import QGuiApplication, QIcon, QMoveEvent, QPaintEvent, QShowEvent
 from PyQt6.QtWidgets import QDialog, QDialogButtonBox, QPushButton
 
 from XBrainLab.ui.dialogs.common import dark_dialog_stylesheet
@@ -26,6 +26,8 @@ class BaseDialog(QDialog):
         title: str = "",
         width: int | None = None,
         height: int | None = None,
+        *,
+        defer_first_frame: bool = False,
     ):
         """Initialize the dialog with optional size.
 
@@ -34,10 +36,12 @@ class BaseDialog(QDialog):
             title: The dialog window title.
             width: Optional initial width in pixels.
             height: Optional initial height in pixels.
+            defer_first_frame: Reveal the Windows dialog after its initial paint.
 
         """
         self._content_anchor_center: QPoint | None = None
         self._setting_stable_geometry = False
+        self._first_frame_reveal: QTimer | None = None
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setStyleSheet(dark_dialog_stylesheet())
@@ -51,6 +55,27 @@ class BaseDialog(QDialog):
         self.init_ui()
         self._normalize_dialog_buttons()
         self._fit_to_available_screen()
+        if defer_first_frame and QGuiApplication.platformName() == "windows":
+            # A newly shown HWND can expose white pixels before Qt flushes its
+            # first backing-store paint. Reveal after that paint, not a delay.
+            self.setWindowOpacity(0)
+            self._first_frame_reveal = QTimer(self)
+            self._first_frame_reveal.setSingleShot(True)
+            self._first_frame_reveal.timeout.connect(self._reveal_first_frame)
+
+    def paintEvent(self, event: QPaintEvent | None) -> None:  # noqa: N802
+        super().paintEvent(event)
+        timer = self._first_frame_reveal
+        if timer is not None and not timer.isActive():
+            # The queued turn runs after the children paint and the store flushes.
+            timer.start(0)
+
+    def _reveal_first_frame(self) -> None:
+        timer = self._first_frame_reveal
+        self._first_frame_reveal = None
+        if timer is not None:
+            timer.deleteLater()
+        self.setWindowOpacity(1)
 
     def showEvent(self, event: QShowEvent | None) -> None:  # noqa: N802
         """Keep top-level dialogs usable on the screen where they open."""

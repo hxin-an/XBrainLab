@@ -30,6 +30,12 @@ Timestamp interval 結尾的表示誤差由 preview 與實際事件載入共用�
 BrainVision header 已計入的 signal／marker 依賴不再重複增加波形 RAM 估算；未被引用的檔案
 仍計入，安全門檻與必要確認保持不變。
 
+Import wizard 的元件先加入所屬版面再顯示；Windows 的 loading／preview 視窗在首幀繪製後
+才顯露，避免 subject 選擇後與 Confirm and Import 交接時的瞬時白框。不新增固定等待，
+不改資料語意、必要確認或取消政策。使用者於 2026-09-16 對 Windows source `b052fd75`
+回覆「沒問題了可以準備合併」；這是所討論白框修正的局部手測接受，不代表所有資料集、
+DPI 或下游流程都經此次真人驗收。後續純文件收尾不改該產品 source。
+
 | 區域 | 目前能相信 | 邊界 |
 | --- | --- | --- |
 | Command spine | `ApplicationService / Command API` 是 GUI、Assistant 與 scripts 共用的產品命令入口。 | Lower-level domain tests 仍可直接使用 Study/managers；不得把它們接回產品 UI mutation。 |
@@ -82,7 +88,12 @@ BIDS 外部標籤切換內部事件時重用既有 Refresh label preview，刷�
 source 是 `751edfe0`；到 `b7cd1206` 僅有 tests/docs 改動。前述 `3a2c65aa` 基線到候選的
 backend、scripts 與依賴未變；不重標歷史證據。後續文件收尾不改產品或測試內容。
 這支持此機已保留資料、既有 wizard 與明確標籤審查路徑，不代表任意 BIDS、完整來源 cohort、
-所有 GUI 操作、訓練／科學認證或真人驗收。手測與 merge 批准仍由 [Now](planning/now.md) 追蹤。
+所有 GUI 操作、訓練／科學認證；自動證據本身也不等於真人驗收。
+使用者於 2026-09-16 回報指定 Windows 候選 `1a0ffb0c` 手測完成並明確批准合併，
+[PR #141](https://github.com/hxin-an/XBrainLab/pull/141) 已合併為 `2ae10927`。
+本次手測接受範圍為所討論的匯入完成／資料列表與 Data Summary、開始前處理之前的流程；
+使用者未列舉逐資料集或逐操作清單，不宣稱真人逐一測完 134 個資料集或所有下游流程。
+候選 `1a0ffb0c` 的產品、腳本、測試與依賴與 `b7cd1206` 相同，僅文件收尾不同。
 逐檔刪除、替代位置、差異 metadata 與 promotion 證據在 `evidence/retained-import-20260916`。
 位置入口為 `datasets/manifests/import-locations-v3/README.md`；來源對照為
 `datasets/manifests/source-locations-v2-c84e8fb0cc29.json`。原始 source 與歷史 evidence 的內容

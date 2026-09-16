@@ -63,8 +63,10 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
         self._review_import_rows_layout.setContentsMargins(0, 0, 0, 0)
         self._review_import_rows_layout.setHorizontalSpacing(10)
         self._review_import_rows_layout.setVerticalSpacing(6)
-        self._render_review_import_rows()
+        # Parent the rows before rendering can show their controls. Otherwise Qt
+        # briefly creates independent native windows for these labels/buttons.
         layout.addLayout(self._review_import_rows_layout)
+        self._render_review_import_rows()
 
     def _render_review_import_rows(self) -> None:
         self._clear_review_import_rows()

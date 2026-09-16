@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 import pytest
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QEvent, QObject, Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
+    QWidget,
 )
 
 from XBrainLab.backend.application.data_interpretation_review import ValidationDecision
@@ -55,6 +56,66 @@ def _validation_decision(
         decision=decision,
         action_items=action_items or [],
     ).to_dict()
+
+
+@pytest.mark.parametrize("decision", ["safe", "needs_confirmation", "blocked"])
+@pytest.mark.parametrize("source_kind", ["files", "bids", "recipe"])
+def test_wizard_controls_never_show_as_independent_windows(
+    qapp, qtbot, decision, source_kind
+):
+    """Observe transient shows too: a final widget snapshot misses white flashes."""
+    escaped_windows = []
+
+    class WindowObserver(QObject):
+        def eventFilter(self, obj, event):
+            if (
+                event.type() == QEvent.Type.Show
+                and isinstance(obj, QWidget)
+                and obj.isWindow()
+                and not isinstance(obj, QDialog)
+            ):
+                escaped_windows.append((type(obj).__name__, obj.objectName()))
+            return False
+
+    observer = WindowObserver()
+    qapp.installEventFilter(observer)
+    try:
+        # Initial construction and a rebuilt final review use the same renderer.
+        for initial_step in ("Choose EEG Data", "Review and Import"):
+            eeg_file = "/tmp/sub-01_task-mi.fif"
+            preview = {
+                "summary": "Found 1 EEG file(s).",
+                "event_roles": {"1": "class label candidate"},
+                "class_map": {"1": "left"},
+            }
+            if source_kind == "recipe":
+                preview["recipe_reload_summary"] = {
+                    "eeg_file_remap_options": [
+                        {"saved": "/tmp/old.fif", "candidates": [{"path": eeg_file}]}
+                    ],
+                }
+            dialog = DataInterpretationPreviewDialog(
+                scan_result={
+                    "eeg_files": [eeg_file],
+                    "source_kind": "bids" if source_kind == "bids" else "files",
+                    "bids": {"is_bids": source_kind == "bids"},
+                },
+                preview=preview,
+                validation_decision=_validation_decision(decision),
+                initial_step=initial_step,
+                choices={"skip_labels": initial_step == "Review and Import"},
+            )
+            qtbot.addWidget(dialog)
+            dialog.show()
+            _show_step(dialog, "Review and Import")
+            qtbot.wait(0)
+            dialog.save_recipe_check.click()
+            qtbot.wait(0)
+            dialog.close()
+    finally:
+        qapp.removeEventFilter(observer)
+
+    assert escaped_windows == []
 
 
 def test_data_interpretation_preview_dialog_renders_payload(qtbot):
