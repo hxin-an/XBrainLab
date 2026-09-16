@@ -13,6 +13,18 @@
 
 ### 1. Import UI：先討論，再完成已確認的 UI 修正
 
+- **第一個已回報問題**：使用者於 2026-09-16 指出 Import 會閃出多個白框，並確認發生於
+  選完 subject 後及按 `Confirm and Import` 後。先聚焦這兩段交接，不擴為整個 wizard 重設計。
+  目前只完成 source 路徑檢查，尚未在 Windows 重現／取得逐幀證據，根因未確認。
+- **已查到的路徑／待驗假設**：`DataInterpretationActionCoordinator` 在 subject 確認後建立 loading
+  dialog，再建立、顯示 preview 並關閉 loading；preview 的 show/resize 另有 layout 調整。
+  Confirm 後會等待 preview 銷毀，再由 continuation 進入 revalidation／apply，必要時重開 review
+  或 resource confirmation。先核對視窗 show/hide/destroy 與實際首幀繪製的時間，不把這些路徑
+  的存在直接當作白框成因，也不移除既有 modal／取消／確認保護來掩蓋症狀。
+- **本問題下一步與驗收**：取得指定兩個時點的 Windows 原生短錄影／逐幀與視窗事件對照，
+  比較快、慢載入與第二次匯入，確認白框是哪個視窗及發生順序後提出最小修正。
+  使用者接受具體方案後才修改 UI；完成時需證明過渡不露出白色空框、狀態持續可理解，
+  必要確認不跳過、取消／重試及匯入結果仍正確。穩定後的截圖或後端匯入 PASS 不足以證明不閃爍。
 - **待確認**：使用者實際想調整的步驟、畫面、文案與互動；先看目前 UI／截圖並列出問題，
   不預先認定整個 wizard 都要重做。
 - **邊界**：以已合併的匯入能力為基準，保留 reviewed labels、無標籤選擇、subject/run 選取、
