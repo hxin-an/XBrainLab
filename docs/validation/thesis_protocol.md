@@ -13,6 +13,10 @@ EEG training / evaluation accuracy 不是本論文要仔細驗證的主指標。
 claim 都必須對到固定 benchmark cases、可重跑 scorer、machine-readable artifact 和
 human-readable report。
 
+2026-09-16 起新增的[三決策 Benchmark 判分校準](assistant_benchmark_calibration.md)只有
+Development 合成證據，尚不是這份 protocol 的正式模型實驗。其資料、判分與 claim boundary
+由該文件擁有；不改寫本文件既有研究目標或把舊 81-case 分數升格為真實產品 Outcome。
+
 ## Thesis Claim Boundary
 
 本論文的主要評估問題：

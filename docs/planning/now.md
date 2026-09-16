@@ -2,48 +2,14 @@
 
 最後更新：`2026-09-16`
 
-## Active — Assistant Benchmark contract and scorer calibration
-
-User approved the first round on 2026-09-16 after the read-only comparison with
-[the Notion Benchmark plan](https://app.notion.com/p/3ce4ab11187a81c0a30ade5cf08b1b52).
-Baseline: `main@73acb83a`; use this task worktree, not the dirty legacy checkout.
-
-- **Problem/evidence:** v12 deliberately suppresses tool execution and has no real backend outcome
-  oracle. Its frozen 81 cases lack family/split metadata; 23 first-turn case inputs exactly overlap
-  the RAG corpus after whitespace/case normalization. Its existing scores are not the proposed
-  three-decision product Benchmark. Do not relabel historical scores or repurpose these cases as sealed.
-- **Outcome:** a bounded, versioned evidence contract and offline Development-only scorer calibration
-  that separates raw decision, admitted decision and observed outcome; explicit wrong/missing evidence
-  must fail. Calibration success is not a model, product, or human-agreement score.
-- **Scope:** validation contract, a pure offline scorer/CLI for synthetic calibration records, and
-  focused positive/negative tests. Reuse the product parser/tool schemas; no second capability policy,
-  execution owner, generic Benchmark platform or changes to the existing model evaluator/gates.
-- **Non-goals:** new model runs/downloads, prompt/RAG/Host changes, real execution runner, complete
-  tool coverage, new human-authored seeds, Validation/Sealed content, Notion edits, GUI changes.
-- **Assumptions:** calibration cases are explicitly agent-authored and Development-only. Human
-  seed review and sealed custody remain outside this round. UI changes are not authorized or needed.
-  GUI success should follow the case intent (requested usable dialog versus completed mutation);
-  this remains an explicit calibration assumption pending confirmation before a formal corpus freeze.
-- **Steps:** freeze the limited schema/claim boundary; write failing scorer cases; implement the
-  smallest offline scoring path; check fail-closed identity/completeness and schema behavior;
-  review the diff, run focused tests/lint and documentation checks, preserve the old corpus hashes.
-- **Validation:** wrong stage/tool/parameters/missing inputs, unsafe No-call effects, missing Host
-  admission, cancelled/pending/error outcomes, wrong backend state, premature GUI handoff credit,
-  raw-versus-recovered separation, duplicate/missing records, Development-only admission, synthetic
-  claim labels. Cross-split family isolation is a later formal-corpus requirement, not implemented here.
-- **Stop condition:** the agreed first-round contract and calibration tests pass without changing
-  product behavior or the old 81-case gate. Report explicit remaining real-runner, sealed and human
-  audit gaps. No GUI hand test is requested for this tool-only round; publishing/merge is separate.
-- **Next:** implementation and initial 91 focused tests pass; finish changed-file review, legacy
-  evaluator regression, CLI/lint/docs checks and corpus-hash preservation. No environment blocker.
-
 ## Agreed order — Import UI → Assistant evaluator → cleanup/refactoring
 
 使用者於 2026-09-16 指定以上順序；Preprocess panel 暫不作為下一個優先施工項目。
 Import 白框修正已於 2026-09-16 完成 Windows 局部手測，使用者回覆「沒問題了可以準備合併」。
 接受的產品 source 為 `b052fd75`，與修正 commit `d0a8b435` 的產品內容相同；接受範圍見
 [Current](../current.md)。PR／CI／合併狀態以 GitHub 與 Git 為準，不重啟已完成的修理。
-使用者已批准上述 Benchmark 第一輪；其餘 UI 改版、Assistant runtime repair 與重構尚未開始。
+使用者批准的 Benchmark 第一輪已有離線 calibration 實作，能力與限制見下節；
+其餘 UI 改版、Assistant runtime repair 與重構尚未開始。
 
 本輪要讓匯入操作更清楚、Assistant 評測結果可信，再依具體問題繼續降低程式複雜度。
 不以籠統的「架構已乾淨」、行數下降或總分提高作為完成證明。
@@ -65,8 +31,15 @@ Import 白框修正已於 2026-09-16 完成 Windows 局部手測，使用者回�
 
 ### 2. Assistant evaluator：先確認評測器是否判得準
 
-- **待確認**：evaluator 指的是哪個既有 runner／scorer／報告入口，以及目前觀察到的不合理結果。
-  在此之前，不把「處理 evaluator」解讀為重寫 Assistant、換模型或改 prompt／RAG。
+- **本輪 scope-complete**：三決策／三層離線 calibration、合成正反例及 focused regression
+  已完成；契約、入口與 claim boundary 見
+  [Benchmark calibration](../validation/assistant_benchmark_calibration.md)。這不是整體 Benchmark
+  完成，也未執行真模型或證明產品成功率。舊 evaluator、81 cases 與 gates 不變；Git／CI／合併
+  狀態仍從實際 repository 取得，不因本機驗證通過宣稱已合併或 handoff-ready。
+- **下一個候選**：正常 ChatPanel → Host → Command 路徑的真實 observation 收集與 scorer
+  對照，先確認少量場景、來源與資源預算，再補齊 active plan；不自動啟動模型／prompt／RAG 改動。
+  人工 seeds、family 隔離、Validation／Sealed 管理與同軌跡獨立人工評分仍未實作。
+  GUI 依題意區分「開窗」與「完成操作」目前只作 calibration 假設，正式凍結前仍需確認。
 - **診斷順序**：由少量可重現案例核對輸入、預期行為、raw output、解析／admission、confirmation、
   command 執行、verification 與評分結果，分開 evaluator 誤判、模型行為錯誤與產品執行錯誤。
 - **修理邊界**：先固定預期行為與判分規則，再修理有證據的案例／scorer／runner 問題；
@@ -75,7 +48,7 @@ Import 白框修正已於 2026-09-16 完成 Windows 局部手測，使用者回�
 - **證據品質**：選取與已知誤判直接相關的正確、錯誤及必要邊界案例；明列分母、失敗、skip、
   runner／scorer 及模型版本。舊 frozen 結果保持原身分；若判分規則需改，先批准、版本化並說明差異，
   不暗改舊分數、不刪失敗案例充當進步。必要的真模型執行先固定案例與資源預算。
-- **完成條件**：可重現的誤判已修正，已知正／反例能被正確區分，有實際執行證據與獨立檢查，
+- **後續整階段完成條件**：可重現的誤判已修正，已知正／反例能被正確區分，有實際執行證據與獨立檢查，
   並清楚列出仍屬 Assistant 本體的問題。Evaluator 可靠不等於 Assistant 已達 Stable。
   若未發現 evaluator 缺陷，記錄判分依據與真正問題，不為了這個階段而強行修改。
   若只改測試／評分工具且沒有產品行為變更，不另要求 GUI 手測。
