@@ -16,11 +16,10 @@ from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
 @pytest.mark.parametrize(
     "dialog_class", [DataInterpretationLoadingDialog, DataInterpretationPreviewDialog]
 )
-def test_import_native_window_is_revealed_only_after_first_paint(
+def test_import_first_frame_reveal_follows_native_platform_contract(
     qapp, qtbot, dialog_class
 ):
-    if qapp.platformName() != "windows":
-        pytest.skip("First native Windows frame requires the Windows Qt platform")
+    initial_opacity = 0 if qapp.platformName() == "windows" else 1
     dialog = dialog_class()
     qtbot.addWidget(dialog)
     events = []
@@ -40,8 +39,13 @@ def test_import_native_window_is_revealed_only_after_first_paint(
     )
 
     assert dialog.isVisible()
-    assert [opacity for kind, opacity in events if kind == QEvent.Type.Show] == [0]
-    assert next(opacity for kind, opacity in events if kind == QEvent.Type.Paint) == 0
+    assert [opacity for kind, opacity in events if kind == QEvent.Type.Show] == [
+        initial_opacity
+    ]
+    assert (
+        next(opacity for kind, opacity in events if kind == QEvent.Type.Paint)
+        == initial_opacity
+    )
 
 
 @pytest.mark.parametrize(
