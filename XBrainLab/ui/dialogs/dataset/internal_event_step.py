@@ -515,6 +515,11 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
         return ", ".join(items[:limit]) + f" +{len(items) - limit} more"
 
     def _internal_event_status_text(self) -> str:
+        if self._is_bids_source() and not self._internal_event_preview_payload():
+            return (
+                "Use Refresh label preview to read events from the selected EEG "
+                "files, then confirm which events become training labels."
+            )
         if self._event_role_items or self._class_map_items:
             return (
                 "Detected event or class information inside the EEG import preview. "

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from copy import deepcopy
+from dataclasses import fields, is_dataclass
 from typing import Any
 
 PUBLIC_EVIDENCE_PREVIEW_LIMIT = 12
@@ -108,13 +110,18 @@ def _project_mapping(
 
 
 def _project_value(value: Any, *, parent_key: str) -> Any:
+    if is_dataclass(value) and not isinstance(value, type):
+        return _project_mapping(
+            {field.name: getattr(value, field.name) for field in fields(value)},
+            parent_key=parent_key,
+        )
     if isinstance(value, Mapping):
         return _project_mapping(value, parent_key=parent_key)
     if isinstance(value, list):
         return [_project_value(item, parent_key=parent_key) for item in value]
     if isinstance(value, tuple):
         return [_project_value(item, parent_key=parent_key) for item in value]
-    return value
+    return deepcopy(value)
 
 
 def _integer(value: Any) -> int:

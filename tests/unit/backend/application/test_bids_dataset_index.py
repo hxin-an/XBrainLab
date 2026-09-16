@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections import Counter
 from dataclasses import FrozenInstanceError
 from pathlib import Path
@@ -131,6 +132,47 @@ def test_index_is_immutable_and_projects_catalog_and_subjects_without_rewalking(
     assert not any("sub-01" in path for path in projection.all_files)
     assert not any(
         str(path.resolve()) in projection.all_files for path in sibling_paths.values()
+    )
+
+
+def test_repeated_dependency_lookup_does_not_rescan_indexed_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    paths = _write_bids_dataset(tmp_path)
+    index = build_bids_dataset_index(tmp_path)
+    path_key_calls = 0
+    original_key = index_module._path_key
+
+    def observed_key(path: Path) -> str:
+        nonlocal path_key_calls
+        path_key_calls += 1
+        return original_key(path)
+
+    monkeypatch.setattr(index_module, "_path_key", observed_key)
+    for _ in range(20):
+        assert index.indexed_file_in_recording_directory(
+            paths["02_eeg"], paths["02_events"].name
+        ) == str(paths["02_events"])
+        assert not index.contains_recording(paths["02_events"])
+    # One bounded initialization plus query keys; no wall-clock timing assumption.
+    assert path_key_calls <= len(index.indexed_files) + len(index.recordings) + 20 * 4
+    assert (
+        index.indexed_file_in_recording_directory(
+            paths["02_events"], paths["02_eeg"].name
+        )
+        is None
+    )
+    assert (
+        index.indexed_file_in_recording_directory(
+            paths["02_eeg"], "../" + paths["01_events"].name
+        )
+        is None
+    )
+    assert (
+        index.indexed_file_in_recording_directory(
+            paths["02_eeg"], paths["01_events"].name
+        )
+        is None
     )
 
 
@@ -300,6 +342,7 @@ def test_index_seal_rejects_directory_entry_mutation_after_enumeration(
         nonlocal mutation_count
         if path == eeg_directory and mutation_count == 0:
             mutation_count += 1
+            before = path.stat()
             if mutation == "add":
                 added_sidecar.write_text(
                     '{"SamplingFrequency": 10}',
@@ -307,6 +350,9 @@ def test_index_seal_rejects_directory_entry_mutation_after_enumeration(
                 )
             else:
                 removed_sidecar.unlink()
+            # NTFS can coalesce immediate directory updates into one timestamp.
+            # Make the identity change under test explicit, without a sleep.
+            os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns + 1_000_000_000))
         return original_capture(cls, path)
 
     monkeypatch.setattr(
@@ -547,9 +593,9 @@ def test_catalog_and_scan_do_not_own_additional_bids_tree_walkers() -> None:
     montage_source = (application_root / "bids_montage_preparation.py").read_text(
         encoding="utf-8"
     )
-    candidate_source = (
-        application_root / "data_interpretation_candidate.py"
-    ).read_text(encoding="utf-8")
+    brainvision_source = (application_root / "brainvision_preflight.py").read_text(
+        encoding="utf-8"
+    )
     eeglab_source = (application_root / "eeglab_set_preflight.py").read_text(
         encoding="utf-8"
     )
@@ -560,7 +606,7 @@ def test_catalog_and_scan_do_not_own_additional_bids_tree_walkers() -> None:
         for bids_module in application_root.glob("bids_*.py"):
             assert forbidden not in bids_module.read_text(encoding="utf-8")
     assert "def _selected_bids_subject_files(" not in scan_source
-    for dependency_source in (candidate_source, eeglab_source):
+    for dependency_source in (brainvision_source, eeglab_source):
         assert "current_bids_dataset_index_for_path" in dependency_source
         assert "indexed_file_in_recording_directory" in dependency_source
         ownership_guard = "if bids_index is not None and bids_index.contains_recording("

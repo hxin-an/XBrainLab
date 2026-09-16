@@ -4,15 +4,17 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, is_dataclass
 from dataclasses import field as dc_field
-from pathlib import Path, PureWindowsPath
+from dataclasses import fields as dc_fields
+from pathlib import Path
 from typing import Any
 
 from . import data_interpretation_internal_events as _internal_events
-from .bids_dataset_index import current_bids_dataset_index_for_path
+from .brainvision_preflight import brainvision_parser_dependencies
 from .data_interpretation_bids import review_strict_bids_event_runs
 from .data_interpretation_bids_channels import review_bids_channel_sidecars
 from .data_interpretation_bids_resources import (
     BidsEventsJsonReader,
+    bids_eeg_json_resources_by_recording,
     bids_events_json_resource_paths,
 )
 from .data_interpretation_content_identity import build_review_content_identity
@@ -49,9 +51,6 @@ from .data_interpretation_public_projection import (
 from .data_interpretation_resource_reader import AdmittedResourceReader
 from .data_interpretation_scan import ScanResult
 from .eeglab_set_preflight import eeglab_external_data_dependency
-from .errors import PreconditionError
-
-BRAINVISION_HEADER_MAX_BYTES = 1_048_576
 
 
 @dataclass(frozen=True)
@@ -89,7 +88,9 @@ class InterpretationCandidate:
 
     def to_public_dict(self) -> dict[str, Any]:
         """Return a bounded projection for UI, agent, and diagnostics clients."""
-        return project_interpretation_candidate(_serialize(self))
+        return project_interpretation_candidate(
+            {field.name: getattr(self, field.name) for field in dc_fields(self)}
+        )
 
 
 @dataclass(frozen=True)
@@ -103,6 +104,7 @@ class InterpretationResourceScope:
     label_carriers: list[str] = dc_field(default_factory=list)
     bids_events_json_files: list[str] = dc_field(default_factory=list)
     bids_channels_files: list[str] = dc_field(default_factory=list)
+    bids_eeg_json_files: list[str] = dc_field(default_factory=list)
     bids_events_json_by_carrier: dict[str, tuple[str, ...]] = dc_field(
         default_factory=dict
     )
@@ -117,6 +119,7 @@ class InterpretationResourceScope:
             *self.label_carriers,
             *self.bids_events_json_files,
             *self.bids_channels_files,
+            *self.bids_eeg_json_files,
         ]:
             if path not in result:
                 result.append(path)
@@ -164,6 +167,11 @@ def resolve_interpretation_resource_scope(
         else []
     )
     bids = _bids_for_selected_scope(scan.bids, selected_files)
+    eeg_json_by_recording = bids_eeg_json_resources_by_recording(
+        bids, materializable_files
+    )
+    if bids.get("is_bids"):
+        bids["eeg_json_by_recording"] = eeg_json_by_recording
     active_label_carriers = _filter_bids_label_carriers_for_selected_scope(
         active_label_carriers,
         scan.bids,
@@ -185,6 +193,11 @@ def resolve_interpretation_resource_scope(
             )
         ),
         bids_channels_files=_selected_bids_channels_files(bids),
+        bids_eeg_json_files=list(
+            dict.fromkeys(
+                path for paths in eeg_json_by_recording.values() for path in paths
+            )
+        ),
         bids_events_json_by_carrier=sidecars_by_carrier,
         bids=bids,
     )
@@ -278,6 +291,8 @@ def build_interpretation_candidate(
         scan.source_kind == "bids"
         and scan.bids.get("is_bids")
         and selected_files
+        and not skip_labels
+        and label_carrier_source != "embedded_events"
         and not _bids_selected_scope_has_events(bids)
     ):
         blocked_reasons.append(
@@ -332,7 +347,11 @@ def build_interpretation_candidate(
     internal_event_preview: dict[str, Any] = {}
     if skip_labels:
         internal_event_selection: dict[str, Any] = {}
-    elif scan.bids.get("is_bids"):
+    elif (
+        scan.bids.get("is_bids")
+        and active_label_carriers
+        and label_carrier_source != "embedded_events"
+    ):
         event_roles.update(
             {
                 "onset": "time anchor",
@@ -341,20 +360,7 @@ def build_interpretation_candidate(
             },
         )
         event_roles.update(_string_mapping(choices.get("event_roles")))
-        explicit_internal_event_selection = isinstance(
-            choices.get("internal_event_selection"),
-            dict,
-        ) and bool(choices.get("internal_event_selection"))
-        internal_event_selection = (
-            _internal_event_selection(
-                internal_event_preview,
-                choices.get("internal_event_selection"),
-                event_roles,
-            )
-            if label_carrier_source == "embedded_events"
-            or explicit_internal_event_selection
-            else {}
-        )
+        internal_event_selection = {}
     else:
         extensions = {Path(item).suffix.lower() for item in materializable_files}
         internal_event_preview = _internal_events.build_internal_event_preview(
@@ -425,6 +431,40 @@ def build_interpretation_candidate(
         if selection_class_map:
             class_map = selection_class_map
             class_map_source = "internal_events"
+
+    if (
+        scan.bids.get("is_bids")
+        and label_carrier_source == "embedded_events"
+        and not skip_labels
+    ):
+        if (
+            not _internal_event_selection_is_complete(
+                internal_event_preview,
+                choices.get("internal_event_selection"),
+                choices.get("event_roles"),
+            )
+            or not internal_event_selection.get("label_event_codes")
+            or set(class_map)
+            != set(internal_event_selection.get("label_event_codes", []))
+            or class_map != _string_mapping(internal_event_selection.get("class_map"))
+        ):
+            blocked_reasons.append(
+                "Review all observed internal events and provide a class name "
+                "for every selected label event before importing BIDS with "
+                "embedded labels. "
+                "Alternatively, choose Continue without labels."
+            )
+        else:
+            event_roles.update(
+                dict.fromkeys(
+                    internal_event_selection["label_event_codes"], "class label"
+                )
+            )
+            event_roles.update(
+                dict.fromkeys(
+                    internal_event_selection["not_label_event_codes"], "not a label"
+                )
+            )
 
     label_carrier_plan = _annotate_label_carrier_placements(
         label_carrier_plan,
@@ -512,6 +552,7 @@ def build_interpretation_candidate(
         eeg_parser_dependencies=resource_scope.eeg_dependencies_by_file,
         bids_events_json_files=resource_scope.bids_events_json_files,
         bids_channels_files=resource_scope.bids_channels_files,
+        bids_eeg_json_files=resource_scope.bids_eeg_json_files,
         admitted_file_identities={
             **dict(admitted_content_identities or {}),
             **sidecar_reader.content_identities(
@@ -644,7 +685,7 @@ def _eeg_dependencies_by_file(eeg_files: list[str]) -> dict[str, list[str]]:
             dependency = eeglab_external_data_dependency(eeg_file)
             dependencies = [dependency] if dependency else []
         elif suffix == ".vhdr":
-            dependencies = _brainvision_parser_dependencies(eeg_file)
+            dependencies = brainvision_parser_dependencies(eeg_file)
         else:
             dependencies = []
         if dependencies:
@@ -652,180 +693,6 @@ def _eeg_dependencies_by_file(eeg_files: list[str]) -> dict[str, list[str]]:
                 dict.fromkeys(dependencies)
             )
     return dependencies_by_file
-
-
-def _brainvision_parser_dependencies(vhdr_file: str) -> list[str]:
-    """Resolve BrainVision data/marker references from one bounded text header."""
-    path = Path(vhdr_file).expanduser()
-    try:
-        with path.open("rb") as handle:
-            payload = handle.read(BRAINVISION_HEADER_MAX_BYTES + 1)
-    except OSError as exc:
-        raise PreconditionError(
-            f"BrainVision header dependencies could not be inspected: {path}.",
-            diagnostics={
-                "code": "brainvision_dependency_header_unavailable",
-                "path": str(path.resolve(strict=False)),
-                "os_error": str(exc),
-            },
-        ) from exc
-    if len(payload) > BRAINVISION_HEADER_MAX_BYTES:
-        raise PreconditionError(
-            f"BrainVision header exceeds the bounded dependency read limit: {path}.",
-            diagnostics={
-                "code": "brainvision_dependency_header_too_large",
-                "path": str(path.resolve(strict=False)),
-                "max_bytes": BRAINVISION_HEADER_MAX_BYTES,
-            },
-        )
-    text = _decode_brainvision_header(payload)
-    references = _brainvision_common_info_references(text)
-    dependencies: list[str] = []
-    for key, expected_suffix in (("datafile", ".eeg"), ("markerfile", ".vmrk")):
-        reference = references.get(key)
-        if not reference:
-            continue
-        dependency = _resolve_brainvision_reference(
-            header_path=path,
-            reference=reference,
-            expected_suffix=expected_suffix,
-        )
-        dependencies.append(str(dependency))
-    return dependencies
-
-
-def _decode_brainvision_header(payload: bytes) -> str:
-    try:
-        return payload.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        return payload.decode("cp1252", errors="replace")
-
-
-def _brainvision_common_info_references(text: str) -> dict[str, str]:
-    section = ""
-    references: dict[str, str] = {}
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith(";"):
-            continue
-        if line.startswith("[") and line.endswith("]"):
-            section = line[1:-1].strip().casefold()
-            continue
-        if section != "common infos" or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        normalized_key = key.strip().casefold()
-        if normalized_key in {"datafile", "markerfile"}:
-            references[normalized_key] = value.strip()
-    return references
-
-
-def _resolve_brainvision_reference(
-    *,
-    header_path: Path,
-    reference: str,
-    expected_suffix: str,
-) -> Path:
-    normalized = reference.strip().strip('"').strip("\x00").replace("\\", "/")
-    relative = Path(normalized)
-    windows_path = PureWindowsPath(normalized)
-    if (
-        not normalized
-        or windows_path.drive
-        or relative.is_absolute()
-        or any(part in {"", ".", ".."} for part in relative.parts)
-    ):
-        raise _brainvision_dependency_error(
-            header_path,
-            reference,
-            "The dependency reference must be a safe relative path.",
-        )
-    if relative.suffix.casefold() != expected_suffix:
-        raise _brainvision_dependency_error(
-            header_path,
-            reference,
-            f"The dependency reference must name a {expected_suffix} file.",
-        )
-
-    root = header_path.parent.resolve()
-    bids_index = current_bids_dataset_index_for_path(header_path)
-    if bids_index is not None and bids_index.contains_recording(header_path):
-        indexed = bids_index.indexed_file_in_recording_directory(
-            header_path,
-            relative,
-        )
-        if indexed is None:
-            raise _brainvision_dependency_error(
-                header_path,
-                reference,
-                "The dependency was not listed in the BIDS dataset index.",
-            )
-        resolved = Path(indexed)
-        if resolved.suffix.casefold() != expected_suffix:
-            raise _brainvision_dependency_error(
-                header_path,
-                reference,
-                f"The dependency reference must name a {expected_suffix} file.",
-            )
-        return resolved
-    current = root
-    for part in relative.parts:
-        exact = current / part
-        if exact.exists():
-            current = exact
-            continue
-        try:
-            matches = [
-                child
-                for child in current.iterdir()
-                if child.name.casefold() == part.casefold()
-            ]
-        except OSError as exc:
-            raise _brainvision_dependency_error(
-                header_path,
-                reference,
-                "The dependency directory could not be inspected.",
-            ) from exc
-        if len(matches) != 1:
-            raise _brainvision_dependency_error(
-                header_path,
-                reference,
-                "The dependency file was not found uniquely.",
-            )
-        current = matches[0]
-    try:
-        resolved = current.resolve(strict=True)
-        resolved.relative_to(root)
-    except (OSError, ValueError) as exc:
-        raise _brainvision_dependency_error(
-            header_path,
-            reference,
-            "The dependency escapes the BrainVision header folder.",
-        ) from exc
-    if not resolved.is_file():
-        raise _brainvision_dependency_error(
-            header_path,
-            reference,
-            "The dependency is not a regular file.",
-        )
-    return resolved
-
-
-def _brainvision_dependency_error(
-    header_path: Path,
-    reference: str,
-    reason: str,
-) -> PreconditionError:
-    return PreconditionError(
-        f"BrainVision parser dependency could not be admitted for {header_path.name}: "
-        f"{reason}",
-        diagnostics={
-            "code": "brainvision_dependency_unavailable",
-            "path": str(header_path.resolve(strict=False)),
-            "reference": reference,
-            "reason": reason,
-        },
-    )
 
 
 def _filter_bids_label_carriers_for_selected_scope(

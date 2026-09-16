@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 
+from XBrainLab.backend.application.data_interpretation_candidate import (
+    InterpretationCandidate,
+)
+from XBrainLab.backend.application.data_interpretation_metadata import metadata_for_file
 from XBrainLab.backend.application.data_interpretation_public_projection import (
     PUBLIC_EVIDENCE_PREVIEW_LIMIT,
     project_bids_review,
@@ -18,6 +23,120 @@ from XBrainLab.backend.application.data_interpretation_recipe import (
 
 def _rows(count: int) -> list[dict[str, object]]:
     return [{"row": index, "value": f"value-{index}"} for index in range(count)]
+
+
+def test_candidate_public_projection_preserves_serialized_output(tmp_path) -> None:
+    rows = _rows(30)
+    candidate = InterpretationCandidate(
+        candidate_id="candidate",
+        scan_id="scan",
+        source_path=str(tmp_path),
+        source_kind="bids",
+        metadata=[
+            metadata_for_file(tmp_path / "sub-01_task-rest_eeg.vhdr", tmp_path, "bids")
+        ],
+        bids={"event_validation": {"runs": [{"row_evidence": rows, "issues": rows}]}},
+        choices={"nested": {"tuple": ("onset", ["Target"])}},
+        label_carrier_plan=[
+            {
+                "selected_anchor_stats": {"min": 0, "value_counts": {"0": 1}},
+                "event_code_label_counts": {"0": {"Target": 1}},
+                "label_field_recommendation_details": {
+                    "evidence": {"sampled_row_counts": list(range(30))}
+                },
+            }
+        ],
+    )
+    expected = project_interpretation_candidate(asdict(candidate))
+
+    actual = candidate.to_public_dict()
+
+    assert actual == expected
+    assert json.dumps(actual) == json.dumps(expected)
+    assert actual["metadata"][0]["subject"]["value"] == "01"
+    assert actual["choices"]["nested"]["tuple"] == ["onset", ["Target"]]
+    actual["choices"]["nested"]["tuple"][1].append("changed")
+    actual["metadata"][0]["subject"]["recipe_trace"].append("changed")
+    actual["bids"]["event_validation"]["runs"][0]["issues"][0]["value"] = "changed"
+    assert candidate.choices["nested"]["tuple"][1] == ["Target"]
+    assert "changed" not in candidate.metadata[0].subject.recipe_trace
+    assert rows[0]["value"] == "value-0"
+    assert (
+        candidate.to_dict()["bids"]["event_validation"]["runs"][0]["row_evidence"]
+        == rows
+    )
+
+
+def test_candidate_public_projection_detaches_retained_mutable_leaf() -> None:
+    payload = bytearray(b"retained")
+    candidate = InterpretationCandidate(
+        candidate_id="candidate",
+        scan_id="scan",
+        source_path="/data",
+        source_kind="folder",
+        choices={"payload": payload},
+    )
+
+    actual = candidate.to_public_dict()
+
+    assert actual == project_interpretation_candidate(asdict(candidate))
+    actual["choices"]["payload"][0] = 0
+    assert payload == bytearray(b"retained")
+
+
+def test_candidate_public_projection_never_copies_discarded_event_rows() -> None:
+    class UnvisitedRows(list):
+        def __iter__(self):
+            raise AssertionError("Public projection traversed discarded event rows")
+
+        def __deepcopy__(self, memo):
+            raise AssertionError("Public projection copied discarded event rows")
+
+    class UnvisitedCounts(dict):
+        def items(self):
+            raise AssertionError("Public projection traversed discarded counts")
+
+        def __deepcopy__(self, memo):
+            raise AssertionError("Public projection copied discarded counts")
+
+    candidate = InterpretationCandidate(
+        candidate_id="candidate",
+        scan_id="scan",
+        source_path="/data",
+        source_kind="bids",
+        bids={
+            "event_validation": {
+                "runs": [
+                    {
+                        "row_evidence": UnvisitedRows(_rows(1000)),
+                        "unknown_duration_rows": UnvisitedRows(_rows(3)),
+                        "excluded_rows": UnvisitedRows(_rows(2)),
+                    }
+                ]
+            }
+        },
+        label_carrier_plan=[
+            {
+                "event_code_label_counts": UnvisitedCounts({"1": {"Target": 1000}}),
+                "selected_anchor_stats": {
+                    "numeric_count": 1000,
+                    "value_counts": UnvisitedCounts({"1": 1000}),
+                },
+            }
+        ],
+    )
+
+    actual = candidate.to_public_dict()
+
+    [run] = actual["bids"]["event_validation"]["runs"]
+    assert run == {
+        "row_evidence_count": 1000,
+        "unknown_duration_row_count": 3,
+        "excluded_row_count": 2,
+    }
+    assert actual["label_carrier_plan"] == [
+        {"selected_anchor_stats": {"numeric_count": 1000}}
+    ]
 
 
 def test_label_carrier_projection_bounds_row_level_evidence() -> None:
@@ -131,6 +250,28 @@ def test_bids_projection_bounds_row_level_issues_without_losing_issue_count() ->
     assert project_bids_review(projected) == projected
 
 
+def test_public_recipe_projects_bids_event_rows_without_touching_identity() -> None:
+    count = PUBLIC_EVIDENCE_PREVIEW_LIMIT + 5
+    recipe = ImportRecipe(
+        recipe_id="bids-recipe",
+        interpretation_id="interpretation-1",
+        source_path="/data",
+        source_kind="bids",
+        bids={
+            "is_bids": True,
+            "event_validation": {"runs": [{"row_evidence": _rows(count)}]},
+        },
+        content_identity={"/data/events.tsv": {"sha256": "source-owned"}},
+    )
+
+    public = recipe.to_public_dict()
+
+    [run] = public["bids"]["event_validation"]["runs"]
+    assert "row_evidence" not in run
+    assert run["row_evidence_count"] == count
+    assert public["content_identity"] == recipe.content_identity
+
+
 def test_candidate_projection_publishes_bids_recommendation_details_once() -> None:
     run_count = 80
     sampled_counts = list(range(run_count))
@@ -211,7 +352,7 @@ def test_label_carrier_projection_is_idempotent_for_empty_bounded_evidence() -> 
     }
 
 
-def test_recipe_persistence_keeps_full_evidence_while_public_payload_is_bounded(
+def test_recipe_persistence_keeps_bounded_evidence_while_replay_choices_remain(
     tmp_path,
 ) -> None:
     evidence = [{"code": str(index)} for index in range(20)]
@@ -241,10 +382,12 @@ def test_recipe_persistence_keeps_full_evidence_while_public_payload_is_bounded(
     loaded = load_import_recipe(str(target))
     public = recipe.to_public_dict()
 
-    assert loaded == recipe
+    assert loaded.recipe_id == recipe.recipe_id
     persisted_review = loaded.label_carrier_plan[0]["placement_reviews"]["event_code"]
-    assert persisted_review["code_mappings"] == evidence
-    assert persisted_review["row_evidence"] == row_evidence
+    assert persisted_review["code_mapping_count"] == len(evidence)
+    assert persisted_review["code_mappings"] == evidence[:PUBLIC_EVIDENCE_PREVIEW_LIMIT]
+    assert persisted_review["row_evidence_count"] == len(row_evidence)
+    assert "row_evidence" not in persisted_review
     public_review = public["label_carrier_plan"][0]["placement_reviews"]["event_code"]
     assert public_review["code_mapping_count"] == 20
     assert public_review["code_mappings"] == evidence[:PUBLIC_EVIDENCE_PREVIEW_LIMIT]

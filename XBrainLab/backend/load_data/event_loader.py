@@ -7,6 +7,7 @@ import math
 import warnings
 from collections import Counter
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Any, Protocol, cast
 
 import mne
@@ -17,6 +18,23 @@ from XBrainLab.backend.utils import validate_type
 
 _MNE_EXCLUDED_CLASS_PREFIXES = ("bad", "edge")
 _MNE_ANNOTATION_TIME_TOLERANCE_SECONDS = 1e-6
+
+
+def timestamp_interval_exceeds_recording(
+    onset: float, duration: float, *, sfreq: float, n_times: int
+) -> bool:
+    """Reject numeric overruns and intervals MNE would crop at attachment.
+
+    MNE crop compares separately microsecond-rounded onset and duration against
+    last-sample time plus one sample. This checks representability, not a rewrite
+    of the literal source values or a waiver of attachment's row-count checks.
+    """
+    tolerance = min(_MNE_ANNOTATION_TIME_TOLERANCE_SECONDS, 0.5 / sfreq)
+    return onset + duration > n_times / sfreq + tolerance or timedelta(
+        seconds=onset
+    ) + timedelta(seconds=duration) > timedelta(
+        seconds=(n_times - 1) / sfreq + 1.0 / sfreq
+    )
 
 
 class _AnnotationSnapshotSource(Protocol):
@@ -290,7 +308,6 @@ def _normalize_timestamp_rows(
         raise ValueError(
             "Stored EEG sample bounds are unavailable for timestamp labels."
         )
-    recording_duration = n_times / sfreq
     last_sample_time = (n_times - 1) / sfreq
     tolerance = max(1e-12, 1.0 / sfreq * 1e-9)
     rows: list[_TimestampRow] = []
@@ -312,7 +329,9 @@ def _normalize_timestamp_rows(
             onset < 0
             or duration < 0
             or onset > last_sample_time + tolerance
-            or onset + duration > recording_duration + tolerance
+            or timestamp_interval_exceeds_recording(
+                onset, duration, sfreq=sfreq, n_times=n_times
+            )
         ):
             raise ValueError(
                 f"Timestamp label row {source_index} is outside the stored EEG range.",
@@ -466,8 +485,9 @@ def _require_matching_reviewed_annotations(
 def _prepare_external_annotations(
     raw_mne: Any,
     rows: list[_TimestampRow],
+    *,
+    existing: mne.Annotations,
 ) -> mne.Annotations:
-    existing = _annotation_snapshot(raw_mne)
     external = mne.Annotations(
         onset=[row.onset for row in rows],
         duration=[row.duration for row in rows],
@@ -635,6 +655,7 @@ class EventLoader:
             applied_external_annotations = _prepare_external_annotations(
                 raw_mne,
                 timestamp_rows,
+                existing=existing_annotations,
             )
             events, event_id = _events_from_timestamp_rows(raw_mne, timestamp_rows)
             merged_annotations = _merge_external_annotations(

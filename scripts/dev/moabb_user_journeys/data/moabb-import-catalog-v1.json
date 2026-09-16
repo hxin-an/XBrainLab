@@ -1,0 +1,1971 @@
+{
+  "schema_version": 1,
+  "initial_nonrequired_ids": [
+    "BNCI2015_006",
+    "BNCI2016_002",
+    "BNCI2019_001",
+    "BNCI2022_001",
+    "EPFLP300",
+    "Lee2024_AC",
+    "Lee2024_BS",
+    "Lee2024_DL",
+    "Lee2024_EL",
+    "Lee2024_TV",
+    "Liu2020BETA",
+    "MartinezCagigal2023Pary",
+    "Rozado2015",
+    "Shin2017A",
+    "Shin2017B",
+    "Sosulski2019",
+    "Tavakolan2017",
+    "TrianaGuzman2024",
+    "Yang2025",
+    "Zhang2017"
+  ],
+  "moabb_release": {
+    "version": "1.5.0",
+    "commit": "140809d8c48bdf2be953951ff75f688122edee34"
+  },
+  "entries": [
+    {
+      "id": "AlexMI",
+      "module": "alex_mi",
+      "status": "required",
+      "evidence_note": "Full 8-subject source/conversion evidence plus selected-run BIDS-root Command/readback/recipe PASS; aggregate receipt SHA-256 `d98657f1...8a09f0ea`",
+      "evidence_hashes": [
+        "d98657f1f9acb9f28c22b3f88d7f343d856f2ddc90471210ac6830ff8a09f0ea"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/AlexMI-4e1002df8e5a.json",
+        "sha256": "4e1002df8e5ab660cf42fdcdf477ad261dee22e149d587f8361a5684469dcb57"
+      }
+    },
+    {
+      "id": "Rodrigues2017",
+      "module": "alphawaves",
+      "status": "required",
+      "evidence_note": "Full 19-subject converted-shape evidence plus selected-run BIDS-root Command/readback/recipe PASS; pinned loader path repair disclosed; aggregate receipt SHA-256 `d98657f1...8a09f0ea`",
+      "evidence_hashes": [
+        "d98657f1f9acb9f28c22b3f88d7f343d856f2ddc90471210ac6830ff8a09f0ea"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Rodrigues2017-876a89343ab5.json",
+        "sha256": "876a89343ab54d2fbe1638794e03978b07e5ce4c21c84e2979524015e9fab599"
+      }
+    },
+    {
+      "id": "Shin2017A",
+      "module": "bbci_eeg_fnirs",
+      "status": "deferred_rights",
+      "evidence_note": "BLOCKED: pinned loader requires explicit user GPLv3 terms acceptance",
+      "evidence_hashes": [],
+      "case_manifest": null
+    },
+    {
+      "id": "Shin2017B",
+      "module": "bbci_eeg_fnirs",
+      "status": "deferred_rights",
+      "evidence_note": "BLOCKED: pinned loader requires explicit user GPLv3 terms acceptance",
+      "evidence_hashes": [],
+      "case_manifest": null
+    },
+    {
+      "id": "Beetl2021_A",
+      "module": "beetl",
+      "status": "required",
+      "evidence_note": "Final-training subject 1 retained source fresh-loader \u2192 MOABB 1.5.0 EEG-BIDS \u2192 five-Command/readback/recipe PASS with 100 semantic `trial_type` events and exact 63-channel waveform fidelity (`aee746da0a4c10943a6802bdf52a6972d28c0c27037775bd87992bd93cf0b897`)",
+      "evidence_hashes": [
+        "aee746da0a4c10943a6802bdf52a6972d28c0c27037775bd87992bd93cf0b897"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Beetl2021_A-5b6cf19400be.json",
+        "sha256": "5b6cf19400be9e9ef1b97a94fada54f7120f7528439282dc7f21f861b3f32619"
+      }
+    },
+    {
+      "id": "Beetl2021_B",
+      "module": "beetl",
+      "status": "required",
+      "evidence_note": "Final-training subject 4 retained source fresh-loader \u2192 MOABB 1.5.0 EEG-BIDS \u2192 five-Command/readback/recipe PASS with 120 semantic `trial_type` events and exact 32-channel waveform fidelity (`05c86d7e3594983e87566fda9ea3e71aeba2bafe8cb32fe9c70b00878a5eb347`)",
+      "evidence_hashes": [
+        "05c86d7e3594983e87566fda9ea3e71aeba2bafe8cb32fe9c70b00878a5eb347"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Beetl2021_B-daf40ad47e8a.json",
+        "sha256": "daf40ad47e8ac51df90ed7a6a0e7d52b073c061410bc3398f53df30e06f3dc5d"
+      }
+    },
+    {
+      "id": "BNCI2003_004",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with fresh-loader source/BIDS fidelity (`89282b2124b4ec49887a847e1da27a902a167f72d167bd97ea07b98e8a5be1d4`)",
+      "evidence_hashes": [
+        "89282b2124b4ec49887a847e1da27a902a167f72d167bd97ea07b98e8a5be1d4"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2003_004-d4581fce4da6.json",
+        "sha256": "d4581fce4da6d2aafd735c7cc896ea3bf4e92ceb70c574c08b1b3e39174a1cc9"
+      }
+    },
+    {
+      "id": "BNCI2014_001",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 / 0train / run 0 official all-modality BIDS, source fidelity, Commands and recipe replay PASS (25 non-STIM channels, 48 class events); 12 runs converted, one verified; `544409d8caf23ba86ab6f840d6c26031262d43e25e3d5b550f6241ca58c6e107`",
+      "evidence_hashes": [
+        "544409d8caf23ba86ab6f840d6c26031262d43e25e3d5b550f6241ca58c6e107"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2014_001-56ae141faff5.json",
+        "sha256": "56ae141faff5d0a9130087f3b5bf6b8c9830ea5c54a3b09a0ae42a06fd55be72"
+      }
+    },
+    {
+      "id": "BNCI2014_002",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with fresh-loader source/BIDS fidelity (`ee2c25a6e32939230e4c4e5a9255ebe5d3295de0c975f455fb6d27f1d0143099`)",
+      "evidence_hashes": [
+        "ee2c25a6e32939230e4c4e5a9255ebe5d3295de0c975f455fb6d27f1d0143099"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2014_002-610a2365f12d.json",
+        "sha256": "610a2365f12d46592d22cb97399ff5c542850f211ea30484c0315d1730aabe45"
+      }
+    },
+    {
+      "id": "BNCI2014_004",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 / 0train / run 0 official all-modality BIDS, full source/readback and recipe replay PASS (6 non-STIM channels, 120 class events); `66607491974f8c7464fee3e1ff7d845b9831bb4e806dae38d7b49b350d208126`",
+      "evidence_hashes": [
+        "66607491974f8c7464fee3e1ff7d845b9831bb4e806dae38d7b49b350d208126"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2014_004-07ded92c9736.json",
+        "sha256": "07ded92c973643fdde54d5ab88189ab3aa0b6fc67d69a3a605940371b396a6fb"
+      }
+    },
+    {
+      "id": "BNCI2014_008",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with source/BIDS channel, waveform and event fidelity (`4e956b42361d502d1c94054a7e1200788df54a8f81e1d7f22221fcb54762dcd3`)",
+      "evidence_hashes": [
+        "4e956b42361d502d1c94054a7e1200788df54a8f81e1d7f22221fcb54762dcd3"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2014_008-40d4fd4af3a7.json",
+        "sha256": "40d4fd4af3a7960f9417fe28a4fab19b51acaf8f54b585d0f546819ad0df1586"
+      }
+    },
+    {
+      "id": "BNCI2014_009",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 session-0 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with deterministic source pairing and source/BIDS fidelity (`2e1991da61b284bfd8fa8a5d6a5bf1a96308abea3b77ab1009fcdbbc09acd2eb`)",
+      "evidence_hashes": [
+        "2e1991da61b284bfd8fa8a5d6a5bf1a96308abea3b77ab1009fcdbbc09acd2eb"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2014_009-ae96c24e63bf.json",
+        "sha256": "ae96c24e63bf71dbd57ecb3ac46872de73286fca4436975760b4cbc5b554ed1c"
+      }
+    },
+    {
+      "id": "BNCI2015_001",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with source/BIDS channel, waveform and event fidelity (`fb3841b4100d4e99fba98d31ded799de9a121367735c6e0cc3744507da249058`)",
+      "evidence_hashes": [
+        "fb3841b4100d4e99fba98d31ded799de9a121367735c6e0cc3744507da249058"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2015_001-c0d6e75521db.json",
+        "sha256": "c0d6e75521dbab6efff5285384c0c65c3f672013ba4ee703ff5e14d7a8f956b4"
+      }
+    },
+    {
+      "id": "BNCI2015_003",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with source/BIDS channel, waveform and event fidelity (`89afc2ad7ffb9effa7d4a55bc3d90ac2e3ae17f2e4085e81b0c4fe610e10a331`)",
+      "evidence_hashes": [
+        "89afc2ad7ffb9effa7d4a55bc3d90ac2e3ae17f2e4085e81b0c4fe610e10a331"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2015_003-74e44445f42d.json",
+        "sha256": "74e44445f42d78c140f33d5ba34cb1be866d1f0346c5e6a07b88fed84dca9f00"
+      }
+    },
+    {
+      "id": "BNCI2015_004",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with source/BIDS channel, waveform and event fidelity (`0c4f85c44ca79d4728f5527cc0629635dbc41d09e095246a99c23476dca1accc`)",
+      "evidence_hashes": [
+        "0c4f85c44ca79d4728f5527cc0629635dbc41d09e095246a99c23476dca1accc"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2015_004-7c32629790e3.json",
+        "sha256": "7c32629790e3772de557932c9b3feb4e4387326e1b1492130cbb529b96f8615c"
+      }
+    },
+    {
+      "id": "BNCI2015_006",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Selected-run portable BIDS Command/import and fresh recipe replay PASS; conversion/source limits remain in bound receipts.",
+      "evidence_hashes": [
+        "2efb6ecf1e82154a425b3dd914bce1aadaa516b01623a017bc1e8c29d83bc5ba",
+        "529c37dfb7b6aed35782b0ea1a0210b26e5931f7477899eb7d6746b44f74d894",
+        "66f3fcb6c5316358ceb188ab5a768991df7ab7209dadb2785e5e2bffb17cb236",
+        "6fd5790c35003f4a3a00ee5fc4c11ab63d42c5622cb712b9b44c2fd730bfa311",
+        "7a8b20b0d4364cc663ff9e629e7f08e4fddc15534330811ece43d066a19c0d70",
+        "7cf7c6a15461cdc09c98907d53b58acbda79bd7777c9e3273e132a2b2cead409",
+        "885880c02e91a8370cb5c2f3d3f01caed059aab603ae25cb37a856334733fcb5",
+        "98a5205c290b4183b6ba08c6cd52a9dbdc984b95e1781cc4ea2f5ed9c37f823c",
+        "e7adf335e4ff6bca18aae94b7e0a6d395c891bad70bbebe14b9086190183b7bf"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2015_006-082c16943c7a.json",
+        "sha256": "082c16943c7afbabc47b90f3cc11b8a429f121241a5339b3b7b98d08bcb6106b"
+      }
+    },
+    {
+      "id": "BNCI2015_007",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 run-0 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with event-based deterministic pairing and source/BIDS fidelity (`0c7fc78b800285afdcc37271968da8ff46f194ba6455d8c8a45bcd4f90223927`)",
+      "evidence_hashes": [
+        "0c7fc78b800285afdcc37271968da8ff46f194ba6455d8c8a45bcd4f90223927"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2015_007-6a23d94e9b8c.json",
+        "sha256": "6a23d94e9b8ccd3d2ee463c45b2b6beb0e4c16b25734fe0810d974a31a3e9d67"
+      }
+    },
+    {
+      "id": "BNCI2015_008",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with fresh-loader source/BIDS fidelity (`aef8321d0c5e35ab62f4a6da2b5940f7d77bd5608898b475b3940474f3c5abaa`)",
+      "evidence_hashes": [
+        "aef8321d0c5e35ab62f4a6da2b5940f7d77bd5608898b475b3940474f3c5abaa"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2015_008-af8596b2e524.json",
+        "sha256": "af8596b2e5241ec0b901a1dc0031dcc115740db6696618b0bf342e482fdc090a"
+      }
+    },
+    {
+      "id": "BNCI2015_009",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 representative official all-modality BIDS, source/readback and new bounded recipe replay PASS; old oversized recipe retained as failure evidence; `916258944af5d70a0ca56e89c538fe8f5ed27bcd022751e0bf6962e3344ce698`",
+      "evidence_hashes": [
+        "916258944af5d70a0ca56e89c538fe8f5ed27bcd022751e0bf6962e3344ce698"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2015_009-d92526f4a5d4.json",
+        "sha256": "d92526f4a5d4262ecde8fcc1230127abbf4c0773f6ad64fbe808c77b34411fdf"
+      }
+    },
+    {
+      "id": "BNCI2015_010",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with fresh-loader source/BIDS fidelity (`4b9cb4fada146d43e8c3509eff49f047d4a9dc0e09df7ded3bc115717b6ebea8`)",
+      "evidence_hashes": [
+        "4b9cb4fada146d43e8c3509eff49f047d4a9dc0e09df7ded3bc115717b6ebea8"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2015_010-de71d5b25869.json",
+        "sha256": "de71d5b25869b6e907b948edf7a8273e9e4fc3ed6176b142371a8245ec3728db"
+      }
+    },
+    {
+      "id": "BNCI2015_012",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with fresh-loader source/BIDS fidelity (`f5dd6882bd35220e6a9b448b13e99df0f19ecf99fc0d3fc932c2cd50f6bd91d9`)",
+      "evidence_hashes": [
+        "f5dd6882bd35220e6a9b448b13e99df0f19ecf99fc0d3fc932c2cd50f6bd91d9"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2015_012-dc1cde27d765.json",
+        "sha256": "dc1cde27d765832f528a4468f81385586e33679e2fa0a27db7d1d750b62f15cc"
+      }
+    },
+    {
+      "id": "BNCI2015_013",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with fresh-loader source/BIDS fidelity (`03313fcfa79a930e5dc84d6183b8279f124265b5fd6becacc830f3532de8b39f`)",
+      "evidence_hashes": [
+        "03313fcfa79a930e5dc84d6183b8279f124265b5fd6becacc830f3532de8b39f"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2015_013-26317fcc2dce.json",
+        "sha256": "26317fcc2dcebb7574bde4f4fee868fcf636a002656008361e3662a8fb75dda6"
+      }
+    },
+    {
+      "id": "BNCI2016_002",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Selected-run portable BIDS Command/import and fresh recipe replay PASS; conversion/source limits remain in bound receipts.",
+      "evidence_hashes": [
+        "465441dd537dd21572b2590564f2bc44186d068356c2e472450d64a3e39b231b",
+        "4e2648d67c39b4ed5ba59327cfc955d52e36139c3d693bd9293bdeaa4e16abaf",
+        "7cf7c6a15461cdc09c98907d53b58acbda79bd7777c9e3273e132a2b2cead409",
+        "8a578415f326084860463ad18ede631052b414b7621d796b08e757995f6b7f40",
+        "b1adf7541eb9253f7481d5c10e9c9cb0b98d7a034383c76288036c2a5d823a23",
+        "df5096401da5e8342873e15ec8711eeb25cc139a35a2b7b48ae55946424398d4",
+        "e7adf335e4ff6bca18aae94b7e0a6d395c891bad70bbebe14b9086190183b7bf",
+        "facaf8afbcfcae37bbec8ca4b9c49a0c4373955641d3e7570ce30570a9b4bbfa"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2016_002-36000eb416c3.json",
+        "sha256": "36000eb416c395214a21cd6cc9a5aef67e14efec449d413e5e7eab1129e5bbf9"
+      }
+    },
+    {
+      "id": "BNCI2019_001",
+      "module": "bnci",
+      "status": "blocked",
+      "evidence_note": "BIDS-root Commands, full readback and recipe replay pass with all 64 channels and 40 class events, but **source-unit fidelity BLOCKED**: original GDF units are unspecified and pinned loader scales EEG but not EOG (EOG peaks 300\u2013334 in a V-labelled Raw). Float32 storage matches exactly; no silent unit correction; `f4464aef8a42922a243b2dd03944f814765d7727f56cb274ebe2d635ea62e2b5`",
+      "evidence_hashes": [
+        "f4464aef8a42922a243b2dd03944f814765d7727f56cb274ebe2d635ea62e2b5"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "BNCI2020_001",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 / 0 / run 0 official all-modality BIDS, full source/readback and recipe replay PASS (64 non-STIM channels, 161 class events); `263ed057802ff7871416ca6427143d4b977ca5c7ee9ebbeabf280eee30308d03`",
+      "evidence_hashes": [
+        "263ed057802ff7871416ca6427143d4b977ca5c7ee9ebbeabf280eee30308d03"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2020_001-b3c18ad723cd.json",
+        "sha256": "b3c18ad723cdf7289aec86a280161244bb4d2540e3424407effb07ebed2f2b52"
+      }
+    },
+    {
+      "id": "BNCI2020_002",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 / 0 / run 0 official all-modality BIDS, full source/readback and recipe replay PASS (32 non-STIM channels, 119 class events); `7f72d5654079684603bd30fbdee76172003579d561bfeba7bfaff7f0ff16fda6`",
+      "evidence_hashes": [
+        "7f72d5654079684603bd30fbdee76172003579d561bfeba7bfaff7f0ff16fda6"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2020_002-8666fac301e1.json",
+        "sha256": "8666fac301e1a7dceaea81207f3d6af1d20cd74ecfff4aade2f897b880b053fc"
+      }
+    },
+    {
+      "id": "BNCI2022_001",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Selected-run portable BIDS import/replay PASS for preserved trajectory/waypoint structural annotations; no supervised classes or difficulty labels were inferred.",
+      "evidence_hashes": [
+        "172eb72605f8a40962834a1f5e858a8aac7b03989417a0c1a4f9dcff679f55a2",
+        "248880a247a22e391fafe60a2742554010e9ac92996fcd7c4527932d9990b8e7",
+        "7cf7c6a15461cdc09c98907d53b58acbda79bd7777c9e3273e132a2b2cead409",
+        "b19d6df4d40ca85516a885b08ae8c0a5326fd9ae0166163a536f126048b024d0",
+        "bb0ddb91673a01494a0d297dd83777a7ddd9f61516c837bdfd34714fa8d62aef",
+        "bb43d1f91915e461bfe215e04506a917b4e46812534dd4374a7201c44db31569",
+        "c3ca8919af675135e27d6d07e2881c9a7f06f0621b12c6d5691fa907968926bd",
+        "e7adf335e4ff6bca18aae94b7e0a6d395c891bad70bbebe14b9086190183b7bf"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2022_001-e8bb8646cc7d.json",
+        "sha256": "e8bb8646cc7d607f07f4f3d7ca88972b7f44df38205416ab1a2d709586a2d12b"
+      }
+    },
+    {
+      "id": "BNCI2024_001",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject 1 / 0 / run 0 official all-modality BIDS, full source/readback and recipe replay PASS (64 non-STIM channels, 320 class events); `f4750c1dfb1731838336b31604fb932807d1340b962a40ca9f901f1a9a40fd19`",
+      "evidence_hashes": [
+        "f4750c1dfb1731838336b31604fb932807d1340b962a40ca9f901f1a9a40fd19"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2024_001-350e325836c7.json",
+        "sha256": "350e325836c7e6bbdfc3a1eb557b52dbc5f42106afa9a434b906513d9f36623f"
+      }
+    },
+    {
+      "id": "BNCI2025_001",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Subject-1 official all-modality BIDS, exact source annotation/class/sample/type fidelity, full App readback and bounded recipe replay PASS (958 events, 16 official classes). Ordinary payload context markers need explicit non-class decisions. Public-loader/BIDS timeline is continuous; no discontinuity-support claim; `06311903da4dbbaba9f0dac3a978624cc9e3df62c63411f94a056671a292af21`",
+      "evidence_hashes": [
+        "06311903da4dbbaba9f0dac3a978624cc9e3df62c63411f94a056671a292af21"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2025_001-6bc0bf686e3a.json",
+        "sha256": "6bc0bf686e3a33a72e0f417501e9a70e1319cb637ffa4b0f9cf0be98463f1d01"
+      }
+    },
+    {
+      "id": "BNCI2025_002",
+      "module": "bnci",
+      "status": "required",
+      "evidence_note": "Official all-modality BIDS and representative 0ses1 / 0perc0 source/readback/recipe PASS; 9 retained subject-1 runs converted, one verified. Selected `snakerun` is one class, not supervised-ready; `3ae2ce23ec4ce0db920d1835c8cb85d4d06753a1f4bdfab35f83fd75d416c8ac`",
+      "evidence_hashes": [
+        "3ae2ce23ec4ce0db920d1835c8cb85d4d06753a1f4bdfab35f83fd75d416c8ac"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BNCI2025_002-47118399b06f.json",
+        "sha256": "47118399b06f4e7b93c232b0539b554c014aeab51dce40b666a6ac8217620f83"
+      }
+    },
+    {
+      "id": "BI2012",
+      "module": "braininvaders",
+      "status": "required",
+      "evidence_note": "Payload evidence plus selected-run fresh MOABB-to-BIDS five-Command/readback/recipe PASS (`fed0abd4...ad02e8d`); pinned loader path workaround disclosed",
+      "evidence_hashes": [
+        "fed0abd4e6844291b68d7347e6b67c11247a8a660037308258029d28bad02e8d"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BI2012-75844872d2f4.json",
+        "sha256": "75844872d2f47d1392c973ff53ae82207c39eeb4e998c7347218deb607024b7a"
+      }
+    },
+    {
+      "id": "BI2013a",
+      "module": "braininvaders",
+      "status": "required",
+      "evidence_note": "Subject 1 selected run loader \u2192 retained EEG-BIDS root \u2192 BIDS-root Command evidence; official archive MD5 values retained",
+      "evidence_hashes": [
+        "a67b1b0f6fbb3a9e16cb3ed5e57ad24cc673c27bf8ec52d61cc9f5ffbe8dcee0"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BI2013a-df6ef849607e.json",
+        "sha256": "df6ef849607e0623a78c0ad2194b35bff167d3b29dca9d69543baacf64adae1c"
+      }
+    },
+    {
+      "id": "BI2014a",
+      "module": "braininvaders",
+      "status": "required",
+      "evidence_note": "Payload evidence plus selected-run fresh MOABB-to-BIDS five-Command/readback/recipe PASS (`fed0abd4...ad02e8d`); 64-subject loader versus 71-subject record-description limit disclosed",
+      "evidence_hashes": [
+        "fed0abd4e6844291b68d7347e6b67c11247a8a660037308258029d28bad02e8d"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BI2014a-1f6d9cf667d1.json",
+        "sha256": "1f6d9cf667d1088a126b39388ea06da5568851fba985737ae16532ab3abd0803"
+      }
+    },
+    {
+      "id": "BI2014b",
+      "module": "braininvaders",
+      "status": "required",
+      "evidence_note": "Payload evidence plus selected-run fresh MOABB-to-BIDS five-Command/readback/recipe PASS (`fed0abd4...ad02e8d`); pinned adapter omits collaborative recording",
+      "evidence_hashes": [
+        "fed0abd4e6844291b68d7347e6b67c11247a8a660037308258029d28bad02e8d"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BI2014b-c0a178af3dd3.json",
+        "sha256": "c0a178af3dd3b2c67fdf4c90c58938db4b5ede4dfe086a3452d14616232fe4d9"
+      }
+    },
+    {
+      "id": "BI2015a",
+      "module": "braininvaders",
+      "status": "required",
+      "evidence_note": "Subject 1 payload evidence plus selected-run fresh MOABB-to-BIDS five-Command/readback/recipe PASS (`fed0abd4...ad02e8d`)",
+      "evidence_hashes": [
+        "fed0abd4e6844291b68d7347e6b67c11247a8a660037308258029d28bad02e8d"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BI2015a-6ef89dd2243d.json",
+        "sha256": "6ef89dd2243d5e9dc8819d7f8d8d8e882d31aead6913328dd7131253cdda5438"
+      }
+    },
+    {
+      "id": "BI2015b",
+      "module": "braininvaders",
+      "status": "required",
+      "evidence_note": "Subjects 1/2 payload evidence plus selected-run fresh MOABB-to-BIDS five-Command/readback/recipe PASS (`fed0abd4...ad02e8d`)",
+      "evidence_hashes": [
+        "fed0abd4e6844291b68d7347e6b67c11247a8a660037308258029d28bad02e8d"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/BI2015b-d178450684de.json",
+        "sha256": "d178450684dee261c20ef9e4c23a9e9ca8702263371cb20874707f0b5114beb5"
+      }
+    },
+    {
+      "id": "Cattan2019_VR",
+      "module": "braininvaders",
+      "status": "required",
+      "evidence_note": "Subjects 1/21 PC+VR payload evidence; selected-run MOABB-1.5.0 BIDS-root five-Command/exact-readback PASS (`e5a20362...c6464b08`); pinned loader path contradiction disclosed",
+      "evidence_hashes": [
+        "e5a203622cf9861b4e9e199d45c5317656afe861e9246f503a172b79c6464b08"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Cattan2019_VR-42c9885edb1b.json",
+        "sha256": "42c9885edb1ba15119a7ce472d1abaea1898223aaee62b9e0a0013f3f9790c72"
+      }
+    },
+    {
+      "id": "Brandl2020",
+      "module": "brandl2020",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with fresh-loader source/BIDS fidelity (`e111d1e825086d21430c521b45cfbe074698870b3dc3011faf07f773324089b2`); process-local relative-junction seam avoids the pinned Windows path sanitizer",
+      "evidence_hashes": [
+        "e111d1e825086d21430c521b45cfbe074698870b3dc3011faf07f773324089b2"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Brandl2020-c98ec99ac199.json",
+        "sha256": "c98ec99ac199b857e8f37d5a8030b38422f9ff29a141b3c798212f9679718683"
+      }
+    },
+    {
+      "id": "CastillosBurstVEP40",
+      "module": "castillos2023",
+      "status": "required",
+      "evidence_note": "Subject 2 conversion plus selected-run BIDS-root Command/readback/recipe PASS; Windows cache workaround disclosed; aggregate receipt SHA-256 `d98657f1...8a09f0ea`",
+      "evidence_hashes": [
+        "d98657f1f9acb9f28c22b3f88d7f343d856f2ddc90471210ac6830ff8a09f0ea"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/CastillosBurstVEP40-8fd64ef13658.json",
+        "sha256": "8fd64ef13658a62f8198107056ee16d4275fa2db601c0051ab1e452dfbd43ce8"
+      }
+    },
+    {
+      "id": "CastillosBurstVEP100",
+      "module": "castillos2023",
+      "status": "required",
+      "evidence_note": "Subject 1 conversion plus selected-run BIDS-root Command/readback/recipe PASS; Windows cache workaround disclosed; aggregate receipt SHA-256 `d98657f1...8a09f0ea`",
+      "evidence_hashes": [
+        "d98657f1f9acb9f28c22b3f88d7f343d856f2ddc90471210ac6830ff8a09f0ea"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/CastillosBurstVEP100-ee410ccee8a5.json",
+        "sha256": "ee410ccee8a5aef60adbb9e8b478f6aab933f6e070de701aa73f65a6fba6d657"
+      }
+    },
+    {
+      "id": "CastillosCVEP40",
+      "module": "castillos2023",
+      "status": "required",
+      "evidence_note": "Subject 4 conversion plus selected-run BIDS-root Command/readback/recipe PASS; Windows cache workaround disclosed; aggregate receipt SHA-256 `d98657f1...8a09f0ea`",
+      "evidence_hashes": [
+        "d98657f1f9acb9f28c22b3f88d7f343d856f2ddc90471210ac6830ff8a09f0ea"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/CastillosCVEP40-521470ecd494.json",
+        "sha256": "521470ecd494159d57e6acbc41f3017c0a223b35bbf6254a52e6ce78f28a099f"
+      }
+    },
+    {
+      "id": "CastillosCVEP100",
+      "module": "castillos2023",
+      "status": "required",
+      "evidence_note": "Subject 3 conversion plus selected-run BIDS-root Command/readback/recipe PASS; Windows cache workaround disclosed; aggregate receipt SHA-256 `d98657f1...8a09f0ea`",
+      "evidence_hashes": [
+        "d98657f1f9acb9f28c22b3f88d7f343d856f2ddc90471210ac6830ff8a09f0ea"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/CastillosCVEP100-c40c59239351.json",
+        "sha256": "c40c592393510237707df87f4d0a27d677d76cadfe4be42abe16fd0b87f06de4"
+      }
+    },
+    {
+      "id": "Chailloux2020",
+      "module": "chailloux2020",
+      "status": "required",
+      "evidence_note": "Subject 1 full pinned 15-run source/BrainVision/BIDS-root Command/readback/event/recipe evidence; 45 OpenNeuro ds003190 CC0 assets and the converter child BIDS root are retained atomically on E:, independently re-read aggregate receipt SHA-256 `87dc487d...59b8850c`",
+      "evidence_hashes": [
+        "87dc487d18d20db7571492244fa8ceaa04a17c8f84f1a1949881290059b8850c"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Chailloux2020-a60b7ab72202.json",
+        "sha256": "a60b7ab72202d15fbcbdadfaf6ca7d0ff801ac4e84d5f01d9f0de3162d83d484"
+      }
+    },
+    {
+      "id": "Chang2025",
+      "module": "chang2025",
+      "status": "required",
+      "evidence_note": "Subject 6 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with fresh-loader source/BIDS fidelity; only STIM is externalized (`09a099d7eee3c0aaf4f40c7fb3b7c19ab873777eef7a6ac2e2824e2736968ce5`)",
+      "evidence_hashes": [
+        "09a099d7eee3c0aaf4f40c7fb3b7c19ab873777eef7a6ac2e2824e2736968ce5"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Chang2025-8282d9183d14.json",
+        "sha256": "8282d9183d14bd84900143e68d0b3476bb5905409260a5726cd83b97de594d1c"
+      }
+    },
+    {
+      "id": "Dreyer2023",
+      "module": "dreyer2023",
+      "status": "required",
+      "evidence_note": "Official source-BIDS selected-run five-Command/exact-readback PASS; aggregate maps explicitly to Dreyer2023A subject 1 (`e5a20362...c6464b08`)",
+      "evidence_hashes": [
+        "e5a203622cf9861b4e9e199d45c5317656afe861e9246f503a172b79c6464b08"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Dreyer2023-7c4c9b544eb4.json",
+        "sha256": "7c4c9b544eb4915f09b966f1d80f407c8e70269e5451fb725cef9e26b7876ea1"
+      }
+    },
+    {
+      "id": "Dreyer2023A",
+      "module": "dreyer2023",
+      "status": "required",
+      "evidence_note": "Subject 1 official source-BIDS selected-run five-Command/exact-readback PASS with reviewed 769/770 class mapping (`e5a20362...c6464b08`)",
+      "evidence_hashes": [
+        "e5a203622cf9861b4e9e199d45c5317656afe861e9246f503a172b79c6464b08"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Dreyer2023A-07f8cfd393a8.json",
+        "sha256": "07f8cfd393a807ada743c31f9410549208aad77d4415965593b55e2822841d84"
+      }
+    },
+    {
+      "id": "Dreyer2023B",
+      "module": "dreyer2023",
+      "status": "required",
+      "evidence_note": "Subject 61 official source-BIDS selected-run five-Command/exact-readback PASS with reviewed 769/770 class mapping (`e5a20362...c6464b08`)",
+      "evidence_hashes": [
+        "e5a203622cf9861b4e9e199d45c5317656afe861e9246f503a172b79c6464b08"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Dreyer2023B-093c1d14016b.json",
+        "sha256": "093c1d14016b33c5e54df6ceb32820c0d92d4caac426c77c793c2f99c415f8a5"
+      }
+    },
+    {
+      "id": "Dreyer2023C",
+      "module": "dreyer2023",
+      "status": "required",
+      "evidence_note": "Subject 82 official source-BIDS selected-run five-Command/exact-readback PASS with reviewed 769/770 class mapping (`e5a20362...c6464b08`)",
+      "evidence_hashes": [
+        "e5a203622cf9861b4e9e199d45c5317656afe861e9246f503a172b79c6464b08"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Dreyer2023C-de9b8af6b040.json",
+        "sha256": "de9b8af6b04012536663897ce298adf68aa4e88e8e2a27d370d751b2effe392e"
+      }
+    },
+    {
+      "id": "EPFLP300",
+      "module": "epfl",
+      "status": "deferred_rights",
+      "evidence_note": "BLOCKED: official academic host and adapter provide no explicit source-data license or published checksum",
+      "evidence_hashes": [],
+      "case_manifest": null
+    },
+    {
+      "id": "ErpCore2021_ERN",
+      "module": "erpcore2021",
+      "status": "required",
+      "evidence_note": "Subject 1 source-BIDS/Command evidence; evidence mapping keeps stimulus and excludes response",
+      "evidence_hashes": [
+        "0711042b25fd0b9ad911ceefa7c01cff266f5dae6d178cec064e52963d1768d4"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/ErpCore2021_ERN-df1240a011df.json",
+        "sha256": "df1240a011df902cbb815ff4930414c44e3c29b5d1b5b1237b6099e69a617bbf"
+      }
+    },
+    {
+      "id": "ErpCore2021_LRP",
+      "module": "erpcore2021",
+      "status": "required",
+      "evidence_note": "Subject 1 source-BIDS/Command evidence; evidence mapping keeps stimulus and excludes response",
+      "evidence_hashes": [
+        "0711042b25fd0b9ad911ceefa7c01cff266f5dae6d178cec064e52963d1768d4"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/ErpCore2021_LRP-9b9dea3d527d.json",
+        "sha256": "9b9dea3d527d89a00289775dd8428dbb8567a512d7519da09f372ed8bd1ca156"
+      }
+    },
+    {
+      "id": "ErpCore2021_MMN",
+      "module": "erpcore2021",
+      "status": "required",
+      "evidence_note": "Subject 1 source-BIDS/Command evidence; evidence mapping keeps stimulus and excludes response/STATUS",
+      "evidence_hashes": [
+        "0711042b25fd0b9ad911ceefa7c01cff266f5dae6d178cec064e52963d1768d4"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/ErpCore2021_MMN-37d0d8739296.json",
+        "sha256": "37d0d873929625f93f58d2d4c3f2d6fcb31ebe27e02f38af0603150b0979c611"
+      }
+    },
+    {
+      "id": "ErpCore2021_N2pc",
+      "module": "erpcore2021",
+      "status": "required",
+      "evidence_note": "Subject 1 source-BIDS/Command evidence; evidence mapping keeps stimulus and excludes response",
+      "evidence_hashes": [
+        "0711042b25fd0b9ad911ceefa7c01cff266f5dae6d178cec064e52963d1768d4"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/ErpCore2021_N2pc-f5caf0e8f7a7.json",
+        "sha256": "f5caf0e8f7a79b61cb2c6400c75a7daacd781d43e4d8fe19863358ac88fe86da"
+      }
+    },
+    {
+      "id": "ErpCore2021_N170",
+      "module": "erpcore2021",
+      "status": "required",
+      "evidence_note": "Subject 1 source-BIDS/Command evidence; evidence mapping keeps stimulus and excludes response",
+      "evidence_hashes": [
+        "0711042b25fd0b9ad911ceefa7c01cff266f5dae6d178cec064e52963d1768d4"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/ErpCore2021_N170-84377475ec9d.json",
+        "sha256": "84377475ec9d6daa28a276127bdec6216a4d7ff7e3c35f5c580a4e66d4147c9b"
+      }
+    },
+    {
+      "id": "ErpCore2021_N400",
+      "module": "erpcore2021",
+      "status": "required",
+      "evidence_note": "Subject 1 source-BIDS/Command evidence; evidence mapping keeps stimulus and excludes response",
+      "evidence_hashes": [
+        "0711042b25fd0b9ad911ceefa7c01cff266f5dae6d178cec064e52963d1768d4"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/ErpCore2021_N400-a68bc3a8718f.json",
+        "sha256": "a68bc3a8718f7fcd5cfb96ee63f37eecd3f074616e2b56ccd1540227ee082b9d"
+      }
+    },
+    {
+      "id": "ErpCore2021_P3",
+      "module": "erpcore2021",
+      "status": "required",
+      "evidence_note": "Retained MOABB 1.5 BIDS root selected-run Command/readback/recipe PASS; original converter options were not persisted; aggregate SHA-256 `62ef6cdb...49ac4c53`",
+      "evidence_hashes": [
+        "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/ErpCore2021_P3-957d0291f93b.json",
+        "sha256": "957d0291f93b05899280b02263d4e31e82c5b046783d8e205f582ec03bf1d73f"
+      }
+    },
+    {
+      "id": "Forenzo2023",
+      "module": "forenzo2023",
+      "status": "required",
+      "evidence_note": "Subject 1 retained source fresh-loader \u2192 existing MOABB 1.5.0 EEG-BIDS root \u2192 five-Command/readback/recipe PASS (`4377285aa305221f8e6d2bcfc0ff836926465e0e59f11a813fc8d7e43b209712`)",
+      "evidence_hashes": [
+        "4377285aa305221f8e6d2bcfc0ff836926465e0e59f11a813fc8d7e43b209712"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Forenzo2023-a82976678fa2.json",
+        "sha256": "a82976678fa268412ce44e4c8e797fe26af2ffd2d54183cf906f3c497c92f9fe"
+      }
+    },
+    {
+      "id": "Gao2026",
+      "module": "gao2026",
+      "status": "required",
+      "evidence_note": "Subject 9 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with fresh-loader source/BIDS fidelity (`350fcac5da18167b1e00ee6c59029a824d24730e67649e9778589b07dbb42032`)",
+      "evidence_hashes": [
+        "350fcac5da18167b1e00ee6c59029a824d24730e67649e9778589b07dbb42032"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Gao2026-98053f8e76bd.json",
+        "sha256": "98053f8e76bd617eefa3a52b08f12af8cf11c3c26d6bb5d273dd9d5c0515adb7"
+      }
+    },
+    {
+      "id": "Cho2017",
+      "module": "gigadb",
+      "status": "required",
+      "evidence_note": "Subject 1 selected run loader \u2192 retained EEG-BIDS root \u2192 BIDS-root Command evidence; official source has no published cryptographic checksum",
+      "evidence_hashes": [
+        "05b47169a25203fbae36a2a733ff9b16dd84bc372d6b7bcbe1ad049038ce9c9a"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Cho2017-d3b7e0429a53.json",
+        "sha256": "d3b7e0429a53da8dab1f0f63e1762901f439f55b50db9f85d41eab9ac773f3d7"
+      }
+    },
+    {
+      "id": "GuttmannFlury2025_ME",
+      "module": "guttmann_flury2025",
+      "status": "required",
+      "evidence_note": "Subject 1 retained source fresh-loader \u2192 MOABB 1.5.0 EEG-BIDS \u2192 five-Command/readback/recipe PASS with strict source/BIDS fidelity (`04edab69f125c015ee35fa53be5eebbef0ff56de521ee2944720a02c7cf376e7`); exporter incomplete-head-dig seam disclosed",
+      "evidence_hashes": [
+        "04edab69f125c015ee35fa53be5eebbef0ff56de521ee2944720a02c7cf376e7"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/GuttmannFlury2025_ME-b286a0ee8f48.json",
+        "sha256": "b286a0ee8f48e56d005807fb790fc90ce3e3ad7c1faca9ac45fd13875c9a5cc9"
+      }
+    },
+    {
+      "id": "GuttmannFlury2025_MI",
+      "module": "guttmann_flury2025",
+      "status": "required",
+      "evidence_note": "Subject 1 retained source fresh-loader \u2192 MOABB 1.5.0 EEG-BIDS \u2192 five-Command/readback/recipe PASS with strict source/BIDS fidelity (`5be9001b66b0f395338888b82e43da6d6f511bf4be0f51ef34a746311e98e89f`); exporter incomplete-head-dig seam disclosed",
+      "evidence_hashes": [
+        "5be9001b66b0f395338888b82e43da6d6f511bf4be0f51ef34a746311e98e89f"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/GuttmannFlury2025_MI-35a69abf2e8f.json",
+        "sha256": "35a69abf2e8f98b67e9b585a7caf7f20af941b2c810ad45f82b004cdaf23ba57"
+      }
+    },
+    {
+      "id": "GuttmannFlury2025_P300",
+      "module": "guttmann_flury2025",
+      "status": "required",
+      "evidence_note": "Subject 1 default 4L retained source fresh-loader \u2192 MOABB 1.5.0 EEG-BIDS \u2192 five-Command/readback/recipe PASS with strict source/BIDS fidelity (`d4a730dfd85c5269e1d39fbca352bede60225bce288fd1c34b19a4c091af34c5`); exporter incomplete-head-dig seam disclosed",
+      "evidence_hashes": [
+        "d4a730dfd85c5269e1d39fbca352bede60225bce288fd1c34b19a4c091af34c5"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/GuttmannFlury2025_P300-09641e1290ff.json",
+        "sha256": "09641e1290ff41f005ac07fe865c660001eb716b53a3445ddc9932cbef616643"
+      }
+    },
+    {
+      "id": "GuttmannFlury2025_SSVEP",
+      "module": "guttmann_flury2025",
+      "status": "required",
+      "evidence_note": "Retained MOABB 1.5 BIDS root selected-run Command/readback/recipe PASS; original converter options were not persisted; aggregate SHA-256 `62ef6cdb...49ac4c53`",
+      "evidence_hashes": [
+        "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/GuttmannFlury2025_SSVEP-50306c46edfd.json",
+        "sha256": "50306c46edfd34c93cd922a77930cd84c68c43c675307cbebedde67c30db55a1"
+      }
+    },
+    {
+      "id": "HefmiIch2025",
+      "module": "hefmi_ich2025",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with fresh-loader source/BIDS fidelity; only STI is externalized (`d0a541974e6c52b6460e544b54ee4a23827b0be8d8cf3840c0a2eaa7ad6abaf3`); receipt supersedes an exact-file identity race",
+      "evidence_hashes": [
+        "d0a541974e6c52b6460e544b54ee4a23827b0be8d8cf3840c0a2eaa7ad6abaf3"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/HefmiIch2025-05a7252ed132.json",
+        "sha256": "05a7252ed1321d86fcdffb7aa6c200b69d3dd97c2d1511ccd26ff55ac773c397"
+      }
+    },
+    {
+      "id": "Hinss2021",
+      "module": "hinss2021",
+      "status": "required",
+      "evidence_note": "Retained MOABB 1.5 BIDS root selected-run Command/readback/recipe PASS; original converter options were not persisted; aggregate SHA-256 `62ef6cdb...49ac4c53`",
+      "evidence_hashes": [
+        "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Hinss2021-f60b82635e0f.json",
+        "sha256": "f60b82635e0f281fc3dcb53bc4c964661c96f3699d22b9f9d58f06002c8c4b50"
+      }
+    },
+    {
+      "id": "Huebner2017",
+      "module": "huebner_llp",
+      "status": "required",
+      "evidence_note": "Retained Block1/Run1 official all-modality BIDS, full readback and recipe PASS (37 non-STIM channels). Six MISC channels have unit NONE in the public loader; BIDS n/a matches that contract. Float32 storage oracle has zero mismatches; `5679bbc3b7168b933aad1427bbd9b9c62174f204bd66cc04799af69bdb473514`",
+      "evidence_hashes": [
+        "5679bbc3b7168b933aad1427bbd9b9c62174f204bd66cc04799af69bdb473514"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Huebner2017-23bc20eb9c12.json",
+        "sha256": "23bc20eb9c12fbee43d193248c06416b3dbd6fc749a761a55f9d321cf3d0a6f9"
+      }
+    },
+    {
+      "id": "Huebner2018",
+      "module": "huebner_llp",
+      "status": "required",
+      "evidence_note": "Retained Block1/Run1 official all-modality BIDS, full readback and recipe PASS (37 non-STIM channels). Six MISC channels have unit NONE in the public loader; BIDS n/a matches that contract. Float32 storage oracle has zero mismatches; `af32a70bc607e1995ea91a2ba780eef9f9cdd5d69f45901b0d6c32318b942ddf`",
+      "evidence_hashes": [
+        "af32a70bc607e1995ea91a2ba780eef9f9cdd5d69f45901b0d6c32318b942ddf"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Huebner2018-5ff4e19e5f93.json",
+        "sha256": "5ff4e19e5f937fe16bd741c7b669d3f4d093e36ecbaf33968064656bf7ec41fb"
+      }
+    },
+    {
+      "id": "Jeong2020",
+      "module": "jeong2020",
+      "status": "required",
+      "evidence_note": "Subject 1 official-MD5 loader/BrainVision/Command evidence; selected-run MOABB EEG-BIDS/BIDS-root Command/readback/recipe evidence, receipt SHA-256 `474ce0bc...a5a954c`",
+      "evidence_hashes": [
+        "474ce0bc7dc5f44d29c30a64e7c7aa207e68f473be9f00b292b91a66ba5a954c"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Jeong2020-242d28c39fe0.json",
+        "sha256": "242d28c39fe0b29c30fbd001d3ed757ce079de2b38353af9d21cb6cbcd33e20b"
+      }
+    },
+    {
+      "id": "Kaneshiro2015",
+      "module": "kaneshiro2015",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS (`05735ef7...f8d8a798`)",
+      "evidence_hashes": [
+        "05735ef701fd1538e0d3c76b84e38a6b403acd7d65b6f00e0cdcab67f8d8a798"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Kaneshiro2015-61d5456bd923.json",
+        "sha256": "61d5456bd92361b357c4e61835bfe10b57b008c8b5068dd49a86f3857fa8d794"
+      }
+    },
+    {
+      "id": "Kaya2018",
+      "module": "kaya2018",
+      "status": "required",
+      "evidence_note": "Subject 1 selected run loader \u2192 retained EEG-BIDS root \u2192 BIDS-root Command evidence; official file MD5 retained",
+      "evidence_hashes": [
+        "5ccf3f8eca357d31665d17226e7f6a116221d4b98d1127d9d5a76f9c96d68a50"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Kaya2018-4af4bc8b3ceb.json",
+        "sha256": "4af4bc8b3cebef2463e72fd22497caeb569778f17aae3a32341e3f3121084590"
+      }
+    },
+    {
+      "id": "Kojima2024A",
+      "module": "kojima2024a",
+      "status": "required",
+      "evidence_note": "Retained subject-A low/run-1 official all-modality BIDS, exact source event/waveform/channel fidelity, Commands and recipe replay PASS; `5fc87ac6ca04c21b9b1ba83f714728ea3a8432bfac3ad853d6351d57a2c0f18e`",
+      "evidence_hashes": [
+        "5fc87ac6ca04c21b9b1ba83f714728ea3a8432bfac3ad853d6351d57a2c0f18e"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Kojima2024A-5d299ac1f918.json",
+        "sha256": "5d299ac1f9187837e260c113886f1b8e9a3854faa5e65c6a100eb364fbadc0b2"
+      }
+    },
+    {
+      "id": "Kojima2024B",
+      "module": "kojima2024b",
+      "status": "required",
+      "evidence_note": "Retained source run-12 maps to MOABB `62stream` / BIDS run-62, not old run-12 pairing. Fresh official all-modality BIDS preserves 66 non-STIM channels, 424480 samples and 240 events; Commands/readback/recipe PASS; `7e334a7489cbb76fc2f80c214bf94cfe24b543420abe4c02031c1acdc2cb76f4`",
+      "evidence_hashes": [
+        "7e334a7489cbb76fc2f80c214bf94cfe24b543420abe4c02031c1acdc2cb76f4"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Kojima2024B-5ff7a6b5e7e6.json",
+        "sha256": "5ff7a6b5e7e6d9a518391fcf663d13bccc118f8a96d8a4c2c9ec1e19b12b0b34"
+      }
+    },
+    {
+      "id": "Kumar2024",
+      "module": "kumar2024",
+      "status": "required",
+      "evidence_note": "Subject 1 retained source fresh-loader \u2192 existing MOABB 1.5.0 EEG-BIDS root \u2192 five-Command/readback/recipe PASS with exact channel, rate, sample, waveform and event fidelity (`b1558ae413b031daabd86b667f3ed7f37e3510ece1b7bfe50ad84961b5a57fc2`)",
+      "evidence_hashes": [
+        "b1558ae413b031daabd86b667f3ed7f37e3510ece1b7bfe50ad84961b5a57fc2"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Kumar2024-434cdede423f.json",
+        "sha256": "434cdede423fc3fd8daa24ad96659873a21fc8f46dda6e68f1e1d81f682174e8"
+      }
+    },
+    {
+      "id": "Lee2019_ERP",
+      "module": "Lee2019",
+      "status": "required",
+      "evidence_note": "Subject 1 payload evidence plus retained MOABB-1.5.0 BIDS-root five-Command/exact-readback PASS (`e5a20362...c6464b08`); pinned selected-session defect disclosed",
+      "evidence_hashes": [
+        "e5a203622cf9861b4e9e199d45c5317656afe861e9246f503a172b79c6464b08"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Lee2019_ERP-adf26e9ef04e.json",
+        "sha256": "adf26e9ef04e993ae6e01a374116d3be3c5a74eb3faacfa1434723dedb8247e1"
+      }
+    },
+    {
+      "id": "Lee2019_MI",
+      "module": "Lee2019",
+      "status": "required",
+      "evidence_note": "Subject 1 payload evidence plus retained MOABB-1.5.0 BIDS-root five-Command/exact-readback PASS (`e5a20362...c6464b08`); pinned selected-session defect disclosed",
+      "evidence_hashes": [
+        "e5a203622cf9861b4e9e199d45c5317656afe861e9246f503a172b79c6464b08"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Lee2019_MI-0543748b3ef9.json",
+        "sha256": "0543748b3ef9161f3dae040502eb9f48e83cfccff8563d87450dfd8ff51d9fbc"
+      }
+    },
+    {
+      "id": "Lee2019_SSVEP",
+      "module": "Lee2019",
+      "status": "required",
+      "evidence_note": "Subject 1 payload evidence plus retained MOABB-1.5.0 BIDS-root five-Command/exact-readback PASS (`e5a20362...c6464b08`); pinned selected-session defect disclosed",
+      "evidence_hashes": [
+        "e5a203622cf9861b4e9e199d45c5317656afe861e9246f503a172b79c6464b08"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Lee2019_SSVEP-0e02eb36feed.json",
+        "sha256": "0e02eb36feed10848506d631c6c5be601e27e2fde37be942f19feee6591f51a3"
+      }
+    },
+    {
+      "id": "Lee2021Mobile_ERP",
+      "module": "lee2021_mobile",
+      "status": "required",
+      "evidence_note": "Retained MOABB 1.5 BIDS root selected-run Command/readback/recipe PASS; original converter options were not persisted; aggregate SHA-256 `62ef6cdb...49ac4c53`",
+      "evidence_hashes": [
+        "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Lee2021Mobile_ERP-1cd9dd83f230.json",
+        "sha256": "1cd9dd83f2307dc17a55b7d446eb5b8fcc7b475206a6bd1761151237ff350750"
+      }
+    },
+    {
+      "id": "Lee2021Mobile_SSVEP",
+      "module": "lee2021_mobile",
+      "status": "required",
+      "evidence_note": "Subject 1 session 2 fresh MOABB-to-BIDS five-Command/readback/recipe PASS (`d4fb023f...3bfa9d6`); supplemental fresh public-loader audit confirms source/non-STIM channel, event and waveform fidelity (`5bec1714f50f9c1820c4780a09f095a824387b758d6f278989d51afec3537a7f`)",
+      "evidence_hashes": [
+        "5bec1714f50f9c1820c4780a09f095a824387b758d6f278989d51afec3537a7f",
+        "d4fb023fe415260ede37050b7f32c9ce43c5f36c3246ae1a2d31bd4483bfa9d6"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Lee2021Mobile_SSVEP-8b50c2a16c86.json",
+        "sha256": "8b50c2a16c862e737b9f3e3dd8d97d7bbccce57ede070f9f999d3a1739d7b5a5"
+      }
+    },
+    {
+      "id": "Lee2024_AC",
+      "module": "lee2024",
+      "status": "deferred_rights",
+      "evidence_note": "BLOCKED: official repository has no declared or included source-data license",
+      "evidence_hashes": [],
+      "case_manifest": null
+    },
+    {
+      "id": "Lee2024_BS",
+      "module": "lee2024",
+      "status": "deferred_rights",
+      "evidence_note": "BLOCKED: official repository has no declared or included source-data license",
+      "evidence_hashes": [],
+      "case_manifest": null
+    },
+    {
+      "id": "Lee2024_DL",
+      "module": "lee2024",
+      "status": "deferred_rights",
+      "evidence_note": "BLOCKED: official repository has no declared or included source-data license",
+      "evidence_hashes": [],
+      "case_manifest": null
+    },
+    {
+      "id": "Lee2024_EL",
+      "module": "lee2024",
+      "status": "deferred_rights",
+      "evidence_note": "BLOCKED: official repository has no declared or included source-data license",
+      "evidence_hashes": [],
+      "case_manifest": null
+    },
+    {
+      "id": "Lee2024_TV",
+      "module": "lee2024",
+      "status": "deferred_rights",
+      "evidence_note": "BLOCKED: official repository has no declared or included source-data license",
+      "evidence_hashes": [],
+      "case_manifest": null
+    },
+    {
+      "id": "Liu2024",
+      "module": "liu2024",
+      "status": "required",
+      "evidence_note": "Retained subject-1 EDF/sidecars \u2192 official all-modality BIDS \u2192 full source/readback/recipe PASS, including both EOG channels and 40 class events; `4080611edbe0fe1f92f190686a34c2eb9b3ed9c93f1a5be9cf1d6e09d04017da`",
+      "evidence_hashes": [
+        "4080611edbe0fe1f92f190686a34c2eb9b3ed9c93f1a5be9cf1d6e09d04017da"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Liu2024-0be027c471bf.json",
+        "sha256": "0be027c471bffc5ddf407e69c84b60607ee4295d6eee0ab3e816f26db7e6cd04"
+      }
+    },
+    {
+      "id": "Liu2025",
+      "module": "liu2025",
+      "status": "required",
+      "evidence_note": "Subject 6 verified retained archive fresh-loader \u2192 MOABB 1.5.0 EEG-BIDS \u2192 five-Command/readback/recipe PASS with strict source/BIDS fidelity (`beefff38b9d40a70f38224201458e675bd8a32f5bbc65db9924206676f3fe9d3`); task-local extraction was removed after receipt publication",
+      "evidence_hashes": [
+        "beefff38b9d40a70f38224201458e675bd8a32f5bbc65db9924206676f3fe9d3"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Liu2025-3bc701bb6de4.json",
+        "sha256": "3bc701bb6de43beef7caaa97a2912428cae1cfe273254fea9cf9bdd851840a74"
+      }
+    },
+    {
+      "id": "Ma2020",
+      "module": "ma2020",
+      "status": "required",
+      "evidence_note": "Retained MOABB 1.5 BIDS root selected-run Command/readback/recipe PASS; original converter options were not persisted; aggregate SHA-256 `62ef6cdb...49ac4c53`",
+      "evidence_hashes": [
+        "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Ma2020-fa0d4df50fc1.json",
+        "sha256": "fa0d4df50fc159ac0d8bb4b1f4f192037e51114eff7f8edafcce46fca095b815"
+      }
+    },
+    {
+      "id": "Mainsah2025_A",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 1, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
+      "evidence_hashes": [
+        "d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_A-96d5ba09e22f.json",
+        "sha256": "96d5ba09e22fd4b2b775015d08a459caa22314c775dccb08b848dc77a17ac49f"
+      }
+    },
+    {
+      "id": "Mainsah2025_B",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 8, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
+      "evidence_hashes": [
+        "d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_B-61d823865e8c.json",
+        "sha256": "61d823865e8ce3cccb40fd87b49ba054958f4523ddcbdb8970b744f76860cd4c"
+      }
+    },
+    {
+      "id": "Mainsah2025_C",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 18, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
+      "evidence_hashes": [
+        "d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_C-59c568eb9a4e.json",
+        "sha256": "59c568eb9a4ec4ca297f25d87ea0388c2ccc0d083d827f2c667084de384d9a32"
+      }
+    },
+    {
+      "id": "Mainsah2025_D",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 1, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
+      "evidence_hashes": [
+        "d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_D-08c52549195b.json",
+        "sha256": "08c52549195bd53bf9706b6186e01911f31a984d3811369f4aa0f7356ed5f852"
+      }
+    },
+    {
+      "id": "Mainsah2025_E",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 1, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
+      "evidence_hashes": [
+        "d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_E-049d8147b8ca.json",
+        "sha256": "049d8147b8ca7e67c67d6878eda4e2f9e9645b211a7c3a04998e1c9e0c552279"
+      }
+    },
+    {
+      "id": "Mainsah2025_F",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 3, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
+      "evidence_hashes": [
+        "d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_F-6a9fe1d6bf1a.json",
+        "sha256": "6a9fe1d6bf1a558e06a68302f3d09306b926d9aed412a4eb6aecf1cb4832d9da"
+      }
+    },
+    {
+      "id": "Mainsah2025_G",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 1, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
+      "evidence_hashes": [
+        "d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_G-d41fc9393af1.json",
+        "sha256": "d41fc9393af1c5435a6c75d470b0eacd4c8348ac397dd3e8c7e4257453b9643e"
+      }
+    },
+    {
+      "id": "Mainsah2025_H",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 1, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
+      "evidence_hashes": [
+        "d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_H-4cf8ad4ee36a.json",
+        "sha256": "4cf8ad4ee36ace46ad16b067921b684f4b2d75d5269c090513f3767e40ddf493"
+      }
+    },
+    {
+      "id": "Mainsah2025_I",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 1, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
+      "evidence_hashes": [
+        "d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_I-aabb14a4a9b7.json",
+        "sha256": "aabb14a4a9b79f878669b14c10275dc439e8785ca5aa04ca8c108d26b6c7d54f"
+      }
+    },
+    {
+      "id": "Mainsah2025_J",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 1, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014`)",
+      "evidence_hashes": [
+        "d4cebbde8c7a34f39b7d9080f0dcb6114151d1ed1abaace8cb8339fbebbd7014"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_J-d6cbce1ad494.json",
+        "sha256": "d6cbce1ad494d26e6940fdd05d555261900e4c25f99dd14c521ee71445f97820"
+      }
+    },
+    {
+      "id": "Mainsah2025_K",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 2, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
+      "evidence_hashes": [
+        "8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_K-62bb08c9710c.json",
+        "sha256": "62bb08c9710cf12594347b7c5a8e504c00efac1316cf6cea6ef9d435a5511af9"
+      }
+    },
+    {
+      "id": "Mainsah2025_L",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 1, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
+      "evidence_hashes": [
+        "8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_L-191b78c25834.json",
+        "sha256": "191b78c2583473d25712870e6109a8515ca8cacc18972c3e34803732977f7d64"
+      }
+    },
+    {
+      "id": "Mainsah2025_M",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 4, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
+      "evidence_hashes": [
+        "8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_M-d3f246959296.json",
+        "sha256": "d3f246959296e778068106d1f7e06e880d105fa89b905deb2829ee7c6705d264"
+      }
+    },
+    {
+      "id": "Mainsah2025_N",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 1, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
+      "evidence_hashes": [
+        "8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_N-9fe87339cde8.json",
+        "sha256": "9fe87339cde83e6747bc2c4985e165cdc463b0fc654df4caf4f7957f835b298f"
+      }
+    },
+    {
+      "id": "Mainsah2025_O",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 14, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
+      "evidence_hashes": [
+        "8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_O-7cf2ad3d2381.json",
+        "sha256": "7cf2ad3d23816224b853079a3fa2d69b9b7bc7c1f44b1daa37e871e62cecf1b1"
+      }
+    },
+    {
+      "id": "Mainsah2025_P",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 1, run 1: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
+      "evidence_hashes": [
+        "8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_P-b708fc2d1aa9.json",
+        "sha256": "b708fc2d1aa9b0f3c85d2fc09b8d06fdfd33c564e67d360f815b783b9556b3e3"
+      }
+    },
+    {
+      "id": "Mainsah2025_Q",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 1, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
+      "evidence_hashes": [
+        "8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_Q-cd5c4edbdd6a.json",
+        "sha256": "cd5c4edbdd6a8e8fe7b3427a4859a4c7595946fccf2cecd617449f9810da29c2"
+      }
+    },
+    {
+      "id": "Mainsah2025_R",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 1, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
+      "evidence_hashes": [
+        "8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_R-4d41ae0cc9f7.json",
+        "sha256": "4d41ae0cc9f769535e98cbc79766ff1da723392979705f2cbbe3cdfd77fec7cd"
+      }
+    },
+    {
+      "id": "Mainsah2025_S1",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 1, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
+      "evidence_hashes": [
+        "8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_S1-903dba4096ea.json",
+        "sha256": "903dba4096ea0e7d942359b3ab1ccc86409af618b64d4e6b4089cfffa7c2b82b"
+      }
+    },
+    {
+      "id": "Mainsah2025_S2",
+      "module": "mainsah2025",
+      "status": "required",
+      "evidence_note": "Subject 1, run 0: retained official converter root \u2192 complete embedded `NonTarget`/`Target` review \u2192 Commands/readback/recipe replay PASS; fresh loader marker sequence matches exactly (rerun receipt `8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39`)",
+      "evidence_hashes": [
+        "8ed3105a3fa070f48d693602ff86a2d34a43d0b04107a61168f5c8c9deba8a39"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Mainsah2025_S2-2b30b0c86d50.json",
+        "sha256": "2b30b0c86d5054cdb9f41590b5aed08ef87aafd88334d7946e4b44b755d860ac"
+      }
+    },
+    {
+      "id": "MartinezCagigal2023Checker",
+      "module": "martinezcagigal2023_checker_cvep",
+      "status": "required",
+      "evidence_note": "SF01 fresh MOABB-to-BIDS five-Command/readback/recipe PASS under a measured same-source float32 relative-error bound (`04793d0c...e697bcb`); supplemental fresh public-loader audit confirms source/non-STIM channel, event and bounded waveform fidelity (`7a973c7dd26e4d7977becac8d29dd50c04c31d295dd07b26bfc3c5f5254ca506`)",
+      "evidence_hashes": [
+        "04793d0c6e70d104de4dbb74b9576f8048727569fc0fdc6947deb879be697bcb",
+        "7a973c7dd26e4d7977becac8d29dd50c04c31d295dd07b26bfc3c5f5254ca506"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/MartinezCagigal2023Checker-6af45daa252f.json",
+        "sha256": "6af45daa252f8f050d91ae2a039dbb61e808954ea59f299316778ff012fe5ef7"
+      }
+    },
+    {
+      "id": "MartinezCagigal2023Pary",
+      "module": "martinezcagigal2023_pary_cvep",
+      "status": "blocked",
+      "evidence_note": "Acquisition BLOCKED: the original official hgab.zip URL (sequence 11) still times out in bounded native checks; no alternate publication substituted for the pinned loader source",
+      "evidence_hashes": [
+        "d678381cb9e7f8184eab1edb2778571ad8ef4c4121c78299657722bb88ada02a"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "GrosseWentrup2009",
+      "module": "mpi_mi",
+      "status": "required",
+      "evidence_note": "Subject 1 selected run loader \u2192 retained EEG-BIDS root \u2192 BIDS-root Command evidence; both official MD5 values retained",
+      "evidence_hashes": [
+        "b6e3493f56c64f19bdb32d00da26347213520631b99d14582faf380a7f60b63f"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/GrosseWentrup2009-01be726cbe7c.json",
+        "sha256": "01be726cbe7c03360e76459f785df8d918542c0326194d62fa8a102eb4cd3fa7"
+      }
+    },
+    {
+      "id": "Cattan2019_PHMD",
+      "module": "phmd_ml",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS (`263997fe...77f99ad`); supplemental fresh public-loader audit confirms source/non-STIM channel, event and waveform fidelity (`142d6ad8a27ee241ee3c6802213df5f06f4fa1eddc2eb005265ef2dcffe28aa6`)",
+      "evidence_hashes": [
+        "142d6ad8a27ee241ee3c6802213df5f06f4fa1eddc2eb005265ef2dcffe28aa6",
+        "263997fe2ac983c76bda10c0976a8eebbf0c5a14f9ee9c0333da65d7277f99ad"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Cattan2019_PHMD-f0740fa87e79.json",
+        "sha256": "f0740fa87e79cc1ba5a5b00694b76ea13fb9a2a2515320aa685211cdc766f38c"
+      }
+    },
+    {
+      "id": "PhysionetMI",
+      "module": "physionet_mi",
+      "status": "required",
+      "evidence_note": "Retained MOABB 1.5 BIDS root selected-run Command/readback/recipe PASS; original converter options were not persisted; aggregate SHA-256 `62ef6cdb...49ac4c53`",
+      "evidence_hashes": [
+        "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/PhysionetMI-84e1b61b8f14.json",
+        "sha256": "84e1b61b8f14f021db1ab1995c5dbf76cd7119a69d2bd6d78c493b6dfee8ec6f"
+      }
+    },
+    {
+      "id": "RomaniBF2025ERP",
+      "module": "romani_bf2025_erp",
+      "status": "required",
+      "evidence_note": "Representative source/loader/BrainVision/Command evidence; nested BIDS-root seam disclosed",
+      "evidence_hashes": [
+        "8d631840ce0dfd6f076a89accac5e8a771d7f01e2e45ad2d951db06c9888d7a5"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/RomaniBF2025ERP-64c3df8ac13b.json",
+        "sha256": "64c3df8ac13bb3daf46673dcab7d40339f801785200c82f9268b7425dd757260"
+      }
+    },
+    {
+      "id": "Rozado2015",
+      "module": "rozado2015",
+      "status": "blocked",
+      "evidence_note": "Acquisition BLOCKED: official archive and dataset-metadata requests return HTTP 403; no archive available for extraction/loader verification, and no access-control bypass attempted",
+      "evidence_hashes": [
+        "7b9aca741933567ca289e0dfc7d81b30f2e12d0e41bfd493d22ea0f1eecfa7ae",
+        "d678381cb9e7f8184eab1edb2778571ad8ef4c4121c78299657722bb88ada02a"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Schirrmeister2017",
+      "module": "schirrmeister2017",
+      "status": "required",
+      "evidence_note": "Subject 1 train selected run fresh MOABB-to-BIDS Scan/Preview/Validate/Apply, waveform/event readback and recipe-root identity PASS; retained child receipt SHA-256 `cbd252420865dd2a176ec9c587fbf6afe9a68302ba0617219bafff29ece70af3`",
+      "evidence_hashes": [
+        "cbd252420865dd2a176ec9c587fbf6afe9a68302ba0617219bafff29ece70af3"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Schirrmeister2017-ee368bc7b26b.json",
+        "sha256": "ee368bc7b26b7904dd4ca5d5d41eb8ed028e8e246f1bea294c9256c7383d50ba"
+      }
+    },
+    {
+      "id": "Simoes2020",
+      "module": "simoes2020",
+      "status": "required",
+      "evidence_note": "Subject 1 payload evidence plus selected-run fresh MOABB-to-BIDS five-Command/readback/recipe PASS (`296c1c46...57ebe9f`)",
+      "evidence_hashes": [
+        "296c1c4631f309a37323072849fefc59c22cf020e51f8dc3f36105a8057ebe9f"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Simoes2020-772f5a3f8d7f.json",
+        "sha256": "772f5a3f8d7fad5e83963669b51b592bfd37a7c9c9cb8637c6e162745034c831"
+      }
+    },
+    {
+      "id": "Sosulski2019",
+      "module": "sosulski2019",
+      "status": "required",
+      "evidence_note": "Selected-run portable BIDS Command/import and fresh recipe replay PASS; conversion/source limits remain in bound receipts.",
+      "evidence_hashes": [
+        "32b8e860f02a2a91dfb4f9a065aa5660c20f9bcfb82a3ea1a9e8eb8a7def7959",
+        "3e347142059d5442306e94798e0844e3357e375bf227e1260857873e9c3bf66c",
+        "3eab8bb50099a1ec61f11f484eccba57529fcc05ce6adcc9008ea4184e7a35f8",
+        "4f192635098bc1d70f5a4c552edcac555802120114486cccd42773461c84e820",
+        "55f7622b1148cab8d9b654b656c43969d8f62ece9bebdd41886bd09f0b410f5c",
+        "6bf4f1725065e458922591aa719863ace2d0ed71e16abbbcf42739db408c9c39",
+        "6cd4e7701df92d95726891ca5428b52dbc8532ba0720d579d44fbccb209733ae",
+        "74dbdbda1f450dbcb5d1db18acaca558e81dfa46306ce781d9bc1617d1f2a658",
+        "7b761844be10325d8d8615f388519f8d95bd7ace293d0ec060791c91f8c44223",
+        "7cf7c6a15461cdc09c98907d53b58acbda79bd7777c9e3273e132a2b2cead409",
+        "9d99a7942d1ce265dbe511dbf5a5e15c782d078a7976cdbb70b8e5ef1069954b",
+        "e7adf335e4ff6bca18aae94b7e0a6d395c891bad70bbebe14b9086190183b7bf",
+        "fe3e744b015eccd445c643a8b4e15cfdb976a6351e85d7142e9916c2872b8022"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Sosulski2019-b1a1ef1683cb.json",
+        "sha256": "b1a1ef1683cb23d9f3f5b70ff2e4eeecf2b19962f259e26f8d37e993ebda3cf0"
+      }
+    },
+    {
+      "id": "Speier2017",
+      "module": "speier2017",
+      "status": "required",
+      "evidence_note": "Subject 1 complete payload evidence plus selected-run fresh MOABB-to-BIDS five-Command/readback/recipe PASS (`478c1868...61c0be60`); supplemental fresh public-loader audit confirms source/non-STIM channel, event and waveform fidelity (`770483d1f1dcb44ddd8b0569b267227a3bdbf449daa5d5efb2539ba7dcf63cc9`)",
+      "evidence_hashes": [
+        "478c18682f84d95254b1a00c7e7f678512ecdce7f3c02a745f9c020661c0be60",
+        "770483d1f1dcb44ddd8b0569b267227a3bdbf449daa5d5efb2539ba7dcf63cc9"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Speier2017-d359f9ffaee1.json",
+        "sha256": "d359f9ffaee1dc2d37eec61496b7416936b911aa0069a86f4474457aa634df6b"
+      }
+    },
+    {
+      "id": "Chen2017SingleFlicker",
+      "module": "ssvep_chen2017",
+      "status": "required",
+      "evidence_note": "Retained MOABB 1.5 BIDS root selected-run Command/readback/recipe PASS; original converter options were not persisted; aggregate SHA-256 `62ef6cdb...49ac4c53`",
+      "evidence_hashes": [
+        "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Chen2017SingleFlicker-0a6ca44e1c07.json",
+        "sha256": "0a6ca44e1c071e112a705596a20f50d82f615b7d4655c830fb57e4189d138a61"
+      }
+    },
+    {
+      "id": "Dong2023",
+      "module": "ssvep_dong2023",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS (`eca6c948...98a0c022`); supplemental fresh public-loader audit confirms only STIM was externalized and preserves source channels/events/readback (`9c664edcd135ef44806f9eb6c087d23772f4373f32e4b86fd69b177b85738c1b`)",
+      "evidence_hashes": [
+        "9c664edcd135ef44806f9eb6c087d23772f4373f32e4b86fd69b177b85738c1b",
+        "eca6c94802534d54edc2550daa2f0030248b9e7d79fa17f94ca98d9198a0c022"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Dong2023-4b2a137a0e0b.json",
+        "sha256": "4b2a137a0e0b7888bee01a74f9c48a8fd3a361fd3e21dbf2fdbe51b694134351"
+      }
+    },
+    {
+      "id": "Kalunga2016",
+      "module": "ssvep_exo",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS (`0273cb23...48677c0e`); supplemental fresh public-loader audit confirms only STIM was externalized and preserves source channels/events/readback (`bff167fc714a61e16bad4cb67f0a2f1cde7143725fcf5372a64a7727593ff040`)",
+      "evidence_hashes": [
+        "0273cb2307c7fcbfac615b14b2b877d0f67cf4237849fd107dc464a748677c0e",
+        "bff167fc714a61e16bad4cb67f0a2f1cde7143725fcf5372a64a7727593ff040"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Kalunga2016-ed4558d69535.json",
+        "sha256": "ed4558d695354eacc66dd95ef98263e00e41a223a9f42baeddc7e4c834dc071d"
+      }
+    },
+    {
+      "id": "Han2024Fatigue",
+      "module": "ssvep_han2024",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS (`08f14424...9f8d052b`); supplemental fresh public-loader audit confirms source/non-STIM channel, event and waveform fidelity (`e0da6d7c83a5bffb8bfcf2a2376f9f970ee8942d6e81d7bc7e36fa28b6d61563`)",
+      "evidence_hashes": [
+        "08f144242d9ed40e4b352b446ca3e27ac94bc05741fb040310a1372c9f8d052b",
+        "e0da6d7c83a5bffb8bfcf2a2376f9f970ee8942d6e81d7bc7e36fa28b6d61563"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Han2024Fatigue-358f10050a68.json",
+        "sha256": "358f10050a68c7240e1763291d9988890dc2c77093f6b4e6abb2a6bf90302f86"
+      }
+    },
+    {
+      "id": "Kim2025BetaRange",
+      "module": "ssvep_kim2025",
+      "status": "required",
+      "evidence_note": "Official all-modality subject-1 conversion preserves M1/M2 MISC; session-0/run-0 full source/readback/recipe PASS (40 class events). Six sessions converted, only one verified; `b0e4d6f2237899d85c2234e347d6ca9b08ca450684002dac6b38f9d5d1e767f6`",
+      "evidence_hashes": [
+        "b0e4d6f2237899d85c2234e347d6ca9b08ca450684002dac6b38f9d5d1e767f6"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Kim2025BetaRange-a9c8775fdafd.json",
+        "sha256": "a9c8775fdafdbd7b9c6572641255868a8290f9272e732f6a21748c77777f7479"
+      }
+    },
+    {
+      "id": "Liu2020BETA",
+      "module": "ssvep_liu2020",
+      "status": "deferred_rights",
+      "evidence_note": "BLOCKED: source only states non-commercial research use; no public CC license or official checksum",
+      "evidence_hashes": [],
+      "case_manifest": null
+    },
+    {
+      "id": "Liu2022EldBETA",
+      "module": "ssvep_liu2022",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS (`ddcb2816...cc0d9beb`); supplemental fresh public-loader audit confirms source/non-STIM channel, event and waveform fidelity (`df52466989075913191895475d34c39d22228ec3e758826fe99d1c6e6cd9baf4`)",
+      "evidence_hashes": [
+        "ddcb2816e53b6f8214aeccb8c0857fe79be5bfa0dc27088e18898662cc0d9beb",
+        "df52466989075913191895475d34c39d22228ec3e758826fe99d1c6e6cd9baf4"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Liu2022EldBETA-e3259ea337a6.json",
+        "sha256": "e3259ea337a6deb79fe45ac190219d9d0da33d1bbb2aefb6ad38936ad36556dc"
+      }
+    },
+    {
+      "id": "MAMEM1",
+      "module": "ssvep_mamem",
+      "status": "required",
+      "evidence_note": "Retained MOABB 1.5 BIDS root selected-run Command/readback/recipe PASS; original converter options were not persisted; aggregate SHA-256 `62ef6cdb...49ac4c53`",
+      "evidence_hashes": [
+        "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/MAMEM1-2ce7b9b6db2e.json",
+        "sha256": "2ce7b9b6db2e861af9fb9188a9d84e00ec9b8de756a3620faa3189fd0f8ed49b"
+      }
+    },
+    {
+      "id": "MAMEM2",
+      "module": "ssvep_mamem",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with converter-derived quantization bound (`bee42ce8...fbb0ff2`)",
+      "evidence_hashes": [
+        "bee42ce8ff980d7110c182f7a5699ed2c724ccd590d4856b8fe8cbb77fbb0ff2"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/MAMEM2-4883063535af.json",
+        "sha256": "4883063535af24fa505de121567a0438ea62d908bd0b2cf6a16dc2c3b5bbd95f"
+      }
+    },
+    {
+      "id": "MAMEM3",
+      "module": "ssvep_mamem",
+      "status": "required",
+      "evidence_note": "Subject 1 fresh MOABB-to-BIDS five-Command/readback/recipe PASS with converter-derived quantization bound (`372f5bd6...749bfec2`)",
+      "evidence_hashes": [
+        "372f5bd6bf0b7b82d481c294e467dd07252f811d889985bb1c940f7b749bfec2"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/MAMEM3-04b9511e4702.json",
+        "sha256": "04b9511e4702c57dcac631910207db9fd8b535a1e75bed37198c6b659d3e3510"
+      }
+    },
+    {
+      "id": "Nakanishi2015",
+      "module": "ssvep_nakanishi",
+      "status": "required",
+      "evidence_note": "Retained MOABB 1.5 BIDS root selected-run Command/readback/recipe PASS; original converter options were not persisted; aggregate SHA-256 `62ef6cdb...49ac4c53`",
+      "evidence_hashes": [
+        "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Nakanishi2015-6fc3e1b2693e.json",
+        "sha256": "6fc3e1b2693e6891a0e3d8ec849b9aa5e37f73bdab8638457e80a744d04212c1"
+      }
+    },
+    {
+      "id": "Wang2016",
+      "module": "ssvep_wang",
+      "status": "required",
+      "evidence_note": "Retained MOABB 1.5 BIDS root selected-run Command/readback/recipe PASS; original converter options were not persisted; aggregate SHA-256 `62ef6cdb...49ac4c53`",
+      "evidence_hashes": [
+        "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Wang2016-28ecee1abc9b.json",
+        "sha256": "28ecee1abc9b84ae609f69e6c8af0c7c4824d4b7b9b47a1b0c8f2eae211b8085"
+      }
+    },
+    {
+      "id": "Wang2021Combined",
+      "module": "ssvep_wang2021",
+      "status": "required",
+      "evidence_note": "Retained first CNT \u2192 official all-modality BIDS \u2192 full source/readback/recipe PASS (200 class events). Existing retained child is unchanged; constructor lacks the option, so the inherited dataset field is explicitly set True; `7451f7617dd4a24d283b59be9f6443d40b2b97141d9ba3d654836833a56dfd0c`",
+      "evidence_hashes": [
+        "7451f7617dd4a24d283b59be9f6443d40b2b97141d9ba3d654836833a56dfd0c"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Wang2021Combined-ceda258837e2.json",
+        "sha256": "ceda258837e28396a329b19408ad9b376a206939197770c37041ae62fa1c09d1"
+      }
+    },
+    {
+      "id": "Stieger2021",
+      "module": "stieger2021",
+      "status": "required",
+      "evidence_note": "Subject 1 session 1 run 0 fresh MOABB-to-BIDS Scan/Preview/Validate/Apply, waveform/event readback and recipe-root identity PASS; retained child receipt SHA-256 `25e7f5b55dfe3c07857f778981002bb0f20ccca2968706bb699eaa584492fcdd`",
+      "evidence_hashes": [
+        "25e7f5b55dfe3c07857f778981002bb0f20ccca2968706bb699eaa584492fcdd"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Stieger2021-c04fec53dd2f.json",
+        "sha256": "c04fec53dd2f7795e64317b8adec528e3ae7f5d40643a330110c14dfd5d96e80"
+      }
+    },
+    {
+      "id": "Tavakolan2017",
+      "module": "tavakolan2017",
+      "status": "required",
+      "evidence_note": "Selected-run portable BIDS Command/import and fresh recipe replay PASS; conversion/source limits remain in bound receipts.",
+      "evidence_hashes": [
+        "220c2897cc5d4c7bf88578de46ac3588b6e6007af1715bcc04e0ba4fb74df987",
+        "65c4b7074e4e0a0572b7121eb5f6ec746cb8ca80e0b7daae27db2af8a87515d8",
+        "672f08868b5fc1b1488c73d21daf73d0d25432d9185a6bc2c50c1f9e7ab0375c",
+        "76cb0b927c70d5cb7db99b2ae81a5802647512d0497ab7e6c4114d50373db014",
+        "7cf7c6a15461cdc09c98907d53b58acbda79bd7777c9e3273e132a2b2cead409",
+        "a671cec697ece84011af751427a70881dc31faa0be05411ee94517268356dffd",
+        "d339def236b245e710e0eb1f195855dcc04478dd41a35277190fdd5c8bd87d39",
+        "da418e21a9303d0005183b5bc7fbc191e323788cfc060a4088166b753ebf8d2e",
+        "e7adf335e4ff6bca18aae94b7e0a6d395c891bad70bbebe14b9086190183b7bf",
+        "e89b2ccb993eea8c0d538a24f844a56ae082a6d981468bb1928511aa0a733d13",
+        "feaf4b6194bca61cac648289cd46f94ca15fa7701bb9afd5b912d1339828545a"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Tavakolan2017-bb02927ab6f0.json",
+        "sha256": "bb02927ab6f0e22e6f9117b73cd37431f9304c7d1caeb2a42303a3aaec44313c"
+      }
+    },
+    {
+      "id": "Thielen2015",
+      "module": "thielen2015",
+      "status": "required",
+      "evidence_note": "Official converter preserves annotation extras in events.tsv. Reviewed trial_id timestamp classes now import and replay at all 36 exact samples; full 104-channel app readback equals BIDS, source hashes unchanged; `a90b58bb94c5969d240ed49054bcafdea57f45d32b67b9512cac3ab1094379b9`. Representative import, not full cVEP training support",
+      "evidence_hashes": [
+        "a90b58bb94c5969d240ed49054bcafdea57f45d32b67b9512cac3ab1094379b9"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Thielen2015-1653efa643f5.json",
+        "sha256": "1653efa643f57ddac7baa536158b7b14e5432e313af48489b53e0570185986f1"
+      }
+    },
+    {
+      "id": "Thielen2021",
+      "module": "thielen2021",
+      "status": "required",
+      "evidence_note": "Retained MOABB 1.5 BIDS root selected-run Command/readback/recipe PASS; original converter options were not persisted; aggregate SHA-256 `62ef6cdb...49ac4c53`",
+      "evidence_hashes": [
+        "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Thielen2021-3efefa37b7bd.json",
+        "sha256": "3efefa37b7bdfd2c1611b2df766919856a15aa2220467caa127aa20963352cd9"
+      }
+    },
+    {
+      "id": "TrianaGuzman2024",
+      "module": "triana_guzman2024",
+      "status": "blocked",
+      "evidence_note": "**Official converter BLOCKED**: unmodified pinned MOABB / MNE-BIDS fails because head-coordinate metadata lacks nasion/LPA/RPA landmarks. The old export-only root altered fiducial/STIM metadata and is not canonical conversion evidence; no product workaround applied; `1686f1e9905f01fc24b7dd9f43806109779963f93d04c161988b6814522843ca`",
+      "evidence_hashes": [
+        "1686f1e9905f01fc24b7dd9f43806109779963f93d04c161988b6814522843ca"
+      ],
+      "case_manifest": null
+    },
+    {
+      "id": "Ofner2017",
+      "module": "upper_limb",
+      "status": "required",
+      "evidence_note": "Retained MOABB 1.5 BIDS root selected-run Command/readback/recipe PASS; original converter options were not persisted; aggregate SHA-256 `62ef6cdb...49ac4c53`",
+      "evidence_hashes": [
+        "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Ofner2017-9b47f8b04a6e.json",
+        "sha256": "9b47f8b04a6ebaea8939ce719b7d857928a9cc11031e1502d315d77e48c0423e"
+      }
+    },
+    {
+      "id": "Wairagkar2018",
+      "module": "wairagkar2018",
+      "status": "required",
+      "evidence_note": "Subject 1 session 0 run 0 fresh MOABB-to-BIDS Scan/Preview/Validate/Apply, waveform/event readback and recipe-root identity PASS; retained child receipt SHA-256 `af3de6caca1519ec5b4cd5c74d74431e35bcc14e42a88b364a3a79cc00431406`",
+      "evidence_hashes": [
+        "af3de6caca1519ec5b4cd5c74d74431e35bcc14e42a88b364a3a79cc00431406"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Wairagkar2018-4f214f75a7ae.json",
+        "sha256": "4f214f75a7aefa2aa335109ba49223555775d753fbea2d1d28a65ba5a0b31c25"
+      }
+    },
+    {
+      "id": "Weibo2014",
+      "module": "Weibo2014",
+      "status": "required",
+      "evidence_note": "Official all-modality representative BIDS, source/readback and recipe PASS (64 non-STIM channels, 560 events, 7 classes). Annotations match the public loader's [3,7] interval: original STIM sample +600; BIDS value IDs are explicitly mapped to class names, not mistaken for original codes; `9dadd3a106347948d63c500bebe5859e63ecfce9aedc4d631530e32e7b867bd9`",
+      "evidence_hashes": [
+        "9dadd3a106347948d63c500bebe5859e63ecfce9aedc4d631530e32e7b867bd9"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Weibo2014-5f9931403e4a.json",
+        "sha256": "5f9931403e4a1cae51cff8aac1b3b5eee96b9e870b7f60f77137823612e776bd"
+      }
+    },
+    {
+      "id": "Wu2020",
+      "module": "wu2020",
+      "status": "required",
+      "evidence_note": "Subject 1 payload evidence plus retained MOABB-1.5.0 BIDS-root five-Command/exact-readback PASS (`e5a20362...c6464b08`); official EEG-only channel selection recorded",
+      "evidence_hashes": [
+        "e5a203622cf9861b4e9e199d45c5317656afe861e9246f503a172b79c6464b08"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Wu2020-08317d32a9d5.json",
+        "sha256": "08317d32a9d5c1856f7e5cf59604c8fb6e152df8acd6718d2fbbdfda1591fa4f"
+      }
+    },
+    {
+      "id": "Yang2025",
+      "module": "yang2025",
+      "status": "required",
+      "evidence_note": "Selected-run portable BIDS Command/import and fresh recipe replay PASS; conversion/source limits remain in bound receipts.",
+      "evidence_hashes": [
+        "1584fae941d4e944f9dbdf0408ca163a73831dd6006ea95ec5ee619d926bf552",
+        "4ae7c93b1e81b41eb8220713058e04e0989c14e9d78ac76113d3d6ea3ae39ed7",
+        "543801767194e99175f9740f74a47a87132fb48b438de9917cb040cc25c7f0fb",
+        "6235439fe7ed8e2484cb1b393b4ba562c023717352480eab896c9ab710d03a41",
+        "7436cb9fb755b077c89750c8a5d77c029d3d2640bdd3d52848028f074a2f2d8c",
+        "7cf7c6a15461cdc09c98907d53b58acbda79bd7777c9e3273e132a2b2cead409",
+        "99468dcd59d7d2c6c5bd568f1b07893fd5126304da96596eaecdab25f046da6e",
+        "9c0559fc74a16249a15567046572e8de1d49f6a2ac423e45fbbc2c972e1c1361",
+        "a7902b8e500695a009564728a71a331bab65f2feb22fc448411793cb67be676a",
+        "b12154047ed2587adb6f04ac9282576f42246f681e7e777a5ede01253420d80a",
+        "bde96107208aec97eee0b2f5acb2e3f24114412f0c6fa54bfcc236e280a0184a",
+        "e7adf335e4ff6bca18aae94b7e0a6d395c891bad70bbebe14b9086190183b7bf",
+        "fe5d5fb786fb2918e403c03afeb4be2411166427ece5108a3fb4857f895d73e3"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Yang2025-3c64f4e28d23.json",
+        "sha256": "3c64f4e28d23e57bd42372d8f5ad0b662c002c27b9c6818cab395fdba58f9e9f"
+      }
+    },
+    {
+      "id": "Yi2025",
+      "module": "yi2025",
+      "status": "required",
+      "evidence_note": "Subject 11 retained MOABB 1.5.0 BIDS root has eight events.tsv files; all eight source event sequences match, and selected run-0 Commands/readback/recipe replay PASS (`edd6b22dd795aa0547d7f0b9e849102562b05394fadc3036427f222a1b781ae7`). The earlier missing-events receipt was incorrect; historical converter script/log is unavailable, so retained options/provenance are disclosed rather than described as a fresh conversion",
+      "evidence_hashes": [
+        "edd6b22dd795aa0547d7f0b9e849102562b05394fadc3036427f222a1b781ae7"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Yi2025-c28f357e03a8.json",
+        "sha256": "c28f357e03a8f9d5b81b4505bd4bd2c5510e904961f0024612b1528fef0e344d"
+      }
+    },
+    {
+      "id": "Zhang2017",
+      "module": "zhang2017",
+      "status": "required",
+      "evidence_note": "Selected-run portable BIDS Command/import and fresh recipe replay PASS; conversion/source limits remain in bound receipts.",
+      "evidence_hashes": [
+        "0d876759e13a0b42fa2cb8632251058886fe252ef02f9371b785b5f037e801cc",
+        "115c58609774ad969ad6cd82e41181b4a26acc63b44cf8efbb72777f43f644bb",
+        "12e409da8b0fb8c7c8334175bd4c3977abc452c9da1b99b44ab617e9fdee2cb6",
+        "13f01db9c90a318dadec7d1e31ddc9c7a247ab24f0b817b6ad655af7d4fb3ffb",
+        "3ac631cdd42c40219a0ca3b8119f345430d31668d2a849a49b90296718b23cf5",
+        "48a7619f1491e53267e86d9691e4228f9360ce9d406ebc617fd1651b1dab02c0",
+        "5df1944ad5757248a1ee94fbef11c955ae6d1da670b3c72b04da8bc2eaca9c04",
+        "60714262e07252797fdc66f7e241bf65eea60cc13d7436a5dd090096a34ce066",
+        "7cf7c6a15461cdc09c98907d53b58acbda79bd7777c9e3273e132a2b2cead409",
+        "90b0370e4c1cd7041d37cb2cc746b79ecb15e89833f913f952fc198c2e72e1e2",
+        "92f5c7900ddfd875160dde84bda092de413701a3f0267261207a7c543785489d",
+        "99cbf2f4782f11b135fb15c1ba0e4da52811415913dc56447a6d8700e1bf74c5",
+        "b2e56bd8e98bbeb156980bb1365ad247a8d0fa5305d861d719019c6235c25d11",
+        "c9527d211b69f77fe1a083f082d99269892bd301e67974daeec9e5c781f3799b",
+        "d0ba009ce9bd649cc715da159b5482c069adf727a02670c223b938d8bab09f93",
+        "db4a6686f0e282b5c6a4a3154644074701f94fb44dd036a197ca29f0f1a62ab8",
+        "dc436d4e9d5b2e1934d9e1ea93ea9171b0aaa17bd748e7be0109063e3543523c",
+        "e7adf335e4ff6bca18aae94b7e0a6d395c891bad70bbebe14b9086190183b7bf",
+        "ed4f58a58d643a8a0d6bfae9dd4f1ecacdb1ca8599916e03835d1a8048622053",
+        "f6e261fec9d5bb643324a703ec370053295da923f285255b39cb8c4cd97c4c9d",
+        "f91477a6606c2ec4c131960c04c4924e1c78e143655cd4575254f82a3ff21e1e",
+        "fdcc1c450b373414170f2e1c25e4e8f87ada343b9014b890d5c4897740898429"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Zhang2017-a625681acb44.json",
+        "sha256": "a625681acb44c91b635d4439e4ca8367c262a3a7473683cf6022cc2b736b700c"
+      }
+    },
+    {
+      "id": "Zhang2025",
+      "module": "zhang2025",
+      "status": "required",
+      "evidence_note": "Subject 1 retained source fresh-loader \u2192 existing MOABB 1.5.0 EEG-BIDS root \u2192 five-Command/readback/recipe PASS (`f04a76f5cc39223b07ea2f23d027551ab2a67c1991c51e931ba4f20e393ebd32`); process-only pinned output-path seam disclosed",
+      "evidence_hashes": [
+        "f04a76f5cc39223b07ea2f23d027551ab2a67c1991c51e931ba4f20e393ebd32"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Zhang2025-e23c0fc01041.json",
+        "sha256": "e23c0fc010415b60e1ae8434260d9e8384f50314d9b88825899c7f91aac000ef"
+      }
+    },
+    {
+      "id": "Zheng2020",
+      "module": "zheng2020",
+      "status": "required",
+      "evidence_note": "Subject 1 session 0 run 0 fresh MOABB-to-BIDS Scan/Preview/Validate/Apply, waveform/event readback and recipe-root identity PASS; retained child receipt SHA-256 `986dc316b581d3a6f20d9d38f837dd87394daba5ede07f4f7e48e6b0cd15db66`",
+      "evidence_hashes": [
+        "986dc316b581d3a6f20d9d38f837dd87394daba5ede07f4f7e48e6b0cd15db66"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Zheng2020-83d284d6d17c.json",
+        "sha256": "83d284d6d17c70cdbd2bba9fb3b0007f48ed54e7a024c04820adc62802a03ed9"
+      }
+    },
+    {
+      "id": "Zhou2016",
+      "module": "Zhou2016",
+      "status": "required",
+      "evidence_note": "Subject 1 retained source plus root metadata fresh MOABB-to-BIDS five-Command/readback/recipe PASS; independent public-loader identity remained stable across conversion (`0d2ab582820e68fb3d4aa966b768c7488e099547970eb7328ae28c64d041247f`)",
+      "evidence_hashes": [
+        "0d2ab582820e68fb3d4aa966b768c7488e099547970eb7328ae28c64d041247f"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Zhou2016-ad226f2df32c.json",
+        "sha256": "ad226f2df32ca26fff480ac30d06788f43d3976d1d47c19fac0e05795dedf6a7"
+      }
+    },
+    {
+      "id": "Zhou2020",
+      "module": "zhou2020",
+      "status": "required",
+      "evidence_note": "Retained MOABB 1.5 BIDS root selected-run Command/readback/recipe PASS; original converter options were not persisted; aggregate SHA-256 `62ef6cdb...49ac4c53`",
+      "evidence_hashes": [
+        "62ef6cdbaccf3c9fd5b1525d28e1e29f22fd2f991ff0946772aba22f49ac4c53"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Zhou2020-c96208b3ac4e.json",
+        "sha256": "c96208b3ac4e13989500da354f9419abe1dbc463eb75baec2eef6121d256d712"
+      }
+    },
+    {
+      "id": "Zuo2025",
+      "module": "zuo2025",
+      "status": "required",
+      "evidence_note": "Retained source/official BIDS embedded markers match the fresh loader as `Stimulus/S  1`\u2192`left_leg`, `Stimulus/S  2`\u2192`right_leg`; complete reviewed Commands, exact readback and recipe replay PASS (`edd6b22dd795aa0547d7f0b9e849102562b05394fadc3036427f222a1b781ae7`), superseding the missing-events product blocker",
+      "evidence_hashes": [
+        "edd6b22dd795aa0547d7f0b9e849102562b05394fadc3036427f222a1b781ae7"
+      ],
+      "case_manifest": {
+        "path": "datasets/manifests/import-cases-v1/Zuo2025-28d28f200ab6.json",
+        "sha256": "28d28f200ab6ee8c196e66ca631a51032b1ebde8bfe904cea19d12ea8a3e8211"
+      }
+    }
+  ]
+}

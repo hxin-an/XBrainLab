@@ -807,6 +807,23 @@ _GATE_SPECS = (
         ),
     ),
     GateSpec(
+        check_id="moabb-import-conformance",
+        section="7",
+        argv=(
+            *_PRLIMIT,
+            *_POETRY_EXEC,
+            "python",
+            "scripts/dev/run_moabb_import_conformance.py",
+            "--output",
+            f"{EVIDENCE_ROOT_TOKEN}/moabb-import-conformance",
+            "--jobs",
+            "1",
+        ),
+        timeout_seconds=21600,
+        environment=_MNE,
+        required_artifact_paths=("moabb-import-conformance",),
+    ),
+    GateSpec(
         check_id="wizard-format-matrix",
         section="7",
         argv=(

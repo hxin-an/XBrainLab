@@ -1,6 +1,6 @@
 # XBrainLab 目前狀態
 
-最後更新：`2026-09-07`
+最後更新：`2026-09-16`
 
 ## 一句話
 
@@ -9,6 +9,26 @@ import/review 經 Preprocess、Epoch、Split/Training、Evaluation 到 Saliency 
 local Granite透過18個核准action進入相同GUI與Command workflow。
 
 ## Current product truth
+
+使用者匯入邊界集中於 `user_docs/import-support.md`：通用 EEG 檔案與 EEG-BIDS 是並列入口，
+內嵌／外部／混合／明確無 label 均經既有 wizard。無 label 可檢視與前處理，不代表監督式
+epoch/training ready。MOABB loader 轉成 EEG-BIDS 後的全清單相容性是已同意的最低目標；完整
+1.5.0 inventory 的 recurring gate 目前要求 134 個代表路徑：原有 127 個加上七個新通過
+轉換／實際匯入／recipe 重播的案例，另有九個授權暫緩、四個明確 blocker、零個未盤點。
+每個 required entry 已綁定可攜式資料 manifest；統一路徑的同版本 fresh backend campaign 已
+於 134/134 通過。
+這是完整 disposition，**不是 147/147 相容能力**。目前同批通道配置／raw-epoch 相容性限制，以及
+BIDS epoched/discontinuous 與仍未通過的逐項轉換／產品 blocker，
+必須公開，不能透過文件把尚未完成的目標改寫為已支援。
+明確無 label 的 BIDS 匯入不再強制 events.tsv；wizard 可選 `Continue without labels`，經後端
+重新驗證後才確認匯入，仍阻擋監督式 epoch。原生自動流程可證明此路徑，不取代真人驗收。
+BIDS 缺少 events.tsv 時亦可完整審查檔內事件與 class 後匯入並重播 recipe；不猜測 class。
+外部 timestamp placement 遇到 inherited EEG metadata 明定 epoched/discontinuous 時會阻擋，
+不再當成連續時間軸；新增或修改已審查的 sidecar 必須重新 preview/review。
+Timestamp interval 結尾的表示誤差由 preview 與實際事件載入共用同一界線：最多一微秒，
+且不超過半個 sample；不改寫來源時間、不允許 onset 落在錄製結尾或真正的 interval 越界。
+BrainVision header 已計入的 signal／marker 依賴不再重複增加波形 RAM 估算；未被引用的檔案
+仍計入，安全門檻與必要確認保持不變。
 
 | 區域 | 目前能相信 | 邊界 |
 | --- | --- | --- |
@@ -42,10 +62,35 @@ local Granite透過18個核准action進入相同GUI與Command workflow。
 
 `XBRAINLAB_DATA_DIR/datasets/`是唯一central local hierarchy，分為source、bids、public-fixtures、
 manifests與quarantine。這台開發機目前使用
-`/mnt/d/workspace_v2/.xbrainlab-data/datasets/`；其中保存15個formal BIDS、唯一MOABB raw source、
-legacy compact source、pinned public fixtures與relocation-aware checksums/receipts。Import dialog只把
-它當起始位置，仍可選外部路徑。Repo `build/`只允許可重建、可丟棄的當次artifact，不再保存dataset、
-seed、cache authority或retired worktree。
+`E:\XBrainLabData\datasets`；134 個代表性 BIDS entry 現為 `datasets/bids/<dataset-storage-id>`
+的直接子目錄，12,434 個綁定輸入在同磁碟整理後維持內容雜湊，並由 fresh 134/134 backend
+campaign 重播。2026-09-16 後續逐檔比對完成原 23 個隔離目錄的處置：17 份完全重複、3 份
+被保留更多通道的正式版本取代；另 3 份中的 26 筆獨有 Brain Invaders recordings 通過逐筆
+匯入／波形／事件／recipe 重播後加入正式目錄，舊副本已清除。正式区共 1,205 筆 retained
+recordings，隔離資料單元為零。Clean product source `3a2c65aa` 的逐筆驗證已通過 1,205/1,205，
+包含波形／事件讀回與 fresh-service recipe 重播，這仍是原 source 的 backend 基線，不改標新 SHA。
+在 clean `b7cd1206`，Windows 正常 GUI 已完成全部 134 個正式根目錄／1,205 筆錄製：133 個
+一般完整選取加上獲批准較長觀察的 Thielen2021，逐根核對完整檔案集合、畫面 publication、
+事件／標籤讀回。Thielen 十筆／378,000 事件的畫面完成為 214.688 秒，含讀回共 217.703 秒；
+原 150 秒診斷失敗保持保留，不能宣稱符合該期限或一般延遲 SLA。19 個多受試者預設選取、
+21 個內嵌標籤切換路徑、8 個 native recovery／標籤回歸案例與同視窗連續兩次匯入亦通過。
+BIDS 外部標籤切換內部事件時重用既有 Refresh label preview，刷新後仍須明確審查類別；
+刷新前不把外部欄位冒充內部事件。無標籤匯入返回 Match Labels 仍能正常繼續，不強迫刷新。
+既有 UI 類別命名會把 `Target` 整理成 `target`、`left_leg` 整理成 `left leg`；驗證保留明確
+名稱對照，不把逐字不同誤判為事件遺失。原診斷失敗及各版 driver 雜湊仍保留。
+同一 `b7cd1206` CI／docs 全部適用項目成功。134/134 recurring representatives 的最近執行
+source 是 `751edfe0`；到 `b7cd1206` 僅有 tests/docs 改動。前述 `3a2c65aa` 基線到候選的
+backend、scripts 與依賴未變；不重標歷史證據。後續文件收尾不改產品或測試內容。
+這支持此機已保留資料、既有 wizard 與明確標籤審查路徑，不代表任意 BIDS、完整來源 cohort、
+所有 GUI 操作、訓練／科學認證或真人驗收。手測與 merge 批准仍由 [Now](planning/now.md) 追蹤。
+逐檔刪除、替代位置、差異 metadata 與 promotion 證據在 `evidence/retained-import-20260916`。
+位置入口為 `datasets/manifests/import-locations-v3/README.md`；來源對照為
+`datasets/manifests/source-locations-v2-c84e8fb0cc29.json`。原始 source 與歷史 evidence 的內容
+核對／位置映射仍以 migration manifest 與 completion receipt 為準；這些保留內容不因代表路徑
+通過而自動取得刪除授權。
+Import dialog 只把設定的 data root 當起始位置，仍可選外部路徑。
+Repo `build/`是可重建的當次 artifact 位置，不是 durable dataset authority；本機需長期保留的
+campaign 已明確發布至 E 槽 evidence。任何其他副本或歷史資料仍須另經精確清理授權才能移除。
 
 ## Release boundary
 

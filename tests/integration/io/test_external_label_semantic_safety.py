@@ -11,14 +11,82 @@ import numpy as np
 import pytest
 from scipy.io import savemat
 
+from tests.integration.data_interpretation_support import (
+    import_recording_through_interpretation,
+)
 from XBrainLab.backend.application import (
     ApplicationService,
     ApplyInterpretationCommand,
     CreateEpochCommand,
+    PreprocessCommand,
+    PreprocessOperation,
     PreviewInterpretationCommand,
     ScanSourceCommand,
     ValidateInterpretationCommand,
 )
+
+
+@pytest.mark.parametrize("suffix", [".fif", ".fif.gz"])
+@pytest.mark.parametrize("has_events", [False, True])
+def test_unlabelled_import_preprocesses_but_cannot_create_supervised_epochs(
+    tmp_path: Path,
+    suffix: str,
+    has_events: bool,
+) -> None:
+    """No-label import is intentional; acquisition events cannot bypass review."""
+    path = tmp_path / f"subject_raw{suffix}"
+    signal = (
+        np.vstack([np.sin(np.arange(500) / 10), np.cos(np.arange(500) / 15)]) * 1e-6
+    )
+    raw = mne.io.RawArray(
+        signal,
+        mne.create_info(["Cz", "Pz"], sfreq=100.0, ch_types="eeg"),
+        verbose=False,
+    )
+    if has_events:
+        raw.set_annotations(mne.Annotations([1.0, 3.0], [0.0, 0.0], ["A", "B"]))
+    raw.save(path, overwrite=True, verbose=False)
+    original_bytes = path.read_bytes()
+    service = ApplicationService()
+    try:
+        applied = import_recording_through_interpretation(service, path)
+        assert applied.state.raw.count == 1
+        assert applied.state.interpretation.class_map == {}
+        assert not applied.state.interpretation.epoch_handoff["supervised_ready"]
+        assert applied.state.interpretation.epoch_handoff[
+            "supervised_blocker_codes"
+        ] == ["missing_class_labels"]
+        loaded = service.study.preprocessed_data_list[0].get_mne()
+        np.testing.assert_allclose(loaded.get_data(), signal, rtol=1e-6, atol=1e-12)
+        assert loaded.ch_names == ["Cz", "Pz"]
+        assert loaded.annotations.description.tolist() == (
+            ["A", "B"] if has_events else []
+        )
+
+        preprocessed = service.execute(
+            PreprocessCommand(operation=PreprocessOperation.RESAMPLE, rate=50.0)
+        )
+        assert preprocessed.ok, preprocessed.message
+        before_epoch = (
+            service.study.preprocessed_data_list[0].get_mne().get_data().copy()
+        )
+        assert service.study.preprocessed_data_list[0].get_sfreq() == 50.0
+        assert before_epoch.shape == (2, 250)
+
+        epoch = service.execute(
+            CreateEpochCommand(t_min=0.0, t_max=0.2, event_ids=["A", "B"])
+        )
+        assert not epoch.ok
+        assert epoch.error_type.value == "precondition"
+        assert epoch.recoverable
+        assert not epoch.state.epoch.exists
+        assert not epoch.changed_state.epoch_changed
+        np.testing.assert_array_equal(
+            service.study.preprocessed_data_list[0].get_mne().get_data(), before_epoch
+        )
+        assert path.read_bytes() == original_bytes
+    finally:
+        service.close()
 
 
 def _decision(

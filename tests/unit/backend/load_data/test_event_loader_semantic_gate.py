@@ -292,6 +292,74 @@ def test_apply_merges_annotations_added_after_create_event() -> None:
     assert descriptions == ["acquisition", "Left", "system/late-mutation"]
 
 
+def test_timestamp_preparation_reuses_its_detached_acquisition_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw_mne = _raw(first_samp=200)
+    raw_mne.set_annotations(
+        mne.Annotations([0.25], [0.1], ["acquisition"], ch_names=[("Cz",)])
+    )
+    acquisition = _annotation_rows(raw_mne.annotations)
+    attached = raw_mne.annotations
+    original_copy = mne.Annotations.copy
+    acquisition_copies = 0
+
+    def counted_copy(annotations):
+        nonlocal acquisition_copies
+        if annotations is attached:
+            acquisition_copies += 1
+        return original_copy(annotations)
+
+    monkeypatch.setattr(mne.Annotations, "copy", counted_copy)
+    loader = EventLoader(Raw("snapshot.fif", raw_mne))
+    loader.label_list = [{"onset": 1.0, "duration": 0.2, "label": "left"}]
+    events, event_id = loader.create_event({"left": "Left"})
+    assert _annotation_rows(raw_mne.annotations) == acquisition
+    assert acquisition_copies == 1
+    loader.apply()
+    assert events is not None
+    assert events.tolist() == [[300, 0, 1]]
+    assert event_id == {"Left": 1}
+    assert _annotation_rows(raw_mne.annotations) == [
+        acquisition[0],
+        (3.0, 0.2, "Left", ()),
+    ]
+
+
+@pytest.mark.parametrize("meas_date", [False, True])
+def test_timestamp_preparation_restores_snapshot_after_attachment_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    meas_date: bool,
+) -> None:
+    raw_mne = _raw(first_samp=200, meas_date=meas_date)
+    raw_mne.set_annotations(
+        mne.Annotations([0.25], [0.1], ["acquisition"], ch_names=[("Cz",)])
+    )
+    before = _annotation_rows(raw_mne.annotations)
+    orig_time = raw_mne.annotations.orig_time
+    wrapped = Raw("prepare-failure.fif", raw_mne)
+    wrapped.set_event(np.array([[225, 0, 7]]), {"original": 7})
+    loader = EventLoader(wrapped)
+    loader.label_list = [{"onset": 1.0, "duration": 0.2, "label": "left"}]
+    original_set = raw_mne.set_annotations
+
+    def fail_after_attachment(annotations):
+        original_set(annotations)
+        if "Left" in annotations.description:
+            raise RuntimeError("injected preparation attachment failure")
+
+    monkeypatch.setattr(raw_mne, "set_annotations", fail_after_attachment)
+    with pytest.raises(RuntimeError, match="injected preparation attachment failure"):
+        loader.create_event({"left": "Left"})
+    assert _annotation_rows(raw_mne.annotations) == before
+    assert raw_mne.annotations.orig_time == orig_time
+    events, event_id = wrapped.get_event_list()
+    np.testing.assert_array_equal(events, np.array([[225, 0, 7]]))
+    assert event_id == {"original": 7}
+    assert loader.events is None
+    assert loader.annotations is None
+
+
 def test_apply_rolls_back_annotations_and_event_state_after_partial_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

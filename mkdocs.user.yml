@@ -45,6 +45,7 @@ theme:
 nav:
   - Home: index.md
   - Get Started: getting-started.md
+  - Supported Data: import-support.md
   - Run the Workflow: workflow.md
   - Use the Assistant: assistant.md
   - Dataset Examples:

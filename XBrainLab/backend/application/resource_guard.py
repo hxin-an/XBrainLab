@@ -23,6 +23,7 @@ from XBrainLab.backend.utils.cuda_errors import (
 )
 from XBrainLab.backend.utils.logger import logger
 
+from .brainvision_preflight import brainvision_parser_dependencies
 from .data_interpretation_bids_resources import is_bids_events_json_sidecar
 from .data_interpretation_formats import (
     is_bids_metadata_table,
@@ -687,8 +688,27 @@ class ResourceChecker:
     def estimate_dataset_ram(paths: Iterable[str]) -> dict[str, Any]:
         """Estimate EEG and label-carrier RAM without loading their payloads."""
         path_list = _deduplicated_resource_paths(paths)
+        path_keys = {_path_key(Path(path)) for path in path_list}
         eeglab_headers: dict[str, EeglabSetHeaderInspection] = {}
-        eeglab_dependency_owners: dict[str, str] = {}
+        dependency_details: dict[str, tuple[str, str]] = {}
+        brainvision_headers: dict[str, dict[str, Any]] = {}
+        for path in tuple(path_list):
+            if _normalized_suffix(Path(path)) != ".vhdr":
+                continue
+            header = _estimate_eeg_file_from_header(path)
+            if header is None:
+                # An unreadable header must not suppress fallback payload accounting.
+                continue
+            brainvision_headers[_path_key(Path(path))] = header
+            for dependency in brainvision_parser_dependencies(path):
+                dependency_key = _path_key(Path(dependency))
+                dependency_details[dependency_key] = (
+                    path,
+                    "brainvision_parser_dependency",
+                )
+                if dependency_key not in path_keys:
+                    path_list.append(dependency)
+                    path_keys.add(dependency_key)
         eeglab_paths = [
             path for path in path_list if _normalized_suffix(Path(path)) == ".set"
         ]
@@ -707,9 +727,13 @@ class ResourceChecker:
             if not dependency:
                 continue
             dependency_key = _path_key(Path(dependency))
-            eeglab_dependency_owners[dependency_key] = str(resource_path)
-            if dependency_key not in {_path_key(Path(item)) for item in path_list}:
+            dependency_details[dependency_key] = (
+                str(resource_path),
+                "eeglab_external_data_dependency",
+            )
+            if dependency_key not in path_keys:
                 path_list.append(dependency)
+                path_keys.add(dependency_key)
         total_file_bytes = sum(_path_size(path) for path in path_list)
         raw_bytes = 0
         metadata_bytes = 0
@@ -738,8 +762,9 @@ class ResourceChecker:
             resource_path = Path(path)
             resource_key = _path_key(resource_path)
             suffix = _normalized_suffix(resource_path)
-            dependency_owner = eeglab_dependency_owners.get(resource_key)
-            if dependency_owner is not None:
+            dependency_detail = dependency_details.get(resource_key)
+            if dependency_detail is not None:
+                dependency_owner, dependency_source = dependency_detail
                 file_bytes = _path_size(path)
                 file_details.append(
                     {
@@ -748,7 +773,7 @@ class ResourceChecker:
                         "format": suffix,
                         "file_bytes": file_bytes,
                         "estimated_working_set_bytes": 0,
-                        "estimate_source": "eeglab_external_data_dependency",
+                        "estimate_source": dependency_source,
                         "referenced_by": dependency_owner,
                     }
                 )
@@ -796,9 +821,11 @@ class ResourceChecker:
                 continue
 
             eeg_path_count += 1
-            header = _estimate_eeg_file_from_header(
-                path,
-                eeglab_inspection=eeglab_headers.get(resource_key),
+            header = brainvision_headers.get(resource_key) or (
+                _estimate_eeg_file_from_header(
+                    path,
+                    eeglab_inspection=eeglab_headers.get(resource_key),
+                )
             )
             if header is None:
                 fallback_bytes = int(

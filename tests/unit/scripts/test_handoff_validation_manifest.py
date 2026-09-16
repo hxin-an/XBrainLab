@@ -56,6 +56,7 @@ EXPECTED_HANDOFF_CHECK_IDS = (
     "dataset-validation-matrix",
     "data-interpretation-matrix",
     "real-data-interpretation-training",
+    "moabb-import-conformance",
     "wizard-format-matrix",
     "required-public-io",
     "public-cross-source-training",

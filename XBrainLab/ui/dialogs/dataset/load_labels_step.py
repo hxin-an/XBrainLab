@@ -358,7 +358,6 @@ class LoadLabelsStepMixin(DataImportWizardStepHostProtocol):
                 self._wizard_state.label_sources.exclude_carrier(carrier_path)
 
     def _refresh_load_labels_static_state(self) -> None:
-        has_bids_events = self._has_bids_events()
         is_bids_source = self._is_bids_source()
         if hasattr(self, "label_sources_card_title_label"):
             self.label_sources_card_title_label.setText(
@@ -372,8 +371,6 @@ class LoadLabelsStepMixin(DataImportWizardStepHostProtocol):
         if hasattr(self, "add_label_folder_btn"):
             self.add_label_folder_btn.setText("Load label folder")
             self.add_label_folder_btn.setVisible(not is_bids_source)
-        if hasattr(self, "skip_labels_btn"):
-            self.skip_labels_btn.setVisible(not is_bids_source and not has_bids_events)
         if hasattr(self, "label_source_mode_combo"):
             loaded_label = "BIDS events.tsv" if is_bids_source else "Loaded label files"
             for index in range(self.label_source_mode_combo.count()):

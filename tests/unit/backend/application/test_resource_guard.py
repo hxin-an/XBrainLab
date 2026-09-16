@@ -210,6 +210,84 @@ def test_dataset_ram_check_blocks_large_file_size_fallback(
     assert "memory mapping" not in result.message.lower()
 
 
+def _write_brainvision_fixture(
+    tmp_path: Path,
+) -> tuple[Path, Path, Path]:
+    header = tmp_path / "subject.vhdr"
+    signal = tmp_path / "signal.eeg"
+    marker = tmp_path / "events.vmrk"
+    signal.write_bytes(b"\0" * (2 * 1_000 * 4))
+    marker.write_text(
+        "Brain Vision Data Exchange Marker File, Version 1.0\n"
+        "[Common Infos]\nDataFile=signal.eeg\n[Marker Infos]\n",
+        encoding="utf-8",
+    )
+    header.write_text(
+        "Brain Vision Data Exchange Header File Version 1.0\n"
+        "[Common Infos]\nDataFile=signal.eeg\nMarkerFile=events.vmrk\n"
+        "DataFormat=BINARY\nDataOrientation=MULTIPLEXED\n"
+        "NumberOfChannels=2\nSamplingInterval=1000\n"
+        "[Binary Infos]\nBinaryFormat=IEEE_FLOAT_32\n"
+        "[Channel Infos]\nCh1=C3,,1,µV\nCh2=C4,,1,µV\n",
+        encoding="utf-8",
+    )
+    return header, signal, marker
+
+
+def test_brainvision_dependencies_do_not_duplicate_waveform_memory(
+    tmp_path: Path,
+) -> None:
+    header, signal, marker = _write_brainvision_fixture(tmp_path)
+    header_only = resource_guard.ResourceChecker.estimate_dataset_ram([str(header)])
+    full = resource_guard.ResourceChecker.estimate_dataset_ram(
+        [str(header), str(signal), str(marker)]
+    )
+    assert header_only["raw_eeg_bytes"] == full["raw_eeg_bytes"] == 2 * 1_000 * 8
+    assert full["eeg_path_count"] == 1
+    assert (
+        full["estimated_ram_working_set_bytes"]
+        == header_only["estimated_ram_working_set_bytes"]
+    )
+    assert {row["path"] for row in full["files"]} == {
+        str(header),
+        str(signal),
+        str(marker),
+    }
+    orphan = tmp_path / "unreferenced.eeg"
+    orphan.write_bytes(b"\0" * 4_096)
+    extra = resource_guard.ResourceChecker.estimate_dataset_ram(
+        [str(header), str(signal), str(marker), str(orphan)]
+    )
+    assert extra["raw_eeg_bytes"] == full["raw_eeg_bytes"] + int(
+        4_096 * resource_guard.IMPORT_FILE_SIZE_FALLBACK_MULTIPLIER
+    )
+
+
+def test_brainvision_dependency_accounting_resolves_paths_linearly(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    header, signal, marker = _write_brainvision_fixture(tmp_path)
+    paths = [str(signal), str(marker)]
+    for index in range(16):
+        copy = tmp_path / f"run-{index}.vhdr"
+        copy.write_bytes(header.read_bytes())
+        paths.append(str(copy))
+    original = resource_guard._path_key
+    calls = 0
+
+    def counted(path):
+        nonlocal calls
+        calls += 1
+        return original(path)
+
+    monkeypatch.setattr(resource_guard, "_path_key", counted)
+    estimate = resource_guard.ResourceChecker.estimate_dataset_ram(paths)
+    assert estimate["raw_eeg_bytes"] == 16 * 2 * 1_000 * 8
+    assert estimate["eeg_path_count"] == 16
+    assert calls <= 10 * len(paths), calls
+
+
 def test_embedded_eeglab_set_preflight_never_invokes_mne_reader(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

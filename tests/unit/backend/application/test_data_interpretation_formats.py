@@ -1,10 +1,41 @@
 from pathlib import Path
 
+import pytest
+
 from XBrainLab.backend.application.data_interpretation_formats import (
     LABEL_CARRIER_EXTENSIONS,
     SUPPORTED_EEG_EXTENSIONS,
     format_capabilities,
 )
+
+
+@pytest.mark.parametrize(
+    ("filename", "expected_format"),
+    [
+        ("recording.cnt", "Neuroscan CNT"),
+        ("recording.CNT", "Neuroscan CNT"),
+        ("recording.bdf", "BDF"),
+        ("recording.BDF", "BDF"),
+        ("recording.edf", "EDF"),
+    ],
+)
+def test_recording_report_names_match_supported_reader_family(
+    tmp_path: Path, filename: str, expected_format: str
+) -> None:
+    report = format_capabilities([tmp_path / filename])[0]
+    assert report["format"] == expected_format
+    assert report["role"] == "eeg"
+    assert report["status"] == "needs_review"
+    if expected_format == "Neuroscan CNT":
+        assert "ANT" in report["message"]
+        assert "not" in report["message"]
+
+
+def test_xdf_report_does_not_offer_recipe_as_a_reader_bypass(tmp_path: Path) -> None:
+    report = format_capabilities([tmp_path / "stream.xdf"])[0]
+    assert report["status"] == "blocked"
+    assert "Convert" in report["message"]
+    assert "recipe" not in report["message"].lower()
 
 
 def test_format_capabilities_report_review_and_block_boundaries(tmp_path: Path):

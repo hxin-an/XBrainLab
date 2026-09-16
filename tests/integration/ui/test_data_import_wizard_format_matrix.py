@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QDialog, QLabel, QTreeWidget
+from PyQt6.QtWidgets import QDialog, QLabel, QScrollArea, QTreeWidget
 
 from scripts.dev.fetch_public_eeg_fixtures import resolve_public_fixture_dir
 from scripts.dev.report_data_interpretation_format_matrix import (
@@ -40,6 +40,80 @@ PUBLIC_BIDS_EEG = (
     / "sub-01_ses-eeg_task-rest_eeg.vhdr"
 )
 PUBLIC_BIDS_EVENTS = PUBLIC_BIDS_EEG.with_name("sub-01_ses-eeg_task-rest_events.tsv")
+
+
+@pytest.mark.parametrize(
+    ("source", "expected_format"),
+    [
+        pytest.param(
+            resolve_public_fixture_dir() / "scan41_short.cnt",
+            "Neuroscan CNT",
+            marks=pytest.mark.optional_public_fixture,
+        ),
+        (
+            Path(__file__).resolve().parents[2]
+            / "fixtures/data/multiformat/A01T-mini-real.bdf",
+            "BDF",
+        ),
+    ],
+)
+def test_real_recording_format_reaches_visible_import_report(
+    qtbot, source: Path, expected_format: str
+) -> None:
+    if not source.is_file():
+        pytest.skip(f"Required local recording fixture is unavailable: {source.name}")
+    service = ApplicationService()
+    try:
+        scan = service.execute(ScanSourceCommand(str(source), source_hint="file"))
+        preview = service.execute(
+            PreviewInterpretationCommand(choices={"skip_labels": True})
+        )
+        validation = service.execute(ValidateInterpretationCommand())
+        for result in (scan, preview, validation):
+            assert result.ok, result.message
+        dialog = DataInterpretationPreviewDialog(
+            scan_result=scan.diagnostics["scan_result"],
+            preview=preview.diagnostics["preview"],
+            validation_decision=validation.diagnostics["validation_decision"],
+            choices={"skip_labels": True},
+        )
+        qtbot.addWidget(dialog)
+        dialog.resize(1220, 920)
+        dialog.show()
+        dialog._go_to_step(dialog._step_titles.index("Review and Import"))
+        if not dialog.import_report_card.isVisible():
+            qtbot.mouseClick(dialog.import_report_toggle, Qt.MouseButton.LeftButton)
+        qtbot.waitUntil(dialog.review_tree.isVisible)
+        matches = dialog.review_tree.findItems(
+            expected_format + ":",
+            Qt.MatchFlag.MatchContains | Qt.MatchFlag.MatchRecursive,
+            2,
+        )
+        assert len(matches) == 1
+        scroll = next(
+            area
+            for area in dialog.findChildren(QScrollArea)
+            if area.isVisible() and area.widget().isAncestorOf(dialog.review_tree)
+        )
+        scroll.verticalScrollBar().setValue(scroll.verticalScrollBar().maximum())
+        qtbot.wait(0)
+        row_center = dialog.review_tree.visualItemRect(matches[0]).center()
+        assert (
+            scroll.viewport()
+            .rect()
+            .contains(
+                dialog.review_tree.viewport().mapTo(scroll.viewport(), row_center)
+            )
+        )
+        report_text = matches[0].text(2)
+        assert expected_format + ": needs review." in report_text
+        assert "Unknown sidecar" not in report_text
+        if expected_format == "Neuroscan CNT":
+            assert "ANT Neuro CNT is not supported" in report_text
+        assert service.get_view_publication().state.raw.count == 0
+        dialog.close()
+    finally:
+        service.close()
 
 
 @pytest.mark.parametrize("case", FORMAT_CASES, ids=lambda case: case.case_id)

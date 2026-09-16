@@ -11,6 +11,8 @@ machine; the optional Assistant uses the same workflow controls as the desktop U
 
 ## Start here
 
+- **Checking whether your data can be used?** Read
+  [Supported data and labels](import-support.md) before importing.
 - **First time using XBrainLab?** Install the application and complete one reviewed
   import in [Getting started](getting-started.md).
 - **Already have a dataset loaded?** Follow the stage-by-stage checks in

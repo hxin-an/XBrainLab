@@ -1,6 +1,6 @@
 # XBrainLab Validation Contract
 
-最後更新：`2026-09-09`
+最後更新：`2026-09-13`
 
 驗證回答「哪個exact source，在什麼環境，觀察到什麼」，不能把單一PASS放大成產品、科學或真人
 驗收結論。日常與PR交付按下表選證據；CI routing由既有workflow擁有。明確要求完整dossier時，
@@ -102,6 +102,81 @@ These cases do not certify identical behavior on every future task or product As
 | Automated UI artifact | Exact-source layout、visible state與interaction；原生Windows capture可證明該DPI的自動geometry檢查。 | 真人DPI／多螢幕操作與usability；offscreen不能代表Windows。 |
 | Handoff dossier | 同一clean/explained pushed SHA的完整工程證據。 | 使用者manual acceptance、signed installer或scientific certification。 |
 | Manual acceptance | 使用者在指定產品source上完成實際操作並同意merge。 | 未測平台、未測資料集或後續改動的source。 |
+
+## Import support claims
+
+Use `user_docs/import-support.md` for the agreed user boundary. A reader registration,
+synthetic wizard preview, BIDS-shaped FIF fixture, or a few MOABB examples cannot establish
+complete EEG-BIDS/MOABB conformance. Track selected recordings and exact conversion/reader versions;
+several formats exported from one GDF source remain one source family.
+
+| Required behavior | Existing direct evidence entry points | Claim limit |
+| --- | --- | --- |
+| Common file import through Commands | `tests/integration/io/test_io_integration.py` | Includes derived compact files; not every format variant. |
+| Internal classes and external rows anchored to real events | `tests/integration/pipeline/test_checked_in_real_dataset_validation.py` | Checked-in Graz sources, not all MOABB paradigms. |
+| Time/sample origin, artifact retention, failed apply atomicity | `tests/integration/io/test_external_label_semantic_safety.py` | Real MNE I/O with controlled synthetic semantics; not independent dataset diversity. |
+| Explicit no-label import → resample → rejected supervised epoch | `test_unlabelled_import_preprocesses_but_cannot_create_supervised_epochs` in the preceding module | FIF/FIF.gz with and without acquisition events; checks retained data and unchanged source bytes. |
+| Explicit BIDS no-label Commands → resample → blocked epoch → recipe reload | `test_explicit_no_label_bids_import_does_not_require_events` in `test_public_bids_fixture.py` | Copied public BrainVision BIDS, with/without events.tsv; Command evidence is separate from GUI acceptance. |
+| BIDS embedded events → complete explicit class review → import and recipe replay | `test_bids_embedded_events_require_observed_complete_review` in `test_public_bids_fixture.py` | Public waveform with controlled markers; rejects incomplete, overlapping, excluded and unknown class mappings. Not dataset diversity. |
+| BIDS declared timeline and review freshness | `tests/unit/backend/application/test_bids_recording_timeline_safety.py` | Real FIF in a controlled BIDS-shaped directory, not EEG-BIDS format certification; verifies scoped inheritance and blocked unsafe timestamp placement or changed sidecars. |
+| BIDS folder wizard → explicit no-label choice → fresh review → apply | `test_visible_bids_wizard_can_explicitly_import_without_labels` in `test_data_import_wizard_real_fixture_acceptance.py` | Real wizard/Commands, isolated directory chooser; with/without events.tsv, no classes and supervised epoch blocked. Native automation does not replace human acceptance. |
+| Visible wizard no-label route | `tests/integration/ui/test_data_import_wizard_real_fixture_acceptance.py` | File chooser isolation with real wizard/readers; offscreen is not human native acceptance. |
+| BIDS metadata/events/recipe and timing | `tests/integration/io/test_public_bids_fixture.py`, `test_bids_epoch_duration_handoff.py` | Public fixture and bounded timing cases; not full specification validation. |
+| Selected timestamp label field independent of generic BIDS value codes | `tests/integration/io/test_bids_timestamp_label_field.py` | Generated BrainVision files through real Commands and recipe replay; event-code collisions remain blocked. Retained Thielen evidence is recorded separately in the inventory. |
+| Large-event recipe persistence and public diagnostics | `test_data_interpretation_recipe.py`, `test_data_interpretation_public_projection.py` under `tests/unit/backend/application/` | Bounded derived evidence, complete explicit choices/content identity, and oversized-input rejection before overwrite; does not raise the 1 MiB limit. |
+
+All-MOABB acceptance additionally requires a complete pinned release inventory and dataset-level
+source selections, official loader identity, converter identity/options, export precision, preserved
+units/channels/events/labels/entities, and observed Command import outcomes. Record access failures,
+missing data, untested variants and unsupported semantics in the denominator; no silent exclusions.
+Inspect selected-subject coverage separately from full-corpus coverage. Reuse existing data/evidence
+runners where applicable; this contract does not authorize downloads, duplicate caches or a new
+validation control plane. Existing compact MOABB registry is not a full inventory.
+
+### Recurring representative import conformance
+
+Every major-stage integrated acceptance, and every change to import/label semantics or the
+MNE/MOABB/MNE-BIDS/reader dependencies, requires the complete representative import catalog plus
+representative native Windows wizard evidence before handoff. Ordinary unrelated PRs keep focused
+checks and normal CI; this requirement does not mean retraining every dataset or downloading the
+corpus in CI. Existing source-diverse training gates remain independently required where applicable.
+
+The executable membership authority is
+`scripts/dev/moabb_user_journeys/data/moabb-import-catalog-v1.json`: all 147 pinned MOABB 1.5.0 exports,
+including aggregate/subset variants. The [human inventory](moabb-inventory.md) describes that boundary.
+Required cases must all execute successfully; deferred rights and unresolved blockers stay visible
+but do not become passing cases. Removing an already passing required entry is a baseline regression,
+not a way to achieve a green campaign. Source-BIDS-only and retained-conversion evidence must retain
+their provenance limitations; neither means a fresh full-cohort conversion or benchmark replication.
+
+`moabb-import-conformance` is registered in the existing handoff gate registry and full release
+profiles. Its runner is `scripts/dev/run_moabb_import_conformance.py`; the existing
+`XBRAINLAB_DATA_DIR` resolver or explicit `--data-root` selects the retained data root. Each required
+case binds a content-hashed manifest, portable input paths, hashes, explicit label choices and
+independent expectations. The runner uses actual Scan/Preview/Validate/Apply and fresh-service recipe
+replay, checking full selected-run waveforms, channels/types, sample counts and class/sample tuples.
+This does not replace native wizard checks or user acceptance.
+
+Refresh `origin/main` before a formal campaign: admission compares against its accepted catalog,
+including later promotions, and records its exact SHA. An unavailable Git/ref fails closed; only
+an accepted main that genuinely predates the catalog uses the pinned initial 127-case baseline.
+Use a new `--output` directory for each candidate. `--resume` permits reuse only with identical
+source/environment/catalog/accepted-baseline identities and reverified input/result/recipe hashes; failed attempts
+remain available. Missing, changed, unexecuted or timed-out required cases fail closed. No runner
+acquisition or automatic terms acceptance is allowed. Reader/converter changes additionally require
+attributable reconversion checks; replaying retained BIDS alone cannot prove a changed converter.
+
+The durable local hierarchy is `E:\XBrainLabData\datasets\{source,bids,public-fixtures,manifests,quarantine}`,
+with sibling `evidence` and `staging`. This is the current machine's data-root choice, not a hard-coded
+product path. Its 134 required representative storage units are direct children of `datasets/bids`;
+the current human entrypoint is `datasets/manifests/import-locations-v3/README.md`. Unbound retained
+units were resolved on 2026-09-16: exact duplicates/superseded conversions were removed, and 26
+individually verified extra recordings joined the three canonical Brain Invaders roots. The original
+134-case campaign remains historical representative evidence; the expanded scope includes all 1,205
+retained recordings and all 134 normal Windows GUI roots. Current outcomes and unresolved routes are
+recorded in [Current](../current.md), not inferred from the representative pass count. Copy/hash/replay precedes reference
+changes; original and failed evidence retention is separate from an explicitly approved exact-target
+cleanup. Do not rewrite historical recipes.
 
 ## Exact-source requirements
 

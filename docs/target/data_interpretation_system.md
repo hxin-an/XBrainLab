@@ -11,6 +11,16 @@
 
 ## 核心目標
 
+### 已確認的資料相容性邊界（2026-09-12）
+
+`user_docs/import-support.md` 是使用者格式／label 邊界的單一入口；該頁明確區分 existing paths
+與尚未取得證據的 target，不以本文的終局設計宣稱 current 已完成。這輪以既有五步 wizard
+承接通用 EEG 檔案與 EEG-BIDS；MOABB 官方 loader → 可重現 EEG-BIDS 轉換 → 同一匯入入口是
+最低驗收要求，非唯一資料來源。不新增各家儀器 reader、內建下載中心或無 label epoch 模式。
+沒有 label 可匯入、檢視與前處理；目前監督式 epoch 前需 reviewed usable classes。既有
+reset/review/reimport prerequisites 保留，不承諾保留下游結果的 late label replacement。
+全 MOABB 必須有 pinned release 全清單、轉換 provenance 與逐項結果；缺資料／未測不算通過。
+
 XBrainLab 的資料入口不應只是 `load file`，也不應只是把 label file attach 到 raw data。
 終局目標是：
 

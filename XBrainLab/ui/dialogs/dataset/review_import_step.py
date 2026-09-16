@@ -513,6 +513,20 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
     def _edited_action_targets(self) -> set[str]:
         choices = self._edited_choices()
         edited_targets: set[str] = set()
+        if (
+            self._is_bids_source()
+            and self._skip_labels
+            and not self._initial_choices.get("skip_labels")
+        ):
+            edited_targets.update({"Load Labels", "Match Labels"})
+        if (
+            self._is_bids_source()
+            and choices.get("label_carrier") == "embedded_events"
+            and choices.get("internal_event_selection", {}).get("label_event_codes")
+            and choices["internal_event_selection"]
+            != self._initial_choices.get("internal_event_selection")
+        ):
+            edited_targets.add("Load Labels")
         if choices.get("metadata_overrides"):
             edited_targets.add("Review Metadata")
         if any(
@@ -645,6 +659,8 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
         )
 
     def _review_label_source_text(self) -> str:
+        if self._skip_labels:
+            return "Labels explicitly skipped"
         return label_source_summary(
             source_mode=self._label_source_mode(),
             internal_candidate_count=len(self._class_map_items)
@@ -655,6 +671,11 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
         )
 
     def _review_label_placement_text(self) -> str:
+        if self._skip_labels:
+            return (
+                "Supervised epoching and training are unavailable "
+                "without reviewed labels"
+            )
         if self._label_source_mode() == "internal_events":
             return internal_label_placement_summary(
                 selected_class_count=len(self._class_map_items),

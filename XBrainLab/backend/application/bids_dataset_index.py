@@ -7,6 +7,7 @@ import re
 import stat
 from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass
+from functools import cached_property
 from pathlib import Path
 from threading import RLock
 from types import MappingProxyType
@@ -195,7 +196,7 @@ class BidsDatasetIndex:
             identity.still_matches() for identity in self._identities
         )
 
-    @property
+    @cached_property
     def indexed_files(self) -> tuple[str, ...]:
         return _unique_sorted(
             [
@@ -207,6 +208,18 @@ class BidsDatasetIndex:
                 ),
             ]
         )
+
+    @cached_property
+    def _indexed_files_by_key(self) -> dict[str, str]:
+        # Derived only from this immutable snapshot; freshness remains is_current's job.
+        indexed: dict[str, str] = {}
+        for path in self.indexed_files:
+            indexed.setdefault(_path_key(Path(path)), path)
+        return indexed
+
+    @cached_property
+    def _recording_keys(self) -> frozenset[str]:
+        return frozenset(_path_key(Path(item.file)) for item in self.recordings)
 
     def indexed_file_in_recording_directory(
         self,
@@ -221,17 +234,12 @@ class BidsDatasetIndex:
         if dependency.is_absolute() or len(dependency.parts) != 1:
             return None
         candidate_key = _path_key(recording.parent / dependency)
-        for indexed_path in self.indexed_files:
-            if _path_key(Path(indexed_path)) == candidate_key:
-                return indexed_path
-        return None
+        return self._indexed_files_by_key.get(candidate_key)
 
     def contains_recording(self, recording_path: str | Path) -> bool:
         """Return whether a path is one of this exact index's raw recordings."""
         candidate_key = _path_key(Path(recording_path))
-        return any(
-            _path_key(Path(item.file)) == candidate_key for item in self.recordings
-        )
+        return candidate_key in self._recording_keys
 
     def subject_catalog(self) -> dict[str, Any]:
         rows = [subject.to_dict() for subject in self.subjects]

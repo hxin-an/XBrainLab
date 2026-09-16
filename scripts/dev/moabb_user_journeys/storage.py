@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
+import stat
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from .import_catalog import resolve_data_path
 from .registry import (
     DEFAULT_REGISTRY_PATH,
     REPO_ROOT,
@@ -189,3 +193,112 @@ def _hash_file(path: Path, algorithm: str) -> str:
 def _canonical_sha256(payload: dict[str, Any]) -> str:
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _tree_files(source: Path) -> dict[str, dict[str, Any]]:
+    """Hash a real directory without following links or reparse points."""
+    result: dict[str, dict[str, Any]] = {}
+    if not source.is_dir():
+        raise ValueError("Dataset source must be a directory")
+    for directory, dirs, files in os.walk(source, followlinks=False):
+        for name in [*dirs, *files]:
+            path = Path(directory) / name
+            info = path.lstat()
+            if (
+                path.is_symlink()
+                or getattr(info, "st_file_attributes", 0)
+                & stat.FILE_ATTRIBUTE_REPARSE_POINT
+            ):
+                raise ValueError(f"Linked dataset resource is not admitted: {path}")
+            if path.is_file():
+                result[path.relative_to(source).as_posix()] = {
+                    "bytes": info.st_size,
+                    "sha256": _hash_file(path, "sha256"),
+                }
+            elif not path.is_dir():
+                raise ValueError(f"Non-regular dataset resource: {path}")
+    return dict(sorted(result.items()))
+
+
+def _physical_source(source: Path) -> Path:
+    # Validate the unresolved root and its ancestors before resolve() can hide
+    # a junction. Reuse the same link/containment policy as portable inputs.
+    absolute = source.absolute()
+    return resolve_data_path(
+        Path(absolute.anchor), absolute.relative_to(absolute.anchor).as_posix()
+    ).resolve(strict=True)
+
+
+def plan_tree_copy(source: Path, destination: str, data_root: Path) -> dict[str, Any]:
+    """Plan one copy-only relocation; publication and deletion are separate."""
+    target = resolve_data_path(data_root, destination)
+    original = _physical_source(source)
+    if target.resolve().is_relative_to(original) or original.is_relative_to(
+        target.resolve()
+    ):
+        raise ValueError("Dataset source and destination overlap")
+    files = _tree_files(original)
+    return {
+        "source": str(original),
+        "destination": destination,
+        "files": files,
+        "bytes": sum(item["bytes"] for item in files.values()),
+    }
+
+
+def copy_verified_tree(
+    plan: dict[str, Any],
+    data_root: Path,
+    *,
+    max_additional_bytes: int = 500_000_000_000,
+) -> dict[str, Any]:
+    """Publish one complete verified copy, preserving all original files.
+
+    The caller supplies the remaining campaign budget after accounting for data
+    already retained. Failed staging is preserved for diagnosis, never deleted.
+    """
+    target = resolve_data_path(data_root, str(plan["destination"]))
+    original = _physical_source(Path(plan["source"]))
+    if target.resolve().is_relative_to(original) or original.is_relative_to(
+        target.resolve()
+    ):
+        raise ValueError("Dataset source and destination overlap")
+    expected = plan["files"]
+    current = _tree_files(original)
+    if current != expected:
+        raise ValueError("Dataset source changed after relocation plan")
+    byte_count = sum(item["bytes"] for item in expected.values())
+    if byte_count != plan["bytes"]:
+        raise ValueError("Relocation size differs from file manifest")
+    if target.exists():
+        if _tree_files(target) != expected:
+            raise ValueError("Existing destination differs; no overwrite permitted")
+        return {
+            "status": "already_verified",
+            "destination": str(target),
+            "bytes": byte_count,
+        }
+    if (
+        byte_count > max_additional_bytes
+        or byte_count > shutil.disk_usage(data_root).free
+    ):
+        raise OSError("Relocation exceeds the remaining data or free-space budget")
+    staging_root = resolve_data_path(data_root, "staging")
+    staging_root.mkdir(exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix="relocate-", dir=staging_root))
+    for relative in expected:
+        source_file = resolve_data_path(original, relative)
+        output_file = resolve_data_path(staging, relative)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source_file, output_file)
+    if _tree_files(staging) != expected or _tree_files(original) != expected:
+        raise ValueError(
+            f"Dataset source or copy changed; staging retained at {staging}"
+        )
+    # The E: campaign's existing writer lock serializes final publication.
+    target = resolve_data_path(data_root, str(plan["destination"]))
+    if target.exists():
+        raise ValueError(f"Destination appeared; staging retained at {staging}")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    staging.rename(target)
+    return {"status": "copied", "destination": str(target), "bytes": byte_count}

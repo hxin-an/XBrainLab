@@ -321,7 +321,8 @@ def test_build_interpretation_candidate_recomputes_bids_scope_for_selected_files
     assert [row["path"] for row in candidate.label_carrier_plan] == [selected_events]
 
 
-def test_bids_candidate_blocks_selected_scope_without_events_tsv():
+@pytest.mark.parametrize("skip_labels", [False, True])
+def test_bids_candidate_requires_events_unless_labels_explicitly_skipped(skip_labels):
     selected_file = "/data/sub-01_task-mi_run-1_raw.fif"
 
     candidate = build_interpretation_candidate(
@@ -348,16 +349,19 @@ def test_bids_candidate_blocks_selected_scope_without_events_tsv():
             },
             warnings=[],
         ),
-        choices={"selected_eeg_files": [selected_file]},
+        choices={"selected_eeg_files": [selected_file], "skip_labels": skip_labels},
     )
 
     assert candidate.label_carriers == []
     assert candidate.bids["selected_scope"]["events_files"] == []
-    assert (
+    missing_events_reason = (
         "BIDS events.tsv was not found for the selected EEG file(s). "
         "Choose a BIDS run with events.tsv, or return to Import Data for non-BIDS labels."
-        in candidate.blocked_reasons
     )
+    assert (missing_events_reason in candidate.blocked_reasons) is not skip_labels
+    if skip_labels:
+        assert candidate.class_map == {}
+        assert candidate.label_carrier_plan == []
 
 
 def test_candidate_blocks_partial_manual_label_pairing(tmp_path):
