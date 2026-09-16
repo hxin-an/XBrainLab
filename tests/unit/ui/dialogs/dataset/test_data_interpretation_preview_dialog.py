@@ -5259,6 +5259,13 @@ def test_bids_optional_task_and_run_do_not_block_import_or_recipe(qtbot):
             ],
             "class_map": {"1": "class 1"},
             "event_roles": {"internal_events": "event role candidates"},
+            "internal_event_preview": {
+                "names_reliable": True,
+                "candidate_label_events": [
+                    {"event_code": "1", "class_name": "class 1", "event_count": 1},
+                ],
+                "not_used_events": [],
+            },
             "epoch_handoff": {
                 "ready": False,
                 "supervised_ready": False,

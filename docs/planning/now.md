@@ -103,6 +103,23 @@ new Back/Next action initially differed from six exact expected traces; those ex
 include the deliberate action without weakening any outcome checks. Next is the final clean-source
 data/native/CI campaign; keep source frozen while its identity-bound jobs run.
 
+At `751edfe0`, recurring representatives passed 134/134 and the approved Thielen full import
+completed in 230.360 seconds (232.000 including label readback; not within the old 150-second cap).
+CI found one shared stale unit fixture: optional BIDS task/run metadata is tested with an internal
+class map but no observed internal-event preview. Supply that truthful prerequisite, retaining its
+import/recipe assertions and the separate unread-event rejection tests; no product change is needed.
+The 21 internal GUI roots reached publication but failed exact alias-string verification: existing
+UI choices serialize `Target` as `target`, and `left_leg`/`right_leg` as spaced names. Diagnose and
+independently review explicit semantic-equivalent GUI expectations; preserve all21/all23 failures,
+do not infer expected labels from the resulting backend state or weaken event/sample comparisons.
+All identity-bound local jobs have ended before this documentation/test-only update.
+Independent review confirmed the aliases follow the existing visible selector contract, not a
+failed edit or backend mutation. The driver now records only the inspected explicit mappings and
+still requires visible edited text, exact published aliases and independent event/sample equality.
+Nine focused native fixture/unread/internal-source tests pass. Next: clean tests/docs commit, fresh
+CI and native whole/default/internal/recovery/repeat cases. Product remains byte-identical to
+`751edfe0`; its representative run and earlier full-waveform baseline retain their actual identities.
+
 After the UI repair, review the actual diff and native changed-surface evidence, run relevant tests
 and applicable same-source CI/recurring data/native gates, update E navigation, then open one Windows
 manual candidate with its PowerShell log. Preserve prior campaign source identities; do not relabel
