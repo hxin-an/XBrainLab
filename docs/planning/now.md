@@ -7,9 +7,11 @@
 使用者於 2026-09-16 指定以上順序；Preprocess panel 暫不作為下一個優先施工項目。
 使用者已於 2026-09-16 以「先幫我處理」授權修正下列兩段 Import 白框閃爍；其餘 UI 改版、
 evaluator 與重構尚未開始。推送／開 PR 另待本次詢問的明確回答；合併仍需手測及另行批准。
-白框修正的本地實作與 focused 驗證完成；下一步需使用者授權推送／開 PR，再跑同 head
-適用 CI 與正式 handoff gates。該外部寫入授權仍未收到，沒有合併授權。不稱 handoff-ready，
-也不在此時要求使用者重測整個產品。
+白框修正的本地實作與 focused 驗證完成。使用者於 2026-09-16 明確要求先開啟 Windows
+版本做 PR 前局部手測；下一步是沿用共用環境及 PowerShell log 開啟修正版，確認有回應後
+交回操作，不再以 PR／CI 尚未取得作為本機預覽的阻擋。只檢查兩段白框及取消／重試，
+不要求重測整個產品。定稿後仍需推送／開 PR 授權、同 head 適用 CI 與正式 handoff gates；
+本次預覽不稱 handoff-ready，也不是合併批准。外部寫入與合併授權仍未收到。
 
 本輪要讓匯入操作更清楚、Assistant 評測結果可信，再依具體問題繼續降低程式複雜度。
 不以籠統的「架構已乾淨」、行數下降或總分提高作為完成證明。
@@ -41,7 +43,8 @@ evaluator 與重構尚未開始。推送／開 PR 另待本次詢問的明確回
   Confirm 後會等待 preview 銷毀，再由 continuation 進入 revalidation／apply，必要時重開 review
   或 resource confirmation。先核對視窗 show/hide/destroy 與實際首幀繪製的時間，不把這些路徑
   的存在直接當作白框成因；修正保留既有 modal／取消／確認保護。
-- **本問題下一步與驗收**：取得推送／開 PR 授權後執行同 head 適用 CI、source-diverse／DPI
+- **本問題下一步與驗收**：先開啟 Windows 修正版供使用者做 PR 前局部手測，附短檢查流程；
+  取得推送／開 PR 授權後執行同 head 適用 CI、source-diverse／DPI
   gates。現有正常／慢 metadata 取消與重試、第二次匯入及首幀證據不取代正式 gates。
   已取得這兩段閃白修正的 UI 授權；範圍僅穩定繪製／交接，不重新設計操作流程或 EEG 語意。
   先保留失敗重現，再修理既有 owner；必要時按視窗／繪製責任補最小回歸測試。
