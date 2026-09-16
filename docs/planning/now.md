@@ -86,6 +86,23 @@ shows the existing refresh button and pending-source guidance; independent actua
 no blocker. No backend or dataset files changed. Next: commit the candidate, run the approved quiet
 Thielen observation, then establish final-source recurring/recording/native/CI evidence.
 
+At clean `b917812c`, the approved quiet Thielen observation completed all ten recordings: visible
+table/current publication at 230.657 seconds and full event/sample readback at 232.157 seconds.
+`within_original_150s=false`; preserve all17 and the earlier failure, not a pass of the old budget.
+Before finalization, direct no-label backtracking review found the new refresh predicate also needed
+the existing `skip_labels` guard. Both real BIDS no-label variants failed their new Back/Next
+regression; add that two-line guard and rerun label/no-label/recovery neighbors before freezing.
+Automatic safety review initially denied the push as an unverified destination. Read-only origin/
+PR metadata established the exact existing, non-fork `https://github.com/hxin-an/XBrainLab` PR #141
+destination; reassessment then allowed the same normal push, without a workaround. `b917812c` was
+pushed successfully; the destination question is no longer blocking. Final CI still needs the
+subsequent no-label guard commit, not this intermediate source.
+The guard now passes both BIDS variants and all six common-format native no-label imports,
+including Back/Next without refresh and unchanged no-class publication. The extended test driver's
+new Back/Next action initially differed from six exact expected traces; those expectations now
+include the deliberate action without weakening any outcome checks. Next is the final clean-source
+data/native/CI campaign; keep source frozen while its identity-bound jobs run.
+
 After the UI repair, review the actual diff and native changed-surface evidence, run relevant tests
 and applicable same-source CI/recurring data/native gates, update E navigation, then open one Windows
 manual candidate with its PowerShell log. Preserve prior campaign source identities; do not relabel

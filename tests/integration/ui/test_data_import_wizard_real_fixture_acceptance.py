@@ -768,6 +768,15 @@ def _start_wizard_driver(
                 )
                 return
             if driver.fresh_review_count:
+                if driver.skip_labels:
+                    QTEST.mouseClick(modal.back_button, Qt.MouseButton.LeftButton)
+                    assert modal.step_stack.currentIndex() == 3
+                    assert modal.next_button.isEnabled()
+                    assert modal.next_button.text() == "Next: Review and Import"
+                    assert modal.get_result()["choices"]["skip_labels"]
+                    QTEST.mouseClick(modal.next_button, Qt.MouseButton.LeftButton)
+                    assert modal.step_stack.currentIndex() == 4
+                    driver.trace.append("return from no-label review without refresh")
                 if driver.resolve_bids_internal_events:
                     capture_teacher_ui(modal, "bids-embedded-review.png")
                 if driver.runtime is not None:
@@ -1160,6 +1169,7 @@ def test_public_file_formats_run_five_steps_and_apply_without_labels(
         "confirm changed review",
         "fresh review",
         "Review and Import",
+        "return from no-label review without refresh",
         "confirm and import",
     ]
     assert driver.fresh_review_count == 1
@@ -1429,6 +1439,7 @@ def test_visible_bids_wizard_can_explicitly_import_without_labels(
         "missing_class_labels"
     ]
     assert "continue without labels" in driver.trace
+    assert "return from no-label review without refresh" in driver.trace
     assert "confirm and import" in driver.trace
     assert driver.fresh_review_decisions == ["safe"]
     assert driver.fresh_pre_confirm_state == (0, False)

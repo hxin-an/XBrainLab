@@ -1886,6 +1886,8 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
 
     def _label_preview_requires_backend_refresh(self) -> bool:
         """Refresh unread internal events or a changed external label field."""
+        if self._skip_labels:
+            return False
         if self._label_source_mode() == "internal_events":
             return not bool(self._internal_event_preview_payload())
         if not self._label_rule_controls_changed or not self._label_carrier_items:
