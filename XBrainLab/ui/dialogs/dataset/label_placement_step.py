@@ -182,8 +182,8 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
         self.placement_status_label = QLabel(self._placement_status_text())
         self.placement_status_label.setObjectName("DataImportRuleStatus")
         self.placement_status_label.setWordWrap(True)
-        self.placement_status_label.setVisible(bool(self.placement_status_label.text()))
         placement_layout.addWidget(self.placement_status_label)
+        self.placement_status_label.setVisible(bool(self.placement_status_label.text()))
         layout.addWidget(self.placement_card)
 
         self.rule_placement_method_combo.currentIndexChanged.connect(

@@ -1,10 +1,64 @@
 """Product-state tests for the Data Import loading surface."""
 
+import pytest
+from PyQt6 import sip
+from PyQt6.QtCore import QEvent, QObject, QTimer
 from PyQt6.QtWidgets import QLabel, QPushButton
 
 from XBrainLab.ui.dialogs.dataset.data_interpretation_loading_dialog import (
     DataInterpretationLoadingDialog,
 )
+from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
+    DataInterpretationPreviewDialog,
+)
+
+
+@pytest.mark.parametrize(
+    "dialog_class", [DataInterpretationLoadingDialog, DataInterpretationPreviewDialog]
+)
+def test_import_native_window_is_revealed_only_after_first_paint(
+    qapp, qtbot, dialog_class
+):
+    if qapp.platformName() != "windows":
+        pytest.skip("First native Windows frame requires the Windows Qt platform")
+    dialog = dialog_class()
+    qtbot.addWidget(dialog)
+    events = []
+
+    class PaintObserver(QObject):
+        def eventFilter(self, obj, event):
+            if event.type() in (QEvent.Type.Show, QEvent.Type.Paint):
+                events.append((event.type(), obj.windowOpacity()))
+            return False
+
+    observer = PaintObserver(dialog)
+    dialog.installEventFilter(observer)
+    dialog.show()
+    qtbot.waitUntil(
+        lambda: any(kind == QEvent.Type.Paint for kind, _ in events)
+        and dialog.windowOpacity() == 1,
+    )
+
+    assert dialog.isVisible()
+    assert [opacity for kind, opacity in events if kind == QEvent.Type.Show] == [0]
+    assert next(opacity for kind, opacity in events if kind == QEvent.Type.Paint) == 0
+
+
+@pytest.mark.parametrize(
+    "dialog_class", [DataInterpretationLoadingDialog, DataInterpretationPreviewDialog]
+)
+def test_import_first_frame_reveal_does_not_reopen_or_outlive_closed_dialog(
+    qtbot, dialog_class
+):
+    dialog = dialog_class()
+    qtbot.addWidget(dialog)
+    QTimer.singleShot(0, dialog.reject)
+    dialog.show()
+    qtbot.waitUntil(lambda: not dialog.isVisible())
+    qtbot.wait(0)
+    assert not dialog.isVisible()
+    dialog.deleteLater()
+    qtbot.waitUntil(lambda: sip.isdeleted(dialog))
 
 
 def test_loading_dialog_shows_wizard_context_and_cancel(qtbot):

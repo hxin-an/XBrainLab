@@ -5,8 +5,11 @@
 ## Agreed order — Import UI → Assistant evaluator → cleanup/refactoring
 
 使用者於 2026-09-16 指定以上順序；Preprocess panel 暫不作為下一個優先施工項目。
-目前授權是更新計畫與安排討論，不是直接修改 UI、evaluator 或產品，也不包含另開／發布 PR。
-下一步先與使用者逐步確認 Import UI 要改的畫面與互動，再固定第一個施工範圍。
+使用者已於 2026-09-16 以「先幫我處理」授權修正下列兩段 Import 白框閃爍；其餘 UI 改版、
+evaluator 與重構尚未開始。推送／開 PR 另待本次詢問的明確回答；合併仍需手測及另行批准。
+白框修正的本地實作與 focused 驗證完成；下一步需使用者授權推送／開 PR，再跑同 head
+適用 CI 與正式 handoff gates。該外部寫入授權仍未收到，沒有合併授權。不稱 handoff-ready，
+也不在此時要求使用者重測整個產品。
 
 本輪要讓匯入操作更清楚、Assistant 評測結果可信，再依具體問題繼續降低程式複雜度。
 不以籠統的「架構已乾淨」、行數下降或總分提高作為完成證明。
@@ -15,22 +18,41 @@
 
 - **第一個已回報問題**：使用者於 2026-09-16 指出 Import 會閃出多個白框，並確認發生於
   選完 subject 後及按 `Confirm and Import` 後。先聚焦這兩段交接，不擴為整個 wizard 重設計。
-  目前只完成 source 路徑檢查，尚未在 Windows 重現／取得逐幀證據，根因未確認。
-- **已查到的路徑／待驗假設**：`DataInterpretationActionCoordinator` 在 subject 確認後建立 loading
+  Windows 真 MainWindow＋public BIDS fixture 已重現精靈建立期間 44 次 parentless label/button/
+  panel 的 top-level Show；它們使用淺色預設 palette，隨後才被 reparent。對應 review rows 的
+  layout 尚未掛入 card 就呼叫 show，以及數處 setVisible 早於 addWidget。不是 backend 載入失敗。
+  新增事件觀測回歸已 FAIL（捕捉瞬時 Show，不只看最後截圖）。首輪未觸發匯入與第二輪前景錄影
+  零幀的證據保留；不能把該次錄影稱為已驗證不閃爍。
+  Parent-before-show 修正後，44 次意外小視窗降為 0；隨後的 124 幀螢幕錄影仍抓到
+  loading/preview 首次呈現白底（`build/dev-artifacts/import-white-flash/after-walkthrough`），
+  因此未提早交付，繼續修理首幀交接。不改 Windows 全域設定、不添加固定等待，
+  不修改其他 panels 或 backend。
+  關閉 DWM animation 的診斷仍閃白，未納入產品。只在 loading/preview 使用 BaseDialog 的
+  opt-in Windows 首幀顯露：初次 paint 完成後的 Qt turn 恢復 opacity；QTimer 歸 dialog 所有，
+  不新增 authoritative owner、不加固定等待、其他 dialogs/platform 保持原行為。兩個 Windows
+  首幀測試均在接入前 FAIL；正式修正後 166 個 Windows focused tests PASS（含 file/BIDS/
+  recipe 元件、首幀、關閉／銷毀、取消／重試與 fresh review），changed-file lint/format PASS。
+  真 MainWindow 連續兩次匯入成功；`build/dev-artifacts/import-white-flash/product-fixed-repeat`
+  保存 190 幀與視窗事件：無意外小視窗，匯入後畫面無大片白底。診斷只隔離 folder chooser，
+  用暫時置頂的測試主視窗避免錄到其他 app；不是所有 DPI、所有資料集或真人驗收。
+  Production 5 files，+39/-10/net +29 LOC；未改 coordinator/Command/persistence，未增 owner。
+- **已檢查的交接路徑**：`DataInterpretationActionCoordinator` 在 subject 確認後建立 loading
   dialog，再建立、顯示 preview 並關閉 loading；preview 的 show/resize 另有 layout 調整。
   Confirm 後會等待 preview 銷毀，再由 continuation 進入 revalidation／apply，必要時重開 review
   或 resource confirmation。先核對視窗 show/hide/destroy 與實際首幀繪製的時間，不把這些路徑
-  的存在直接當作白框成因，也不移除既有 modal／取消／確認保護來掩蓋症狀。
-- **本問題下一步與驗收**：取得指定兩個時點的 Windows 原生短錄影／逐幀與視窗事件對照，
-  比較快、慢載入與第二次匯入，確認白框是哪個視窗及發生順序後提出最小修正。
-  使用者接受具體方案後才修改 UI；完成時需證明過渡不露出白色空框、狀態持續可理解，
+  的存在直接當作白框成因；修正保留既有 modal／取消／確認保護。
+- **本問題下一步與驗收**：取得推送／開 PR 授權後執行同 head 適用 CI、source-diverse／DPI
+  gates。現有正常／慢 metadata 取消與重試、第二次匯入及首幀證據不取代正式 gates。
+  已取得這兩段閃白修正的 UI 授權；範圍僅穩定繪製／交接，不重新設計操作流程或 EEG 語意。
+  先保留失敗重現，再修理既有 owner；必要時按視窗／繪製責任補最小回歸測試。
+  完成時需證明過渡不露出白色空框、狀態持續可理解，
   必要確認不跳過、取消／重試及匯入結果仍正確。穩定後的截圖或後端匯入 PASS 不足以證明不閃爍。
 - **待確認**：使用者實際想調整的步驟、畫面、文案與互動；先看目前 UI／截圖並列出問題，
   不預先認定整個 wizard 都要重做。
 - **邊界**：以已合併的匯入能力為基準，保留 reviewed labels、無標籤選擇、subject/run 選取、
   確認與取消、資料一致性保護。支援格式或 EEG 語意改變必須另作決策。
 - **施工前**：將確認過的可見變更、預期行為、非目標、既有 owner、驗證與回退方式寫回本節。
-  目前尚未取得具體 UI 設計／互動變更的確認，不因排列優先順序而直接動手改畫面。
+  白框修正以外的具體 UI 設計／互動變更仍未確認；不因排列優先順序而擴張施工。
 - **完成條件**：已同意的 UI 問題有實際 diff 與正常／失敗／取消路徑證據，Import 既有能力
   無回歸；同版本適用 CI、跨來源資料及 Windows native 畫面／操作檢查通過，再集中一次手測。
   不要求使用者重測全部 134 個資料集，也不把既有自動匯入證據當作新 UI 的驗收。
