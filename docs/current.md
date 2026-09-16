@@ -30,6 +30,12 @@ Timestamp interval 結尾的表示誤差由 preview 與實際事件載入共用�
 BrainVision header 已計入的 signal／marker 依賴不再重複增加波形 RAM 估算；未被引用的檔案
 仍計入，安全門檻與必要確認保持不變。
 
+Import wizard 的元件先加入所屬版面再顯示；Windows 的 loading／preview 視窗在首幀繪製後
+才顯露，避免 subject 選擇後與 Confirm and Import 交接時的瞬時白框。不新增固定等待，
+不改資料語意、必要確認或取消政策。使用者於 2026-09-16 對 Windows source `b052fd75`
+回覆「沒問題了可以準備合併」；這是所討論白框修正的局部手測接受，不代表所有資料集、
+DPI 或下游流程都經此次真人驗收。後續純文件收尾不改該產品 source。
+
 | 區域 | 目前能相信 | 邊界 |
 | --- | --- | --- |
 | Command spine | `ApplicationService / Command API` 是 GUI、Assistant 與 scripts 共用的產品命令入口。 | Lower-level domain tests 仍可直接使用 Study/managers；不得把它們接回產品 UI mutation。 |
