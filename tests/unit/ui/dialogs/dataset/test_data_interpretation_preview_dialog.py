@@ -1003,6 +1003,62 @@ def test_match_labels_internal_source_does_not_return_label_file_choices(qtbot):
     assert "label_carrier_choices" not in result["choices"]
 
 
+@pytest.mark.parametrize("preview_loaded", [False, True])
+def test_internal_source_refresh_distinguishes_unread_from_empty_events(
+    qtbot, preview_loaded
+):
+    """A read with zero events must block, not offer an endless refresh loop."""
+    label_path = "/tmp/source/sub-01_task-rest_events.tsv"
+    dialog = DataInterpretationPreviewDialog(
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/sub-01_task-rest_eeg.vhdr"],
+            "label_carriers": [label_path],
+            "bids": {"is_bids": True},
+        },
+        preview={
+            "label_carrier_preview": [
+                {
+                    "path": label_path,
+                    "format": "BIDS events",
+                    "selected_label_field": "trial_type",
+                    "selected_anchor": "onset",
+                }
+            ],
+            "internal_event_preview": (
+                {"candidate_label_events": [], "not_used_events": [], "total_files": 1}
+                if preview_loaded
+                else {}
+            ),
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    _show_step(dialog, "Match Labels")
+    dialog.label_source_mode_combo.setCurrentIndex(
+        dialog.label_source_mode_combo.findData("internal_events")
+    )
+    assert dialog.next_button.isEnabled() is (not preview_loaded)
+    assert (dialog.next_button.text() == "Refresh label preview") is (
+        not preview_loaded
+    )
+    assert not dialog._class_map_items
+    if not preview_loaded:
+        # Switching back before submitting must not retain an internal refresh action.
+        dialog.label_source_mode_combo.setCurrentIndex(
+            dialog.label_source_mode_combo.findData("loaded_label_files")
+        )
+        assert dialog.next_button.text() != "Refresh label preview"
+        dialog.label_source_mode_combo.setCurrentIndex(
+            dialog.label_source_mode_combo.findData("internal_events")
+        )
+        dialog.next_button.click()
+        assert dialog.get_result()["resume_step"] == "Match Labels"
+        assert dialog.get_result()["choices"]["label_carrier"] == "embedded_events"
+        assert "internal_event_selection" not in dialog.get_result()["choices"]
+
+
 def test_match_labels_internal_source_hides_label_file_class_map(qtbot):
     label_path = "/tmp/labels/A01T.mat"
     dialog = DataInterpretationPreviewDialog(

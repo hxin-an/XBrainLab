@@ -63,14 +63,33 @@ without competing data/native jobs. Ten recordings contain 378,000 reviewed time
 five-recording selection passed separately; that does not replace the missing whole-root result.
 The external-to-internal label-source switch is still a confirmed UI dead end, not repaired.
 
-Next action requires the two concrete decisions already requested from the user:
-1. Approve reusing the existing **Refresh label preview** flow after choosing **Labels inside EEG
-   files**, then require explicit class review. No new window or automatic class decisions.
-2. Approve a separate bounded observation of Thielen's full completion, preserving the failed
-   150-second check and its performance limitation rather than increasing a gate to obtain a pass.
+The user explicitly approved both remaining actions on 2026-09-16 ("同意"):
+1. Reuse the existing **Refresh label preview** flow after choosing **Labels inside EEG files**,
+   then require explicit class review. First add a failing real-wizard/Command regression for
+   external-to-internal switching, apply the smallest existing-owner correction, and exercise
+   refresh, class review, import, no-event and switch-back behavior. No new window, owner or
+   automatic class decisions; this specific UI change is authorized.
+   Native capture additionally reproduced stale external BIDS fields displayed as internal
+   events before refresh. Suppress those unread-source rows and show the existing empty card
+   with refresh guidance; retain the actual internal rows after evidence arrives. This is the
+   same source-switch correctness boundary, not a new wizard design.
+2. Separately observe Thielen's full ten-recording completion with a 600-second diagnostic cap
+   and a 660-second owned-process supervisor. Record time-to-visible-publication and readback
+   separately; preserve the failed 150-second check as a performance finding. This is an explicitly
+   approved longer observation, not a retroactive pass of the original diagnostic budget.
 
-Unaffected implementation and verification are complete; these are genuine remaining authority/
-evidence blockers, not manual-test delivery. Do not merge or claim all GUI paths passed. E navigation
+The smallest repair changes three UI files (+20/-7 production lines, no new owner). Real-wizard
+regressions first failed on unreachable refresh, then on stale external rows presented as internal
+events. After correction, 25 related tests passed on native Windows, including empty-event and
+switch-back guards, class review, real Apply and cancel/retry neighbors. The changed screenshot
+shows the existing refresh button and pending-source guidance; independent actual-diff review found
+no blocker. No backend or dataset files changed. Next: commit the candidate, run the approved quiet
+Thielen observation, then establish final-source recurring/recording/native/CI evidence.
+
+After the UI repair, review the actual diff and native changed-surface evidence, run relevant tests
+and applicable same-source CI/recurring data/native gates, update E navigation, then open one Windows
+manual candidate with its PowerShell log. Preserve prior campaign source identities; do not relabel
+them as runs of a newer commit. No merge or new dataset/environment downloads. E navigation
 states the limits and the completed evidence is preserved under
 `evidence/retained-import-20260916/source-3a2c65aa`. Documentation updates after this checkpoint do
 not change the recorded product/evidence SHA; any future product repair needs applicable fresh gates.

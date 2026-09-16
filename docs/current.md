@@ -71,8 +71,11 @@ recordings，隔離資料單元為零。Clean product source `3a2c65aa` 的逐�
 包含波形／事件讀回與 fresh-service recipe 重播。Windows 整批匯入有 133/134 個根目錄的成功
 證據（128 個初次通過、五個在修正診斷程式的 Cancel-state 等待後通過；保留不同 probe identities
 及原始失敗）。Thielen2021 整批十筆／378,000 事件仍超過 150 秒診斷期限；五筆預設選取成功
-不取代整批驗證，也不表示來源不可讀。另有 BIDS 外部標籤切換內部事件的預覽卡點待 UI 修正
-授權。19 個多受試者根目錄的預設選取、四個 native recovery 案例及同視窗連續匯入已通過；
+不取代整批驗證，也不表示來源不可讀。BIDS 外部標籤切換內部事件的預覽卡點已依後續批准
+修正：未讀取內部事件時使用既有 Refresh label preview，刷新後仍須明確審查類別；刷新前不把
+舊的外部欄位冒充內部事件。這項 UI 修正的最終同版本驗證與獲批准的 Thielen 較長完整觀察
+由 [Now](planning/now.md) 追蹤。前述基線的 19 個多受試者根目錄預設選取、四個 native recovery
+案例及同視窗連續匯入已通過；
 這些不是真人驗收，也不代表所有 GUI 路徑均已通過。
 逐檔刪除、替代位置、差異 metadata 與 promotion 證據在 `evidence/retained-import-20260916`。
 位置入口為 `datasets/manifests/import-locations-v3/README.md`；來源對照為

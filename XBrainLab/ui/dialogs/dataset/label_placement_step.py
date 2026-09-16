@@ -1884,8 +1884,10 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
         }
         return next(iter(values)) if len(values) == 1 else ""
 
-    def _label_field_requires_backend_refresh(self) -> bool:
-        """Return whether the selected field needs a new value preview."""
+    def _label_preview_requires_backend_refresh(self) -> bool:
+        """Refresh unread internal events or a changed external label field."""
+        if self._label_source_mode() == "internal_events":
+            return not bool(self._internal_event_preview_payload())
         if not self._label_rule_controls_changed or not self._label_carrier_items:
             return False
         selected = self._combo_current_data(self.rule_label_field_combo)

@@ -554,9 +554,10 @@ def _start_wizard_driver(
                 if driver.resolve_bbci_internal_events:
                     driver.bbci_review_decisions.append(str(modal.decision))
             elif modal is not driver.dialog:
-                if (driver.resolve_openneuro_trial_types) and (
-                    driver.phase == 3 and driver.awaiting_label_field_refresh
-                ):
+                if (
+                    driver.resolve_openneuro_trial_types
+                    or driver.resolve_bids_internal_events
+                ) and (driver.phase == 3 and driver.awaiting_label_field_refresh):
                     driver.dialog = modal
                     driver.dialog_count += 1
                     driver.awaiting_label_field_refresh = False
@@ -569,7 +570,10 @@ def _start_wizard_driver(
                     and (
                         driver.dialog_count == 1
                         or (
-                            (driver.resolve_openneuro_trial_types)
+                            (
+                                driver.resolve_openneuro_trial_types
+                                or driver.resolve_bids_internal_events
+                            )
                             and driver.dialog_count == 2
                             and not driver.awaiting_label_field_refresh
                         )
@@ -656,6 +660,23 @@ def _start_wizard_driver(
 
             if driver.phase == 3:
                 if driver.resolve_bids_internal_events:
+                    if not modal._internal_event_preview_payload():
+                        assert not driver.awaiting_label_field_refresh
+                        _select_combo_data(
+                            modal.label_source_mode_combo, "internal_events"
+                        )
+                        assert modal.next_button.isEnabled(), (
+                            "Internal source refresh is unreachable"
+                        )
+                        assert modal.next_button.text() == "Refresh label preview"
+                        assert not modal._event_role_items, (
+                            "External fields presented as internal events"
+                        )
+                        capture_teacher_ui(modal, "bids-internal-source-refresh.png")
+                        driver.awaiting_label_field_refresh = True
+                        driver.trace.append("refresh internal label source")
+                        QTEST.mouseClick(modal.next_button, Qt.MouseButton.LeftButton)
+                        return
                     for code in ("Stimulus/S  1", "Stimulus/S  2"):
                         button = next(
                             button
@@ -1414,14 +1435,19 @@ def test_visible_bids_wizard_can_explicitly_import_without_labels(
     assert panel.table.rowCount() == 1
 
 
-def test_visible_bids_wizard_reviews_embedded_labels_without_events_sidecar(
-    qtbot: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+@pytest.mark.parametrize("has_events_sidecar", [False, True])
+def test_visible_bids_wizard_reviews_embedded_labels_with_or_without_sidecar(
+    qtbot: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    has_events_sidecar: bool,
 ) -> None:
     _require_manifest_group("mne-bids-tiny-eeg")
     source = tmp_path / "bids-embedded-labels"
     shutil.copytree(PUBLIC_BIDS_ROOT, source)
-    for events in source.rglob("*_events.tsv"):
-        events.unlink()
+    if not has_events_sidecar:
+        for events in source.rglob("*_events.tsv"):
+            events.unlink()
     marker = next(source.rglob("*.vmrk"))
     with marker.open("a", encoding="utf-8") as stream:
         stream.write("\nMk3=Stimulus,S  1,101,1,0\nMk4=Stimulus,S  2,201,1,0\n")
@@ -1446,6 +1472,7 @@ def test_visible_bids_wizard_reviews_embedded_labels_without_events_sidecar(
     assert driver.fresh_pre_confirm_state == (0, False)
     assert driver.fresh_review_decisions == ["safe"]
     assert "review BIDS internal events" in driver.trace
+    assert ("refresh internal label source" in driver.trace) == has_events_sidecar
 
 
 def test_visible_bids_apply_cancel_reopens_identical_review_and_retries(

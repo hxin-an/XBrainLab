@@ -1242,6 +1242,7 @@ class DataInterpretationPreviewDialog(
                 self.label_sources_label.setText("")
                 self.label_sources_label.setVisible(False)
         self._refresh_label_source_mode()
+        self._sync_apply_state()
 
     def _refresh_event_detail_view(self) -> None:
         if not hasattr(self, "event_tree") or not hasattr(self, "event_layout"):
@@ -1260,11 +1261,16 @@ class DataInterpretationPreviewDialog(
             and self.event_value_editor is not None
             and self.event_value_editor.has_rows()
         )
-        if not uses_external_value_editor:
+        unread_bids_events = (
+            self._is_bids_source()
+            and self._label_source_mode() == "internal_events"
+            and not self._internal_event_preview_payload()
+        )
+        if not uses_external_value_editor and not unread_bids_events:
             self._populate_event_tree()
         self._fit_tree_columns(self.event_tree, (220, 150, 420))
         self._fit_event_tree_height()
-        if self._label_source_mode() == "internal_events":
+        if self._label_source_mode() == "internal_events" and not unread_bids_events:
             self._build_internal_event_rules_view()
         elif self._class_map_items:
             self.event_group.setTitle("")
@@ -1642,7 +1648,7 @@ class DataInterpretationPreviewDialog(
         if (
             current < len(self._step_titles)
             and self._step_titles[current] == "Match Labels"
-            and self._label_field_requires_backend_refresh()
+            and self._label_preview_requires_backend_refresh()
         ):
             self._resume_step_after_accept = "Match Labels"
             self.accept()
@@ -4469,13 +4475,13 @@ class DataInterpretationPreviewDialog(
             self.next_button.setToolTip("")
             return
 
-        needs_backend_refresh = self._label_field_requires_backend_refresh()
+        needs_backend_refresh = self._label_preview_requires_backend_refresh()
         needs_review = self._label_placement_needs_review()
         self.next_button.setEnabled(not needs_review or needs_backend_refresh)
         if needs_backend_refresh:
             self.next_button.setText("Refresh label preview")
             self.next_button.setToolTip(
-                "Refresh the label preview using the selected label field."
+                "Refresh the preview using the selected label source and field."
             )
         elif needs_review:
             self.next_button.setText("Next: Review and Import")
