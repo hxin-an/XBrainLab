@@ -2,25 +2,14 @@
 
 最後更新：`2026-09-16`
 
-## Delivery — retained Windows import; manual acceptance pending
+## Active work
 
-Implementation is complete at product/evidence source
-`b7cd120631e41416063cb9933c9a070d45b68323` on PR #141. Retained recording/root coverage,
-normal Windows routes, recovery and same-source CI have passed; exact counts, source boundaries
-and the preserved Thielen timing limitation belong to [Current](../current.md).
-The completed construction history remains in Git/PR and the E-drive evidence archive, not active
-dispatch. Do not restart those campaigns after context compaction.
-
-Only delivery remains: validate the documentation-only closure commit, confirm it leaves product,
-scripts, dependencies and tests unchanged from the verified candidate, then open the existing shared
-Windows environment with one PowerShell live log. The E-drive location guide is the manual entrypoint;
-provide one focused checklist, not 134 repeated human tests. Stop after the app is responsive and the
-manual handoff is delivered; no further monitoring of the user's operations.
-
-User manual acceptance and explicit merge approval remain pending. Do not merge, remove the worktree,
-delete original data/evidence or create environments/models. Any new reachable defect is diagnosed
-within its approved boundary; visible UI changes still require concrete confirmation.
-The separate Assistant candidate below is not authorized implementation in this delivery.
+No product implementation is active. The retained-import candidate was manually accepted and
+merged through [PR #141](https://github.com/hxin-an/XBrainLab/pull/141) on 2026-09-16.
+The accepted source, bounded import evidence and known limits belong to [Current](../current.md);
+construction history and failure evidence remain in Git/PR and the E-drive evidence archive.
+Do not restart completed campaigns after context compaction. The Assistant proposal below remains
+a candidate, not authorized implementation.
 
 ## Closed baseline
 
