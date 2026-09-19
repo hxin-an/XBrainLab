@@ -2,7 +2,7 @@
 
 最後更新：`2026-09-19`
 
-## Active — workspace_v2 根目錄殘留清理與 main 基線驗證
+## Active — main 基線驗證（已確認的 workspace 清理完成）
 
 2026-09-19 使用者改定優先順序：先整理散落的本地分支／工作目錄，確認 main 功能基線，
 再恢復研究準備。下方 M0–M6 與研究規格完整保留，但不繼續出題、實作或跑實驗。
@@ -78,9 +78,12 @@ pinned RAG snapshot 完整逐檔相同，舊 RAG 另有已不用的 revision／e
 正式 `D:\XBrainLabCache` 的 model／pinned RAG readiness 均為 true，現有 Windows dependency lock 通過；
 沒有下載、换模型、改 root 設定或刪正式 D／E 資料。
 `core`、其他專案、secrets、通用 `.venvs`／`.mamba`、`tmp/valgrind_render` 等非本次目標不動。
-**僅一項清理決策待確認**：`archives/xbrainlab/2026-08-05-before-consolidation` 約 1.2 GB，
-含舊 bundle 與當時未提交修改封存，不當作已合併內容直接丟棄；已單獨詢問是否永久刪除。
-此封存未複製或移動。不得把必要保留目錄數量多解讀為應刪 workspace root。
+使用者於 2026-09-19 同意清除目前無已知用途的八月歷史封存；
+`archives/xbrainlab/2026-08-05-before-consolidation` 約 1.2 GB 已整份永久刪除，
+包含舊 bundle 與當時未提交修改，不另備份；空的 `archives/xbrainlab` 父目錄亦已移除。
+不宣稱每份舊修改已合併；代價是不能再靠該封存復原已放棄的歷史工作。
+現有 main、研究分支、Split WIP 與 protected 設定保持原樣。
+已確認範圍內沒有待批准清理項目；WSL 獨立舊 repo（有未提交修改）與 Linux 環境不在本次 D 槽範圍。
 下一步是必要資料與 Assistant workflow 基線證據，不是研究 pilot，也不宣稱完整 handoff-ready。
 既有 `manual_windows.ps1` 預設指向已退役的 `xbrainlab-manual`，不可直接沿用預設；其嚴格 clean-source
 檢查也會拒絕主目錄受保護的本機設定差異。一般啟動仍可由主目錄的 Windows Python 執行 `run.py`；
