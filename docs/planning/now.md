@@ -2,44 +2,58 @@
 
 最後更新：`2026-09-19`
 
-## Active — 本地工作區整理與 main 基線驗證（已授權清理）
+## Active — 本地目錄殘留清理與 main 基線驗證
 
 2026-09-19 使用者改定優先順序：先整理散落的本地分支／工作目錄，確認 main 功能基線，
 再恢復研究準備。下方 M0–M6 與研究規格完整保留，但不繼續出題、實作或跑實驗。
 使用者進一步同意保留有效未完成工作、清除確認退役項目；不把所有舊分支另複製一份。
 本輪可做本地保存／分支與 worktree 清理；未合併 UI 取捨仍未定，不丟棄、不混入 main。
 
-- **盤點證據**：本地 43 分支、13 個 worktree 登記，13 個目錄均存在；其中五個 Windows
-  worktree 在 WSL 顯示 prunable／無法解析 Git 路徑，但 Windows Git 可正常讀取且無 tracked dirty，
-  不能直接 `worktree prune`。其他 ignored builds、runtime 設定與在用程序尚待清理前逐一核對。
+- **清理結果**：原有 43 個本地分支／13 個 worktree；另外建立一個必要 WIP 分支，
+  刪除 41 個舊分支與 11 個過期 worktree，現留三個分支／兩個工作目錄。
+  所有移除目錄均核對無 tracked／untracked 修改、沒有獨有 `.venv`；五個 Windows worktree
+  由 Windows Git 正常移除，未使用 `worktree prune`。清理前未見執行中的 Windows XBrainLab／Python。
+  同時刪除六支已讀取確認用途的一次性 MOABB 轉換／探針腳本，沒有改動已產生的資料或證據。
 - **基線**：本次唯讀遠端查詢確認 main 與 origin/main／本地 main 同為
   `73acb83a0d315b1546b415d003fc52f706280b1d`；正式執行前仍重查，不能把本紀錄當永久 current SHA。
   該 SHA 的 [CI](https://github.com/hxin-an/XBrainLab/actions/runs/35072133997) 與
   [文件 CI](https://github.com/hxin-an/XBrainLab/actions/runs/35072133919) 均成功；
   CI 23 個 job success、兩個 routing job skipped，涵蓋平台、完整 Linux 測試、資料、UI walkthrough／DPI。
   這不是本機 Windows 功能驗收，也不是 Assistant Stable 證據。GitHub 當次無 open PR。
-- **必須保留**：主工作區仍在舊 `fix/saliency-result-refresh`，有兩個未提交 UI／測試修改、
-  protected `settings.json` 與六個 untracked 資料探針；兩個修改移除 Split 的 Atomic trial groups
-  顯示並調整測試，而 main 仍保留該顯示，不能當作已合併而丟棄。
-  `feat/assistant-benchmark-calibration` 有兩個未合併 commits 及兩份未提交研究文件；
-  `chore/manual-environment` 的關閉 PR 也不等於所有本地 commits 已合併。
-- **已確認的分支候選**：以下本地 HEAD 精確對上 merged PR，且 merge commit 可達 main：
-  `chore/ci-quality-routing`、`chore/log-preprocess-plan`、`chore/test-suite-pruning`、
-  `chore/ui-preview-workflow`、`cleanup/module-quality`、`docs/import-support-boundary`、
-  `fix/ci-failure-diagnostics`、`fix/filter-section-state`、`fix/import-white-flash`、
-  `fix/preprocess-apply-performance`、`handoff/sealed-saliency-results`、`refactor/assistant-rag-prompt`、
-  `refactor/complete-baseline`、`refactor/quality-baseline-closure`。這是 14 個 branch-ref 候選，
-  不代表相應 worktree 中的 ignored 內容均可刪；其他分支的必要性／歷史關係未全部查清。
+- **保留內容**：主目錄已切回 `main`；產品、scripts、tests 與 dependency files 對 main 無差異。
+  唯一 tracked dirty 是 protected `settings.json`，切換與驗證前後 SHA-256 均為
+  `e0da09787f20890653526bb2d26c04e0f64ff3517ae9ecc7a0e555bdf3a7cde0`。
+  `wip/data-split-summary` 的 `ab6196dc` 保存原先兩個 UI／測試修改；沒有合併到 main。
+  `feat/assistant-benchmark-calibration` 保留離線 calibration 與全部研究討論文件；
+  研究 worktree 仍位於 `build/dev-artifacts/assistant-benchmark-calibration`。
+- **刪除依據與限制**：20 個舊 branch heads 可追溯至 main／已合併 PR 歷史，另外 12 個
+  用 `git cherry` 確認所有 patch 等價於 main。其餘九個是 PR #130 取代的三個舊切片、
+  已關閉的 release／環境維護，以及已被後續方案取代或拒絕的四個 Import／Assistant 實驗；
+  不宣稱這九個的每項修改都已合併。遠端 refs 未刪、不做 Git GC，也不另備份整套舊程式。
+- **歷史證據**：舊手測／失敗證據與少量結果集中移到
+  `build/dev-artifacts/retired-worktree-evidence`；不是 current dispatch 或新版本通過證據。
+  主目錄十五個舊截圖／報告資料夾也集中到該處的 `root-artifacts`，沒有保留整套程式副本。
+  既有 `build/handoff-evidence` 保留原 SHA 分類；研究、thesis screenshots 與當次 native smoke 不移動。
+  D／E 資料集、shared Windows `.venv`、模型 cache 與 root 設定未清除。
+- **補查 Git 清單之外的殘留**：三份未登記的 `build/manual-pr120-be229ee8`、
+  `manual-pr123-2c3011fa`、`manual-pr126-c0476a37` 匯出副本，共 4,037 個檔案逐一對上其原 commit，
+  沒有獨有 source；少量 runtime 設定／log／結果移出後已刪除副本。
+  `.mypy_cache`、`.pytest_cache`、`.ruff_cache`、`.test-tmp`、root `__pycache__`、生成的
+  `dist`／`site`、`build/import-boundary-tests`、舊 bootstrap bytecode 與已確認空目錄已移除。
+  全輪依清理前 `du` 扣除保留內容，約移除 3.4 GiB；這是配置量估算，不是磁碟 free-space 精確量測。
+  正式 source／docs／tests、既有 `logs`／`output` 與其他研究專案不因資料夾多便刪除。
+- **本機初步驗證**：Windows Python 3.12.10 的直接產品／Assistant 相依符合 main lock。
+  隔離設定、offline、native Qt `windows` 的既有 smoke runner 通過：五個 panel、state query、
+  New Session、正常關閉，終態 worker／subprocess 均為零。Artifact 位於
+  `build/dev-artifacts/Native cleanup 測試 20260919/native-smoke.json`。
+  這是空工作區 lifecycle，不是資料／training／saliency／真模型 Assistant 完整實測。
 
 ### 目標、步驟與驗收
 
-1. **保存未合併內容**：按已確認的本地清理範圍核對精確保留／移除清單。
-   用可核對且可還原的 Git 歷史封存／patch 與必要檔案保留未合併工作，不把 bundle 當作
-   已涵蓋 dirty／untracked 檔案；研究文件不能只存在於即將刪除的 worktree 中。
-2. **整併本地入口**：清理確認不再使用的本地 branch refs／worktree；必要證據先保存。
-   目標是一個清楚的 main Windows 執行／驗證入口與必要研究工作，不新增長期第三套 checkout。
-   Root runtime 設定原地保留，不 stash／stage／覆寫它；共享環境、D／E 資料與模型 cache 不清除。
-   Git 路徑按實際建立平台處理；不刪 GitHub 分支／PR、不廣泛清目錄、不關閉無關程序。
+1. **已完成保存與清理**：保留上述研究與 WIP；主 Windows source 固定在
+   `D:\workspace_v2\projects\lab\XBrainLab`，不新增長期第三套 checkout。
+2. **維持邊界**：Root runtime 設定原地保留，不 stash／stage／覆寫它；
+   共享環境、D／E 資料與模型 cache 不清除。不刪 GitHub 分支／PR、不廣泛清目錄、不關閉無關程序。
 3. **鎖定 main 驗證來源**：不在舊 dirty branch 執行卻報 main；main exact SHA 與來源乾淨程度須可核對。
    沿用現有 Windows Python／PowerShell log，不新增環境或用 WSL 視窗冒充 Windows。
 4. **補齊必要基線證據**：先核對同 SHA CI artifacts，避免重跑等價全套。
@@ -53,9 +67,13 @@
    UI 修改仍需明確批准。清理完成不等於功能驗證完成，CI 綠燈也不保證所有功能無缺陷。
    main 基線接受後才恢復下方研究準備，不因完成一個清理切片就宣告整體完成。
 
-**目前 checkpoint**：開始執行已授權清理。先保存研究文件與兩個未提交 UI／測試修改，
-逐一核對 ignored／在用資源與分支包含關係，再移除退役項目並核對 main 入口。
-未合併有效內容與 protected 設定不默認拋棄；尚未完成本機產品驗證。
+**目前 checkpoint**：本地分支、worktree、確認的三份程式匯出副本及生成快取清理已完成；
+main 本機空工作區 lifecycle 已通過。已詢問使用者所見完整路徑；若指的是主目錄以外，
+須重新核對具體目錄，不將本次結果宣稱為整個 D 槽／其他 workspace 全部清理。
+下一步是必要資料與 Assistant workflow 基線證據，不是研究 pilot，也不宣稱完整 handoff-ready。
+既有 `manual_windows.ps1` 預設指向已退役的 `xbrainlab-manual`，不可直接沿用預設；其嚴格 clean-source
+檢查也會拒絕主目錄受保護的本機設定差異。一般啟動仍可由主目錄的 Windows Python 執行 `run.py`；
+正式集中手測前須明確處理來源／設定例外，不能偷偷 stash 設定、放寬 gate 或復建多套環境。
 
 ## Paused — 第二主線研究里程碑計畫（僅文件；尚未施工）
 
