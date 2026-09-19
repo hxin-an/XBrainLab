@@ -2,7 +2,7 @@
 
 最後更新：`2026-09-19`
 
-## Active — 本地目錄殘留清理與 main 基線驗證
+## Active — workspace_v2 根目錄殘留清理與 main 基線驗證
 
 2026-09-19 使用者改定優先順序：先整理散落的本地分支／工作目錄，確認 main 功能基線，
 再恢復研究準備。下方 M0–M6 與研究規格完整保留，但不繼續出題、實作或跑實驗。
@@ -68,8 +68,19 @@
    main 基線接受後才恢復下方研究準備，不因完成一個清理切片就宣告整體完成。
 
 **目前 checkpoint**：本地分支、worktree、確認的三份程式匯出副本及生成快取清理已完成；
-main 本機空工作區 lifecycle 已通過。已詢問使用者所見完整路徑；若指的是主目錄以外，
-須重新核對具體目錄，不將本次結果宣稱為整個 D 槽／其他 workspace 全部清理。
+main 本機空工作區 lifecycle 已通過。使用者明確指定 `D:\workspace_v2`，並要求資料夾本體也清除。
+根目錄七個 `.xbrainlab-*` 已實際刪除：`cache`、`data`、`dev`、`envs`、`handoff-preflight`、
+`tools`、`trash`；`tmp` 下十八個明確屬於 XBrainLab 的七月測試資料夾亦已刪除。
+舊環境／工具沒有 current source、Windows persistent env／PATH 或使用中程序依賴。
+Granite 十四個 blobs 用 Windows 原生 SHA-256 逐一比對正式 cache 一致，snapshot links 亦一致；
+pinned RAG snapshot 完整逐檔相同，舊 RAG 另有已不用的 revision／export formats／索引。
+`tmp` 中唯一 GDF 確認和 retained `tests/fixtures/data/A01T.gdf` 相同才刪。
+正式 `D:\XBrainLabCache` 的 model／pinned RAG readiness 均為 true，現有 Windows dependency lock 通過；
+沒有下載、换模型、改 root 設定或刪正式 D／E 資料。
+`core`、其他專案、secrets、通用 `.venvs`／`.mamba`、`tmp/valgrind_render` 等非本次目標不動。
+**僅一項清理決策待確認**：`archives/xbrainlab/2026-08-05-before-consolidation` 約 1.2 GB，
+含舊 bundle 與當時未提交修改封存，不當作已合併內容直接丟棄；已單獨詢問是否永久刪除。
+此封存未複製或移動。不得把必要保留目錄數量多解讀為應刪 workspace root。
 下一步是必要資料與 Assistant workflow 基線證據，不是研究 pilot，也不宣稱完整 handoff-ready。
 既有 `manual_windows.ps1` 預設指向已退役的 `xbrainlab-manual`，不可直接沿用預設；其嚴格 clean-source
 檢查也會拒絕主目錄受保護的本機設定差異。一般啟動仍可由主目錄的 Windows Python 執行 `run.py`；
