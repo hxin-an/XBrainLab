@@ -18,6 +18,9 @@ from scripts.dev.test_runtime_paths import (
 # --- PYTEST COLLECTION FIX ---
 # Prevent pytest from scanning XBrainLab source directory as tests
 collect_ignore_glob = ["../XBrainLab/**"]
+# Native CMD contracts are required by the Windows platform shard, not Linux/macOS.
+if sys.platform != "win32":
+    collect_ignore_glob.append("unit/scripts/test_windows_daily_launcher.py")
 
 # --- HEADLESS DEFAULTS FOR THIS WORKSPACE ---
 # Direct unattended pytest invocations in the current Codex/WSL workspace can
