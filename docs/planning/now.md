@@ -36,12 +36,27 @@ root `settings.json` 不 stage／stash／覆寫，`wip/data-split-summary` 保�
 每個 slice review；不因小 commit、CI pending 或 compaction 停工。
 候選預算用完、必要資源不可用或缺少合併批准時明確回報，不擴大施工。
 
-**Next**：#143 head `2c36a5e7` 的 CI 已成功，產品 merge 批准仍待使用者回覆。
+**Next**：#143 同步 research main 後 head `5cfd57d3` 的 CI 已成功，產品 merge 批准仍待使用者回覆。
 研究 PR #144 已完成 review／92-case calibration／docs／CI，合併於 `c44f4a7b`。
 RAG 探針在擴充前固定；舊 23 例為 14/36，72 例初稿 30/36，依空結果診斷修訂六個正例後
 為 34/36，各工具至少一題；所有索引／範圍／context gate 通過。探針已用於 development 修訂，
-不稱 holdout 或正式 Test。模型舊基準 81/81 完整執行（兩個既有失敗），候選模型尚未執行。
-下一步：完成 focused checks、同步 main、固定 candidate commit，再做完整真模型及 Windows journey。
+不稱 holdout 或正式 Test。模型舊基準 81/81 完整執行（兩個既有 bounded failures）。
+候選 `07f178ba` 的 81-case 真模型 bounded gate 已通過，逐 suite raw／post-recovery 數量未退步，
+仍有原先兩個 bounded failures，非 Stable。68 個 focused native 案例全部執行通過。
+Windows journey 暴露既有單次 capture 在 model loading 時固定等 2.5 秒就點 disabled Send；
+真實 log 顯示模型隨後已成功 ready，但沒有送出 user turn。最小腳本修理已完成：
+delayed-ready／late-controller／never-ready 先 RED 後 GREEN，等待實際 controls ready 或原 timeout；
+不增加 timeout、不改產品。相鄰 40 tests 通過；Windows 原生 switch-panel 與兩輪 no-action
+ChatPanel journey 通過（第二輪使用一次既有 format recovery），畫面及 teardown 已檢查。
+
+**Blocker／待決策**：#145 的 Linux UI CI 在既有 visualization publication refresh 測試失敗。
+固定 P2 通知先於 P1 result 的排序後，兩個刷新入口均重現：cached P1 尚存時就 commit P2
+render revision，舊 result 被拒後重排同一 revision 又被丟棄，剩 dirty state 而無 retry。
+該產品 owner／測試與 main 相同，非 RAG 修改造成；未擅自修理。已請使用者授權最小 UI
+內部修復，或明確另輪處理；不可把重跑綠燈當作排除 defect，也不交付為 handoff-ready。
+忽略目錄下的 deterministic probe／log：`build/dev-artifacts/visualization-race-probe/`、
+`build/dev-artifacts/visualization-race-evidence/`；#145 comment 保存已完成的 exact-head model 證據。
+下一步先取得此新修理邊界；仍有一次完整候選 model budget，留給最後固定 head，不能無限重跑。
 **Stop**：四步完成，或真正的新決策／資源／產品批准阻擋；不把 focused pass 當完整完成。
 
 

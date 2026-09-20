@@ -161,9 +161,12 @@ def run_walkthrough(
 
     def open_assistant() -> None:
         window.ai_btn.click()
-        QTimer.singleShot(2500, capture_ready)
+        QTimer.singleShot(250, capture_ready)
 
     def capture_ready() -> None:
+        if time.monotonic() - started_at >= timeout_seconds:
+            fail(f"Assistant did not become ready within {timeout_seconds} seconds.")
+            return
         manager = window.agent_manager
         if manager is None:
             fail("Assistant manager disappeared before the ready capture.")
@@ -171,17 +174,33 @@ def run_walkthrough(
         panel = manager.chat_panel
         dock = manager.chat_dock
         if panel is None or dock is None or not dock.isVisible():
-            fail("Assistant dock did not open.")
+            QTimer.singleShot(250, capture_ready)
             return
         if _assistant_setup_required(panel):
             fail(ASSISTANT_SETUP_REQUIRED_MESSAGE)
+            return
+        controller = manager.agent_controller
+        if (
+            controller is None
+            or manager.chat_controller.is_processing
+            or controller.is_processing
+            or panel.is_processing
+            or not panel.input_field.isVisible()
+            or not panel.input_field.isEnabled()
+        ):
+            QTimer.singleShot(250, capture_ready)
+            return
+        # Send is intentionally disabled for an empty draft even after loading.
+        # Let the real composer decide whether this prompt can be submitted.
+        panel.input_field.setText(prompt)
+        if not panel.send_btn.isVisible() or not panel.send_btn.isEnabled():
+            QTimer.singleShot(250, capture_ready)
             return
         ready_path = output_dir / READY_SCREENSHOT
         if _capture_current_window(window, ready_path) != 0:
             fail("Ready screenshot was blank or could not be saved.")
             return
         state["ready_screenshot"] = str(ready_path)
-        panel.input_field.setText(prompt)
         panel.send_btn.click()
         QTimer.singleShot(1000, wait_for_response)
 
