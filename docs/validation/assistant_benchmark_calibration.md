@@ -48,8 +48,10 @@ GUI-opening Action 各有一正一反例。另有 focused tests 變更觀察欄�
 
 目前採「依題意」區分：題目只要求開啟匯入視窗，需正確視窗可見、enabled 且未改資料；
 題目要求完成匯入，則一定要讀取 backend 結果及資料狀態，不能只用視窗開啟代替。
-這是本輪合成案例的明示假設，尚未取得額外的 GUI 判分選項確認；正式題庫凍結前需確認。
-它不改變目前產品工具、GUI 或 confirmation 契約。
+這是 v1 合成校準保留的歷史假設，不改寫舊 scorer 或成績。正式研究已於 2026-09-19
+確認依工具完成契約區分開窗與直接操作，缺資訊採正確不執行指標；以
+[研究規格](thesis_protocol.md)第 4 節為準，不以此處的 typed clarification／完整 Outcome
+契約覆蓋正式研究方法。它不改變目前產品工具、GUI 或 confirmation 契約。
 
 ## v1 校準資料契約
 
@@ -107,8 +109,8 @@ Exit `0` 表示所有校準標註一致，`1` 表示有誤判，`2` 表示資料
 ## 後續正式 Benchmark 的必要條件（本輪未實作）
 
 1. **案例與凍結**：真人 seeds 明列作者／來源；先按 seed family 分 Development／Validation／
-   Sealed，再改寫，避免同源變體跨 split。Notion 的每組 5 seeds、15 題與 8／3／4 配額要在
-   family 分配可行且人工審閱後才能凍結，不能為滿配額拆散 family。已有接觸的題不可當未知測試。
+   Sealed，再改寫，避免同源變體跨 split。正式配額與來源由[研究規格](thesis_protocol.md)
+   第 3 節擁有，舊 Notion 配額不再作為施工依據。不能為滿配額拆散 family；已接觸的題不可當未知測試。
 2. **真實收集器**：走正常 ChatPanel → Host → Command 路徑，取得 admission、確認、實際
    呼叫參數／結果、最終狀態、GUI、errors/crash 與完整 effects；預先固定觀察終點與 timeout。
    不能用 v12 的 synthetic publication、工具名或 mock success 充當操作結果。
@@ -117,7 +119,7 @@ Exit `0` 表示所有校準標註一致，`1` 表示有誤判，`2` 表示資料
    規則先固定；本輪未建立 Sealed，亦未讀取其內容。
 4. **正式分數**：凍結 exact source、工具／scorer／case 版本、模型 revision／quantization、
    prompt／RAG、環境／硬體、seed／重跑數／重試預算。每類與總分保留分母、失敗、排除及變異；
-   Notion 提議的三類成功率等權平均僅適用完成上述條件的正式 Product Outcome，不在本輪計算。
+   正式主分數依研究規格的平衡決策正確率；Product Outcome 另列，不能由本輪合成觀察推估。
 
 既有 [Thesis Protocol](thesis_protocol.md) 的廣泛研究目標與歷史門檻不由這個小型校準器取代。
 正式實驗前需明定新 protocol 與舊門檻的適用關係；本文件不授權模型實驗或產品契約修改。

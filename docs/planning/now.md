@@ -1,95 +1,54 @@
 # XBrainLab Now
 
-最後更新：`2026-09-19`
+最後更新：`2026-09-20`
 
-## Active — main 基線驗證（已確認的 workspace 清理完成）
+## Active — 共同基線整備（使用者已授權施工）
 
-2026-09-19 使用者改定優先順序：先整理散落的本地分支／工作目錄，確認 main 功能基線，
-再恢復研究準備。下方 M0–M6 與研究規格完整保留，但不繼續出題、實作或跑實驗。
-使用者進一步同意保留有效未完成工作、清除確認退役項目；不把所有舊分支另複製一份。
-本輪可做本地保存／分支與 worktree 清理；未合併 UI 取捨仍未定，不丟棄、不混入 main。
+本節優先於下方歷史順序。目標為啟動器、研究文件與 RAG 的共同 main 基線；
+不是正式題庫評測、pilot 或 Assistant Stable promotion。只讀／使用既有工程案例，
+不讀正式 Validation／Test，不把題目或 oracle 加入 RAG。
 
-- **清理結果**：原有 43 個本地分支／13 個 worktree；另外建立一個必要 WIP 分支，
-  刪除 41 個舊分支與 11 個過期 worktree，現留三個分支／兩個工作目錄。
-  所有移除目錄均核對無 tracked／untracked 修改、沒有獨有 `.venv`；五個 Windows worktree
-  由 Windows Git 正常移除，未使用 `worktree prune`。清理前未見執行中的 Windows XBrainLab／Python。
-  同時刪除六支已讀取確認用途的一次性 MOABB 轉換／探針腳本，沒有改動已產生的資料或證據。
-- **基線**：本次唯讀遠端查詢確認 main 與 origin/main／本地 main 同為
-  `73acb83a0d315b1546b415d003fc52f706280b1d`；正式執行前仍重查，不能把本紀錄當永久 current SHA。
-  該 SHA 的 [CI](https://github.com/hxin-an/XBrainLab/actions/runs/35072133997) 與
-  [文件 CI](https://github.com/hxin-an/XBrainLab/actions/runs/35072133919) 均成功；
-  CI 23 個 job success、兩個 routing job skipped，涵蓋平台、完整 Linux 測試、資料、UI walkthrough／DPI。
-  這不是本機 Windows 功能驗收，也不是 Assistant Stable 證據。GitHub 當次無 open PR。
-- **保留內容**：主目錄已切回 `main`；產品、scripts、tests 與 dependency files 對 main 無差異。
-  唯一 tracked dirty 是 protected `settings.json`，切換與驗證前後 SHA-256 均為
-  `e0da09787f20890653526bb2d26c04e0f64ff3517ae9ecc7a0e555bdf3a7cde0`。
-  `wip/data-split-summary` 的 `ab6196dc` 保存原先兩個 UI／測試修改；沒有合併到 main。
-  `feat/assistant-benchmark-calibration` 保留離線 calibration 與全部研究討論文件；
-  研究 worktree 仍位於 `build/dev-artifacts/assistant-benchmark-calibration`。
-- **刪除依據與限制**：20 個舊 branch heads 可追溯至 main／已合併 PR 歷史，另外 12 個
-  用 `git cherry` 確認所有 patch 等價於 main。其餘九個是 PR #130 取代的三個舊切片、
-  已關閉的 release／環境維護，以及已被後續方案取代或拒絕的四個 Import／Assistant 實驗；
-  不宣稱這九個的每項修改都已合併。遠端 refs 未刪、不做 Git GC，也不另備份整套舊程式。
-- **歷史證據**：舊手測／失敗證據與少量結果集中移到
-  `build/dev-artifacts/retired-worktree-evidence`；不是 current dispatch 或新版本通過證據。
-  主目錄十五個舊截圖／報告資料夾也集中到該處的 `root-artifacts`，沒有保留整套程式副本。
-  既有 `build/handoff-evidence` 保留原 SHA 分類；研究、thesis screenshots 與當次 native smoke 不移動。
-  D／E 資料集、shared Windows `.venv`、模型 cache 與 root 設定未清除。
-- **補查 Git 清單之外的殘留**：三份未登記的 `build/manual-pr120-be229ee8`、
-  `manual-pr123-2c3011fa`、`manual-pr126-c0476a37` 匯出副本，共 4,037 個檔案逐一對上其原 commit，
-  沒有獨有 source；少量 runtime 設定／log／結果移出後已刪除副本。
-  `.mypy_cache`、`.pytest_cache`、`.ruff_cache`、`.test-tmp`、root `__pycache__`、生成的
-  `dist`／`site`、`build/import-boundary-tests`、舊 bootstrap bytecode 與已確認空目錄已移除。
-  全輪依清理前 `du` 扣除保留內容，約移除 3.4 GiB；這是配置量估算，不是磁碟 free-space 精確量測。
-  正式 source／docs／tests、既有 `logs`／`output` 與其他研究專案不因資料夾多便刪除。
-- **本機初步驗證**：Windows Python 3.12.10 的直接產品／Assistant 相依符合 main lock。
-  隔離設定、offline、native Qt `windows` 的既有 smoke runner 通過：五個 panel、state query、
-  New Session、正常關閉，終態 worker／subprocess 均為零。Artifact 位於
-  `build/dev-artifacts/Native cleanup 測試 20260919/native-smoke.json`。
-  這是空工作區 lifecycle，不是資料／training／saliency／真模型 Assistant 完整實測。
+1. **啟動器 PR #143**：head `8314b590` 的三個 Windows-only 測試被 Linux shard 收集後
+   skip，導致 mandatory completion gate 失敗。修正既有平台分流及 Windows 測試環境依賴，
+   不放寬 skip gate、不改 `start.cmd` 行為。驗證三個真 CMD 案例與 routing 回歸後 push，
+   追蹤同 head CI；產品 merge 仍需明確批准，純測試修正不冒稱新的產品手測。
+2. **研究成果**：保存並審查 `feat/assistant-benchmark-calibration` 已有離線 calibration、
+   研究規格及未提交出題文件／導覽；同步 main 後以非產品 PR 合併。只確認模板身分，
+   不讀正式題目、不寫新研究 runner。focused calibration／docs checks，無 GUI 手測要求。
+3. **RAG**：從最新 main 建立 `improve/rag-common-baseline` 獨立 worktree。
+   18 工具各 4 筆英文正例（共 72），沿用單動作 corpus 契約；不新增回答／追問範例，
+   不變更模型、工具、confirmation、format retry 或 capability owner。
+   擴充前固定 36 正例查詢（各工具 2）及 12 邊界工程探針，沿用 verify_rag 真離線檢索；
+   不以只允許預期工具製造命中。Top-3 至少 33/36、每工具至少一題、不得低於修改前。
+   schema／ID／重複及語意審查、工具排除、索引重建／重用皆須通過。
+   固定 embedding revision、threshold=0.7、top-k=3、context budget；只修有證據的直接缺陷。
+   更新 corpus hash／collection identity。真模型以既有 pinned primary，舊基準一次＋最多
+   兩個候選各一輪完整 frozen 81-case；不改分母／既知失敗清單、不下載模型、不降 gate。
+   獨立 review 與 Windows ChatPanel 真實 journey 後集中一次 Assistant 局部手測。
+4. **整合凍結**：同 head 適用 CI 成功且取得產品手測／merge 批准後合併 RAG；保存
+   source、corpus、embedding／模型 revision、設定與證據身分。稱研究前共同基線，
+   正式 B0 仍依研究規格固定。研究線與 UI 線各自工作目錄，工具契約先協調。
 
-### 目標、步驟與驗收
+共用現有 Windows Python、模型、embedding 與資料；不新增環境、不搬資料。
+root `settings.json` 不 stage／stash／覆寫，`wip/data-split-summary` 保留。
+合併後才清理精確對應的 worktree／臨時產物，保留必要失敗與驗收證據。
+本輪 UI layout／文案／流程沒有修改授權；RAG 正例／檢索改善已授權。
+每個 slice review；不因小 commit、CI pending 或 compaction 停工。
+候選預算用完、必要資源不可用或缺少合併批准時明確回報，不擴大施工。
 
-1. **已完成保存與清理**：保留上述研究與 WIP；主 Windows source 固定在
-   `D:\workspace_v2\projects\lab\XBrainLab`，不新增長期第三套 checkout。
-2. **維持邊界**：Root runtime 設定原地保留，不 stash／stage／覆寫它；
-   共享環境、D／E 資料與模型 cache 不清除。不刪 GitHub 分支／PR、不廣泛清目錄、不關閉無關程序。
-3. **鎖定 main 驗證來源**：不在舊 dirty branch 執行卻報 main；main exact SHA 與來源乾淨程度須可核對。
-   沿用現有 Windows Python／PowerShell log，不新增環境或用 WSL 視窗冒充 Windows。
-4. **補齊必要基線證據**：先核對同 SHA CI artifacts，避免重跑等價全套。
-   本機涵蓋 import／labels／preprocess／epoch、split 多 subject／fold、training 停止／重跑、
-   Evaluation／結果重開、Saliency／SmoothGrad／切換及取消、啟動／關閉與現有 English Assistant。
-   具體命令只從 main 的 validation contract 與既有 gate registry 選取；必要資料／模型
-   先查現有來源與權限，不自行下載。Assistant 沿用目前 bounded baseline 與已知限制，
-   不藉此啟動新五模型研究或要求全面 Stable promotion。
-5. **集中交付與停止條件**：報告工作區保留／移除與可還原位置、main 同來源證據、實測範圍及限制。
-   適用證據齊全後，以同一 Windows 版本集中手測；發現產品問題先定位並提出有界修理範圍，
-   UI 修改仍需明確批准。清理完成不等於功能驗證完成，CI 綠燈也不保證所有功能無缺陷。
-   main 基線接受後才恢復下方研究準備，不因完成一個清理切片就宣告整體完成。
+**Next**：routing RED 已重現；修正後 6 個 native Windows 啟動／分流案例全部執行通過，
+獨立 review 無 blocker；推送後待 Linux collection／同 head CI。研究 dirty 內容保留並審查中。
+**Stop**：四步完成，或真正的新決策／資源／產品批准阻擋；不把 focused pass 當完整完成。
 
-**目前 checkpoint**：本地分支、worktree、確認的三份程式匯出副本及生成快取清理已完成；
-main 本機空工作區 lifecycle 已通過。使用者明確指定 `D:\workspace_v2`，並要求資料夾本體也清除。
-根目錄七個 `.xbrainlab-*` 已實際刪除：`cache`、`data`、`dev`、`envs`、`handoff-preflight`、
-`tools`、`trash`；`tmp` 下十八個明確屬於 XBrainLab 的七月測試資料夾亦已刪除。
-舊環境／工具沒有 current source、Windows persistent env／PATH 或使用中程序依賴。
-Granite 十四個 blobs 用 Windows 原生 SHA-256 逐一比對正式 cache 一致，snapshot links 亦一致；
-pinned RAG snapshot 完整逐檔相同，舊 RAG 另有已不用的 revision／export formats／索引。
-`tmp` 中唯一 GDF 確認和 retained `tests/fixtures/data/A01T.gdf` 相同才刪。
-正式 `D:\XBrainLabCache` 的 model／pinned RAG readiness 均為 true，現有 Windows dependency lock 通過；
-沒有下載、换模型、改 root 設定或刪正式 D／E 資料。
-`core`、其他專案、secrets、通用 `.venvs`／`.mamba`、`tmp/valgrind_render` 等非本次目標不動。
-使用者於 2026-09-19 同意清除目前無已知用途的八月歷史封存；
-`archives/xbrainlab/2026-08-05-before-consolidation` 約 1.2 GB 已整份永久刪除，
-包含舊 bundle 與當時未提交修改，不另備份；空的 `archives/xbrainlab` 父目錄亦已移除。
-不宣稱每份舊修改已合併；代價是不能再靠該封存復原已放棄的歷史工作。
-現有 main、研究分支、Split WIP 與 protected 設定保持原樣。
-已確認範圍內沒有待批准清理項目；WSL 獨立舊 repo（有未提交修改）與 Linux 環境不在本次 D 槽範圍。
-下一步是必要資料與 Assistant workflow 基線證據，不是研究 pilot，也不宣稱完整 handoff-ready。
-既有 `manual_windows.ps1` 預設指向已退役的 `xbrainlab-manual`，不可直接沿用預設；其嚴格 clean-source
-檢查也會拒絕主目錄受保護的本機設定差異。一般啟動仍可由主目錄的 Windows Python 執行 `run.py`；
-正式集中手測前須明確處理來源／設定例外，不能偷偷 stash 設定、放寬 gate 或復建多套環境。
 
-## Paused — 第二主線研究里程碑計畫（僅文件；尚未施工）
+## 已保存的研究準備
+
+離線 calibration 與人工出題委託文件已完成草稿，正進行非產品 review／focused 驗證。
+出題说明與 CSV 是 AI 教學示例，不是正式題庫。M1 題庫、M2 runner 尚未完成；
+不把啟動器手測當作全產品或 Assistant 接受。既有 workspace 清理已結束，細節留 Git history，
+不重啟舊清理；受保護設定、資料、共用環境與未合併 Split WIP 保留。
+
+## 第二主線研究里程碑計畫（研究文件準備中；runner 尚未施工）
 
 2026-09-19 使用者確認先備妥完整計畫與里程碑，完成題庫及系統前置驗證，再進入 pilot。
 本節是唯一執行順序／進度來源；[Assistant 研究與實驗規格](../validation/thesis_protocol.md)
@@ -129,8 +88,9 @@ pinned RAG snapshot 完整逐檔相同，舊 RAG 另有已不用的 revision／e
 1. Agent 先提出工具／情境覆蓋表與一份共用題目模板：題號、family、split、使用者輸入、
    初始狀態、可用工具、允許的答案／參數、禁止副作用、預期觀測層與 fixture 身分。
    先以少量非 Test 人工題驗證模板與 oracle 可表達需求，再大量填題；不擴張工具契約。
-2. 使用者提供規格中的人工 seeds／改寫與語意核對；agent 只協助允許的 Dev／Validation
-   AI 改寫及格式檢查，不替代人工作者生成「全人工 Test」。先分 family 再改寫，不能事後隨機切分。
+2. 使用者協調自己／受邀者提供人工 seeds／改寫與語意核對；agent 先提供模板與格式檢查，
+   Dev／Validation 的 AI 改寫須另行確認，不替代人工作者生成「全人工 Test」。
+   先分 family 再改寫，不能事後隨機切分。
 3. 正式題庫全數完成後核對語意、標準答案、數量與重複風險。Validation 不用來修產品或調 prompt；
    對其題目格式的必要準備不等於允許先看模型結果。Pilot 只抽已準備好的 Development 題目。
 4. Test 由使用者在隔離位置完成審查與封存；agent 可提供本機檢查工具供使用者執行，
@@ -215,7 +175,7 @@ UI 或公開工具契約變更仍須明確確認；需要產品 handoff 時遵�
 | M5 開始前 | 最終 Validation 矩陣、P95 門檻、相近／較簡單判準、統計算法與人工抽樣細則 | Agent 依 pilot／Dev 提出完整預設方案，使用者集中核對；不得看 Validation 後挑規則 |
 | M6 解封前 | 選定系統、B0、適用消融、精確 source／設定／題庫／scorer 身分與執行清單 | 核對既定方法已落實，不再新增研究問題或依 Test 選有利分析 |
 
-使用者負責人工題／Test 封存、必要條款與研究取捨、約定的人工核對及真正產品驗收；
+使用者協調自己／受邀者的人工出題，負責 Test 封存、必要條款與研究取捨、約定的人工核對及真正產品驗收；
 agent 負責模板、非 Test 輔助工作、直接必要實作／驗證、紀錄與報告整理。
 檔名、內部欄位、輸出排版等在既有契約內由 agent 提供一致預設，不逐項打斷使用者；
 新下載、外部分享、破壞性清理、可見 UI／工具契約與實質預算擴張仍不是默認授權。
@@ -223,7 +183,7 @@ agent 負責模板、非 Test 輔助工作、直接必要實作／驗證、紀�
 ### 時程、風險與跨 context 接續
 
 - 研究規格中的結果目標日與暫定改善截止日保留，但**尚無可行性證據，不是完成保證**。
-  M1 要先完成整套題庫，使用者又是唯一人工來源／審查者；機器平行不能抵銷此人力依賴。
+  M1 要先完成整套題庫，受邀出題者及審查分工尚待確認；機器平行不能抵銷此人力依賴。
 - M1 初批人工題完成後記錄實際出題／核對時間，估算剩餘工作；M2 盤點模型授權與接入缺口，
   M3 才有正式機器成本。據此在同一計畫排定可承諾的時程，不先替每個 milestone 填虛構日期。
 - 若日期、完整題庫與可投入人力互相衝突，集中提出調日期／範圍的選項；不得縮題、改成 AI Test、
