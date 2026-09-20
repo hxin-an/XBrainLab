@@ -66,6 +66,20 @@ Scope：Visualization render callback、固定通知先於結果排序的回歸�
 下一步固定整合 head，追蹤 CI／source-diverse、原生 Visualization 與 ChatPanel journey，
 並使用最後一次完整 81-case 候選 model budget。證據留在本 worktree 的 `build/dev-artifacts/`
 及 #145 comment；通過後開啟 Windows 集中局部手測，#145 merge 仍需使用者批准。
+整合 `89ec3646` 的原生 Assistant 導航／兩輪對話與 retrieval 34/36 通過；Visualization
+訓練、saliency、2D／3D render 成功，但 capture 在 tab return 固定 150 ms 時讀到新建
+interactor 的 100×30 暫態而失敗。main 同樣重現；有界觀測證明無產品修改、未恢復視窗尺寸前
+即自行完成 layout 與正確 orientation。直接必要修理限定 capture readiness 與回歸，沿用既有
+render timeout／幾何 gate，不改產品、不加 timeout。同時診斷本 head 的兩個 UI CI failures。
+CI 的兩個 training-refresh assertions 揭露 pending summary 的 ledger retry 多做一次內容刷新；
+empty-state failure 則是同 revision redelivery 在 result callback 中再次 dirty，反覆 query 而不顯示提示。
+三個案例已原生重現；修理沿用既有 active request／pending ledger 做 coalescing，不降低原 assertion，
+不新建 owner。Capture 新增四個 readiness 正反例先 RED；完整 script 測試 80/80 GREEN。
+最後完整 model run 尚未動用，待這些直接驗證缺口閉合並重新固定 source。
+三個 UI failure 與完整相鄰檔案現已 53/53 原生 GREEN，未改既有整合 assertion；
+補上同 revision 在 summary rendering 內同步 redelivery 的單次 query 回歸。
+修理後原生 Visualization 完整 capture（包含 resize／tab return orientation、shutdown）通過。
+下一步為 focused guard／hooks、commit/push，固定新 head 後完成最後 model／native／CI，集中手測。
 **Stop**：四步完成，或真正的新決策／資源／產品批准阻擋；不把 focused pass 當完整完成。
 
 

@@ -396,6 +396,11 @@ class VisualizationPanel(BasePanel):
             return self._application_render_ledger.record_rendered(typed_publication)
         if signature == self._last_visualization_publication_signature:
             return self._application_render_ledger.record_rendered(typed_publication)
+        pending = self._application_render_ledger.pending_publication
+        if pending is not None and pending.revision == typed_publication.revision:
+            # Redelivery must not invalidate the same summary while its result
+            # callback is rendering. The existing ledger still owns the retry.
+            return self._application_render_ledger.queue(typed_publication)
         self._mark_application_summaries_dirty()
         return self._application_render_ledger.queue(typed_publication)
 
@@ -404,6 +409,10 @@ class VisualizationPanel(BasePanel):
         publication: ApplicationViewPublication,
     ) -> bool | ObserverDeliveryStatus:
         self._accept_application_publication(publication)
+        if self._active_application_summary_request is not None:
+            # The result callback renders or queues the current publication.
+            # Ledger retries must not repeat content refresh while it is pending.
+            return ObserverDeliveryStatus.DEFERRED
         self.update_panel()
         return (
             ObserverDeliveryStatus.DEFERRED if self._application_summary_dirty else True

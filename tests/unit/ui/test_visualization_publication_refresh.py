@@ -239,6 +239,30 @@ def _prime_panel(panel: VisualizationPanel, qtbot) -> None:
     qtbot.waitUntil(lambda: panel.last_application_query is not None)
 
 
+def test_visualization_redelivery_during_summary_render_settles_once(qtbot) -> None:
+    """A repeated pending revision cannot invalidate its own accepted summary."""
+    port = _VisualizationApplicationPort()
+    panel = _panel(qtbot, port)
+    update_info = panel.update_info
+
+    def redeliver_during_refresh() -> None:
+        update_info()
+        port.notify(APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT, port.publication)
+
+    with patch.object(panel, "update_info", redeliver_during_refresh):
+        port.notify(APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT, port.publication)
+        qtbot.waitUntil(
+            lambda: panel._last_application_revision == port.publication.revision
+            and application_command_registry().active_count(panel) == 0,
+        )
+
+    assert sum(isinstance(command, VisualizeCommand) for command in port.commands) == 1
+    assert sum(isinstance(command, SaliencyCommand) for command in port.commands) == 1
+    assert panel.last_application_query is not None
+    assert not panel._application_summary_dirty
+    assert panel._application_render_ledger.pending_publication is None
+
+
 def test_visualization_renders_from_explicit_application_ports(
     qtbot,
 ) -> None:
