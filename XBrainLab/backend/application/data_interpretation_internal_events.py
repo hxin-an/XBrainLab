@@ -6,12 +6,15 @@ import contextlib
 import importlib
 import os
 import re
+from collections import Counter
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
 from XBrainLab.backend.event_semantics import gdf_event_semantic
 
+from .data_interpretation_metadata import FileMetadataResolution
+from .data_interpretation_path_identity import normalized_path_identity, path_basename
 from .data_interpretation_resource_reader import AdmittedResourceReader
 from .errors import PreconditionError
 
@@ -670,6 +673,8 @@ def review_run_dependent_event_mappings(
     preview: dict[str, Any],
     selected_files: list[str],
     mappings: dict[str, dict[str, str]],
+    *,
+    metadata: Iterable[FileMetadataResolution] = (),
 ) -> dict[str, Any]:
     """Review whether every affected EEG file has a complete per-run map."""
     event_codes = [
@@ -677,29 +682,16 @@ def review_run_dependent_event_mappings(
         for code in preview.get("run_dependent_event_codes", [])
         if str(code).upper() in {"T1", "T2"}
     ]
-    name_counts: dict[str, int] = {}
-    run_counts: dict[str, int] = {}
-    for path in selected_files:
-        name = Path(path).name
-        run = _run_token_for_file(path)
-        name_counts[name] = name_counts.get(name, 0) + 1
-        if run:
-            run_counts[run] = run_counts.get(run, 0) + 1
+    metadata = tuple(metadata)
+    runs = _run_tokens_for_files(selected_files, metadata)
+    resolved = resolve_run_event_mappings(selected_files, mappings, metadata=metadata)
 
     files: list[dict[str, Any]] = []
     affected_files: list[str] = []
     for path in selected_files:
         name = Path(path).name
-        run = _run_token_for_file(path)
-        keys = [path]
-        if name_counts.get(name) == 1:
-            keys.append(name)
-        if run and run_counts.get(run) == 1:
-            keys.extend([run, f"run-{run}"])
-        selected_mapping = next(
-            (dict(mappings[key]) for key in keys if key in mappings),
-            {},
-        )
+        run = runs[path]
+        selected_mapping = resolved[path]
         events = {
             code: str(selected_mapping.get(code) or "").strip() for code in event_codes
         }
@@ -720,6 +712,61 @@ def review_run_dependent_event_mappings(
         "status": "needs_confirmation" if affected_files else "safe",
         "affected_files": affected_files,
         "files": files,
+    }
+
+
+def resolve_run_event_mappings(
+    selected_files: list[str],
+    mappings: dict[str, dict[str, str]],
+    *,
+    metadata: Iterable[FileMetadataResolution] = (),
+    carrier_targets: dict[str, str] | None = None,
+    label_carriers: Iterable[str] = (),
+) -> dict[str, dict[str, str]]:
+    """Resolve reviewed meanings with the same identities in preview and apply.
+
+    Exact recording paths precede unique basenames, paired carriers, and unique
+    run aliases. A basename or run shared by recordings is never an identity.
+    """
+    names = Counter(path_basename(path).casefold() for path in selected_files)
+    carrier_names = Counter(path_basename(path).casefold() for path in label_carriers)
+    runs = _run_tokens_for_files(selected_files, metadata)
+    run_counts = Counter(runs.values())
+    result: dict[str, dict[str, str]] = {}
+    for path in selected_files:
+        keys = [path]
+        name = path_basename(path)
+        if names[name.casefold()] == 1:
+            keys.append(name)
+        carrier = (carrier_targets or {}).get(path, "")
+        if carrier:
+            keys.append(carrier)
+            carrier_name = path_basename(carrier)
+            if carrier_names[carrier_name.casefold()] == 1:
+                keys.append(carrier_name)
+        run = runs[path]
+        if run and run_counts[run] == 1:
+            keys.extend([run, f"run-{run}"])
+        mapping = next((mappings[key] for key in keys if key in mappings), {})
+        result[path] = {
+            str(code): str(label)
+            for code, label in mapping.items()
+            if str(code).strip() and str(label).strip()
+        }
+    return result
+
+
+def _run_tokens_for_files(
+    selected_files: list[str], metadata: Iterable[FileMetadataResolution]
+) -> dict[str, str]:
+    runs_by_identity = {
+        normalized_path_identity(item.file): str(item.run.value or "").strip()
+        for item in metadata
+    }
+    return {
+        path: runs_by_identity.get(normalized_path_identity(path))
+        or _run_token_for_file(path)
+        for path in selected_files
     }
 
 

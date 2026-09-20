@@ -1652,7 +1652,11 @@ def test_build_interpretation_candidate_resolves_relative_selected_file_to_scan_
     assert [Path(item.file).name for item in candidate.metadata] == ["selected.fif"]
 
 
-def test_build_interpretation_candidate_remaps_saved_selected_eeg_file_choices():
+@pytest.mark.parametrize("use_basename", [False, True])
+def test_build_interpretation_candidate_remaps_saved_selected_eeg_file_choices(
+    use_basename,
+):
+    prefix = "" if use_basename else "/data/"
     candidate = build_interpretation_candidate(
         candidate_id="candidate-1",
         scan=_scan(
@@ -1674,7 +1678,14 @@ def test_build_interpretation_candidate_remaps_saved_selected_eeg_file_choices()
             "recipe_id": "recipe-1",
             "selected_eeg_files": ["/data/original_raw.fif"],
             "eeg_file_remap": {
-                "/data/original_raw.fif": "/data/renamed_raw.fif",
+                f"{prefix}original_raw.fif": "/data/renamed_raw.fif",
+            },
+            "label_carrier_remap": {
+                f"{prefix}original_events.tsv": "/data/renamed_events.tsv",
+            },
+            "run_event_mappings": {
+                "/data/original_raw.fif": {"T1": "left hand"},
+                "/data/original_events.tsv": {"T1": "right hand"},
             },
             "metadata_overrides": {
                 "/data/original_raw.fif": {"subject": "S01"},
@@ -1687,6 +1698,10 @@ def test_build_interpretation_candidate_remaps_saved_selected_eeg_file_choices()
     assert candidate.metadata[0].subject.value == "S01"
     assert candidate.metadata[0].subject.source == "user_override"
     assert "choices:eeg_file_remap" in candidate.recipe_trace
+    assert candidate.run_event_mappings == {
+        "/data/renamed_raw.fif": {"T1": "left hand"},
+        "/data/renamed_events.tsv": {"T1": "right hand"},
+    }
 
 
 def test_build_interpretation_candidate_blocks_required_label_carriers_missing_from_scan(

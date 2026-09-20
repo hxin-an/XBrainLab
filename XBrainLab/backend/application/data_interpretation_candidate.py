@@ -33,6 +33,7 @@ from .data_interpretation_metadata import (
 from .data_interpretation_pairing import resolve_label_file_pairing
 from .data_interpretation_path_identity import (
     normalized_path_identity,
+    path_basename,
     resolve_scan_path,
     unresolved_scan_path_descriptions,
 )
@@ -263,7 +264,24 @@ def build_interpretation_candidate(
     legacy_class_map = {} if skip_labels else _string_mapping(choices.get("class_map"))
     class_map: dict[str, str] = {}
     run_event_mappings = (
-        {} if skip_labels else _nested_string_mapping(choices.get("run_event_mappings"))
+        {}
+        if skip_labels
+        else _nested_string_mapping(
+            _remapped_per_file_choices(
+                choices.get("run_event_mappings"),
+                {
+                    **eeg_file_remap,
+                    **_string_mapping(choices.get("label_carrier_remap")),
+                },
+                known_paths=[
+                    *(raw_selected_files or scan.eeg_files),
+                    *(
+                        _string_list(choices.get("required_label_carriers"))
+                        or scan.label_carriers
+                    ),
+                ],
+            )
+        )
     )
     class_map_source = ""
     metadata = _metadata_for_selected_files(
@@ -273,9 +291,10 @@ def build_interpretation_candidate(
     )
     metadata = _apply_metadata_overrides(
         metadata,
-        _remapped_metadata_overrides(
+        _remapped_per_file_choices(
             choices.get("metadata_overrides"),
             eeg_file_remap,
+            known_paths=raw_selected_files or scan.eeg_files,
         ),
     )
     label_carrier_source = _label_carrier_source_choice(choices)
@@ -376,6 +395,7 @@ def build_interpretation_candidate(
                 internal_event_preview,
                 materializable_files,
                 run_event_mappings,
+                metadata=metadata,
             )
             internal_event_preview["run_event_mapping_review"] = run_mapping_review
             if run_mapping_review["status"] == "needs_confirmation":
@@ -1035,21 +1055,30 @@ def _remapped_selected_files(
 ) -> list[str]:
     result: list[str] = []
     for file_path in selected_files:
-        mapped = _mapped_path(file_path, remap)
+        mapped = _mapped_path(file_path, remap, known_paths=selected_files)
         if mapped and mapped not in result:
             result.append(mapped)
     return result
 
 
-def _remapped_metadata_overrides(
+def _remapped_per_file_choices(
     payload: Any,
     remap: dict[str, str],
+    *,
+    known_paths: list[str],
 ) -> Any:
     if not isinstance(payload, dict) or not remap:
         return payload
     result: dict[str, Any] = {}
     for file_key, fields in payload.items():
-        mapped = _mapped_path(str(file_key), remap)
+        key = str(file_key)
+        if (
+            key == path_basename(key)
+            and resolve_scan_path(key, known_paths).status == "ambiguous"
+        ):
+            # A rename cannot turn an unreviewed ambiguous alias into consent.
+            continue
+        mapped = _mapped_path(key, remap, known_paths=[*known_paths, *payload])
         if mapped:
             result[mapped] = fields
     return result
@@ -1112,7 +1141,7 @@ def _remapped_required_label_carriers(
 ) -> list[str]:
     result: list[str] = []
     for carrier in required:
-        mapped = _mapped_path(carrier, remap)
+        mapped = _mapped_path(carrier, remap, known_paths=required)
         if mapped and mapped not in result:
             result.append(mapped)
     return result
@@ -1128,21 +1157,32 @@ def _remapped_label_carrier_choices(
         return choices
     result: dict[str, dict[str, str]] = {}
     for carrier, carrier_choices in choices.items():
-        mapped = _mapped_path(carrier, remap)
+        mapped = _mapped_path(carrier, remap, known_paths=list(choices))
         if mapped:
             result[mapped] = dict(carrier_choices)
     return result
 
 
-def _mapped_path(path: str, remap: dict[str, str]) -> str:
+def _mapped_path(path: str, remap: dict[str, str], *, known_paths: list[str]) -> str:
     text = str(path).strip()
     if not text:
         return ""
     if text in remap:
         return remap[text]
     match = resolve_scan_path(text, list(remap))
-    if match.accepted and match.resolved:
+    if match.status == "exact":
         return str(remap[match.resolved])
+    if match.status == "unique_basename":
+        # A partial remap must not redirect another recording with the same name.
+        # Retain bare-name convenience only when the original identities agree.
+        name = path_basename(text).casefold()
+        identities = {
+            normalized_path_identity(item)
+            for item in [text, *known_paths, *remap]
+            if path_basename(item).casefold() == name and item != path_basename(item)
+        }
+        if len(identities) <= 1:
+            return str(remap[match.resolved])
     return text
 
 
