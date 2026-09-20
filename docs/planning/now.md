@@ -158,12 +158,18 @@ Windows children；每個 child 一次 cold load／warmup，30 題各有獨立 h
 trace、UI driver evidence、prompt capture range 與 result。case 之間經正式 reset owners 並
 檢查空 pipeline／conversation／transcript／pending interaction／owned jobs；parent 只為 child
 實際回報的 case 建 journal terminal，不把未開始題偽造成失敗。Report 將 model load／warmup
-每 condition 計一次，case timing 仍逐題。相關 128 tests 與 Ruff 已通過；尚缺兩題真 GPU／
-真 Qt reuse probe、實測 before/after 與新 frozen 300 題，故仍不是 Pilot 完成。
+每 condition 計一次，case timing 仍逐題。相關 128 tests 與 Ruff 已通過。
 第一個真 Phi-4/RAG-off probe 在模型完成一次載入／warmup後、首題進入 boundary audit 時
 fail closed：產品 `pipeline_stage` 契約為字串，runner 誤當 Enum 取 `.value`。沒有送題或產生
-模型成績，condition cleanup 通過。已補最小 RED→GREEN 與 parent 相鄰 29 tests；須用新
-frozen commit 重跑同一 probe，舊 probe 只保留工程失敗證據。
+模型成績，condition cleanup 通過。已補最小 RED→GREEN 與 parent 相鄰 29 tests；舊 probe
+只保留工程失敗證據。修正後以 frozen `c31a8559` 重跑同一真 GPU／真 Qt condition：30/30
+結果均為 recorded、cleanup 與 case boundary 通過，conversation／visible transcript／active
+operation／pending interaction 皆在每題前歸零，逐題 prompt capture 與 input audit 無 issue。
+模型只 cold load 一次（8.002 s），30 題 condition wall time 108.011 s；相對先前 fresh-process
+36 題實測的整題中位數 12.854 s，30 題推估 385.620 s，減少約 72.0% 無研究價值的等待。
+Probe report 保留為 partial engineering evidence：有效 decision 30/30、無 missing／invalid／
+timeout，first／final macro 皆 0.648；低分不重送也不當成 runner 失敗。尚缺新 frozen 300 題，
+故仍不是 Pilot 完成。
 完整報告與 B0 封存／還原通過才到出口，不把此 checkpoint 稱為 Pilot 完成或 handoff-ready。
 UI layout／文案／產品互動不變；只改研究 driver 對既有警告的觀測分類與 runner 的 console
 presentation。回退為這兩個 script seam 與 tests，不改產品 owner/public contract。
