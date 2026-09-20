@@ -754,7 +754,8 @@ Test 用於檢驗 Validation 選擇能否延續到未參與選擇的題目，不
 - 研究端已有 explicit pinned model/frozen settings 接點，產品模型清單不變；
   native smoke 與資源限制見 Now，不能以短回覆 smoke 推論 Pilot 準確率或完整 context 可行。
   初始 fixture 已能以真 Commands 準備七階段，含真 training／trained／saliency；
-  normal ChatPanel observation／完整 runner 正在整合驗證，完成狀態由 Now 擁有。
+  normal ChatPanel observation／完整 runner 已用 frozen B0 完成 300 題 Pilot，完成狀態與限制
+  由 Current／Now 擁有。
 - 現有 `scripts/dev/run_stable_assistant_model_eval.py` 的 frozen 81-case inventory
   保留 core 50、precision 24、clarification 7 的分開證據與原有 gate。
   它會用真模型，但攔截工具執行，不能直接提供本規格所需的真實產品 outcome。
@@ -762,15 +763,16 @@ Test 用於檢驗 Validation 選擇能否延續到未參與選擇的題目，不
   不是完整 experiment runner，也不代表精確 token IDs 或產品全程證據已保存。
 - 既有 ChatPanel walkthrough／產品 walkthrough 有部分真 UI、狀態、截圖與事件收集能力；
   不能直接宣稱已覆蓋本規格的所有實驗。
-- 五模型 runner、正式 495 題、封存流程、真實 outcome 收集與 scorer 接合、
-  選擇／全部實驗入口、完整結果目錄及彙整報告，**尚未完成**。
+- 五模型 runner、真實 outcome 收集與 scorer 接合、選擇／全部條件入口、完整結果目錄、
+  Pilot 報告與 B0 實際封存／還原已完成。正式 495 題 Development／Validation 工作、
+  B1／B2 選版與封存 Test 執行仍未開始；Pilot 不升格為正式結果。
 - 舊 121-case artifacts、已退役 runner／split writer 只有歷史身分，不恢復；
   舊 81-case 與 calibration 證據也不得升格為新論文 Test。
 
 ## 8. 決策與施工入口
 
-完整里程碑及當前下一步見 [Now](../planning/now.md)。使用者已批准準備至 Pilot／基線封存；
-仍須通過準備 gate 才執行，不將文件定稿或單條工程 smoke 當作實驗完成。
+完整里程碑及當前下一步見 [Now](../planning/now.md)。準備、Pilot 與 B0 基線封存已完成；
+M4 Development 仍須另行確認，不將 Pilot 分數直接當選版或正式實驗結果。
 
 本文件各節仍區分已確認與提案：Validation 最多 30 條件、P95 10 秒目標、正式生成配置、
 多輪範圍、統計與相近判準都不因整理里程碑而自動定案。

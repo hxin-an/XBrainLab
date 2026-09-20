@@ -1,6 +1,6 @@
 # XBrainLab 目前狀態
 
-最後更新：`2026-09-16`
+最後更新：`2026-09-21`
 
 ## 一句話
 
@@ -63,6 +63,32 @@ DPI 或下游流程都經此次真人驗收。後續純文件收尾不改該產�
   DPI、多螢幕或remote-desktop acceptance。
 - 任何產品行為變更都必須由使用者手測通過並明確同意merge；product source變更後須重新批准。
 - Repo-root `settings.json`是本機設定，不屬於release tree。
+
+## Assistant research baseline
+
+改善前 B0 已凍結於 tag `assistant-b0-20260921-ac8af81d`／commit
+`ac8af81d87d3c88a32455dd0ce0e91996767f38a`。DEV Pilot 使用 30 題、五模型 × RAG on/off，
+共 300/300 題 recorded；10 個 condition cleanup、300 個 case boundary、prompt capture 與
+input audit 全數通過，沒有 missing、timeout、無效量測或 product outcome 缺失。總 active time
+為 1,876.047 秒。這是研究可行性與成本證據，不是正式模型排名、Validation／Test、穩定 P95
+或產品 handoff。
+
+| 條件 | First macro | Final macro | Invalid model output |
+| --- | ---: | ---: | ---: |
+| Granite 4 RAG off / on | 0.556 / 0.611 | 0.556 / 0.611 | 0 / 0 |
+| Granite 3.3 RAG off / on | 0.463 / 0.500 | 0.463 / 0.519 | 0 / 1 |
+| Phi-4 RAG off / on | 0.648 / 0.685 | 0.648 / 0.685 | 0 / 0 |
+| Llama 3.2 RAG off / on | 0.370 / 0.370 | 0.463 / 0.407 | 6 / 6 |
+| Gemma 3 RAG off / on | 0.000 / 0.000 | 0.000 / 0.000 | 30 / 30 |
+
+本機 durable archive 位於
+`E:\XBrainLabData\evidence\assistant-b0-20260921-ac8af81d`：約 1.4 GB、3,136 個檔案，
+逐檔 SHA-256 驗證通過。它含完整 Git bundle／source snapshot、非 Test 題庫、環境鎖定、
+原始軌跡、報表與重跑 wrapper，不含 root settings、密鑰、個人設定或封存 Test。五模型與
+embedding 維持 D 槽單一受控 cache，archive 保存並實際重算其完整 hash，不複製 35 GB 權重。
+從 bundle 的隔離 checkout 以全新 Windows venv 還原成功：PyTorch 三件套皆為 `+cu130`、
+`pip check` 通過、非 Test prepare 重建 300 jobs 且所有 frozen identity 相符。第一次錯誤的
+環境方法及 PowerShell 中文路徑失敗亦保留，不算成功證據。
 
 ## Dataset storage boundary
 

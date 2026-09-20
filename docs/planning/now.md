@@ -2,22 +2,29 @@
 
 最後更新：`2026-09-21`
 
-## Active — Assistant Evaluation 準備至 Pilot（2026-09-20 已授權）
+## Candidate — Assistant Evaluation M4 Development（尚未授權）
+
+Pilot 與 B0 已完成；下一輪若經使用者確認，才依
+[研究規格](../validation/thesis_protocol.md) 的有限 Development 規則選擇改善方案、保存
+B1／B2 候選並準備集中 Validation。不因 Pilot 分數直接調 prompt／RAG、挑模型或啟動
+Validation／Test；Test 仍封存且本輪未讀取。
+
+## Completed record — Assistant Evaluation 準備至 Pilot（2026-09-21）
 
 使用者已確認本輪做到「文件校正 → 非 Test 題庫接入 → 評測系統就緒 → Pilot →
 結果報告與改善前基線封存／還原驗證」。不是只做文件，也不自動進入 Development 調優、
 正式 Validation／Test 或 B1／B2。研究條件與預算只由
 [研究規格](../validation/thesis_protocol.md) 擁有；本節只記執行順序、責任與進度。
 
-### 問題、現況與出口
+### 起始問題、施工範圍與出口
 
-- **證據**：既有 calibration 只讀合成觀察；舊 frozen 81-case runner 攔截工具執行，
+- **起始證據**：既有 calibration 只讀合成觀察；舊 frozen 81-case runner 攔截工具執行，
   不能當成本輪真實 Product Outcome。正常 ChatPanel／Host／Command 與 prompt capture 可重用，
   新題庫讀取與單次決策 scorer 已完成 focused 驗證；五模型配置、真實 outcome 與
-  完整 runner／軌跡判分／計時／續跑尚待施工及驗證。
-- **題庫狀態**：已接收使用者指定的非 Test Excel，結構為 DEV 264 題／66 families、
+  完整 runner／軌跡判分／計時／續跑在本輪開始時尚待施工及驗證。
+- **起始題庫狀態**：已接收使用者指定的非 Test Excel，結構為 DEV 264 題／66 families、
   VALID 99 題／33 families，family 無交集。使用者於 2026-09-21 明確確認題目與答案
-  全數人工覆核完成；實際 runtime fixture 仍須準備，不以人工確認代替執行證據。
+  全數人工覆核完成；當時實際 runtime fixture 仍須準備，不以人工確認代替執行證據。
   Test 仍由使用者保管，
   不為找題庫而讀取封存題文、答案或其他對話全文。
 - **完成出口**：Pilot 全部預定案例有完整可追溯軌跡，測量與判分可核對，交付分條件結果、
@@ -83,13 +90,14 @@ async／評測證據採獨立覆核；同一份實際 diff 與測量證據由主
 不為每個內部 slice 要求使用者重測 GUI；產品行為變更仍遵守正式 handoff／merge 規則。
 Pilot 完成不等於產品手測／merge 同意；外部寫入與交付仍依 repo 授權邊界。
 
-**目前位置**：題庫／scorer、研究 runtime 注入、五模型檔案取得、全部 selected fixture、
+**完成位置**：題庫／scorer、研究 runtime 注入、五模型檔案取得、全部 selected fixture、
 真 Qt observation 與完整 runner 已完成 focused 驗證；Gemma 經批准 NF4 配置通過 GPU
 工程檢查。第一版 frozen Pilot `8a7935c3` 在 176/300 fail closed：Phi-4 對
 `DEV-C06-01-V3` 錯誤呼叫 `switch_panel(visualization, 3d_plot)`，產品正常顯示既有
 `VRAM Warning`，但 driver 把該可歸因的產品警告誤記為 `unexpected_dialog`／無效量測。
 已完成的低分與失敗原樣保留，不作挑分重送；此 run 僅是量測框架缺口證據，不納入正式
-Pilot 比較。B0 封存尚未執行。
+Pilot 比較。完整 300 題 Pilot 與 B0 封存／還原結果見本節後續完成紀錄及
+[Current](../current.md)；下列施工細節保留為歷史證據，不再是 active dispatch。
 題庫 intake 證據與來源如下。
 來源為使用者指定的 `C:\Users\Administrator\Downloads\題型_已審不含TEST.xlsx`，
 SHA-256 `2161af9932950e2a0726daeae3d744935d8d1bc6f408d739b2240d2752a29c23`。
@@ -124,7 +132,7 @@ warnings 保留，未改環境。真 workbook 363 題 oracle schema 全數合法
 未安裝或升級。三個批准 snapshot 的既有 HF 帳號 access 通過；39 個必要檔案下載及
 大小／官方 LFS SHA-256 核對完成，新增 22,768,349,036 bytes，盤點總 cache
 41,711,365,409 bytes（含既有 repo/cache 與保守 WSL 用量），未刪既有資料。
-**Next**：上述 UI 實例已補 RED→GREEN characterization；只將可識別、由本回合 action 引起的
+**已完成的量測修理**：上述 UI 實例已補 RED→GREEN characterization；只將可識別、由本回合 action 引起的
 產品資訊警告記為 product outcome 並安全關閉，未知 dialog 仍 fail closed。Windows runner
 子程序已加 `CREATE_NO_WINDOW`，保留 stdout/stderr、精確 PID、timeout、terminate/kill 與
 cleanup 語意；相鄰 117 tests 與 focused Ruff 通過，diff review 無 blocker。
@@ -168,13 +176,13 @@ operation／pending interaction 皆在每題前歸零，逐題 prompt capture �
 模型只 cold load 一次（8.002 s），30 題 condition wall time 108.011 s；相對先前 fresh-process
 36 題實測的整題中位數 12.854 s，30 題推估 385.620 s，減少約 72.0% 無研究價值的等待。
 Probe report 保留為 partial engineering evidence：有效 decision 30/30、無 missing／invalid／
-timeout，first／final macro 皆 0.648；低分不重送也不當成 runner 失敗。尚缺新 frozen 300 題，
-故仍不是 Pilot 完成。
-完整報告與 B0 封存／還原通過才到出口，不把此 checkpoint 稱為 Pilot 完成或 handoff-ready。
+timeout，first／final macro 皆 0.648；低分不重送也不當成 runner 失敗。此 probe 當時仍不是
+Pilot 完成；後續完整 frozen 300 題結果如下。
+完整報告與 B0 封存／還原均已通過；這是研究里程碑出口，不等於產品 handoff-ready。
 UI layout／文案／產品互動不變；只改研究 driver 對既有警告的觀測分類與 runner 的 console
 presentation。回退為這兩個 script seam 與 tests，不改產品 owner/public contract。
-**缺口**：修正後完整 300 題尚未重跑，報告與 B0 尚缺；Test 未讀取。缺資訊題的
-prompt/history/RAG 仍以已保存的逐題 input audit 核對，fixture setup 不取代此 gate。
+**本輪出口**：frozen `ac8af81d` 的 300/300 題完整執行、正式報告與 B0 實際還原已完成；
+Test 未讀取。缺資訊題的 prompt/history/RAG 由逐題 input audit 核對，fixture setup 不取代此 gate。
 
 模型唯讀 preflight 找到下列官方 pin，使用者於 2026-09-21 批准下載；尚未認證載入成功：
 
@@ -336,8 +344,8 @@ Training 初態改在暖機後建立；turn 終態或120秒定點停止 runner �
 明列 runner cleanup，不算模型 stop 成功。真正 stop engineering case 被 Host stale
 publication 擋住，保留原始證據並釐清，不修改模型/prompt來追分。
 Prompt provenance 核對初次 fresh history、當題 input、state card 與 untrusted RAG 分離；
-缺資訊英文語意仍由人工覆核，不宣稱字串檢查能證明。下一步完成 Product Outcome、
-報表、callback exception／cancel工程檢查及 source freeze，才跑60→240；不因checkpoint停止。
+缺資訊英文語意仍由人工覆核，不宣稱字串檢查能證明。後續已完成 Product Outcome、
+報表、callback exception／cancel工程檢查及 source freeze，再完成全部 300 題；未因 checkpoint 停止。
 整合 complexity review：production 六個既有 files 共 +197/-24/net+173 LOC，
 owner 數不變；沒有新增 production class/module/state machine/receipt。研究 scripts
 分別擁有 bank、fixture、配置、passive trace、UI driver、case composition、sequential
@@ -352,21 +360,26 @@ journal 與離線報表，均不替代 ApplicationService／Host policy。暫無
 走正常清理；不能穿出 callback 造成無證據的 native abort。
 兩批整合 focused tests 為146＋137通過；之後直接新增的報表／callback／取消 tests
 另依其實際結果核對。兩個 MkDocs strict build通過。實際 Windows --prepare 已核對
-300 jobs／五模型／embedding hash；執行仍拒絕 dirty source，尚未啟動 Pilot。
+300 jobs／五模型／embedding hash；執行拒絕 dirty source，後續完整 Pilot 已由 clean frozen source 完成。
 最後的 Product Outcome 已接合：正確 decision／Host blocked／實際 Command／GUI
 handoff 分列；driver Cancel 只證明可開窗，不說匯入完成。錯誤工具真的執行仍保留
 observed_actions；Saliency 精確綁定本次 compute operation ID，不以舊 fixture job代替。
 有匹配 request、clock、screenshot 的 UI timeout／render failure 是有效產品失敗，
 缺觀測才是無效量測。新 saliency engineering attempt2 已真模型執行／渲染完成並
 通過新 binding；舊 artifact 不補造 ID 或覆寫。獨立覆核 blocker 已解除。
-Runtime／passive observer 切片提交於 `aba24e5c`；接續凍結剩餘研究 runner，依完整
-manifest執行60→240。期間不改source／題目／模型，錯誤決策照留不重送；必要量測
-修理另立版本並保留舊結果及已花時間。完成後報表及B0封存還原；不是產品merge批准。
-B0材料盤點另有明確限制：既有env清單/lock不等於乾淨機器上的獨立重建，尚需
-可用環境還原材料與實測；兩Granite權重完整hash待Pilot後做，避免量延遲時重型IO。
+Runtime／passive observer 切片提交於 `aba24e5c`；最終 runner 由 clean `ac8af81d` 執行完整
+manifest。300/300 均 recorded，10 個 condition cleanup、每題 boundary／capture／input audit
+全數通過；正式 report 為 non-partial、完整 selected schedule，總 active time 1,876.047 秒。
+模型錯誤與低分照留不重送。B0 tag 為 `assistant-b0-20260921-ac8af81d`；E 槽封存約 1.4 GB、
+3,136 個檔案逐檔 SHA-256 通過。五模型 66 個 snapshot 檔（34,655,741,445 bytes）與 11 個
+embedding 檔（91,578,415 bytes）重算一致；大型資源維持 D 槽單一受控 cache，不重複複製。
+從 bundle 在 E 槽隔離 checkout、由外部 Poetry 2.3.4 建立全新 Windows venv，三個 PyTorch
+套件均為 `+cu130`、`pip check` 通過，非 Test prepare 重建 300 jobs 且所有身份相符。
+第一次把 Poetry 裝入目標 venv 的錯誤方法與 PowerShell 中文路徑失敗均保留；修正後 ASCII
+wrapper 的 PrepareOnly 單一命令通過。這不是產品 merge 批准或正式模型排名。
 
-**Stop**：上述 Pilot／封存交付完成；或必要新權限、資源、題庫識別、public contract 決策，
-或既定預算用盡而確實無法續作。Context compaction、完成一個 slice、CI pending 不是完成。
+**Stop**：上述 Pilot／封存交付已完成。本輪在此 scope-complete；M4 是新一輪研究施工，須依
+candidate 取得使用者確認。Context compaction、完成一個 slice、CI pending 不是完成。
 
 ## 已結束的共同基線
 
@@ -383,16 +396,15 @@ Split WIP 已依使用者批准刪除，不能再列為待保留分支；主工�
 本節是唯一執行順序／進度來源；[Assistant 研究與實驗規格](../validation/thesis_protocol.md)
 擁有題數、模型、計分、實驗條件、預算與證據契約，不在此複製第二份研究規格。
 
-- **問題與證據**：已累積方法決策，但逐項討論缺乏整體交付順序；研究規格第 7 節仍明列
+- **起始問題與證據**：已累積方法決策，但逐項討論缺乏整體交付順序；研究規格第 7 節當時明列
   正式題庫、五模型 runner 與完整 outcome／報告接合未完成。舊 calibration 不是新實驗就緒證據。
 - **Outcome**：以 M0–M6 串起計畫、題庫、系統、pilot、改善、選版與結果；每階段有可核對出口，
   不用「系統應該沒問題」或完成一個小切片代替整階段完成。
-- **目前位置**：使用者已批准上方 active 範圍；非 Test 題庫已接收並通過結構／schema 核對，
-  人工覆核已由使用者確認，M1 仍待實際 fixture 準備與隔離 Test 封存元資料。
-  M2 runner／五模型接合尚待施工，M3 尚未執行；不宣稱已有 Pilot 成績。
-- **下一步**：先閉合本輪文件、題庫接收與 source-backed M2 準備，再依 gate 開始 Pilot。
-  未定的正式 Validation／Test 細節仍於原決策時點處理，不阻止本輪有限 Pilot。
-- **本次 scope／non-goals**：以上方 active 範圍及明確三模型下載批准為準；不包括代接受新模型條款、
+- **目前位置**：M1／M2 與 M3 Pilot 已完成；非 Test 題庫、fixture、五模型 runner、真實 outcome、
+  report 與 B0 還原均有 exact-source 證據。Test 仍由使用者封存，本輪未讀取。
+- **下一步**：M4 Development 仍是 candidate；先由使用者確認有限改善範圍與速度目標，再施工。
+  未定的正式 Validation／Test 細節仍於原決策時點處理，不提前解封或以 Pilot 選正式冠軍。
+- **已完成 scope／non-goals**：以上方已授權範圍及明確三模型下載批准為準；不包括代接受新模型條款、
   任意產品契約／可見 UI 改動、正式 Validation／Test 或 M4–M6。封存 Test 不讀。
 - **本次完成條件**：Pilot 報告與改善前基線封存／還原驗證；不是只交付文件，
   也不因此宣稱 M4–M6 完成或產品 handoff-ready。
