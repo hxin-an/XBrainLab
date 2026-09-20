@@ -79,10 +79,14 @@ class LocalModelSpec:
     quantization: str
     runtime_context_tokens: int = 8_192
     supports_system_role: bool = False
+    supports_consecutive_user_roles: bool = True
     preferred_cuda_dtype: str = "float16"
     attn_implementation: str | None = None
     source_url: str = ""
     notes: str = ""
+    estimated_4bit_vram_gb: float | None = None
+    bnb_4bit_quant_type: str = "fp4"
+    bnb_4bit_compute_dtype: str = "float32"
 
 
 @dataclass(frozen=True)

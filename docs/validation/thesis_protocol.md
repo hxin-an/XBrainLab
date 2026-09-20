@@ -1,12 +1,16 @@
 # XBrainLab Assistant 研究與實驗規格
 
-最後更新：`2026-09-19`
+最後更新：`2026-09-21`
 
 ## 文件狀態與接續方式
 
 這是論文第二主線的唯一研究／實驗規格，供使用者與 agent 逐項討論、持續修訂。
-目前是**討論中的規格，不是整份已批准執行的施工計畫**；本次授權只有文件整理，
-不包含模型下載、接受授權條款、實作 runner、產品修改或正式實驗執行。
+本規格區分已確認方法與待定的正式實驗細節。2026-09-20 使用者已批准 Evaluation 線
+從文件校正、非 Test 題庫接入、評測系統準備推進至 Pilot 報告與改善前基線封存／還原驗證；
+執行範圍、進度與出口由 [Now](../planning/now.md) 擁有。
+這不是整份規格的無限執行授權：僅 Now 列出的三模型下載與 50 GB cache 已於
+2026-09-21 獲批准；其餘新模型下載／代接受條款、可見 UI／公開工具契約改變仍需確認；
+Development 調優、正式 Validation／Test 與未定矩陣不在本輪施工範圍。
 
 - **已確認**：使用者已選定的方向與需求；不代表已實作或已取得實驗證據。
 - **待討論**：候選作法、細節或仍需實測才能決定的設定；不得自行提升為定案。
@@ -14,7 +18,7 @@
 
 [Now](../planning/now.md) 擁有 M0–M6 施工里程碑、分工、進度、下一步與 blocker，
 不複製本文件的研究條件與判分規格。2026-09-19 使用者同意先完成整體計畫、題庫與
-系統前置驗證再進入 pilot；整理計畫仍不是實作或實驗執行授權。
+系統前置驗證再進入 pilot；2026-09-20 的有限施工批准不省略這些 gate。
 Context compaction 或換 agent 後先讀 Now 與本文件，再查 Git／實際 source；
 不能因摘要省略而重開已決定的題目，也不能把本文件當作自動施工授權。
 每次討論後更新相應段落，不另建平行計畫；舊版本從 Git 追溯。
@@ -78,6 +82,13 @@ Context compaction 或換 agent 後先讀 Now 與本文件，再查 Git／實際
 研究選模不代表將模型加入產品 Settings，也不授權 silent fallback。
 各模型的精確 revision、官方模板、dtype／量化、context、generation 參數與 runtime 相容性
 都要在正式實驗前固定。不能因名稱與參數量相近就假定現有 backend 可直接載入。
+
+2026-09-21 使用者批准 Pilot 的 Gemma 使用原 pinned 官方權重在載入時作
+bitsandbytes NF4 4-bit（不使用 double quantization），BF16 compute／未量化 modules，
+固定單一 CUDA device、不 silent CPU offload；其餘四模型保持原 BF16 配置。
+量化與精度是候選系統條件，不將此成績冒充 Gemma BF16 或同精度模型能力比較。
+沿用已下载檔案；memory admission 依量化配置估算並以 native peak 驗證，不能關掉
+資源保護來過 gate。工程載入／長輸入 smoke 不計入 Pilot 分母或準確率。
 
 沿用單模型原則不超過 10 GB、總 cache 不超過 20 GB 的資源限制；比較五個模型不代表
 同時保留全部權重。下載前仍要確認來源、授權、大小、VRAM、cache 路徑與清理方式；
@@ -162,7 +173,12 @@ Backend admission、確認、安全與資料保護不移除。
 可直接交給出題者的[人工出題委託說明與模板](assistant_question_authoring_guide.md)
 提供配額、操作範圍、填寫格式及交付規則，是本規格的工作說明，不另定研究矩陣。
 
-以上是題庫目標，尚不表示題目已寫完、去重、審核或存在可執行的正式題庫。
+已接收使用者指定的非 Test workbook，DEV 264 題／66 families、VALID 99 題／33 families，
+family 無交集，對應 99 個 fixture 定義；路徑、內容身分與核對進度由 Now 保存。
+363 筆 oracle 的工具／參數符合目前 schema，不等於題意正確、fixture 可執行或 M1 通過。
+原檔人工審核欄位仍為待人工複核；使用者已於 2026-09-21 確認題目與標準答案
+全數覆核完成，保留原檔並以此補充聲明為準。舊 runtime 檢查仍不能當成本輪證據。
+Test 審查／封存由使用者在隔離端完成，開發 agent 不讀取題文或答案來驗證此聲明。
 舊 frozen 81 cases 已曝光，只保留原本的工程證據身分，不能當作新封存 Test。
 
 Test 由使用者保管，開發 agent 在凍結前不讀取題目或答案；Development 可用於修理，
@@ -229,7 +245,7 @@ RAG 的來源與內容版本另固定，不能因完成題庫而把整包題目�
 
 **多輪範圍建議**：主論文決策比較先維持已確認的單回合題庫；取消、補值接續、狀態過期、
 停止／重跑列入 M2 必要工程驗證，工程軌跡不算多輪模型成功率。
-先不啟動下方尚未批准的 30 條正式多輪實驗；是否採此限縮由使用者在 M0 整包決定，
+本輪批准的 Pilot 採單回合範圍，不啟動下方尚未批准的 30 條正式多輪實驗；
 不能據此宣稱已驗證完整多輪對話能力。
 
 ### 待討論與已知缺口
@@ -515,6 +531,48 @@ experiment_日期時間/
 
 ## 6. 凍結、執行節奏與完成條件
 
+### 已確認：雙線開發、版本比較與 B0 封存
+
+2026-09-20 使用者同意產品品質與 Evaluation 以不同 worktree 並行，並要求連程式碼一起
+備份。Worktree 只隔離 checkout，不凍結共用 Python 環境、設定、模型、RAG 或資料。
+
+- 每輪執行前固定完整 source SHA、模型／量化／runtime／模板、prompt、工具與 RAG 身分、
+  fixture、題庫／scorer、seed／repeat 與完整解析後設定。輪內不換 source／依賴／條件；
+  下一輪才明確同步已接受的 main。不同版本的部分結果不能拼成同一條件。
+- 產品線可以繼續修改，舊結果仍代表舊版本，不自動失效也不自動證明新版。文件／註解等
+  不影響執行的改動不要求重跑模型；UI／內部重構須先核對輸入、行為與測量影響。
+  決策、操作、資料解讀或計時行為改變時另建版本，重跑受影響比較；不假設重構速度不變。
+- scorer 修理且原始軌跡完整時，保留原分數與 scorer 版本，優先以一致新規則重評全部
+  受影響紀錄。漏記、計時故障等無法還原的測量要保留故障證據並重跑受影響條件。
+  不將原本有效的低分因版本變更改標為無效測量。
+- 共用環境不得在實驗期間升級；若兩線依賴不同，確認空間與依賴方案後隔離環境。
+  設定、可寫輸出、log／暫存與可變索引分離；主工作區使用者設定不作為隱含實驗配置。
+  測延遲時不並行其他 GPU 工作或重型測試，記錄硬體／驅動與可知資源競爭。
+- B0 在可信測量與必要 Pilot 修理之後、第一次 Development 改善之前固定，不直接把
+  建立 worktree 當天的 main 命名為 B0。Pilot 的每個實際版本與修理前後結果均保留；
+  B0 之後發現缺陷不原地補丁冒充原始基線，另作版本／比較適用性決策。
+
+B0 封存包含以下可還原內容，不依賴工作目錄永遠存在：
+
+1. 完整 tracked source 快照及含 B0 歷史的 Git bundle／不移動的 tag，附 manifest／雜湊。
+   版本內 tracked defaults 保留；不額外收錄使用者未提交的 root runtime 設定、密鑰、
+   個資、臨時產物或封存 Test。Bundle 匯出前核對歷史機密風險；完整 bundle 不能假稱
+   可排除特定歷史檔案，發現風險先決定安全封存方式，不竄改基線身分。
+2. 實驗專用完整配置、環境鎖定與實際套件／runtime／硬體資訊，以及可用的環境還原材料；
+   只存虛擬環境資料夾不視為跨位置可用，必須驗證實際還原。
+3. 模型 revision／權重、tokenizer／模板、embedding、RAG corpus／索引與 EEG fixture 的
+   精確身分、checksum 和受控保存位置。大型資源集中保存一份，不能只留日後可能失效
+   的下載網址；既有 cache 上限與授權不因備份討論而自動放寬。
+4. 既有 raw 軌跡、結果、runner／scorer 身分、可執行重跑命令與還原說明。
+   Test 解封前只保留封存狀態／數量／身分，不收錄題文或 oracle。
+5. 從封存包在隔離目錄實際還原，核對 source／資源／配置後跑固定非 Test 檢查，
+   證明原始基線可啟動與測量；不覆蓋原始實驗結果。正式 Test 時 B0 與選定系統
+   用相同 Test／scorer 與可比規則重新執行，不拿 Development 分數充當 Test 對照。
+
+封存後不原地修改；需要時重建臨時 worktree／還原目錄，並非永久第三條施工線。
+優先在不同實體磁碟保留第二份封存，位置／容量／可用性先查證；同磁碟副本只防誤改，
+不能宣稱已防磁碟故障。固定 seed 與環境不保證 GPU 輸出或耗時逐次完全相同。
+
 ### 已確認：pilot 前的準備門檻
 
 完整施工順序、各階段交付、分工與停止條件由 [Now 的 M0–M6 計畫](../planning/now.md) 擁有。
@@ -540,7 +598,8 @@ Smoke／工程檢查不是 pilot 成績；pilot 才量測已就緒流程的真�
 順序為：整體計畫 → 完成題庫與系統前置驗證 → pilot → Development 改善 → Validation 選版 → 凍結 → 正式 Test。
 Pilot 僅使用 Development 題目，不讀取封存 Test，也不以 Validation 題目除錯或調整設定。
 所有試跑、失敗與修正仍保留紀錄；pilot 中發現的模型表現問題留待 Development 改善，
-不藉試跑無限調 prompt。這次確認定位與順序，不是啟動實作、下載或試跑的授權。
+不藉試跑無限調 prompt。2026-09-20 已批准完成準備後依本節執行 Pilot；
+2026-09-21 的三模型下載批准見 Now，gated access 與條款仍須由使用者本人取得。
 
 使用者進一步同意以下兩階段規模與 pilot 預算；這不代表正式實驗矩陣或產品設定已定案：
 
@@ -562,7 +621,10 @@ Pilot 僅使用 Development 題目，不讀取封存 Test，也不以 Validation
 
 Pilot 的交付是可核對的流程／測量證據、五模型可運作狀態與限制，以及正式實驗成本估計；
 不是先把模型表現修好才結束。未完成或不可運作的條件如實列明，不能宣稱全面可行。
-最終速度門檻與正式逾時規則須在 Validation 前固定；尚未授權執行 pilot。
+最終速度門檻與正式逾時規則須在 Validation 前固定；本輪 Pilot 須先通過上述準備 gate。
+4 小時是 Pilot 執行機器時間上限，排程時計入實際載入、RAG 準備、暖機、案例操作、
+恢復與執行開銷；這些時間在結果中分項保存，不混入每題決策延遲。準備期的工程實作與
+有界 smoke 不冒充 Pilot 案例，也不藉工程名義重複跑完整矩陣規避預算。
 
 ### 已確認的方向
 
@@ -685,6 +747,14 @@ Test 用於檢驗 Validation 選擇能否延續到未參與選擇的題目，不
 
 - 已有[三決策／三層離線 calibration](assistant_benchmark_calibration.md)，
   使用合成正反例與真 parser／schema；沒有因此執行真模型，也不是產品 benchmark 分數。
+- `scripts/dev/assistant_pilot_bank.py` 可唯讀接入明確的非 Test XLSX，保存來源及原始
+  oracle／fixture 宣告，拒絕 split／family／ID 衝突；不自動認證人工語意或 runtime。
+  `scripts/dev/assistant_pilot_scoring.py` 使用現有 parser／schema 判單次與有限修復決策，
+  核對軌跡完整性及 timeout；真 Host、GUI／backend outcome 分層，不能以 raw 判對代替。
+- 研究端已有 explicit pinned model/frozen settings 接點，產品模型清單不變；
+  native smoke 與資源限制見 Now，不能以短回覆 smoke 推論 Pilot 準確率或完整 context 可行。
+  初始 fixture 已能以真 Commands 準備七階段，含真 training／trained／saliency；
+  normal ChatPanel observation／完整 runner 正在整合驗證，完成狀態由 Now 擁有。
 - 現有 `scripts/dev/run_stable_assistant_model_eval.py` 的 frozen 81-case inventory
   保留 core 50、precision 24、clarification 7 的分開證據與原有 gate。
   它會用真模型，但攔截工具執行，不能直接提供本規格所需的真實產品 outcome。
@@ -699,8 +769,8 @@ Test 用於檢驗 Validation 選擇能否延續到未參與選擇的題目，不
 
 ## 8. 決策與施工入口
 
-完整里程碑及當前下一步見 [Now](../planning/now.md)。依使用者最新要求，
-先把完整計畫與準備工作定好，不再逐個技術細節零碎確認，也不因方法骨架已定就直接啟動 pilot。
+完整里程碑及當前下一步見 [Now](../planning/now.md)。使用者已批准準備至 Pilot／基線封存；
+仍須通過準備 gate 才執行，不將文件定稿或單條工程 smoke 當作實驗完成。
 
 本文件各節仍區分已確認與提案：Validation 最多 30 條件、P95 10 秒目標、正式生成配置、
 多輪範圍、統計與相近判準都不因整理里程碑而自動定案。

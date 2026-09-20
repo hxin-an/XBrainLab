@@ -6,12 +6,14 @@ switching.
 """
 
 import contextlib
+from collections.abc import Callable
 
 from PyQt6.QtCore import QCoreApplication, QEvent, QObject, QThread, QTimer, pyqtSignal
 
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.runtime_process import (
+    EngineFactory,
     LocalRuntimeLoadError,
 )
 from XBrainLab.llm.core.runtime_process import (
@@ -183,9 +185,16 @@ class AgentWorker(QObject):
     shutdown_finished = pyqtSignal(bool)
     runtime_snapshot_changed = pyqtSignal(object)
 
-    def __init__(self):
+    def __init__(
+        self,
+        *,
+        engine_factory: EngineFactory | None = None,
+        generation_config_loader: Callable[[], LLMConfig | None] | None = None,
+    ):
         """Initializes the AgentWorker with no engine loaded."""
         super().__init__()
+        self._engine_factory = engine_factory
+        self._generation_config_loader = generation_config_loader
         self.engine: LLMEngine | None = None
         self.generation_thread: GenerationThread | None = None
         self.runtime_load_thread: RuntimeLoadThread | None = None
@@ -206,7 +215,8 @@ class AgentWorker(QObject):
         """Refresh live generation knobs without changing runtime selection."""
         if self.engine is None:
             return
-        saved = LLMConfig.load_from_file()
+        loader = self._generation_config_loader or LLMConfig.load_from_file
+        saved = loader()
         if saved is None:
             return
         for field_name in LIVE_GENERATION_SETTING_FIELDS:
@@ -278,7 +288,11 @@ class AgentWorker(QObject):
             logger.info("Initializing LLM Engine...")
             self.log.emit("Loading AI Model...")
 
-            candidate_engine = LLMEngine(config)
+            candidate_engine = (
+                LLMEngine(config, engine_factory=self._engine_factory)
+                if self._engine_factory is not None
+                else LLMEngine(config)
+            )
             self.engine = candidate_engine
             self._start_runtime_load(candidate_engine)
         except Exception as exc:

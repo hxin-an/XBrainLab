@@ -7,6 +7,7 @@ local and never instantiate remote clients.
 
 import contextlib
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from XBrainLab.llm.tools.result_contract import (
@@ -34,7 +35,12 @@ class LLMEngine:
 
     """
 
-    def __init__(self, config: LLMConfig | None = None):
+    def __init__(
+        self,
+        config: LLMConfig | None = None,
+        *,
+        backend_factory: Callable[[LLMConfig], Any] | None = None,
+    ):
         """Initializes the LLMEngine.
 
         Args:
@@ -43,6 +49,7 @@ class LLMEngine:
 
         """
         self.config = config or LLMConfig()
+        self._backend_factory = backend_factory
         self.backends: dict[str, Any] = {}  # Cache for backends
         self._backend_model_ids: dict[str, str] = {}  # snapshot at cache time
         self.active_backend: Any | None = None
@@ -121,7 +128,7 @@ class LLMEngine:
 
         from .backends.local import LocalBackend
 
-        new_backend = LocalBackend(self.config)
+        new_backend = (self._backend_factory or LocalBackend)(self.config)
         try:
             new_backend.load()
         except Exception as load_error:

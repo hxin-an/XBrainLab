@@ -1,148 +1,323 @@
 # XBrainLab Now
 
-最後更新：`2026-09-20`
+最後更新：`2026-09-21`
 
-## Active — 共同基線整備（使用者已授權施工）
+## Active — Assistant Evaluation 準備至 Pilot（2026-09-20 已授權）
 
-**2026-09-20 手測修理 — 首次 Assistant data split receipt stale**：
-使用者在 c96dca95 手測首次 Assistant data split，提示框及對話均顯示
-`Dataset split preview receipt is stale. Review the split again.`；第二次 GUI 操作成功。
-此訊息來自 SaveDatasetSplit 的 publication generation 檢查，而非 epoch token／參數檢查。
-Outcome：同一份仍有效的 split preview 經 Assistant 與 GUI 儲存應一致成功；真實資料／
-publication 變更仍拒絕過期 receipt。Scope：追蹤 preview→async admission→save 的既有
-publication owner 與 Assistant handoff；先重現失敗，再最小修理及相鄰 stale/error 回歸。
-已重現：Training recommendation 查詢（含取消 dialog／預覽其他 model）修改共用快取，
-save admission 的 get_state 才投影該變化並增加 generation；receipt 因而被誤判過期。
-修理：同一 recommendation owner 分離唯讀 preview 與 submitted-state 更新；reuse 計算，
-不增加 owner／state，不改 generation guard。Production +15/-12/net+3 LOC，兩個檔案。
-Non-goals：不移除 receipt、不自動重試／重綁過期 generation、不改 split 演算法、工具／模型／
-prompt／RAG、UI layout／文字／流程，不追加完整模型評測或關閉使用者視窗。
-UI 確認：維持既有操作與呈現的 bug 修理；沒有新增可見互動。
-Validation：真 backend preview/save＋Assistant/GUI 入口首次與重複操作、真正 stale 拒絕、
-focused UI handoff／dataset split tests、獨立 publication review；同 head CI 與適用 native gate。
-已驗：首次真 preview/save 與 prospective recommendation 污染各自 RED→GREEN；372 項
-backend 相鄰測試及新增 pending manual/resource provenance 回歸 1 項通過。
-真 Qt GUI／Assistant handoff 首次 split 各通過（offscreen 與 native Windows 各 2 項）；
-使用真 dialogs、Command preview/save，不載入 LLM；独立 production review 無 blocker。
-e99206fd 的 CI 揭露一個舊 state-service 測試將 advisory query 暗中寫入 snapshot 當預期；
-同步為 query 前後完整 state 相等，保留不讀 payload／不在 state read 重算推薦的保護。
-此項只調整測試，production 不變；新 head 必須重新取得同版本 CI。
-Next：提交並追同 head CI／native gate，
-更新 pinned launcher 後交付局部手測；不以舊版 81 題代替此次資料與 GUI 證據。
-Stop：首次失敗修理與直接證據完成，或新決策／必要資源阻擋；未批准不 merge。
+使用者已確認本輪做到「文件校正 → 非 Test 題庫接入 → 評測系統就緒 → Pilot →
+結果報告與改善前基線封存／還原驗證」。不是只做文件，也不自動進入 Development 調優、
+正式 Validation／Test 或 B1／B2。研究條件與預算只由
+[研究規格](../validation/thesis_protocol.md) 擁有；本節只記執行順序、責任與進度。
 
-**2026-09-20 手測修理 — Assistant preprocess 回應性（已授權）**：
-手測 bandpass 工具耗時 6.172 秒（整輪 8.563 秒）。完整 startup trace 與 Windows
-native probe 確認：Dispatcher 已將 controller 搬至 AssistantCommandThread，但在搬移前
-連接的未宣告 Qt slot 的 generation-finished Python callback 仍在 Qt mainThread 執行
-（probe: on_gui=true/on_controller=false），造成工具計算阻塞重畫。既有 RUNNING_COMMAND
-已有文字與進度動畫，無須另造 UI 或背景 execution owner。本 slice 修正 controller
-跨執行緒接收 slot 歸屬，使用既有 command thread，真正結果返回後才完成 turn；
-保留原有 command／資料 publication 與 shutdown ownership。
-先以有界慢計算＋Qt heartbeat 重現，再接非同步 completion，驗證資料結果、失敗、
-重複提交、stop/reset、關閉與晚到結果。Focused native tests、lint、獨立 lifecycle review，
-最後同 head applicable CI 與 Windows changed-path walkthrough。UI 確認：使用者已同意
-使既有執行中狀態可持續顯示；不改 layout／文字、不新增取消功能或百分比。
-Non-goals：模型／prompt／RAG／18-tool contract、濾波演算法、全面工具系統改寫。
-保留已開啟的使用者手測程序，不關閉它；新 source 需重新啟動才生效。
-Complexity：只補現有 receiver 的 Qt slot 宣告，無新增 owner、module、public class，
-不新增 async continuation／state／compatibility path。Rollback 為本 slice revert。
-已完成：真 controller／dispatcher／ChatPanel＋MNE 慢計算成功／失敗 regression 先 RED
-（錯誤執行緒）後 GREEN；55 個直接相鄰 tests 通過，另補 moved controller 的停止／新 turn／
-晚到 chunk、finish、error、stop acknowledgement 回歸並通過。八個既有 receiver 加 Qt slot，
-production +11/-1/net+10 LOC，無新 owner；獨立 diff review 無 blocker。
-Next：提交修理、同 head CI 與 Windows native changed-path capture，更新啟動指令後局部手測。
-Native probe／RED／GREEN evidence 在 root build/dev-artifacts/assistant-affinity、assistant-responsive-*。
-Stop：修理及直接驗證完成並交付手測，或必要權限／資源阻擋；未取得 merge 批准不合併。
-既有完整模型評測預算已用完，不自行追加；本修理不宣稱模型能力改善。
+### 問題、現況與出口
 
-本節優先於下方歷史順序。目標為啟動器、研究文件與 RAG 的共同 main 基線；
-不是正式題庫評測、pilot 或 Assistant Stable promotion。只讀／使用既有工程案例，
-不讀正式 Validation／Test，不把題目或 oracle 加入 RAG。
+- **證據**：既有 calibration 只讀合成觀察；舊 frozen 81-case runner 攔截工具執行，
+  不能當成本輪真實 Product Outcome。正常 ChatPanel／Host／Command 與 prompt capture 可重用，
+  新題庫讀取與單次決策 scorer 已完成 focused 驗證；五模型配置、真實 outcome 與
+  完整 runner／軌跡判分／計時／續跑尚待施工及驗證。
+- **題庫狀態**：已接收使用者指定的非 Test Excel，結構為 DEV 264 題／66 families、
+  VALID 99 題／33 families，family 無交集。使用者於 2026-09-21 明確確認題目與答案
+  全數人工覆核完成；實際 runtime fixture 仍須準備，不以人工確認代替執行證據。
+  Test 仍由使用者保管，
+  不為找題庫而讀取封存題文、答案或其他對話全文。
+- **完成出口**：Pilot 全部預定案例有完整可追溯軌跡，測量與判分可核對，交付分條件結果、
+  有效失敗／無效測量、延遲與資源成本、後續實驗可行性，以及可還原的改善前基線。
+  模型低分不是未完成；缺少條件／紀錄或只跑工程 smoke 不能算 Pilot 完成。
+- **假設**：使用英文單回合題庫及既有產品工具契約。必要的取消、停止、狀態過期與晚到結果
+  只作工程保護，不擴張為未批准的正式多輪實驗。
+- **範圍**：題庫格式／oracle 接合、真實觀測、scorer、模型研究接入、單一實驗入口、
+  計時／軌跡／結果彙整、安全續跑、Pilot 與封存。直接必要缺陷先重現、最小修理。
+- **非目標**：不改公開工具、產品模型清單、UI layout／文字／流程；不調 prompt／RAG 追分，
+  不做全面重構、EEG 模型研究或重新下載整套 EEG 資料。Test 不讀、不跑。
+- **UI 確認**：本輪不含可見 UI 變更；真實操作觀測沿用現有 UI。若修理需要改可見互動
+  或 public contract，先提出具體決策，不把本輪批准當作通用授權。
 
-1. **啟動器 PR #143**：head `8314b590` 的三個 Windows-only 測試被 Linux shard 收集後
-   skip，導致 mandatory completion gate 失敗。修正既有平台分流及 Windows 測試環境依賴，
-   不放寬 skip gate、不改 `start.cmd` 行為。驗證三個真 CMD 案例與 routing 回歸後 push，
-   追蹤同 head CI；產品 merge 仍需明確批准，純測試修正不冒稱新的產品手測。
-2. **研究成果**：保存並審查 `feat/assistant-benchmark-calibration` 已有離線 calibration、
-   研究規格及未提交出題文件／導覽；同步 main 後以非產品 PR 合併。只確認模板身分，
-   不讀正式題目、不寫新研究 runner。focused calibration／docs checks，無 GUI 手測要求。
-3. **RAG**：從最新 main 建立 `improve/rag-common-baseline` 獨立 worktree。
-   18 工具各 4 筆英文正例（共 72），沿用單動作 corpus 契約；不新增回答／追問範例，
-   不變更模型、工具、confirmation、format retry 或 capability owner。
-   擴充前固定 36 正例查詢（各工具 2）及 12 邊界工程探針，沿用 verify_rag 真離線檢索；
-   不以只允許預期工具製造命中。Top-3 至少 33/36、每工具至少一題、不得低於修改前。
-   schema／ID／重複及語意審查、工具排除、索引重建／重用皆須通過。
-   固定 embedding revision、threshold=0.7、top-k=3、context budget；只修有證據的直接缺陷。
-   更新 corpus hash／collection identity。真模型以既有 pinned primary，舊基準一次＋最多
-   兩個候選各一輪完整 frozen 81-case；不改分母／既知失敗清單、不下載模型、不降 gate。
-   獨立 review 與 Windows ChatPanel 真實 journey 後集中一次 Assistant 局部手測。
-4. **整合凍結**：同 head 適用 CI 成功且取得產品手測／merge 批准後合併 RAG；保存
-   source、corpus、embedding／模型 revision、設定與證據身分。稱研究前共同基線，
-   正式 B0 仍依研究規格固定。研究線與 UI 線各自工作目錄，工具契約先協調。
+### 雙線工作區與共用邊界
 
-共用現有 Windows Python、模型、embedding 與資料；不新增環境、不搬資料。
-root `settings.json` 不 stage／stash／覆寫，`wip/data-split-summary` 保留。
-合併後才清理精確對應的 worktree／臨時產物，保留必要失敗與驗收證據。
-本輪 UI layout／文案／流程沒有修改授權；RAG 正例／檢索改善已授權。
-每個 slice review；不因小 commit、CI pending 或 compaction 停工。
-候選預算用完、必要資源不可用或缺少合併批准時明確回報，不擴大施工。
+| 工作線 | 工作目錄／起始 branch | 責任 |
+| --- | --- | --- |
+| Evaluation（本線） | `D:\workspace_v2\projects\lab\XBrainLab-evaluation`；`feat/assistant-evaluation` | 本節授權範圍、研究規格、評測與基線 |
+| 產品品質（另一對話） | `D:\workspace_v2\projects\lab\XBrainLab-product-quality`；`refactor/product-quality` | 另行確認的清理、重構與 UI 調整；不是本線的隱含施工範圍 |
 
-**Next**：#143 head `5cfd57d3` 的 CI 成功並獲使用者批准，已合併於 `fbcfbadb`；RAG 已同步 main。
-研究 PR #144 已完成 review／92-case calibration／docs／CI，合併於 `c44f4a7b`。
-RAG 探針在擴充前固定；舊 23 例為 14/36，72 例初稿 30/36，依空結果診斷修訂六個正例後
-為 34/36，各工具至少一題；所有索引／範圍／context gate 通過。探針已用於 development 修訂，
-不稱 holdout 或正式 Test。模型舊基準 81/81 完整執行（兩個既有 bounded failures）。
-候選 `07f178ba` 的 81-case 真模型 bounded gate 已通過，逐 suite raw／post-recovery 數量未退步，
-仍有原先兩個 bounded failures，非 Stable。68 個 focused native 案例全部執行通過。
-Windows journey 暴露既有單次 capture 在 model loading 時固定等 2.5 秒就點 disabled Send；
-真實 log 顯示模型隨後已成功 ready，但沒有送出 user turn。最小腳本修理已完成：
-delayed-ready／late-controller／never-ready 先 RED 後 GREEN，等待實際 controls ready 或原 timeout；
-不增加 timeout、不改產品。相鄰 40 tests 通過；Windows 原生 switch-panel 與兩輪 no-action
-ChatPanel journey 通過（第二輪使用一次既有 format recovery），畫面及 teardown 已檢查。
+兩個 worktree 從 `main@8636a754` 建立，Git 決定最新 branch／dirty 事實；`main` 仍為唯一
+產品基線。工作目錄可持續使用，task branch 仍須保持明確目標，不演變為永久平行產品。
 
-**已授權修理（2026-09-20）**：使用者批准 #143 merge 與最小 Visualization 內部競態修復。
-#145 的 Linux UI CI 在既有 visualization publication refresh 測試失敗。
-固定 P2 通知先於 P1 result 的排序後，兩個刷新入口均重現：cached P1 尚存時就 commit P2
-render revision，舊 result 被拒後重排同一 revision 又被丟棄，剩 dirty state 而無 retry。
-該產品 owner／測試與 main 相同，非 RAG 修改造成。Outcome：只有同 generation 的 summary
-實際可用時才完成 render revision；舊 summary／晚到 result 不得吞掉新 publication 的重畫。
-Scope：Visualization render callback、固定通知先於結果排序的回歸與相鄰 stale/error/cleanup；
-不新增 owner／retry policy、不改 UI 外觀／文案／操作、不擴張 panel 重構。
-先把固定排序納入既有測試並確認 RED，再最小修理、focused GREEN、獨立 async review。
-最後同步 main、同 head CI／source-diverse／適用 native 與剩餘 model gate，集中一次手測。
-忽略目錄下的 deterministic probe／log：`build/dev-artifacts/visualization-race-probe/`、
-`build/dev-artifacts/visualization-race-evidence/`；#145 comment 保存已完成的 exact-head model 證據。
-固定排序兩個入口已 RED → GREEN；相鄰 publication／terminal error／cleanup 68 tests 全數通過。
-修理只收緊兩個 render acknowledgement guard，獨立 review 無 blocker；不新增 retry 或 owner。
-下一步固定整合 head，追蹤 CI／source-diverse、原生 Visualization 與 ChatPanel journey，
-並使用最後一次完整 81-case 候選 model budget。證據留在本 worktree 的 `build/dev-artifacts/`
-及 #145 comment；通過後開啟 Windows 集中局部手測，#145 merge 仍需使用者批准。
-整合 `89ec3646` 的原生 Assistant 導航／兩輪對話與 retrieval 34/36 通過；Visualization
-訓練、saliency、2D／3D render 成功，但 capture 在 tab return 固定 150 ms 時讀到新建
-interactor 的 100×30 暫態而失敗。main 同樣重現；有界觀測證明無產品修改、未恢復視窗尺寸前
-即自行完成 layout 與正確 orientation。直接必要修理限定 capture readiness 與回歸，沿用既有
-render timeout／幾何 gate，不改產品、不加 timeout。同時診斷本 head 的兩個 UI CI failures。
-CI 的兩個 training-refresh assertions 揭露 pending summary 的 ledger retry 多做一次內容刷新；
-empty-state failure 則是同 revision redelivery 在 result callback 中再次 dirty，反覆 query 而不顯示提示。
-三個案例已原生重現；修理沿用既有 active request／pending ledger 做 coalescing，不降低原 assertion，
-不新建 owner。Capture 新增四個 readiness 正反例先 RED；完整 script 測試 80/80 GREEN。
-最後完整 model run 尚未動用，待這些直接驗證缺口閉合並重新固定 source。
-三個 UI failure 與完整相鄰檔案現已 53/53 原生 GREEN，未改既有整合 assertion；
-補上同 revision 在 summary rendering 內同步 redelivery 的單次 query 回歸。
-修理後原生 Visualization 完整 capture（包含 resize／tab return orientation、shutdown）通過。
-下一步為 focused guard／hooks、commit/push，固定新 head 後完成最後 model／native／CI，集中手測。
-**Stop**：四步完成，或真正的新決策／資源／產品批准阻擋；不把 focused pass 當完整完成。
+- 本線擁有研究規格與 Evaluation active 內容；另一線更新自己的計畫區塊，不覆寫本線進度。
+  本文件仍是唯一 active plan，不另造第二套總計畫。合併時保留兩線各自有效更新。
+- Command API、工具／完成語意、狀態 publication、資料解讀與 UI 觀測接點是共享邊界；
+  修改前協調 owner 與受影響案例，不各自建立相同責任，也不自行合入另一線未完成修改。
+- 每輪實驗固定 source／設定／模型／題庫／scorer 身分；只在輪次之間明確同步已接受的
+  `main`。中途不 pull／換 source，改版另立 run 身分，不混用前後結果。
+- 不複製大型模型與 EEG corpus；必要來源按不可變 revision／hash 管理。各 worktree 的
+  可寫設定、run output、log、暫存與 RAG index 須分離或有明確唯讀共用邊界，先驗證再執行。
+  主工作區 `settings.json` 不覆寫、不 stage。
+- 優先使用既有 Windows 環境；實驗期間不得升級共用依賴。若需要不同依賴，先確認有界的
+  隔離環境與空間方案，不默默改另一線。量延遲期間不並行 GPU 訓練、模型推論或重型測試。
+- 正式實驗與 B0 不靠 worktree 留存保證：封存內容／還原要求由研究規格擁有。
 
+### 實作與驗證順序
 
-## 已保存的研究準備
+1. **文件與接收**：移除已結束 dispatch、保存本輪與雙線決策；核對非 Test 題庫路徑與
+   元資料。只有當題使用者輸入可進入該回合；oracle／答案與其他題庫內容不得進入 prompt、
+   few-shot 或 RAG。Validation 不用來除錯。只取得使用者提供的
+   Test 封存狀態／數量／身分，不代稱已獨立審題。
+2. **題庫與 scorer**：沿用既有 parser／schema，實作正式研究的三類／分層判分與完整性檢查；
+   用已知正反例保護工具／參數錯誤、正常不執行、Host 擋錯不算模型答對、缺失軌跡與錯誤身分。
+   不覆寫舊 calibration 或 frozen 81-case 的規則與歷史成績。
+3. **真實觀測與 runner**：正常 ChatPanel／Host／Command 路徑接 case／attempt／terminal，
+   開窗就緒與完整操作 outcome 分開；產品 owner 決定 readiness、confirmation、mutation。
+   補選一／多個／全部條件、輸入輸出與各時間段、失敗彙整與安全續跑，不新建產品 owner。
+4. **模型與資源**：唯讀核對五模型精確來源、revision、權重大小、VRAM、授權與 cache。
+   缺模型／條款需取得對應授權，不 silent fallback、不自動增加 cache 上限。固定配置後，
+   有界載入、暖機與非 Test smoke；RAG on 須真正可用，degraded 不能當作 on 成績。
+5. **Pilot**：題庫／系統 gate 通過後，按研究規格固定 manifest、題號、配置與輸出；
+   先小階段驗證測量，再補完整矩陣。有效低分照跑照留；測量故障修理後只補受影響部分，
+   不以看見答案後重試挑分數。機器時間到預算上限即保存 partial，不自行延長。
+6. **收尾與封存**：核對逐題軌跡／分母／失敗與量測界線，交付粗略成本與限制；
+   保存 source、環境、模型／資料身分、重跑命令與原始結果，實際還原驗證 B0，
+   不開始 B1／B2，不將 Pilot 當正式獨立 Test 或穩定 P95／模型排名。
 
-離線 calibration 與人工出題委託文件已由 PR #144 保存並通過非產品 review／focused 驗證。
-出題说明與 CSV 是 AI 教學示例，不是正式題庫。M1 題庫、M2 runner 尚未完成；
-不把啟動器手測當作全產品或 Assistant 接受。既有 workspace 清理已結束，細節留 Git history，
-不重啟舊清理；受保護設定、資料、共用環境與未合併 Split WIP 保留。
+每個直接必要 slice 實作前在本節補 call sites、具體 focused validation 與回退邊界；
+新行為先 RED→GREEN，refactor 使用 passing baseline。每次修改 review，高風險資料／
+async／評測證據採獨立覆核；同一份實際 diff 與測量證據由主 agent 驗收。
+不為每個內部 slice 要求使用者重測 GUI；產品行為變更仍遵守正式 handoff／merge 規則。
+Pilot 完成不等於產品手測／merge 同意；外部寫入與交付仍依 repo 授權邊界。
 
-## 第二主線研究里程碑計畫（研究文件準備中；runner 尚未施工）
+**目前位置**：題庫／scorer、研究 runtime 注入、五模型檔案取得、全部 selected fixture
+與真 Qt observation 已完成 focused 驗證；Gemma 經批准 NF4 配置通過 GPU 工程檢查。
+完整 runner 正在整合工程驗證；Pilot 尚未啟動，B0 封存尚未執行。
+題庫 intake 證據與來源如下。
+來源為使用者指定的 `C:\Users\Administrator\Downloads\題型_已審不含TEST.xlsx`，
+SHA-256 `2161af9932950e2a0726daeae3d744935d8d1bc6f408d739b2240d2752a29c23`。
+只讀原檔；工作表、split、ID／family／fixture 與 ground-truth 對應 fail closed，
+不發現其他檔案或讀取 Test。原 workbook 的 363 筆 review_status 均仍為待人工複核，
+runtime 證據 source 為 `8314b590`。使用者於 2026-09-21 已確認全部人工覆核完成；
+此為原 workbook hash 所對應的補充宣告，不覆寫原檔／舊 runtime 證據。
+
+直接施工接點：`scripts/dev/assistant_pilot_bank.py` 讀取這份明確 XLSX 契約並輸出有
+source identity 的非 Test bank；`scripts/dev/assistant_pilot_scoring.py` 以既有
+`CommandParser.parse_product`、`ToolSchemaValidator`／工具 registry 做離線決策判分。
+保留 workbook oracle／fixture 原始欄位與舊證據標記；供模型的輸入與 oracle 分離。
+Scorer 區分 Action、Clarification、No-call，正常 respond_to_user 不要求 exact message
+或 typed pending receipt；錯誤 call 被 Host 擋住仍不能變成模型正確。這只是決策判分，
+不宣稱 backend／GUI 成功，不改舊 calibration 或 frozen 81-case。
+刪除候選：無；既有 product owner 前後不變，production LOC +0/-0，僅 scripts／tests，
+不增加 state machine、receipt 或相容分支。XLSX 不新增套件／修改共用環境。
+Focused：新增相應 unit tests 先 RED→GREEN；覆蓋正常讀取、split／family 洩漏、重複／
+缺漏／衝突 ID、無效 JSON、受限壓縮／XML、source 身分，以及正／錯工具參數、
+布林不等於數值、正常／空白／invalid 不操作回覆、初次／修復後分開與不偷用 oracle。
+真 workbook 做 metadata／完整性核對，題庫內容不 commit。獨立 review 後才接實際 runtime；
+rollback 僅移除本 slice 新 scripts／tests 與對應計畫，不改原 XLSX／模型／產品。
+**已查**：bank／selection／models／fixture／scorer 與既有 calibration 的 Windows
+focused tests 合計 226 通過；runtime 注入及相鄰 default／spawn／cancel tests 132 通過；
+MainWindow factory／既有 UI shutdown tests 28 通過。scorer、runtime 與 fixture 經獨立 review，
+主 agent 已查實際 diff／測試及真 workbook；Ruff、diff check 通過。第三方 deprecation
+warnings 保留，未改環境。真 workbook 363 題 oracle schema 全數合法，人工覆核由使用者確認。
+正常 controller 的 generation request／events、activity、Command completion 與 turn terminal
+可作觀測接點；舊 runner 明確 suppress 工具執行，不沿用其結果作真實 outcome。
+既有 TurnMetrics 包含整個 turn，UI request success 也不代表畫面已就緒，須分別觀測。
+既有 Windows 環境為 Python 3.12.10／torch 2.11.0+cu130／transformers 4.57.6；
+未安裝或升級。三個批准 snapshot 的既有 HF 帳號 access 通過；39 個必要檔案下載及
+大小／官方 LFS SHA-256 核對完成，新增 22,768,349,036 bytes，盤點總 cache
+41,711,365,409 bytes（含既有 repo/cache 與保守 WSL 用量），未刪既有資料。
+**Next**：Gemma NF4 已通過真 GPU／owned-process 檢查（見下）；真實 trained／training／
+saliency fixtures 已補齊直接測試，接 normal ChatPanel observer、RAG on/off 隔離、軌跡／分層 outcome、
+runner／計時／續跑與同來源完整性 gate，再啟動 60→240 Pilot 與 B0 封存／還原。
+不得把這個 checkpoint 說成只差執行、Pilot 完成或 handoff-ready。
+**缺口**：完整 runner 與真 UI readiness／outcome 尚未閉合；Test 封存元資料已非阻擋式詢問，Test 未讀取。
+缺資訊題的 prompt/history/RAG 仍須在真正送入模型時核對；fixture setup 不取代此 gate。
+
+模型唯讀 preflight 找到下列官方 pin，使用者於 2026-09-21 批准下載；尚未認證載入成功：
+
+| 官方來源 | 候選 revision | Safetensors 權重大小 | 權限 |
+| --- | --- | ---: | --- |
+| [Phi-4-mini-instruct](https://huggingface.co/microsoft/Phi-4-mini-instruct) | `cfbefacb99257ffa30c83adab238a50856ac3083` | 7.672 GB | MIT；已下載／核對 |
+| [Llama-3.2-3B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct) | `0cb88a4f764b7a12671c53f0838cd831a0843b95` | 6.426 GB | 既有帳號 access 通過；已下載／核對 |
+| [gemma-3-4b-it](https://huggingface.co/google/gemma-3-4b-it) | `093f9f388b31de276ce2de164bdc2081324b9767` | 8.600 GB | 既有帳號 access 通過；已下載／核對 |
+
+官方 shard metadata 加上既有兩個 Granite，五模型權重合計約 34.571 GB，尚不含其他
+cache／設定／tokenizer；超過原 20 GB 總上限。使用者已批准上述精確
+來源下載至 `D:\XBrainLabCache\models`、研究期間總模型 cache 上限提高至 50 GB；先
+精確盤點現有用量，若仍超限便停，不刪共用模型、不繞過條款，也不代使用者接受條款。
+五個 pinned tokenizer 都完成原生 system／untrusted context／request template 檢查。
+兩個 Granite、Phi、Llama 依序完成 Windows GPU BF16 load→32-token engineering generate→
+close，四個 owned child 均確認退出。32-token smoke 不等於正式 512-token／8K prompt
+壓力測試、GUI tool outcome 或 Pilot 分數。Gemma 的 tokenizer 成功，但 load 在物化前拒絕。
+全部維持 `trust_remote_code=False`、local-files-only，不代接受條款、升級或 silent fallback。
+產品 allow-list 仍只含兩個 Granite；研究已重用既有 `engine_factory`／lifecycle 接點。
+
+**Gemma 限制**：研究候選估算 12,000,000,000 bytes 尚非實測 peak；既有 model-load guard
+在 required > 75% available 時 fail closed，因此需至少 16,000,000,000 bytes 可用。
+所有本 agent 模型程序退出後再查為 15,738,077,184 bytes，尚差 261,922,816 bytes。
+這是 admission rejection，不是 OOM、模型錯誤或準確率；不為過 gate 降低未測估算、不
+關無關程序。原生權重 header 確認 BF16 tensor 共 8,600,158,944 bytes；加最保守 full-length
+KV 為 9.741 GB，但尚未含 activation/workspace/allocator，不能用來假裝總 peak 已知。
+使用者後續批准 Gemma NF4/BF16，量化 estimate 已依實測上調為 11 GB，沒有繞過 guard。
+本機 evidence：ignored `build/dev-artifacts/model-preparation-20260921/`，含下載 receipt、
+各模型 smoke（包括 Gemma 失敗）、bank-hash selection 與 initial fixture report。
+
+### 直接必要 runtime slice（2026-09-21）
+
+**2026-09-21 已批准 Gemma 量化修理**：只將 Gemma 研究配置改為 bitsandbytes
+NF4 4-bit／BF16 compute，其他四模型不變。沿用官方 pin／已下載權重，不改日常
+settings、不下載或升級共用環境。原 12 GB BF16 估算被既有 75% guard 拒絕不是 OOM。
+先 RED tests，再由既有 immutable spec 攜帶量化 estimate/type/compute；research factory
+固定配置並拒絕漂移；default product 4-bit 行為不變。研究量化固定指定 GPU，不 offload。
+初始 estimate 依 pinned tensor headers：BF16 8.600 GB，其中 embedding 等未量化
+1.355 GB、候選 Linear 7.245 GB；保留 metadata、保守 8K KV、activation/workspace
+與載入暫存餘裕，先估 8 GB（未實測）。保留既有 75%/90% guard 與 OOM cleanup。
+Focused：量化/非量化 admission、無 estimate/漂移拒絕、dtype/device/pin、相鄰載入與
+OOM tests；Windows native load、代表性 prompt/output、peak memory、cancel/reload/close。
+新 evidence 不覆寫舊拒絕；實測超出估算須上調重驗，不為過 gate 降低。
+Owners 不變，無新 class/state/receipt；optional spec fields 與既有 backend branch。
+UI unchanged；回退只移除此配置接合，不刪共用模型或證據。出口為安全實測及獨立 review
+後接續 runner/Pilot，不將 smoke 當 Pilot 或 BF16 accuracy。
+
+**量化驗證結果**：初始 7,025-token input 的 peak reserved 8.869 GB 超過 8 GB
+analytic estimate；如實保存並上調為 11 GB。較強 7,671 input＋512 output 原生生成
+35.62 秒，peak allocated 9.375 GB／reserved 9.878 GB、400 個 Linear4bit，全部 CUDA。
+直接 engine 同程序 unload 後仍保留 allocator pool，故 reload 被 11 GB guard 拒絕；
+保留此限制，不把它說成成功。產品實際 owned-process 邊界另驗兩輪載入／串流／
+並行消費時取消／再生成／close；均成功且 child 退出，可用顯存前後同為
+15,738,077,184 bytes。第一版 cancellation probe 同執行緒不消費 stream，觸發正常
+hard-stop/restart-required；修正 probe 為產品同樣的並行消費，舊失敗保留。
+Windows focused quantization／catalog／backend／injection 合計 99 tests 通過；
+獨立 source review 無 blocker。工程 artifacts 為 model-preparation-20260921 下
+gemma-nf4-*／gemma-owned-nf4-*，不計入 Pilot 分母，未宣稱 BF16 速度或品質等價。
+
+證據：`AgentWorker` 已使用 owned process，但固定建構預設 engine，且每次生成重新讀取
+日常 settings；`LocalBackend` 三處直接取 product spec；系統角色與連續 user roles 能力
+混在同一 flag。五模型研究不可經 Settings 正規化而無聲換回 Granite。
+Outcome：既有 runtime 注入不可變研究 spec／frozen generation config；預設產品行為與
+allow-list 不變。UI 文案／layout／public tools 不變，不建立第二個 controller 或取消 owner。
+步驟／接點：`LocalBackend` explicit spec 與固定 template kwargs；既有 `LLMEngine`
+接受 backend factory；`AgentWorker` 透過既有 `LocalRuntimeProcessOwner.engine_factory`
+傳入可 pickle 的研究 factory，選用 frozen config loader；`LLMController` 選用 worker factory。
+`LocalModelSpec` 分開連續 user role 能力，Granite 現有 prompt 保持不變；Gemma 只作官方
+template 必要相容，Llama 固定模板日期。不改 product catalog membership、download policy
+或 runtime lease／cancel／close 實作；MainWindow 接合另先核對既有 lifecycle seam。
+Complexity review：刪除／收斂候選為重複 spec lookup；owners 前後不變，不新增 public class、
+state machine 或 receipt。實際 runtime production +91/-12/net +79 LOC／5 files，屬研究
+接入功能而非純重構；MainWindow 接點另 +5/-2/net +3。可獨立回退，不刪下載模型／題庫。
+Focused：既有 local backend／engine／worker／controller characterization 先通過；新增
+default policy 拒絕、spec/config mismatch、固定模板與 settings、Windows spawn／stream／
+cancel／close 測試。外部權重隔離允許 mock，但 owned process lifecycle 必須實際執行。
+獨立覆核 default-policy bypass、父子程序身分漂移與 shutdown；主 agent 核對實際 diff。
+此 slice 出口為上述工程證據閉合，之後接真實 GUI／Command 觀測；不冒充 Pilot 完成。
+研究端接點 `scripts/dev/assistant_pilot_models.py` 僅固定五個既有／批准 spec，重用
+LaunchSpec／SettingsSnapshot 與 module-level engine factory；拒絕未列模型，不替產品
+新增 resolver policy。Pilot 初始工程配置沿用 structured-decision greedy／512 output，
+8,192 context、seed 0；四模型 BF16，Gemma 依後續批准 NF4/BF16；
+Llama template 日期固定 2026-09-21。
+這是先行 smoke／Pilot 配置，不提升為正式實驗參數。Focused：完整 pins、未知模型拒絕、
+frozen config 重建互不污染、spawn pickle 身分、existing two-model product catalog 不變。
+
+Pilot selection 準備：不依模型結果選題。DEV A01–A18／C01–C06 各選字典序第一個
+family，N01–N03 各選前兩個 family；family 內選最長 input，平手以 case ID 排序。
+保留 30 個不同 family、18／6／6 配額、18 action tools；第一階段固定 A05、A08、
+C01、C02、N02 第一個 family、N03 第一個 family（2／2／2、含 GUI 與直接操作）。
+只保存 bank hash、選題規則、ID 與分階段順序，oracle 不進 prompt；拒絕錯誤 ID、
+不足配額／重複 action tool／VALID 入選。接點為既有 `assistant_pilot_bank.py` 的純函式，
+focused synthetic bank tests 保護順序不受輸入排列影響、更新 bank hash 不能偷用舊身分。
+實際選題最長版本僅 37–81 字元：包含本題庫相對較長變體，不宣稱 long-context 壓測。
+
+### 真實 fixture／UI 接合 slice
+
+**正常路徑 observation slice**：重用 controller generation／dispatcher／runtime signals，
+script 收集 per-case/per-generation 原始 input/output、confirmation、Command、UI handoff
+與 turn terminal；不接受 oracle、不代執行或推導成功。controller 只在既有 parser／
+ToolAttemptDecision 位置加 best-effort 診斷（含拒絕）；不重評 admission，不新增 owner。
+觀測有界、時間戳與關聯身分明確，缺漏／截斷標為無效量測；GUI visible-ready 由後續
+實際 Qt driver 另觀測。先已知完整／拒絕／錯誤／缺失 trace tests，再真 Qt controller
+路徑驗證；獨立 lifecycle review。無可見 UI／工具契約變更；回退只移除此診斷接點與
+research collector，不改既有執行／取消政策。此 slice 完成後仍須 runner 與真 Pilot。
+RAG off 由 controller 的明確研究建構選項跳過 start/retrieve，沿用既有無檢索組裝路徑；
+預設 on 不變，不用 failed/degraded retriever 假裝 off。On 須另驗 ready/檢索無錯誤，
+embedding 唯讀共用、可寫 vectors 在研究 run 隔離；corpus 不加題目／答案。
+
+**真 Qt driver／單一入口**：script 只對 isolated synthetic case 的實際 confirmation card
+按批准；按真 handoff route 觀測 visible/enabled dialog 或實際 panel/view，保存畫面，
+開窗題在 ready 後透過真 Cancel 收尾。不憑 oracle 挑畫面、不合成 resolution，不對未知
+提示框任意 Yes。Start/Saliency 另待真 job terminal，不能以 turn terminal 代替。
+每題 fresh Study/MainWindow/owned runtime，先固定 settings/prompt/log/RAG/output 隔離；
+模型 load/warmup 與單次決策120秒分列，case process 有硬 timeout；只停自己的程序。
+父入口固定 DEV30／5model／RAGon-off／seed0，先6題60次再24題240次，支援指定條件與
+同身分續跑，不覆寫結果或重送已開始但未終結的case。總4小時含setup/load/cleanup；
+到限保存partial。Source/environment/hash漂移拒絕續跑；先合成正反例與真Qt工程驗證，
+再凍結commit跑Pilot。A14 CPU live fixture 明確10000epoch ceiling，仍只有12trials；
+只為維持running初態，在decision完成/120秒時立即stop，另≤10秒cleanup；自然先完成
+為fixture drift不是模型錯誤。其他completed fixtures仍1epoch，不增加EEG研究範圍。
+
+問題：舊 fixture 是 128 Hz／4 channels，與本題庫的 250／256／512 Hz／5 channels 不符；
+部分舊 helper 會刪共用 temp 目錄，不能直接沿用。`MainWindow.init_agent` 固定 manager
+建構，研究不能在啟動後偷換 controller／engine 或以 debug transport 取代正常路徑。
+Outcome：逐 case 專屬新目錄中的 deterministic EEG，經既有 Scan→Preview→Validate→Apply
+與 preprocess／epoch／split／train Commands 產生真實狀態；fixture、publication、callable
+tool 必須核對，不以人工 stage 字串或 oracle 偽造。fixture 配置只建初始狀態，不執行待測動作。
+接點：研究 script `assistant_pilot_fixture.py` 與直接 integration tests；先覆蓋 empty、
+data_loaded、preprocessed、epoch_ready、dataset_ready，完成／執行中 training 與 saliency
+必須用真 job，另驗取消／close。不得呼叫會刪 global temp 的舊 helper，原資料唯讀。
+UI 只為 `MainWindow` 加可選 manager factory，預設仍建相同 AgentManager；研究沿用既有
+AgentManager(runtime_lifecycle=...) 與 lifecycle.start(launch_spec=...)，在 UI 綁定後啟動。
+不新增研究 resolver、不走 Settings／model switch，不改可見 UI；controller／Command
+owner 不變。constructor/init_agent 實際 +5/-2/net +3 LOC，無新 owner。
+Focused：預設 MainWindow lifecycle／shutdown baseline、factory 真 Qt 綁定與 close；fixture
+以實際 service publication／channel／sfreq／event／split 檢查。相鄰 UI 流程不全套重測。
+Rollback 僅移除 factory 參數與新研究 script/tests；不清共用 cache、原始題庫或 EEG 檔案。
+slice 出口後接 observer／runner，非 Pilot 完成；等待 signal／GUI handoff／模型錯誤各自記錄。
+實際 30 個選定 DEV 的 initial-state fixtures 均已經真 Commands 驗證；另補五個
+job-dependent case 的真 CPU training／Gradient saliency，fixture suite 32 tests 通過。
+真 Qt driver 及 adjacent host 17 tests 通過，包含真 completed saliency render。
+以上只是初態及量測準備，不是 30 題模型結果或完整 Pilot。
+observer source review：既有 generation request/events、dispatcher input/confirmation、
+command completion 與 runtime turn terminal 可重用；Host admission 及可見 surface-ready
+尚無完整觀測。須在既有判定接點加 failure-isolated diagnostic notification，或研究端
+Qt show/next-loop 觀察，不攔截 execute、重算 admission 或把 modal 關閉當開窗延遲。
+
+**2026-09-21 runner 整合修理／證據**：原 helper 在 composer 空白時等 disabled Send，
+真 host 工程 attempt2 因而未送出；已改填入後等待 ready，真 Qt regression 保護。
+Gemma attempt3 正常走完三次格式錯誤與耗盡終態，完整 raw／capture／scorer、cleanup；
+這是有效模型失敗，不是正確回答。Granite4 RAG-on engineering bandpass 已真正執行
+8–30 Hz 濾波、記錄 Command／publication 並正常 close。兩者不是 workbook 或 Pilot。
+Decision clock 改採實際交付／回覆事件，不以 provisional envelope 結束修復計時；
+job 從永久 identity/result 追蹤，不只 poll active；UI pending drain 後才產出結果。
+Windows venv launcher 有兩層 PID：已用 base interpreter＋child-local launcher hint，
+原生確認實際 PID＝Popen PID 且仍用同 venv；不終止無關程序。
+Training 初態改在暖機後建立；turn 終態或120秒定點停止 runner 自有初始 CPU job，
+明列 runner cleanup，不算模型 stop 成功。真正 stop engineering case 被 Host stale
+publication 擋住，保留原始證據並釐清，不修改模型/prompt來追分。
+Prompt provenance 核對初次 fresh history、當題 input、state card 與 untrusted RAG 分離；
+缺資訊英文語意仍由人工覆核，不宣稱字串檢查能證明。下一步完成 Product Outcome、
+報表、callback exception／cancel工程檢查及 source freeze，才跑60→240；不因checkpoint停止。
+整合 complexity review：production 六個既有 files 共 +197/-24/net+173 LOC，
+owner 數不變；沒有新增 production class/module/state machine/receipt。研究 scripts
+分別擁有 bank、fixture、配置、passive trace、UI driver、case composition、sequential
+journal 與離線報表，均不替代 ApplicationService／Host policy。暫無可刪的產品 owner；
+需要的注入 seam 可整組回退，原模型／設定／題庫不動。逐題 fresh runtime 的載入成本
+獨立報告；這輪先確保可核對，並不宣稱此 runner 已優化成最高吞吐量。
+取消的 prompt capture 另保護 late-chunk 邊界：僅 host terminal 與 capture status
+均 cancelled 時，可接受 host raw 是 child raw 的嚴格 prefix，保留未觀測尾段長度與
+兩份原文；scorer 不使用該尾段補分。完成／錯誤或非 prefix 不一致仍無效。
+真正提交後、生成前便達決策 deadline，須有同題 submission＋cancelled terminal；
+可記為尚未送入模型的有效 timeout，不偽造 prompt。Qt poll exception 留存 error 後
+走正常清理；不能穿出 callback 造成無證據的 native abort。
+兩批整合 focused tests 為146＋137通過；之後直接新增的報表／callback／取消 tests
+另依其實際結果核對。兩個 MkDocs strict build通過。實際 Windows --prepare 已核對
+300 jobs／五模型／embedding hash；執行仍拒絕 dirty source，尚未啟動 Pilot。
+
+**Stop**：上述 Pilot／封存交付完成；或必要新權限、資源、題庫識別、public contract 決策，
+或既定預算用盡而確實無法續作。Context compaction、完成一個 slice、CI pending 不是完成。
+
+## 已結束的共同基線
+
+PR #143 啟動器、#144 研究準備與 #145 RAG／直接手測修理已合併；
+本輪起始 main 為 `8636a754`，實際 Git／PR 擁有版本事實，不重做舊候選／手測。
+#145 包含 Assistant preprocess 回應性、首次 data split receipt stale 與 Visualization
+publication 修理。舊 81-case 證據仍有原先 bounded 限制，不是本研究 Pilot 成績。
+Split WIP 已依使用者批准刪除，不能再列為待保留分支；主工作區本機設定、資料、
+必要歷史證據與共用環境保留。
+
+## 第二主線研究里程碑計畫（本輪授權 M1 核對、M2 與 M3）
 
 2026-09-19 使用者確認先備妥完整計畫與里程碑，完成題庫及系統前置驗證，再進入 pilot。
 本節是唯一執行順序／進度來源；[Assistant 研究與實驗規格](../validation/thesis_protocol.md)
@@ -152,20 +327,20 @@ empty-state failure 則是同 revision redelivery 在 result callback 中再次 
   正式題庫、五模型 runner 與完整 outcome／報告接合未完成。舊 calibration 不是新實驗就緒證據。
 - **Outcome**：以 M0–M6 串起計畫、題庫、系統、pilot、改善、選版與結果；每階段有可核對出口，
   不用「系統應該沒問題」或完成一個小切片代替整階段完成。
-- **目前位置**：M0 出題模板／覆蓋草案及系統準備方案已整理並對照目前 source，待整包核對；
-  M1–M6 尚未依本計畫啟動，沒有正式題庫或 pilot 成績。
-- **下一步**：一次核對研究規格第 3 節的 M0 草案與下方 M2 系統準備範圍，
-  明定必要授權後才開 M1／M2；不是立即跑 pilot。
-  尚未定案的研究細節按下方時點集中決定，不再每個欄位或技術選項都逐條等待使用者。
-- **本次 scope／non-goals**：只更新本文件與研究規格；不出正式題、不讀封存 Test、不實作 runner、
-  不改產品／UI／工具契約、不下載／清除模型、不接受條款、不跑實驗或寫外部 Notion。
-- **本次文件驗證／停止條件**：核對決策狀態、數量、依賴、連結與 strict build，完成後交付計畫。
-  此文件完成不等於 M0 已獲施工批准，更不是 M1–M6 完成或產品 handoff-ready。
+- **目前位置**：使用者已批准上方 active 範圍；非 Test 題庫已接收並通過結構／schema 核對，
+  人工覆核已由使用者確認，M1 仍待實際 fixture 準備與隔離 Test 封存元資料。
+  M2 runner／五模型接合尚待施工，M3 尚未執行；不宣稱已有 Pilot 成績。
+- **下一步**：先閉合本輪文件、題庫接收與 source-backed M2 準備，再依 gate 開始 Pilot。
+  未定的正式 Validation／Test 細節仍於原決策時點處理，不阻止本輪有限 Pilot。
+- **本次 scope／non-goals**：以上方 active 範圍及明確三模型下載批准為準；不包括代接受新模型條款、
+  任意產品契約／可見 UI 改動、正式 Validation／Test 或 M4–M6。封存 Test 不讀。
+- **本次完成條件**：Pilot 報告與改善前基線封存／還原驗證；不是只交付文件，
+  也不因此宣稱 M4–M6 完成或產品 handoff-ready。
 
 ### 完整里程碑與依賴
 
 依賴順序：**M0 → M1 與 M2 平行準備 → 兩者皆通過 → M3 → M4 → M5 → M6**。
-平行指工作安排，不是本次授權啟動多 agent、GPU 並行或背景長跑。
+平行指工作安排；獨立且有益的 agent 分工依 repo 規則，GPU 排程與背景長跑仍受本輪預算／隔離限制。
 
 | 里程碑 | 交付物 | 驗收與下一階段入口 | 主要分工 |
 | --- | --- | --- | --- |
@@ -195,7 +370,7 @@ empty-state failure 則是同 revision redelivery 在 result callback 中再次 
 
 #### M0 source 核對與 M2 最小準備範圍
 
-以下是 source-backed 準備提案，不是 runtime 通過證據或產品修改授權：
+以下為既有 source 接點盤點，不是 runtime 通過證據；施工權限以上方 active scope 為準：
 
 | 現有接點 | 可重用部分 | M2 必須補齊／確認 |
 | --- | --- | --- |
@@ -218,11 +393,11 @@ Synthetic fixture 適合工程驗證，但真實產品 outcome 必須另外取�
 原生 UI 證據；不新下載整套資料集，也不把模擬訓練終態或預寫 JSON 當成實際運算。
 
 本輪不擴張 GUI、模型產品清單、公開工具或一般對話功能；研究所需的接入、紀錄、scorer 與
-直接必要缺陷才在待授權範圍。只做單回合主分數的提案，不等於允許省略取消／狀態一致性測試。
+直接必要缺陷已納入上方有限授權，產品契約或可見 UI 改變仍另作決策。只做單回合主分數的提案，不等於允許省略取消／狀態一致性測試。
 模型精確來源、大小／VRAM、既有 cache 與可寫輸出位置須在下載前唯讀盤點，交付一份資源方案；
 目前沒有選定新儲存目錄、下載模型、刪 cache、安裝環境或新增正式 CLI。
 
-#### 授權後的實作順序
+#### 本輪已授權的實作順序
 
 施工前重新讀 Git／source，沿用既有 Command、模型載入與 prompt capture 能力；
 每個直接必要 slice 補上 call sites、具體驗證命令與回退邊界，不在文件中發明尚不存在的 CLI。
@@ -282,12 +457,13 @@ agent 負責模板、非 Test 輔助工作、直接必要實作／驗證、紀�
   M3 才有正式機器成本。據此在同一計畫排定可承諾的時程，不先替每個 milestone 填虛構日期。
 - 若日期、完整題庫與可投入人力互相衝突，集中提出調日期／範圍的選項；不得縮題、改成 AI Test、
   降低驗證或自動增加人工負擔來假裝準時。未取得模型存取權也不能偷偷替代五模型。
-- 每個 milestone 以具體交付與 gate 狀態回報；目前僅文件，不宣稱已通過題庫／runtime gate。
-  未來施工只在已批准 scope 內持續，context compaction 或完成小切片不是停止或新授權的理由。
-- 接手先讀本節、研究規格、Git 與可辨識的執行狀態，再續作當前已授權項目；在此更新進度、
-  下一步與 blocker，不建立第二份工作日誌／控制平台，也不啟動下方舊候選。
+- 每個 milestone 以具體交付與 gate 狀態回報；目前進度由上方 active 節擁有，
+  文件更新不等於已通過題庫／runtime gate。施工只在已批准 scope 內持續，
+  context compaction 或完成小切片不是停止或新授權的理由。
+- 接手先讀上方 active、本節、研究規格、Git 與可辨識的執行狀態，再續作當前已授權項目；
+  在 active 節更新進度、下一步與 blocker，不建立第二份工作日誌／控制平台。
 
-下方是既有產品優先順序與候選背景，不覆蓋本節目前只討論／更新研究文件的 scope。
+下方是既有產品優先順序與候選背景，不覆蓋本輪授權至 Pilot 的範圍，也不授權本線施工其他候選。
 
 ## Agreed order — Import UI → Assistant evaluator → cleanup/refactoring
 

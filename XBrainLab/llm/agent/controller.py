@@ -9,6 +9,7 @@ import json
 import logging
 from collections.abc import Callable
 from contextlib import suppress
+from copy import deepcopy
 from dataclasses import replace
 from enum import Enum
 from typing import Any, cast
@@ -260,6 +261,8 @@ class LLMController(QObject):
         study,
         *,
         rag_lifecycle: ProcessRAGRetrieverLifecycle | None = None,
+        worker_factory: Callable[[], AgentWorker] | None = None,
+        rag_enabled: bool = True,
     ) -> None:
         """Initializes the LLMController.
 
@@ -271,8 +274,12 @@ class LLMController(QObject):
             rag_lifecycle: Optional lifecycle owner injected by tests or hosts.
 
         """
+        if type(rag_enabled) is not bool:
+            raise TypeError("rag_enabled must be a frozen boolean")
         super().__init__()
         self.sig_generate = _BestEffortGenerationObservers()
+        self.decision_observed = _BestEffortGenerationObservers()
+        self._rag_enabled = rag_enabled
         self.study = study
         self._turn_orchestrator = AssistantTurnOrchestrator()
         self._tool_attempt_session = AssistantToolAttemptSession()
@@ -298,7 +305,7 @@ class LLMController(QObject):
 
         # Setup Worker in separate thread to avoid blocking UI during load/inference
         self.worker_thread = QThread()
-        worker = AgentWorker()
+        worker = (worker_factory or AgentWorker)()
         self.worker: AgentWorker | None = worker
         worker.moveToThread(self.worker_thread)
         self.worker_thread.finished.connect(worker.deleteLater)
@@ -465,7 +472,8 @@ class LLMController(QObject):
             raise TypeError("Assistant initialization requires a runtime launch spec.")
         self.sig_initialize.emit(launch_spec)
 
-        self._rag_lifecycle.start()
+        if self._rag_enabled:
+            self._rag_lifecycle.start()
 
     @property
     def history(self):
@@ -672,13 +680,18 @@ class LLMController(QObject):
             self.assembler.clear_context()
 
             # 2. Retrieve RAG Context (Examples) off the GUI thread.
-            if not self._rag_lifecycle.retrieve(
-                turn_id,
-                text,
-                self._publish_rag_context_ready,
-                allowed_tool_names=self.assembler.rag_allowed_tool_names(text),
-            ):
+            if not self._rag_enabled:
                 self._on_rag_context_ready(turn_id, text, "", "")
+            else:
+                requested = self._rag_lifecycle.retrieve(
+                    turn_id,
+                    text,
+                    self._publish_rag_context_ready,
+                    allowed_tool_names=self.assembler.rag_allowed_tool_names(text),
+                )
+                self._observe_decision("rag_request", enabled=True, accepted=requested)
+                if not requested:
+                    self._on_rag_context_ready(turn_id, text, "", "")
         except Exception as exc:
             failure = safe_unexpected_failure(
                 logger,
@@ -817,6 +830,9 @@ class LLMController(QObject):
 
         if not self._turn_orchestrator.accept_rag_result(turn_id):
             return
+        self._observe_decision(
+            "rag", enabled=self._rag_enabled, has_context=bool(features), error=error
+        )
         if error:
             logger.warning(
                 "Optional RAG retrieval failed; continuing without RAG context: %s",
@@ -1119,6 +1135,14 @@ class LLMController(QObject):
                 recovery_attempts_used=self._tool_attempt_session.retry_count,
             )
         )
+        self._observe_decision(
+            "envelope",
+            status=envelope.status.value,
+            error=envelope.error,
+            workflow_stage=envelope.workflow_stage,
+            commands=envelope.commands,
+            recovery_action=decision.action.value,
+        )
         if decision.action is StrictEnvelopeRecoveryAction.CHOOSE_ONE:
             if decision.message is None:
                 raise RuntimeError("Choose-one decision is missing its trusted message")
@@ -1219,7 +1243,7 @@ class LLMController(QObject):
         cmd, params = command
         latest_user_text = self._conversation.latest_user_request_text()
         publication = self._turn_orchestrator.active_publication
-        return self._tool_attempt_coordinator.evaluate(
+        decision = self._tool_attempt_coordinator.evaluate(
             ToolAttemptRequest(
                 command_name=cmd,
                 params=params,
@@ -1229,6 +1253,44 @@ class LLMController(QObject):
                 single_proposal=single_proposal,
             )
         )
+        self._observe_decision(
+            "admission",
+            action=decision.action.value,
+            command_name=decision.command_name,
+            params=decision.params,
+            message=decision.message,
+            publication_generation=publication.backend_generation,
+        )
+        return decision
+
+    def _observe_decision(self, kind: str, **details: Any) -> None:
+        """Publish copied diagnostics without granting observers execution ownership."""
+        correlation = self._active_turn_correlation()
+        try:
+            self.decision_observed.emit(
+                deepcopy(
+                    {
+                        "kind": kind,
+                        "correlation": (
+                            {
+                                "generation": correlation.generation,
+                                "turn_id": correlation.turn_id,
+                            }
+                            if correlation is not None
+                            else None
+                        ),
+                        "generation_id": self._turn_orchestrator.generation_sequence,
+                        **details,
+                    }
+                )
+            )
+        except Exception as error:
+            safe_unexpected_failure(
+                logger,
+                error,
+                boundary="assistant_controller",
+                operation="publish_decision_diagnostic",
+            )
 
     @staticmethod
     def _remaining_tool_input_question(receipt: AssistantToolInputReceipt) -> str:
