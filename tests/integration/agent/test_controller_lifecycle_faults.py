@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 import threading
 import time
@@ -10,7 +11,7 @@ from typing import Any, cast
 
 import pytest
 from PyQt6 import sip
-from PyQt6.QtCore import QThread
+from PyQt6.QtCore import QThread, QTimer
 from PyQt6.QtWidgets import QMainWindow
 
 from XBrainLab.backend.controller.chat_controller import ChatMessagePresentationKind
@@ -25,6 +26,7 @@ from XBrainLab.llm.agent.turn import (
     AssistantGenerationEvent,
     AssistantGenerationEventPhase,
     AssistantGenerationRequest,
+    AssistantGenerationStopAcknowledgement,
     AssistantTurnDeliveryAcknowledgement,
     AssistantTurnDeliveryPhase,
     AssistantTurnRequest,
@@ -249,6 +251,197 @@ def manager_lifecycle_harness(qtbot, monkeypatch):
     assert worker_thread.isRunning() is False
     assert worker is not None
     qtbot.waitUntil(lambda: sip.isdeleted(worker), timeout=2_000)
+
+
+@pytest.mark.parametrize("fail_preparation", [False, True], ids=["success", "failure"])
+def test_preprocess_generation_keeps_gui_responsive_until_real_terminal(
+    manager_lifecycle_harness, qtbot, monkeypatch, tmp_path, fail_preparation
+) -> None:
+    """Use real signal delivery, command admission, MNE transform and chat UI."""
+    import mne
+    import numpy as np
+
+    from tests.integration.data_interpretation_support import (
+        import_recording_through_interpretation,
+    )
+    from XBrainLab.backend.application import get_application_service
+    from XBrainLab.ui.chat.presentation import ChatTurnPresentationPhase
+
+    manager, lifecycle, controller = manager_lifecycle_harness
+    study = controller.study
+    values = np.random.default_rng(23).normal(size=(3, 2048)) * 1e-6
+    recording = mne.io.RawArray(
+        values.copy(),
+        mne.create_info(["C3", "Cz", "C4"], 256.0, "eeg"),
+        verbose="ERROR",
+    )
+    source_path = tmp_path / "assistant-responsive_raw.fif"
+    recording.save(source_path, fmt="double", verbose="ERROR")
+    service = get_application_service(study)
+    import_recording_through_interpretation(service, source_path)
+    source = study.loaded_data_list[0]
+    before = service.get_view_publication()
+    prepare = service.preprocess_commands.prepare_command
+    entered = threading.Event()
+    release = threading.Event()
+    execution_threads = []
+    terminals = []
+    results = []
+    heartbeats = []
+    manager.init_ui()
+    manager.main_window.resize(1000, 750)
+    manager.main_window.show()
+    manager.chat_dock.show()
+    panel = manager.chat_panel
+    assert panel is not None
+    # This harness hosts the real ChatPanel, not the unrelated EEG panel stack.
+    monkeypatch.setattr(manager, "_open_assistant_panel_target", lambda _target: True)
+
+    def generate_bandpass(self, messages, *, profile):
+        del self, messages, profile
+        yield json.dumps(
+            {
+                "workflow_stage": controller.assembler.latest_tool_publication.workflow_stage,
+                "tool_name": "apply_bandpass_filter",
+                "parameters": {"low_freq": 4, "high_freq": 40},
+            }
+        )
+
+    def slow_prepare(plan):
+        execution_threads.append(QThread.currentThread())
+        entered.set()
+        # The GUI releases real work. A blocked GUI can only escape by this
+        # bounded safety timeout, and must fail the heartbeat assertion below.
+        release.wait(timeout=2.0)
+        if fail_preparation:
+            raise RuntimeError("Injected preprocessing failure")
+        return prepare(plan)
+
+    def heartbeat():
+        if not entered.is_set() or release.is_set():
+            return
+        if (
+            panel._turn_presentation.phase
+            is not ChatTurnPresentationPhase.APPLICATION_COMMAND
+        ):
+            return
+        heartbeats.append(
+            (
+                panel.turn_activity_widget.isVisible(),
+                panel.turn_activity_progress.isVisible(),
+                lifecycle.turn_in_flight,
+                len(terminals),
+            )
+        )
+        if len(heartbeats) == 3:
+            # Busy UI must not enqueue a second action or reset this turn.
+            manager.handle_user_input("Apply a bandpass filter from 4 to 40 Hz.")
+            manager.start_new_conversation()
+            release.set()
+
+    monkeypatch.setattr(_InMemoryEngine, "generate_stream", generate_bandpass)
+    monkeypatch.setattr(service.preprocess_commands, "prepare_command", slow_prepare)
+    lifecycle.turn_finished.connect(terminals.append)
+    controller.application_command_completed.connect(results.append)
+    timer = QTimer()
+    timer.timeout.connect(heartbeat)
+    timer.start(20)
+    try:
+        manager.handle_user_input("Apply a bandpass filter from 4 to 40 Hz.")
+        qtbot.waitUntil(lambda: len(terminals) == 1, timeout=8_000)
+        assert execution_threads == [lifecycle.dispatcher.command_thread]
+        assert heartbeats == [(True, True, True, 0)] * 3
+        assert len(results) == 1
+        assert results[0].ok is not fail_preparation
+        assert not lifecycle.turn_in_flight
+        assert not manager.chat_controller.is_processing
+        assert manager._assistant_turn_state.lease is None
+        np.testing.assert_array_equal(source.get_mne().get_data(), values)
+        after = service.get_view_publication()
+        if fail_preparation:
+            assert after.state.preprocessed == before.state.preprocessed
+        else:
+            assert after.state.preprocessed.operations
+            assert not np.array_equal(
+                study.preprocessed_data_list[0].get_mne().get_data(), values
+            )
+    finally:
+        release.set()
+        timer.stop()
+
+
+def test_moved_controller_stop_and_late_generation_cannot_finish_next_turn(
+    manager_lifecycle_harness, qtbot, monkeypatch
+) -> None:
+    """Keep real worker stop acknowledgement and all receiver thread moves."""
+    manager, lifecycle, controller = manager_lifecycle_harness
+    worker = controller.worker
+    assert worker is not None
+    entered = [threading.Event(), threading.Event()]
+    release = [threading.Event(), threading.Event()]
+    generation_ids = []
+    terminals = []
+    responses = []
+    invocations = []
+
+    def controlled_generation(self, messages, *, profile):
+        del self, messages, profile
+        index = len(invocations)
+        invocations.append(index)
+        entered[index].set()
+        release[index].wait(timeout=3.0)
+        yield (
+            '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+            '"parameters":{"message":"Current response."}}'
+        )
+
+    def cancel_generation(self, wait_timeout=0.25):
+        del self, wait_timeout
+        release[0].set()
+        return True
+
+    monkeypatch.setattr(_InMemoryEngine, "generate_stream", controlled_generation)
+    monkeypatch.setattr(_InMemoryEngine, "cancel_generation", cancel_generation)
+    controller._sig_dispatch_generation.connect(
+        lambda request: generation_ids.append(request.generation_id)
+    )
+    lifecycle.turn_finished.connect(terminals.append)
+    controller.response_presentation_ready.connect(responses.append)
+    try:
+        manager.handle_user_input("Describe the current workflow.")
+        qtbot.waitUntil(entered[0].is_set, timeout=2_000)
+        manager.stop_generation()
+        qtbot.waitUntil(lambda: len(terminals) == 1, timeout=3_000)
+        assert terminals[0].outcome == "cancelled"
+        assert not lifecycle.turn_in_flight
+
+        manager.handle_user_input("Describe the current workflow again.")
+        qtbot.waitUntil(entered[1].is_set, timeout=2_000)
+        qtbot.waitUntil(lambda: len(generation_ids) == 2, timeout=2_000)
+        old_id = generation_ids[0]
+        worker.generation_chunk_received.emit(old_id, "stale previous response")
+        worker.generation_finished.emit(old_id, [])
+        worker.generation_error.emit(old_id, "stale previous error")
+        worker.generation_stop_finished.emit(
+            AssistantGenerationStopAcknowledgement(generation_id=old_id, stopped=True)
+        )
+        qtbot.wait(50)
+        assert len(terminals) == 1
+        assert lifecycle.turn_in_flight
+        assert manager.chat_controller.is_processing
+        release[1].set()
+        qtbot.waitUntil(lambda: len(terminals) == 2, timeout=3_000)
+        assert terminals[1].outcome == "completed"
+        assert terminals[0].correlation != terminals[1].correlation
+        assert [response.kind for response in responses] == [
+            AssistantResponseKind.CANCELLED,
+            AssistantResponseKind.MESSAGE,
+        ]
+        assert "stale previous" not in repr(controller.history)
+        assert not lifecycle.turn_in_flight
+    finally:
+        for event in release:
+            event.set()
 
 
 def test_manager_queued_controller_slot_exception_releases_and_next_turn_succeeds(

@@ -4,6 +4,31 @@
 
 ## Active — 共同基線整備（使用者已授權施工）
 
+**2026-09-20 手測修理 — Assistant preprocess 回應性（已授權）**：
+手測 bandpass 工具耗時 6.172 秒（整輪 8.563 秒）。完整 startup trace 與 Windows
+native probe 確認：Dispatcher 已將 controller 搬至 AssistantCommandThread，但在搬移前
+連接的未宣告 Qt slot 的 generation-finished Python callback 仍在 Qt mainThread 執行
+（probe: on_gui=true/on_controller=false），造成工具計算阻塞重畫。既有 RUNNING_COMMAND
+已有文字與進度動畫，無須另造 UI 或背景 execution owner。本 slice 修正 controller
+跨執行緒接收 slot 歸屬，使用既有 command thread，真正結果返回後才完成 turn；
+保留原有 command／資料 publication 與 shutdown ownership。
+先以有界慢計算＋Qt heartbeat 重現，再接非同步 completion，驗證資料結果、失敗、
+重複提交、stop/reset、關閉與晚到結果。Focused native tests、lint、獨立 lifecycle review，
+最後同 head applicable CI 與 Windows changed-path walkthrough。UI 確認：使用者已同意
+使既有執行中狀態可持續顯示；不改 layout／文字、不新增取消功能或百分比。
+Non-goals：模型／prompt／RAG／18-tool contract、濾波演算法、全面工具系統改寫。
+保留已開啟的使用者手測程序，不關閉它；新 source 需重新啟動才生效。
+Complexity：只補現有 receiver 的 Qt slot 宣告，無新增 owner、module、public class，
+不新增 async continuation／state／compatibility path。Rollback 為本 slice revert。
+已完成：真 controller／dispatcher／ChatPanel＋MNE 慢計算成功／失敗 regression 先 RED
+（錯誤執行緒）後 GREEN；55 個直接相鄰 tests 通過，另補 moved controller 的停止／新 turn／
+晚到 chunk、finish、error、stop acknowledgement 回歸並通過。八個既有 receiver 加 Qt slot，
+production +11/-1/net+10 LOC，無新 owner；獨立 diff review 無 blocker。
+Next：提交修理、同 head CI 與 Windows native changed-path capture，更新啟動指令後局部手測。
+Native probe／RED／GREEN evidence 在 root build/dev-artifacts/assistant-affinity、assistant-responsive-*。
+Stop：修理及直接驗證完成並交付手測，或必要權限／資源阻擋；未取得 merge 批准不合併。
+既有完整模型評測預算已用完，不自行追加；本修理不宣稱模型能力改善。
+
 本節優先於下方歷史順序。目標為啟動器、研究文件與 RAG 的共同 main 基線；
 不是正式題庫評測、pilot 或 Assistant Stable promotion。只讀／使用既有工程案例，
 不讀正式 Validation／Test，不把題目或 oracle 加入 RAG。

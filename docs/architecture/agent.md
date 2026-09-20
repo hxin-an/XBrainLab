@@ -104,6 +104,11 @@ request 打開後 workflow 會停止並顯示 waiting state，不會繼續猜測
 
 `LLMController` 是 agent turn 的組合層；mutable lifecycle 已有明確 owner。
 
+Desktop dispatcher 將 controller 搬至 `AssistantCommandThread`；在 construction 時連接的
+RAG／worker 回呼必須宣告為 Qt slots，讓 chunk、terminal、runtime 與 stop acknowledgement
+跟隨 controller affinity。模型完成後的同步工具計算留在該 command thread，不占用 GUI；
+GUI 透過既有 typed activity／result signals 顯示狀態，並在真正結果返回後完成 turn。
+
 工具 handoff 的名稱／command／decision fields 驗證與 request 建構由既有 `ui_handoff` 模組
 依 canonical registry 完成；controller 只發送有效的 typed request。`ToolAttemptCoordinator`
 由自己的 decision/context 建立 confirmation risk、參數與 publication generation；
