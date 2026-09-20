@@ -1,6 +1,6 @@
 # XBrainLab Validation Contract
 
-最後更新：`2026-09-13`
+最後更新：`2026-09-16`
 
 驗證回答「哪個exact source，在什麼環境，觀察到什麼」，不能把單一PASS放大成產品、科學或真人
 驗收結論。日常與PR交付按下表選證據；CI routing由既有workflow擁有。明確要求完整dossier時，
@@ -84,6 +84,10 @@ Git／CI identity、exit code、counts、widget可見／enabled、geometry與pix
 新source需新CI；不同SHA、環境、模型revision或已知限制的證據不可冒充本次執行。
 
 ## Evidence levels
+
+Assistant 的三決策／三層離線判分入口見
+[Benchmark scorer calibration](assistant_benchmark_calibration.md)。它只校準 agent-authored
+Development 合成觀察，不執行模型／工具，也不取代 frozen 81-case gate 或產品驗收。
 
 Harness changes that claim fresh-agent readiness need native new-session evidence, without inherited
 chat or a prompt containing the intended answer. Check instruction/config/skill discovery, task takeover

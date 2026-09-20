@@ -1,326 +1,711 @@
-# Thesis Tool-Call Evaluation Protocol
+# XBrainLab Assistant 研究與實驗規格
 
-最後更新：`2026-06-01`
+最後更新：`2026-09-19`
 
-這份文件定義 XBrainLab 要支撐碩士論文主張時使用的驗證 protocol。論文主 evidence 是
-assistant 的 tool-call accuracy：它是否選對工具、給對參數、遵守當前 workflow state、正確處理
-blocked / invalid command，並在錯誤後自我修正。
+## 文件狀態與接續方式
 
-EEG training / evaluation accuracy 不是本論文要仔細驗證的主指標。它只用來證明 XBrainLab
-作為目標科學軟體的資料流程可以被穩定操作，不能取代 agent tool-call scoring。
+這是論文第二主線的唯一研究／實驗規格，供使用者與 agent 逐項討論、持續修訂。
+目前是**討論中的規格，不是整份已批准執行的施工計畫**；本次授權只有文件整理，
+不包含模型下載、接受授權條款、實作 runner、產品修改或正式實驗執行。
 
-本文件不是日常 smoke 測試清單；日常工程健康仍看 `docs/validation/README.md`。任何 thesis
-claim 都必須對到固定 benchmark cases、可重跑 scorer、machine-readable artifact 和
-human-readable report。
+- **已確認**：使用者已選定的方向與需求；不代表已實作或已取得實驗證據。
+- **待討論**：候選作法、細節或仍需實測才能決定的設定；不得自行提升為定案。
+- **現有能力／尚未實作**：依 source 與證據描述，不以聊天中的設計冒充完成。
 
-## Thesis Claim Boundary
+[Now](../planning/now.md) 擁有 M0–M6 施工里程碑、分工、進度、下一步與 blocker，
+不複製本文件的研究條件與判分規格。2026-09-19 使用者同意先完成整體計畫、題庫與
+系統前置驗證再進入 pilot；整理計畫仍不是實作或實驗執行授權。
+Context compaction 或換 agent 後先讀 Now 與本文件，再查 Git／實際 source；
+不能因摘要省略而重開已決定的題目，也不能把本文件當作自動施工授權。
+每次討論後更新相應段落，不另建平行計畫；舊版本從 Git 追溯。
 
-本論文的主要評估問題：
+本次整理取代舊版以 primary／fallback、AI 產題及多套 gate 為中心的研究安排。
+既有產品 gates、frozen cases、產品公開契約不因本文件改寫而改變。
 
-- assistant 是否能從使用者 intent 選出正確 tool / command。
-- assistant 是否能在不同 app state 下只呼叫 currently allowed command。
-- assistant 是否能產生正確參數，而不是只選對工具名。
-- assistant 是否能正確解讀 backend `CommandResult` / verification failure。
-- assistant 是否能把 tool error 轉成使用者可理解的回覆，而不是暴露 raw schema / traceback。
-- assistant 是否能在低信心、缺參數或 blocked state 下請求補充資訊或自我修正。
+## 1. 研究定位與限制
 
-EEG classification metrics、train/validation/test split、模型 baseline 和 statistical reporting
-屬於 product pipeline reliability / domain task sanity。除非論文另立 EEG classification
-研究問題，否則不得把它們寫成主要 thesis result。
+### 已確認
 
-## Evidence 分層
+論文有兩條主線：
 
-| 層級 | 資料來源 | 可支撐 | 不可支撐 |
-| --- | --- | --- | --- |
-| deterministic tool-call cases | repo 內固定 cases / expected calls / expected state | scorer schema、policy / verifier baseline、regression floor | local LLM 真實 tool-call accuracy 或 UI 行為 |
-| scripted backend replay | 固定 tool calls / commands 直接跑 backend | CommandResult、state transition、capability / autonomy policy | UI 是否真的更新、使用者是否看得懂 |
-| UI-observable scripted replay | 固定 replay 經過 UI adapter / ChatPanel / import wizard，保存 transcript、state、screenshots 或 UI artifacts | 人眼可審查的 UI 行為、button enablement、visible response、wizard flow | local LLM 真實 tool-call accuracy |
-| local LLM tool-call runs | 同一 cases 接 local primary / fallback runtime | tool selection / parameter / state-transition / recovery accuracy | EEG model quality |
-| UI-assisted workflow cases | 真 UI / agent 操作代表性 EEG workflow | end-to-end workflow success、user-facing error handling | EEG classification thesis result |
-| checked-in EEG fixtures | `tests/fixtures/data/` compact GDF/MAT/multiformat fixtures | IO、shape、tiny train/evaluate smoke | agent tool-call accuracy 或 EEG 泛化能力 |
-| public / external EEG datasets | documented source、license、checksum | domain workflow robustness、optional EEG model sanity | tool-call accuracy 或本論文主結論 |
+1. 建立可靠、好用、介面清楚的 EEG 軟體。
+2. 在該軟體上建立可靠的本地 Assistant 操作架構，並以可重現實驗檢驗。
 
-資料下載不可靜默發生。public 或 external dataset 需先記錄來源、授權、大小、cache/path、
-checksum 與清理方式。但資料級驗證只是讓 tool-call cases 有可信工作環境，不是主要論文評分。
+目前只討論第二主線。第一主線是任務環境與整體論文背景，不在本輪重開 panel 改版、
+全面清理、匯入盤點或 EEG 分類模型比較。第二主線也不只是五個模型的排行榜：
+研究需能說明 Assistant 是否正確理解操作要求、遵守當前狀態與確認邊界、
+完成任務，以及失敗發生在哪一層。
 
-## Tool-Call Metrics
+已確認目標是從明定的五模型、任務與資源／搜尋預算內選出**最佳完整候選系統**，
+不是把架構調到最適合事先指定的兩個模型。候選包括模型、prompt、RAG、工具呈現與
+澄清／修復機制的組合；完整系統比較不能把所有差異歸因於模型本身，也不宣稱絕對最優。
 
-正式 thesis report 至少要包含：
+比較主軸是**準確性與速度**。記憶體、VRAM、cache 是可行性限制與環境紀錄，
+不另展開龐大的部署取捨研究。EEG training accuracy 不是 Assistant accuracy，
+也不能用工程測試通過宣稱模型可靠、臨床有效或具有一般化使用者易用性。
 
-- intent accuracy
-- tool selection accuracy
-- parameter accuracy
-- state-transition accuracy
-- blocked-command handling accuracy
-- autonomy-boundary handling accuracy
-- user-visible response quality for tool errors
-- self-correction / clarification success rate
-- invalid / unsafe call rate
-- parser failure rate
-- verifier rejection rate
+使用者原先規劃自行出題／評分，每週可投入約 5–8 小時；電腦大部分時間可使用。
+2026-09-19 改為準備委託文件，邀請其他人協助人工出題；實際作者、評分者及角色隔離仍待安排。
+希望於 **2026-10-20** 前完成結果。單一作者／評分者的限制必須在論文揭露，
+不能因邀請出題者就宣稱跨評分者一致性或正式使用者研究。
 
-每個 case 至少保存：
+### M0 研究問題表述草案
 
-- user command
-- initial app state snapshot
-- available command summary
-- expected tool call / expected no-call behavior
-- expected parameters
-- expected verification result
-- expected autonomy decision / decision boundary
-- expected backend state delta
-- actual model output
-- parsed tool call
-- verification result
-- backend `CommandResult`
-- final user-visible response
-- UI-observable artifact，若此 case 屬於 UI replay 或 UI-assisted workflow
-- score breakdown
+以下文字與第 3 節的出題方案一起核對，不假設會得到正向結果：
 
-## Tool-Call Benchmark Cases
+1. 經有限 Development 與 Validation 選定的本地 Assistant，在未見任務上的決策正確率、
+   決策延遲及失敗類型為何？三類決策、初次／修復後與產品 outcome 分開呈現。
+2. 在選定系統中，RAG、工具篩選與格式修復各自如何影響決策正確率與速度？
+   以同一 Test 的完整系統與單一機制對照回答，不外推為所有模型皆有效。
+3. 與同模型、改善前凍結配置的 B0 相比，選定系統在同一 Test 上有何整體差異？
+   可能進步、不變或退步；多項變更的差異不歸因於單一機制。
 
-cases 應覆蓋：
+五模型的 Development／Validation 比較是選版依據，不宣稱五模型的獨立 Test 排名。
+成功門檻、統計及相近判準依里程碑時點固定；不以追求 100% 或臨時增加實驗無限延後凍結。
 
-- happy-path workflow：scan source、preview interpretation、validate、confirm / apply、preprocess、
-  epoch、dataset、configure training、train。
-- Data Interpretation workflow：BIDS folder scan、GDF + external label、MAT 多 label-like variable、
-  event role disambiguation、recipe reload。
-- metadata resolution workflow：subject / session / task / run 推論、preview、confirmation、
-  user override、subject-wise split 前置條件。
-- autonomy-boundary workflow：command technically allowed 但 agent 必須停下來確認，例如
-  apply interpretation、select split strategy、start training、reset / new session。
-- state-gated workflow：資料未載入前不可 train；dataset / epoch 後不可隨意開新 dataset。
-- query workflow：evaluation / visualization / saliency / state summary。
-- destructive workflow：reset / clear 類 command 需要確認邊界。
-- missing parameter：例如 list files 缺 directory 時，要要求補資訊，不暴露 raw error。
-- invalid command：backend policy blocked 時，回覆 blocked reason 的使用者語言版本。
-- multi-step recovery：第一次 tool call 被 verifier 擋下後，能否修正。
+## 2. 模型與實驗條件
 
-case 數量不能只停在 demo 級：
+### 已確認的比較對象
 
-- 第一版 engineering baseline 至少 `50` 個 tool-call cases。
-- 正式 thesis candidate baseline 至少 `100` 個 tool-call cases。
-- 每個主要 workflow stage 至少 `10` 個 cases：data import、label/event、preprocess、epoch、
-  dataset、training、evaluation / visualization / saliency、reset / lifecycle。
-- data import / label-event cases 必須覆蓋 Data Interpretation 的 `safe`、`needs_confirmation`、
-  `blocked`、BIDS `warning / limited / blocked` 和 recipe reload。
-- negative / blocked / missing-parameter / recovery cases 合計不得少於總 cases 的 `30%`。
-- multi-turn workflow cases 不得少於 `15` 個，且必須包含至少一條完整
-  scan -> preview -> validate -> apply -> preprocess -> epoch -> dataset -> configure training ->
-  train -> query result sequence。
-- local LLM primary / fallback runner 至少重跑 `3` 次，保存 run-level artifact；若因資源限制
-  降低次數，report 必須明確標成 exploratory，不能當 thesis candidate。
+| 模型 | 用途 |
+| --- | --- |
+| IBM Granite 4.0 Micro 3B | 現有主模型的研究比較與基線 |
+| IBM Granite 3.3 2B Instruct | 現有較小模型比較 |
+| Microsoft Phi-4 Mini Instruct 3.8B | 研究比較 |
+| Meta Llama 3.2 3B Instruct | 研究比較 |
+| Google Gemma 3 4B IT | 研究比較，限文字任務 |
 
-deterministic tool-call eval 可以證明 scoring framework 和 scripted policy 正確，但不能宣稱
-local LLM 真實 tool-call 能力。local LLM tool-call eval 需要在產品主線穩定後，以同一批 cases
-重跑 primary / fallback model，並記錄 parser failure、verification failure、retry 和 recovery。
+研究選模不代表將模型加入產品 Settings，也不授權 silent fallback。
+各模型的精確 revision、官方模板、dtype／量化、context、generation 參數與 runtime 相容性
+都要在正式實驗前固定。不能因名稱與參數量相近就假定現有 backend 可直接載入。
 
-## Future AutoResearch Case Generation
+沿用單模型原則不超過 10 GB、總 cache 不超過 20 GB 的資源限制；比較五個模型不代表
+同時保留全部權重。下載前仍要確認來源、授權、大小、VRAM、cache 路徑與清理方式；
+需同意條款／取得存取權的模型由使用者處理。尚未授權下載或接受條款。
+目前查得 GPU 為 RTX 5070 Ti、約 16 GB VRAM；實驗仍需保存執行當時的環境。
 
-正式擴充 benchmark suite 時，case generation 本身應視為研究工作，而不是目前產品修復的一部分。
-在 XBrainLab 本體、agent command path 和 verification layer 穩定前，不應啟動大規模 benchmark
-生成，也不應宣稱 case suite 已足以支撐正式 thesis result。
+### 實驗矩陣：已確認範圍與待定細節
 
-啟動時採用 research-first 的 AutoResearch-style pipeline：
+正式比較的方向如下，精確矩陣、條件數與執行量尚未凍結：
 
-- subagents 先研究 function/tool-call benchmark、agent trajectory eval、XBrainLab workflow、
-  EEG / BCI 操作情境與常見錯誤。
-- subagents 只能產生候選 cases、coverage critique 和 failure taxonomy 建議。
-- 每個候選 case 必須保留來源 rationale、目標 workflow stage、initial state、expected
-  tool / no-tool behavior、expected parameters、verification expectation 和 expected state delta。
-- gold benchmark 只能由主 agent 經過去重、schema validation、coverage matrix、人工可讀審核和
-  freeze 後建立；不能讓 subagent 直接把候選 case 寫成正式 gold suite。
-- benchmark generation 方法可以在 Phase 3 開始時根據最新研究再調整；本 protocol 只固定 evidence
-  邊界與審核要求，不預先定死具體 case taxonomy。
-
-## Local Eval Gate 分層
-
-Local tool-call eval 不是每個小修都跑 full primary / fallback x3。正式 thesis claim 需要
-完整重跑；日常 verifier、normalizer、prompt、case wording、UI refresh 或 backend cleanup
-只應使用較小 gate：
-
-| Gate | 使用時機 | 模型 / 重跑策略 |
+| 比較方向 | 待固定的條件 | 要回答的問題 |
 | --- | --- | --- |
-| Fast dev gate | 日常小切片、回歸修正、changed / failed cases。 | deterministic eval；repeat `1`；不跑 fallback model。 |
-| Candidate gate | 需要真 local model 驗證受影響 case family。 | primary model；affected families；repeat `1` 或 `2`。 |
-| Release / thesis gate | 更新正式 benchmark claim 或 thesis evidence artifact。 | deterministic full suite；primary full suite x3；fallback full suite x3；刷新 dashboard。 |
+| 五模型候選系統 | 在 Development／Validation 比較並選版，不在 Test 重開排行榜 | 哪套候選系統比較準、比較快？ |
+| RAG 與其他機制比較 | Test 僅使用 Validation 選定系統，一次改變一個機制 | 檢索／工具篩選／格式修復等是否有貢獻？ |
+| 改善前後 | Test 加入與選定系統同模型、原始凍結配置的 B0 | 有限改善在獨立 Test 上的整體效果，不歸因於單一機制 |
 
-Release / thesis local gate 前必須先記錄 disk / cache / `nvidia-smi` VRAM preflight。舊
-21-action deterministic／local runners已隨Stable v2 surface退役，不能再用歷史121-case artifact
-刷新current claim。產品重建期間只使用`scripts/dev/run_stable_assistant_model_eval.py`的v12
-evaluator evidence：`case_summaries.core`保留50-case core（36 positive＋14 challenge）、`precision`
-保留24-case no-action、`clarification`保留7-case continuation，而`total`只表示81-case inventory
-完整性；它要求相關case的exact stage、tool、parameters／response contract與schema，但不把81個case
-合成單一模型accuracy分母，也不是thesis benchmark。
-正式thesis runner必須等產品surface凍結後另以approved target cases重建，並重新定義repeat、resource
-preflight、confidence interval與artifact schema；不得把產品v12 candidate artifact升格為thesis-ready rerun。
+機制比較不再預先綁定 Granite＋Phi；主要對象在 Test 開封前由 Validation 選定。
+本輪 Test 不增加第二個代表模型。若選定系統未使用 RAG，比較加入 RAG 的效果，
+不能假稱從原系統移除它。機制無效、可刪除也是有效研究結果。
+原先固定兩模型消融的 15 條件草案不再作為目前執行量依據；需按最終矩陣重新估算，
+不能混同下節 B0／B1／B2 × 五模型的開發選版組合，或把所有 splits 無條件一起跑。
 
-Local LLM CLI 的 process exit 與 artifact contract 如下：
+比較須保持任務與評分規則等價，允許官方模型模板的必要差異並完整記錄。
+工具篩選消融只調整模型可見資訊，不移除 backend admission、確認、安全或資料保護。
+RAG on 必須確認實際檢索可用；snapshot 不可用而退回無 RAG 不能算 on 條件。
 
-- Stable v2產品gate的`--strict`只在v12 `candidate_gate.passed=true`時成功；legacy v11、空case set、
-  failed gate或不完整artifact一律fail closed。partial artifact的`case_summaries.total.complete`與
-  `candidate_gate.passed`必須是`false`。
-- 歷史`xbrainlab.local_tool_call_eval.v4`／v5 artifact只能作provenance，不是current Stable v2 gate。
-- 未來thesis runner的process exit、resource-preflight與artifact contract必須在重建時重新批准；不能
-  從已退役CLI自動繼承。
+#### 待確認：Validation 矩陣提案
 
-## Scripted Replay
+以下尚未獲使用者批准，不能當作排程或擴張 Development 搜尋預算：
 
-scripted replay 不能只停在文字報告。它應分成兩層：
+- Validation：保留 B0／B1／B2 的五模型候選，若每個版本均預先列 RAG on／off，
+  最多為 3 × 5 × 2＝30 條件；99 題 × 3 repeats，上限 8,910 題次。
+  RAG 配對須事先納入既有改善方案，不能藉矩陣新增隱藏的 prompt 搜尋。
 
-| 模式 | 用途 | 人要看什麼 |
+#### 已確認：Test 驗證選定系統、消融與同模型 B0
+
+2026-09-19 使用者確認：正式 Test 以 Validation 選定的最佳完整系統為主，
+保留該完整系統、適用的機制消融，並加入同模型 B0 的整體改善對照；不再跑五模型排行榜。
+這取代先前 13 條件提案及短暫不納入 B0 的範圍；不能把 Validation 分數當作 Test 的對照分數。
+模型、版本與其餘設定固定，不為每個消融重新挑模型或調參；消融清單在 Test 開封前固定。
+
+已確認的條件範圍為完整系統、RAG 對照、不篩選模型可見工具、零次格式修復，以及同模型 B0。
+若三項機制對照都適用且 B0 不重複，最多 5 × 132 題 × 3 repeats＝1,980 題次；
+其中 B0 增加 396 題次。這是案例數，不是生成呼叫數或時間承諾，實際成本仍由 pilot 估計。
+B0 使用改善前保存的同模型原始配置與版本，不事後更新其 prompt／政策來冒充原始基線。
+完整系統與 B0 使用相同 Test 題目、scorer 與可比測量規則；完整系統內逐項消融則固定其餘配置。
+B0 對照可包含多項改善差異，不能單獨證明某一機制的因果效果；若選定系統就是 B0，
+或配置／行為身分完全重複，重用同一份證據，不為湊條件重跑。
+原系統未啟用的機制不能假稱移除；例如 RAG 已關閉時，加入 RAG 是額外機制對照，
+是否納入須在凍結前明定，不自動加跑。無變化／重複配置不重跑。
+Backend admission、確認、安全與資料保護不移除。
+結論限於選定系統及所測任務，不能宣稱五模型在獨立 Test 上的排名或普遍的機制效益。
+上述最多 30 條件的 Validation 仍是待確認草案，不因 Test 範圍獲確認而自動定案。
+
+先前提過 BF16、temperature 0.7、top_p 0.9、512 output tokens、8k context，
+以及 240 小時機器預算；都只是候選，需 pilot 後確認，不能當作五模型已可行的定案。
+
+## 3. 題庫、分組與封存
+
+### 已確認的題庫方向
+
+三種決策為 Action、Clarification、No-call；加強 No-call，避免只測可執行的正常指令。
+採 495 題的設計目標：
+
+| 決策類型 | 分組設計 | Development | Validation | Test | 合計 |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Action | 18 組，各 15 題 | 144 | 54 | 72 | 270 |
+| Clarification | 6 組，各 15 題 | 48 | 18 | 24 | 90 |
+| No-call | 3 組，各 45 題 | 72 | 27 | 36 | 135 |
+| 合計 | 165 個 seed families | 264 | 99 | 132 | 495 |
+
+先以 family 隔離分組，再改寫，不讓同一家族的近似題跨 split：
+
+- Development：66 個人工 seed，各加 3 個改寫，共 264 題。
+- Validation：33 個人工 seed，各加 2 個改寫，共 99 題。
+- Test：66 個人工 seed，各加 1 個人工改寫，共 132 題，**全部人工撰寫**。
+- 原先方案為人工版本 231 題、AI 改寫 264 題；使用者於 2026-09-19 選擇人工主導並請他人協助出題。
+  本次委託文件先涵蓋 165 個人工 seed 與 66 個 Test 人工改寫；其餘 264 個 Dev／Validation
+  改寫的人工／AI 來源待確認，不默認授權 AI 產題，也不宣稱全部 495 題皆為人工。
+  無論採何種來源，均保留作者／改寫來源並審查題意與 oracle。
+
+可直接交給出題者的[人工出題委託說明與模板](assistant_question_authoring_guide.md)
+提供配額、操作範圍、填寫格式及交付規則，是本規格的工作說明，不另定研究矩陣。
+
+以上是題庫目標，尚不表示題目已寫完、去重、審核或存在可執行的正式題庫。
+舊 frozen 81 cases 已曝光，只保留原本的工程證據身分，不能當作新封存 Test。
+
+Test 由使用者保管，開發 agent 在凍結前不讀取題目或答案；Development 可用於修理，
+Validation 限定用於版本／設定選擇。正式 Test 在凍結後才解封。
+預先宣告的 3 次 repeats 不等於看見差分數後追加重跑；保留每次結果，不挑最好的一次。
+
+### M0 整包核對草案：出題模板與覆蓋
+
+以下是準備工作提案，尚未獲整包批准，不是已完成的正式題目或可執行 schema。
+以[核准工具契約](../target/agent.md)為產品權威，對照
+`XBrainLab/llm/action_contracts.py`、`XBrainLab/llm/tools/__init__.py` 與工具 definitions 的目前 source。
+此次只確認 source 註冊與研究覆蓋映射，沒有因此驗證 runtime。
+
+#### 使用者填寫的最小模板
+
+正式題目建議以英文撰寫，維持目前 Assistant 英文支援邊界；不另加入翻譯／多語研究。
+使用者只需填下表的語意內容；agent 補齊非 Test 的機器格式，Test 則由使用者在隔離端完成。
+
+| 欄位 | 填寫內容 |
+| --- | --- |
+| 情境 | 使用者目前做到哪裡、已有哪些資料／設定；從提供的情境選單選擇即可 |
+| 使用者原話 | 一回合自然英文，不必寫 tool JSON |
+| 正確行為 | 應開哪個視窗、執行哪個操作，或正常不操作 |
+| 必要值／缺少資訊 | 使用者有給哪些數值、方法或目的地；缺少什麼，不替模型補猜值 |
+| 不應發生的事 | 例如不能開始訓練、不能改參考、不能清掉原始資料 |
+
+機器記錄另含 `case_id`、`family_id`、`split`、作者／改寫來源、fixture 身分、預期決策、
+允許的工具／參數答案、適用確認與操作觀測層。這些是欄位需求，不先新增一套執行平台。
+實際 stage、capability、publication 與事件來自產品 owner，不由題目內的人工旗標製造成功。
+Oracle 與模型可見輸入分離；參數等價性沿用 schema 與明定規則，不在看答案後擴充允許集合。
+GUI 的人工選擇／確認另列 fixture driver，不冒充模型輸出；未觀測完整操作時明列未評估。
+
+#### Action 的 18 組映射
+
+每個工具對應既定的一組題目，不是把 18 個工具任意各跑一題就宣稱覆蓋完成。
+下表僅分組顯示，正式逐工具名稱仍完整保留：
+
+| 操作類型 | 覆蓋工具 | 組數 | 核對重點 |
+| --- | --- | ---: | --- |
+| GUI 選擇／設定 | `import_eeg_data`、`select_channels`、`set_montage`、`create_epochs`、`configure_dataset_split`、`select_model`、`configure_training` | 7 | 正確零參數工具與對應介面；不把使用者填表算成模型能力 |
+| 直接預處理 | `apply_bandpass_filter`、`apply_notch_filter`、`resample_data`、`set_reference`、`normalize_data` | 5 | 使用者給定的必要參數正確；真實 Command 結果另列 |
+| 訓練與清理 | `start_training`、`stop_training`、`reset_preprocessing`、`clear_training_history` | 4 | 正確操作、既有確認政策與對應狀態轉移；不是開窗題 |
+| 分析運算 | `compute_saliency` | 1 | 確認後對既有合法選擇運算；點擊／開窗不是運算完成 |
+| 導覽 | `switch_panel` | 1 | 正確 `panel_name` 與適用 `view_mode`，目標實際就緒另列 |
+
+同一 family 的改寫保留相同意圖與 oracle，不靠複製措辭填滿案例。Action 採可執行的合法情境；
+狀態不允許、未授權或缺必要值的題目依下方明確分類，不把預期被阻擋的題目混入成功操作組。
+`respond_to_user` 是非操作回覆通道，不額外算成第 19 個 Action 工具。
+
+#### 缺資訊 6 組與 No-call 3 組提案
+
+- 缺資訊六組對應五個直接 preprocess 工具與 `switch_panel`：題意可辨識，但缺必要值／目的地。
+  少了可省略的 `view_mode` 不自動算缺資訊；缺少 GUI 內由人決定的設定，也不阻止正確開窗。
+  不要求新增第六套 Host collection，不評追問文字內容或跨回合接續。
+- No-call 三組建議為：**資訊／解釋詢問**、**明確否定或未授權操作**、**產品不支援或當下不可用的操作**。
+  第一組不評知識回答品質；第三組須由既有產品能力證明 unavailable，不由題目另造規則。
+- 一題只指定一個主要決策。缺資訊題先選 tool 可用的情境；不可用題避免同時缺必填參數。
+  暫不把多意圖與多種矛盾狀態混在同一題，避免 oracle 不唯一；存在多個合法答案時先明列集合。
+
+情境可涵蓋 empty、data loaded／preprocessed、epochs、setup ready、training、completed run，
+但不是讓每個工具硬做所有 stage 的全排列。以合法能力與題庫 families 分配為準。
+題目與 oracle 不加入 RAG 當答案庫；Validation／Test 及其改寫不得用於 RAG 調整。
+RAG 的來源與內容版本另固定，不能因完成題庫而把整包題目交給檢索。
+
+**多輪範圍建議**：主論文決策比較先維持已確認的單回合題庫；取消、補值接續、狀態過期、
+停止／重跑列入 M2 必要工程驗證，工程軌跡不算多輪模型成功率。
+先不啟動下方尚未批准的 30 條正式多輪實驗；是否採此限縮由使用者在 M0 整包決定，
+不能據此宣稱已驗證完整多輪對話能力。
+
+### 待討論與已知缺口
+
+- 每組的具體情境、oracle、初始狀態、可用工具與資料 fixture，以及語言／難度分布。
+- schema 有參數的工具包含五個直接 preprocess 工具與 switch_panel；
+  目前 Host typed clarification 只支援前五個。第六組不能因而偷偷刪除，也不能
+  以本文件自動授權擴張產品契約。缺資訊的主評估已改為正確不執行，不要求新增 typed receipt；
+  既有 receipt 可作診斷，追問內容／接續完成另列未評估或多輪範圍。
+- 多輪軌跡候選為 30 條，Development／Validation／Test 分配 12／6／12，
+  與單題分母分開；內容與數量仍待確認。
+- 需覆蓋正常操作、缺參數、禁止操作、澄清、錯誤修復，以及多輪、取消、狀態過期、
+  停止／重跑等直接相關行為；不將每一類膨脹成另一項大型研究。
+
+## 4. 判分、時間與證據
+
+### 已確認的原則
+
+三層分開，不能只報一個混合總分：
+
+| 層級 | 問題 | 需要的證據 |
 | --- | --- | --- |
-| backend replay | 用固定 tool call / command 檢查 backend state、CommandResult、capability / autonomy policy | JSON / markdown report、state_before / state_after、decision boundary |
-| UI-observable replay | 用固定 replay 經過 UI adapter、ChatPanel 或 import wizard，確認使用者看見的行為正確 | screenshots、transcript、visible status、button enablement、wizard step、error wording |
+| Raw model | 原始決策、工具與參數是否正確？ | 實際輸入、每次原始輸出、解析結果與 oracle |
+| Agent／Host | 澄清、admission、確認與修復是否正確？ | 按順序保存的真實事件與每次嘗試 |
+| Product outcome | 使用者要的結果真的完成了嗎？ | 真實 Command 結果、前後狀態、適用的 UI 終態 |
 
-UI-observable replay 的目標不是替代 local LLM eval，而是避免「backend report PASS，但 UI
-使用者看起來仍然錯」。
+使用者於 2026-09-19 釐清模型責任主要按「開窗／介面交接」與「填參數操作」理解：
 
-UI replay artifact 至少應保存：
+| 工具責任 | 模型／交接層的評分重點 | 不應混同的結果 |
+| --- | --- | --- |
+| 開窗／介面交接 | 選對工具；另觀測正確介面是否實際開啟／就緒 | 不把後續使用者填寫、確認、套用全部算成模型選擇能力 |
+| 填參數操作 | 選對工具、必要參數符合使用者提供的資訊與 schema | 工具與參數正確，不代表 backend 已成功執行；執行結果另有證據 |
 
-- replay case id。
-- initial state。
-- scripted command sequence。
-- UI entrypoint：ChatPanel、import wizard 或 button-driven workflow。
-- visible transcript / status text。
-- relevant screenshots 或 approved UI artifacts。
-- expected / actual button enabled state。
-- expected / actual wizard step。
-- final state snapshot。
-- pass / fail reason。
+「只開窗失敗」不是新增決策類別或固定失敗選項。正確開窗且等待使用者時，可以已完成
+模型選擇／交接層的目標，不能僅因尚未完成整個操作便把模型判錯。
+Product outcome 仍依現有完成契約，匯入／設定的 opened／accepted 不等於整個操作 completed；
+只做交接觀測的案例，完整 outcome 應標為未評估／尚未終結，不能冒充已完成或默認失敗。
+固定 GUI driver 的選擇與確認不是模型能力；不得捏造 terminal result 來結束產品流程。
+純導覽以目標實際顯示並就緒為對應結果。這是研究判分層級的澄清，不改產品契約或 UI lifecycle。
+逐工具清單仍需對照現有契約；零參數直接命令等不能只因沒有參數就誤分類為開窗工具。
 
-若 UI replay 只產出 backend JSON，不能用來宣稱 UI 行為已驗證。
+### 已確認：缺資訊時的正確不執行率
 
-## Tool Refactor And Verification Architecture
+使用者同意先不評 Clarification 的文字內容，以**缺資訊時的正確不執行率**衡量。
+原 Clarification 題組／family 分割保留；名稱表示缺資訊情境，不代表已驗證追問語意。
 
-正式 tool-call eval 前，tool surface 需要先完成重構：
+- 觀察在缺少必要資訊時，是否選擇正常的不執行回覆分支，且沒有不應發生的操作／副作用。
+- 原始輸出與 Host 處理分開：模型提出錯誤操作而被 Host 擋住，不能當作模型正確選擇不執行；
+  系統阻擋可另記為保護有效。
+- 不把崩潰、逾時、未回覆或缺少紀錄視為正確不執行。精確終態與分母規則仍需固定。
+- 保存原始回覆；本輪不判問句是否流暢、是否問對缺漏或回答內容是否有幫助。
+  pending_action／missing_inputs 如存在可留作診斷，不以其存在推論文字內容正確。
+- 這個指標不支撐「澄清成功」或「補值後能接續完成」；後者屬另行確認的多輪評估。
+- 與 No-call 分開報告：前者是有操作意圖但資訊不足，後者是本來就不應操作的題目。
 
-- agent tools 不直接包 controller；能走 `ApplicationService` command 的 mutating workflow 必須走
-  service command。
-- tool availability、blocked reason、confirmation requirement 必須由 backend capability policy 產生。
-- Context Assembler 只能暴露目前 state 下合理的 tool / command 摘要，不讓 LLM 自行判斷所有
-  backend capability。
-- Tool call 前必須再經 Verification Layer guard；不能只相信 prompt 內的 available tool list。
-- Verification Layer 至少檢查：schema、required parameters、state precondition、resource
-  existence、confirmation boundary、unsafe / destructive action、confidence threshold。
-- Verification Layer 必須把 Data Interpretation validation result 納入 tool-call guard：
-  `blocked` 不可執行，`needs_confirmation` 必須轉成使用者確認，`safe` 也仍要通過
-  ApplicationService capability policy。
-- scorer 必須同時記錄 proposed tool call、verification result、backend `CommandResult`、
-  autonomy decision、decision boundary、state_before / state_after 和 visible response。
-- tool taxonomy 必須重新設計為 workflow intent / side effect / decision boundary 導向，不能只沿用
-  舊 `load_data` / `attach_labels` 或 `dataset / preprocess / training` 粗分類。
-- raw backend schema、traceback、tool exception 不可直接出現在使用者 transcript；必須轉成人能理解的回覆，
-  structured diagnostics 另存。
+### 已確認：No-call 正確不操作率
 
-這個 verification architecture 是 thesis evidence 的一部分。若 tool surface 尚未重構完成，
-只能做 engineering baseline，不能宣稱 thesis-grade tool-call accuracy。
+2026-09-19 使用者確認 No-call 也先只評「不該操作時，是否正確選擇不操作」，
+不評文字回答的知識正確性、相關性、完整性或措辭品質，但仍保存原始回覆。
 
-## EEG Pipeline Support Protocol
+- 預期為正常的非操作回覆；產品的 respond_to_user 是回覆通道，不算操作工具。
+- 模型提出不應執行的操作卻被 Host 擋住，要記為錯誤決策與有效阻擋，不能當作模型選對。
+- 正常回覆與沒有回覆不同；崩潰、逾時、格式無法辨識、空白／未回覆或缺少紀錄，
+  不能僅因沒有副作用便算正確不操作。初次與修復後依下節分層記錄。
+- 此分數只支持不操作決策，不支持回答有幫助、知識正確或完整對話品質。
+- 缺資訊與 No-call 使用不同題目情境、分母並分開報告，不因同樣不執行就合併題組。
 
-以下 split / metrics / baseline protocol 只服務於產品 workflow 和 domain task sanity。它讓
-agent tool-call benchmark 有可重跑的 EEG 工作環境，但不是 thesis 的主要準確率評估。
+因此三類的研究觀察是「應操作時選對工具／參數或介面交接」、「缺資訊時正確不執行」、
+「本來不該操作時正確不操作」。仍需一起呈現 Action 表現，不能只用高不操作率宣稱系統好用。
 
-資料級支撐也需要足夠數量與來源分層：
+### 已確認：三類等權的主分數
 
-- checked-in compact fixtures 要覆蓋至少 GDF、MAT、metadata / label 入口和 event-rich case。
-- public fixture slice 至少要能支持一條 event-rich import -> preprocess -> epoch -> dataset smoke。
-- 若使用 external EEG dataset，只作 pipeline support；需要記錄 source、license、checksum、
-  subject/session count 和清理方式。
-- 任一資料來源不足時，tool-call report 必須標註哪些 workflow stage 的 evidence 只能算 synthetic
-  或 fixture-level，不可泛化。
+2026-09-19 使用者同意三類各占三分之一，同時呈現各類分數與全部題目的合計正確率。
+主分數稱為**平衡決策正確率**，不是完整任務成功率：
 
-## Split Protocol
+`平衡決策正確率 = (Action 正確率 + 缺資訊正確不執行率 + No-call 正確不操作率) / 3`
 
-三種 split 必須分開標註：
+全部題目合計正確率另以正確題次總數除以適用題次總數計算，不取代等權主分數。
+每類保留分子／分母，Dev、Validation、Test 及多輪分開，不混合成單一成績。
+這是明定的研究權重，不代表真實使用頻率，也不保證每類個別表現足夠好；
+必要安全條件仍獨立判定，不能被高平均分抵銷。
 
-- `trial-wise`：同一 subject/session 可以出現在 train/validation/test，不允許同一 trial
-  index 跨 split。只適合工程 smoke 或 intra-session baseline。
-- `session-wise`：同一 `(subject, session)` group 不可跨 split。適合檢查 session transfer，
-  尤其是同一 subject 不同 session 的穩定性。
-- `subject-wise`：同一 subject 不可跨 split。這是跨 subject 泛化 claim 的最低要求。
+2026-09-19 使用者同意同時報告初次生成與允許修復後的兩份分數，
+**主排名採允許修復後的平衡決策正確率**，以反映完整 Assistant 決策機制的表現。
+兩層使用相同三類權重，不把一類初次正確率與另一類修復後正確率混合。
+未觸發修復的案例，初次決策就是最終決策；觸發修復時保留每次輸入、輸出、錯誤與結果，
+不以最後正確輸出覆寫初次錯誤。修復次數必須呈現，修復耗時計入決策延遲。
 
-避免 data leakage 的規則：
+僅由 Host 擋住錯誤操作，不代表模型已改作正確決策；不得用「沒有副作用」代替最終決策證據。
+正常修復不能使用 scorer 標準答案或因評分錯誤而重新抽樣直到成功；已發生的未授權副作用
+也不能因後續輸出正確而抹除，仍須在安全與案例結果中記錄。
+允許修復的範圍與次數見下節；單題計分、重複與失敗／無效測量原則見下方已確認配套，
+正式時間上限與統計推論細節仍待確認。
+GUI 交接、直接參數決策與不執行不是同一種產品終態，不得將等權主分數當作完整任務完成證據。
 
-- test split 先建立並鎖定；validation split 必須從 test 之外的 remaining data 產生。
-- preprocessing 若會學到資料統計量，fit 只能使用 train split，再套用到 validation/test。
-- model selection、early stopping、hyperparameter tuning 只能看 validation，不可看 test。
-- final test metrics 只能在 protocol 鎖定後計算。
+### 已確認：執行前的有限修復
 
-目前 `DatasetGenerator.split_test()` 先分 test，`DatasetGenerator.split_validate()` 從
-`dataset.get_remaining_mask()` 產生 validation，這符合 validation 不從 test 抽樣的基本要求。
-新增 `XBrainLab/backend/dataset/split_audit.py` 會檢查 train/validation/test index overlap，
-並依 `trial-wise`、`session-wise`、`subject-wise` 檢查 group leakage。
+2026-09-19 使用者同意一般比較條件採**初次生成＋最多兩次修復**，即每個決策最多生成三次。
+此上限與現有 StrictToolResponsePromptPolicy 一致，取代先前最多一次修復的草案；
+「無修復」消融條件為零次。五模型採相同預算，不因某模型表現較差而追加機會。
+這是研究規則確認，不授權改產品；runner 與實際 product path 的一致性仍需實作驗證。
 
-## Reproducibility
+| 情況 | 研究採用的處理規則 |
+| --- | --- |
+| JSON／必要結構不合法 | 尚未執行時，可要求重新輸出 |
+| 工具、階段或參數不符合本次公開契約 | 尚未執行，且正常產品驗證可辨識時，可依契約訊息修復 |
+| 使用者已提供必要值，但模型漏填或格式不合法 | 可修復，不得更改原意或發明數值 |
+| 使用者根本未提供必要資訊 | 不猜值、不靠自動重試補值，走不執行／詢問分支 |
+| 工具／參數合法，卻不符合題目預期 | 評測如實記錯；不得用 oracle 通知模型重選 |
 
-每個正式 run 必須保存：
+合法決策產生後即進入正常回覆、確認或執行；正確詢問交回使用者，不算修復耗盡。
+使用者取消／拒絕確認、backend 執行失敗、GUI 取消／失敗、操作已交付執行或是否生效不明時，
+不得用此機制重送操作。GUI 開窗後等待使用者也不觸發再生成；補資料是下一回合，不是格式修復。
+正常驗證訊息不是隱藏標準答案；scorer 不得介入 runtime 要求多抽一次或提供正確工具／參數。
 
-- fixed `seed`。
-- `repeat` 次數與 run index。
-- deterministic setting，例如 PyTorch deterministic flags 是否啟用。
-- train/validation/test split indices。
-- 完整 config：dataset、preprocess、epoch、model、optimizer、training option、device。
-- environment info：Python、platform、XBrainLab commit、torch/cuda/mne 版本。
+次數上限與預先固定的時間上限，任一先到即停止。Pilot 採第 6 節的整次決策 120 秒上限；
+正式時間上限待 pilot 後、使用 Validation 前確認，不因看見 Validation／Test 成績而放寬。
+若 Development 證據支持調整共同預算，需作明確配置候選並在正式評估前重新確認／凍結，
+不能把本次兩次上限當成自行變更的授權。
 
-目前 seed helper 在 `XBrainLab/backend/utils/seed.py`，training record 會保存 seed 與 random
-state。未來另行建立正式 thesis runner 時，仍須將 commit hash、dependency versions 和
-可重建的 split membership 證據寫入同一個 artifact directory。
+同一份逐次軌跡另報第一、第二次修復各新增救回的題數、生成次數、累計等待與耗盡失敗數，
+明列適用分母；不另開全矩陣重跑來取得已有的軌跡統計，也不只報最後較高的分數。
 
-## EEG Pipeline Metrics
+報告以準確性與速度為主，另以工具選擇、參數、澄清／No-call、parser、
+admission、執行、verification 與失敗分類協助解釋。
+每個指標明列適用分母；Action、Clarification、No-call 與多輪結果不可任意混算。
 
-若需要報告 EEG pipeline sanity，classification 報告至少包含：
+速度主指標是 Assistant 決策延遲，包含 RAG、推論與重試；
+人工選擇等待與 EEG 訓練等工作時間另列，不混入模型速度。
 
-- accuracy
-- balanced accuracy
-- macro F1
-- AUC
-- confusion matrix
+### 已確認：速度的中位數、P95 與最大值
 
-若資料是 binary classification，AUC 使用 ROC-AUC；若是 multiclass，需明確標註 macro /
-one-vs-rest 設定。所有 metrics 要同時保存 machine-readable JSON 和 human-readable summary。
+2026-09-19 使用者同意以下三個統計量及用途；不以平均值作唯一速度摘要：
 
-## EEG Pipeline Baselines
+| 指標 | 用途 |
+| --- | --- |
+| 中位數（P50） | 比較一般一次決策的等待時間 |
+| P95 | 描述較慢的決策，作為評估等待時間可接受性的主要指標 |
+| 最大值（Max） | 揭露本次觀測的最慢案例，連回題號與完整軌跡；不單獨決定排名 |
 
-若 thesis appendix 或 product validation 需要 EEG model sanity，才需要至少包含：
+各題延遲包含自身的修復成本；成功與失敗分開呈現，另報逾時數／率，
+不能靠快速失敗讓速度看起來較好，也不能只保留成功題而隱藏失敗。
+逾時代表到上限仍未完成，須標示觀測下界與終態，不能把 timeout 秒數冒充完成時間。
+P50／P95／Max 的樣本數、成功／失敗範圍與逾時情況需一併顯示；
+不能把排除逾時後的分位數宣稱為全部請求的等待分布。
+最大值只是本次觀測，不是未來最壞情況的保證；不靜默移除慢題或極端值。
 
-- chance / majority-class baseline。
-- classical baseline：例如 CSP + LDA 或 CSP + SVM。
-- neural baseline：目前 XBrainLab 可跑 EEGNet、ShallowConvNet、SCCNet。
-- ablation：沒有 agent assistance 的 manual workflow vs agent-assisted workflow，僅用於工具使用效率
-  或 workflow completion，不得混入 EEG classification metrics。
+分位數算法、跨 repeats 的彙整、P95 可接受上限及強制 timeout 秒數仍待確認；
+先依 pilot 確認可行性，再於 Validation 前固定。計時邊界如下。
 
-baseline 必須使用相同且已記錄的 split membership，不可各自重新抽 split。
+### 已確認：準備、決策與操作時間分開
 
-## EEG Split Evidence 與 Rerun 限制
+2026-09-19 使用者同意載入不混入每題速度，採以下量測邊界：
 
-目前產品在 dataset preview／materialization 使用
-`XBrainLab/backend/dataset/split_audit.py` 的實際資料洩漏與來源座標檢查。
-未使用的 thesis split artifact builder／writer、v1 JSON schema 與專屬 validator CLI 已退役；
-目前沒有對應的產品 export／artifact rerun 入口，也不能將舊 validator 通過當作完整
-schema、provenance 或可重現性證據。既有結果檔讀取與 dataset runtime audit 不受此退役影響。
+| 時間 | 開始 → 結束 | 用途 |
+| --- | --- | --- |
+| 模型載入 | 開始啟動模型 runtime → 模型回報可用 | 準備時間，獨立報告 |
+| RAG 準備 | 開始載入 embedding／索引等必要資源 → 可供檢索 | 一次性準備；RAG off 標不適用 |
+| 暖機 | 準備完成後，一次固定非正式題目的生成開始 → 結束 | 獨立保存，不混入正式題目 |
+| 每題決策 | 題目交給已就緒的 Assistant → 最終決策通過正常檢查並準備交付操作，或回覆／錯誤終態確定 | 暖機後的主要速度比較 |
+| GUI 交接 | 開窗要求交付 → 對應介面實際顯示並就緒 | 操作層，另記 |
+| 直接操作 | 工具交付執行 → 完成／失敗 | 操作層，另記 |
 
-若未來另行建立 EEG pipeline experiment，仍須保存並驗證以下證據；這是研究要求，
-不是目前已實作的輸出格式或命令：
+決策延遲包含取得狀態、組合 prompt、該題 RAG 檢索、完整生成、解析／驗證及最多兩次修復。
+收到第一個字不代表決策完成，不以首字延遲取代主指標。已就緒假設與實際事件須可核對，
+不能將逐題檢索／組裝等成本挪到起始時間以前來縮短數字。
+模型／RAG 一次性準備、使用者填寫或確認、濾波／訓練／Saliency 等操作執行，
+以及 scorer、截圖與報表生成，均不算模型決策時間；相關操作仍需另存結果與時間。
 
-- 固定資料來源／identity、protocol、seed、repeat、train／validation／test membership，
-  並以實際資料重驗 class、group 與 epoch-window leakage。
-- 固定 preprocessing、model、optimizer 與環境版本，保存 metrics、log 與模型摘要。
-- 重建相同 membership 後重跑 train／evaluate，比對結果及 source／environment identity。
+暖機採固定、非正式題目，不使用 Test、不執行操作工具，保留暖機耗時與紀錄。
+暖機對話不帶入正式案例；具體暖機內容與生成設定在實作前固定，不隨模型結果臨時更換。
+不為湊載入樣本反覆卸載／重載，每次實際載入有幾次就報幾次。
+記錄模型存放的 SSD／HDD 等條件、runtime 是否重啟與可知的快取狀態；
+不清除作業系統快取來假裝完全冷啟動，也不把單次暖機宣稱為所有請求已完全穩態。
 
-未閉合上述 provenance、audit 與重跑證據的 EEG experiment，不得宣稱已具可重現的
-thesis domain-workflow evidence。Runtime focused regression 可用：
+選系統仍以平衡決策正確率優先，速度重點是暖機後決策 P50／P95；
+載入時間先作附帶資訊，不分攤或扣入每題分數，不另開大型冷啟動／部署研究。
+現有 runtime ready 事件與整回合 metrics 可作接點，但整回合時間可能含後續等待，
+不得直接當作本節決策延遲；精確事件接線仍待 runner 實作與驗證。
 
-```bash
-poetry run -- pytest --capture=sys tests/unit/backend/dataset/test_split_audit.py -q
+### 共同報告與人工核對
+
+失敗、逾時、取消、skip、未完成與 runner／scorer 異常須可辨識，
+不能靜默排除或算成功。實驗執行完整性與模型答對比例是兩件事：
+分數低的完整實驗可以是有效結果；未跑完的高分不是完整實驗。
+
+2026-09-19 使用者已同意：模型輸出錯誤或決策逾時算錯，保留在適用分母中；
+評測器自身故障標記為無效測量，修正後重跑並保留原紀錄，不混為模型答錯。
+無效測量必須有故障證據，不能僅因成績差便排除；未補齊前明列缺失，不能宣稱完整比較。
+
+人工 scorer 審查要看**同一份已保存軌跡**，不是另跑一次模型後比較兩次答案。
+核對 false positive／negative；若可行隱藏模型／條件，降低偏差。
+人工核對數量見下方已確認配套；抽樣細則、信賴區間與跨模型比較方法仍待討論。本輪 Clarification／No-call 的
+自由文字內容已明確不評，不因保留人工 scorer 核對而重新引入文字品質打分。
+
+### 已確認：計分、重複、重跑與人工核對
+
+2026-09-19 使用者同意以下整組配套；確認研究規則不代表已授權實作或執行實驗：
+
+- 單題決策採 0／1：Action 須工具與必要參數均符合題目允許答案；工具對但必要參數錯不給半分。
+  開窗題以正確工具決策評分，實際介面就緒另列；後端執行失敗不倒扣已正確的模型決策，
+  但產品 outcome 必須記失敗。缺資訊與 No-call 沿用正常有效不操作規則，不評文字內容。
+- Pilot 各條件一次；完整 Validation／Test 各條件採三個預先固定 seeds，保留每次分數及三次平均，
+  不取最高一次、不以多數決取代實際嘗試。Development 局部除錯不必每次跑三輪，
+  正式候選比較須同題同預算。三次不能當成三倍獨立題目，推論仍須考慮題目 family。
+  三次是有限預算下的起點，不保證涵蓋所有波動；須核對 pilot 成本，若需變更次數則再確認，
+  不因成本或結果自行減少、追加或挑選 repeats。
+- 模型錯誤／逾時不因想提高分數而重新抽樣；評測器修正後只重跑直接受影響的測量，
+  若只是 scorer 錯且原始軌跡完整，優先一致重評受影響紀錄，不重跑模型。
+  程序中斷尚未開始的題目可續跑，已交付操作但終態不明者先核對狀態，不能盲目重送。
+  OOM／模型載入失敗須另列配置可運作性問題，不自動歸為評測器故障或換模型掩蓋。
+- 人工核對 Validation／Test 各 30 筆已保存軌跡，共 60 筆，涵蓋三類決策及判對／判錯；
+  Validation 跨五模型抽樣，依最新 Test 範圍，Test 涵蓋選定系統、適用消融與不重複的 B0，
+  有修復／逾時案例時納入，盡可能遮蔽模型身分；這是有限 scorer 品質檢查，不是全面無誤保證。
+  發現 scorer 缺陷後擴查受影響規則、修正並一致重評，不只修抽到的個案。
+  僅有一名評估者，不宣稱評估者間一致性；抽樣細則、統計與相近表現判準仍待固定。
+
+### 證據不能越級
+
+離線合成／deterministic 測試只證明 parser、scorer 或特定工程規則；
+固定 command replay 證明執行路徑，不能代表模型會選對；
+真模型但不執行工具的結果不能證明產品 outcome；
+backend JSON 不能代替 UI 可見結果。所有報告標明來源與限制。
+
+EEG 資料只支撐上述真實任務環境，保留來源／授權／checksum、subject/session、
+初始狀態、preprocess／epoch 設定與必要 split membership，避免資料洩漏。
+不在本輪新增 EEG 訓練 baseline、重新下載全部資料或恢復已退役的 split artifact export。
+若另做 EEG 效能研究，需獨立批准 protocol，不能借用 Assistant 分數作證。
+
+## 5. 單一執行入口與結果資料夾
+
+### 已確認的需求；尚未實作
+
+使用者要一個腳本跑完**已設定的實驗**，產出一個完整資料夾，
+可以直接看模型輸入、輸出、準確率與速度，不必手動串多個工具或到處尋找 log。
+
+同一入口需能列出可跑實驗，選一個、選多個，或跑設定檔中的全部實驗。
+每個實驗有固定 ID，對應模型、條件、題庫分組與 repeats；
+ID 的具體清單及 CLI 拼法待討論，不在文件中假裝已有可用命令。
+「全部」限定於本次選定且可執行的設定，不自動解封 Test、不自動調 prompt，
+也不自動下載缺少的模型或替換失敗模型。
+
+單一入口不代表把所有責任塞入一個巨型檔案；重用既有模型、Command 與觀測能力，
+不建立第二套產品 state／policy 或通用實驗控制平台。
+
+### 輸出草案
+
+以下是已討論的內容需求與候選命名，不是目前已有的產物 schema：
+
+```text
+experiment_日期時間/
+├── report.md                 # 準確率、速度、比較、失敗與完整性摘要
+├── results.csv               # 每題／模型／條件／輪次結果，可用 Excel 分析
+├── experiment.json           # 本次解析後的完整設定、版本、實際選取清單
+├── cases/
+│   └── 模型_條件_輪次_題號/
+│       ├── input.json        # 題目、messages、狀態、工具、RAG 內容
+│       ├── prompt.txt        # 實際套模板並處理長度後的模型輸入文字
+│       ├── raw-output.txt    # 原始生成文字，不以 Host 修復後輸出替代
+│       └── result.json       # oracle、觀測、判分、時間、終態／錯誤
+└── execution.log             # 整場執行紀錄
 ```
 
-舊121-case deterministic／primary／fallback artifacts屬superseded provenance，不能作為Stable v2
-或thesis-candidate current evidence。Current產品層只有v12 separated evaluator evidence：50-case core、
-24-case precision、7-case clarification各自保留分母，81-case total只證明inventory completeness；strict
-promotion判斷只讀獨立的`candidate_gate.passed`，不宣稱81-case model accuracy。正式thesis benchmark、
-repeat-run matrix、confidence interval、resource／latency條件與dashboard均待產品主線穩定後重建。tool-call
-benchmark也不能取代UI、launcher或import wizard的產品驗收evidence。
+多輪／重試需逐次保存上述實際輸入與輸出、因果順序及最後可見回覆，
+不能只留下最後成功的一次；實際存放方式待定。適用的產品狀態與 UI 證據也放在同一 run 下。
+預期答案只能用於 scorer，不得流入受測模型的 prompt。
 
-external EEG dataset runner、repeat runs、baseline comparison 和 statistical reporting 是可選的
-pipeline support，不是目前 thesis 主線。這些不能取代 local LLM 真實 tool-call accuracy run。
+每次 run 保存精確 source、模型 revision、runtime／套件、官方模板、prompt、
+工具 schema、RAG index／內容身分、題庫／scorer 版本、seed、repeat、硬體與完整參數，
+以及本次實際選取的實驗與重跑指令。不能只記「使用預設值」或只保存使用者一句話。
+固定 seed 與環境支持重現及比較，不保證 GPU 每次逐字相同。
+
+資料夾不複製整份模型權重或原始 EEG 資料；用可定位的 identity／checksum 連回受控來源。
+完整 prompt 可能含路徑與資料內容，應使用研究 fixture、排除 secrets／病患資訊；
+分享或公開哪些產物另行確認。
+
+### 待確認的操作細節
+
+- 中斷時逐步落盤、相同設定續跑、不得覆寫原證據，是目前建議的操作方式；
+  checkpoint 邊界、部分完成如何重跑、exit code 與設定不符時的處理仍待討論。
+- 原則逐模型載入以控制 VRAM；固定一次暖機與載入另計已確認，排程順序與安全平行範圍待 pilot。
+- 具體 experiment IDs／設定檔格式、輸出目的地、命名與容量、圖表及報告版型尚未定案。
+
+## 6. 凍結、執行節奏與完成條件
+
+### 已確認：pilot 前的準備門檻
+
+完整施工順序、各階段交付、分工與停止條件由 [Now 的 M0–M6 計畫](../planning/now.md) 擁有。
+2026-09-19 使用者確認先完成整體計畫，M1 題庫與 M2 系統可平行準備，但兩者都通過才做 pilot：
+
+- **題庫就緒**：第 3 節的 495 題完成、oracle／初始狀態可核對、family／split 審查完成。
+  Test 由使用者自行審查與封存，不以準備 gate 為由讓開發 agent 提前讀取；
+  Validation 也不用作產品或 prompt 除錯。Pilot 從已備妥的 Development 題目抽取。
+- **系統就緒**：本研究所需的模型接入、runner、真實觀測、scorer、計時與輸出可運作；
+  已知正反例、必要安全／取消、修復／逾時及失敗保存的工程檢查通過，
+  五模型完成有範圍的載入與 smoke check，授權／資源缺口明確處理。
+- **基線可追溯**：準備版本與 pilot 修正有紀錄，M4 改善前保存可重跑 B0；不事後重建舊成績。
+- **啟動條件**：精確 pilot 配置、題目清單、輸出與預算已列明，且已取得對應執行授權。
+
+就緒不是全產品零缺陷、模型高正確率或完成所有架構改善；不把 M4 的研究優化提前作為 pilot 門檻。
+反之，也不能把測量尚不可信、題庫未完成或模型接入缺失全部留到 pilot 才處理。
+Smoke／工程檢查不是 pilot 成績；pilot 才量測已就緒流程的真模型整合、案例失敗與成本。
+
+### 已確認：pilot 的定位與順序
+
+2026-09-19 使用者同意 pilot 是正式實驗前的小規模試跑，先確認模型能運作、
+輸入／輸出保存與判分／計時可信，並估算後續實驗成本；不是先選冠軍或正式 Test 成績。
+順序為：整體計畫 → 完成題庫與系統前置驗證 → pilot → Development 改善 → Validation 選版 → 凍結 → 正式 Test。
+Pilot 僅使用 Development 題目，不讀取封存 Test，也不以 Validation 題目除錯或調整設定。
+所有試跑、失敗與修正仍保留紀錄；pilot 中發現的模型表現問題留待 Development 改善，
+不藉試跑無限調 prompt。這次確認定位與順序，不是啟動實作、下載或試跑的授權。
+
+使用者進一步同意以下兩階段規模與 pilot 預算；這不代表正式實驗矩陣或產品設定已定案：
+
+- 取 30 題 Development：18 題 Action、6 題缺資訊、6 題 No-call，包含較長輸入與不同狀態。
+- 五模型各跑 RAG on／off 一次，共 300 次案例執行；不代表正式實驗也已決定採此矩陣。
+  第一階段先從這 30 題中取 6 題，涵蓋操作、缺資訊與不操作，共 60 次；確認模型載入、
+  紀錄、判分與計時可用後，第二階段補完其餘 24 題，共 240 次，不另加一套題目。
+  若測量流程有缺陷，先修正並保留版本與失敗紀錄，受影響部分重驗後才繼續；
+  模型正常產生錯誤決策仍是有效觀察，不因分數低而停止或換模型。
+  單次、小樣本的延遲只用於粗估，不宣稱已有穩定 P95 或正式模型排名。
+- 試跑機器時間預算為 4 小時；未完成須保留部分結果與原因，不能宣稱完成或自動延長。
+- Pilot 整次決策強制 timeout 為 120 秒，五模型一致，
+  是初次生成與最多兩次修復共用的保護上限，不是每次生成各 120 秒，也不是可接受等待。
+  載入與實際 EEG 操作另計；逾時紀錄保留，不從結果中刪除。
+- P95 ≤ 10 秒仍是**待確認的體驗目標草案**，不是淘汰模型的硬門檻。
+  先看實測，再由使用者確認可接受等待；不得因 pilot 測得較慢就自動放寬目標。
+- 另用少量工程檢查驗證修復／逾時機制；正常題目未觸發這些路徑不代表已驗證。
+  工程檢查與模型案例分開，不混入模型準確率或冒充 300 次案例的完成數。
+
+Pilot 的交付是可核對的流程／測量證據、五模型可運作狀態與限制，以及正式實驗成本估計；
+不是先把模型表現修好才結束。未完成或不可運作的條件如實列明，不能宣稱全面可行。
+最終速度門檻與正式逾時規則須在 Validation 前固定；尚未授權執行 pilot。
+
+### 已確認的方向
+
+2026-09-19 使用者先接受有限改善，再明確修正目標為選出最佳完整系統，
+接受五模型參與開發／候選選擇的方法與下列 Development 中止規則。
+先前只用 Granite＋Phi 主導開發的作法已被取代。這不是開始施工／下載／長跑的授權。
+
+1. **可信測量與 B0**：先確認題意、oracle、scorer、實際輸入／輸出與 outcome 紀錄可用，
+   分開題目 families，再保存可重跑的 B0 基線，包括 source、模型、prompt、RAG 與設定。
+2. **Development 改善**：五模型都有改善機會；共用任務資訊、Command、狀態、權限、安全與判分。
+   允許有根據的官方模板、prompt 呈現與生成設定差異，預先記錄在配置中，不能暗中無限調參。
+   局部修改先跑相關案例，重要候選須比較五模型。B0、B1、B2 是系統架構快照，
+   各快照記錄五模型的精確配置，不是只替固定模型打造的三個版本；不建立五套產品 owner。
+   重要改動記錄失敗、原因假設、修改與支持／反對證據，預算與中止條件見下節。
+3. **集中 Validation**：B0、B1、B2 及各模型配置固定後，以同一套預先固定條件比較。
+   先排除已知未授權操作、資料一致性或不可信評分問題，依下節已確認原則選擇完整系統。
+   同時查看三類決策表現，避免總分掩蓋類別退步；具體細則必須在看結果前決定。
+   不預設 B2 勝出，可以保留 B0；不看完 Validation 再針對它追加 B3。
+   評測器若有真正缺陷，修正後以一致規則重評受影響版本，不保留有利的舊分數。
+4. **凍結**：測量可信、承諾任務可實測、版本選擇有依據、沒有已知直接安全／資料損失問題，
+   並列出剩餘限制。不要求 Development 滿分；評測失真或工作流程無法測量時不能假裝通過。
+
+允許改善狀態／工具資訊與 prompt、RAG 組織／檢索、澄清／格式修復／錯誤回覆／重試，
+以及直接相關的內部責任分工。不包含模型微調、新模型搜尋、大規模架構重寫、
+題目專屬答案或與實驗無關的 GUI／全面清理；產品工具、權限與操作契約變更仍須另行確認。
+
+Development、Validation、Test 都要保存逐次輸入／輸出、分數、版本與設定。
+前兩者不是不可重現，而是已影響開發與版本選擇，不能取代獨立 Test 證據。
+論文正文呈現重要修改、候選比較與選擇理由，完整紀錄另存附錄／實驗附件；
+不只保留成功嘗試，也不能拿最終 source 重跑來冒充早期開發成績。Test 不回流調參。
+
+正式 Test 前固定 source、模型／runtime、prompt／RAG、工具、cases、scorer、
+參數、seed、repeats、失敗／重試政策與分析方式。改版後的結果是新實驗身分，
+不覆寫舊分數或混成同一組結果。
+
+不因等一次 GUI 手測而把每個工具／文件小改都升級成產品驗收；
+真正產品行為變更仍遵守既有公開契約與使用者驗收規則。
+
+Test 用於檢驗 Validation 選擇能否延續到未參與選擇的題目，不是再選版的開發集。
+若 Test 中消融版本或 B0 更好，照實報告，不事後替換原先的選擇並冒充事先決定。
+後續若改採其他系統，屬新產品決策；新的獨立驗證需要未曝光資料。
+
+### 已確認的最佳系統選擇原則
+
+2026-09-19 使用者同意以下取捨，適用於 Validation 選版，而非 Test 後重新挑選贏家：
+
+1. 先滿足必要安全條件；未滿足者不能靠較高準確率或較短延遲抵銷。
+2. 在速度符合可接受範圍的候選中，以第 4 節已確認的**平衡決策正確率**為主要分數；
+   使用者後續將開窗、參數決策與不操作列為評估重點，取代原先以完整任務成功率統一排名的草案。
+   真實產品執行結果另列，不將決策主分數冒稱完整系統完成率。
+3. 表現相近時，選擇較快、較簡單的系統。
+
+主排名層級、類別分母與 repeats 依第 4 節已確認的規則；必要安全檢查清單、統計細則、
+速度數值上限、「表現相近」判準與簡單程度的可核對依據，仍需在查看 Validation 結果前固定。
+不自行填入秒數、百分點、權重或顯著性門檻，
+也不把「沒有顯著差異」直接當作等效；若無候選符合限制，不默默放寬門檻選出贏家。
+後續使用者已區分開窗／填參數工具，並採用缺資訊正確不執行指標（第 4 節）；
+主排名採允許修復後的平衡決策正確率，不能將 GUI 交接或不執行結果冒稱完整任務完成。
+
+### 已確認的 Development 中止規則
+
+中止分成「停止搜尋」與「是否可進入 Validation」，不用主觀的「夠乾淨／夠好」判斷。
+
+| 項目 | 已接受的草案預算 |
+| --- | --- |
+| 改善輪數 | 最多 2 輪 |
+| 每輪方案 | 最多 3 個有紀錄的方案，共最多 6 個，不含 B0 基線 |
+| 保留版本 | B0 基線、最多 B1／B2 兩個正式候選；不必用滿或強行讓 B2 勝出 |
+| 模型覆蓋 | 五模型都參與重要候選比較 |
+| 停止新增方案日期 | 暫定 2026-10-04，須先確認準備工作與 pilot 成本可行 |
+
+一個方案是執行前寫明假設、變更與比較方式的完整配置，可包含五模型各自明列的設定；
+同一方案測五模型不算五個方案。看完結果後另換 prompt、重試次數或 RAG 設定，
+就是新的方案，不得藏在原方案中無限嘗試。純粹修正無法執行的程式錯誤可重跑，
+但保留失敗與版本；若受測行為改變，不能稱為單純重跑。
+先用小型 pilot 估算成本，在正式 Development 前確認預算；需改動上述預算時明確再確認，
+不能因分數不好看自動放寬。方案額度或確認後的截止日期到達，即停止新增改善方案。
+
+每輪須交付：同題比較、五模型證據、三類決策與 outcome／延遲、完整失敗／逾時／重試紀錄、
+保留／撤回理由，以及含具體案例與阻擋判斷的剩餘問題表。
+局部方案可先 focused run；成為 B1／B2 前必須處理完整 Development 清單，不能只拿局部高分選版。
+
+進入 Validation 前，以下清單須全部通過：
+
+- 每個應執行的 Development case 都有終態／結果，沒有無聲漏跑；可記錄模型失敗，不能當成功。
+- 已知 scorer 錯判已修正，對應正反例檢查通過；這不宣稱所有未知誤判都不存在。
+- 各候選的 source、模型、prompt、RAG、參數、必要資源身分與重跑方式齊全。
+- 已知直接安全／資料損失缺陷的回歸檢查通過，例如未確認執行或取消後仍修改資料。
+- 候選清單與選擇規則已固定，不依 Validation 結果追加版本或改判分。
+- 剩餘錯誤已區分為模型、產品或評測器問題，能判斷結果是否可用，而非強求模型全對。
+
+| 到達停止點的狀態 | 下一步 |
+| --- | --- |
+| 預算結束，清單通過 | 停止改善，進入 Validation；不因分數不滿意自動加第三輪 |
+| 提早準備完成、清單通過 | 可提早結束，不為用滿預算硬做修改 |
+| 預算結束，清單未過 | 明列阻擋，請使用者決定有範圍的延長、調整研究範圍或承認本輪尚無有效評估 |
+
+不以 Development 達到 95% 或其他總分作為唯一停止條件；開發分數可能被調熟，
+且會掩蓋重要類別的退步。產品品質門檻與研究的預算／終點是不同問題。
+日期到達時若必要 evidence 仍未取得，不能降低 gate、假稱完成或由 agent 無限延長。
+
+### 已知限制與待討論
+
+- 五模型都有機會不代表搜尋充分或絕對最優；模型適配的差異與實際調整預算必須揭露。
+- B0 與選定版本的差異可能包含多個改動，整體改善不證明單一機制的因果效果；
+  個別貢獻需另行設計消融比較。
+- Dev 反覆使用與 Validation 選版都有偏差風險；保留過程、限制查看、維持 Test 封存。
+- 兩個候選是成本預算，不保證最佳架構；單一人工作者／評分者的侷限仍需揭露。
+- **暫定 2026-10-04 為改善截止點**，仍須 pilot、題庫與 runner 準備時間確認。
+  到期若測量或安全條件未滿足，須明確調整範圍／日期，不能降低判分要求冒充凍結。
+- Validation 的選擇順序與三次 repeats／分數平均已確認；其餘統計算法、數值門檻／相近判準尚未定案；
+  一批比較不代表單次隨機生成，需在使用 Validation 前固定。尚未下達夜間長跑排程。
+
+本階段研究結果完成，需有已凍結且實際執行的實驗清單、完整逐題證據、
+可檢查的 scorer／人工核對、準確性與速度報告、失敗／排除說明與重現指令。
+不能以腳本能啟動、unit tests 通過或跑完部分條件宣稱整體完成。
+實際數值門檻與統計呈現仍待討論；允許如實報告負面結果，不強迫得到正面結論。
+
+## 7. 現有能力與實作缺口
+
+- 已有[三決策／三層離線 calibration](assistant_benchmark_calibration.md)，
+  使用合成正反例與真 parser／schema；沒有因此執行真模型，也不是產品 benchmark 分數。
+- 現有 `scripts/dev/run_stable_assistant_model_eval.py` 的 frozen 81-case inventory
+  保留 core 50、precision 24、clarification 7 的分開證據與原有 gate。
+  它會用真模型，但攔截工具執行，不能直接提供本規格所需的真實產品 outcome。
+- Local backend 已有選擇性 prompt capture，可保存 rendered prompt、原始生成文字及 metadata；
+  不是完整 experiment runner，也不代表精確 token IDs 或產品全程證據已保存。
+- 既有 ChatPanel walkthrough／產品 walkthrough 有部分真 UI、狀態、截圖與事件收集能力；
+  不能直接宣稱已覆蓋本規格的所有實驗。
+- 五模型 runner、正式 495 題、封存流程、真實 outcome 收集與 scorer 接合、
+  選擇／全部實驗入口、完整結果目錄及彙整報告，**尚未完成**。
+- 舊 121-case artifacts、已退役 runner／split writer 只有歷史身分，不恢復；
+  舊 81-case 與 calibration 證據也不得升格為新論文 Test。
+
+## 8. 決策與施工入口
+
+完整里程碑及當前下一步見 [Now](../planning/now.md)。依使用者最新要求，
+先把完整計畫與準備工作定好，不再逐個技術細節零碎確認，也不因方法骨架已定就直接啟動 pilot。
+
+本文件各節仍區分已確認與提案：Validation 最多 30 條件、P95 10 秒目標、正式生成配置、
+多輪範圍、統計與相近判準都不因整理里程碑而自動定案。
+題目／oracle、工具觀測與實作範圍在準備開始前集中核對；需要實測的成本／速度先經 pilot，
+最終選版與統計規則必須在看 Validation 結果前固定，Test 方法須在開封前凍結。
+Agent 對內部命名、報表欄位等提供一致預設；新權限、公共契約與實質研究取捨仍需使用者決策。
+
+本文件擁有研究規格與證據契約，Now 擁有施工與進度；不另建平行 milestone 文件或控制平台。

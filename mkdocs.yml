@@ -62,6 +62,7 @@ nav:
   - 驗證:
       - 驗證策略: validation/README.md
       - Thesis Protocol: validation/thesis_protocol.md
+      - 人工出題委託說明: validation/assistant_question_authoring_guide.md
   - 產品方向:
       - Roadmap: planning/roadmap.md
       - 目標總覽: target/README.md
