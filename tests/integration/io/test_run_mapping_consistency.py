@@ -40,6 +40,74 @@ def _write_runs(root: Path, *, same_name: bool = False) -> list[Path]:
     return paths
 
 
+@pytest.mark.parametrize("explicit_run_override", [False, True])
+def test_shared_internal_class_choices_survive_apply_recipe_and_epoch(
+    tmp_path: Path, explicit_run_override: bool
+) -> None:
+    """Ordinary class choices suffice; explicit recipe overrides still win."""
+    root = tmp_path / "source"
+    paths = _write_runs(root)
+    shared = {"T1": "A", "T2": "B"}
+    override = {"T1": "left fist", "T2": "right fist"}
+    choices = {
+        "label_carrier": "embedded_events",
+        "class_map": shared,
+        "internal_event_selection": {
+            "label_event_codes": ["T1", "T2"],
+            "not_label_event_codes": [],
+            "class_map": shared,
+        },
+    }
+    if explicit_run_override:
+        choices["run_event_mappings"] = {str(paths[0]): override}
+    expected = [override if explicit_run_override else shared, shared]
+    original = {path: path.read_bytes() for path in paths}
+    recipe = tmp_path / "recipe.json"
+    for replay in (False, True):
+        service = ApplicationService()
+        try:
+            if replay:
+                loaded = service.execute(ReloadInterpretationRecipeCommand(str(recipe)))
+                assert loaded.ok, loaded.message
+            else:
+                scan = service.execute(
+                    ScanSourceCommand(source_path=str(root), source_hint="folder")
+                )
+                assert scan.ok, scan.message
+                preview = service.execute(PreviewInterpretationCommand(choices=choices))
+                assert preview.ok, preview.message
+            validation = service.execute(ValidateInterpretationCommand())
+            assert validation.ok, validation.message
+            applied = service.execute(ApplyInterpretationCommand(confirmed=True))
+            assert applied.ok, applied.message
+            for item, mapping in zip(
+                service.study.preprocessed_data_list, expected, strict=True
+            ):
+                hint = item.get_runtime_detail("data_interpretation_epoch_hint")
+                assert hint["class_map"] == mapping
+                assert hint["event_label_aliases"] == mapping
+                source = mne.io.read_raw_fif(item.get_filepath(), verbose=False)
+                np.testing.assert_array_equal(
+                    item.get_mne().get_data(), source.get_data()
+                )
+                np.testing.assert_array_equal(
+                    item.get_mne().annotations.onset, source.annotations.onset
+                )
+            handoff = applied.state.interpretation.epoch_handoff
+            labels = {label for mapping in expected for label in mapping.values()}
+            assert set(handoff["usable_class_labels"]) == labels
+            assert handoff["run_dependent_mapping"] is explicit_run_override
+            if not replay:
+                saved = service.execute(SaveInterpretationRecipeCommand(str(recipe)))
+                assert saved.ok, saved.message
+            epoch = service.execute(CreateEpochCommand(t_min=0.0, t_max=0.25))
+            assert epoch.ok, epoch.message
+            assert set(epoch.state.epoch.event_ids) == labels
+        finally:
+            service.close()
+    assert {path: path.read_bytes() for path in paths} == original
+
+
 def test_selected_recording_does_not_include_same_named_sibling_metadata(
     tmp_path: Path,
 ) -> None:
@@ -156,11 +224,6 @@ def test_reviewed_run_mapping_survives_apply_recipe_and_epoch(
                 assert scan.ok, scan.message
                 preview = service.execute(PreviewInterpretationCommand(choices=choices))
                 assert preview.ok, preview.message
-                review = preview.diagnostics["preview"]["internal_event_preview"][
-                    "run_event_mapping_review"
-                ]
-                assert review["status"] == "safe"
-                assert [row["events"] for row in review["files"]] == expected
             validation = service.execute(ValidateInterpretationCommand())
             assert validation.ok, validation.message
             applied = service.execute(ApplyInterpretationCommand(confirmed=True))
@@ -232,13 +295,6 @@ def test_ambiguous_alias_cannot_fill_an_unmapped_recording(
             )
         )
         assert preview.ok, preview.message
-        review = preview.diagnostics["preview"]["internal_event_preview"][
-            "run_event_mapping_review"
-        ]
-        assert review["status"] == "needs_confirmation"
-        assert review["files"][1]["missing_event_codes"] == ["T1", "T2"]
-        if remap:
-            assert review["files"][0]["missing_event_codes"] == ["T1", "T2"]
         assert service.execute(ValidateInterpretationCommand()).ok
         unconfirmed = service.execute(ApplyInterpretationCommand(confirmed=False))
         assert not unconfirmed.ok
@@ -259,7 +315,7 @@ def test_ambiguous_alias_cannot_fill_an_unmapped_recording(
                 for item in data
             }
             assert hints[str(paths[0])] == reviewed
-            assert hints[str(paths[1])] == {"T1": "T1", "T2": "T2"}
+            assert hints[str(paths[1])] == {}
         epoch = service.execute(CreateEpochCommand(t_min=0.0, t_max=0.25))
         assert not epoch.ok
         assert not epoch.state.epoch.exists

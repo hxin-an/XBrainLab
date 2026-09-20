@@ -251,7 +251,7 @@ scan -> interpret -> preview -> validate -> confirm -> apply -> save recipe
 - GDF + external label sequence，需要選 trial anchor。
 - `.mat` 內有多個 label-like variables。
 - event code 同時混有 trial start、cue、response、artifact 或 boundary。
-- PhysioNet EEGMMI 類 run-dependent `T1` / `T2` semantic。
+- 未完成的事件選取／class 決定；不因 `T1` / `T2` 名稱要求另一份逐 recording mapping。
 - BIDS sidecar metadata 不完整，但仍有可解釋候選。
 - XDF / LSL 有多個 signal / marker streams。
 
@@ -515,12 +515,16 @@ label carrier 產生 method-specific `placement_reviews`，並保存目前使用
 預設策略應由資料結構決定：有 duration / end 時優先 interval；有明確 time field 時使用
 Label time；沒有 time field 但有 event-code field 時使用 Label event code；只有 label sequence
 時才使用 EEG event order。這仍不是 full BIDS support；BIDS inheritance、events.json levels、
-channels mismatch、跨 datatype 和複雜 run-dependent semantics 仍需 preview / confirmation。
+channels mismatch、跨 datatype 和實際來源／使用者選擇不一致仍需 preview / confirmation。
 
 `Labels inside EEG files` 的 suggested label 不應由單一 dataset 或單一格式 code table
 硬編碼決定。它只能是可審查建議，不能自動宣稱 class semantics 正確；UI 必須保留使用者把
 event 在 suggested labels 與 other events 之間雙向移動的能力。具體 evidence 規則屬於目前
 implementation contract，記在 `docs/architecture/data_pipeline.md`。
+
+使用者在既有 Match Labels 選定事件與 class 後，共用對應適用於本次選取的 recordings；
+`T1` / `T2` 不另設逐檔確認關卡，也不要求使用者提供動作名稱。既有 recipe 的明確逐檔
+對應仍保留並優先於共用對應；外部 label 仍按各自的 EEG 配對與已確認欄位套用。
 
 `duration_field` 不代表 Data Import 直接決定 epoch 長度。它是 recipe 中保存給後續 Epoch UI
 的 timing evidence；epoch step 之後應能用這個欄位建議或限制 epoch window。
@@ -569,7 +573,8 @@ agent tool-call benchmark 應測它是否能正確操作這條流程，而不是
 
 - GDF + external MAT labels：選 anchor、確認 class map、保存 recipe。
 - BCI Competition / BNCI：trial start、cue、artifact、class event 分開。
-- PhysioNet EEGMMI：run-dependent `T1` / `T2` 解讀。
+- PhysioNet EEGMMI：現有 UI 的 `T1` / `T2` class 選擇可直接到匯入／epoch；既有逐檔
+  recipe 對應仍能正確重播，不預塞隱藏 mapping 才能完成 UI 測試。
 - BIDS / OpenNeuro：folder scan、events / channels / participants metadata。
 - EEGLAB `.set`：boundary 不可當 class，event / urevent context 不丟失。
 - BrainVision：stimulus、response、sync、new segment marker roles 分開。

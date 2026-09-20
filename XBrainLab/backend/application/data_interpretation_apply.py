@@ -1222,13 +1222,6 @@ class DataInterpretationApplyService:
             return class_map_from_value_decisions(plan["value_decisions"])
         if run_mapping is None:
             run_mapping = self._run_mapping_for_target(candidate, target, plan=plan)
-        if plan is None and candidate.internal_event_preview.get(
-            "run_dependent_semantics"
-        ):
-            return {
-                code: run_mapping.get(code) or code
-                for code in self._internal_epoch_event_codes(candidate)
-            }
         result = dict(candidate.class_map)
         if isinstance(plan, dict):
             plan_mapping = plan.get("run_class_map")

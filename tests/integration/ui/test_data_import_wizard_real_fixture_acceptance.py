@@ -10,6 +10,8 @@ from pathlib import Path
 from threading import Event
 from typing import Any
 
+import mne
+import numpy as np
 import pytest
 from PyQt6.QtCore import Qt, QThreadPool, QTimer
 from PyQt6.QtTest import QTest
@@ -61,7 +63,10 @@ from tests.integration.ui.modal_helpers import visible_modal_dialog
 from XBrainLab.backend.application import (
     ApplicationService,
     ApplyInterpretationCommand,
+    CreateEpochCommand,
     PreviewInterpretationCommand,
+    ReloadInterpretationRecipeCommand,
+    SaveInterpretationRecipeCommand,
     ScanSourceCommand,
     ValidateInterpretationCommand,
     data_interpretation_scan,
@@ -209,6 +214,7 @@ class _WizardDriver:
     resolve_openneuro_trial_types: bool = False
     resolve_bbci_internal_events: bool = False
     resolve_bids_internal_events: bool = False
+    resolve_physionet_internal_events: bool = False
     expect_blocked: bool = False
     awaiting_label_field_refresh: bool = False
     dialog_count: int = 0
@@ -428,6 +434,7 @@ def _start_wizard_driver(
     resolve_openneuro_trial_types: bool = False,
     resolve_bbci_internal_events: bool = False,
     resolve_bids_internal_events: bool = False,
+    resolve_physionet_internal_events: bool = False,
     expect_blocked: bool = False,
     runtime: Any | None = None,
 ) -> _WizardDriver:
@@ -439,6 +446,7 @@ def _start_wizard_driver(
         resolve_openneuro_trial_types=resolve_openneuro_trial_types,
         resolve_bbci_internal_events=resolve_bbci_internal_events,
         resolve_bids_internal_events=resolve_bids_internal_events,
+        resolve_physionet_internal_events=resolve_physionet_internal_events,
         expect_blocked=expect_blocked,
         runtime=runtime,
     )
@@ -659,6 +667,40 @@ def _start_wizard_driver(
                 return
 
             if driver.phase == 3:
+                if driver.resolve_physionet_internal_events:
+                    assert not modal.get_result()["choices"].get("run_event_mappings")
+                    for code in ("T1", "T2"):
+                        button = next(
+                            button
+                            for button in modal.findChildren(QPushButton)
+                            if button.property("event_code") == code
+                            and button.text() == "Use for training"
+                        )
+                        modal.scroll_area.ensureWidgetVisible(button)
+                        QTEST.mouseClick(button, Qt.MouseButton.LeftButton)
+                    table = modal.findChild(QFrame, "DataImportInternalLabelsTable")
+                    assert table is not None
+                    selectors = [
+                        item
+                        for item in table.findChildren(QComboBox)
+                        if item.isEditable()
+                    ]
+                    assert len(selectors) == 2
+                    for selector, name in zip(selectors, ("A", "B"), strict=True):
+                        editor = selector.lineEdit()
+                        assert editor is not None
+                        modal.scroll_area.ensureWidgetVisible(editor)
+                        _replace_line_edit_text(editor, name)
+                        QTEST.keyClick(editor, Qt.Key.Key_Tab)
+                    choices = modal.get_result()["choices"]
+                    assert choices["internal_event_selection"] == {
+                        "label_event_codes": ["T1", "T2"],
+                        "not_label_event_codes": ["T0"],
+                        "class_map": {"T1": "A", "T2": "B"},
+                    }
+                    assert not choices.get("run_event_mappings")
+                    driver.trace.append("review T1/T2 as A/B without run mappings")
+                    capture_teacher_ui(modal, "physionet-shared-class-labels.png")
                 if driver.resolve_bids_internal_events:
                     if not modal._internal_event_preview_payload():
                         assert not driver.awaiting_label_field_refresh
@@ -779,6 +821,9 @@ def _start_wizard_driver(
                     driver.trace.append("return from no-label review without refresh")
                 if driver.resolve_bids_internal_events:
                     capture_teacher_ui(modal, "bids-embedded-review.png")
+                if driver.resolve_physionet_internal_events:
+                    assert not modal.get_result()["choices"].get("run_event_mappings")
+                    capture_teacher_ui(modal, "physionet-shared-class-review.png")
                 if driver.runtime is not None:
                     state_before_confirm = driver.runtime.get_view_publication().state
                     driver.fresh_pre_confirm_state = (
@@ -932,6 +977,77 @@ def _block_first_apply_raw_load(service: Any) -> tuple[Event, Event, Event]:
 
     service.dataset._raw_factory_provider = lambda: _BlockingRawFactory
     return load_started, release_load, real_load_finished
+
+
+def test_physionet_internal_classes_from_wizard_survive_epoch_and_recipe(
+    qtbot: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Visible class choices alone must reach real import, epoch and recipe replay."""
+    _require_manifest_group("physionet-edf-motor")
+    original_bytes = PHYSIONET_MOTOR_EDF.read_bytes()
+    source = mne.io.read_raw_edf(str(PHYSIONET_MOTOR_EDF), verbose=False)
+    source_onsets = source.annotations.onset.copy()
+    source_descriptions = source.annotations.description.copy()
+    source_events, source_ids = mne.events_from_annotations(source, verbose=False)
+    selected = np.isin(source_events[:, 2], [source_ids["T1"], source_ids["T2"]])
+    expected_events = source_events[selected]
+    expected_classes = [
+        "A" if event[2] == source_ids["T1"] else "B" for event in expected_events
+    ]
+    assert len(expected_events) == 15
+
+    monkeypatch.setattr(
+        QFileDialog,
+        "getOpenFileNames",
+        staticmethod(lambda *_args, **_kwargs: ([str(PHYSIONET_MOTOR_EDF)], "")),
+    )
+    host, panel, runtime = _build_dataset_panel(qtbot)
+    service = get_application_service(host.study)
+    driver = _start_wizard_driver(
+        resolve_physionet_internal_events=True,
+        runtime=runtime,
+    )
+    QTEST.mouseClick(panel.sidebar.import_btn, Qt.MouseButton.LeftButton)
+    _wait_for_applied_interpretation(qtbot, driver, runtime, panel)
+    assert driver.fresh_pre_confirm_state == (0, False)
+    assert driver.fresh_review_decisions == ["safe"]
+    assert "review T1/T2 as A/B without run mappings" in driver.trace
+    assert runtime.get_view_publication().state.interpretation.class_map == {
+        "T1": "A",
+        "T2": "B",
+    }
+
+    recipe = tmp_path / "physionet-classes.json"
+    saved = service.execute(SaveInterpretationRecipeCommand(str(recipe)))
+    assert saved.ok, saved.message
+    replay_service = ApplicationService()
+    try:
+        replay = replay_service.execute(ReloadInterpretationRecipeCommand(str(recipe)))
+        assert replay.ok, replay.message
+        validated = replay_service.execute(ValidateInterpretationCommand())
+        assert validated.ok, validated.message
+        applied = replay_service.execute(ApplyInterpretationCommand(confirmed=True))
+        assert applied.ok, applied.message
+        for imported in (service, replay_service):
+            raw = imported.study.preprocessed_data_list[0].get_mne()
+            np.testing.assert_array_equal(raw.annotations.onset, source_onsets)
+            np.testing.assert_array_equal(
+                raw.annotations.description, source_descriptions
+            )
+            result = imported.execute(CreateEpochCommand(t_min=0.0, t_max=0.25))
+            assert result.ok, result.message
+            epochs = imported.study.preprocessed_data_list[0].get_mne()
+            assert isinstance(epochs, mne.BaseEpochs)
+            assert len(epochs) == len(expected_events)
+            np.testing.assert_array_equal(epochs.events[:, 0], expected_events[:, 0])
+            labels = {value: key for key, value in epochs.event_id.items()}
+            assert [labels[event[2]] for event in epochs.events] == expected_classes
+            assert set(epochs.event_id) == {"A", "B"}
+    finally:
+        replay_service.close()
+    assert PHYSIONET_MOTOR_EDF.read_bytes() == original_bytes
 
 
 def test_physionet_r04_staged_review_restores_t1_t2_choices(qtbot: Any) -> None:

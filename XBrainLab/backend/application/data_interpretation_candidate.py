@@ -389,25 +389,6 @@ def build_interpretation_candidate(
         internal_event_warnings = internal_event_preview.get("scan_warnings", [])
         if isinstance(internal_event_warnings, list):
             warnings.extend(str(item) for item in internal_event_warnings)
-        if internal_event_preview.get("run_dependent_semantics"):
-            event_roles["run_dependent_events"] = "run/task mapping needs confirmation"
-            run_mapping_review = _internal_events.review_run_dependent_event_mappings(
-                internal_event_preview,
-                materializable_files,
-                run_event_mappings,
-                metadata=metadata,
-            )
-            internal_event_preview["run_event_mapping_review"] = run_mapping_review
-            if run_mapping_review["status"] == "needs_confirmation":
-                affected = [
-                    (f"{row['file']} missing {', '.join(row['missing_event_codes'])}")
-                    for row in run_mapping_review["files"]
-                    if row["missing_event_codes"]
-                ]
-                confirmation_items.append(
-                    "Confirm run-dependent T1/T2 event mapping before supervised "
-                    "training: " + "; ".join(affected) + ".",
-                )
         has_internal_event_rows = bool(
             internal_event_preview.get("candidate_label_events")
             or internal_event_preview.get("not_used_events")

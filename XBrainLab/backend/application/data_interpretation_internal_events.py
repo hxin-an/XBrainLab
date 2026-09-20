@@ -146,21 +146,6 @@ def build_internal_event_preview(
         "names_reliable": _names_reliable(candidate_rows),
         "pattern_status": _pattern_status(candidate_rows, not_used_rows),
     }
-    if _has_run_dependent_t_markers(aggregates):
-        result["run_dependent_semantics"] = True
-        result["run_dependent_event_codes"] = sorted(
-            [code for code in aggregates if str(code).upper() in {"T0", "T1", "T2"}],
-            key=str.casefold,
-        )
-        result["run_dependent_mapping"] = _run_dependent_mapping(
-            event_files,
-            file_names,
-            result["run_dependent_event_codes"],
-        )
-        scan_warnings.append(
-            "PhysioNet-style T1/T2 event labels can change meaning by run; "
-            "confirm run/task mapping before supervised training."
-        )
     if scan_warnings:
         result["scan_warnings"] = scan_warnings
     return result
@@ -643,76 +628,6 @@ def _pattern_status(
     if not_used_rows:
         return "Internal events found; choose labels"
     return "No internal events detected"
-
-
-def _has_run_dependent_t_markers(aggregates: dict[str, dict[str, Any]]) -> bool:
-    codes = {str(code).upper() for code in aggregates}
-    return {"T1", "T2"}.issubset(codes)
-
-
-def _run_dependent_mapping(
-    event_files: list[str],
-    file_names: list[str],
-    event_codes: list[str],
-) -> dict[str, Any]:
-    t_codes = [code for code in event_codes if str(code).upper() in {"T1", "T2"}]
-    return {
-        "status": "needs_confirmation",
-        "files": [
-            {
-                "file": file_name,
-                "run": _run_token_for_file(file_path),
-                "events": dict.fromkeys(t_codes, ""),
-            }
-            for file_path, file_name in zip(event_files, file_names, strict=True)
-        ],
-    }
-
-
-def review_run_dependent_event_mappings(
-    preview: dict[str, Any],
-    selected_files: list[str],
-    mappings: dict[str, dict[str, str]],
-    *,
-    metadata: Iterable[FileMetadataResolution] = (),
-) -> dict[str, Any]:
-    """Review whether every affected EEG file has a complete per-run map."""
-    event_codes = [
-        str(code)
-        for code in preview.get("run_dependent_event_codes", [])
-        if str(code).upper() in {"T1", "T2"}
-    ]
-    metadata = tuple(metadata)
-    runs = _run_tokens_for_files(selected_files, metadata)
-    resolved = resolve_run_event_mappings(selected_files, mappings, metadata=metadata)
-
-    files: list[dict[str, Any]] = []
-    affected_files: list[str] = []
-    for path in selected_files:
-        name = Path(path).name
-        run = runs[path]
-        selected_mapping = resolved[path]
-        events = {
-            code: str(selected_mapping.get(code) or "").strip() for code in event_codes
-        }
-        missing = [code for code, meaning in events.items() if not meaning]
-        status = "needs_confirmation" if missing else "safe"
-        if missing:
-            affected_files.append(name)
-        files.append(
-            {
-                "file": name,
-                "run": run,
-                "status": status,
-                "events": events,
-                "missing_event_codes": missing,
-            }
-        )
-    return {
-        "status": "needs_confirmation" if affected_files else "safe",
-        "affected_files": affected_files,
-        "files": files,
-    }
 
 
 def resolve_run_event_mappings(

@@ -1,6 +1,6 @@
 # XBrainLab Now
 
-最後更新：`2026-09-20`
+最後更新：`2026-09-21`
 
 ## Active — 產品品質線：Import 適配與內部整理
 
@@ -18,8 +18,10 @@ PR #143–#145 已進入此 main 基線；舊啟動器、RAG、split receipt 與
   這是待重現風險，不先宣稱使用者資料已錯誤。
 - Outcome：preview／validate／apply／recipe／epoch 的 recording 與 class 解讀一致，
   重複政策收斂；production、直接相關 tests／fixtures／scripts 的去留有具體理由。
-- 允許修復已重現的 mapping 誤套或資料一致性缺陷；不自行改 Graz 自動還原、T1／T2
-  confirmation 政策、不改 UI layout／文案／流程或 Assistant 公開工具。
+- 允許修復已重現的 mapping 誤套或資料一致性缺陷；不改 Graz 自動還原或 Assistant 公開工具。
+- 2026-09-21 使用者批准移除僅因內部事件名稱為 T1／T2 而要求逐 recording mapping 的
+  特例；現有 Match Labels 選事件、填 class 應足以確認，不新增 UI。外部 labels、既有
+  recipe 的明確逐檔 mapping 及一般資料一致性／epoch 前置條件保持。
 - 不改研究題庫／runner／scorer／模型／prompt／RAG，不新增下載、不搬資料、不升級共用環境，
   不覆寫任何 worktree 的使用者 settings.json；本輪不是 B0 封存。
 - 保留有證據的來源適配，不以特例、LOC 歸零為目標；獨立 UI 打磨留待下一階段討論。
@@ -70,10 +72,19 @@ PR #143–#145 已進入此 main 基線；舊啟動器、RAG、split receipt 與
   2 failed：原 PR #141 已新增 no-label Back/Next driver，folder trace expectation 卻漏同步；
   基線與候選測試 blob 相同，獨立覆核確認。僅補完整序列中的返回步驟，保留所有 state
   assertions，不改 UI。舊 catalog 因候選需更新而主動中止；保存 partial evidence，不計通過。
-- Next：修正既有測試期待、固定最終 commit，重新執行本版本完整代表性
-  import catalog、source-diverse 與 Windows wizard gate。保留必要證據在本 worktree
-  build/import-quality；推送／開 PR 授權已詢問，未收到批准前不發布，不自行 merge。
-  尚未宣稱 scope-complete／handoff-ready，沒有新版本手測或 merge 批准。
+- 9a0cc0f0 已完成 focused 256、source-diverse 4、Windows wizard 21 與代表性 catalog
+  134 passed；這些是修正 T1／T2 政策前的基線，不代表新修改已驗證。
+- T1／T2 repair 已完成：真 Commands 重現填 A/B 後 epoch hint 仍是 T1/T2；真 wizard
+  重現完成選擇後仍要求額外確認。名稱特例、專用 helpers、確認與套用分支已移除；
+  現在以明確 class maps 決定分類／逐檔差異，不新增 owner／module／UI。
+- 替換兩個只保護退役政策的 mock-heavy unit tests，改由真 MNE／Command 與 native UI
+  覆蓋：共用 class、明確逐檔優先、recipe replay、事件 sample／class 序列與來源 bytes。
+  直接回歸保留同名／歧義／remap 的 epoch 防護；獨立覆核的五項資料流程探測通過，無 blocker。
+- Next：固定候選後執行 focused、source-diverse、Windows native 與完整代表性 catalog gates，
+  結果保留在 build/import-quality，以各結果的實際 source 為準，不沿用前一候選的綠燈。
+  修正的 stop condition 是現有 UI 選 T1→A、T2→B／排除 T0 → review/apply → epoch →
+  recipe replay 及相鄰保護通過；正式 handoff 仍須同 head CI。推送／開 PR 尚待批准，
+  未批准前不發布或自行 merge；不宣稱已手測接受。
 
 
 ## 已保存的研究準備

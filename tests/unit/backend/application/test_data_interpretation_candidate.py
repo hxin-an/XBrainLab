@@ -2375,56 +2375,6 @@ def test_build_interpretation_candidate_uses_format_neutral_event_pattern(
     assert other_by_code["1"]["use_as"] == "Trial timing"
 
 
-def test_build_interpretation_candidate_warns_on_run_dependent_t1_t2_events(
-    monkeypatch,
-):
-    monkeypatch.setattr(
-        data_interpretation_internal_events,
-        "_read_internal_events_for_file",
-        lambda _path: {
-            "events": {
-                "T0": {"count": 15, "description": "T0"},
-                "T1": {"count": 15, "description": "T1"},
-                "T2": {"count": 15, "description": "T2"},
-            }
-        },
-    )
-
-    candidate = build_interpretation_candidate(
-        candidate_id="candidate-1",
-        scan=_scan(
-            source_kind="folder",
-            eeg_files=["/data/S001R04.edf", "/data/S001R08.edf"],
-            label_carriers=[],
-            label_carrier_sources={},
-            bids={"is_bids": False, "events_files": []},
-        ),
-        choices={"label_carrier": "embedded_events"},
-    )
-
-    assert candidate.internal_event_preview["run_dependent_semantics"] is True
-    assert candidate.internal_event_preview["run_dependent_mapping"]["status"] == (
-        "needs_confirmation"
-    )
-    assert candidate.internal_event_preview["run_dependent_mapping"]["files"] == [
-        {
-            "file": "S001R04.edf",
-            "run": "04",
-            "events": {"T1": "", "T2": ""},
-        },
-        {
-            "file": "S001R08.edf",
-            "run": "08",
-            "events": {"T1": "", "T2": ""},
-        },
-    ]
-    assert any(
-        "Confirm run-dependent T1/T2 event mapping" in item
-        for item in candidate.confirmation_items
-    )
-    assert any("T1/T2" in item and "run" in item for item in candidate.warnings)
-
-
 def test_build_interpretation_candidate_preserves_run_dependent_event_mapping(
     monkeypatch,
 ):
