@@ -19,6 +19,7 @@ from XBrainLab.backend.application import (
     ValidateInterpretationCommand,
     data_interpretation_bids,
     data_interpretation_internal_events,
+    data_interpretation_label_carriers,
     resource_guard,
 )
 from XBrainLab.backend.application.data_interpretation import (
@@ -134,9 +135,24 @@ def _value_decisions_from_events(path: Path) -> dict[str, dict[str, object]]:
     }
 
 
+@pytest.mark.parametrize("use_streaming_fallback", [False, True])
 def test_bids_label_field_recommendation_ignores_unselected_run_carriers(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    use_streaming_fallback: bool,
 ) -> None:
+    if use_streaming_fallback:
+
+        def oversized_table(*args, **kwargs):
+            raise data_interpretation_label_carriers.ParsedContentTooLargeError(
+                "exercise bounded streaming recommendation"
+            )
+
+        monkeypatch.setattr(
+            data_interpretation_label_carriers,
+            "parsed_delimited_table",
+            oversized_table,
+        )
     root = tmp_path / "bids"
     selected_eeg, selected_events = _write_bids_run(
         root,
