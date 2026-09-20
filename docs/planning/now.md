@@ -24,6 +24,9 @@ focused UI handoff／dataset split tests、獨立 publication review；同 head 
 backend 相鄰測試及新增 pending manual/resource provenance 回歸 1 項通過。
 真 Qt GUI／Assistant handoff 首次 split 各通過（offscreen 與 native Windows 各 2 項）；
 使用真 dialogs、Command preview/save，不載入 LLM；独立 production review 無 blocker。
+e99206fd 的 CI 揭露一個舊 state-service 測試將 advisory query 暗中寫入 snapshot 當預期；
+同步為 query 前後完整 state 相等，保留不讀 payload／不在 state read 重算推薦的保護。
+此項只調整測試，production 不變；新 head 必須重新取得同版本 CI。
 Next：提交並追同 head CI／native gate，
 更新 pinned launcher 後交付局部手測；不以舊版 81 題代替此次資料與 GUI 證據。
 Stop：首次失敗修理與直接證據完成，或新決策／必要資源阻擋；未批准不 merge。
