@@ -590,10 +590,7 @@ class StateSnapshotService:
             model_params=model_params,
             training_option_values=option_values,
         )
-        return service.recommend(
-            context,
-            current_option=training_option,
-        )
+        return service.preview(context)
 
     @staticmethod
     def _training_recommendation_context(

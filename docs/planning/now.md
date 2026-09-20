@@ -4,6 +4,30 @@
 
 ## Active — 共同基線整備（使用者已授權施工）
 
+**2026-09-20 手測修理 — 首次 Assistant data split receipt stale**：
+使用者在 c96dca95 手測首次 Assistant data split，提示框及對話均顯示
+`Dataset split preview receipt is stale. Review the split again.`；第二次 GUI 操作成功。
+此訊息來自 SaveDatasetSplit 的 publication generation 檢查，而非 epoch token／參數檢查。
+Outcome：同一份仍有效的 split preview 經 Assistant 與 GUI 儲存應一致成功；真實資料／
+publication 變更仍拒絕過期 receipt。Scope：追蹤 preview→async admission→save 的既有
+publication owner 與 Assistant handoff；先重現失敗，再最小修理及相鄰 stale/error 回歸。
+已重現：Training recommendation 查詢（含取消 dialog／預覽其他 model）修改共用快取，
+save admission 的 get_state 才投影該變化並增加 generation；receipt 因而被誤判過期。
+修理：同一 recommendation owner 分離唯讀 preview 與 submitted-state 更新；reuse 計算，
+不增加 owner／state，不改 generation guard。Production +15/-12/net+3 LOC，兩個檔案。
+Non-goals：不移除 receipt、不自動重試／重綁過期 generation、不改 split 演算法、工具／模型／
+prompt／RAG、UI layout／文字／流程，不追加完整模型評測或關閉使用者視窗。
+UI 確認：維持既有操作與呈現的 bug 修理；沒有新增可見互動。
+Validation：真 backend preview/save＋Assistant/GUI 入口首次與重複操作、真正 stale 拒絕、
+focused UI handoff／dataset split tests、獨立 publication review；同 head CI 與適用 native gate。
+已驗：首次真 preview/save 與 prospective recommendation 污染各自 RED→GREEN；372 項
+backend 相鄰測試及新增 pending manual/resource provenance 回歸 1 項通過。
+真 Qt GUI／Assistant handoff 首次 split 各通過（offscreen 與 native Windows 各 2 項）；
+使用真 dialogs、Command preview/save，不載入 LLM；独立 production review 無 blocker。
+Next：提交並追同 head CI／native gate，
+更新 pinned launcher 後交付局部手測；不以舊版 81 題代替此次資料與 GUI 證據。
+Stop：首次失敗修理與直接證據完成，或新決策／必要資源阻擋；未批准不 merge。
+
 **2026-09-20 手測修理 — Assistant preprocess 回應性（已授權）**：
 手測 bandpass 工具耗時 6.172 秒（整輪 8.563 秒）。完整 startup trace 與 Windows
 native probe 確認：Dispatcher 已將 controller 搬至 AssistantCommandThread，但在搬移前

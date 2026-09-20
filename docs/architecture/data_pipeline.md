@@ -301,6 +301,9 @@ materialized summary 與所選 model family 產生保守 starting point。每個
 未 edited 欄位一律更新 recommendation。它不是 hyperparameter search，也不取代 Start
 Training 前的 resource preflight；timed search 只有 future roadmap contract，沒有現行 service /
 command / tool implementation。
+開啟設定或預覽其他 model／device 的 recommendation 是唯讀查詢，不修改已提交的
+recommendation／provenance，也不讓後續 state refresh 暗中增加 publication generation。
+實際提交 Training 設定才更新該狀態；split preview receipt 的 generation／epoch 檢查仍保留。
 
 Training completion 預設只寫入 metric-only evaluation，不再 arm 或自動執行 Saliency。
 Visualization 的 visible `Compute Saliency` 會送出 explicit `SaliencyCommand`，將 operation
