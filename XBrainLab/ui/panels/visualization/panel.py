@@ -406,9 +406,7 @@ class VisualizationPanel(BasePanel):
         self._accept_application_publication(publication)
         self.update_panel()
         return (
-            ObserverDeliveryStatus.DEFERRED
-            if self._application_summary_dirty and self.last_application_query is None
-            else True
+            ObserverDeliveryStatus.DEFERRED if self._application_summary_dirty else True
         )
 
     def init_ui(self):
@@ -2414,8 +2412,9 @@ class VisualizationPanel(BasePanel):
     def update_panel(self):
         """Refresh Visualization and commit a direct render only after success."""
         self._update_panel_content()
-        if self._application_render_ledger.render_in_progress or (
-            self._application_summary_dirty and self.last_application_query is None
+        if (
+            self._application_render_ledger.render_in_progress
+            or self._application_summary_dirty
         ):
             return
         publication = self._application_view_publication

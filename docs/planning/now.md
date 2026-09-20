@@ -36,7 +36,7 @@ root `settings.json` 不 stage／stash／覆寫，`wip/data-split-summary` 保�
 每個 slice review；不因小 commit、CI pending 或 compaction 停工。
 候選預算用完、必要資源不可用或缺少合併批准時明確回報，不擴大施工。
 
-**Next**：#143 同步 research main 後 head `5cfd57d3` 的 CI 已成功，產品 merge 批准仍待使用者回覆。
+**Next**：#143 head `5cfd57d3` 的 CI 成功並獲使用者批准，已合併於 `fbcfbadb`；RAG 已同步 main。
 研究 PR #144 已完成 review／92-case calibration／docs／CI，合併於 `c44f4a7b`。
 RAG 探針在擴充前固定；舊 23 例為 14/36，72 例初稿 30/36，依空結果診斷修訂六個正例後
 為 34/36，各工具至少一題；所有索引／範圍／context gate 通過。探針已用於 development 修訂，
@@ -49,14 +49,23 @@ delayed-ready／late-controller／never-ready 先 RED 後 GREEN，等待實際 c
 不增加 timeout、不改產品。相鄰 40 tests 通過；Windows 原生 switch-panel 與兩輪 no-action
 ChatPanel journey 通過（第二輪使用一次既有 format recovery），畫面及 teardown 已檢查。
 
-**Blocker／待決策**：#145 的 Linux UI CI 在既有 visualization publication refresh 測試失敗。
+**已授權修理（2026-09-20）**：使用者批准 #143 merge 與最小 Visualization 內部競態修復。
+#145 的 Linux UI CI 在既有 visualization publication refresh 測試失敗。
 固定 P2 通知先於 P1 result 的排序後，兩個刷新入口均重現：cached P1 尚存時就 commit P2
 render revision，舊 result 被拒後重排同一 revision 又被丟棄，剩 dirty state 而無 retry。
-該產品 owner／測試與 main 相同，非 RAG 修改造成；未擅自修理。已請使用者授權最小 UI
-內部修復，或明確另輪處理；不可把重跑綠燈當作排除 defect，也不交付為 handoff-ready。
+該產品 owner／測試與 main 相同，非 RAG 修改造成。Outcome：只有同 generation 的 summary
+實際可用時才完成 render revision；舊 summary／晚到 result 不得吞掉新 publication 的重畫。
+Scope：Visualization render callback、固定通知先於結果排序的回歸與相鄰 stale/error/cleanup；
+不新增 owner／retry policy、不改 UI 外觀／文案／操作、不擴張 panel 重構。
+先把固定排序納入既有測試並確認 RED，再最小修理、focused GREEN、獨立 async review。
+最後同步 main、同 head CI／source-diverse／適用 native 與剩餘 model gate，集中一次手測。
 忽略目錄下的 deterministic probe／log：`build/dev-artifacts/visualization-race-probe/`、
 `build/dev-artifacts/visualization-race-evidence/`；#145 comment 保存已完成的 exact-head model 證據。
-下一步先取得此新修理邊界；仍有一次完整候選 model budget，留給最後固定 head，不能無限重跑。
+固定排序兩個入口已 RED → GREEN；相鄰 publication／terminal error／cleanup 68 tests 全數通過。
+修理只收緊兩個 render acknowledgement guard，獨立 review 無 blocker；不新增 retry 或 owner。
+下一步固定整合 head，追蹤 CI／source-diverse、原生 Visualization 與 ChatPanel journey，
+並使用最後一次完整 81-case 候選 model budget。證據留在本 worktree 的 `build/dev-artifacts/`
+及 #145 comment；通過後開啟 Windows 集中局部手測，#145 merge 仍需使用者批准。
 **Stop**：四步完成，或真正的新決策／資源／產品批准阻擋；不把 focused pass 當完整完成。
 
 
