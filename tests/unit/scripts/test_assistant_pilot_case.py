@@ -120,11 +120,11 @@ def test_pre_generation_timeout_requires_actual_submission_and_cancellation():
     assert audit_initial_input(case, {}, trace, decision_timed_out=True)["issues"]
 
 
-def _capture(root, raw, *, status="cancelled", corrupt=False):
+def _capture(root, raw, *, sequence=1, status="cancelled", corrupt=False):
     import hashlib
     import json
 
-    target = root / "worker" / "1"
+    target = root / "worker" / str(sequence)
     target.mkdir(parents=True)
     prompt = b"actual rendered prompt"
     raw_bytes = raw.encode("utf-8")
@@ -158,6 +158,21 @@ def test_cancelled_capture_retains_unobserved_tail_without_changing_trace(
     )
     assert actual["captures"][0]["observed_raw_chars"] == len(observed)
     assert generation["raw_response"] == observed
+
+
+def test_capture_boundary_excludes_prior_condition_warmup_and_case(tmp_path):
+    _capture(tmp_path, "READY", sequence=1, status="completed")
+    _capture(tmp_path, "old", sequence=2, status="completed")
+    _capture(tmp_path, "current", sequence=3, status="completed")
+    actual = verify_prompt_captures(
+        tmp_path,
+        [{"raw_response": "current", "terminal": "finished"}],
+        warmup_count=0,
+        start_index=2,
+    )
+    assert actual["issues"] == []
+    assert len(actual["captures"]) == 1
+    assert actual["captures"][0]["metadata"]["status"] == "completed"
 
 
 @pytest.mark.parametrize(

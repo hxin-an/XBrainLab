@@ -174,6 +174,50 @@ def test_timeout_stays_wrong_in_denominator_but_not_completed_latency(tmp_path):
     assert condition["macro"]["final"] is None
 
 
+def test_batched_runtime_load_and_warmup_are_counted_once_per_condition(tmp_path):
+    root = _run(
+        tmp_path,
+        [
+            ("Action", True, True, "completed"),
+            ("Clarification", True, True, "completed"),
+        ],
+    )
+    evidence = {
+        "model_load_seconds": 7.5,
+        "warmup": {"seconds": 1.25, "output": "READY"},
+        "rag_warmup": None,
+        "runtime": {"model_id": CONDITIONS["phi4-rag-off"][0]},
+    }
+    records = [
+        json.loads(line) for line in (root / "journal.jsonl").read_text().splitlines()
+    ]
+    for index in range(2):
+        case_id = f"phi4-rag-off__DEV-{index}"
+        path = root / "cases" / case_id / "result.json"
+        result = json.loads(path.read_text())
+        result["condition_evidence"] = evidence
+        digest = _write(path, result)
+        next(
+            row
+            for row in records
+            if row["event"] == "case_end" and row["id"] == case_id
+        )["result_sha256"] = digest
+    (root / "journal.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in records), encoding="utf-8"
+    )
+
+    overhead = report.build_report(root)["conditions"]["phi4-rag-off"][
+        "overhead_seconds"
+    ]
+    assert overhead["model_load"] == {"n": 1, "p50": 7.5, "max": 7.5, "total": 7.5}
+    assert overhead["warmup"] == {
+        "n": 1,
+        "p50": 1.25,
+        "max": 1.25,
+        "total": 1.25,
+    }
+
+
 @pytest.mark.parametrize("artifact", ["request", "result"])
 def test_changed_artifact_is_invalid_not_model_wrong(tmp_path, artifact):
     root = _run(tmp_path, [("Action", True, True, "completed")])

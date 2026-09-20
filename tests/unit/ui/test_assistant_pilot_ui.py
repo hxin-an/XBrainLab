@@ -234,6 +234,43 @@ def test_navigation_observes_actual_panel_without_mutating_it(host, qtbot, tmp_p
     driver.close()
 
 
+def test_attached_driver_starts_a_fresh_case_without_reconnecting_signals(
+    host, qtbot, tmp_path
+):
+    window, manager = host
+    driver = PilotUiDriver(window, manager, tmp_path / "first")
+    signals = Signals()
+    driver.attach(signals)
+    signals.panel_navigation_requested.connect(manager.handle_panel_navigation)
+    request = AssistantPanelNavigationRequest(AssistantPanelTarget.DATASET)
+    signals.panel_navigation_requested.emit(request)
+    qtbot.waitUntil(
+        lambda: any(e["kind"] == "panel_ready" for e in driver.snapshot()["events"]),
+        timeout=10000,
+    )
+
+    driver.begin_case(tmp_path / "second")
+    assert driver.snapshot() == {
+        "schema": "xbrainlab.assistant_pilot_ui.v1",
+        "events": [],
+        "issues": [],
+        "pending_count": 0,
+        "screenshot_kind": "qt_widget_capture",
+    }
+    signals.panel_navigation_requested.emit(request)
+    qtbot.waitUntil(
+        lambda: any(e["kind"] == "panel_ready" for e in driver.snapshot()["events"]),
+        timeout=10000,
+    )
+    screenshot = next(
+        e["screenshot"]
+        for e in driver.snapshot()["events"]
+        if e["kind"] == "panel_ready"
+    )
+    assert Path(screenshot).parent == tmp_path / "second"
+    driver.close()
+
+
 def test_missing_surface_times_out_without_fabricated_readiness(host, qtbot, tmp_path):
     window, manager = host
     driver = PilotUiDriver(

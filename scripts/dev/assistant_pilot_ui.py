@@ -174,6 +174,19 @@ class PilotUiDriver(QObject):
             self._connections.append((signal, callback))
         self._timer.start()
 
+    def begin_case(self, output_dir: Path) -> None:
+        """Reset case-scoped evidence while retaining pre-host signal ordering."""
+        if self._closed or not self._connections or self._pending:
+            raise RuntimeError("UI driver is not at a clean case boundary")
+        dialog = QApplication.activeModalWidget()
+        if isinstance(dialog, QDialog) and self._owns(dialog):
+            raise RuntimeError("An owned modal is still active at the case boundary")
+        destination = Path(output_dir).absolute()
+        destination.mkdir()
+        self.output_dir = destination
+        self._events.clear()
+        self._issues.clear()
+
     def _capture(self, kind: str, payload) -> None:
         # No QWidget access here; safe even if a future controller emits off-thread.
         self._queued.emit((kind, payload, perf_counter_ns()))

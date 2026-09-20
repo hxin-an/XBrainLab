@@ -37,10 +37,11 @@ from scripts.dev.assistant_pilot_rag import (
 from XBrainLab.llm.rag.config import RAGConfig
 
 _WINDOWS_CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-SCHEMA = "xbrainlab.assistant_pilot_run.v1"
+SCHEMA = "xbrainlab.assistant_pilot_run.v2"
 ROOT = Path(__file__).resolve().parents[2]
 BUDGET_SECONDS = 14_400
 CHILD_TIMEOUT_SECONDS = 450
+CONDITION_TIMEOUT_SECONDS = 1_800
 _MODELS = {
     "granite4": "ibm-granite/granite-4.0-micro",
     "granite33": "ibm-granite/granite-3.3-2b-instruct",
@@ -77,6 +78,16 @@ def build_jobs(selection: dict, conditions: list[str]) -> list[dict]:
         for phase, key in ((1, "phase_one_case_ids"), (2, "phase_two_case_ids"))
         for condition in conditions
         for case in selection[key]
+    ]
+
+
+def condition_batches(jobs: list[dict]) -> list[dict]:
+    """Group the frozen matrix by runtime condition, preserving case order."""
+    batches: dict[str, list[dict]] = {}
+    for job in jobs:
+        batches.setdefault(job["condition"], []).append(job)
+    return [
+        {"condition": condition, "jobs": batch} for condition, batch in batches.items()
     ]
 
 
@@ -208,13 +219,20 @@ def consumed_seconds(records: list[dict]) -> float:
         ):
             raise ValueError("Invalid elapsed time in preserved journal")
         elapsed[session] = max(elapsed.get(session, 0), seconds)
-        if record["event"] == "case_start":
-            pending[record["id"]] = (
+        if record["event"] in {"case_start", "condition_start"}:
+            pending[(record["event"], record["id"])] = (
                 session,
-                seconds + CHILD_TIMEOUT_SECONDS,
+                seconds
+                + record.get(
+                    "timeout_seconds",
+                    CHILD_TIMEOUT_SECONDS
+                    if record["event"] == "case_start"
+                    else CONDITION_TIMEOUT_SECONDS,
+                ),
             )
-        elif record["event"] == "case_end":
-            pending.pop(record["id"], None)
+        elif record["event"] in {"case_end", "condition_end"}:
+            start = "case_start" if record["event"] == "case_end" else "condition_start"
+            pending.pop((start, record["id"]), None)
     for session, reserved in pending.values():
         elapsed[session] = max(elapsed[session], reserved)
     return sum(elapsed.values())
@@ -260,6 +278,20 @@ def _case_command(request: Path, destination: Path) -> list[str]:
     ]
 
 
+def _condition_command(request: Path, destination: Path, cases_root: Path) -> list[str]:
+    return [
+        _python_executable(),
+        "-m",
+        "scripts.dev.assistant_pilot_condition",
+        "--request",
+        str(request),
+        "--cases-root",
+        str(cases_root),
+        "--output",
+        str(destination),
+    ]
+
+
 def _run_child(
     request: Path, destination: Path, timeout: float, *, on_started
 ) -> tuple[int, bool]:
@@ -270,6 +302,48 @@ def _run_child(
     ):
         process = subprocess.Popen(  # noqa: S603 - fixed child module, shell disabled
             _case_command(request, destination),
+            cwd=ROOT,
+            stdout=stdout,
+            stderr=stderr,
+            env=_child_environment(),
+            creationflags=_child_creation_flags(),
+        )
+        try:
+            on_started(process.pid)
+            return process.wait(timeout=max(0.01, timeout - 10)), False
+        except subprocess.TimeoutExpired:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+            return process.returncode, True
+        except BaseException:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+            raise
+
+
+def _run_condition_child(
+    request: Path,
+    destination: Path,
+    cases_root: Path,
+    timeout: float,
+    *,
+    on_started,
+) -> tuple[int, bool]:
+    """Run one model/RAG condition without exposing a Windows console."""
+    with (
+        request.with_suffix(".stdout.log").open("xb") as stdout,
+        request.with_suffix(".stderr.log").open("xb") as stderr,
+    ):
+        process = subprocess.Popen(  # noqa: S603 - fixed child module, shell disabled
+            _condition_command(request, destination, cases_root),
             cwd=ROOT,
             stdout=stdout,
             stderr=stderr,
@@ -323,11 +397,18 @@ def execute(
         output.mkdir()
         _write_new(output / "manifest.json", manifest)
         (output / "cases").mkdir()
+        (output / "conditions").mkdir()
         records = []
-    starts = {record["id"] for record in records if record["event"] == "case_start"}
-    ends = {record["id"]: record for record in records if record["event"] == "case_end"}
+    starts = {
+        record["id"] for record in records if record["event"] == "condition_start"
+    }
+    ends = {
+        record["id"]: record for record in records if record["event"] == "condition_end"
+    }
     if starts - ends.keys():
-        raise ValueError("Unresolved started cases must never be resent automatically")
+        raise ValueError(
+            "Unresolved started conditions must never be resent automatically"
+        )
     consumed = consumed_seconds(records)
     session = uuid4().hex
 
@@ -347,7 +428,7 @@ def execute(
     cleanup_certified, outcome = True, 0
     try:
         if (
-            consumed + time.monotonic() - started + CHILD_TIMEOUT_SECONDS
+            consumed + time.monotonic() - started + CONDITION_TIMEOUT_SECONDS
             > BUDGET_SECONDS
         ):
             journal("budget_exhausted")
@@ -372,45 +453,69 @@ def execute(
         cases = {
             case["case_id"]: case for case in bank["cases"] if case["split"] == "DEV"
         }
-        for job in manifest["jobs"]:
-            if job["id"] in starts:
+        batches = condition_batches(manifest["jobs"])
+        for batch in batches:
+            condition = batch["condition"]
+            if condition in starts:
                 continue
             if (
-                consumed + time.monotonic() - started + CHILD_TIMEOUT_SECONDS
+                consumed + time.monotonic() - started + CONDITION_TIMEOUT_SECONDS
                 > BUDGET_SECONDS
             ):
                 journal("budget_exhausted")
                 outcome = 2
                 break
             _assert_identity(manifest)
-            model, rag_enabled = CONDITIONS[job["condition"]]
-            case = cases[job["case_id"]]
-            payload = {
-                "case": case,
-                "fixture": bank["fixtures"][case["fixture_id"]],
-                "model_id": model,
-                "model_cache": manifest["config"]["model_caches"][model],
-                "rag_enabled": rag_enabled,
-                "rag_cache": rag_root if rag_enabled else None,
-                "seed": 0,
-                "repeat": 0,
+            model, rag_enabled = CONDITIONS[condition]
+            jobs = []
+            for job in batch["jobs"]:
+                case = cases[job["case_id"]]
+                payload = {
+                    "case": case,
+                    "fixture": bank["fixtures"][case["fixture_id"]],
+                    "model_id": model,
+                    "model_cache": manifest["config"]["model_caches"][model],
+                    "rag_enabled": rag_enabled,
+                    "rag_cache": rag_root if rag_enabled else None,
+                    "seed": 0,
+                    "repeat": 0,
+                }
+                case_request = output / "cases" / f"{job['id']}.request.json"
+                _write_new(case_request, payload)
+                jobs.append(
+                    {
+                        "id": job["id"],
+                        "payload": payload,
+                        "request_sha256": hashlib.sha256(
+                            case_request.read_bytes()
+                        ).hexdigest(),
+                    }
+                )
+            condition_payload = {
+                "schema": "xbrainlab.assistant_pilot_condition.v1",
+                "condition": condition,
+                "jobs": [
+                    {"id": item["id"], "payload": item["payload"]} for item in jobs
+                ],
             }
-            destination = output / "cases" / job["id"]
+            destination = output / "conditions" / condition
             request = destination.with_suffix(".request.json")
-            _write_new(request, payload)
+            _write_new(request, condition_payload)
             journal(
-                "case_start",
-                id=job["id"],
-                timeout_seconds=CHILD_TIMEOUT_SECONDS,
+                "condition_start",
+                id=condition,
+                case_ids=[item["id"] for item in jobs],
+                timeout_seconds=CONDITION_TIMEOUT_SECONDS,
                 request_sha256=hashlib.sha256(request.read_bytes()).hexdigest(),
             )
             cleanup_certified = False
-            code, timed_out = _run_child(
+            code, timed_out = _run_condition_child(
                 request,
                 destination,
-                CHILD_TIMEOUT_SECONDS,
-                on_started=lambda pid, job_id=job["id"]: journal(
-                    "child_started", id=job_id, pid=pid
+                output / "cases",
+                CONDITION_TIMEOUT_SECONDS,
+                on_started=lambda pid, condition_id=condition: journal(
+                    "child_started", id=condition_id, pid=pid
                 ),
             )
             result_path = destination / "result.json"
@@ -420,12 +525,13 @@ def execute(
                 "recorded"
                 if code == 0
                 and result.get("status") == "recorded"
+                and len(result.get("results", [])) == len(jobs)
                 and cleanup_certified
                 else "failed"
             )
             journal(
-                "case_end",
-                id=job["id"],
+                "condition_end",
+                id=condition,
                 status=status,
                 returncode=code,
                 hard_timeout=timed_out,
@@ -434,6 +540,38 @@ def execute(
                 if result_path.exists()
                 else None,
             )
+            completed = {item.get("id"): item for item in result.get("results", [])}
+            for item in jobs:
+                if item["id"] not in completed:
+                    continue
+                case_result_path = output / "cases" / item["id"] / "result.json"
+                recorded = completed.get(item["id"], {})
+                case_status = (
+                    "recorded"
+                    if recorded.get("status") == "recorded"
+                    and recorded.get("cleanup_ok") is True
+                    and case_result_path.is_file()
+                    else "failed"
+                )
+                journal(
+                    "case_start",
+                    id=item["id"],
+                    timeout_seconds=CHILD_TIMEOUT_SECONDS,
+                    request_sha256=item["request_sha256"],
+                )
+                journal(
+                    "case_end",
+                    id=item["id"],
+                    status=case_status,
+                    returncode=0 if case_status == "recorded" else code,
+                    hard_timeout=timed_out,
+                    cleanup_certified=recorded.get("cleanup_ok") is True,
+                    result_sha256=hashlib.sha256(
+                        case_result_path.read_bytes()
+                    ).hexdigest()
+                    if case_result_path.is_file()
+                    else None,
+                )
             if status != "recorded":
                 outcome = 1
                 break
@@ -536,6 +674,7 @@ def prepare_manifest(
         "repeat": 0,
         "budget_seconds": BUDGET_SECONDS,
         "child_timeout_seconds": CHILD_TIMEOUT_SECONDS,
+        "condition_timeout_seconds": CONDITION_TIMEOUT_SECONDS,
     }
     return json.loads(json.dumps(manifest, allow_nan=False)), bank
 

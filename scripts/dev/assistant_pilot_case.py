@@ -43,14 +43,21 @@ def validate_case_request(payload: dict) -> None:
 
 
 def verify_prompt_captures(
-    root: Path, generations: list[dict], *, warmup_count: int
+    root: Path,
+    generations: list[dict],
+    *,
+    warmup_count: int,
+    start_index: int = 0,
 ) -> dict:
     """Bind actual final rendered prompts/raw outputs to ordered observations."""
     issues, captures = [], []
-    paths = sorted(
+    all_paths = sorted(
         root.glob("*/*/metadata.json"),
         key=lambda p: (p.parent.parent.name, int(p.parent.name)),
     )
+    if type(start_index) is not int or start_index < 0 or start_index > len(all_paths):
+        raise ValueError("Invalid prompt capture boundary")
+    paths = all_paths[start_index:]
     if len(paths) != len(generations) + warmup_count:
         issues.append("capture_count_mismatch")
     for index, path in enumerate(paths):

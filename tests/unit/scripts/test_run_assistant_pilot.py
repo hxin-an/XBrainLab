@@ -31,6 +31,24 @@ def test_conditions_and_phase_order_are_fixed():
         runner.select_conditions("phi4-rag-off,phi4-rag-off")
 
 
+def test_condition_batches_load_each_model_rag_condition_once():
+    selection = {
+        "phase_one_case_ids": ["DEV-A", "DEV-C"],
+        "phase_two_case_ids": ["DEV-N"],
+    }
+    jobs = runner.build_jobs(selection, ["granite4-rag-on", "granite4-rag-off"])
+    batches = runner.condition_batches(jobs)
+    assert [batch["condition"] for batch in batches] == [
+        "granite4-rag-on",
+        "granite4-rag-off",
+    ]
+    assert [[job["case_id"] for job in batch["jobs"]] for batch in batches] == [
+        ["DEV-A", "DEV-C", "DEV-N"],
+        ["DEV-A", "DEV-C", "DEV-N"],
+    ]
+    assert all({job["phase"] for job in batch["jobs"]} == {1, 2} for batch in batches)
+
+
 def test_unfinished_child_budget_is_reserved_not_user_idle():
     records = [
         {"event": "session_start", "session": "s", "elapsed_seconds": 2},
@@ -93,30 +111,36 @@ def test_real_child_failure_is_preserved_and_not_resent_on_resume(
     child = tmp_path / "child.py"
     child.write_text(
         "import json,pathlib,sys\np=pathlib.Path(sys.argv[2]);p.mkdir()\n"
-        "(p/'result.json').write_text(json.dumps({'status':'measurement_failed','cleanup_ok':True}))\n"
+        "(p/'result.json').write_text(json.dumps({'status':'measurement_failed','cleanup_ok':True,'results':[]}))\n"
         "print('evidence')\nsys.exit(7)\n"
     )
     monkeypatch.setattr(
         runner,
-        "_case_command",
-        lambda request, destination: [
+        "_condition_command",
+        lambda request, destination, cases_root: [
             sys.executable,
             str(child),
             str(request),
             str(destination),
+            str(cases_root),
         ],
     )
     assert runner.execute(manifest, bank, output) != 0
     records = runner.read_journal(output)
     ends = [record for record in records if record["event"] == "case_end"]
-    assert len(ends) == 1
-    assert ends[0]["returncode"] == 7
-    assert ends[0]["status"] == "failed"
+    assert ends == []  # An unstarted/unreported case must remain missing evidence.
+    condition_end = next(
+        record for record in records if record["event"] == "condition_end"
+    )
+    assert condition_end["returncode"] == 7
+    assert condition_end["status"] == "failed"
     assert (
-        output / "cases" / (manifest["jobs"][0]["id"] + ".request.stdout.log")
+        output / "conditions" / "phi4-rag-off.request.stdout.log"
     ).read_text().strip() == "evidence"
     monkeypatch.setattr(
-        runner, "_case_command", lambda *_: pytest.fail("resent completed failure")
+        runner,
+        "_condition_command",
+        lambda *_: pytest.fail("resent completed failure"),
     )
     assert runner.execute(manifest, bank, output, resume=True) != 0
 
@@ -149,17 +173,27 @@ def test_truncated_journal_fails_closed(tmp_path):
 def _child_result(tmp_path, monkeypatch, result):
     child = tmp_path / "child.py"
     child.write_text(
-        "import json,pathlib,sys\np=pathlib.Path(sys.argv[2]);p.mkdir()\n"
-        f"(p/'result.json').write_text({json.dumps(json.dumps(result))})\n"
+        "import json,pathlib,sys\n"
+        "req=json.loads(pathlib.Path(sys.argv[1]).read_text())\n"
+        "p=pathlib.Path(sys.argv[2]);p.mkdir()\n"
+        "cases=pathlib.Path(sys.argv[3]); rows=[]\n"
+        "for job in req['jobs']:\n"
+        " d=cases/job['id'];d.mkdir();"
+        f"r={result!r};"
+        "(d/'result.json').write_text(json.dumps(r));"
+        "rows.append({'id':job['id'],'case_id':job['payload']['case']['case_id'],'status':r['status'],'cleanup_ok':r['cleanup_ok']})\n"
+        f"summary={result!r};summary['results']=rows;"
+        "(p/'result.json').write_text(json.dumps(summary))\n"
     )
     monkeypatch.setattr(
         runner,
-        "_case_command",
-        lambda request, destination: [
+        "_condition_command",
+        lambda request, destination, cases_root: [
             sys.executable,
             str(child),
             str(request),
             str(destination),
+            str(cases_root),
         ],
     )
 
@@ -169,7 +203,7 @@ def test_uncertified_cleanup_refuses_resume(run_inputs, tmp_path, monkeypatch):
     _child_result(tmp_path, monkeypatch, {"status": "recorded", "cleanup_ok": False})
     assert runner.execute(manifest, bank, output) == 1
     monkeypatch.setattr(
-        runner, "_case_command", lambda *_: pytest.fail("unsafe resume")
+        runner, "_condition_command", lambda *_: pytest.fail("unsafe resume")
     )
     with pytest.raises(ValueError, match="cleanup"):
         runner.execute(manifest, bank, output, resume=True)
@@ -215,7 +249,7 @@ def test_resumed_budget_prevents_starting_a_case_without_full_timeout(
         },
     )
     monkeypatch.setattr(
-        runner, "_case_command", lambda *_: pytest.fail("budget overspend")
+        runner, "_condition_command", lambda *_: pytest.fail("budget overspend")
     )
     assert runner.execute(manifest, bank, output, resume=True) == 2
     assert not any(
@@ -223,7 +257,7 @@ def test_resumed_budget_prevents_starting_a_case_without_full_timeout(
     )
 
 
-def test_unresolved_started_case_is_not_resent_even_with_session_end(
+def test_unresolved_started_condition_is_not_resent_even_with_session_end(
     run_inputs, monkeypatch
 ):
     manifest, bank, output = run_inputs
@@ -232,11 +266,11 @@ def test_unresolved_started_case_is_not_resent_even_with_session_end(
     runner._append(
         output,
         {
-            "event": "case_start",
+            "event": "condition_start",
             "session": "old",
             "elapsed_seconds": 1,
-            "id": manifest["jobs"][0]["id"],
-            "timeout_seconds": 450,
+            "id": "phi4-rag-off",
+            "timeout_seconds": runner.CONDITION_TIMEOUT_SECONDS,
         },
     )
     runner._append(
@@ -249,7 +283,9 @@ def test_unresolved_started_case_is_not_resent_even_with_session_end(
         },
     )
     monkeypatch.setattr(
-        runner, "_case_command", lambda *_: pytest.fail("resent unresolved case")
+        runner,
+        "_condition_command",
+        lambda *_: pytest.fail("resent unresolved condition"),
     )
     with pytest.raises(ValueError, match="never be resent"):
         runner.execute(manifest, bank, output, resume=True)

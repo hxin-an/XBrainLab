@@ -55,17 +55,22 @@ def _rate(values: list[bool]) -> dict:
 
 def _timings(result: dict) -> tuple[dict, list[str]]:
     timings, issues = {}, []
-    for name, value in {
+    condition_evidence = result.get("condition_evidence")
+    values = {
         "decision": result.get("decision_seconds"),
-        "model_load": result.get("model_load_seconds"),
-        "warmup": result.get("warmup", {}).get("seconds"),
-        "rag_warmup": result.get("rag_warmup", {}).get("seconds"),
         "fixture": result.get("fixture_seconds"),
         "case_operation": result.get("case_operation_seconds"),
         "case_turn": result.get("case_turn_seconds"),
         "cleanup": result.get("cleanup_seconds"),
         "total": result.get("total_seconds"),
-    }.items():
+    }
+    if not isinstance(condition_evidence, dict):
+        values.update(
+            model_load=result.get("model_load_seconds"),
+            warmup=result.get("warmup", {}).get("seconds"),
+            rag_warmup=result.get("rag_warmup", {}).get("seconds"),
+        )
+    for name, value in values.items():
         if name == "rag_warmup" and result.get("rag_enabled") is False:
             continue
         if value is None:
@@ -75,6 +80,29 @@ def _timings(result: dict) -> tuple[dict, list[str]]:
         else:
             timings[name] = value
     return timings, issues
+
+
+def _condition_runtime_timings(result: dict) -> tuple[dict | None, list[str]]:
+    evidence = result.get("condition_evidence")
+    if evidence is None:
+        return None, []
+    if not isinstance(evidence, dict):
+        return None, ["condition_evidence_invalid"]
+    values = {
+        "model_load": evidence.get("model_load_seconds"),
+        "warmup": evidence.get("warmup", {}).get("seconds"),
+    }
+    if result.get("rag_enabled") is True:
+        values["rag_warmup"] = evidence.get("rag_warmup", {}).get("seconds")
+    issues = [
+        "condition_timing_invalid:" + name
+        for name, value in values.items()
+        if type(value) not in (int, float) or not math.isfinite(value) or value < 0
+    ]
+    runtime = evidence.get("runtime", {})
+    if runtime.get("model_id") != result.get("model_id"):
+        issues.append("condition_runtime_identity_mismatch")
+    return (evidence if not issues else None), issues
 
 
 def _provenance_issues(result: dict) -> list[str]:
@@ -226,6 +254,7 @@ def _case(root: Path, job: dict, start: dict | None, end: dict | None) -> dict:
         ):
             raise ValueError("Invalid decision score contract")  # noqa: TRY301 - preserve a per-case invalid-evidence row
         timings, timing_issues = _timings(result)
+        condition_evidence, condition_timing_issues = _condition_runtime_timings(result)
         ui_latencies, ui_timing_issues = _ui_latencies(result)
         product = result.get("product_outcome")
         row.update(
@@ -246,8 +275,11 @@ def _case(root: Path, job: dict, start: dict | None, end: dict | None) -> dict:
             request_sha256=request_sha,
             result_sha256=result_sha,
             timings=timings,
-            timing_issues=timing_issues + ui_timing_issues,
-            timing_complete=not (timing_issues or ui_timing_issues),
+            timing_issues=timing_issues + condition_timing_issues + ui_timing_issues,
+            timing_complete=not (
+                timing_issues or condition_timing_issues or ui_timing_issues
+            ),
+            condition_evidence=condition_evidence,
             ui_handoff_seconds=ui_latencies,
             repairs=_repair(scores),
             product_outcome=product,
@@ -327,20 +359,38 @@ def _condition(rows: list[dict]) -> dict:
         and "decision" in row["timings"]
     ]
     timings = {}
-    for name in (
-        "model_load",
-        "warmup",
-        "rag_warmup",
-        "fixture",
-        "case_operation",
-        "case_turn",
-        "cleanup",
-        "total",
-    ):
+    for name in ("fixture", "case_operation", "case_turn", "cleanup", "total"):
         values = [
             row["timings"][name] for row in rows if name in row.get("timings", {})
         ]
         timings[name] = {**_summary(values), "total": sum(values)}
+    evidence = [
+        row["condition_evidence"]
+        for row in rows
+        if isinstance(row.get("condition_evidence"), dict)
+    ]
+    if evidence:
+        fingerprints = {json.dumps(item, sort_keys=True) for item in evidence}
+        condition_runtime = evidence[0] if len(fingerprints) == 1 else None
+        for name, value in {
+            "model_load": condition_runtime.get("model_load_seconds")
+            if condition_runtime
+            else None,
+            "warmup": condition_runtime.get("warmup", {}).get("seconds")
+            if condition_runtime
+            else None,
+            "rag_warmup": condition_runtime.get("rag_warmup", {}).get("seconds")
+            if condition_runtime and condition_runtime.get("rag_warmup") is not None
+            else None,
+        }.items():
+            values = [value] if type(value) in (int, float) else []
+            timings[name] = {**_summary(values), "total": sum(values)}
+    else:
+        for name in ("model_load", "warmup", "rag_warmup"):
+            values = [
+                row["timings"][name] for row in rows if name in row.get("timings", {})
+            ]
+            timings[name] = {**_summary(values), "total": sum(values)}
     return {
         "counts": dict(counts),
         "categories": categories,
@@ -434,6 +484,20 @@ def build_report(run: Path) -> dict:
     rows = [
         _case(root, job, starts.get(job["id"]), ends.get(job["id"])) for job in jobs
     ]
+    for condition in {row["condition"] for row in rows}:
+        matching = [
+            row
+            for row in rows
+            if row["condition"] == condition and row["evidence_status"] == "verified"
+        ]
+        evidence = [row.get("condition_evidence") for row in matching]
+        if any(item is not None for item in evidence) and (
+            any(not isinstance(item, dict) for item in evidence)
+            or len({json.dumps(item, sort_keys=True) for item in evidence}) != 1
+        ):
+            for row in matching:
+                row["timing_complete"] = False
+                row["timing_issues"].append("condition_evidence_mismatch")
     conditions = {
         condition: _condition([row for row in rows if row["condition"] == condition])
         for condition in CONDITIONS

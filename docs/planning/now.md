@@ -124,12 +124,42 @@ warnings 保留，未改環境。真 workbook 363 題 oracle schema 全數合法
 未安裝或升級。三個批准 snapshot 的既有 HF 帳號 access 通過；39 個必要檔案下載及
 大小／官方 LFS SHA-256 核對完成，新增 22,768,349,036 bytes，盤點總 cache
 41,711,365,409 bytes（含既有 repo/cache 與保守 WSL 用量），未刪既有資料。
-**Next**：上述實例已補 RED→GREEN characterization；只將可識別、由本回合 action 引起的
+**Next**：上述 UI 實例已補 RED→GREEN characterization；只將可識別、由本回合 action 引起的
 產品資訊警告記為 product outcome 並安全關閉，未知 dialog 仍 fail closed。Windows runner
 子程序已加 `CREATE_NO_WINDOW`，保留 stdout/stderr、精確 PID、timeout、terminate/kill 與
-cleanup 語意；相鄰 117 tests 與 focused Ruff 通過，diff review 無 blocker。clean commit 後，
-以新 frozen source 從 0/300 重跑相同 selection／五模型／RAG on/off Pilot；不得把舊 176 題
-與新 source 混成一批。
+cleanup 語意；相鄰 117 tests 與 focused Ruff 通過，diff review 無 blocker。
+
+第二版 frozen run `efa46489` 在 35 個完整結果後依使用者要求停止；精確執行中 child 已確認
+退出，partial 只保留工程證據、不納入 Pilot。這 36 份已寫 result 的 baseline 顯示模型載入
+中位數 7.424 s、整題中位數 12.854 s，載入占總 wall time 57.0%；fixture 中位數 0.289 s、
+decision 中位數 2.049 s。每題 fresh process 雖隔離嚴格，但 300 次載入不是研究條件，模型
+載入本來也另行統計，故改成每個 model×RAG condition 一個 owned child／一次 cold load，
+同條件 30 題依序執行。
+
+Condition worker 只重構 `scripts/dev` runner/case seam，不改產品 runtime owner、prompt、題庫、
+scorer、UI 或 public contract。每題沿用既有正式 `reset_session` 與 `reset_conversation`，重新
+建立 fixture、trace、UI driver、case deadline 與 result；進題前 fail closed 核對零 active
+operation／turn／pending interaction、空 conversation/transcript、初始 pipeline stage 與同一
+pinned runtime。prompt capture 需用序號範圍精確綁定每題，warmup 每 condition 只做一次。
+Parent 對 condition child 保留精確 PID、硬 timeout、stdout/stderr、journal 與不重送 started
+condition；任一 case 或 reset audit 失敗立即停止並保留所有已完成結果。先用 synthetic/real Qt
+characterization 證明兩題不同 fixture／conversation 無污染、child timeout cleanup 與 resume
+語意，再跑一個 2-case 真 GPU before/after probe，確認只載入一次且決策／capture 完整，最後
+以新 clean commit 從 0/300 重跑。不得把舊 176／35 題與新 source 混成一批。
+
+Owner 前後不變：產品 model process 仍由既有 LocalRuntimeProcessOwner 擁有，Study mutation
+仍由 ApplicationService 擁有；研究 parent 由 per-case child scheduling 收斂成 per-condition
+child scheduling，不新增產品 owner/state machine/receipt。刪除候選為每題重複 runtime
+bootstrap、warmup 與 RAG warmup。回退為 condition runner/case adapter 與 tests；若無法證明
+reset isolation，回到 fresh-process 設計而不宣稱效能改善。production LOC +0/-0。
+
+**Condition batching 施工狀態**：parent manifest 已升為 v2，依 condition 分成 10 個 hidden
+Windows children；每個 child 一次 cold load／warmup，30 題各有獨立 hard watchdog、fixture、
+trace、UI driver evidence、prompt capture range 與 result。case 之間經正式 reset owners 並
+檢查空 pipeline／conversation／transcript／pending interaction／owned jobs；parent 只為 child
+實際回報的 case 建 journal terminal，不把未開始題偽造成失敗。Report 將 model load／warmup
+每 condition 計一次，case timing 仍逐題。相關 128 tests 與 Ruff 已通過；尚缺兩題真 GPU／
+真 Qt reuse probe、實測 before/after 與新 frozen 300 題，故仍不是 Pilot 完成。
 完整報告與 B0 封存／還原通過才到出口，不把此 checkpoint 稱為 Pilot 完成或 handoff-ready。
 UI layout／文案／產品互動不變；只改研究 driver 對既有警告的觀測分類與 runner 的 console
 presentation。回退為這兩個 script seam 與 tests，不改產品 owner/public contract。
