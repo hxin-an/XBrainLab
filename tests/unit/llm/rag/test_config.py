@@ -9,7 +9,7 @@ from XBrainLab.llm.rag.config import RAGConfig
 class TestRAGConfig:
     def test_collection_name(self):
         assert RAGConfig.COLLECTION_NAME == (
-            "gold_set_examples_1110a243fdf4_d438791dce06"
+            "gold_set_examples_1110a243fdf4_ac13581292df"
         )
 
     def test_gold_set_identity_matches_bundled_corpus(self):

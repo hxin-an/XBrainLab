@@ -136,5 +136,572 @@
     "category": "navigation",
     "input": "Open the Visualization panel in Saliency Map view.",
     "expected_tool_calls": [{"tool_name": "switch_panel", "parameters": {"panel_name": "visualization", "view_mode": "saliency_map"}}]
+  },
+  {
+    "id": "import_eeg_data_02",
+    "category": "data_entry",
+    "input": "Open the import wizard to load my EEG recordings.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "import_eeg_data",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "import_eeg_data_03",
+    "category": "data_entry",
+    "input": "I want to bring a new EEG dataset into XBrainLab.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "import_eeg_data",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "import_eeg_data_04",
+    "category": "data_entry",
+    "input": "Show the dialog for loading EEG data from disk.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "import_eeg_data",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "select_channels_02",
+    "category": "data_setup",
+    "input": "Open channel selection for the loaded recordings.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "select_channels",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "select_channels_03",
+    "category": "data_setup",
+    "input": "I want to pick the channels to include in my analysis.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "select_channels",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "select_channels_04",
+    "category": "data_setup",
+    "input": "Show the EEG channel picker.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "select_channels",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "set_montage_02",
+    "category": "data_setup",
+    "input": "Open the montage dialog to assign EEG sensor locations.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "set_montage",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "set_montage_03",
+    "category": "data_setup",
+    "input": "Show the montage selection dialog.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "set_montage",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "set_montage_04",
+    "category": "data_setup",
+    "input": "I want to choose an electrode montage.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "set_montage",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "create_epochs_02",
+    "category": "epoch",
+    "input": "Let me set the time windows for epoching.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "create_epochs",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "create_epochs_03",
+    "category": "epoch",
+    "input": "Show the dialog for segmenting my data into epochs.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "create_epochs",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "create_epochs_04",
+    "category": "epoch",
+    "input": "Create event-locked trials by cutting the continuous EEG recording into epochs.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "create_epochs",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "configure_dataset_split_02",
+    "category": "training_setup",
+    "input": "Let me choose how to divide the data for training and testing.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "configure_dataset_split",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "configure_dataset_split_03",
+    "category": "training_setup",
+    "input": "Open the dataset splitting settings for the epoched data.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "configure_dataset_split",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "configure_dataset_split_04",
+    "category": "training_setup",
+    "input": "I want to set up subject-based dataset splitting.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "configure_dataset_split",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "select_model_02",
+    "category": "training_setup",
+    "input": "Let me choose the neural network architecture for training.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "select_model",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "select_model_03",
+    "category": "training_setup",
+    "input": "Show the model selection dialog so I can pick EEGNet.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "select_model",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "select_model_04",
+    "category": "training_setup",
+    "input": "I want to select which classifier to train.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "select_model",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "configure_training_02",
+    "category": "training_setup",
+    "input": "Let me adjust the batch size and training epoch count.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "configure_training",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "configure_training_03",
+    "category": "training_setup",
+    "input": "Show the dialog for setting training hyperparameters.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "configure_training",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "configure_training_04",
+    "category": "training_setup",
+    "input": "I want to configure the optimizer and learning rate.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "configure_training",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "apply_bandpass_filter_03",
+    "category": "preprocess",
+    "input": "Bandpass the EEG between 8 and 30 Hz.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "apply_bandpass_filter",
+        "parameters": {
+          "low_freq": 8,
+          "high_freq": 30
+        }
+      }
+    ]
+  },
+  {
+    "id": "apply_bandpass_filter_04",
+    "category": "preprocess",
+    "input": "Filter the recordings with a lower cutoff of 0.5 Hz and an upper cutoff of 45 Hz.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "apply_bandpass_filter",
+        "parameters": {
+          "low_freq": 0.5,
+          "high_freq": 45
+        }
+      }
+    ]
+  },
+  {
+    "id": "apply_notch_filter_03",
+    "category": "preprocess",
+    "input": "Remove the 50 Hz power-line interference with a notch filter.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "apply_notch_filter",
+        "parameters": {
+          "freq": 50
+        }
+      }
+    ]
+  },
+  {
+    "id": "apply_notch_filter_04",
+    "category": "preprocess",
+    "input": "Notch-filter the EEG at 60 Hz.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "apply_notch_filter",
+        "parameters": {
+          "freq": 60
+        }
+      }
+    ]
+  },
+  {
+    "id": "resample_data_03",
+    "category": "preprocess",
+    "input": "Set the recording's sampling frequency to 256 Hz.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "resample_data",
+        "parameters": {
+          "rate": 256
+        }
+      }
+    ]
+  },
+  {
+    "id": "resample_data_04",
+    "category": "preprocess",
+    "input": "Downsample these recordings to 100 Hz.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "resample_data",
+        "parameters": {
+          "rate": 100
+        }
+      }
+    ]
+  },
+  {
+    "id": "set_reference_02",
+    "category": "preprocess",
+    "input": "Re-reference all EEG channels to their common average.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "set_reference",
+        "parameters": {
+          "method": "average"
+        }
+      }
+    ]
+  },
+  {
+    "id": "set_reference_03",
+    "category": "preprocess",
+    "input": "Apply an average EEG reference.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "set_reference",
+        "parameters": {
+          "method": "average"
+        }
+      }
+    ]
+  },
+  {
+    "id": "set_reference_04",
+    "category": "preprocess",
+    "input": "Use Cz as the reference channel.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "set_reference",
+        "parameters": {
+          "method": "Cz"
+        }
+      }
+    ]
+  },
+  {
+    "id": "normalize_data_03",
+    "category": "preprocess",
+    "input": "Standardize the data using z-score normalization.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "normalize_data",
+        "parameters": {
+          "method": "z-score"
+        }
+      }
+    ]
+  },
+  {
+    "id": "normalize_data_04",
+    "category": "preprocess",
+    "input": "Apply min-max scaling to the EEG.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "normalize_data",
+        "parameters": {
+          "method": "min-max"
+        }
+      }
+    ]
+  },
+  {
+    "id": "start_training_02",
+    "category": "training_lifecycle",
+    "input": "Begin the configured training run.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "start_training",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "start_training_03",
+    "category": "training_lifecycle",
+    "input": "Run training with the settings I have selected.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "start_training",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "start_training_04",
+    "category": "training_lifecycle",
+    "input": "Launch model training now.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "start_training",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "stop_training_02",
+    "category": "training_lifecycle",
+    "input": "Cancel the training job that is currently running.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "stop_training",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "stop_training_03",
+    "category": "training_lifecycle",
+    "input": "Halt the active model training.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "stop_training",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "stop_training_04",
+    "category": "training_lifecycle",
+    "input": "Please end this training run now.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "stop_training",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "reset_preprocessing_02",
+    "category": "lifecycle",
+    "input": "Reset preprocessing and return to the imported EEG data.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "reset_preprocessing",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "reset_preprocessing_03",
+    "category": "lifecycle",
+    "input": "Discard the preprocessing results and the derived workflow state.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "reset_preprocessing",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "reset_preprocessing_04",
+    "category": "lifecycle",
+    "input": "Revert all preprocessing operations.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "reset_preprocessing",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "clear_training_history_02",
+    "category": "lifecycle",
+    "input": "Remove the records of previous training runs.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "clear_training_history",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "clear_training_history_03",
+    "category": "lifecycle",
+    "input": "Delete the training history entries.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "clear_training_history",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "clear_training_history_04",
+    "category": "lifecycle",
+    "input": "Erase the saved training-run history.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "clear_training_history",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "compute_saliency_02",
+    "category": "analysis_execution",
+    "input": "Calculate saliency for the completed training result I selected.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "compute_saliency",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "compute_saliency_03",
+    "category": "analysis_execution",
+    "input": "Run saliency computation for this finished model.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "compute_saliency",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "compute_saliency_04",
+    "category": "analysis_execution",
+    "input": "Generate saliency results for the selected completed run.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "compute_saliency",
+        "parameters": {}
+      }
+    ]
+  },
+  {
+    "id": "switch_panel_03",
+    "category": "navigation",
+    "input": "Take me to the Preprocess panel.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "switch_panel",
+        "parameters": {
+          "panel_name": "preprocess"
+        }
+      }
+    ]
+  },
+  {
+    "id": "switch_panel_04",
+    "category": "navigation",
+    "input": "Show the training status panel.",
+    "expected_tool_calls": [
+      {
+        "tool_name": "switch_panel",
+        "parameters": {
+          "panel_name": "training"
+        }
+      }
+    ]
   }
 ]

@@ -164,10 +164,16 @@ card，再依`STAGE_CONFIG`發布該stage的approved target schemas。模型只�
 或使用`respond_to_user`；Host不替模型選前置步驟或自動接續下一個mutation。
 
 Prompt history只保留最新user訊息與最多一則Assistant-visible訊息，並排除`Tool Output:`、structured
-envelope與內部system payload。bundled gold set目前有23個英文examples，維持18個approved tools的
+envelope與內部system payload。bundled gold set目前有72個英文正例（18個approved tools各4筆），維持
 coverage；RAG example也只能在同一stage的approved tool集合中檢索，不能授予capability、confirmation
 或continuation權限。目前retriever仍以semantic ranking取`TOP_K = 3`；target所述canonical／top-2
 selection尚未實作，不能把兩者混為同一policy。
+
+`scripts/dev/verify_rag.py` 以固定的 36 正例／12 邊界工程探針驗證真離線檢索，沿用產品
+assembler 的七個 stage tool publications，不以預期工具單獨過濾候選。Top-3 門檻為 33/36，
+每工具至少一題；另檢查 context bounds、未授權工具、索引身分與重用。`--baseline-report`
+可比對同一探針／設定的舊報告，並核對逐題資料與摘要一致。這些探針已用於開發修訂，
+不是 holdout／正式 Validation 或 Test；檢索命中也不等於模型判斷或工具執行成功。
 
 Data Import對模型是單一零參數`import_eeg_data` GUI completion tool。內部scan、preview、validate、
 apply與recipe lifecycle仍由既有Data Interpretation/ApplicationService owner負責，不作為模型工具，

@@ -4,16 +4,20 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import os
 import shutil
 import subprocess
 import sys
+from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
+from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 from XBrainLab.llm.agent.context_encoding import decode_untrusted_context
 from XBrainLab.llm.rag import RAGConfig, RAGRetriever
 from XBrainLab.llm.rag.example_policy import is_primary_workflow_example
@@ -21,23 +25,8 @@ from XBrainLab.llm.rag.indexer import RAGIndexer
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_ARTIFACT = ROOT / "build" / "dev-artifacts" / "rag-offline.json"
-_QUERY_CASES = (
-    (
-        "import_eeg_data",
-        "Import an EEG dataset.",
-        "import_eeg_data",
-    ),
-    (
-        "bandpass",
-        "Apply a bandpass filter from 4 to 40 Hz.",
-        "apply_bandpass_filter",
-    ),
-    (
-        "start_training",
-        "Start training now.",
-        "start_training",
-    ),
-)
+PROBE_PATH = Path(__file__).with_name("rag_verification_probes.json")
+PROBE_SHA256 = "d4222a3e1595db23d45622ec0b29348e65482c0cb7eb3c3cb4bf880ad2d96822"  # pragma: allowlist secret
 _ALLOWED_GIT_ARGUMENTS = frozenset(
     {
         ("rev-parse", "--show-toplevel"),
@@ -58,6 +47,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--strict", action="store_true")
     parser.add_argument("--write-artifact", action="store_true")
     parser.add_argument("--artifact-path", type=Path, default=DEFAULT_ARTIFACT)
+    parser.add_argument("--baseline-report", type=Path)
     return parser.parse_args(argv)
 
 
@@ -84,8 +74,190 @@ def evaluate_context_result(
     }
 
 
+def load_probes() -> dict[str, Any]:
+    """Load the frozen engineering probes, never any model evaluation bank."""
+    content = PROBE_PATH.read_bytes()
+    if hashlib.sha256(content).hexdigest() != PROBE_SHA256:
+        raise ValueError("Frozen RAG engineering probes changed.")
+    probes = json.loads(content)
+    positives = probes["positive_cases"]
+    boundaries = probes["boundary_cases"]
+    counts = Counter(case["tool"] for case in positives)
+    cases = positives + boundaries
+    if (
+        counts != dict.fromkeys(AGENT_ACTION_CONTRACTS.model_tool_names(), 2)
+        or len(boundaries) != 12
+        or len({case["id"] for case in cases}) != 48
+        or len({case["query"].casefold() for case in cases}) != 48
+    ):
+        raise ValueError(
+            "RAG probes must retain 36 independent positives and 12 boundaries."
+        )
+    return probes
+
+
+def stage_tool_publications() -> dict[str, Any]:
+    """Reuse stage fixtures and the actual product assembler/capability policy."""
+    from scripts.dev.run_stable_assistant_model_eval import (
+        TargetEvalCase,
+        _case_assembler,
+        target_tool_registry,
+    )
+    from XBrainLab.llm.pipeline_state import PipelineStage
+
+    registry = target_tool_registry()
+    publications = {}
+    for stage in PipelineStage:
+        # Only the stage is consumed by the fixture; no oracle/question is loaded.
+        case = TargetEvalCase(f"rag-{stage.value}", "", stage.value, "", {})
+        assembler, _publication = _case_assembler(case, registry)
+        assembler.get_messages([])
+        publications[stage.value] = assembler.latest_tool_publication
+    return publications
+
+
+def evaluate_probe_context(
+    encoded_context: str,
+    *,
+    expected_tool: str | None,
+    allowed_tools: frozenset[str],
+) -> dict[str, Any]:
+    """Score every returned candidate, including wrong and unauthorized ranks."""
+    decoded = decode_untrusted_context(encoded_context)
+    tools: list[str | None] = []
+    valid = not encoded_context or decoded is not None
+    for item in decoded or ():
+        action = (
+            item.data.get("expected_action") if isinstance(item.data, dict) else None
+        )
+        tool = action.get("tool_name") if isinstance(action, dict) else None
+        tools.append(tool if isinstance(tool, str) else None)
+        valid = (
+            valid
+            and item.item_type == "rag_example"
+            and isinstance(tool, str)
+            and bool(tool)
+        )
+    if decoded is not None:
+        # The production decoder deliberately skips malformed rows; a verifier
+        # must not let those rows disappear from its safety check.
+        valid = valid and len(json.loads(encoded_context)["items"]) == len(decoded)
+    unauthorized = sorted(
+        {tool for tool in tools if tool and tool not in allowed_tools}
+    )
+    top1 = expected_tool is not None and bool(tools) and tools[0] == expected_tool
+    top3 = expected_tool is not None and expected_tool in tools[:3]
+    return {
+        "ok": top3,
+        "expected_tool": expected_tool,
+        "observed_tool": tools[0] if tools else None,
+        "item_count": len(tools),
+        "candidate_tools": tools,
+        "candidate_ids": [item.source.id for item in decoded or ()],
+        "top1_hit": top1,
+        "top3_hit": top3,
+        "empty": not encoded_context,
+        "wrong_candidate": bool(tools) and expected_tool is not None and not top3,
+        "context_valid": valid,
+        "membership_ok": valid and not unauthorized,
+        "unauthorized_tools": unauthorized,
+        "context_utf8_bytes": len(encoded_context.encode("utf-8")),
+        "bounded": len(encoded_context.encode("utf-8")) <= RAGConfig.MAX_CONTEXT_CHARS
+        and len(tools) <= RAGConfig.TOP_K,
+    }
+
+
+def summarize_positive_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
+    hits = Counter(case["expected_tool"] for case in cases if case["top3_hit"])
+    top3 = sum(bool(case["top3_hit"]) for case in cases)
+    coverage = {
+        tool: hits[tool] for tool in sorted(AGENT_ACTION_CONTRACTS.model_tool_names())
+    }
+    return {
+        "positive_count": len(cases),
+        "top1_hits": sum(bool(case["top1_hit"]) for case in cases),
+        "top3_hits": top3,
+        "empty_count": sum(bool(case["empty"]) for case in cases),
+        "wrong_candidate_count": sum(bool(case["wrong_candidate"]) for case in cases),
+        "per_tool_top3_hits": coverage,
+        "gate_ok": len(cases) == 36 and top3 >= 33 and all(coverage.values()),
+    }
+
+
+def compare_baseline(
+    report: dict[str, Any], baseline: dict[str, Any]
+) -> dict[str, Any]:
+    """Require comparable frozen probes/configuration and no loss of Top-3 hits."""
+    keys = (
+        "probe_sha256",
+        "embedding_model",
+        "embedding_revision",
+        "similarity_threshold",
+        "top_k",
+        "max_context_bytes",
+        "max_example_content_chars",
+    )
+    comparable = all(
+        key in report.get("identity", {})
+        and report["identity"][key] == baseline.get("identity", {}).get(key)
+        for key in keys
+    ) and report.get("stage_publications") == baseline.get("stage_publications")
+    current_hits = _verified_top3_hits(report)
+    previous_hits = _verified_top3_hits(baseline)
+    comparable = comparable and current_hits is not None and previous_hits is not None
+    return {
+        "name": "baseline_non_regression",
+        "ok": comparable
+        and current_hits is not None
+        and previous_hits is not None
+        and current_hits >= previous_hits,
+        "detail": f"Comparable={comparable}; verified Top-3 hits {current_hits} versus {previous_hits}.",
+    }
+
+
+def _verified_top3_hits(report: dict[str, Any]) -> int | None:
+    """Reconcile all frozen positive rows before trusting a summary score."""
+    rows = report.get("retrieval_cases")
+    if not isinstance(rows, list) or len(rows) != 36:
+        return None
+    by_id = {}
+    for row in rows:
+        if not isinstance(row, dict) or not isinstance(row.get("id"), str):
+            return None
+        by_id[row["id"]] = row
+    if len(by_id) != 36:
+        return None
+    hits = 0
+    for case in load_probes()["positive_cases"]:
+        row = by_id.get(case["id"], {})
+        if any(
+            row.get(key) != case[source]
+            for key, source in (
+                ("expected_tool", "tool"),
+                ("query", "query"),
+                ("stage", "stage"),
+            )
+        ):
+            return None
+        candidates = row.get("candidate_tools")
+        if (
+            not isinstance(candidates, list)
+            or len(candidates) > 3
+            or any(not isinstance(tool, str) or not tool.strip() for tool in candidates)
+        ):
+            return None
+        hits += case["tool"] in candidates
+    summary = report.get("retrieval_summary", {})
+    if not isinstance(summary, dict) or summary.get("positive_count") != 36:
+        return None
+    declared_hits = summary.get("top3_hits")
+    return hits if type(declared_hits) is int and declared_hits == hits else None
+
+
 def run_verification() -> dict[str, Any]:
     """Run the real local-only RAG gate and return a bounded report."""
+    started = perf_counter()
+    probes = load_probes()
     checks: list[dict[str, object]] = []
     provenance = _git_provenance()
     _add_check(
@@ -129,9 +301,14 @@ def run_verification() -> dict[str, Any]:
             "similarity_threshold": RAGConfig.SIMILARITY_THRESHOLD,
             "expected_document_count": expected_document_count,
             "offline_only": True,
+            "probe_sha256": PROBE_SHA256,
+            "top_k": RAGConfig.TOP_K,
+            "max_context_bytes": RAGConfig.MAX_CONTEXT_CHARS,
+            "max_example_content_chars": RAGConfig.MAX_EXAMPLE_CONTENT_CHARS,
         },
         "checks": checks,
         "retrieval_cases": [],
+        "boundary_cases": [],
         "claim_boundary": (
             "This verifies local embedding/index/retrieval behavior. It does not "
             "measure end-to-end local-LLM tool-call accuracy."
@@ -192,48 +369,83 @@ def run_verification() -> dict[str, Any]:
             ),
         )
 
+        publications = stage_tool_publications()
+        report["stage_publications"] = {
+            stage: sorted(publication.tool_names)
+            for stage, publication in publications.items()
+        }
         retrieval_cases = []
-        for case_id, query, expected_tool in _QUERY_CASES:
+        boundary_cases = []
+        for case in probes["positive_cases"] + probes["boundary_cases"]:
+            allowed_tools = publications[case["stage"]].tool_names
+            case_started = perf_counter()
             context = retriever.get_similar_examples(
-                query,
-                k=1,
-                allowed_tool_names=frozenset({expected_tool}),
+                case["query"],
+                k=RAGConfig.TOP_K,
+                allowed_tool_names=allowed_tools,
             )
-            result = evaluate_context_result(
+            result = evaluate_probe_context(
                 context,
-                expected_tool=expected_tool,
+                expected_tool=case.get("tool"),
+                allowed_tools=allowed_tools,
             )
-            retrieval_cases.append({"id": case_id, **result})
+            result.update(
+                {
+                    "id": case["id"],
+                    "query": case["query"],
+                    "stage": case["stage"],
+                    "allowed_tools": sorted(allowed_tools),
+                    "duration_seconds": round(perf_counter() - case_started, 6),
+                    "oracle_stage_valid": case.get("tool") in allowed_tools
+                    if "tool" in case
+                    else case.get("blocked_tool") not in allowed_tools,
+                }
+            )
+            if "tool" in case:
+                retrieval_cases.append(result)
+            else:
+                result.update(
+                    {
+                        "kind": case["kind"],
+                        "expect_empty": case.get("expect_empty", False),
+                        "blocked_tool": case.get("blocked_tool"),
+                        "ok": (not case.get("expect_empty") or result["empty"])
+                        and case.get("blocked_tool") not in result["candidate_tools"],
+                    }
+                )
+                boundary_cases.append(result)
         report["retrieval_cases"] = retrieval_cases
+        report["boundary_cases"] = boundary_cases
+        summary = summarize_positive_cases(retrieval_cases)
+        report["retrieval_summary"] = summary
         _add_check(
             checks,
             "known_query_retrieval",
-            all(bool(case["ok"]) for case in retrieval_cases),
-            f"{sum(bool(case['ok']) for case in retrieval_cases)}/{len(retrieval_cases)} known queries matched.",
+            summary["gate_ok"],
+            f"Top-1 {summary['top1_hits']}/36; Top-3 {summary['top3_hits']}/36; require >=33 and >=1 per tool.",
         )
-
-        scoped_context = retriever.get_similar_examples(
-            "Start training now.",
-            k=1,
-            allowed_tool_names=frozenset({"import_eeg_data"}),
+        _add_check(
+            checks,
+            "retrieval_context_safety",
+            all(
+                case["membership_ok"] and case["bounded"] and case["oracle_stage_valid"]
+                for case in retrieval_cases + boundary_cases
+            ),
+            "Every candidate uses the real stage publication and bounded typed context.",
         )
         _add_check(
             checks,
             "request_scoped_tool_filter",
-            scoped_context == "",
-            "A disallowed training example was not injected.",
-        )
-
-        no_tool_context = retriever.get_similar_examples(
-            "Explain what an EEG epoch is.",
-            k=1,
-            allowed_tool_names=frozenset({"import_eeg_data"}),
+            all(case["ok"] for case in boundary_cases if case["kind"] == "blocked"),
+            "Blocked tools were not injected under their real stage publication.",
         )
         _add_check(
             checks,
             "non_action_filter",
-            no_tool_context == "",
-            "An explanatory request did not receive an action example.",
+            all(
+                case["ok"] for case in boundary_cases if case["kind"] == "informational"
+            ),
+            "Existing informational-intent policy returned no action examples.",
         )
     finally:
         retriever.close()
@@ -265,6 +477,7 @@ def run_verification() -> dict[str, Any]:
         second.close()
 
     report["ok"] = all(bool(check["ok"]) for check in checks)
+    report["duration_seconds"] = round(perf_counter() - started, 6)
     return report
 
 
@@ -278,6 +491,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         try:
             report = run_verification()
+            if args.baseline_report:
+                baseline = json.loads(args.baseline_report.read_text(encoding="utf-8"))
+                comparison = compare_baseline(report, baseline)
+                report["checks"].append(comparison)
+                report["ok"] = bool(report["ok"]) and comparison["ok"]
         except Exception as error:
             report = {
                 "schema": "xbrainlab.rag-verification.v1",

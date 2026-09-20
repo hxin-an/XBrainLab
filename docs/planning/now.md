@@ -36,14 +36,18 @@ root `settings.json` 不 stage／stash／覆寫，`wip/data-split-summary` 保�
 每個 slice review；不因小 commit、CI pending 或 compaction 停工。
 候選預算用完、必要資源不可用或缺少合併批准時明確回報，不擴大施工。
 
-**Next**：routing RED 已重現；修正後 6 個 native Windows 啟動／分流案例全部執行通過，
-獨立 review 無 blocker；推送後待 Linux collection／同 head CI。研究 dirty 內容保留並審查中。
+**Next**：#143 head `2c36a5e7` 的 CI 已成功，產品 merge 批准仍待使用者回覆。
+研究 PR #144 已完成 review／92-case calibration／docs／CI，合併於 `c44f4a7b`。
+RAG 探針在擴充前固定；舊 23 例為 14/36，72 例初稿 30/36，依空結果診斷修訂六個正例後
+為 34/36，各工具至少一題；所有索引／範圍／context gate 通過。探針已用於 development 修訂，
+不稱 holdout 或正式 Test。模型舊基準 81/81 完整執行（兩個既有失敗），候選模型尚未執行。
+下一步：完成 focused checks、同步 main、固定 candidate commit，再做完整真模型及 Windows journey。
 **Stop**：四步完成，或真正的新決策／資源／產品批准阻擋；不把 focused pass 當完整完成。
 
 
 ## 已保存的研究準備
 
-離線 calibration 與人工出題委託文件已完成草稿，正進行非產品 review／focused 驗證。
+離線 calibration 與人工出題委託文件已由 PR #144 保存並通過非產品 review／focused 驗證。
 出題说明與 CSV 是 AI 教學示例，不是正式題庫。M1 題庫、M2 runner 尚未完成；
 不把啟動器手測當作全產品或 Assistant 接受。既有 workspace 清理已結束，細節留 Git history，
 不重啟舊清理；受保護設定、資料、共用環境與未合併 Split WIP 保留。
