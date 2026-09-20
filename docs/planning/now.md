@@ -2,137 +2,74 @@
 
 最後更新：`2026-09-20`
 
-## Active — 共同基線整備（使用者已授權施工）
+## Active — 產品品質線：Import 適配與內部整理
 
-**2026-09-20 手測修理 — 首次 Assistant data split receipt stale**：
-使用者在 c96dca95 手測首次 Assistant data split，提示框及對話均顯示
-`Dataset split preview receipt is stale. Review the split again.`；第二次 GUI 操作成功。
-此訊息來自 SaveDatasetSplit 的 publication generation 檢查，而非 epoch token／參數檢查。
-Outcome：同一份仍有效的 split preview 經 Assistant 與 GUI 儲存應一致成功；真實資料／
-publication 變更仍拒絕過期 receipt。Scope：追蹤 preview→async admission→save 的既有
-publication owner 與 Assistant handoff；先重現失敗，再最小修理及相鄰 stale/error 回歸。
-已重現：Training recommendation 查詢（含取消 dialog／預覽其他 model）修改共用快取，
-save admission 的 get_state 才投影該變化並增加 generation；receipt 因而被誤判過期。
-修理：同一 recommendation owner 分離唯讀 preview 與 submitted-state 更新；reuse 計算，
-不增加 owner／state，不改 generation guard。Production +15/-12/net+3 LOC，兩個檔案。
-Non-goals：不移除 receipt、不自動重試／重綁過期 generation、不改 split 演算法、工具／模型／
-prompt／RAG、UI layout／文字／流程，不追加完整模型評測或關閉使用者視窗。
-UI 確認：維持既有操作與呈現的 bug 修理；沒有新增可見互動。
-Validation：真 backend preview/save＋Assistant/GUI 入口首次與重複操作、真正 stale 拒絕、
-focused UI handoff／dataset split tests、獨立 publication review；同 head CI 與適用 native gate。
-已驗：首次真 preview/save 與 prospective recommendation 污染各自 RED→GREEN；372 項
-backend 相鄰測試及新增 pending manual/resource provenance 回歸 1 項通過。
-真 Qt GUI／Assistant handoff 首次 split 各通過（offscreen 與 native Windows 各 2 項）；
-使用真 dialogs、Command preview/save，不載入 LLM；独立 production review 無 blocker。
-e99206fd 的 CI 揭露一個舊 state-service 測試將 advisory query 暗中寫入 snapshot 當預期；
-同步為 query 前後完整 state 相等，保留不讀 payload／不在 state read 重算推薦的保護。
-此項只調整測試，production 不變；新 head 必須重新取得同版本 CI。
-Next：提交並追同 head CI／native gate，
-更新 pinned launcher 後交付局部手測；不以舊版 81 題代替此次資料與 GUI 證據。
-Stop：首次失敗修理與直接證據完成，或新決策／必要資源阻擋；未批准不 merge。
+使用者已授權本輪施工，並要求先更新文件、深入整理完整 Import 路徑，不只修單一 helper。
+工作區為 `XBrainLab-product-quality`，分支 `refactor/product-quality`，起點 `8636a754`。
+本節是本線唯一施工進度；下方研究里程碑由 Evaluation 線維護，不覆寫或執行其題庫／評測。
+PR #143–#145 已進入此 main 基線；舊啟動器、RAG、split receipt 與回應性修理不再 active。
+使用者已批准刪除 `wip/data-split-summary`，未合併的 UI 修改未帶入本輪。
 
-**2026-09-20 手測修理 — Assistant preprocess 回應性（已授權）**：
-手測 bandpass 工具耗時 6.172 秒（整輪 8.563 秒）。完整 startup trace 與 Windows
-native probe 確認：Dispatcher 已將 controller 搬至 AssistantCommandThread，但在搬移前
-連接的未宣告 Qt slot 的 generation-finished Python callback 仍在 Qt mainThread 執行
-（probe: on_gui=true/on_controller=false），造成工具計算阻塞重畫。既有 RUNNING_COMMAND
-已有文字與進度動畫，無須另造 UI 或背景 execution owner。本 slice 修正 controller
-跨執行緒接收 slot 歸屬，使用既有 command thread，真正結果返回後才完成 turn；
-保留原有 command／資料 publication 與 shutdown ownership。
-先以有界慢計算＋Qt heartbeat 重現，再接非同步 completion，驗證資料結果、失敗、
-重複提交、stop/reset、關閉與晚到結果。Focused native tests、lint、獨立 lifecycle review，
-最後同 head applicable CI 與 Windows changed-path walkthrough。UI 確認：使用者已同意
-使既有執行中狀態可持續顯示；不改 layout／文字、不新增取消功能或百分比。
-Non-goals：模型／prompt／RAG／18-tool contract、濾波演算法、全面工具系統改寫。
-保留已開啟的使用者手測程序，不關閉它；新 source 需重新啟動才生效。
-Complexity：只補現有 receiver 的 Qt slot 宣告，無新增 owner、module、public class，
-不新增 async continuation／state／compatibility path。Rollback 為本 slice revert。
-已完成：真 controller／dispatcher／ChatPanel＋MNE 慢計算成功／失敗 regression 先 RED
-（錯誤執行緒）後 GREEN；55 個直接相鄰 tests 通過，另補 moved controller 的停止／新 turn／
-晚到 chunk、finish、error、stop acknowledgement 回歸並通過。八個既有 receiver 加 Qt slot，
-production +11/-1/net+10 LOC，無新 owner；獨立 diff review 無 blocker。
-Next：提交修理、同 head CI 與 Windows native changed-path capture，更新啟動指令後局部手測。
-Native probe／RED／GREEN evidence 在 root build/dev-artifacts/assistant-affinity、assistant-responsive-*。
-Stop：修理及直接驗證完成並交付手測，或必要權限／資源阻擋；未取得 merge 批准不合併。
-既有完整模型評測預算已用完，不自行追加；本修理不宣稱模型能力改善。
+### 問題、outcome 與界線
 
-本節優先於下方歷史順序。目標為啟動器、研究文件與 RAG 的共同 main 基線；
-不是正式題庫評測、pilot 或 Assistant Stable promotion。只讀／使用既有工程案例，
-不讀正式 Validation／Test，不把題目或 oracle 加入 RAG。
+- 正式 BIDS importer 使用 metadata／內容，不以 MOABB 名稱白名單放行；Graz GDF 名稱還原、
+  T1／T2 語意防護與轉換端 loader 修補需要分清來源、假設及責任。
+- 靜態閱讀發現 preview 與 apply 各自實作 run mapping 查找，對同名檔案唯一性處理不同；
+  這是待重現風險，不先宣稱使用者資料已錯誤。
+- Outcome：preview／validate／apply／recipe／epoch 的 recording 與 class 解讀一致，
+  重複政策收斂；production、直接相關 tests／fixtures／scripts 的去留有具體理由。
+- 允許修復已重現的 mapping 誤套或資料一致性缺陷；不自行改 Graz 自動還原、T1／T2
+  confirmation 政策、不改 UI layout／文案／流程或 Assistant 公開工具。
+- 不改研究題庫／runner／scorer／模型／prompt／RAG，不新增下載、不搬資料、不升級共用環境，
+  不覆寫任何 worktree 的使用者 settings.json；本輪不是 B0 封存。
+- 保留有證據的來源適配，不以特例、LOC 歸零為目標；獨立 UI 打磨留待下一階段討論。
 
-1. **啟動器 PR #143**：head `8314b590` 的三個 Windows-only 測試被 Linux shard 收集後
-   skip，導致 mandatory completion gate 失敗。修正既有平台分流及 Windows 測試環境依賴，
-   不放寬 skip gate、不改 `start.cmd` 行為。驗證三個真 CMD 案例與 routing 回歸後 push，
-   追蹤同 head CI；產品 merge 仍需明確批准，純測試修正不冒稱新的產品手測。
-2. **研究成果**：保存並審查 `feat/assistant-benchmark-calibration` 已有離線 calibration、
-   研究規格及未提交出題文件／導覽；同步 main 後以非產品 PR 合併。只確認模板身分，
-   不讀正式題目、不寫新研究 runner。focused calibration／docs checks，無 GUI 手測要求。
-3. **RAG**：從最新 main 建立 `improve/rag-common-baseline` 獨立 worktree。
-   18 工具各 4 筆英文正例（共 72），沿用單動作 corpus 契約；不新增回答／追問範例，
-   不變更模型、工具、confirmation、format retry 或 capability owner。
-   擴充前固定 36 正例查詢（各工具 2）及 12 邊界工程探針，沿用 verify_rag 真離線檢索；
-   不以只允許預期工具製造命中。Top-3 至少 33/36、每工具至少一題、不得低於修改前。
-   schema／ID／重複及語意審查、工具排除、索引重建／重用皆須通過。
-   固定 embedding revision、threshold=0.7、top-k=3、context budget；只修有證據的直接缺陷。
-   更新 corpus hash／collection identity。真模型以既有 pinned primary，舊基準一次＋最多
-   兩個候選各一輪完整 frozen 81-case；不改分母／既知失敗清單、不下載模型、不降 gate。
-   獨立 review 與 Windows ChatPanel 真實 journey 後集中一次 Assistant 局部手測。
-4. **整合凍結**：同 head 適用 CI 成功且取得產品手測／merge 批准後合併 RAG；保存
-   source、corpus、embedding／模型 revision、設定與證據身分。稱研究前共同基線，
-   正式 B0 仍依研究規格固定。研究線與 UI 線各自工作目錄，工具契約先協調。
+### 施工順序
 
-共用現有 Windows Python、模型、embedding 與資料；不新增環境、不搬資料。
-root `settings.json` 不 stage／stash／覆寫，`wip/data-split-summary` 保留。
-合併後才清理精確對應的 worktree／臨時產物，保留必要失敗與驗收證據。
-本輪 UI layout／文案／流程沒有修改授權；RAG 正例／檢索改善已授權。
-每個 slice review；不因小 commit、CI pending 或 compaction 停工。
-候選預算用完、必要資源不可用或缺少合併批准時明確回報，不擴大施工。
+1. 文件先行：校準已合併歷史；逐段追蹤選取 recordings、events／labels、channels、
+   review／apply 與 recipe 的實際 caller，在既有資料架構文件記錄保留／收斂／限制。
+2. Baseline：沿用 focused tests，建立真 MNE／Command 路徑的 characterization；
+   已重現缺陷先 RED，再修理。查清完整路徑、唯一 basename／run 與 carrier 對應。
+3. 收斂：在既有模組重用純函式統一等價查找規則；歧義簡寫不得套用到另一筆 recording。
+   保留無歧義輸入與 recipe，維持既有 admission、mutation/publication ownership；
+   不新增 authoritative owner、state machine、receipt、通用適配平台或 compatibility 空殼。
+4. 相鄰清理：同時檢查專用適配、label 建議、recipe trace、資料一致性與相關腳本；
+   確認無 caller 或已有可靠替代證據才刪除 helper／重複測試，不擴張無關 panel。
+5. 獨立 review、focused／source-diverse／必要 Windows native 驗證；同候選適用 CI 通過後
+   集中一次 Import 局部手測。PR 發布／merge 各依授權，不自行合併。
 
-**Next**：#143 head `5cfd57d3` 的 CI 成功並獲使用者批准，已合併於 `fbcfbadb`；RAG 已同步 main。
-研究 PR #144 已完成 review／92-case calibration／docs／CI，合併於 `c44f4a7b`。
-RAG 探針在擴充前固定；舊 23 例為 14/36，72 例初稿 30/36，依空結果診斷修訂六個正例後
-為 34/36，各工具至少一題；所有索引／範圍／context gate 通過。探針已用於 development 修訂，
-不稱 holdout 或正式 Test。模型舊基準 81/81 完整執行（兩個既有 bounded failures）。
-候選 `07f178ba` 的 81-case 真模型 bounded gate 已通過，逐 suite raw／post-recovery 數量未退步，
-仍有原先兩個 bounded failures，非 Stable。68 個 focused native 案例全部執行通過。
-Windows journey 暴露既有單次 capture 在 model loading 時固定等 2.5 秒就點 disabled Send；
-真實 log 顯示模型隨後已成功 ready，但沒有送出 user turn。最小腳本修理已完成：
-delayed-ready／late-controller／never-ready 先 RED 後 GREEN，等待實際 controls ready 或原 timeout；
-不增加 timeout、不改產品。相鄰 40 tests 通過；Windows 原生 switch-panel 與兩輪 no-action
-ChatPanel journey 通過（第二輪使用一次既有 format recovery），畫面及 teardown 已檢查。
+### 驗證、複雜度與完成
 
-**已授權修理（2026-09-20）**：使用者批准 #143 merge 與最小 Visualization 內部競態修復。
-#145 的 Linux UI CI 在既有 visualization publication refresh 測試失敗。
-固定 P2 通知先於 P1 result 的排序後，兩個刷新入口均重現：cached P1 尚存時就 commit P2
-render revision，舊 result 被拒後重排同一 revision 又被丟棄，剩 dirty state 而無 retry。
-該產品 owner／測試與 main 相同，非 RAG 修改造成。Outcome：只有同 generation 的 summary
-實際可用時才完成 render revision；舊 summary／晚到 result 不得吞掉新 publication 的重畫。
-Scope：Visualization render callback、固定通知先於結果排序的回歸與相鄰 stale/error/cleanup；
-不新增 owner／retry policy、不改 UI 外觀／文案／操作、不擴張 panel 重構。
-先把固定排序納入既有測試並確認 RED，再最小修理、focused GREEN、獨立 async review。
-最後同步 main、同 head CI／source-diverse／適用 native 與剩餘 model gate，集中一次手測。
-忽略目錄下的 deterministic probe／log：`build/dev-artifacts/visualization-race-probe/`、
-`build/dev-artifacts/visualization-race-evidence/`；#145 comment 保存已完成的 exact-head model 證據。
-固定排序兩個入口已 RED → GREEN；相鄰 publication／terminal error／cleanup 68 tests 全數通過。
-修理只收緊兩個 render acknowledgement guard，獨立 review 無 blocker；不新增 retry 或 owner。
-下一步固定整合 head，追蹤 CI／source-diverse、原生 Visualization 與 ChatPanel journey，
-並使用最後一次完整 81-case 候選 model budget。證據留在本 worktree 的 `build/dev-artifacts/`
-及 #145 comment；通過後開啟 Windows 集中局部手測，#145 merge 仍需使用者批准。
-整合 `89ec3646` 的原生 Assistant 導航／兩輪對話與 retrieval 34/36 通過；Visualization
-訓練、saliency、2D／3D render 成功，但 capture 在 tab return 固定 150 ms 時讀到新建
-interactor 的 100×30 暫態而失敗。main 同樣重現；有界觀測證明無產品修改、未恢復視窗尺寸前
-即自行完成 layout 與正確 orientation。直接必要修理限定 capture readiness 與回歸，沿用既有
-render timeout／幾何 gate，不改產品、不加 timeout。同時診斷本 head 的兩個 UI CI failures。
-CI 的兩個 training-refresh assertions 揭露 pending summary 的 ledger retry 多做一次內容刷新；
-empty-state failure 則是同 revision redelivery 在 result callback 中再次 dirty，反覆 query 而不顯示提示。
-三個案例已原生重現；修理沿用既有 active request／pending ledger 做 coalescing，不降低原 assertion，
-不新建 owner。Capture 新增四個 readiness 正反例先 RED；完整 script 測試 80/80 GREEN。
-最後完整 model run 尚未動用，待這些直接驗證缺口閉合並重新固定 source。
-三個 UI failure 與完整相鄰檔案現已 53/53 原生 GREEN，未改既有整合 assertion；
-補上同 revision 在 summary rendering 內同步 redelivery 的單次 query 回歸。
-修理後原生 Visualization 完整 capture（包含 resize／tab return orientation、shutdown）通過。
-下一步為 focused guard／hooks、commit/push，固定新 head 後完成最後 model／native／CI，集中手測。
-**Stop**：四步完成，或真正的新決策／資源／產品批准阻擋；不把 focused pass 當完整完成。
+- 正例：完整路徑、唯一檔名／run；不同 run 的相同 T1／T2 不同語意；apply／recipe／epoch 一致。
+- 反例：跨 subject/session 同名、重複 run、部分 mapping、對調 carrier、真 stale source；
+  失敗不得部分 publication；不更動原始檔案、波形、事件時間。
+- 適配：Graz 已知模式保留、名稱／順序／通道數不同不得誤套；BIDS external／embedded／
+  no-label 路徑維持。用真物件與 Command evidence 補強 mock-only 覆蓋後才刪重複測試。
+- 每個 coherent slice 記錄實際 diff、owner 前後與 production LOC；觸及 root complexity
+  門檻先 review。Rollback 為各 slice revert，不用大規模搬檔冒充架構改善。
+- 不將舊 134-root campaign 當成本 head 證據；CI 已提供的等價 full checks 不本機重跑。
+- Stop：已授權範圍、直接驗證與 review 完成後集中交付；若新政策／UI 決策或必要資源阻擋，
+  先完成其餘安全工作並提供具體證據。小 commit、CI pending、context 壓縮不是停止條件。
+- 已驗：既有 BIDS／reader baseline 72 passed；新增真 Commands 6 個案例原先 4 failed／2 passed，
+  重現 run 簡寫丟失、同名檔案 metadata 誤配、歧義 basename 誤套。修理後另外追到 recipe
+  將同名 recordings 的 metadata overrides 壓成單一 basename，初次 apply 正確但重播丟失語意。
+- recipe 同名 metadata、完整路徑 mapping remap、部分 remap 誤合併與歧義簡寫被 remap
+  誤升格均已有真 Command regression；獨立覆核的 findings 已修理，最後覆核無 blocker。
+  原 scope 有歧義的簡寫不因重新命名而取得語意授權；沒有 reviewed mapping 時維持原事件，
+  不為測試新增 epoch hint 政策。擴大 focused 曾 255 passed；最後 remap 修理直接相關
+  82 passed，需在固定版本重新取得整合 evidence。
+- BIDS recommendation 清理為 production +8/-42/net -34 LOC，characterization 先後皆 77 passed；
+  Graz reader seam 改用真 MNE 物件補正反例、annotation preservation 比對改為事前 snapshot，
+  對應 35 tests 通過。純解析／state owners 不增加；不改推論門檻或 UI。
+- production 合計 +165/-99/net +66 LOC、5 個既有模組；不新增 owner／module／class。
+  Apply 內部 mappings 每批先解析一次，移除 preview/apply 的分歧查找；existing publication
+  owner 與 cancellation 不動。相關 catalog／converter 腳本確認仍有用途，本輪未任意刪除。
+- Static typing、changed-file lint 與 strict docs portal（42 pages／1,617 links）已通過；
+  既有 MNE／NumPy deprecation warnings 保留，不在本輪升級共用環境。
+- Next：固定 commit 後執行本版本完整代表性
+  import catalog、source-diverse 與 Windows wizard gate。保留必要證據在本 worktree
+  build/import-quality；推送／開 PR 授權已詢問，未收到批准前不發布，不自行 merge。
+  尚未宣稱 scope-complete／handoff-ready，沒有新版本手測或 merge 批准。
 
 
 ## 已保存的研究準備
@@ -140,7 +77,7 @@ empty-state failure 則是同 revision redelivery 在 result callback 中再次 
 離線 calibration 與人工出題委託文件已由 PR #144 保存並通過非產品 review／focused 驗證。
 出題说明與 CSV 是 AI 教學示例，不是正式題庫。M1 題庫、M2 runner 尚未完成；
 不把啟動器手測當作全產品或 Assistant 接受。既有 workspace 清理已結束，細節留 Git history，
-不重啟舊清理；受保護設定、資料、共用環境與未合併 Split WIP 保留。
+不重啟舊清理；受保護設定、資料與共用環境保留。Split WIP 已依使用者授權刪除。
 
 ## 第二主線研究里程碑計畫（研究文件準備中；runner 尚未施工）
 
