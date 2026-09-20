@@ -1,11 +1,13 @@
 """Condition workers may reuse only one exact model/RAG runtime identity."""
 
 import copy
+from types import SimpleNamespace
 
 import pytest
 
 from scripts.dev.assistant_pilot_condition import (
     SCHEMA,
+    PilotConditionSession,
     validate_condition_request,
 )
 
@@ -72,3 +74,20 @@ def test_condition_rejects_duplicate_case_artifact_identity():
     payload["jobs"][1]["id"] = payload["jobs"][0]["id"]
     with pytest.raises(ValueError, match="condition request"):
         validate_condition_request(payload)
+
+
+def test_first_case_boundary_records_product_string_pipeline_stage(tmp_path):
+    session = PilotConditionSession.__new__(PilotConditionSession)
+    session.case_index = 0
+    session._assert_identity = lambda _payload: None
+    session._boundary_clean = lambda: True
+    session.service = SimpleNamespace(
+        get_state=lambda: SimpleNamespace(pipeline_stage="empty")
+    )
+    session.runtime = SimpleNamespace(
+        current=SimpleNamespace(model_id="google/gemma-3-4b-it")
+    )
+    session.manager = SimpleNamespace(agent_controller=SimpleNamespace(history=[]))
+    output = tmp_path / "case"
+    output.mkdir()
+    assert session._begin_case({}, output)["pipeline_stage"] == "empty"

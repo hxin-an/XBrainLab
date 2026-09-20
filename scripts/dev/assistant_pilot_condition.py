@@ -331,7 +331,7 @@ class PilotConditionSession:
         return {
             "runtime_reused": self.case_index > 0,
             "model_id": self.runtime.current.model_id,
-            "pipeline_stage": self.service.get_state().pipeline_stage.value,
+            "pipeline_stage": self.service.get_state().pipeline_stage,
             "conversation_messages": len(self.manager.agent_controller.history),
             "visible_messages": 0,
             "active_owned_operations": 0,
