@@ -34,6 +34,7 @@ from XBrainLab.llm.agent.ui_handoff import (
     workflow_ui_handoff_route_for,
 )
 from XBrainLab.ui.chat.action_card import AssistantConfirmationCard
+from XBrainLab.ui.components.modal_presentation import ModalAlertDialog
 from XBrainLab.ui.panel_navigation import (
     PANEL_DATASET,
     PANEL_EVALUATION,
@@ -80,6 +81,20 @@ _VIEWS = {
     "topographic_map": VISUALIZATION_TAB_TOPOGRAPHIC_MAP,
     "3d_plot": VISUALIZATION_TAB_3D_PLOT,
 }
+
+
+def _known_product_notice(dialog: QDialog, item: dict) -> bool:
+    """Recognize only the product-owned acknowledgement tied to 3D routing."""
+    payload = item.get("payload")
+    return bool(
+        item.get("kind") == "navigation"
+        and isinstance(payload, AssistantPanelNavigationRequest)
+        and payload.target.value == "visualization"
+        and payload.view_mode == "3d_plot"
+        and type(dialog) is ModalAlertDialog
+        and not dialog.is_confirmation
+        and dialog.windowTitle() == "VRAM Warning"
+    )
 
 
 def _reachable(widget: QWidget) -> bool:
@@ -262,6 +277,29 @@ class PilotUiDriver(QObject):
     def _poll(self) -> None:
         dialog = QApplication.activeModalWidget()
         if isinstance(dialog, QDialog) and self._owns(dialog) and _reachable(dialog):
+            notice_item = next(
+                (
+                    entry
+                    for entry in self._pending
+                    if _known_product_notice(dialog, entry)
+                ),
+                None,
+            )
+            if notice_item is not None:
+                self._record(
+                    "product_notice",
+                    notice_item,
+                    widget_class=type(dialog).__name__,
+                    ready_observed_ns=perf_counter_ns(),
+                    screenshot=self._screenshot(dialog),
+                )
+                self._record(
+                    "driver_action",
+                    notice_item,
+                    action="dismiss_product_notice",
+                )
+                dialog.reject()
+                return
             item = next(
                 (entry for entry in self._pending if entry["kind"] == "handoff"), None
             )

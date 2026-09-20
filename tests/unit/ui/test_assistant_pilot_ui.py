@@ -24,6 +24,10 @@ from XBrainLab.ui.components.agent_manager import AgentManager
 from XBrainLab.ui.components.assistant_runtime_lifecycle import (
     AssistantRuntimeLifecycle,
 )
+from XBrainLab.ui.components.modal_presentation import (
+    AlertSeverity,
+    ModalAlertDialog,
+)
 from XBrainLab.ui.main_window import MainWindow
 
 
@@ -122,6 +126,47 @@ def test_unexpected_message_is_recorded_and_rejected_never_accepted(
     )
     assert not any(
         event["kind"] == "dialog_ready" for event in driver.snapshot()["events"]
+    )
+    driver.close()
+
+
+def test_known_vram_notice_from_3d_navigation_is_observed_not_measurement_error(
+    host, qtbot, tmp_path, allow_real_modals
+):
+    window, manager = host
+    driver = PilotUiDriver(window, manager, tmp_path / "screens")
+    signals = Signals()
+    driver.attach(signals)
+    done = []
+
+    def present_notice(_request):
+        dialog = ModalAlertDialog(
+            severity=AlertSeverity.WARNING,
+            title="VRAM Warning",
+            message="Known product acknowledgement after opening the 3D view.",
+            parent=window,
+        )
+        done.append(dialog.exec())
+
+    signals.panel_navigation_requested.connect(present_notice)
+    signals.panel_navigation_requested.emit(
+        AssistantPanelNavigationRequest(AssistantPanelTarget.VISUALIZATION, "3d_plot")
+    )
+    qtbot.waitUntil(lambda: bool(done), timeout=10000)
+    snapshot = driver.snapshot()
+    notices = [
+        event for event in snapshot["events"] if event["kind"] == "product_notice"
+    ]
+    assert len(notices) == 1
+    assert notices[0]["target"] == "visualization"
+    assert notices[0]["view_mode"] == "3d_plot"
+    assert notices[0]["widget_class"] == "ModalAlertDialog"
+    assert Path(notices[0]["screenshot"]).is_file()
+    assert "unexpected_dialog" not in snapshot["issues"]
+    assert any(
+        event.get("kind") == "driver_action"
+        and event.get("action") == "dismiss_product_notice"
+        for event in snapshot["events"]
     )
     driver.close()
 

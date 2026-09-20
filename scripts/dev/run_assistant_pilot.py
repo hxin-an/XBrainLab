@@ -36,6 +36,7 @@ from scripts.dev.assistant_pilot_rag import (
 )
 from XBrainLab.llm.rag.config import RAGConfig
 
+_WINDOWS_CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
 SCHEMA = "xbrainlab.assistant_pilot_run.v1"
 ROOT = Path(__file__).resolve().parents[2]
 BUDGET_SECONDS = 14_400
@@ -242,6 +243,11 @@ def _child_environment() -> dict[str, str]:
     return environment
 
 
+def _child_creation_flags(platform: str = os.name) -> int:
+    """Keep per-case Windows interpreters off the interactive desktop."""
+    return _WINDOWS_CREATE_NO_WINDOW if platform == "nt" else 0
+
+
 def _case_command(request: Path, destination: Path) -> list[str]:
     return [
         _python_executable(),
@@ -268,6 +274,7 @@ def _run_child(
             stdout=stdout,
             stderr=stderr,
             env=_child_environment(),
+            creationflags=_child_creation_flags(),
         )
         try:
             on_started(process.pid)

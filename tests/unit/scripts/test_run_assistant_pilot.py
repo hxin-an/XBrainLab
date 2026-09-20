@@ -310,6 +310,11 @@ def test_parent_timeout_records_and_reaps_only_its_child(tmp_path, monkeypatch):
     assert (tmp_path / "case.request.stdout.log").is_file()
 
 
+def test_child_process_hides_windows_console_without_changing_other_platforms():
+    assert runner._child_creation_flags("nt") == runner._WINDOWS_CREATE_NO_WINDOW
+    assert runner._child_creation_flags("posix") == 0
+
+
 def test_child_launch_pid_and_virtual_environment_are_exact(tmp_path, monkeypatch):
     child = tmp_path / "child.py"
     child.write_text(
@@ -319,6 +324,14 @@ def test_child_launch_pid_and_virtual_environment_are_exact(tmp_path, monkeypatc
     monkeypatch.setattr(
         runner, "_case_command", lambda *_: [runner._python_executable(), str(child)]
     )
+    real_popen = runner.subprocess.Popen
+    launch_flags = []
+
+    def spawn(*args, **kwargs):
+        launch_flags.append(kwargs.get("creationflags"))
+        return real_popen(*args, **kwargs)
+
+    monkeypatch.setattr(runner.subprocess, "Popen", spawn)
     owned = []
     code, timed_out = runner._run_child(
         tmp_path / "identity.request.json",
@@ -333,6 +346,7 @@ def test_child_launch_pid_and_virtual_environment_are_exact(tmp_path, monkeypatc
         "prefix": sys.prefix,
         "executable": sys.executable,
     }
+    assert launch_flags == [runner._child_creation_flags()]
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows view of an explicit WSL gitfile")

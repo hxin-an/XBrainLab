@@ -83,9 +83,13 @@ async／評測證據採獨立覆核；同一份實際 diff 與測量證據由主
 不為每個內部 slice 要求使用者重測 GUI；產品行為變更仍遵守正式 handoff／merge 規則。
 Pilot 完成不等於產品手測／merge 同意；外部寫入與交付仍依 repo 授權邊界。
 
-**目前位置**：題庫／scorer、研究 runtime 注入、五模型檔案取得、全部 selected fixture
-與真 Qt observation 已完成 focused 驗證；Gemma 經批准 NF4 配置通過 GPU 工程檢查。
-完整 runner 正在整合工程驗證；Pilot 尚未啟動，B0 封存尚未執行。
+**目前位置**：題庫／scorer、研究 runtime 注入、五模型檔案取得、全部 selected fixture、
+真 Qt observation 與完整 runner 已完成 focused 驗證；Gemma 經批准 NF4 配置通過 GPU
+工程檢查。第一版 frozen Pilot `8a7935c3` 在 176/300 fail closed：Phi-4 對
+`DEV-C06-01-V3` 錯誤呼叫 `switch_panel(visualization, 3d_plot)`，產品正常顯示既有
+`VRAM Warning`，但 driver 把該可歸因的產品警告誤記為 `unexpected_dialog`／無效量測。
+已完成的低分與失敗原樣保留，不作挑分重送；此 run 僅是量測框架缺口證據，不納入正式
+Pilot 比較。B0 封存尚未執行。
 題庫 intake 證據與來源如下。
 來源為使用者指定的 `C:\Users\Administrator\Downloads\題型_已審不含TEST.xlsx`，
 SHA-256 `2161af9932950e2a0726daeae3d744935d8d1bc6f408d739b2240d2752a29c23`。
@@ -120,12 +124,17 @@ warnings 保留，未改環境。真 workbook 363 題 oracle schema 全數合法
 未安裝或升級。三個批准 snapshot 的既有 HF 帳號 access 通過；39 個必要檔案下載及
 大小／官方 LFS SHA-256 核對完成，新增 22,768,349,036 bytes，盤點總 cache
 41,711,365,409 bytes（含既有 repo/cache 與保守 WSL 用量），未刪既有資料。
-**Next**：Gemma NF4 已通過真 GPU／owned-process 檢查（見下）；真實 trained／training／
-saliency fixtures 已補齊直接測試，接 normal ChatPanel observer、RAG on/off 隔離、軌跡／分層 outcome、
-runner／計時／續跑與同來源完整性 gate，再啟動 60→240 Pilot 與 B0 封存／還原。
-不得把這個 checkpoint 說成只差執行、Pilot 完成或 handoff-ready。
-**缺口**：完整 runner 與真 UI readiness／outcome 尚未閉合；Test 封存元資料已非阻擋式詢問，Test 未讀取。
-缺資訊題的 prompt/history/RAG 仍須在真正送入模型時核對；fixture setup 不取代此 gate。
+**Next**：上述實例已補 RED→GREEN characterization；只將可識別、由本回合 action 引起的
+產品資訊警告記為 product outcome 並安全關閉，未知 dialog 仍 fail closed。Windows runner
+子程序已加 `CREATE_NO_WINDOW`，保留 stdout/stderr、精確 PID、timeout、terminate/kill 與
+cleanup 語意；相鄰 117 tests 與 focused Ruff 通過，diff review 無 blocker。clean commit 後，
+以新 frozen source 從 0/300 重跑相同 selection／五模型／RAG on/off Pilot；不得把舊 176 題
+與新 source 混成一批。
+完整報告與 B0 封存／還原通過才到出口，不把此 checkpoint 稱為 Pilot 完成或 handoff-ready。
+UI layout／文案／產品互動不變；只改研究 driver 對既有警告的觀測分類與 runner 的 console
+presentation。回退為這兩個 script seam 與 tests，不改產品 owner/public contract。
+**缺口**：修正後完整 300 題尚未重跑，報告與 B0 尚缺；Test 未讀取。缺資訊題的
+prompt/history/RAG 仍以已保存的逐題 input audit 核對，fixture setup 不取代此 gate。
 
 模型唯讀 preflight 找到下列官方 pin，使用者於 2026-09-21 批准下載；尚未認證載入成功：
 
