@@ -94,7 +94,19 @@ Project-local `installer.re-resolve=true` 讓 Poetry 依本次選取的 extra �
 poetry run python -c "import torch; print(torch.__version__); print(torch.version.cuda); print(torch.cuda.is_available())"
 ```
 
-日常啟動不必再指定 Python executable：
+Windows 環境已設定完成後，日常可雙擊根目錄 `start.cmd`，或從 PowerShell 執行：
+
+```powershell
+.\start.cmd
+```
+
+它使用該 checkout 的 `.venv` 與 `run.py`，同一 console 顯示即時 log；不安裝、下載或跑測試。
+未指定模型／RAG cache 環境變數時，若本機存在 `D:\XBrainLabCache\models`／`rag` 就重用；
+否則沿用產品預設。既有環境變數優先，離線設定僅作用於這次啟動，不改 registry、profile 或
+root `settings.json`。缺少 Python 時顯示錯誤，必須自行決定是否執行 setup。
+這是日常 source 入口，不替代正式手測的 exact-source／dependency 驗證。
+
+也可沿用已配置好的 Poetry 啟動：
 
 ```powershell
 poetry run python run.py --model local

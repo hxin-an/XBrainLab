@@ -442,6 +442,13 @@ def test_process_and_launcher_contracts_retain_manual_environment() -> None:
     )
 
 
+def test_daily_launcher_is_required_only_on_windows() -> None:
+    paths = dict(run_tests.PLATFORM_SHARDS)["process-and-launcher-contracts"]
+    assert ("tests/unit/scripts/test_windows_daily_launcher.py" in paths) == (
+        sys.platform == "win32"
+    )
+
+
 def test_platform_ci_groups_partition_focused_platform_gate_exactly_once() -> None:
     grouped_shards = [
         shard for _command, shards in run_tests.PLATFORM_CI_GROUPS for shard in shards

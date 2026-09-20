@@ -142,6 +142,11 @@ PLATFORM_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "tests/unit/scripts/test_run_ui_native_render_stress.py",
             "tests/unit/scripts/test_test_runtime_paths.py",
             "tests/unit/scripts/test_wsl_launcher_privacy.py",
+            *(
+                ("tests/unit/scripts/test_windows_daily_launcher.py",)
+                if sys.platform == "win32"
+                else ()
+            ),
         ),
     ),
     (
