@@ -1085,6 +1085,26 @@ def _capture_orientation_bindings(
     tab_index: int,
 ) -> dict[str, dict[str, Any]]:
     """Record the live orientation widget binding across layout disruptions."""
+    deadline = time.monotonic() + THREE_D_CAPTURE_TIMEOUT_MS / 1000.0
+
+    def capture_settled_binding() -> dict[str, Any]:
+        terminal = _wait_for_3d_capture_terminal_state(
+            app,
+            widget,
+            window=window,
+            expected_outcome="rendered",
+            expected_reason="",
+            timeout_ms=max(0, int((deadline - time.monotonic()) * 1000)),
+        )
+        binding = _orientation_binding_evidence(widget)
+        binding["terminal_settled"] = terminal["settled"]
+        if not terminal["settled"]:
+            binding["ok"] = False
+            binding["reason"] = (
+                "3D render layout did not settle before the capture deadline."
+            )
+        return binding
+
     evidence = {"initial_render": _orientation_binding_evidence(widget)}
 
     original_width = max(int(window.width()), 1)
@@ -1094,16 +1114,14 @@ def _capture_orientation_bindings(
     )
     window.resize(resized_width, original_height)
     _render_plotter_for_orientation_evidence(widget)
-    _process_events(app, 150)
-    evidence["after_resize"] = _orientation_binding_evidence(widget)
+    evidence["after_resize"] = capture_settled_binding()
 
     alternate_index = 0 if tab_index != 0 else 1
     panel.tabs.setCurrentIndex(alternate_index)
     _process_events(app, 80)
     panel.tabs.setCurrentIndex(tab_index)
     _render_plotter_for_orientation_evidence(widget)
-    _process_events(app, 150)
-    evidence["after_tab_return"] = _orientation_binding_evidence(widget)
+    evidence["after_tab_return"] = capture_settled_binding()
 
     window.resize(original_width, original_height)
     _render_plotter_for_orientation_evidence(widget)
