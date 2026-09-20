@@ -393,6 +393,60 @@ def test_saved_split_publishes_consistent_training_readiness_before_materializat
     assert state.training.missing_requirements == []
 
 
+def test_first_split_save_after_reading_training_recommendation() -> None:
+    """Opening advisory settings must not invalidate the next reviewed split."""
+    service, _epoch = _service_with_epoch(_two_subject_epoch_data())
+    publication = service.get_view_publication()
+    service.get_training_recommendation(
+        expected_publication_generation=publication.generation,
+    )
+    specification = _specification()
+    generation = service.get_view_publication().generation
+    preview = service.get_dataset_split_preview(
+        DatasetSplitPreviewRequest(
+            request_id="first-split-after-training-settings",
+            publication_generation=generation,
+            specification=specification,
+        )
+    )
+
+    saved = service.execute(
+        SaveDatasetSplitCommand(
+            split_config=specification.to_payload(),
+            preview_receipt=preview.receipt,
+        ),
+        expected_publication_generation=generation,
+    )
+
+    assert saved.ok is True, saved.message
+    assert saved.state.dataset.split_specification == specification.to_payload()
+    assert (
+        saved.state.dataset.split_preview_summary == preview.receipt.summary_payload()
+    )
+    assert service.study.datasets == []
+
+
+@pytest.mark.parametrize("prospective_model", [None, "braindecode.eegconformer"])
+def test_advisory_recommendation_preserves_committed_training_publication(
+    prospective_model: str | None,
+) -> None:
+    service, _epoch = _service_with_epoch(_two_subject_epoch_data())
+    _configure_training(service)
+    before = service.get_view_publication()
+    assert before.state.training.recommendation is not None
+
+    recommendation = service.get_training_recommendation(
+        expected_publication_generation=before.generation,
+        prospective_model_name=prospective_model,
+    )
+    if prospective_model is not None:
+        assert recommendation.recommended_values.optimizer == "AdamW"
+
+    # A later command rebuilds state; a read must not leave a deferred mutation.
+    assert service.get_state() == before.state
+    assert service.get_view_publication() == before
+
+
 def test_real_preview_receipt_round_trips_to_deferred_materialization(
     monkeypatch,
 ) -> None:

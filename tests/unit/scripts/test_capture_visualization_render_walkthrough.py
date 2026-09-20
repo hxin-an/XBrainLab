@@ -1478,6 +1478,171 @@ def test_orientation_binding_evidence_accepts_750px_top_right_overlay() -> None:
     assert evidence["right_top_gap_pixels"] == [16.0, 16.0]
 
 
+@pytest.fixture
+def orientation_capture_with_delayed_layout(qapp, qtbot, monkeypatch):
+    """Keep real Qt geometry and replace only the external VTK metadata."""
+
+    def run(
+        *, layout_delay_ms, timeout_ms=2000, invalid_overlay=False, engine_pending=False
+    ):
+        window = cast(Any, QMainWindow())
+        tabs = QTabWidget(window)
+        widget = cast(Any, QWidget())
+        widget._engine_worker = object() if engine_pending else None
+        tabs.addTab(QWidget(), "Other")
+        tabs.addTab(widget, "3D Plot")
+        window.setCentralWidget(tabs)
+        window.resize(1200, 800)
+        tabs.setCurrentIndex(1)
+        qtbot.addWidget(window)
+        window.show()
+        qapp.processEvents()
+        plotters = []
+        samples = []
+        wait_budgets = []
+
+        def create_plotter():
+            plotter = cast(Any, QWidget(widget))
+            plotter.setGeometry(widget.rect())
+            render_window = SimpleNamespace(
+                GetActualSize=lambda: (plotter.width(), plotter.height()),
+                GetSize=lambda: (plotter.width(), plotter.height()),
+                GetNeverRendered=lambda: 0,
+            )
+            renderer = SimpleNamespace(
+                GetActors=lambda: SimpleNamespace(GetNumberOfItems=lambda: 2),
+                GetLastRenderTimeInSeconds=lambda: 0.01,
+            )
+            overlay = SimpleNamespace(
+                GetRenderWindow=lambda: render_window,
+                GetViewport=lambda: (0.0, 0.0, 1.0, 1.0)
+                if invalid_overlay
+                else (
+                    1 - 128 / plotter.width(),
+                    1 - 128 / plotter.height(),
+                    1 - 16 / plotter.width(),
+                    1 - 16 / plotter.height(),
+                ),
+            )
+            widget._saliency_scene = SimpleNamespace(
+                _orientation_widget=SimpleNamespace(
+                    GetRepresentation=lambda: SimpleNamespace(
+                        GetRenderer=lambda: overlay
+                    ),
+                    GetParentRenderer=lambda: renderer,
+                ),
+            )
+            plotter.renderer = renderer
+            plotter.render_window = render_window
+            plotter.render = lambda: None
+            widget.plotter_widget = plotter
+            plotter.show()
+            plotters.append(plotter)
+            return plotter
+
+        def delay_layout(plotter):
+            plotter.setGeometry(0, 0, 100, 30)
+            if layout_delay_ms is not None:
+                timer = QTimer(plotter)
+                timer.setSingleShot(True)
+                timer.timeout.connect(lambda: plotter.setGeometry(widget.rect()))
+                timer.start(layout_delay_ms)
+
+        create_plotter()
+        resize = window.resize
+
+        def resize_window(width, height):
+            resize(width, height)
+            delay_layout(widget.plotter_widget)
+
+        def switch_tab(index):
+            if index == 1:
+                widget.plotter_widget.hide()
+                delay_layout(create_plotter())
+
+        tabs.currentChanged.connect(switch_tab)
+        monkeypatch.setattr(window, "resize", resize_window)
+        monkeypatch.setattr(capture_script, "THREE_D_CAPTURE_TIMEOUT_MS", timeout_ms)
+        read_binding = capture_script._orientation_binding_evidence
+        wait_terminal = capture_script._wait_for_3d_capture_terminal_state
+
+        def capture_binding(current_widget):
+            samples.append((window.width(), current_widget.plotter_widget))
+            return read_binding(current_widget)
+
+        def wait(*args, **kwargs):
+            wait_budgets.append(kwargs.get("timeout_ms"))
+            return wait_terminal(*args, **kwargs)
+
+        monkeypatch.setattr(
+            capture_script, "_orientation_binding_evidence", capture_binding
+        )
+        monkeypatch.setattr(capture_script, "_wait_for_3d_capture_terminal_state", wait)
+        evidence = capture_script._capture_orientation_bindings(
+            qapp,
+            SimpleNamespace(tabs=tabs),
+            widget,
+            window,
+            tab_index=1,
+        )
+        return evidence, samples, plotters, wait_budgets, window
+
+    return run
+
+
+def test_orientation_capture_waits_for_delayed_layout_and_replacement_plotter(
+    orientation_capture_with_delayed_layout,
+) -> None:
+    evidence, samples, plotters, _budgets, window = (
+        orientation_capture_with_delayed_layout(
+            layout_delay_ms=420,
+        )
+    )
+    assert all(
+        evidence[stage]["ok"] for stage in capture_script._ORIENTATION_BINDING_STAGES
+    )
+    assert len(plotters) == 2
+    assert samples[-1] == (1040, plotters[-1])
+    assert evidence["after_tab_return"]["renderer_size"][0] > 100
+    assert window.width() == 1200
+
+
+@pytest.mark.parametrize("engine_pending", [False, True])
+def test_orientation_capture_never_ready_fails_with_one_shared_deadline(
+    orientation_capture_with_delayed_layout,
+    engine_pending,
+) -> None:
+    evidence, _samples, _plotters, budgets, window = (
+        orientation_capture_with_delayed_layout(
+            layout_delay_ms=10 if engine_pending else None,
+            timeout_ms=100,
+            engine_pending=engine_pending,
+        )
+    )
+    assert evidence["after_resize"]["terminal_settled"] is False
+    assert evidence["after_tab_return"]["terminal_settled"] is False
+    assert evidence["after_resize"]["ok"] is False
+    assert evidence["after_tab_return"]["ok"] is False
+    assert len(budgets) == 2
+    assert 0 <= budgets[0] <= 100
+    assert budgets[1] == 0
+    assert window.width() == 1200
+
+
+def test_orientation_capture_ready_layout_does_not_accept_invalid_overlay(
+    orientation_capture_with_delayed_layout,
+) -> None:
+    evidence, _samples, _plotters, _budgets, _window = (
+        orientation_capture_with_delayed_layout(
+            layout_delay_ms=10,
+            invalid_overlay=True,
+        )
+    )
+    assert evidence["after_tab_return"]["terminal_settled"] is True
+    assert evidence["after_tab_return"]["ok"] is False
+    assert "geometry is invalid" in evidence["after_tab_return"]["reason"]
+
+
 def test_validate_visualization_payload_rejects_plotter_only_xcb_evidence(
     tmp_path,
 ) -> None:

@@ -72,11 +72,11 @@ def tool_calls_from_metadata(metadata: dict[str, Any] | None) -> list[dict[str, 
 def prompt_tool_call_from_metadata(
     metadata: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
-    """Return one strict product-envelope example or reject the metadata.
+    """Return one schema-valid action fragment or reject the metadata.
 
-    Few-shot output must teach the same two-key, one-action shape enforced by
-    ``CommandParser.parse_product``. Legacy, multi-action, malformed, and
-    explanation-bearing examples are unsuitable for the product prompt.
+    RAG context contains the tool name and parameters, not a complete model
+    response envelope. Legacy, multi-action, malformed, and explanation-bearing
+    examples are unsuitable for the product prompt.
     """
     calls = tool_calls_from_metadata(metadata)
     if len(calls) != 1:

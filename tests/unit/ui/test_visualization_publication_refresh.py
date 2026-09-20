@@ -90,6 +90,7 @@ class _VisualizationApplicationPort(Observable):
         self.visualization_diagnostics_by_generation: dict[int, dict[str, object]] = {}
         self.visualize_gate: Event | None = None
         self.visualize_entered: Event | None = None
+        self.result_after_notification_gate: Event | None = None
         self.query_calls = 0
         self.commands: list[Command] = []
         self.unsubscribe_calls = 0
@@ -139,6 +140,10 @@ class _VisualizationApplicationPort(Observable):
                         APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
                         self.publication,
                     )
+                    if self.result_after_notification_gate is not None:
+                        assert self.result_after_notification_gate.wait(timeout=2), (
+                            "P2's GUI render did not release the held P1 result."
+                        )
         return CommandResult.success_result(
             command_name=command.name.value,
             message="Visualization summary ready.",
@@ -232,6 +237,30 @@ def _panel(
 def _prime_panel(panel: VisualizationPanel, qtbot) -> None:
     panel.update_panel()
     qtbot.waitUntil(lambda: panel.last_application_query is not None)
+
+
+def test_visualization_redelivery_during_summary_render_settles_once(qtbot) -> None:
+    """A repeated pending revision cannot invalidate its own accepted summary."""
+    port = _VisualizationApplicationPort()
+    panel = _panel(qtbot, port)
+    update_info = panel.update_info
+
+    def redeliver_during_refresh() -> None:
+        update_info()
+        port.notify(APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT, port.publication)
+
+    with patch.object(panel, "update_info", redeliver_during_refresh):
+        port.notify(APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT, port.publication)
+        qtbot.waitUntil(
+            lambda: panel._last_application_revision == port.publication.revision
+            and application_command_registry().active_count(panel) == 0,
+        )
+
+    assert sum(isinstance(command, VisualizeCommand) for command in port.commands) == 1
+    assert sum(isinstance(command, SaliencyCommand) for command in port.commands) == 1
+    assert panel.last_application_query is not None
+    assert not panel._application_summary_dirty
+    assert panel._application_render_ledger.pending_publication is None
 
 
 def test_visualization_renders_from_explicit_application_ports(
@@ -515,22 +544,46 @@ def test_visualization_retries_cross_fold_summary_after_terminal_publication(
 
     port.publication_after_visualize = p2
     port.notify_after_visualize = True
+    result_gate = Event()
+    port.result_after_notification_gate = result_gate
     panel._application_summary_dirty = True
     requested = MagicMock()
-    with patch.object(panel, "_request_saliency_render", requested):
-        getattr(panel, refresh_method)()
-        qtbot.waitUntil(
-            lambda: (
-                panel.last_application_query is not None
-                and panel.last_application_query.diagnostics.get(
-                    "visualization_publication_generation"
-                )
-                == 5
-                and requested.called
-            ),
-            timeout=3000,
-        )
+    ledger = panel._application_render_ledger
+    render_publication = ledger._render_publication
+    render_attempts_before_result: list[int] = []
 
+    def render_before_releasing_result(publication):
+        result = render_publication(publication)
+        if publication.generation == 5 and not render_attempts_before_result:
+            assert not result_gate.is_set()
+            render_attempts_before_result.append(publication.generation)
+            # Release on the next GUI turn, after the real ledger has handled
+            # this callback's status. Do not wait for a commit: fixed code must
+            # defer P2 while its summary is still pending.
+            QTimer.singleShot(0, result_gate.set)
+        return result
+
+    with (
+        patch.object(panel, "_request_saliency_render", requested),
+        patch.object(ledger, "_render_publication", render_before_releasing_result),
+    ):
+        try:
+            getattr(panel, refresh_method)()
+            qtbot.waitUntil(
+                lambda: (
+                    panel.last_application_query is not None
+                    and panel.last_application_query.diagnostics.get(
+                        "visualization_publication_generation"
+                    )
+                    == 5
+                    and requested.called
+                ),
+                timeout=3000,
+            )
+        finally:
+            result_gate.set()
+
+    assert render_attempts_before_result == [5]
     assert panel.run_combo.currentData() == selected
     task = requested.call_args.args[0]
     assert task.request.run == selected
@@ -625,19 +678,27 @@ def test_visualization_render_exception_retries_internally_and_commits_on_succes
     _prime_panel(panel, qtbot)
     port.publication = _publication(generation=5, revision=5)
     attempts: list[int] = []
+    update_panel = panel.update_panel
 
     def render() -> None:
         attempts.append(port.publication.revision)
         if len(attempts) == 1:
             raise RuntimeError("transient Visualization render failure")
+        update_panel()
 
     panel.update_panel = render
 
     port.notify(APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT, port.publication)
-    qtbot.waitUntil(lambda: attempts == [5, 5])
+    qtbot.waitUntil(lambda: panel._last_application_revision == 5)
 
+    assert attempts[:2] == [5, 5]
     assert panel._last_application_revision == 5
     assert panel._application_render_ledger.pending_publication is None
+    assert panel.last_application_query is not None
+    assert (
+        panel.last_application_query.diagnostics["visualization_publication_generation"]
+        == 5
+    )
 
 
 def test_visualization_exhausted_revision_recovers_from_newer_publication(
@@ -647,11 +708,13 @@ def test_visualization_exhausted_revision_recovers_from_newer_publication(
     panel = _panel(qtbot, port)
     _prime_panel(panel, qtbot)
     attempts: list[int] = []
+    update_panel = panel.update_panel
 
     def render() -> None:
         attempts.append(port.publication.revision)
         if port.publication.revision == 5:
             raise RuntimeError("persistent Visualization render failure")
+        update_panel()
 
     panel.update_panel = render
     port.publication = _publication(generation=5, revision=5)
@@ -667,9 +730,15 @@ def test_visualization_exhausted_revision_recovers_from_newer_publication(
 
     port.publication = _publication(generation=6, revision=6)
     port.notify(APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT, port.publication)
-    qtbot.waitUntil(lambda: attempts[-1] == 6)
+    qtbot.waitUntil(lambda: panel._last_application_revision == 6)
 
+    assert attempts[-1] == 6
     assert panel._last_application_revision == 6
+    assert panel.last_application_query is not None
+    assert (
+        panel.last_application_query.diagnostics["visualization_publication_generation"]
+        == 6
+    )
 
 
 def test_visualization_cleanup_cancels_scheduled_render_retry(qtbot) -> None:

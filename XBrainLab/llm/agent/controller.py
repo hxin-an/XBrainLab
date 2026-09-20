@@ -306,7 +306,9 @@ class LLMController(QObject):
 
         self._conversation = ConversationHistory(max_size=self.MAX_HISTORY)
 
-        # Connect worker signals
+        # These receivers must be Qt slots: the dispatcher moves this controller
+        # after construction. Undecorated Python proxies can retain the creating
+        # GUI thread and run tool commands there despite the controller's affinity.
         worker.generation_chunk_received.connect(self._on_chunk_received)
         worker.generation_finished.connect(self._on_generation_finished)
         worker.generation_error.connect(self._on_generation_error)
@@ -801,6 +803,7 @@ class LLMController(QObject):
         """Publish background RAG completion to the controller owner thread."""
         self.sig_rag_context_ready.emit(turn_id, text, features, error)
 
+    @pyqtSlot(int, str, str, str)
     def _on_rag_context_ready(
         self,
         turn_id: int,
@@ -880,6 +883,7 @@ class LLMController(QObject):
             self._turn_orchestrator.finish_generation_dispatch()
         return True
 
+    @pyqtSlot(object)
     def _on_generation_dispatch_acknowledged(self, payload: object) -> None:
         """Commit ordered worker acceptance/start evidence for the active ID."""
         if not isinstance(payload, AssistantGenerationDispatchAcknowledgement):
@@ -936,6 +940,7 @@ class LLMController(QObject):
             outcome="generation_request_failed",
         )
 
+    @pyqtSlot(int, str)
     def _on_chunk_received(
         self,
         generation_id: int,
@@ -975,6 +980,7 @@ class LLMController(QObject):
         if self.metrics.current_turn:
             self.metrics.current_turn.output_chars += len(chunk)
 
+    @pyqtSlot(int, list)
     def _on_generation_finished(
         self,
         generation_id: int,
@@ -1959,12 +1965,14 @@ class LLMController(QObject):
         # a failure bubble before a corrected retry succeeds.
         return False
 
+    @pyqtSlot(str)
     def _on_runtime_error(self, error_msg: object) -> None:
         """Handle model/runtime errors only when no generation owns work."""
         if self._turn_orchestrator.active_generation_id is not None:
             return
         self._finish_worker_error(str(error_msg or "Assistant runtime failed."))
 
+    @pyqtSlot(int, str)
     def _on_generation_error(
         self,
         generation_id: int,
@@ -2261,6 +2269,7 @@ class LLMController(QObject):
         """Return the latest worker-published runtime state."""
         return self._worker_runtime_snapshot
 
+    @pyqtSlot(object)
     def _on_runtime_snapshot_changed(self, snapshot: object) -> None:
         if not isinstance(snapshot, AssistantRuntimeSnapshot):
             logger.error(
@@ -2337,6 +2346,7 @@ class LLMController(QObject):
                         )
                     )
 
+    @pyqtSlot(object)
     def _on_generation_stop_finished(self, payload: object) -> None:
         """Keep the UI in Stopping state until the worker owns no live thread."""
         if not isinstance(payload, AssistantGenerationStopAcknowledgement):

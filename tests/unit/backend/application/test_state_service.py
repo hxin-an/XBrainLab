@@ -798,11 +798,13 @@ def test_state_and_explicit_recommendation_do_not_read_dataset_payload() -> None
         build_recommendation.assert_not_called()
 
         explicit = state_builder.refresh_training_recommendation(second)
+        assert explicit.is_starting_point
         build_recommendation.assert_called_once()
         third = state_builder.build()
         fourth = state_builder.build()
-        assert explicit == third.training.recommendation
-        assert explicit == fourth.training.recommendation
+        # Advisory reads must not become a deferred mutation of published state.
+        assert third == second
+        assert fourth == second
         build_recommendation.assert_called_once()
 
     get_epoch_data.assert_not_called()

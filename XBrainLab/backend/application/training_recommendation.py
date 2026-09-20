@@ -294,6 +294,19 @@ class TrainingRecommendationService:
             self._configuration_submission_pending = None
             self._configuration_submission_refinements = ()
 
+    def preview(
+        self,
+        context: TrainingRecommendationContext,
+    ) -> TrainingRecommendation:
+        """Calculate advisory values without changing submitted state or provenance."""
+        context_key = _detached_context_key(context)
+        with self._lock:
+            current = self._current
+            if current is not None and self._context_key == context_key:
+                return current
+            baseline = self._build_recommendation(context)
+            return current.refresh_from(baseline) if current is not None else baseline
+
     def recommend(
         self,
         context: TrainingRecommendationContext,
@@ -304,14 +317,7 @@ class TrainingRecommendationService:
         context_key = _detached_context_key(context)
         option_values = _values_from_training_option(current_option)
         with self._lock:
-            current = self._current
-            if current is not None and self._context_key == context_key:
-                recommendation = current
-            else:
-                baseline = self._build_recommendation(context)
-                recommendation = (
-                    current.refresh_from(baseline) if current is not None else baseline
-                )
+            recommendation = self.preview(context)
 
             pending_fields = self._configuration_submission_pending
             if pending_fields is not None:

@@ -400,6 +400,150 @@ def test_saved_split_reopens_for_real_preview_and_edit_before_training(
         service.close()
 
 
+@pytest.mark.parametrize("entrypoint", ["gui", "assistant"])
+def test_first_split_save_after_cancelling_training_recommendation(
+    qtbot,
+    tmp_path: Path,
+    allow_real_modals,
+    entrypoint: str,
+) -> None:
+    """Reading draft recommendations must not stale the next real split receipt."""
+    from PyQt6.QtWidgets import QMessageBox
+
+    from XBrainLab.llm.agent.ui_handoff import (
+        WorkflowUiHandoffRequest,
+        WorkflowUiHandoffResolutionStatus,
+    )
+    from XBrainLab.ui.components.workflow_ui_handoff_host import WorkflowUiHandoffHost
+    from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import DataSplittingDialog
+    from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
+        DataSplittingPreviewDialog,
+    )
+
+    study, service = _prepare_epoch_runtime(tmp_path)
+    window = cast(Any, MainWindow(study))
+    qtbot.addWidget(window)
+    window.show()
+    ready_panels: list[object] = []
+    window.switch_page(2, on_ready=ready_panels.append)
+    qtbot.waitUntil(lambda: len(ready_panels) == 1, timeout=10_000)
+    sidebar = window.training_panel.sidebar
+    alerts: list[str] = []
+    driver_errors: list[Exception] = []
+    observed: list[str] = []
+    phase = "cancel-settings"
+    attempts = 0
+
+    def advance() -> None:
+        nonlocal phase, attempts
+        attempts += 1
+        dialog = QApplication.activeModalWidget()
+        try:
+            assert attempts <= 1_000, f"Modal driver timed out at {phase}."
+            if phase == "cancel-settings" and isinstance(dialog, TrainingSettingDialog):
+                buttons = dialog.findChild(QDialogButtonBox)
+                assert buttons is not None
+                observed.append("settings-cancelled")
+                phase = "settings-closed"
+                buttons.button(QDialogButtonBox.StandardButton.Cancel).click()
+                return
+            if phase == "split-step-one" and isinstance(dialog, DataSplittingDialog):
+                assert dialog.btn_confirm is not None and dialog.btn_confirm.isEnabled()
+                observed.append("split-opened")
+                phase = "split-preview"
+                QTimer.singleShot(10, advance)
+                dialog.btn_confirm.click()
+                return
+            if (
+                phase == "split-preview"
+                and isinstance(dialog, DataSplittingPreviewDialog)
+                and dialog.btn_confirm is not None
+                and dialog.btn_confirm.isEnabled()
+            ):
+                assert dialog.get_preview_receipt() is not None
+                observed.append("preview-confirmed")
+                phase = "split-closed"
+                dialog.btn_confirm.click()
+                return
+        except Exception as exc:
+            driver_errors.append(exc)
+            phase = "failed"
+            for widget in QApplication.topLevelWidgets():
+                if (
+                    isinstance(
+                        widget,
+                        (
+                            TrainingSettingDialog,
+                            DataSplittingDialog,
+                            DataSplittingPreviewDialog,
+                        ),
+                    )
+                    and widget.isVisible()
+                ):
+                    widget.reject()
+            return
+        QTimer.singleShot(10, advance)
+
+    def acknowledge_error() -> None:
+        dialog = QApplication.activeModalWidget()
+        if isinstance(dialog, QMessageBox):
+            alerts.append(dialog.text())
+            dialog.accept()
+
+    alert_timer = QTimer(window)
+    alert_timer.timeout.connect(acknowledge_error)
+    alert_timer.start(10)
+    try:
+        QTimer.singleShot(0, advance)
+        cancelled = sidebar.training_setting()
+        assert not driver_errors, driver_errors
+        assert cancelled.status.value == "cancelled"
+        assert observed == ["settings-cancelled"]
+
+        # Do not refresh backend state here: that would hide the first-save bug.
+        phase = "split-step-one"
+        QTimer.singleShot(0, advance)
+        terminal_resolutions = []
+        if entrypoint == "assistant":
+            host = WorkflowUiHandoffHost(window)
+            initial = host.open(
+                WorkflowUiHandoffRequest.for_decision(
+                    "configure_dataset_split",
+                    tool_name="configure_dataset_split",
+                ),
+                on_terminal=lambda result: terminal_resolutions.append(result) or True,
+            )
+            assert initial.status is WorkflowUiHandoffResolutionStatus.COMMAND_PENDING
+            qtbot.waitUntil(lambda: bool(terminal_resolutions), timeout=15_000)
+            assert (
+                terminal_resolutions[-1].status
+                is WorkflowUiHandoffResolutionStatus.COMPLETED
+            ), terminal_resolutions[-1]
+            assert host.active_request is None
+        else:
+            outcome = sidebar.split_data()
+            assert outcome.status.value == "accepted"
+        qtbot.waitUntil(
+            lambda: application_command_registry().active_count(sidebar) == 0,
+            timeout=15_000,
+        )
+        assert not driver_errors, driver_errors
+        assert not alerts, alerts
+        assert observed == ["settings-cancelled", "split-opened", "preview-confirmed"]
+        state = service.get_view_publication().state
+        assert state.dataset.split_spec_saved
+        assert state.dataset.split_preview_summary["dataset_count"] > 0
+        assert not state.dataset.split_materialized
+        assert not state.training.has_training_option
+        assert window.grab().save(str(tmp_path / f"first-split-{entrypoint}-saved.png"))
+    finally:
+        alert_timer.stop()
+        if not sip.isdeleted(window):
+            window.close()
+        service.wait_for_background_tasks(timeout=10.0)
+        service.close()
+
+
 @pytest.fixture
 def runtime_lifecycle(request, qtbot):
     """Keep backend delivery owners alive until their Qt consumers are closed."""

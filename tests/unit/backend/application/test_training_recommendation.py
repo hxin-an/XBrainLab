@@ -335,6 +335,43 @@ def test_resource_refinement_is_preserved_in_saved_and_reopened_recommendation()
     )
 
 
+def test_advisory_preview_does_not_consume_submitted_provenance():
+    service = TrainingRecommendationService()
+    context = _context()
+    baseline = service.recommend(context)
+    saved = _Option(
+        epoch=99,
+        bs=4,
+        lr=baseline.values.learning_rate,
+        optim=baseline.values.optimizer,
+        evaluation_option=baseline.values.evaluation_strategy,
+    )
+    service.note_configuration_submitted(
+        {TrainingRecommendationField.EPOCHS},
+        refinements=(
+            TrainingResourceRefinement.batch_size(
+                requested=baseline.values.batch_size,
+                refined=4,
+            ),
+        ),
+    )
+
+    advisory = service.preview(_context(model_name="braindecode.eegconformer"))
+    committed = service.for_state_snapshot(context, current_option=saved)
+
+    assert advisory.recommended_values.optimizer == "AdamW"
+    assert committed is not None
+    assert committed.values.epochs == 99
+    assert committed.provenance[TrainingRecommendationField.EPOCHS] is (
+        TrainingSettingProvenance.MANUAL
+    )
+    assert committed.values.batch_size == 4
+    assert committed.provenance[TrainingRecommendationField.BATCH_SIZE] is (
+        TrainingSettingProvenance.RESOURCE_ADJUSTED
+    )
+    assert service.preview(context) == committed
+
+
 def test_service_has_no_resource_checker_or_resource_cache_state():
     service = TrainingRecommendationService()
 

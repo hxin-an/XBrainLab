@@ -1,6 +1,7 @@
 """RAG examples must teach only the approved target action surface."""
 
 import json
+from collections import Counter
 from pathlib import Path
 
 from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
@@ -114,6 +115,15 @@ def test_gold_set_has_no_cjk_or_duplicate_input_action_pairs() -> None:
         for item in items
     )
     assert len(pairs) == len(set(pairs))
+
+
+def test_bundled_corpus_has_four_distinct_examples_per_published_tool() -> None:
+    items = json.loads(_GOLD_SET_PATH.read_text(encoding="utf-8"))
+    counts = Counter(item["expected_tool_calls"][0]["tool_name"] for item in items)
+
+    assert counts == dict.fromkeys(AGENT_ACTION_CONTRACTS.model_tool_names(), 4)
+    assert len({item["id"] for item in items}) == len(items)
+    assert len({item["input"].strip().casefold() for item in items}) == len(items)
 
 
 def test_bm25_indexes_only_target_examples() -> None:
