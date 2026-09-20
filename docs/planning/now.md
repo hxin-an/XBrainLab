@@ -66,7 +66,11 @@ PR #143–#145 已進入此 main 基線；舊啟動器、RAG、split receipt 與
   owner 與 cancellation 不動。相關 catalog／converter 腳本確認仍有用途，本輪未任意刪除。
 - Static typing、changed-file lint 與 strict docs portal（42 pages／1,617 links）已通過；
   既有 MNE／NumPy deprecation warnings 保留，不在本輪升級共用環境。
-- Next：固定 commit 後執行本版本完整代表性
+- 候選 6f1cf5f9 已驗 focused 256／source-diverse 4 passed。Windows wizard 19 passed／
+  2 failed：原 PR #141 已新增 no-label Back/Next driver，folder trace expectation 卻漏同步；
+  基線與候選測試 blob 相同，獨立覆核確認。僅補完整序列中的返回步驟，保留所有 state
+  assertions，不改 UI。舊 catalog 因候選需更新而主動中止；保存 partial evidence，不計通過。
+- Next：修正既有測試期待、固定最終 commit，重新執行本版本完整代表性
   import catalog、source-diverse 與 Windows wizard gate。保留必要證據在本 worktree
   build/import-quality；推送／開 PR 授權已詢問，未收到批准前不發布，不自行 merge。
   尚未宣稱 scope-complete／handoff-ready，沒有新版本手測或 merge 批准。

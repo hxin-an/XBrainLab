@@ -1253,6 +1253,7 @@ def test_public_raw_folders_ignore_context_sidecars_and_apply_selected_eeg(
         "confirm changed review",
         "fresh review",
         "Review and Import",
+        "return from no-label review without refresh",
         "confirm and import",
     ]
     assert driver.fresh_review_count == 1
