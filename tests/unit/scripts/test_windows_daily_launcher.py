@@ -3,6 +3,7 @@
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -21,14 +22,49 @@ def _invoke(launcher: Path, cwd: Path, arguments: str = ""):
         errors="replace",
         timeout=45,
         check=False,
+        env={**os.environ, "PYTHONPATH": str(ROOT)},
     )
 
 
-def test_daily_launcher_runs_existing_entrypoint_from_other_directory(tmp_path):
-    assert (ROOT / "start.cmd").is_file(), "Daily launcher does not exist"
-    if not (ROOT / ".venv/Scripts/python.exe").is_file():
-        pytest.skip("Daily source launch requires the existing Windows environment")
-    result = _invoke(ROOT / "start.cmd", tmp_path, "--help")
+@pytest.fixture
+def daily_source(tmp_path):
+    """Use the current interpreter via a junction, without installing an environment."""
+    source = tmp_path / "source 測試 with spaces & symbols"
+    source.mkdir()
+    for name in ("start.cmd", "run.py"):
+        shutil.copyfile(ROOT / name, source / name)
+    environment = source / ".venv"
+    if sys.prefix != sys.base_prefix:
+        junction, target = environment, Path(sys.prefix)
+    else:
+        environment.mkdir()
+        junction, target = environment / "Scripts", Path(sys.executable).parent
+    result = subprocess.run(  # noqa: S603 - fixed native CMD junction operation.
+        [
+            os.environ["COMSPEC"],
+            "/d",
+            "/c",
+            "mklink",
+            "/J",
+            str(junction),
+            str(target),
+        ],
+        capture_output=True,
+        timeout=10,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    try:
+        yield source
+    finally:
+        # Remove only the junction; never traverse/delete the shared interpreter.
+        junction.rmdir()
+
+
+def test_daily_launcher_runs_existing_entrypoint_from_other_directory(
+    tmp_path, daily_source
+):
+    result = _invoke(daily_source / "start.cmd", tmp_path, "--help")
     assert result.returncode == 0, result.stdout + result.stderr
     assert "--model" in result.stdout
     assert "--tool-debug" in result.stdout
@@ -46,10 +82,7 @@ def test_daily_launcher_reports_missing_environment_without_creating_one(tmp_pat
     assert not (source / ".venv").exists()
 
 
-def test_daily_launcher_preserves_entrypoint_failure_exit_code(tmp_path):
-    assert (ROOT / "start.cmd").is_file(), "Daily launcher does not exist"
-    if not (ROOT / ".venv/Scripts/python.exe").is_file():
-        pytest.skip("Daily source launch requires the existing Windows environment")
-    result = _invoke(ROOT / "start.cmd", tmp_path, "--not-a-supported-argument")
+def test_daily_launcher_preserves_entrypoint_failure_exit_code(tmp_path, daily_source):
+    result = _invoke(daily_source / "start.cmd", tmp_path, "--not-a-supported-argument")
     assert result.returncode == 2, result.stdout + result.stderr
     assert "unrecognized arguments" in result.stderr

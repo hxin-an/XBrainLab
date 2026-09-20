@@ -1,6 +1,45 @@
 # XBrainLab Now
 
-最後更新：`2026-09-16`
+最後更新：`2026-09-20`
+
+## Active — 共同基線整備（使用者已授權施工）
+
+本節優先於下方歷史順序。目標為啟動器、研究文件與 RAG 的共同 main 基線；
+不是正式題庫評測、pilot 或 Assistant Stable promotion。只讀／使用既有工程案例，
+不讀正式 Validation／Test，不把題目或 oracle 加入 RAG。
+
+1. **啟動器 PR #143**：head `8314b590` 的三個 Windows-only 測試被 Linux shard 收集後
+   skip，導致 mandatory completion gate 失敗。修正既有平台分流及 Windows 測試環境依賴，
+   不放寬 skip gate、不改 `start.cmd` 行為。驗證三個真 CMD 案例與 routing 回歸後 push，
+   追蹤同 head CI；產品 merge 仍需明確批准，純測試修正不冒稱新的產品手測。
+2. **研究成果**：保存並審查 `feat/assistant-benchmark-calibration` 已有離線 calibration、
+   研究規格及未提交出題文件／導覽；同步 main 後以非產品 PR 合併。只確認模板身分，
+   不讀正式題目、不寫新研究 runner。focused calibration／docs checks，無 GUI 手測要求。
+3. **RAG**：從最新 main 建立 `improve/rag-common-baseline` 獨立 worktree。
+   18 工具各 4 筆英文正例（共 72），沿用單動作 corpus 契約；不新增回答／追問範例，
+   不變更模型、工具、confirmation、format retry 或 capability owner。
+   擴充前固定 36 正例查詢（各工具 2）及 12 邊界工程探針，沿用 verify_rag 真離線檢索；
+   不以只允許預期工具製造命中。Top-3 至少 33/36、每工具至少一題、不得低於修改前。
+   schema／ID／重複及語意審查、工具排除、索引重建／重用皆須通過。
+   固定 embedding revision、threshold=0.7、top-k=3、context budget；只修有證據的直接缺陷。
+   更新 corpus hash／collection identity。真模型以既有 pinned primary，舊基準一次＋最多
+   兩個候選各一輪完整 frozen 81-case；不改分母／既知失敗清單、不下載模型、不降 gate。
+   獨立 review 與 Windows ChatPanel 真實 journey 後集中一次 Assistant 局部手測。
+4. **整合凍結**：同 head 適用 CI 成功且取得產品手測／merge 批准後合併 RAG；保存
+   source、corpus、embedding／模型 revision、設定與證據身分。稱研究前共同基線，
+   正式 B0 仍依研究規格固定。研究線與 UI 線各自工作目錄，工具契約先協調。
+
+共用現有 Windows Python、模型、embedding 與資料；不新增環境、不搬資料。
+root `settings.json` 不 stage／stash／覆寫，`wip/data-split-summary` 保留。
+合併後才清理精確對應的 worktree／臨時產物，保留必要失敗與驗收證據。
+本輪 UI layout／文案／流程沒有修改授權；RAG 正例／檢索改善已授權。
+每個 slice review；不因小 commit、CI pending 或 compaction 停工。
+候選預算用完、必要資源不可用或缺少合併批准時明確回報，不擴大施工。
+
+**Next**：routing RED 已重現；修正後 6 個 native Windows 啟動／分流案例全部執行通過，
+獨立 review 無 blocker；推送後待 Linux collection／同 head CI。研究 dirty 內容保留並審查中。
+**Stop**：四步完成，或真正的新決策／資源／產品批准阻擋；不把 focused pass 當完整完成。
+
 
 ## Agreed order — Import UI → Assistant evaluator → cleanup/refactoring
 
