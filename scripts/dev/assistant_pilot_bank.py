@@ -1,0 +1,433 @@
+"""Read the explicitly supplied non-Test authoring workbook; never discover banks.
+
+This is a bounded reader for this workbook contract, not a general Excel reader.
+It preserves human/oracle provenance and makes no product-readiness claims.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import io
+import json
+import math
+import re
+import xml.etree.ElementTree as ET
+import zipfile
+from pathlib import Path, PurePosixPath
+
+SCHEMA = "xbrainlab.assistant_pilot_bank.v1"
+_NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+_REL = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
+_PACKAGE = "{http://schemas.openxmlformats.org/package/2006/relationships}"
+_REQUIRED = {"DEV", "VALID", "ground_truth", "情境定義"}
+_ALLOWED = _REQUIRED | {"使用說明", "覆蓋與題數", "語義核對", "跨組近似", "執行驗證"}
+_MAX_FILE = 16 * 1024 * 1024
+_MAX_MEMBER = 4 * 1024 * 1024
+_MAX_TOTAL = 32 * 1024 * 1024
+_HUMAN = {"題號", "Family", "英文題目", "情境編號"}
+_TRUTH = {
+    "case_id",
+    "family_id",
+    "split",
+    "decision",
+    "expected_tool",
+    "expected_parameters_json",
+    "missing_fields_json",
+    "explicit_info_json",
+    "expected_workflow_stage",
+    "fixture_id",
+}
+_FIXTURE = {"fixture_id", "family_id", "workflow_stage", "起始情境", "結構化條件_JSON"}
+
+
+def _xml(archive: zipfile.ZipFile, name: str) -> ET.Element:
+    data = archive.read(name)
+    # Decode first: UTF-16/NUL obfuscation cannot bypass entity/DTD rejection.
+    text = data.decode("utf-8-sig")
+    if "\x00" in text or "<!DOCTYPE" in text.upper() or "<!ENTITY" in text.upper():
+        raise ValueError("Unsafe XML declaration")
+    # ZIP/XML byte limits and UTF-8 DTD/entity rejection precede this parser.
+    root = ET.fromstring(text)  # noqa: S314
+    if sum(1 for _ in root.iter()) > 100_000:
+        raise ValueError("XML element limit exceeded")
+    return root
+
+
+def _sheets(archive: zipfile.ZipFile) -> dict[str, str]:
+    workbook = _xml(archive, "xl/workbook.xml")
+    sheets = workbook.findall(f"{_NS}sheets/{_NS}sheet")
+    names = [sheet.get("name", "") for sheet in sheets]
+    # Metadata gate precedes sharedStrings and all worksheet contents.
+    if (
+        len(names) != len(set(names))
+        or set(names) - _ALLOWED
+        or not set(names) >= _REQUIRED
+    ):
+        raise ValueError("Unsupported, duplicate or missing workbook sheet")
+    relationships = _xml(archive, "xl/_rels/workbook.xml.rels")
+    targets = {}
+    for rel in relationships.findall(f"{_PACKAGE}Relationship"):
+        ident, target = rel.get("Id", ""), rel.get("Target", "")
+        if (
+            not ident
+            or ident in targets
+            or rel.get("TargetMode", "Internal") != "Internal"
+        ):
+            raise ValueError("Unsafe or duplicate workbook relationship")
+        parts = PurePosixPath(target).parts
+        if (
+            not target
+            or target.startswith("/")
+            or "\\" in target
+            or ":" in target
+            or ".." in parts
+        ):
+            raise ValueError("Unsafe workbook target")
+        targets[ident] = (target, rel.get("Type"))
+    result = {}
+    for sheet in sheets:
+        target, kind = targets.get(sheet.get(f"{_REL}id"), ("", ""))
+        if kind != _REL[1:-1] + "/worksheet" or not re.fullmatch(
+            r"worksheets/sheet[0-9]+\.xml", target
+        ):
+            raise ValueError("Unsafe worksheet target")
+        result[sheet.get("name")] = "xl/" + target
+    if len(set(result.values())) != len(result):
+        raise ValueError("Duplicate worksheet targets")
+    return result
+
+
+def _table(
+    archive: zipfile.ZipFile, path: str, shared: list[str], required: set[str]
+) -> list[dict[str, str]]:
+    root = _xml(archive, path)
+    rows = root.findall(f"{_NS}sheetData/{_NS}row")
+    if not rows or len(rows) > 5001:
+        raise ValueError("Missing rows or worksheet row limit exceeded")
+    records, headers, previous_row = [], None, 0
+    for row in rows:
+        row_number = int(row.get("r", "0"))
+        if row_number <= previous_row or row_number > 5001:
+            raise ValueError("Invalid or duplicate worksheet row")
+        previous_row = row_number
+        values = {}
+        for cell in row.findall(f"{_NS}c"):
+            match = re.fullmatch(r"([A-Z]{1,2})([1-9][0-9]*)", cell.get("r", ""))
+            if (
+                not match
+                or int(match[2]) != row_number
+                or cell.find(f"{_NS}f") is not None
+            ):
+                raise ValueError("Invalid cell address or selected-cell formula")
+            column = 0
+            for char in match[1]:
+                column = column * 26 + ord(char) - 64
+            if column > 64 or column in values:
+                raise ValueError("Duplicate cell or column limit exceeded")
+            kind = cell.get("t", "n")
+            value = cell.findtext(f"{_NS}v", default="")
+            if kind == "inlineStr":
+                value = "".join(node.text or "" for node in cell.findall(f".//{_NS}t"))
+            elif kind == "s":
+                if not value.isdecimal() or int(value) >= len(shared):
+                    raise ValueError("Invalid shared string reference")
+                value = shared[int(value)]
+            elif kind not in {"n", "str", "b"}:
+                raise ValueError("Unsupported selected cell type")
+            if len(value) > 100_000:
+                raise ValueError("Selected cell length limit exceeded")
+            values[column] = value
+        if not any(values.values()):
+            continue
+        if headers is None:
+            headers = [values.get(index, "") for index in range(1, max(values) + 1)]
+            if (
+                "" in headers
+                or len(headers) != len(set(headers))
+                or not required <= set(headers)
+            ):
+                raise ValueError("Missing or duplicate worksheet headers")
+        else:
+            if max(values) > len(headers):
+                raise ValueError("Unexpected worksheet column")
+            records.append(
+                {name: values.get(index, "") for index, name in enumerate(headers, 1)}
+            )
+    if not records:
+        raise ValueError("Empty selected worksheet")
+    return records
+
+
+def _json_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Duplicate JSON key")
+        result[key] = value
+    return result
+
+
+def _reject_constant(_value):
+    raise ValueError("Nonfinite JSON number")
+
+
+def _finite_float(value):
+    result = float(value)
+    if not math.isfinite(result):
+        raise ValueError("Nonfinite JSON number")
+    return result
+
+
+def _json(value: str, expected: type):
+    result = json.loads(
+        value,
+        object_pairs_hook=_json_object,
+        parse_constant=_reject_constant,
+        parse_float=_finite_float,
+    )
+    if type(result) is not expected:
+        raise ValueError("Unexpected JSON value type")
+    return result
+
+
+def _index(rows: list[dict[str, str]], field: str) -> dict[str, dict[str, str]]:
+    result = {}
+    for row in rows:
+        ident = row[field]
+        if not ident or ident != ident.strip() or ident in result:
+            raise ValueError("Missing, invalid or duplicate identifier")
+        result[ident] = row
+    return result
+
+
+def _normalize(tables: dict[str, list[dict[str, str]]]) -> tuple[list[dict], dict]:
+    truths = _index(tables["ground_truth"], "case_id")
+    fixture_rows = _index(tables["情境定義"], "fixture_id")
+    fixtures = {
+        key: {"conditions": _json(row["結構化條件_JSON"], dict), "metadata": row}
+        for key, row in fixture_rows.items()
+    }
+    cases, seen, family_splits, used_fixtures = [], set(), {}, set()
+    for split in ("DEV", "VALID"):
+        for case_id, human in _index(tables[split], "題號").items():
+            truth = truths.get(case_id)
+            family, fixture_id = human["Family"], human["情境編號"]
+            if not truth or case_id in seen or not case_id.startswith(split + "-"):
+                raise ValueError("Missing or conflicting case identity")
+            if (
+                truth["split"] != split
+                or truth["family_id"] != family
+                or truth["fixture_id"] != fixture_id
+                or not family
+                or not human["英文題目"].strip()
+            ):
+                raise ValueError("Mismatched split, family, fixture or empty input")
+            if family_splits.setdefault(family, split) != split:
+                raise ValueError("Cross-split family leakage")
+            fixture = fixture_rows.get(fixture_id)
+            stage = truth["expected_workflow_stage"]
+            if (
+                not fixture
+                or fixture["family_id"] != family
+                or not stage
+                or fixture["workflow_stage"] != stage
+            ):
+                raise ValueError("Missing or mismatched fixture reference")
+            conditions = fixtures[fixture_id]["conditions"]
+            if "stage" in conditions and conditions["stage"] != stage:
+                raise ValueError("Conflicting fixture stage")
+            decision = truth["decision"]
+            if (
+                decision not in {"Action", "Clarification", "No-call"}
+                or not truth["expected_tool"].strip()
+            ):
+                raise ValueError("Invalid decision or expected tool")
+            _json(truth["missing_fields_json"], list)
+            _json(truth["explicit_info_json"], dict)
+            parameters = (
+                _json(truth["expected_parameters_json"], dict)
+                if decision == "Action"
+                else None
+            )
+            if (
+                decision != "Action"
+                and truth["expected_parameters_json"]
+                != "N/A: message is free text; use parameter_rule"
+            ):
+                raise ValueError("Unexpected non-action parameter contract")
+            cases.append(
+                {
+                    "case_id": case_id,
+                    "family_id": family,
+                    "split": split,
+                    "input": human["英文題目"],
+                    "decision": decision,
+                    "expected_tool": truth["expected_tool"],
+                    "expected_parameters": parameters,
+                    "expected_workflow_stage": stage,
+                    "fixture_id": fixture_id,
+                    "metadata": {"ground_truth": truth, "human": human},
+                }
+            )
+            seen.add(case_id)
+            used_fixtures.add(fixture_id)
+    if seen != set(truths) or used_fixtures != set(fixtures):
+        raise ValueError("Unmatched oracle or fixture records")
+    return cases, fixtures
+
+
+def load_bank(path: str | Path) -> dict:
+    """Read only one explicit DEV/VALID XLSX; reject unsafe or inconsistent inputs."""
+    path = Path(path)
+    if path.suffix.lower() != ".xlsx":
+        raise ValueError("Expected an explicit XLSX file")
+    with path.open("rb") as source:
+        content = source.read(_MAX_FILE + 1)
+    if len(content) > _MAX_FILE:
+        raise ValueError("Workbook file limit exceeded")
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as archive:
+            members = archive.infolist()
+            names = [member.filename for member in members]
+            if len(members) > 128 or len(names) != len(set(names)):
+                raise ValueError("Archive member limit or duplicate member")
+            if sum(member.file_size for member in members) > _MAX_TOTAL:
+                raise ValueError("Archive expanded size limit exceeded")
+            for member in members:
+                name = member.filename
+                if (
+                    member.file_size > _MAX_MEMBER
+                    or member.flag_bits & 1
+                    or name.startswith("/")
+                    or ".." in PurePosixPath(name).parts
+                    or "\\" in name
+                    or ":" in name
+                ):
+                    raise ValueError("Unsafe or oversized archive member")
+            sheets = _sheets(archive)
+            shared = []
+            if "xl/sharedStrings.xml" in names:
+                shared = [
+                    "".join(t.text or "" for t in node.iter(f"{_NS}t"))
+                    for node in _xml(archive, "xl/sharedStrings.xml").findall(
+                        f"{_NS}si"
+                    )
+                ]
+            tables = {
+                name: _table(archive, sheets[name], shared, required)
+                for name, required in (
+                    ("DEV", _HUMAN),
+                    ("VALID", _HUMAN),
+                    ("ground_truth", _TRUTH),
+                    ("情境定義", _FIXTURE),
+                )
+            }
+            cases, fixtures = _normalize(tables)
+    except (
+        KeyError,
+        ET.ParseError,
+        UnicodeError,
+        zipfile.BadZipFile,
+        RecursionError,
+    ) as error:
+        raise ValueError("Invalid or incomplete non-Test workbook") from error
+    return {
+        "schema": SCHEMA,
+        "source": {
+            "path": str(path.resolve()),
+            "sha256": hashlib.sha256(content).hexdigest(),
+            "sheets": list(sheets),
+        },
+        "cases": cases,
+        "fixtures": fixtures,
+    }
+
+
+def build_pilot_selection(bank: dict) -> dict:
+    """Select the agreed DEV families/longest variants, independent of scores/order."""
+    if not isinstance(bank, dict) or bank.get("schema") != SCHEMA:
+        raise ValueError("Expected a normalized pilot bank")
+    source = bank.get("source")
+    digest = source.get("sha256") if isinstance(source, dict) else None
+    if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+        raise ValueError("Missing or invalid bank source hash")
+    cases = bank.get("cases")
+    if not isinstance(cases, list):
+        raise ValueError("Missing bank cases")
+    groups = {
+        f"{category}{number:02}": {}
+        for category, count in (("A", 18), ("C", 6), ("N", 3))
+        for number in range(1, count + 1)
+    }
+    seen = set()
+    for case in cases:
+        if not isinstance(case, dict) or case.get("split") not in {"DEV", "VALID"}:
+            raise ValueError("Unsupported case split")
+        split, identifier, family = (
+            case["split"],
+            case.get("case_id"),
+            case.get("family_id"),
+        )
+        if not isinstance(identifier, str) or not isinstance(family, str):
+            raise ValueError("Invalid case identity")
+        match = re.fullmatch(
+            r"(DEV|VALID)-([ACN][0-9]{2})-([0-9]{2})-V[0-9]+", identifier
+        )
+        if (
+            not match
+            or match[1] != split
+            or identifier.rsplit("-", 1)[0] != family
+            or identifier in seen
+            or match[2] not in groups
+        ):
+            raise ValueError("Duplicate or mismatched case/family/group identity")
+        seen.add(identifier)
+        if split == "VALID":
+            continue  # Selection never examines Validation input or oracle.
+        group = match[2]
+        decision = {"A": "Action", "C": "Clarification", "N": "No-call"}[group[0]]
+        text, tool = case.get("input"), case.get("expected_tool")
+        if (
+            case.get("decision") != decision
+            or not isinstance(text, str)
+            or not text.strip()
+            or not isinstance(tool, str)
+            or not tool.strip()
+            or (group[0] != "A" and tool != "respond_to_user")
+        ):
+            raise ValueError("Invalid DEV decision, input or expected tool")
+        variants = groups[group].setdefault(family, [])
+        if variants and variants[0]["expected_tool"] != tool:
+            raise ValueError("Conflicting expected tools within a family")
+        variants.append(case)
+    selected, first_by_group = [], {}
+    for group, families in groups.items():
+        quota = 2 if group.startswith("N") else 1
+        if len(families) < quota:
+            raise ValueError("Insufficient Pilot family coverage")
+        for family in sorted(families)[:quota]:
+            case = min(
+                families[family],
+                key=lambda item: (-len(item["input"]), item["case_id"]),
+            )
+            selected.append(case)
+            first_by_group.setdefault(group, case["case_id"])
+    action_tools = [
+        case["expected_tool"] for case in selected if case["decision"] == "Action"
+    ]
+    if len(set(action_tools)) != 18 or "respond_to_user" in action_tools:
+        raise ValueError("Pilot must cover 18 distinct action tools")
+    phase_one = [
+        first_by_group[group] for group in ("A05", "A08", "C01", "C02", "N02", "N03")
+    ]
+    identifiers = [case["case_id"] for case in selected]
+    return {
+        "schema": "xbrainlab.assistant_pilot_selection.v1",
+        "source_sha256": digest,
+        "selection_rule": "DEV A01-A18/C01-C06 first lexicographic family; N01-N03 first two families; longest input per family, case_id ascending ties; phase one A05,A08,C01,C02,N02-first,N03-first",
+        "case_ids": identifiers,
+        "phase_one_case_ids": phase_one,
+        "phase_two_case_ids": [
+            identifier for identifier in identifiers if identifier not in phase_one
+        ],
+    }

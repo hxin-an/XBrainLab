@@ -304,6 +304,17 @@ journal 與離線報表，均不替代 ApplicationService／Host policy。暫無
 兩批整合 focused tests 為146＋137通過；之後直接新增的報表／callback／取消 tests
 另依其實際結果核對。兩個 MkDocs strict build通過。實際 Windows --prepare 已核對
 300 jobs／五模型／embedding hash；執行仍拒絕 dirty source，尚未啟動 Pilot。
+最後的 Product Outcome 已接合：正確 decision／Host blocked／實際 Command／GUI
+handoff 分列；driver Cancel 只證明可開窗，不說匯入完成。錯誤工具真的執行仍保留
+observed_actions；Saliency 精確綁定本次 compute operation ID，不以舊 fixture job代替。
+有匹配 request、clock、screenshot 的 UI timeout／render failure 是有效產品失敗，
+缺觀測才是無效量測。新 saliency engineering attempt2 已真模型執行／渲染完成並
+通過新 binding；舊 artifact 不補造 ID 或覆寫。獨立覆核 blocker 已解除。
+Runtime／passive observer 切片提交於 `aba24e5c`；接續凍結剩餘研究 runner，依完整
+manifest執行60→240。期間不改source／題目／模型，錯誤決策照留不重送；必要量測
+修理另立版本並保留舊結果及已花時間。完成後報表及B0封存還原；不是產品merge批准。
+B0材料盤點另有明確限制：既有env清單/lock不等於乾淨機器上的獨立重建，尚需
+可用環境還原材料與實測；兩Granite權重完整hash待Pilot後做，避免量延遲時重型IO。
 
 **Stop**：上述 Pilot／封存交付完成；或必要新權限、資源、題庫識別、public contract 決策，
 或既定預算用盡而確實無法續作。Context compaction、完成一個 slice、CI pending 不是完成。
