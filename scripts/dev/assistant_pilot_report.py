@@ -11,6 +11,7 @@ from collections import Counter
 from pathlib import Path
 from statistics import median
 
+from scripts.dev.assistant_pilot_presentation import write_presentation
 from scripts.dev.run_assistant_pilot import (
     CONDITIONS,
     SCHEMA,
@@ -587,39 +588,7 @@ def write_report(run: Path, output: Path) -> dict:
             indent=2,
             allow_nan=False,
         )
-    lines = [
-        "# Assistant Pilot evidence",
-        "",
-        f"Source: `{report['frozen_source']['head']}`",
-        "",
-        f"Partial: {report['partial']}. Pilot results do not establish a formal model ranking.",
-        "",
-        "| Condition | Valid / planned | First macro | Final macro | Missing / unresolved / invalid |",
-        "| --- | ---: | ---: | ---: | ---: |",
-    ]
-    for name, condition in report["conditions"].items():
-        counts = condition["counts"]
-        rates = [
-            "n/a"
-            if condition["macro"][phase] is None
-            else f"{condition['macro'][phase]:.3f}"
-            for phase in ("first", "final")
-        ]
-        lines.append(
-            f"| {name} | {counts['valid_decision']} / {counts['planned']} | {rates[0]} | {rates[1]} | {counts['missing']} / {counts['unresolved']} / {counts['invalid_measurement'] + counts['invalid_evidence']} |"
-        )
-    lines.extend(
-        [
-            "",
-            f"Active budget charged: {report['active_budget']['charged_seconds']:.2f} s.",
-            "",
-            *[f"- {item}" for item in report["limitations"]],
-            "",
-            "See report.json for category numerators/denominators, completed P50/max, separate setup/cleanup costs and artifact hashes.",
-            "",
-        ]
-    )
-    (output / "README.md").write_text("\n".join(lines), encoding="utf-8")
+    write_presentation(report, output)
     return report
 
 

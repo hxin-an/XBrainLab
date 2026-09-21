@@ -81,6 +81,16 @@ input audit 全數通過，沒有 missing、timeout、無效量測或 product ou
 | Llama 3.2 RAG off / on | 0.370 / 0.370 | 0.463 / 0.407 | 6 / 6 |
 | Gemma 3 RAG off / on | 0.000 / 0.000 | 0.000 / 0.000 | 30 / 30 |
 
+表中 Invalid model output 是「任一次生成曾格式錯誤」的題數，不等於最終仍錯誤；
+Granite 3.3 on 的該題已修復，Llama off/on 最終格式錯誤分別為 2／3 題。
+2026-09-21 離線覆核全部 300 題：既有 scorer 的完整判分 object 與原紀錄一致，436 次
+生成的 capture 雜湊／trace 對照通過。Gemma 180 次輸入以 pinned tokenizer／模板重新
+渲染完全一致，2,116–3,196 tokens，沒有丟棄 optional context；全部生成含 code fence，
+由產品與 scorer 共用的 strict parser 拒絕。60 題的兩次修復輸出均相同，其中 58 題輸入也
+完全相同；其餘兩題僅 backend generation 更新。這支持目前格式遵循與重複修復的限制，
+不能推論 Gemma 在其他系統的能力，也沒有隔離量化的因果影響。原始零分不覆寫。
+同一 scorer 重播只證明紀錄一致，不取代題目／oracle 的獨立語意覆核。
+
 本機 durable archive 位於
 `E:\XBrainLabData\evidence\assistant-b0-20260921-ac8af81d`：約 1.4 GB、3,136 個檔案，
 逐檔 SHA-256 驗證通過。它含完整 Git bundle／source snapshot、非 Test 題庫、環境鎖定、
@@ -89,6 +99,20 @@ embedding 維持 D 槽單一受控 cache，archive 保存並實際重算其完�
 從 bundle 的隔離 checkout 以全新 Windows venv 還原成功：PyTorch 三件套皆為 `+cu130`、
 `pip check` 通過、非 Test prepare 重建 300 jobs 且所有 frozen identity 相符。第一次錯誤的
 環境方法及 PowerShell 中文路徑失敗亦保留，不算成功證據。
+
+後續在 `E:\XBrainLabData\evidence\assistant-b0-restore-validation-20260921` 補足實際測量：
+再次從封存 bundle 還原 clean B0 與全新鎖定 Windows 環境，核對 Granite 4 的 14 個 cache
+檔後，離線跑完固定 RAG-off 30 題。逐題 first／final 分數與修復次數和原 run 相同，包含
+真實 bandpass 2–35 Hz command 與後端 publication；capture、input audit 及 cleanup 通過。
+一題 stop-training 的產品結果因動態 publication 由原先等待確認改為阻擋，差異如實保留，
+不能宣稱所有軌跡／操作終態逐字重現。此為 Windows Qt offscreen 執行，不取代 native
+視覺驗收；只有單模型 RAG-off 補驗，不是全矩陣重跑，也不是完全離線安裝包。
+
+可讀報告入口為 `E:\XBrainLabData\evidence\assistant-pilot-review-20260921\report\index.html`。
+它從原始 E 槽封存重建，保留原分數與來源身分，新增分類分母、成功／失敗延遲中位數及
+最大值、獨立載入／暖機成本、修復與失敗、可搜尋逐題軌跡及 Excel CSV。
+呈現前重新核對 request／result／capture 雜湊；缺失不冒充模型回答。
+衍生報告與診斷另存追加目錄，原 B0 封存不覆寫；報告可讀性不等於新增科學效度。
 
 ## Dataset storage boundary
 

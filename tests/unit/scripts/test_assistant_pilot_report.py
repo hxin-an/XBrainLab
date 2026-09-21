@@ -1,11 +1,16 @@
 """Research reports preserve denominators and never turn missing evidence into scores."""
 
+import csv
 import hashlib
 import json
+import shutil
+import sys
+from pathlib import Path
 
 import pytest
 
 from scripts.dev import assistant_pilot_report as report
+from scripts.dev.assistant_pilot_presentation import _link
 from scripts.dev.run_assistant_pilot import CONDITIONS, SCHEMA
 
 
@@ -249,6 +254,172 @@ def test_new_output_only_and_source_identity_retained(tmp_path):
     assert (output / "README.md").is_file()
     with pytest.raises(FileExistsError):
         report.write_report(root, output)
+
+
+def _presentation_run(tmp_path):
+    root = _run(tmp_path, [("Action", False, False, "completed")])
+    stem = "phi4-rag-off__DEV-0"
+    request_path = root / "cases" / f"{stem}.request.json"
+    request = json.loads(request_path.read_text())
+    request["case"].update(
+        input='=HYPERLINK("bad") <script>alert(1)</script>',
+        expected_tool="apply_bandpass_filter",
+    )
+    request_sha = _write(request_path, request)
+    capture = root / "conditions" / "phi4-rag-off" / "prompts" / "session-1" / "2"
+    capture.mkdir(parents=True)
+    prompt, raw = "rendered <script> prompt", "```json\n{}\n```"
+    (capture / "prompt.txt").write_bytes(prompt.encode())
+    (capture / "raw-output.txt").write_bytes(raw.encode())
+    metadata = {
+        "session_id": "session-1",
+        "sequence": 2,
+        "status": "completed",
+        "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
+        "raw_output_sha256": hashlib.sha256(raw.encode()).hexdigest(),
+    }
+    _write(capture / "metadata.json", metadata)
+
+    def mutate(result):
+        result["case"] = request["case"]
+        result["condition_evidence"] = {
+            "model_load_seconds": 2,
+            "warmup": {"seconds": 3},
+            "runtime": {"model_id": result["model_id"]},
+        }
+        result["trace"] = {
+            "generations": [
+                {
+                    "generation_id": 1,
+                    "request": {
+                        "messages": [[["role", "user"], ["content", "actual message"]]]
+                    },
+                    "raw_response": raw,
+                    "terminal": "completed",
+                }
+            ],
+            "events": [],
+        }
+        result["scores"]["attempt_decisions"] = [
+            {"correct": False, "reason": "invalid_envelope"}
+        ]
+        result["scores"]["repair_count"] = 0
+        result["capture_audit"]["captures"] = [
+            {"path": "Z:/untrusted/not-used", "metadata": metadata}
+        ]
+
+    _change_result(root, mutate)
+    journal_path = root / "journal.jsonl"
+    records = [json.loads(line) for line in journal_path.read_text().splitlines()]
+    records[0]["request_sha256"] = request_sha
+    journal_path.write_text("".join(json.dumps(row) + "\n" for row in records))
+    return root, capture
+
+
+def test_readable_report_preserves_scores_and_exposes_verified_inputs(tmp_path):
+    root, _ = _presentation_run(tmp_path)
+    baseline = report.build_report(root)
+    output = tmp_path / "readable"
+    report.write_report(root, output)
+    assert json.loads((output / "report.json").read_text()) == baseline
+    assert (output / "index.html").is_file()
+    page = (output / "cases" / "phi4-rag-off__DEV-0.html").read_text(encoding="utf-8")
+    assert "&lt;script&gt;" in page and "<script>alert" not in page
+    assert "actual message" in page and "rendered &lt;script&gt; prompt" in page
+    assert "Oracle" in page and "apply_bandpass_filter" in page
+    assert "invalid_envelope" in page and "```json" in page
+    assert "Z:/untrusted" not in page
+    assert (output / "results.csv").read_bytes().startswith(b"\xef\xbb\xbf")
+    with (output / "results.csv").open(encoding="utf-8-sig", newline="") as source:
+        rows = list(csv.DictReader(source))
+    assert len(rows) == 1 and rows[0]["request"].startswith("'=HYPERLINK")
+    assert rows[0]["final_correct"] == "False"
+    assert rows[0]["capture_integrity"] == "verified"
+    markdown = (output / "README.md").read_text(encoding="utf-8")
+    assert "0 / 1" in markdown and "model_load" in markdown
+    assert "invalid_envelope" in markdown and "p50" in markdown
+
+
+def test_relocated_raw_evidence_uses_relative_links(tmp_path):
+    root, _ = _presentation_run(tmp_path)
+    relocated = tmp_path / "archive" / "raw"
+    shutil.copytree(root, relocated)
+    output = relocated.parent / "report"
+    report.write_report(relocated, output)
+    page = (output / "cases" / "phi4-rag-off__DEV-0.html").read_text(encoding="utf-8")
+    assert "../../raw/conditions/phi4-rag-off/prompts/session-1/2/prompt.txt" in page
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows drive-root behavior")
+def test_cross_drive_evidence_links_remain_openable():
+    link = _link(
+        Path("D:/raw evidence/prompt.txt"), Path("E:/report/case.html"), "Prompt"
+    )
+    assert link == '<a href="file:///D:/raw%20evidence/prompt.txt">Prompt</a>'
+
+
+@pytest.mark.parametrize("damage", ["prompt", "metadata", "traversal", "symlink"])
+def test_untrusted_captures_are_flagged_and_not_rendered(tmp_path, damage):
+    root, capture = _presentation_run(tmp_path)
+    if damage == "prompt":
+        (capture / "prompt.txt").write_text("TAMPERED-CONTENT")
+    elif damage == "metadata":
+        _write(capture / "metadata.json", {"forged": True})
+    elif damage == "traversal":
+        _change_result(
+            root,
+            lambda result: result["capture_audit"]["captures"][0]["metadata"].update(
+                session_id="../../outside"
+            ),
+        )
+    else:
+        outside = tmp_path / "outside.txt"
+        outside.write_text("TAMPERED-CONTENT")
+        (capture / "prompt.txt").unlink()
+        try:
+            (capture / "prompt.txt").symlink_to(outside)
+        except OSError:
+            pytest.skip("Creating symlinks is unavailable on this host")
+    output = tmp_path / "report"
+    report.write_report(root, output)
+    page = (output / "cases" / "phi4-rag-off__DEV-0.html").read_text(encoding="utf-8")
+    assert "Capture integrity: FAILED" in page
+    assert "TAMPERED-CONTENT" not in page
+    assert "Evidence presentation incomplete" in (output / "index.html").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_missing_case_has_page_without_invented_model_result(tmp_path):
+    root = _run(tmp_path, [("Action", None, None, "missing")])
+    output = tmp_path / "report"
+    report.write_report(root, output)
+    page = (output / "cases" / "phi4-rag-off__DEV-0.html").read_text(encoding="utf-8")
+    assert "missing" in page and "unavailable" in page
+
+
+@pytest.mark.parametrize(
+    "capture_status, expected", [("completed", "FAILED"), ("cancelled", "verified")]
+)
+def test_cancelled_prefix_requires_cancelled_capture_too(
+    tmp_path, capture_status, expected
+):
+    root, capture = _presentation_run(tmp_path)
+    metadata_path = capture / "metadata.json"
+    metadata = json.loads(metadata_path.read_text())
+    metadata["status"] = capture_status
+    _write(metadata_path, metadata)
+
+    def mutate(result):
+        result["capture_audit"]["captures"][0]["metadata"] = metadata
+        generation = result["trace"]["generations"][0]
+        generation.update(terminal="cancelled", raw_response="```")
+
+    _change_result(root, mutate)
+    output = tmp_path / "report"
+    report.write_report(root, output)
+    page = (output / "cases" / "phi4-rag-off__DEV-0.html").read_text(encoding="utf-8")
+    assert f"Capture integrity: {expected}" in page
 
 
 def test_unknown_or_duplicate_job_identity_refuses_report(tmp_path):

@@ -477,40 +477,53 @@ EEG 資料只支撐上述真實任務環境，保留來源／授權／checksum�
 
 ## 5. 單一執行入口與結果資料夾
 
-### 已確認的需求；尚未實作
+### 已確認的需求與 Pilot 入口
 
 使用者要一個腳本跑完**已設定的實驗**，產出一個完整資料夾，
 可以直接看模型輸入、輸出、準確率與速度，不必手動串多個工具或到處尋找 log。
 
 同一入口需能列出可跑實驗，選一個、選多個，或跑設定檔中的全部實驗。
 每個實驗有固定 ID，對應模型、條件、題庫分組與 repeats；
-ID 的具體清單及 CLI 拼法待討論，不在文件中假裝已有可用命令。
+Pilot 已由 `python -m scripts.dev.run_assistant_pilot --list` 列出條件；`--conditions`
+接受單一 ID、逗號分隔清單或 `all`，`--prepare` 核對配置，`--run` 執行。
+執行時提供明確的 `--bank`、`--selection`、`--config` 與新的 `--output`；
+只在原配置及來源一致時使用 `--resume`。這個入口目前支援 DEV Pilot，不能當作正式
+Development／Validation／Test 的通用 runner。
 「全部」限定於本次選定且可執行的設定，不自動解封 Test、不自動調 prompt，
 也不自動下載缺少的模型或替換失敗模型。
 
 單一入口不代表把所有責任塞入一個巨型檔案；重用既有模型、Command 與觀測能力，
 不建立第二套產品 state／policy 或通用實驗控制平台。
 
-### 輸出草案
+### Pilot 實際輸出與查閱
 
-以下是已討論的內容需求與候選命名，不是目前已有的產物 schema：
+原始 run 以 `manifest.json`、`journal.jsonl`、`cases/<條件__題號>/result.json` 保存
+設定、逐題軌跡、oracle、狀態、判分與計時；實際 prompt／raw output 位於
+`conditions/<條件>/prompts/<session>/<sequence>/`，由每題 capture audit 綁定。
+Oracle 與模型 messages 分開保存，只有實際 messages 才是送入模型的內容。
+
+使用既有實驗環境，從保存的 run 產生新報告目錄，不需重新載入模型：
+
+```powershell
+python -m scripts.dev.assistant_pilot_report --run <原始run目錄> --output <新的報告目錄>
+```
+
+報告目錄必須不存在，不覆寫舊版報告或原始結果。主要入口為 `index.html`：
 
 ```text
-experiment_日期時間/
-├── report.md                 # 準確率、速度、比較、失敗與完整性摘要
-├── results.csv               # 每題／模型／條件／輪次結果，可用 Excel 分析
-├── experiment.json           # 本次解析後的完整設定、版本、實際選取清單
+report_日期時間/
+├── index.html                # 可直接開啟的總表、速度、失敗與逐題搜尋
+├── README.md                 # 可閱讀的分數、分類、計時、修復與結果摘要
+├── results.csv               # UTF-8 BOM，Excel 可讀的逐題結果
+├── report.json               # 既有 scorer／彙整結果，不由呈現層改分
+├── presentation-audit.json   # 衍生呈現的來源／capture 完整性與 renderer 身分
 ├── cases/
-│   └── 模型_條件_輪次_題號/
-│       ├── input.json        # 題目、messages、狀態、工具、RAG 內容
-│       ├── prompt.txt        # 實際套模板並處理長度後的模型輸入文字
-│       ├── raw-output.txt    # 原始生成文字，不以 Host 修復後輸出替代
-│       └── result.json       # oracle、觀測、判分、時間、終態／錯誤
-└── execution.log             # 整場執行紀錄
+│   └── 條件__題號.html        # 各次 messages、rendered prompt、raw output 與原始證據入口
+└── ...                       # 原始 run 保留於原位置，不複製權重或 EEG 資料
 ```
 
 多輪／重試需逐次保存上述實際輸入與輸出、因果順序及最後可見回覆，
-不能只留下最後成功的一次；實際存放方式待定。適用的產品狀態與 UI 證據也放在同一 run 下。
+不能只留下最後成功的一次。適用的產品狀態與 UI 證據也放在同一 run 下。
 預期答案只能用於 scorer，不得流入受測模型的 prompt。
 
 每次 run 保存精確 source、模型 revision、runtime／套件、官方模板、prompt、
@@ -522,12 +535,15 @@ experiment_日期時間/
 完整 prompt 可能含路徑與資料內容，應使用研究 fixture、排除 secrets／病患資訊；
 分享或公開哪些產物另行確認。
 
-### 待確認的操作細節
+### 已落實的 Pilot 操作與後續界線
 
-- 中斷時逐步落盤、相同設定續跑、不得覆寫原證據，是目前建議的操作方式；
-  checkpoint 邊界、部分完成如何重跑、exit code 與設定不符時的處理仍待討論。
-- 原則逐模型載入以控制 VRAM；固定一次暖機與載入另計已確認，排程順序與安全平行範圍待 pilot。
-- 具體 experiment IDs／設定檔格式、輸出目的地、命名與容量、圖表及報告版型尚未定案。
+- Pilot 已保存 manifest／journal 並拒絕混用身分或覆写；完整性、取消與終態不明案例分別呈現。
+- 每個模型／RAG condition 載入與暖機一次，題間重置工作區及對話；載入、暖機、操作與
+  決策時間分開，重疊的時間區段不能直接相加。
+- 「量測有效」與「回答正確」分開；invalid model output 是有效量測中的模型失敗，
+  不从正確率分母刪除。曾格式錯誤與最終錯誤分開，不把修復成功案例仍稱最終失敗。
+- 報告可離線重建；同一 scorer 重播不是獨立 oracle 語意審查。正式實驗的 repeats、
+  統計與速度門檻仍依後續凍結規則，不由 Pilot 的 HTML 或圖表替代。
 
 ## 6. 凍結、執行節奏與完成條件
 
@@ -764,7 +780,8 @@ Test 用於檢驗 Validation 選擇能否延續到未參與選擇的題目，不
 - 既有 ChatPanel walkthrough／產品 walkthrough 有部分真 UI、狀態、截圖與事件收集能力；
   不能直接宣稱已覆蓋本規格的所有實驗。
 - 五模型 runner、真實 outcome 收集與 scorer 接合、選擇／全部條件入口、完整結果目錄、
-  Pilot 報告與 B0 實際封存／還原已完成。正式 495 題 Development／Validation 工作、
+  可讀 Pilot 報告與 B0 封存已落實。B0 從全新環境補驗單模型 RAG-off 真實測量，
+  不冒稱全矩陣或 native 視覺重驗，證據與限制由 Current 擁有。正式 Development／Validation 工作、
   B1／B2 選版與封存 Test 執行仍未開始；Pilot 不升格為正式結果。
 - 舊 121-case artifacts、已退役 runner／split writer 只有歷史身分，不恢復；
   舊 81-case 與 calibration 證據也不得升格為新論文 Test。

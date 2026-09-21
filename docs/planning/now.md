@@ -4,10 +4,16 @@
 
 ## Candidate — Assistant Evaluation M4 Development（尚未授權）
 
-Pilot 與 B0 已完成；下一輪若經使用者確認，才依
+Pilot 原始證據覆核、可讀報告與 B0 還原後真實測量補驗已完成，事實與限制見
+[Current](../current.md#assistant-research-baseline)，報告入口／契約見研究規格第 5 節。
+使用者授權的「先查完這個還有把輸出做更好」已完成，不改原分數或產品政策。
+下一輪若經使用者確認，才依
 [研究規格](../validation/thesis_protocol.md) 的有限 Development 規則選擇改善方案、保存
 B1／B2 候選並準備集中 Validation。不因 Pilot 分數直接調 prompt／RAG、挑模型或啟動
 Validation／Test；Test 仍封存且本輪未讀取。
+
+可據本次證據討論的改善最多三項：格式遵循／重複修復、缺資訊時自行補參數、
+動態 publication 變動下的操作交接。這些是候選，不藉報告施工直接改模型或產品。
 
 ## Completed record — Assistant Evaluation 準備至 Pilot（2026-09-21）
 
@@ -178,10 +184,10 @@ operation／pending interaction 皆在每題前歸零，逐題 prompt capture �
 Probe report 保留為 partial engineering evidence：有效 decision 30/30、無 missing／invalid／
 timeout，first／final macro 皆 0.648；低分不重送也不當成 runner 失敗。此 probe 當時仍不是
 Pilot 完成；後續完整 frozen 300 題結果如下。
-完整報告與 B0 封存／還原均已通過；這是研究里程碑出口，不等於產品 handoff-ready。
+當時已有基本報表與 B0 封存／環境還原；後續已補完整可讀報告及還原後真實測量，見 Current。
 UI layout／文案／產品互動不變；只改研究 driver 對既有警告的觀測分類與 runner 的 console
 presentation。回退為這兩個 script seam 與 tests，不改產品 owner/public contract。
-**本輪出口**：frozen `ac8af81d` 的 300/300 題完整執行、正式報告與 B0 實際還原已完成；
+**當時出口**：frozen `ac8af81d` 的 300/300 題完整執行、基本報告與 B0 環境還原已完成；
 Test 未讀取。缺資訊題的 prompt/history/RAG 由逐題 input audit 核對，fixture setup 不取代此 gate。
 
 模型唯讀 preflight 找到下列官方 pin，使用者於 2026-09-21 批准下載；尚未認證載入成功：
@@ -378,8 +384,9 @@ embedding 檔（91,578,415 bytes）重算一致；大型資源維持 D 槽單一
 第一次把 Poetry 裝入目標 venv 的錯誤方法與 PowerShell 中文路徑失敗均保留；修正後 ASCII
 wrapper 的 PrepareOnly 單一命令通過。這不是產品 merge 批准或正式模型排名。
 
-**Stop**：上述 Pilot／封存交付已完成。本輪在此 scope-complete；M4 是新一輪研究施工，須依
-candidate 取得使用者確認。Context compaction、完成一個 slice、CI pending 不是完成。
+**歷史交付更正**：上述完成宣稱未區分基本報表與完整可讀輸出，也未取得還原後真模型／工具
+測量；後續補驗及限制由 Current 擁有。M4 仍是後續研究決策。Context compaction、完成一個
+slice、CI pending 不是完成。
 
 ## 已結束的共同基線
 
