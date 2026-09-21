@@ -66,8 +66,10 @@ DPI 或下游流程都經此次真人驗收。後續純文件收尾不改該產�
 
 ## Assistant research baseline
 
-改善前 B0 已凍結於 tag `assistant-b0-20260921-ac8af81d`／commit
-`ac8af81d87d3c88a32455dd0ce0e91996767f38a`。DEV Pilot 使用 30 題、五模型 × RAG on/off，
+前期 Pilot 快照保留於 tag `assistant-b0-20260921-ac8af81d`／commit
+`ac8af81d87d3c88a32455dd0ce0e91996767f38a`。2026-09-21 使用者同意其不作正式 B0：
+先修共用格式相容與無效重複重試，再跑相同矩陣並另凍結基線；舊 tag、封存及分數不改寫。
+下列均為該前期版本的證據。DEV Pilot 使用 30 題、五模型 × RAG on/off，
 共 300/300 題 recorded；10 個 condition cleanup、300 個 case boundary、prompt capture 與
 input audit 全數通過，沒有 missing、timeout、無效量測或 product outcome 缺失。總 active time
 為 1,876.047 秒。這是研究可行性與成本證據，不是正式模型排名、Validation／Test、穩定 P95

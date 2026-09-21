@@ -954,6 +954,9 @@ class _EvaluatorControllerHarness:
     def _publish_activity(self, *_args: Any, **_kwargs: Any) -> None:
         """The evaluator intentionally has no activity presentation surface."""
 
+    def _observe_decision(self, _kind: str, **_details: Any) -> None:
+        """No live observer surface; replay records admission/terminal separately."""
+
     def _emit_processing_finished(self, _outcome: str = "completed") -> None:
         self.pending_interactions.clear_active_tool_input()
 

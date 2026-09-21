@@ -2,6 +2,44 @@
 
 最後更新：`2026-09-21`
 
+## Active — 正式基線前的共用格式／重試修理（2026-09-21）
+
+使用者同意先修好格式相容性與無效重試，再跑相同五模型 Pilot，確認工程與測量後凍結
+正式基線。既有 `assistant-b0-20260921-ac8af81d` 保留原始 tag／封存／分數，定位改為
+前期 Pilot 快照；不移動 tag、不追改舊分數。正式新基線另用新的唯一版本／封存識別。
+
+- 問題證據：Gemma 180 次輸出均被外層 code fence 拒絕；60 題兩次修復輸出相同，
+  58 題兩次修復輸入相同，格式模板與 scorer 重播均已排除量測不一致。
+- Outcome：五模型共用有界格式處理與不浪費第二次相同生成的重試；同一 DEV 選題、
+  pins、量化、RAG 與 seed 跑完整矩陣，低分如實保留，可靠可測量後才凍結正式 B0。
+- 契約：接受裸單一 JSON，或整份回答恰是一層 `json`／無語言 Markdown code fence 內
+  的單一 JSON；仍拒絕 prose、多物件／多 code blocks、array、額外欄位、重複 key、
+  非標準數值與錯誤工具／參數。原始 raw output 不改寫。正式 target 先同步。
+- 重試採最小修理：初次生成加最多一次既有格式修復；取消第二次相同策略的重複生成。
+  不新增 request fingerprint、控制層或 state machine；不把 oracle 或模型原文提升為 policy。
+- Scope：parser、既有重試 budget、直接 tests、target／current／研究規格、完整 Pilot
+  與新的基線證據。非目標：缺資訊推理調優、RAG／模型實驗、publication race 修理、
+  Validation／Test、產品 UI layout 改造、merge。已授權改變上述 Assistant 格式／重試行為。
+- 假設：既有 Windows 環境與受控 cache 可用；重用相同 30 題選取，最高 4 小時機器預算。
+  背景 Qt offscreen 避免閃窗；這次不得冒稱 native UI 視覺驗收，舊 native 證據保持原身分。
+- 步驟：文件與 target → parser／budget RED→GREEN → 真 parser＋Host adversarial focused
+  tests及獨立 review → clean source freeze → 五模型十條件完整 Pilot → 報告／證據核對與封存。
+- Owner before/after：CommandParser 仍只解析；Controller／既有 recovery policy 與 backend
+  admission／confirmation owner 不變。刪除候選為無效第二次 repair；production 預估小於
+  +100 LOC、無新 owner／module。報告繼續重用現有 renderer，不另建評分控制層。
+- Stop：以上 scope 及新基線可重跑證據完成；不要求 Gemma 高分、不隱藏退步、不因 compact 停止。
+- Next：共用修理已實作且獨立覆核無 blocker；提交 clean source，固定相同 300 jobs 後
+  以背景 Windows Qt offscreen 執行完整 Pilot，逐題確認最多兩次 generation／一次 repair，
+  再核对 report、另建正式基線封存與全新環境還原。正式基線之前不開始 B1／B2。
+- 直接相鄰驗證發現舊 81-case evaluator adapter 尚未接 controller 新的唯讀 observation hook，
+  25 個既有 tests 因 AttributeError 失敗；補 adapter 的無 Qt 觀測接點以恢復原判分路徑，
+  不改 scorer／oracle、不把此攔截式 evaluator 當作新 Pilot 真實 outcome。
+- Focused：parser／Pilot scorer 158 passed；recovery／decision／controller／integration
+  274 passed，擴增 fenced／bare 真 Host integration 9 passed；舊 evaluator adapter
+  25 個 AttributeError RED 修正後整個檔案 74 passed。Ruff／diff check 通過。
+  Production +13/-5（net +8）、script adapter +3，無新 owner；獨立 code／security review
+  確認 no-execution、single-execution、confirmation／cancel 邊界未放寬。
+
 ## Candidate — Assistant Evaluation M4 Development（尚未授權）
 
 Pilot 原始證據覆核、可讀報告與 B0 還原後真實測量補驗已完成，事實與限制見

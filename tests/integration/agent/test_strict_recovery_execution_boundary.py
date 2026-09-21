@@ -227,11 +227,14 @@ def _submit_user_turn(
     )
 
 
-def test_malformed_tool_envelopes_stop_after_two_retries_without_execution(
+def test_malformed_tool_envelopes_stop_after_one_repair_without_execution(
     qtbot,
 ):
     malformed = '```json\n{"tool_name":"import_eeg_data","parameters":{}}\n```'
-    controller, worker, coordinator = _controller_with_script([malformed] * 3)
+    valid = '{"workflow_stage":"empty","tool_name":"import_eeg_data","parameters":{}}'
+    controller, worker, coordinator = _controller_with_script(
+        [malformed, malformed, valid]
+    )
     statuses: list[str] = []
     responses: list[str] = []
     controller.status_update.connect(statuses.append)
@@ -243,12 +246,12 @@ def test_malformed_tool_envelopes_stop_after_two_retries_without_execution(
         _submit_user_turn(controller, "Import EEG data.")
         qtbot.waitUntil(lambda: not controller.is_processing, timeout=3_000)
 
-        assert worker.generation_count == 3
-        assert worker.profiles == [GenerationProfile.STRUCTURED_DECISION] * 3
-        assert controller._tool_attempt_session.retry_count == 2
+        assert worker.generation_count == 2
+        assert worker.profiles == [GenerationProfile.STRUCTURED_DECISION] * 2
+        assert controller._tool_attempt_session.retry_count == 1
         assert controller._tool_attempt_session.execution_count == 0
         assert coordinator.commands == []
-        assert statuses.count("Invalid assistant action, retrying...") == 2
+        assert statuses.count("Invalid assistant action, retrying...") == 1
         assert statuses[-1] == "Invalid assistant action"
         assert responses == [
             "The assistant could not produce a valid assistant action. Try again "
@@ -296,14 +299,18 @@ def test_recovered_valid_envelope_reaches_real_execution_coordinator(
         close_controller_and_wait(controller, qtbot)
 
 
-@pytest.mark.parametrize("malformed_count", (0, 2))
+@pytest.mark.parametrize("malformed_count", (0, 1))
+@pytest.mark.parametrize("fenced", (False, True))
 def test_parsed_import_handoff_executes_once_despite_recovery_or_duplicate_finish(
     qtbot,
     malformed_count: int,
+    fenced: bool,
 ) -> None:
     """One parsed proposal cannot become a second tool execution in one turn."""
     malformed = '```json\n{"tool_name":"import_eeg_data","parameters":{}}\n```'
     valid = '{"workflow_stage":"empty","tool_name":"import_eeg_data","parameters":{}}'
+    if fenced:
+        valid = f"```json\n{valid}\n```"
     controller, worker, coordinator = _controller_with_script(
         [malformed] * malformed_count + [valid]
     )
@@ -383,5 +390,27 @@ def test_same_import_action_in_three_fresh_turns_never_accumulates_a_loop(
 
         assert worker.generation_count == 3
         assert coordinator.commands == ["import_eeg_data"] * 3
+    finally:
+        close_controller_and_wait(controller, qtbot)
+
+
+@pytest.mark.parametrize("fenced", (False, True))
+def test_adjacent_objects_never_execute_even_inside_one_fence(qtbot, fenced):
+    action = '{"workflow_stage":"empty","tool_name":"import_eeg_data","parameters":{}}'
+    multiple = f"{action}\n{action}"
+    if fenced:
+        multiple = f"```json\n{multiple}\n```"
+    controller, worker, coordinator = _controller_with_script([multiple])
+    responses = []
+    controller.response_presentation_ready.connect(responses.append)
+    try:
+        _submit_user_turn(controller, "Import EEG data.")
+        qtbot.waitUntil(lambda: not controller.is_processing, timeout=3_000)
+        assert worker.generation_count == 1
+        assert controller._tool_attempt_session.retry_count == 0
+        assert coordinator.commands == []
+        assert controller.pending_interactions.workflow_handoff is None
+        assert len(responses) == 1
+        assert "one action at a time" in responses[0].text
     finally:
         close_controller_and_wait(controller, qtbot)

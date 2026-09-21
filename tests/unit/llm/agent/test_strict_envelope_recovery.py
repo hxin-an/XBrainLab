@@ -59,8 +59,8 @@ def test_format_error_builds_one_canonical_bounded_recovery_message():
     assert "do not convert a blocked explanation" in (decision.message.content.lower())
 
 
-def test_default_policy_allows_exactly_two_format_recovery_attempts():
-    assert DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY.max_recovery_attempts == 2
+def test_default_policy_allows_exactly_one_format_recovery_attempt():
+    assert DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY.max_recovery_attempts == 1
 
     envelope = CommandParser.parse_product(
         '```json\n{"tool_name":"query_state","parameters":{}}\n```'
@@ -68,7 +68,7 @@ def test_default_policy_allows_exactly_two_format_recovery_attempts():
     exhausted = DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY.decide(
         StrictEnvelopeRecoveryRequest(
             envelope=envelope,
-            recovery_attempts_used=2,
+            recovery_attempts_used=1,
         )
     )
 
@@ -76,6 +76,20 @@ def test_default_policy_allows_exactly_two_format_recovery_attempts():
     assert (
         exhausted.taxonomy is StrictEnvelopeRecoveryTaxonomy.FORMAT_RECOVERY_EXHAUSTED
     )
+
+
+def test_explicit_two_repair_policy_preserves_its_custom_budget():
+    policy = StrictEnvelopeRecoveryPolicy(max_recovery_attempts=2)
+    malformed = CommandParser.parse_product('{"tool_name":')
+    decisions = [
+        policy.decide(StrictEnvelopeRecoveryRequest(malformed, used)).action
+        for used in (0, 1, 2)
+    ]
+    assert decisions == [
+        StrictEnvelopeRecoveryAction.RETRY_FORMAT,
+        StrictEnvelopeRecoveryAction.RETRY_FORMAT,
+        StrictEnvelopeRecoveryAction.EXHAUSTED,
+    ]
 
 
 def test_adjacent_complete_objects_choose_one_without_a_format_retry() -> None:

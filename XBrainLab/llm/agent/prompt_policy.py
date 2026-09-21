@@ -47,7 +47,7 @@ def _bounded_public_reason(value: str) -> str:
 class StrictToolResponsePromptPolicy:
     """Canonical model-owned structured decision contract for local models."""
 
-    max_format_recovery_attempts: int = 2
+    max_format_recovery_attempts: int = 1
 
     def __post_init__(self) -> None:
         if self.max_format_recovery_attempts < 0:

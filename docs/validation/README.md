@@ -306,7 +306,7 @@ Assistant candidate必須在同一clean/explained exact source依序閉合下列
    產生exact tool／question receipt；模型直接`respond_to_user`而沒有Host receipt時不得合成或代填。另外
    generic filter selection、bounded bandpass collect-then-sort與correction fail-closed restart都必須經真controller
    pending lifecycle。所有trajectory仍須經相同parser、schema、publication、capability與attempt policy得到
-   7/7 final verified execute-boundary；receipt 收齊後必須零額外 LLM/RAG generation。raw第一發與最多兩次format recovery分開保存。這個gate不取代24/24
+   7/7 final verified execute-boundary；receipt 收齊後必須零額外 LLM/RAG generation。raw第一發與最多一次format recovery分開保存（舊兩次預算的artifact保留原身分）。這個gate不取代24/24
    precision，也不等於tool execution已產生真side effect。
    真model run使用product RAG時，evaluator必須經`ProcessRAGRetrieverLifecycle`與同一個
    `ContextAssembler`取得allowed tools；每次retrieval記錄protocol、sequence、query、allowed tools、

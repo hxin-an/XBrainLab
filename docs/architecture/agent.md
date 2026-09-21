@@ -1,6 +1,6 @@
 # Agent 目前架構
 
-最後更新：`2026-09-12`
+最後更新：`2026-09-21`
 
 ## 範圍
 
@@ -122,7 +122,10 @@ Qt processing／closing admission。這些內部責任移交不新增工具或�
 - 組prompt：strict policy、stage-published target schemas、minimal state card、bounded RAG、最新user與
   最多上一則Assistant-visible訊息。
 - 讓 `AgentWorker` 在 background thread 生成回覆。
-- 用`CommandParser`只接受exact三欄JSON envelope；不做寬鬆抽取或legacy fallback。
+- 用`CommandParser`接受exact三欄JSON envelope，可有整份回答單一 `json`／無語言 code fence；
+  只解除外框，原始輸出照存，不做散文抽取、寬鬆 schema 或 legacy fallback。
+- 初次生成最多加一次既有格式修復；同一修復仍失敗即停止，不重送第二次相同策略。
+  多個完整物件維持 choose-one terminal，已交付操作、確認取消與執行失敗不由格式重試重送。
 - 用 `VerificationLayer` 檢查 registered tool schema、required parameter、JSON-like type、
   enum、confidence 和部分資料範圍；五個direct preprocess另由同一verification boundary驗證required
   value確實來自latest user request，無法驗證時回一般Assistant追問且不進executor。

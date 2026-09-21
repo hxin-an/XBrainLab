@@ -85,8 +85,8 @@ def test_prompt_policy_makes_the_action_root_shape_unambiguous() -> None:
         assert "tool-call branch" not in prompt
 
 
-def test_prompt_policy_allows_two_bounded_repairs() -> None:
-    assert StrictToolResponsePromptPolicy().max_format_recovery_attempts == 2
+def test_prompt_policy_allows_one_bounded_repair() -> None:
+    assert StrictToolResponsePromptPolicy().max_format_recovery_attempts == 1
 
 
 def test_prompt_policy_preserves_explicit_supported_optional_values() -> None:

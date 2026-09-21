@@ -252,7 +252,7 @@ recovery只能證明產品安全，不能增加first-generation raw model分數�
 - 24/24 no-action precision outcomes沒有confirmation、GUI handoff、execution或state mutation。
 - 7/7 clarification trajectories經production controller抵達verified execute boundary：五個direct
   preprocess continuation、generic filter選擇bandpass後再追問，以及bandpass先low再high的partial
-  accumulation；raw第一發與最多兩次format recovery分開記錄。
+  accumulation；raw第一發與最多一次format recovery分開記錄；歷史兩次預算的artifact不追改。
 
 challenge的tool／stage／parameter／continuation／safety錯誤為零；最多三個非關鍵回覆措詞問題會完整列出。
 產生的 JSON report 只支持該次

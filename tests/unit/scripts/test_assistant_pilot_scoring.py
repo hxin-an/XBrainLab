@@ -55,6 +55,29 @@ def test_integer_only_product_schema_is_not_relaxed_by_numeric_equality():
     assert not score_decision(case(), response(parameters={"rate": 128.0}))["correct"]
 
 
+@pytest.mark.parametrize("label", ["json", ""])
+def test_whole_fence_uses_same_product_parser_and_decision_score(label):
+    raw = response()
+    assert score_decision(case(), f"```{label}\n{raw}\n```") == score_decision(
+        case(), raw
+    )
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        response(tool="unknown_tool"),
+        response(parameters={"rate": 128.0}),
+        response(parameters={"rate": 128, "extra": 1}),
+        response(stage="empty"),
+        response() + response(),
+        "Some explanation " + response(),
+    ],
+)
+def test_fence_does_not_rescue_wrong_tool_parameters_stage_or_malformed_decision(raw):
+    assert score_decision(case(), "```json\n" + raw + "\n```")["correct"] is False
+
+
 def test_string_enum_parameters_match_exactly_without_normalization():
     oracle = case(tool="normalize_data", parameters={"method": "z-score"})
     assert score_decision(oracle, response("normalize_data", {"method": "z-score"}))[
