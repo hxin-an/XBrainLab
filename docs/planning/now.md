@@ -39,6 +39,18 @@
   25 個 AttributeError RED 修正後整個檔案 74 passed。Ruff／diff check 通過。
   Production +13/-5（net +8）、script adapter +3，無新 owner；獨立 code／security review
   確認 no-execution、single-execution、confirmation／cancel 邊界未放寬。
+- Pilot checkpoint：clean `ae482c41` 的短路徑 run `build/dev-artifacts/p0-ae482c41`
+  完成前八條件 240 題，Gemma on 第六題 `DEV-N03-01-V3` 因評測缺口停在 246 題。
+  模型回覆的 `pending_action=import_eeg_data/create_epochs` 與臆造 missing_inputs 被真 Host
+  拒絕為 invalid_action，但 scorer 只看 nonempty message 誤判正確，outcome 隨後誤列量測故障。
+  修復直接必要的 typed-clarification 判分與已觀測拒絕分類，重用既有契約，不改產品 admission、
+  不新增語意 oracle、不把拒絕救成答對；先真實失敗軌跡 RED→GREEN 與獨立覆核再新版本全矩陣。
+  舊 partial／低分原樣保留，不混用 source，四小時預算內繼續。另已確認 Windows 長目錄
+  WinError 206，以短 output root 排除；WSL 不轉送 QPA 變數，改 Windows launcher 明設 offscreen。
+- Typed scorer 修理已完成：只重用 direct-tool／stage／required schema 做靜態輸出檢查，
+  不另做 live admission。9 個 false-positive RED→GREEN；parser／scorer 178 passed、
+  scorer→outcome 29 passed。Outcome source 無需修改；missing／mismatched terminal 仍 fail closed。
+  Script +12/-1、production +0；獨立覆核無 blocker。下一步新 clean source 的完整 300 題。
 
 ## Candidate — Assistant Evaluation M4 Development（尚未授權）
 

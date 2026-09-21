@@ -13,7 +13,8 @@ from typing import Any
 from XBrainLab.backend.application.pipeline_stage import PipelineStage
 from XBrainLab.llm.agent.decision_contract import MODEL_RESPONSE_TOOL_NAME
 from XBrainLab.llm.agent.parser import CommandParser, ToolEnvelopeStatus
-from XBrainLab.llm.agent.verifier import ToolSchemaValidator
+from XBrainLab.llm.agent.verifier import DIRECT_PARAMETER_TOOLS, ToolSchemaValidator
+from XBrainLab.llm.pipeline_state import STAGE_CONFIG
 from XBrainLab.llm.tools import get_all_tools
 
 _CATEGORIES = {"Action", "Clarification", "No-call"}
@@ -97,6 +98,16 @@ def score_decision(case: dict[str, Any], response: str | None) -> dict[str, Any]
         return {**result, "reason": "invalid_envelope"}
     if parsed.status is ToolEnvelopeStatus.NO_TOOL:
         result["observed_tool"] = MODEL_RESPONSE_TOOL_NAME
+        # Static output validity uses the same direct-tool/schema/stage sources
+        # as product clarification admission; it cannot establish live admission.
+        if parsed.pending_action and (
+            parsed.pending_action not in DIRECT_PARAMETER_TOOLS
+            or parsed.pending_action not in STAGE_CONFIG[PipelineStage(stage)]["tools"]
+            or not set(parsed.missing_inputs).issubset(
+                schemas.get(parsed.pending_action, {}).get("required", [])
+            )
+        ):
+            return {**result, "reason": "invalid_envelope"}
         correct = (
             category != "Action"
             and parsed.workflow_stage == stage

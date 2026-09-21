@@ -1,11 +1,14 @@
 """Product evidence must not turn Host protection or driver work into model credit."""
 
+import json
+
 import pytest
 
 from scripts.dev.assistant_pilot_outcome import (
     score_product_outcome,
     ui_measurement_issues,
 )
+from scripts.dev.assistant_pilot_scoring import score_case_decisions
 
 
 def evidence(tool="apply_bandpass_filter", *, correct=True, decision="Action"):
@@ -225,6 +228,95 @@ def test_format_exhausted_noncall_is_measured_model_failure():
     score = score_product_outcome(case, result)
     assert score["measurement_valid"] and not score["decision_correct"]
     assert score["outcome"] == "decision_incorrect"
+
+
+def _rejected_typed_nonaction_trace():
+    """Observed failure shape, with synthetic copy rather than a bank question."""
+    case, result = evidence("respond_to_user", decision="No-call")
+    case.update(expected_parameters=None, expected_workflow_stage="empty")
+    trace = result["trace"]
+    trace["generations"] = []
+    correlation = {"generation": 6, "turn_id": 6}
+    for number, pending, missing in (
+        (6, "import_eeg_data", ["panel_name", "view_mode"]),
+        (7, "create_epochs", ["raw_data_path"]),
+    ):
+        raw = (
+            "```json\n"
+            + json.dumps(
+                {
+                    "workflow_stage": "empty",
+                    "tool_name": "respond_to_user",
+                    "parameters": {
+                        "message": "Load data first.",
+                        "pending_action": pending,
+                        "missing_inputs": missing,
+                    },
+                }
+            )
+            + "\n```"
+        )
+        request = {
+            "generation_id": number,
+            "response_contract": "structured_action",
+            "messages": [[["role", "user"], ["content", "No data is loaded."]]],
+        }
+        trace["generations"].append(
+            {
+                "generation_id": number,
+                "request": request,
+                "raw_response": raw,
+                "terminal": "finished",
+                "started": True,
+            }
+        )
+        event(result, "generation_request", **request)
+        for phase, text in (("started", ""), ("chunk", raw), ("finished", "")):
+            event(
+                result, "generation_event", generation_id=number, phase=phase, text=text
+            )
+        event(
+            result,
+            "host_decision",
+            kind="envelope",
+            correlation=correlation,
+            generation_id=number,
+            status="format_error",
+            recovery_action="retry_format" if number == 6 else "exhausted",
+        )
+    trace["turn_terminal"] = {"correlation": correlation, "outcome": "invalid_action"}
+    event(result, "turn_terminal", **trace["turn_terminal"])
+    return case, result
+
+
+def test_typed_nonaction_rejection_is_wrong_decision_not_missing_measurement():
+    case, result = _rejected_typed_nonaction_trace()
+    result["scores"] = score_case_decisions(case, result["trace"])
+    assert result["scores"]["measurement_valid"]
+    assert result["scores"]["first_decision_correct"] is False
+    assert result["scores"]["final_decision_correct"] is False
+    actual = score_product_outcome(case, result)
+    assert actual["measurement_valid"] and actual["issues"] == []
+    assert actual["outcome"] == "decision_incorrect"
+    assert actual["execution"] == "not_started"
+    assert actual["unexpected_action"] is False
+
+
+@pytest.mark.parametrize("damage", ["missing", "mismatched"])
+def test_known_rejection_cannot_excuse_missing_or_wrong_terminal(damage):
+    case, result = _rejected_typed_nonaction_trace()
+    if damage == "missing":
+        result["trace"]["turn_terminal"] = None
+    else:
+        result["trace"]["turn_terminal"] = {
+            "correlation": {"generation": 99, "turn_id": 99},
+            "outcome": "invalid_action",
+        }
+    result["scores"] = score_case_decisions(case, result["trace"])
+    assert result["scores"]["measurement_valid"] is False
+    actual = score_product_outcome(case, result)
+    assert actual["measurement_valid"] is False
+    assert actual["outcome"] == "invalid_measurement"
 
 
 def test_missing_command_result_is_not_completed_by_turn_terminal():

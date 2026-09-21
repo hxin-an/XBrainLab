@@ -298,6 +298,11 @@ Product outcome 仍依現有完成契約，匯入／設定的 opened／accepted 
 - 不把崩潰、逾時、未回覆或缺少紀錄視為正確不執行。精確終態與分母規則仍需固定。
 - 保存原始回覆；本輪不判問句是否流暢、是否問對缺漏或回答內容是否有幫助。
   pending_action／missing_inputs 如存在可留作診斷，不以其存在推論文字內容正確。
+- 可選 typed 欄位仍須符合既有產品格式契約：direct-preprocess 工具、該宣告階段的合法
+  membership，以及 registry schema 的必要欄位子集。錯工具或臆造欄位不是正常回覆；
+  單靠 nonempty message 不能算正確。這是格式／契約檢查，不評問句內容，也不代替
+  真 Host 的即時 capability、publication 或 receipt admission。2026-09-21 Gemma Pilot
+  揭露 scorer 漏檢此邊界，修復後使用新 source／run，舊分數與部分 run 保留原身分。
 - 這個指標不支撐「澄清成功」或「補值後能接續完成」；後者屬另行確認的多輪評估。
 - 與 No-call 分開報告：前者是有操作意圖但資訊不足，後者是本來就不應操作的題目。
 

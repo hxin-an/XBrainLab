@@ -138,6 +138,91 @@ def test_optional_structured_pending_is_not_a_new_semantic_oracle(decision):
     assert score_decision(non_action(decision), raw)["correct"] is True
 
 
+def test_unavailable_model_stage_is_wrong_decision_not_a_measurement_exception():
+    raw = response(
+        "respond_to_user",
+        {
+            "message": "Which sampling rate?",
+            "pending_action": "resample_data",
+            "missing_inputs": ["rate"],
+        },
+        stage="unavailable",
+    )
+    score = score_decision(non_action("Clarification"), raw)
+    assert score["correct"] is False
+    assert score["observed_stage"] == "unavailable"
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        '```json\n{\n  "workflow_stage": "empty",\n  "tool_name": "respond_to_user",\n  "parameters": {\n    "message": "To apply a bandpass filter, you must first load the raw EEG data.  Please use the Import EEG Data action to load the data before applying the filter.",\n    "pending_action": "import_eeg_data",\n    "missing_inputs": [\n      "panel_name",\n      "view_mode"\n    ]\n  }\n}\n```',
+        '```json\n{\n  "workflow_stage": "empty",\n  "tool_name": "respond_to_user",\n  "parameters": {\n    "message": "To begin preprocessing, you must first load the raw EEG data. Before applying any filters, such as bandpass filtering, you need to load the data.",\n    "pending_action": "create_epochs",\n    "missing_inputs": [\n      "raw_data_path"\n    ]\n  }\n}\n```',
+    ],
+)
+def test_frozen_gemma_invalid_typed_metadata_is_not_a_correct_no_call(raw):
+    """p0-ae482c41 / gemma3-rag-on / DEV-N03-01-V3 raw generations."""
+    oracle = {**non_action("No-call"), "expected_workflow_stage": "empty"}
+    score = score_decision(oracle, raw)
+    assert score["correct"] is False
+    assert score["reason"] == "invalid_envelope"
+
+
+@pytest.mark.parametrize(
+    "pending,missing,stage",
+    [
+        ("unknown_tool", ["rate"], "data_loaded"),
+        ("import_eeg_data", ["panel_name", "view_mode"], "data_loaded"),
+        ("create_epochs", ["raw_data_path"], "data_loaded"),
+        ("resample_data", ["invented_rate"], "data_loaded"),
+        ("apply_bandpass_filter", ["low_freq", "invented_high"], "data_loaded"),
+        ("resample_data", ["rate"], "empty"),
+        ("resample_data", ["rate"], "epoch_ready"),
+    ],
+)
+def test_invalid_typed_metadata_never_passes_on_nonempty_message(
+    pending, missing, stage
+):
+    oracle = {**non_action("Clarification"), "expected_workflow_stage": stage}
+    raw = response(
+        "respond_to_user",
+        {
+            "message": "Please provide the value.",
+            "pending_action": pending,
+            "missing_inputs": missing,
+        },
+        stage=stage,
+    )
+    assert score_decision(oracle, raw)["reason"] == "invalid_envelope"
+
+
+@pytest.mark.parametrize(
+    "pending,missing",
+    [
+        ("apply_bandpass_filter", ["low_freq"]),
+        ("apply_notch_filter", ["freq"]),
+        ("resample_data", ["rate"]),
+        ("set_reference", ["method"]),
+        ("normalize_data", ["method"]),
+    ],
+)
+@pytest.mark.parametrize("stage", ["data_loaded", "preprocessed"])
+def test_typed_metadata_reuses_direct_schema_and_accepts_required_subset(
+    pending, missing, stage
+):
+    oracle = {**non_action("Clarification"), "expected_workflow_stage": stage}
+    raw = response(
+        "respond_to_user",
+        {
+            "message": "Please provide the value.",
+            "pending_action": pending,
+            "missing_inputs": missing,
+        },
+        stage=stage,
+    )
+    assert score_decision(oracle, raw)["correct"] is True
+
+
 @pytest.mark.parametrize(
     "raw",
     [
