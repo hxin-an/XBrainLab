@@ -118,6 +118,34 @@ driver 確認後成功清除合成 fixture 的 training history；不是七次�
 但也不能只描述成開窗問題。Clarification 正確率僅判決策／結構，不代表詢問內容切題，
 不得把完整量測或可還原研究基線說成產品零錯誤、native GUI 驗收或 handoff-ready。
 
+### B0 單一入口驗證（2026-09-21）
+
+`baseline.cmd` 已把固定 B0 的 source 還原／檢查、選條件、真實執行和報告串接。
+用法與資料夾契約由[研究規格第 5 節](validation/thesis_protocol.md) 擁有；
+它只支援固定 30 DEV 題／十條件，不是正式 Development／Validation／Test 通用 runner。
+入口 `78908640`（script SHA-256 `d3c8a4aac3b332915b1ab3e97e530383d1d0a141fc84b35d4399099b4f0677e5`）
+載入 clean frozen `926d90ea`，沿用共享 Windows 環境與既有模型，沒有新增環境或下載。
+
+`D:\XBrainLabRuns\b0-entry-78908640\index.html` 是本次入口驗證結果；
+首輪 `reports/20260921-130913-6df16d95` 保存原始完整測量。300/300、十條件 cleanup
+通過，沒有缺題／逾時／無效量測；active time 1,283.531 秒，不包含入口前置校驗和報告。
+300 題 decision／product-outcome／input audit 重播一致；319 次逐題生成加十次暖機的
+metadata／prompt／raw hash 及模型身分核對通過。HTML／CSV／JSON 一致，302 頁 HTML、
+1,851 個相對連結通過。73 項直接相鄰 focused tests、Windows preflight、重複入口排他
+及獨立邊界覆核通過。report-only 未改 raw；完成後 resume 未新增模型子程序、未改原有
+case／報告。整個資料夾複製到中文／空白 Windows 路徑後，全 300 題讀回、相對連結及
+重新產生報告通過；證據在結果根目錄 `recovery-verification.json`，臨時複本驗完清除。
+不將這些證據稱為產品 CI／native UI handoff-ready。
+
+這是入口工程驗證，不新增正式 repeat，也不替換上節封存分數。Gemma 本次 final macro
+off/on 為 0.463/0.574，與原次不同；不可挑較高成績。固定 case／source／seed 不表示
+逐次 model input 完全相同：233 題 first prompt 完全相同，另 67 題僅有 training 的匿名
+subject reference／`backend_generation` 差異；只正規化這兩欄後全部相同。兩輪合計
+600 個題前邊界均為空 stage、零對話／pending／active jobs，未觀察到資料或對話殘留。
+這是凍結 harness 原有的執行期資訊變動，不是新入口修改題目／RAG；其影響不能全歸因於
+GPU 不確定性。兩輪原始輸入與結果均保留；控制非任務資訊對正式比較的影響仍需後續決策，
+不在凍結 B0 上追改 prompt、scorer 或產品 publication。
+
 ### 前期快照與原始證據（不追改）
 
 前期 Pilot 快照保留於 tag `assistant-b0-20260921-ac8af81d`／commit
