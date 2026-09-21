@@ -63,7 +63,7 @@ PR #143–#145 已進入此 main 基線；舊啟動器、RAG、split receipt 與
 - BIDS recommendation 清理為 production +8/-42/net -34 LOC，characterization 先後皆 77 passed；
   Graz reader seam 改用真 MNE 物件補正反例、annotation preservation 比對改為事前 snapshot，
   對應 35 tests 通過。純解析／state owners 不增加；不改推論門檻或 UI。
-- production 合計 +165/-99/net +66 LOC、5 個既有模組；不新增 owner／module／class。
+- T1／T2 修理前的 production 合計 +165/-99/net +66 LOC、5 個既有模組；不新增 owner／module／class。
   Apply 內部 mappings 每批先解析一次，移除 preview/apply 的分歧查找；existing publication
   owner 與 cancellation 不動。相關 catalog／converter 腳本確認仍有用途，本輪未任意刪除。
 - Static typing、changed-file lint 與 strict docs portal（42 pages／1,617 links）已通過；
@@ -83,7 +83,7 @@ PR #143–#145 已進入此 main 基線；舊啟動器、RAG、split receipt 與
 - 6af61225 已完成 focused 279、source-diverse 4、Windows native 22 與代表性 catalog
   134 passed；詳細結果在 build/import-quality 的同版本 verified artifacts。
   使用者已確認 Windows 原生 T1／T2 → A／B 操作通過；此為局部操作確認，不是全部 Import
-  驗收或 merge 授權。推送／開 PR 仍未批准，不發布或自行 merge。
+  驗收或 merge 授權。2026-09-21 使用者已授權推送／開 PR；仍未授權 merge。
 
 - 2026-09-21 使用者同意的操作路徑覆蓋收尾已完成：既有 UI 測試補單／多檔共用 class、
   返回改名後重新 review、BIDS 內部事件及外部 MAT 的實際 epoch／recipe 語意；CSV／TSV
@@ -95,7 +95,7 @@ PR #143–#145 已進入此 main 基線；舊啟動器、RAG、split receipt 與
   等待自然繪製後 4/4 通過，原失敗保留。整合 Windows native 30/30、0 skip 通過
   （build/import-quality/path-closure-native-integrated.json），lint 通過。未重跑未變產品的
   134-root catalog，不把既有結果換標成新 head；仍有來源警告與 MNE／NumPy deprecations。
-- Next：取得推送／開 PR 授權後建立同 head CI 證據，再進入正式交付／merge 審核。
+- Next：推送產品品質分支、建立 PR 並追蹤同 head CI，修復 in-scope 失敗；不自行 merge。
   本輪沒有再次改變使用者剛確認的產品行為，不要求重測 T1／T2，也不把局部確認当 merge 同意。
 
 
