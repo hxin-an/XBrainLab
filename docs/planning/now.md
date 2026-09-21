@@ -2,68 +2,35 @@
 
 最後更新：`2026-09-21`
 
-## Active — 正式基線前的共用格式／重試修理（2026-09-21）
+## Completed record — 正式 B0 共用修理與封存（2026-09-21）
 
-使用者同意先修好格式相容性與無效重試，再跑相同五模型 Pilot，確認工程與測量後凍結
-正式基線。既有 `assistant-b0-20260921-ac8af81d` 保留原始 tag／封存／分數，定位改為
-前期 Pilot 快照；不移動 tag、不追改舊分數。正式新基線另用新的唯一版本／封存識別。
+使用者授權的共用格式／重試修理、相同矩陣重跑及另立正式 B0 已完成。
+`assistant-b0-formal-20260921-926d90ea` 固定 `926d90ea`；前期 `ac8af81d` tag、
+原始分數與封存不追改。精確版本、結果、封存位置與限制由
+[Current](../current.md#assistant-research-baseline) 擁有，契約由 target／研究規格擁有。
 
-- 問題證據：Gemma 180 次輸出均被外層 code fence 拒絕；60 題兩次修復輸出相同，
-  58 題兩次修復輸入相同，格式模板與 scorer 重播均已排除量測不一致。
-- Outcome：五模型共用有界格式處理與不浪費第二次相同生成的重試；同一 DEV 選題、
-  pins、量化、RAG 與 seed 跑完整矩陣，低分如實保留，可靠可測量後才凍結正式 B0。
-- 契約：接受裸單一 JSON，或整份回答恰是一層 `json`／無語言 Markdown code fence 內
-  的單一 JSON；仍拒絕 prose、多物件／多 code blocks、array、額外欄位、重複 key、
-  非標準數值與錯誤工具／參數。原始 raw output 不改寫。正式 target 先同步。
-- 重試採最小修理：初次生成加最多一次既有格式修復；取消第二次相同策略的重複生成。
-  不新增 request fingerprint、控制層或 state machine；不把 oracle 或模型原文提升為 policy。
-- Scope：parser、既有重試 budget、直接 tests、target／current／研究規格、完整 Pilot
-  與新的基線證據。非目標：缺資訊推理調優、RAG／模型實驗、publication race 修理、
-  Validation／Test、產品 UI layout 改造、merge。已授權改變上述 Assistant 格式／重試行為。
-- 假設：既有 Windows 環境與受控 cache 可用；重用相同 30 題選取，最高 4 小時機器預算。
-  背景 Qt offscreen 避免閃窗；這次不得冒稱 native UI 視覺驗收，舊 native 證據保持原身分。
-- 步驟：文件與 target → parser／budget RED→GREEN → 真 parser＋Host adversarial focused
-  tests及獨立 review → clean source freeze → 五模型十條件完整 Pilot → 報告／證據核對與封存。
-- Owner before/after：CommandParser 仍只解析；Controller／既有 recovery policy 與 backend
-  admission／confirmation owner 不變。刪除候選為無效第二次 repair；production 預估小於
-  +100 LOC、無新 owner／module。報告繼續重用現有 renderer，不另建評分控制層。
-- Stop：以上 scope 及新基線可重跑證據完成；不要求 Gemma 高分、不隱藏退步、不因 compact 停止。
-- Next：共用修理已實作且獨立覆核無 blocker；提交 clean source，固定相同 300 jobs 後
-  以背景 Windows Qt offscreen 執行完整 Pilot，逐題確認最多兩次 generation／一次 repair，
-  再核对 report、另建正式基線封存與全新環境還原。正式基線之前不開始 B1／B2。
-- 直接相鄰驗證發現舊 81-case evaluator adapter 尚未接 controller 新的唯讀 observation hook，
-  25 個既有 tests 因 AttributeError 失敗；補 adapter 的無 Qt 觀測接點以恢復原判分路徑，
-  不改 scorer／oracle、不把此攔截式 evaluator 當作新 Pilot 真實 outcome。
-- Focused：parser／Pilot scorer 158 passed；recovery／decision／controller／integration
-  274 passed，擴增 fenced／bare 真 Host integration 9 passed；舊 evaluator adapter
-  25 個 AttributeError RED 修正後整個檔案 74 passed。Ruff／diff check 通過。
-  Production +13/-5（net +8）、script adapter +3，無新 owner；獨立 code／security review
-  確認 no-execution、single-execution、confirmation／cancel 邊界未放寬。
-- Pilot checkpoint：clean `ae482c41` 的短路徑 run `build/dev-artifacts/p0-ae482c41`
-  完成前八條件 240 題，Gemma on 第六題 `DEV-N03-01-V3` 因評測缺口停在 246 題。
-  模型回覆的 `pending_action=import_eeg_data/create_epochs` 與臆造 missing_inputs 被真 Host
-  拒絕為 invalid_action，但 scorer 只看 nonempty message 誤判正確，outcome 隨後誤列量測故障。
-  修復直接必要的 typed-clarification 判分與已觀測拒絕分類，重用既有契約，不改產品 admission、
-  不新增語意 oracle、不把拒絕救成答對；先真實失敗軌跡 RED→GREEN 與獨立覆核再新版本全矩陣。
-  舊 partial／低分原樣保留，不混用 source，四小時預算內繼續。另已確認 Windows 長目錄
-  WinError 206，以短 output root 排除；WSL 不轉送 QPA 變數，改 Windows launcher 明設 offscreen。
-- Typed scorer 修理已完成：只重用 direct-tool／stage／required schema 做靜態輸出檢查，
-  不另做 live admission。9 個 false-positive RED→GREEN；parser／scorer 178 passed、
-  scorer→outcome 29 passed。Outcome source 無需修改；missing／mismatched terminal 仍 fail closed。
-  Script +12/-1、production +0；獨立覆核無 blocker。下一步新 clean source 的完整 300 題。
+- 共用整份 JSON fence 相容與預設一次格式修復，沒有新增 owner／控制層；直接相鄰的
+  舊 evaluator observation adapter 及非法 typed-clarification scorer 假陽性亦已修正。
+- Focused tests、契約／安全獨立覆核通過；完整 300 題與 320 次 capture、分母、
+  逐題判分及報告連結經獨立核對，低分、失敗與先前 partial 原樣保留。
+- 新鎖定 Windows 環境真跑單條件 30 題，分數／repair／核對的產品結果一致。
+  E 槽封存 6,216 檔逐檔校驗通過，僅移除本輪臨時 checkout／環境；共享資源保留。
+- 本輪 scope-complete，不是 native UI 驗收或產品 handoff-ready；未 merge、
+  未跑 Validation／Test，也未開始 Development 調優。後續候選須另行確認。
 
 ## Candidate — Assistant Evaluation M4 Development（尚未授權）
 
-Pilot 原始證據覆核、可讀報告與 B0 還原後真實測量補驗已完成，事實與限制見
-[Current](../current.md#assistant-research-baseline)，報告入口／契約見研究規格第 5 節。
-使用者授權的「先查完這個還有把輸出做更好」已完成，不改原分數或產品政策。
+前期 Pilot 的覆核／報告與還原補驗、共用修理後的新矩陣及正式 B0 封存均已完成。
+事實與限制見 [Current](../current.md#assistant-research-baseline)，
+報告入口／契約見研究規格第 5 節。舊分數與快照不追改。
 下一輪若經使用者確認，才依
 [研究規格](../validation/thesis_protocol.md) 的有限 Development 規則選擇改善方案、保存
 B1／B2 候選並準備集中 Validation。不因 Pilot 分數直接調 prompt／RAG、挑模型或啟動
 Validation／Test；Test 仍封存且本輪未讀取。
 
-可據本次證據討論的改善最多三項：格式遵循／重複修復、缺資訊時自行補參數、
-動態 publication 變動下的操作交接。這些是候選，不藉報告施工直接改模型或產品。
+可據本次證據討論的改善最多三項：缺資訊時自行補參數、不得操作時仍選擇工具、
+動態 publication 變動下的操作交接。共用 fence 與重複修復已處理；仍存在的模型格式錯誤
+不能說成全部解決。這些是候選，不藉報告施工直接改模型或產品。
 
 ## Completed record — Assistant Evaluation 準備至 Pilot（2026-09-21）
 

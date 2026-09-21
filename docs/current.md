@@ -66,6 +66,60 @@ DPI 或下游流程都經此次真人驗收。後續純文件收尾不改該產�
 
 ## Assistant research baseline
 
+### 正式 B0 — 共通修理後的完整 Pilot
+
+Tag `assistant-b0-formal-20260921-926d90ea` 固定
+`926d90ea80b0fa66322238d7914fde07cde26af3`，已完成同一 30 題 DEV、五模型 × RAG on/off
+的 300/300 Pilot。十條件 cleanup 通過、沒有缺題／timeout／無效量測，active time
+1,225.047 秒。報告在 `build/dev-artifacts/p0-926d90ea-report/index.html`；durable 目錄為
+`E:\XBrainLabData\evidence\assistant-b0-formal-20260921-926d90ea`，入口是
+`results/report/index.html`、`README.md`。封存含完整歷史 bundle／tracked source、環境鎖定／清單、
+固定輸入、原始結果與先前診斷；6,216 個檔案逐檔校驗通過，總計 1,924,819,267 bytes。
+`manifest.sha256` 本身的 SHA-256 為
+`63c62e517656e2ec4c947460fa441f06455a0ad8faa5394a2bd4c2e0152dbded`。
+
+共用 parser 現接受整份回答單一 JSON fence，保留原 schema／admission 邊界；預設只允許
+初次加一次格式修復。新 Pilot 暴露並修復 scorer 對非法 typed clarification 的假陽性：
+可選工具／missing fields 仍須符合既有 direct-tool、stage 與 schema 契約，不把 Host 拒絕
+算成正確回答，也不新增問句內容評分。產品 owner 沒有新增；未做 prompt／RAG 調優。
+
+| 條件（RAG off / on） | First macro | Final macro | Invalid output（任一次） |
+| --- | ---: | ---: | ---: |
+| Granite 4 | 0.556 / 0.611 | 0.556 / 0.611 | 0 / 0 |
+| Granite 3.3 | 0.463 / 0.500 | 0.463 / 0.519 | 0 / 1 |
+| Phi-4 | 0.648 / 0.685 | 0.648 / 0.685 | 0 / 0 |
+| Llama 3.2 | 0.370 / 0.370 | 0.463 / 0.407 | 6 / 6 |
+| Gemma 3 | 0.463 / 0.519 | 0.537 / 0.519 | 5 / 3 |
+
+Macro 等權計算 Action／Clarification／No-call，不是完整操作成功率。300 題完整判分
+重播一致、320 次生成 capture hash／trace 對照通過，每題最多兩次生成／一次修復。
+Gemma 的 68 次輸出仍全帶 fence；對應輸入以精確 tokenizer／模板重渲染一致，無 optional context 丟棄。
+靜態合法的外框不再造成零分，但最後仍有 off 2／on 3 題格式／typed 契約失敗。
+
+已從新 tag 的 bundle 在全新鎖定 Windows 環境實跑 Granite 4 RAG-off 30 題：
+first／final 分數、repair 次數與核對的五項 product-outcome 欄位均與原條件一致，
+真 bandpass 2–35 Hz Command 與 after-state 通過，capture／input／cleanup 通過。
+這不是全五模型重驗或逐 byte 軌跡一致的保證。還原的 163 個套件版本與共享環境相同，
+沒有安裝共享環境另外 33 個文件／資料／開發工具；完整差異在 `environment/comparison.json`。
+模型與 embedding 全檔 hash 相符；生成模型沿用 D 槽受控 cache、不複製大型權重，
+各 RAG raw 目錄的 embedding junction 在封存時實體化並校驗，不冒稱零資源複本。環境還原仍依賴
+既有 Windows Python、Poetry 與套件來源／cache，不是可完全離線安裝的備份。
+本輪臨時 checkout／環境約 5.4 GB 已移除，可依封存 README 重建；共享環境、模型與
+舊封存保留。README 提供全部／指定條件重跑指令及已驗證的路徑限制，不需留著臨時環境。
+
+本輪採 Windows Python＋Qt offscreen，Gemma 仍用已核准 NF4、其餘四模型維持 BF16。
+先前的啟動變數傳遞問題、Windows 長輸出目錄的 WinError 206，以及 `ae482c41` 的 246 題
+scorer 缺口 partial 均保留，不混入新結果。短 output root 可避開已重現的目錄限制，
+沒有藉本輪重寫 training filesystem。前後同時改變格式、repair budget、scorer 與 Qt 平台，
+不能把耗時或分數差異歸因單一因素；單次小樣本不支撐正式排名、穩定 P95 或 Test 結論。
+缺資訊時自行補參數、不應操作卻提出操作、動態 publication 下的拒絕仍會出現。
+七個 unexpected-action flags 包含四次導覽、兩次被拒絕的 set-reference，以及一次經測試
+driver 確認後成功清除合成 fixture 的 training history；不是七次成功的破壞性執行，
+但也不能只描述成開窗問題。Clarification 正確率僅判決策／結構，不代表詢問內容切題，
+不得把完整量測或可還原研究基線說成產品零錯誤、native GUI 驗收或 handoff-ready。
+
+### 前期快照與原始證據（不追改）
+
 前期 Pilot 快照保留於 tag `assistant-b0-20260921-ac8af81d`／commit
 `ac8af81d87d3c88a32455dd0ce0e91996767f38a`。2026-09-21 使用者同意其不作正式 B0：
 先修共用格式相容與無效重複重試，再跑相同矩陣並另凍結基線；舊 tag、封存及分數不改寫。

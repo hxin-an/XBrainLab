@@ -788,8 +788,8 @@ Test 用於檢驗 Validation 選擇能否延續到未參與選擇的題目，不
 - 研究端已有 explicit pinned model/frozen settings 接點，產品模型清單不變；
   native smoke 與資源限制見 Now，不能以短回覆 smoke 推論 Pilot 準確率或完整 context 可行。
   初始 fixture 已能以真 Commands 準備七階段，含真 training／trained／saliency；
-  normal ChatPanel observation／完整 runner 已用前期 frozen 快照完成 300 題 Pilot，完成狀態與限制
-  由 Current／Now 擁有。
+  normal ChatPanel observation／完整 runner 已完成前期 Pilot 及共用格式／重試修理後的
+  相同 300 題矩陣；版本、完成狀態與限制由 Current／Now 擁有。
 - 現有 `scripts/dev/run_stable_assistant_model_eval.py` 的 frozen 81-case inventory
   保留 core 50、precision 24、clarification 7 的分開證據與原有 gate。
   它會用真模型，但攔截工具執行，不能直接提供本規格所需的真實產品 outcome。
@@ -798,16 +798,18 @@ Test 用於檢驗 Validation 選擇能否延續到未參與選擇的題目，不
 - 既有 ChatPanel walkthrough／產品 walkthrough 有部分真 UI、狀態、截圖與事件收集能力；
   不能直接宣稱已覆蓋本規格的所有實驗。
 - 五模型 runner、真實 outcome 收集與 scorer 接合、選擇／全部條件入口、完整結果目錄、
-  可讀 Pilot 報告與前期快照封存已落實。該快照從全新環境補驗單模型 RAG-off 真實測量，
-  不冒稱全矩陣或 native 視覺重驗，證據與限制由 Current 擁有。正式 Development／Validation 工作、
+  可讀 Pilot 報告與前期快照封存已落實。共用修理後另固定正式 B0，不移動前期 tag。
+  兩版本各有全新環境單模型 RAG-off 的真實重跑，不冒稱全矩陣還原或 native 視覺重驗；
+  封存、實測差異與限制由 Current 擁有。正式 Development／Validation 工作、
   B1／B2 選版與封存 Test 執行仍未開始；Pilot 不升格為正式結果。
 - 舊 121-case artifacts、已退役 runner／split writer 只有歷史身分，不恢復；
   舊 81-case 與 calibration 證據也不得升格為新論文 Test。
 
 ## 8. 決策與施工入口
 
-完整里程碑及當前下一步見 [Now](../planning/now.md)。準備、前期 Pilot 與快照封存已完成；
-正式 B0 須完成已批准的共用格式／重試修理、相同矩陣重跑與另行封存。
+完整里程碑及當前下一步見 [Now](../planning/now.md)。已批准的共用格式／重試修理、
+相同矩陣重跑與新環境測量已完成；正式 B0 的精確版本、封存及限制見
+[Current](../current.md#assistant-research-baseline)，舊快照與分數不改寫。
 M4 Development 仍須另行確認，不將 Pilot 分數直接當選版或正式實驗結果。
 
 本文件各節仍區分已確認與提案：Validation 最多 30 條件、P95 10 秒目標、正式生成配置、
