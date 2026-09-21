@@ -122,12 +122,26 @@ several formats exported from one GDF source remain one source family.
 | Explicit no-label import → resample → rejected supervised epoch | `test_unlabelled_import_preprocesses_but_cannot_create_supervised_epochs` in the preceding module | FIF/FIF.gz with and without acquisition events; checks retained data and unchanged source bytes. |
 | Explicit BIDS no-label Commands → resample → blocked epoch → recipe reload | `test_explicit_no_label_bids_import_does_not_require_events` in `test_public_bids_fixture.py` | Copied public BrainVision BIDS, with/without events.tsv; Command evidence is separate from GUI acceptance. |
 | BIDS embedded events → complete explicit class review → import and recipe replay | `test_bids_embedded_events_require_observed_complete_review` in `test_public_bids_fixture.py` | Public waveform with controlled markers; rejects incomplete, overlapping, excluded and unknown class mappings. Not dataset diversity. |
+| Visible internal class choices → single/multi-recording import → epochs → recipe replay | `test_physionet_internal_classes_from_wizard_survive_epoch_and_recipe` in `test_data_import_wizard_real_fixture_acceptance.py` | Starts without hidden mappings; checks source event samples, A/B and Back-edited B/A on both recordings. The second recording is a controlled copy, not another dataset. |
+| Visible BIDS external-to-internal label-source choice → epochs → recipe replay | `test_visible_bids_wizard_reviews_embedded_labels_with_or_without_sidecar` in the preceding module | Controlled BrainVision markers at samples 100/200; both sidecar-present and absent paths. Does not prove arbitrary conflicting sidecar/embedded combinations. |
+| Visible external MAT label choices → exact cue/class sequence → epochs and UI-saved recipe replay | `test_dataset_action_handler_imports_real_gdf_with_external_mat_labels` in `test_data_import_action_handler_external_labels.py` | Checked-in Graz waveform and MAT oracle; checks artifact-rejected epochs against independent MNE, not just import count. Adjacent multi-GDF case checks each expected MAT carrier and event/class order, not every cross-recording combination. |
+| Visible generic CSV/TSV field/value choices → Commands → epochs → recipe replay | `test_changing_label_field_requests_backend_repreview_at_match_labels` in `test_data_import_wizard_runtime.py` | Real FIF with nonzero first sample and controlled timestamps; actual widgets author choices. This component/Command bridge does not exercise the outer async coordinator or every placement mode. |
 | BIDS declared timeline and review freshness | `tests/unit/backend/application/test_bids_recording_timeline_safety.py` | Real FIF in a controlled BIDS-shaped directory, not EEG-BIDS format certification; verifies scoped inheritance and blocked unsafe timestamp placement or changed sidecars. |
 | BIDS folder wizard → explicit no-label choice → fresh review → apply | `test_visible_bids_wizard_can_explicitly_import_without_labels` in `test_data_import_wizard_real_fixture_acceptance.py` | Real wizard/Commands, isolated directory chooser; with/without events.tsv, no classes and supervised epoch blocked. Native automation does not replace human acceptance. |
 | Visible wizard no-label route | `tests/integration/ui/test_data_import_wizard_real_fixture_acceptance.py` | File chooser isolation with real wizard/readers; offscreen is not human native acceptance. |
 | BIDS metadata/events/recipe and timing | `tests/integration/io/test_public_bids_fixture.py`, `test_bids_epoch_duration_handoff.py` | Public fixture and bounded timing cases; not full specification validation. |
 | Selected timestamp label field independent of generic BIDS value codes | `tests/integration/io/test_bids_timestamp_label_field.py` | Generated BrainVision files through real Commands and recipe replay; event-code collisions remain blocked. Retained Thielen evidence is recorded separately in the inventory. |
 | Large-event recipe persistence and public diagnostics | `test_data_interpretation_recipe.py`, `test_data_interpretation_public_projection.py` under `tests/unit/backend/application/` | Bounded derived evidence, complete explicit choices/content identity, and oversized-input rejection before overwrite; does not raise the 1 MiB limit. |
+
+Dataset breadth and interaction coverage are separate evidence dimensions. Manifest-authored choices
+and seeded dialog restoration tests cannot establish that a fresh wizard can author those choices.
+For label-selection claims, inspect the UI-authored choices through apply and the actual epoch
+sample/class sequence, not only a successful import or readiness flag. Returning to edit a reviewed
+choice, cancellation/retry and failed-apply atomicity have separate tests; one happy path does not
+stand in for those state transitions. The native wizard suite covers BIDS apply/revalidation/subject
+cancel and retry plus missing-events recovery; the explicit no-label BIDS path also checks that a real
+epoch command is rejected without changing working data. These are bounded routes, not all possible
+file, label, placement and interaction combinations.
 
 All-MOABB acceptance additionally requires a complete pinned release inventory and dataset-level
 source selections, official loader identity, converter identity/options, export precision, preserved

@@ -215,6 +215,8 @@ class _WizardDriver:
     resolve_bbci_internal_events: bool = False
     resolve_bids_internal_events: bool = False
     resolve_physionet_internal_events: bool = False
+    revise_physionet_review: bool = False
+    revised_physionet_review: bool = False
     expect_blocked: bool = False
     awaiting_label_field_refresh: bool = False
     dialog_count: int = 0
@@ -435,6 +437,7 @@ def _start_wizard_driver(
     resolve_bbci_internal_events: bool = False,
     resolve_bids_internal_events: bool = False,
     resolve_physionet_internal_events: bool = False,
+    revise_physionet_review: bool = False,
     expect_blocked: bool = False,
     runtime: Any | None = None,
 ) -> _WizardDriver:
@@ -447,6 +450,7 @@ def _start_wizard_driver(
         resolve_bbci_internal_events=resolve_bbci_internal_events,
         resolve_bids_internal_events=resolve_bids_internal_events,
         resolve_physionet_internal_events=resolve_physionet_internal_events,
+        revise_physionet_review=revise_physionet_review,
         expect_blocked=expect_blocked,
         runtime=runtime,
     )
@@ -572,11 +576,20 @@ def _start_wizard_driver(
                     driver.trace.append("label field preview refreshed")
                 elif (
                     driver.phase in {len(STEP_TITLES) - 1, len(STEP_TITLES)}
-                    and driver.fresh_review_count == 0
+                    and (
+                        driver.fresh_review_count == 0
+                        or (
+                            driver.revised_physionet_review
+                            and driver.fresh_review_count == 1
+                        )
+                    )
                     and not driver.expect_blocked
                     and modal.step_stack.currentIndex() == len(STEP_TITLES) - 1
                     and (
                         driver.dialog_count == 1
+                        or (
+                            driver.revised_physionet_review and driver.dialog_count == 2
+                        )
                         or (
                             (
                                 driver.resolve_openneuro_trial_types
@@ -801,6 +814,29 @@ def _start_wizard_driver(
                 QTEST.mouseClick(modal.cancel_button, Qt.MouseButton.LeftButton)
                 return
 
+            if (
+                driver.revise_physionet_review
+                and driver.fresh_review_count == 1
+                and not driver.revised_physionet_review
+            ):
+                assert driver.runtime.get_view_publication().state.raw.count == 0
+                QTEST.mouseClick(modal.back_button, Qt.MouseButton.LeftButton)
+                assert modal.step_stack.currentIndex() == 3
+                table = modal.findChild(QFrame, "DataImportInternalLabelsTable")
+                assert table is not None
+                selectors = [c for c in table.findChildren(QComboBox) if c.isEditable()]
+                assert [c.currentText() for c in selectors] == ["A", "B"]
+                for selector, name in zip(selectors, ("B", "A"), strict=True):
+                    editor = selector.lineEdit()
+                    assert editor is not None
+                    modal.scroll_area.ensureWidgetVisible(editor)
+                    _replace_line_edit_text(editor, name)
+                    QTEST.keyClick(editor, Qt.Key.Key_Tab)
+                driver.revised_physionet_review = True
+                driver.trace.append("revise reviewed internal classes to B/A")
+                QTEST.mouseClick(modal.next_button, Qt.MouseButton.LeftButton)
+                return
+
             if not modal.apply_button.isEnabled():
                 _fail(
                     "Reviewed import did not enable Apply: "
@@ -979,10 +1015,59 @@ def _block_first_apply_raw_load(service: Any) -> tuple[Event, Event, Event]:
     return load_started, release_load, real_load_finished
 
 
+def _assert_epochs_and_recipe_replay(
+    service: Any,
+    recipe: Path,
+    expected_runs: list[tuple[np.ndarray, list[str]]],
+) -> None:
+    """Check actual epoch samples/classes for UI-authored choices, including replay."""
+    source_annotations = [
+        raw.get_mne().annotations.copy() for raw in service.study.preprocessed_data_list
+    ]
+    saved = service.execute(SaveInterpretationRecipeCommand(str(recipe)))
+    assert saved.ok, saved.message
+    replay_service = ApplicationService()
+    try:
+        for command in (
+            ReloadInterpretationRecipeCommand(str(recipe)),
+            ValidateInterpretationCommand(),
+            ApplyInterpretationCommand(confirmed=True),
+        ):
+            result = replay_service.execute(command)
+            assert result.ok, result.message
+        for imported in (service, replay_service):
+            for raw, annotations in zip(
+                imported.study.preprocessed_data_list, source_annotations, strict=True
+            ):
+                np.testing.assert_array_equal(
+                    raw.get_mne().annotations.onset, annotations.onset
+                )
+                np.testing.assert_array_equal(
+                    raw.get_mne().annotations.description, annotations.description
+                )
+            result = imported.execute(CreateEpochCommand(t_min=0.0, t_max=0.25))
+            assert result.ok, result.message
+            for raw, (samples, classes) in zip(
+                imported.study.preprocessed_data_list, expected_runs, strict=True
+            ):
+                epochs = raw.get_mne()
+                assert isinstance(epochs, mne.BaseEpochs)
+                np.testing.assert_array_equal(epochs.events[:, 0], samples)
+                inverse = {value: name for name, value in epochs.event_id.items()}
+                assert [inverse[event[2]] for event in epochs.events] == classes
+                assert set(epochs.event_id) == set(classes)
+    finally:
+        replay_service.close()
+
+
+@pytest.mark.parametrize(
+    "revise_multiple", [False, True], ids=["single", "multi-back-edit"]
+)
 def test_physionet_internal_classes_from_wizard_survive_epoch_and_recipe(
     qtbot: Any,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    revise_multiple: bool,
 ) -> None:
     """Visible class choices alone must reach real import, epoch and recipe replay."""
     _require_manifest_group("physionet-edf-motor")
@@ -993,61 +1078,60 @@ def test_physionet_internal_classes_from_wizard_survive_epoch_and_recipe(
     source_events, source_ids = mne.events_from_annotations(source, verbose=False)
     selected = np.isin(source_events[:, 2], [source_ids["T1"], source_ids["T2"]])
     expected_events = source_events[selected]
+    names = ("B", "A") if revise_multiple else ("A", "B")
     expected_classes = [
-        "A" if event[2] == source_ids["T1"] else "B" for event in expected_events
+        names[0] if event[2] == source_ids["T1"] else names[1]
+        for event in expected_events
     ]
     assert len(expected_events) == 15
+    selected_files = [PHYSIONET_MOTOR_EDF]
+    if revise_multiple:
+        # A second controlled recording tests shared choice scope, not dataset diversity.
+        second = tmp_path / "second-recording.edf"
+        shutil.copyfile(PHYSIONET_MOTOR_EDF, second)
+        selected_files.append(second)
 
     monkeypatch.setattr(
         QFileDialog,
         "getOpenFileNames",
-        staticmethod(lambda *_args, **_kwargs: ([str(PHYSIONET_MOTOR_EDF)], "")),
+        staticmethod(
+            lambda *_args, **_kwargs: ([str(path) for path in selected_files], "")
+        ),
     )
     host, panel, runtime = _build_dataset_panel(qtbot)
     service = get_application_service(host.study)
     driver = _start_wizard_driver(
         resolve_physionet_internal_events=True,
+        revise_physionet_review=revise_multiple,
         runtime=runtime,
     )
     QTEST.mouseClick(panel.sidebar.import_btn, Qt.MouseButton.LeftButton)
-    _wait_for_applied_interpretation(qtbot, driver, runtime, panel)
+    _wait_for_applied_interpretation(
+        qtbot, driver, runtime, panel, expected_rows=len(selected_files)
+    )
     assert driver.fresh_pre_confirm_state == (0, False)
-    assert driver.fresh_review_decisions == ["safe"]
+    assert driver.fresh_review_decisions == ["safe"] * (2 if revise_multiple else 1)
+    assert driver.revised_physionet_review is revise_multiple
     assert "review T1/T2 as A/B without run mappings" in driver.trace
     assert runtime.get_view_publication().state.interpretation.class_map == {
-        "T1": "A",
-        "T2": "B",
+        "T1": names[0],
+        "T2": names[1],
     }
 
-    recipe = tmp_path / "physionet-classes.json"
-    saved = service.execute(SaveInterpretationRecipeCommand(str(recipe)))
-    assert saved.ok, saved.message
-    replay_service = ApplicationService()
-    try:
-        replay = replay_service.execute(ReloadInterpretationRecipeCommand(str(recipe)))
-        assert replay.ok, replay.message
-        validated = replay_service.execute(ValidateInterpretationCommand())
-        assert validated.ok, validated.message
-        applied = replay_service.execute(ApplyInterpretationCommand(confirmed=True))
-        assert applied.ok, applied.message
-        for imported in (service, replay_service):
-            raw = imported.study.preprocessed_data_list[0].get_mne()
-            np.testing.assert_array_equal(raw.annotations.onset, source_onsets)
-            np.testing.assert_array_equal(
-                raw.annotations.description, source_descriptions
-            )
-            result = imported.execute(CreateEpochCommand(t_min=0.0, t_max=0.25))
-            assert result.ok, result.message
-            epochs = imported.study.preprocessed_data_list[0].get_mne()
-            assert isinstance(epochs, mne.BaseEpochs)
-            assert len(epochs) == len(expected_events)
-            np.testing.assert_array_equal(epochs.events[:, 0], expected_events[:, 0])
-            labels = {value: key for key, value in epochs.event_id.items()}
-            assert [labels[event[2]] for event in epochs.events] == expected_classes
-            assert set(epochs.event_id) == {"A", "B"}
-    finally:
-        replay_service.close()
-    assert PHYSIONET_MOTOR_EDF.read_bytes() == original_bytes
+    for imported_raw in service.study.preprocessed_data_list:
+        np.testing.assert_array_equal(
+            imported_raw.get_mne().annotations.onset, source_onsets
+        )
+        np.testing.assert_array_equal(
+            imported_raw.get_mne().annotations.description, source_descriptions
+        )
+    _assert_epochs_and_recipe_replay(
+        service,
+        tmp_path / "physionet-classes.json",
+        [(expected_events[:, 0], expected_classes)] * len(selected_files),
+    )
+    for path in selected_files:
+        assert path.read_bytes() == original_bytes
 
 
 def test_physionet_r04_staged_review_restores_t1_t2_choices(qtbot: Any) -> None:
@@ -1540,7 +1624,7 @@ def test_visible_bids_wizard_can_explicitly_import_without_labels(
         "getExistingDirectory",
         staticmethod(lambda _parent, _title, _directory, **_kwargs: str(source)),
     )
-    _host, panel, runtime = _build_dataset_panel(qtbot)
+    host, panel, runtime = _build_dataset_panel(qtbot)
     driver = _start_wizard_driver(
         skip_labels=True, source_picker="folder", runtime=runtime
     )
@@ -1561,6 +1645,14 @@ def test_visible_bids_wizard_can_explicitly_import_without_labels(
     assert driver.fresh_review_decisions == ["safe"]
     assert driver.fresh_pre_confirm_state == (0, False)
     assert panel.table.rowCount() == 1
+    service = get_application_service(host.study)
+    working_raw = host.study.preprocessed_data_list[0].get_mne()
+    before = working_raw.get_data().copy()
+    result = service.execute(CreateEpochCommand(t_min=0.0, t_max=0.25))
+    assert not result.ok
+    assert host.study.preprocessed_data_list[0].get_mne() is working_raw
+    np.testing.assert_array_equal(working_raw.get_data(), before)
+    assert not isinstance(working_raw, mne.BaseEpochs)
 
 
 @pytest.mark.parametrize("has_events_sidecar", [False, True])
@@ -1579,12 +1671,15 @@ def test_visible_bids_wizard_reviews_embedded_labels_with_or_without_sidecar(
     marker = next(source.rglob("*.vmrk"))
     with marker.open("a", encoding="utf-8") as stream:
         stream.write("\nMk3=Stimulus,S  1,101,1,0\nMk4=Stimulus,S  2,201,1,0\n")
+    source_bytes = {
+        path: path.read_bytes() for path in source.rglob("*") if path.is_file()
+    }
     monkeypatch.setattr(
         QFileDialog,
         "getExistingDirectory",
         staticmethod(lambda *args, **kwargs: str(source)),
     )
-    _host, panel, runtime = _build_dataset_panel(qtbot)
+    host, panel, runtime = _build_dataset_panel(qtbot)
     driver = _start_wizard_driver(
         source_picker="folder", resolve_bids_internal_events=True, runtime=runtime
     )
@@ -1601,6 +1696,12 @@ def test_visible_bids_wizard_reviews_embedded_labels_with_or_without_sidecar(
     assert driver.fresh_review_decisions == ["safe"]
     assert "review BIDS internal events" in driver.trace
     assert ("refresh internal label source" in driver.trace) == has_events_sidecar
+    _assert_epochs_and_recipe_replay(
+        get_application_service(host.study),
+        tmp_path / "bids-embedded-recipe.json",
+        [(np.array([100, 200]), ["alpha", "beta"])],
+    )
+    assert {path: path.read_bytes() for path in source_bytes} == source_bytes
 
 
 def test_visible_bids_apply_cancel_reopens_identical_review_and_retries(

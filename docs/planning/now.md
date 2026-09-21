@@ -80,11 +80,23 @@ PR #143–#145 已進入此 main 基線；舊啟動器、RAG、split receipt 與
 - 替換兩個只保護退役政策的 mock-heavy unit tests，改由真 MNE／Command 與 native UI
   覆蓋：共用 class、明確逐檔優先、recipe replay、事件 sample／class 序列與來源 bytes。
   直接回歸保留同名／歧義／remap 的 epoch 防護；獨立覆核的五項資料流程探測通過，無 blocker。
-- Next：固定候選後執行 focused、source-diverse、Windows native 與完整代表性 catalog gates，
-  結果保留在 build/import-quality，以各結果的實際 source 為準，不沿用前一候選的綠燈。
-  修正的 stop condition 是現有 UI 選 T1→A、T2→B／排除 T0 → review/apply → epoch →
-  recipe replay 及相鄰保護通過；正式 handoff 仍須同 head CI。推送／開 PR 尚待批准，
-  未批准前不發布或自行 merge；不宣稱已手測接受。
+- 6af61225 已完成 focused 279、source-diverse 4、Windows native 22 與代表性 catalog
+  134 passed；詳細結果在 build/import-quality 的同版本 verified artifacts。
+  使用者已確認 Windows 原生 T1／T2 → A／B 操作通過；此為局部操作確認，不是全部 Import
+  驗收或 merge 授權。推送／開 PR 仍未批准，不發布或自行 merge。
+
+- 2026-09-21 使用者同意的操作路徑覆蓋收尾已完成：既有 UI 測試補單／多檔共用 class、
+  返回改名後重新 review、BIDS 內部事件及外部 MAT 的實際 epoch／recipe 語意；CSV／TSV
+  原 placeholder 測試升級為真 widget → Commands → epoch／recipe，無 labels 實測 epoch
+  拒絕且不改 working data。保留取消／重試／失敗 atomicity 的既有保護；完整對照及限制由
+  [validation contract](../validation/README.md#import-support-claims) 擁有，不複製另一份矩陣。
+- 收尾僅 tests/docs，production 0 LOC；獨立 review 的多檔 oracle 缺口已修正。首輪外部
+  測試抓到等待 worker 而未等待獨立 render timer 的時序錯誤；移除測試內手動刷新，限時
+  等待自然繪製後 4/4 通過，原失敗保留。整合 Windows native 30/30、0 skip 通過
+  （build/import-quality/path-closure-native-integrated.json），lint 通過。未重跑未變產品的
+  134-root catalog，不把既有結果換標成新 head；仍有來源警告與 MNE／NumPy deprecations。
+- Next：取得推送／開 PR 授權後建立同 head CI 證據，再進入正式交付／merge 審核。
+  本輪沒有再次改變使用者剛確認的產品行為，不要求重測 T1／T2，也不把局部確認当 merge 同意。
 
 
 ## 已保存的研究準備
