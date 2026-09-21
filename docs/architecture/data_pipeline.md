@@ -119,6 +119,37 @@ GDF 有一個目前比較重要的特殊處理：
 - 對已知 Graz 2a pattern，XBrainLab 會嘗試恢復 canonical channel labels。
 - 如果無法恢復，會留下 runtime detail / runtime signal，避免 channel-sensitive workflow 默默吃到 ambiguous names。
 
+### 適配與資料解讀的責任邊界
+
+以下規則不構成 dataset 名稱白名單，也不代表任意 EEG-BIDS 都可直接使用。
+通用 BIDS discovery／inheritance、resource admission、review／apply、recipe 與 epoch handoff
+仍是同一條產品路徑；UI、Assistant 和驗證腳本不得另外決定 label 語意。
+
+| 規則／入口 | 依據與作用 | 保留原因與限制 |
+| --- | --- | --- |
+| GDF reader 的 Graz 2a 名稱還原 | MNE duplicate-name 訊號與完整 25-channel 名稱／順序模式；記錄 normalization detail | 保留已支援來源；名稱模式不是任意資料的電極位置證明，不擴張為通用 montage 推論。 |
+| `event_semantics` 的 GDF 安全角色 | 只有該事件來源 suffix 為 GDF 才對 1023／32766 建議 rejected-trial／boundary 角色 | 這是 non-class safety evidence，不把數字碼硬猜成左右手等 class。 |
+| label apply 的 rejected-trial annotation | GDF 1023 改名為 `BAD_rejected_trial`，保留原時間、duration、channel scope | 支援後續 epoch 排除；不是 reader 或無標籤匯入都必跑的轉換，不刪原始檔案事件。 |
+| 內部事件 class review | 使用者在 Match Labels 選訓練事件、排除其他事件並確認 class | T1／T2 與其他代碼走相同流程，不因名稱要求逐 recording mapping，也不猜測動作意義。 |
+| BIDS label field 建議 | 選取範圍內的 TSV 欄位／coverage、JSON Levels 與跨 run 一致性；證據受 row／byte budget 限制 | 明選欄位不覆蓋，截斷證據不推薦；不是訓練任務的語意證明。 |
+| MOABB conformance 腳本 | catalog／manifest 綁定的既有 BIDS 走真 Commands、讀回與 fresh recipe replay | 保留跨來源驗證；歷史 loader／conversion 修補見 inventory，不是目前 importer 特例或 fresh conversion 證據。 |
+
+`data_interpretation_internal_events.resolve_run_event_mappings` 是 preview／apply 共用的純查找，
+不是新的 admission 或 state owner。完整 recording path 優先，之後只接受選取範圍中唯一的
+basename、明確配對 carrier 的 path／唯一 basename，最後是唯一 run／`run-<run>`。
+run 值使用同 recording 的已審查 metadata，缺值才沿用既有檔名 token；不得用同名其他
+recording 的 metadata 代替。一般內部事件使用明確確認的共用 class map；既有 recipe 的
+明確逐檔對應優先覆蓋該檔案的相同事件碼，其餘使用已確認的共用對應。Epoch handoff
+依選取檔案實際解析出的 class maps 判定是否有不同的逐檔分類，不再依 T1／T2 名稱分流。
+歧義 mapping 不取得套用資格，也不增加 usable classes；沒有明確 class 決定時仍保留
+一般 event review／epoch 前置條件，不修改原事件或自動推測動作名稱。
+
+recipe 在 basename 碰撞時保留各 recording 的完整 metadata override key；使用者明確提供
+EEG／carrier remap 後，對應的 per-file mapping 同步重建並重新 review，不繞過內容／來源
+驗證。原選取範圍中有歧義的 basename 不因部分 remap 而升格為已確認的 per-file choice。
+Import apply 仍作用於 detached data，完整驗證後由既有 owner publication；mapping
+resolver 不負責寫入資料，也不保存跨 command 快取。
+
 ## Label / Event Layer
 
 label import 的底層套用仍集中在 `LabelImportService`，但產品主流程先經過

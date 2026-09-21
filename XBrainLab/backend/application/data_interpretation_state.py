@@ -35,6 +35,7 @@ from .data_interpretation_event_values import (
     derive_class_views,
     unresolved_values_for_plan,
 )
+from .data_interpretation_internal_events import resolve_run_event_mappings
 from .data_interpretation_path_identity import (
     deduplicate_resolved_paths,
     resolved_path_identity,
@@ -1070,8 +1071,31 @@ class DataInterpretationSessionState:
             tuple(sorted(mapping.items())) for mapping in run_class_maps.values()
         }
         run_dependent_carrier_mapping = len(run_class_signatures) > 1
-        source_event_roles = dict(getattr(source, "event_roles", {}) or {})
-        run_dependent_internal_mapping = "run_dependent_events" in source_event_roles
+        run_event_mappings = {
+            str(key): dict(value)
+            for key, value in getattr(source, "run_event_mappings", {}).items()
+        }
+        resolved_internal_maps = (
+            resolve_run_event_mappings(
+                source.loaded_files
+                if isinstance(source, AppliedInterpretation)
+                else source.selected_eeg_files,
+                run_event_mappings,
+                metadata=source.metadata,
+            )
+            if not carrier_plan and run_event_mappings
+            else {}
+        )
+        internal_class_maps = [
+            {**global_class_map, **mapping}
+            for mapping in resolved_internal_maps.values()
+        ]
+        internal_signatures = {
+            tuple(sorted(mapping.items())) for mapping in internal_class_maps
+        }
+        run_dependent_internal_mapping = len(internal_signatures) > 1
+        if internal_class_maps and not run_dependent_internal_mapping:
+            global_class_map = internal_class_maps[0]
         run_dependent_mapping = (
             run_dependent_carrier_mapping or run_dependent_internal_mapping
         )
@@ -1091,10 +1115,6 @@ class DataInterpretationSessionState:
                 internal_event_selection,
             )
         )
-        run_event_mappings = {
-            str(key): dict(value)
-            for key, value in getattr(source, "run_event_mappings", {}).items()
-        }
         label_source = DataInterpretationSessionState._epoch_label_source(source)
         default_epoch_events = selected_event_names
         if has_value_contract:
@@ -1142,21 +1162,13 @@ class DataInterpretationSessionState:
                         for code in internal_event_codes
                     )
                 )
-            mapping_values = {
-                str(label).strip()
-                for mapping in getattr(source, "run_event_mappings", {}).values()
-                if isinstance(mapping, dict)
-                for code, label in mapping.items()
-                if str(code) in usable_internal_codes and str(label).strip()
-            }
             usable_classes = tuple(
                 sorted(
-                    mapping_values
-                    or {
-                        label
-                        for code, label in internal_aliases.items()
-                        if code in usable_internal_codes
-                        if str(label).strip()
+                    {
+                        str(label).strip()
+                        for mapping in (internal_class_maps or [internal_aliases])
+                        for code, label in mapping.items()
+                        if code in usable_internal_codes and str(label).strip()
                     },
                     key=str.casefold,
                 )

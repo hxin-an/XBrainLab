@@ -36,7 +36,9 @@ from .data_interpretation_event_values import (
     class_map_from_value_decisions,
     filter_kept_label_values,
 )
+from .data_interpretation_internal_events import resolve_run_event_mappings
 from .data_interpretation_pairing import resolve_label_file_pairing
+from .data_interpretation_path_identity import normalized_path_identity
 from .epoch_context import EPOCH_HINT_KEY
 from .errors import ApplicationError
 from .label_resource_admission import AdmittedLabelResourceSession
@@ -631,13 +633,27 @@ class DataInterpretationApplyService:
         ):
             return []
         selected_events = self._internal_epoch_event_codes(candidate)
+        run_mappings = {
+            normalized_path_identity(path): mapping
+            for path, mapping in resolve_run_event_mappings(
+                candidate.selected_eeg_files,
+                candidate.run_event_mappings,
+                metadata=candidate.metadata,
+            ).items()
+        }
         records: list[dict[str, Any]] = []
         for data in list(self.dataset.get_loaded_data_list() or []):
             mark_gdf_rejected_trials(data)
             setter = getattr(data, "set_runtime_detail", None)
             if not callable(setter):
                 continue
-            class_map = self._class_map_for_target(candidate, data)
+            class_map = self._class_map_for_target(
+                candidate,
+                data,
+                run_mapping=run_mappings.get(
+                    normalized_path_identity(self._data_filepath(data)), {}
+                ),
+            )
             event_label_aliases = {
                 event_code: str(class_map.get(event_code) or event_code).strip()
                 for event_code in selected_events
@@ -1200,17 +1216,12 @@ class DataInterpretationApplyService:
         target: Any,
         *,
         plan: dict[str, Any] | None = None,
+        run_mapping: dict[str, str] | None = None,
     ) -> dict[str, str]:
         if isinstance(plan, dict) and isinstance(plan.get("value_decisions"), dict):
             return class_map_from_value_decisions(plan["value_decisions"])
-        run_mapping = self._run_mapping_for_target(candidate, target, plan=plan)
-        if plan is None and candidate.internal_event_preview.get(
-            "run_dependent_semantics"
-        ):
-            return {
-                code: run_mapping.get(code) or code
-                for code in self._internal_epoch_event_codes(candidate)
-            }
+        if run_mapping is None:
+            run_mapping = self._run_mapping_for_target(candidate, target, plan=plan)
         result = dict(candidate.class_map)
         if isinstance(plan, dict):
             plan_mapping = plan.get("run_class_map")
@@ -1265,33 +1276,25 @@ class DataInterpretationApplyService:
         plan: dict[str, Any] | None,
     ) -> dict[str, str]:
         target_path = self._data_filepath(target)
-        keys = [target_path, Path(target_path).name]
-        if isinstance(plan, dict):
-            carrier_path = str(plan.get("path") or "").strip()
-            keys.extend([carrier_path, Path(carrier_path).name if carrier_path else ""])
-        run_values = [
-            str(metadata.run.value or "").strip()
-            for metadata in candidate.metadata
-            if str(metadata.run.value or "").strip()
-        ]
-        for metadata in candidate.metadata:
-            if self._path_key(metadata.file) != self._path_key(target_path) and (
-                Path(metadata.file).name != Path(target_path).name
-            ):
-                continue
-            run = str(metadata.run.value or "").strip()
-            if run and run_values.count(run) == 1:
-                keys.extend([run, f"run-{run}"])
-            break
-        for key in keys:
-            mapping = candidate.run_event_mappings.get(key)
-            if isinstance(mapping, dict):
-                return {
-                    str(code): str(label)
-                    for code, label in mapping.items()
-                    if str(code).strip() and str(label).strip()
-                }
-        return {}
+        selected_path = next(
+            (
+                path
+                for path in candidate.selected_eeg_files
+                if normalized_path_identity(path)
+                == normalized_path_identity(target_path)
+            ),
+            None,
+        )
+        if selected_path is None:
+            return {}
+        carrier_path = str((plan or {}).get("path") or "").strip()
+        return resolve_run_event_mappings(
+            candidate.selected_eeg_files,
+            candidate.run_event_mappings,
+            metadata=candidate.metadata,
+            carrier_targets={selected_path: carrier_path},
+            label_carriers=candidate.label_carriers,
+        )[selected_path]
 
     @staticmethod
     def _has_per_run_mapping(

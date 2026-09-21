@@ -6,12 +6,15 @@ import contextlib
 import importlib
 import os
 import re
+from collections import Counter
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
 from XBrainLab.backend.event_semantics import gdf_event_semantic
 
+from .data_interpretation_metadata import FileMetadataResolution
+from .data_interpretation_path_identity import normalized_path_identity, path_basename
 from .data_interpretation_resource_reader import AdmittedResourceReader
 from .errors import PreconditionError
 
@@ -143,21 +146,6 @@ def build_internal_event_preview(
         "names_reliable": _names_reliable(candidate_rows),
         "pattern_status": _pattern_status(candidate_rows, not_used_rows),
     }
-    if _has_run_dependent_t_markers(aggregates):
-        result["run_dependent_semantics"] = True
-        result["run_dependent_event_codes"] = sorted(
-            [code for code in aggregates if str(code).upper() in {"T0", "T1", "T2"}],
-            key=str.casefold,
-        )
-        result["run_dependent_mapping"] = _run_dependent_mapping(
-            event_files,
-            file_names,
-            result["run_dependent_event_codes"],
-        )
-        scan_warnings.append(
-            "PhysioNet-style T1/T2 event labels can change meaning by run; "
-            "confirm run/task mapping before supervised training."
-        )
     if scan_warnings:
         result["scan_warnings"] = scan_warnings
     return result
@@ -642,84 +630,58 @@ def _pattern_status(
     return "No internal events detected"
 
 
-def _has_run_dependent_t_markers(aggregates: dict[str, dict[str, Any]]) -> bool:
-    codes = {str(code).upper() for code in aggregates}
-    return {"T1", "T2"}.issubset(codes)
-
-
-def _run_dependent_mapping(
-    event_files: list[str],
-    file_names: list[str],
-    event_codes: list[str],
-) -> dict[str, Any]:
-    t_codes = [code for code in event_codes if str(code).upper() in {"T1", "T2"}]
-    return {
-        "status": "needs_confirmation",
-        "files": [
-            {
-                "file": file_name,
-                "run": _run_token_for_file(file_path),
-                "events": dict.fromkeys(t_codes, ""),
-            }
-            for file_path, file_name in zip(event_files, file_names, strict=True)
-        ],
-    }
-
-
-def review_run_dependent_event_mappings(
-    preview: dict[str, Any],
+def resolve_run_event_mappings(
     selected_files: list[str],
     mappings: dict[str, dict[str, str]],
-) -> dict[str, Any]:
-    """Review whether every affected EEG file has a complete per-run map."""
-    event_codes = [
-        str(code)
-        for code in preview.get("run_dependent_event_codes", [])
-        if str(code).upper() in {"T1", "T2"}
-    ]
-    name_counts: dict[str, int] = {}
-    run_counts: dict[str, int] = {}
-    for path in selected_files:
-        name = Path(path).name
-        run = _run_token_for_file(path)
-        name_counts[name] = name_counts.get(name, 0) + 1
-        if run:
-            run_counts[run] = run_counts.get(run, 0) + 1
+    *,
+    metadata: Iterable[FileMetadataResolution] = (),
+    carrier_targets: dict[str, str] | None = None,
+    label_carriers: Iterable[str] = (),
+) -> dict[str, dict[str, str]]:
+    """Resolve reviewed meanings with the same identities in preview and apply.
 
-    files: list[dict[str, Any]] = []
-    affected_files: list[str] = []
+    Exact recording paths precede unique basenames, paired carriers, and unique
+    run aliases. A basename or run shared by recordings is never an identity.
+    """
+    names = Counter(path_basename(path).casefold() for path in selected_files)
+    carrier_names = Counter(path_basename(path).casefold() for path in label_carriers)
+    runs = _run_tokens_for_files(selected_files, metadata)
+    run_counts = Counter(runs.values())
+    result: dict[str, dict[str, str]] = {}
     for path in selected_files:
-        name = Path(path).name
-        run = _run_token_for_file(path)
         keys = [path]
-        if name_counts.get(name) == 1:
+        name = path_basename(path)
+        if names[name.casefold()] == 1:
             keys.append(name)
-        if run and run_counts.get(run) == 1:
+        carrier = (carrier_targets or {}).get(path, "")
+        if carrier:
+            keys.append(carrier)
+            carrier_name = path_basename(carrier)
+            if carrier_names[carrier_name.casefold()] == 1:
+                keys.append(carrier_name)
+        run = runs[path]
+        if run and run_counts[run] == 1:
             keys.extend([run, f"run-{run}"])
-        selected_mapping = next(
-            (dict(mappings[key]) for key in keys if key in mappings),
-            {},
-        )
-        events = {
-            code: str(selected_mapping.get(code) or "").strip() for code in event_codes
+        mapping = next((mappings[key] for key in keys if key in mappings), {})
+        result[path] = {
+            str(code): str(label)
+            for code, label in mapping.items()
+            if str(code).strip() and str(label).strip()
         }
-        missing = [code for code, meaning in events.items() if not meaning]
-        status = "needs_confirmation" if missing else "safe"
-        if missing:
-            affected_files.append(name)
-        files.append(
-            {
-                "file": name,
-                "run": run,
-                "status": status,
-                "events": events,
-                "missing_event_codes": missing,
-            }
-        )
+    return result
+
+
+def _run_tokens_for_files(
+    selected_files: list[str], metadata: Iterable[FileMetadataResolution]
+) -> dict[str, str]:
+    runs_by_identity = {
+        normalized_path_identity(item.file): str(item.run.value or "").strip()
+        for item in metadata
+    }
     return {
-        "status": "needs_confirmation" if affected_files else "safe",
-        "affected_files": affected_files,
-        "files": files,
+        path: runs_by_identity.get(normalized_path_identity(path))
+        or _run_token_for_file(path)
+        for path in selected_files
     }
 
 

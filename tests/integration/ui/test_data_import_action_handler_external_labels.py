@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import mne
+import numpy as np
 import pytest
 from PyQt6.QtCore import Qt, QThreadPool, QTimer
 from PyQt6.QtTest import QTest
@@ -23,6 +25,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 from pytestqt.exceptions import TimeoutError as QtBotTimeoutError
+from scipy.io import loadmat
 
 from tests.integration.ui.data_import_wizard_harness import (
     DatasetHost as _DatasetHost,
@@ -31,6 +34,14 @@ from tests.integration.ui.data_import_wizard_harness import (
     SuggestedLabelWizardDriver,
 )
 from tests.integration.ui.modal_helpers import visible_modal_dialog
+from XBrainLab.backend.application import (
+    ApplicationService,
+    ApplyInterpretationCommand,
+    CreateEpochCommand,
+    ReloadInterpretationRecipeCommand,
+    ValidateInterpretationCommand,
+    get_application_service,
+)
 from XBrainLab.backend.study import Study
 from XBrainLab.ui.application_capabilities import application_ui_runtime
 from XBrainLab.ui.async_command_runner import application_command_registry
@@ -53,6 +64,58 @@ EXPECTED_CLASS_MAP = {
 }
 EXPECTED_TARGET_EVENT_CODES = {"769", "770", "771", "772"}
 pytestmark = pytest.mark.usefixtures("allow_real_modals")
+
+
+def _source_cues(source: mne.io.BaseRaw) -> np.ndarray:
+    """Read the source independently of the product's reviewed label plan."""
+    events, event_ids = mne.events_from_annotations(source, verbose=False)
+    selected_ids = {event_ids[code] for code in EXPECTED_TARGET_EVENT_CODES}
+    cues = events[np.isin(events[:, 2], list(selected_ids))]
+    assert len(cues) == 288
+    return cues
+
+
+def _assert_external_labels_and_epochs(
+    service: ApplicationService, eeg_path: Path, label_path: Path
+) -> None:
+    """Verify UI-derived choices against source cue times and the MAT sequence."""
+    with mne.io.read_raw_gdf(eeg_path, verbose=False) as source:
+        cues = _source_cues(source)
+        label_codes = loadmat(label_path)["classlabel"].ravel().astype(int)
+        assert len(label_codes) == len(cues)
+        expected_classes = [EXPECTED_CLASS_MAP[str(code)] for code in label_codes]
+        raw = service.study.loaded_data_list[0]
+        events, event_ids = raw.get_event_list()
+        names = {value: key for key, value in event_ids.items()}
+        np.testing.assert_array_equal(events[:, 0], cues[:, 0])
+        assert [names[event[2]] for event in events] == expected_classes
+
+        # GDF rejected-trial markers must still exclude overlapping epochs.
+        # Use an independent MNE reference, not the imported hint or its result.
+        source.annotations.rename({"1023": "BAD_rejected_trial"})
+        reference_events = cues.copy()
+        reference_events[:, 2] = label_codes
+        reference = mne.Epochs(
+            source,
+            reference_events,
+            event_id={name: int(code) for code, name in EXPECTED_CLASS_MAP.items()},
+            tmin=0.0,
+            tmax=0.25,
+            baseline=None,
+            picks=[0],
+            preload=True,
+            verbose=False,
+        )
+        assert 0 < len(reference) < len(cues)
+        result = service.execute(CreateEpochCommand(t_min=0.0, t_max=0.25))
+        assert result.ok, result.message
+        epochs = service.study.preprocessed_data_list[0].get_mne()
+        assert isinstance(epochs, mne.BaseEpochs)
+        np.testing.assert_array_equal(epochs.events[:, 0], reference.events[:, 0])
+        epoch_names = {value: key for key, value in epochs.event_id.items()}
+        assert [epoch_names[event[2]] for event in epochs.events] == [
+            expected_classes[index] for index in reference.selection
+        ]
 
 
 @dataclass
@@ -643,6 +706,7 @@ def test_dataset_action_handler_imports_real_gdf_with_external_mat_labels(
     recipe_path = tmp_path / "import-recipe.json"
     shutil.copyfile(GDF_PATH, selected_gdf)
     shutil.copyfile(LABEL_PATH, external_label)
+    source_bytes = {path: path.read_bytes() for path in (selected_gdf, external_label)}
 
     chooser_calls: list[str] = []
 
@@ -700,16 +764,10 @@ def test_dataset_action_handler_imports_real_gdf_with_external_mat_labels(
         lambda: application_command_registry().active_count(panel) == 0,
         timeout=10_000,
     )
-    automatic_row_count = panel.table.rowCount()
-    panel.update_panel()
-    manual_row_count = panel.table.rowCount()
+    # Worker completion does not drain the separately queued publication renderer.
+    # Require the table to update naturally; a manual refresh would mask a defect.
+    qtbot.waitUntil(lambda: panel.table.rowCount() == 1, timeout=5_000)
     driver.timer.stop()
-
-    assert automatic_row_count == 1, (
-        "The completed import did not refresh the Dataset table automatically; "
-        f"manual refresh produced {manual_row_count} row(s), "
-        f"driver phase={driver.phase}, errors={driver.errors!r}."
-    )
     assert driver.phase == 5
     assert len(driver.dialogs) == 3
     assert chooser_calls == [
@@ -766,6 +824,24 @@ def test_dataset_action_handler_imports_real_gdf_with_external_mat_labels(
     assert carrier["selected_label_field"] == "classlabel"
     assert set(carrier["selected_target_event_codes"]) == EXPECTED_TARGET_EVENT_CODES
 
+    _assert_external_labels_and_epochs(
+        get_application_service(host.study), selected_gdf, external_label
+    )
+    if save_recipe:
+        replay = ApplicationService()
+        try:
+            for command in (
+                ReloadInterpretationRecipeCommand(str(recipe_path)),
+                ValidateInterpretationCommand(),
+                ApplyInterpretationCommand(confirmed=True),
+            ):
+                result = replay.execute(command)
+                assert result.ok, result.message
+            _assert_external_labels_and_epochs(replay, selected_gdf, external_label)
+        finally:
+            replay.close()
+    assert {path: path.read_bytes() for path in source_bytes} == source_bytes
+
 
 def test_multi_gdf_auto_detected_labels_import_without_blocked_dialog(
     qtbot: Any,
@@ -812,7 +888,26 @@ def test_multi_gdf_auto_detected_labels_import_without_blocked_dialog(
     assert runtime.get_view_publication().state.raw.files == [
         path.name for path in selected
     ]
+    expected_carriers = [
+        FIXTURE_ROOT / "label" / f"{path.stem}.mat" for path in selected
+    ]
+    assert runtime.get_view_publication().state.interpretation.label_carriers == [
+        str(path) for path in expected_carriers
+    ]
     assert len(host.study.loaded_data_list) == 3
+    for raw, source_path, carrier_path in zip(
+        host.study.loaded_data_list, selected, expected_carriers, strict=True
+    ):
+        assert Path(raw.get_filepath()) == source_path
+        assert raw.is_labels_imported() is True
+        with mne.io.read_raw_gdf(source_path, verbose=False) as source:
+            cues = _source_cues(source)
+        events, event_ids = raw.get_event_list()
+        codes = loadmat(carrier_path)["classlabel"].ravel()
+        expected_names = [str(int(code)) for code in codes]
+        names = {value: key for key, value in event_ids.items()}
+        np.testing.assert_array_equal(events[:, 0], cues[:, 0])
+        assert [names[event[2]] for event in events] == expected_names
 
 
 def test_outer_async_review_remove_then_readd_keeps_one_real_label_source(
