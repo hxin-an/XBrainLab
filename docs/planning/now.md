@@ -2,6 +2,40 @@
 
 最後更新：`2026-09-21`
 
+## Active — B0 完整執行入口（2026-09-21）
+
+使用者同意先做到可日常重跑的基線，不擴張正式研究矩陣。既有 Pilot 可跑，但執行、
+報告與精確版本還原分散，已清理的臨時環境使封存指令不能直接貼上使用。
+
+- Outcome：Windows 一個入口列出／檢查／選一個、多個或全部固定 B0 條件，真實執行後
+  自動整理輸入、原始輸出、逐題判分、操作與時間、HTML／CSV／JSON、README 到同一新目錄。
+- Scope：新增薄的研究入口與 Windows launcher、直接 tests／文件；重用 frozen
+  `926d90ea` 的 runner、scorer、report 和既有 Windows 環境。從已驗證 bundle 建立可重用的
+  短路徑 source cache，不建立新 venv、不下載模型、不升級共享環境。原 tag／archive 不改。
+- Non-goals：完整 DEV／Validation／Test、repeats／消融擴充、模型／prompt／RAG 調優、
+  產品 bug／UI 改造、改判分或移動 B0、push／PR／merge。主 worktree settings.json 不碰。
+- Owner before/after：原 runner 擁有實驗／子程序生命週期，原 scorer／report 擁有判分與呈現；
+  新入口只作 source／資源檢查與串接，不另建產品 state、admission 或評分政策。
+  刪除候選是日常手動串接步驟；封存內歷史 wrapper／測量證據保留。Production LOC +0，
+  新 scripts 需保持有界，若出現第二套控制層先收斂；各 slice review，不以行數作目標。
+- Assumptions：共享 Windows Python 與批准 cache 仍可用；不符 frozen runtime 時明確拒絕，
+  不 silent fallback。執行採 Windows Qt offscreen，不是 native UI 驗收。
+- Safety：新輸出短路徑、禁止寫入 archive／source；既有輸出只可 explicit resume，仍由
+  原 runner 核對 identity／cleanup，不重送終態不明操作。不同 attempt 的報告／紀錄保留；
+  失敗亦產出可用的 partial 說明，不把量測故障／缺題藏掉，不自動重跑追分。
+- Steps：先 contract tests RED → 最小入口與 launcher → focused tests／獨立邊界 review →
+  exact clean entry source → Windows 實際單指令 all300 → output／score replay／relocation review。
+  Source cache、shared env 與模型分開；封存 restore 與新執行不得混成不同 B0。
+- Validation：真 temp Git／filesystem 的 wrong SHA、dirty、archive/input integrity、路徑重疊、
+  已存在輸出與明確續跑；分離昂貴模型 seam；完整 report 契約；Windows 空白／非 ASCII、
+  offscreen／缺資源／重複入口；最後同一版本完整 300 題含全資料夾驗收，不重做產品全套 CI。
+- Stop：上述入口與資料夾契約實測通過、文件與命令同步、工作區有明確提交；不因低分或
+  compact 停止，也不自動進入 M4。UI confirmation：無產品 UI 變更，不新增確認流程。
+- Next：入口與 focused tests 已落實；獨立覆核所指的 report-only 身分缺口已修。
+  Windows 真 preflight 通過固定 300 題配置、共享環境及模型全檔 hash；還原時停用 CRLF
+  轉換，正確接受受控 Hugging Face snapshot→blobs 連結。接續 clean commit、全矩陣實跑、
+  報告／重評／移動查閱驗證與文件收尾。前置失敗不是模型測量，不改寫舊 B0 成績。
+
 ## Completed record — 正式 B0 共用修理與封存（2026-09-21）
 
 使用者授權的共用格式／重試修理、相同矩陣重跑及另立正式 B0 已完成。

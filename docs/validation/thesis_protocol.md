@@ -489,7 +489,56 @@ EEG 資料只支撐上述真實任務環境，保留來源／授權／checksum�
 
 ## 5. 單一執行入口與結果資料夾
 
-### 已確認的需求與 Pilot 入口
+### B0 日常入口與範圍
+
+在 `D:\workspace_v2\projects\lab\XBrainLab-evaluation` 的 PowerShell 使用：
+
+```powershell
+.\baseline.cmd
+```
+
+這會執行 frozen `926d90ea` 的固定 30 DEV 題 × 五模型 × RAG on/off，並自動產生報告。
+不是從目前工作分支執行產品程式，不會因另一條 UI／後端工作線改動而改變 B0。
+入口腳本本身的雜湊與副本另存，不能把入口版本誤當成受測產品版本。
+
+```powershell
+.\baseline.cmd --list
+.\baseline.cmd --check
+.\baseline.cmd --conditions granite4-rag-off
+.\baseline.cmd --conditions granite4-rag-off,gemma3-rag-on
+.\baseline.cmd --output D:\XBrainLabRuns\my-b0
+.\baseline.cmd --output D:\XBrainLabRuns\my-b0 --resume
+.\baseline.cmd --output D:\XBrainLabRuns\my-b0 --report-only
+```
+
+未指定 output 時產生唯一的 `D:\XBrainLabRuns\b0-日期時間-識別碼`。指定目錄須不存在；
+resume 必須使用原目錄及相同 conditions，原 runner 仍核對配置與 cleanup，拒絕終態不明的操作，
+不保證任何中斷都能續跑。report-only 不生成模型回答、不改原始分數，只追加報告；
+會核對原始 B0 manifest／完整所選條件清單及保留輸入，不接受任意刪题後冒充固定條件。
+
+入口使用 sibling `XBrainLab\.venv` 的現有 Windows Python；從 E 槽正式 B0 封存 bundle
+一次還原 `D:\XBrainLabCache\b0-926d90ea`，之後重用。還原停用 Git 換行轉換以保留資料雜湊。
+執行前檢查 source、套件／Python／GPU 身分、題庫與所選模型完整內容 hash；不下載、不新增
+環境、不替換模型、不修改封存或主工作區設定。共用排他鎖防止本入口同時啟動兩輪。
+`--check` 不推論；`--list` 只列條件。此入口限定目前已驗證的 Windows／D、E 槽資源，
+source／output 使用最多 60 字元的短路徑；缺資源或環境飄移時停止，不自動安裝。
+
+```text
+b0-日期時間-識別碼/
+├── index.html               # 日常查閱入口，連至最近一次報告
+├── README.md                # 狀態、限制、資料位置
+├── inputs/                  # 固定非 Test 題庫、selection、config
+├── raw/                     # 原 runner 的 manifest、journal、逐題結果、實際 captures
+├── reports/每次執行識別碼/    # HTML、CSV、JSON 與 presentation audit
+└── launches/                # 每次入口副本／hash、開始及結束紀錄、錯誤
+```
+
+續跑只由原 runner 更新 raw；每次報告保留，僅根目錄 README／index 是可刷新導航。
+資源權重仍連回既有共享 cache，結果資料夾不是自帶模型／環境的安裝包。
+執行採 Windows Qt offscreen、逐 condition 載入模型，不是每題重新載入，也不是 native GUI 手測。
+前置檢查／報告的耗時不混進模型決策延遲。驗證結果與限制由 [Current](../current.md#assistant-research-baseline) 擁有。
+
+### 原始 Pilot runner（進階入口）
 
 使用者要一個腳本跑完**已設定的實驗**，產出一個完整資料夾，
 可以直接看模型輸入、輸出、準確率與速度，不必手動串多個工具或到處尋找 log。
