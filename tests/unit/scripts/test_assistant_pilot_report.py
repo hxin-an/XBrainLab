@@ -175,6 +175,7 @@ def _run(tmp_path, observations, *, dev=False, all_models=False):
                         "max_candidates": 5,
                         "rag_enabled": True,
                         "projection_id": "dev-state-card-nuisance-v1",
+                        "qt_platform": "offscreen",
                     }
                 }
                 if dev
@@ -529,6 +530,60 @@ def test_missing_or_failed_provenance_is_excluded_from_decision_denominator(
     assert condition["counts"]["invalid_measurement"] == 1
     assert condition["categories"]["Action"]["final"]["denominator"] == 0
     assert actual["complete_selected_schedule"] is False
+
+
+def test_report_overview_and_filter_data_preserve_all_case_outcomes(tmp_path):
+    from html.parser import HTMLParser
+
+    class Rows(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.rows = []
+
+        def handle_starttag(self, tag, attrs):
+            values = dict(attrs)
+            if tag == "tr" and "data-condition" in values:
+                self.rows.append(values)
+
+    root = _run(
+        tmp_path,
+        [
+            ("Action", True, True, "completed"),
+            ("No-call", False, False, "completed"),
+            ("Clarification", False, False, "missing"),
+        ],
+        dev=True,
+    )
+    before = {
+        p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()
+    }
+    output = tmp_path / "presentation"
+    expected = report.build_report(root)
+    actual = report.write_report(root, output)
+    assert actual == expected
+    assert before == {
+        p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()
+    }
+    page = (output / "index.html").read_text(encoding="utf-8")
+    parsed = Rows()
+    parsed.feed(page)
+    assert [r["data-outcome"] for r in parsed.rows] == [
+        "correct",
+        "incorrect",
+        "unavailable",
+    ]
+    assert [r["data-category"] for r in parsed.rows] == [
+        "Action",
+        "No-call",
+        "Clarification",
+    ]
+    assert all(r["data-condition"] == "phi4-rag-on" for r in parsed.rows)
+    assert 'id="evidence"' in page and 'id="no-cases"' in page
+    assert "Selected schedule incomplete" in page
+    assert "Evidence presentation incomplete" in page
+    assert "2 / 3" in page
+    with (output / "results.csv").open(encoding="utf-8-sig", newline="") as source:
+        assert len(list(csv.DictReader(source))) == 3
 
 
 def test_dev_terminal_latency_includes_wrong_output_host_block_and_timeout(tmp_path):

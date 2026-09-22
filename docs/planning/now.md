@@ -4,6 +4,10 @@
 
 ## Active — 無待續施工
 
+報告閱讀介面與產生器可讀性整理已完成；實際能力及證據邊界見
+[Current](../current.md#assistant-research-baseline)。這不是其餘 evaluator 政策修理、
+資料夾遷移或人類設計驗收完成；外部產出格式計畫的未實作項保持待辦。
+
 `review_status` 已改在正式非 TEST 題庫來源移除，runner 恢復原樣複製；
 正式來源與驗證見 [Current](../current.md#assistant-research-baseline)。
 

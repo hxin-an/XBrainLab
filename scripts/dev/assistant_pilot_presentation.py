@@ -1,6 +1,10 @@
 """Offline, escaped presentation of Pilot scores and hash-verified case evidence.
 
 This module renders the existing report; it does not score or amend measurements.
+
+Reading order: shared HTML fragments, bounded evidence readers, case pages, then
+the report writer. Evidence readers verify stored bytes; presentation functions
+only display those observations. Browser styling and filtering live in assets.
 """
 
 from __future__ import annotations
@@ -16,19 +20,14 @@ from pathlib import Path
 from urllib.parse import quote
 
 _LIMIT = 32 * 1024**2
-_STYLE = """
-body{font:16px/1.55 system-ui,sans-serif;color:#172638;background:#f3f6fa;margin:0}
-main{max-width:1280px;margin:auto;padding:32px}h1,h2,h3{line-height:1.2}
-h1{font-size:32px}h2{margin-top:36px}a{color:#075ea8}small{color:#526275}
-table{border-collapse:collapse;width:100%;background:white;font-size:14px}
-th,td{border-bottom:1px solid #d7e0eb;padding:10px;text-align:left;vertical-align:top}
-th{background:#e7eef7}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#fff;
-padding:16px;border:1px solid #d7e0eb;border-radius:6px;font:13px/1.55 monospace}
-details{margin:12px 0}summary{cursor:pointer;font-weight:600}.table{overflow-x:auto}
-.notice{padding:16px;border-left:4px solid #bb7700;background:#fff3db}
-input{padding:10px;width:min(550px,90%);font:inherit}nav{margin:20px 0}
-@media(max-width:700px){main{padding:16px}th,td{padding:6px}}
-"""
+# Load fixed presentation assets once. The audit hashes these exact loaded bytes,
+# while HTML embeds their text so copied reports do not need an asset directory.
+_ASSET_DIRECTORY = Path(__file__).with_name("assistant_report_assets")
+_ASSET_BYTES = {
+    name: (_ASSET_DIRECTORY / name).read_bytes() for name in ("report.css", "cases.js")
+}
+_STYLE = _ASSET_BYTES["report.css"].decode("utf-8")
+_CASE_SCRIPT = _ASSET_BYTES["cases.js"].decode("utf-8")
 
 
 def _escape(value: object) -> str:
@@ -45,12 +44,81 @@ def _pre(value: object) -> str:
     )
 
 
-def _page(title: str, content: str) -> str:
+def render_page(title: str, content: str) -> str:
+    """Self-contained HTML shared by the run entry, report and case pages."""
     return (
         '<!doctype html><html lang="en"><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
-        f"<title>{_escape(title)}</title><style>{_STYLE}</style><main>{content}</main></html>"
+        f"<title>{_escape(title)}</title><style>{_STYLE}</style>"
+        f'<body><main id="main">{content}</main></body></html>'
     )
+
+
+def _html_table(headers: list[str], rows: list[list]) -> str:
+    """Escape all table content at the rendering boundary."""
+    headings = "".join(f'<th scope="col">{_escape(label)}</th>' for label in headers)
+    body = "".join(
+        "<tr>" + "".join(f"<td>{_escape(value)}</td>" for value in row) + "</tr>"
+        for row in rows
+    )
+    return (
+        '<div class="table"><table><thead><tr>'
+        + headings
+        + "</tr></thead><tbody>"
+        + body
+        + "</tbody></table></div>"
+    )
+
+
+def render_overview(report: dict) -> str:
+    """Compact view of existing aggregates; never compute or substitute scores."""
+    conditions = report.get("conditions", {})
+    valid = sum(c["counts"]["valid_decision"] for c in conditions.values())
+    planned = sum(c["counts"]["planned"] for c in conditions.values())
+    cards = [
+        (f"{valid:,} / {planned:,}", "Valid / planned measurements"),
+        (str(len(conditions)), "Model conditions"),
+        (str(len(report.get("superseded_cases", []))), "Preserved superseded attempts"),
+    ]
+    metrics = "".join(
+        f'<div class="metric"><strong>{_escape(value)}</strong><span>{label}</span></div>'
+        for value, label in cards
+    )
+    rows = []
+    for name, condition in conditions.items():
+        timing = condition["decision_latency_seconds"].get("overall", {})
+        rows.append(
+            [
+                name,
+                f"{condition['counts']['valid_decision']} / {condition['counts']['planned']}",
+                *[
+                    "n/a"
+                    if condition["macro"][phase] is None
+                    else f"{condition['macro'][phase]:.1%}"
+                    for phase in ("first", "final")
+                ],
+                _number(timing.get("p50")),
+                _number(timing.get("max")),
+            ]
+        )
+    table = _html_table(
+        [
+            "Condition",
+            "Valid / planned",
+            "First macro",
+            "Final macro",
+            "Median decision (s)",
+            "Slowest decision (s)",
+        ],
+        rows,
+    )
+    return f"""<section id="overview">
+        <div class="metrics">{metrics}</div>
+        <h2>Model comparison</h2>
+        <p class="muted">Final macro accuracy weights the three categories equally.
+        Decision latency excludes model loading. DEV only, not a formal model ranking.</p>
+        {table}
+    </section>"""
 
 
 def _bytes(root: Path, path: Path, digest: str | None = None) -> bytes:
@@ -178,13 +246,38 @@ def _case_page(root: Path, output: Path, row: dict, detail: dict) -> None:
     page = output / "cases" / f"{artifact}.html"
     request, result = detail["request"], detail["result"]
     status = "FAILED" if detail["issues"] else "verified"
+
+    def decision_label(value: object) -> str:
+        return (
+            "Correct"
+            if value is True
+            else "Incorrect"
+            if value is False
+            else "Unavailable"
+        )
+
+    def fields(values: list[tuple[str, object]]) -> str:
+        return (
+            "<dl>"
+            + "".join(
+                f"<dt>{_escape(label)}</dt><dd>{_pre(value)}</dd>"
+                for label, value in values
+            )
+            + "</dl>"
+        )
+
     parts = [
-        '<nav><a href="../index.html">All conditions and cases</a></nav>',
-        f"<h1>{_escape(row['id'])}</h1>",
+        '<nav aria-label="Report"><a href="../index.html#case-index">All conditions and cases</a></nav>',
+        '<header class="hero"><p class="eyebrow">Case evidence</p>',
+        f"<h1>{_escape(row.get('case_id', row['id']))}</h1>",
+        f'<p class="muted">{_escape(row.get("condition", "unavailable"))} · '
+        f"{_escape(row.get('decision', 'unavailable'))} · {_escape(artifact)}</p>",
+        f'<p><span class="badge">First decision: {decision_label(row.get("first"))}</span> '
+        f'<span class="badge">Final decision: {decision_label(row.get("final"))}</span></p></header>',
         f'<p class="notice">Capture integrity: {status}. '
         f"Measurement evidence: {_escape(row['evidence_status'])}. "
         f"Decision measurement valid: {_escape(row['decision_valid'])}. "
-        f"Final decision correct: {_escape(row.get('final', 'unavailable'))}.</p>",
+        "A decision score does not establish execution success.</p>",
     ]
     if detail["issues"]:
         parts.extend(
@@ -193,23 +286,63 @@ def _case_page(root: Path, output: Path, row: dict, detail: dict) -> None:
     if not result:
         parts.append("<p>Model input/output unavailable; no result inferred.</p>")
     else:
+        case = request.get("case", {})
+        scores = result.get("scores", {})
+        attempts = scores.get("attempt_decisions", [])
+        final = attempts[-1] if attempts else {}
+        product = result.get("product_outcome") or {}
         parts.extend(
             [
-                "<h2>Actual user request</h2>",
-                _pre(request["case"].get("input", "unavailable")),
-                "<details><summary>Oracle / fixture — scorer reference, not model input</summary>",
-                _pre(
-                    {
-                        key: value
-                        for key, value in request["case"].items()
-                        if key != "input"
-                    }
+                '<section class="panel"><h2>Actual user request</h2>',
+                _pre(case.get("input", "unavailable")),
+                '</section><div class="comparison">',
+                '<section class="panel"><h2>Expected decision</h2>',
+                fields(
+                    [
+                        (
+                            "Workflow stage",
+                            case.get("expected_workflow_stage", "unavailable"),
+                        ),
+                        ("Tool", case.get("expected_tool", "unavailable")),
+                        ("Parameters", case.get("expected_parameters", "unavailable")),
+                    ]
                 ),
+                '<p class="muted">Oracle reference, not model input.</p></section>',
+                '<section class="panel"><h2>Recorded final decision</h2>',
+                fields(
+                    [
+                        ("Workflow stage", final.get("observed_stage", "unavailable")),
+                        ("Tool", final.get("observed_tool", "unavailable")),
+                        ("Score reason", final.get("reason", "unavailable")),
+                    ]
+                ),
+                '<p class="muted">Recorded scorer fields only. Compare parameter values '
+                "with the raw model output below; no new parsing or scoring is performed.</p>",
+                "</section></div>",
+                '<section class="panel"><h2>Product outcome — separate evidence</h2>',
+                '<p class="muted">Tool admission, execution and UI handoff are not the '
+                "decision score. Missing observations do not imply success.</p>",
+                "<p>"
+                + " · ".join(
+                    f"{label}: <strong>{_escape(product.get(key, 'unavailable'))}</strong>"
+                    for label, key in (
+                        ("Measurement valid", "measurement_valid"),
+                        ("Outcome", "outcome"),
+                        ("Execution", "execution"),
+                        ("UI handoff", "ui_handoff"),
+                    )
+                )
+                + "</p>",
+                "<details><summary>Recorded product evidence</summary>",
+                _pre(product or "unavailable"),
+                "</details>",
+                "</section><h2>Decision and source details</h2>",
+                "<details><summary>Oracle / fixture — scorer reference, not model input</summary>",
+                _pre({key: value for key, value in case.items() if key != "input"}),
                 _pre(request.get("fixture", {})),
                 "</details>",
-                "<details><summary>Decision score and product outcome (separate measurements)</summary>",
-                _pre(result.get("scores", {})),
-                _pre(result.get("product_outcome", {})),
+                "<details><summary>Recorded decision scores — all attempts</summary>",
+                _pre(scores),
                 "</details>",
             ]
         )
@@ -218,7 +351,11 @@ def _case_page(root: Path, output: Path, row: dict, detail: dict) -> None:
         ):
             parts.extend(
                 [
+                    '<section class="panel">',
                     f"<h2>Generation {index + 1}</h2>",
+                    '<p class="muted">Initial response</p>'
+                    if index == 0
+                    else '<p class="muted">Format-repair response, not a new case attempt</p>',
                     "<details><summary>Actual generation messages</summary>",
                     _pre(generation.get("request", {})),
                     "</details>",
@@ -231,8 +368,9 @@ def _case_page(root: Path, output: Path, row: dict, detail: dict) -> None:
                         "<details><summary>Final rendered prompt — hash verified</summary>",
                         _pre(capture["prompt"]),
                         "</details>",
-                        "<h3>Raw model output — hash verified</h3>",
+                        "<details open><summary>Raw model output — hash verified</summary>",
                         _pre(capture["raw-output"]),
+                        "</details>",
                         _link(capture["path"] / "prompt.txt", page, "Prompt file"),
                         " · ",
                         _link(
@@ -244,6 +382,7 @@ def _case_page(root: Path, output: Path, row: dict, detail: dict) -> None:
                 parts.append(
                     "<p>Rendered prompt/raw output not shown: capture integrity unavailable.</p>"
                 )
+            parts.append("</section>")
         parts.extend(
             [
                 "<details><summary>Full observed trace / recovery / errors</summary>",
@@ -272,7 +411,7 @@ def _case_page(root: Path, output: Path, row: dict, detail: dict) -> None:
                 ),
             ]
         )
-    page.write_text(_page(row["id"], "\n".join(parts)), encoding="utf-8")
+    page.write_text(render_page(row["id"], "\n".join(parts)), encoding="utf-8")
 
 
 def _rate(value: dict) -> str:
@@ -290,37 +429,49 @@ def _excel(value: object) -> object:
     return value
 
 
-def write_presentation(report: dict, output: Path) -> None:
-    """Write a local report and case index without changing aggregate report JSON."""
-    root = Path(report["run"])
-    (output / "cases").mkdir()
-    dev = report["schema"] == "xbrainlab.assistant_dev_report.v1"
-    details = {
-        row["id"]: _details(root, row, require_generation=dev)
-        for row in report["cases"]
-    }
-    if dev and any(
-        details[row["id"]]["issues"] != row["capture_integrity"]["issues"]
-        for row in report["cases"]
-    ):
-        raise ValueError(
-            "Capture artifacts changed during report; retain evidence and rebuild from a stable snapshot"
-        )
-    previous_details = {
-        row["artifact_id"]: _details(root, row)
-        for row in report.get("superseded_cases", [])
-    }
-    issues = {key: value["issues"] for key, value in details.items() if value["issues"]}
-    issues.update(
-        {
-            "superseded:" + key: value["issues"]
-            for key, value in previous_details.items()
-            if value["issues"]
-        }
+def _case_filters(conditions: dict) -> str:
+    """Controls match cases.js IDs; filtering never changes exported rows."""
+    options = "".join(
+        f'<option value="{_escape(name)}">{_escape(name)}</option>'
+        for name in conditions
     )
-    detail_count = len(details) + len(previous_details)
-    title = "Assistant DEV initial baseline" if dev else "Assistant Pilot evidence"
-    md, body = ["# " + title, ""], [f"<h1>{title}</h1>"]
+    return f"""
+    <h2 id="cases">Explore cases</h2>
+    <p class="muted">Open a case to compare expected and observed decisions. Filters combine.</p>
+    <div class="filters">
+        <label>Search
+            <input id="search" aria-label="Filter cases" placeholder="Case ID or request">
+        </label>
+        <label>Model condition
+            <select id="condition"><option value="">All conditions</option>{options}</select>
+        </label>
+        <label>Category
+            <select id="category">
+                <option value="">All categories</option>
+                <option>Action</option><option>Clarification</option><option>No-call</option>
+            </select>
+        </label>
+        <label>Final decision
+            <select id="outcome">
+                <option value="">All outcomes</option>
+                <option value="correct">Correct</option>
+                <option value="incorrect">Incorrect</option>
+                <option value="unavailable">Unavailable / invalid measurement</option>
+            </select>
+        </label>
+        <button id="reset" type="button">Reset filters</button>
+    </div>
+    <p id="case-count" role="status" aria-live="polite"></p>
+    <noscript><p>Filters require JavaScript. All cases are listed below.</p></noscript>
+    """
+
+
+def _render_detailed_results(
+    report: dict, details: dict, issues: dict, detail_count: int
+) -> tuple[list[str], list[str]]:
+    """Format saved aggregate results as HTML and Markdown, without rescoring."""
+    dev = report["schema"] == "xbrainlab.assistant_dev_report.v1"
+    md, body = [], []
 
     def paragraph(value: str) -> None:
         md.extend([value, ""])
@@ -336,11 +487,7 @@ def write_presentation(report: dict, output: Path) -> None:
             ]
         )
         anchor = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
-        body.append(
-            f'<h2 id="{anchor}">{_escape(title)}</h2><div class=table><table><thead><tr>'
-            + "".join(f"<th>{_escape(item)}</th>" for item in headers)
-            + "</tr></thead><tbody>"
-        )
+        body.append(f'<h2 id="{anchor}">{_escape(title)}</h2>')
         for cells in rows:
             md.append(
                 "| "
@@ -349,13 +496,8 @@ def write_presentation(report: dict, output: Path) -> None:
                 )
                 + " |"
             )
-            body.append(
-                "<tr>"
-                + "".join(f"<td>{_escape(cell)}</td>" for cell in cells)
-                + "</tr>"
-            )
         md.append("")
-        body.append("</tbody></table></div>")
+        body.append(_html_table(headers, rows))
 
     paragraph(
         "DEV initial baseline. No formal model ranking or Validation/Test conclusion. P95 is descriptive."
@@ -627,9 +769,16 @@ def write_presentation(report: dict, output: Path) -> None:
     paragraph(
         f"Manifest SHA256: {report['manifest_sha256']}. Journal SHA256: {report['journal_sha256']}."
     )
+    return body, md
+
+
+def _write_case_index(
+    root: Path, output: Path, report: dict, details: dict, previous_details: dict
+) -> tuple[list[str], list[str]]:
+    """Write case pages and CSV from the same rows; return their HTML/Markdown index."""
+    md, body = [], []
+    body.append(_case_filters(report["conditions"]))
     body.append(
-        '<h2 id="cases">Case index</h2><p>Search condition, case, category, status, or request.</p>'
-        '<input id="search" aria-label="Filter cases" placeholder="Filter cases">'
         '<div class=table><table id="case-index"><thead><tr><th>Case</th><th>Category</th>'
         "<th>Measurement</th><th>First / final</th><th>Capture integrity</th><th>Request</th></tr></thead><tbody>"
     )
@@ -701,8 +850,12 @@ def write_presentation(report: dict, output: Path) -> None:
                 row.get("result_sha256"),
             ]
             writer.writerow([_excel(value) for value in values])
+            outcome = "unavailable"
+            if row["decision_valid"] and isinstance(row.get("final"), bool):
+                outcome = "correct" if row["final"] else "incorrect"
             body.append(
-                f'<tr><td><a href="{quote(link)}">{_escape(row["id"])}</a></td>'
+                f'<tr data-condition="{_escape(row["condition"])}" data-category="{_escape(row["decision"])}" data-outcome="{outcome}">'
+                f'<td><a href="{quote(link)}">{_escape(row["id"])}</a></td>'
                 + "".join(
                     f"<td>{_escape(value)}</td>"
                     for value in [
@@ -719,14 +872,15 @@ def write_presentation(report: dict, output: Path) -> None:
                 f"- [{row['id']}]({link}) — {row['evidence_status']}; first/final {row.get('first', 'n/a')}/{row.get('final', 'n/a')}; captures {integrity}"
             )
     body.append(
-        "</tbody></table></div><script>document.getElementById('search').addEventListener('input',"
-        "function(){const q=this.value.toLowerCase();document.querySelectorAll('#case-index tbody tr')"
-        ".forEach(r=>r.hidden=!r.textContent.toLowerCase().includes(q));});</script>"
+        '</tbody></table></div><p id="no-cases" hidden>No cases match these filters.</p>'
+        '<div class="pagination" hidden><button id="previous" type="button">Previous</button>'
+        '<span id="page-number"></span><button id="next" type="button">Next</button></div>'
+        f"<script>{_CASE_SCRIPT}</script>"
     )
     if report.get("superseded_cases"):
-        paragraph(
-            "Superseded measurements remain preserved below and are excluded from the selected score and latency denominators."
-        )
+        note = "Superseded measurements remain preserved below and are excluded from the selected score and latency denominators."
+        md.extend([note, ""])
+        body.append("<p>" + _escape(note) + "</p>")
         md.extend(["## Superseded measurements", ""])
         body.append("<h2>Superseded measurements</h2>")
         for row in report["superseded_cases"]:
@@ -738,7 +892,77 @@ def write_presentation(report: dict, output: Path) -> None:
                 f"- [{artifact}]({link}) — {row.get('measurement_status', row['evidence_status'])}"
             )
             body.append(f'<p><a href="{quote(link)}">{_escape(artifact)}</a></p>')
-    (output / "index.html").write_text(_page(title, "\n".join(body)), encoding="utf-8")
+    return body, md
+
+
+def write_presentation(report: dict, output: Path) -> None:
+    """Write a local report and case index without changing aggregate report JSON."""
+    root = Path(report["run"])
+    (output / "cases").mkdir()
+    dev = report["schema"] == "xbrainlab.assistant_dev_report.v1"
+    details = {
+        row["id"]: _details(root, row, require_generation=dev)
+        for row in report["cases"]
+    }
+    if dev and any(
+        details[row["id"]]["issues"] != row["capture_integrity"]["issues"]
+        for row in report["cases"]
+    ):
+        raise ValueError(
+            "Capture artifacts changed during report; retain evidence and rebuild from a stable snapshot"
+        )
+    previous_details = {
+        row["artifact_id"]: _details(root, row)
+        for row in report.get("superseded_cases", [])
+    }
+    issues = {key: value["issues"] for key, value in details.items() if value["issues"]}
+    issues.update(
+        {
+            "superseded:" + key: value["issues"]
+            for key, value in previous_details.items()
+            if value["issues"]
+        }
+    )
+    detail_count = len(details) + len(previous_details)
+    title = "Assistant DEV initial baseline" if dev else "Assistant Pilot evidence"
+    md, body = (
+        ["# " + title, ""],
+        [
+            '<header class="hero"><span class="eyebrow">XBrainLab / Research report</span>',
+            f"<h1>{title}</h1>",
+            '<p class="muted">Compare results, inspect individual decisions, and trace every measurement to its evidence.</p></header>',
+            '<nav class="report-nav" aria-label="Report sections"><a href="#overview">Overview</a>'
+            '<a href="#cases">Explore cases</a><a href="#evidence">Methods &amp; evidence</a>'
+            '<a href="results.csv">Download CSV</a></nav>',
+            '<p class="badge">'
+            + (
+                "Selected schedule complete"
+                if report["complete_selected_schedule"]
+                else "Selected schedule incomplete"
+            )
+            + "</p>",
+            f'<p class="notice">Evidence presentation {"incomplete" if issues else "verified"}: '
+            f"{len(issues)} of {detail_count} attempts have detail issues. "
+            "Historical failed attempts remain preserved; measurement validity is not answer correctness.</p>",
+            render_overview(report),
+            '<details id="evidence"><summary>Methods, detailed results &amp; source evidence</summary>',
+        ],
+    )
+
+    detail_html, detail_markdown = _render_detailed_results(
+        report, details, issues, detail_count
+    )
+    body.extend(detail_html)
+    md.extend(detail_markdown)
+    body.append("</details>")
+    case_html, case_markdown = _write_case_index(
+        root, output, report, details, previous_details
+    )
+    body.extend(case_html)
+    md.extend(case_markdown)
+    (output / "index.html").write_text(
+        render_page(title, "\n".join(body)), encoding="utf-8"
+    )
     (output / "README.md").write_text("\n".join(md) + "\n", encoding="utf-8")
     (output / "presentation-audit.json").write_text(
         _json(
@@ -753,6 +977,10 @@ def write_presentation(report: dict, output: Path) -> None:
                 "renderer_sha256": hashlib.sha256(
                     Path(__file__).read_bytes()
                 ).hexdigest(),
+                "presentation_assets_sha256": {
+                    name: hashlib.sha256(content).hexdigest()
+                    for name, content in _ASSET_BYTES.items()
+                },
                 "report_script_sha256": hashlib.sha256(
                     Path(__file__).with_name("assistant_pilot_report.py").read_bytes()
                 ).hexdigest(),

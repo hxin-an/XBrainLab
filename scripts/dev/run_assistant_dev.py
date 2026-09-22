@@ -63,6 +63,7 @@ def run_attempt(
     report_only: bool = False,
 ) -> int:
     """Compose the existing runner/report; retain each launch and derived report."""
+    from scripts.dev.assistant_pilot_presentation import render_overview, render_page
     from scripts.dev.assistant_pilot_report import write_report
 
     attempt = datetime.now(UTC).strftime("%Y%m%d-%H%M%S-") + uuid4().hex[:8]
@@ -120,20 +121,37 @@ def run_attempt(
     )
     notice = "Initial DEV candidate, RAG on. Full baseline requires all five models / 1,320 valid measurements. No tuning, VALID or TEST."
     text = f"# DEV results\n\n{status}\n\n{notice}\n\nSource: `{manifest['source']['head']}`\n\n"
-    page = f'<!doctype html><meta charset="utf-8"><title>DEV results</title><h1>{html.escape(status)}</h1><p>{notice}</p>'
+    page = (
+        '<header class="hero"><span class="eyebrow">XBrainLab / Experiment workspace</span>'
+        "<h1>DEV initial baseline</h1>"
+        f'<p class="muted">{notice}</p></header>'
+        f'<p class="{"badge" if code == 0 else "notice"}">{html.escape(status)}</p>'
+    )
+    if error:
+        page += '<pre class="notice">' + html.escape(error) + "</pre>"
     if link:
         text += f"[Latest report]({link})\n\n"
-        page += f'<p><a href="{link}">Open latest report</a></p>'
+        page += (
+            f'<p><a class="button" href="{link}">Explore latest report &rarr;</a></p>'
+        )
+    if report:
+        page += render_overview(report)
+        page += '<p class="notice">Selected schedule status does not certify all historical captures. See the report for evidence warnings and preserved failed attempts.</p>'
     text += "inputs/: fixed inputs; raw/: original measurements; reports/: immutable reports; launches/: execution status.\n\n"
     text += error or ""
     page += (
-        '<p><a href="README.md">Results layout</a></p><pre>'
-        + html.escape(error or "")
-        + "</pre>"
+        '<section class="panel"><h2>Evidence &amp; reproducibility</h2>'
+        "<p>Inputs and raw measurements are retained unchanged. Reports are versioned; "
+        "this page is navigation, not a new measurement.</p>"
+        f'<p class="muted">Frozen measurement source: {html.escape(manifest["source"]["head"])}</p>'
+        '<nav><a href="README.md">Folder guide</a>'
+        '<a href="raw/manifest.json">Frozen manifest</a></nav></section>'
     )
     # Only derived navigation is refreshed; all evidence and prior reports remain immutable.
     (output / "README.md").write_text(text, encoding="utf-8")
-    (output / "index.html").write_text(page, encoding="utf-8")
+    (output / "index.html").write_text(
+        render_page("DEV results", page), encoding="utf-8"
+    )
     print(status + ": " + str(output / "index.html"), flush=True)
     return code
 

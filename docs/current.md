@@ -103,6 +103,15 @@ superseded capture 未完成，不抹除原始失敗或把無效量測判成模�
 
 報告入口：`D:\XBrainLabRuns\d0\index.html`，內含可查詢逐題頁面、CSV、JSON、
 固定 inputs、raw／manifest／journal、歷次 reports 與 launches。
+報告介面提供模型比較、模型／題型／正誤交集篩選、搜尋及分頁；逐題呈現預期與
+既存 observed 欄位，產品執行證據與決策分數分開。詳細統計／來源可展開，歷史失敗
+警告仍可見。這是離線呈現更新，不重新判分或推論；正式研究主張不因此增加。
+程式分工為 bounded evidence readers、統計呈現、逐題／CSV 輸出和組裝入口；
+CSS／JavaScript 在 `scripts/dev/assistant_report_assets/` 以可讀原始碼維護，產出時內嵌，
+不依賴 CDN。既有 presentation audit 另記錄兩個資源的 SHA-256。
+介面版 `reports/20260922-123106-fd4bd418` 的 report JSON／CSV 與原版一致，
+原 raw／inputs 保持不變；Windows Edge 離線雙尺寸、篩選／分頁、鍵盤與無 JS fallback
+已驗證。這是自動瀏覽器證據，不代表使用者已接受設計。
 `D:\XBrainLabRuns\d0-validation\final1320-audit.json` 獨立核對全部 selected 題目，
 1,436 組 generation capture 的實際 bytes／hash／trace、同一 frozen scorer 與 input-audit
 重播、完整分母及獨立 P50／P95 計算均一致。Scorer 重播證明紀錄一致，
@@ -113,7 +122,8 @@ superseded capture 未完成，不抹除原始失敗或把無效量測判成模�
 完整 report JSON 與 CSV bytes 一致；1,320 筆 CSV、1,323 個 HTML 頁面及 8,169 個
 本機連結通過。證據在 `d0-validation/report-rebuild-verification.json`；
 原成功報告 `reports/20260922-061343-96c61481` 與重建的
-`reports/20260922-074043-c9a89d4b` 均保留，根目錄入口指向最新重建報告。
+`reports/20260922-074043-c9a89d4b` 均保留；後續介面版另存新 reports，
+不可把新 renderer 身分當成原始量測 source。
 
 source snapshot 保存在 `D:\XBrainLabRuns\d0-validation\source-67dd8bf9.zip`，SHA-256
 `8f7235d1b1cf05518f3e5af93f3e79bc5cdc2422e109e0dd65af1cd50747fbbd`；
