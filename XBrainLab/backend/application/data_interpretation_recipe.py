@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from dataclasses import asdict, dataclass, is_dataclass
 from dataclasses import field as dc_field
 from enum import Enum
@@ -335,8 +336,10 @@ def _metadata_overrides_from_recipe(
     metadata: list[FileMetadataResolution],
 ) -> dict[str, dict[str, str]]:
     overrides: dict[str, dict[str, str]] = {}
+    name_counts = Counter(Path(item.file).name.casefold() for item in metadata)
     for item in metadata:
-        file_key = Path(item.file).name or item.file
+        name = Path(item.file).name
+        file_key = name if name and name_counts[name.casefold()] == 1 else item.file
         fields: dict[str, str] = {}
         for field_name in ("subject", "session", "task", "run"):
             field_value = getattr(item, field_name)

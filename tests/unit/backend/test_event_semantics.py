@@ -25,13 +25,17 @@ def test_gdf_rejected_trial_normalization_preserves_scoped_annotations() -> None
         get_filepath=lambda: "/data/subject.gdf",
         get_mne=lambda: mne_data,
     )
+    original_onset = annotations.onset.copy()
+    original_duration = annotations.duration.copy()
+    original_time = annotations.orig_time
+    original_channels = annotations.ch_names.tolist()
 
     changed = mark_gdf_rejected_trials(data)
 
     assert changed is True
     normalized = mne_data.annotations
-    np.testing.assert_array_equal(normalized.onset, annotations.onset)
-    np.testing.assert_array_equal(normalized.duration, annotations.duration)
-    assert normalized.orig_time == annotations.orig_time
-    assert normalized.ch_names.tolist() == annotations.ch_names.tolist()
+    np.testing.assert_array_equal(normalized.onset, original_onset)
+    np.testing.assert_array_equal(normalized.duration, original_duration)
+    assert normalized.orig_time == original_time
+    assert normalized.ch_names.tolist() == original_channels
     assert normalized.description.tolist() == ["BAD_rejected_trial", "769", "note"]

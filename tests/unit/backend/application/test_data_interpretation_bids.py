@@ -18,11 +18,10 @@ from XBrainLab.backend.application import (
     ScanSourceCommand,
     ValidateInterpretationCommand,
     data_interpretation_bids,
-    data_interpretation_internal_events,
+    data_interpretation_label_carriers,
     resource_guard,
 )
 from XBrainLab.backend.application.data_interpretation import (
-    AppliedInterpretation,
     InterpretationCandidate,
     build_interpretation_candidate,
     scan_source_path,
@@ -30,10 +29,6 @@ from XBrainLab.backend.application.data_interpretation import (
 )
 from XBrainLab.backend.application.data_interpretation_apply import (
     DataInterpretationApplyService,
-)
-from XBrainLab.backend.application.data_interpretation_scan import ScanResult
-from XBrainLab.backend.application.data_interpretation_state import (
-    DataInterpretationSessionState,
 )
 from XBrainLab.backend.application.label_resource_admission import (
     LabelResourceSpec,
@@ -134,9 +129,24 @@ def _value_decisions_from_events(path: Path) -> dict[str, dict[str, object]]:
     }
 
 
+@pytest.mark.parametrize("use_streaming_fallback", [False, True])
 def test_bids_label_field_recommendation_ignores_unselected_run_carriers(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    use_streaming_fallback: bool,
 ) -> None:
+    if use_streaming_fallback:
+
+        def oversized_table(*args, **kwargs):
+            raise data_interpretation_label_carriers.ParsedContentTooLargeError(
+                "exercise bounded streaming recommendation"
+            )
+
+        monkeypatch.setattr(
+            data_interpretation_label_carriers,
+            "parsed_delimited_table",
+            oversized_table,
+        )
     root = tmp_path / "bids"
     selected_eeg, selected_events = _write_bids_run(
         root,
@@ -1395,106 +1405,3 @@ def test_internal_event_hints_use_each_run_mapping(tmp_path: Path) -> None:
         "T1": "both fists",
         "T2": "both feet",
     }
-
-
-def test_partial_internal_run_mapping_keeps_affected_run_in_confirmation_evidence(
-    monkeypatch,
-) -> None:
-    monkeypatch.setattr(
-        data_interpretation_internal_events,
-        "_read_internal_events_for_file",
-        lambda _path: {
-            "events": {
-                "T1": {"count": 15, "description": "T1"},
-                "T2": {"count": 15, "description": "T2"},
-            }
-        },
-    )
-    files = ["/data/S001R04.edf", "/data/S001R08.edf"]
-    candidate = build_interpretation_candidate(
-        candidate_id="candidate-1",
-        scan=ScanResult(
-            scan_id="scan-1",
-            source_path="/data",
-            source_kind="folder",
-            eeg_files=files,
-            bids={"is_bids": False, "events_files": []},
-        ),
-        choices={
-            "label_carrier": "embedded_events",
-            "class_map": {"T1": "global-left", "T2": "global-right"},
-            "run_event_mappings": {
-                "S001R04.edf": {"T1": "left fist", "T2": "right fist"},
-            },
-        },
-    )
-
-    review = candidate.internal_event_preview["run_event_mapping_review"]
-
-    assert review["status"] == "needs_confirmation"
-    assert review["affected_files"] == ["S001R08.edf"]
-    assert review["files"] == [
-        {
-            "file": "S001R04.edf",
-            "run": "04",
-            "status": "safe",
-            "events": {"T1": "left fist", "T2": "right fist"},
-            "missing_event_codes": [],
-        },
-        {
-            "file": "S001R08.edf",
-            "run": "08",
-            "status": "needs_confirmation",
-            "events": {"T1": "", "T2": ""},
-            "missing_event_codes": ["T1", "T2"],
-        },
-    ]
-    assert any(
-        "S001R08.edf" in item and "T1, T2" in item
-        for item in candidate.confirmation_items
-    )
-
-    raw_1 = MagicMock()
-    raw_1.get_filepath.return_value = files[0]
-    raw_2 = MagicMock()
-    raw_2.get_filepath.return_value = files[1]
-    dataset = MagicMock()
-    dataset.get_loaded_data_list.return_value = [raw_1, raw_2]
-    apply_service = DataInterpretationApplyService(
-        dataset,
-        data_filepath=lambda raw: str(raw.get_filepath()),
-        record_label_import=lambda **_kwargs: None,
-    )
-
-    records = apply_service.record_internal_epoch_hints(candidate)
-
-    assert len(records) == 2
-    assert raw_1.set_runtime_detail.call_args.args[1]["class_map"] == {
-        "T1": "left fist",
-        "T2": "right fist",
-    }
-    assert raw_2.set_runtime_detail.call_args.args[1]["class_map"] == {
-        "T1": "T1",
-        "T2": "T2",
-    }
-
-    applied = AppliedInterpretation(
-        interpretation_id="interpretation-1",
-        candidate_id=candidate.candidate_id,
-        source_path=candidate.source_path,
-        source_kind=candidate.source_kind,
-        loaded_files=files,
-        event_roles=dict(candidate.event_roles),
-        class_map=dict(candidate.class_map),
-        internal_event_selection=dict(candidate.internal_event_selection),
-        run_event_mappings={
-            key: dict(mapping) for key, mapping in candidate.run_event_mappings.items()
-        },
-    )
-
-    handoff = DataInterpretationSessionState._epoch_handoff(None, applied)
-
-    assert handoff["class_map"] == {}
-    assert "event_label_aliases" not in handoff
-    assert handoff["default_epoch_events"] == ["T1", "T2"]
-    assert handoff["run_dependent_mapping"] is True

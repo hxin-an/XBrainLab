@@ -1652,7 +1652,11 @@ def test_build_interpretation_candidate_resolves_relative_selected_file_to_scan_
     assert [Path(item.file).name for item in candidate.metadata] == ["selected.fif"]
 
 
-def test_build_interpretation_candidate_remaps_saved_selected_eeg_file_choices():
+@pytest.mark.parametrize("use_basename", [False, True])
+def test_build_interpretation_candidate_remaps_saved_selected_eeg_file_choices(
+    use_basename,
+):
+    prefix = "" if use_basename else "/data/"
     candidate = build_interpretation_candidate(
         candidate_id="candidate-1",
         scan=_scan(
@@ -1674,7 +1678,14 @@ def test_build_interpretation_candidate_remaps_saved_selected_eeg_file_choices()
             "recipe_id": "recipe-1",
             "selected_eeg_files": ["/data/original_raw.fif"],
             "eeg_file_remap": {
-                "/data/original_raw.fif": "/data/renamed_raw.fif",
+                f"{prefix}original_raw.fif": "/data/renamed_raw.fif",
+            },
+            "label_carrier_remap": {
+                f"{prefix}original_events.tsv": "/data/renamed_events.tsv",
+            },
+            "run_event_mappings": {
+                "/data/original_raw.fif": {"T1": "left hand"},
+                "/data/original_events.tsv": {"T1": "right hand"},
             },
             "metadata_overrides": {
                 "/data/original_raw.fif": {"subject": "S01"},
@@ -1687,6 +1698,10 @@ def test_build_interpretation_candidate_remaps_saved_selected_eeg_file_choices()
     assert candidate.metadata[0].subject.value == "S01"
     assert candidate.metadata[0].subject.source == "user_override"
     assert "choices:eeg_file_remap" in candidate.recipe_trace
+    assert candidate.run_event_mappings == {
+        "/data/renamed_raw.fif": {"T1": "left hand"},
+        "/data/renamed_events.tsv": {"T1": "right hand"},
+    }
 
 
 def test_build_interpretation_candidate_blocks_required_label_carriers_missing_from_scan(
@@ -2358,56 +2373,6 @@ def test_build_interpretation_candidate_uses_format_neutral_event_pattern(
     assert candidate_codes == ["11", "12"]
     assert preview["candidate_label_events"][0]["evidence"].startswith("Repeated count")
     assert other_by_code["1"]["use_as"] == "Trial timing"
-
-
-def test_build_interpretation_candidate_warns_on_run_dependent_t1_t2_events(
-    monkeypatch,
-):
-    monkeypatch.setattr(
-        data_interpretation_internal_events,
-        "_read_internal_events_for_file",
-        lambda _path: {
-            "events": {
-                "T0": {"count": 15, "description": "T0"},
-                "T1": {"count": 15, "description": "T1"},
-                "T2": {"count": 15, "description": "T2"},
-            }
-        },
-    )
-
-    candidate = build_interpretation_candidate(
-        candidate_id="candidate-1",
-        scan=_scan(
-            source_kind="folder",
-            eeg_files=["/data/S001R04.edf", "/data/S001R08.edf"],
-            label_carriers=[],
-            label_carrier_sources={},
-            bids={"is_bids": False, "events_files": []},
-        ),
-        choices={"label_carrier": "embedded_events"},
-    )
-
-    assert candidate.internal_event_preview["run_dependent_semantics"] is True
-    assert candidate.internal_event_preview["run_dependent_mapping"]["status"] == (
-        "needs_confirmation"
-    )
-    assert candidate.internal_event_preview["run_dependent_mapping"]["files"] == [
-        {
-            "file": "S001R04.edf",
-            "run": "04",
-            "events": {"T1": "", "T2": ""},
-        },
-        {
-            "file": "S001R08.edf",
-            "run": "08",
-            "events": {"T1": "", "T2": ""},
-        },
-    ]
-    assert any(
-        "Confirm run-dependent T1/T2 event mapping" in item
-        for item in candidate.confirmation_items
-    )
-    assert any("T1/T2" in item and "run" in item for item in candidate.warnings)
 
 
 def test_build_interpretation_candidate_preserves_run_dependent_event_mapping(

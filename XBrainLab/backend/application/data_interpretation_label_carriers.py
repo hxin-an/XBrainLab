@@ -452,10 +452,8 @@ def _bids_label_field_recommendation(
     ):
         if evidence["numeric_only"]["value"] and value_column_coverage > 0:
             reason_code = "trial_type_over_numeric_value"
-        elif evidence["generic_trial_role_run_coverage"] < 1.0:
-            reason_code = "trial_type_has_task_labels"
         else:
-            reason_code = "trial_type_is_consistent"
+            reason_code = "trial_type_has_task_labels"
         return {
             "field": "trial_type",
             "source": "bids_multi_run_evidence",
@@ -555,15 +553,17 @@ def _bids_label_field_profile(
     byte_limit: int = BIDS_LABEL_RECOMMENDATION_BYTE_LIMIT_PER_RUN,
 ) -> dict[str, Any]:
     counts = {"trial_type": Counter(), "value": Counter()}
-    pairings: dict[str, set[str]] = {}
     sampled_row_count = 0
     sampled_byte_count = 0
     byte_truncated = False
     row_truncated = False
     try:
         file_bytes = max(int(path.stat().st_size), 0)
+        table = None
         if file_bytes <= max(int(byte_limit), 0):
-            table = parsed_delimited_table(path, delimiter="\t")
+            with contextlib.suppress(ParsedContentTooLargeError):
+                table = parsed_delimited_table(path, delimiter="\t")
+        if table is not None:
             sampled_byte_count = table.file_bytes
             columns = {str(column).strip() for column in table.fieldnames}
             rows = table.dict_rows()
@@ -588,31 +588,6 @@ def _bids_label_field_profile(
                 counts["trial_type"][trial_type] += 1
             if value:
                 counts["value"][value] += 1
-            if trial_type and value:
-                pairings.setdefault(trial_type, set()).add(value)
-    except ParsedContentTooLargeError:
-        try:
-            text, sampled_byte_count, byte_truncated = _bounded_tsv_text(
-                path,
-                byte_limit=max(int(byte_limit), 0),
-            )
-            with io.StringIO(text, newline="") as handle:
-                reader = csv.DictReader(handle, delimiter="\t")
-                columns = {str(column).strip() for column in reader.fieldnames or []}
-                sampled_rows = list(islice(reader, max(int(row_limit), 0)))
-                row_truncated = next(reader, None) is not None
-            for row in sampled_rows:
-                sampled_row_count += 1
-                trial_type = _clean_label_value(row.get("trial_type"))
-                value = _clean_label_value(row.get("value"))
-                if trial_type:
-                    counts["trial_type"][trial_type] += 1
-                if value:
-                    counts["value"][value] += 1
-                if trial_type and value:
-                    pairings.setdefault(trial_type, set()).add(value)
-        except (OSError, UnicodeDecodeError, csv.Error):
-            columns = set()
     except (OSError, UnicodeDecodeError, csv.Error):
         columns = set()
     return {
@@ -624,7 +599,6 @@ def _bids_label_field_profile(
         "byte_truncated": byte_truncated,
         "row_truncated": row_truncated,
         "counts": counts,
-        "pairings": pairings,
         "levels": {
             field: _bids_event_level_labels(
                 path,
@@ -671,7 +645,9 @@ def _aggregate_bids_label_field_evidence(
             sum(len(counts) >= 2 for counts in field_counts),
             run_count,
         )
-        cross_run_consistency[field] = _cross_run_category_consistency(populated)
+        cross_run_consistency[field] = _cross_run_set_consistency(
+            [set(counts) for counts in populated]
+        )
         sidecar_level_run_coverage[field] = _ratio(
             sum(bool(profile["levels"][field]) for profile in profiles),
             run_count,
@@ -847,16 +823,6 @@ def _is_repeated_categorical(counts: Counter[str]) -> bool:
     )
     repeated_count = sum(count for count in counts.values() if count > 1)
     return reasonable_cardinality and repeated_count / nonempty_count >= 0.5
-
-
-def _cross_run_category_consistency(counts_by_run: list[Counter[str]]) -> float:
-    if not counts_by_run:
-        return 0.0
-    if len(counts_by_run) == 1:
-        return 1.0
-    sets = [set(counts) for counts in counts_by_run]
-    union = set().union(*sets)
-    return _ratio(len(set.intersection(*sets)), len(union))
 
 
 def _ratio(numerator: int, denominator: int) -> float:

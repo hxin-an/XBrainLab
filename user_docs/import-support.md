@@ -89,6 +89,12 @@ Review all observed events, explicitly select the training events and name each 
 the wizard requests a fresh backend review before import. Missing or inconsistent mappings
 remain blocked. When `events.tsv` is available, it remains the preferred label source.
 
+For internal events, the classes you confirm in **Match Labels** apply to the selected
+recordings. Codes such as `T1` and `T2` do not require an additional per-recording mapping
+or descriptive action names: `A` and `B` are valid class names. XBrainLab does not infer
+what the classes mean experimentally. Saved recipes with explicit recording-specific
+mappings retain those overrides; external labels keep their reviewed EEG pairing.
+
 | Label source | What to review |
 | --- | --- |
 | Internal | Annotations, event codes or stimulus-channel events; decide which describe actual classes rather than timing, artifacts or boundaries. |

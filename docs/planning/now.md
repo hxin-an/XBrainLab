@@ -49,6 +49,103 @@
   保存 next step；不是宣稱整輪完成。必要新決策／資源阻擋才向使用者回報。
 - Next：整合 main，分工評測準備與背景交接；尚未啟動模型實驗。
 
+## Accepted history — 產品品質線：Import 適配與內部整理
+
+以下保留另一線施工及證據；已由 main@94328196 的 PR #146 合併，不是本線 active 工作。
+
+使用者已授權本輪施工，並要求先更新文件、深入整理完整 Import 路徑，不只修單一 helper。
+工作區為 `XBrainLab-product-quality`，分支 `refactor/product-quality`，起點 `8636a754`。
+本節是本線唯一施工進度；下方研究里程碑由 Evaluation 線維護，不覆寫或執行其題庫／評測。
+PR #143–#145 已進入此 main 基線；舊啟動器、RAG、split receipt 與回應性修理不再 active。
+使用者已批准刪除 `wip/data-split-summary`，未合併的 UI 修改未帶入本輪。
+
+### 問題、outcome 與界線
+
+- 正式 BIDS importer 使用 metadata／內容，不以 MOABB 名稱白名單放行；Graz GDF 名稱還原、
+  T1／T2 語意防護與轉換端 loader 修補需要分清來源、假設及責任。
+- 靜態閱讀發現 preview 與 apply 各自實作 run mapping 查找，對同名檔案唯一性處理不同；
+  這是待重現風險，不先宣稱使用者資料已錯誤。
+- Outcome：preview／validate／apply／recipe／epoch 的 recording 與 class 解讀一致，
+  重複政策收斂；production、直接相關 tests／fixtures／scripts 的去留有具體理由。
+- 允許修復已重現的 mapping 誤套或資料一致性缺陷；不改 Graz 自動還原或 Assistant 公開工具。
+- 2026-09-21 使用者批准移除僅因內部事件名稱為 T1／T2 而要求逐 recording mapping 的
+  特例；現有 Match Labels 選事件、填 class 應足以確認，不新增 UI。外部 labels、既有
+  recipe 的明確逐檔 mapping 及一般資料一致性／epoch 前置條件保持。
+- 不改研究題庫／runner／scorer／模型／prompt／RAG，不新增下載、不搬資料、不升級共用環境，
+  不覆寫任何 worktree 的使用者 settings.json；本輪不是 B0 封存。
+- 保留有證據的來源適配，不以特例、LOC 歸零為目標；獨立 UI 打磨留待下一階段討論。
+
+### 施工順序
+
+1. 文件先行：校準已合併歷史；逐段追蹤選取 recordings、events／labels、channels、
+   review／apply 與 recipe 的實際 caller，在既有資料架構文件記錄保留／收斂／限制。
+2. Baseline：沿用 focused tests，建立真 MNE／Command 路徑的 characterization；
+   已重現缺陷先 RED，再修理。查清完整路徑、唯一 basename／run 與 carrier 對應。
+3. 收斂：在既有模組重用純函式統一等價查找規則；歧義簡寫不得套用到另一筆 recording。
+   保留無歧義輸入與 recipe，維持既有 admission、mutation/publication ownership；
+   不新增 authoritative owner、state machine、receipt、通用適配平台或 compatibility 空殼。
+4. 相鄰清理：同時檢查專用適配、label 建議、recipe trace、資料一致性與相關腳本；
+   確認無 caller 或已有可靠替代證據才刪除 helper／重複測試，不擴張無關 panel。
+5. 獨立 review、focused／source-diverse／必要 Windows native 驗證；同候選適用 CI 通過後
+   集中一次 Import 局部手測。PR 發布／merge 各依授權，不自行合併。
+
+### 驗證、複雜度與完成
+
+- 正例：完整路徑、唯一檔名／run；不同 run 的相同 T1／T2 不同語意；apply／recipe／epoch 一致。
+- 反例：跨 subject/session 同名、重複 run、部分 mapping、對調 carrier、真 stale source；
+  失敗不得部分 publication；不更動原始檔案、波形、事件時間。
+- 適配：Graz 已知模式保留、名稱／順序／通道數不同不得誤套；BIDS external／embedded／
+  no-label 路徑維持。用真物件與 Command evidence 補強 mock-only 覆蓋後才刪重複測試。
+- 每個 coherent slice 記錄實際 diff、owner 前後與 production LOC；觸及 root complexity
+  門檻先 review。Rollback 為各 slice revert，不用大規模搬檔冒充架構改善。
+- 不將舊 134-root campaign 當成本 head 證據；CI 已提供的等價 full checks 不本機重跑。
+- Stop：已授權範圍、直接驗證與 review 完成後集中交付；若新政策／UI 決策或必要資源阻擋，
+  先完成其餘安全工作並提供具體證據。小 commit、CI pending、context 壓縮不是停止條件。
+- 已驗：既有 BIDS／reader baseline 72 passed；新增真 Commands 6 個案例原先 4 failed／2 passed，
+  重現 run 簡寫丟失、同名檔案 metadata 誤配、歧義 basename 誤套。修理後另外追到 recipe
+  將同名 recordings 的 metadata overrides 壓成單一 basename，初次 apply 正確但重播丟失語意。
+- recipe 同名 metadata、完整路徑 mapping remap、部分 remap 誤合併與歧義簡寫被 remap
+  誤升格均已有真 Command regression；獨立覆核的 findings 已修理，最後覆核無 blocker。
+  原 scope 有歧義的簡寫不因重新命名而取得語意授權；沒有 reviewed mapping 時維持原事件，
+  不為測試新增 epoch hint 政策。擴大 focused 曾 255 passed；最後 remap 修理直接相關
+  82 passed，需在固定版本重新取得整合 evidence。
+- BIDS recommendation 清理為 production +8/-42/net -34 LOC，characterization 先後皆 77 passed；
+  Graz reader seam 改用真 MNE 物件補正反例、annotation preservation 比對改為事前 snapshot，
+  對應 35 tests 通過。純解析／state owners 不增加；不改推論門檻或 UI。
+- T1／T2 修理前的 production 合計 +165/-99/net +66 LOC、5 個既有模組；不新增 owner／module／class。
+  Apply 內部 mappings 每批先解析一次，移除 preview/apply 的分歧查找；existing publication
+  owner 與 cancellation 不動。相關 catalog／converter 腳本確認仍有用途，本輪未任意刪除。
+- Static typing、changed-file lint 與 strict docs portal（42 pages／1,617 links）已通過；
+  既有 MNE／NumPy deprecation warnings 保留，不在本輪升級共用環境。
+- 候選 6f1cf5f9 已驗 focused 256／source-diverse 4 passed。Windows wizard 19 passed／
+  2 failed：原 PR #141 已新增 no-label Back/Next driver，folder trace expectation 卻漏同步；
+  基線與候選測試 blob 相同，獨立覆核確認。僅補完整序列中的返回步驟，保留所有 state
+  assertions，不改 UI。舊 catalog 因候選需更新而主動中止；保存 partial evidence，不計通過。
+- 9a0cc0f0 已完成 focused 256、source-diverse 4、Windows wizard 21 與代表性 catalog
+  134 passed；這些是修正 T1／T2 政策前的基線，不代表新修改已驗證。
+- T1／T2 repair 已完成：真 Commands 重現填 A/B 後 epoch hint 仍是 T1/T2；真 wizard
+  重現完成選擇後仍要求額外確認。名稱特例、專用 helpers、確認與套用分支已移除；
+  現在以明確 class maps 決定分類／逐檔差異，不新增 owner／module／UI。
+- 替換兩個只保護退役政策的 mock-heavy unit tests，改由真 MNE／Command 與 native UI
+  覆蓋：共用 class、明確逐檔優先、recipe replay、事件 sample／class 序列與來源 bytes。
+  直接回歸保留同名／歧義／remap 的 epoch 防護；獨立覆核的五項資料流程探測通過，無 blocker。
+- 6af61225 已完成 focused 279、source-diverse 4、Windows native 22 與代表性 catalog
+  134 passed；詳細結果在 build/import-quality 的同版本 verified artifacts。
+  使用者已確認 Windows 原生 T1／T2 → A／B 操作通過；此為局部操作確認，不是全部 Import
+  驗收或 merge 授權。2026-09-21 使用者已授權推送／開 PR；仍未授權 merge。
+
+- 2026-09-21 使用者同意的操作路徑覆蓋收尾已完成：既有 UI 測試補單／多檔共用 class、
+  返回改名後重新 review、BIDS 內部事件及外部 MAT 的實際 epoch／recipe 語意；CSV／TSV
+  原 placeholder 測試升級為真 widget → Commands → epoch／recipe，無 labels 實測 epoch
+  拒絕且不改 working data。保留取消／重試／失敗 atomicity 的既有保護；完整對照及限制由
+  [validation contract](../validation/README.md#import-support-claims) 擁有，不複製另一份矩陣。
+- 收尾僅 tests/docs，production 0 LOC；獨立 review 的多檔 oracle 缺口已修正。首輪外部
+  測試抓到等待 worker 而未等待獨立 render timer 的時序錯誤；移除測試內手動刷新，限時
+  等待自然繪製後 4/4 通過，原失敗保留。整合 Windows native 30/30、0 skip 通過
+  （build/import-quality/path-closure-native-integrated.json），lint 通過。未重跑未變產品的
+  134-root catalog，不把既有結果換標成新 head；仍有來源警告與 MNE／NumPy deprecations。
+- Next：推送產品品質分支、建立 PR 並追蹤同 head CI，修復 in-scope 失敗；不自行 merge。
+  本輪沒有再次改變使用者剛確認的產品行為，不要求重測 T1／T2，也不把局部確認当 merge 同意。
 ## Completed record — B0 完整執行入口（2026-09-21）
 
 使用者授權的可日常重跑 B0 入口已實作、獨立覆核及實跑全矩陣；

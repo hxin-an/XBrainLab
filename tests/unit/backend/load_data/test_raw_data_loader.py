@@ -175,18 +175,16 @@ class TestRawDataLoaderUnit:
             for caught_warning in caught_warnings
         )
 
-    @patch("XBrainLab.backend.load_data.raw.validate_type")
-    @patch("XBrainLab.backend.load_data.raw_data_loader.logger.info")
-    @patch("XBrainLab.backend.load_data.raw_data_loader.logger.warning")
-    @patch("XBrainLab.backend.load_data.raw_data_loader.mne.io.read_raw_gdf")
-    def test_load_gdf_normalizes_known_graz_2a_duplicate_names(
+    @pytest.mark.parametrize(
+        "pattern",
+        ["known", "changed_name", "swapped_order", "missing_channel"],
+    )
+    def test_load_gdf_normalizes_only_exact_graz_2a_channel_pattern(
         self,
-        mock_read_gdf,
-        mock_logger_warning,
-        mock_logger_info,
-        mock_validate,
+        pattern,
+        capture_product_logs,
     ):
-        """Restore canonical labels when the known Graz 2a duplicate pattern appears."""
+        """Restore only known labels, preserving waveforms and channel order."""
         ch_names = [
             "EEG-Fz",
             "EEG-0",
@@ -214,13 +212,56 @@ class TestRawDataLoaderUnit:
             "EOG-central",
             "EOG-right",
         ]
-        mock_raw = MagicMock()
-        mock_raw.info = {"ch_names": ch_names.copy()}
+        canonical_names = [
+            "EEG-Fz",
+            "EEG-FC3",
+            "EEG-FC1",
+            "EEG-FCz",
+            "EEG-FC2",
+            "EEG-FC4",
+            "EEG-C5",
+            "EEG-C3",
+            "EEG-C1",
+            "EEG-Cz",
+            "EEG-C2",
+            "EEG-C4",
+            "EEG-C6",
+            "EEG-CP3",
+            "EEG-CP1",
+            "EEG-CPz",
+            "EEG-CP2",
+            "EEG-CP4",
+            "EEG-P1",
+            "EEG-Pz",
+            "EEG-P2",
+            "EEG-POz",
+            "EOG-left",
+            "EOG-central",
+            "EOG-right",
+        ]
+        if pattern == "changed_name":
+            ch_names[0] = "EEG-Fpz"
+        elif pattern == "swapped_order":
+            ch_names[1], ch_names[2] = ch_names[2], ch_names[1]
+        elif pattern == "missing_channel":
+            ch_names.pop()
 
-        def rename_channels(mapping):
-            mock_raw.info["ch_names"] = [mapping.get(name, name) for name in ch_names]
-
-        mock_raw.rename_channels.side_effect = rename_channels
+        # Distinct rows detect channel reordering as well as waveform mutation.
+        waveform = np.arange(len(ch_names) * 40, dtype=float).reshape(-1, 40) * 1e-6
+        source = mne.io.RawArray(
+            waveform,
+            mne.create_info(
+                ch_names,
+                sfreq=250.0,
+                ch_types=[
+                    "eog" if name.startswith("EOG") else "eeg" for name in ch_names
+                ],
+            ),
+            verbose="ERROR",
+        )
+        original_names = source.ch_names.copy()
+        original_waveform = source.get_data().copy()
+        original_types = source.get_channel_types()
 
         def fake_read(*args, **kwargs):
             warnings.warn(
@@ -229,42 +270,70 @@ class TestRawDataLoaderUnit:
                 RuntimeWarning,
                 stacklevel=1,
             )
-            return mock_raw
+            return source
 
-        mock_read_gdf.side_effect = fake_read
-
-        with warnings.catch_warnings(record=True) as caught_warnings:
+        with (
+            patch(
+                "XBrainLab.backend.load_data.raw_data_loader.mne.io.read_raw_gdf",
+                side_effect=fake_read,
+            ) as reader,
+            warnings.catch_warnings(record=True) as caught_warnings,
+            capture_product_logs(level=logging.INFO) as caplog,
+        ):
             warnings.simplefilter("always")
             result = load_gdf_file("A01T.gdf")
 
+        reader.assert_called_once_with("A01T.gdf", preload=False)
         assert isinstance(result, Raw)
-        assert result.get_mne() == mock_raw
-        mock_logger_warning.assert_not_called()
-        mock_logger_info.assert_called_once()
-        assert result.get_mne().info["ch_names"][1:6] == [
-            "EEG-FC3",
-            "EEG-FC1",
-            "EEG-FCz",
-            "EEG-FC2",
-            "EEG-FC4",
-        ]
-        assert result.get_mne().info["ch_names"][18:22] == [
-            "EEG-P1",
-            "EEG-Pz",
-            "EEG-P2",
-            "EEG-POz",
-        ]
-        assert result.get_runtime_signals() == []
+        loaded = result.get_mne()
+        assert loaded is source
+        np.testing.assert_array_equal(loaded.get_data(), original_waveform)
+        assert loaded.get_channel_types() == original_types
+        assert loaded.info["sfreq"] == 250.0
         detail = result.get_gdf_duplicate_channel_detail()
         assert detail is not None
-        assert detail["resolved"] is True
-        assert detail["normalization_name"] == "graz_2a_canonical_22"
+        assert detail["kind"] == "gdf_duplicate_channel_names"
+        assert detail["filepath"] == "A01T.gdf"
+        assert detail["generated_bases"] == ["EEG"]
         assert "EEG-0" in detail["generated_channels"]
-        assert "EEG-FC3" in detail["normalized_channels"]
-        assert not any(
+        duplicate_warning = any(
             "Channel names are not unique" in str(caught_warning.message)
             for caught_warning in caught_warnings
         )
+        if pattern == "known":
+            assert loaded.ch_names == canonical_names
+            assert result.get_runtime_signals() == []
+            assert detail["resolved"] is True
+            assert detail["normalization_name"] == "graz_2a_canonical_22"
+            assert detail["normalized_channels"] == [
+                normalized
+                for original, normalized in zip(
+                    original_names, canonical_names, strict=True
+                )
+                if original != normalized
+            ]
+            assert not duplicate_warning
+            assert [
+                record.levelno
+                for record in caplog.records
+                if record.getMessage() == detail["message"]
+            ] == [logging.INFO]
+            assert not any(
+                record.levelno >= logging.WARNING for record in caplog.records
+            )
+        else:
+            assert loaded.ch_names == original_names
+            assert not detail.get("resolved", False)
+            assert "normalization_name" not in detail
+            assert "normalized_channels" not in detail
+            assert result.get_runtime_signals() == [detail["message"]]
+            assert "auto-renaming duplicate channel names" in detail["message"]
+            assert duplicate_warning
+            assert [
+                record.levelno
+                for record in caplog.records
+                if record.getMessage() == detail["message"]
+            ] == [logging.WARNING]
 
     @patch("XBrainLab.backend.load_data.raw_data_loader.mne.io.read_raw_gdf")
     def test_load_gdf_failure(self, mock_read_gdf):
