@@ -104,8 +104,13 @@ superseded capture 未完成，不抹除原始失敗或把無效量測判成模�
 報告入口：`D:\XBrainLabRuns\d0\index.html`，提供可查詢逐題頁面；目錄保留 CSV、JSON、
 固定 inputs、raw／manifest／journal、歷次 reports 與 launches。
 報告介面提供模型比較、模型／題型／正誤交集篩選、搜尋及分頁；逐題呈現預期與
-既存 observed 欄位，產品執行證據與決策分數分開。入口只呈現實驗資訊、模型結果表、
-逐題結果表（模型／題號／題型／正誤）；題目文字仍可搜尋，點題號查看完整證據。
+既存 observed 欄位，產品執行證據與決策分數分開。入口只呈現實驗資訊與四張表：
+模型總表、題型正確率、題組正確率、逐題結果（模型／題號／題型／正誤）；
+題目文字仍可搜尋，點題號查看完整證據。
+分組表呈現最終決策的正確數／有效題數（百分比），missing／invalid 另標 unavailable；
+不是任務執行成功率或回應文字品質。題型沿用三類 aggregate；題組沿用 case ID 的
+A01–A18、C01–C06、N01–N03，不合併類別、不依實際模型工具呼叫分組。僅 Action
+可附一致的封存 expected tool；未知／分類不一致的 ID 另列 Unclassified，不漏算。
 沒有成功提示、CSV 下載、技術／歷史區塊；未解決的缺漏／執行失敗仍醒目提示。
 CSV、JSON、README 技術統計、歷史嘗試檔案全部保留。這是離線呈現更新，
 不重新判分或推論；正式研究主張不因此增加。
@@ -115,10 +120,13 @@ CSV、JSON、README 技術統計、歷史嘗試檔案全部保留。這是離線
 程式分工為 bounded evidence readers、統計呈現、逐題／CSV 輸出和組裝入口；
 CSS／JavaScript 在 `scripts/dev/assistant_report_assets/` 以可讀原始碼維護，產出時內嵌，
 不依賴 CDN。既有 presentation audit 另記錄兩個資源的 SHA-256。
-精簡版 `reports/20260922-135627-4db28c3f` 的 report JSON／CSV 與原版一致，
+分組版 `reports/20260922-141028-e4303564` 的 report JSON／CSV 與原版一致，
 11,646 個 raw／inputs 項目保持不變；Windows Edge 離線雙尺寸、篩選交錯列、鍵盤、
 無 JS fallback 與題目文字搜尋已驗證。證據在
-`build/report-minimal-final-verification.json` 及 `build/report-browser-minimal-*`；
+`build/report-group-verification.json` 及 `build/report-browser-groups*`／`build/report-browser-group-section`；
+長表格容器的原整體可視探測不適用，另以真 Tab／方向鍵證明可見焦點與橫捲，
+見 `build/report-browser-table-keyboard`；保留原失敗，未放寬其他控制項的檢查。
+150 個分組表格值另以封存題庫人類標籤及逐題分數核對，見 `build/report-group-cells-audit.json`。
 這是自動瀏覽器證據，不代表使用者已接受設計。
 `D:\XBrainLabRuns\d0-validation\final1320-audit.json` 獨立核對全部 selected 題目，
 1,436 組 generation capture 的實際 bytes／hash／trace、同一 frozen scorer 與 input-audit

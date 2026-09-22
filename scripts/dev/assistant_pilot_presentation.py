@@ -133,6 +133,83 @@ def render_overview(report: dict) -> str:
     </section>"""
 
 
+def _accuracy_cell(correct: int, valid: int, planned: int) -> str:
+    """Expose the denominator and unavailable measurements, including empty groups."""
+    rate = f"{correct / valid:.1%}" if valid else "n/a"
+    cell = f"{correct} / {valid} ({rate})"
+    unavailable = planned - valid
+    return cell + (f"; {unavailable} unavailable" if unavailable else "")
+
+
+def _render_accuracy_breakdowns(report: dict, details: dict) -> str:
+    """Summarize recorded final decisions; never parse outputs or regrade answers."""
+    conditions = report["conditions"]
+    categories = []
+    for category in ("Action", "Clarification", "No-call"):
+        cells = [category]
+        for condition in conditions.values():
+            values = condition["categories"][category]
+            final = values["final"]
+            cells.append(
+                _accuracy_cell(
+                    final["numerator"], final["denominator"], values["planned"]
+                )
+            )
+        categories.append(cells)
+
+    groups: dict[str, dict[str, list[dict]]] = {}
+    tool_names: dict[str, set[str]] = {}
+    for row in report["cases"]:
+        # The reviewed bank's group is part of its stable case identity. This
+        # also classifies unstarted cases, which have no request artifact yet.
+        match = re.fullmatch(
+            r"(?:DEV|VALID)-([ACN][0-9]{2})-[0-9]{2}-V[0-9]+", row["case_id"]
+        )
+        expected_category = {"A": "Action", "C": "Clarification", "N": "No-call"}
+        group = (
+            f"{match[1]} / {row['decision']}"
+            if match and expected_category[match[1][0]] == row["decision"]
+            else "Unclassified"
+        )
+        groups.setdefault(group, {}).setdefault(row["condition"], []).append(row)
+        # Only Action has an expected operational tool. A fixture's available
+        # tool must not be used to rename Clarification or No-call questions.
+        tool = details[row["id"]]["request"].get("case", {}).get("expected_tool")
+        if row["decision"] == "Action" and group != "Unclassified" and tool:
+            tool_names.setdefault(group, set()).add(tool)
+
+    grouped_rows = []
+    for group, by_condition in sorted(groups.items()):
+        names = tool_names.get(group, set())
+        label = group
+        if len(names) == 1:
+            label += " — " + next(iter(names)).replace("_", " ")
+        elif len(names) > 1:
+            label += " — metadata mismatch"
+        cells = [label]
+        for name in conditions:
+            rows = by_condition.get(name, [])
+            valid = [row for row in rows if row["decision_valid"]]
+            cells.append(
+                _accuracy_cell(
+                    sum(row["final"] is True for row in valid), len(valid), len(rows)
+                )
+            )
+        grouped_rows.append(cells)
+
+    return (
+        '<section id="category-accuracy" class="accuracy-breakdown">'
+        "<h2>Category decision accuracy</h2>"
+        '<p class="muted table-note">Final answers: correct / valid (%); unavailable measurements shown separately. '
+        "Decision accuracy is not task completion or response-text quality.</p>"
+        + _html_table(["Category", *conditions], categories)
+        + '</section><section id="group-accuracy" class="accuracy-breakdown">'
+        "<h2>Question-group decision accuracy</h2>"
+        + _html_table(["Question group", *conditions], grouped_rows)
+        + "</section>"
+    )
+
+
 def _bytes(root: Path, path: Path, digest: str | None = None) -> bytes:
     resolved = path.resolve(strict=True)
     if not resolved.is_relative_to(root.resolve(strict=True)):
@@ -917,6 +994,7 @@ def write_presentation(report: dict, output: Path) -> None:
             "</header>",
             render_evidence_notice(issues),
             render_overview(report),
+            _render_accuracy_breakdowns(report, details),
         ],
     )
 

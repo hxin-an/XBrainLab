@@ -19,7 +19,7 @@ def _write(path, value):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _run(tmp_path, observations, *, dev=False, all_models=False):
+def _run(tmp_path, observations, *, dev=False, all_models=False, case_ids=None):
     root = tmp_path / "run"
     root.mkdir()
     (root / "cases").mkdir()
@@ -35,7 +35,7 @@ def _run(tmp_path, observations, *, dev=False, all_models=False):
         for index, observation in enumerate(observations)
     ]:
         category, first, final, status = observation
-        case_id = f"DEV-{index}"
+        case_id = case_ids[index] if case_ids is not None else f"DEV-{index}"
         job = {
             "id": f"{condition}__{case_id}",
             "case_id": case_id,

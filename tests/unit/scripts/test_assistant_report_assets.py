@@ -7,9 +7,11 @@ from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import unquote, urljoin, urlsplit
 
+import pytest
+
 from scripts.dev import assistant_pilot_presentation as presentation
 from scripts.dev import assistant_pilot_report as report
-from tests.unit.scripts.test_assistant_pilot_report import _run
+from tests.unit.scripts.test_assistant_pilot_report import _change_result, _run
 
 
 class _InlineAssets(HTMLParser):
@@ -150,3 +152,119 @@ def test_evidence_notice_distinguishes_current_issues_from_retained_history():
     assert "1 selected result" in selected
     assert "excluded" not in selected
     assert presentation.render_evidence_notice({}) == ""
+
+
+@pytest.mark.parametrize("unclassified_id", ["unrecognized-case", "DEV-C02-01-V0"])
+def test_group_tables_keep_final_denominators_and_unclassified_cases(
+    tmp_path, unclassified_id
+):
+    root = _run(
+        tmp_path,
+        [
+            ("Action", False, True, "completed"),
+            ("Action", False, False, "completed"),
+            ("Action", None, None, "missing"),
+            ("Clarification", True, True, "completed"),
+            ("No-call", False, False, "completed"),
+            ("Action", None, None, "invalid_measurement"),
+        ],
+        dev=True,
+        all_models=True,
+        case_ids=[
+            "DEV-A08-01-V0",
+            "DEV-A08-01-V1",
+            "DEV-A08-02-V0",
+            "DEV-C01-01-V0",
+            "DEV-N02-01-V0",
+            unclassified_id,
+        ],
+    )
+    _change_result(
+        root, lambda result: result["scores"].update(final_decision_correct=False)
+    )
+    baseline = report.build_report(root)
+    output = tmp_path / "report"
+    assert report.write_report(root, output) == baseline
+
+    class GroupTables(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.section = None
+            self.tables = {}
+            self.row = None
+            self.cell = None
+
+        def handle_starttag(self, tag, attrs):
+            if tag == "section":
+                self.section = dict(attrs).get("id")
+            if tag == "tr" and self.section in {"category-accuracy", "group-accuracy"}:
+                self.row = []
+            if tag in {"th", "td"} and self.row is not None:
+                self.cell = ""
+
+        def handle_data(self, data):
+            if self.cell is not None:
+                self.cell += data
+
+        def handle_endtag(self, tag):
+            if tag in {"th", "td"} and self.cell is not None:
+                self.row.append(self.cell)
+                self.cell = None
+            if tag == "tr" and self.row is not None:
+                self.tables.setdefault(self.section, []).append(self.row)
+                self.row = None
+            if tag == "section":
+                self.section = None
+
+    parsed = GroupTables()
+    parsed.feed((output / "index.html").read_text(encoding="utf-8"))
+    assert set(parsed.tables) == {"category-accuracy", "group-accuracy"}
+    for table in parsed.tables.values():
+        assert table[0][1:] == list(baseline["conditions"])
+    categories = {row[0]: row[1:] for row in parsed.tables["category-accuracy"][1:]}
+    assert (
+        categories["Action"]
+        == ["0 / 2 (0.0%); 2 unavailable"] + ["1 / 2 (50.0%); 2 unavailable"] * 4
+    )
+    assert categories["Clarification"] == ["1 / 1 (100.0%)"] * 5
+    assert categories["No-call"] == ["0 / 1 (0.0%)"] * 5
+    groups = {row[0]: row[1:] for row in parsed.tables["group-accuracy"][1:]}
+    assert groups == {
+        "A08 / Action": ["0 / 2 (0.0%); 1 unavailable"]
+        + ["1 / 2 (50.0%); 1 unavailable"] * 4,
+        "C01 / Clarification": ["1 / 1 (100.0%)"] * 5,
+        "N02 / No-call": ["0 / 1 (0.0%)"] * 5,
+        "Unclassified": ["0 / 0 (n/a); 1 unavailable"] * 5,
+    }
+
+
+def test_group_labels_use_only_consistent_action_oracle_tools(tmp_path):
+    root = _run(
+        tmp_path,
+        [
+            ("Action", True, True, "completed"),
+            ("Action", True, True, "completed"),
+            ("Clarification", True, True, "completed"),
+            ("No-call", True, True, "completed"),
+        ],
+        dev=True,
+        case_ids=[
+            "DEV-A08-01-V0",
+            "DEV-A08-01-V1",
+            "DEV-C01-01-V0",
+            "DEV-N01-01-V0",
+        ],
+    )
+    saved = report.build_report(root)
+    details = {row["id"]: presentation._details(root, row) for row in saved["cases"]}
+    for detail in details.values():
+        detail["request"]["case"]["expected_tool"] = "apply_bandpass_filter"
+    page = presentation._render_accuracy_breakdowns(saved, details)
+    assert "A08 / Action — apply bandpass filter" in page
+    assert "C01 / Clarification —" not in page and "N01 / No-call —" not in page
+    details[saved["cases"][0]["id"]]["request"]["case"]["expected_tool"] = (
+        "resample_data"
+    )
+    conflict = presentation._render_accuracy_breakdowns(saved, details)
+    assert "A08 / Action — metadata mismatch" in conflict
+    assert "A08 / Action — apply bandpass filter" not in conflict

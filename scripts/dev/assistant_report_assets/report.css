@@ -180,6 +180,24 @@ tbody tr:hover {
     margin-bottom: 40px;
 }
 
+.accuracy-breakdown {
+    margin-bottom: 40px;
+}
+
+.accuracy-breakdown .table-note {
+    margin-bottom: 16px;
+}
+
+.accuracy-breakdown th:not(:first-child), .accuracy-breakdown td:not(:first-child) {
+    min-width: 160px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.accuracy-breakdown th:first-child, .accuracy-breakdown td:first-child {
+    min-width: 190px;
+}
+
 .table {
     overflow-x: auto;
     border: 1px solid var(--line);
