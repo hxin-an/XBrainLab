@@ -2,121 +2,16 @@
 
 最後更新：`2026-09-22`
 
-## Active — 新研究方法的完整 DEV 起始基準
+## Active — 無待續施工
 
-### 2026-09-22 執行失敗後的修復／恢復
+2026-09-22 核准的完整 DEV initial 已 scope-complete：1,320 有效量測、獨立判分／capture
+核對、報告重建及實際 queue 接續已通過。結果與限制集中於
+[Current](../current.md#assistant-research-baseline)，執行契約由
+[研究規格](../validation/thesis_protocol.md) 擁有，不在本 plan 重複保存數值。
+本輪沒有 PR／push／merge，也不等於產品 native GUI 或正式 TEST 驗收。
 
-最新接續：d0 的同 source 補跑仍在執行，不重啟模型；接下來由一次性唯讀 observer
-等待原 PID／launch 結束，再以 `queue` 通知本會話。狀態目錄預定 D:/XBrainLabRuns/d0-bg-queue；
-真正喚醒後先核對該 status／原 d0 launches，再做下方完整 1,320 驗收，不因通知到達就算完成。
-凍結量測 source 維持 67dd8bf9；背景 transport 修正在 evaluation 分支，不混入量測。
-完成後執行已備妥的 D:/XBrainLabRuns/d0-validation/final1320-audit.py（獨立全量核對）及
-同凍結 checkout 的 report-only；/tmp/verify_final_dev_report.py 核對 raw 不變、CSV／JSON／links。
-原生 recovery 的 session ID 為 92354；live log：D:/XBrainLabRuns/d0-live-resume.log。
-
-使用者得知失敗後要求繼續做。d0@67dd8bf9 在約 1,030 秒後停止：Granite4 完成 264，
-Granite3.3 有效 62，第 63 題 DEV-A08-02-V2 決策逾時且 capture metadata 停在 prepared；
-共 326 有效、1 無效、993 未執行。cleanup certified；不等於模型逾時原因已查清。
-背景接續同時回報 active writer conflict；已完成 turn 不等於會話 writer 已釋放，
-先前 disposable session smoke 不涵蓋保持開啟的互動會話，不再宣稱該方式可可靠自動接續。
-
-- Outcome：釐清量測生命週期／取消／capture 收尾，僅修有證據的缺陷，維持原逾時與判分語意；
-  驗證後完成起始基準。保留 d0 與其 source/manifest/raw，不覆寫／改判／拼接不同 source。
-- Scope：直接相關研究 runner/runtime seam、回歸測試及背景交接的失敗邊界；
-  不調模型／prompt／RAG／timeout 追分，不動 UI/public tools，不關閉使用者會話／無關程序。
-- 步驟：先追真 trace/capture/runtime log 找根因；以真 runtime seam 的 RED→GREEN
-  覆蓋取消、終態檔案及下一題可執行；獨立 lifecycle/evidence review 後選擇同 source
-  安全 resume 或新 source 新 run。source 若有修改，旧 326 題只保留證據，不算入新版本分母。
-- 驗證：focused capture/condition/worker tests、實際出錯案例及跨題序列的工程實跑；
-  同版本 manifest、有效／無效分母及 report-only 核對。不得只用正常三題 smoke 冒充取消測試。
-- Background：不重試失敗的 `exec resume`，改用下方真 live-TUI 驗證的 `queue`；
-  one-shot／失敗不重送保持，不繞過 writer lock，不把排入成功當成接續完成。
-- Stop：沿用下方完整基準出口；需要改研究配置／超出機器預算才另請決策。
-  後續診斷確認：owned model process 未能及時合作取消時可被強制結束，capture finally
-  未執行而保持 prepared，原本 fail-closed 正確；沒有足夠證據改 runtime 或把該題判有效。
-  326 份原 result hashes 均一致，兩 condition/session cleanup certified，Windows 無殘留
-  Python 程序。Next：在 D:/XBrainLabCache/d0-67dd8bf9 還原相同 commit（只 source，
-  不複製環境／模型），核對全部 manifest/env/input/cache 後使用既有 `resume --replace-invalid`：
-  只選 1 題 attempt-2 + 993 未執行，原 326 不重送；四小時跨 resume 累計。
-  若再次同類失敗先診斷，不能把有效逾時／錯答任意重送。主 worktree 的修正僅為
-  writer 衝突的明確失敗狀態／指引與文件，不帶入原凍結量測 source。
-- 已以還原 checkout 重新 prepare，整份 manifest 與 d0 完全相等；原失敗題 attempt-2
-  已 recorded/cleanup_ok，恢復批次仍在執行。等待與驗收使用目前對話程序 session，
-  log 在 D:/XBrainLabRuns/d0-live-resume.log，原 d0-bg 失敗紀錄不改寫。
-  Writer 拒絕的新回歸 RED→GREEN，11 subprocess tests（含 Windows child）全過。
-- 使用者補充：只辨識 writer 拒絕並留在 turn 輪詢，尚未完成省 token／真正重新喚醒的要求。
-  本機 Codex 0.155.1 另有 `queue --thread <UUID> --message <TEXT>`；先前只測 `exec resume`
-  漏掉此候選。先以保持開啟的隔離 TUI 驗證 idle 時實際新 turn，再依真證據決定最小修理；
-  排入成功不等於接續已發生。不得注入無關會話、改鎖、啟動新 server 搶 writer、升級或改全域設定。
-  真 live-TUI 已通過：同一會話兩個 completed turns，第二回合由 queue 自動觸發，無按鍵／
-  resume／工具呼叫；證據 D:/XBrainLabRuns/d0-validation/codex-queue-live-smoke.json。
-  沿用既有 supervisor 改成 queue，12 subprocess tests（含 Windows child、可能已送出後
-  CLI 逾時不重送）通過；獨立 review 與本次實際完成通知接續仍待驗收。
-  原 d0 同 source 恢復繼續，不為測喚醒重啟實驗或更動量測 source。
-
-2026-09-22 使用者確認本輪做到完整 DEV 起始基準验收，不自動進入調優、VALID 或 TEST。
-納入已接受 main@94328196 的 Import 修正後固定新研究 source；舊 B0@926d90ea 的
-封存／分數／入口不追改。五模型各 264 題、共 1,320 次執行，作為各模型最多五套 DEV
-設定中的第一套；不另加一套額外基準，不自動加跑 RAG off。
-
-- 證據：目前 runner 僅容許固定 30 DEV 題／十條件；報告僅統計 completed latency；
-  舊規格的 B0/B1/B2、VALID 矩陣與 TEST B0 對照已被使用者新版研究方法取代。
-  重跑 B0 的 67 個 first prompts 存在匿名 subject reference／publication counter 差異。
-- Outcome：新版規格、完整 DEV fixtures、實際輸入／輸出、判分、含有效失敗的計時、
-  結果報告及有界背景交接可核對；低分不是失敗，缺題／無效量測不能算完整通過。
-- 權威：使用者 `碩論準備/研究方法草稿.md` 為已確認研究設計；本 repo
-  `docs/validation/thesis_protocol.md` 固化執行契約，本文件只保存施工順序與進度。
-- Scope：沿用 runner/scorer/report/Command/runtime owners；補完整 DEV selection、
-  明確 candidate identity、失敗與替代關係、同來源可重建報告及背景單次喚醒。
-  完成後由使用者決定下一輪 DEV 調優；VALID/TEST 只規劃，不讀題／不執行。
-- Non-goals：不調 prompt 追分、不改模型／生成參數／RAG 語料／檢索設定、不升級環境、
-  不下載模型、不接受新條款、不碰其他工作區 settings.json、不發布 PR 或 merge。
-  UI presentation／工具／確認／backend admission 維持；任何 public contract 變更另提決策。
-- 假設：沿用已人工確認的非 TEST workbook；若用戶新版題目有變，先取得新的非 TEST
-  匯出及 hash，不讀包含 TEST 的附件。Windows 原生 Python、Qt offscreen、共享 pinned
-  模型快取、單 GPU；不並行推論或重型 GPU 驗證。
-
-### 施工與驗證順序
-
-1. 保存此決策，建立 task branch、整合 main，校準新舊研究規格；歷史 B0 僅標為歷史。
-2. 重用現有 runner/case/condition/report：新增完整 DEV 首套 manifest/入口，
-   每 condition 重用模型；逐題初始狀態、oracle 與模型輸入分離、完整分母。
-3. 以真 trace 測試最終輸出判分與所有有效終態的 latency，無效量測不自動變成模型錯誤；
-   補跑保留原始失敗／replacement identity，不重送有效案例，不覆寫原 capture。
-4. 查清非任務 ID／counter 來源，以最小研究 fixture／projection 控制固定輸入；
-   保留 product admission freshness 與權限，不修改凍結 B0。先量測 before/after。
-5. 背景交接只包既有 runner：固定 run/thread/cwd、排他、完成或異常一次喚醒、
-   stdout/stderr/退出碼/接續指令保存；Codex 等待期間不輪詢。先短任務驗證成功、
-   失敗、重复觸發、喚醒失敗；恢復後僅接續本節授權範圍，不自行擴大實驗或無限重跑。
-6. Focused tests/lint、直接必要整合、獨立 scorer／lifecycle review；完整 DEV fixture
-   預檢與小規模五模型 smoke。固定 clean SHA 與配置後背景跑 1,320 次並驗收報告。
-
-- Complexity：重用現有 owners，不新增 readiness/control plane；新增入口／交接只是
-  腳本組合。若需新 authoritative state machine/receipt/publication owner，先另行 review。
-  小 commit 為回退單位；每 slice 紀錄實際 +/-/net 與直接證據，不動原封存。
-- Stop：完整 1,320 有效案例、判分/時間/捕捉核對、報告重建/恢復與独立 review 均通過，
-  才是本輪 scope-complete。背景等待可結束當前對話以省 token，但必須已驗證接續機制、
-  保存 next step；不是宣稱整輪完成。必要新決策／資源阻擋才向使用者回報。
-- 已整合 main@94328196；只有 plan 文件衝突，兩線有效證據已保留。研究規格已收斂新版。
-- 已重現／修復完整 DEV 前置缺口：EOG1 輔助通道、既有 notch60／bandpass1–40
-  原被通用 fixture 忽略。真 MNE／Commands 三例 RED→GREEN，66 fixtures／264 oracle
-  首輪預檢全過（D:/XBrainLabRuns/pf0），正式 source 凍結後重取帶身分的證據。
-- 研究投影與 fixture 獨立覆核無 blocker；報告納入有效終態 P50/P95，selected 原始
-  capture bytes 必須通過核對，不以原 audit flag 冒充完整；原無效 attempts 保留。
-- Background 十項真 subprocess tests 含 WSL launcher 結束後 Windows child 持續執行；
-  disposable Codex session 真喚醒亦通過，恰兩次呼叫、零 tools，未喚醒目前對話。
-  真 CLI 最後 idle 檢查與使用者新增 turn 間仍無跨 UI 原子鎖，不宣稱零競態。
-- 主線直接整合驗證 114 passed；四項 public fixtures 最初因路徑未傳入 Windows 而 skip，
-  改在 Windows 程序明確設既有 E 槽資料根目錄後 4 passed，未下載／升級。Strict docs
-  portal 42 pages／1,622 links 通過。仍保留 MNE／NumPy deprecation 與來源格式 warnings。
-- 原始啟動已完成：67dd8bf9 的 pf2（66 fixtures／264 oracles）、sm1（五模型各三題）及
-  d0-manifest-v2.json 相等 gate 均通過，d0 原次執行已失敗並保留；勿重做啟動或重跑工程 smoke。
-  最新恢復／queue 接續以本節頂端為準；sm1 不算正式 1,320，勿啟動第二候選、VALID／TEST。
-- 啟動前獨立覆核：f0421d87 的 66 fixtures／五模型 15 題及 actual capture bytes 均通過，
-  但 background 只鎖外部 manifest，run 重新計算後未在推論前比較。先以 RED→GREEN
-  增加 run 的 expected-manifest 完整相等 gate；不符時不得建立 output 或推論。
-  不改模型／評分／產品 UI。完成後重新凍結、取 pf2／sm1 同版本證據，外部 manifest
-  改為 d0-manifest-v2.json；舊 pf1／sm0／manifest 與 source archive 保留，不算正式結果。
+後續僅能討論下方未授權的 DEV 調優候選；不自動執行第二套、VALID／TEST，
+不重跑已完成的起始基準或歷史 Pilot。以下保留歷史及候選，不作新的施工授權。
 
 ## Accepted history — 產品品質線：Import 適配與內部整理
 
@@ -247,7 +142,7 @@ PR #143–#145 已進入此 main 基線；舊啟動器、RAG、split receipt 與
 
 ## Future — 完整 DEV 起始基準後的調優（尚未授權）
 
-前期 Pilot 的覆核／報告與還原補驗、共用修理後的新矩陣及正式 B0 封存均已完成。
+前期 Pilot／B0 與新版完整 DEV initial 均已完成。
 事實與限制見 [Current](../current.md#assistant-research-baseline)，
 報告入口／契約見研究規格第 5 節。舊分數與快照不追改。
 下一輪若經使用者確認，才依
@@ -642,11 +537,12 @@ publication 修理。舊 81-case 證據仍有原先 bounded 限制，不是本�
 Split WIP 已依使用者批准刪除，不能再列為待保留分支；主工作區本機設定、資料、
 必要歷史證據與共用環境保留。
 
-## 第二主線研究里程碑計畫（本輪授權 M1 核對、M2 與 M3）
+## 歷史 — 前期第二主線研究里程碑（M1 核對、M2 與 M3）
 
 2026-09-19 使用者確認先備妥完整計畫與里程碑，完成題庫及系統前置驗證，再進入 pilot。
-本節是唯一執行順序／進度來源；[Assistant 研究與實驗規格](../validation/thesis_protocol.md)
-擁有題數、模型、計分、實驗條件、預算與證據契約，不在此複製第二份研究規格。
+本節保存前期 Pilot 的歷史安排，不再派工；新版初始基準的結果見 Current，
+後續候選以上方 Future 為準。[Assistant 研究與實驗規格](../validation/thesis_protocol.md)
+擁有目前題數、模型、計分、實驗條件、預算與證據契約。
 
 - **起始問題與證據**：已累積方法決策，但逐項討論缺乏整體交付順序；研究規格第 7 節當時明列
   正式題庫、五模型 runner 與完整 outcome／報告接合未完成。舊 calibration 不是新實驗就緒證據。

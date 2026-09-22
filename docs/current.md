@@ -1,6 +1,6 @@
 # XBrainLab 目前狀態
 
-最後更新：`2026-09-21`
+最後更新：`2026-09-22`
 
 ## 一句話
 
@@ -65,6 +65,69 @@ DPI 或下游流程都經此次真人驗收。後續純文件收尾不改該產�
 - Repo-root `settings.json`是本機設定，不屬於release tree。
 
 ## Assistant research baseline
+
+### 完整 DEV 起始基準（2026-09-22）
+
+新研究方法的 initial candidate 已在 clean
+`67dd8bf9155124296b0d9863f2db9a74c103cbbc` 完成五模型 × 264 題，全部 RAG on、repeat 0。
+每模型 Action／Clarification／No-call 分母為 144／48／72；1,320 筆有效量測均有
+完整終態、cleanup、判分、輸入與輸出證據。這是每模型最多五套 DEV 設定中的第一套，
+不另計額外 baseline，也沒有執行 RAG off、VALID 或 TEST。下方歷史 B0 不改寫。
+
+| 模型 | First macro | Final macro | P50（秒） | P95（秒） | 最大值（秒） |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Granite 4.0 Micro | 0.6273 | 0.6273 | 1.518 | 4.299 | 8.324 |
+| Granite 3.3 2B | 0.5255 | 0.5301 | 2.151 | 5.196 | 10.839 |
+| Phi-4 Mini | 0.6597 | 0.6736 | 4.405 | 11.149 | 29.439 |
+| Llama 3.2 3B | 0.3171 | 0.3889 | 1.801 | 5.429 | 11.254 |
+| Gemma 3 4B | 0.4884 | 0.5231 | 4.843 | 16.225 | 50.954 |
+
+Macro 為三種決策的等權平均；不是一般逐題正確率或完整操作成功率。
+等待時間含 RAG、生成、解析／驗證及格式修復，計入所有有效成功／失敗決策終態，
+不含模型載入、暖機、工具執行或事後 scorer。載入／暖機及逐題成功／失敗組另列報告。
+此次 selected 的 1,320 個終態皆 completed，沒有有效決策逾時；不能因此宣稱無原始失敗。
+累計 charged active time 為 5,872.203 秒（約 97.9 分），包括原失敗與恢复成本，
+不含使用者／診斷間隔的等待，也不是純 GPU 運算時間。
+
+原次 Granite3.3 的 `DEV-A08-02-V2` 決策逾時，模型子程序被結束後 capture metadata
+仍為 prepared，正確判為無效量測。326 筆原有效結果保持未重跑，只以同 source／環境／
+題庫／配置補一筆 attempt-2，並繼續 993 個未執行案例；共保留 1,321 份 attempts。
+恢復成功不證明原 native 卡住根因已修好。報告 `dev_complete` 與
+`presentation-audit.selected_complete` 為 true；整體 presentation audit 仍列出唯一
+superseded capture 未完成，不抹除原始失敗或把無效量測判成模型正確。
+
+報告入口：`D:\XBrainLabRuns\d0\index.html`，內含可查詢逐題頁面、CSV、JSON、
+固定 inputs、raw／manifest／journal、歷次 reports 與 launches。
+`D:\XBrainLabRuns\d0-validation\final1320-audit.json` 獨立核對全部 selected 題目，
+1,436 組 generation capture 的實際 bytes／hash／trace、同一 frozen scorer 與 input-audit
+重播、完整分母及獨立 P50／P95 計算均一致。Scorer 重播證明紀錄一致，
+不取代盲測真人 oracle 審查；精確 decision 起算 clock 未另存，不能事後重建該 timestamp。
+預檢 pf2 的 66 fixtures／264 oracles 與 sm1 的 15 題五模型 smoke 不混入正式分母。
+
+同凍結 source 的 report-only 已重建完成：11,646 個 raw／input 項目保持不變，
+完整 report JSON 與 CSV bytes 一致；1,320 筆 CSV、1,323 個 HTML 頁面及 8,169 個
+本機連結通過。證據在 `d0-validation/report-rebuild-verification.json`；
+原成功報告 `reports/20260922-061343-96c61481` 與重建的
+`reports/20260922-074043-c9a89d4b` 均保留，根目錄入口指向最新重建報告。
+
+source snapshot 保存在 `D:\XBrainLabRuns\d0-validation\source-67dd8bf9.zip`，SHA-256
+`8f7235d1b1cf05518f3e5af93f3e79bc5cdc2422e109e0dd65af1cd50747fbbd`；
+環境／模型／語料身分由 retained manifest 保存，共享 native Windows 環境與受控模型 cache
+未複製或升級。還原需同一 Git source／環境與本機 cache，不宣稱全離線安裝包。
+
+背景喚醒原本使用 `exec resume`，因開啟的互動會話持有 writer 而失敗。
+現改為單次 `codex queue`：12 項 subprocess 回歸、獨立 review、真 live-TUI smoke，
+以及本次實驗完成後實際接回原會話均有證據。`d0-bg` 的原失敗保留，新的
+`d0-bg-queue` 只觀察既有 recovery，不重新啟動推論。Queue receipt 只代表排入；
+`d0-validation/queue-receiving-turn.json` 才核對本次相同會話的新 turn 與精確接續訊息。
+本機 Codex 0.155.1 的開啟 TUI 路徑已觀察成功，不保證關閉、重啟或所有客戶端皆可喚醒。
+
+這仍是單次 DEV initial 系統比較，不是正式排名、穩定尾延遲或產品 native GUI 驗收。
+Gemma 使用已核准 NF4，其餘 BF16，不能當成同精度的純模型比較。
+缺資訊澄清仍是明顯弱點：Final 正確數為 Granite4／Granite3.3 各 1/48、Llama 2/48、
+Phi／Gemma 各 15/48；
+決策正確也不代表 Command 已執行完成，產品 outcome 必須分開閱讀。
+後续調優／VALID／TEST 仍需使用者決策，不因基準完成而自行追加。
 
 ### 正式 B0 — 共通修理後的完整 Pilot
 
