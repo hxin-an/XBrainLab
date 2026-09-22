@@ -1,6 +1,6 @@
 # XBrainLab Assistant 研究與實驗規格
 
-最後更新：`2026-09-22`
+最後更新：`2026-09-23`
 
 ## 文件狀態與接續方式
 
@@ -37,7 +37,10 @@ Gemma 使用 NF4 4-bit 權重／BF16 compute，不 double quantization、不 CPU
 共同生成設定：greedy、`do_sample=False`、每次最多 512 新 token、context budget 8,192。
 實際 structured generation 不啟用 temperature/top_p 抽樣。決策期限 120 秒，含格式重試；
 起始設定最多一次格式修復。起始 seed=0，不代表跨環境或重跑逐位元一致。
-正式三次 repeats 的 seed／排程須在 VALID 前固定，不能把 repeats 當三份獨立題庫。
+2026-09-23 使用者確認：VALID 每套入選系統獨立執行三次，三次皆固定 seed=0，
+維持 greedy 與相同系統／題庫設定；分別保存結果，觀察執行波動，不刻意引入抽樣差異。
+同 seed 不保證逐位元一致，三次 repeats 也不是三份獨立題庫。執行排程仍須在 VALID 前固定。
+這是已接受的設計，現有 DEV initial runner 仍只支援 repeat 0，不代表三次 repeats 已實作或執行。
 
 RAG 固定 all-MiniLM-L6-v2 snapshot、最多三範例、相似度門檻 0.7；語料／embedding 保存 hash。
 DEV 不調 RAG 語料與檢索設定；degraded retrieval 不算 RAG on。題庫／oracle 不進 RAG 或 few-shot。
