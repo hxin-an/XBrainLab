@@ -1,12 +1,12 @@
-"""Detach one approved experiment and attempt one exact-session Codex continuation.
+"""Detach one approved experiment and queue one exact-session Codex continuation.
 
 WSL/POSIX supervisor only. The experiment runner owns its timeout and cleanup.
 Arm explicitly; a matching completed turn and no later active turn are also
-required. CLI resume requires an available writer (an unloaded session); turn
-completion does not release a still-open interactive conversation's writer.
-Keep that existing conversation active and use bounded process waits instead.
-Rollout lifecycle is an observed format, not a locking API; even an unloaded
-session can acquire another writer between the final check and resume.
+required. Codex queue delivers to the existing session without taking its writer.
+Queue acceptance is not proof that the receiving TUI started or finished a turn;
+the continuation must verify the saved experiment and actual session events.
+Rollout lifecycle is an observed format, not a locking API; another user turn can
+start between the final idle check and queue submission.
 Crashes, changed pins, ambiguous lifecycle and failed wakes require manual review.
 """
 
@@ -251,13 +251,11 @@ def worker(state: Path, expected_digest: str | None = None) -> int:
             config["codex"],
             "--cd",
             config["cwd"],
-            "exec",
-            "resume",
+            "queue",
+            "--thread",
             config["session_id"],
+            "--message",
             prompt,
-            "--json",
-            "-o",
-            str(state / "continuation.md"),
         ]
         _new_json(
             state / "manual-recovery.json",
@@ -265,11 +263,12 @@ def worker(state: Path, expected_digest: str | None = None) -> int:
                 "cwd": config["cwd"],
                 "argv": command,
                 "instruction": (
-                    "Inspect status, experiment logs and wake intent first. CLI resume "
-                    "requires an available writer (an unloaded session); a completed "
-                    "turn does not release an open conversation's writer. For an open "
-                    "session, continue in the existing conversation using bounded "
-                    "process waits. Never retry automatically or bypass writer locks."
+                    "Inspect status, experiment logs, wake intent and queue stdout first. "
+                    "A queued receipt is not a completed continuation; verify actual "
+                    "session events and results in the existing conversation. Never "
+                    "retry blindly or automatically: even a failed or interrupted CLI "
+                    "may have queued a message. Do not fall back to exec resume or "
+                    "bypass writer locks."
                 ),
             },
         )
@@ -322,7 +321,7 @@ def worker(state: Path, expected_digest: str | None = None) -> int:
         )
         _status(state, "wake_started", **details)
         with (
-            (state / "wake.jsonl").open("xb") as output,
+            (state / "wake.stdout.log").open("xb") as output,
             (state / "wake.stderr.log").open("xb") as errors,
         ):
             result = subprocess.run(  # noqa: S603 - exact saved session, no permission overrides
@@ -335,25 +334,9 @@ def worker(state: Path, expected_digest: str | None = None) -> int:
                 check=False,
             )
         details["wake_returncode"] = result.returncode
-        wake_status = "wake_completed" if result.returncode == 0 else "wake_failed"
-        if result.returncode != 0:
-            # Classify the observed CLI refusal, not the session's current lock state.
-            # Raw stderr stays on disk; status never embeds arbitrary process output.
-            with (state / "wake.stderr.log").open("rb") as errors:
-                diagnostic = errors.read(64 * 1024).decode("utf-8", errors="replace")
-            if (
-                f"thread {config['session_id']} already has an active writer"
-                in diagnostic
-            ):
-                wake_status = "wake_refused_active_writer"
-                details["instruction"] = (
-                    "Continue in the existing conversation using bounded process "
-                    "waits and inspect the saved experiment results. Do not retry "
-                    "CLI resume or bypass the writer lock."
-                )
         _status(
             state,
-            wake_status,
+            "wake_queued" if result.returncode == 0 else "wake_failed",
             **details,
         )
         return 0 if result.returncode == 0 else 1

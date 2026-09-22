@@ -122,13 +122,17 @@ class BackgroundTests(unittest.TestCase):
         time.sleep(0.15)
         self.assertFalse((self.root / "wake.json").exists())
         self.event("task_complete", "later")
-        self.wait_status("wake_completed")
+        self.wait_status("wake_queued")
         process.wait(8)
         wake = json.loads((self.root / "wake.json").read_text())
         self.assertEqual(wake["cwd"], str(self.cwd))
         self.assertEqual(
-            wake["argv"][:5], ["--cd", str(self.cwd), "exec", "resume", self.session]
+            wake["argv"][:6],
+            ["--cd", str(self.cwd), "queue", "--thread", self.session, "--message"],
         )
+        self.assertEqual(len(wake["argv"]), 7)
+        self.assertIn("Background handoff evidence", wake["argv"][6])
+        self.assertNotIn("resume", wake["argv"])
         self.assertNotIn("--last", wake["argv"])
         self.assertIn("experiment", (self.state / "experiment.log").read_text())
         with self.assertRaises(FileExistsError):
@@ -142,12 +146,16 @@ class BackgroundTests(unittest.TestCase):
         process = background.launch(self.config(7), self.state)
         self.addCleanup(process.wait, 8)
         background.arm(self.state)
-        status = self.wait_status("wake_completed")
+        status = self.wait_status("wake_queued")
         self.assertEqual(status["experiment_returncode"], 7)
         self.assertEqual(process.wait(8), 0)
 
     def test_failed_wake_preserves_manual_recovery_and_intent(self):
-        self.codex.write_text("#!/usr/bin/env python3\nraise SystemExit(9)\n")
+        self.codex.write_text(
+            "#!/usr/bin/env python3\nimport pathlib\n"
+            "with pathlib.Path(__file__).with_name('attempts').open('a') as stream: stream.write('attempt\\n')\n"
+            "raise SystemExit(9)\n"
+        )
         self.event("task_complete", self.turn)
         process = background.launch(self.config(), self.state)
         self.addCleanup(process.wait, 8)
@@ -157,30 +165,36 @@ class BackgroundTests(unittest.TestCase):
         self.assertTrue((self.state / "wake-intent.json").is_file())
         self.assertTrue((self.state / "manual-recovery.json").is_file())
         self.assertNotEqual(process.wait(8), 0)
+        self.assertEqual(background.worker(self.state), 1)
+        self.assertEqual((self.root / "attempts").read_text(), "attempt\n")
 
-    def test_active_writer_refusal_is_distinct_and_never_retried(self):
+    def test_queue_receipt_is_not_completed_continuation_and_submits_once(self):
         self.codex.write_text(
             "#!/usr/bin/env python3\n"
             "import pathlib,sys\n"
             "with pathlib.Path(__file__).with_name('attempts').open('a') as stream: stream.write('attempt\\n')\n"
-            f"sys.stderr.write('Error: thread/resume: thread/resume failed: thread {self.session} already has an active writer (code -32600)\\n')\n"
-            "raise SystemExit(1)\n"
+            "print('Queued message fixture-submission')\n"
         )
         self.event("task_complete", self.turn)
         process = background.launch(self.config(), self.state)
         self.addCleanup(process.wait, 8)
         background.arm(self.state)
-        status = self.wait_status("wake_refused_active_writer")
+        status = self.wait_status("wake_queued")
         self.assertEqual(status["experiment_returncode"], 0)
-        self.assertEqual(status["wake_returncode"], 1)
-        self.assertIn("existing conversation", status["instruction"])
-        self.assertEqual(process.wait(8), 1)
+        self.assertEqual(status["wake_returncode"], 0)
+        self.assertEqual(process.wait(8), 0)
         self.assertEqual((self.root / "attempts").read_text(), "attempt\n")
         self.assertFalse((self.state / "continuation.md").exists())
-        self.assertEqual((self.state / "wake.jsonl").stat().st_size, 0)
+        self.assertEqual(
+            (self.state / "wake.stdout.log").read_text(),
+            "Queued message fixture-submission\n",
+        )
+        self.assertFalse((self.state / "wake.jsonl").exists())
         self.assertTrue((self.state / "wake-intent.json").exists())
         manual = json.loads((self.state / "manual-recovery.json").read_text())
-        self.assertIn("available writer", manual["instruction"])
+        self.assertIn(
+            "queued receipt is not a completed continuation", manual["instruction"]
+        )
         self.assertIn("existing conversation", manual["instruction"])
         self.assertEqual(background.worker(self.state), 1)
         self.assertEqual((self.root / "attempts").read_text(), "attempt\n")
@@ -194,6 +208,26 @@ class BackgroundTests(unittest.TestCase):
         self.assertEqual(
             (self.state / "worker-started.json").read_text(), '{"pid":12345}'
         )
+
+    def test_queue_timeout_after_possible_acceptance_is_never_retried(self):
+        self.codex.write_text(
+            "#!/usr/bin/env python3\nimport pathlib,time\n"
+            "with pathlib.Path(__file__).with_name('attempts').open('a') as stream: stream.write('attempt\\n')\n"
+            "print('Queued message uncertain-receipt', flush=True)\n"
+            "time.sleep(5)\n"
+        )
+        self.event("task_complete", self.turn)
+        config = self.config()
+        config["wake_timeout_seconds"] = 0.2
+        process = background.launch(config, self.state)
+        self.addCleanup(process.wait, 8)
+        background.arm(self.state)
+        self.wait_status("manual_recovery")
+        self.assertEqual(process.wait(8), 1)
+        self.assertTrue((self.state / "wake-intent.json").exists())
+        self.assertIn("uncertain-receipt", (self.state / "wake.stdout.log").read_text())
+        self.assertEqual(background.worker(self.state), 1)
+        self.assertEqual((self.root / "attempts").read_text(), "attempt\n")
 
     def test_aborted_captured_turn_never_wakes(self):
         self.event("turn_aborted", self.turn)
@@ -258,7 +292,7 @@ class BackgroundTests(unittest.TestCase):
         self.wait_status("waiting_for_release")
         self.assertFalse((self.root / "wake.json").exists())
         background.arm(self.state)
-        self.wait_status("wake_completed")
+        self.wait_status("wake_queued")
 
     @unittest.skipUnless(
         os.environ.get("XBRAINLAB_TEST_WINDOWS_PYTHON"),
@@ -292,7 +326,7 @@ class BackgroundTests(unittest.TestCase):
             "native-Windows-complete", (self.state / "experiment.log").read_text()
         )
         background.arm(self.state)
-        status = self.wait_status("wake_completed")
+        status = self.wait_status("wake_queued")
         self.assertEqual(status["experiment_returncode"], 0)
 
     def test_rotated_rollout_and_unknown_lifecycle_fail_closed(self):

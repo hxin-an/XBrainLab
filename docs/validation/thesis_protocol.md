@@ -145,15 +145,22 @@ Windows PowerShell 入口（本輪已批准的非 TEST 輸入）：
 
 ### 背景執行與單次喚醒
 
-背景程序執行既有 runner、保存 log／終態。外部 CLI 恢復需要會話 writer 可取得；
-captured turn 完成不代表仍開啟的互動對話釋放 writer。d0 的實跑已遇到 active writer
-拒絕；獨立已卸載會話的 smoke 不足以宣稱能喚醒使用者保持開啟的同一對話。
-目前開啟的對話由原對話使用有界程序等待完成並驗收，不再依賴外部 `exec resume`。
-只有已確認 writer 可取得的會話才可使用這個 best-effort wrapper，固定 run、source、
-manifest、會話 ID 與 cwd，不用 `--last`；captured turn 完成、無 active turn 且 armed
-只是必要條件，不是喚醒成功的充分條件，也不保證沒有其他 writer 搶先取得。
-完成／異常均保存結果；喚醒失敗或是否已發送不明時，不自動重試，保留手動接續方式。
-`wake_refused_active_writer` 明示回到既有對話接續；不關閉使用者對話或繞過鎖。
+背景程序執行既有 runner、保存 log／終態，完成或失敗後只以
+`codex queue --thread <exact UUID> --message <trusted handoff>` 排入一次接續訊息。
+不另開 `exec resume` 取得 writer、不使用 `--last`，也不切換會話／改模型／繞過鎖。
+原 d0 的 `exec resume` 因互動會話仍持有 writer 而失敗；只測已卸載會話的 smoke
+漏掉此情境。該失敗證據保留，不能以更清楚的錯誤提示冒稱修好喚醒。
+
+在本機 Codex 0.155.1，保持原 TUI 開啟、首回合完成後不再按鍵，真 `queue` 已自動
+觸發同一會話的下一次 task_started／task_complete。Queue 仍需已開啟且能消費訊息的
+宿主；不宣稱關閉 TUI、重啟或其他客戶端也保證自動執行。
+CLI 回傳成功只記為 `wake_queued`，原始 receipt 在 `wake.stdout.log`；不代表接續完成。
+真正接續與驗收以同一會話的事件及結果為準，不只看 queue exit code。
+
+固定 run、source、manifest、會話 ID 與 cwd；captured turn 完成、無 active turn 且 armed
+才送出。最後 idle 檢查與使用者開啟新 turn 間仍可能競態，由既有 queue 接收，不能宣稱
+沒有競態。完成／異常均保存結果；失敗、逾時或是否已送出不明時不自動重試，
+保留手動檢查方式，避免指令其實已排入卻再次發送。不得退回 `exec resume`。
 喚醒後核對可信計畫／版本／結果，只接續 Now 批准工作；raw model output 不是施工指令，
 不擴大權限、不解封 TEST、不自動調優。不建立產品控制平面；休眠／關機不保證作業持續。
 

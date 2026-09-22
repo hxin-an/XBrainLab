@@ -6,6 +6,14 @@
 
 ### 2026-09-22 執行失敗後的修復／恢復
 
+最新接續：d0 的同 source 補跑仍在執行，不重啟模型；接下來由一次性唯讀 observer
+等待原 PID／launch 結束，再以 `queue` 通知本會話。狀態目錄預定 D:/XBrainLabRuns/d0-bg-queue；
+真正喚醒後先核對該 status／原 d0 launches，再做下方完整 1,320 驗收，不因通知到達就算完成。
+凍結量測 source 維持 67dd8bf9；背景 transport 修正在 evaluation 分支，不混入量測。
+完成後執行已備妥的 D:/XBrainLabRuns/d0-validation/final1320-audit.py（獨立全量核對）及
+同凍結 checkout 的 report-only；/tmp/verify_final_dev_report.py 核對 raw 不變、CSV／JSON／links。
+原生 recovery 的 session ID 為 92354；live log：D:/XBrainLabRuns/d0-live-resume.log。
+
 使用者得知失敗後要求繼續做。d0@67dd8bf9 在約 1,030 秒後停止：Granite4 完成 264，
 Granite3.3 有效 62，第 63 題 DEV-A08-02-V2 決策逾時且 capture metadata 停在 prepared；
 共 326 有效、1 無效、993 未執行。cleanup certified；不等於模型逾時原因已查清。
@@ -21,8 +29,8 @@ Granite3.3 有效 62，第 63 題 DEV-A08-02-V2 決策逾時且 capture metadata
   安全 resume 或新 source 新 run。source 若有修改，旧 326 題只保留證據，不算入新版本分母。
 - 驗證：focused capture/condition/worker tests、實際出錯案例及跨題序列的工程實跑；
   同版本 manifest、有效／無效分母及 report-only 核對。不得只用正常三題 smoke 冒充取消測試。
-- Background：停止重試失敗的同會話 CLI 喚醒，不繞過 writer lock；查現有可用完成通知，
-  若無可靠自動接續則本輪由現有對話接續有界等待與驗收，明示限制，不再交付未驗證承諾。
+- Background：不重試失敗的 `exec resume`，改用下方真 live-TUI 驗證的 `queue`；
+  one-shot／失敗不重送保持，不繞過 writer lock，不把排入成功當成接續完成。
 - Stop：沿用下方完整基準出口；需要改研究配置／超出機器預算才另請決策。
   後續診斷確認：owned model process 未能及時合作取消時可被強制結束，capture finally
   未執行而保持 prepared，原本 fail-closed 正確；沒有足夠證據改 runtime 或把該題判有效。
@@ -36,6 +44,15 @@ Granite3.3 有效 62，第 63 題 DEV-A08-02-V2 決策逾時且 capture metadata
   已 recorded/cleanup_ok，恢復批次仍在執行。等待與驗收使用目前對話程序 session，
   log 在 D:/XBrainLabRuns/d0-live-resume.log，原 d0-bg 失敗紀錄不改寫。
   Writer 拒絕的新回歸 RED→GREEN，11 subprocess tests（含 Windows child）全過。
+- 使用者補充：只辨識 writer 拒絕並留在 turn 輪詢，尚未完成省 token／真正重新喚醒的要求。
+  本機 Codex 0.155.1 另有 `queue --thread <UUID> --message <TEXT>`；先前只測 `exec resume`
+  漏掉此候選。先以保持開啟的隔離 TUI 驗證 idle 時實際新 turn，再依真證據決定最小修理；
+  排入成功不等於接續已發生。不得注入無關會話、改鎖、啟動新 server 搶 writer、升級或改全域設定。
+  真 live-TUI 已通過：同一會話兩個 completed turns，第二回合由 queue 自動觸發，無按鍵／
+  resume／工具呼叫；證據 D:/XBrainLabRuns/d0-validation/codex-queue-live-smoke.json。
+  沿用既有 supervisor 改成 queue，12 subprocess tests（含 Windows child、可能已送出後
+  CLI 逾時不重送）通過；獨立 review 與本次實際完成通知接續仍待驗收。
+  原 d0 同 source 恢復繼續，不為測喚醒重啟實驗或更動量測 source。
 
 2026-09-22 使用者確認本輪做到完整 DEV 起始基準验收，不自動進入調優、VALID 或 TEST。
 納入已接受 main@94328196 的 Import 修正後固定新研究 source；舊 B0@926d90ea 的
@@ -92,13 +109,9 @@ Granite3.3 有效 62，第 63 題 DEV-A08-02-V2 決策逾時且 capture metadata
 - 主線直接整合驗證 114 passed；四項 public fixtures 最初因路徑未傳入 Windows 而 skip，
   改在 Windows 程序明確設既有 E 槽資料根目錄後 4 passed，未下載／升級。Strict docs
   portal 42 pages／1,622 links 通過。仍保留 MNE／NumPy deprecation 與來源格式 warnings。
-- Next：完成啟動前 manifest 相等 gate 與 focused tests，固定 clean source；在同 source 重跑
-  `assistant_dev_preflight`（D:/XBrainLabRuns/pf2）、五模型工程 smoke（D:/XBrainLabRuns/sm1）。
-  通過後 prepare D:/XBrainLabRuns/d0-manifest-v2.json，以 `--expected-manifest` 綁定它，
-  單次背景啟動 D:/XBrainLabRuns/d0；
-  handoff state D:/XBrainLabRuns/d0-bg。先核對起跑與 arm，再結束回合以省 token。
-  接續先讀該 state/status.json 與 d0/index.html/launches，再驗 raw/manifest/journal/reports，
-  勿將工程 smoke 算入正式 1,320，勿啟動第二候選、VALID／TEST。
+- 原始啟動已完成：67dd8bf9 的 pf2（66 fixtures／264 oracles）、sm1（五模型各三題）及
+  d0-manifest-v2.json 相等 gate 均通過，d0 原次執行已失敗並保留；勿重做啟動或重跑工程 smoke。
+  最新恢復／queue 接續以本節頂端為準；sm1 不算正式 1,320，勿啟動第二候選、VALID／TEST。
 - 啟動前獨立覆核：f0421d87 的 66 fixtures／五模型 15 題及 actual capture bytes 均通過，
   但 background 只鎖外部 manifest，run 重新計算後未在推論前比較。先以 RED→GREEN
   增加 run 的 expected-manifest 完整相等 gate；不符時不得建立 output 或推論。
