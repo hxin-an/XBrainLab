@@ -71,6 +71,18 @@ DPI 或下游流程都經此次真人驗收。後續純文件收尾不改該產�
 Windows focused 100 tests、實際題庫的題目／答案保留核對及獨立 review 通過。
 正式來源及版本見[研究規格](validation/thesis_protocol.md)；指定舊題庫時仍原樣複製，不隱式刪欄。
 
+### Linux 工作站環境預檢（2026-09-22）
+
+依使用者選定的 `hxin@140.113.193.134`（Ubuntu 24.04、RTX 4090 24 GB），在 NAS home
+`/mnt/home/2025/hxin/XBrainLab-experiments/workstation-check` 重建獨立環境，舊 `XBrainLab` 不動。
+`source/` 為 clean `9e3e1067cc1e4e97aebf7dad93633b7320244d91`，Python 3.12.3、Poetry 2.3.4
+依該版 lock 安裝 main／llm／test；pip check、CUDA 13.0 tensor operation、Qt offscreen widget
+及 66 個 synthetic fixtures／264 題 DEV oracle 格式預檢皆通過，cleanup 全數完成。
+證據為該目錄的 `setup.log`、`environment-freeze.txt`、`runtime-check.json`、
+`preflight-001/preflight.json`；工作根目錄 `README.md` 保存用途與重建指令。
+這不是正式 v1／DEV／VALID 量測；沒有複製或下載模型，也未驗證模型載入／量化、RAG 或完整
+Assistant 推論。不是歷史 Windows d0 的等同重現或桌面 GUI 驗收。GPU 空閒不代表已預約。
+
 ### 完整 DEV 起始基準（2026-09-22）
 
 新研究方法的 initial candidate 已在 clean
