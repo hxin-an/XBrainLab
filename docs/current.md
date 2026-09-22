@@ -102,7 +102,7 @@ Macro 為三種決策的等權平均；不是一般逐題正確率或完整操�
 superseded capture 未完成，不抹除原始失敗或把無效量測判成模型正確。
 
 報告入口：`D:\XBrainLabRuns\d0\index.html`，提供可查詢逐題頁面；目錄保留 CSV、JSON、
-固定 inputs、raw／manifest／journal、歷次 reports 與 launches。
+固定 inputs、raw／manifest／journal、保留的 reports 與完整 launches。
 報告介面提供模型比較、模型／題型／正誤交集篩選、搜尋及分頁；逐題呈現預期與
 既存 observed 欄位，產品執行證據與決策分數分開。入口只呈現實驗資訊與四張表：
 模型總表、題型正確率、題組正確率、逐題結果（模型／題號／題型／正誤）；
@@ -140,6 +140,11 @@ CSS／JavaScript 在 `scripts/dev/assistant_report_assets/` 以可讀原始碼�
 原成功報告 `reports/20260922-061343-96c61481` 與重建的
 `reports/20260922-074043-c9a89d4b` 均保留；後續介面版另存新 reports，
 不可把新 renderer 身分當成原始量測 source。
+經使用者授權，7 個已被取代的純 UI 中間報告已刪除；`reports/` 現保留原失敗
+`20260922-050603-5db90de2`、上述原成功／同源重建及現行分組版，共 4 版。
+這是衍生呈現清理，不刪原始量測、失敗 attempts、inputs、launches 或來源封存。
+舊 pf0／pf1 的 132 個合成 fixture 目錄亦已清除，預檢 JSON／logs 保留；
+其歷史 fixture 路徑不再可用。pf2 及 sm0／sm1 的獨有量測證據保持完整。
 
 source snapshot 保存在 `D:\XBrainLabRuns\d0-validation\source-67dd8bf9.zip`，SHA-256
 `8f7235d1b1cf05518f3e5af93f3e79bc5cdc2422e109e0dd65af1cd50747fbbd`；
