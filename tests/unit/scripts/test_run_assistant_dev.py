@@ -226,7 +226,12 @@ def test_failed_entry_attempt_still_builds_partial_report_and_navigation(
         entry.run_attempt({"source": {"head": "a" * 40}}, {}, output, resume=False) == 1
     )
     assert reports == [output / "raw"]
-    assert "preserved failure" in (output / "index.html").read_text()
+    page = (output / "index.html").read_text(encoding="utf-8")
+    assert "preserved failure" in page
+    assert page.index("Results incomplete") < page.index("<details>")
+    assert page.index("preserved failure") > page.index(
+        "<summary>Technical details</summary>"
+    )
     assert len(list((output / "launches").glob("*-end.json"))) == 1
 
 

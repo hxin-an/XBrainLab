@@ -106,6 +106,8 @@ superseded capture 未完成，不抹除原始失敗或把無效量測判成模�
 報告介面提供模型比較、模型／題型／正誤交集篩選、搜尋及分頁；逐題呈現預期與
 既存 observed 欄位，產品執行證據與決策分數分開。詳細統計／來源可展開，歷史失敗
 警告仍可見。這是離線呈現更新，不重新判分或推論；正式研究主張不因此增加。
+首頁與內頁以實驗目錄名稱、DEV 階段及模型／RAG 條件辨識同一實驗，不用「Latest report」
+代稱；技術說明預設收合，頁面不列 SHA，CSV／JSON／audit 的原始指紋與驗證仍保留。
 程式分工為 bounded evidence readers、統計呈現、逐題／CSV 輸出和組裝入口；
 CSS／JavaScript 在 `scripts/dev/assistant_report_assets/` 以可讀原始碼維護，產出時內嵌，
 不依賴 CDN。既有 presentation audit 另記錄兩個資源的 SHA-256。

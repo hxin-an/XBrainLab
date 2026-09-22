@@ -579,7 +579,7 @@ def test_report_overview_and_filter_data_preserve_all_case_outcomes(tmp_path):
     ]
     assert all(r["data-condition"] == "phi4-rag-on" for r in parsed.rows)
     assert 'id="evidence"' in page and 'id="no-cases"' in page
-    assert "Selected schedule incomplete" in page
+    assert "Selected results incomplete" in page
     assert "Evidence presentation incomplete" in page
     assert "2 / 3" in page
     with (output / "results.csv").open(encoding="utf-8-sig", newline="") as source:
@@ -689,7 +689,7 @@ def test_dev_report_rebuild_preserves_protocol_and_visible_denominators(tmp_path
         path: path.read_bytes() for path in root.rglob("*") if path.is_file()
     }
     readable = (first / "README.md").read_text(encoding="utf-8")
-    assert "Assistant DEV initial baseline" in readable
+    assert "RUN | DEV initial baseline" in readable
     assert "valid decision timeouts" in readable
     assert "p95 (s)" in readable and "Latency denominator" in readable
     assert "DEV Pilot only" not in readable

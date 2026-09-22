@@ -54,6 +54,35 @@ def render_page(title: str, content: str) -> str:
     )
 
 
+def experiment_title(directory: Path, *, dev: bool) -> str:
+    """Identify the experiment folder, not a report rebuild timestamp."""
+    stage = "DEV initial baseline" if dev else "DEV Pilot"
+    return f"{directory.name.upper()} | {stage}"
+
+
+def experiment_conditions(report: dict, *, dev: bool) -> str:
+    count = len(report.get("conditions", {}))
+    unit = "model" if dev else "model condition"
+    models = f"{count} {unit}{'' if count == 1 else 's'} · " if count else ""
+    return models + ("RAG on" if dev else "RAG conditions shown below")
+
+
+def render_evidence_notice(issues: dict) -> str:
+    """Keep warnings visible while the full audit stays in technical details."""
+    previous = sum(key.startswith("superseded:") for key in issues)
+    selected = len(issues) - previous
+    messages = []
+    if selected:
+        messages.append(f"{selected} selected result(s) have incomplete evidence.")
+    if previous:
+        messages.append(
+            f"{previous} earlier failed attempt(s) excluded from scores; details retained."
+        )
+    if not messages:
+        return ""
+    return '<p class="notice">' + " ".join(messages) + "</p>"
+
+
 def _html_table(headers: list[str], rows: list[list]) -> str:
     """Escape all table content at the rendering boundary."""
     headings = "".join(f'<th scope="col">{_escape(label)}</th>' for label in headers)
@@ -78,7 +107,7 @@ def render_overview(report: dict) -> str:
     cards = [
         (f"{valid:,} / {planned:,}", "Valid / planned measurements"),
         (str(len(conditions)), "Model conditions"),
-        (str(len(report.get("superseded_cases", []))), "Preserved superseded attempts"),
+        (str(len(report.get("superseded_cases", []))), "Replaced attempts"),
     ]
     metrics = "".join(
         f'<div class="metric"><strong>{_escape(value)}</strong><span>{label}</span></div>'
@@ -402,8 +431,6 @@ def _case_page(root: Path, output: Path, row: dict, detail: dict) -> None:
                     {
                         key: row.get(key)
                         for key in (
-                            "request_sha256",
-                            "result_sha256",
                             "timings",
                             "issues",
                         )
@@ -505,7 +532,7 @@ def _render_detailed_results(
         else "DEV Pilot only. No formal model ranking, Validation/Test conclusion, or stable P95."
     )
     paragraph(
-        f"Frozen source: {report['frozen_source']['head']}. Partial: {report['partial']}. "
+        f"Partial: {report['partial']}. "
         f"Selected schedule complete: {report['complete_selected_schedule']}."
     )
     if dev:
@@ -766,9 +793,6 @@ def _render_detailed_results(
     )
     for limitation in report["limitations"]:
         paragraph(limitation)
-    paragraph(
-        f"Manifest SHA256: {report['manifest_sha256']}. Journal SHA256: {report['journal_sha256']}."
-    )
     return body, md
 
 
@@ -924,28 +948,27 @@ def write_presentation(report: dict, output: Path) -> None:
         }
     )
     detail_count = len(details) + len(previous_details)
-    title = "Assistant DEV initial baseline" if dev else "Assistant Pilot evidence"
+    directory = root.parent if dev and root.name == "raw" else root
+    title = experiment_title(directory, dev=dev)
     md, body = (
         ["# " + title, ""],
         [
-            '<header class="hero"><span class="eyebrow">XBrainLab / Research report</span>',
-            f"<h1>{title}</h1>",
-            '<p class="muted">Compare results, inspect individual decisions, and trace every measurement to its evidence.</p></header>',
+            '<header class="hero"><span class="eyebrow">XBrainLab / Experiment report</span>',
+            f"<h1>{_escape(title)}</h1>",
+            f'<p class="muted">{_escape(experiment_conditions(report, dev=dev))}</p></header>',
             '<nav class="report-nav" aria-label="Report sections"><a href="#overview">Overview</a>'
-            '<a href="#cases">Explore cases</a><a href="#evidence">Methods &amp; evidence</a>'
+            '<a href="#cases">Explore cases</a><a href="#evidence">Technical details</a>'
             '<a href="results.csv">Download CSV</a></nav>',
             '<p class="badge">'
             + (
-                "Selected schedule complete"
+                "Selected results complete"
                 if report["complete_selected_schedule"]
-                else "Selected schedule incomplete"
+                else "Selected results incomplete"
             )
             + "</p>",
-            f'<p class="notice">Evidence presentation {"incomplete" if issues else "verified"}: '
-            f"{len(issues)} of {detail_count} attempts have detail issues. "
-            "Historical failed attempts remain preserved; measurement validity is not answer correctness.</p>",
+            render_evidence_notice(issues),
             render_overview(report),
-            '<details id="evidence"><summary>Methods, detailed results &amp; source evidence</summary>',
+            '<details id="evidence"><summary>Technical details</summary>',
         ],
     )
 
