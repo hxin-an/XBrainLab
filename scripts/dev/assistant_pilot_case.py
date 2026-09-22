@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import threading
 import time
 from contextlib import suppress
@@ -20,12 +21,28 @@ from typing import Any
 
 
 def validate_case_request(payload: dict) -> None:
+    from scripts.dev.assistant_experiment_config import is_experiment_protocol
+    from scripts.dev.assistant_pilot_bank import DEV_EXPERIMENT
     from scripts.dev.assistant_pilot_models import research_model_spec
 
     case, fixture = payload.get("case", {}), payload.get("fixture", {})
+    experiment = payload.get("experiment")
+    current = is_experiment_protocol(experiment)
+    split = experiment["stage"] if current else "DEV"
+    if experiment is not None and not current and experiment != DEV_EXPERIMENT:
+        raise ValueError("Invalid frozen experiment policy")
+    if current and (
+        payload.get("split") != split
+        or type(payload.get("candidate_index")) is not int
+        or not 1 <= payload["candidate_index"] <= 5
+        or not isinstance(payload.get("source_head"), str)
+        or not re.fullmatch(r"[0-9a-f]{40}", payload["source_head"])
+        or payload.get("rag_enabled") is not True
+    ):
+        raise ValueError("Invalid frozen experiment candidate identity")
     if (
-        case.get("split") != "DEV"
-        or not str(case.get("case_id", "")).startswith("DEV-")
+        case.get("split") != split
+        or not str(case.get("case_id", "")).startswith(split + "-")
         or not isinstance(case.get("input"), str)
         or not case["input"].strip()
         or len(case["input"]) > 8192
@@ -36,10 +53,29 @@ def validate_case_request(payload: dict) -> None:
         or type(payload.get("seed")) is not int
         or payload["seed"] != 0
         or type(payload.get("repeat")) is not int
-        or payload["repeat"] != 0
+        or payload["repeat"] not in (experiment["repeats"] if current else [0])
     ):
         raise ValueError("Invalid or unapproved Pilot case/condition")
     research_model_spec(payload.get("model_id", ""))
+
+
+def experiment_result_identity(payload: dict) -> dict:
+    """Copy already-admitted frozen identity into new results; legacy bytes stay distinct."""
+    from scripts.dev.assistant_experiment_config import is_experiment_protocol
+
+    if not is_experiment_protocol(payload.get("experiment")):
+        return {}
+    return {
+        key: payload[key]
+        for key in (
+            "experiment",
+            "candidate_index",
+            "split",
+            "repeat",
+            "seed",
+            "source_head",
+        )
+    }
 
 
 def verify_prompt_captures(
@@ -277,10 +313,34 @@ def submit_case_input(panel, text: str, wait_until) -> tuple[float, int]:
     """Fill the real composer before waiting for its input-dependent Send gate."""
     panel.input_field.setPlainText(text)
     wait_until(lambda: panel.send_btn.isEnabled() and panel.input_field.isEnabled(), 15)
-    started = time.perf_counter()
     started_ns = time.perf_counter_ns()
     panel.send_btn.click()
-    return started, started_ns
+    return started_ns / 1e9, started_ns
+
+
+def record_decision_clock(
+    result: dict, start_ns: int, end_ns: int | None, turn_end_ns: int
+) -> None:
+    """Record the existing observed decision boundary on one monotonic clock.
+
+    An absent boundary remains an explicitly unobserved elapsed interval, never
+    a fabricated terminal or a configured timeout. Scoring establishes validity.
+    """
+    effective_end = turn_end_ns if end_ns is None else end_ns
+    if any(
+        type(value) is not int for value in (start_ns, effective_end, turn_end_ns)
+    ) or not (0 <= start_ns <= effective_end <= turn_end_ns):
+        raise ValueError("Invalid decision clock interval")
+    result["decision_clock"] = {
+        "clock": "perf_counter_ns",
+        "start_ns": start_ns,
+        "end_ns": effective_end,
+        "turn_end_ns": turn_end_ns,
+        "terminal_observed": end_ns is not None,
+    }
+    result["decision_seconds"] = (effective_end - start_ns) / 1e9
+    result["case_turn_seconds"] = (turn_end_ns - start_ns) / 1e9
+    result["case_operation_seconds"] = (turn_end_ns - effective_end) / 1e9
 
 
 def run_case(payload: dict, output: Path) -> dict[str, Any]:
@@ -346,6 +406,7 @@ def run_case(payload: dict, output: Path) -> dict[str, Any]:
     case = payload["case"]
     result = {
         "schema": "xbrainlab.assistant_pilot_case.v1",
+        **experiment_result_identity(payload),
         "case_id": case["case_id"],
         "model_id": payload["model_id"],
         "rag_enabled": payload["rag_enabled"],
@@ -590,14 +651,13 @@ def run_case(payload: dict, output: Path) -> dict[str, Any]:
         finally:
             poll.stop()
         app.processEvents()
-        result["decision_seconds"] = (
-            decision_done_at or time.perf_counter()
-        ) - before_decision
-        result["case_turn_seconds"] = time.perf_counter() - before_decision
-        result["case_operation_seconds"] = max(
-            0.0, result["case_turn_seconds"] - result["decision_seconds"]
-        )
         result["trace"] = trace.snapshot()
+        record_decision_clock(
+            result,
+            before_decision_ns,
+            decision_boundary_ns(result["trace"]),
+            time.perf_counter_ns(),
+        )
         result["ui"] = driver.snapshot()
         result["runtime_evidence"] = collect_runtime_evidence(
             service, result["trace"], fixture, window
@@ -613,7 +673,12 @@ def run_case(payload: dict, output: Path) -> dict[str, Any]:
             output / "prompts", result["trace"]["generations"], warmup_count=1
         )
         result["scores"] = score_case_decisions(
-            case, result["trace"], decision_timed_out=result["decision_timed_out"]
+            case,
+            result["trace"],
+            decision_timed_out=result["decision_timed_out"],
+            max_format_recovery_attempts=payload.get("experiment", {}).get(
+                "max_format_recovery_attempts"
+            ),
         )
         result["input_audit"] = audit_initial_input(
             case,

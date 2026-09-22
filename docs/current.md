@@ -85,6 +85,11 @@ Assistant 推論。不是歷史 Windows d0 的等同重現或桌面 GUI 驗收�
 
 ### 完整 DEV 起始基準（2026-09-22）
 
+2026-09-23 封存工程的歷史保護核對：在原 clean `67dd8bf9` 與原 Windows runtime 離線
+重播1,320筆，判分／輸入／1,436 captures相符，原326筆未重跑，原失敗及一次替代保留。
+新證據為 `D:\XBrainLabRuns\d0-validation\package-preparation-frozen-replay.json`；
+這不是使用新 scorer 回改歷史分數，也沒有重新推論。
+
 新研究方法的 initial candidate 已在 clean
 `67dd8bf9155124296b0d9863f2db9a74c103cbbc` 完成五模型 × 264 題，全部 RAG on、repeat 0。
 每模型 Action／Clarification／No-call 分母為 144／48／72；1,320 筆有效量測均有

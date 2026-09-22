@@ -20,9 +20,10 @@ import time
 from dataclasses import asdict
 from datetime import UTC, datetime
 from importlib import metadata
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from uuid import uuid4
 
+from scripts.dev import assistant_experiment_config as experiment_config
 from scripts.dev.assistant_pilot_bank import (
     DEV_EXPERIMENT,
     build_dev_selection,
@@ -47,13 +48,7 @@ ROOT = Path(__file__).resolve().parents[2]
 BUDGET_SECONDS = 14_400
 CHILD_TIMEOUT_SECONDS = 450
 CONDITION_TIMEOUT_SECONDS = 1_800
-_MODELS = {
-    "granite4": "ibm-granite/granite-4.0-micro",
-    "granite33": "ibm-granite/granite-3.3-2b-instruct",
-    "phi4": "microsoft/Phi-4-mini-instruct",
-    "llama32": "meta-llama/Llama-3.2-3B-Instruct",
-    "gemma3": "google/gemma-3-4b-it",
-}
+_MODELS = experiment_config.MODELS
 CONDITIONS = {
     f"{alias}-rag-{label}": (model, enabled)
     for alias, model in _MODELS.items()
@@ -90,9 +85,12 @@ def condition_batches(jobs: list[dict]) -> list[dict]:
     """Group the frozen matrix by runtime condition, preserving case order."""
     batches: dict[str, list[dict]] = {}
     for job in jobs:
-        batches.setdefault(job["condition"], []).append(job)
+        batches.setdefault(experiment_config.job_condition_identity(job), []).append(
+            job
+        )
     return [
-        {"condition": condition, "jobs": batch} for condition, batch in batches.items()
+        {"condition": batch[0]["condition"], "jobs": batch}
+        for batch in batches.values()
     ]
 
 
@@ -246,8 +244,8 @@ def consumed_seconds(records: list[dict]) -> float:
 def _assert_identity(manifest: dict) -> None:
     if (
         manifest.get("experiment") == DEV_EXPERIMENT
-        and os.environ.get("QT_QPA_PLATFORM") != DEV_EXPERIMENT["qt_platform"]
-    ):
+        or experiment_config.is_experiment_protocol(manifest.get("experiment"))
+    ) and os.environ.get("QT_QPA_PLATFORM") != DEV_EXPERIMENT["qt_platform"]:
         raise ValueError("DEV Qt platform must match the frozen offscreen identity")
     source = source_identity()
     if (
@@ -256,6 +254,9 @@ def _assert_identity(manifest: dict) -> None:
         or environment_identity() != manifest["environment"]
     ):
         raise ValueError("Pilot requires the exact clean source/environment identity")
+    if experiment_config.is_experiment_protocol(manifest.get("experiment")):
+        for item in manifest["runtime_config"]["sources"].values():
+            _verify_candidate_source(Path(item["root"]), item["head"])
 
 
 def _python_executable() -> str:
@@ -352,12 +353,17 @@ def _run_condition_child(
         request.with_suffix(".stdout.log").open("xb") as stdout,
         request.with_suffix(".stderr.log").open("xb") as stderr,
     ):
+        payload = _json(request)
+        source_root = payload.get("source_root")
+        environment = _child_environment()
+        if source_root is not None:
+            environment["PYTHONPATH"] = source_root
         process = subprocess.Popen(  # noqa: S603 - fixed child module, shell disabled
             _condition_command(request, destination, cases_root),
-            cwd=ROOT,
+            cwd=source_root or ROOT,
             stdout=stdout,
             stderr=stderr,
-            env=_child_environment(),
+            env=environment,
             creationflags=_child_creation_flags(),
         )
         try:
@@ -438,7 +444,11 @@ def execute(
     started_at: float | None = None,
     replace_invalid: bool = False,
 ) -> int:
-    if manifest.get("experiment") == DEV_EXPERIMENT:
+    if manifest.get(
+        "experiment"
+    ) == DEV_EXPERIMENT or experiment_config.is_experiment_protocol(
+        manifest.get("experiment")
+    ):
         from filelock import FileLock
 
         lock_path = output.absolute().with_name(f".{output.name}.dev.lock")
@@ -471,7 +481,29 @@ def _execute(
     replace_invalid: bool = False,
 ) -> int:
     started = time.monotonic() if started_at is None else started_at
-    dev_initial = manifest.get("experiment") == DEV_EXPERIMENT
+    configured = experiment_config.is_experiment_protocol(manifest.get("experiment"))
+    if configured:
+        selection = experiment_config.build_selection(bank, manifest["config"])
+        expected_jobs = experiment_config.build_jobs(selection, manifest["config"])
+        decisions = {case["case_id"]: case["decision"] for case in bank["cases"]}
+        for job in expected_jobs:
+            job["source_root"] = manifest["runtime_config"]["sources"][
+                job["condition"].removesuffix("-rag-on")
+            ]["root"]
+            job["decision"] = decisions[job["case_id"]]
+        if (
+            manifest["experiment"]
+            != experiment_config.experiment_identity(manifest["config"])
+            or manifest["budget_seconds"] != manifest["config"]["budget_seconds"]
+            or manifest["selection"] != selection
+            or manifest["jobs"] != expected_jobs
+        ):
+            raise ValueError(
+                "Experiment manifest differs from the derived config identity"
+            )
+    dev_initial = manifest.get("experiment") == DEV_EXPERIMENT or configured
+    runtime_config = manifest.get("runtime_config", manifest["config"])
+    budget_seconds = manifest["budget_seconds"] if configured else BUDGET_SECONDS
     if ("experiment" in manifest and not dev_initial) or (
         replace_invalid and (not dev_initial or not resume)
     ):
@@ -537,7 +569,7 @@ def _execute(
         600 + CHILD_TIMEOUT_SECONDS if dev_initial else CONDITION_TIMEOUT_SECONDS
     )
     try:
-        if consumed + time.monotonic() - started + minimum_reservation > BUDGET_SECONDS:
+        if consumed + time.monotonic() - started + minimum_reservation > budget_seconds:
             journal("budget_exhausted")
             return 2
         rag_root = None
@@ -549,7 +581,7 @@ def _execute(
             else:
                 storage = prepare_rag_cache(
                     output / "rag",
-                    embedding_cache=Path(manifest["config"]["embedding_cache"]),
+                    embedding_cache=Path(runtime_config["embedding_cache"]),
                     expected_embedding_sha256=manifest["embedding_sha256"],
                 )
                 _write_new(preparation, storage)
@@ -558,16 +590,20 @@ def _execute(
                 "rag_storage_prepared", embedding_sha256=storage["embedding_sha256"]
             )
         cases = {
-            case["case_id"]: case for case in bank["cases"] if case["split"] == "DEV"
+            case["case_id"]: case
+            for case in bank["cases"]
+            if case["split"]
+            == (manifest["experiment"]["stage"] if configured else "DEV")
         }
         batches = condition_batches(pending_jobs)
         for batch in batches:
             condition = batch["condition"]
+            condition_key = experiment_config.job_condition_identity(batch["jobs"][0])
             if not dev_initial and condition in starts:
                 continue
             if (
                 consumed + time.monotonic() - started + minimum_reservation
-                > BUDGET_SECONDS
+                > budget_seconds
             ):
                 journal("budget_exhausted")
                 outcome = 2
@@ -575,18 +611,19 @@ def _execute(
             _assert_identity(manifest)
             condition_attempt = 1 + sum(
                 record["event"] == "condition_start"
-                and record.get("condition", record["id"]) == condition
+                and record.get("condition_key", record.get("condition", record["id"]))
+                == condition_key
                 for record in records
                 if "id" in record
             )
             condition_artifact = (
-                condition
+                condition_key
                 if condition_attempt == 1
-                else f"{condition}__attempt-{condition_attempt}"
+                else f"{condition_key}__attempt-{condition_attempt}"
             )
             condition_timeout = (
                 min(
-                    BUDGET_SECONDS - consumed - (time.monotonic() - started),
+                    budget_seconds - consumed - (time.monotonic() - started),
                     600 + len(batch["jobs"]) * CHILD_TIMEOUT_SECONDS,
                 )
                 if dev_initial
@@ -600,14 +637,21 @@ def _execute(
                     "case": case,
                     "fixture": bank["fixtures"][case["fixture_id"]],
                     "model_id": model,
-                    "model_cache": manifest["config"]["model_caches"][model],
+                    "model_cache": runtime_config["model_caches"][model],
                     "rag_enabled": rag_enabled,
                     "rag_cache": rag_root if rag_enabled else None,
                     "seed": 0,
-                    "repeat": 0,
+                    "repeat": job.get("repeat", 0),
                 }
                 if dev_initial:
-                    payload["experiment"] = dict(DEV_EXPERIMENT)
+                    payload["experiment"] = dict(manifest["experiment"])
+                if configured:
+                    payload.update(
+                        {
+                            key: job[key]
+                            for key in ("candidate_index", "split", "source_head")
+                        }
+                    )
                 artifact = job.get("artifact_id", job["id"])
                 case_request = output / "cases" / f"{artifact}.request.json"
                 if dev_initial and case_request.exists():
@@ -635,9 +679,22 @@ def _execute(
                 ],
             }
             if dev_initial:
-                condition_payload["experiment"] = dict(DEV_EXPERIMENT)
+                condition_payload["experiment"] = dict(manifest["experiment"])
                 condition_payload["artifact_id"] = condition_artifact
                 condition_payload["case_start_budget_seconds"] = condition_timeout - 60
+            if configured:
+                condition_payload.update(
+                    {
+                        key: batch["jobs"][0][key]
+                        for key in (
+                            "candidate_index",
+                            "split",
+                            "repeat",
+                            "source_head",
+                            "source_root",
+                        )
+                    }
+                )
             destination = output / "conditions" / condition_artifact
             request = destination.with_suffix(".request.json")
             _write_new(request, condition_payload)
@@ -645,6 +702,7 @@ def _execute(
                 "condition_start",
                 id=condition_artifact,
                 condition=condition,
+                **({"condition_key": condition_key} if configured else {}),
                 case_ids=[item["id"] for item in jobs],
                 timeout_seconds=condition_timeout,
                 request_sha256=hashlib.sha256(request.read_bytes()).hexdigest(),
@@ -674,6 +732,7 @@ def _execute(
                 "condition_end",
                 id=condition_artifact,
                 condition=condition,
+                **({"condition_key": condition_key} if configured else {}),
                 status=status,
                 returncode=code,
                 hard_timeout=timed_out,
@@ -765,6 +824,215 @@ def _model_configuration(model: str, cache: str) -> dict:
     return {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in files}
 
 
+def _verify_candidate_source(root: Path, head: str) -> None:
+    """Check the candidate's own checkout; old d0 cannot run a new protocol."""
+    if not root.is_dir():
+        raise ValueError("Candidate source directory is missing")
+
+    def git(*arguments):
+        return subprocess.check_output(  # noqa: S603 - fixed read-only Git arguments
+            [_executable("git"), "-C", str(root), *arguments], text=True, timeout=15
+        ).strip()
+
+    if git("rev-parse", "HEAD") != head or git(
+        "status", "--porcelain", "--untracked-files=normal"
+    ):
+        raise ValueError("Candidate requires the exact clean source identity")
+    helper = root / "scripts" / "dev" / "assistant_experiment_config.py"
+    if not helper.is_file() or experiment_config.PROTOCOL not in helper.read_text(
+        encoding="utf-8"
+    ):
+        raise ValueError("Candidate source does not support the experiment protocol")
+    lock = root / "poetry.lock"
+    if not lock.is_file() or lock.read_bytes() != (ROOT / "poetry.lock").read_bytes():
+        raise ValueError(
+            "Candidate dependency lock differs from the coordinator runtime"
+        )
+
+    for relative in (
+        "scripts/dev/assistant_pilot_models.py",
+        "XBrainLab/llm/core/model_catalog.py",
+        "XBrainLab/llm/rag/config.py",
+        "XBrainLab/llm/rag/data/gold_set.json",
+    ):
+        candidate = root / relative
+        if (
+            not candidate.is_file()
+            or hashlib.sha256(candidate.read_bytes()).digest()
+            != hashlib.sha256((ROOT / relative).read_bytes()).digest()
+        ):
+            raise ValueError(
+                "Candidate pinned model/generation/RAG policy differs: " + relative
+            )
+
+
+def _verify_resource_inventory(path: Path, runtime: dict) -> tuple[dict, str]:
+    """Hash every selected pinned snapshot payload before any model child starts."""
+    content = path.read_bytes()
+    inventory = json.loads(content)
+    if (
+        not isinstance(inventory, dict)
+        or set(inventory) != {"resources"}
+        or not isinstance(inventory["resources"], list)
+    ):
+        raise ValueError("Invalid resource inventory")
+    resources = {}
+    for resource in inventory["resources"]:
+        if (
+            not isinstance(resource, dict)
+            or set(resource) != {"repo", "revision", "files"}
+            or not isinstance(resource["repo"], str)
+            or resource["repo"] in resources
+        ):
+            raise ValueError("Invalid or duplicate resource inventory entry")
+        repo = resource["repo"]
+        expected = (
+            RAGConfig.EMBEDDING_REVISION
+            if repo == RAGConfig.EMBEDDING_MODEL
+            else research_model_spec(repo).revision
+        )
+        if resource["revision"] != expected:
+            raise ValueError("Pinned resource revision differs")
+        resources[repo] = resource
+    caches = {
+        **runtime["model_caches"],
+        RAGConfig.EMBEDDING_MODEL: runtime["embedding_cache"],
+    }
+    for repo, cache in caches.items():
+        resource = resources.get(repo)
+        if (
+            resource is None
+            or not isinstance(resource["files"], dict)
+            or not 1 <= len(resource["files"]) <= 4096
+        ):
+            raise ValueError("Missing pinned resource inventory")
+        snapshot = (
+            Path(cache)
+            / ("models--" + repo.replace("/", "--"))
+            / "snapshots"
+            / resource["revision"]
+        )
+        files = resource["files"]
+        for name, identity in files.items():
+            relative = PurePosixPath(name)
+            if (
+                not name
+                or relative.is_absolute()
+                or ".." in relative.parts
+                or "\\" in name
+                or ":" in name
+                or str(relative) != name
+                or not isinstance(identity, dict)
+                or set(identity) != {"bytes", "sha256"}
+                or type(identity["bytes"]) is not int
+                or identity["bytes"] < 0
+                or not isinstance(identity["sha256"], str)
+                or not re.fullmatch(r"[0-9a-f]{64}", identity["sha256"])
+            ):
+                raise ValueError("Invalid resource file identity")
+            target = snapshot / name
+            if not target.is_file() or target.stat().st_size != identity["bytes"]:
+                raise ValueError("Missing or changed resource payload: " + name)
+            with target.open("rb") as stream:
+                if (
+                    hashlib.file_digest(stream, "sha256").hexdigest()
+                    != identity["sha256"]
+                ):
+                    raise ValueError("Changed resource payload digest: " + name)
+        actual = {
+            item.relative_to(snapshot).as_posix()
+            for item in snapshot.rglob("*")
+            if item.is_file()
+        }
+        if actual != set(files):
+            raise ValueError("Pinned resource file inventory differs")
+    return inventory, hashlib.sha256(content).hexdigest()
+
+
+def _prepare_experiment_manifest(
+    bank_path: Path, config_path: Path, config: dict, *, config_base: Path | None = None
+) -> tuple[dict, dict]:
+    experiment = experiment_config.experiment_identity(config)
+    if os.environ.get("QT_QPA_PLATFORM") != experiment["qt_platform"]:
+        raise ValueError("Experiment Qt platform must be offscreen before preparation")
+    base = (
+        config_path.resolve().parent if config_base is None else config_base.resolve()
+    )
+
+    def resolved(value):
+        path = Path(value)
+        return (path if path.is_absolute() else base / path).resolve(strict=True)
+
+    runtime = {
+        "model_caches": {},
+        "sources": {},
+        "embedding_cache": str(resolved(config["embedding_cache"])),
+        "resource_inventory": str(resolved(config["resource_inventory"])),
+    }
+    for model in config["models"]:
+        root = resolved(model["source"]["root"])
+        _verify_candidate_source(root, model["source"]["head"])
+        cache = resolved(model["model_cache"])
+        if not cache.is_dir():
+            raise ValueError("Model cache must be an existing directory")
+        runtime["sources"][model["alias"]] = {
+            "head": model["source"]["head"],
+            "root": str(root),
+        }
+        runtime["model_caches"][_MODELS[model["alias"]]] = str(cache)
+    inventory, inventory_sha256 = _verify_resource_inventory(
+        Path(runtime["resource_inventory"]), runtime
+    )
+    embedding = Path(runtime["embedding_cache"])
+    if (
+        not RAGConfig.embedding_cache_ready(embedding)
+        or not RAGConfig.gold_set_integrity_ok()
+    ):
+        raise ValueError("Pinned RAG resources are missing or changed")
+    embedding_sha256, _ = _identity(embedding)
+    bank = load_bank(bank_path)
+    selection = experiment_config.build_selection(bank, config)
+    cases = {case["case_id"]: case for case in bank["cases"]}
+    jobs = experiment_config.build_jobs(selection, config)
+    for job in jobs:
+        job["source_root"] = runtime["sources"][
+            job["condition"].removesuffix("-rag-on")
+        ]["root"]
+        job["decision"] = cases[job["case_id"]]["decision"]
+    models = {
+        model: {
+            "spec": asdict(research_model_spec(model)),
+            "settings": asdict(make_launch_spec(model, cache).settings),
+            "template_kwargs": research_template_kwargs(model),
+            "configuration_sha256": _model_configuration(model, cache),
+        }
+        for model, cache in sorted(runtime["model_caches"].items())
+    }
+    manifest = {
+        "schema": SCHEMA,
+        "source": source_identity(),
+        "environment": environment_identity(),
+        "experiment": experiment,
+        "bank_sha256": bank["source"]["sha256"],
+        "selection": selection,
+        "config": config,
+        "config_base": str(base),
+        "runtime_config": runtime,
+        "models": models,
+        "jobs": jobs,
+        "resource_inventory": inventory,
+        "resource_inventory_sha256": inventory_sha256,
+        "corpus_sha256": RAGConfig.GOLD_SET_SHA256,
+        "embedding_sha256": embedding_sha256,
+        "seed": 0,
+        "repeat": 0,
+        "budget_seconds": config["budget_seconds"],
+        "child_timeout_seconds": CHILD_TIMEOUT_SECONDS,
+        "condition_timeout_seconds": config["budget_seconds"],
+    }
+    return json.loads(json.dumps(manifest, allow_nan=False)), bank
+
+
 def prepare_manifest(
     bank_path: Path,
     selection_path: Path | None,
@@ -772,7 +1040,15 @@ def prepare_manifest(
     conditions: list[str],
     *,
     dev_initial: bool = False,
+    config_base: Path | None = None,
 ) -> tuple[dict, dict]:
+    config = _json(config_path)
+    if config.get("schema") == experiment_config.CONFIG_SCHEMA:
+        if selection_path is not None:
+            raise ValueError("Experiment selection must derive from the single config")
+        return _prepare_experiment_manifest(
+            bank_path, config_path, config, config_base=config_base
+        )
     if (
         dev_initial
         and os.environ.get("QT_QPA_PLATFORM") != DEV_EXPERIMENT["qt_platform"]
@@ -791,7 +1067,6 @@ def prepare_manifest(
         )
     if dev_initial and any(not CONDITIONS[condition][1] for condition in conditions):
         raise ValueError("Initial DEV only permits RAG on")
-    config = _json(config_path)
     selected_models = {CONDITIONS[condition][0] for condition in conditions}
     if set(config) - {"model_caches", "embedding_cache"}:
         raise ValueError("Unknown run configuration fields")

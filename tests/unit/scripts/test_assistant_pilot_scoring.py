@@ -418,3 +418,56 @@ def test_timeout_before_generation_is_measured_failure_only_with_real_terminal()
     result = score_case_decisions(case(), trace, decision_timed_out=True)
     assert result["measurement_valid"] is True
     assert result["final_decision_correct"] is False
+
+
+@pytest.mark.parametrize("limit", [0, 1, 2])
+def test_frozen_repair_policy_controls_measured_generation_budget(limit):
+    trace = complete_trace(["invalid"] * limit + [response()])
+    result = score_case_decisions(case(), trace, max_format_recovery_attempts=limit)
+    assert result["measurement_valid"] is True
+    assert result["final_decision_correct"] is True
+    assert result["scorer_schema"] == "xbrainlab.assistant_decision_scores.v2"
+    assert result["max_format_recovery_attempts"] == limit
+    excess = score_case_decisions(
+        case(),
+        complete_trace(["invalid"] * (limit + 1) + [response()]),
+        max_format_recovery_attempts=limit,
+    )
+    assert excess["measurement_valid"] is False
+    assert excess["final_decision_correct"] is None
+    assert "repair_budget_exceeded" in excess["measurement_issues"]
+
+
+@pytest.mark.parametrize("limit", [-1, True, 1.5, "1"])
+def test_frozen_repair_policy_rejects_invalid_limits(limit):
+    with pytest.raises(ValueError, match="recovery"):
+        score_case_decisions(
+            case(), complete_trace([response()]), max_format_recovery_attempts=limit
+        )
+
+
+def test_new_score_explains_parameter_mismatch_without_changing_legacy_decision():
+    trace = complete_trace([response(parameters={"rate": 64})])
+    legacy = score_case_decisions(case(), trace)
+    current = score_case_decisions(case(), trace, max_format_recovery_attempts=1)
+    assert "scorer_schema" not in legacy
+    assert (
+        current["first_decision_correct"] == legacy["first_decision_correct"] is False
+    )
+    attempt = current["attempt_decisions"][0]
+    assert attempt["reason"] == legacy["attempt_decisions"][0]["reason"]
+    assert attempt["explanation"]["expected"]["parameters"] == {"rate": 128}
+    assert attempt["explanation"]["observed"]["parameters"] == {"rate": 64}
+    assert attempt["explanation"]["mismatches"] == ["parameters"]
+
+
+def test_new_score_explains_parameter_schema_even_when_numbers_compare_equal():
+    result = score_case_decisions(
+        case(),
+        complete_trace([response(parameters={"rate": 128.0})]),
+        max_format_recovery_attempts=1,
+    )
+    assert result["final_decision_correct"] is False
+    assert result["attempt_decisions"][0]["explanation"]["mismatches"] == [
+        "parameter_schema"
+    ]

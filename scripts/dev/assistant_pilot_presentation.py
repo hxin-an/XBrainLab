@@ -19,6 +19,11 @@ from collections import Counter
 from pathlib import Path
 from urllib.parse import quote
 
+from scripts.dev.assistant_experiment_config import (
+    is_experiment_protocol,
+    job_condition_identity,
+)
+
 _LIMIT = 32 * 1024**2
 # Load fixed presentation assets once. The audit hashes these exact loaded bytes,
 # while HTML embeds their text so copied reports do not need an asset directory.
@@ -54,14 +59,26 @@ def render_page(title: str, content: str) -> str:
     )
 
 
-def experiment_title(directory: Path, *, dev: bool) -> str:
+def experiment_title(
+    directory: Path, *, dev: bool, experiment: dict | None = None
+) -> str:
     """Identify the experiment folder, not a report rebuild timestamp."""
-    stage = "DEV initial baseline" if dev else "DEV Pilot"
+    if is_experiment_protocol(experiment):
+        purpose = (
+            "engineering smoke"
+            if experiment["purpose"] == "engineering-smoke"
+            else "experiment"
+        )
+        stage = experiment["stage"] + " " + purpose
+    else:
+        stage = "DEV initial baseline" if dev else "DEV Pilot"
     return f"{directory.name.upper()} | {stage}"
 
 
 def experiment_conditions(report: dict, *, dev: bool) -> str:
     count = len(report.get("conditions", {}))
+    if is_experiment_protocol(report.get("experiment")):
+        count = len({row["condition"] for row in report["cases"]})
     unit = "model" if dev else "model condition"
     models = f"{count} {unit}{'' if count == 1 else 's'} · " if count else ""
     questions = len({row["case_id"] for row in report.get("cases", [])})
@@ -171,7 +188,9 @@ def _render_accuracy_breakdowns(report: dict, details: dict) -> str:
             if match and expected_category[match[1][0]] == row["decision"]
             else "Unclassified"
         )
-        groups.setdefault(group, {}).setdefault(row["condition"], []).append(row)
+        groups.setdefault(group, {}).setdefault(
+            row.get("report_condition", row["condition"]), []
+        ).append(row)
         # Only Action has an expected operational tool. A fixture's available
         # tool must not be used to rename Clarification or No-call questions.
         tool = details[row["id"]]["request"].get("case", {}).get("expected_tool")
@@ -249,7 +268,8 @@ def _capture(root: Path, row: dict, result: dict, capture: dict) -> dict:
         else row["condition"]
     )
     if not re.fullmatch(
-        re.escape(row["condition"]) + r"(?:__attempt-[1-9][0-9]*)?", condition_artifact
+        re.escape(job_condition_identity(row)) + r"(?:__attempt-[1-9][0-9]*)?",
+        condition_artifact,
     ):
         raise ValueError("Invalid condition artifact identity")
     base = (
@@ -556,7 +576,8 @@ def _render_detailed_markdown(
     report: dict, details: dict, issues: dict, detail_count: int
 ) -> list[str]:
     """Retain technical statistics in README, separate from the simple HTML view."""
-    dev = report["schema"] == "xbrainlab.assistant_dev_report.v1"
+    current = is_experiment_protocol(report.get("experiment"))
+    dev = report["schema"] == "xbrainlab.assistant_dev_report.v1" or current
     md = []
 
     def paragraph(value: str) -> None:
@@ -582,7 +603,9 @@ def _render_detailed_markdown(
         md.append("")
 
     paragraph(
-        "DEV initial baseline. No formal model ranking or Validation/Test conclusion. P95 is descriptive."
+        "Frozen experiment; each selected candidate and repeat is reported separately. No formal model ranking."
+        if current
+        else "DEV initial baseline. No formal model ranking or Validation/Test conclusion. P95 is descriptive."
         if dev
         else "DEV Pilot only. No formal model ranking, Validation/Test conclusion, or stable P95."
     )
@@ -590,7 +613,7 @@ def _render_detailed_markdown(
         f"Partial: {report['partial']}. "
         f"Selected schedule complete: {report['complete_selected_schedule']}."
     )
-    if dev:
+    if dev and not current:
         paragraph(
             f"Protocol: {report['experiment']['protocol']}. "
             f"Full DEV initial baseline complete (264 cases x 5 models): {report['dev_complete']}. "
@@ -705,7 +728,10 @@ def _render_detailed_markdown(
         )
         reasons = Counter()
         for row in report["cases"]:
-            if row["condition"] != name or row.get("final") is not False:
+            if (
+                row.get("report_condition", row["condition"]) != name
+                or row.get("final") is not False
+            ):
                 continue
             attempts = (
                 details[row["id"]]["result"]
@@ -915,9 +941,9 @@ def _write_case_index(
             if row["decision_valid"] and isinstance(row.get("final"), bool):
                 outcome = "correct" if row["final"] else "incorrect"
             body.append(
-                f'<tr data-condition="{_escape(row["condition"])}" data-category="{_escape(row["decision"])}" data-outcome="{outcome}"'
+                f'<tr data-condition="{_escape(row.get("report_condition", row["condition"]))}" data-category="{_escape(row["decision"])}" data-outcome="{outcome}"'
                 f' data-search="{_escape(row["id"] + " " + request)}">'
-                f"<td>{_escape(row['condition'])}</td>"
+                f"<td>{_escape(row.get('report_condition', row['condition']))}</td>"
                 f'<td><a href="{quote(link)}">{_escape(row["case_id"])}</a></td>'
                 + "".join(
                     f"<td>{_escape(value)}</td>"
@@ -955,7 +981,11 @@ def write_presentation(report: dict, output: Path) -> None:
     """Write a local report and case index without changing aggregate report JSON."""
     root = Path(report["run"])
     (output / "cases").mkdir()
-    dev = report["schema"] == "xbrainlab.assistant_dev_report.v1"
+    dev = report[
+        "schema"
+    ] == "xbrainlab.assistant_dev_report.v1" or is_experiment_protocol(
+        report.get("experiment")
+    )
     details = {
         row["id"]: _details(root, row, require_generation=dev)
         for row in report["cases"]
@@ -981,7 +1011,7 @@ def write_presentation(report: dict, output: Path) -> None:
     )
     detail_count = len(details) + len(previous_details)
     directory = root.parent if dev and root.name == "raw" else root
-    title = experiment_title(directory, dev=dev)
+    title = experiment_title(directory, dev=dev, experiment=report.get("experiment"))
     md, body = (
         ["# " + title, ""],
         [

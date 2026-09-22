@@ -53,6 +53,33 @@ def test_condition_accepts_distinct_cases_with_one_runtime_identity():
     validate_condition_request(condition_request())
 
 
+def test_condition_cannot_mix_candidates_even_with_the_same_model_and_repeat():
+    from tests.unit.scripts.test_assistant_pilot_case import experiment_request
+
+    first = experiment_request()
+    payload = {
+        "schema": SCHEMA,
+        "condition": "gemma3-rag-on",
+        "experiment": first["experiment"],
+        "case_start_budget_seconds": 1000,
+        **{
+            key: first[key]
+            for key in ("candidate_index", "split", "repeat", "source_head")
+        },
+        "jobs": [{"id": "first", "payload": first}],
+    }
+    validate_condition_request(payload)
+    payload["source_head"] = "b" * 40
+    with pytest.raises(ValueError, match="identity"):
+        validate_condition_request(payload)
+    payload["source_head"] = first["source_head"]
+    second = copy.deepcopy(first)
+    second["candidate_index"] = 3
+    payload["jobs"].append({"id": "second", "payload": second})
+    with pytest.raises(ValueError, match="identit"):
+        validate_condition_request(payload)
+
+
 @pytest.mark.parametrize(
     "field,value",
     [

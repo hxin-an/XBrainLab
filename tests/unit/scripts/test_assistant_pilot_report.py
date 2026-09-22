@@ -219,6 +219,231 @@ def test_macro_equal_weights_categories_and_first_final_are_separate(tmp_path):
     assert actual["active_budget"]["charged_seconds"] == 100
 
 
+def _experiment_run(tmp_path):
+    from scripts.dev import assistant_experiment_config as contract
+
+    template = _run(tmp_path, [("Action", True, True, "completed")], dev=True)
+    root = tmp_path / "experiment"
+    (root / "cases").mkdir(parents=True)
+    cases = [
+        {
+            "case_id": f"VALID-{prefix}{group:02}-{family:02}-V{variant}",
+            "family_id": f"VALID-{prefix}{group:02}-{family:02}",
+            "split": "VALID",
+            "decision": category,
+        }
+        for prefix, category, groups, families in (
+            ("A", "Action", 18, 1),
+            ("C", "Clarification", 6, 1),
+            ("N", "No-call", 3, 3),
+        )
+        for group in range(1, groups + 1)
+        for family in range(1, families + 1)
+        for variant in range(3)
+    ]
+    config = {
+        "schema": contract.CONFIG_SCHEMA,
+        "split": "VALID",
+        "purpose": "research",
+        "embedding_cache": ".",
+        "resource_inventory": "resources.json",
+        "budget_seconds": 1000,
+        "models": [
+            {
+                "alias": "phi4",
+                "candidate_index": 2,
+                "source": {"head": "a" * 40, "root": str(tmp_path)},
+                "model_cache": ".",
+            }
+        ],
+    }
+    selection = contract.build_selection(
+        {"source": {"sha256": "bank"}, "cases": cases}, config
+    )
+    experiment = contract.experiment_identity(config)
+    indexed = {case["case_id"]: case for case in cases}
+    jobs = [
+        {**job, "decision": indexed[job["case_id"]]["decision"]}
+        for job in contract.build_jobs(selection, config)
+    ]
+    source_request = json.loads(
+        next((template / "cases").glob("*.request.json")).read_text()
+    )
+    source_result = json.loads(
+        next((template / "cases").glob("*/result.json")).read_text()
+    )
+    journal = []
+    for job in jobs:
+        condition = contract.job_condition_identity(job)
+        if not (root / "conditions" / condition).exists():
+            shutil.copytree(
+                template / "conditions" / job["condition"],
+                root / "conditions" / condition,
+            )
+        identity = {
+            key: job[key]
+            for key in ("candidate_index", "split", "repeat", "source_head")
+        }
+        case = {**source_request["case"], **indexed[job["case_id"]]}
+        request = {**source_request, **identity, "experiment": experiment, "case": case}
+        result = json.loads(json.dumps(source_result))
+        result.update(
+            **identity, experiment=experiment, seed=0, case=case, case_id=job["case_id"]
+        )
+        result["scores"].update(
+            scorer_schema="xbrainlab.assistant_decision_scores.v2",
+            max_format_recovery_attempts=1,
+            first_decision_correct=job["repeat"] == 0,
+            final_decision_correct=job["repeat"] != 1,
+        )
+        result["condition_evidence"]["artifact_id"] = condition
+        decision_seconds = [1, 10, 100][job["repeat"]]
+        result.update(
+            decision_seconds=decision_seconds,
+            case_turn_seconds=decision_seconds + 2,
+            total_seconds=decision_seconds + 10,
+        )
+        result["decision_clock"] = {
+            "clock": "perf_counter_ns",
+            "start_ns": 0,
+            "end_ns": decision_seconds * 1_000_000_000,
+            "turn_end_ns": (decision_seconds + 2) * 1_000_000_000,
+            "terminal_observed": True,
+        }
+        result["case_operation_seconds"] = 2
+        destination = root / "cases" / job["id"]
+        destination.mkdir()
+        request_sha = _write(root / "cases" / (job["id"] + ".request.json"), request)
+        result_sha = _write(destination / "result.json", result)
+        journal.extend(
+            [
+                {
+                    "event": "case_start",
+                    "session": "s",
+                    "elapsed_seconds": 1,
+                    "id": job["id"],
+                    "request_sha256": request_sha,
+                },
+                {
+                    "event": "case_end",
+                    "session": "s",
+                    "elapsed_seconds": 2,
+                    "id": job["id"],
+                    "result_sha256": result_sha,
+                    "status": "recorded",
+                    "cleanup_certified": True,
+                },
+            ]
+        )
+    journal.append(
+        {
+            "event": "session_end",
+            "session": "s",
+            "elapsed_seconds": 100,
+            "cleanup_certified": True,
+        }
+    )
+    manifest = json.loads((template / "manifest.json").read_text())
+    manifest.update(
+        experiment=experiment,
+        config=config,
+        config_base=str(tmp_path),
+        selection=selection,
+        jobs=jobs,
+        runtime_config={"sources": {"phi4": {"head": "a" * 40, "root": str(tmp_path)}}},
+    )
+    _write(root / "manifest.json", manifest)
+    (root / "journal.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in journal)
+    )
+    return root
+
+
+def test_experiment_report_keeps_repeat_and_candidate_denominators_separate(tmp_path):
+    root = _experiment_run(tmp_path)
+    before = {
+        path.relative_to(root): path.read_bytes()
+        for path in root.rglob("*")
+        if path.is_file()
+    }
+    result = report.write_report(root, tmp_path / "report")
+    assert result["schema"] == "xbrainlab.assistant_experiment_report.v1"
+    assert result["complete_selected_schedule"] is True
+    assert result["dev_complete"] is False
+    conditions = list(result["conditions"].values())
+    assert [item["overall"]["final"]["numerator"] for item in conditions] == [99, 0, 99]
+    assert [item["overall"]["final"]["denominator"] for item in conditions] == [
+        99,
+        99,
+        99,
+    ]
+    assert [item["identity"]["repeat"] for item in conditions] == [0, 1, 2]
+    assert all(item["identity"]["candidate_index"] == 2 for item in conditions)
+    assert all(
+        item["decision_latency_seconds"]["overall"]["n"] == 99 for item in conditions
+    )
+    summary = next(iter(result["repeat_summary"].values()))
+    assert summary["complete"] is True
+    assert summary["means"]["macro"]["final"] == pytest.approx(2 / 3)
+    assert summary["means"]["decision_latency_seconds"] == {
+        "p50": 37,
+        "p95": 37,
+        "max": 37,
+    }
+    page = (tmp_path / "report" / "index.html").read_text(encoding="utf-8")
+    assert "VALID" in page and "DEV initial baseline" not in page
+    assert "repeat-0" in page and "repeat-1" in page and "repeat-2" in page
+    assert before == {
+        path.relative_to(root): path.read_bytes()
+        for path in root.rglob("*")
+        if path.is_file()
+    }
+
+
+def test_experiment_report_rejects_cross_repeat_saved_identity(tmp_path):
+    root = _experiment_run(tmp_path)
+    _change_result(root, lambda result: result.update(repeat=2), index=0)
+    result = report.build_report(root)
+    assert result["cases"][0]["decision_valid"] is False
+    assert result["complete_selected_schedule"] is False
+    summary = next(iter(result["repeat_summary"].values()))
+    assert summary["complete"] is False and summary["means"] is None
+
+
+def test_experiment_clock_mismatch_is_not_a_terminal_latency():
+    from tests.unit.scripts.test_assistant_pilot_case import experiment_request
+
+    result = {
+        "experiment": experiment_request()["experiment"],
+        "decision_seconds": 2,
+        "case_turn_seconds": 3,
+        "case_operation_seconds": 1,
+        "decision_clock": {
+            "clock": "perf_counter_ns",
+            "start_ns": 10,
+            "end_ns": 2_000_000_010,
+            "turn_end_ns": 3_000_000_010,
+            "terminal_observed": True,
+        },
+    }
+    assert report._timings(result)[0]["decision"] == 2
+    result["decision_clock"]["end_ns"] += 1_000_000_000
+    timing, issues = report._timings(result)
+    assert "decision" not in timing
+    assert "decision_clock_invalid_or_unobserved" in issues
+
+
+def test_engineering_smoke_title_does_not_claim_research_baseline(tmp_path):
+    from scripts.dev.assistant_pilot_presentation import experiment_title
+    from tests.unit.scripts.test_assistant_pilot_case import experiment_request
+
+    experiment = experiment_request("DEV", 0)["experiment"]
+    experiment["purpose"] = "engineering-smoke"
+    title = experiment_title(tmp_path / "s0", dev=True, experiment=experiment)
+    assert "DEV engineering smoke" in title
+    assert "baseline" not in title
+
+
 def test_timeout_stays_wrong_in_denominator_but_not_completed_latency(tmp_path):
     root = _run(
         tmp_path,

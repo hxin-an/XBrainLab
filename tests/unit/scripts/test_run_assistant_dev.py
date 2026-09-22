@@ -1,6 +1,7 @@
 """Full DEV selection and immutable replacement preserve the research denominator."""
 
 import json
+import subprocess
 from collections import Counter
 from copy import deepcopy
 
@@ -8,6 +9,300 @@ import pytest
 
 from scripts.dev import assistant_pilot_bank as bank_reader
 from scripts.dev import run_assistant_pilot as runner
+
+
+def fixture_git(root, *arguments):
+    return subprocess.check_output(  # noqa: S603 - fixed test commands in an owned temporary Git fixture
+        [runner._executable("git"), "-C", str(root), *arguments], text=True, timeout=15
+    ).strip()
+
+
+def experiment_config(tmp_path, split="VALID"):
+    return {
+        "schema": "xbrainlab.assistant_experiment_config.v1",
+        "split": split,
+        "purpose": "research",
+        "models": [
+            {
+                "alias": alias,
+                "candidate_index": candidate,
+                "source": {"head": str(candidate) * 40, "root": str(tmp_path)},
+                "model_cache": str(tmp_path),
+            }
+            for alias, candidate in (("granite4", 1), ("phi4", 5))
+        ],
+        "embedding_cache": str(tmp_path),
+        "resource_inventory": "resources.json",
+        "budget_seconds": 3600,
+    }
+
+
+def valid_rows():
+    from tests.unit.scripts.test_assistant_pilot_bank import _rows
+
+    rows = _rows()
+    human, truth, fixture = (
+        rows["VALID"].pop(),
+        rows["ground_truth"].pop(),
+        rows["情境定義"].pop(),
+    )
+    for category, families, decision in (
+        ("A", 18, "Action"),
+        ("C", 6, "Clarification"),
+        ("N", 9, "No-call"),
+    ):
+        for number in range(1, families + 1):
+            family = f"VALID-{category}{number:02}-01"
+            fx = "FX-" + family
+            rows["情境定義"].append({**fixture, "fixture_id": fx, "family_id": family})
+            for repeat in range(3):
+                case_id = f"{family}-V{repeat}"
+                rows["VALID"].append(
+                    {**human, "題號": case_id, "Family": family, "情境編號": fx}
+                )
+                rows["ground_truth"].append(
+                    {
+                        **truth,
+                        "case_id": case_id,
+                        "family_id": family,
+                        "fixture_id": fx,
+                        "decision": decision,
+                        "expected_tool": "import_eeg_data"
+                        if decision == "Action"
+                        else "respond_to_user",
+                        "expected_parameters_json": "{}"
+                        if decision == "Action"
+                        else "N/A: message is free text; use parameter_rule",
+                    }
+                )
+    return rows
+
+
+def test_configured_valid_selection_reads_real_bank_and_keeps_three_repeats(tmp_path):
+    from scripts.dev import assistant_experiment_config as protocol
+    from tests.unit.scripts.test_assistant_pilot_bank import _workbook
+
+    config = experiment_config(tmp_path)
+    bank = bank_reader.load_bank(_workbook(tmp_path, valid_rows()))
+    experiment = protocol.experiment_identity(config)
+    selection = protocol.build_selection(bank, config)
+    jobs = protocol.build_jobs(selection, config)
+    assert experiment["repeats"] == [0, 1, 2]
+    assert experiment["seed"] == 0
+    assert len(jobs) == len({job["id"] for job in jobs}) == 594
+    assert len({job["case_id"] for job in jobs}) == 99
+    assert {job["candidate_index"] for job in jobs} == {1, 5}
+    assert all(job["split"] == "VALID" for job in jobs)
+    assert len(runner.condition_batches(jobs)) == 6
+    assert all(job["source_head"] == str(job["candidate_index"]) * 40 for job in jobs)
+
+
+def test_incomplete_research_bank_cannot_be_silently_used_as_smoke(tmp_path):
+    from scripts.dev import assistant_experiment_config as protocol
+    from tests.unit.scripts.test_assistant_pilot_bank import _workbook
+
+    bank = bank_reader.load_bank(_workbook(tmp_path))
+    with pytest.raises(ValueError, match="population"):
+        protocol.build_selection(bank, experiment_config(tmp_path))
+
+
+@pytest.mark.parametrize(
+    "change",
+    ["sixth", "zero", "bool", "test", "seed", "repeat", "duplicate", "unknown"],
+)
+def test_experiment_config_rejects_unapproved_identity(tmp_path, change):
+    from scripts.dev import assistant_experiment_config as protocol
+
+    config = experiment_config(tmp_path)
+    if change in {"sixth", "zero", "bool"}:
+        config["models"][0]["candidate_index"] = {"sixth": 6, "zero": 0, "bool": True}[
+            change
+        ]
+    elif change == "test":
+        config["split"] = "TEST"
+    elif change == "duplicate":
+        config["models"].append(deepcopy(config["models"][0]))
+    else:
+        config[change] = 99
+    with pytest.raises(ValueError):
+        protocol.experiment_identity(config)
+
+
+def test_experiment_smoke_selection_is_explicit_and_never_crosses_split(tmp_path):
+    from scripts.dev import assistant_experiment_config as protocol
+    from tests.unit.scripts.test_assistant_pilot_bank import _workbook
+
+    config = experiment_config(tmp_path, "DEV")
+    config["purpose"] = "engineering-smoke"
+    config["case_ids"] = ["DEV-A01-01-V0"]
+    bank = bank_reader.load_bank(_workbook(tmp_path))
+    assert protocol.build_selection(bank, config)["case_ids"] == config["case_ids"]
+    assert protocol.experiment_identity(config)["repeats"] == [0]
+    config["case_ids"] = ["VALID-A01-01-V0"]
+    with pytest.raises(ValueError):
+        protocol.build_selection(bank, config)
+
+
+def test_new_config_preparation_resolves_paths_without_editing_input(
+    tmp_path, monkeypatch
+):
+    from tests.unit.scripts.test_assistant_pilot_bank import _workbook
+
+    config = experiment_config(tmp_path, "DEV")
+    config.update(purpose="engineering-smoke", case_ids=["DEV-A01-01-V0"])
+    for model in config["models"]:
+        model["source"]["root"] = "."
+        model["model_cache"] = "."
+    config["embedding_cache"] = "."
+    resources = []
+    for repo, revision in [
+        (
+            runner._MODELS[item["alias"]],
+            runner.research_model_spec(runner._MODELS[item["alias"]]).revision,
+        )
+        for item in config["models"]
+    ] + [(runner.RAGConfig.EMBEDDING_MODEL, runner.RAGConfig.EMBEDDING_REVISION)]:
+        snapshot = (
+            tmp_path / ("models--" + repo.replace("/", "--")) / "snapshots" / revision
+        )
+        snapshot.mkdir(parents=True)
+        weight = snapshot / "model.safetensors"
+        weight.write_bytes(b"synthetic weight payload")
+        resources.append(
+            {
+                "repo": repo,
+                "revision": revision,
+                "files": {
+                    weight.name: {
+                        "bytes": weight.stat().st_size,
+                        "sha256": runner.hashlib.sha256(
+                            weight.read_bytes()
+                        ).hexdigest(),
+                    }
+                },
+            }
+        )
+    inventory = tmp_path / "resources.json"
+    inventory.write_text(json.dumps({"resources": resources}))
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(config))
+    original = path.read_bytes()
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    monkeypatch.setattr(runner, "_verify_candidate_source", lambda *_: None)
+    monkeypatch.setattr(
+        runner, "source_identity", lambda: {"head": "f" * 40, "dirty": []}
+    )
+    monkeypatch.setattr(
+        runner, "environment_identity", lambda: {"platform": "synthetic-linux"}
+    )
+    monkeypatch.setattr(
+        runner, "_model_configuration", lambda *_: {"config.json": "c" * 64}
+    )
+    monkeypatch.setattr(runner.RAGConfig, "embedding_cache_ready", lambda _: True)
+    monkeypatch.setattr(runner, "_identity", lambda _: ("e" * 64, {}))
+    manifest, _bank = runner.prepare_manifest(
+        _workbook(tmp_path), None, path, [], dev_initial=True
+    )
+    assert manifest["config"] == config
+    assert path.read_bytes() == original
+    assert manifest["environment"]["platform"] == "synthetic-linux"
+    assert manifest["runtime_config"]["embedding_cache"] == str(tmp_path)
+    assert {job["source_root"] for job in manifest["jobs"]} == {str(tmp_path)}
+    assert manifest["budget_seconds"] == 3600
+    assert manifest["resource_inventory"] == {"resources": resources}
+    assert (
+        manifest["resource_inventory_sha256"]
+        == runner.hashlib.sha256(inventory.read_bytes()).hexdigest()
+    )
+    original_size = weight.stat().st_size
+    weight.write_bytes(b"tampered weight payload!")
+    assert weight.stat().st_size == original_size
+    with pytest.raises(ValueError, match="resource"):
+        runner.prepare_manifest(
+            tmp_path / "bank.xlsx", None, path, [], dev_initial=True
+        )
+    weight.unlink()
+    with pytest.raises(ValueError, match="resource"):
+        runner.prepare_manifest(
+            tmp_path / "bank.xlsx", None, path, [], dev_initial=True
+        )
+
+
+def test_candidate_source_missing_protocol_is_refused_even_at_exact_clean_head(
+    tmp_path,
+):
+    fixture_git(tmp_path, "init")
+    fixture_git(
+        tmp_path,
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "commit",
+        "--allow-empty",
+        "-m",
+        "Fixture",
+    )
+    head = fixture_git(tmp_path, "rev-parse", "HEAD")
+    with pytest.raises(ValueError, match="protocol"):
+        runner._verify_candidate_source(tmp_path, head)
+
+
+def test_linux_gpu_lock_is_shared_across_package_roots():
+    from scripts.dev import run_assistant_dev as entry
+
+    assert (
+        entry.gpu_lock_path(platform="posix", uid=42).as_posix()
+        == "/tmp/xbrainlab-assistant-gpu-42.lock"
+    )
+    assert entry.gpu_lock_path(platform="nt") == entry.LOCK
+
+
+def test_candidate_dependency_lock_mismatch_is_rejected_before_child(tmp_path):
+    helper = tmp_path / "scripts" / "dev" / "assistant_experiment_config.py"
+    helper.parent.mkdir(parents=True)
+    helper.write_text('PROTOCOL = "xbrainlab.assistant_experiment.v1"\n')
+    (tmp_path / "poetry.lock").write_text("different locked environment\n")
+    fixture_git(tmp_path, "init")
+    fixture_git(tmp_path, "add", ".")
+    fixture_git(
+        tmp_path,
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "commit",
+        "-m",
+        "Fixture",
+    )
+    head = fixture_git(tmp_path, "rev-parse", "HEAD")
+    with pytest.raises(ValueError, match="dependency lock"):
+        runner._verify_candidate_source(tmp_path, head)
+
+
+def test_candidate_same_lock_changed_model_factory_is_refused(tmp_path):
+    helper = tmp_path / "scripts" / "dev" / "assistant_experiment_config.py"
+    helper.parent.mkdir(parents=True)
+    helper.write_text('PROTOCOL = "xbrainlab.assistant_experiment.v1"\n')
+    (tmp_path / "poetry.lock").write_bytes((runner.ROOT / "poetry.lock").read_bytes())
+    (helper.parent / "assistant_pilot_models.py").write_text(
+        "# changed generation policy\n"
+    )
+    fixture_git(tmp_path, "init")
+    fixture_git(tmp_path, "add", ".")
+    fixture_git(
+        tmp_path,
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "commit",
+        "-m",
+        "Fixture",
+    )
+    head = fixture_git(tmp_path, "rev-parse", "HEAD")
+    with pytest.raises(ValueError, match=r"policy.*assistant_pilot_models"):
+        runner._verify_candidate_source(tmp_path, head)
 
 
 def full_bank():
@@ -336,7 +631,7 @@ def test_report_entry_rejects_changed_retained_identity(tmp_path, monkeypatch, c
         "run_attempt",
         lambda *_a, **_k: pytest.fail("Changed input reached reporting"),
     )
-    with pytest.raises(ValueError, match="Retained DEV"):
+    with pytest.raises(ValueError, match="Retained experiment"):
         entry.main(["report", "--output", str(output)])
 
 

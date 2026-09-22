@@ -1,4 +1,4 @@
-"""Compose the approved full DEV initial candidate; no tuning or VALID/TEST."""
+"""Compose frozen DEV/VALID experiments; preserve historical initial DEV reads."""
 
 from __future__ import annotations
 
@@ -20,6 +20,14 @@ from scripts.dev import run_assistant_pilot as runner
 from scripts.dev.run_assistant_baseline import LOCK, digest, write_json
 
 ENTRY_FILE = Path(__file__).resolve()
+
+
+def gpu_lock_path(*, platform: str = os.name, uid: int | None = None) -> Path:
+    """One existing FileLock owner shared by every package on this host/user."""
+    if platform == "nt":
+        return LOCK
+    identity = os.getuid() if uid is None else uid
+    return Path(f"/tmp/xbrainlab-assistant-gpu-{identity}.lock")  # noqa: S108 - intentionally shared across package roots, FileLock owns admission
 
 
 def select_models(value: str) -> list[str]:
@@ -50,7 +58,40 @@ def prepare_output(
             "DEV inputs changed during preparation; preserved partial output"
         )
     write_json(inputs / "selection.json", manifest["selection"])
+    if runner.experiment_config.is_experiment_protocol(manifest.get("experiment")):
+        shutil.copyfile(
+            manifest["runtime_config"]["resource_inventory"], inputs / "resources.json"
+        )
+        if (
+            digest(inputs / "resources.json") != manifest["resource_inventory_sha256"]
+            or runner._json(inputs / "resources.json") != manifest["resource_inventory"]
+        ):
+            raise ValueError("Resource inventory changed during preparation")
     write_json(output / "prepared-manifest.json", manifest)
+
+
+def verify_retained_inputs(output: Path, manifest: dict) -> None:
+    """Verify immutable local run inputs without reading external resources."""
+    inputs = output / "inputs"
+    if (
+        runner._json(output / "raw" / "manifest.json") != manifest
+        or runner._json(output / "prepared-manifest.json") != manifest
+        or digest(inputs / "bank.xlsx") != manifest["bank_sha256"]
+        or runner._json(inputs / "config.json") != manifest["config"]
+        or runner._json(inputs / "selection.json") != manifest["selection"]
+        or (
+            runner.experiment_config.is_experiment_protocol(manifest.get("experiment"))
+            and (
+                digest(inputs / "resources.json")
+                != manifest["resource_inventory_sha256"]
+                or runner._json(inputs / "resources.json")
+                != manifest["resource_inventory"]
+            )
+        )
+    ):
+        raise ValueError(
+            "Retained experiment manifest or inputs differ; original run preserved"
+        )
 
 
 def run_attempt(
@@ -118,13 +159,21 @@ def run_attempt(
     )
     info.update(runner_exit_code=runner_code, exit_code=code, error=error, report=link)
     write_json(output / "launches" / (attempt + "-end.json"), info)
-    status = (
-        "Selected DEV schedule complete"
-        if code == 0
-        else f"Incomplete DEV attempt (exit {code})"
+    configured = runner.experiment_config.is_experiment_protocol(
+        manifest.get("experiment")
     )
-    notice = "Initial DEV candidate, RAG on. Full baseline requires all five models / 1,320 valid measurements. No tuning, VALID or TEST."
-    title = experiment_title(output, dev=True)
+    stage = manifest["experiment"]["stage"] if configured else "DEV"
+    status = (
+        f"Selected {stage} schedule complete"
+        if code == 0
+        else f"Incomplete {stage} attempt (exit {code})"
+    )
+    notice = (
+        f"Frozen {stage} {manifest['experiment']['purpose']}, RAG on, seed 0. Candidate/split/repeat denominators remain separate."
+        if configured
+        else "Initial DEV candidate, RAG on. Full baseline requires all five models / 1,320 valid measurements. No tuning, VALID or TEST."
+    )
+    title = experiment_title(output, dev=True, experiment=manifest.get("experiment"))
     text = f"# {title}\n\n{status}\n\n{notice}\n\n"
     if link:
         text += f"[{title}]({link})\n\n"
@@ -169,19 +218,16 @@ def main(argv=None) -> int:
         if args.output is None:
             parser.error("report requires --output RUN_DIRECTORY")
         manifest = runner._json(args.output / "raw" / "manifest.json")
-        if manifest.get("experiment") != runner.DEV_EXPERIMENT:
-            raise ValueError("Report entry requires an initial DEV run")
-        inputs = args.output / "inputs"
         if (
-            runner._json(args.output / "prepared-manifest.json") != manifest
-            or digest(inputs / "bank.xlsx") != manifest["bank_sha256"]
-            or runner._json(inputs / "config.json") != manifest["config"]
-            or runner._json(inputs / "selection.json") != manifest["selection"]
-        ):
-            raise ValueError(
-                "Retained DEV manifest or inputs differ; original run preserved"
+            manifest.get("experiment") != runner.DEV_EXPERIMENT
+            and not runner.experiment_config.is_experiment_protocol(
+                manifest.get("experiment")
             )
+        ):
+            raise ValueError("Report entry requires a supported frozen experiment")
+        verify_retained_inputs(args.output, manifest)
         return run_attempt(manifest, {}, args.output, resume=False, report_only=True)
+    retained = None
     if args.action == "resume":
         if args.output is None:
             parser.error("resume requires --output RUN_DIRECTORY")
@@ -191,6 +237,7 @@ def main(argv=None) -> int:
             if supplied is not None and digest(supplied) != digest(saved):
                 raise ValueError("Supplied resume input differs from retained " + name)
             setattr(args, name, saved)
+        retained = runner._json(args.output / "prepared-manifest.json")
     if (
         args.bank is None
         or args.config is None
@@ -208,11 +255,23 @@ def main(argv=None) -> int:
     bootstrap_case_checkout()
     conditions = select_models(args.models or "all")
     if args.action == "resume" and args.models is None:
-        retained = runner._json(args.output / "prepared-manifest.json")
         conditions = list(dict.fromkeys(job["condition"] for job in retained["jobs"]))
     manifest, bank = runner.prepare_manifest(
-        args.bank, None, args.config, conditions, dev_initial=True
+        args.bank,
+        None,
+        args.config,
+        conditions,
+        dev_initial=True,
+        **(
+            {"config_base": Path(retained["config_base"])}
+            if retained is not None and "config_base" in retained
+            else {}
+        ),
     )
+    if args.models is not None and runner.experiment_config.is_experiment_protocol(
+        manifest.get("experiment")
+    ):
+        parser.error("Configured model selection belongs only in config.json")
     if (
         args.expected_manifest is not None
         and runner._json(args.expected_manifest) != manifest
@@ -227,12 +286,11 @@ def main(argv=None) -> int:
         else:
             print(json.dumps(manifest, ensure_ascii=False, indent=2))
         return 0
-    if os.name != "nt":
-        parser.error("DEV model execution requires the existing Windows runtime")
     from filelock import FileLock
 
-    LOCK.parent.mkdir(parents=True, exist_ok=True)
-    with FileLock(str(LOCK), timeout=0):
+    lock = gpu_lock_path()
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    with FileLock(str(lock), timeout=0):
         if args.action == "run":
             prepare_output(args.output, args.bank, args.config, manifest)
         elif runner._json(args.output / "prepared-manifest.json") != manifest:

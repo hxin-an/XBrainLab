@@ -50,7 +50,9 @@ def _same_parameters(actual: Any, expected: Any) -> bool:
     return actual == expected
 
 
-def score_decision(case: dict[str, Any], response: str | None) -> dict[str, Any]:
+def score_decision(
+    case: dict[str, Any], response: str | None, *, explain: bool = False
+) -> dict[str, Any]:
     """Score one generation without importing outcome or retry success.
 
     Invalid oracles raise a measurement error. Invalid/missing model output is
@@ -90,12 +92,52 @@ def score_decision(case: dict[str, Any], response: str | None) -> dict[str, Any]
         "observed_tool": None,
         "observed_stage": None,
     }
+    actual_parameters = None
+
+    def finish(reason: str, correct: bool = False) -> dict[str, Any]:
+        scored = {**result, "correct": bool(correct), "reason": reason}
+        if explain:
+            mismatches = []
+            if reason in {"missing_response", "invalid_envelope"}:
+                mismatches.append(reason)
+            else:
+                if result["observed_stage"] != stage:
+                    mismatches.append("workflow_stage")
+                if result["observed_tool"] != tool:
+                    mismatches.append("tool")
+                if (
+                    category == "Action"
+                    and result["observed_tool"] in schemas
+                    and not validator.validate(
+                        result["observed_tool"], actual_parameters
+                    ).is_valid
+                ):
+                    mismatches.append("parameter_schema")
+                if category == "Action" and not _same_parameters(
+                    actual_parameters, expected
+                ):
+                    mismatches.append("parameters")
+            scored["explanation"] = {
+                "expected": {
+                    "workflow_stage": stage,
+                    "tool": tool,
+                    "parameters": expected,
+                },
+                "observed": {
+                    "workflow_stage": result["observed_stage"],
+                    "tool": result["observed_tool"],
+                    "parameters": actual_parameters,
+                },
+                "mismatches": mismatches,
+            }
+        return scored
+
     if not isinstance(response, str) or not response.strip():
-        return result
+        return finish("missing_response")
     parsed = CommandParser.parse_product(response)
     result["observed_stage"] = parsed.workflow_stage
     if parsed.status not in {ToolEnvelopeStatus.VALID, ToolEnvelopeStatus.NO_TOOL}:
-        return {**result, "reason": "invalid_envelope"}
+        return finish("invalid_envelope")
     if parsed.status is ToolEnvelopeStatus.NO_TOOL:
         result["observed_tool"] = MODEL_RESPONSE_TOOL_NAME
         # Static output validity uses the same direct-tool/schema/stage sources
@@ -107,7 +149,7 @@ def score_decision(case: dict[str, Any], response: str | None) -> dict[str, Any]
                 schemas.get(parsed.pending_action, {}).get("required", [])
             )
         ):
-            return {**result, "reason": "invalid_envelope"}
+            return finish("invalid_envelope")
         correct = (
             category != "Action"
             and parsed.workflow_stage == stage
@@ -123,11 +165,7 @@ def score_decision(case: dict[str, Any], response: str | None) -> dict[str, Any]
             and validator.validate(actual_tool, actual_parameters).is_valid
             and _same_parameters(actual_parameters, expected)
         )
-    return {
-        **result,
-        "correct": bool(correct),
-        "reason": "matched" if correct else "decision_mismatch",
-    }
+    return finish("matched" if correct else "decision_mismatch", correct)
 
 
 def score_case_decisions(
@@ -135,6 +173,7 @@ def score_case_decisions(
     trace: dict[str, Any],
     *,
     decision_timed_out: bool = False,
+    max_format_recovery_attempts: int | None = None,
 ) -> dict[str, Any]:
     """Score a complete observed case; Host/product outcomes never rescue it.
 
@@ -145,6 +184,15 @@ def score_case_decisions(
     """
     if type(decision_timed_out) is not bool:
         raise ValueError("decision_timed_out must be an observed boolean")
+    if max_format_recovery_attempts is not None and (
+        type(max_format_recovery_attempts) is not int
+        or max_format_recovery_attempts < 0
+    ):
+        raise ValueError("Invalid frozen format recovery limit")
+    # No policy is the actual historical migration path, not today's product default.
+    recovery_limit = (
+        2 if max_format_recovery_attempts is None else max_format_recovery_attempts
+    )
     score_decision(case, None)  # Invalid oracles remain measurement errors.
     issues = list(trace.get("measurement_issues", []))
     generations = trace.get("generations", [])
@@ -166,7 +214,7 @@ def score_case_decisions(
             issues = [issue for issue in issues if issue != "missing_generation"]
     elif not generations:
         issues.append("missing_generation")
-    if len(generations) > 3:
+    if len(generations) > recovery_limit + 1:
         issues.append("repair_budget_exceeded")
 
     attempts, seen = [], set()
@@ -217,7 +265,9 @@ def score_case_decisions(
             if phase not in {"finished", "error", "cancelled"}:
                 issues.append(f"missing_generation_terminal:{identity}")
             result = (
-                score_decision(case, raw)
+                score_decision(
+                    case, raw, explain=max_format_recovery_attempts is not None
+                )
                 if phase == "finished"
                 else {
                     "correct": False,
@@ -257,6 +307,14 @@ def score_case_decisions(
         else "completed"
     )
     return {
+        **(
+            {
+                "scorer_schema": "xbrainlab.assistant_decision_scores.v2",
+                "max_format_recovery_attempts": recovery_limit,
+            }
+            if max_format_recovery_attempts is not None
+            else {}
+        ),
         "measurement_valid": valid,
         "measurement_issues": list(dict.fromkeys(issues)),
         "execution_status": status,

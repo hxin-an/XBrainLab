@@ -11,6 +11,7 @@ from collections import Counter
 from pathlib import Path
 from statistics import median
 
+from scripts.dev import assistant_experiment_config as experiment_config
 from scripts.dev.assistant_pilot_presentation import _details, write_presentation
 from scripts.dev.run_assistant_pilot import (
     CONDITIONS,
@@ -123,6 +124,29 @@ def _timings(result: dict) -> tuple[dict, list[str]]:
             issues.append("timing_invalid:" + name)
         else:
             timings[name] = value
+    if experiment_config.is_experiment_protocol(result.get("experiment")):
+        clock = result.get("decision_clock", {})
+        start, end, turn = (
+            clock.get(key) for key in ("start_ns", "end_ns", "turn_end_ns")
+        )
+        if (
+            clock.get("clock") != "perf_counter_ns"
+            or clock.get("terminal_observed") is not True
+            or any(type(value) is not int for value in (start, end, turn))
+            or not 0 <= start <= end <= turn
+            or any(
+                not math.isclose(
+                    timings.get(key, -1), value, rel_tol=1e-9, abs_tol=1e-9
+                )
+                for key, value in (
+                    ("decision", (end - start) / 1e9),
+                    ("case_turn", (turn - start) / 1e9),
+                    ("case_operation", (turn - end) / 1e9),
+                )
+            )
+        ):
+            issues.append("decision_clock_invalid_or_unobserved")
+            timings.pop("decision", None)
     return timings, issues
 
 
@@ -244,7 +268,13 @@ def _repair(scores: dict) -> dict:
     }
 
 
-def _case(root: Path, job: dict, start: dict | None, end: dict | None) -> dict:
+def _case(
+    root: Path,
+    job: dict,
+    start: dict | None,
+    end: dict | None,
+    experiment: dict | None = None,
+) -> dict:
     artifact = start.get("artifact_id", job["id"]) if start else job["id"]
     row = {
         **job,
@@ -273,16 +303,31 @@ def _case(root: Path, job: dict, start: dict | None, end: dict | None) -> dict:
         )
         model, rag = CONDITIONS[job["condition"]]
         case = request["case"]
+        current = experiment_config.is_experiment_protocol(experiment)
+        if current and (
+            request.get("experiment") != experiment
+            or result.get("experiment") != experiment
+            or any(
+                request.get(key) != job[key] or result.get(key) != job[key]
+                for key in ("candidate_index", "split", "repeat", "source_head")
+            )
+            or result.get("seed") != 0
+            or result.get("scores", {}).get("scorer_schema")
+            != "xbrainlab.assistant_decision_scores.v2"
+            or result.get("scores", {}).get("max_format_recovery_attempts")
+            != experiment["max_format_recovery_attempts"]
+        ):
+            raise ValueError("Frozen experiment result identity mismatch")  # noqa: TRY301 - preserve a per-case invalid-evidence row
         if (
             case.get("case_id") != job["case_id"]
-            or case.get("split") != "DEV"
+            or case.get("split") != (experiment["stage"] if current else "DEV")
             or case.get("decision") != job["decision"]
             or request.get("model_id") != model
             or request.get("rag_enabled") is not rag
             or type(request.get("seed")) is not int
             or request["seed"] != 0
             or type(request.get("repeat")) is not int
-            or request["repeat"] != 0
+            or request["repeat"] != (job["repeat"] if current else 0)
             or result.get("case_id") != job["case_id"]
             or result.get("case") != case
             or result.get("model_id") != model
@@ -524,29 +569,161 @@ def _condition(
     return result
 
 
+def _validate_experiment_inventory(manifest: dict) -> None:
+    """Bind derived jobs to frozen config, without reading an archived source path."""
+    config, selection = manifest["config"], manifest["selection"]
+    if experiment_config.experiment_identity(config) != manifest["experiment"]:
+        raise ValueError("Experiment policy differs from frozen configuration")
+    identifiers = selection.get("case_ids", [])
+    if (
+        selection.get("schema") != "xbrainlab.assistant_experiment_selection.v1"
+        or selection.get("split") != config["split"]
+        or not identifiers
+        or identifiers != sorted(set(identifiers))
+        or any(not item.startswith(config["split"] + "-") for item in identifiers)
+    ):
+        raise ValueError("Invalid frozen experiment selection")
+    expected = experiment_config.build_jobs(selection, config)
+    for job in expected:
+        source = manifest["runtime_config"]["sources"][
+            job["condition"].removesuffix("-rag-on")
+        ]
+        if source["head"] != job["source_head"]:
+            raise ValueError("Frozen candidate source identity mismatch")
+        job["source_root"] = source["root"]
+    actual = [{key: job[key] for key in expected[0]} for job in manifest["jobs"]]
+    if actual != expected:
+        raise ValueError("Frozen experiment job inventory differs from configuration")
+    decisions = {}
+    for job in manifest["jobs"]:
+        if type(job["repeat"]) is not int or type(job["candidate_index"]) is not int:
+            raise ValueError("Invalid candidate/repeat identity type")
+        if decisions.setdefault(job["case_id"], job["decision"]) != job["decision"]:
+            raise ValueError("Repeated case category differs")
+    if dict(Counter(decisions.values())) != selection["counts"]:
+        raise ValueError("Frozen experiment category inventory differs")
+    if config["purpose"] == "research" and selection["counts"] != (
+        {"Action": 144, "Clarification": 48, "No-call": 72}
+        if config["split"] == "DEV"
+        else {"Action": 54, "Clarification": 18, "No-call": 27}
+    ):
+        raise ValueError("Frozen research population is incomplete")
+
+
+def _complete_measurements(rows: list[dict]) -> bool:
+    return bool(rows) and all(
+        row.get("case_recorded")
+        and row["decision_valid"]
+        and row["timing_complete"]
+        and row["product_measurement_valid"]
+        for row in rows
+    )
+
+
+def _repeat_summary(
+    experiment: dict, conditions: dict, rows: list[dict], cleanup: bool
+) -> dict:
+    """Average completed repeat statistics, never pooled observations/quantiles."""
+    groups = {}
+    for name, condition in conditions.items():
+        identity = condition["identity"]
+        key = f"{identity['condition']}__candidate-{identity['candidate_index']}"
+        groups.setdefault(key, []).append((name, condition))
+    summaries = {}
+    for key, members in groups.items():
+        names = [name for name, _ in members]
+        values = [condition for _, condition in members]
+        identity = {
+            field: value
+            for field, value in values[0]["identity"].items()
+            if field != "repeat"
+        }
+        repeats = [value["identity"]["repeat"] for value in values]
+        matching = [row for row in rows if row["report_condition"] in names]
+        complete = (
+            cleanup
+            and repeats == experiment["repeats"]
+            and _complete_measurements(matching)
+        )
+
+        def mean(numbers):
+            return (
+                sum(numbers) / len(numbers)
+                if all(number is not None for number in numbers)
+                else None
+            )
+
+        means = None
+        if complete:
+            means = {
+                "macro": {
+                    phase: mean([item["macro"][phase] for item in values])
+                    for phase in ("first", "final")
+                },
+                "overall_accuracy": {
+                    phase: mean([item["overall"][phase]["rate"] for item in values])
+                    for phase in ("first", "final")
+                },
+                "category_accuracy": {
+                    category: {
+                        phase: mean(
+                            [
+                                item["categories"][category][phase]["rate"]
+                                for item in values
+                            ]
+                        )
+                        for phase in ("first", "final")
+                    }
+                    for category in CATEGORIES
+                },
+                "decision_latency_seconds": {
+                    metric: mean(
+                        [
+                            item["decision_latency_seconds"]["overall"][metric]
+                            for item in values
+                        ]
+                    )
+                    for metric in ("p50", "p95", "max")
+                },
+            }
+        summaries[key] = {
+            "identity": identity,
+            "repeats": repeats,
+            "repeat_conditions": names,
+            "complete": complete,
+            "means": means,
+            "aggregation": "equal-weight arithmetic mean of per-repeat statistics; quantiles are not pooled",
+        }
+    return summaries
+
+
 def build_report(run: Path) -> dict:
     root = run.resolve(strict=True)
     manifest, manifest_sha = _read(root / "manifest.json")
     experiment = manifest.get("experiment")
-    dev = experiment == DEV_EXPERIMENT
+    current = experiment_config.is_experiment_protocol(experiment)
+    dev = experiment == DEV_EXPERIMENT or current
     if experiment is not None and not dev:
         raise ValueError("Unknown experiment protocol identity")
     jobs = manifest.get("jobs", [])
     if (
         manifest.get("schema") != SCHEMA
         or not isinstance(jobs, list)
-        or not 0 < len(jobs) <= (1320 if dev else 300)
+        or not 0 < len(jobs) <= (1485 if current else 1320 if dev else 300)
         or len({job["id"] for job in jobs}) != len(jobs)
         or any(
             not re.fullmatch(r"[A-Za-z0-9_-]+", job["id"])
             or job.get("condition") not in CONDITIONS
             or job.get("decision") not in CATEGORIES
-            or job["id"] != f"{job['condition']}__{job['case_id']}"
+            or job["id"]
+            != f"{experiment_config.job_condition_identity(job) if current else job['condition']}__{job['case_id']}"
             or (dev and not CONDITIONS[job["condition"]][1])
             for job in jobs
         )
     ):
         raise ValueError("Invalid frozen manifest job inventory")
+    if current:
+        _validate_experiment_inventory(manifest)
     journal_path = root / "journal.jsonl"
     journal_bytes = journal_path.read_bytes() if journal_path.exists() else b""
     records = read_journal(root)
@@ -592,7 +769,9 @@ def build_report(run: Path) -> dict:
                     or record.get("replaces_artifact_id") != identity
                 ):
                     raise ValueError("Uncertified or uncorrelated replacement")
-                original = _case(root, known[identity], starts[identity], prior_end)
+                original = _case(
+                    root, known[identity], starts[identity], prior_end, experiment
+                )
                 previous.append(original)
                 del ends[identity]
             elif target is starts and (
@@ -614,7 +793,8 @@ def build_report(run: Path) -> dict:
                 raise ValueError("Duplicate or uncorrelated case journal")
             target[identity] = record
     rows = [
-        _case(root, job, starts.get(job["id"]), ends.get(job["id"])) for job in jobs
+        _case(root, job, starts.get(job["id"]), ends.get(job["id"]), experiment)
+        for job in jobs
     ]
     if dev:
         for row in rows:
@@ -646,27 +826,54 @@ def build_report(run: Path) -> dict:
                 for row in group:
                     row["timing_complete"] = False
                     row["timing_issues"].append("condition_evidence_mismatch")
+    condition_names = (
+        list(
+            dict.fromkeys(experiment_config.job_condition_identity(row) for row in rows)
+        )
+        if current
+        else [
+            name for name in CONDITIONS if any(row["condition"] == name for row in rows)
+        ]
+    )
+    for row in rows + previous:
+        if current:
+            row["report_condition"] = experiment_config.job_condition_identity(row)
     conditions = {
         condition: _condition(
-            [row for row in rows if row["condition"] == condition],
+            [
+                row
+                for row in rows
+                if row.get("report_condition", row["condition"]) == condition
+            ],
             dev=dev,
-            previous=[row for row in previous if row["condition"] == condition],
+            previous=[
+                row
+                for row in previous
+                if row.get("report_condition", row["condition"]) == condition
+            ],
         )
-        for condition in CONDITIONS
-        if any(row["condition"] == condition for row in rows)
+        for condition in condition_names
     }
+    if current:
+        for name, aggregate in conditions.items():
+            row = next(row for row in rows if row["report_condition"] == name)
+            aggregate["identity"] = {
+                key: row[key]
+                for key in (
+                    "condition",
+                    "candidate_index",
+                    "split",
+                    "repeat",
+                    "source_head",
+                    "source_root",
+                )
+            }
     session_cleanup_certified = bool(
         records
         and records[-1]["event"] == "session_end"
         and records[-1].get("cleanup_certified") is True
     )
-    complete = session_cleanup_certified and all(
-        row.get("case_recorded")
-        and row["decision_valid"]
-        and row["timing_complete"]
-        and row["product_measurement_valid"]
-        for row in rows
-    )
+    complete = session_cleanup_certified and _complete_measurements(rows)
     full_matrix = (
         len(jobs) == 300
         and len(conditions) == 10
@@ -693,7 +900,7 @@ def build_report(run: Path) -> dict:
             for job in jobs
         ] == expected
     dev_matrix = False
-    if dev:
+    if dev and not current:
         case_ids = selection.get("case_ids", [])
         expected_conditions = [name for name, (_, rag) in CONDITIONS.items() if rag]
         dev_matrix = (
@@ -726,7 +933,9 @@ def build_report(run: Path) -> dict:
             "Journal changed during report; retain artifacts and read a stable snapshot"
         )
     return {
-        "schema": "xbrainlab.assistant_dev_report.v1"
+        "schema": "xbrainlab.assistant_experiment_report.v1"
+        if current
+        else "xbrainlab.assistant_dev_report.v1"
         if dev
         else "xbrainlab.assistant_pilot_report.v1",
         "experiment": experiment,
@@ -747,11 +956,15 @@ def build_report(run: Path) -> dict:
         "complete_selected_schedule": complete,
         "pilot_complete": not dev and full_matrix and complete,
         "dev_complete": dev and dev_matrix and complete,
-        "partial": not ((dev_matrix if dev else full_matrix) and complete),
+        "partial": not (
+            complete if current else (dev_matrix if dev else full_matrix) and complete
+        ),
         "ranking_allowed": False,
         "limitations": [
             (
-                "DEV initial baseline only; no tuning, Validation/Test conclusion or formal model ranking. P95 is descriptive."
+                "Frozen selected experiment schedule only; no formal model ranking. Each candidate/repeat has its own denominator."
+                if current
+                else "DEV initial baseline only; no tuning, Validation/Test conclusion or formal model ranking. P95 is descriptive."
                 if dev
                 else "DEV Pilot only; no formal model ranking or stable P95."
             ),
@@ -771,6 +984,15 @@ def build_report(run: Path) -> dict:
             "includes_conservative_reservations": bool(starts.keys() - ends.keys()),
         },
         "conditions": conditions,
+        **(
+            {
+                "repeat_summary": _repeat_summary(
+                    experiment, conditions, rows, session_cleanup_certified
+                )
+            }
+            if current
+            else {}
+        ),
         "cases": rows,
         "superseded_cases": previous,
     }

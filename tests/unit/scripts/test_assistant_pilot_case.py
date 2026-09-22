@@ -35,6 +35,90 @@ def test_valid_case_and_frozen_launch():
     validate_case_request(value)
 
 
+def experiment_request(split="VALID", repeat=2):
+    from scripts.dev.assistant_experiment_config import experiment_identity
+
+    value = request()
+    value.update(
+        experiment=experiment_identity(
+            {
+                "schema": "xbrainlab.assistant_experiment_config.v1",
+                "split": split,
+                "purpose": "research",
+                "embedding_cache": ".",
+                "resource_inventory": "resources.json",
+                "budget_seconds": 10,
+                "models": [
+                    {
+                        "alias": "gemma3",
+                        "candidate_index": 2,
+                        "source": {"head": "a" * 40, "root": "."},
+                        "model_cache": ".",
+                    }
+                ],
+            }
+        ),
+        candidate_index=2,
+        split=split,
+        repeat=repeat,
+        source_head="a" * 40,
+        rag_enabled=True,
+    )
+    value["case"].update(split=split, case_id=f"{split}-A01-01-V0")
+    return value
+
+
+def test_frozen_experiment_accepts_valid_repeat_without_weakening_legacy_gate():
+    from scripts.dev.assistant_pilot_case import experiment_result_identity
+
+    payload = experiment_request()
+    validate_case_request(payload)
+    observed = experiment_result_identity(payload)
+    assert observed["split"] == "VALID" and observed["repeat"] == 2
+    assert observed["source_head"] == "a" * 40
+    assert observed["candidate_index"] == 2 and observed["seed"] == 0
+    assert experiment_result_identity(request()) == {}
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("candidate_index", 6),
+        ("repeat", 3),
+        ("source_head", "unknown"),
+        ("split", "DEV"),
+    ],
+)
+def test_frozen_experiment_rejects_identity_drift(field, value):
+    payload = experiment_request()
+    payload[field] = value
+    with pytest.raises(ValueError):
+        validate_case_request(payload)
+
+
+def test_decision_clock_records_one_monotonic_interval_without_fabrication():
+    from scripts.dev.assistant_pilot_case import record_decision_clock
+
+    result = {}
+    record_decision_clock(result, 1_000_000_000, 3_500_000_000, 5_000_000_000)
+    assert result["decision_seconds"] == 2.5
+    assert result["case_turn_seconds"] == 4.0
+    assert result["case_operation_seconds"] == 1.5
+    assert result["decision_clock"] == {
+        "clock": "perf_counter_ns",
+        "start_ns": 1_000_000_000,
+        "end_ns": 3_500_000_000,
+        "turn_end_ns": 5_000_000_000,
+        "terminal_observed": True,
+    }
+    incomplete = {}
+    record_decision_clock(incomplete, 1_000_000_000, None, 5_000_000_000)
+    assert incomplete["decision_seconds"] == 4.0
+    assert incomplete["decision_clock"]["terminal_observed"] is False
+    with pytest.raises(ValueError, match="clock"):
+        record_decision_clock({}, 5, 4, 6)
+
+
 def test_hard_deadline_exits_even_when_owner_close_raises(tmp_path):
     from types import SimpleNamespace
 

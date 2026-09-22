@@ -3,6 +3,7 @@
 import json
 import os
 import sys
+from copy import deepcopy
 
 import pytest
 
@@ -183,7 +184,7 @@ def _child_result(tmp_path, monkeypatch, result):
     child = tmp_path / "child.py"
     child.write_text(
         "import json,pathlib,sys\n"
-        "req=json.loads(pathlib.Path(sys.argv[1]).read_text())\n"
+        "req=json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))\n"
         "p=pathlib.Path(sys.argv[2]);p.mkdir()\n"
         "cases=pathlib.Path(sys.argv[3]); rows=[]\n"
         "for job in req['jobs']:\n"
@@ -321,6 +322,87 @@ def test_dev_resume_cannot_run_while_same_output_is_locked(run_inputs):
     lock = output.with_name(f".{output.name}.dev.lock")
     with FileLock(str(lock), timeout=0), pytest.raises(Timeout):
         runner.execute(manifest, bank, output, resume=True)
+
+
+def test_configured_valid_runs_real_children_per_repeat_and_never_resends_wrong_valid(
+    run_inputs, tmp_path, monkeypatch
+):
+    from tests.unit.scripts.test_assistant_pilot_bank import _workbook
+    from tests.unit.scripts.test_run_assistant_dev import experiment_config, valid_rows
+
+    manifest, bank, output = run_inputs
+    config = experiment_config(tmp_path)
+    config["models"] = [config["models"][1]]
+    manifest["config"] = config
+    manifest["runtime_config"] = {
+        "model_caches": {runner._MODELS["phi4"]: str(tmp_path)},
+        "embedding_cache": str(tmp_path),
+        "sources": {"phi4": config["models"][0]["source"]},
+    }
+    bank = runner.load_bank(_workbook(tmp_path, valid_rows()))
+    manifest["experiment"] = runner.experiment_config.experiment_identity(config)
+    selection = runner.experiment_config.build_selection(bank, config)
+    manifest["selection"] = selection
+    manifest["budget_seconds"] = config["budget_seconds"]
+    manifest["jobs"] = runner.experiment_config.build_jobs(selection, config)
+    decisions = {case["case_id"]: case["decision"] for case in bank["cases"]}
+    for job in manifest["jobs"]:
+        job["decision"] = decisions[job["case_id"]]
+    manifest["embedding_sha256"] = "fixture"
+    monkeypatch.setattr(runner, "_verify_candidate_source", lambda *_: None)
+    monkeypatch.setattr(
+        runner,
+        "prepare_rag_cache",
+        lambda *a, **k: {"cache_root": str(tmp_path), "embedding_sha256": "fixture"},
+    )
+    monkeypatch.setattr(runner, "verify_rag_cache", lambda *_: None)
+    with monkeypatch.context() as guarded:
+        guarded.setattr(
+            runner,
+            "_run_condition_child",
+            lambda *_a, **_k: pytest.fail("invalid derived identity reached a child"),
+        )
+        for key, value in (
+            ("candidate_index", 6),
+            ("repeat", 4),
+            ("source_root", "wrong-source"),
+        ):
+            changed = deepcopy(manifest)
+            changed["jobs"][0][key] = value
+            target = output.with_name("invalid-" + key)
+            with pytest.raises(ValueError, match="derived"):
+                runner.execute(changed, bank, target)
+            assert not target.exists()
+        changed = deepcopy(manifest)
+        changed["budget_seconds"] = 14400
+        with pytest.raises(ValueError, match="derived"):
+            runner.execute(changed, bank, output)
+    _child_result(
+        tmp_path,
+        monkeypatch,
+        {"status": "recorded", "cleanup_ok": True, "correct": False},
+    )
+    assert runner.execute(manifest, bank, output) == 0
+    requests = sorted((output / "conditions").glob("*.request.json"))
+    assert len(requests) == 3
+    assert {runner._json(path)["repeat"] for path in requests} == {0, 1, 2}
+    for path in requests:
+        payload = runner._json(path)
+        assert payload["candidate_index"] == 5
+        assert payload["source_head"] == "5" * 40
+        assert payload["jobs"][0]["payload"]["repeat"] == payload["repeat"]
+    original = {str(path): path.read_bytes() for path in output.rglob("result.json")}
+    monkeypatch.setattr(
+        runner,
+        "_condition_command",
+        lambda *_: pytest.fail("resent a valid wrong answer"),
+    )
+    assert (
+        runner.execute(manifest, bank, output, resume=True, replace_invalid=True) == 0
+    )
+    assert {
+        str(path): path.read_bytes() for path in output.rglob("result.json")
+    } == original
 
 
 @pytest.mark.parametrize("valid", [True, False])

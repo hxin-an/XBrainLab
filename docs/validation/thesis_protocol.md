@@ -9,9 +9,9 @@
 [Current](../current.md#assistant-research-baseline) 擁有實際證據及限制。
 設計確認不代表已實作或實驗已完成。壓縮後依上述文件及 Git 接續，不重開舊清理。
 
-本輪只完成完整 DEV 起始基準：整合已接受 main 的 Import 修正後固定新 source，
-五模型各 264 題，1,320 次執行計入每模型最多五套設定中的第一套。
-不自動調優、不執行 VALID、不讀取／執行 TEST、不修改公開工具／UI、不下載或升級環境。
+完整 DEV 起始基準已完成：五模型各 264 題，1,320 次執行計入每模型最多五套設定中的第一套。
+目前批准封存包／Linux evaluator 工程及固定20題 smoke，不自動調優、不執行正式 VALID、
+不讀取／執行 TEST、不修改公開工具／UI、不重新下載模型。Now 擁有本輪施工與驗收出口。
 舊 B0/B1/B2 搜尋安排、最多 30 條件 VALID、TEST 加跑同模型 B0、P95 10 秒門檻
 已被新版設計取代，不再派工；歷史決策留 Git，舊 B0 封存／分數／入口不追改。
 
@@ -40,7 +40,8 @@ Gemma 使用 NF4 4-bit 權重／BF16 compute，不 double quantization、不 CPU
 2026-09-23 使用者確認：VALID 每套入選系統獨立執行三次，三次皆固定 seed=0，
 維持 greedy 與相同系統／題庫設定；分別保存結果，觀察執行波動，不刻意引入抽樣差異。
 同 seed 不保證逐位元一致，三次 repeats 也不是三份獨立題庫。執行排程仍須在 VALID 前固定。
-這是已接受的設計，現有 DEV initial runner 仍只支援 repeat 0，不代表三次 repeats 已實作或執行。
+新封存協定將三次 repeats 排在同一 run 內，各有獨立 case／condition 身分及分母；
+不是複製同一次輸出，也不把 repeat 當失敗補跑。可執行排程不等於已執行正式 VALID。
 
 RAG 固定 all-MiniLM-L6-v2 snapshot、最多三範例、相似度門檻 0.7；語料／embedding 保存 hash。
 DEV 不調 RAG 語料與檢索設定；degraded retrieval 不算 RAG on。題庫／oracle 不進 RAG 或 few-shot。
@@ -123,7 +124,58 @@ Scorer 正反例保護參數、格式、錯誤工具、正常不操作與有效�
 
 ## 5. 單一入口與結果資料夾
 
-### 新 DEV 起始基準
+### 可封存 DEV／VALID 協定
+
+`scripts/dev/assistant_experiment_package.py create --bank BANK --config CONFIG --output PACKAGE`
+把編輯完成的 config 與題庫封存為新包。只接受 clean exact source，不能覆寫既有包。
+每個不同 source 各存獨立 shallow Git checkout，不依賴開發 worktree 或外部 Git objects。
+`config.json` 在 create 前是唯一可編輯設定；包內 config／resources／環境規格由 manifest
+固定，修改設定需建立新包，不手改 derived selection／manifest。
+
+- config 的 `split` 選 DEV／VALID；`models` 選模型、各自 `candidate_index`、source head/root
+  與 model cache；`embedding_cache`、`resource_inventory`、`budget_seconds` 明確指定。
+- seed=0、RAG on、greedy、初始一次格式修復由本協定固定；DEV repeat 0，VALID repeats 0–2。
+  `purpose=engineering-smoke` 才能選固定 DEV `case_ids`，不計為新正式候選。
+- `candidate_index` 限1–5，但無中央 ledger 證明所有離線包未重用編號；研究紀錄仍須綁定
+  每模型候選的 source／設定。d0 已占第一套，工程 smoke 不是第六套或新增基準額度。
+- 多 source 候選必須支援此協定，且 dependency lock、固定模型／生成 factories、model catalog、
+  RAG config／語料與 coordinator 一致；不把新 evaluator 疊到舊 source 上冒稱原版。
+- 相對路徑以 config 所在目錄解析。封存包保留相對 cache 引用或明確外部 binding；
+  搬工作站需帶同版共用資源及重建環境，不自動猜路徑／下載。prepare/resume 在 child 前
+  核對每個固定 snapshot 的完整檔案 SHA-256，不在每題重讀所有權重。
+
+在包內執行（Linux；先將 `environment/python` 指向按封存 lock 建立的環境）：
+
+```bash
+./run.sh                         # 新 run，不覆寫結果
+./run.sh --resume RUN_ID         # 原來源／配置／runtime 續跑
+./run.sh --report-only RUN_ID    # 不載模型，只重建報告
+./run.sh --audit RUN_ID          # 原候選 scorer／input／capture 離線重播
+```
+
+`XBL_PYTHON` 可明確覆蓋本機 Python binding。入口不另擁有 journal／cleanup／resume policy。
+`--replace-invalid` 只和 resume 使用，需先診斷，保留原 attempt 且最多替代一次；
+有效錯答、格式錯誤及有效逾時不能因分數重跑。不同 runtime 建新 run，不混接量測。
+同主機／使用者共用 GPU lock；這不代表預約了其他使用者的 GPU，開跑前仍須查共享負載。
+
+包保存 `sources/<head>/`、`environment/`、`inputs/`、`manifest.json`、`run.sh`。
+每次 `runs/<id>/` 沿用 `inputs/`、`prepared-manifest.json`、`raw/`、`reports/`、`launches/`；
+`selection.json` 由 runner prepare 產生在 run 的 inputs，不建立第二個 selection 權威。
+HTML 仍為四表；VALID 各 repeat 分開呈現，JSON `repeat_summary` 保存每次指標算完後的
+等權平均，不混池重算 P50／P95，缺任一完整 repeat 不給完整均值。
+
+離線 audit 另存 `runs/<id>/audits/<id>.json`，核對封存輸入、原始 capture、原 scorer 判分及
+input audit，前後確認既有 inputs/raw/reports/launches 未變；不改原分數或重新推論。
+各候選使用其自身 scorer，不用目前開發版重評舊結果。這是可追查性證據，不是人工 oracle
+正確性或跨平台結果逐位元一致的證明。歷史 d0 仍用其原 frozen source／核對入口。
+
+本輪 engineering smoke 為五模型各跑 `DEV-A01-01-V0`、`DEV-A08-01-V0`、
+`DEV-C01-01-V0`、`DEV-N01-01-V0`，共20筆；執行累積60分鐘，不含資源複製。
+選題依開窗、填參數、缺資訊不操作、知識不操作的介面類型，不依歷史分數。
+真 RAG、終態、capture、cleanup 是工程驗收，20題全對不是通過條件，也不能據此調參。
+工程驗證不解決 Windows d0 與 Linux 正式候選的硬體比較政策；正式評估仍須另定並授權。
+
+### 歷史 DEV 起始基準
 
 沿用 Windows runner/condition/case/report，只允許核准模型／全部五模型的 DEV initial、
 RAG on、repeat 0；未核准候選、VALID/TEST 或消融不得因入口通用化而可執行。
@@ -203,6 +255,6 @@ TEST 四條件為完整系統、移除 RAG、移除狀態式工具篩選、移�
 移除重試只生成一次，其餘條件沿用選定系統配置，不為消融重調參。
 配置凍結、使用者確認並提供封存 TEST 後才執行；不因消融較好事後改選完整系統。
 
-本輪 scope-complete：1,320 有效案例、完整分母、原始輸入輸出／判分／時間可核對、
+已完成 DEV initial 的 scope-complete：1,320 有效案例、完整分母、原始輸入輸出／判分／時間可核對、
 報告可重建、直接驗證及獨立覆核通過。背景等待可結束当前回合以省 token，但只是
 已交接 checkpoint，不代表完成。調優／VALID／TEST 仍須下一階段授權。

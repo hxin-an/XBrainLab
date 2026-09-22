@@ -20,13 +20,16 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
+from scripts.dev.assistant_experiment_config import is_experiment_protocol
 from scripts.dev.assistant_pilot_bank import DEV_EXPERIMENT
 from scripts.dev.assistant_pilot_case import (
     _write,
     audit_initial_input,
     bootstrap_case_checkout,
+    experiment_result_identity,
     force_case_exit,
     poll_case_safely,
+    record_decision_clock,
     submit_case_input,
     validate_case_request,
     verify_prompt_captures,
@@ -44,7 +47,8 @@ def _capture_paths(root: Path) -> list[Path]:
 
 def validate_condition_request(payload: dict) -> None:
     jobs = payload.get("jobs")
-    dev_initial = payload.get("experiment") == DEV_EXPERIMENT
+    current = is_experiment_protocol(payload.get("experiment"))
+    dev_initial = payload.get("experiment") == DEV_EXPERIMENT or current
     budget = payload.get("case_start_budget_seconds")
     if (
         payload.get("schema") != SCHEMA
@@ -76,10 +80,20 @@ def validate_condition_request(payload: dict) -> None:
             raise ValueError("DEV case identity requires an approved DEV condition")
         if dev_initial and (
             job["payload"]["rag_enabled"] is not True
-            or job["payload"].get("experiment") != DEV_EXPERIMENT
+            or job["payload"].get("experiment") != payload.get("experiment")
         ):
             raise ValueError("Initial DEV requires its exact experiment and RAG on")
     first = jobs[0]["payload"]
+    if current and any(
+        payload.get(key) != first.get(key)
+        for key in ("candidate_index", "split", "repeat", "source_head")
+    ):
+        raise ValueError("Condition and case experiment identity differ")
+    if current and any(
+        experiment_result_identity(job["payload"]) != experiment_result_identity(first)
+        for job in jobs
+    ):
+        raise ValueError("A condition child cannot mix experiment candidate identities")
     identity = (
         first["model_id"],
         first["model_cache"],
@@ -162,6 +176,7 @@ class PilotConditionSession:
                 "repeat",
             )
         }
+        self.identity.update(experiment_result_identity(payload))
         self.app = QApplication.instance() or QApplication([])
         self.app.setQuitOnLastWindowClosed(False)
         self.study = Study()
@@ -297,6 +312,7 @@ class PilotConditionSession:
                 "repeat",
             )
         }
+        actual.update(experiment_result_identity(payload))
         if actual != self.identity:
             raise ValueError("Case runtime identity differs from its condition")
 
@@ -389,6 +405,7 @@ class PilotConditionSession:
         case = payload["case"]
         result: dict[str, Any] = {
             "schema": "xbrainlab.assistant_pilot_case.v1",
+            **experiment_result_identity(payload),
             "case_id": case["case_id"],
             "model_id": payload["model_id"],
             "rag_enabled": payload["rag_enabled"],
@@ -532,14 +549,13 @@ class PilotConditionSession:
             finally:
                 poll.stop()
             self.app.processEvents()
-            result["decision_seconds"] = (
-                decision_done_at or time.perf_counter()
-            ) - before_decision
-            result["case_turn_seconds"] = time.perf_counter() - before_decision
-            result["case_operation_seconds"] = max(
-                0.0, result["case_turn_seconds"] - result["decision_seconds"]
-            )
             result["trace"] = trace.snapshot()
+            record_decision_clock(
+                result,
+                before_decision_ns,
+                decision_boundary_ns(result["trace"]),
+                time.perf_counter_ns(),
+            )
             result["ui"] = self.driver.snapshot()
             result["runtime_evidence"] = collect_runtime_evidence(
                 self.service, result["trace"], fixture, self.window
@@ -561,6 +577,9 @@ class PilotConditionSession:
                 case,
                 result["trace"],
                 decision_timed_out=result["decision_timed_out"],
+                max_format_recovery_attempts=payload.get("experiment", {}).get(
+                    "max_format_recovery_attempts"
+                ),
             )
             result["input_audit"] = audit_initial_input(
                 case,
@@ -655,6 +674,9 @@ def run_condition(payload: dict, cases_root: Path, output: Path) -> dict:
     session = None
     results = []
     condition_started = time.perf_counter()
+    bounded = payload.get("experiment") == DEV_EXPERIMENT or is_experiment_protocol(
+        payload.get("experiment")
+    )
     summary = {
         "schema": SCHEMA,
         "condition": payload["condition"],
@@ -664,10 +686,7 @@ def run_condition(payload: dict, cases_root: Path, output: Path) -> dict:
     }
     path = output / "result.json"
     _write(path, summary)
-    if (
-        payload.get("experiment") == DEV_EXPERIMENT
-        and payload["case_start_budget_seconds"] < 450
-    ):
+    if bounded and payload["case_start_budget_seconds"] < 450:
         summary.update(
             status="measurement_failed",
             stop_reason="budget_exhausted",
@@ -680,11 +699,11 @@ def run_condition(payload: dict, cases_root: Path, output: Path) -> dict:
         first_output = cases_root / jobs[0]["id"]
         session = PilotConditionSession.__new__(PilotConditionSession)
         session.__init__(jobs[0]["payload"], output, first_output)
-        if payload.get("experiment") == DEV_EXPERIMENT:
+        if bounded:
             session.condition_evidence["artifact_id"] = output.name
         summary["condition_evidence"] = session.condition_evidence
         for job in jobs:
-            if payload.get("experiment") == DEV_EXPERIMENT and (
+            if bounded and (
                 time.perf_counter() - condition_started + 450
                 > payload["case_start_budget_seconds"]
             ):
