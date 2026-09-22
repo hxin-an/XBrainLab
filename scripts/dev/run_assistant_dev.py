@@ -64,10 +64,7 @@ def run_attempt(
 ) -> int:
     """Compose the existing runner/report; retain each launch and derived report."""
     from scripts.dev.assistant_pilot_presentation import (
-        experiment_conditions,
         experiment_title,
-        render_evidence_notice,
-        render_overview,
         render_page,
     )
     from scripts.dev.assistant_pilot_report import write_report
@@ -129,39 +126,40 @@ def run_attempt(
     notice = "Initial DEV candidate, RAG on. Full baseline requires all five models / 1,320 valid measurements. No tuning, VALID or TEST."
     title = experiment_title(output, dev=True)
     text = f"# {title}\n\n{status}\n\n{notice}\n\n"
-    page = (
-        '<header class="hero"><span class="eyebrow">XBrainLab / Experiment report</span>'
-        f"<h1>{html.escape(title)}</h1>"
-        f'<p class="muted">{html.escape(experiment_conditions(report or {}, dev=True))}</p></header>'
-        f'<p class="{"badge" if code == 0 else "notice"}">'
-        + (
-            "Selected results complete"
-            if code == 0
-            else "Results incomplete — see technical details"
-        )
-        + "</p>"
-    )
     if link:
         text += f"[{title}]({link})\n\n"
-        page += f'<p><a class="button" href="{link}">View {html.escape(output.name.upper())} report &rarr;</a></p>'
-    if report:
-        page += render_evidence_notice(audit.get("issues", {}))
-        page += render_overview(report)
     text += "inputs/: fixed inputs; raw/: original measurements; reports/: immutable reports; launches/: execution status.\n\n"
     text += error or ""
-    page += (
-        "<details><summary>Technical details</summary>"
-        "<p>Inputs and raw measurements are retained unchanged. Reports are versioned; "
-        "this page is navigation, not a new measurement.</p>"
-        '<nav><a href="README.md">Folder guide</a>'
-        '<a href="raw/manifest.json">Frozen manifest</a></nav>'
-    )
-    if error:
-        page += "<pre>" + html.escape(error) + "</pre>"
-    page += "</details>"
-    # Only derived navigation is refreshed; all evidence and prior reports remain immutable.
+    page = render_page(title, f"<h1>{html.escape(title)}</h1>")
+    if link and (report_path / "index.html").is_file():
+        # Display the existing full report at the stable entry. Its relative links
+        # still belong to the immutable versioned directory, including case pages.
+        page = (report_path / "index.html").read_text(encoding="utf-8")
+        base = html.escape(link, quote=True)
+        page = page.replace("<head>", f'<head><base href="{base}">', 1)
+    if code:
+        # Execution/cleanup failure can coexist with complete saved scores. Never
+        # let the report's quiet completion message hide the failed launch.
+        page = page.replace('<p class="muted">Evaluation complete</p>', "")
+        page = page.replace(
+            '<main id="main">',
+            '<main id="main"><p class="notice">Results incomplete — see technical details</p>',
+            1,
+        )
+        explanation = error or (
+            "This attempt did not pass completion checks. "
+            "Available results and prior attempts remain preserved."
+        )
+        page = page.replace(
+            "</main>",
+            "<details><summary>Technical details — report execution</summary><pre>"
+            + html.escape(explanation)
+            + "</pre></details></main>",
+            1,
+        )
+    # Only the derived entry is refreshed; all evidence and prior reports remain immutable.
     (output / "README.md").write_text(text, encoding="utf-8")
-    (output / "index.html").write_text(render_page(title, page), encoding="utf-8")
+    (output / "index.html").write_text(page, encoding="utf-8")
     print(status + ": " + str(output / "index.html"), flush=True)
     return code
 

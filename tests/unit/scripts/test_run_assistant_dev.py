@@ -212,9 +212,11 @@ def test_failed_entry_attempt_still_builds_partial_report_and_navigation(
     reports = []
 
     def report(raw, target):
+        from scripts.dev.assistant_pilot_presentation import render_page
+
         reports.append(raw)
         target.mkdir()
-        (target / "index.html").write_text("partial")
+        (target / "index.html").write_text(render_page("Partial", "partial"))
         (target / "presentation-audit.json").write_text(
             '{"complete": false, "issues": []}'
         )
@@ -230,9 +232,24 @@ def test_failed_entry_attempt_still_builds_partial_report_and_navigation(
     assert "preserved failure" in page
     assert page.index("Results incomplete") < page.index("<details>")
     assert page.index("preserved failure") > page.index(
-        "<summary>Technical details</summary>"
+        "<summary>Technical details — report execution</summary>"
     )
     assert len(list((output / "launches").glob("*-end.json"))) == 1
+
+
+def test_report_without_raw_manifest_explains_incomplete_entry(tmp_path):
+    from scripts.dev import run_assistant_dev as entry
+
+    assert (
+        entry.run_attempt(
+            {"source": {"head": "a" * 40}}, {}, tmp_path, resume=False, report_only=True
+        )
+        == 1
+    )
+    page = (tmp_path / "index.html").read_text(encoding="utf-8")
+    assert page.index("Results incomplete") < page.index("<details>")
+    assert "This attempt did not pass completion checks" in page
+    assert "Evaluation complete" not in page
 
 
 @pytest.mark.parametrize(
@@ -268,7 +285,13 @@ def test_report_only_never_submits_cases(tmp_path, monkeypatch, audit, expected)
     )
 
     def report(_raw, target):
+        from scripts.dev.assistant_pilot_presentation import render_page
+
         target.mkdir()
+        (target / "index.html").write_text(
+            render_page("Selected", '<p class="muted">Evaluation complete</p>'),
+            encoding="utf-8",
+        )
         (target / "presentation-audit.json").write_text(json.dumps(audit))
         return {"complete_selected_schedule": True}
 
@@ -279,6 +302,9 @@ def test_report_only_never_submits_cases(tmp_path, monkeypatch, audit, expected)
         )
         == expected
     )
+    page = (tmp_path / "index.html").read_text(encoding="utf-8")
+    assert ("Results incomplete" in page) is bool(expected)
+    assert ("Evaluation complete" in page) is (expected == 0)
 
 
 @pytest.mark.parametrize("changed", ["prepared", "bank", "config", "selection"])

@@ -61,7 +61,7 @@ small, .muted {
 }
 
 .hero {
-    padding: 12px 0 24px;
+    padding: 4px 0 8px;
 }
 
 .hero p {
@@ -80,28 +80,12 @@ small, .muted {
     margin-top: 0;
 }
 
-.metrics {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+.section-heading {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
     gap: 16px;
-    margin: 22px 0;
-}
-
-.metric {
-    background: white;
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    padding: 20px;
-}
-
-.metric strong {
-    display: block;
-    font-size: 27px;
-    letter-spacing: -.03em;
-}
-
-.metric span {
-    color: var(--muted);
+    flex-wrap: wrap;
 }
 
 .comparison {
@@ -135,24 +119,13 @@ nav a {
     font-weight: 600;
 }
 
-.report-nav {
-    position: sticky;
-    top: 0;
-    z-index: 2;
-    padding: 14px 20px;
-    background: #fffffff5;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    box-shadow: 0 3px 12px #17263808;
-}
-
 :focus-visible {
     outline: 3px solid #228b80;
     outline-offset: 4px;
 }
 
 [id] {
-    scroll-margin-top: 85px;
+    scroll-margin-top: 20px;
 }
 
 table {
@@ -179,8 +152,35 @@ td {
     overflow-wrap: anywhere;
 }
 
+tbody tr:nth-child(even) {
+    background: #f1f6f7;
+}
+
+#case-index tbody tr:nth-child(odd of :not([hidden])) {
+    background: white;
+}
+
+#case-index tbody tr:nth-child(even of :not([hidden])) {
+    background: #f1f6f7;
+}
+
 tbody tr:hover {
-    background: #f6faf9;
+    background: #e7f1ef;
+}
+
+#overview th:not(:first-child), #overview td:not(:first-child) {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+#overview td:not(:first-child) {
+    white-space: nowrap;
+}
+
+.table-note {
+    font-size: 13px;
+    max-width: 900px;
+    margin-bottom: 40px;
 }
 
 .table {
@@ -287,29 +287,12 @@ button:disabled {
         font-size: 27px;
     }
 
-    .metrics {
-        gap: 8px;
-    }
-
-    .metric {
-        padding: 12px;
-    }
-
-    .metric strong {
-        font-size: 21px;
-    }
-
     .comparison {
         grid-template-columns: 1fr;
     }
 
     .panel, details {
         padding: 16px;
-    }
-
-    .report-nav {
-        gap: 12px;
-        padding: 12px;
     }
 
     th, td {
@@ -326,7 +309,7 @@ button:disabled {
 }
 
 @media print {
-    .report-nav, .filters, .pagination {
+    .filters, .pagination {
         display: none;
     }
 

@@ -4,6 +4,8 @@ import csv
 import hashlib
 import json
 from html.parser import HTMLParser
+from pathlib import Path
+from urllib.parse import unquote, urljoin, urlsplit
 
 from scripts.dev import assistant_pilot_presentation as presentation
 from scripts.dev import assistant_pilot_report as report
@@ -82,7 +84,43 @@ def test_entry_and_report_name_the_experiment_and_fold_technical_details(tmp_pat
         assert "1 model" in page and "RAG on" in page
         assert "latest report" not in page.lower()
         assert "<summary>Technical details</summary>" in page
-    assert "View D0 report" in root_page
+    assert "View D0 report" not in root_page
+    assert 'id="case-index"' in root_page
+    assert "1 question · " in root_page
+    assert 'class="report-nav"' not in root_page
+    assert 'class="metric"' not in root_page
+    assert "First-answer accuracy" in root_page
+    assert "Accuracy after format repair" in root_page
+    assert root_page.index('id="overview"') < root_page.index('id="cases"')
+    assert root_page.index('id="cases"') < root_page.index('id="evidence"')
+    assert "Evaluation complete" in root_page
+    assert "Selected results complete" not in root_page
+
+    # The stable entry presents all content, but links resolve in the report's
+    # versioned directory. Verify actual targets, not just the base-tag spelling.
+    class Links(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.base = (run / "index.html").as_uri()
+            self.targets = []
+
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            if tag == "base":
+                self.base = urljoin(self.base, attrs["href"])
+            elif tag == "a":
+                self.targets.append(urljoin(self.base, attrs["href"]))
+
+    links = Links()
+    links.feed(root_page)
+    for target in links.targets:
+        path = unquote(urlsplit(target).path)
+        if len(path) > 2 and path[0] == "/" and path[2] == ":":
+            path = path[1:]
+        assert Path(path).is_file(), target
+        fragment = unquote(urlsplit(target).fragment)
+        if fragment:
+            assert f'id="{fragment}"' in Path(path).read_text(encoding="utf-8")
     assert manifest["source"]["head"] not in root_page
     assert manifest["source"]["head"] not in report_page
     saved_report = next((run / "reports").glob("*/report.json"))
@@ -101,8 +139,7 @@ def test_entry_and_report_name_the_experiment_and_fold_technical_details(tmp_pat
 
 def test_evidence_notice_distinguishes_current_issues_from_retained_history():
     historical = presentation.render_evidence_notice({"superseded:old": ["missing"]})
-    assert "earlier" in historical and "excluded" in historical
-    assert "selected result" not in historical
+    assert historical == ""
     selected = presentation.render_evidence_notice({"current": ["missing"]})
     assert "1 selected result" in selected
     assert "excluded" not in selected

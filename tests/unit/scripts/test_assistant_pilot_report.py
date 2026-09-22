@@ -842,6 +842,16 @@ def test_dev_replacement_preserves_original_and_counts_one_logical_measurement(
     assert "Superseded measurements" in (tmp_path / "report" / "README.md").read_text(
         encoding="utf-8"
     )
+    page = (tmp_path / "report" / "index.html").read_text(encoding="utf-8")
+    history = page.index('<details id="history"><summary>Earlier attempts</summary>')
+    assert page.index('id="case-index"') < history
+    assert (
+        history
+        < page.index(f'href="cases/{original}.html"')
+        < page.index("</details>", history)
+    )
+    assert page.index('id="evidence"') > history
+    assert "earlier failed attempt" not in page
 
 
 def test_dev_complete_requires_exact_five_model_264_case_inventory(tmp_path):

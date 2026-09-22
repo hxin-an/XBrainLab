@@ -47,10 +47,10 @@ def _pre(value: object) -> str:
 def render_page(title: str, content: str) -> str:
     """Self-contained HTML shared by the run entry, report and case pages."""
     return (
-        '<!doctype html><html lang="en"><meta charset="utf-8">'
+        '<!doctype html><html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         f"<title>{_escape(title)}</title><style>{_STYLE}</style>"
-        f'<body><main id="main">{content}</main></body></html>'
+        f'</head><body><main id="main">{content}</main></body></html>'
     )
 
 
@@ -64,23 +64,20 @@ def experiment_conditions(report: dict, *, dev: bool) -> str:
     count = len(report.get("conditions", {}))
     unit = "model" if dev else "model condition"
     models = f"{count} {unit}{'' if count == 1 else 's'} · " if count else ""
-    return models + ("RAG on" if dev else "RAG conditions shown below")
+    questions = len({row["case_id"] for row in report.get("cases", [])})
+    population = (
+        f"{questions} question{'' if questions == 1 else 's'} · " if questions else ""
+    )
+    return models + population + ("RAG on" if dev else "RAG conditions shown below")
 
 
 def render_evidence_notice(issues: dict) -> str:
-    """Keep warnings visible while the full audit stays in technical details."""
-    previous = sum(key.startswith("superseded:") for key in issues)
-    selected = len(issues) - previous
-    messages = []
-    if selected:
-        messages.append(f"{selected} selected result(s) have incomplete evidence.")
-    if previous:
-        messages.append(
-            f"{previous} earlier failed attempt(s) excluded from scores; details retained."
-        )
-    if not messages:
+    """Only unresolved evidence issues belong in the reading-level warning."""
+    selected = sum(not key.startswith("superseded:") for key in issues)
+    if not selected:
         return ""
-    return '<p class="notice">' + " ".join(messages) + "</p>"
+    noun = "result has" if selected == 1 else "results have"
+    return f'<p class="notice">{selected} selected {noun} incomplete evidence.</p>'
 
 
 def _html_table(headers: list[str], rows: list[list]) -> str:
@@ -102,17 +99,6 @@ def _html_table(headers: list[str], rows: list[list]) -> str:
 def render_overview(report: dict) -> str:
     """Compact view of existing aggregates; never compute or substitute scores."""
     conditions = report.get("conditions", {})
-    valid = sum(c["counts"]["valid_decision"] for c in conditions.values())
-    planned = sum(c["counts"]["planned"] for c in conditions.values())
-    cards = [
-        (f"{valid:,} / {planned:,}", "Valid / planned measurements"),
-        (str(len(conditions)), "Model conditions"),
-        (str(len(report.get("superseded_cases", []))), "Replaced attempts"),
-    ]
-    metrics = "".join(
-        f'<div class="metric"><strong>{_escape(value)}</strong><span>{label}</span></div>'
-        for value, label in cards
-    )
     rows = []
     for name, condition in conditions.items():
         timing = condition["decision_latency_seconds"].get("overall", {})
@@ -134,19 +120,21 @@ def render_overview(report: dict) -> str:
         [
             "Condition",
             "Valid / planned",
-            "First macro",
-            "Final macro",
+            "First-answer accuracy",
+            "Accuracy after format repair",
             "Median decision (s)",
             "Slowest decision (s)",
         ],
         rows,
     )
     return f"""<section id="overview">
-        <div class="metrics">{metrics}</div>
-        <h2>Model comparison</h2>
-        <p class="muted">Final macro accuracy weights the three categories equally.
-        Decision latency excludes model loading. DEV only, not a formal model ranking.</p>
+        <div class="section-heading"><h2>Model results</h2>
+        <a href="results.csv" download>Download CSV</a></div>
         {table}
+        <p class="muted table-note">Both accuracy columns weight the three categories equally.
+        The second includes format repair when used, otherwise the first answer.
+        Decision time includes parsing, validation and any repair, but excludes model loading.
+        DEV results, not a formal model ranking.</p>
     </section>"""
 
 
@@ -899,11 +887,11 @@ def _write_case_index(
         '</tbody></table></div><p id="no-cases" hidden>No cases match these filters.</p>'
         '<div class="pagination" hidden><button id="previous" type="button">Previous</button>'
         '<span id="page-number"></span><button id="next" type="button">Next</button></div>'
-        f"<script>{_CASE_SCRIPT}</script>"
     )
     if report.get("superseded_cases"):
         note = "Superseded measurements remain preserved below and are excluded from the selected score and latency denominators."
         md.extend([note, ""])
+        body.append('<details id="history"><summary>Earlier attempts</summary>')
         body.append("<p>" + _escape(note) + "</p>")
         md.extend(["## Superseded measurements", ""])
         body.append("<h2>Superseded measurements</h2>")
@@ -916,6 +904,7 @@ def _write_case_index(
                 f"- [{artifact}]({link}) — {row.get('measurement_status', row['evidence_status'])}"
             )
             body.append(f'<p><a href="{quote(link)}">{_escape(artifact)}</a></p>')
+        body.append("</details>")
     return body, md
 
 
@@ -955,33 +944,30 @@ def write_presentation(report: dict, output: Path) -> None:
         [
             '<header class="hero"><span class="eyebrow">XBrainLab / Experiment report</span>',
             f"<h1>{_escape(title)}</h1>",
-            f'<p class="muted">{_escape(experiment_conditions(report, dev=dev))}</p></header>',
-            '<nav class="report-nav" aria-label="Report sections"><a href="#overview">Overview</a>'
-            '<a href="#cases">Explore cases</a><a href="#evidence">Technical details</a>'
-            '<a href="results.csv">Download CSV</a></nav>',
-            '<p class="badge">'
-            + (
-                "Selected results complete"
-                if report["complete_selected_schedule"]
-                else "Selected results incomplete"
-            )
-            + "</p>",
+            f'<p class="muted">{_escape(experiment_conditions(report, dev=dev))}</p>',
+            '<p class="muted">Evaluation complete</p>'
+            if report["complete_selected_schedule"]
+            and not render_evidence_notice(issues)
+            else '<p class="notice">Selected results incomplete</p>',
+            "</header>",
             render_evidence_notice(issues),
             render_overview(report),
-            '<details id="evidence"><summary>Technical details</summary>',
         ],
     )
 
     detail_html, detail_markdown = _render_detailed_results(
         report, details, issues, detail_count
     )
-    body.extend(detail_html)
-    md.extend(detail_markdown)
-    body.append("</details>")
     case_html, case_markdown = _write_case_index(
         root, output, report, details, previous_details
     )
     body.extend(case_html)
+    body.append('<details id="evidence"><summary>Technical details</summary>')
+    body.extend(detail_html)
+    body.append("</details>")
+    # Initialize filters and deep links only after all referenced sections exist.
+    body.append(f"<script>{_CASE_SCRIPT}</script>")
+    md.extend(detail_markdown)
     md.extend(case_markdown)
     (output / "index.html").write_text(
         render_page(title, "\n".join(body)), encoding="utf-8"
