@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from scripts.dev.assistant_pilot_condition import (
+    DEV_EXPERIMENT,
     SCHEMA,
     PilotConditionSession,
     validate_condition_request,
@@ -74,6 +75,96 @@ def test_condition_rejects_duplicate_case_artifact_identity():
     payload["jobs"][1]["id"] = payload["jobs"][0]["id"]
     with pytest.raises(ValueError, match="condition request"):
         validate_condition_request(payload)
+
+
+def test_full_condition_requires_exact_initial_dev_authorization():
+    payload = condition_request()
+    first = payload["jobs"][0]
+    payload["jobs"] = []
+    for index in range(264):
+        job = copy.deepcopy(first)
+        job["id"] = f"gemma3-rag-on__DEV-A01-{index:03}-V0"
+        job["payload"]["case"]["case_id"] = f"DEV-A01-{index:03}-V0"
+        job["payload"]["rag_enabled"] = True
+        job["payload"]["experiment"] = dict(DEV_EXPERIMENT)
+        payload["jobs"].append(job)
+    with pytest.raises(ValueError, match="condition request"):
+        validate_condition_request(payload)
+    payload["experiment"] = dict(DEV_EXPERIMENT)
+    payload["case_start_budget_seconds"] = 14_000
+    validate_condition_request(payload)
+    payload["jobs"].append(copy.deepcopy(payload["jobs"][-1]))
+    with pytest.raises(ValueError, match="condition request"):
+        validate_condition_request(payload)
+    payload["jobs"].pop()
+    payload["jobs"][0]["payload"]["rag_enabled"] = False
+    with pytest.raises(ValueError, match="RAG on"):
+        validate_condition_request(payload)
+
+
+def test_dev_condition_stops_cleanly_before_case_without_full_budget(
+    tmp_path, monkeypatch
+):
+    from scripts.dev import assistant_pilot_condition as condition
+
+    payload = condition_request()
+    payload["experiment"] = dict(DEV_EXPERIMENT)
+    payload["case_start_budget_seconds"] = 400
+    for job in payload["jobs"]:
+        job["payload"].update(experiment=dict(DEV_EXPERIMENT), rag_enabled=True)
+
+    class Session:
+        def __init__(self, *_):
+            self.condition_evidence = {}
+
+        def run_case(self, *_):
+            pytest.fail("A case cannot start without its full bounded budget")
+
+        def close(self):
+            return True
+
+    monkeypatch.setattr(condition, "PilotConditionSession", Session)
+    result = condition.run_condition(
+        payload, tmp_path / "cases", tmp_path / "condition"
+    )
+    assert result["stop_reason"] == "budget_exhausted"
+    assert result["cleanup_ok"] is True
+    assert result["results"] == []
+
+
+def test_dev_budget_stop_keeps_completed_case_and_does_not_start_next(
+    tmp_path, monkeypatch
+):
+    from scripts.dev import assistant_pilot_condition as condition
+
+    payload = condition_request()
+    payload.update(experiment=dict(DEV_EXPERIMENT), case_start_budget_seconds=900)
+    for job in payload["jobs"]:
+        job["payload"].update(experiment=dict(DEV_EXPERIMENT), rag_enabled=True)
+    clock = [100.0]
+    calls = []
+
+    class Session:
+        def __init__(self, *_):
+            self.condition_evidence = {}
+
+        def run_case(self, request, _destination):
+            calls.append(request["case"]["case_id"])
+            clock[0] += 500
+            return {"case_id": calls[-1], "status": "recorded", "cleanup_ok": True}
+
+        def close(self):
+            return True
+
+    monkeypatch.setattr(condition, "PilotConditionSession", Session)
+    monkeypatch.setattr(condition.time, "perf_counter", lambda: clock[0])
+    result = condition.run_condition(
+        payload, tmp_path / "cases", tmp_path / "condition"
+    )
+    assert calls == ["DEV-A01-01-V0"]
+    assert result["results"][0]["status"] == "recorded"
+    assert result["stop_reason"] == "budget_exhausted"
+    assert result["cleanup_ok"] is True
 
 
 def test_first_case_boundary_records_product_string_pipeline_stage(tmp_path):

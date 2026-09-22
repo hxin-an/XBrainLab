@@ -13,9 +13,20 @@ import math
 import re
 import xml.etree.ElementTree as ET
 import zipfile
+from collections import Counter
 from pathlib import Path, PurePosixPath
 
 SCHEMA = "xbrainlab.assistant_pilot_bank.v1"
+DEV_EXPERIMENT = {
+    "protocol": "xbrainlab.assistant_dev_initial.v1",
+    "stage": "DEV",
+    "candidate": "initial",
+    "candidate_index": 1,
+    "max_candidates": 5,
+    "rag_enabled": True,
+    "projection_id": "dev-state-card-nuisance-v1",
+    "qt_platform": "offscreen",
+}
 _NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 _REL = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
 _PACKAGE = "{http://schemas.openxmlformats.org/package/2006/relationships}"
@@ -430,4 +441,27 @@ def build_pilot_selection(bank: dict) -> dict:
         "phase_two_case_ids": [
             identifier for identifier in identifiers if identifier not in phase_one
         ],
+    }
+
+
+def build_dev_selection(bank: dict) -> dict:
+    """Select the complete reviewed DEV population, never score-select variants."""
+    # Reuse established identity, decision and tool-family validation.
+    build_pilot_selection(bank)
+    cases = [case for case in bank["cases"] if case["split"] == "DEV"]
+    counts = dict(Counter(case["decision"] for case in cases))
+    families = Counter(case["family_id"] for case in cases)
+    if counts != {"Action": 144, "Clarification": 48, "No-call": 72} or (
+        len(families) != 66 or set(families.values()) != {4}
+    ):
+        raise ValueError("Full DEV requires 264 cases / 66 four-variant families")
+    identifiers = sorted(case["case_id"] for case in cases)
+    return {
+        "schema": "xbrainlab.assistant_dev_selection.v1",
+        "source_sha256": bank["source"]["sha256"],
+        "selection_rule": "All reviewed DEV cases, case_id ascending; no VALID/TEST selection",
+        "counts": counts,
+        "case_ids": identifiers,
+        "phase_one_case_ids": identifiers,
+        "phase_two_case_ids": [],
     }

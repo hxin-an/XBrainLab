@@ -82,6 +82,7 @@ def test_unfinished_child_budget_is_reserved_not_user_idle():
 
 @pytest.fixture
 def run_inputs(tmp_path, monkeypatch):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
     source = {"head": "a" * 40, "dirty": []}
     environment = {"python": "fixture"}
     monkeypatch.setattr(runner, "source_identity", lambda: source)
@@ -153,6 +154,14 @@ def test_dirty_or_changed_identity_never_starts_child(run_inputs, monkeypatch):
     with pytest.raises(ValueError, match="identity"):
         runner.execute(manifest, bank, output)
     assert not output.exists()
+
+
+def test_dev_platform_drift_is_rejected_before_launch(run_inputs, monkeypatch):
+    manifest, _bank, _output = run_inputs
+    manifest["experiment"] = dict(runner.DEV_EXPERIMENT)
+    monkeypatch.setenv("QT_QPA_PLATFORM", "windows")
+    with pytest.raises(ValueError, match="Qt platform"):
+        runner._assert_identity(manifest)
 
 
 def test_resume_manifest_mismatch_preserves_existing_files(run_inputs):
@@ -231,6 +240,116 @@ def test_recorded_wrong_answer_is_measurement_not_engineering_failure(
     ]
     assert [record["id"] for record in ends] == [job["id"] for job in manifest["jobs"]]
     assert all(record["status"] == "recorded" for record in ends)
+
+
+def test_dev_explicit_replacement_preserves_failure_and_never_resends_valid_case(
+    run_inputs, tmp_path, monkeypatch
+):
+    manifest, bank, output = run_inputs
+    manifest["experiment"] = dict(runner.DEV_EXPERIMENT)
+    manifest["jobs"][0]["condition"] = "phi4-rag-on"
+    manifest["jobs"][0]["id"] = "phi4-rag-on__DEV-A"
+    manifest["embedding_sha256"] = "fixture"
+    manifest["config"]["embedding_cache"] = str(tmp_path)
+    monkeypatch.setattr(
+        runner,
+        "prepare_rag_cache",
+        lambda *a, **k: {"cache_root": str(tmp_path), "embedding_sha256": "fixture"},
+    )
+    monkeypatch.setattr(runner, "verify_rag_cache", lambda *_: None)
+    bank["cases"].append({**bank["cases"][0], "case_id": "DEV-B"})
+    manifest["jobs"].append(
+        {**manifest["jobs"][0], "id": "phi4-rag-on__DEV-B", "case_id": "DEV-B"}
+    )
+    calls = []
+
+    def child(request, destination, cases_root, timeout, *, on_started):
+        payload = runner._json(request)
+        calls.append([job["payload"]["case"]["case_id"] for job in payload["jobs"]])
+        destination.mkdir()
+        rows = []
+        for job in payload["jobs"]:
+            directory = cases_root / job["id"]
+            directory.mkdir()
+            result = {
+                "status": "measurement_failed"
+                if len(calls) == 1 and job["payload"]["case"]["case_id"] == "DEV-B"
+                else "recorded",
+                "cleanup_ok": True,
+                "correct": False,
+            }
+            runner._write_new(directory / "result.json", result)
+            rows.append({"id": job["id"], **result})
+        runner._write_new(
+            destination / "result.json",
+            {
+                "status": "recorded" if len(calls) > 1 else "measurement_failed",
+                "cleanup_ok": True,
+                "results": rows,
+            },
+        )
+        return (0 if len(calls) > 1 else 1), False
+
+    monkeypatch.setattr(runner, "_run_condition_child", child)
+    assert runner.execute(manifest, bank, output) == 1
+    original = (output / "cases" / "phi4-rag-on__DEV-B" / "result.json").read_bytes()
+    assert runner.execute(manifest, bank, output, resume=True) == 1
+    assert len(calls) == 1
+    assert (
+        runner.execute(manifest, bank, output, resume=True, replace_invalid=True) == 0
+    )
+    assert calls == [["DEV-A", "DEV-B"], ["DEV-B"]]
+    assert (
+        output / "cases" / "phi4-rag-on__DEV-B" / "result.json"
+    ).read_bytes() == original
+    ends = [item for item in runner.read_journal(output) if item["event"] == "case_end"]
+    replacement = ends[-1]
+    assert replacement["id"] == "phi4-rag-on__DEV-B"
+    assert replacement["artifact_id"] == "phi4-rag-on__DEV-B__attempt-2"
+    assert replacement["replaces_artifact_id"] == "phi4-rag-on__DEV-B"
+    assert (
+        runner.execute(manifest, bank, output, resume=True, replace_invalid=True) == 0
+    )
+    assert len(calls) == 2
+
+
+def test_dev_resume_cannot_run_while_same_output_is_locked(run_inputs):
+    from filelock import FileLock, Timeout
+
+    manifest, bank, output = run_inputs
+    manifest["experiment"] = dict(runner.DEV_EXPERIMENT)
+    lock = output.with_name(f".{output.name}.dev.lock")
+    with FileLock(str(lock), timeout=0), pytest.raises(Timeout):
+        runner.execute(manifest, bank, output, resume=True)
+
+
+@pytest.mark.parametrize("valid", [True, False])
+def test_dev_attempt_limit_and_changed_original_evidence(run_inputs, valid):
+    manifest, _bank, output = run_inputs
+    output.mkdir()
+    job = manifest["jobs"][0]
+    destination = output / "cases" / (job["id"] + "__attempt-2")
+    destination.mkdir(parents=True)
+    result_path = destination / "result.json"
+    runner._write_new(result_path, {"status": "measurement_failed", "cleanup_ok": True})
+    records = [
+        {
+            "event": "case_end",
+            "id": job["id"],
+            "artifact_id": destination.name,
+            "attempt": 2,
+            "status": "failed",
+            "cleanup_certified": True,
+            "result_sha256": runner.hashlib.sha256(result_path.read_bytes()).hexdigest()
+            if valid
+            else "wrong",
+        }
+    ]
+    if valid:
+        assert runner._dev_pending_jobs([job], records, output, True) == ([], True)
+    else:
+        with pytest.raises(ValueError, match="evidence changed"):
+            runner._dev_pending_jobs([job], records, output, True)
 
 
 def test_resumed_budget_prevents_starting_a_case_without_full_timeout(

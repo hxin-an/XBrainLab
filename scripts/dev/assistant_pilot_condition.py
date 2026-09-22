@@ -11,6 +11,7 @@ from __future__ import annotations
 # ruff: noqa: TRY301
 import argparse
 import json
+import math
 import os
 import threading
 import time
@@ -19,6 +20,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
+from scripts.dev.assistant_pilot_bank import DEV_EXPERIMENT
 from scripts.dev.assistant_pilot_case import (
     _write,
     audit_initial_input,
@@ -42,11 +44,22 @@ def _capture_paths(root: Path) -> list[Path]:
 
 def validate_condition_request(payload: dict) -> None:
     jobs = payload.get("jobs")
+    dev_initial = payload.get("experiment") == DEV_EXPERIMENT
+    budget = payload.get("case_start_budget_seconds")
     if (
         payload.get("schema") != SCHEMA
+        or ("experiment" in payload and not dev_initial)
+        or (
+            dev_initial
+            and (
+                type(budget) not in (int, float)
+                or not math.isfinite(budget)
+                or not 0 < budget <= 14_400
+            )
+        )
         or not isinstance(payload.get("condition"), str)
         or not isinstance(jobs, list)
-        or not 1 <= len(jobs) <= 30
+        or not 1 <= len(jobs) <= (264 if dev_initial else 30)
         or any(
             not isinstance(job, dict)
             or not isinstance(job.get("id"), str)
@@ -59,6 +72,13 @@ def validate_condition_request(payload: dict) -> None:
         raise ValueError("Invalid Pilot condition request")
     for job in jobs:
         validate_case_request(job["payload"])
+        if not dev_initial and "experiment" in job["payload"]:
+            raise ValueError("DEV case identity requires an approved DEV condition")
+        if dev_initial and (
+            job["payload"]["rag_enabled"] is not True
+            or job["payload"].get("experiment") != DEV_EXPERIMENT
+        ):
+            raise ValueError("Initial DEV requires its exact experiment and RAG on")
     first = jobs[0]["payload"]
     identity = (
         first["model_id"],
@@ -157,6 +177,15 @@ class PilotConditionSession:
                     rag_enabled=payload["rag_enabled"],
                     worker_factory=partial(build_research_worker, self.launch),
                 )
+                if payload.get("experiment") is not None:
+                    from scripts.dev.assistant_dev_context import DevContextAssembler
+
+                    original = controller.assembler
+                    controller.assembler = DevContextAssembler(
+                        original.registry,
+                        original.study_state,
+                        application_runtime=original.application_runtime,
+                    )
                 self.driver.attach(controller)
                 return controller
 
@@ -635,12 +664,32 @@ def run_condition(payload: dict, cases_root: Path, output: Path) -> dict:
     }
     path = output / "result.json"
     _write(path, summary)
+    if (
+        payload.get("experiment") == DEV_EXPERIMENT
+        and payload["case_start_budget_seconds"] < 450
+    ):
+        summary.update(
+            status="measurement_failed",
+            stop_reason="budget_exhausted",
+            cleanup_ok=True,
+            total_seconds=time.perf_counter() - condition_started,
+        )
+        _write(path, summary)
+        return summary
     try:
         first_output = cases_root / jobs[0]["id"]
         session = PilotConditionSession.__new__(PilotConditionSession)
         session.__init__(jobs[0]["payload"], output, first_output)
+        if payload.get("experiment") == DEV_EXPERIMENT:
+            session.condition_evidence["artifact_id"] = output.name
         summary["condition_evidence"] = session.condition_evidence
         for job in jobs:
+            if payload.get("experiment") == DEV_EXPERIMENT and (
+                time.perf_counter() - condition_started + 450
+                > payload["case_start_budget_seconds"]
+            ):
+                summary["stop_reason"] = "budget_exhausted"
+                break
             destination = cases_root / job["id"]
             if job is not jobs[0] and destination.exists():
                 raise FileExistsError("Condition case output already exists")

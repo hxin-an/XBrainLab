@@ -23,7 +23,12 @@ from importlib import metadata
 from pathlib import Path
 from uuid import uuid4
 
-from scripts.dev.assistant_pilot_bank import build_pilot_selection, load_bank
+from scripts.dev.assistant_pilot_bank import (
+    DEV_EXPERIMENT,
+    build_dev_selection,
+    build_pilot_selection,
+    load_bank,
+)
 from scripts.dev.assistant_pilot_models import (
     make_launch_spec,
     research_model_spec,
@@ -239,6 +244,11 @@ def consumed_seconds(records: list[dict]) -> float:
 
 
 def _assert_identity(manifest: dict) -> None:
+    if (
+        manifest.get("experiment") == DEV_EXPERIMENT
+        and os.environ.get("QT_QPA_PLATFORM") != DEV_EXPERIMENT["qt_platform"]
+    ):
+        raise ValueError("DEV Qt platform must match the frozen offscreen identity")
     source = source_identity()
     if (
         source["dirty"]
@@ -371,6 +381,54 @@ def _run_condition_child(
             raise
 
 
+def valid_measurement(end: dict, result: dict) -> bool:
+    """Incorrect answers and valid decision timeouts must never be resubmitted."""
+    return (
+        result.get("status") == "recorded" and result.get("cleanup_ok") is True
+    ) or (end.get("status") == "recorded" and end.get("cleanup_certified") is True)
+
+
+def _dev_pending_jobs(
+    jobs: list[dict], records: list[dict], output: Path, replace_invalid: bool
+) -> tuple[list[dict], bool]:
+    """Audit prior immutable results before selecting missing/explicit replacement work."""
+    ends = {record["id"]: record for record in records if record["event"] == "case_end"}
+    pending, invalid_remaining = [], False
+    for job in jobs:
+        previous = ends.get(job["id"])
+        attempt = 1
+        replaces = None
+        if previous is not None:
+            artifact = previous.get("artifact_id", job["id"])
+            result_path = output / "cases" / artifact / "result.json"
+            if not result_path.is_file() or hashlib.sha256(
+                result_path.read_bytes()
+            ).hexdigest() != previous.get("result_sha256"):
+                raise ValueError("Preserved case evidence changed; replacement refused")
+            result = _json(result_path)
+            if valid_measurement(previous, result):
+                continue
+            if previous.get("cleanup_certified") is not True:
+                raise ValueError("Unresolved case cleanup; replacement refused")
+            if not replace_invalid or previous.get("attempt", 1) >= 2:
+                invalid_remaining = True
+                continue
+            attempt = 2
+            replaces = artifact
+        artifact = job["id"] if attempt == 1 else f"{job['id']}__attempt-{attempt}"
+        if (output / "cases" / artifact).exists():
+            raise ValueError("Unresolved case directory; inspect preserved evidence")
+        pending.append(
+            {
+                **job,
+                "artifact_id": artifact,
+                "attempt": attempt,
+                "replaces_artifact_id": replaces,
+            }
+        )
+    return pending, invalid_remaining
+
+
 def execute(
     manifest: dict,
     bank: dict,
@@ -378,8 +436,50 @@ def execute(
     *,
     resume: bool = False,
     started_at: float | None = None,
+    replace_invalid: bool = False,
+) -> int:
+    if manifest.get("experiment") == DEV_EXPERIMENT:
+        from filelock import FileLock
+
+        lock_path = output.absolute().with_name(f".{output.name}.dev.lock")
+        with FileLock(str(lock_path), timeout=0):
+            return _execute(
+                manifest,
+                bank,
+                output,
+                resume=resume,
+                started_at=started_at,
+                replace_invalid=replace_invalid,
+            )
+    return _execute(
+        manifest,
+        bank,
+        output,
+        resume=resume,
+        started_at=started_at,
+        replace_invalid=replace_invalid,
+    )
+
+
+def _execute(
+    manifest: dict,
+    bank: dict,
+    output: Path,
+    *,
+    resume: bool = False,
+    started_at: float | None = None,
+    replace_invalid: bool = False,
 ) -> int:
     started = time.monotonic() if started_at is None else started_at
+    dev_initial = manifest.get("experiment") == DEV_EXPERIMENT
+    if ("experiment" in manifest and not dev_initial) or (
+        replace_invalid and (not dev_initial or not resume)
+    ):
+        raise ValueError("Replacement requires an explicit initial DEV resume")
+    if dev_initial and any(
+        not CONDITIONS[job["condition"]][1] for job in manifest["jobs"]
+    ):
+        raise ValueError("Initial DEV only permits RAG on")
     _assert_identity(manifest)
     output = output.absolute()
     if resume:
@@ -409,6 +509,13 @@ def execute(
         raise ValueError(
             "Unresolved started conditions must never be resent automatically"
         )
+    pending_jobs, invalid_remaining = (
+        _dev_pending_jobs(manifest["jobs"], records, output, replace_invalid)
+        if dev_initial
+        else (manifest["jobs"], False)
+    )
+    if dev_initial and not pending_jobs:
+        return int(invalid_remaining)
     consumed = consumed_seconds(records)
     session = uuid4().hex
 
@@ -425,12 +532,12 @@ def execute(
         )
 
     journal("session_start", prior_charged_seconds=consumed)
-    cleanup_certified, outcome = True, 0
+    cleanup_certified, outcome = True, int(invalid_remaining)
+    minimum_reservation = (
+        600 + CHILD_TIMEOUT_SECONDS if dev_initial else CONDITION_TIMEOUT_SECONDS
+    )
     try:
-        if (
-            consumed + time.monotonic() - started + CONDITION_TIMEOUT_SECONDS
-            > BUDGET_SECONDS
-        ):
+        if consumed + time.monotonic() - started + minimum_reservation > BUDGET_SECONDS:
             journal("budget_exhausted")
             return 2
         rag_root = None
@@ -453,19 +560,38 @@ def execute(
         cases = {
             case["case_id"]: case for case in bank["cases"] if case["split"] == "DEV"
         }
-        batches = condition_batches(manifest["jobs"])
+        batches = condition_batches(pending_jobs)
         for batch in batches:
             condition = batch["condition"]
-            if condition in starts:
+            if not dev_initial and condition in starts:
                 continue
             if (
-                consumed + time.monotonic() - started + CONDITION_TIMEOUT_SECONDS
+                consumed + time.monotonic() - started + minimum_reservation
                 > BUDGET_SECONDS
             ):
                 journal("budget_exhausted")
                 outcome = 2
                 break
             _assert_identity(manifest)
+            condition_attempt = 1 + sum(
+                record["event"] == "condition_start"
+                and record.get("condition", record["id"]) == condition
+                for record in records
+                if "id" in record
+            )
+            condition_artifact = (
+                condition
+                if condition_attempt == 1
+                else f"{condition}__attempt-{condition_attempt}"
+            )
+            condition_timeout = (
+                min(
+                    BUDGET_SECONDS - consumed - (time.monotonic() - started),
+                    600 + len(batch["jobs"]) * CHILD_TIMEOUT_SECONDS,
+                )
+                if dev_initial
+                else CONDITION_TIMEOUT_SECONDS
+            )
             model, rag_enabled = CONDITIONS[condition]
             jobs = []
             for job in batch["jobs"]:
@@ -480,11 +606,20 @@ def execute(
                     "seed": 0,
                     "repeat": 0,
                 }
-                case_request = output / "cases" / f"{job['id']}.request.json"
-                _write_new(case_request, payload)
+                if dev_initial:
+                    payload["experiment"] = dict(DEV_EXPERIMENT)
+                artifact = job.get("artifact_id", job["id"])
+                case_request = output / "cases" / f"{artifact}.request.json"
+                if dev_initial and case_request.exists():
+                    if _json(case_request) != payload:
+                        # Outer handler journals the failure before re-raising.
+                        raise ValueError("Preserved unstarted request changed")  # noqa: TRY301
+                else:
+                    _write_new(case_request, payload)
                 jobs.append(
                     {
-                        "id": job["id"],
+                        **job,
+                        "artifact_id": artifact,
                         "payload": payload,
                         "request_sha256": hashlib.sha256(
                             case_request.read_bytes()
@@ -495,17 +630,23 @@ def execute(
                 "schema": "xbrainlab.assistant_pilot_condition.v1",
                 "condition": condition,
                 "jobs": [
-                    {"id": item["id"], "payload": item["payload"]} for item in jobs
+                    {"id": item["artifact_id"], "payload": item["payload"]}
+                    for item in jobs
                 ],
             }
-            destination = output / "conditions" / condition
+            if dev_initial:
+                condition_payload["experiment"] = dict(DEV_EXPERIMENT)
+                condition_payload["artifact_id"] = condition_artifact
+                condition_payload["case_start_budget_seconds"] = condition_timeout - 60
+            destination = output / "conditions" / condition_artifact
             request = destination.with_suffix(".request.json")
             _write_new(request, condition_payload)
             journal(
                 "condition_start",
-                id=condition,
+                id=condition_artifact,
+                condition=condition,
                 case_ids=[item["id"] for item in jobs],
-                timeout_seconds=CONDITION_TIMEOUT_SECONDS,
+                timeout_seconds=condition_timeout,
                 request_sha256=hashlib.sha256(request.read_bytes()).hexdigest(),
             )
             cleanup_certified = False
@@ -513,8 +654,8 @@ def execute(
                 request,
                 destination,
                 output / "cases",
-                CONDITION_TIMEOUT_SECONDS,
-                on_started=lambda pid, condition_id=condition: journal(
+                condition_timeout,
+                on_started=lambda pid, condition_id=condition_artifact: journal(
                     "child_started", id=condition_id, pid=pid
                 ),
             )
@@ -531,7 +672,8 @@ def execute(
             )
             journal(
                 "condition_end",
-                id=condition,
+                id=condition_artifact,
+                condition=condition,
                 status=status,
                 returncode=code,
                 hard_timeout=timed_out,
@@ -542,10 +684,12 @@ def execute(
             )
             completed = {item.get("id"): item for item in result.get("results", [])}
             for item in jobs:
-                if item["id"] not in completed:
+                if item["artifact_id"] not in completed:
                     continue
-                case_result_path = output / "cases" / item["id"] / "result.json"
-                recorded = completed.get(item["id"], {})
+                case_result_path = (
+                    output / "cases" / item["artifact_id"] / "result.json"
+                )
+                recorded = completed.get(item["artifact_id"], {})
                 case_status = (
                     "recorded"
                     if recorded.get("status") == "recorded"
@@ -553,11 +697,20 @@ def execute(
                     and case_result_path.is_file()
                     else "failed"
                 )
+                attempt_identity = (
+                    {
+                        key: item[key]
+                        for key in ("artifact_id", "attempt", "replaces_artifact_id")
+                    }
+                    if dev_initial
+                    else {}
+                )
                 journal(
                     "case_start",
                     id=item["id"],
                     timeout_seconds=CHILD_TIMEOUT_SECONDS,
                     request_sha256=item["request_sha256"],
+                    **attempt_identity,
                 )
                 journal(
                     "case_end",
@@ -571,11 +724,14 @@ def execute(
                     ).hexdigest()
                     if case_result_path.is_file()
                     else None,
+                    **attempt_identity,
                 )
             if status != "recorded":
-                outcome = 1
+                outcome = 2 if result.get("stop_reason") == "budget_exhausted" else 1
                 break
-        if any(record["status"] != "recorded" for record in ends.values()):
+        if not dev_initial and any(
+            record["status"] != "recorded" for record in ends.values()
+        ):
             outcome = outcome or 1
     except BaseException as exc:
         journal("session_error", error_type=type(exc).__name__, detail=str(exc))
@@ -610,14 +766,31 @@ def _model_configuration(model: str, cache: str) -> dict:
 
 
 def prepare_manifest(
-    bank_path: Path, selection_path: Path, config_path: Path, conditions: list[str]
+    bank_path: Path,
+    selection_path: Path | None,
+    config_path: Path,
+    conditions: list[str],
+    *,
+    dev_initial: bool = False,
 ) -> tuple[dict, dict]:
+    if (
+        dev_initial
+        and os.environ.get("QT_QPA_PLATFORM") != DEV_EXPERIMENT["qt_platform"]
+    ):
+        raise ValueError("DEV Qt platform must be offscreen before preparation")
     bank = load_bank(bank_path)
-    selection = _json(selection_path)
-    if selection != build_pilot_selection(bank):
+    expected_selection = (
+        build_dev_selection(bank) if dev_initial else build_pilot_selection(bank)
+    )
+    selection = (
+        _json(selection_path) if selection_path is not None else expected_selection
+    )
+    if selection != expected_selection or (selection_path is None and not dev_initial):
         raise ValueError(
             "Selection does not match the approved deterministic DEV selection"
         )
+    if dev_initial and any(not CONDITIONS[condition][1] for condition in conditions):
+        raise ValueError("Initial DEV only permits RAG on")
     config = _json(config_path)
     selected_models = {CONDITIONS[condition][0] for condition in conditions}
     if set(config) - {"model_caches", "embedding_cache"}:
@@ -676,6 +849,9 @@ def prepare_manifest(
         "child_timeout_seconds": CHILD_TIMEOUT_SECONDS,
         "condition_timeout_seconds": CONDITION_TIMEOUT_SECONDS,
     }
+    if dev_initial:
+        manifest["experiment"] = dict(DEV_EXPERIMENT)
+        manifest["condition_timeout_seconds"] = BUDGET_SECONDS
     return json.loads(json.dumps(manifest, allow_nan=False)), bank
 
 
