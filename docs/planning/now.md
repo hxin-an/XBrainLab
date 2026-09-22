@@ -59,6 +59,10 @@
   尚未開始本輪模型推論；候選跨離線包的全域編號唯一性需研究管理，不另造中央ledger。
   核心協定／計分切片與封存／離線核對切片分開commit；各自review复杂度，沒有新runtime owner。
   封存helper及audit是檔案／既有判分函式組合，不重做執行、取消、journal或判分政策。
+  首次獨立覆核 `91567d3d` 找出 foreign run 可誤接續的 blocker；修正為所有包入口共用
+  retained bank/config/resources 比對，RED 已重現，正在收尾回歸與重新凍結版本。
+  Audit 原有額外 bank/config 核對保留，不減少已存在的證據保護。
+  搬移後可新建run／離線報告；未完成run續跑仍需原runtime及絕對路徑，已明確記錄限制。
 
 ## 最近完成
 

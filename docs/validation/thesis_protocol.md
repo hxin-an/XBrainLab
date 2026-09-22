@@ -156,6 +156,8 @@ Scorer 正反例保護參數、格式、錯誤工具、正常不操作與有效�
 `XBL_PYTHON` 可明確覆蓋本機 Python binding。入口不另擁有 journal／cleanup／resume policy。
 `--replace-invalid` 只和 resume 使用，需先診斷，保留原 attempt 且最多替代一次；
 有效錯答、格式錯誤及有效逾時不能因分數重跑。不同 runtime 建新 run，不混接量測。
+搬移包後支援新 run／離線報告；既有 partial run 的 resume 仍需原本的絕對來源與資源路徑，
+不宣稱可搬移未完成 run 後無縫續跑。其他包的 run 即使放進本包目錄，也不得被誤接續。
 同主機／使用者共用 GPU lock；這不代表預約了其他使用者的 GPU，開跑前仍須查共享負載。
 
 包保存 `sources/<head>/`、`environment/`、`inputs/`、`manifest.json`、`run.sh`。

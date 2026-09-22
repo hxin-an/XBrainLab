@@ -5,6 +5,7 @@ import hashlib
 import json
 import shutil
 import sys
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
@@ -393,6 +394,40 @@ def test_experiment_report_keeps_repeat_and_candidate_denominators_separate(tmp_
     page = (tmp_path / "report" / "index.html").read_text(encoding="utf-8")
     assert "VALID" in page and "DEV initial baseline" not in page
     assert "repeat-0" in page and "repeat-1" in page and "repeat-2" in page
+
+    class Labels(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.cell = None
+            self.cells = []
+            self.option_keys = []
+            self.row_keys = []
+
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            if tag in {"th", "td", "option"}:
+                self.cell = ""
+            if tag == "option" and attrs.get("value"):
+                self.option_keys.append(attrs["value"])
+            if tag == "tr" and "data-condition" in attrs:
+                self.row_keys.append(attrs["data-condition"])
+
+        def handle_data(self, data):
+            if self.cell is not None:
+                self.cell += data
+
+        def handle_endtag(self, tag):
+            if tag in {"th", "td", "option"} and self.cell is not None:
+                self.cells.append(self.cell)
+                self.cell = None
+
+    labels = Labels()
+    labels.feed(page)
+    assert all("__candidate-" not in cell for cell in labels.cells)
+    for repeat in range(1, 4):
+        assert labels.cells.count(f"phi4 · candidate 2 · repeat {repeat}") == 103
+    assert set(result["conditions"]).issubset(labels.option_keys)
+    assert set(labels.row_keys) == set(result["conditions"])
     assert before == {
         path.relative_to(root): path.read_bytes()
         for path in root.rglob("*")

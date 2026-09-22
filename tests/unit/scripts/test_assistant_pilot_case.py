@@ -80,6 +80,29 @@ def test_frozen_experiment_accepts_valid_repeat_without_weakening_legacy_gate():
     assert experiment_result_identity(request()) == {}
 
 
+def test_standalone_rejects_configured_experiment_before_side_effects(
+    tmp_path, monkeypatch
+):
+    from scripts.dev import assistant_pilot_case
+
+    environment = dict(assistant_pilot_case.os.environ)
+    monkeypatch.setattr(assistant_pilot_case.os, "environ", dict(environment))
+    monkeypatch.setattr(
+        assistant_pilot_case,
+        "bootstrap_case_checkout",
+        lambda: pytest.fail(
+            "Configured experiment reached standalone runtime bootstrap"
+        ),
+    )
+    output = tmp_path / "standalone-case"
+    with pytest.raises(
+        ValueError, match="configured experiments require batched condition entry"
+    ):
+        assistant_pilot_case.run_case(experiment_request(), output)
+    assert not output.exists()
+    assert dict(assistant_pilot_case.os.environ) == environment
+
+
 @pytest.mark.parametrize(
     "field,value",
     [

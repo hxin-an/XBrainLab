@@ -111,6 +111,11 @@ class ExperimentPackageTests(unittest.TestCase):
             check=False,
         )
 
+    def retained_run(self, name="retained", source_package=None):
+        run = self.output / "runs" / name
+        shutil.copytree((source_package or self.output) / "inputs", run / "inputs")
+        return run
+
     def test_independent_snapshot_and_no_private_copy(self):
         private = self.source / "private"
         private.mkdir()
@@ -153,8 +158,7 @@ class ExperimentPackageTests(unittest.TestCase):
 
     def test_resume_and_model_free_report_forward_to_original_run(self):
         self.create()
-        run = self.output / "runs" / "retained"
-        run.mkdir(parents=True)
+        run = self.retained_run()
         # There are deliberately no model or embedding directories.
         result = self.launch("--report-only", "retained")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -171,8 +175,7 @@ class ExperimentPackageTests(unittest.TestCase):
 
     def test_audit_is_model_free_and_delegates_to_existing_audit_owner(self):
         self.create()
-        run = self.output / "runs" / "retained"
-        run.mkdir(parents=True)
+        run = self.retained_run()
         result = self.launch("--audit", "retained")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(
@@ -180,6 +183,53 @@ class ExperimentPackageTests(unittest.TestCase):
             ["--package", str(self.output), "--run", str(run)],
         )
         self.assertFalse((run / "called.json").exists())
+
+    def test_foreign_run_with_same_source_but_different_config_refused(self):
+        self.create()
+        foreign = self.output
+        self.values["models"][0]["candidate_index"] = 3
+        self.save_config()
+        self.output = foreign.with_name("different-config-package")
+        self.create()
+        self.assertEqual(
+            self.api.verify_package(foreign)["sources"],
+            self.api.verify_package(self.output)["sources"],
+        )
+        for action in ("--resume", "--report-only", "--audit"):
+            with self.subTest(action=action):
+                run = self.retained_run(action.removeprefix("--"), foreign)
+                before = {
+                    path.name: path.read_bytes() for path in (run / "inputs").iterdir()
+                }
+                result = self.launch(action, run.name)
+                self.assertNotEqual(result.returncode, 0, result.stdout)
+                self.assertIn(
+                    "Retained run inputs differ from sealed package", result.stderr
+                )
+                self.assertFalse((run / "called.json").exists())
+                self.assertFalse((run / "audit-called.json").exists())
+                self.assertEqual(
+                    before,
+                    {
+                        path.name: path.read_bytes()
+                        for path in (run / "inputs").iterdir()
+                    },
+                )
+
+    def test_each_retained_input_must_match_sealed_package_before_dispatch(self):
+        self.create()
+        for filename in ("bank.xlsx", "config.json", "resources.json"):
+            for missing in (False, True):
+                with self.subTest(filename=filename, missing=missing):
+                    run = self.retained_run(f"{filename}-{missing}")
+                    target = run / "inputs" / filename
+                    if missing:
+                        target.unlink()
+                    else:
+                        target.write_bytes(target.read_bytes() + b"changed")
+                    result = self.launch("--report-only", run.name)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertFalse((run / "called.json").exists())
 
     def test_sealed_file_mutation_refused_before_runner(self):
         for relative in (

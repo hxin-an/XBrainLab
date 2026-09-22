@@ -68,6 +68,37 @@ def test_shared_page_uses_inline_css_without_requiring_external_assets():
     assert page.contents["script"] == []
 
 
+def test_experiment_labels_escape_text_keep_filter_keys_and_omit_dev_repeat():
+    key = 'model"<script>__candidate-2__DEV__repeat-0'
+    condition = {
+        "identity": {
+            "condition": 'model"<script>-rag-on',
+            "candidate_index": 2,
+            "split": "DEV",
+            "repeat": 0,
+        },
+        "macro": {"first": None, "final": None},
+        "decision_latency_seconds": {"overall": {}},
+    }
+    page = presentation.render_overview({"conditions": {key: condition}})
+    controls = presentation._case_filters({key: condition, "legacy-rag-off": {}})
+    assert "model&quot;&lt;script&gt; · candidate 2" in page
+    assert "repeat" not in page and "__candidate-" not in page
+    assert "<script>" not in page + controls
+    assert ">legacy-rag-off</option>" in controls
+
+    class Options(HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            if tag == "option":
+                self.keys.append(dict(attrs).get("value"))
+
+    parsed = Options()
+    parsed.keys = []
+    parsed.feed(controls)
+    assert key in parsed.keys
+    assert ">model&quot;&lt;script&gt; · candidate 2</option>" in controls
+
+
 def test_entry_and_report_present_only_identity_and_result_tables(tmp_path):
     from scripts.dev import run_assistant_dev as entry
 

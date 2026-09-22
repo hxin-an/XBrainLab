@@ -227,10 +227,17 @@ def verify_package(package: Path) -> dict:
 
 
 def _retained_run(package: Path, requested: Path) -> Path:
+    """Bind a retained run to sealed package inputs, not merely its directory."""
     run = requested if requested.is_absolute() else package / "runs" / requested
     run = run.resolve(strict=True)
     if not run.is_dir() or run.parent != (package / "runs").resolve():
         raise ValueError("Select an existing run belonging to this package")
+    for name in ("bank.xlsx", "config.json", "resources.json"):
+        retained = run / "inputs" / name
+        if not retained.is_file() or _digest(retained) != _digest(
+            package / "inputs" / name
+        ):
+            raise ValueError(f"Retained run inputs differ from sealed package: {name}")
     return run
 
 

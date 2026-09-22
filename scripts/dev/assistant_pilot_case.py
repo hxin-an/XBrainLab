@@ -345,6 +345,10 @@ def record_decision_clock(
 
 def run_case(payload: dict, output: Path) -> dict[str, Any]:
     """Run in a dedicated process; never call concurrently in a shared UI process."""
+    from scripts.dev.assistant_experiment_config import is_experiment_protocol
+
+    if is_experiment_protocol(payload.get("experiment")):
+        raise ValueError("configured experiments require batched condition entry")
     output = output.absolute()
     output.mkdir()  # A previous case/result must never be overwritten.
     for name, suffix in (

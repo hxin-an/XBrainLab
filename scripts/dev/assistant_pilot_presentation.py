@@ -113,6 +113,20 @@ def _html_table(headers: list[str], rows: list[list]) -> str:
     )
 
 
+def _condition_label(name: str, condition: dict) -> str:
+    """Readable experiment identity; storage and filter keys remain unchanged."""
+    identity = condition.get("identity")
+    if not identity:
+        return name
+    label = (
+        identity["condition"].removesuffix("-rag-on")
+        + f" · candidate {identity['candidate_index']}"
+    )
+    if identity["split"] == "VALID":
+        label += f" · repeat {identity['repeat'] + 1}"
+    return label
+
+
 def render_overview(report: dict) -> str:
     """Compact view of existing aggregates; never compute or substitute scores."""
     conditions = report.get("conditions", {})
@@ -121,7 +135,7 @@ def render_overview(report: dict) -> str:
         timing = condition["decision_latency_seconds"].get("overall", {})
         rows.append(
             [
-                name,
+                _condition_label(name, condition),
                 *[
                     "n/a"
                     if condition["macro"][phase] is None
@@ -216,15 +230,16 @@ def _render_accuracy_breakdowns(report: dict, details: dict) -> str:
             )
         grouped_rows.append(cells)
 
+    labels = [_condition_label(name, value) for name, value in conditions.items()]
     return (
         '<section id="category-accuracy" class="accuracy-breakdown">'
         "<h2>Category decision accuracy</h2>"
         '<p class="muted table-note">Final answers: correct / valid (%); unavailable measurements shown separately. '
         "Decision accuracy is not task completion or response-text quality.</p>"
-        + _html_table(["Category", *conditions], categories)
+        + _html_table(["Category", *labels], categories)
         + '</section><section id="group-accuracy" class="accuracy-breakdown">'
         "<h2>Question-group decision accuracy</h2>"
-        + _html_table(["Question group", *conditions], grouped_rows)
+        + _html_table(["Question group", *labels], grouped_rows)
         + "</section>"
     )
 
@@ -539,8 +554,8 @@ def _excel(value: object) -> object:
 def _case_filters(conditions: dict) -> str:
     """Controls match cases.js IDs; filtering never changes exported rows."""
     options = "".join(
-        f'<option value="{_escape(name)}">{_escape(name)}</option>'
-        for name in conditions
+        f'<option value="{_escape(name)}">{_escape(_condition_label(name, condition))}</option>'
+        for name, condition in conditions.items()
     )
     return f"""
     <h2 id="cases">Case results</h2>
@@ -940,10 +955,12 @@ def _write_case_index(
             outcome = "unavailable"
             if row["decision_valid"] and isinstance(row.get("final"), bool):
                 outcome = "correct" if row["final"] else "incorrect"
+            condition_key = row.get("report_condition", row["condition"])
+            label = _condition_label(condition_key, report["conditions"][condition_key])
             body.append(
                 f'<tr data-condition="{_escape(row.get("report_condition", row["condition"]))}" data-category="{_escape(row["decision"])}" data-outcome="{outcome}"'
                 f' data-search="{_escape(row["id"] + " " + request)}">'
-                f"<td>{_escape(row.get('report_condition', row['condition']))}</td>"
+                f"<td>{_escape(label)}</td>"
                 f'<td><a href="{quote(link)}">{_escape(row["case_id"])}</a></td>'
                 + "".join(
                     f"<td>{_escape(value)}</td>"
