@@ -529,21 +529,48 @@ def test_corrupt_elapsed_time_cannot_buy_more_budget(seconds):
         )
 
 
-def test_parent_timeout_records_and_reaps_only_its_child(tmp_path, monkeypatch):
+@pytest.mark.parametrize("condition", [False, True], ids=["case", "condition"])
+def test_parent_timeout_records_and_reaps_only_its_child(
+    tmp_path, monkeypatch, condition
+):
     child = tmp_path / "child.py"
     child.write_text("import time\ntime.sleep(120)\n")
     monkeypatch.setattr(
-        runner, "_case_command", lambda *_: [runner._python_executable(), str(child)]
+        runner,
+        "_condition_command" if condition else "_case_command",
+        lambda *_: [runner._python_executable(), str(child)],
     )
+    processes = []
+    real_popen = runner.subprocess.Popen
+
+    def spawn(*args, **kwargs):
+        process = real_popen(*args, **kwargs)
+        processes.append(process)
+        return process
+
+    monkeypatch.setattr(runner.subprocess, "Popen", spawn)
+    request = tmp_path / "case.request.json"
+    request.write_text("{}")
     owned = []
-    returncode, timed_out = runner._run_child(
-        tmp_path / "case.request.json",
-        tmp_path / "case",
-        0.1,
-        on_started=owned.append,
-    )
+    if condition:
+        returncode, timed_out = runner._run_condition_child(
+            request,
+            tmp_path / "condition",
+            tmp_path / "cases",
+            0.1,
+            on_started=owned.append,
+        )
+    else:
+        returncode, timed_out = runner._run_child(
+            request,
+            tmp_path / "case",
+            0.1,
+            on_started=owned.append,
+        )
     assert len(owned) == 1 and owned[0] > 0
     assert timed_out is True and returncode != 0
+    assert len(processes) == 1 and processes[0].pid == owned[0]
+    assert processes[0].poll() == returncode
     assert (tmp_path / "case.request.stdout.log").is_file()
 
 

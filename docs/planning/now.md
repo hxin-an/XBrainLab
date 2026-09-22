@@ -2,67 +2,13 @@
 
 最後更新：`2026-09-23`
 
-## Active — 可封存實驗包、Linux 執行與 evaluator 整合驗收
+## 本輪狀態
 
-2026-09-23 使用者批准完整計畫，要求做到整合驗收再停。此節是唯一施工進度，
-詳細資料夾約定保存在使用者「碩論準備／實驗／產出格式／實驗產出格式說明.md」。
-起點為 evaluation `29cb4495`；不改產品 main、UI、Assistant 公開工具、研究 prompt／模型／RAG 政策。
-
-### Outcome 與範圍
-
-- 在已指定 `.134` Linux NAS home，以封存包 `./run.sh` 建新 run、指定 run resume、report-only。
-  單一可編輯 `config.json` 在封存時固定；manifest／selection 自動生成並核對，不另造設定權威。
-- 每模型最多五個候選，各自綁定精確 source／設定；d0 已占第一套，不改舊檔案或額度。
-  VALID 可混選不同模型的候選／source，三次均 seed=0、greedy，各自保存分母與結果。
-- 實作 Linux、DEV／VALID、model selection、repeat 身分；本輪只用合成資料驗 VALID 排程，
-  不跑正式 VALID、TEST、完整 DEV、新調優候選；不把入口通用化當成新實驗授權。
-- 封存程式及環境規格獨立於開發工作區；既有固定模型／RAG 複製到 NAS 共用並驗指紋，
-  不替換版本或下載新模型。原環境／權重／d0／settings.json 保留。
-- runner 繼續擁有執行、排他、取消／cleanup、journal/resume；scorer 擁有判分；
-  run.sh 只轉接。整理重複執行路徑、修復上限、判錯說明、離線核對及計時起訖，不新增控制平台。
-- 舊 d0 原始內容及舊分數不改；frozen scorer 重播驗舊結果，新 scorer 如有修正另存版本／差異。
-  Windows 與 Linux 的速度不直接混排；正式同平台候選選版仍另定研究執行範圍。
-
-### 小切片與分工
-
-1. 固定契約／passing baseline；先 RED 驗新增平台、repeat、缺資源、錯身分、修復上限。
-2. runner/config/job 身分；scorer/report/clock；主 agent package／資源／整合，按檔案隔離寫入。
-3. 真子程序／真檔案故障驗證：partial write、有效錯答、cleanup 不明、排他與續跑。
-   同環境續跑；跨 runtime／硬體只建新 run。搬移不改舊 raw，不保證跨平台逐位元相同。
-4. 134 NAS 部署最終來源，移動到含空白／中文的新根目錄驗證不依賴原 workspace；
-   真 SSH 啟動端斷開仍完成、重連讀狀態，僅管理本輪自有 PID，GPU 使用前重查共享負載。
-5. 真模型 smoke：五模型各固定四個 DEV 題（開窗、填參數、Clarification、No-call），共20；
-   題號／配置在推論前封存，RAG on 必須有真檢索證據，總執行預算60分鐘（不含資源複製）。
-   有效錯答不重跑；無效量測最多一次替代且仍受總預算限制。通過標準是工程路徑／證據／清理，
-   不是20題全對，不用 smoke 分數調研究設定。budget耗盡或必要新決策明示，不擅自加跑。
-6. 三方獨立覆核最終候選：論文證據、架構／重現性、測試／實作；修 blockers、重驗受影響面。
-   focused、適用整合、docs、歷史 raw不變與報告連結同版本驗證後一次交付。
-
-### 架構複雜度與驗收
-
-- 預期保留既有 runner/scorer/publication owners；新增封存／config helper 只負責檔案及純資料，
-  不新建 runtime state machine。Deletion candidates 是重複單題／condition lifecycle 和硬編碼 DEV gate。
-- 新 module／owner 或 LOC 超門檻先獨立 complexity review；每片記 actual +/-，不把大改藏進搬檔。
-  小 commit 可回退；未取得 PR／push／merge 授權，不發布。UI 四表布局保持，不另做視覺重設計。
-- 必驗：candidate/split/repeat/attempt 唯一身分；每模型候選上限；VALID不同來源混選；
-  缺檔／hash／revision不符在 child 前拒絕；report-only 無模型；wrong-but-valid 不重送；
-  failed/partial attempts 保留，未確認 cleanup 拒絕 resume；source／inputs／raw 不被報告改寫。
-- reviewer 必須查 actual diff／產物，不以摘要、人數或測試數認證論文；人工 oracle 盲審另列限制。
-- Stop：上述完整工程交付及20題 smoke證據齊全，或確實需要新權限／資源／研究決策。
-  小切片完成、CI pending、context compaction、環境安裝成功都不是停止條件。
-- Next：runner／scorer／package／離線audit已實作，先完成整合 focused regression，
-  再凍結同一來源部署；三位未負責對應實作的 reviewer 覆核實際 diff 與最終產物。
-  20題固定為五模型各跑 `DEV-A01-01-V0`、`DEV-A08-01-V0`、`DEV-C01-01-V0`、
-  `DEV-N01-01-V0`；不以歷史分數選題。六個既有 snapshot（含 embedding，共34.75GB）
-  已複製到134 NAS並全部通過逐檔 SHA-256 核對。舊d0原source離線重播1,320筆通過，
-  原326筆未重跑、1筆替代、1,436 captures核對相符，舊分數不變。
-  尚未開始本輪模型推論；候選跨離線包的全域編號唯一性需研究管理，不另造中央ledger。
-  核心協定／計分切片與封存／離線核對切片分開commit；各自review复杂度，沒有新runtime owner。
-  封存helper及audit是檔案／既有判分函式組合，不重做執行、取消、journal或判分政策。
-  首次獨立覆核 `91567d3d` 找出 foreign run 可誤接續的 blocker；修正為所有包入口共用
-  retained bank/config/resources 比對，RED 已重現，正在收尾回歸與重新凍結版本。
-  Audit 原有額外 bank/config 核對保留，不減少已存在的證據保護。
-  搬移後可新建run／離線報告；未完成run續跑仍需原runtime及絕對路徑，已明確記錄限制。
+2026-09-23 核准的封存包／Linux evaluator 工程範圍已 scope-complete；
+固定20題、搬移後離線報告／原候選判分核對、歷史d0不變及三方獨立覆核完成。
+實際來源、產物與限制由 [Current](../current.md#linux-evaluator-2026-09-23)
+擁有；執行及研究契約由[研究規格](../validation/thesis_protocol.md)擁有。
+本輪未PR／push／merge；沒有active施工，不自動開始新候選、完整DEV、正式VALID或TEST。
 
 ## 最近完成
 
@@ -79,7 +25,7 @@
 [研究規格](../validation/thesis_protocol.md) 擁有，不在本 plan 重複保存數值。
 本輪沒有 PR／push／merge，也不等於產品 native GUI 或正式 TEST 驗收。
 
-上述 active 工程範圍之外，下方 DEV 調優候選仍未授權；不自動執行第二套、VALID／TEST，
+上述已完成工程範圍之外，下方 DEV 調優候選仍未授權；不自動執行第二套、VALID／TEST，
 不重跑已完成的起始基準或歷史 Pilot。以下保留歷史及候選，不作新的施工授權。
 
 ## Accepted history — 產品品質線：Import 適配與內部整理

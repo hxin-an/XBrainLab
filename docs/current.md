@@ -71,6 +71,37 @@ DPI 或下游流程都經此次真人驗收。後續純文件收尾不改該產�
 Windows focused 100 tests、實際題庫的題目／答案保留核對及獨立 review 通過。
 正式來源及版本見[研究規格](validation/thesis_protocol.md)；指定舊題庫時仍原樣複製，不隱式刪欄。
 
+### Linux 封存包與 evaluator 工程驗證（2026-09-23）
+
+封存量測來源為 clean `b42cd81ee874d3054f5e1b1f69c045eb1bcf0157`，實際包位於
+`hxin@140.113.193.134:/mnt/home/2025/hxin/XBrainLab-experiments/engineering/工程 smoke b42cd81e`。
+`runs/20260922-171022-8ea4496e/index.html` 是本次結果；用法與設定由
+[研究規格](validation/thesis_protocol.md#devvalid) 擁有。本機閱讀副本為
+`D:\XBrainLabRuns\linux-engineering-b42cd81e\index.html`。
+
+- 五模型各固定四題，20筆均為第一次量測；無替代重跑、cleanup全部完成，六筆有效錯答保留。
+  每模型 Action／Clarification／No-call 分母為2／1／1，不是完整 DEV，不能用來排名或調參。
+- 五模型實際 CUDA、精確選版且無 fallback；Gemma沿固定NF4政策。22次決策生成及5次暖機
+  capture完整；RAG20題啟用且無錯誤，其中10題有內容、10題合法無匹配。決策計時不含模型載入。
+  Runner active約369秒，包含載入／暖機／案例執行；資源核對及部署不計成決策延遲。
+- SSH啟動端退出後同一自有PID持續執行並正常完成。完整程式、設定、題庫與依賴規格封存；
+  六個既有模型／embedding snapshot共34,747,319,860 bytes複製到NAS，逐檔SHA-256一致，無新下載。
+- 搬至另一中文／空白路徑，配置中的模型快取位置不存在，report-only及原候選scorer／input／
+  capture audit仍成功；系統呼叫只見cache捷徑metadata，未開啟cache或權重檔。
+  原inputs/raw不變，CSV逐位元相同，報告JSON僅run位置變更，268個HTML相對連結通過。
+- 同封存來源Linux focused 298 passed／2項Windows專屬skip；其後只補test-only的case及condition
+  子程序逾時回歸，Windows與Linux各2 passed，不更動封存量測程式。
+  三位獨立reviewer已核對實際diff、20題與搬移產物，無未解blocker。
+  這不等於任意硬關機或GPU native hang均已修復。
+- 工作站證據集中在相鄰 `engineering/evidence-b42cd81e/`，本機副本位於
+  `build/dev-artifacts/experiment-package-plan/nas-final/`；source archive保存在工作站
+  `engineering/archives/linux-smoke-b42cd81e.tar.gz`。歷史d0原始／輸入11,646項核對不變。
+
+限制：VALID三次repeat只用合成結果驗排程，未跑正式VALID／TEST／新DEV候選；跨Windows與
+Linux不直接比較速度。各包內候選身分受檢查，跨離線包的全域候選額度仍需研究紀錄管理。
+未完成run續跑仍需原runtime與絕對路徑；封存不保證任意搬移後續跑或跨平台逐位元一致。
+獨立AI審查與原scorer重播不能取代人工盲審oracle，也不是桌面GUI或產品release驗收。
+
 ### Linux 工作站環境預檢（2026-09-22）
 
 依使用者選定的 `hxin@140.113.193.134`（Ubuntu 24.04、RTX 4090 24 GB），在 NAS home
