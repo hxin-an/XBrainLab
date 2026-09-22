@@ -375,12 +375,31 @@ def _presentation_run(tmp_path):
 
 
 def test_readable_report_preserves_scores_and_exposes_verified_inputs(tmp_path):
+    from html.parser import HTMLParser
+
+    class SearchRows(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.search = []
+
+        def handle_starttag(self, tag, attrs):
+            values = dict(attrs)
+            if tag == "tr" and "data-search" in values:
+                self.search.append(values["data-search"])
+
     root, _ = _presentation_run(tmp_path)
     baseline = report.build_report(root)
     output = tmp_path / "readable"
     report.write_report(root, output)
     assert json.loads((output / "report.json").read_text()) == baseline
     assert (output / "index.html").is_file()
+    index = (output / "index.html").read_text(encoding="utf-8")
+    parsed = SearchRows()
+    parsed.feed(index)
+    assert parsed.search == [
+        'phi4-rag-off__DEV-0 =HYPERLINK("bad") <script>alert(1)</script>'
+    ]
+    assert "<script>alert(1)</script>" not in index
     page = (output / "cases" / "phi4-rag-off__DEV-0.html").read_text(encoding="utf-8")
     assert "&lt;script&gt;" in page and "<script>alert" not in page
     assert "actual message" in page and "rendered &lt;script&gt; prompt" in page
@@ -578,10 +597,10 @@ def test_report_overview_and_filter_data_preserve_all_case_outcomes(tmp_path):
         "Clarification",
     ]
     assert all(r["data-condition"] == "phi4-rag-on" for r in parsed.rows)
-    assert 'id="evidence"' in page and 'id="no-cases"' in page
+    assert 'id="evidence"' not in page and 'id="no-cases"' in page
     assert "Selected results incomplete" in page
     assert "Evidence presentation incomplete" in page
-    assert "2 / 3" in page
+    assert "Unavailable" in page
     with (output / "results.csv").open(encoding="utf-8-sig", newline="") as source:
         assert len(list(csv.DictReader(source))) == 3
 
@@ -725,7 +744,11 @@ def test_dev_capture_damage_invalidates_score_and_completeness_before_rendering(
     assert audit["selected_complete"] is False
     for name in ("index.html", "README.md"):
         rendered = (output / name).read_text(encoding="utf-8")
-        assert "Selected schedule complete: False" in rendered
+        if name == "index.html":
+            assert '<p class="notice">Selected results incomplete</p>' in rendered
+            assert "Unavailable" in rendered
+        else:
+            assert "Selected schedule complete: False" in rendered
         assert "Evidence presentation incomplete" in rendered
 
 
@@ -843,14 +866,9 @@ def test_dev_replacement_preserves_original_and_counts_one_logical_measurement(
         encoding="utf-8"
     )
     page = (tmp_path / "report" / "index.html").read_text(encoding="utf-8")
-    history = page.index('<details id="history"><summary>Earlier attempts</summary>')
-    assert page.index('id="case-index"') < history
-    assert (
-        history
-        < page.index(f'href="cases/{original}.html"')
-        < page.index("</details>", history)
-    )
-    assert page.index('id="evidence"') > history
+    assert 'id="history"' not in page
+    assert f'href="cases/{original}.html"' not in page
+    assert f'href="cases/{replacement}.html"' in page
     assert "earlier failed attempt" not in page
 
 

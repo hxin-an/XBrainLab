@@ -139,22 +139,11 @@ def run_attempt(
         page = page.replace("<head>", f'<head><base href="{base}">', 1)
     if code:
         # Execution/cleanup failure can coexist with complete saved scores. Never
-        # let the report's quiet completion message hide the failed launch.
-        page = page.replace('<p class="muted">Evaluation complete</p>', "")
+        # let the saved scores hide the failed launch. Full error details remain
+        # in the launch record and folder README rather than the results table.
         page = page.replace(
             '<main id="main">',
-            '<main id="main"><p class="notice">Results incomplete — see technical details</p>',
-            1,
-        )
-        explanation = error or (
-            "This attempt did not pass completion checks. "
-            "Available results and prior attempts remain preserved."
-        )
-        page = page.replace(
-            "</main>",
-            "<details><summary>Technical details — report execution</summary><pre>"
-            + html.escape(explanation)
-            + "</pre></details></main>",
+            '<main id="main"><p class="notice">Results incomplete — execution details are saved in launches/.</p>',
             1,
         )
     # Only the derived entry is refreshed; all evidence and prior reports remain immutable.

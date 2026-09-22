@@ -66,7 +66,7 @@ def test_shared_page_uses_inline_css_without_requiring_external_assets():
     assert page.contents["script"] == []
 
 
-def test_entry_and_report_name_the_experiment_and_fold_technical_details(tmp_path):
+def test_entry_and_report_present_only_identity_and_result_tables(tmp_path):
     from scripts.dev import run_assistant_dev as entry
 
     raw = _run(tmp_path, [("Action", True, True, "completed")], dev=True)
@@ -83,7 +83,12 @@ def test_entry_and_report_name_the_experiment_and_fold_technical_details(tmp_pat
         assert "D0 | DEV initial baseline" in page
         assert "1 model" in page and "RAG on" in page
         assert "latest report" not in page.lower()
-        assert "<summary>Technical details</summary>" in page
+        assert "Technical details" not in page
+        assert "Earlier attempts" not in page
+        assert "Download CSV" not in page
+        assert 'href="results.csv"' not in page
+        assert "Evaluation complete" not in page
+        assert 'id="evidence"' not in page
     assert "View D0 report" not in root_page
     assert 'id="case-index"' in root_page
     assert "1 question · " in root_page
@@ -92,8 +97,6 @@ def test_entry_and_report_name_the_experiment_and_fold_technical_details(tmp_pat
     assert "First-answer accuracy" in root_page
     assert "Accuracy after format repair" in root_page
     assert root_page.index('id="overview"') < root_page.index('id="cases"')
-    assert root_page.index('id="cases"') < root_page.index('id="evidence"')
-    assert "Evaluation complete" in root_page
     assert "Selected results complete" not in root_page
 
     # The stable entry presents all content, but links resolve in the report's
@@ -113,6 +116,7 @@ def test_entry_and_report_name_the_experiment_and_fold_technical_details(tmp_pat
 
     links = Links()
     links.feed(root_page)
+    assert links.targets
     for target in links.targets:
         path = unquote(urlsplit(target).path)
         if len(path) > 2 and path[0] == "/" and path[2] == ":":
@@ -125,6 +129,8 @@ def test_entry_and_report_name_the_experiment_and_fold_technical_details(tmp_pat
     assert manifest["source"]["head"] not in report_page
     saved_report = next((run / "reports").glob("*/report.json"))
     recorded = json.loads(saved_report.read_text(encoding="utf-8"))["cases"][0]
+    markdown = saved_report.with_name("README.md").read_text(encoding="utf-8")
+    assert "Condition scores" in markdown and "Latency denominator" in markdown
     with saved_report.with_name("results.csv").open(
         encoding="utf-8-sig", newline=""
     ) as stream:

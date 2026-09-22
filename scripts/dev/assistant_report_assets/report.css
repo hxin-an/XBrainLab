@@ -80,14 +80,6 @@ small, .muted {
     margin-top: 0;
 }
 
-.section-heading {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 16px;
-    flex-wrap: wrap;
-}
-
 .comparison {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -174,6 +166,11 @@ tbody tr:hover {
 }
 
 #overview td:not(:first-child) {
+    white-space: nowrap;
+}
+
+#overview th:first-child, #overview td:first-child {
+    min-width: 150px;
     white-space: nowrap;
 }
 
@@ -271,11 +268,11 @@ button:disabled {
 }
 
 #case-index td:first-child {
-    min-width: 230px;
+    min-width: 150px;
 }
 
-#case-index td:last-child {
-    min-width: 220px;
+#case-index td:nth-child(2) {
+    min-width: 150px;
 }
 
 @media (max-width: 700px) {

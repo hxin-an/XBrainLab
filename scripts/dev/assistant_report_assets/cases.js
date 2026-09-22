@@ -14,7 +14,7 @@
             control => control.value.toLowerCase()
         );
         const matchingRows = rows.filter(row =>
-            (!search || row.textContent.toLowerCase().includes(search)) &&
+            (!search || `${row.textContent} ${row.dataset.search}`.toLowerCase().includes(search)) &&
             (!condition || row.dataset.condition.toLowerCase() === condition) &&
             (!category || row.dataset.category.toLowerCase() === category) &&
             (!outcome || row.dataset.outcome === outcome)
@@ -60,21 +60,4 @@
     document.querySelector('.pagination').hidden = false;
     renderCases();
 
-    // A deep link must also open enclosing evidence sections.
-    function revealLinkedSection() {
-        const target = document.getElementById(location.hash.slice(1));
-        if (!target) {
-            return;
-        }
-        let ancestor = target;
-        while (ancestor) {
-            if (ancestor.tagName === 'DETAILS') {
-                ancestor.open = true;
-            }
-            ancestor = ancestor.parentElement;
-        }
-    }
-
-    window.addEventListener('hashchange', revealLinkedSection);
-    revealLinkedSection();
 })();

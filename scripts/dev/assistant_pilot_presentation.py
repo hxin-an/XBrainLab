@@ -77,7 +77,7 @@ def render_evidence_notice(issues: dict) -> str:
     if not selected:
         return ""
     noun = "result has" if selected == 1 else "results have"
-    return f'<p class="notice">{selected} selected {noun} incomplete evidence.</p>'
+    return f'<p class="notice">Evidence presentation incomplete: {selected} selected {noun} missing or unverifiable evidence.</p>'
 
 
 def _html_table(headers: list[str], rows: list[list]) -> str:
@@ -105,7 +105,6 @@ def render_overview(report: dict) -> str:
         rows.append(
             [
                 name,
-                f"{condition['counts']['valid_decision']} / {condition['counts']['planned']}",
                 *[
                     "n/a"
                     if condition["macro"][phase] is None
@@ -118,8 +117,7 @@ def render_overview(report: dict) -> str:
         )
     table = _html_table(
         [
-            "Condition",
-            "Valid / planned",
+            "Model",
             "First-answer accuracy",
             "Accuracy after format repair",
             "Median decision (s)",
@@ -128,13 +126,10 @@ def render_overview(report: dict) -> str:
         rows,
     )
     return f"""<section id="overview">
-        <div class="section-heading"><h2>Model results</h2>
-        <a href="results.csv" download>Download CSV</a></div>
+        <h2>Model results</h2>
         {table}
-        <p class="muted table-note">Both accuracy columns weight the three categories equally.
-        The second includes format repair when used, otherwise the first answer.
-        Decision time includes parsing, validation and any repair, but excludes model loading.
-        DEV results, not a formal model ranking.</p>
+        <p class="muted table-note">Accuracy equally weights the three categories;
+        final answers include format repair when used. Decision time excludes model loading.</p>
     </section>"""
 
 
@@ -451,8 +446,7 @@ def _case_filters(conditions: dict) -> str:
         for name in conditions
     )
     return f"""
-    <h2 id="cases">Explore cases</h2>
-    <p class="muted">Open a case to compare expected and observed decisions. Filters combine.</p>
+    <h2 id="cases">Case results</h2>
     <div class="filters">
         <label>Search
             <input id="search" aria-label="Filter cases" placeholder="Case ID or request">
@@ -481,16 +475,15 @@ def _case_filters(conditions: dict) -> str:
     """
 
 
-def _render_detailed_results(
+def _render_detailed_markdown(
     report: dict, details: dict, issues: dict, detail_count: int
-) -> tuple[list[str], list[str]]:
-    """Format saved aggregate results as HTML and Markdown, without rescoring."""
+) -> list[str]:
+    """Retain technical statistics in README, separate from the simple HTML view."""
     dev = report["schema"] == "xbrainlab.assistant_dev_report.v1"
-    md, body = [], []
+    md = []
 
     def paragraph(value: str) -> None:
         md.extend([value, ""])
-        body.append("<p>" + _escape(value) + "</p>")
 
     def table(title: str, headers: list[str], rows: list[list]) -> None:
         md.extend(
@@ -501,8 +494,6 @@ def _render_detailed_results(
                 "| " + " | ".join("---" for _ in headers) + " |",
             ]
         )
-        anchor = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
-        body.append(f'<h2 id="{anchor}">{_escape(title)}</h2>')
         for cells in rows:
             md.append(
                 "| "
@@ -512,7 +503,6 @@ def _render_detailed_results(
                 + " |"
             )
         md.append("")
-        body.append(_html_table(headers, rows))
 
     paragraph(
         "DEV initial baseline. No formal model ranking or Validation/Test conclusion. P95 is descriptive."
@@ -538,26 +528,6 @@ def _render_detailed_results(
         "Macro score equally weights Action, Clarification and No-call. Valid measurement is not a correct "
         "decision. Invalid model output is a measured failure and remains in its score denominator. "
         "Missing/invalid measurement is excluded; product outcome is reported separately."
-    )
-    body.append(
-        '<nav><a href="results.csv">Excel CSV</a> · <a href="report.json">Scoring JSON</a> · '
-        '<a href="presentation-audit.json">Detail integrity audit</a> · <a href="#cases">Case index</a></nav>'
-    )
-    body.append(
-        "<nav>"
-        + " · ".join(
-            f'<a href="#{anchor}">{label}</a>'
-            for anchor, label in (
-                ("condition-scores", "Scores"),
-                ("category-scores", "Categories"),
-                ("decision-latency", "Latency"),
-                ("setup-and-case-timing", "Setup"),
-                ("repair-attempts-and-newly-correct-decisions", "Repairs"),
-                ("final-failure-reasons-one-per-wrong-decision", "Failures"),
-                ("product-outcomes-separate-from-accuracy", "Product outcomes"),
-            )
-        )
-        + "</nav>"
     )
     md.extend(
         [
@@ -781,7 +751,7 @@ def _render_detailed_results(
     )
     for limitation in report["limitations"]:
         paragraph(limitation)
-    return body, md
+    return md
 
 
 def _write_case_index(
@@ -791,8 +761,10 @@ def _write_case_index(
     md, body = [], []
     body.append(_case_filters(report["conditions"]))
     body.append(
-        '<div class=table><table id="case-index"><thead><tr><th>Case</th><th>Category</th>'
-        "<th>Measurement</th><th>First / final</th><th>Capture integrity</th><th>Request</th></tr></thead><tbody>"
+        '<div class=table><table id="case-index"><thead><tr>'
+        '<th scope="col">Model</th><th scope="col">Case</th>'
+        '<th scope="col">Category</th><th scope="col">Final decision</th>'
+        "</tr></thead><tbody>"
     )
     md.extend(
         [
@@ -866,16 +838,15 @@ def _write_case_index(
             if row["decision_valid"] and isinstance(row.get("final"), bool):
                 outcome = "correct" if row["final"] else "incorrect"
             body.append(
-                f'<tr data-condition="{_escape(row["condition"])}" data-category="{_escape(row["decision"])}" data-outcome="{outcome}">'
-                f'<td><a href="{quote(link)}">{_escape(row["id"])}</a></td>'
+                f'<tr data-condition="{_escape(row["condition"])}" data-category="{_escape(row["decision"])}" data-outcome="{outcome}"'
+                f' data-search="{_escape(row["id"] + " " + request)}">'
+                f"<td>{_escape(row['condition'])}</td>"
+                f'<td><a href="{quote(link)}">{_escape(row["case_id"])}</a></td>'
                 + "".join(
                     f"<td>{_escape(value)}</td>"
                     for value in [
                         row["decision"],
-                        row["evidence_status"],
-                        f"{row.get('first', 'n/a')} / {row.get('final', 'n/a')}",
-                        integrity,
-                        request,
+                        outcome.capitalize(),
                     ]
                 )
                 + "</tr>"
@@ -891,10 +862,7 @@ def _write_case_index(
     if report.get("superseded_cases"):
         note = "Superseded measurements remain preserved below and are excluded from the selected score and latency denominators."
         md.extend([note, ""])
-        body.append('<details id="history"><summary>Earlier attempts</summary>')
-        body.append("<p>" + _escape(note) + "</p>")
         md.extend(["## Superseded measurements", ""])
-        body.append("<h2>Superseded measurements</h2>")
         for row in report["superseded_cases"]:
             artifact = row["artifact_id"]
             detail = previous_details[artifact]
@@ -903,8 +871,6 @@ def _write_case_index(
             md.append(
                 f"- [{artifact}]({link}) — {row.get('measurement_status', row['evidence_status'])}"
             )
-            body.append(f'<p><a href="{quote(link)}">{_escape(artifact)}</a></p>')
-        body.append("</details>")
     return body, md
 
 
@@ -945,9 +911,8 @@ def write_presentation(report: dict, output: Path) -> None:
             '<header class="hero"><span class="eyebrow">XBrainLab / Experiment report</span>',
             f"<h1>{_escape(title)}</h1>",
             f'<p class="muted">{_escape(experiment_conditions(report, dev=dev))}</p>',
-            '<p class="muted">Evaluation complete</p>'
+            ""
             if report["complete_selected_schedule"]
-            and not render_evidence_notice(issues)
             else '<p class="notice">Selected results incomplete</p>',
             "</header>",
             render_evidence_notice(issues),
@@ -955,17 +920,12 @@ def write_presentation(report: dict, output: Path) -> None:
         ],
     )
 
-    detail_html, detail_markdown = _render_detailed_results(
-        report, details, issues, detail_count
-    )
+    detail_markdown = _render_detailed_markdown(report, details, issues, detail_count)
     case_html, case_markdown = _write_case_index(
         root, output, report, details, previous_details
     )
     body.extend(case_html)
-    body.append('<details id="evidence"><summary>Technical details</summary>')
-    body.extend(detail_html)
-    body.append("</details>")
-    # Initialize filters and deep links only after all referenced sections exist.
+    # Initialize filters after the table and its controls exist.
     body.append(f"<script>{_CASE_SCRIPT}</script>")
     md.extend(detail_markdown)
     md.extend(case_markdown)

@@ -101,23 +101,24 @@ Macro 為三種決策的等權平均；不是一般逐題正確率或完整操�
 `presentation-audit.selected_complete` 為 true；整體 presentation audit 仍列出唯一
 superseded capture 未完成，不抹除原始失敗或把無效量測判成模型正確。
 
-報告入口：`D:\XBrainLabRuns\d0\index.html`，內含可查詢逐題頁面、CSV、JSON、
+報告入口：`D:\XBrainLabRuns\d0\index.html`，提供可查詢逐題頁面；目錄保留 CSV、JSON、
 固定 inputs、raw／manifest／journal、歷次 reports 與 launches。
 報告介面提供模型比較、模型／題型／正誤交集篩選、搜尋及分頁；逐題呈現預期與
-既存 observed 欄位，產品執行證據與決策分數分開。入口直接呈現完整報告：模型結果在前、
-題目明細其次，歷史嘗試與詳細統計／來源在末尾收合；未解決的缺漏／執行失敗仍醒目提示。
-不再重複摘要、頂端同頁導覽及大指標卡；正常完成只低調標示。這是離線呈現更新，
+既存 observed 欄位，產品執行證據與決策分數分開。入口只呈現實驗資訊、模型結果表、
+逐題結果表（模型／題號／題型／正誤）；題目文字仍可搜尋，點題號查看完整證據。
+沒有成功提示、CSV 下載、技術／歷史區塊；未解決的缺漏／執行失敗仍醒目提示。
+CSV、JSON、README 技術統計、歷史嘗試檔案全部保留。這是離線呈現更新，
 不重新判分或推論；正式研究主張不因此增加。
 首頁與內頁以實驗目錄名稱、DEV 階段及模型／RAG 條件辨識同一實驗，不用「Latest report」
 代稱；同列列出題數，正確率明列首次與格式修復後（皆沿用等權 macro）；交錯列及數字
-對齊改善閱讀。技術說明預設收合，頁面不列 SHA，CSV／JSON／audit 的原始指紋與驗證仍保留。
+對齊改善閱讀。頁面不列 SHA，CSV／JSON／audit 的原始指紋與驗證仍保留。
 程式分工為 bounded evidence readers、統計呈現、逐題／CSV 輸出和組裝入口；
 CSS／JavaScript 在 `scripts/dev/assistant_report_assets/` 以可讀原始碼維護，產出時內嵌，
 不依賴 CDN。既有 presentation audit 另記錄兩個資源的 SHA-256。
-閱讀版 `reports/20260922-132716-f8b866b8` 的 report JSON／CSV 與原版一致，
+精簡版 `reports/20260922-135627-4db28c3f` 的 report JSON／CSV 與原版一致，
 11,646 個 raw／inputs 項目保持不變；Windows Edge 離線雙尺寸、篩選交錯列、鍵盤、
-無 JS fallback 與入口實際點擊技術錨點已驗證。證據在
-`build/report-reading-verification.json` 及 `build/report-browser-reading-*`；
+無 JS fallback 與題目文字搜尋已驗證。證據在
+`build/report-minimal-final-verification.json` 及 `build/report-browser-minimal-*`；
 這是自動瀏覽器證據，不代表使用者已接受設計。
 `D:\XBrainLabRuns\d0-validation\final1320-audit.json` 獨立核對全部 selected 題目，
 1,436 組 generation capture 的實際 bytes／hash／trace、同一 frozen scorer 與 input-audit

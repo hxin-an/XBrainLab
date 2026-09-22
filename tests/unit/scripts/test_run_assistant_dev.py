@@ -229,11 +229,10 @@ def test_failed_entry_attempt_still_builds_partial_report_and_navigation(
     )
     assert reports == [output / "raw"]
     page = (output / "index.html").read_text(encoding="utf-8")
-    assert "preserved failure" in page
-    assert page.index("Results incomplete") < page.index("<details>")
-    assert page.index("preserved failure") > page.index(
-        "<summary>Technical details — report execution</summary>"
-    )
+    assert "Results incomplete" in page
+    assert "<details>" not in page
+    launch = next((output / "launches").glob("*-end.json"))
+    assert "preserved failure" in json.loads(launch.read_text())["error"]
     assert len(list((output / "launches").glob("*-end.json"))) == 1
 
 
@@ -247,8 +246,8 @@ def test_report_without_raw_manifest_explains_incomplete_entry(tmp_path):
         == 1
     )
     page = (tmp_path / "index.html").read_text(encoding="utf-8")
-    assert page.index("Results incomplete") < page.index("<details>")
-    assert "This attempt did not pass completion checks" in page
+    assert "Results incomplete" in page
+    assert "execution details are saved in launches/" in page
     assert "Evaluation complete" not in page
 
 
@@ -289,7 +288,7 @@ def test_report_only_never_submits_cases(tmp_path, monkeypatch, audit, expected)
 
         target.mkdir()
         (target / "index.html").write_text(
-            render_page("Selected", '<p class="muted">Evaluation complete</p>'),
+            render_page("Selected", "<h1>Selected</h1>"),
             encoding="utf-8",
         )
         (target / "presentation-audit.json").write_text(json.dumps(audit))
@@ -304,7 +303,7 @@ def test_report_only_never_submits_cases(tmp_path, monkeypatch, audit, expected)
     )
     page = (tmp_path / "index.html").read_text(encoding="utf-8")
     assert ("Results incomplete" in page) is bool(expected)
-    assert ("Evaluation complete" in page) is (expected == 0)
+    assert "Evaluation complete" not in page
 
 
 @pytest.mark.parametrize("changed", ["prepared", "bank", "config", "selection"])
