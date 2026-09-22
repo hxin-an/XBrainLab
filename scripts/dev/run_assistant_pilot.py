@@ -778,7 +778,11 @@ def prepare_manifest(
         and os.environ.get("QT_QPA_PLATFORM") != DEV_EXPERIMENT["qt_platform"]
     ):
         raise ValueError("DEV Qt platform must be offscreen before preparation")
-    bank = load_bank(bank_path)
+    bank = (
+        load_bank(bank_path, drop_review_status=True)
+        if dev_initial
+        else load_bank(bank_path)
+    )
     expected_selection = (
         build_dev_selection(bank) if dev_initial else build_pilot_selection(bank)
     )

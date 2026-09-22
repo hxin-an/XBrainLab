@@ -49,7 +49,7 @@ def main(argv=None) -> int:
     torch.set_num_threads(1)
     app = QApplication.instance() or QApplication([])
     app.setQuitOnLastWindowClosed(False)
-    bank = load_bank(args.bank)
+    bank = load_bank(args.bank, drop_review_status=True)
     selection = build_dev_selection(bank)
     cases = [case for case in bank["cases"] if case["split"] == "DEV"]
     for case in cases:

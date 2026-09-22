@@ -66,6 +66,10 @@ DPI 或下游流程都經此次真人驗收。後續純文件收尾不改該產�
 
 ## Assistant research baseline
 
+後續 DEV 輸出已移除 `ground_truth.review_status`：準備、保存與續跑使用相同整理後題庫
+指紋，來源 Excel 與歷史 d0 不變。Windows focused 109 tests、實際非 TEST 題庫匯出核對
+及獨立 review 通過；沒有重跑模型或更改判分。格式政策見[研究規格](validation/thesis_protocol.md)。
+
 ### 完整 DEV 起始基準（2026-09-22）
 
 新研究方法的 initial candidate 已在 clean

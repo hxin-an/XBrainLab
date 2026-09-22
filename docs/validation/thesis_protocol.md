@@ -61,9 +61,13 @@ DEV 不調 RAG 語料與檢索設定；degraded retrieval 不算 RAG on。題庫
 | VALID | 99 | 54 | 18 | 27 |
 | TEST | 132 | 72 | 24 | 36 |
 
-目前非 TEST workbook 為使用者已人工確認版本，SHA-256：
+已完成 d0 使用的非 TEST workbook 為使用者已人工確認版本，SHA-256：
 `2161af9932950e2a0726daeae3d744935d8d1bc6f408d739b2240d2752a29c23`。
-原檔 review_status 與後續人工確認分別保存，不覆寫原題。新版完整附件包含 TEST，
+歷史 d0 原檔保持不變。後續新 DEV 準備／匯出自動移除 `ground_truth.review_status`，
+不修改來源題庫；manifest／selection 指紋以移除後的 XLSX 為準，保存、預檢與續跑沿用
+同一轉換。需重新 prepare 並使用新 output，不沿用 d0 的舊 manifest；既有 d0 report
+仍核對原始指紋。其餘欄位／工作表保持；若該表含不支援的複雜格式或引用公式，明確拒絕，
+不靜默破壞 Excel。新版完整附件包含 TEST，
 本輪不可為核對 DEV 而讀該附件；若題目改動，取得新非 TEST 匯出並另立版本。
 非 TEST intake 可核對 VALID 結構，但不能執行 VALID 模型評估或用其結果調參。
 

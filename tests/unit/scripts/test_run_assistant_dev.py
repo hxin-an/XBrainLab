@@ -8,6 +8,7 @@ import pytest
 
 from scripts.dev import assistant_pilot_bank as bank_reader
 from scripts.dev import run_assistant_pilot as runner
+from tests.unit.scripts.test_assistant_pilot_bank import _rows, _workbook
 
 
 def full_bank():
@@ -131,18 +132,25 @@ def test_direct_entry_sets_offscreen_offline_and_checkout_before_bootstrap(
 def test_entry_preserves_fixed_inputs_and_refuses_overwrite(tmp_path):
     from scripts.dev import run_assistant_dev as entry
 
-    bank = tmp_path / "source.xlsx"
+    bank = _workbook(tmp_path)
     config = tmp_path / "config.json"
-    bank.write_bytes(b"reviewed workbook")
     config.write_text('{"model_caches": {}}')
     output = tmp_path / "output"
     manifest = {
         "selection": {"case_ids": ["DEV-A"]},
-        "bank_sha256": entry.digest(bank),
+        "bank_sha256": bank_reader.load_bank(bank, drop_review_status=True)["source"][
+            "sha256"
+        ],
         "config": {"model_caches": {}},
     }
     entry.prepare_output(output, bank, config, manifest)
-    assert (output / "inputs" / "bank.xlsx").read_bytes() == bank.read_bytes()
+    assert (output / "inputs" / "bank.xlsx").read_bytes() == bank_reader.dev_bank_bytes(
+        bank
+    )
+    assert all(
+        "review_status" not in case["metadata"]["ground_truth"]
+        for case in bank_reader.load_bank(output / "inputs" / "bank.xlsx")["cases"]
+    )
     assert (output / "inputs" / "config.json").read_bytes() == config.read_bytes()
     with pytest.raises(FileExistsError):
         entry.prepare_output(output, bank, config, {})
@@ -151,16 +159,127 @@ def test_entry_preserves_fixed_inputs_and_refuses_overwrite(tmp_path):
 def test_entry_rejects_input_changed_after_manifest_preparation(tmp_path):
     from scripts.dev import run_assistant_dev as entry
 
-    bank, config = tmp_path / "source.xlsx", tmp_path / "config.json"
-    bank.write_bytes(b"changed after preparation")
+    bank, config = _workbook(tmp_path), tmp_path / "config.json"
+    original_hash = bank_reader.load_bank(bank, drop_review_status=True)["source"][
+        "sha256"
+    ]
+    rows = _rows()
+    rows["ground_truth"][0]["expected_parameters_json"] = '{"changed": true}'
+    _workbook(tmp_path, rows)
     config.write_text("{}")
     with pytest.raises(ValueError, match="changed during preparation"):
         entry.prepare_output(
             tmp_path / "run",
             bank,
             config,
-            {"bank_sha256": "0" * 64, "config": {}, "selection": {}},
+            {"bank_sha256": original_hash, "config": {}, "selection": {}},
         )
+
+
+def test_real_dev_manifest_export_and_resume_share_clean_bank_identity(
+    tmp_path, monkeypatch
+):
+    from scripts.dev import run_assistant_dev as entry
+
+    rows = _rows()
+    human, truth, fixture = rows["DEV"][0], rows["ground_truth"][0], rows["情境定義"][0]
+    rows["DEV"] = []
+    rows["ground_truth"] = rows["ground_truth"][1:]
+    rows["情境定義"] = rows["情境定義"][1:]
+    families = set()
+    for case in full_bank()["cases"]:
+        fid = "FX-" + case["family_id"]
+        rows["DEV"].append(
+            {
+                **human,
+                "題號": case["case_id"],
+                "Family": case["family_id"],
+                "英文題目": case["input"],
+                "情境編號": fid,
+            }
+        )
+        rows["ground_truth"].append(
+            {
+                **truth,
+                **{
+                    k: case[k]
+                    for k in (
+                        "case_id",
+                        "family_id",
+                        "split",
+                        "decision",
+                        "expected_tool",
+                    )
+                },
+                "fixture_id": fid,
+                "expected_parameters_json": "{}"
+                if case["decision"] == "Action"
+                else "N/A: message is free text; use parameter_rule",
+            }
+        )
+        if fid not in families:
+            families.add(fid)
+            rows["情境定義"].append(
+                {**fixture, "fixture_id": fid, "family_id": case["family_id"]}
+            )
+    source = _workbook(tmp_path, rows)
+    original = source.read_bytes()
+    config = tmp_path / "config.json"
+    config.write_text(
+        json.dumps(
+            {
+                "model_caches": {runner._MODELS["granite4"]: str(tmp_path)},
+                "embedding_cache": str(tmp_path),
+            }
+        )
+    )
+    # Isolate hardware/model discovery only; bank parsing, selection, hashing and IO are real.
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    monkeypatch.setattr(
+        runner, "source_identity", lambda: {"head": "a" * 40, "dirty": []}
+    )
+    monkeypatch.setattr(runner, "environment_identity", lambda: {"python": "test"})
+    monkeypatch.setattr(runner, "_identity", lambda _p: ("b" * 64, {}))
+    monkeypatch.setattr(runner, "_model_configuration", lambda *_a: {})
+    monkeypatch.setattr(runner.RAGConfig, "embedding_cache_ready", lambda _p: True)
+    monkeypatch.setattr(runner.RAGConfig, "gold_set_integrity_ok", lambda: True)
+    conditions = ["granite4-rag-on"]
+    manifest, bank = runner.prepare_manifest(
+        source, None, config, conditions, dev_initial=True
+    )
+    output = tmp_path / "run"
+    entry.prepare_output(output, source, config, manifest)
+    saved = output / "inputs" / "bank.xlsx"
+    assert (
+        manifest["bank_sha256"]
+        == manifest["selection"]["source_sha256"]
+        == entry.digest(saved)
+    )
+    assert entry.digest(source) != entry.digest(saved)
+    assert source.read_bytes() == original
+    assert all(
+        "review_status" not in c["metadata"]["ground_truth"] for c in bank["cases"]
+    )
+    restored, restored_bank = runner.prepare_manifest(
+        saved, None, config, conditions, dev_initial=True
+    )
+    assert restored == manifest
+    assert restored_bank["cases"] == bank["cases"]
+    (output / "raw").mkdir()
+    (output / "raw" / "manifest.json").write_text(json.dumps(manifest))
+    observed = []
+    monkeypatch.setattr(
+        entry, "run_attempt", lambda *_a, **kw: observed.append(kw) or 0
+    )
+    assert entry.main(["report", "--output", str(output)]) == 0
+    assert observed == [{"resume": False, "report_only": True}]
+    monkeypatch.setattr(entry, "LOCK", tmp_path / "gpu.lock")
+    assert entry.main(["resume", "--output", str(output), "--bank", str(source)]) == 0
+    assert observed[-1] == {"resume": True, "replace_invalid": False}
+    rows["ground_truth"][1]["expected_parameters_json"] = '{"changed": true}'
+    _workbook(tmp_path, rows)
+    with pytest.raises(ValueError, match="Supplied resume input differs"):
+        entry.main(["resume", "--output", str(output), "--bank", str(source)])
 
 
 def test_failed_entry_attempt_still_builds_partial_report_and_navigation(
@@ -248,12 +367,13 @@ def test_report_only_never_submits_cases(tmp_path, monkeypatch, audit, expected)
 def test_report_entry_rejects_changed_retained_identity(tmp_path, monkeypatch, changed):
     from scripts.dev import run_assistant_dev as entry
 
-    bank, config = tmp_path / "bank.xlsx", tmp_path / "config.json"
-    bank.write_bytes(b"fixed workbook")
+    bank, config = _workbook(tmp_path), tmp_path / "config.json"
     config.write_text("{}")
     manifest = {
         "experiment": dict(runner.DEV_EXPERIMENT),
-        "bank_sha256": entry.digest(bank),
+        "bank_sha256": bank_reader.load_bank(bank, drop_review_status=True)["source"][
+            "sha256"
+        ],
         "config": {},
         "selection": {"case_ids": ["DEV-A"]},
         "source": {"head": "a" * 40},
