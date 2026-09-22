@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import io
-import xml.etree.ElementTree as ET
 import zipfile
 from copy import deepcopy
 from xml.sax.saxutils import escape
@@ -45,7 +43,6 @@ def _rows():
                 "explicit_info_json": "{}",
                 "expected_workflow_stage": "empty",
                 "fixture_id": fixture_id,
-                "review_status": "待人工複核",
                 "source_sha": "old-evidence",
                 "parameter_rule": "exact {}",
             }
@@ -148,7 +145,7 @@ def test_reads_normalized_cases_and_preserves_original_evidence(tmp_path):
     assert case["case_id"] == "DEV-A01-01-V0"
     assert case["input"] == "Open import."
     assert case["expected_parameters"] == {}
-    assert case["metadata"]["ground_truth"]["review_status"] == "待人工複核"
+    assert "review_status" not in case["metadata"]["ground_truth"]
     assert case["metadata"]["ground_truth"]["source_sha"] == "old-evidence"
     assert case["metadata"]["human"]["版本"] == "Human original"
     fixture = bank["fixtures"][case["fixture_id"]]
@@ -156,163 +153,11 @@ def test_reads_normalized_cases_and_preserves_original_evidence(tmp_path):
     assert fixture["metadata"]["起始情境"] == "Empty workspace"
 
 
-def test_dev_export_removes_review_status_without_changing_other_values(tmp_path):
-    from scripts.dev.assistant_pilot_bank import dev_bank_bytes
-
-    source = _workbook(tmp_path)
-    original = source.read_bytes()
-    expected = load_bank(source)
-    exported = dev_bank_bytes(source)
-    target = tmp_path / "exported.xlsx"
-    target.write_bytes(exported)
-    actual = load_bank(target)
-    for case in expected["cases"]:
-        case["metadata"]["ground_truth"].pop("review_status")
-    assert actual["cases"] == expected["cases"]
-    assert actual["fixtures"] == expected["fixtures"]
-    assert actual["source"]["sheets"] == expected["source"]["sheets"]
-    assert source.read_bytes() == original
-    assert dev_bank_bytes(target) == exported
-    assert (
-        load_bank(source, drop_review_status=True)["source"]["sha256"]
-        == actual["source"]["sha256"]
-    )
-    assert load_bank(source, drop_review_status=True)["cases"] == actual["cases"]
-
-
-def test_dev_export_without_review_status_preserves_exact_bytes(tmp_path):
-    from scripts.dev.assistant_pilot_bank import dev_bank_bytes
-
+def test_historical_bank_metadata_is_preserved_without_migration(tmp_path):
     rows = _rows()
-    for row in rows["ground_truth"]:
-        row.pop("review_status")
-    source = _workbook(tmp_path, rows)
-    assert dev_bank_bytes(source) == source.read_bytes()
-
-
-def test_dev_export_validates_original_before_removing_a_column(tmp_path):
-    from scripts.dev.assistant_pilot_bank import dev_bank_bytes
-
-    source = _workbook(tmp_path, formula=True)
-    original = source.read_bytes()
-    with pytest.raises(ValueError, match="formula"):
-        dev_bank_bytes(source)
-    assert source.read_bytes() == original
-
-
-def test_dev_export_updates_excel_layout_and_keeps_other_sheets(tmp_path):
-    from scripts.dev.assistant_pilot_bank import dev_bank_bytes
-
-    source = _workbook(tmp_path)
-    with zipfile.ZipFile(source) as archive:
-        entries = {name: archive.read(name) for name in archive.namelist()}
-    name = "xl/worksheets/sheet3.xml"
-    xml = (
-        entries[name]
-        .decode()
-        .replace(
-            "<sheetData>",
-            '<dimension ref="A1:M3"/><cols>'
-            '<col min="11" max="11" width="20"/>'
-            '<col min="12" max="13" width="45"/></cols><sheetData>',
-        )
-        .replace(
-            "</worksheet>",
-            '<autoFilter ref="A1:M3"><filterColumn colId="10"/>'
-            '<filterColumn colId="11"/></autoFilter>'
-            '<dataValidations count="2">'
-            '<dataValidation sqref="K2:K3"><formula1>"pending,done"</formula1></dataValidation>'
-            '<dataValidation sqref="L2:L3"><formula1>"old-evidence"</formula1></dataValidation>'
-            "</dataValidations></worksheet>",
-        )
-        .replace(
-            f'xmlns="{NS}"',
-            f'xmlns="{NS}" xmlns:mc="urn:mc" xmlns:xr="urn:revision" mc:Ignorable="xr"',
-        )
-    )
-    entries[name] = xml.encode()
-    with zipfile.ZipFile(source, "w") as archive:
-        for member, content in entries.items():
-            archive.writestr(member, content)
-    exported = dev_bank_bytes(source)
-    with zipfile.ZipFile(io.BytesIO(exported)) as archive:
-        for member, content in entries.items():
-            if member != name:
-                assert archive.read(member) == content
-        result = ET.fromstring(archive.read(name))  # noqa: S314 - generated test fixture
-        assert b'xmlns:xr="urn:revision"' in archive.read(name)
-    ns = "{" + NS + "}"
-    assert result.find(ns + "dimension").get("ref") == "A1:L3"
-    columns = result.find(ns + "cols")
-    assert len(columns) == 1
-    assert columns[0].attrib == {"min": "11", "max": "12", "width": "45"}
-    filters = result.find(ns + "autoFilter")
-    assert filters.get("ref") == "A1:L3"
-    assert [c.get("colId") for c in filters] == ["10"]
-    validation = result.find(ns + "dataValidations")
-    assert validation.get("count") == "1"
-    assert validation[0].get("sqref") == "K2:K3"
-
-
-@pytest.mark.parametrize("formula", ["L2", "'ground_truth'!L2:L3"])
-def test_dev_export_rejects_surviving_validation_formula_references(tmp_path, formula):
-    from scripts.dev.assistant_pilot_bank import dev_bank_bytes
-
-    source = _workbook(tmp_path)
-    with zipfile.ZipFile(source) as archive:
-        entries = {name: archive.read(name) for name in archive.namelist()}
-    name = "xl/worksheets/sheet3.xml"
-    entries[name] = entries[name].replace(
-        b"</worksheet>",
-        (
-            '<dataValidations count="1"><dataValidation sqref="L2:L3">'
-            f"<formula1>{formula}</formula1></dataValidation></dataValidations></worksheet>"
-        ).encode(),
-    )
-    with zipfile.ZipFile(source, "w") as archive:
-        for member, content in entries.items():
-            archive.writestr(member, content)
-    with pytest.raises(ValueError, match="validation formula"):
-        dev_bank_bytes(source)
-
-
-def test_dev_export_removes_filter_on_deleted_column(tmp_path):
-    from scripts.dev.assistant_pilot_bank import dev_bank_bytes
-
-    source = _workbook(tmp_path)
-    with zipfile.ZipFile(source) as archive:
-        entries = {name: archive.read(name) for name in archive.namelist()}
-    name = "xl/worksheets/sheet3.xml"
-    entries[name] = entries[name].replace(
-        b"</worksheet>", b'<autoFilter ref="K1:K3"/></worksheet>'
-    )
-    with zipfile.ZipFile(source, "w") as archive:
-        for member, content in entries.items():
-            archive.writestr(member, content)
-    with zipfile.ZipFile(io.BytesIO(dev_bank_bytes(source))) as archive:
-        result = ET.fromstring(archive.read(name))  # noqa: S314 - generated test fixture
-        assert result.find("{" + NS + "}autoFilter") is None
-
-
-@pytest.mark.parametrize("position", [0, 5, 12])
-def test_dev_export_locates_review_column_by_header_not_fixed_letter(
-    tmp_path, position
-):
-    from scripts.dev.assistant_pilot_bank import dev_bank_bytes
-
-    rows = _rows()
-    for i, row in enumerate(rows["ground_truth"]):
-        status = row.pop("review_status")
-        pairs = list(row.items())
-        pairs.insert(position, ("review_status", status))
-        rows["ground_truth"][i] = dict(pairs)
-    source = _workbook(tmp_path, rows)
-    exported = tmp_path / "exported.xlsx"
-    exported.write_bytes(dev_bank_bytes(source))
-    assert (
-        load_bank(exported)["cases"]
-        == load_bank(source, drop_review_status=True)["cases"]
-    )
+    rows["ground_truth"][0]["review_status"] = "待人工複核"
+    bank = load_bank(_workbook(tmp_path, rows))
+    assert bank["cases"][0]["metadata"]["ground_truth"]["review_status"] == "待人工複核"
 
 
 @pytest.mark.parametrize("decision", ["Clarification", "No-call"])

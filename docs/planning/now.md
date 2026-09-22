@@ -4,7 +4,8 @@
 
 ## Active — 無待續施工
 
-後續 DEV 移除 `review_status` 的匯出修正已完成；行為及證據見 [Current](../current.md#assistant-research-baseline)。
+`review_status` 已改在正式非 TEST 題庫來源移除，runner 恢復原樣複製；
+正式來源與驗證見 [Current](../current.md#assistant-research-baseline)。
 
 2026-09-22 核准的完整 DEV initial 已 scope-complete：1,320 有效量測、獨立判分／capture
 核對、報告重建及實際 queue 接續已通過。結果與限制集中於

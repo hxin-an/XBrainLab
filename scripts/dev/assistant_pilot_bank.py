@@ -14,9 +14,7 @@ import re
 import xml.etree.ElementTree as ET
 import zipfile
 from collections import Counter
-from copy import copy
 from pathlib import Path, PurePosixPath
-from xml.sax.saxutils import quoteattr
 
 SCHEMA = "xbrainlab.assistant_pilot_bank.v1"
 DEV_EXPERIMENT = {
@@ -289,7 +287,7 @@ def _normalize(tables: dict[str, list[dict[str, str]]]) -> tuple[list[dict], dic
     return cases, fixtures
 
 
-def _read_bank(path: str | Path) -> tuple[bytes, dict]:
+def load_bank(path: str | Path) -> dict:
     """Read only one explicit DEV/VALID XLSX; reject unsafe or inconsistent inputs."""
     path = Path(path)
     if path.suffix.lower() != ".xlsx":
@@ -344,7 +342,7 @@ def _read_bank(path: str | Path) -> tuple[bytes, dict]:
         RecursionError,
     ) as error:
         raise ValueError("Invalid or incomplete non-Test workbook") from error
-    return content, {
+    return {
         "schema": SCHEMA,
         "source": {
             "path": str(path.resolve()),
@@ -354,195 +352,6 @@ def _read_bank(path: str | Path) -> tuple[bytes, dict]:
         "cases": cases,
         "fixtures": fixtures,
     }
-
-
-def _without_review_status(content: bytes) -> bytes:
-    """Remove one retired authoring column from an already validated workbook."""
-    with zipfile.ZipFile(io.BytesIO(content)) as archive:
-        sheets = _sheets(archive)
-        name = sheets["ground_truth"]
-        shared = (
-            [
-                "".join(t.text or "" for t in node.iter(f"{_NS}t"))
-                for node in _xml(archive, "xl/sharedStrings.xml")
-            ]
-            if "xl/sharedStrings.xml" in archive.namelist()
-            else []
-        )
-        headers = list(_table(archive, name, shared, _TRUTH)[0])
-        if "review_status" not in headers:
-            return content
-        removed = headers.index("review_status") + 1
-        root = _xml(archive, name)
-        # Do not silently damage rich Excel constructs outside this export contract.
-        if any(
-            root.find(f"{_NS}{tag}") is not None
-            for tag in (
-                "tableParts",
-                "mergeCells",
-                "conditionalFormatting",
-                "extLst",
-                "hyperlinks",
-            )
-        ):
-            raise ValueError(
-                "review_status removal requires a plain ground_truth table"
-            )
-        for member in archive.namelist():
-            if member == "xl/workbook.xml" or member in sheets.values():
-                for node in _xml(archive, member).iter():
-                    if (
-                        node.tag in {f"{_NS}f", f"{_NS}definedName"}
-                        and "ground_truth" in (node.text or "").lower()
-                    ):
-                        raise ValueError(
-                            "review_status removal cannot update cross-sheet formulas"
-                        )
-
-        def bounds(reference: str) -> tuple[int, str]:
-            match = re.fullmatch(r"([A-Z]+)([0-9]+)", reference)
-            if match is None:
-                raise ValueError(
-                    "Unsupported worksheet reference during review_status removal"
-                )
-            column = 0
-            for char in match[1]:
-                column = column * 26 + ord(char) - 64
-            return column, match[2]
-
-        def address(column: int, row: str) -> str:
-            letters = ""
-            while column:
-                column, rest = divmod(column - 1, 26)
-                letters = chr(65 + rest) + letters
-            return letters + row
-
-        def shifted(reference: str) -> str:
-            start, _, end = reference.partition(":")
-            left, first = bounds(start)
-            right, last = bounds(end or start)
-            if left == right == removed:
-                return ""
-            left -= left > removed
-            right -= right >= removed
-            return address(left, first) + (":" + address(right, last) if end else "")
-
-        for row in root.findall(f"{_NS}sheetData/{_NS}row"):
-            row.attrib.pop("spans", None)
-            for cell in list(row):
-                reference = shifted(cell.attrib["r"])
-                if reference:
-                    cell.set("r", reference)
-                else:
-                    row.remove(cell)
-        columns = root.find(f"{_NS}cols")
-        if columns is not None:
-            for col in list(columns):
-                left, right = int(col.attrib["min"]), int(col.attrib["max"])
-                if left == right == removed:
-                    columns.remove(col)
-                else:
-                    col.set("min", str(left - (left > removed)))
-                    col.set("max", str(right - (right >= removed)))
-        for tag in ("dimension", "autoFilter"):
-            node = root.find(f"{_NS}{tag}")
-            if node is not None:
-                start, _ = bounds(node.attrib["ref"].split(":")[0])
-                for column in list(node):
-                    if column.tag == f"{_NS}filterColumn":
-                        absolute = start + int(column.attrib["colId"])
-                        if absolute == removed:
-                            node.remove(column)
-                        elif start <= removed < absolute:
-                            column.set("colId", str(int(column.attrib["colId"]) - 1))
-                reference = shifted(node.attrib["ref"])
-                if reference:
-                    node.set("ref", reference)
-                else:
-                    root.remove(node)
-        validations = root.find(f"{_NS}dataValidations")
-        if validations is not None:
-            for node in list(validations):
-                refs = list(
-                    filter(None, (shifted(ref) for ref in node.attrib["sqref"].split()))
-                )
-                if refs:
-                    for formula in node:
-                        if formula.tag in {
-                            f"{_NS}formula1",
-                            f"{_NS}formula2",
-                        } and not re.fullmatch(
-                            r'"[^"]*"|-?[0-9]+(?:\.[0-9]+)?', formula.text or ""
-                        ):
-                            raise ValueError(
-                                "review_status removal cannot update validation formula references"
-                            )
-                    node.set("sqref", " ".join(refs))
-                else:
-                    validations.remove(node)
-            if len(validations):
-                validations.set("count", str(len(validations)))
-            else:
-                root.remove(validations)
-        for node in root.iter():
-            for attr in ("activeCell", "topLeftCell", "sqref", "ref"):
-                # References already updated above must not be shifted twice.
-                if (
-                    node.tag
-                    in {
-                        f"{_NS}pane",
-                        f"{_NS}selection",
-                        f"{_NS}sortState",
-                        f"{_NS}sortCondition",
-                    }
-                    and attr in node.attrib
-                ):
-                    refs = [shifted(ref) for ref in node.attrib[attr].split()]
-                    node.set(attr, " ".join(filter(None, refs)) or "A1")
-        # iterparse emits (event, (prefix, URI)); preserve even unused mc:Ignorable prefixes.
-        namespaces = dict(
-            item
-            for _, item in ET.iterparse(  # noqa: S314 - same bytes passed bounded _xml DTD/entity checks
-                io.BytesIO(archive.read(name)), events=["start-ns"]
-            )
-        )
-        for prefix, uri in namespaces.items():
-            ET.register_namespace(prefix, uri)
-        xml = ET.tostring(root, encoding="unicode")
-        extra = "".join(
-            f" xmlns{':' + prefix if prefix else ''}={quoteattr(uri)}"
-            for prefix, uri in namespaces.items()
-            if f"xmlns{':' + prefix if prefix else ''}=" not in xml.split(">", 1)[0]
-        )
-        xml = xml.replace(">", extra + ">", 1)
-        output = io.BytesIO()
-        with zipfile.ZipFile(output, "w") as target:
-            target.comment = archive.comment
-            for member in archive.infolist():
-                target.writestr(
-                    copy(member),
-                    xml.encode("utf-8")
-                    if member.filename == name
-                    else archive.read(member),
-                )
-        return output.getvalue()
-
-
-def dev_bank_bytes(path: str | Path) -> bytes:
-    """Validate first, then export without retired review metadata; never edit source."""
-    content, _ = _read_bank(path)
-    return _without_review_status(content)
-
-
-def load_bank(path: str | Path, *, drop_review_status: bool = False) -> dict:
-    """Historical intake stays byte-exact; new DEV hashes the exported workbook."""
-    content, bank = _read_bank(path)
-    if drop_review_status:
-        exported = _without_review_status(content)
-        bank["source"]["sha256"] = hashlib.sha256(exported).hexdigest()
-        for case in bank["cases"]:
-            case["metadata"]["ground_truth"].pop("review_status", None)
-    return bank
 
 
 def build_pilot_selection(bank: dict) -> dict:

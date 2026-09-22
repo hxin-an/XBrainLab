@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import html
 import json
 import os
@@ -18,7 +17,6 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from scripts.dev import run_assistant_pilot as runner
-from scripts.dev.assistant_pilot_bank import dev_bank_bytes
 from scripts.dev.run_assistant_baseline import LOCK, digest, write_json
 
 ENTRY_FILE = Path(__file__).resolve()
@@ -38,11 +36,11 @@ def select_models(value: str) -> list[str]:
 def prepare_output(
     output: Path, bank_path: Path, config_path: Path, manifest: dict
 ) -> None:
-    """Retain the prepared DEV export before any case; never replace a run."""
+    """Retain the exact inputs before executing any case; never replace a run."""
     output.mkdir(parents=True, exist_ok=False)
     inputs = output / "inputs"
     inputs.mkdir()
-    (inputs / "bank.xlsx").write_bytes(dev_bank_bytes(bank_path))
+    shutil.copyfile(bank_path, inputs / "bank.xlsx")
     shutil.copyfile(config_path, inputs / "config.json")
     if (
         digest(inputs / "bank.xlsx") != manifest["bank_sha256"]
@@ -175,16 +173,8 @@ def main(argv=None) -> int:
         for name, retained in (("bank", "bank.xlsx"), ("config", "config.json")):
             saved = args.output / "inputs" / retained
             supplied = getattr(args, name)
-            if supplied is not None:
-                supplied_hash = (
-                    hashlib.sha256(dev_bank_bytes(supplied)).hexdigest()
-                    if name == "bank"
-                    else digest(supplied)
-                )
-                if supplied_hash != digest(saved):
-                    raise ValueError(
-                        "Supplied resume input differs from retained " + name
-                    )
+            if supplied is not None and digest(supplied) != digest(saved):
+                raise ValueError("Supplied resume input differs from retained " + name)
             setattr(args, name, saved)
     if (
         args.bank is None

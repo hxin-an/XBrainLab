@@ -63,11 +63,13 @@ DEV 不調 RAG 語料與檢索設定；degraded retrieval 不算 RAG on。題庫
 
 已完成 d0 使用的非 TEST workbook 為使用者已人工確認版本，SHA-256：
 `2161af9932950e2a0726daeae3d744935d8d1bc6f408d739b2240d2752a29c23`。
-歷史 d0 原檔保持不變。後續新 DEV 準備／匯出自動移除 `ground_truth.review_status`，
-不修改來源題庫；manifest／selection 指紋以移除後的 XLSX 為準，保存、預檢與續跑沿用
-同一轉換。需重新 prepare 並使用新 output，不沿用 d0 的舊 manifest；既有 d0 report
-仍核對原始指紋。其餘欄位／工作表保持；若該表含不支援的複雜格式或引用公式，明確拒絕，
-不靜默破壞 Excel。新版完整附件包含 TEST，
+歷史 d0 原檔保持不變。後續正式非 TEST 題庫為
+`D:\workspace_v2\projects\lab\碩論準備\實驗\題型_已審不含TEST.xlsx`，
+SHA-256：`817b82b893b515fd44cb399056255659599cea40a0cb88b42527f45530353ec9`。
+這份來源已移除 `ground_truth.review_status` 及其下拉選單，其他題目／答案與工作表不變。
+Runner 原樣複製題庫，不做刪欄或特殊指紋轉換；新實驗重新 prepare 並使用新 output，
+不沿用 d0 的舊 manifest。Repo 沒有題庫產生器，後續編修以這份來源為準。
+新版完整附件包含 TEST，
 本輪不可為核對 DEV 而讀該附件；若題目改動，取得新非 TEST 匯出並另立版本。
 非 TEST intake 可核對 VALID 結構，但不能執行 VALID 模型評估或用其結果調參。
 
@@ -125,7 +127,7 @@ RAG on、repeat 0；未核准候選、VALID/TEST 或消融不得因入口通用�
 每個條件載入／生成暖機一次，RAG on 另暖機；使用既有本機模型／embedding cache、離線推論。
 Qt offscreen 實際產品觀測不等同 Windows 可見 GUI 手測。
 
-Windows PowerShell 入口（本輪已批准的非 TEST 輸入）：
+Windows PowerShell 入口（以下保留 d0 當時指令；新實驗改用上節正式題庫與新的 manifest／output）：
 
 ```powershell
 .\dev.cmd prepare --bank D:\XBrainLabRuns\b0-entry-78908640\inputs\reviewed-non-test-bank.xlsx --config D:\XBrainLabRuns\b0-entry-78908640\inputs\pilot-config.json --manifest-output D:\XBrainLabRuns\d0-manifest-v2.json

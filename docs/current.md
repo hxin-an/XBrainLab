@@ -66,9 +66,10 @@ DPI 或下游流程都經此次真人驗收。後續純文件收尾不改該產�
 
 ## Assistant research baseline
 
-後續 DEV 輸出已移除 `ground_truth.review_status`：準備、保存與續跑使用相同整理後題庫
-指紋，來源 Excel 與歷史 d0 不變。Windows focused 109 tests、實際非 TEST 題庫匯出核對
-及獨立 review 通過；沒有重跑模型或更改判分。格式政策見[研究規格](validation/thesis_protocol.md)。
+後續正式非 TEST 題庫已在來源移除 `ground_truth.review_status`；runner 維持原樣複製與
+原始位元組指紋核對，不含匯出轉換。歷史 d0 不變，沒有重跑模型或更改判分。
+Windows focused 100 tests、實際題庫的題目／答案保留核對及獨立 review 通過。
+正式來源及版本見[研究規格](validation/thesis_protocol.md)；指定舊題庫時仍原樣複製，不隱式刪欄。
 
 ### 完整 DEV 起始基準（2026-09-22）
 
