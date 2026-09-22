@@ -47,7 +47,24 @@
 - Stop：完整 1,320 有效案例、判分/時間/捕捉核對、報告重建/恢復與独立 review 均通過，
   才是本輪 scope-complete。背景等待可結束當前對話以省 token，但必須已驗證接續機制、
   保存 next step；不是宣稱整輪完成。必要新決策／資源阻擋才向使用者回報。
-- Next：整合 main，分工評測準備與背景交接；尚未啟動模型實驗。
+- 已整合 main@94328196；只有 plan 文件衝突，兩線有效證據已保留。研究規格已收斂新版。
+- 已重現／修復完整 DEV 前置缺口：EOG1 輔助通道、既有 notch60／bandpass1–40
+  原被通用 fixture 忽略。真 MNE／Commands 三例 RED→GREEN，66 fixtures／264 oracle
+  首輪預檢全過（D:/XBrainLabRuns/pf0），正式 source 凍結後重取帶身分的證據。
+- 研究投影與 fixture 獨立覆核無 blocker；報告納入有效終態 P50/P95，selected 原始
+  capture bytes 必須通過核對，不以原 audit flag 冒充完整；原無效 attempts 保留。
+- Background 十項真 subprocess tests 含 WSL launcher 結束後 Windows child 持續執行；
+  disposable Codex session 真喚醒亦通過，恰兩次呼叫、零 tools，未喚醒目前對話。
+  真 CLI 最後 idle 檢查與使用者新增 turn 間仍無跨 UI 原子鎖，不宣稱零競態。
+- 主線直接整合驗證 114 passed；四項 public fixtures 最初因路徑未傳入 Windows 而 skip，
+  改在 Windows 程序明確設既有 E 槽資料根目錄後 4 passed，未下載／升級。Strict docs
+  portal 42 pages／1,622 links 通過。仍保留 MNE／NumPy deprecation 與來源格式 warnings。
+- Next：完成最後入口／報告整合測試與小 commit，固定 clean source；在同 source 重跑
+  `assistant_dev_preflight`（D:/XBrainLabRuns/pf1）、五模型工程 smoke（D:/XBrainLabRuns/sm0）。
+  通過後 prepare D:/XBrainLabRuns/d0-manifest.json，單次背景啟動 D:/XBrainLabRuns/d0；
+  handoff state D:/XBrainLabRuns/d0-bg。先核對起跑與 arm，再結束回合以省 token。
+  接續先讀該 state/status.json 與 d0/index.html/launches，再驗 raw/manifest/journal/reports，
+  勿將工程 smoke 算入正式 1,320，勿啟動第二候選、VALID／TEST。
 
 ## Accepted history — 產品品質線：Import 適配與內部整理
 
@@ -176,14 +193,15 @@ PR #143–#145 已進入此 main 基線；舊啟動器、RAG、split receipt 與
 - 本輪 scope-complete，不是 native UI 驗收或產品 handoff-ready；未 merge、
   未跑 Validation／Test，也未開始 Development 調優。後續候選須另行確認。
 
-## Candidate — Assistant Evaluation M4 Development（尚未授權）
+## Future — 完整 DEV 起始基準後的調優（尚未授權）
 
 前期 Pilot 的覆核／報告與還原補驗、共用修理後的新矩陣及正式 B0 封存均已完成。
 事實與限制見 [Current](../current.md#assistant-research-baseline)，
 報告入口／契約見研究規格第 5 節。舊分數與快照不追改。
 下一輪若經使用者確認，才依
-[研究規格](../validation/thesis_protocol.md) 的有限 Development 規則選擇改善方案、保存
-B1／B2 候選並準備集中 Validation。不因 Pilot 分數直接調 prompt／RAG、挑模型或啟動
+[研究規格](../validation/thesis_protocol.md) 的每模型最多五套設定規則選擇改善方案；
+本輪 initial 已占各模型第一套。只調已允許的提示詞／工具呈現／格式修復，RAG 固定。
+不因 Pilot 分數直接調 prompt／RAG、挑模型或啟動
 Validation／Test；Test 仍封存且本輪未讀取。
 
 可據本次證據討論的改善最多三項：缺資訊時自行補參數、不得操作時仍選擇工具、

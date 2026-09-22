@@ -13,6 +13,33 @@ from XBrainLab.backend.application import StopTrainingCommand, get_application_s
 from XBrainLab.backend.study import Study
 
 
+def test_reviewed_auxiliary_channel_exists_and_is_not_eeg(study, tmp_path):
+    fixture = _fixture("data_loaded", tool="select_channels")
+    fixture["conditions"]["auxiliary_channels"] = ["EOG1"]
+    prepare_fixture(study, fixture, tmp_path / "auxiliary")
+    raw = study.loaded_data_list[0].get_mne()
+    assert raw.ch_names == ["C3", "C4", "Cz", "Fz", "REF", "EOG1"]
+    assert raw.get_channel_types() == ["eeg"] * 5 + ["eog"]
+
+
+@pytest.mark.parametrize(
+    "prior", [{"notch": 60}, {"bandpass": {"low_freq": 1, "high_freq": 40}}]
+)
+def test_reviewed_prior_filter_is_actually_applied(study, tmp_path, prior):
+    fixture = _fixture("preprocessed")
+    fixture["conditions"]["prior_preprocessing"] = prior
+    prepare_fixture(study, fixture, tmp_path / "prior")
+    original = study.loaded_data_list[0].get_mne().copy().load_data()
+    actual = study.preprocessed_data_list[0].get_mne()
+    if "notch" in prior:
+        expected = original.notch_filter(freqs=60, verbose=False)
+    else:
+        expected = original.filter(l_freq=1, h_freq=40, verbose=False)
+    np.testing.assert_allclose(
+        actual.get_data(), expected.get_data(), rtol=1e-7, atol=1e-12
+    )
+
+
 def _fixture(stage, sfreq=256, tool=""):
     return {
         "conditions": {

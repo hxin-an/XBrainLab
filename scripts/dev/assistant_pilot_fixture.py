@@ -102,13 +102,29 @@ def _configuration(fixture: dict) -> tuple[dict, dict, float, list[str], list[st
         raise ValueError("Unsupported fixture event semantics")
     if not isinstance(conditions.get("required_callable_tool", ""), str):
         raise ValueError("Invalid fixture capability requirement")
+    auxiliary = conditions.get("auxiliary_channels", [])
+    if auxiliary not in ([], ["EOG1"]) or set(auxiliary) & set(channels):
+        raise ValueError("Unsupported auxiliary channel fixture")
+    prior = conditions.get("prior_preprocessing")
+    if prior is not None and (
+        stage != "preprocessed"
+        or prior not in ({"notch": 60}, {"bandpass": {"low_freq": 1, "high_freq": 40}})
+    ):
+        raise ValueError("Unsupported reviewed prior preprocessing fixture")
     return conditions, metadata, float(sfreq), list(channels), defaults
 
 
-def _write_source(path: Path, sfreq: float, channels: list[str]) -> None:
-    info = mne.create_info(ch_names=channels, sfreq=sfreq, ch_types="eeg")
+def _write_source(
+    path: Path, sfreq: float, channels: list[str], auxiliary: list[str] | None = None
+) -> None:
+    auxiliary = auxiliary or []
+    info = mne.create_info(
+        ch_names=channels + auxiliary,
+        sfreq=sfreq,
+        ch_types=["eeg"] * len(channels) + ["eog"] * len(auxiliary),
+    )
     signal = np.random.default_rng(43).normal(
-        scale=1e-5, size=(len(channels), round(sfreq * 25))
+        scale=1e-5, size=(len(channels) + len(auxiliary), round(sfreq * 25))
     )
     raw = mne.io.RawArray(signal, info, verbose=False)
     events = np.array(
@@ -181,7 +197,7 @@ def _prepare_fixture(
 
     if stage != "empty":
         path = destination / "fixture_raw.fif"
-        _write_source(path, sfreq, channels)
+        _write_source(path, sfreq, channels, conditions.get("auxiliary_channels"))
         source = {
             "path": str(path),
             "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
@@ -195,9 +211,25 @@ def _prepare_fixture(
         ):
             execute(command)
     if stage in {"preprocessed", "epoch_ready", "dataset_ready", "training", "trained"}:
-        execute(
-            PreprocessCommand(operation=PreprocessOperation.NORMALIZE, method="z-score")
-        )
+        prior = conditions.get("prior_preprocessing")
+        if prior == {"notch": 60}:
+            execute(
+                PreprocessCommand(operation=PreprocessOperation.NOTCH, notch_freq=60)
+            )
+        elif prior is not None:
+            execute(
+                PreprocessCommand(
+                    operation=PreprocessOperation.BANDPASS,
+                    low_freq=1,
+                    high_freq=40,
+                )
+            )
+        else:
+            execute(
+                PreprocessCommand(
+                    operation=PreprocessOperation.NORMALIZE, method="z-score"
+                )
+            )
     if stage in {"epoch_ready", "dataset_ready", "training", "trained"}:
         execute(CreateEpochCommand(t_min=0.0, t_max=1.5, event_ids=["left", "right"]))
     if stage in {"dataset_ready", "training", "trained"}:
@@ -296,8 +328,11 @@ def _prepare_fixture(
         if (
             len(study.loaded_data_list) != 1
             or raw.get_sfreq() != sfreq
-            or raw.get_mne().ch_names != channels
-            or raw.get_mne().get_channel_types() != ["eeg"] * len(channels)
+            or raw.get_mne().ch_names
+            != channels + conditions.get("auxiliary_channels", [])
+            or raw.get_mne().get_channel_types()
+            != ["eeg"] * len(channels)
+            + ["eog"] * len(conditions.get("auxiliary_channels", []))
             or len(events) != 12
             or set(event_ids) != {"left", "right"}
         ):
