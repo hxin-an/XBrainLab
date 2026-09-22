@@ -1,6 +1,53 @@
 # XBrainLab Now
 
-最後更新：`2026-09-21`
+最後更新：`2026-09-22`
+
+## Active — 新研究方法的完整 DEV 起始基準
+
+2026-09-22 使用者確認本輪做到完整 DEV 起始基準验收，不自動進入調優、VALID 或 TEST。
+納入已接受 main@94328196 的 Import 修正後固定新研究 source；舊 B0@926d90ea 的
+封存／分數／入口不追改。五模型各 264 題、共 1,320 次執行，作為各模型最多五套 DEV
+設定中的第一套；不另加一套額外基準，不自動加跑 RAG off。
+
+- 證據：目前 runner 僅容許固定 30 DEV 題／十條件；報告僅統計 completed latency；
+  舊規格的 B0/B1/B2、VALID 矩陣與 TEST B0 對照已被使用者新版研究方法取代。
+  重跑 B0 的 67 個 first prompts 存在匿名 subject reference／publication counter 差異。
+- Outcome：新版規格、完整 DEV fixtures、實際輸入／輸出、判分、含有效失敗的計時、
+  結果報告及有界背景交接可核對；低分不是失敗，缺題／無效量測不能算完整通過。
+- 權威：使用者 `碩論準備/研究方法草稿.md` 為已確認研究設計；本 repo
+  `docs/validation/thesis_protocol.md` 固化執行契約，本文件只保存施工順序與進度。
+- Scope：沿用 runner/scorer/report/Command/runtime owners；補完整 DEV selection、
+  明確 candidate identity、失敗與替代關係、同來源可重建報告及背景單次喚醒。
+  完成後由使用者決定下一輪 DEV 調優；VALID/TEST 只規劃，不讀題／不執行。
+- Non-goals：不調 prompt 追分、不改模型／生成參數／RAG 語料／檢索設定、不升級環境、
+  不下載模型、不接受新條款、不碰其他工作區 settings.json、不發布 PR 或 merge。
+  UI presentation／工具／確認／backend admission 維持；任何 public contract 變更另提決策。
+- 假設：沿用已人工確認的非 TEST workbook；若用戶新版題目有變，先取得新的非 TEST
+  匯出及 hash，不讀包含 TEST 的附件。Windows 原生 Python、Qt offscreen、共享 pinned
+  模型快取、單 GPU；不並行推論或重型 GPU 驗證。
+
+### 施工與驗證順序
+
+1. 保存此決策，建立 task branch、整合 main，校準新舊研究規格；歷史 B0 僅標為歷史。
+2. 重用現有 runner/case/condition/report：新增完整 DEV 首套 manifest/入口，
+   每 condition 重用模型；逐題初始狀態、oracle 與模型輸入分離、完整分母。
+3. 以真 trace 測試最終輸出判分與所有有效終態的 latency，無效量測不自動變成模型錯誤；
+   補跑保留原始失敗／replacement identity，不重送有效案例，不覆寫原 capture。
+4. 查清非任務 ID／counter 來源，以最小研究 fixture／projection 控制固定輸入；
+   保留 product admission freshness 與權限，不修改凍結 B0。先量測 before/after。
+5. 背景交接只包既有 runner：固定 run/thread/cwd、排他、完成或異常一次喚醒、
+   stdout/stderr/退出碼/接續指令保存；Codex 等待期間不輪詢。先短任務驗證成功、
+   失敗、重复觸發、喚醒失敗；恢復後僅接續本節授權範圍，不自行擴大實驗或無限重跑。
+6. Focused tests/lint、直接必要整合、獨立 scorer／lifecycle review；完整 DEV fixture
+   預檢與小規模五模型 smoke。固定 clean SHA 與配置後背景跑 1,320 次並驗收報告。
+
+- Complexity：重用現有 owners，不新增 readiness/control plane；新增入口／交接只是
+  腳本組合。若需新 authoritative state machine/receipt/publication owner，先另行 review。
+  小 commit 為回退單位；每 slice 紀錄實際 +/-/net 與直接證據，不動原封存。
+- Stop：完整 1,320 有效案例、判分/時間/捕捉核對、報告重建/恢復與独立 review 均通過，
+  才是本輪 scope-complete。背景等待可結束當前對話以省 token，但必須已驗證接續機制、
+  保存 next step；不是宣稱整輪完成。必要新決策／資源阻擋才向使用者回報。
+- Next：整合 main，分工評測準備與背景交接；尚未啟動模型實驗。
 
 ## Completed record — B0 完整執行入口（2026-09-21）
 
