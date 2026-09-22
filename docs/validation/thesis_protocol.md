@@ -145,10 +145,15 @@ Windows PowerShell 入口（本輪已批准的非 TEST 輸入）：
 
 ### 背景執行與單次喚醒
 
-背景程序執行既有 runner、保存 log／終態；Codex 等待期間不輪詢。
-固定 run、source、manifest、會話 ID 與 cwd，不用 `--last`；先短任務驗證。
-只在 captured turn 完成、無其他 active turn 且 armed 時發起一次恢復。
+背景程序執行既有 runner、保存 log／終態。外部 CLI 恢復需要會話 writer 可取得；
+captured turn 完成不代表仍開啟的互動對話釋放 writer。d0 的實跑已遇到 active writer
+拒絕；獨立已卸載會話的 smoke 不足以宣稱能喚醒使用者保持開啟的同一對話。
+目前開啟的對話由原對話使用有界程序等待完成並驗收，不再依賴外部 `exec resume`。
+只有已確認 writer 可取得的會話才可使用這個 best-effort wrapper，固定 run、source、
+manifest、會話 ID 與 cwd，不用 `--last`；captured turn 完成、無 active turn 且 armed
+只是必要條件，不是喚醒成功的充分條件，也不保證沒有其他 writer 搶先取得。
 完成／異常均保存結果；喚醒失敗或是否已發送不明時，不自動重試，保留手動接續方式。
+`wake_refused_active_writer` 明示回到既有對話接續；不關閉使用者對話或繞過鎖。
 喚醒後核對可信計畫／版本／結果，只接續 Now 批准工作；raw model output 不是施工指令，
 不擴大權限、不解封 TEST、不自動調優。不建立產品控制平面；休眠／關機不保證作業持續。
 

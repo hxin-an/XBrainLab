@@ -4,6 +4,39 @@
 
 ## Active — 新研究方法的完整 DEV 起始基準
 
+### 2026-09-22 執行失敗後的修復／恢復
+
+使用者得知失敗後要求繼續做。d0@67dd8bf9 在約 1,030 秒後停止：Granite4 完成 264，
+Granite3.3 有效 62，第 63 題 DEV-A08-02-V2 決策逾時且 capture metadata 停在 prepared；
+共 326 有效、1 無效、993 未執行。cleanup certified；不等於模型逾時原因已查清。
+背景接續同時回報 active writer conflict；已完成 turn 不等於會話 writer 已釋放，
+先前 disposable session smoke 不涵蓋保持開啟的互動會話，不再宣稱該方式可可靠自動接續。
+
+- Outcome：釐清量測生命週期／取消／capture 收尾，僅修有證據的缺陷，維持原逾時與判分語意；
+  驗證後完成起始基準。保留 d0 與其 source/manifest/raw，不覆寫／改判／拼接不同 source。
+- Scope：直接相關研究 runner/runtime seam、回歸測試及背景交接的失敗邊界；
+  不調模型／prompt／RAG／timeout 追分，不動 UI/public tools，不關閉使用者會話／無關程序。
+- 步驟：先追真 trace/capture/runtime log 找根因；以真 runtime seam 的 RED→GREEN
+  覆蓋取消、終態檔案及下一題可執行；獨立 lifecycle/evidence review 後選擇同 source
+  安全 resume 或新 source 新 run。source 若有修改，旧 326 題只保留證據，不算入新版本分母。
+- 驗證：focused capture/condition/worker tests、實際出錯案例及跨題序列的工程實跑；
+  同版本 manifest、有效／無效分母及 report-only 核對。不得只用正常三題 smoke 冒充取消測試。
+- Background：停止重試失敗的同會話 CLI 喚醒，不繞過 writer lock；查現有可用完成通知，
+  若無可靠自動接續則本輪由現有對話接續有界等待與驗收，明示限制，不再交付未驗證承諾。
+- Stop：沿用下方完整基準出口；需要改研究配置／超出機器預算才另請決策。
+  後續診斷確認：owned model process 未能及時合作取消時可被強制結束，capture finally
+  未執行而保持 prepared，原本 fail-closed 正確；沒有足夠證據改 runtime 或把該題判有效。
+  326 份原 result hashes 均一致，兩 condition/session cleanup certified，Windows 無殘留
+  Python 程序。Next：在 D:/XBrainLabCache/d0-67dd8bf9 還原相同 commit（只 source，
+  不複製環境／模型），核對全部 manifest/env/input/cache 後使用既有 `resume --replace-invalid`：
+  只選 1 題 attempt-2 + 993 未執行，原 326 不重送；四小時跨 resume 累計。
+  若再次同類失敗先診斷，不能把有效逾時／錯答任意重送。主 worktree 的修正僅為
+  writer 衝突的明確失敗狀態／指引與文件，不帶入原凍結量測 source。
+- 已以還原 checkout 重新 prepare，整份 manifest 與 d0 完全相等；原失敗題 attempt-2
+  已 recorded/cleanup_ok，恢復批次仍在執行。等待與驗收使用目前對話程序 session，
+  log 在 D:/XBrainLabRuns/d0-live-resume.log，原 d0-bg 失敗紀錄不改寫。
+  Writer 拒絕的新回歸 RED→GREEN，11 subprocess tests（含 Windows child）全過。
+
 2026-09-22 使用者確認本輪做到完整 DEV 起始基準验收，不自動進入調優、VALID 或 TEST。
 納入已接受 main@94328196 的 Import 修正後固定新研究 source；舊 B0@926d90ea 的
 封存／分數／入口不追改。五模型各 264 題、共 1,320 次執行，作為各模型最多五套 DEV

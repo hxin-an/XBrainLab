@@ -158,6 +158,33 @@ class BackgroundTests(unittest.TestCase):
         self.assertTrue((self.state / "manual-recovery.json").is_file())
         self.assertNotEqual(process.wait(8), 0)
 
+    def test_active_writer_refusal_is_distinct_and_never_retried(self):
+        self.codex.write_text(
+            "#!/usr/bin/env python3\n"
+            "import pathlib,sys\n"
+            "with pathlib.Path(__file__).with_name('attempts').open('a') as stream: stream.write('attempt\\n')\n"
+            f"sys.stderr.write('Error: thread/resume: thread/resume failed: thread {self.session} already has an active writer (code -32600)\\n')\n"
+            "raise SystemExit(1)\n"
+        )
+        self.event("task_complete", self.turn)
+        process = background.launch(self.config(), self.state)
+        self.addCleanup(process.wait, 8)
+        background.arm(self.state)
+        status = self.wait_status("wake_refused_active_writer")
+        self.assertEqual(status["experiment_returncode"], 0)
+        self.assertEqual(status["wake_returncode"], 1)
+        self.assertIn("existing conversation", status["instruction"])
+        self.assertEqual(process.wait(8), 1)
+        self.assertEqual((self.root / "attempts").read_text(), "attempt\n")
+        self.assertFalse((self.state / "continuation.md").exists())
+        self.assertEqual((self.state / "wake.jsonl").stat().st_size, 0)
+        self.assertTrue((self.state / "wake-intent.json").exists())
+        manual = json.loads((self.state / "manual-recovery.json").read_text())
+        self.assertIn("available writer", manual["instruction"])
+        self.assertIn("existing conversation", manual["instruction"])
+        self.assertEqual(background.worker(self.state), 1)
+        self.assertEqual((self.root / "attempts").read_text(), "attempt\n")
+
     def test_uncertain_previous_worker_is_never_restarted(self):
         self.state.mkdir()
         (self.state / "worker-started.json").write_text('{"pid":12345}')

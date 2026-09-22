@@ -2,8 +2,11 @@
 
 WSL/POSIX supervisor only. The experiment runner owns its timeout and cleanup.
 Arm explicitly; a matching completed turn and no later active turn are also
-required. Rollout lifecycle is an observed local format, not a locking API:
-a user can still start a turn between the final check and the resume command.
+required. CLI resume requires an available writer (an unloaded session); turn
+completion does not release a still-open interactive conversation's writer.
+Keep that existing conversation active and use bounded process waits instead.
+Rollout lifecycle is an observed format, not a locking API; even an unloaded
+session can acquire another writer between the final check and resume.
 Crashes, changed pins, ambiguous lifecycle and failed wakes require manual review.
 """
 
@@ -261,7 +264,13 @@ def worker(state: Path, expected_digest: str | None = None) -> int:
             {
                 "cwd": config["cwd"],
                 "argv": command,
-                "instruction": "Inspect status, experiment logs and wake intent before manual resume. Never retry automatically.",
+                "instruction": (
+                    "Inspect status, experiment logs and wake intent first. CLI resume "
+                    "requires an available writer (an unloaded session); a completed "
+                    "turn does not release an open conversation's writer. For an open "
+                    "session, continue in the existing conversation using bounded "
+                    "process waits. Never retry automatically or bypass writer locks."
+                ),
             },
         )
         _check_pins(config)
@@ -326,9 +335,25 @@ def worker(state: Path, expected_digest: str | None = None) -> int:
                 check=False,
             )
         details["wake_returncode"] = result.returncode
+        wake_status = "wake_completed" if result.returncode == 0 else "wake_failed"
+        if result.returncode != 0:
+            # Classify the observed CLI refusal, not the session's current lock state.
+            # Raw stderr stays on disk; status never embeds arbitrary process output.
+            with (state / "wake.stderr.log").open("rb") as errors:
+                diagnostic = errors.read(64 * 1024).decode("utf-8", errors="replace")
+            if (
+                f"thread {config['session_id']} already has an active writer"
+                in diagnostic
+            ):
+                wake_status = "wake_refused_active_writer"
+                details["instruction"] = (
+                    "Continue in the existing conversation using bounded process "
+                    "waits and inspect the saved experiment results. Do not retry "
+                    "CLI resume or bypass the writer lock."
+                )
         _status(
             state,
-            "wake_completed" if result.returncode == 0 else "wake_failed",
+            wake_status,
             **details,
         )
         return 0 if result.returncode == 0 else 1
