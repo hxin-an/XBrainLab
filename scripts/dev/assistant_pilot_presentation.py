@@ -85,10 +85,20 @@ def _capture(root: Path, row: dict, result: dict, capture: dict) -> dict:
         or sequence < 0
     ):
         raise ValueError("Invalid capture session or sequence")
+    runtime = result.get("condition_evidence", {})
+    condition_artifact = (
+        runtime.get("artifact_id", row["condition"])
+        if isinstance(runtime, dict)
+        else row["condition"]
+    )
+    if not re.fullmatch(
+        re.escape(row["condition"]) + r"(?:__attempt-[1-9][0-9]*)?", condition_artifact
+    ):
+        raise ValueError("Invalid condition artifact identity")
     base = (
-        root / "conditions" / row["condition"]
+        root / "conditions" / condition_artifact
         if isinstance(result.get("condition_evidence"), dict)
-        else root / "cases" / row["id"]
+        else root / "cases" / row.get("artifact_id", row["id"])
     )
     path = base / "prompts" / session / str(sequence)
     stored = json.loads(_bytes(root, path / "metadata.json"))
@@ -107,7 +117,7 @@ def _capture(root: Path, row: dict, result: dict, capture: dict) -> dict:
     return values
 
 
-def _details(root: Path, row: dict) -> dict:
+def _details(root: Path, row: dict, *, require_generation: bool = False) -> dict:
     detail = {"request": {}, "result": {}, "captures": [], "issues": []}
     if row["evidence_status"] != "verified":
         detail["issues"] = [
@@ -115,21 +125,33 @@ def _details(root: Path, row: dict) -> dict:
         ]
         return detail
     try:
+        artifact = row.get("artifact_id", row["id"])
         detail["request"] = json.loads(
             _bytes(
                 root,
-                root / "cases" / f"{row['id']}.request.json",
+                root / "cases" / f"{artifact}.request.json",
                 row["request_sha256"],
             )
         )
         detail["result"] = result = json.loads(
             _bytes(
-                root, root / "cases" / row["id"] / "result.json", row["result_sha256"]
+                root, root / "cases" / artifact / "result.json", row["result_sha256"]
             )
         )
     except (OSError, ValueError, KeyError, TypeError) as exc:
         return {"request": {}, "result": {}, "captures": [], "issues": [str(exc)]}
     generations = result.get("trace", {}).get("generations", [])
+    if (
+        require_generation
+        and not generations
+        and not (
+            result.get("scores", {}).get("execution_status") == "decision_timeout"
+            and result.get("input_audit", {}).get("sent_to_model") is False
+        )
+    ):
+        detail["issues"].append(
+            "Decision has no generation evidence or verified pre-dispatch timeout"
+        )
     captures = result.get("capture_audit", {}).get("captures", [])
     warmups = 0 if isinstance(result.get("condition_evidence"), dict) else 1
     if len(captures) != len(generations) + warmups:
@@ -152,7 +174,8 @@ def _details(root: Path, row: dict) -> dict:
 
 
 def _case_page(root: Path, output: Path, row: dict, detail: dict) -> None:
-    page = output / "cases" / f"{row['id']}.html"
+    artifact = row.get("artifact_id", row["id"])
+    page = output / "cases" / f"{artifact}.html"
     request, result = detail["request"], detail["result"]
     status = "FAILED" if detail["issues"] else "verified"
     parts = [
@@ -228,11 +251,11 @@ def _case_page(root: Path, output: Path, row: dict, detail: dict) -> None:
                 "</details>",
                 "<h2>Source artifacts</h2>",
                 _link(
-                    root / "cases" / f"{row['id']}.request.json", page, "Request JSON"
+                    root / "cases" / f"{artifact}.request.json", page, "Request JSON"
                 ),
                 " · ",
                 _link(
-                    root / "cases" / row["id"] / "result.json",
+                    root / "cases" / artifact / "result.json",
                     page,
                     "Result and trace JSON",
                 ),
@@ -271,9 +294,33 @@ def write_presentation(report: dict, output: Path) -> None:
     """Write a local report and case index without changing aggregate report JSON."""
     root = Path(report["run"])
     (output / "cases").mkdir()
-    details = {row["id"]: _details(root, row) for row in report["cases"]}
+    dev = report["schema"] == "xbrainlab.assistant_dev_report.v1"
+    details = {
+        row["id"]: _details(root, row, require_generation=dev)
+        for row in report["cases"]
+    }
+    if dev and any(
+        details[row["id"]]["issues"] != row["capture_integrity"]["issues"]
+        for row in report["cases"]
+    ):
+        raise ValueError(
+            "Capture artifacts changed during report; retain evidence and rebuild from a stable snapshot"
+        )
+    previous_details = {
+        row["artifact_id"]: _details(root, row)
+        for row in report.get("superseded_cases", [])
+    }
     issues = {key: value["issues"] for key, value in details.items() if value["issues"]}
-    md, body = ["# Assistant Pilot evidence", ""], ["<h1>Assistant Pilot evidence</h1>"]
+    issues.update(
+        {
+            "superseded:" + key: value["issues"]
+            for key, value in previous_details.items()
+            if value["issues"]
+        }
+    )
+    detail_count = len(details) + len(previous_details)
+    title = "Assistant DEV initial baseline" if dev else "Assistant Pilot evidence"
+    md, body = ["# " + title, ""], [f"<h1>{title}</h1>"]
 
     def paragraph(value: str) -> None:
         md.extend([value, ""])
@@ -311,15 +358,23 @@ def write_presentation(report: dict, output: Path) -> None:
         body.append("</tbody></table></div>")
 
     paragraph(
-        "DEV Pilot only. No formal model ranking, Validation/Test conclusion, or stable P95."
+        "DEV initial baseline. No formal model ranking or Validation/Test conclusion. P95 is descriptive."
+        if dev
+        else "DEV Pilot only. No formal model ranking, Validation/Test conclusion, or stable P95."
     )
     paragraph(
         f"Frozen source: {report['frozen_source']['head']}. Partial: {report['partial']}. "
         f"Selected schedule complete: {report['complete_selected_schedule']}."
     )
+    if dev:
+        paragraph(
+            f"Protocol: {report['experiment']['protocol']}. "
+            f"Full DEV initial baseline complete (264 cases x 5 models): {report['dev_complete']}. "
+            "A complete selected smoke schedule does not satisfy the full initial baseline."
+        )
     paragraph(
         f"Evidence presentation {'incomplete' if issues else 'verified'}: "
-        f"{len(issues)} / {len(details)} cases have missing or unverifiable detail artifacts. "
+        f"{len(issues)} / {detail_count} measurements have missing or unverifiable detail artifacts. "
         "Scores below reproduce report.json; capture problems are flagged separately, not rescored."
     )
     paragraph(
@@ -362,6 +417,7 @@ def write_presentation(report: dict, output: Path) -> None:
         [],
         [],
     )
+    overall, latency_audits = [], []
     for name, condition in report["conditions"].items():
         counts = condition["counts"]
         summary.append(
@@ -397,7 +453,29 @@ def write_presentation(report: dict, output: Path) -> None:
                     status,
                     values["n"],
                     _number(values["p50"]),
+                    *([_number(values["p95"])] if dev else []),
                     _number(values["max"]),
+                ]
+            )
+        if dev:
+            overall.append(
+                [
+                    name,
+                    *[
+                        _rate(condition["overall"][phase])
+                        for phase in ("first", "final")
+                    ],
+                ]
+            )
+            audit = condition["decision_latency_audit"]
+            latency_audits.append(
+                [
+                    name,
+                    audit["planned"],
+                    audit["included"],
+                    audit["excluded"],
+                    _json(audit["exclusions"]),
+                    _json(audit["execution_status_counts"]),
                 ]
             )
         for metric, values in condition["overhead_seconds"].items():
@@ -468,18 +546,50 @@ def write_presentation(report: dict, output: Path) -> None:
         ],
         categories,
     )
+    if dev:
+        table(
+            "Overall scores",
+            ["Condition", "First correct / valid", "Final correct / valid"],
+            overall,
+        )
     paragraph(
-        "Latency units: seconds. Success/failure below means final decision correctness among completed "
+        "Latency units: seconds. Overall includes all valid recorded decision terminals, including "
+        "invalid output, host-blocked decisions and valid decision timeouts. Success/failure means "
+        "final decision correctness. Quantiles use linear interpolation at (n - 1) * p; "
+        "missing timing is never replaced by zero or a configured timeout."
+        if dev
+        else "Latency units: seconds. Success/failure below means final decision correctness among completed "
         "decisions. Timeouts are censored and excluded, never interpreted as completion times."
     )
     table(
         "Decision latency",
-        ["Condition", "Final correctness", "n", "p50 (s)", "max (s)"],
+        [
+            "Condition",
+            "Final correctness",
+            "n",
+            "p50 (s)",
+            *(["p95 (s)"] if dev else []),
+            "max (s)",
+        ],
         latency,
     )
+    if dev:
+        table(
+            "Latency denominator",
+            [
+                "Condition",
+                "Planned",
+                "Included",
+                "Excluded",
+                "Exclusion reasons",
+                "Included terminal statuses",
+            ],
+            latency_audits,
+        )
     paragraph(
         "Model load and warmup are separate from decision latency. n shows measured occurrences: "
-        "batched runs load once per condition. Overlapping timing spans must not be added together."
+        "batched runs load once per condition runtime. Setup/case overhead includes superseded "
+        "measurements when present. Overlapping timing spans must not be added together."
     )
     table(
         "Setup and case timing",
@@ -561,7 +671,7 @@ def write_presentation(report: dict, output: Path) -> None:
             _case_page(root, output, row, detail)
             request = detail["request"].get("case", {}).get("input", "unavailable")
             integrity = "failed" if detail["issues"] else "verified"
-            link = f"cases/{row['id']}.html"
+            link = f"cases/{row.get('artifact_id', row['id'])}.html"
             attempts = detail["result"].get("scores", {}).get("attempt_decisions", [])
             reason = (
                 attempts[-1].get("reason", "")
@@ -613,15 +723,32 @@ def write_presentation(report: dict, output: Path) -> None:
         "function(){const q=this.value.toLowerCase();document.querySelectorAll('#case-index tbody tr')"
         ".forEach(r=>r.hidden=!r.textContent.toLowerCase().includes(q));});</script>"
     )
-    (output / "index.html").write_text(
-        _page("Assistant Pilot evidence", "\n".join(body)), encoding="utf-8"
-    )
+    if report.get("superseded_cases"):
+        paragraph(
+            "Superseded measurements remain preserved below and are excluded from the selected score and latency denominators."
+        )
+        md.extend(["## Superseded measurements", ""])
+        body.append("<h2>Superseded measurements</h2>")
+        for row in report["superseded_cases"]:
+            artifact = row["artifact_id"]
+            detail = previous_details[artifact]
+            _case_page(root, output, row, detail)
+            link = f"cases/{artifact}.html"
+            md.append(
+                f"- [{artifact}]({link}) — {row.get('measurement_status', row['evidence_status'])}"
+            )
+            body.append(f'<p><a href="{quote(link)}">{_escape(artifact)}</a></p>')
+    (output / "index.html").write_text(_page(title, "\n".join(body)), encoding="utf-8")
     (output / "README.md").write_text("\n".join(md) + "\n", encoding="utf-8")
     (output / "presentation-audit.json").write_text(
         _json(
             {
                 "complete": not issues,
+                "selected_complete": not any(
+                    value["issues"] for value in details.values()
+                ),
                 "case_count": len(details),
+                "superseded_measurement_count": len(previous_details),
                 "issues": issues,
                 "renderer_sha256": hashlib.sha256(
                     Path(__file__).read_bytes()

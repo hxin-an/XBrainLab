@@ -11,13 +11,15 @@ from collections import Counter
 from pathlib import Path
 from statistics import median
 
-from scripts.dev.assistant_pilot_presentation import write_presentation
+from scripts.dev.assistant_pilot_presentation import _details, write_presentation
 from scripts.dev.run_assistant_pilot import (
     CONDITIONS,
+    DEV_EXPERIMENT,
     SCHEMA,
     build_jobs,
     consumed_seconds,
     read_journal,
+    valid_measurement,
 )
 
 CATEGORIES = ("Action", "Clarification", "No-call")
@@ -51,6 +53,47 @@ def _rate(values: list[bool]) -> dict:
         "numerator": sum(values),
         "denominator": len(values),
         "rate": sum(values) / len(values) if values else None,
+    }
+
+
+def _terminal_latencies(rows: list[dict]) -> tuple[dict, dict]:
+    """DEV terminal time includes valid failures; each exclusion has one reason."""
+    included, excluded = [], Counter()
+    for row in rows:
+        reason = None
+        if row["evidence_status"] != "verified":
+            reason = row["evidence_status"]
+        elif not row["decision_valid"]:
+            reason = "invalid_measurement"
+        elif not row["case_recorded"]:
+            reason = "case_not_recorded"
+        elif "decision" not in row["timings"]:
+            reason = "decision_timing_unavailable"
+        if reason:
+            excluded[reason] += 1
+        else:
+            included.append(row)
+    summaries = {}
+    for label, success in (("overall", None), ("success", True), ("failure", False)):
+        values = sorted(
+            row["timings"]["decision"]
+            for row in included
+            if success is None or row["final"] is success
+        )
+        p95 = None
+        if values:
+            position = (len(values) - 1) * 0.95
+            lower, upper = math.floor(position), math.ceil(position)
+            p95 = values[lower] + (values[upper] - values[lower]) * (position - lower)
+        summaries[label] = {**_summary(values), "p95": p95}
+    return summaries, {
+        "planned": len(rows),
+        "included": len(included),
+        "excluded": sum(excluded.values()),
+        "exclusions": dict(excluded),
+        "execution_status_counts": dict(
+            Counter(row["execution_status"] for row in included)
+        ),
     }
 
 
@@ -202,7 +245,14 @@ def _repair(scores: dict) -> dict:
 
 
 def _case(root: Path, job: dict, start: dict | None, end: dict | None) -> dict:
-    row = {**job, "evidence_status": "missing", "decision_valid": False, "issues": []}
+    artifact = start.get("artifact_id", job["id"]) if start else job["id"]
+    row = {
+        **job,
+        "artifact_id": artifact,
+        "evidence_status": "missing",
+        "decision_valid": False,
+        "issues": [],
+    }
     if start is None:
         return row
     if end is None:
@@ -214,8 +264,13 @@ def _case(root: Path, job: dict, start: dict | None, end: dict | None) -> dict:
             for value in (request_sha, result_sha)
         ):
             raise ValueError("Missing recorded request/result digest")  # noqa: TRY301 - preserve a per-case invalid-evidence row
-        request, _ = _read(root / "cases" / f"{job['id']}.request.json", request_sha)
-        result, _ = _read(root / "cases" / job["id"] / "result.json", result_sha)
+        request, _ = _read(root / "cases" / f"{artifact}.request.json", request_sha)
+        result, _ = _read(root / "cases" / artifact / "result.json", result_sha)
+        row.update(
+            request_sha256=request_sha,
+            result_sha256=result_sha,
+            measurement_status=result.get("status"),
+        )
         model, rag = CONDITIONS[job["condition"]]
         case = request["case"]
         if (
@@ -299,7 +354,9 @@ def _case(root: Path, job: dict, start: dict | None, end: dict | None) -> dict:
     return row
 
 
-def _condition(rows: list[dict]) -> dict:
+def _condition(
+    rows: list[dict], *, dev: bool = False, previous: list[dict] | None = None
+) -> dict:
     categories = {}
     for category in CATEGORIES:
         matching = [row for row in rows if row["decision"] == category]
@@ -360,39 +417,49 @@ def _condition(rows: list[dict]) -> dict:
         and "decision" in row["timings"]
     ]
     timings = {}
+    measured_rows = rows + (previous or [])
     for name in ("fixture", "case_operation", "case_turn", "cleanup", "total"):
         values = [
-            row["timings"][name] for row in rows if name in row.get("timings", {})
+            row["timings"][name]
+            for row in measured_rows
+            if name in row.get("timings", {})
         ]
         timings[name] = {**_summary(values), "total": sum(values)}
     evidence = [
         row["condition_evidence"]
-        for row in rows
+        for row in measured_rows
         if isinstance(row.get("condition_evidence"), dict)
     ]
     if evidence:
-        fingerprints = {json.dumps(item, sort_keys=True) for item in evidence}
-        condition_runtime = evidence[0] if len(fingerprints) == 1 else None
-        for name, value in {
-            "model_load": condition_runtime.get("model_load_seconds")
-            if condition_runtime
-            else None,
-            "warmup": condition_runtime.get("warmup", {}).get("seconds")
-            if condition_runtime
-            else None,
-            "rag_warmup": condition_runtime.get("rag_warmup", {}).get("seconds")
-            if condition_runtime and condition_runtime.get("rag_warmup") is not None
-            else None,
-        }.items():
-            values = [value] if type(value) in (int, float) else []
+        groups = {}
+        for item in evidence:
+            identity = item.get("artifact_id", "legacy") if dev else "legacy"
+            groups.setdefault(identity, []).append(item)
+        runtimes = [
+            group[0]
+            for group in groups.values()
+            if len({json.dumps(item, sort_keys=True) for item in group}) == 1
+        ]
+        for name in ("model_load", "warmup", "rag_warmup"):
+            values = []
+            for runtime in runtimes:
+                value = (
+                    runtime.get("model_load_seconds")
+                    if name == "model_load"
+                    else (runtime.get(name) or {}).get("seconds")
+                )
+                if type(value) in (int, float):
+                    values.append(value)
             timings[name] = {**_summary(values), "total": sum(values)}
     else:
         for name in ("model_load", "warmup", "rag_warmup"):
             values = [
-                row["timings"][name] for row in rows if name in row.get("timings", {})
+                row["timings"][name]
+                for row in measured_rows
+                if name in row.get("timings", {})
             ]
             timings[name] = {**_summary(values), "total": sum(values)}
-    return {
+    result = {
         "counts": dict(counts),
         "categories": categories,
         "macro": macro,
@@ -446,22 +513,36 @@ def _condition(rows: list[dict]) -> dict:
             [value for row in rows for value in row.get("ui_handoff_seconds", [])]
         ),
     }
+    if dev:
+        result["overall"] = {
+            phase: _rate([row[phase] for row in rows if row["decision_valid"]])
+            for phase in ("first", "final")
+        }
+        result["decision_latency_seconds"], result["decision_latency_audit"] = (
+            _terminal_latencies(rows)
+        )
+    return result
 
 
 def build_report(run: Path) -> dict:
     root = run.resolve(strict=True)
     manifest, manifest_sha = _read(root / "manifest.json")
+    experiment = manifest.get("experiment")
+    dev = experiment == DEV_EXPERIMENT
+    if experiment is not None and not dev:
+        raise ValueError("Unknown experiment protocol identity")
     jobs = manifest.get("jobs", [])
     if (
         manifest.get("schema") != SCHEMA
         or not isinstance(jobs, list)
-        or not 0 < len(jobs) <= 300
+        or not 0 < len(jobs) <= (1320 if dev else 300)
         or len({job["id"] for job in jobs}) != len(jobs)
         or any(
             not re.fullmatch(r"[A-Za-z0-9_-]+", job["id"])
             or job.get("condition") not in CONDITIONS
             or job.get("decision") not in CATEGORIES
             or job["id"] != f"{job['condition']}__{job['case_id']}"
+            or (dev and not CONDITIONS[job["condition"]][1])
             for job in jobs
         )
     ):
@@ -469,38 +550,108 @@ def build_report(run: Path) -> dict:
     journal_path = root / "journal.jsonl"
     journal_bytes = journal_path.read_bytes() if journal_path.exists() else b""
     records = read_journal(root)
-    starts, ends = {}, {}
-    known = {job["id"] for job in jobs}
+    starts, ends, previous = {}, {}, []
+    known = {job["id"]: job for job in jobs}
     for record in records:
         if record["event"] in {"case_start", "case_end"}:
             target = starts if record["event"] == "case_start" else ends
             identity = record.get("id")
+            if identity not in known:
+                raise ValueError("Duplicate or uncorrelated case journal")
+            attempt = record.get("attempt", 1)
+            artifact = record.get("artifact_id", identity)
             if (
-                identity not in known
-                or identity in target
-                or (target is ends and identity not in starts)
+                type(attempt) is not int
+                or attempt not in (1, 2)
+                or artifact != (identity if attempt == 1 else identity + "__attempt-2")
+                or (not dev and attempt != 1)
+            ):
+                raise ValueError("Invalid case attempt identity")
+            if target is starts and identity in starts:
+                prior_end = ends.get(identity)
+                if (
+                    not dev
+                    or not prior_end
+                    or attempt != 2
+                    or starts[identity].get("attempt", 1) != 1
+                ):
+                    raise ValueError("Duplicate or unresolved case journal")
+                digest = prior_end.get("result_sha256")
+                if not isinstance(digest, str) or not re.fullmatch(
+                    r"[0-9a-f]{64}", digest
+                ):
+                    raise ValueError("Replacement original result digest is missing")
+                prior_result, _ = _read(
+                    root / "cases" / identity / "result.json",
+                    digest,
+                )
+                if valid_measurement(prior_end, prior_result):
+                    raise ValueError("Cannot replace a valid recorded measurement")
+                if (
+                    prior_end.get("cleanup_certified") is not True
+                    or record.get("replaces_artifact_id") != identity
+                ):
+                    raise ValueError("Uncertified or uncorrelated replacement")
+                original = _case(root, known[identity], starts[identity], prior_end)
+                previous.append(original)
+                del ends[identity]
+            elif target is starts and (
+                attempt != 1 or record.get("replaces_artifact_id") is not None
+            ):
+                raise ValueError("Replacement has no original measurement")
+            elif target is ends and (
+                identity in ends
+                or identity not in starts
+                or any(
+                    record.get(key, default) != starts[identity].get(key, default)
+                    for key, default in (
+                        ("artifact_id", identity),
+                        ("attempt", 1),
+                        ("replaces_artifact_id", None),
+                    )
+                )
             ):
                 raise ValueError("Duplicate or uncorrelated case journal")
             target[identity] = record
     rows = [
         _case(root, job, starts.get(job["id"]), ends.get(job["id"])) for job in jobs
     ]
+    if dev:
+        for row in rows:
+            issues = _details(root, row, require_generation=True)["issues"]
+            row["capture_integrity"] = {"verified": not issues, "issues": issues}
+            if issues:
+                row.update(decision_valid=False, first=None, final=None)
+                row["issues"].append("capture_artifact_integrity_failed")
     for condition in {row["condition"] for row in rows}:
         matching = [
             row
-            for row in rows
+            for row in rows + previous
             if row["condition"] == condition and row["evidence_status"] == "verified"
         ]
-        evidence = [row.get("condition_evidence") for row in matching]
-        if any(item is not None for item in evidence) and (
-            any(not isinstance(item, dict) for item in evidence)
-            or len({json.dumps(item, sort_keys=True) for item in evidence}) != 1
-        ):
-            for row in matching:
-                row["timing_complete"] = False
-                row["timing_issues"].append("condition_evidence_mismatch")
+        groups = {}
+        for row in matching:
+            identity = (
+                (row.get("condition_evidence") or {}).get("artifact_id", "legacy")
+                if dev
+                else "legacy"
+            )
+            groups.setdefault(identity, []).append(row)
+        for group in groups.values():
+            evidence = [row.get("condition_evidence") for row in group]
+            if any(item is not None for item in evidence) and (
+                any(not isinstance(item, dict) for item in evidence)
+                or len({json.dumps(item, sort_keys=True) for item in evidence}) != 1
+            ):
+                for row in group:
+                    row["timing_complete"] = False
+                    row["timing_issues"].append("condition_evidence_mismatch")
     conditions = {
-        condition: _condition([row for row in rows if row["condition"] == condition])
+        condition: _condition(
+            [row for row in rows if row["condition"] == condition],
+            dev=dev,
+            previous=[row for row in previous if row["condition"] == condition],
+        )
         for condition in CONDITIONS
         if any(row["condition"] == condition for row in rows)
     }
@@ -541,13 +692,52 @@ def build_report(run: Path) -> dict:
             {key: job[key] for key in ("id", "condition", "case_id", "phase")}
             for job in jobs
         ] == expected
+    dev_matrix = False
+    if dev:
+        case_ids = selection.get("case_ids", [])
+        expected_conditions = [name for name, (_, rag) in CONDITIONS.items() if rag]
+        dev_matrix = (
+            selection.get("schema") == "xbrainlab.assistant_dev_selection.v1"
+            and len(case_ids) == 264
+            and len(set(case_ids)) == 264
+            and case_ids == sorted(case_ids)
+            and selection.get("counts")
+            == {"Action": 144, "Clarification": 48, "No-call": 72}
+            and selection.get("phase_one_case_ids") == case_ids
+            and selection.get("phase_two_case_ids") == []
+            and list(conditions) == expected_conditions
+            and all(
+                [
+                    condition["categories"][category]["planned"]
+                    for category in CATEGORIES
+                ]
+                == [144, 48, 72]
+                for condition in conditions.values()
+            )
+            and [
+                {key: job[key] for key in ("id", "condition", "case_id", "phase")}
+                for job in jobs
+            ]
+            == build_jobs(selection, expected_conditions)
+        )
     charged = consumed_seconds(records)
     if (journal_path.read_bytes() if journal_path.exists() else b"") != journal_bytes:
         raise ValueError(
             "Journal changed during report; retain artifacts and read a stable snapshot"
         )
     return {
-        "schema": "xbrainlab.assistant_pilot_report.v1",
+        "schema": "xbrainlab.assistant_dev_report.v1"
+        if dev
+        else "xbrainlab.assistant_pilot_report.v1",
+        "experiment": experiment,
+        "latency_protocol": {
+            "population": "valid_recorded_decision_terminals"
+            if dev
+            else "completed_decisions_only",
+            "quantile_method": "linear interpolation at (n - 1) * p"
+            if dev
+            else "median; P95 not reported",
+        },
         "run": str(root),
         "manifest_sha256": manifest_sha,
         "journal_sha256": hashlib.sha256(journal_bytes).hexdigest(),
@@ -555,14 +745,23 @@ def build_report(run: Path) -> dict:
         "frozen_source": manifest["source"],
         "frozen_environment": manifest["environment"],
         "complete_selected_schedule": complete,
-        "pilot_complete": full_matrix and complete,
-        "partial": not (full_matrix and complete),
+        "pilot_complete": not dev and full_matrix and complete,
+        "dev_complete": dev and dev_matrix and complete,
+        "partial": not ((dev_matrix if dev else full_matrix) and complete),
         "ranking_allowed": False,
         "limitations": [
-            "DEV Pilot only; no formal model ranking or stable P95.",
+            (
+                "DEV initial baseline only; no tuning, Validation/Test conclusion or formal model ranking. P95 is descriptive."
+                if dev
+                else "DEV Pilot only; no formal model ranking or stable P95."
+            ),
             "Incomplete conditions and invalid measurements are not model-correct decisions.",
             "Decision accuracy is separate from UI/backend outcomes; inspect preserved per-case evidence.",
-            "Latency includes only completed decisions, split by final correctness; timeouts are censored, not completion times.",
+            (
+                "Latency includes all valid recorded decision terminals, including invalid output, host-blocked decisions and valid decision timeouts; it is not time to successful completion. Missing decision timing and invalid/unrecorded measurements are excluded with audited counts."
+                if dev
+                else "Latency includes only completed decisions, split by final correctness; timeouts are censored, not completion times."
+            ),
             "Resumed active time includes setup and cleanup, excludes user idle; unresolved children retain conservative timeout reservations.",
         ],
         "active_budget": {
@@ -573,12 +772,14 @@ def build_report(run: Path) -> dict:
         },
         "conditions": conditions,
         "cases": rows,
+        "superseded_cases": previous,
     }
 
 
 def write_report(run: Path, output: Path) -> dict:
     report = build_report(run)
     output.mkdir()
+    write_presentation(report, output)
     with (output / "report.json").open("x", encoding="utf-8") as target:
         json.dump(
             report,
@@ -588,7 +789,6 @@ def write_report(run: Path, output: Path) -> dict:
             indent=2,
             allow_nan=False,
         )
-    write_presentation(report, output)
     return report
 
 

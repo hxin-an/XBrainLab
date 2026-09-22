@@ -19,14 +19,23 @@ def _write(path, value):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _run(tmp_path, observations):
+def _run(tmp_path, observations, *, dev=False, all_models=False):
     root = tmp_path / "run"
     root.mkdir()
     (root / "cases").mkdir()
     jobs, journal = [], []
-    for index, observation in enumerate(observations):
+    selected = (
+        [name for name, (_, rag) in CONDITIONS.items() if rag]
+        if all_models
+        else ["phi4-rag-on" if dev else "phi4-rag-off"]
+    )
+    for condition, index, observation in [
+        (condition, index, observation)
+        for condition in selected
+        for index, observation in enumerate(observations)
+    ]:
         category, first, final, status = observation
-        case_id, condition = f"DEV-{index}", "phi4-rag-off"
+        case_id = f"DEV-{index}"
         job = {
             "id": f"{condition}__{case_id}",
             "case_id": case_id,
@@ -41,7 +50,7 @@ def _run(tmp_path, observations):
         request = {
             "case": case,
             "model_id": CONDITIONS[condition][0],
-            "rag_enabled": False,
+            "rag_enabled": dev,
             "seed": 0,
             "repeat": 0,
         }
@@ -65,7 +74,7 @@ def _run(tmp_path, observations):
             "case": case,
             "case_id": case_id,
             "model_id": request["model_id"],
-            "rag_enabled": False,
+            "rag_enabled": dev,
             "status": "recorded",
             "cleanup_ok": True,
             "decision_timed_out": status == "decision_timeout",
@@ -88,12 +97,45 @@ def _run(tmp_path, observations):
             "decision_seconds": 10 + index,
             "model_load_seconds": 2,
             "warmup": {"seconds": 3},
+            "rag_warmup": {"seconds": 1},
             "cleanup_seconds": 1,
             "fixture_seconds": 1,
             "case_operation_seconds": 1,
             "case_turn_seconds": 12 + index,
             "total_seconds": 20 + index,
         }
+        if dev:
+            capture = (
+                root
+                / "conditions"
+                / condition
+                / "prompts"
+                / "session-1"
+                / str(index + 1)
+            )
+            capture.mkdir(parents=True)
+            prompt, raw = f"Model prompt for {case_id}", "{}"
+            (capture / "prompt.txt").write_text(prompt, encoding="utf-8")
+            (capture / "raw-output.txt").write_text(raw, encoding="utf-8")
+            metadata = {
+                "session_id": "session-1",
+                "sequence": index + 1,
+                "status": "completed",
+                "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
+                "raw_output_sha256": hashlib.sha256(raw.encode()).hexdigest(),
+            }
+            _write(capture / "metadata.json", metadata)
+            result.update(
+                condition_evidence={
+                    "artifact_id": condition,
+                    "model_load_seconds": 2,
+                    "warmup": {"seconds": 3},
+                    "rag_warmup": {"seconds": 1},
+                    "runtime": {"model_id": request["model_id"]},
+                },
+                trace={"generations": [{"raw_response": raw, "terminal": "completed"}]},
+                capture_audit={"issues": [], "captures": [{"metadata": metadata}]},
+            )
         digest = _write(destination / "result.json", result)
         journal.append(
             {
@@ -123,6 +165,21 @@ def _run(tmp_path, observations):
             "environment": {},
             "jobs": jobs,
             "budget_seconds": 14400,
+            **(
+                {
+                    "experiment": {
+                        "protocol": "xbrainlab.assistant_dev_initial.v1",
+                        "stage": "DEV",
+                        "candidate": "initial",
+                        "candidate_index": 1,
+                        "max_candidates": 5,
+                        "rag_enabled": True,
+                        "projection_id": "dev-state-card-nuisance-v1",
+                    }
+                }
+                if dev
+                else {}
+            ),
         },
     )
     (root / "journal.jsonl").write_text(
@@ -432,15 +489,16 @@ def test_unknown_or_duplicate_job_identity_refuses_report(tmp_path):
         report.build_report(root)
 
 
-def _change_result(root, mutate):
-    path = root / "cases" / "phi4-rag-off__DEV-0" / "result.json"
+def _change_result(root, mutate, index=0):
+    identity = json.loads((root / "manifest.json").read_text())["jobs"][index]["id"]
+    path = root / "cases" / identity / "result.json"
     result = json.loads(path.read_text())
     mutate(result)
     digest = _write(path, result)
     path = root / "journal.jsonl"
     records = [json.loads(line) for line in path.read_text().splitlines()]
     for row in records:
-        if row["event"] == "case_end":
+        if row["event"] == "case_end" and row["id"] == identity:
             row["result_sha256"] = digest
     path.write_text("".join(json.dumps(row) + "\n" for row in records))
 
@@ -471,6 +529,359 @@ def test_missing_or_failed_provenance_is_excluded_from_decision_denominator(
     assert condition["counts"]["invalid_measurement"] == 1
     assert condition["categories"]["Action"]["final"]["denominator"] == 0
     assert actual["complete_selected_schedule"] is False
+
+
+def test_dev_terminal_latency_includes_wrong_output_host_block_and_timeout(tmp_path):
+    root = _run(
+        tmp_path,
+        [
+            ("Action", True, True, "completed"),
+            ("Action", False, False, "completed"),
+            ("No-call", False, False, "completed"),
+            ("Clarification", False, False, "decision_timeout"),
+        ],
+        dev=True,
+    )
+    _change_result(
+        root,
+        lambda value: value["scores"].update(
+            attempt_decisions=[{"correct": False, "reason": "invalid_envelope"}],
+            repair_count=0,
+        ),
+        1,
+    )
+    _change_result(
+        root,
+        lambda value: value["product_outcome"].update(
+            outcome="blocked",
+            execution="host_blocked",
+        ),
+        2,
+    )
+    _change_result(root, lambda value: value.update(decision_seconds=120), 3)
+    actual = report.build_report(root)
+    condition = actual["conditions"]["phi4-rag-on"]
+    assert condition["overall"]["final"] == {
+        "numerator": 1,
+        "denominator": 4,
+        "rate": 0.25,
+    }
+    assert condition["decision_latency_seconds"]["overall"] == {
+        "n": 4,
+        "p50": 11.5,
+        "p95": pytest.approx(103.8),
+        "max": 120,
+    }
+    assert condition["decision_latency_seconds"]["failure"]["n"] == 3
+    assert condition["decision_latency_audit"] == {
+        "planned": 4,
+        "included": 4,
+        "excluded": 0,
+        "exclusions": {},
+        "execution_status_counts": {"completed": 3, "decision_timeout": 1},
+    }
+    assert (
+        actual["latency_protocol"]["quantile_method"]
+        == "linear interpolation at (n - 1) * p"
+    )
+    assert actual["dev_complete"] is False and actual["pilot_complete"] is False
+
+
+def test_dev_latency_excludes_incomplete_evidence_without_fabricating_time(tmp_path):
+    root = _run(
+        tmp_path,
+        [
+            ("Action", True, True, "completed"),
+            ("Action", True, True, "completed"),
+            ("Action", None, None, "invalid_measurement"),
+            ("No-call", None, None, "missing"),
+            ("Clarification", None, None, "unresolved"),
+        ],
+        dev=True,
+    )
+    _change_result(root, lambda value: value.pop("decision_seconds"), 0)
+    _change_result(root, lambda value: value.update(status="measurement_failed"), 1)
+    actual = report.build_report(root)
+    condition = actual["conditions"]["phi4-rag-on"]
+    assert condition["overall"]["final"]["denominator"] == 2
+    assert condition["decision_latency_seconds"]["overall"] == {
+        "n": 0,
+        "p50": None,
+        "p95": None,
+        "max": None,
+    }
+    audit = condition["decision_latency_audit"]
+    assert audit["planned"] == audit["included"] + audit["excluded"] == 5
+    assert audit["exclusions"] == {
+        "decision_timing_unavailable": 1,
+        "case_not_recorded": 1,
+        "invalid_measurement": 1,
+        "missing": 1,
+        "unresolved": 1,
+    }
+    assert sum(audit["exclusions"].values()) == audit["excluded"]
+    assert actual["complete_selected_schedule"] is False
+
+
+def test_dev_report_rebuild_preserves_protocol_and_visible_denominators(tmp_path):
+    root = _run(tmp_path, [("Action", False, False, "decision_timeout")], dev=True)
+    first, second = tmp_path / "report-one", tmp_path / "report-two"
+    before = {path: path.read_bytes() for path in root.rglob("*") if path.is_file()}
+    actual = report.write_report(root, first)
+    assert report.write_report(root, second) == actual
+    assert (first / "report.json").read_bytes() == (second / "report.json").read_bytes()
+    assert before == {
+        path: path.read_bytes() for path in root.rglob("*") if path.is_file()
+    }
+    readable = (first / "README.md").read_text(encoding="utf-8")
+    assert "Assistant DEV initial baseline" in readable
+    assert "valid decision timeouts" in readable
+    assert "p95 (s)" in readable and "Latency denominator" in readable
+    assert "DEV Pilot only" not in readable
+    assert "Timeouts are censored and excluded" not in readable
+    assert actual["ranking_allowed"] is False
+
+
+@pytest.mark.parametrize("damage", ["raw", "prompt", "metadata", "missing"])
+def test_dev_capture_damage_invalidates_score_and_completeness_before_rendering(
+    tmp_path, damage
+):
+    root = _run(tmp_path, [("Action", True, True, "completed")], dev=True)
+    assert report.build_report(root)["complete_selected_schedule"] is True
+    capture = root / "conditions" / "phi4-rag-on" / "prompts" / "session-1" / "1"
+    if damage == "missing":
+        (capture / "raw-output.txt").unlink()
+    else:
+        name = {
+            "raw": "raw-output.txt",
+            "prompt": "prompt.txt",
+            "metadata": "metadata.json",
+        }[damage]
+        (capture / name).write_text("{} tampered", encoding="utf-8")
+    built = report.build_report(root)
+    assert built["complete_selected_schedule"] is False
+    assert built["dev_complete"] is False and built["partial"] is True
+    assert built["cases"][0]["capture_integrity"]["verified"] is False
+    assert built["conditions"]["phi4-rag-on"]["overall"]["final"]["denominator"] == 0
+    output = tmp_path / "report"
+    assert report.write_report(root, output) == built
+    assert json.loads((output / "report.json").read_text(encoding="utf-8")) == built
+    audit = json.loads((output / "presentation-audit.json").read_text(encoding="utf-8"))
+    assert audit["selected_complete"] is False
+    for name in ("index.html", "README.md"):
+        rendered = (output / name).read_text(encoding="utf-8")
+        assert "Selected schedule complete: False" in rendered
+        assert "Evidence presentation incomplete" in rendered
+
+
+def test_dev_completed_decision_requires_generation_but_predispatch_timeout_does_not(
+    tmp_path,
+):
+    root = _run(tmp_path, [("Action", True, True, "completed")], dev=True)
+    _change_result(
+        root,
+        lambda value: value.update(
+            trace={"generations": []},
+            capture_audit={"issues": [], "captures": []},
+        ),
+    )
+    actual = report.build_report(root)
+    assert actual["complete_selected_schedule"] is False
+    assert actual["cases"][0]["capture_integrity"]["issues"] == [
+        "Decision has no generation evidence or verified pre-dispatch timeout"
+    ]
+
+    def timeout(value):
+        value["scores"].update(
+            execution_status="decision_timeout",
+            first_decision_correct=False,
+            final_decision_correct=False,
+        )
+        value.update(
+            decision_timed_out=True, input_audit={"issues": [], "sent_to_model": False}
+        )
+
+    _change_result(root, timeout)
+    assert report.build_report(root)["complete_selected_schedule"] is True
+    _change_result(root, lambda value: value["input_audit"].update(sent_to_model=True))
+    assert report.build_report(root)["complete_selected_schedule"] is False
+
+
+def test_dev_capture_drift_during_render_never_publishes_success_json(
+    tmp_path, monkeypatch
+):
+    root = _run(tmp_path, [("Action", True, True, "completed")], dev=True)
+    render = report.write_presentation
+
+    def change_then_render(value, output):
+        capture = (
+            root
+            / "conditions"
+            / "phi4-rag-on"
+            / "prompts"
+            / "session-1"
+            / "1"
+            / "raw-output.txt"
+        )
+        capture.write_text("changed after aggregation", encoding="utf-8")
+        return render(value, output)
+
+    monkeypatch.setattr(report, "write_presentation", change_then_render)
+    output = tmp_path / "report"
+    with pytest.raises(ValueError, match="Capture artifacts changed"):
+        report.write_report(root, output)
+    assert not (output / "report.json").exists()
+    assert not (output / "index.html").exists()
+
+
+def _replacement(root, *, original_valid=False):
+    original = json.loads((root / "manifest.json").read_text())["jobs"][0]["id"]
+    replacement = original + "__attempt-2"
+    if not original_valid:
+        _change_result(root, lambda value: value.update(status="measurement_failed"))
+    source = root / "cases" / original / "result.json"
+    result = json.loads(source.read_text())
+    result["status"] = "recorded"
+    (root / "cases" / replacement).mkdir()
+    digest = _write(root / "cases" / replacement / "result.json", result)
+    shutil.copyfile(
+        root / "cases" / f"{original}.request.json",
+        root / "cases" / f"{replacement}.request.json",
+    )
+    journal = root / "journal.jsonl"
+    records = [json.loads(line) for line in journal.read_text().splitlines()]
+    records[1]["status"] = "recorded" if original_valid else "measurement_failed"
+    second = [
+        {
+            **record,
+            "artifact_id": replacement,
+            "attempt": 2,
+            "replaces_artifact_id": original,
+            "elapsed_seconds": 4,
+        }
+        for record in records[:2]
+    ]
+    second[1].update(status="recorded", result_sha256=digest)
+    journal.write_text(
+        "".join(
+            json.dumps(record) + "\n" for record in [*records[:2], *second, records[-1]]
+        )
+    )
+    return original, replacement
+
+
+def test_dev_replacement_preserves_original_and_counts_one_logical_measurement(
+    tmp_path,
+):
+    root = _run(tmp_path, [("Action", False, False, "completed")], dev=True)
+    original, replacement = _replacement(root)
+    original_bytes = (root / "cases" / original / "result.json").read_bytes()
+    actual = report.write_report(root, tmp_path / "report")
+    assert actual["conditions"]["phi4-rag-on"]["overall"]["final"]["denominator"] == 1
+    assert actual["cases"][0]["artifact_id"] == replacement
+    assert actual["superseded_cases"][0]["artifact_id"] == original
+    assert actual["superseded_cases"][0]["measurement_status"] == "measurement_failed"
+    assert (root / "cases" / original / "result.json").read_bytes() == original_bytes
+    assert (tmp_path / "report" / "cases" / f"{original}.html").is_file()
+    assert (tmp_path / "report" / "cases" / f"{replacement}.html").is_file()
+    assert "Superseded measurements" in (tmp_path / "report" / "README.md").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_dev_complete_requires_exact_five_model_264_case_inventory(tmp_path):
+    observations = [
+        (category, False, False, "completed")
+        for category, count in (("Action", 144), ("Clarification", 48), ("No-call", 72))
+        for _ in range(count)
+    ]
+    root = _run(tmp_path, observations, dev=True, all_models=True)
+    manifest_path = root / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    case_ids = sorted({job["case_id"] for job in manifest["jobs"]})
+    manifest["selection"] = {
+        "schema": "xbrainlab.assistant_dev_selection.v1",
+        "case_ids": case_ids,
+        "counts": {"Action": 144, "Clarification": 48, "No-call": 72},
+        "phase_one_case_ids": case_ids,
+        "phase_two_case_ids": [],
+    }
+    manifest["jobs"].sort(
+        key=lambda job: (list(CONDITIONS).index(job["condition"]), job["case_id"])
+    )
+    _write(manifest_path, manifest)
+    actual = report.build_report(root)
+    assert actual["dev_complete"] is True and actual["partial"] is False
+    assert actual["pilot_complete"] is False
+    assert all(
+        value["overall"]["final"]["denominator"] == 264
+        for value in actual["conditions"].values()
+    )
+    manifest["selection"]["case_ids"][-1] = manifest["selection"]["case_ids"][0]
+    _write(manifest_path, manifest)
+    assert report.build_report(root)["dev_complete"] is False
+
+
+def test_dev_replacement_counts_distinct_condition_runtime_once(tmp_path):
+    root = _run(tmp_path, [("Action", False, False, "completed")], dev=True)
+    runtime = {
+        "artifact_id": "phi4-rag-on",
+        "model_load_seconds": 7,
+        "warmup": {"seconds": 2},
+        "rag_warmup": {"seconds": 1},
+        "runtime": {"model_id": CONDITIONS["phi4-rag-on"][0]},
+    }
+    _change_result(root, lambda value: value.update(condition_evidence=runtime))
+    _, replacement = _replacement(root)
+    path = root / "cases" / replacement / "result.json"
+    value = json.loads(path.read_text())
+    value["condition_evidence"].update(
+        artifact_id="phi4-rag-on__attempt-2", model_load_seconds=9
+    )
+    shutil.copytree(
+        root / "conditions" / "phi4-rag-on",
+        root / "conditions" / "phi4-rag-on__attempt-2",
+    )
+    digest = _write(path, value)
+    journal = root / "journal.jsonl"
+    records = [json.loads(line) for line in journal.read_text().splitlines()]
+    records[3]["result_sha256"] = digest
+    journal.write_text("".join(json.dumps(record) + "\n" for record in records))
+    actual = report.build_report(root)
+    assert actual["complete_selected_schedule"] is True
+    assert actual["conditions"]["phi4-rag-on"]["overhead_seconds"]["model_load"] == {
+        "n": 2,
+        "p50": 8,
+        "max": 9,
+        "total": 16,
+    }
+
+
+def test_dev_replacement_of_valid_wrong_answer_is_rejected(tmp_path):
+    root = _run(tmp_path, [("Action", False, False, "decision_timeout")], dev=True)
+    _replacement(root, original_valid=True)
+    with pytest.raises(ValueError, match="valid recorded"):
+        report.build_report(root)
+
+
+def test_dev_replacement_keeps_incomplete_original_as_excluded_evidence(tmp_path):
+    root = _run(tmp_path, [("Action", False, False, "completed")], dev=True)
+    original, _ = _replacement(root)
+    digest = _write(
+        root / "cases" / original / "result.json",
+        {
+            "status": "measurement_failed",
+            "cleanup_ok": True,
+            "issues": ["fixture_failed"],
+        },
+    )
+    journal = root / "journal.jsonl"
+    records = [json.loads(line) for line in journal.read_text().splitlines()]
+    records[1]["result_sha256"] = digest
+    journal.write_text("".join(json.dumps(record) + "\n" for record in records))
+    actual = report.build_report(root)
+    assert actual["superseded_cases"][0]["evidence_status"] == "invalid_evidence"
+    assert actual["conditions"]["phi4-rag-on"]["overall"]["final"]["denominator"] == 1
 
 
 def test_product_failure_does_not_erase_a_verified_model_decision(tmp_path):
