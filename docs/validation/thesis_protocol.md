@@ -124,8 +124,8 @@ Qt offscreen 實際產品觀測不等同 Windows 可見 GUI 手測。
 Windows PowerShell 入口（本輪已批准的非 TEST 輸入）：
 
 ```powershell
-.\dev.cmd prepare --bank D:\XBrainLabRuns\b0-entry-78908640\inputs\reviewed-non-test-bank.xlsx --config D:\XBrainLabRuns\b0-entry-78908640\inputs\pilot-config.json --manifest-output D:\XBrainLabRuns\d0-manifest.json
-.\dev.cmd run --bank D:\XBrainLabRuns\b0-entry-78908640\inputs\reviewed-non-test-bank.xlsx --config D:\XBrainLabRuns\b0-entry-78908640\inputs\pilot-config.json --output D:\XBrainLabRuns\d0
+.\dev.cmd prepare --bank D:\XBrainLabRuns\b0-entry-78908640\inputs\reviewed-non-test-bank.xlsx --config D:\XBrainLabRuns\b0-entry-78908640\inputs\pilot-config.json --manifest-output D:\XBrainLabRuns\d0-manifest-v2.json
+.\dev.cmd run --bank D:\XBrainLabRuns\b0-entry-78908640\inputs\reviewed-non-test-bank.xlsx --config D:\XBrainLabRuns\b0-entry-78908640\inputs\pilot-config.json --expected-manifest D:\XBrainLabRuns\d0-manifest-v2.json --output D:\XBrainLabRuns\d0
 .\dev.cmd resume --output D:\XBrainLabRuns\d0
 .\dev.cmd report --output D:\XBrainLabRuns\d0
 ```
@@ -134,6 +134,8 @@ Windows PowerShell 入口（本輪已批准的非 TEST 輸入）：
 `prepare` 只核對與保存 manifest，不推論；`run/resume` 自動保存報告；`report` 只重建報告。
 新 output／manifest 必須不存在。resume 沿用保存的模型／輸入；僅經診斷的無效量測才用
 顯式 `--replace-invalid`，不對有效錯答使用。不要在背景已執行時再手動啟動同一批。
+預先 prepare 的背景 run 必須帶 `--expected-manifest`：重新核對 source／環境／輸入後，
+整份 manifest 必須與固定檔相等，否則在建立 output／推論前拒絕；不能只事後比對。
 
 結果保存 inputs、raw manifest/journal、實際 prompt/raw output、逐題 attempts、source／
 環境／模型／語料身分、reports 與 launches。HTML 是入口，CSV/JSON 用於分析；分母、

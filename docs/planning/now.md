@@ -59,12 +59,18 @@
 - 主線直接整合驗證 114 passed；四項 public fixtures 最初因路徑未傳入 Windows 而 skip，
   改在 Windows 程序明確設既有 E 槽資料根目錄後 4 passed，未下載／升級。Strict docs
   portal 42 pages／1,622 links 通過。仍保留 MNE／NumPy deprecation 與來源格式 warnings。
-- Next：完成最後入口／報告整合測試與小 commit，固定 clean source；在同 source 重跑
-  `assistant_dev_preflight`（D:/XBrainLabRuns/pf1）、五模型工程 smoke（D:/XBrainLabRuns/sm0）。
-  通過後 prepare D:/XBrainLabRuns/d0-manifest.json，單次背景啟動 D:/XBrainLabRuns/d0；
+- Next：完成啟動前 manifest 相等 gate 與 focused tests，固定 clean source；在同 source 重跑
+  `assistant_dev_preflight`（D:/XBrainLabRuns/pf2）、五模型工程 smoke（D:/XBrainLabRuns/sm1）。
+  通過後 prepare D:/XBrainLabRuns/d0-manifest-v2.json，以 `--expected-manifest` 綁定它，
+  單次背景啟動 D:/XBrainLabRuns/d0；
   handoff state D:/XBrainLabRuns/d0-bg。先核對起跑與 arm，再結束回合以省 token。
   接續先讀該 state/status.json 與 d0/index.html/launches，再驗 raw/manifest/journal/reports，
   勿將工程 smoke 算入正式 1,320，勿啟動第二候選、VALID／TEST。
+- 啟動前獨立覆核：f0421d87 的 66 fixtures／五模型 15 題及 actual capture bytes 均通過，
+  但 background 只鎖外部 manifest，run 重新計算後未在推論前比較。先以 RED→GREEN
+  增加 run 的 expected-manifest 完整相等 gate；不符時不得建立 output 或推論。
+  不改模型／評分／產品 UI。完成後重新凍結、取 pf2／sm1 同版本證據，外部 manifest
+  改為 d0-manifest-v2.json；舊 pf1／sm0／manifest 與 source archive 保留，不算正式結果。
 
 ## Accepted history — 產品品質線：Import 適配與內部整理
 

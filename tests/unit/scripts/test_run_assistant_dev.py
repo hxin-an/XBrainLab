@@ -276,3 +276,75 @@ def test_report_entry_rejects_changed_retained_identity(tmp_path, monkeypatch, c
     )
     with pytest.raises(ValueError, match="Retained DEV"):
         entry.main(["report", "--output", str(output)])
+
+
+@pytest.mark.parametrize(
+    "changed", [None, "source", "bank_sha256", "config", "environment"]
+)
+def test_expected_manifest_binds_launch_before_output_or_execution(
+    tmp_path, monkeypatch, changed
+):
+    from scripts.dev import assistant_pilot_case
+    from scripts.dev import run_assistant_dev as entry
+
+    manifest = {
+        "source": {"head": "a" * 40},
+        "bank_sha256": "b" * 64,
+        "config": {"model_caches": {}},
+        "environment": {"python": "pinned"},
+    }
+    expected = tmp_path / "expected.json"
+    expected.write_text(json.dumps(manifest))
+    actual = deepcopy(manifest)
+    if changed:
+        actual[changed] = {
+            "source": {"head": "c" * 40},
+            "bank_sha256": "c" * 64,
+            "config": {
+                "model_caches": {"microsoft/Phi-4-mini-instruct": "D:/changed-cache"}
+            },
+            "environment": {"python": "changed"},
+        }[changed]
+    monkeypatch.setattr(assistant_pilot_case, "bootstrap_case_checkout", lambda: None)
+    monkeypatch.setattr(runner, "prepare_manifest", lambda *_a, **_k: (actual, {}))
+    monkeypatch.setattr(entry, "LOCK", tmp_path / "gpu.lock")
+    calls = []
+    monkeypatch.setattr(entry, "prepare_output", lambda *_a: calls.append("output"))
+    monkeypatch.setattr(
+        entry, "run_attempt", lambda *_a, **_k: calls.append("execute") or 0
+    )
+    output = tmp_path / "run"
+    argv = [
+        "run",
+        "--bank",
+        "bank.xlsx",
+        "--config",
+        "config.json",
+        "--output",
+        str(output),
+        "--expected-manifest",
+        str(expected),
+    ]
+    if changed:
+        with pytest.raises(ValueError, match="expected manifest"):
+            entry.main(argv)
+        assert calls == []
+        assert not output.exists()
+    else:
+        assert entry.main(argv) == 0
+        assert calls == ["output", "execute"]
+
+
+@pytest.mark.parametrize("action", ["prepare", "resume", "report"])
+def test_expected_manifest_is_run_only(action, monkeypatch, capsys):
+    from scripts.dev import run_assistant_dev as entry
+
+    monkeypatch.setattr(
+        runner,
+        "prepare_manifest",
+        lambda *_a, **_k: pytest.fail("invalid mode reached preparation"),
+    )
+    with pytest.raises(SystemExit) as exc:
+        entry.main([action, "--expected-manifest", "expected.json"])
+    assert exc.value.code == 2
+    assert "--expected-manifest requires run" in capsys.readouterr().err

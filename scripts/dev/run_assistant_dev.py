@@ -142,10 +142,12 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("prepare", "run", "resume", "report"))
     parser.add_argument("--models")
-    for name in ("bank", "config", "output", "manifest-output"):
+    for name in ("bank", "config", "output", "manifest-output", "expected-manifest"):
         parser.add_argument(f"--{name}", type=Path)
     parser.add_argument("--replace-invalid", action="store_true")
     args = parser.parse_args(argv)
+    if args.expected_manifest is not None and args.action != "run":
+        parser.error("--expected-manifest requires run")
     if args.replace_invalid and args.action != "resume":
         parser.error("--replace-invalid requires resume")
     if args.action == "report":
@@ -196,6 +198,13 @@ def main(argv=None) -> int:
     manifest, bank = runner.prepare_manifest(
         args.bank, None, args.config, conditions, dev_initial=True
     )
+    if (
+        args.expected_manifest is not None
+        and runner._json(args.expected_manifest) != manifest
+    ):
+        raise ValueError(
+            "Prepared DEV differs from the expected manifest; launch refused"
+        )
     if args.action == "prepare":
         if args.manifest_output is not None:
             write_json(args.manifest_output, manifest)
