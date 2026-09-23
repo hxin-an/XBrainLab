@@ -100,7 +100,7 @@ Windows focused 100 tests、實際題庫的題目／答案保留核對及獨立 
 限制：VALID三次repeat只用合成結果驗排程，未跑正式VALID／TEST／新DEV候選；跨Windows與
 Linux不直接比較速度。各包內候選身分受檢查，跨離線包的全域候選額度仍需研究紀錄管理。
 未完成run續跑仍需原runtime與絕對路徑；封存不保證任意搬移後續跑或跨平台逐位元一致。
-獨立AI審查與原scorer重播不能取代人工盲審oracle，也不是桌面GUI或產品release驗收。
+本輪不是桌面GUI或產品release驗收，不另增加人工盲審關卡。
 
 ### Linux 工作站環境預檢（2026-09-22）
 
@@ -178,9 +178,10 @@ CSS／JavaScript 在 `scripts/dev/assistant_report_assets/` 以可讀原始碼�
 這是自動瀏覽器證據，不代表使用者已接受設計。
 `D:\XBrainLabRuns\d0-validation\final1320-audit.json` 獨立核對全部 selected 題目，
 1,436 組 generation capture 的實際 bytes／hash／trace、同一 frozen scorer 與 input-audit
-重播、完整分母及獨立 P50／P95 計算均一致。Scorer 重播證明紀錄一致，
-不取代盲測真人 oracle 審查；精確 decision 起算 clock 未另存，不能事後重建該 timestamp。
-預檢 pf2 的 66 fixtures／264 oracles 與 sm1 的 15 題五模型 smoke 不混入正式分母。
+重播、完整分母及獨立 P50／P95 計算均一致。Scorer 重播證明紀錄一致；
+精確 decision 起算 clock 未另存，不能事後重建該 timestamp。
+歷史預檢 pf2 的 66 fixtures／264 oracles 與 sm1 的 15 題五模型 smoke 不混入正式分母；
+依2026-09-23使用者明確授權，舊預檢／試跑完整檔案已退役，只留摘要，不再提供其capture重播。
 
 同凍結 source 的 report-only 已重建完成：11,646 個 raw／input 項目保持不變，
 完整 report JSON 與 CSV bytes 一致；1,320 筆 CSV、1,323 個 HTML 頁面及 8,169 個
@@ -191,8 +192,10 @@ CSS／JavaScript 在 `scripts/dev/assistant_report_assets/` 以可讀原始碼�
 經使用者授權，7 個已被取代的純 UI 中間報告已刪除；`reports/` 現保留原失敗
 `20260922-050603-5db90de2`、上述原成功／同源重建及現行分組版，共 4 版。
 這是衍生呈現清理，不刪原始量測、失敗 attempts、inputs、launches 或來源封存。
-舊 pf0／pf1 的 132 個合成 fixture 目錄亦已清除，預檢 JSON／logs 保留；
-其歷史 fixture 路徑不再可用。pf2 及 sm0／sm1 的獨有量測證據保持完整。
+`pf0`、`pf1`、`pf2`、`sm0`、`sm1` 已永久刪除，包含舊試跑獨有capture，不只是搬移。
+小型摘要保存在 `d0-validation/retired-prechecks.json`；正式d0與B0入口結果不變。
+舊預檢source `f0421d87`壓縮包及退役的smoke／watch helper亦移除；正式`67dd8bf9`來源包保留。
+背景與啟動旁檔歸入 `d0-validation/preparation-history/`，原失敗與完成證據仍完整。
 
 source snapshot 保存在 `D:\XBrainLabRuns\d0-validation\source-67dd8bf9.zip`，SHA-256
 `8f7235d1b1cf05518f3e5af93f3e79bc5cdc2422e109e0dd65af1cd50747fbbd`；
@@ -201,8 +204,8 @@ source snapshot 保存在 `D:\XBrainLabRuns\d0-validation\source-67dd8bf9.zip`�
 
 背景喚醒原本使用 `exec resume`，因開啟的互動會話持有 writer 而失敗。
 現改為單次 `codex queue`：12 項 subprocess 回歸、獨立 review、真 live-TUI smoke，
-以及本次實驗完成後實際接回原會話均有證據。`d0-bg` 的原失敗保留，新的
-`d0-bg-queue` 只觀察既有 recovery，不重新啟動推論。Queue receipt 只代表排入；
+以及本次實驗完成後實際接回原會話均有證據。`preparation-history/d0-bg` 的原失敗保留，
+同目錄的 `d0-bg-queue` 只觀察既有 recovery，不重新啟動推論。Queue receipt 只代表排入；
 `d0-validation/queue-receiving-turn.json` 才核對本次相同會話的新 turn 與精確接續訊息。
 本機 Codex 0.155.1 的開啟 TUI 路徑已觀察成功，不保證關閉、重啟或所有客戶端皆可喚醒。
 

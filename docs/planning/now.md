@@ -4,11 +4,12 @@
 
 ## 本輪狀態
 
+
 2026-09-23 核准的封存包／Linux evaluator 工程範圍已 scope-complete；
 固定20題、搬移後離線報告／原候選判分核對、歷史d0不變及三方獨立覆核完成。
 實際來源、產物與限制由 [Current](../current.md#linux-evaluator-2026-09-23)
 擁有；執行及研究契約由[研究規格](../validation/thesis_protocol.md)擁有。
-本輪未PR／push／merge；沒有active施工，不自動開始新候選、完整DEV、正式VALID或TEST。
+本輪未PR／push／merge；不自動開始新候選、完整DEV、正式VALID或TEST。
 
 ## 最近完成
 
